@@ -111,54 +111,35 @@ export function findUnparseableManagedCodexConfig(config: string): string | null
   return parseCodexConfigToml(deduplicated).ok ? null : parseError
 }
 
-const MIRROR_REFUSAL_TTL_MS = 10 * 60_000
-
-type CodexMirrorRefusal = { sourcePath: string; detail: string; at: number }
-
-const mirrorRefusals = new Map<string, CodexMirrorRefusal>()
-
 /**
  * Why: ~/.codex saved mid-edit must not overwrite a managed home that still
  * holds state only it has (an unpromoted /model, an MCP server added in
- * Orca-launched Codex, trust answers). Kept per managed file, like launch trust
- * failures, so a later surface can show why syncing paused.
+ * Orca-launched Codex, trust answers).
  */
-export function refuseMirrorFromUnparseableSource(
+function refuseMirrorFromUnparseableSource(
   sourcePath: string,
   runtimeConfigPath: string,
-  parseError: string,
-  now = Date.now()
+  parseError: string
 ): void {
-  const detail = `${sourcePath} is not valid TOML (${parseError}); left ${runtimeConfigPath} as it was. Fix ${sourcePath} to resume syncing.`
-  mirrorRefusals.set(runtimeConfigPath, { sourcePath, detail, at: now })
-  reportCodexConfigOnce(runtimeConfigPath, detail)
+  reportCodexConfigOnce(
+    runtimeConfigPath,
+    `${sourcePath} is not valid TOML (${parseError}); left ${runtimeConfigPath} as it was. Fix ${sourcePath} to resume syncing.`
+  )
 }
 
 /**
  * Why: with nothing in the managed home to lose, an unchanged copy makes
  * Orca-launched Codex show Codex's own error, exactly like `codex` typed by hand.
  */
-export function reportVerbatimUnparseableCodexSource(
+function reportVerbatimUnparseableCodexSource(
   sourcePath: string,
   runtimeConfigPath: string,
-  parseError: string,
-  now = Date.now()
+  parseError: string
 ): void {
-  const detail = `${sourcePath} is not valid TOML (${parseError}); copied it unchanged into ${runtimeConfigPath} so Orca-launched Codex reports the same error. Fix ${sourcePath} to resume syncing.`
-  mirrorRefusals.set(runtimeConfigPath, { sourcePath, detail, at: now })
-  reportCodexConfigOnce(runtimeConfigPath, detail)
-}
-
-export function clearCodexMirrorRefusal(runtimeConfigPath: string): void {
-  mirrorRefusals.delete(runtimeConfigPath)
-}
-
-export function getRecentCodexMirrorRefusal(
-  runtimeConfigPath: string,
-  now = Date.now()
-): string | null {
-  const refusal = mirrorRefusals.get(runtimeConfigPath)
-  return refusal && now - refusal.at <= MIRROR_REFUSAL_TTL_MS ? refusal.detail : null
+  reportCodexConfigOnce(
+    runtimeConfigPath,
+    `${sourcePath} is not valid TOML (${parseError}); copied it unchanged into ${runtimeConfigPath} so Orca-launched Codex reports the same error. Fix ${sourcePath} to resume syncing.`
+  )
 }
 
 /**
@@ -175,7 +156,6 @@ export function applyUnparseableCodexSourceRule(args: {
 }): 'left-untouched' | 'copied' | null {
   const parseError = args.source.trim() === '' ? null : findUnparseableCodexConfig(args.source)
   if (parseError === null) {
-    clearCodexMirrorRefusal(args.runtimeConfigPath)
     return null
   }
   if (args.runtime !== null && findUnparseableManagedCodexConfig(args.runtime) === null) {
@@ -185,6 +165,12 @@ export function applyUnparseableCodexSourceRule(args: {
   reportVerbatimUnparseableCodexSource(args.sourcePath, args.runtimeConfigPath, parseError)
   const copy = markVerbatimCodexSourceCopy(args.source, args.sourcePath)
   if (args.runtime !== copy) {
+    backUpDiscardedManagedConfig({
+      sourcePath: args.sourcePath,
+      runtimeConfigPath: args.runtimeConfigPath,
+      source: args.source,
+      discarded: args.runtime
+    })
     args.writeVerbatimCopy(copy)
   }
   return 'copied'
@@ -199,9 +185,10 @@ function markVerbatimCodexSourceCopy(source: string, sourcePath: string): string
   return `${body}${VERBATIM_COPY_MARKER}${sourcePath}; replaced when the source parses${eol}`
 }
 
-function isVerbatimCodexSourceCopy(config: string): boolean {
+/** Only an unparseable file is a copy: a valid config that merely ends in the marker text is the user's own. */
+export function isVerbatimCodexSourceCopy(config: string): boolean {
   const lastLine = config.trimEnd().split('\n').at(-1) ?? ''
-  return lastLine.trimStart().startsWith(VERBATIM_COPY_MARKER)
+  return lastLine.trimStart().startsWith(VERBATIM_COPY_MARKER) && !parseCodexConfigToml(config).ok
 }
 
 /**
@@ -217,6 +204,7 @@ export function backUpDiscardedManagedConfig(args: {
   if (
     args.discarded === null ||
     args.discarded === args.source ||
+    isVerbatimCodexSourceCopy(args.discarded) ||
     findUnparseableManagedCodexConfig(args.discarded) === null
   ) {
     return

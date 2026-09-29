@@ -30,8 +30,11 @@ vi.mock('node:os', async () => {
   }
 })
 
-import { syncSystemConfigIntoManagedCodexHome } from './codex-config-mirror'
-import { getRecentCodexMirrorRefusal } from './codex-managed-config-validity'
+import {
+  syncManagedCodexHomeWithoutSourceConfig,
+  syncSystemConfigIntoLegacySharedCodexHome,
+  syncSystemConfigIntoManagedCodexHome
+} from './codex-config-mirror'
 
 let fakeHomeDir: string
 let userDataDir: string
@@ -209,7 +212,7 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     expect(existsSync(`${getRuntimeConfigPath()}.bak`)).toBe(false)
   })
 
-  it('leaves a managed config that parses untouched while ~/.codex is broken, and records why', () => {
+  it('leaves a managed config that parses untouched while ~/.codex is broken, and logs why once', () => {
     writeFileSync(getSystemConfigPath(), 'model = "A"\nbroken = \n', 'utf-8')
     mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
     writeFileSync(getRuntimeConfigPath(), 'model = "A"\n', 'utf-8')
@@ -219,7 +222,6 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     syncSystemConfigIntoManagedCodexHome()
 
     expect(readFileSync(getRuntimeConfigPath(), 'utf-8')).toBe('model = "A"\n')
-    expect(getRecentCodexMirrorRefusal(getRuntimeConfigPath())).toContain('left')
     expect(warn.mock.calls.flat().filter((line) => String(line).includes('left '))).toHaveLength(1)
     warn.mockRestore()
   })
@@ -352,6 +354,99 @@ describe('break-then-fix of ~/.codex keeps managed-home state', () => {
       expect(runtime).not.toContain('mcp_servers.tmp')
       expect(runtime).not.toContain('projects."/x"')
       expect(runtime).not.toContain('orca: verbatim copy')
+    } finally {
+      warn.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  describe('the verbatim copy is replaced once the user deletes or empties ~/.codex/config.toml', () => {
+    const broken = 'model = "A"\nbroken = \n'
+    const good = 'model = "C"\n'
+
+    it.each([
+      [
+        'deleted, managed mirror',
+        (sysPath: string) => rmSync(sysPath),
+        syncSystemConfigIntoManagedCodexHome
+      ],
+      [
+        'emptied, managed mirror',
+        (sysPath: string) => writeFileSync(sysPath, ''),
+        syncSystemConfigIntoManagedCodexHome
+      ],
+      [
+        'deleted, account home without a source',
+        (sysPath: string) => rmSync(sysPath),
+        syncManagedCodexHomeWithoutSourceConfig
+      ],
+      [
+        'deleted, legacy shared home',
+        (sysPath: string) => rmSync(sysPath),
+        syncSystemConfigIntoLegacySharedCodexHome
+      ]
+    ])('%s', (_label, clearSource, syncWithoutSource) => {
+      const { homes, root } = makeHomes()
+      const sysPath = join(homes.systemHomePath, 'config.toml')
+      const rtPath = join(homes.runtimeHomePath, 'config.toml')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        writeFileSync(sysPath, broken)
+        syncSystemConfigIntoManagedCodexHome(homes)
+        expect(readFileSync(rtPath, 'utf8')).toBe(`${broken}${verbatimMarker(sysPath)}`)
+
+        clearSource(sysPath)
+        syncWithoutSource(homes)
+        expect(readFileSync(rtPath, 'utf8')).toBe('')
+
+        writeFileSync(sysPath, good)
+        syncSystemConfigIntoManagedCodexHome(homes)
+        expect(readFileSync(sysPath, 'utf8')).toBe(good)
+        expect(readFileSync(rtPath, 'utf8')).toBe(good)
+      } finally {
+        warn.mockRestore()
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+  })
+
+  it('treats a valid ~/.codex that ends in the marker text as the user config, not a copy', () => {
+    const { homes, root } = makeHomes()
+    const sysPath = join(homes.systemHomePath, 'config.toml')
+    const rtPath = join(homes.runtimeHomePath, 'config.toml')
+    const markerLine = '# orca: verbatim copy of /x/config.toml; replaced when the source parses\n'
+    try {
+      writeFileSync(sysPath, `model = "A"\n${markerLine}`)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      // Codex inside Orca: /model B.
+      writeFileSync(rtPath, readFileSync(rtPath, 'utf8').replace('model = "A"', 'model = "B"'))
+      syncSystemConfigIntoManagedCodexHome(homes)
+
+      expect(parse(readFileSync(sysPath, 'utf8')).model).toBe('B')
+      expect(parse(readFileSync(rtPath, 'utf8')).model).toBe('B')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a broken managed config as .bak before the verbatim copy replaces it, and never backs up the copy', () => {
+    const { homes, root } = makeHomes()
+    const sysPath = join(homes.systemHomePath, 'config.toml')
+    const rtPath = join(homes.runtimeHomePath, 'config.toml')
+    const good = 'model = "A"\n'
+    const brokenManaged = 'model = "A"\n\n[mcp_servers.mine]\ncommand = "m"\n\nx = = 1\n'
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      writeFileSync(sysPath, `${good}broken = \n`)
+      writeFileSync(rtPath, brokenManaged)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      expect(readFileSync(rtPath, 'utf8')).toContain('orca: verbatim copy')
+      expect(readFileSync(`${rtPath}.bak`, 'utf8')).toBe(brokenManaged)
+
+      writeFileSync(sysPath, good)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      expect(readFileSync(rtPath, 'utf8')).toBe(good)
+      expect(readFileSync(`${rtPath}.bak`, 'utf8')).toBe(brokenManaged)
     } finally {
       warn.mockRestore()
       rmSync(root, { recursive: true, force: true })

@@ -23,6 +23,7 @@ import {
   applyUnparseableCodexSourceRule,
   backUpDiscardedManagedConfig,
   findUnparseableManagedCodexConfig,
+  isVerbatimCodexSourceCopy,
   refuseUnparseableManagedConfig
 } from './codex-managed-config-validity'
 import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
@@ -155,8 +156,26 @@ export function ensureCodexDaemonSocketGuard(runtimeHomePath: string): void {
   }
 }
 
-function writeCodexDaemonSocketGuard(runtimeHomePath: string, runtimeConfig: string | null): void {
-  const guarded = applyCodexDaemonSocketGuard(runtimeConfig ?? '', runtimeHomePath)
+/**
+ * For a managed home when no source config was read. Orca's verbatim copy goes
+ * through the full mirror, which re-reads the source and replaces the copy once
+ * it is gone or blank; any other config gets only the daemon guard.
+ */
+export function syncManagedCodexHomeWithoutSourceConfig(homes: CodexSettingsPromotionHomes): void {
+  const observation = observeAgentStateFile(join(homes.runtimeHomePath, 'config.toml'))
+  if (observation.kind === 'present' && isVerbatimCodexSourceCopy(observation.value)) {
+    syncSystemConfigIntoManagedCodexHome(homes)
+    return
+  }
+  ensureCodexDaemonSocketGuard(homes.runtimeHomePath)
+}
+
+function writeCodexDaemonSocketGuard(
+  runtimeHomePath: string,
+  runtimeConfig: string | null,
+  baseConfig = runtimeConfig ?? ''
+): void {
+  const guarded = applyCodexDaemonSocketGuard(baseConfig, runtimeHomePath)
   if (guarded !== (runtimeConfig ?? '')) {
     const runtimeConfigPath = join(runtimeHomePath, 'config.toml')
     if (refuseUnparseableManagedConfig(runtimeConfigPath, guarded)) {
@@ -204,12 +223,16 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
   // it would erase every ordinary setting from an existing managed runtime, and
   // a 0-byte file is what a half-written or unhydrated cloud-synced home shows.
   if (rawSystemConfig.trim() === '') {
+    const runtimeConfig = runtimeConfigExists ? runtimeConfigObservation.value : null
+    // Why: once the user deletes or empties a broken ~/.codex, Orca's copy of it holds nothing to keep.
+    const replacesVerbatimCopy = runtimeConfig !== null && isVerbatimCodexSourceCopy(runtimeConfig)
     // Why: no mirror write happens here, but the daemon guard must still land.
     writeCodexDaemonSocketGuard(
       runtimeHomePath,
-      runtimeConfigExists ? runtimeConfigObservation.value : null
+      runtimeConfig,
+      replacesVerbatimCopy ? '' : (runtimeConfig ?? '')
     )
-    return runtimeConfigExists
+    return runtimeConfig !== null && !replacesVerbatimCopy
       ? { status: 'skipped-missing-source' }
       : {
           status: 'mirrored',

@@ -11,6 +11,7 @@ import {
   applyUnparseableCodexSourceRule,
   backUpDiscardedManagedConfig,
   findUnparseableManagedCodexConfig,
+  isVerbatimCodexSourceCopy,
   refuseUnparseableManagedConfig
 } from './codex-managed-config-validity'
 import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
@@ -62,8 +63,12 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
   const runtimeParses =
     runtimeConfigBeforeMirror !== null &&
     findUnparseableManagedCodexConfig(runtimeConfigBeforeMirror) === null
-  // Why: a missing cloud-synced source is not proof the user cleared config.
-  let mirroredRuntimeConfig = runtimeConfigBeforeMirror ?? ''
+  // Why: a missing cloud-synced source is not proof the user cleared config,
+  // but Orca's copy of a since-removed broken source holds nothing to keep.
+  let mirroredRuntimeConfig =
+    runtimeConfigBeforeMirror !== null && !isVerbatimCodexSourceCopy(runtimeConfigBeforeMirror)
+      ? runtimeConfigBeforeMirror
+      : ''
   if (rawSystemConfig.trim() !== '') {
     const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(homes.systemHomePath)
     // The retired home has no ownership baseline; its entire MCP root stays canonical.
