@@ -16,6 +16,8 @@ export type FakeConnection = Omit<CodexAppServerConnection, 'closed'> & {
   closed: boolean
   handlers: CodexAppServerConnectionHandlers
   threadId: string | null
+  /** Every JSON-RPC method the adapter called, in order. */
+  methods: string[]
   turns: { clientUserMessageId: string; text: string }[]
 }
 
@@ -56,10 +58,12 @@ export function fakeCodex() {
     const connection: FakeConnection = {
       handlers,
       threadId: null,
+      methods: [],
       turns: [],
       pid: 4321,
       closed: false,
       request: async (method, params) => {
+        connection.methods.push(method)
         const input = isRecord(params) ? params : {}
         if (method === 'thread/start') {
           connection.threadId = `thread-${connections.length}`

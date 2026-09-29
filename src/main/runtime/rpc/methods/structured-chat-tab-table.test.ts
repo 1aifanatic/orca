@@ -262,6 +262,9 @@ describe('a chat tab across /clear', () => {
   it('puts a cleared chat back under the tab id it had when its close does not land', async () => {
     await createChat(HOST_TEST_SESSION)
     const replacement = await clear(HOST_TEST_SESSION)
+    // Its agent starts on its first message; only a running agent has a close that can fail.
+    expect(await send(replacement, 'first message')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(store.getRecord(replacement)?.lease.claimStatus).toBe('live'))
     closeSession.mockResolvedValue(false)
 
     const outcome = await closeStructuredAgentSessionChild(replacement)

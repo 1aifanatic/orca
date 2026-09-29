@@ -17,7 +17,7 @@ export class StructuredConversationCommandController {
     private readonly context: () => StructuredAgentSessionMutationContext,
     private readonly host: Pick<
       StructuredAgentSessionHost,
-      'attach' | 'flushStreamedEvents' | 'waitForSendSettlement'
+      'flushStreamedEvents' | 'waitForSendSettlement'
     >
   ) {}
   send = (
