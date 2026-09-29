@@ -59,9 +59,9 @@ export async function proveRepaint(options: {
   const settled = join(directory, 'settled')
   const dimensions = join(directory, 'dimensions')
   const dimensionLog = join(directory, 'dimensions.log')
-  // Diagnostic: log cached columns beside a fresh GetConsoleScreenBufferInfo read, SIGWINCH count and exit time.
-  // Raw stdin like a real TUI: libuv also derives SIGWINCH from WINDOW_BUFFER_SIZE_EVENT input records.
-  const source = `const fs=require('node:fs');const tty=require('node:tty');process.stdout.write('\\x1bc');let i=0;const timer=setInterval(()=>{process.stdout.write(${JSON.stringify(korean)}+'\\r\\n'+${JSON.stringify(latin)}+'\\r\\n');if(++i===8){clearInterval(timer);process.stdout.write('',()=>fs.writeFileSync(${JSON.stringify(settled)},''));}},25);let winch=0,last='',beat=0,inputs=0;process.on('SIGWINCH',()=>winch++);process.stdin.setRawMode(true);process.stdin.on('data',()=>inputs++);process.stdin.resume();const log=(extra)=>fs.appendFileSync(${JSON.stringify(dimensionLog)},JSON.stringify({t:Date.now(),pid:process.pid,...extra})+'\\n');log({start:true});setInterval(()=>{const cached=process.stdout.columns;let fresh=null;try{fresh=new tty.WriteStream(1).columns}catch(e){fresh=String(e)}fs.writeFileSync(${JSON.stringify(dimensions)},String(cached));const key=cached+'/'+fresh+'/'+winch+'/'+inputs;if(key!==last||++beat%50===0){last=key;log({cached,fresh,winch,inputs})}},20);process.on('exit',(code)=>log({exit:code}));setTimeout(()=>process.exit(0),45000);`
+  // `dimensions` holds the cached width (SIGWINCH-refreshed) and a fresh GetConsoleScreenBufferInfo read.
+  // Raw stdin like a real TUI: without it libuv relies on EVENT_CONSOLE_LAYOUT, which never fired under SSH ConPTY.
+  const source = `const fs=require('node:fs');const tty=require('node:tty');process.stdout.write('\\x1bc');let i=0;const timer=setInterval(()=>{process.stdout.write(${JSON.stringify(korean)}+'\\r\\n'+${JSON.stringify(latin)}+'\\r\\n');if(++i===8){clearInterval(timer);process.stdout.write('',()=>fs.writeFileSync(${JSON.stringify(settled)},''));}},25);let winch=0,last='',beat=0,inputs=0;process.on('SIGWINCH',()=>winch++);process.stdin.setRawMode(true);process.stdin.on('data',()=>inputs++);process.stdin.resume();const log=(extra)=>fs.appendFileSync(${JSON.stringify(dimensionLog)},JSON.stringify({t:Date.now(),pid:process.pid,...extra})+'\\n');log({start:true});setInterval(()=>{const cached=process.stdout.columns;let fresh=null;try{fresh=new tty.WriteStream(1).columns}catch(e){fresh=String(e)}fs.writeFileSync(${JSON.stringify(dimensions)},cached+'/'+fresh);const key=cached+'/'+fresh+'/'+winch+'/'+inputs;if(key!==last||++beat%50===0){last=key;log({cached,fresh,winch,inputs})}},20);process.on('exit',(code)=>log({exit:code}));setTimeout(()=>process.exit(0),45000);`
   writeFileSync(script, source)
   const events: Event[] = []
   const timeline: { t: number; mark: string; detail?: unknown }[] = []
@@ -89,7 +89,7 @@ export async function proveRepaint(options: {
       if (
         existsSync(settled) &&
         existsSync(dimensions) &&
-        readFileSync(dimensions, 'utf8') === String(cols) &&
+        readFileSync(dimensions, 'utf8') === `${cols}/${cols}` &&
         performance.now() - lastOutput > 250
       )
         return
