@@ -10,7 +10,10 @@ import {
   agentSessionFailureFact,
   type SubmissionRejectionKind
 } from '../../shared/agent-session-failure'
-import { DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import {
+  DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED,
+  DISPATCH_DOUBT_PROVIDER_IDLE
+} from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import {
   rejectClaudeDispatchWaiters,
   releaseClaudeDispatchWaitersInDoubt
@@ -61,4 +64,20 @@ export function observeClaudeCommandLifecycle(
       onSettledLate
     )
   }
+}
+
+/**
+ * `session_state_changed idle` comes only once the CLI's queue has drained, so a send it took that
+ * is still unanswered here left without an echo — a turn that threw can leave `started` with no
+ * terminal state. What proves it took one is its lifecycle frame or, on a CLI with none, its
+ * position on stdin: written ahead of an interrupt, it was read before the interrupt was.
+ */
+export function releaseClaudeDispatchesUnansweredAtIdle(
+  session: ClaudeSession,
+  onSettledLate?: ClaudeLateDispatchSettlement
+): void {
+  const taken = session.dispatchWaiters.filter(
+    (waiter) => waiter.commandLifecycle !== undefined || waiter.writtenBeforeInterrupt
+  )
+  releaseClaudeDispatchWaitersInDoubt(session, taken, DISPATCH_DOUBT_PROVIDER_IDLE, onSettledLate)
 }

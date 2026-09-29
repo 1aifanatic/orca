@@ -10,7 +10,10 @@ import { describe, expect, it } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { DISPATCH_REJECTED_CANCELLED } from '../../shared/structured-agent-session-dispatch-rejection'
-import { DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import {
+  DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED,
+  DISPATCH_DOUBT_PROVIDER_IDLE
+} from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { ClaudeControlRequestError } from './claude-agent-sdk-control-requests'
 import { claudeDispatchRejection } from './claude-structured-dispatch-content'
@@ -380,6 +383,10 @@ function isLifecycleFrame(frame: Record<string, unknown>, state?: string): boole
   return frame.type === 'command_lifecycle' && (state === undefined || frame.state === state)
 }
 
+function isIdleFrame(frame: Record<string, unknown>): boolean {
+  return frame.subtype === 'session_state_changed' && frame.state === 'idle'
+}
+
 /** The uuid a capture recorded for one of its sends, as its own frames name it. */
 function capturedUuid(name: string, clientMessageId: string): string {
   const dispatch = loadCapture(name).find(
@@ -389,6 +396,7 @@ function capturedUuid(name: string, clientMessageId: string): string {
 }
 
 const ENDED_IN_DOUBT = { state: 'unknown', reason: DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED }
+const IDLE_IN_DOUBT = { state: 'unknown', reason: DISPATCH_DOUBT_PROVIDER_IDLE }
 
 describe('a send the CLI started, then cancelled', () => {
   it('stays accepted when its turn failed after the echo', async () => {
@@ -463,6 +471,94 @@ describe('a send the CLI ended before starting it', () => {
       { state: 'rejected', ...claudeDispatchRejection(agentSessionFailureFact(kind)) }
     ])
     expect(replay.settlementsFor('client-A')).toEqual([acceptedAs(replay.liveUuid('client-A'))])
+  })
+})
+
+describe('a send the CLI took when it goes idle', () => {
+  it('is released as doubt when its started turn threw with no terminal state', async () => {
+    // Started, then its turn threw: no echo and no terminal state, as the schema allows.
+    const replay = await replayCapture('auth-failed', {
+      omitFrame: (frame) =>
+        isTurnOutput(frame) || isLifecycleFrame(frame, 'cancelled') || isIdleFrame(frame)
+    })
+    expect(replay.settlementsFor('client-A')).toEqual([])
+
+    replay.connection.handlers.onMessage?.({
+      type: 'system',
+      subtype: 'session_state_changed',
+      state: 'idle',
+      uuid: 'idle-after-throw',
+      session_id: PROVIDER_SESSION_ID
+    })
+
+    expect(replay.settlementsFor('client-A')).toEqual([IDLE_IN_DOUBT])
+  })
+})
+
+describe('a Stop on a CLI that reports no lifecycle', () => {
+  const OLDER_CLI = ['msg_lifecycle_v1', 'interrupt_receipt_v1', 'interrupt_cancel_queued_v1']
+  const withoutLifecycle = (frame: Record<string, unknown>) => isLifecycleFrame(frame)
+
+  it('releases the send the interrupt caught at the next idle, and never one written after it', async () => {
+    const replay = await replayCapture('interrupt-lost', {
+      withoutCapabilities: OLDER_CLI,
+      omitFrame: withoutLifecycle,
+      atControl: async (point) => {
+        // Armed ahead of the interrupt, but its write finishes after it.
+        const send = point.connection.send
+        const gated = Promise.withResolvers<void>()
+        const reachedGate = Promise.withResolvers<void>()
+        point.connection.send = async (message, beforeDispatch) => {
+          point.connection.send = send
+          await beforeDispatch?.()
+          reachedGate.resolve()
+          await gated.promise
+          point.connection.sent.push(message)
+        }
+        const unwritten = point.adapter.dispatch({
+          sessionId: 'session-1',
+          clientMessageId: 'client-D',
+          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'D' }] },
+          fence: 7
+        })
+        await reachedGate.promise
+        // An older CLI's interrupt answers with no receipt.
+        point.routes.interrupt = () => {
+          point.deliverInFlight()
+          return {}
+        }
+        await point.adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })
+        gated.resolve()
+        await expect(unwritten).resolves.toEqual({ state: 'admitted' })
+        await expect(
+          point.adapter.dispatch({
+            sessionId: 'session-1',
+            clientMessageId: 'client-C',
+            body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'C' }] },
+            fence: 7
+          })
+        ).resolves.toEqual({ state: 'admitted' })
+      }
+    })
+
+    expect(replay.connection.calls.filter((call) => call.subtype === 'interrupt')).toEqual([
+      { subtype: 'interrupt', params: {} }
+    ])
+    expect(replay.settlementsFor('client-B')).toEqual([IDLE_IN_DOUBT])
+    expect(replay.settlementsFor('client-A')).toEqual([acceptedAs(replay.liveUuid('client-A'))])
+    // Read after the interrupt, so the CLI may still run them.
+    expect(replay.settlementsFor('client-C')).toEqual([])
+    expect(replay.settlementsFor('client-D')).toEqual([])
+  })
+
+  it('leaves a written send pending at idle when no interrupt came after it', async () => {
+    const replay = await replayCapture('interrupt-lost', {
+      withoutCapabilities: OLDER_CLI,
+      omitFrame: withoutLifecycle
+    })
+
+    expect(replay.idles).toEqual(['session-1'])
+    expect(replay.settlementsFor('client-B')).toEqual([])
   })
 })
 

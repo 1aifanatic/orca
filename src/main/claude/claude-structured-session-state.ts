@@ -145,6 +145,10 @@ export type ClaudeDispatchWaiter = {
   retired?: boolean
   /** The CLI's last non-terminal `command_lifecycle` state for this send; in memory only. */
   commandLifecycle?: 'queued' | 'started'
+  /** The SDK finished writing this send to the CLI's stdin. */
+  written?: true
+  /** Written ahead of an interrupt, so a CLI that reports no lifecycle has read it by its idle. */
+  writtenBeforeInterrupt?: true
   /** Bounded digest/summary for compatibility CLIs that mint UUIDs. */
   replayContentKey: string
 }

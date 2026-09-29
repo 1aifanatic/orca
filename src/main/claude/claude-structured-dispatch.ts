@@ -200,6 +200,9 @@ export async function dispatchClaudeTurn(
     }
     return { state: 'unknown', reason: dispatchWriteOutcomeUnknownReason(error) }
   }
+  if (pending.replay) {
+    pending.replay.waiter.written = true
+  }
   // The write is the admission signal. Awaiting the echo here would block on the
   // turn already running, which is why the deadline this replaces kept declaring
   // doubt about messages that were delivered. The replay resolution
