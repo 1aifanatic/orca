@@ -27,8 +27,8 @@ const REMOTE_FETCH_CACHE_MAX = 512
 
 export class RuntimeRemoteFetchController {
   private readonly fetchInflight = new Map<string, Promise<RemoteFetchResult>>()
-  // Create fetches stay out of `fetchInflight` so nothing shares them; tracked only for busy probes.
-  private readonly createFetchesInflight = new Set<string>()
+  // Base fetches that have reached git (a create's, or a refresh whose queue turn came); safe to join.
+  private readonly baseFetchesRunning = new Map<string, Promise<RemoteFetchResult>>()
   private readonly remoteFetchQueueTail = new Map<string, Promise<RemoteFetchResult>>()
   private readonly fetchLastCompletedAt = new Map<string, number>()
   private readonly canonicalFetchKeyCache = new Map<string, string>()
@@ -85,7 +85,7 @@ export class RuntimeRemoteFetchController {
 
   private hasInflightFetchForRepo(repoKey: string): boolean {
     const prefix = `${repoKey}::`
-    for (const key of [...this.fetchInflight.keys(), ...this.createFetchesInflight]) {
+    for (const key of [...this.fetchInflight.keys(), ...this.baseFetchesRunning.keys()]) {
       if (key.startsWith(prefix)) {
         return true
       }
@@ -174,16 +174,13 @@ export class RuntimeRemoteFetchController {
     if (this.getFreshFetchCompletedAt(key) !== null) {
       return { ok: true }
     }
-    const existing = this.fetchInflight.get(key)
+    const existing = this.fetchInflight.get(key) ?? this.baseFetchesRunning.get(key)
     if (existing) {
       return existing
     }
-    const promise = this.enqueueRemoteFetch(remoteKey, async () => {
-      if (this.getFreshFetchCompletedAt(key) !== null) {
-        return { ok: true }
-      }
-      return this.fetchRemoteTrackingBase(key, repoPath, base, gitOptions)
-    }).finally(() => {
+    const promise = this.enqueueRemoteFetch(remoteKey, () =>
+      this.runBaseFetch(key, repoPath, base, gitOptions)
+    ).finally(() => {
       this.fetchInflight.delete(key)
       this.armRefMaintenance(repoPath, gitOptions)
     })
@@ -192,9 +189,10 @@ export class RuntimeRemoteFetchController {
   }
 
   /**
-   * The create's own base fetch. It neither joins nor queues behind the shared refresh chain,
-   * where a queued background or speculative fetch could hold it; a fetch that recently
-   * completed still counts, and a fetch already running in the repo still finishes first.
+   * The create's own base fetch. It never queues behind the shared refresh chain, where a queued
+   * background or speculative fetch could hold it, and joins only a fetch of the same base that
+   * has already reached git. A fetch that recently completed still counts, and any fetch already
+   * running in the repo still finishes first.
    */
   async refreshRemoteTrackingBaseForCreate(
     repoPath: string,
@@ -206,16 +204,36 @@ export class RuntimeRemoteFetchController {
       `base:${base.remote}:${base.branch}`,
       gitOptions
     )
-    if (this.getFreshFetchCompletedAt(key) !== null) {
-      return { ok: true }
-    }
-    this.createFetchesInflight.add(key)
     try {
-      return await this.fetchRemoteTrackingBase(key, repoPath, base, gitOptions, 'interactive')
+      return await this.runBaseFetch(key, repoPath, base, gitOptions, 'interactive')
     } finally {
-      this.createFetchesInflight.delete(key)
       this.armRefMaintenance(repoPath, gitOptions)
     }
+  }
+
+  private runBaseFetch(
+    key: string,
+    repoPath: string,
+    base: RemoteTrackingBase,
+    gitOptions: GitOptions,
+    admissionTier?: 'interactive'
+  ): Promise<RemoteFetchResult> {
+    if (this.getFreshFetchCompletedAt(key) !== null) {
+      return Promise.resolve({ ok: true })
+    }
+    const running = this.baseFetchesRunning.get(key)
+    if (running) {
+      return running
+    }
+    const promise = this.fetchRemoteTrackingBase(
+      key,
+      repoPath,
+      base,
+      gitOptions,
+      admissionTier
+    ).finally(() => this.baseFetchesRunning.delete(key))
+    this.baseFetchesRunning.set(key, promise)
+    return promise
   }
 
   private fetchRemoteTrackingBase(

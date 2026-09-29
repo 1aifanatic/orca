@@ -1,12 +1,33 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as RunnerModule from '../git/runner'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as InstrumentationModule from '../observability/instrumentation'
 import type * as RefMaintenanceModule from '../git/local-repo-ref-maintenance'
 
-const gitExecFileAsyncMock = vi.hoisted(() => vi.fn())
+type GitResult = { stdout: string; stderr: string }
+type SpawnedGit = {
+  args: string[]
+  resolve: (result: GitResult) => void
+  reject: (error: Error) => void
+}
 
-vi.mock('../git/runner', async (importOriginal) => ({
-  ...(await importOriginal<typeof RunnerModule>()),
-  gitExecFileAsync: gitExecFileAsyncMock
+const spawned = vi.hoisted((): { fetches: SpawnedGit[]; gitCommonDir: string } => ({
+  fetches: [],
+  gitCommonDir: ''
+}))
+
+// The git process is the only fake: the runner's wrapper and the repo's fetch lock above it are real.
+vi.mock('../observability/instrumentation', async (importOriginal) => ({
+  ...(await importOriginal<typeof InstrumentationModule>()),
+  withGitSpan: ({ args }: { args: string[] }) => {
+    if (args[0] === 'rev-parse') {
+      return Promise.resolve({ stdout: `${spawned.gitCommonDir}\n`, stderr: '' })
+    }
+    return new Promise<GitResult>((resolve, reject) => {
+      spawned.fetches.push({ args, resolve, reject })
+    })
+  }
 }))
 
 vi.mock('../git/local-repo-ref-maintenance', async (importOriginal) => ({
@@ -16,6 +37,7 @@ vi.mock('../git/local-repo-ref-maintenance', async (importOriginal) => ({
 }))
 
 import { _resetCanonicalRepoKeyCacheForTests } from '../git/canonical-repo-key'
+import { setRepoRefMaintenanceBusyProbe } from '../git/local-repo-ref-maintenance'
 import { RuntimeRemoteFetchController } from './runtime-remote-fetch-controller'
 
 const base = {
@@ -24,42 +46,52 @@ const base = {
   ref: 'refs/remotes/origin/main',
   base: 'origin/main'
 }
+const ok: GitResult = { stdout: '', stderr: '' }
 
-type GitResult = { stdout: string; stderr: string }
+let repo = ''
 
-function fetchCalls(): unknown[][] {
-  return gitExecFileAsyncMock.mock.calls.filter(
-    (call: unknown[]) => Array.isArray(call[0]) && call[0].includes('fetch')
-  )
+function spawnedArgs(): string[][] {
+  return spawned.fetches.map((fetch) => fetch.args)
 }
 
-let pendingFetches: ((result: GitResult) => void)[] = []
+async function waitForSpawnCount(count: number): Promise<void> {
+  await vi.waitFor(() => expect(spawned.fetches).toHaveLength(count))
+}
+
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20))
+}
 
 beforeEach(() => {
   _resetCanonicalRepoKeyCacheForTests()
-  pendingFetches = []
-  gitExecFileAsyncMock.mockReset()
-  gitExecFileAsyncMock.mockImplementation((argv: string[]) => {
-    if (argv[0] === 'rev-parse') {
-      return Promise.resolve({ stdout: '/repo/.git\n', stderr: '' })
-    }
-    return new Promise<GitResult>((resolve) => {
-      pendingFetches.push(resolve)
-    })
-  })
+  repo = mkdtempSync(path.join(tmpdir(), 'orca-create-fetch-'))
+  mkdirSync(path.join(repo, '.git'))
+  spawned.fetches = []
+  spawned.gitCommonDir = path.join(repo, '.git')
+  vi.mocked(setRepoRefMaintenanceBusyProbe).mockClear()
+})
+
+afterEach(() => {
+  rmSync(repo, { recursive: true, force: true })
 })
 
 describe("a create's own base fetch", () => {
-  it('starts at once instead of queueing behind the shared refresh chain', async () => {
+  it('goes ahead of queued background fetches and waits only for the one already running', async () => {
     const controller = new RuntimeRemoteFetchController()
-    const backgroundFetch = controller.getOrStartRemoteFetch('/repo', 'origin')
-    await vi.waitFor(() => expect(fetchCalls()).toHaveLength(1))
-    // A speculative refresh of the same base queues behind the full fetch.
-    const queuedRefresh = controller.getOrStartRemoteTrackingBaseRefresh('/repo', base)
+    const runningFetch = controller.getOrStartRemoteFetch(repo, 'origin')
+    await waitForSpawnCount(1)
+    // Queued at the repo's fetch lock behind the running fetch.
+    const lockWaiter = controller.getOrStartRemoteFetch(repo, 'upstream')
+    // Queued in the origin refresh chain behind the running fetch.
+    const queuedRefresh = controller.getOrStartRemoteTrackingBaseRefresh(repo, base)
 
-    const createFetch = controller.refreshRemoteTrackingBaseForCreate('/repo', base)
-    await vi.waitFor(() => expect(fetchCalls()).toHaveLength(2))
-    expect(fetchCalls()[1]?.[0]).toEqual(
+    const createFetch = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await settle()
+    expect(spawned.fetches).toHaveLength(1)
+
+    spawned.fetches[0]?.resolve(ok)
+    await waitForSpawnCount(2)
+    expect(spawnedArgs()[1]).toEqual(
       expect.arrayContaining([
         'fetch',
         '--no-tags',
@@ -67,43 +99,100 @@ describe("a create's own base fetch", () => {
         '+refs/heads/main:refs/remotes/origin/main'
       ])
     )
-    expect(fetchCalls()[1]?.[1]).toMatchObject({ cwd: '/repo', admissionTier: 'interactive' })
-
-    pendingFetches[1]?.({ stdout: '', stderr: '' })
+    spawned.fetches[1]?.resolve(ok)
     await expect(createFetch).resolves.toEqual({ ok: true })
 
-    pendingFetches[0]?.({ stdout: '', stderr: '' })
-    await expect(Promise.all([backgroundFetch, queuedRefresh])).resolves.toEqual([
+    await waitForSpawnCount(3)
+    expect(spawnedArgs()[2]).toEqual(['fetch', 'upstream'])
+    spawned.fetches[2]?.resolve(ok)
+    await settle()
+    // The queued refresh reached its turn while the create's fetch ran, and joined it.
+    expect(spawned.fetches).toHaveLength(3)
+    await expect(Promise.all([runningFetch, lockWaiter, queuedRefresh])).resolves.toEqual([
+      { ok: true },
       { ok: true },
       { ok: true }
     ])
-    // The create's completed fetch left the queued speculative refresh nothing to do.
-    expect(fetchCalls()).toHaveLength(2)
+  })
+
+  it('is one fetch shared by concurrent creates of the same base', async () => {
+    const controller = new RuntimeRemoteFetchController()
+    const first = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    const second = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await waitForSpawnCount(1)
+    spawned.fetches[0]?.resolve(ok)
+    await settle()
+
+    expect(spawned.fetches).toHaveLength(1)
+    await expect(Promise.all([first, second])).resolves.toEqual([{ ok: true }, { ok: true }])
+  })
+
+  it("joins the composer's refresh of the same base once that refresh is running", async () => {
+    const controller = new RuntimeRemoteFetchController()
+    const prefetch = controller.getOrStartRemoteTrackingBaseRefresh(repo, base)
+    await waitForSpawnCount(1)
+
+    const createFetch = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await settle()
+    spawned.fetches[0]?.resolve(ok)
+    await settle()
+
+    expect(spawned.fetches).toHaveLength(1)
+    await expect(Promise.all([prefetch, createFetch])).resolves.toEqual([
+      { ok: true },
+      { ok: true }
+    ])
+  })
+
+  it('reports a failed shared fetch to every create, and the next create fetches again', async () => {
+    const controller = new RuntimeRemoteFetchController()
+    const first = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    const second = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await waitForSpawnCount(1)
+    spawned.fetches[0]?.reject(new Error('network down'))
+    await settle()
+
+    expect(spawned.fetches).toHaveLength(1)
+    const failed = { ok: false, errorKind: 'git_error' }
+    await expect(Promise.all([first, second])).resolves.toEqual([failed, failed])
+
+    const retry = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await waitForSpawnCount(2)
+    spawned.fetches[1]?.resolve(ok)
+    await expect(retry).resolves.toEqual({ ok: true })
+  })
+
+  it('keeps ref maintenance off the repo until the shared fetch finishes', async () => {
+    const controller = new RuntimeRemoteFetchController()
+    const other = { ...base, branch: 'dev', ref: 'refs/remotes/origin/dev', base: 'origin/dev' }
+    const warmup = controller.refreshRemoteTrackingBaseForCreate(repo, other)
+    await waitForSpawnCount(1)
+    spawned.fetches[0]?.resolve(ok)
+    await warmup
+    await vi.waitFor(() => expect(setRepoRefMaintenanceBusyProbe).toHaveBeenCalled())
+    const isBusy = vi.mocked(setRepoRefMaintenanceBusyProbe).mock.calls[0]?.[1]
+
+    const first = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    const second = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await waitForSpawnCount(2)
+    expect(isBusy?.()).toBe(true)
+    spawned.fetches[1]?.resolve(ok)
+    await settle()
+    expect(isBusy?.()).toBe(false)
+    expect(spawned.fetches).toHaveLength(2)
+    await Promise.all([first, second])
   })
 
   it('reuses a base fetch that completed moments ago', async () => {
     const controller = new RuntimeRemoteFetchController()
-    const refresh = controller.getOrStartRemoteTrackingBaseRefresh('/repo', base)
-    await vi.waitFor(() => expect(fetchCalls()).toHaveLength(1))
-    pendingFetches[0]?.({ stdout: '', stderr: '' })
+    const refresh = controller.getOrStartRemoteTrackingBaseRefresh(repo, base)
+    await waitForSpawnCount(1)
+    spawned.fetches[0]?.resolve(ok)
     await refresh
 
-    await expect(controller.refreshRemoteTrackingBaseForCreate('/repo', base)).resolves.toEqual({
+    await expect(controller.refreshRemoteTrackingBaseForCreate(repo, base)).resolves.toEqual({
       ok: true
     })
-    expect(fetchCalls()).toHaveLength(1)
-  })
-
-  it('reports a failed fetch without throwing, so a create with a local base can go on', async () => {
-    gitExecFileAsyncMock.mockImplementation((argv: string[]) =>
-      argv[0] === 'rev-parse'
-        ? Promise.resolve({ stdout: '/repo/.git\n', stderr: '' })
-        : Promise.reject(new Error('network down'))
-    )
-    const controller = new RuntimeRemoteFetchController()
-    await expect(controller.refreshRemoteTrackingBaseForCreate('/repo', base)).resolves.toEqual({
-      ok: false,
-      errorKind: 'git_error'
-    })
+    expect(spawned.fetches).toHaveLength(1)
   })
 })

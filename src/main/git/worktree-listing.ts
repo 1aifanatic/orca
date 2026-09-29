@@ -1,5 +1,5 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { join, posix } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { resolveGitMetadataPath } from '../../shared/git-metadata-path'
 import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
@@ -23,6 +23,7 @@ import {
 } from './worktree-operation-options'
 import { areWorktreePathsEqual, translateWorktreePath } from './worktree-path-comparison'
 import { detectSparseCheckoutCached } from './worktree-sparse-checkout-cache'
+import { resolveGitDir } from './source-control/resolve-git-dir'
 
 const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 
@@ -289,6 +290,38 @@ function isPosixAbsolutePath(pathValue: string): boolean {
 }
 
 /**
+ * The worktree's path as `git worktree list` prints it: what Git recorded at `worktree add`, which
+ * keeps the caller's letter case where `--show-toplevel` reports the on-disk case. On a
+ * case-insensitive disk only this spelling keys the worktree the way every later scan will.
+ * Undefined when the record is unreadable or relative (`worktree.useRelativePaths`).
+ */
+async function readRecordedWorktreePath(
+  worktreePath: string,
+  options: GitWorktreeExecOptions,
+  timeoutMs: number
+): Promise<string | undefined> {
+  try {
+    const record = await withDeadline(
+      resolveGitDir(worktreePath, options).then((gitDir) =>
+        readFile(join(gitDir, 'gitdir'), 'utf8')
+      ),
+      timeoutMs
+    )
+    // Git's listing right-trims the record and drops this suffix the same way.
+    const recorded = record.trimEnd()
+    if (!recorded.endsWith('/.git')) {
+      return undefined
+    }
+    const recordedPath = recorded.slice(0, -'/.git'.length)
+    return posix.isAbsolute(recordedPath) || win32.isAbsolute(recordedPath)
+      ? recordedPath
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Reconstruct the listing row for a worktree `git worktree add` just created, by asking Git about
  * the worktree itself. Used when the listing fails or omits it, so a create does not abandon a
  * worktree Git already wrote to disk (#16520). Returns undefined unless Git resolves the path into
@@ -306,11 +339,12 @@ export async function describeCreatedWorktree(
     ...options,
     timeout: options.timeout ?? WORKTREE_LIST_TIMEOUT_MS
   }
-  const [created, repoGitCommonDir, checkedOutRef, head] = await Promise.all([
+  const [created, repoGitCommonDir, checkedOutRef, head, recordedPath] = await Promise.all([
     readRepoLocation(worktreePath, toWslExecutionSpace(worktreePath), deadlined),
     readRepoCommonDirFromGit(repoPath, deadlined),
     readCheckedOutBranchRef(worktreePath, deadlined),
-    readWorktreeHeadOid(worktreePath, deadlined)
+    readWorktreeHeadOid(worktreePath, deadlined),
+    readRecordedWorktreePath(worktreePath, options, deadlined.timeout ?? WORKTREE_LIST_TIMEOUT_MS)
   ])
   // An unreadable HEAD means Git could not confirm the worktree, so report nothing rather than a blank OID.
   if (!created || checkedOutRef !== expectedRef || !head) {
@@ -331,7 +365,7 @@ export async function describeCreatedWorktree(
     repoPath,
     [
       {
-        path: translateWorktreePath(created.topLevel, repoPath, options),
+        path: translateWorktreePath(recordedPath ?? created.topLevel, repoPath, options),
         head,
         branch: expectedRef,
         isBare: false,

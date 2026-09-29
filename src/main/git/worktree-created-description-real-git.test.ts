@@ -1,6 +1,7 @@
 // Real-binary coverage for the create-verification fallback (#16520): the mocked-runner suite cannot
 // prove that the row rebuilt from `rev-parse`/`symbolic-ref` is the row `git worktree list` reports.
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -52,6 +53,23 @@ describe('describeCreatedWorktree against the real Git binary', () => {
     expect(listed).toBeDefined()
 
     await expect(describeCreatedWorktree(repoPath, worktreePath, 'feature')).resolves.toEqual(
+      listed
+    )
+  })
+
+  it('spells a worktree created through a case-mismatched path the way the listing does', async (context) => {
+    if (!existsSync(join(scratchDir, 'WORKSPACES'))) {
+      context.skip('case-sensitive filesystem: a case-mismatched path names a different directory')
+    }
+    // On disk the directory is `workspaces`; Git records, and lists, the spelling it was given.
+    const requestedPath = join(scratchDir, 'Workspaces', 'case-feature')
+    await git(['worktree', 'add', '-q', requestedPath, '-b', 'case-feature'], repoPath)
+    const listed = (await listWorktreesStrict(repoPath)).find(
+      (worktree) => worktree.branch === 'refs/heads/case-feature'
+    )
+    expect(listed?.path).toContain('Workspaces')
+
+    await expect(describeCreatedWorktree(repoPath, requestedPath, 'case-feature')).resolves.toEqual(
       listed
     )
   })
