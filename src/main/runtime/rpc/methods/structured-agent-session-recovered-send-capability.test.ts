@@ -183,13 +183,35 @@ describe('recovered send projection', () => {
   })
 
   it.each([
-    ['a live unknown, which can still be answered', submission({ recovered: undefined })],
+    [
+      'a live unknown, which can still be answered',
+      submission({ recovered: undefined, reason: 'provider_write_outcome_unknown: timeout' })
+    ],
     ['a pending send', submission({ dispatchState: 'pending', recovered: undefined })],
     ['a refused send', submission({ dispatchState: 'rejected', reason: 'queue full' })],
     ['an accepted send', submission({ dispatchState: 'accepted', recovered: undefined })]
   ])('leaves %s as the host wrote it', (_label, entry) => {
     const history: AgentSessionHistoryResult = { ok: true, page: page([entry]) }
     expect(projectRecoveredSendHistory(history, STRUCTURED_CLIENT)).toBe(history)
+  })
+
+  // An older host's verdicts, still on disk: a current client draws both as sent.
+  it.each([
+    [
+      'an inferred "not delivered"',
+      submission({
+        dispatchState: 'rejected',
+        reason: 'not_delivered',
+        rejection: { kind: 'notDelivered' }
+      })
+    ],
+    ['a restart doubt without the recovered flag', submission({ recovered: undefined })]
+  ])('publishes %s to an older reader as accepted', (_label, entry) => {
+    expect(structuredAgentSessionSubmissionSettlement(entry)).toBe('sent')
+    const history: AgentSessionHistoryResult = { ok: true, page: page([entry]) }
+    expect(projectRecoveredSendHistory(history, STRUCTURED_CLIENT).page.submissions).toEqual([
+      AS_ACCEPTED
+    ])
   })
 
   it.each([

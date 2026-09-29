@@ -1,10 +1,11 @@
 // Transitional: remove once no supported release lacks AGENT_SESSION_RECOVERED_SEND_CAPABILITY.
 //
 // A send a crash or a dead agent left in doubt for good (`unknown`, `recovered`) is drawn as an
-// ordinary sent message. A client that predates that reading draws it unconfirmed, with a Retry
-// that holds its queue, so the host publishes it to that client as `accepted` — the one state it
-// already draws as sent — at the RPC boundary only. The journal and every host reader keep the
-// real facts, and the host never re-sends a recovered send whichever way it is published.
+// ordinary sent message, as is an older host's inferred `not_delivered`. A client that predates
+// that reading draws the first unconfirmed, with a Retry that holds its queue, and hides the
+// second behind a Retry, so the host publishes both to it as `accepted` — the one state it already
+// draws as sent — at the RPC boundary only. The journal and every host reader keep the real facts,
+// and the host never re-sends such a send whichever way it is published.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
@@ -15,6 +16,7 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
 import { AGENT_SESSION_RECOVERED_SEND_CAPABILITY } from '../../../../shared/protocol-version'
+import { structuredAgentSessionSubmissionSettlement } from '../../../../shared/structured-agent-session-submission-settlement'
 import type { RpcContext } from '../core'
 
 type RecoveredSendReader = Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
@@ -28,10 +30,14 @@ function readsRecoveredSends(ctx: RecoveredSendReader): boolean {
 }
 
 function projectSubmission(submission: AgentJournalSubmission): AgentJournalSubmission {
-  if (submission.dispatchState !== 'unknown' || submission.recovered !== true) {
+  // The same reading a current client draws from, so the two cannot drift apart.
+  if (
+    submission.dispatchState === 'accepted' ||
+    structuredAgentSessionSubmissionSettlement(submission) !== 'sent'
+  ) {
     return submission
   }
-  const { recovered: _recovered, ...rest } = submission
+  const { recovered: _recovered, rejection: _rejection, ...rest } = submission
   return { ...rest, dispatchState: 'accepted', reason: null }
 }
 
