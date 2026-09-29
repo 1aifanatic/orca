@@ -29,7 +29,8 @@ const overriddenHomesWarned = new Set<string>()
  * Forces `daemon_auto_start = false` into a home Orca owns, even over a user's
  * explicit `true` mirrored from ~/.codex, matching the shell function's
  * unconditional `--no-daemon`. Callers pass only Orca's runtime homes; the user's
- * ~/.codex reaches the mirror only as its read-only source.
+ * ~/.codex reaches the mirror only as its read-only source. `ORCA_CODEX_ISOLATE=0`
+ * does not re-enable it: forcing auto-start in a home past `sun_path` is fatal.
  */
 export function applyCodexDaemonAutoStartOverride(
   config: string,

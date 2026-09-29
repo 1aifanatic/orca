@@ -196,10 +196,8 @@ function lines(output: string): string[] {
   return output.trimEnd().split(/\r?\n/)
 }
 
-const SHARED_SERVER_OVERRIDE = ['-c', 'features.daemon_auto_start=true']
-
-function expectedLine(argv: string[], added: boolean, flags = ['--no-daemon']): string {
-  return ['ARGV', ...(added ? flags : []), ...argv].join('|')
+function expectedLine(argv: string[], added: boolean): string {
+  return ['ARGV', ...(added ? ['--no-daemon'] : []), ...argv].join('|')
 }
 
 const shells: [Shell, boolean][] = [
@@ -238,7 +236,7 @@ describe('codex wrapper --no-daemon rule', () => {
         expect(lines(result.stdout)).toEqual(ALL.map((argv) => expectedLine(argv, false)))
       })
 
-      it('turns the shared server back on with ORCA_CODEX_ISOLATE=0, read on every call', () => {
+      it('adds nothing with ORCA_CODEX_ISOLATE=0, read on every call', () => {
         const sandbox = makeSandbox(HELP_WITH_FLAG)
         const setIsolate = (value: string): string =>
           isPowerShell(shell)
@@ -253,34 +251,7 @@ describe('codex wrapper --no-daemon rule', () => {
           { ORCA_CODEX_ISOLATE: '0' }
         )
 
-        expect(lines(result.stdout)).toEqual([
-          'ARGV|-c|features.daemon_auto_start=true|a',
-          'ARGV|--no-daemon|b',
-          'ARGV|-c|features.daemon_auto_start=true|c'
-        ])
-      })
-
-      it('with ORCA_CODEX_ISOLATE=0, overrides only where it would add --no-daemon', () => {
-        const sandbox = makeSandbox(HELP_WITH_FLAG)
-        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), sandbox, {
-          ORCA_CODEX_ISOLATE: '0'
-        })
-
-        expect(result.stderr).toBe('')
-        expect(lines(result.stdout)).toEqual([
-          ...ADDED.map((argv) => expectedLine(argv, true, SHARED_SERVER_OVERRIDE)),
-          ...UNCHANGED.map((argv) => expectedLine(argv, false))
-        ])
-        expect(helpProbes(sandbox)).toBe(ADDED.length)
-      })
-
-      it('with ORCA_CODEX_ISOLATE=0, adds nothing when --help does not list --no-daemon', () => {
-        const sandbox = makeSandbox(HELP_WITHOUT_FLAG)
-        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), sandbox, {
-          ORCA_CODEX_ISOLATE: '0'
-        })
-
-        expect(lines(result.stdout)).toEqual(ALL.map((argv) => expectedLine(argv, false)))
+        expect(lines(result.stdout)).toEqual(['ARGV|a', 'ARGV|--no-daemon|b', 'ARGV|c'])
       })
 
       it('re-probes --help when Codex changes version mid-shell', () => {
