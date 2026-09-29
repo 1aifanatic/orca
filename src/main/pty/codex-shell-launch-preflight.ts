@@ -75,6 +75,8 @@ export function getPosixCodexShellLaunchPreflight(): string {
   return `${posixCodexInteractiveArgv()}
 ${posixCodexNoDaemonProbe()}
 __orca_codex_path() {
+  # Why local: zsh's warn_create_global prints a warning for each global a function creates.
+  local _orca_lookup_command _orca_lookup_candidate _orca_lookup_remaining _orca_lookup_component _orca_lookup_has_more __orca_lookup_result
 ${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }, { resultVariable: '__orca_lookup_result' })}
   printf '%s' "$__orca_lookup_result"
 }

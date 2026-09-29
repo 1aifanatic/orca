@@ -243,6 +243,22 @@ for (const spec of shells) {
         expect(result.stdout.trim().split('\n').at(-1)).toBe('<hello world>')
       })
 
+      it.skipIf(spec.shell !== '/bin/zsh')(
+        'prints nothing extra under zsh warn_create_global and nounset',
+        async () => {
+          const fixture = await sandbox()
+          const result = await launch(
+            spec,
+            fixture,
+            "setopt warn_create_global nounset\ncodex 'hello world'",
+            { TEST_CODEX_VERSION: '0.158.0' }
+          )
+          expect(result.code, result.stderr).toBe(0)
+          expect(result.stderr).toBe('')
+          expect(result.stdout.trim().split('\n').at(-1)).toBe('<--no-daemon><hello world>')
+        }
+      )
+
       it('decides from the Codex a cwd-selected shim runs now, never an earlier answer', async () => {
         const fixture = await sandbox()
         const [current, old] = [join(fixture.root, 'current'), join(fixture.root, 'old')]

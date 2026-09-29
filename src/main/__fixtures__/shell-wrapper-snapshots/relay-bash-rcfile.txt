@@ -111,6 +111,8 @@ __orca_codex_supports_no_daemon() {
   "$1" --no-daemon --version </dev/null >/dev/null 2>&1
 }
 __orca_codex_path() {
+  # Why local: zsh's warn_create_global prints a warning for each global a function creates.
+  local _orca_lookup_command _orca_lookup_candidate _orca_lookup_remaining _orca_lookup_component _orca_lookup_has_more __orca_lookup_result
 _orca_lookup_command='codex'
 __orca_lookup_result=
 case "$_orca_lookup_command" in
