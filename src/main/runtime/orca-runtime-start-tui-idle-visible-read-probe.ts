@@ -9,10 +9,7 @@ import {
   VISIBLE_TERMINAL_SNAPSHOT_TIMEOUT_MS
 } from './orca-runtime-postlude'
 import { withTimeout } from './runtime-async-boundaries'
-import {
-  detectTerminalWaitBlockedReason,
-  isKnownReadyPromptPreview
-} from './terminal-wait-detection'
+import { detectTerminalWaitBlockedReason, isKnownReadyPromptBody } from './terminal-wait-detection'
 import type {
   RuntimeTerminalWait,
   RuntimeTerminalWaitBlockedReason
@@ -77,10 +74,12 @@ export class OrcaRuntimeWithStartTuiIdleVisibleReadProbe extends OrcaRuntimeWith
             ? [...projection.tail, projection.draft ?? ''].join('\n')
             : projection.tail.join('\n')
         const blockedReason = detectTerminalWaitBlockedReason(snapshotText)
+        // Why the body rule: this snapshot is the visible screen, where Codex's provisional startup
+        // header already matches the text rules; the body rule reads it as a screen.
         const ready =
           agent === 'antigravity'
             ? isAntigravityReadyPromptSnapshot(snapshotText)
-            : isKnownReadyPromptPreview(snapshotText)
+            : isKnownReadyPromptBody(snapshotText, agent, () => projection.tail)
         if (!blockedReason && !ready) {
           return
         }

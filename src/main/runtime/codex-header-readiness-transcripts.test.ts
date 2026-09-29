@@ -29,7 +29,7 @@ function screenShowsLoadingHeader(screenLines: string[]): boolean {
 }
 
 // Codex's default status row opens with `<model> <effort> ·`; only the live chat paints it.
-const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) · /
+const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) ·/
 
 function screenShowsProvisionalStartup(screenLines: string[]): boolean {
   return (
@@ -188,6 +188,58 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       },
       15_000
     )
+
+    it('does not settle while Codex is still installing its daemon behind the provisional screen', async () => {
+      const data = readFixture(FRESH_HOME)
+      const install = data.indexOf('Installing daemon')
+      // Presence precondition: the cut keeps the provisional header and stops before the live chat.
+      expect(install).toBeGreaterThan(0)
+      const provisional = data.slice(0, data.indexOf('\n', install) + 1)
+      expect(provisional).toMatch(/model:.*loading/)
+      const { runtime, handle } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'codex',
+        launchAgent: 'codex',
+        data: provisional,
+        size: { cols: 120, rows: 40 }
+      })
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 2_500 })
+      ).rejects.toThrow(/timeout/)
+    }, 15_000)
+
+    // Why no bytes: worker-start waits on a pane that has printed nothing yet, which is when the
+    // runtime asks for a visible-screen read instead of its own text copy.
+    it('does not settle from a visible-screen read of the provisional screen', async () => {
+      const { runtime, handle } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'codex',
+        launchAgent: 'codex',
+        data: '',
+        size: { cols: 120, rows: 40 }
+      })
+      const readVisibleScreen = vi.spyOn(runtime, 'readTerminal').mockResolvedValue({
+        handle,
+        status: 'running',
+        tail: [
+          '╭──────────────────────────────────────────╮',
+          '│ >_ OpenAI Codex (v0.157.0)               │',
+          '│ model:       loading   /model to change  │',
+          '│ directory:   ~/repo/app                  │',
+          '╰──────────────────────────────────────────╯',
+          '› Ask Codex to do anything',
+          '  ? for shortcuts'
+        ],
+        truncated: false,
+        nextCursor: null,
+        source: 'screen'
+      })
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 2_500 })
+      ).rejects.toThrow(/timeout/)
+      // Presence precondition: the visible-screen probe actually ran.
+      expect(readVisibleScreen).toHaveBeenCalled()
+    }, 15_000)
 
     it('keeps timing out on the garbled 80x24 default grid, as before', async () => {
       const { runtime, handle } = await codexPane(EFFORT_OVERRIDE)

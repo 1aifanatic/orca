@@ -24,24 +24,25 @@ function readCodexHeaderBox(screen: string): { index: number; header: string } |
   return { index, header: screen.slice(index, boxEnd === -1 ? undefined : boxEnd) }
 }
 
-// Why the status row too: on a grid out of step with the PTY, stale `loading` cells can outlive the
-// repaint, while fragments of the live status row still land below the header.
-export function isCodexProvisionalStartupScreen(screen: string): boolean {
-  const box = readCodexHeaderBox(screen)
-  return (
-    box !== null &&
-    CODEX_HEADER_LOADING_RE.test(box.header) &&
-    !hasCodexLiveStatusRowBelow(screen, box.index + box.header.length)
-  )
+// Why the text copy: Codex 0.157 leaves its alternate screen while it starts its daemon, so the live
+// screen shows no header then; the text copy keeps the provisional header until the live chat paints
+// its status row after it (a later model repaint rewrites only the value, never the `model:` label).
+export function isCodexProvisionalStartupText(normalized: string): boolean {
+  const headerIndex = normalized.lastIndexOf('openai codex')
+  if (headerIndex === -1) {
+    return false
+  }
+  const loading = /model:\s+loading/.exec(normalized.slice(headerIndex))
+  return loading !== null && !hasCodexLiveStatusRowBelow(normalized, headerIndex + loading.index)
 }
 
 // Why: only Codex's live chat fills the status row under the composer (default items: model,
-// directory, thread, joined by ` · `); the provisional startup screen shows just its own hints.
-function hasCodexLiveStatusRowBelow(screen: string, from: number): boolean {
-  return screen
+// directory, thread, joined by `·`); the provisional startup screen shows just its own hints.
+function hasCodexLiveStatusRowBelow(text: string, from: number): boolean {
+  return text
     .slice(from)
     .split('\n')
-    .some((row) => row.includes(' · ') && !row.includes('waiting for startup'))
+    .some((row) => row.includes('·') && !row.includes('waiting for startup'))
 }
 
 // Why `loading`: a header still loading is not ready; the screen must not add readiness early.

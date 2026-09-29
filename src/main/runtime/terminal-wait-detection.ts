@@ -11,7 +11,7 @@ import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readines
 import {
   findCodexReadyPromptIndex,
   findCodexScreenReadyPromptIndex,
-  isCodexProvisionalStartupScreen
+  isCodexProvisionalStartupText
 } from './codex-terminal-readiness'
 import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
@@ -59,10 +59,9 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
  *
  * Why the screen: Codex repaints its header by cell diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which
  * only a grid reassembles — the line-folded wait text reads `dirctory:` forever.
- * Why the screen only vetoes Codex's provisional header: a grid out of step with the PTY (size
- * mismatch, resize mid-paint) garbles the header, so otherwise the text rules keep their verdicts.
- * The provisional screen always reads `model: loading`, and 0.157 discards typed input while it
- * starts its daemon behind it, so a text match there must not count.
+ * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
+ * mid-paint) garbles the header, so the text rules keep every verdict they give today, except on
+ * Codex's provisional startup screen (`model: loading`), where 0.157 discards typed input.
  */
 export function isKnownReadyPromptBody(
   waitText: string,
@@ -72,19 +71,21 @@ export function isKnownReadyPromptBody(
   if (agent === 'qoder') {
     return isQoderComposerReady(readScreenLines())
   }
-  const textReady = isKnownReadyPromptPreview(waitText)
   // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
   if (agent !== null && agent !== 'codex') {
-    return textReady
+    return isKnownReadyPromptPreview(waitText)
+  }
+  if (
+    isKnownReadyPromptPreview(waitText) &&
+    !isCodexProvisionalStartupText(waitText.toLowerCase())
+  ) {
+    return true
   }
   const screenLines = readScreenLines()
   if (screenLines === null) {
-    return textReady
+    return false
   }
   const screen = screenLines.join('\n').toLowerCase()
-  if (textReady) {
-    return !isCodexProvisionalStartupScreen(screen)
-  }
   return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
 }
 

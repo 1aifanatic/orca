@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
 const GREETING = 'codex-0158-fresh-home-greeting'
 const MODEL_ANNOUNCEMENT = 'codex-0158-model-announcement-dialog'
 // Codex's default status row opens with `<model> <effort> ·`; only the live chat paints it.
-const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) · /
+const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) ·/
 
 function showsLiveStatusRow(screenLines: string[]): boolean {
   return screenLines.some((line) => LIVE_STATUS_ROW_RE.test(line.toLowerCase()))
