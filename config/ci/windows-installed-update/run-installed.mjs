@@ -229,26 +229,27 @@ async function continuity(stage, owner, live, worktreeId) {
   await close(fresh)
   receipt.stages.push({ stage, owner: current, terminals })
 }
-// Drained sessions let the current bundle replace the stale owner on the next admission.
+// Pre-PTY stale-bundle replacement is darwin-only (resolvePackagedDarwinAppVersion); on Windows a
+// drained owner self-retires when its last client leaves, so the next launch is the only prune.
 async function switchGeneration(stage, owner, live, worktreeId, label) {
   for (const item of live) {
     await close(item)
   }
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const item = await terminal(worktreeId)
-    await observe(item, true)
-    const current = await daemon()
-    if (!sameOwner(owner, current)) {
-      check(`${stage}: replaced owner exited`, (await waitVerdict(owner, 'exited')) === 'exited')
-      await expectGeneration(current, label)
-      owned.daemons.push(current)
-      receipt.stages.push({ stage, replacedOwner: owner, owner: current, attempt })
-      return { owner: current, item }
-    }
-    await close(item)
-    await delay(2_000)
-  }
-  throw new Error(`${stage}: drained owner was never replaced by the ${label} generation`)
+  await stopServe(serve)
+  serve = null
+  check(
+    `${stage}: drained owner exited before relaunch`,
+    (await waitVerdict(owner, 'exited', 60_000)) === 'exited'
+  )
+  serve = await startServe(installLocation, profile, env)
+  const item = await terminal(worktreeId)
+  await observe(item, true)
+  const current = await daemon()
+  check(`${stage}: first admission after drain uses a new owner`, !sameOwner(owner, current))
+  await expectGeneration(current, label)
+  owned.daemons.push(current)
+  receipt.stages.push({ stage, replacedOwner: owner, owner: current })
+  return { owner: current, item }
 }
 function sentinelsPresent(when) {
   for (const [name, path] of Object.entries(sentinels)) {
