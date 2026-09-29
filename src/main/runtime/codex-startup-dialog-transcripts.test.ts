@@ -122,6 +122,26 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
     }
   )
 
+  it.each(DIALOGS)(
+    '$name: still reports $reason when Codex is relaunched in the same pane and shows it again',
+    async ({ name, reason }) => {
+      // Why: quitting Codex from a dialog leaves that copy in the text copy ahead of the relaunch.
+      const dialog = readTranscriptFixture(name)
+      let last: ReplayFrame | null = null
+      for await (const frame of replayTranscript(
+        `${dialog}\x1b[?1049l\r\n% codex\r\n${dialog}`,
+        120,
+        40
+      )) {
+        last = frame
+      }
+      expect(detectTerminalWaitBlockedReason(last?.waitText ?? '')).toBe(reason)
+      expect(
+        isKnownReadyPromptBody(last?.waitText ?? '', 'codex', () => last?.screenLines ?? null)
+      ).toBe(false)
+    }
+  )
+
   it.each(LIVE_CHAT_FIXTURES)('%s: a live chat reports no dialog', async (name) => {
     const { waitText } = await finalTranscriptFrame(name, 120, 40)
     expect(detectTerminalWaitBlockedReason(waitText)).toBeNull()

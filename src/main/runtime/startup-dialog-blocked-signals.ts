@@ -6,7 +6,7 @@ import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-type
 const CODEX_UPDATE_DIALOG_ROW_RE = /^update available\s*·|enter\s*continue\s*·/
 const CODEX_HOOKS_REVIEW_KEY_ROW_RE = /enter\s*confirm\s*·/
 // Why the key row alone: the retired-model notice's heading comes from the model catalog.
-const CODEX_MODEL_NOTICE_KEY_ROW_RE = /enter\/esc\s*continue\s*·/
+const CODEX_MODEL_NOTICE_KEY_ROW_RE = /enter\/esc\s*continue\s*·/g
 
 function hasDialogRowAfter(
   normalized: string,
@@ -15,6 +15,14 @@ function hasDialogRowAfter(
   row: RegExp
 ): boolean {
   return normalized.includes(legacyWording, from) || row.test(normalized.slice(from))
+}
+
+function lastMatchIndex(text: string, row: RegExp): number {
+  let index = -1
+  for (const match of text.matchAll(row)) {
+    index = match.index
+  }
+  return index
 }
 
 // Why together: each startup dialog owns Enter before the chat exists, so a brief typed into one
@@ -46,9 +54,10 @@ export function findStartupDialogBlockedSignals(
   ) {
     candidates.push({ reason: 'codex-model-migration-prompt', index: modelMigrationIndex })
   }
-  const modelNoticeKeys = CODEX_MODEL_NOTICE_KEY_ROW_RE.exec(normalized)
-  if (modelNoticeKeys !== null) {
-    candidates.push({ reason: 'codex-model-migration-prompt', index: modelNoticeKeys.index })
+  // Why the last: an earlier notice quit with ctrl+c stays in the text copy before a relaunch's header.
+  const modelNoticeIndex = lastMatchIndex(normalized, CODEX_MODEL_NOTICE_KEY_ROW_RE)
+  if (modelNoticeIndex !== -1) {
+    candidates.push({ reason: 'codex-model-migration-prompt', index: modelNoticeIndex })
   }
   // Why the choices: Codex 0.158's announcement heading names the model; its two choices do not change.
   const modelChoiceIndex = normalized.lastIndexOf('try new model')
