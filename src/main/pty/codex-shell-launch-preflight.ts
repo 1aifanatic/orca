@@ -161,8 +161,8 @@ if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
     function Global:codex {
         $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $orcaCodexExecutable) {
-            Write-Error "codex executable not found"
             $global:LASTEXITCODE = 127
+            Write-Error "codex executable not found"
             return
         }
         $orcaCodexFlags = @(__OrcaCodexLaunchFlags -Executable $orcaCodexExecutable.Source -Tokens $args)

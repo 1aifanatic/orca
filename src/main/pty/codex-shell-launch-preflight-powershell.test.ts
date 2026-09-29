@@ -7,6 +7,7 @@ import {
   getPowerShellCodexShellLaunchPreflight,
   getPowerShellCodexShellLaunchPreflightLoader
 } from './codex-shell-launch-preflight'
+import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 
 const roots: string[] = []
 const pwshAvailable =
@@ -267,6 +268,48 @@ describe('PowerShell Codex shell launch preflight', () => {
       expect(existsSync(marker)).toBe(true)
     }
   )
+
+  it.skipIf(!pwshAvailable)('reports 127 under Stop when codex was removed after startup', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-removed-'))
+    const bin = join(root, 'bin')
+    roots.push(root)
+    mkdirSync(bin)
+    const isWindows = process.platform === 'win32'
+    const codexPath = join(bin, isWindows ? 'codex.cmd' : 'codex')
+    writeExecutable(codexPath, isWindows ? '@echo args=%*\r\n' : '#!/bin/sh\necho "args=$*"\n')
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_POLICY: '1'
+    }
+    delete env.ORCA_CODEX_HOME
+    delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
+
+    const result = spawnSync(
+      'pwsh',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-Command',
+        [
+          getPowerShellCodexShellLaunchPreflight(),
+          // Why PATH narrowed: the lookup must not fall through to a host Codex.
+          `$env:PATH = ${quotePowerShellLiteral(bin)}`,
+          `Remove-Item -LiteralPath ${quotePowerShellLiteral(codexPath)}`,
+          '$ErrorActionPreference = "Stop"',
+          '$global:LASTEXITCODE = 5',
+          'try { codex hi } catch { "caught=$_" }',
+          '"exit=$LASTEXITCODE"'
+        ].join('\n')
+      ],
+      { encoding: 'utf-8', env }
+    )
+
+    expect(result.stdout.trim().split(/\r?\n/)).toEqual([
+      'caught=codex executable not found',
+      'exit=127'
+    ])
+  })
 
   it.skipIf(!pwshAvailable)('passes piped input through to Codex', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-stdin-'))
