@@ -42,7 +42,7 @@ import { isCodexStateDbBackfillPending } from './codex-state-db'
 export const CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS = 10_000
 // Why: a cold `codex app-server` on a loaded Mac took over 10 s; a background
 // grant blocks no launch, so it can wait for one.
-const BACKGROUND_GRANT_TIMEOUT_MS = 30_000
+export const CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS = 30_000
 const MAX_TRANSIENT_TRUST_COOLDOWNS = 256
 
 /** Ops escape hatch (not a setting): forces the fallback lane for every trust grant. */
@@ -207,11 +207,18 @@ async function runGrantAttempt(
     startedAtMs: Date.now()
   }
   let unsupportedError: unknown
+  // Why unshared: a launch's inline grant must not wait behind a background
+  // session that may take a cold app-server's full budget.
+  const runWithCapability = plan.background
+    ? codexAppServerCapabilityCache.runUnshared.bind(codexAppServerCapabilityCache)
+    : codexAppServerCapabilityCache.runWithFallback.bind(codexAppServerCapabilityCache)
   try {
-    return await codexAppServerCapabilityCache.runWithFallback(
+    return await runWithCapability(
       hostKey,
       async () => {
-        removeSelfComputedTrustBeforeGrant(plan)
+        await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
+          removeSelfComputedTrustBeforeGrant(plan)
+        )
         return completeGrant(
           attempt,
           await runSession(
@@ -220,7 +227,7 @@ async function runGrantAttempt(
               managedCommand: plan.managedCommand,
               expectedTrustKeys: expected.map(({ normalizedKey }) => normalizedKey),
               useDefaultCodexHome: plan.useDefaultCodexHome,
-              ...(plan.background ? { timeoutMs: BACKGROUND_GRANT_TIMEOUT_MS } : {})
+              ...(plan.background ? { timeoutMs: CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS } : {})
             })
           )
         )
@@ -310,9 +317,9 @@ export async function grantManagedCodexHookTrust(
       }
       transientRetryAfterByHost.delete(hostKey)
     }
-    return await runExclusivelyForCodexTrustConfig(plan.tomlPath, () =>
-      runGrantAttempt(plan, expected, resolvedHost, hostKey)
-    )
+    // Why no lane across the session: Codex writes its own records, and a held
+    // lane would queue every launch's config.toml write behind a cold app-server.
+    return await runGrantAttempt(plan, expected, resolvedHost, hostKey)
   } catch (error) {
     return fallback(plan, 'error', error)
   }

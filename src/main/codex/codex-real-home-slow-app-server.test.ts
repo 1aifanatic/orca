@@ -5,7 +5,10 @@ import { join } from 'node:path'
 import type { HookDefinition } from '../agent-hooks/installer-utils'
 import type { CodexHookTrustGrantRequest } from './codex-app-server-client'
 import { CodexAppServerTimeoutError } from './codex-app-server-session'
-import { _internals as grantInternals } from './codex-hook-trust-grant'
+import {
+  CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS,
+  _internals as grantInternals
+} from './codex-hook-trust-grant'
 import {
   computeTrustedHash,
   computeTrustKey,
@@ -186,6 +189,22 @@ describe('a slow codex app-server start', () => {
     expect(await launch()).toBe('granting')
     expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
     expect(recovered.sessions).toBe(1)
+  })
+
+  it('settles a grant that never answers at its deadline, and the next launch retries', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    // Why never started: the hang outlives the session's own timeout, as a stuck probe would.
+    installAppServer(0)
+
+    expect(await launch()).toBe('granting')
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(orcaHandlerCount()).toBe(0)
+
+    const recovered = installAppServer(0)
+    recovered.start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
   })
 
   it('backs off for seconds, not minutes, after any other failure', async () => {
