@@ -34,6 +34,7 @@ import {
   type RealHomeCodexHookWritePolicy
 } from './codex-real-home-hook-entry-plan'
 import {
+  _internals as backgroundGrantInternals,
   runRealHomeBackgroundGrant,
   type RealHomeBackgroundGrant
 } from './codex-real-home-background-grant'
@@ -357,6 +358,7 @@ export const _internals = {
     installRetryAfterMs = 0
     ensureInFlight = Promise.resolve(lane)
     backgroundGrant = null
+    backgroundGrantInternals.resetTimeoutStreakForTesting()
   },
   /** The lane once any background grant has settled. */
   async settledLaneForTesting(): Promise<RealHomeCodexHookLane> {

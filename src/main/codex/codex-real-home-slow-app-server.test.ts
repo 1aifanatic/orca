@@ -204,6 +204,64 @@ describe('a slow codex app-server start', () => {
     expect(recovered.sessions).toBe(1)
   })
 
+  it('backs off after three timeouts in a row, growing to 5 minutes, and a success resets it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    let server = installAppServer(10 * 60_000)
+    server.start()
+    const timesOut = async (): Promise<void> => {
+      expect(await launch()).toBe('granting')
+      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    }
+    const waitsFor = async (ms: number): Promise<void> => {
+      vi.setSystemTime(Date.now() + ms - 1)
+      expect(await launch()).toBe('unavailable')
+      vi.setSystemTime(Date.now() + 1)
+    }
+
+    await timesOut()
+    await timesOut()
+    await timesOut()
+    for (const backoffMs of [10_000, 60_000, 300_000, 300_000]) {
+      await waitsFor(backoffMs)
+      await timesOut()
+    }
+    expect(server.sessions).toBe(7)
+
+    server = installAppServer(0)
+    server.start()
+    await waitsFor(300_000)
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+
+    // Why a ledger miss: it forces a fresh approval, which then times out again.
+    rmSync(join(dirname(getOrcaManagedCodexHomePath()), 'trust-grant-ledger.json'))
+    server = installAppServer(10 * 60_000)
+    server.start()
+    await timesOut()
+    await timesOut()
+    await timesOut()
+    await waitsFor(10_000)
+    await timesOut()
+    expect(server.sessions).toBe(4)
+  })
+
+  it('keeps trying after timeouts during a slow first start, once the app server answers', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const cold = installAppServer(10 * 60_000)
+    cold.start()
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(await launch()).toBe('granting')
+      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    }
+
+    const warm = installAppServer(0)
+    warm.start()
+    vi.setSystemTime(Date.now() + 10_000)
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(warm.sessions).toBe(1)
+  })
+
   it('runs one session at a time, ended by its own deadline', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     const spawnMs = 500
