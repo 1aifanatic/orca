@@ -91,7 +91,9 @@ export function settleQueuedMessagesForRow(
   input: {
     sessionId: string
     state: JournalReducerState
-    drafts: readonly QueuedMessageRow[]
+    /** Read only once the row holds an unclaimed echo: a list read inside the append's
+     *  transaction must not be cached under state a rollback could undo. */
+    drafts: () => readonly QueuedMessageRow[]
     row: JournalRow
     now: number
   }

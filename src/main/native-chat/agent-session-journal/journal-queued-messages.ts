@@ -67,6 +67,11 @@ export class JournalQueuedMessages {
     return this.changeRevision
   }
 
+  /** A journal transaction rolled back: nothing read inside it may stay cached. */
+  invalidate(): void {
+    this.changeRevision++
+  }
+
   /** Cached per revision: the drain re-checks on every journal publish, so an
    *  unchanged table must cost no SQL read or body parse on token streams. */
   list(): readonly QueuedMessageRow[] {
@@ -225,7 +230,7 @@ export class JournalQueuedMessages {
     this.changeRevision += settleQueuedMessagesForRow(db, {
       sessionId: this.deps.sessionId,
       state: this.deps.state(),
-      drafts: this.list(),
+      drafts: () => this.list(),
       row,
       now: this.deps.now()
     })

@@ -18,7 +18,7 @@ import type { QueuedMessageRow } from './queued-message-table'
  *  echo of a user message returns before anything else is read. */
 export function draftDeliveredByEcho(
   state: JournalReducerState,
-  drafts: readonly QueuedMessageRow[],
+  drafts: () => readonly QueuedMessageRow[],
   row: JournalRow
 ): string | null {
   const echoes = appendedItems(row).filter(
@@ -31,7 +31,7 @@ export function draftDeliveredByEcho(
   if (echoes.length === 0) {
     return null
   }
-  const spent = spentWaitingDrafts(state, drafts)
+  const spent = spentWaitingDrafts(state, drafts())
   for (const item of echoes) {
     const delivered = spent.find((draft) => echoProvesDelivered(state, draft, item.body, row.seq))
     if (delivered) {
