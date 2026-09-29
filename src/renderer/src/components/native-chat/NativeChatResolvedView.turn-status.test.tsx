@@ -282,8 +282,10 @@ describe('NativeChatResolvedView turn status', () => {
   // back) folds it behind its duration instead of drawing it unfinished.
   it('shows the host-ended latest turn with its host duration after a remount', () => {
     retained.session = transcript('ready', false, [userTurn, stepCall])
-    setStatus({ state: 'done' }, 10_000)
-    patchStatus({ turnStartedAt: Date.now() - 100_000 })
+    setStatus({ state: 'done' })
+    // One clock read: the duration is the difference of these two stamps.
+    const now = Date.now()
+    patchStatus({ stateStartedAt: now - 10_000, turnStartedAt: now - 100_000 })
 
     renderPane()
 
