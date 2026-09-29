@@ -301,11 +301,8 @@ describe('startup restore of chats still in their per-chat files', () => {
       expect(readJournalSessionEpoch(hostDb(), sessionId)).toBeNull()
       expect(existsSync(legacyJournalDatabaseFile(legacyDirFor(sessionId)))).toBe(true)
     }
-    // Publishing a restored chat's status saves it for the listing; that is no reason to copy.
     for (const sessionId of restored) {
-      const journal = sessions.get(sessionId)!.journal
-      journal.saveListingStatus({ status: 'idle', latestPrompt: PROMPT })
-      await journal.close()
+      await sessions.get(sessionId)!.journal.close()
     }
     expect(importCount()).toBe(0)
     // One read of each restored chat's file, and none of the chat that was not restored.

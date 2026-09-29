@@ -10,12 +10,10 @@ import { serializeJournalRow, type JournalRow } from './journal-row-schema'
 export type JournalStoredRow = { epoch: string; seq: number; ts: number; rowJson: string }
 
 const SELECT_EPOCH = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
-// A new epoch invalidates the saved status, which was computed at a position of the old one.
 const PUBLISH_SESSION_EPOCH = `INSERT INTO journal_sessions (session_id, workspace_id, epoch)
 VALUES (?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
-  workspace_id = excluded.workspace_id, epoch = excluded.epoch,
-  status_json = NULL, status_seq = NULL`
+  workspace_id = excluded.workspace_id, epoch = excluded.epoch`
 const INSERT_ROW =
   'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
 const SELECT_ROWS_AFTER = `SELECT seq, ts, row_json FROM journal_rows

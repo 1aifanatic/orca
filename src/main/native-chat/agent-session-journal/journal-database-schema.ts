@@ -6,8 +6,7 @@
 // for a rebuild a partial repair leaves behind (see journal-repair-marker.ts). `journal_imports`
 // records which per-chat file each chat was copied from (journal-per-session-reimport.ts), and
 // `journal_set_aside` each chat whose per-chat file is not this build's history and is never read
-// again. `status_json` is the chat's last settled listing status, trusted only where `status_seq`
-// is still the tip of the live epoch.
+// again.
 
 /** DB shape version, carried in `PRAGMA user_version`. Independent of the row body version
  *  (`JournalRow.v`): a newer build can change either alone. A newer version opens read-only here,
@@ -27,9 +26,7 @@ CREATE TABLE IF NOT EXISTS journal_rows (
 CREATE TABLE IF NOT EXISTS journal_sessions (
   session_id   TEXT PRIMARY KEY,
   workspace_id TEXT    NOT NULL,
-  epoch        TEXT    NOT NULL,
-  status_json  TEXT,
-  status_seq   INTEGER
+  epoch        TEXT    NOT NULL
 );
 CREATE TABLE IF NOT EXISTS journal_repairs (
   session_id   TEXT PRIMARY KEY,

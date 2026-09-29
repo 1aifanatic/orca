@@ -18,8 +18,6 @@ import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-
 import { currentAgentSessionThreadGoalBySequence } from '../../../shared/agent-session-thread-goal'
 import type { AgentSessionContextUsage } from '../../../shared/agent-session-context-usage'
 import { latestStructuredAgentContextFacts } from '../../../shared/structured-agent-session-context-usage'
-import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
-import { isSavableStructuredAgentSessionProjection } from '../../../shared/structured-agent-session-saved-status'
 import {
   activeStructuredAgentSessionTurnIdBySequence,
   newestStructuredAgentSessionTurnBySequence
@@ -63,7 +61,6 @@ import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
 import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
-import { JournalListingStatusWriter } from './journal-session-status'
 
 export { AgentSessionJournalError } from './journal-write-guards'
 
@@ -79,7 +76,6 @@ export class AgentSessionJournal {
   private openedCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
-  private readonly listingStatus: JournalListingStatusWriter
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
   private readonly epochController: JournalEpochController
@@ -95,11 +91,6 @@ export class AgentSessionJournal {
     this.state = createJournalReducerState(options.identity.sessionId, '')
     // Serializes sequence assignment with the durable write behind it.
     this.queue = new JournalWriteQueue(options.identity.sessionId)
-    this.listingStatus = new JournalListingStatusWriter({
-      sessionId: options.identity.sessionId,
-      database: () => this.database,
-      serialize: (run) => this.queue.serialize(run)
-    })
     const collaborators = createJournalStoreCollaborators({
       identity: this.identity,
       legacyDirectory: this.database.legacyDirectoryFor(this.identity),
@@ -197,18 +188,6 @@ export class AgentSessionJournal {
 
   get importPending(): boolean {
     return this.queue.owing
-  }
-
-  /** Saves the settled listing status at the fold's position, after the rows it describes. */
-  saveListingStatus(projection: StructuredAgentSessionStatusProjection): void {
-    // Not yet copied: no host row to annotate, and saving must not force the copy.
-    if (
-      !this.readOnly &&
-      !this.queue.owing &&
-      isSavableStructuredAgentSessionProjection(projection)
-    ) {
-      this.listingStatus.save(this.cursor(), projection, this.state.lastActivityAt)
-    }
   }
 
   cursor = (): AgentJournalCursor => ({

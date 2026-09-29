@@ -184,18 +184,15 @@ describe('journal row statements', () => {
     }
   })
 
-  it('moves the epoch pointer in place and forgets the saved status with it', () => {
+  it('moves the epoch pointer in place', () => {
     const db = openJournalDatabase(dbPath).db
     try {
       publishJournalSessionEpoch(db, SESSION, 'epoch-1')
-      db.exec("UPDATE journal_sessions SET status_json = '{}', status_seq = 3")
       publishJournalSessionEpoch(db, SESSION, 'epoch-2')
       expect(readJournalSessionEpoch(db, 'session-1')).toBe('epoch-2')
-      expect(
-        db
-          .prepare('SELECT count(*) AS total, max(status_json) AS status FROM journal_sessions')
-          .get()
-      ).toMatchObject({ total: 1, status: null })
+      expect(db.prepare('SELECT count(*) AS total FROM journal_sessions').get()).toMatchObject({
+        total: 1
+      })
     } finally {
       db.close()
     }
