@@ -124,7 +124,7 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).not.toContain('stack trace')
   })
 
-  it('reads a fact kind this build cannot place as not sent, not as its sentence', () => {
+  it("words a fact kind this build cannot place with the host's sentence", () => {
     const [card] = mobileQueuedMessageCards(
       [
         draft({
@@ -136,7 +136,7 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Your message was not sent.')
+    expect(card?.label).toBe('Words for a kind a newer host added.')
   })
 
   it('maps the send-failed pause marker to English and an unknown marker to a plain pause', () => {

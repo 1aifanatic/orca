@@ -3,10 +3,7 @@
 // draft's own state plus the live facts the client already holds.
 
 import { readAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
-import {
-  agentSessionWriteNoticeEnglish,
-  agentSessionWriteNotDoneParts
-} from '../../../src/shared/agent-session-refusal-notice'
+import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
@@ -37,18 +34,14 @@ function returnedLabel(
   if (dispatchWasWithdrawn({ dispatchState: 'rejected', reason, rejection })) {
     return 'Stopped before it was sent'
   }
-  const fact = readAgentSessionFailureFact(rejection)
-  // Worded as the desktop card words it: the fact decides, and the card's own Send is the retry,
-  // so the words leave out sending again. A fact this build cannot place proves only that the
-  // message did not go.
+  // Worded as the desktop card words it: the fact decides, the reason is the fallback, and the
+  // card's own Send is the retry, so the words leave out sending again.
   return agentSessionWriteNoticeEnglish(
-    rejection && !fact
-      ? agentSessionWriteNotDoneParts('send')
-      : structuredAgentSessionAttemptFailureParts(
-          { kind: 'rejected', reason },
-          { retryControl: true },
-          fact
-        )
+    structuredAgentSessionAttemptFailureParts(
+      { kind: 'rejected', reason },
+      { retryControl: true },
+      readAgentSessionFailureFact(rejection)
+    )
   )
 }
 
