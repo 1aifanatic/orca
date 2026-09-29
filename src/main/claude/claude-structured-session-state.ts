@@ -139,6 +139,8 @@ export type ClaudeDispatchWaiter = {
   settledUuid?: string
   /** The write failed or the child died, but a replay may still name it. */
   retired?: boolean
+  /** The CLI's last non-terminal `command_lifecycle` state for this send; in memory only. */
+  commandLifecycle?: 'queued' | 'started'
   /** Bounded digest/summary for compatibility CLIs that mint UUIDs. */
   replayContentKey: string
 }
