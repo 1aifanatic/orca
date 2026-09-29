@@ -14,6 +14,7 @@ import type {
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
+import type { SqliteRow } from '../../sqlite/sqlite-statement'
 import Database from '../../sqlite/sync-database'
 import { createStructuredAgentSessionRestartOfferWithdrawal } from '../agent-session-wire/structured-agent-session-restart-offer-withdrawal'
 import {
@@ -139,30 +140,41 @@ async function removeWorks(): Promise<void> {
   vi.mocked(rmSync).mockImplementation(actual.rmSync)
 }
 
-/** The file as it is, except that the copy's first read of rows loses the first one. */
-function losingFirstCopiedRow(path: string): Database.Database {
-  const source = new Database(path, { readonly: true, fileMustExist: true })
-  const prepare = source.prepare.bind(source)
-  let lost = false
-  source.prepare = (sql: string) => {
-    const statement = prepare(sql)
-    if (lost || !sql.includes('seq > ?')) {
+/** The file as it is, except that the copy's first read of rows comes back through `alter`. */
+function alteringFirstCopiedRead(
+  alter: (rows: SqliteRow[]) => SqliteRow[]
+): (path: string) => Database.Database {
+  return (path) => {
+    const source = new Database(path, { readonly: true, fileMustExist: true })
+    const prepare = source.prepare.bind(source)
+    let altered = false
+    source.prepare = (sql: string) => {
+      const statement = prepare(sql)
+      if (altered || !sql.includes('seq > ?')) {
+        return statement
+      }
+      const all = statement.all.bind(statement)
+      // Why: prepare caches statements, so this one is handed out again after it was altered.
+      statement.all = (...args: Parameters<typeof all>) => {
+        const rows = all(...args)
+        if (altered) {
+          return rows
+        }
+        altered = true
+        return alter(rows)
+      }
       return statement
     }
-    const all = statement.all.bind(statement)
-    // Why: prepare caches statements, so this one is handed out again after it has lost its row.
-    statement.all = (...args: Parameters<typeof all>) => {
-      const rows = all(...args)
-      if (lost) {
-        return rows
-      }
-      lost = true
-      return rows.slice(1)
-    }
-    return statement
+    return source
   }
-  return source
 }
+
+const losingFirstCopiedRow = alteringFirstCopiedRead((rows) => rows.slice(1))
+
+/** Every row still there and still parsing, but the reply's words changed. */
+const garblingCopiedReply = alteringFirstCopiedRead((rows) =>
+  rows.map((row) => ({ ...row, row_json: String(row.row_json).replace('On it.', 'On in.') }))
+)
 
 function openChat() {
   return journals.open({ identity: IDENTITY, stateDirectory: root, now: () => (clock += 1) })
@@ -400,6 +412,30 @@ describe('importing a per-chat journal', () => {
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
     expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
     expect(rowCount(database.db)).toBe(rows.length)
+  })
+
+  // A copy that keeps every count but not every byte is no copy: the file is all there is.
+  it('keeps the file and refuses the chat when a copied row differs but every count matches', async () => {
+    const { epoch, rows } = await historyRows()
+    expect(rows.filter((row) => row.rowJson.includes('On it.'))).toHaveLength(1)
+    await writeLegacyJournal(epoch, rows)
+    const database = openTestJournalHostDatabase(root)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const input = {
+      database,
+      identity: IDENTITY,
+      legacyDirectory: legacyDir(),
+      openSource: garblingCopiedReply
+    }
+    const before = await readFile(legacyJournalDatabaseFile(legacyDir()))
+
+    await expect(importPerSessionJournal(input)).rejects.toMatchObject({
+      refusal: { message: 'Unable to load this chat.', details: { reason: 'journalCorrupt' } }
+    })
+
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
+    expect(readJournalSessionPointer(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(errors).toHaveBeenCalledOnce()
   })
 
   // T-R2B1: the copy committed and only the delete failed (a crash between them is the same). Rows appended since, a restart, and a

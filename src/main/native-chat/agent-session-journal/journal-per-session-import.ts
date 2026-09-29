@@ -9,7 +9,7 @@
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
 // The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
-// copied block reads back as the file does (epoch, tip, rows, items, submissions), one transaction
+// copied block reads back as the file does (every row's sequence, time and bytes), one transaction
 // publishes the chat's pointer with its repair and import markers, so the chat is imported all at
 // once or not at all. A try that stops midway leaves only that reserved block, which the next try
 // clears and copies again. A copy that does not read back as the file is never published: the
@@ -19,6 +19,7 @@
 // leaves the file where it is for the next open, and the open is refused rather than served empty:
 // an empty chat founded here would take a new epoch the next open's import could not reconcile.
 
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
@@ -277,9 +278,9 @@ const loggedMismatches = new Set<string>()
 
 /**
  * The copied block, read back from the host's database, against a second read of what was copied:
- * the same epoch, tip, row count, items and submissions, or the copy is refused and never
- * published. Both reads go a batch at a time, so no check holds the main thread longer than a copy
- * batch does.
+ * the same rows, byte for byte, and the same epoch, tip, row count, items and submissions, or the
+ * copy is refused and never published. Both reads go a batch at a time, so no check holds the main
+ * thread longer than a copy batch does.
  */
 async function verifyCopiedJournal(
   input: ImportInput,
@@ -302,9 +303,10 @@ async function verifyCopiedJournal(
   throw journalOpenRefusalError(error)
 }
 
-/** Epoch, tip, row count, items and submissions, folded a batch at a time. */
+/** Epoch, tip, row count, items, submissions and a digest of every row, folded a batch at a time. */
 async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Promise<string> {
   const state = createJournalReducerState(sessionId, '')
+  const content = createHash('sha256')
   let epoch: string | null = null
   let tip = 0
   let rows = 0
@@ -317,6 +319,8 @@ async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Pro
     rows += batch.rows.length
     for (const row of batch.rows) {
       tip = Math.max(tip, row.seq)
+      // Length-framed, so no two different rows hash the same stream.
+      content.update(`${row.seq}:${row.ts}:${row.rowJson.length}:`).update(row.rowJson)
       const parsed = parseJournalRow(row.rowJson)
       if (parsed.ok) {
         epoch ??= parsed.row.epoch
@@ -324,7 +328,7 @@ async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Pro
       }
     }
   }
-  return `${epoch}:${tip}:${rows}:${state.items.size}:${state.submissions.size}`
+  return `${epoch}:${tip}:${rows}:${state.items.size}:${state.submissions.size}:${content.digest('hex')}`
 }
 
 function* copiedBatches(
