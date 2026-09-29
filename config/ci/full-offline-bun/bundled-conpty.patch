@@ -1,6 +1,120 @@
+diff --git a/patches/libuv/win-spawn-job-list.patch b/patches/libuv/win-spawn-job-list.patch
+new file mode 100644
+index 000000000..3c1c9b955
+--- /dev/null
++++ b/patches/libuv/win-spawn-job-list.patch
+@@ -0,0 +1,64 @@
++--- a/include/uv.h
+++++ b/include/uv.h
++@@ -1113,6 +1113,12 @@
++    * inherited (ConPTY provides stdin/stdout/stderr). Ignored on Unix.
++    */
++   void* pseudoconsole;
+++  /*
+++   * Windows only: job object handle. When non-NULL the child is created
+++   * inside this job (PROC_THREAD_ATTRIBUTE_JOB_LIST), so it and every
+++   * descendant are job members from their first instruction. Ignored on Unix.
+++   */
+++  void* job;
++ } uv_process_options_t;
++ 
++ /*
++--- a/src/win/process.c
+++++ b/src/win/process.c
++@@ -886,6 +886,9 @@
++   uv__handle_close(handle);
++ }
++ 
+++#ifndef PROC_THREAD_ATTRIBUTE_JOB_LIST
+++#define PROC_THREAD_ATTRIBUTE_JOB_LIST 0x0002000D
+++#endif
++ #ifndef PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
++ #define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 0x00020016
++ #endif
++@@ -1037,13 +1040,14 @@
++      * https://github.com/microsoft/terminal/discussions/15814 */
++     startup.StartupInfo.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
++ 
++-    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_list_size);
+++    DWORD attr_count = options->job != NULL ? 2 : 1;
+++    InitializeProcThreadAttributeList(NULL, attr_count, 0, &attr_list_size);
++     attr_list = uv__malloc(attr_list_size);
++     if (attr_list == NULL) {
++       err = ERROR_OUTOFMEMORY;
++       goto done;
++     }
++-    if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_list_size)) {
+++    if (!InitializeProcThreadAttributeList(attr_list, attr_count, 0, &attr_list_size)) {
++       err = GetLastError();
++       uv__free(attr_list);
++       attr_list = NULL;
++@@ -1059,6 +1063,19 @@
++       err = GetLastError();
++       goto done;
++     }
+++    /* Born inside the caller's job: no window where the child or its first
+++     * descendants can run or break away before assignment. */
+++    if (options->job != NULL &&
+++        !UpdateProcThreadAttribute(attr_list,
+++                                   0,
+++                                   PROC_THREAD_ATTRIBUTE_JOB_LIST,
+++                                   &options->job,
+++                                   sizeof(options->job),
+++                                   NULL,
+++                                   NULL)) {
+++      err = GetLastError();
+++      goto done;
+++    }
++     startup.lpAttributeList = attr_list;
++   } else {
++     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+diff --git a/scripts/build/deps/libuv.ts b/scripts/build/deps/libuv.ts
+index edcd6bf3b..db08d0ad1 100644
+--- a/scripts/build/deps/libuv.ts
++++ b/scripts/build/deps/libuv.ts
+@@ -60,7 +60,11 @@ export const libuv: Dependency = {
+   // an in-process loopback fetch().abort() can fall into. To upstream:
+   // send to libuv/libuv with the wepoll/ReactOS references in the patch
+   // comment as the rationale.
+-  patches: ["patches/libuv/win-poll-rearm-before-callback.patch", "patches/libuv/win-poll-abort-with-disconnect.patch"],
++  patches: [
++    "patches/libuv/win-poll-rearm-before-callback.patch",
++    "patches/libuv/win-poll-abort-with-disconnect.patch",
++    "patches/libuv/win-spawn-job-list.patch",
++  ],
+ 
+   build: () => ({
+     kind: "direct",
+diff --git a/src/bun_core/env_var.rs b/src/bun_core/env_var.rs
+index ece9747d3..f169d5b20 100644
+--- a/src/bun_core/env_var.rs
++++ b/src/bun_core/env_var.rs
+@@ -58,6 +58,7 @@ new!(pub BUN_CONFIG_HTTP_IDLE_TIMEOUT: unsigned, "BUN_CONFIG_HTTP_IDLE_TIMEOUT",
+ // A peer that accepts the TCP connection but never answers the upgrade fails
+ // with error + close(1006). 0 disables; uSockets' 4 s sweep rounds small values up.
+ new!(pub BUN_CONFIG_WS_HANDSHAKE_TIMEOUT: unsigned, "BUN_CONFIG_WS_HANDSHAKE_TIMEOUT", { default: 120 });
++new!(pub BUN_CONPTY_LIBRARY: string, "BUN_CONPTY_LIBRARY", {});
+ new!(pub BUN_CRASH_REPORT_URL: string, "BUN_CRASH_REPORT_URL", {});
+ new!(pub BUN_DEBUG: string, "BUN_DEBUG", {});
+ new!(pub BUN_DEBUG_ALL: boolean, "BUN_DEBUG_ALL", {});
+diff --git a/src/libuv_sys/libuv.rs b/src/libuv_sys/libuv.rs
+index 9175e67e2..cce3de93e 100644
+--- a/src/libuv_sys/libuv.rs
++++ b/src/libuv_sys/libuv.rs
+@@ -1666,6 +1666,8 @@ pub struct uv_process_options_t {
+     /// Windows only: HPCON from CreatePseudoConsole. When non-null, the child
+     /// is attached to the pseudoconsole and stdio[] is not inherited.
+     pub pseudoconsole: *mut c_void,
++    /// Windows only: job the child is created in (PROC_THREAD_ATTRIBUTE_JOB_LIST).
++    pub job: *mut c_void,
+ }
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+diff --git a/src/runtime/api/bun/Terminal.rs b/src/runtime/api/bun/Terminal.rs
+index 1f8349d59..c5ab9742c 100644
 --- a/src/runtime/api/bun/Terminal.rs
 +++ b/src/runtime/api/bun/Terminal.rs
-@@ -121,6 +121,8 @@
+@@ -121,6 +121,8 @@ pub struct Terminal {
      /// uv_process_options_t.pseudoconsole.
      #[cfg(windows)]
      hpcon: Cell<Option<windows::HPCON>>,
@@ -9,7 +123,7 @@
  
      /// Current terminal size
      cols: Cell<u16>,
-@@ -419,6 +421,8 @@
+@@ -419,6 +421,8 @@ impl Terminal {
              slave_fd: Cell::new(pty_result.slave),
              #[cfg(windows)]
              hpcon: Cell::new(Some(pty_result.hpcon)),
@@ -18,7 +132,7 @@
              cols: Cell::new(if cfg!(windows) {
                  u16::try_from(clamp_to_coord(options.cols)).expect("int cast")
              } else {
-@@ -716,6 +720,11 @@
+@@ -716,6 +720,11 @@ impl Terminal {
          let Some(hpcon) = self.hpcon.get() else {
              return;
          };
@@ -30,7 +144,7 @@
          // SAFETY: `hpcon` was returned from inbox `CreatePseudoConsole`, which
          // heap-allocates a `PseudoConsole` and returns it as HPCON.
          // `ClosePseudoConsole` later skips the field when it reads null.
-@@ -740,10 +749,11 @@
+@@ -740,10 +749,11 @@ impl Terminal {
          // PORTING.md bans std::process but not std::thread; a raw detached OS
          // thread is intentional here (no event-loop integration needed).
          let hpcon_addr = hpcon as usize;
@@ -43,7 +157,7 @@
          }) {
              Ok(_t) => {
                  // detached: JoinHandle dropped without join → thread runs to completion.
-@@ -771,6 +781,8 @@
+@@ -771,6 +781,8 @@ pub struct PtyResult {
      pub(crate) slave: Fd,
      #[cfg(windows)]
      pub(crate) hpcon: windows::HPCON,
@@ -52,7 +166,7 @@
  }
  
  #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
-@@ -1152,6 +1164,7 @@
+@@ -1152,6 +1164,7 @@ static PIPE_SERIAL: AtomicU32 = AtomicU32::new(0);
  
  #[cfg(windows)]
  fn create_pty_windows(cols: u16, rows: u16) -> Result<PtyResult, CreatePtyError> {
@@ -60,7 +174,7 @@
      // Track ownership explicitly: handles are nulled out as they are closed or
      // transferred so the errdefer cleanup never double-closes.
      let mut out_server: Option<windows::HANDLE> = None;
-@@ -1171,7 +1184,7 @@
+@@ -1171,7 +1184,7 @@ fn create_pty_windows(cols: u16, rows: u16) -> Result<PtyResult, CreatePtyError>
              // safe on those values.
              unsafe {
                  if let Some(h) = hpcon {
@@ -69,7 +183,7 @@
                  }
                  if let Some(h) = out_server {
                      let _ = windows::CloseHandle(h);
-@@ -1223,7 +1236,7 @@
+@@ -1223,7 +1236,7 @@ fn create_pty_windows(cols: u16, rows: u16) -> Result<PtyResult, CreatePtyError>
          let mut pc: windows::HPCON = core::ptr::null_mut();
          // SAFETY: in_client/out_client are valid open HANDLEs; pc is a valid out-ptr.
          if unsafe {
@@ -78,7 +192,7 @@
          } < 0
          {
              cleanup!();
-@@ -1274,6 +1287,7 @@
+@@ -1274,6 +1287,7 @@ fn create_pty_windows(cols: u16, rows: u16) -> Result<PtyResult, CreatePtyError>
          write_fd,
          slave: Fd::INVALID,
          hpcon: result_hpcon,
@@ -86,7 +200,7 @@
      })
  }
  
-@@ -1549,7 +1563,7 @@
+@@ -1549,7 +1563,7 @@ impl Terminal {
                      Y: clamp_to_coord(new_rows),
                  };
                  // SAFETY: hpcon is a valid open HPCON.
@@ -95,7 +209,7 @@
                  if hr < 0 && hr != HR_NO_DATA && hr != HR_BROKEN_PIPE {
                      return Err(global_object.throw(format_args!("Failed to resize terminal")));
                  }
-@@ -2060,3 +2074,75 @@
+@@ -2060,3 +2074,75 @@ impl bun_io::pipe_writer::WindowsStreamingWriterParent for Terminal {
          Self::from_parent_ptr(this).on_writer_close();
      }
  }
@@ -171,13 +285,89 @@
 +unsafe extern "system" {
 +    fn FreeLibrary(module: windows::HMODULE) -> i32;
 +}
---- a/src/bun_core/env_var.rs
-+++ b/src/bun_core/env_var.rs
-@@ -58,6 +58,7 @@
- // A peer that accepts the TCP connection but never answers the upgrade fails
- // with error + close(1006). 0 disables; uSockets' 4 s sweep rounds small values up.
- new!(pub BUN_CONFIG_WS_HANDSHAKE_TIMEOUT: unsigned, "BUN_CONFIG_WS_HANDSHAKE_TIMEOUT", { default: 120 });
-+new!(pub BUN_CONPTY_LIBRARY: string, "BUN_CONPTY_LIBRARY", {});
- new!(pub BUN_CRASH_REPORT_URL: string, "BUN_CRASH_REPORT_URL", {});
- new!(pub BUN_DEBUG: string, "BUN_DEBUG", {});
- new!(pub BUN_DEBUG_ALL: boolean, "BUN_DEBUG_ALL", {});
+diff --git a/src/runtime/api/bun/js_bun_spawn_bindings.rs b/src/runtime/api/bun/js_bun_spawn_bindings.rs
+index d948fb8fd..b64e58bff 100644
+--- a/src/runtime/api/bun/js_bun_spawn_bindings.rs
++++ b/src/runtime/api/bun/js_bun_spawn_bindings.rs
+@@ -376,6 +376,8 @@ fn spawn_maybe_sync(
+     let mut windows_hide: bool = false;
+     #[cfg(windows)]
+     let mut windows_verbatim_arguments: bool = false;
++    #[cfg(windows)]
++    let mut windows_job: Option<bun_sys::windows::HANDLE> = None;
+     let mut abort_signal: Option<bun_jsc::AbortSignalRef> = None;
+     let mut terminal_info: Option<terminal_body::CreateResult> = None;
+     let mut existing_terminal: Option<bun_ptr::BackRef<Terminal, bun_ptr::Mut>> = None; // Existing terminal passed by user
+@@ -711,6 +713,19 @@ fn spawn_maybe_sync(
+                         windows_verbatim_arguments = val.as_boolean();
+                     }
+                 }
++
++                // A job handle value owned by this process; the child is born inside it.
++                if let Some(val) = args.get(global_this, "windowsJob")? {
++                    if !val.is_undefined_or_null() {
++                        let n = if val.is_number() { val.as_number() } else { f64::NAN };
++                        if !(n.is_finite() && n > 0.0 && n.fract() == 0.0 && n <= 9007199254740991.0) {
++                            return Err(global_this.throw_invalid_arguments(format_args!(
++                                "windowsJob must be a positive integer handle"
++                            )));
++                        }
++                        windows_job = Some(n as usize as bun_sys::windows::HANDLE);
++                    }
++                }
+             }
+ 
+             if let Some(timeout_value) = args.get(global_this, "timeout")? {
+@@ -1089,6 +1104,13 @@ fn spawn_maybe_sync(
+         None => None,
+     };
+ 
++    // libuv only applies the job on the pseudoconsole path; never ignore it silently.
++    #[cfg(windows)]
++    if windows_job.is_some() && existing_terminal.is_none() && terminal_info.is_none() {
++        return Err(global_this.throw_invalid_arguments(format_args!(
++            "windowsJob requires a terminal"
++        )));
++    }
+     let mut spawn_options = SpawnOptions {
+         // Empty means "inherit the parent's working directory". Only chdir
+         // when the user asked for it: the stored cwd path string can be stale
+@@ -1147,6 +1169,7 @@ fn spawn_maybe_sync(
+         windows: spawn::WindowsOptions {
+             hide_window: windows_hide,
+             verbatim_arguments: windows_verbatim_arguments,
++            job: windows_job,
+             loop_: loop_handle,
+         },
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+diff --git a/src/spawn/process.rs b/src/spawn/process.rs
+index bb4f39e62..9439c5bf2 100644
+--- a/src/spawn/process.rs
++++ b/src/spawn/process.rs
+@@ -1656,6 +1656,8 @@ impl Default for WindowsSpawnOptions {
+ pub struct WindowsOptions {
+     pub verbatim_arguments: bool,
+     pub hide_window: bool,
++    /// Caller-owned job the pseudoconsole child is created in; the caller keeps the handle.
++    pub job: Option<bun_sys::windows::HANDLE>,
+     pub loop_: EventLoopHandle,
+ }
+ 
+@@ -1665,6 +1667,7 @@ impl Default for WindowsOptions {
+         Self {
+             verbatim_arguments: false,
+             hide_window: true,
++            job: None,
+             // Every `bun.spawnSync` call site sets `loop_` explicitly. A
+             // zeroed handle here keeps `..Default::default()` usable
+             // for the other fields. `spawn_process_windows` (the sole consumer)
+@@ -1942,6 +1945,9 @@ mod spawn_process_body {
+         if let Some(hpcon) = options.pseudoconsole {
+             uv_process_options.pseudoconsole = hpcon;
+         }
++        if let Some(job) = options.windows.job {
++            uv_process_options.job = job;
++        }
+ 
+         if options.windows.hide_window {
+             uv_process_options.flags |= uv::UV_PROCESS_WINDOWS_HIDE;
