@@ -201,7 +201,7 @@ describe('a turn end the host inferred', () => {
 
   // The supersede fires for any send Orca dispatched, and nothing here says whether the user or
   // another agent sent it, so it can never be recorded as the user's stop.
-  it('reads a turn a newer send superseded as interrupted, never as a stop', () => {
+  it('reads a turn a newer send superseded as cut short by something else, never as a stop', () => {
     const state = sinkState()
     const translator = createClaudeJournalTranslator({ sink: state.sink })
     let observedAt = 1_000
@@ -237,7 +237,7 @@ describe('a turn end the host inferred', () => {
     expect(settled).toMatchObject({ verdict: 'interruption', workedSeconds: 12 })
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'interruptedAfter', duration: '12s' })
+    ).toMatchObject({ key: 'failedAfter', duration: '12s' })
   })
 })
 

@@ -2703,6 +2703,7 @@
         "toggleDetails": "Toggle turn details",
         "workedFor": "Worked for {{value0}}",
         "interruptedAfter": "Interrupted after {{value0}}",
+        "failedAfter": "Failed after {{value0}}",
         "workingFor": "Working for {{value0}}"
       },
       "subagents": {

@@ -17543,6 +17543,7 @@
         "workingFor": "{{value0}} 작업 중",
         "workedFor": "{{value0}} 작업 완료",
         "interruptedAfter": "{{value0}} 후 중단됨",
+        "failedAfter": "{{value0}} 후 실패",
         "toggleDetails": "턴 세부정보 전환"
       },
       "jumpToLatest": "최신으로 이동",

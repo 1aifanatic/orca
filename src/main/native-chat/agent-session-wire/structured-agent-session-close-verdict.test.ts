@@ -131,10 +131,9 @@ describe('a turn cut short by closing its provider', () => {
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
     const { turn, settled } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
-    // A stop the user asked for folds like any other finished turn.
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'workedFor' })
+    ).toMatchObject({ key: 'interruptedAfter' })
   })
 
   it('leaves a close the user did not aim at this chat as news', async () => {
@@ -149,7 +148,7 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).not.toHaveProperty('outcome')
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'interruptedAfter' })
+    ).toMatchObject({ key: 'failedAfter' })
   })
 
   it("records the user's close on a turn no adapter settled, through the host's fallback", async () => {

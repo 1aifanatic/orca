@@ -296,7 +296,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     unsubscribe()
   })
 
-  it('reports the revision to the status feed and the chat as an interruption', async () => {
+  it('reports the revision to the status feed as an interruption, which the chat folds as failed', async () => {
     const published: AgentSessionStatusSummary[] = []
     openHost({
       probeOwner: async () => ({ outcome: 'pid-absent' }),
@@ -312,7 +312,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await host.reconcileRestartLeases()
     await drainSession()
 
-    // The sidebar's red Interrupted, then the folded "Interrupted after 27s".
+    // The sidebar's red Failed, then the folded "Failed after 27s".
     await vi.waitFor(() => expect(outcomes().at(-1)).toBe('interruption'))
     const [timing] = selectStructuredAgentTurnTimings(
       (await host.journalSnapshot(SESSION)).items
@@ -323,7 +323,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
         workedSeconds: completedStructuredAgentTurnSeconds(timing),
         verdict: timing?.verdict
       })
-    ).toEqual({ key: 'interruptedAfter', duration: '27s' })
+    ).toEqual({ key: 'failedAfter', duration: '27s' })
   })
 
   it('revises nothing twice, whoever re-runs the settle', async () => {

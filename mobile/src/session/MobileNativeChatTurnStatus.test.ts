@@ -78,14 +78,14 @@ describe('MobileNativeChatTurnStatus', () => {
     expect(onToggleExpanded).toHaveBeenCalledOnce()
   })
 
-  it('heads a turn a crash cut off as interrupted, and a turn the user stopped as worked', () => {
+  it('heads a turn a crash cut off as failed, and a turn the user stopped as interrupted', () => {
     const crashed = render({
       startedAt: Date.now(),
       workedSeconds: 12,
       verdict: 'interruption',
       onToggleExpanded: vi.fn()
     })
-    expect(labels(crashed.root)).toEqual(['Interrupted after 12s'])
+    expect(labels(crashed.root)).toEqual(['Failed after 12s'])
     act(() => crashed.unmount())
     const stopped = render({
       startedAt: Date.now(),
@@ -93,7 +93,7 @@ describe('MobileNativeChatTurnStatus', () => {
       verdict: 'cancellation',
       onToggleExpanded: vi.fn()
     })
-    expect(labels(stopped.root)).toEqual(['Worked for 12s'])
+    expect(labels(stopped.root)).toEqual(['Interrupted after 12s'])
   })
 
   it('stays a plain row when the settled turn has nothing to disclose', () => {

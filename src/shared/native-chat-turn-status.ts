@@ -12,6 +12,7 @@ export const NATIVE_CHAT_TURN_STATUS_COPY = {
   workingFor: 'Working for {{value0}}',
   workedFor: 'Worked for {{value0}}',
   interruptedAfter: 'Interrupted after {{value0}}',
+  failedAfter: 'Failed after {{value0}}',
   toggleDetails: 'Toggle turn details',
   responding: 'Agent is responding'
 } as const
@@ -40,16 +41,32 @@ export function describeNativeChatTurnStatus({
 }: {
   workedSeconds?: number | null
   elapsedSeconds: number
-  /** How the settled turn ended. Only a death nobody asked for changes the folded header: a
-   *  user's stop keeps "Worked for", as it always has. */
+  /** How the settled turn ended: a user's Stop reads interrupted, and a failure or a turn anything
+   *  else cut short reads failed. */
   verdict?: AgentTurnOutcome
-}): { key: 'workingFor' | 'workedFor' | 'interruptedAfter'; duration: string } {
+}): {
+  key: 'workingFor' | 'workedFor' | 'interruptedAfter' | 'failedAfter'
+  duration: string
+} {
   return workedSeconds != null
-    ? {
-        key: verdict === 'interruption' ? 'interruptedAfter' : 'workedFor',
-        duration: formatNativeChatDuration(workedSeconds)
-      }
+    ? { key: settledTurnStatusKey(verdict), duration: formatNativeChatDuration(workedSeconds) }
     : { key: 'workingFor', duration: formatNativeChatDuration(elapsedSeconds) }
+}
+
+function settledTurnStatusKey(
+  verdict: AgentTurnOutcome | undefined
+): 'workedFor' | 'interruptedAfter' | 'failedAfter' {
+  switch (verdict) {
+    case 'cancellation':
+      return 'interruptedAfter'
+    case 'failure':
+    case 'interruption':
+      return 'failedAfter'
+    case 'success':
+    case 'unconfirmed':
+    case undefined:
+      return 'workedFor'
+  }
 }
 
 /** The two readings that label a live turn's tail line, carried together so a

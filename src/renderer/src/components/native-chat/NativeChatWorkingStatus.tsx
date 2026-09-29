@@ -28,6 +28,12 @@ function turnStatusLabel(
         NATIVE_CHAT_TURN_STATUS_COPY.interruptedAfter,
         { value0: duration }
       )
+    case 'failedAfter':
+      return translate(
+        'components.native-chat.status.failedAfter',
+        NATIVE_CHAT_TURN_STATUS_COPY.failedAfter,
+        { value0: duration }
+      )
     case 'workingFor':
       return translate(
         'components.native-chat.status.workingFor',
