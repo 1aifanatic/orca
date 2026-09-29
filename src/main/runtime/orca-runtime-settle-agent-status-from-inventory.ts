@@ -7,6 +7,7 @@ import {
   indexPersistedPaneKeyPtyIds,
   resolveAgentWorkspaceExecutionHostId
 } from '../agent-hooks/agent-status-pane-binding'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { retireOrchestrationAuthorityAbsentFromInventory } from './runtime-restored-orchestration-authority-sweep'
 
@@ -62,9 +63,19 @@ export class OrcaRuntimeWithSettleAgentStatusFromInventory extends OrcaRuntimeWi
     if (!port) {
       return 0
     }
+    // Why: without a persistent local provider, the in-process fallback answers "absent" for every
+    // id a previous run's daemon minted — it never owned them, so local has not answered for them.
+    const scopedAnswer = this.canRecoverPersistentLocalPtysFn()
+      ? answer
+      : {
+          ...answer,
+          queriedHostIds: new Set(
+            [...answer.queriedHostIds].filter((hostId) => hostId !== LOCAL_EXECUTION_HOST_ID)
+          )
+        }
     const persistedByHostId = new Map<string, ReadonlyMap<string, string>>()
     try {
-      return await settleAgentStatusRowsAbsentFromInventory(answer, {
+      return await settleAgentStatusRowsAbsentFromInventory(scopedAnswer, {
         listCandidates: () => port.listCandidates(),
         settle: (settled) => port.settle(settled),
         resolveRowExecutionHostId: (candidate) =>

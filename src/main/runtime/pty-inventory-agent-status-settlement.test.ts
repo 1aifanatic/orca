@@ -57,6 +57,8 @@ function createRuntime(
     candidates?: AgentStatusPtyInventoryCandidate[]
     /** Reproduces a host whose provider cannot enumerate anything at all. */
     withoutListProcesses?: boolean
+    /** False reproduces a session running on the in-process fallback after the daemon failed. */
+    canRecoverPersistentLocalPtys?: boolean
   } = {}
 ): {
   internals: RuntimeInternals
@@ -89,7 +91,10 @@ function createRuntime(
         return options.candidates ?? []
       },
       settle
-    }
+    },
+    ...(options.canRecoverPersistentLocalPtys === undefined
+      ? {}
+      : { canRecoverPersistentLocalPtys: () => options.canRecoverPersistentLocalPtys })
   } as never)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller contract is almost entirely optional; these are the members this path calls.
   runtime.setPtyController({
@@ -192,6 +197,30 @@ describe('agent status settles from the host PTY inventory', () => {
 
     await vi.waitFor(() => expect(settle).toHaveBeenCalledTimes(1))
     expect(settle.mock.calls[0]![0]).toEqual([candidate()])
+  })
+
+  it('leaves local panes alone while no persistent local provider owns their PTYs', async () => {
+    // The positive control is the settle above: same candidate, same fallback "absent" probe.
+    const { internals, calls, settle } = createRuntime({
+      candidates: [candidate()],
+      canRecoverPersistentLocalPtys: false
+    })
+    internals.recordPtyWorktree(`${WORKSPACE}@@dead-pty`, WORKSPACE, {
+      connected: true,
+      tabId: TAB_ID,
+      paneKey: PANE_KEY
+    })
+
+    await internals.refreshPtyWorktreeRecordsWithControllerInventory(
+      [internals.buildResolvedWorktreeFromId(WORKSPACE)],
+      null,
+      undefined,
+      null
+    )
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settle).not.toHaveBeenCalled()
   })
 
   it('offers nothing when no provider could be listed at all', async () => {
