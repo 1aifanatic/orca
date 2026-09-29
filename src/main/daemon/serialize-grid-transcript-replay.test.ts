@@ -47,6 +47,13 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'codex-0157-fresh-home-daemon-install': 48,
   'codex-0158-fresh-home-greeting': 9,
   'codex-0158-model-announcement-dialog': 8,
+  // Codex 0.157/0.158 startup-dialog captures: the same live-pen true-colour leak onto restored cells.
+  'codex-0157-update-available-dialog': 26,
+  'codex-0158-update-available-dialog': 8,
+  'codex-0157-hooks-review-dialog': 24,
+  'codex-0158-hooks-review-dialog': 8,
+  'codex-0157-model-retired-dialog': 22,
+  'codex-0158-model-retired-dialog': 6,
   'claude-dialog-trust-workspace-answered': 13,
   // DSH-TUI's whale intro paints whole rows of 24-bit background, and every one of this
   // transcript's divergences is the same shape: `visible-grid row=0`, a true-colour

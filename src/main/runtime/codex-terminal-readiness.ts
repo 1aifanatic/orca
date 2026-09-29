@@ -45,7 +45,8 @@ export function isCodexProvisionalStartupText(normalized: string): boolean {
 
 // Why: the live chat draws a `·` below the header: the status row (items joined by `·`),
 // `← for agents · ? for shortcuts` on daemon sessions, or `⚠ N warning · f2 to view`. Startup
-// dialogs' key hints draw one too (`enter continue · esc skip`); only the blocked matchers stop those.
+// dialogs draw one too (`Update available · …`, `enter continue · esc skip`); the blocked matchers in
+// startup-dialog-blocked-signals.ts match each from that first `·`, so those never read as ready.
 function hasCodexLiveFooterBelow(text: string, from: number): boolean {
   return text.includes('·', from)
 }

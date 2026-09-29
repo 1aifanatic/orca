@@ -14,6 +14,7 @@ import {
   findCodexScreenReadyPromptIndex,
   isCodexProvisionalStartupText
 } from './codex-terminal-readiness'
+import { findStartupDialogBlockedSignals } from './startup-dialog-blocked-signals'
 import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
 const EXPLICIT_IDLE_TITLE_RE = /(^|\s)(ready|idle|done)(\s|$|[.!?])/i
@@ -182,7 +183,7 @@ function findMuseReadyPromptIndex(normalized: string): number | null {
 }
 
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =
-  /update available|choose working directory to|codex just got an upgrade|try new model|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
+  /update available|choose working directory to|codex just got an upgrade|try new model|enter\/esc\s*continue|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
 
 // Why text at all: cursor-agent has no approval hook, so the key-bound menu is the only authority.
 const CURSOR_APPROVAL_CHOICE_MARKERS = [
@@ -251,32 +252,7 @@ function findTerminalWaitBlockedSignal(
 function findBlockedSignalInLiveWindow(
   normalized: string
 ): { reason: RuntimeTerminalWaitBlockedReason; index: number } | null {
-  const candidates: { reason: RuntimeTerminalWaitBlockedReason; index: number }[] = []
-  const updateIndex = normalized.lastIndexOf('update available')
-  if (updateIndex !== -1 && normalized.includes('press enter to continue', updateIndex)) {
-    candidates.push({ reason: 'agent-update-prompt', index: updateIndex })
-  }
-  const cwdIndex = normalized.lastIndexOf('choose working directory to')
-  if (cwdIndex !== -1 && normalized.includes('press enter to continue', cwdIndex)) {
-    candidates.push({ reason: 'agent-cwd-prompt', index: cwdIndex })
-  }
-  const modelMigrationIndex = normalized.lastIndexOf('codex just got an upgrade')
-  if (
-    modelMigrationIndex !== -1 &&
-    normalized.includes('press enter to continue', modelMigrationIndex)
-  ) {
-    candidates.push({ reason: 'codex-model-migration-prompt', index: modelMigrationIndex })
-  }
-  // Why the choices: Codex 0.158's announcement heading names the model; its two choices do not change.
-  const modelChoiceIndex = normalized.lastIndexOf('try new model')
-  if (modelChoiceIndex !== -1 && normalized.includes('use existing model', modelChoiceIndex)) {
-    candidates.push({ reason: 'codex-model-migration-prompt', index: modelChoiceIndex })
-  }
-  const hooksIndex = normalized.lastIndexOf('hooks need review')
-  if (hooksIndex !== -1 && normalized.includes('press enter to confirm', hooksIndex)) {
-    // Why neutral: this matcher never inspects the agent -- 'hooks need review' is not Codex-only wording.
-    candidates.push({ reason: 'agent-hooks-review-prompt', index: hooksIndex })
-  }
+  const candidates = findStartupDialogBlockedSignals(normalized)
   const trustIndex = Math.max(
     normalized.lastIndexOf('do you trust'),
     normalized.lastIndexOf('trust this'),
