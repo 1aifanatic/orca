@@ -46,36 +46,56 @@ export function resolveNativeChatTerminalTurn(args: {
   }
 }
 
+type NativeChatHookTurnEntry = Pick<
+  AgentStatusEntry,
+  'state' | 'stateStartedAt' | 'turnStartedAt' | 'mainAgent' | 'sessionBoundary'
+>
+
 /**
- * When the pane's current turn began, by its hook: the start of the unbroken run of mid-turn
- * states under the current prompt. The current state's own start is only the last leg, so a pane
- * mounted after the agent waited on the reader (answered in the terminal) would restart the clock.
- * A changed prompt ends the run: an interrupted wait leaves no hook, so the next turn follows it.
+ * When the pane's current turn began: the host's stamp from the main agent's own turn-opening
+ * event, which survives a remount, a reload and child work holding the row open. A host too old to
+ * stamp it leaves the current state's start, the main agent's while it is mid-turn.
  */
 export function nativeChatHookTurnStartedAt(
-  entry:
-    | Pick<AgentStatusEntry, 'state' | 'prompt' | 'stateStartedAt' | 'stateHistory' | 'mainAgent'>
-    | undefined
+  entry: NativeChatHookTurnEntry | undefined
 ): number | null {
   if (!entry) {
     return null
   }
-  if (entry.state === 'done') {
-    return entry.stateStartedAt
+  if (entry.turnStartedAt !== undefined) {
+    return entry.turnStartedAt
   }
-  // Child work can hold the row mid-turn from one main-agent turn into the next, so while the main
-  // agent runs, its own clock dates the turn. Once it is done, the row's run is the turn's tail.
-  const mainAgent = entry.mainAgent?.state === 'done' ? undefined : entry.mainAgent
-  let startedAt = mainAgent?.stateStartedAt ?? entry.stateStartedAt
-  for (let index = entry.stateHistory.length - 1; index >= 0; index -= 1) {
-    const previous = entry.stateHistory[index]!
-    const leg = mainAgent ? previous.mainAgent : undefined
-    if ((leg?.state ?? previous.state) === 'done' || previous.prompt !== entry.prompt) {
-      break
-    }
-    startedAt = Math.min(startedAt, leg?.stateStartedAt ?? previous.startedAt)
+  return entry.mainAgent && entry.mainAgent.state !== 'done'
+    ? entry.mainAgent.stateStartedAt
+    : entry.stateStartedAt
+}
+
+/**
+ * The latest turn's duration by the host, for a turn the pane is not running: a number once the
+ * main agent is done (its done stamp minus the host's turn start), null when the host went quiet
+ * mid-turn (nothing says the turn ended, so a locally measured end would be a false claim), and
+ * undefined to keep what the pane observed (an old host, a session boundary, a pane-side end).
+ */
+export function nativeChatHookLatestTurnWorkedSeconds(
+  entry: NativeChatHookTurnEntry | undefined,
+  hookSilent: boolean
+): number | null | undefined {
+  if (!entry) {
+    return undefined
   }
-  return startedAt
+  const mainAgent = entry.mainAgent ?? entry
+  if (mainAgent.state === 'done') {
+    return entry.sessionBoundary === true || entry.turnStartedAt === undefined
+      ? undefined
+      : Math.max(0, Math.floor((mainAgent.stateStartedAt - entry.turnStartedAt) / 1000))
+  }
+  return hookSilent ? null : undefined
+}
+
+/** The transcript's latest turn: its last prompt, harness notices aside. */
+export function nativeChatLatestTurnId(messages: readonly NativeChatMessage[]): string | null {
+  const latest = messages.findLast((message) => message.role === 'user' && !isNoiseMessage(message))
+  return latest?.id ?? null
 }
 
 /**

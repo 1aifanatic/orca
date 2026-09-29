@@ -3,8 +3,8 @@
 import '@testing-library/jest-dom/vitest'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
-import type { AgentStatusPayload } from '../../../../shared/agent-status-types'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import type { AgentStatusEntry, AgentStatusPayload } from '../../../../shared/agent-status-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 
@@ -54,6 +54,14 @@ const askCall: NativeChatMessage = {
   source: 'transcript'
 }
 
+const stepCall: NativeChatMessage = {
+  id: 'step-1',
+  role: 'assistant',
+  blocks: [{ type: 'tool-call', name: 'Bash', input: { command: 'pnpm build' } }],
+  timestamp: 3,
+  source: 'transcript'
+}
+
 // `status` and `hookAwaitingInput` are what the live session reconciles from the
 // same hook row; the test states both so the view is fed a consistent session.
 function transcript(
@@ -87,6 +95,15 @@ function setStatus(payload: Omit<AgentStatusPayload, 'prompt' | 'agentType'>, ag
     agentStatusByPaneKey: {
       ...store.agentStatusByPaneKey,
       [paneKey]: { ...live, stateStartedAt: Date.now() - age }
+    }
+  }))
+}
+
+function patchStatus(fields: Partial<AgentStatusEntry>): void {
+  useAppStore.setState((store) => ({
+    agentStatusByPaneKey: {
+      ...store.agentStatusByPaneKey,
+      [paneKey]: { ...store.agentStatusByPaneKey[paneKey]!, ...fields }
     }
   }))
 }
@@ -181,24 +198,12 @@ describe('NativeChatResolvedView turn status', () => {
     expect(screen.queryByText('Asked:')).toBeNull()
   })
 
-  // Answering a terminal-only prompt means leaving the chat, which remounts it on return.
-  it('counts a turn it first sees after a wait from the turn start, not the last state', () => {
+  // Answering a terminal-only prompt means leaving the chat, which remounts it on return; a reload
+  // also starts the store with no state history. The host's stamp covers both.
+  it("counts a turn it first sees after a wait from the host's turn start, not the last state", () => {
     retained.session = transcript('working', false)
     setStatus({ state: 'working' }, 5_000)
-    const live = useAppStore.getState().agentStatusByPaneKey[paneKey]!
-    const now = Date.now()
-    useAppStore.setState((store) => ({
-      agentStatusByPaneKey: {
-        ...store.agentStatusByPaneKey,
-        [paneKey]: {
-          ...live,
-          stateHistory: [
-            { state: 'working', prompt: live.prompt, startedAt: now - 90_000 },
-            { state: 'waiting', prompt: live.prompt, startedAt: now - 40_000 }
-          ]
-        }
-      }
-    }))
+    patchStatus({ turnStartedAt: Date.now() - 90_000, stateHistory: [] })
 
     renderPane()
 
@@ -206,27 +211,105 @@ describe('NativeChatResolvedView turn status', () => {
   })
 
   // A background task holds the row 'working' past the last turn's end, so the row's own epoch is
-  // that turn's; the main agent's clock restarts with the new one.
-  it('counts a new turn from the main agent, not a row held open by background work', () => {
+  // that turn's; the host stamps the new turn from the main agent's own prompt.
+  it('counts a new turn from its stamp, not a row held open by background work', () => {
     retained.session = transcript('working', false)
     setStatus({ state: 'working' })
-    const live = useAppStore.getState().agentStatusByPaneKey[paneKey]!
     const now = Date.now()
-    useAppStore.setState((store) => ({
-      agentStatusByPaneKey: {
-        ...store.agentStatusByPaneKey,
-        [paneKey]: {
-          ...live,
-          stateStartedAt: now - 45 * 60_000,
-          mainAgent: { state: 'working', stateStartedAt: now - 5_000 },
-          stateHistory: []
-        }
-      }
-    }))
+    patchStatus({
+      stateStartedAt: now - 45 * 60_000,
+      turnStartedAt: now - 5_000,
+      mainAgent: { state: 'working', stateStartedAt: now - 5_000 },
+      stateHistory: []
+    })
 
     renderPane()
 
     expect(screen.getByText('Working for 5s')).toBeInTheDocument()
+  })
+
+  it("falls back to the main agent's own clock on a host that stamps no turn", () => {
+    retained.session = transcript('working', false)
+    setStatus({ state: 'working' })
+    const now = Date.now()
+    patchStatus({
+      stateStartedAt: now - 45 * 60_000,
+      mainAgent: { state: 'working', stateStartedAt: now - 5_000 },
+      stateHistory: []
+    })
+
+    renderPane()
+
+    expect(screen.getByText('Working for 5s')).toBeInTheDocument()
+  })
+
+  // An Esc at a permission prompt fires no hook, then the same text is sent again: a new turn.
+  it('counts the same prompt sent again as a new turn', () => {
+    retained.session = transcript('working', false)
+    setStatus({ state: 'working' }, 5_000)
+    const now = Date.now()
+    patchStatus({
+      turnStartedAt: now - 5_000,
+      stateHistory: [
+        { state: 'working', prompt: 'Rename the module', startedAt: now - 600_000 },
+        { state: 'waiting', prompt: 'Rename the module', startedAt: now - 500_000 }
+      ]
+    })
+
+    renderPane()
+
+    expect(screen.getByText('Working for 5s')).toBeInTheDocument()
+  })
+
+  // The reader no longer rebuilds a turn from the history, so an old host reads the state's start.
+  it('falls back to the current state start on a host that stamps no turn', () => {
+    retained.session = transcript('working', false)
+    setStatus({ state: 'working' }, 20_000)
+    const now = Date.now()
+    patchStatus({
+      stateHistory: [
+        { state: 'working', prompt: 'Rename the module', startedAt: now - 90_000 },
+        { state: 'waiting', prompt: 'Rename the module', startedAt: now - 40_000 }
+      ]
+    })
+
+    renderPane()
+
+    expect(screen.getByText('Working for 20s')).toBeInTheDocument()
+  })
+
+  // The host recorded the turn's end, so a pane mounted after it (a switch to the terminal and
+  // back) folds it behind its duration instead of drawing it unfinished.
+  it('shows the host-ended latest turn with its host duration after a remount', () => {
+    retained.session = transcript('ready', false, [userTurn, stepCall])
+    setStatus({ state: 'done' }, 10_000)
+    patchStatus({ turnStartedAt: Date.now() - 100_000 })
+
+    renderPane()
+
+    expect(screen.getByText('Worked for 1m 30s')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Toggle turn details' })).toBeInTheDocument()
+  })
+
+  // The store's staleness drops a silent row after 30 minutes. A wait left unanswered that long
+  // must not read as a finished turn: nothing says it ended.
+  it('does not settle a turn the host went quiet on', () => {
+    retained.session = transcript('ready', true, [userTurn, stepCall])
+    setStatus({ state: 'waiting' }, 60_000)
+    patchStatus({ turnStartedAt: Date.now() - 60_000 })
+
+    renderPane()
+    expect(screen.getByText('Working for 1m 0s')).toBeInTheDocument()
+
+    // The live session reads no hook state once the row is stale, so the wait no longer holds the turn.
+    retained.session = transcript('ready', false, [userTurn, stepCall])
+    act(() => {
+      patchStatus({ updatedAt: Date.now() - 31 * 60_000 })
+    })
+
+    expect(screen.queryByText(/Work(ing|ed) for/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Toggle turn details' })).toBeNull()
+    expect(screen.getByText('pnpm build')).toBeInTheDocument()
   })
 
   it('folds finished turns from history behind their transcript duration', () => {
