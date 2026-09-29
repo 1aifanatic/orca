@@ -12,6 +12,7 @@ import { isCodexComposerReadyScreen } from './codex-terminal-readiness'
 import {
   detectTerminalWaitBlockedReason,
   isKnownReadyPromptBody,
+  isKnownReadyPromptPreview,
   isQuietReadyScreenBody
 } from './terminal-wait-detection'
 import {
@@ -267,6 +268,62 @@ describe('the quiet lane over recorded chunk timing (default animations)', () =>
     },
     120_000
   )
+})
+
+describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it.each(['codex-0-155-1-timed-turn', 'codex-0-157-1-timed-sleep-turn'])(
+    '%s: never settles tui-idle mid-turn, and settles once the finished turn is quiet',
+    async (name) => {
+      const { chunks, times, promptAt } = readTimedFixture(name)
+      const frames = await collectFrames(chunks)
+      vi.useFakeTimers()
+      const verdictAt = (index: number, now: number) => {
+        vi.setSystemTime(now)
+        const { waitText, screenLines } = frames[index]!
+        return evaluateTuiIdle({
+          record: { lastAgentStatus: null, lastOutputAt: times[index]!, lastOscTitle: null },
+          readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText),
+          readPositiveBodyEvidence: () =>
+            isKnownReadyPromptBody(waitText, 'codex', () => screenLines),
+          readQuietReadyBodyEvidence: () =>
+            isQuietReadyScreenBody(waitText, 'codex', () => screenLines),
+          agent: 'codex',
+          firstPartyStatus: null,
+          quiescenceMs: QUIESCENCE_MS
+        })
+      }
+      const lastBusy = frames.findLastIndex((frame) => BUSY_STATUS_RE.test(screenOf(frame)))
+      const firstTurnChunk = times.findIndex((at) => at >= promptAt)
+      let headerMidTurn = 0
+      for (let index = firstTurnChunk; index <= lastBusy; index += 1) {
+        if (isKnownReadyPromptPreview(frames[index]!.waitText)) {
+          headerMidTurn += 1
+        }
+        const settles = isTuiIdleReadyVerdict(verdictAt(index, times[index + 1]! - 1))
+        expect({ index, settles }).toEqual({ index, settles: false })
+      }
+      // Presence precondition: the ready header is in the tail mid-turn, so the fix is load-bearing.
+      expect(headerMidTurn).toBeGreaterThan(0)
+      const last = frames.length - 1
+      expect(verdictAt(last, times[last]!).kind).toBe('pending')
+      expect(verdictAt(last, times[last]! + QUIESCENCE_MS + 1).kind).toBe('ready-strong')
+    },
+    120_000
+  )
+
+  it('reads the header as tier-1 evidence only for an agent-unknown pane', () => {
+    const header = [
+      '│ >_ OpenAI Codex (v0.157.1)                               │',
+      '│ model:       GPT-6-Sol high   /model to change           │',
+      '│ directory:   ~/repo/app                                  │'
+    ]
+    expect(isKnownReadyPromptBody(header.join('\n'), 'codex', () => header)).toBe(false)
+    expect(isKnownReadyPromptBody(header.join('\n'), null, () => header)).toBe(true)
+  })
 })
 
 describe('never less ready than origin/main', () => {

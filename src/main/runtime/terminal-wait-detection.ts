@@ -72,10 +72,9 @@ export function isKnownReadyPromptSettled(preview: string): boolean {
  * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
  * visible grid, or null when the runtime has no trustworthy one.
  *
- * Why the screen: Codex repaints its header by cell diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which
- * only a grid reassembles — the line-folded wait text reads `dirctory:` forever.
- * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
- * mid-paint) garbles the header, so the text rules keep every verdict they give today.
+ * Why not for a Codex pane: its header stays up through every turn, so it proves only that Codex
+ * started; isQuietReadyScreenBody holds it to quiescence instead.
+ * Why an unknown pane keeps it: quiescence needs an output clock, which an adopted pane lacks.
  */
 export function isKnownReadyPromptBody(
   waitText: string,
@@ -85,15 +84,14 @@ export function isKnownReadyPromptBody(
   if (agent === 'qoder') {
     return isQoderComposerReady(readScreenLines())
   }
+  if (agent === 'codex') {
+    return false
+  }
   if (isKnownReadyPromptSettled(waitText)) {
     return true
   }
   // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
-  if (agent !== null && agent !== 'codex') {
-    return false
-  }
-  const screen = readScreen(readScreenLines)
-  return screen !== null && isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
+  return agent === null && isCodexScreenHeaderReady(readScreen(readScreenLines))
 }
 
 /**
@@ -108,9 +106,29 @@ export function isQuietReadyScreenBody(
 ): boolean {
   if (agent === 'codex') {
     const screen = readScreen(readScreenLines)
-    return screen !== null && isCodexComposerReadyScreen(screen)
+    const composerReady = screen !== null && isCodexComposerReadyScreen(screen)
+    return composerReady || isCodexScreenHeaderReady(screen) || isCodexReadyPromptSettled(waitText)
   }
   return (agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)
+}
+
+/**
+ * Why the screen: Codex repaints its 0.150-0.157 header by cell diff (`ESC[5;3Hdir
+ * ESC[5;7Hctory:`), which only a grid reassembles — the line-folded wait text reads `dirctory:`.
+ * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
+ * mid-paint) garbles the header, so the text rule keeps every verdict it gives on its own.
+ */
+function isCodexScreenHeaderReady(screen: string | null): boolean {
+  return screen !== null && isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
+}
+
+// Why the provisional veto here too: a daemon start can stay quiet past the quiescence window.
+function isCodexReadyPromptSettled(preview: string): boolean {
+  const normalized = preview.toLowerCase()
+  return (
+    isReadyPromptUnblocked(normalized, findCodexReadyPromptIndex(normalized)) &&
+    !isCodexProvisionalStartupText(normalized)
+  )
 }
 
 function readScreen(readScreenLines: () => readonly string[] | null): string | null {
