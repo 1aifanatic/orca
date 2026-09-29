@@ -178,10 +178,9 @@ export const AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY =
   'agent-session.conversation-stop.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
 // capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
-// PURPOSE — not in RUNTIME_CAPABILITIES: advertising requires the complete immediate path behind
-// it in the shipped host (Claude fold receipt, the integrated Codex steer matrix #21062, turn-owner
-// bars; confirmed cancellation landed with #23026) and the desktop and phone clients that render
-// the queue. The host mechanism lands first; the constant gates the rollout.
+// PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
+// matrix (#21062) in the shipped host, and the desktop and phone clients that render the queue.
+// The host mechanism lands first; the constant gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
