@@ -60,7 +60,7 @@ describe('launchAgentTerminal execution host', () => {
     await runtime.launchAgentTerminal('id:repo-shared::/srv/app-feature', {
       agent: 'codex',
       prompt: 'go'
-    } as never)
+    })
 
     expect(buildStartup.mock.calls[0]?.[0]).toMatchObject({ connectionId: 'm4air' })
   })
@@ -77,7 +77,7 @@ describe('launchAgentTerminal execution host', () => {
     await runtime.launchAgentTerminal('id:repo-shared::/srv/app-feature', {
       agent: 'codex',
       prompt: 'go'
-    } as never)
+    })
 
     expect(buildStartup.mock.calls[0]?.[0]).toMatchObject({ path: '/home/me/app' })
     expect(buildStartup.mock.calls[0]?.[0]).not.toHaveProperty('connectionId')
@@ -93,7 +93,7 @@ describe('launchAgentTerminal execution host', () => {
       runtime.launchAgentTerminal('id:repo-shared::/srv/app-feature', {
         agent: 'codex',
         prompt: 'go'
-      } as never)
+      })
     ).rejects.toThrow('worktree_execution_host_unresolved')
   })
 })
