@@ -66,13 +66,14 @@ async function performRemoveWorktree(
   // Why long paths: creation checks out with them on Windows, so deleting without them fails with
   // "Filename too long" (#6433) and leaves the branch behind via the Windows recovery.
   const longPathArgs = windowsLongPathGitArgs(repoPath)
+  const execOptions = { ...gitExecOptions(repoPath, options), ...removalGitEnv() }
   const args = [...longPathArgs, 'worktree', 'remove']
   if (force) {
     args.push('--force')
   }
   args.push(worktreePath)
   try {
-    await gitExecFileAsync(args, gitExecOptions(repoPath, options))
+    await gitExecFileAsync(args, execOptions)
   } catch (error) {
     if (force || !isSubmoduleWorktreeRemovalRefusal(error)) {
       throw error
@@ -81,7 +82,7 @@ async function performRemoveWorktree(
     await assertWorktreeCleanForRemoval(worktreePath, false, options)
     await gitExecFileAsync(
       [...longPathArgs, 'worktree', 'remove', '--force', worktreePath],
-      gitExecOptions(repoPath, options)
+      execOptions
     )
   }
   await removeCheckoutLeftByGit(worktreePath, options)
@@ -98,6 +99,19 @@ async function performRemoveWorktree(
   return withSpan('worktree.remove.branch_delete', () =>
     deleteBranchAfterWorktreeRemoval(repoPath, branchName, branchHead, options)
   )
+}
+
+// Why: Git for Windows runs $GIT_ASK_YESNO when a file stays locked mid-delete; no prompt program may run here.
+function removalGitEnv(): { env?: NodeJS.ProcessEnv } {
+  const inherited = Object.keys(process.env).filter((key) => key.toUpperCase() === 'GIT_ASK_YESNO')
+  if (inherited.length === 0) {
+    return {}
+  }
+  const env = { ...process.env }
+  for (const key of inherited) {
+    delete env[key]
+  }
+  return { env }
 }
 
 // Why: Git for Windows does not descend into junctions and exits 0 with them and their parent

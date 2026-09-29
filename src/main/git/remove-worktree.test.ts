@@ -248,6 +248,23 @@ branch refs/heads/main
     expect(getGitCalls()).toContain('git branch -d -- feature/test')
   })
 
+  it('never lets Git run an inherited yes/no prompt program during the delete', async () => {
+    vi.stubEnv('GIT_ASK_YESNO', '/usr/local/bin/prompt')
+    try {
+      mockGitCommands({})
+
+      await removeWorktree('/repo', '/repo-feature', false, {
+        knownRemovedWorktree: { branch: '', head: '', locked: false }
+      })
+
+      const [, removeOptions] = gitExecFileAsyncMock.mock.calls[0]
+      expect(removeOptions.env).toBeDefined()
+      expect(removeOptions.env).not.toHaveProperty('GIT_ASK_YESNO')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('deletes what Git left of the checkout after a successful remove', async () => {
     const scratch = await mkdtemp(join(tmpdir(), 'orca-remove-residue-'))
     const worktreePath = join(scratch, 'feature')
