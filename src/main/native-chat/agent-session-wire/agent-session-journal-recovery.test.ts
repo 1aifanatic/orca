@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // Recovery drives the real journal loader against real on-disk damage: a hole
 // punched in the row sequence, and a row stamped with a schema this host cannot
 // read — on both version axes, because only one of them is detectable before a
@@ -6,14 +7,14 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import { openJournalDatabase } from '../agent-session-journal/journal-database'
 import { JOURNAL_DB_SCHEMA_VERSION } from '../agent-session-journal/journal-database-schema'
-import { loadJournal } from '../agent-session-journal/journal-open'
+import { loadJournal, replayJournal } from '../agent-session-journal/journal-open'
 import { journalDatabaseFile } from '../agent-session-journal/journal-paths'
 import { readJournalEpochRows } from '../agent-session-journal/journal-row-table'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
@@ -23,6 +24,12 @@ import {
   providerHistoryId,
   recoveryJournalDir
 } from './agent-session-journal-recovery'
+
+// Only the store's own replay goes through the mock; the probe's, inside the same module, does not.
+vi.mock('../agent-session-journal/journal-open', async (importOriginal) => {
+  const actual = await importOriginal<{ replayJournal: typeof replayJournal }>()
+  return { ...actual, replayJournal: vi.fn(actual.replayJournal) }
+})
 
 const CODEX_SESSION = '019fd532-7c11-7a90-b6de-4e1a2c3d5f60'
 
@@ -74,7 +81,7 @@ async function seedJournal(count: number): Promise<string> {
     await journal.appendItem(
       item(ordinal),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `item-${ordinal}` }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   }
   const epoch = journal.epoch
@@ -158,6 +165,21 @@ describe('openAgentSessionJournalWithRecovery', () => {
       }).then((result) => result.journal)
     )
     expect(opened.snapshot().items).toHaveLength(2)
+  })
+
+  it('reads the journal once: the probe is the open', async () => {
+    await seedJournal(2)
+    vi.mocked(replayJournal).mockClear()
+    const opened = journals.track(
+      await openAgentSessionJournalWithRecovery({
+        identity: IDENTITY,
+        journalDir,
+        fence: 1,
+        historyFilePath
+      }).then((result) => result.journal)
+    )
+    expect(opened.snapshot().items).toHaveLength(2)
+    expect(replayJournal).not.toHaveBeenCalled()
   })
 
   it('rebuilds a holed journal in place on a fresh epoch', async () => {
@@ -269,7 +291,8 @@ describe('openAgentSessionJournalWithRecovery', () => {
         {
           kind: 'item',
           identity: { provider: 'orca', clientMessageId: 'approval-1' },
-          body: { kind: 'status', text: 'approved' }
+          body: { kind: 'status', text: 'approved' },
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
         }
       ]
     })
@@ -384,7 +407,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
     await reopened.journal.appendItem(
       item(2),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'typed later' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const epoch = reopened.journal.epoch
     await reopened.journal.close()

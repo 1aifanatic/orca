@@ -1,18 +1,21 @@
 import {
+  AgentSessionPromptAnswerRejectedError,
   AgentSessionPromptUnavailableError,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
 import {
   answerClaudePrompt,
   cancelClaudeTurn,
   supportsClaudeQueuedInterruptCancellation
 } from './claude-structured-control-actions'
-import type { ClaudeLateDispatchSettlement } from './claude-structured-dispatch'
+import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resolution'
+import { buildClaudePromptReply } from './claude-structured-prompt-replies'
 import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudePendingPrompt } from './claude-prompt-registry'
+import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 
-/** Conservative user-facing window: below the 10s init and 30s control deadlines, trading
+/** Conservative user-facing window: below the 30s control deadline, trading
  * residual slow-pump risk for ensuring delivery bookkeeping cannot block Stop indefinitely. */
 export const CLAUDE_DISPATCH_ADMISSION_TIMEOUT_MS = 3_000
 const CLAUDE_DISPATCH_ADMISSION_POLL_MS = 50
@@ -86,22 +89,54 @@ function waitForClaudeDispatchAdmission(
   })
 }
 
+/**
+ * A Stop that names no turn: the conversation asked to stop whatever this child has in flight.
+ * Claude's interrupt is session-scoped, so there is no turn identity to check — only that this is
+ * still the child the host judged, and that it has a turn open or a written message whose turn has
+ * not opened yet (the gap before its echo, which no client can name).
+ */
+function cancelClaudeConversation(
+  session: ClaudeSession,
+  sessions: Map<string, ClaudeSession>,
+  request: CancelInput,
+  timeoutMs: number | undefined,
+  onDispatchSettledLate: ClaudeLateDispatchSettlement | undefined
+): Promise<{ cancelled: boolean }> {
+  const acquisitionGeneration = session.acquisitionGeneration
+  const isCurrent = (): boolean =>
+    sessions.get(request.sessionId) === session &&
+    session.fence === request.fence &&
+    session.acquisitionGeneration === acquisitionGeneration &&
+    ((request.resolveLiveTurnId?.() ?? session.translator?.currentTurnId ?? null) !== null ||
+      session.dispatchWaiters.length > 0)
+  return cancelClaudeTurn(session, timeoutMs, isCurrent, onDispatchSettledLate)
+}
+
 export async function cancelClaudeStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, ClaudeSession>
-  compactions: StructuredSessionCompaction
   timeoutMs?: number
   admitPromptCancellation: (session: ClaudeSession, promptKey: string) => boolean
   onDispatchSettledLate?: ClaudeLateDispatchSettlement
 }): Promise<{ cancelled: boolean }> {
-  const { request, sessions, compactions, timeoutMs } = input
+  const { request, sessions, timeoutMs } = input
   const session = requireSession(sessions, request.sessionId)
   const acquisitionGeneration = session.acquisitionGeneration
   const prompt = request.prompt
+  // Before startup lands nothing was written, so there is nothing to interrupt.
+  if (!prompt && session.startup.state === 'pending') {
+    return { cancelled: false }
+  }
+  const requestedTurnId = request.turnId
+  if (requestedTurnId === undefined) {
+    return prompt
+      ? { cancelled: false }
+      : cancelClaudeConversation(session, sessions, request, timeoutMs, input.onDispatchSettledLate)
+  }
   if (prompt && session.fence !== request.fence) {
     return { cancelled: false }
   }
-  const claim = prompt ? session.prompts.claimBound(prompt.itemId, request.turnId) : null
+  const claim = prompt ? session.prompts.claimBound(prompt.itemId, requestedTurnId) : null
   if (prompt && !claim) {
     return { cancelled: false }
   }
@@ -117,7 +152,7 @@ export async function cancelClaudeStructuredTurn(input: {
   // means nothing has published an identity this request can contradict.
   const ownsRequestedTurn = (): boolean => {
     const liveTurnId = request.resolveLiveTurnId?.() ?? session.translator?.currentTurnId ?? null
-    return liveTurnId === null ? session.dispatchSequence === 0 : liveTurnId === request.turnId
+    return liveTurnId === null ? session.dispatchSequence === 0 : liveTurnId === requestedTurnId
   }
   // The host supplies the durable latest submission; direct adapter callers fall back to
   // the current in-memory waiter so an unknown dispatch remains fenced without a latch.
@@ -135,7 +170,8 @@ export async function cancelClaudeStructuredTurn(input: {
   const dispatchAdmissionAllowsCancellation = (): boolean =>
     dispatchAdmissionIsCurrent() ||
     (Boolean(prompt) && supportsClaudeQueuedInterruptCancellation(session))
-  const compactionOwnsTurn = (): boolean => compactions.ownsTurn(request.sessionId, request.turnId)
+  const compactionOwnsTurn = (): boolean =>
+    session.translator !== null && session.translator.commandTurnId === requestedTurnId
   const currentDispatchHasRetiredWaiter = (): boolean =>
     session.retiredDispatchWaiters.some(
       (waiter) => waiter.dispatchSequence === session.dispatchSequence
@@ -157,7 +193,7 @@ export async function cancelClaudeStructuredTurn(input: {
     session.acquisitionGeneration === acquisitionGeneration &&
     (claim && prompt
       ? ownsRequestedTurn() &&
-        session.prompts.ownsBoundClaim(claim, prompt.itemId, request.turnId) &&
+        session.prompts.ownsBoundClaim(claim, prompt.itemId, requestedTurnId) &&
         (dispatchAdmissionAllowsCancellation() || dispatchAdmissionExpired)
       : compactionOwnsTurn() ||
         (ownsRequestedTurn() &&
@@ -167,7 +203,14 @@ export async function cancelClaudeStructuredTurn(input: {
     const result = await cancelClaudeTurn(
       session,
       timeoutMs,
-      isCurrent,
+      () => {
+        const current = isCurrent()
+        // Read with the result that ends it: a stopped command reports no compaction.
+        if (current && compactionOwnsTurn()) {
+          session.translator?.commandInterruptRequested(requestedTurnId)
+        }
+        return current
+      },
       input.onDispatchSettledLate
     )
     if (result.cancelled && claim && cancellationObserved) {
@@ -188,6 +231,19 @@ export async function cancelClaudeStructuredTurn(input: {
   }
 }
 
+function prepareClaudePromptReply(
+  prompt: ClaudePendingPrompt,
+  response: AnswerInput['response']
+): PermissionResult {
+  try {
+    return buildClaudePromptReply(prompt, response)
+  } catch (error) {
+    throw new AgentSessionPromptAnswerRejectedError(
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+}
+
 export async function answerClaudeStructuredPrompt(input: {
   request: AnswerInput
   sessions: Map<string, ClaudeSession>
@@ -203,6 +259,7 @@ export async function answerClaudeStructuredPrompt(input: {
     throw new AgentSessionPromptUnavailableError(request.itemId)
   }
   try {
+    const reply = prepareClaudePromptReply(claim.found.prompt, request.response)
     await request.commit()
     if (
       sessions.get(request.sessionId) !== session ||
@@ -212,7 +269,7 @@ export async function answerClaudeStructuredPrompt(input: {
     ) {
       throw new AgentSessionPromptUnavailableError(request.itemId)
     }
-    await answerClaudePrompt(session, claim, request.optionId)
+    await answerClaudePrompt(session, claim, reply)
   } catch (error) {
     session.prompts.releaseClaim(claim)
     throw error

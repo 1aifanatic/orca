@@ -60,10 +60,10 @@ import { registerCodexAccountHandlers } from '../codex-accounts'
 import { registerAgentHookHandlers } from '../agent-hooks'
 import { registerCodexConfigSyncHandlers } from '../codex-config-sync'
 import { getPtyIdForPaneKey } from '../pty'
-import { registerAgentTrustHandlers } from '../agent-trust'
 import { registerClaudeAccountHandlers } from '../claude-accounts'
 import { registerMiniMaxCredentialsHandlers } from '../minimax-credentials'
 import { registerGrokAccountHandlers } from '../grok-accounts'
+import { registerCursorAccountHandlers } from '../cursor-accounts'
 import { registerUpdaterHandlers } from '../../window/attach-main-window-services'
 import {
   registerClipboardHandlers,
@@ -73,6 +73,7 @@ import { isDashboardPopoutRenderer } from '../../window/dashboard-popout-window'
 import type { ClaudeUsageStore } from '../../claude-usage/store'
 import type { CodexUsageStore } from '../../codex-usage/store'
 import type { OpenCodeUsageStore } from '../../opencode-usage/store'
+import type { MuseUsageStore } from '../../muse-usage/store'
 import type { RateLimitService } from '../../rate-limits/service'
 import type { CodexAccountService } from '../../codex-accounts/service'
 import type { ClaudeAccountService } from '../../claude-accounts/service'
@@ -113,6 +114,7 @@ export function registerCoreHandlers(
   claudeUsage: ClaudeUsageStore,
   codexUsage: CodexUsageStore,
   openCodeUsage: OpenCodeUsageStore,
+  museUsage: MuseUsageStore,
   codexAccounts: CodexAccountService,
   claudeAccounts: ClaudeAccountService,
   rateLimits: RateLimitService,
@@ -142,14 +144,14 @@ export function registerCoreHandlers(
   registerAppHandlers(store, { onBeforeRelaunch: lifecycleOptions.onBeforeRelaunch })
   registerCliHandlers()
   registerPreflightHandlers()
-  registerUsageProviderHandlers({ claudeUsage, codexUsage, openCodeUsage })
+  registerUsageProviderHandlers({ claudeUsage, codexUsage, openCodeUsage, museUsage })
   registerCodexAccountHandlers(codexAccounts, () => store.getSettings())
   registerAgentHookHandlers(runtime, { getPtyIdForPaneKey })
   registerCodexConfigSyncHandlers(codexAccounts.runtimeHomeService)
-  registerAgentTrustHandlers()
   registerClaudeAccountHandlers(claudeAccounts)
   registerMiniMaxCredentialsHandlers(rateLimits)
   registerGrokAccountHandlers()
+  registerCursorAccountHandlers()
   registerRateLimitHandlers(rateLimits, codexAccounts)
   registerGitHubHandlers(store, stats)
   registerGitLabHandlers(store)
@@ -200,7 +202,7 @@ export function registerCoreHandlers(
   registerBrowserHandlers()
   registerShellHandlers(store)
   registerPetHandlers()
-  registerSessionHandlers(store)
+  registerSessionHandlers(store, runtime)
   registerUIHandlers(store, { isDashboardPopoutRenderer })
   registerEmulatorFrameStreamHandlers()
   registerEmulatorVideoStreamHandlers()

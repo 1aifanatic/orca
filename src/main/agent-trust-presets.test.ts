@@ -38,10 +38,15 @@ vi.mock('node:os', async () => {
   }
 })
 
-const { markCodexProjectTrusted, markCopilotFolderTrusted, markCursorWorkspaceTrusted } =
-  await import('./agent-trust-presets')
+const {
+  markAntigravityWorkspaceTrusted,
+  markCodexProjectTrusted,
+  markCopilotFolderTrusted,
+  markCursorWorkspaceTrusted
+} = await import('./agent-trust-presets')
 const { runExclusivelyForCodexTrustConfig } =
   await import('./codex/codex-trust-config-mutation-queue')
+const { getLocalCodexTrustConfigFiles } = await import('./codex/codex-home-paths')
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -138,6 +143,75 @@ describe('markCopilotFolderTrusted', () => {
   })
 })
 
+describe('markAntigravityWorkspaceTrusted', () => {
+  it('appends the workspace to trustedWorkspaces in ~/.gemini/antigravity-cli/settings.json', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-agy-ws-'))
+    try {
+      markAntigravityWorkspaceTrusted(workspace)
+      const configPath = join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json')
+      expect(existsSync(configPath)).toBe(true)
+      const parsed = JSON.parse(readFileSync(configPath, 'utf-8'))
+      expect(Array.isArray(parsed.trustedWorkspaces)).toBe(true)
+      expect(parsed.trustedWorkspaces).toHaveLength(1)
+      expect(parsed.trustedWorkspaces[0]).toBe(realpathSync(workspace))
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  // Why: the same settings.json also carries model, permissions and toolPermission. A
+  // clobbering write here would silently reset the user's agy configuration.
+  it('preserves sibling settings keys and dedups an already-trusted workspace', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-agy-ws-'))
+    const realpath = realpathSync(workspace)
+    try {
+      mkdirSync(join(testState.fakeHomeDir, '.gemini', 'antigravity-cli'), { recursive: true })
+      writeFileSync(
+        join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json'),
+        JSON.stringify({
+          agentMode: 'accept-edits',
+          model: 'gemini-3.8-flash',
+          trustedWorkspaces: [realpath]
+        })
+      )
+      markAntigravityWorkspaceTrusted(workspace)
+      const parsed = JSON.parse(
+        readFileSync(
+          join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json'),
+          'utf-8'
+        )
+      )
+      expect(parsed.agentMode).toBe('accept-edits')
+      expect(parsed.model).toBe('gemini-3.8-flash')
+      expect(parsed.trustedWorkspaces).toHaveLength(1)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  // Why: agy's trust is exact-path, not inherited — a parent entry does not cover a child,
+  // which is what makes the per-worktree preflight necessary at all.
+  it('adds a child worktree even when its parent is already trusted', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'orca-agy-parent-'))
+    const child = join(parent, 'child-worktree')
+    try {
+      mkdirSync(child, { recursive: true })
+      markAntigravityWorkspaceTrusted(parent)
+      markAntigravityWorkspaceTrusted(child)
+      const parsed = JSON.parse(
+        readFileSync(
+          join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json'),
+          'utf-8'
+        )
+      )
+      expect(parsed.trustedWorkspaces).toHaveLength(2)
+      expect(parsed.trustedWorkspaces).toContain(realpathSync(child))
+    } finally {
+      rmSync(parent, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('markCodexProjectTrusted', () => {
   // Why (#16441): a hook install/grant holds this file across an awaited
   // app-server session; an unqueued write here lands inside its
@@ -151,7 +225,7 @@ describe('markCodexProjectTrusted', () => {
     })
     try {
       const held = runExclusivelyForCodexTrustConfig(configPath, () => grantHoldingTheFile)
-      const marked = markCodexProjectTrusted(workspace)
+      const marked = markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
       await Promise.resolve()
       expect(existsSync(configPath)).toBe(false)
 
@@ -175,7 +249,7 @@ describe('markCodexProjectTrusted', () => {
       writeFileSync(join(workspace, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8')
       writeFileSync(join(worktreeGitDir, 'gitdir'), join(workspace, '.git'), 'utf-8')
 
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
 
       const repositoryRoot = realpathSync.native(repository)
       const workspaceRoot = realpathSync.native(workspace)
@@ -210,12 +284,12 @@ describe('markCodexProjectTrusted', () => {
       writeFileSync(join(workspace, '.git'), `gitdir: ${arbitraryGitDir}\n`, 'utf-8')
       writeFileSync(join(arbitraryGitDir, 'commondir'), join(unrelatedRoot, '.git'), 'utf-8')
 
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
       const structuredGitDir = join(unrelatedRoot, '.git', 'worktrees', 'feature')
       mkdirSync(structuredGitDir, { recursive: true })
       writeFileSync(join(workspace, '.git'), `gitdir: ${structuredGitDir}\n`, 'utf-8')
       writeFileSync(join(structuredGitDir, 'gitdir'), join(unrelatedRoot, '.git'), 'utf-8')
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
 
       const written = readFileSync(join(testState.fakeHomeDir, '.codex', 'config.toml'), 'utf-8')
       expect(written).toContain(
@@ -233,7 +307,7 @@ describe('markCodexProjectTrusted', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
     try {
       const realpath = realpathSync.native(workspace)
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
       const configPath = join(testState.fakeHomeDir, '.codex', 'config.toml')
       const runtimeConfigPath = join(
         testState.userDataDir,
@@ -287,7 +361,7 @@ describe('markCodexProjectTrusted', () => {
         'utf-8'
       )
 
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
 
       const written = readFileSync(join(codexDir, 'config.toml'), 'utf-8')
       const runtimeWritten = readFileSync(join(runtimeCodexDir, 'config.toml'), 'utf-8')

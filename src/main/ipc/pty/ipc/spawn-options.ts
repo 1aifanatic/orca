@@ -1,12 +1,15 @@
+import { getAppEnvironment } from '../../../../shared/app-environment'
+import { getLegacyOpenCodeEnvKeysToDelete } from '../../../opencode/legacy-shared-config-dir'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { CLAUDE_AUTH_ENV_VARS } from '../../../claude-accounts/environment'
 import { LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS } from '../../../pty/legacy-terminal-shim-dir'
+import { PI_PROCESS_OWNER_ENV_KEYS } from '../../../pty/pi-process-owner-env'
 import { CODEX_HOME_ENV_KEYS } from '../host-env/codex-home'
 import {
   mergePtyEnvDeletions,
   removeCodexHomeDeletionRequests,
   getInheritedAgentHookEnvKeysToDelete,
-  getInheritedClaudeSessionStampEnvKeysToDelete
+  getInheritedAgentSessionStampEnvKeysToDelete
 } from '../host-env/pi-agent'
 import { promoteAgentTeamsShimPath, deleteRequestedEnvKeys } from '../host-env/path'
 import { beginPtySpawnForWorktree } from '../host-env/fresh-spawn-routing'
@@ -21,7 +24,9 @@ import { shouldSeedPreAttachPtySize } from '../delivery/attached-pty-size'
 import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-query-replies'
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import type { PtyIpcSpawnState } from './spawn-state'
+import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
+/** Carries deletions to provider-owned environments, including persistent older daemons. */
 export async function buildPtyIpcSpawnOptions(
   ctx: PtyIpcSpawnState
 ): Promise<{ isReattach: true } | null> {
@@ -35,11 +40,17 @@ export async function buildPtyIpcSpawnOptions(
   ctx.combinedEnvToDelete = mergePtyEnvDeletions(
     envToDelete,
     args.envToDelete ?? [],
+    // Persistent daemons and older SSH hosts must not resurrect a parent Pi's ownership.
+    PI_PROCESS_OWNER_ENV_KEYS,
     ctx.agentTeamsEnvToDelete ?? [],
     // Why: disable old hosts without removing ORCA_REAL_* while their Windows shim remains on PATH.
     ctx.isDaemonHostSpawn || args.connectionId ? LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS : [],
     ctx.isDaemonHostSpawn ? getInheritedAgentHookEnvKeysToDelete(ctx.spawnEnv) : [],
-    getInheritedClaudeSessionStampEnvKeysToDelete(ctx.spawnEnv),
+    // The daemon must judge its own inherited value; main may have a different config.
+    !args.connectionId && !ctx.isDaemonHostSpawn
+      ? getLegacyOpenCodeEnvKeysToDelete(ctx.spawnEnv, getAppEnvironment().getPath('userData'))
+      : [],
+    getInheritedAgentSessionStampEnvKeysToDelete(ctx.spawnEnv),
     ctx.skipCodexHomeEnv ? CODEX_HOME_ENV_KEYS : [],
     // Why: the persistent daemon compares its own merged CODEX_HOME pair;
     // main cannot safely decide ownership for a process it may not parent.
@@ -81,6 +92,22 @@ export async function buildPtyIpcSpawnOptions(
   }
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
+  }
+  const trustWrite = applyAgentWorkspaceTrustToSpawn({
+    launchAgent: args.launchAgent,
+    worktreeId: args.worktreeId,
+    cwd: ctx.cwd,
+    store: ctx.deps.store,
+    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    settings: ctx.deps.getSettings?.(),
+    env: ctx.spawnEnv,
+    claudeAuth: ctx.claudeAuth,
+    wslDistro: ctx.expectedWslDistro,
+    connectionId: args.connectionId ?? null,
+    spawnOptions: ctx.spawnOptions
+  })
+  if (trustWrite) {
+    await trustWrite
   }
   if (ctx.reservationPaneKey) {
     ctx.spawnOptions.paneKey = ctx.reservationPaneKey
