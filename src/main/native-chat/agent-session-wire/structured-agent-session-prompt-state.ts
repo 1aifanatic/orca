@@ -19,6 +19,16 @@ function promptGone(message: string): PendingPromptValidation {
   }
 }
 
+/** The prompt item the client named, once it is no longer waiting on anyone. */
+export function settledPrompt(
+  ctx: Pick<AgentSessionTurnContext, 'journal'>,
+  itemId: string
+): { item: AgentJournalRenderItem; prompt: PendingPromptBody } | null {
+  const item = ctx.journal.snapshot().items.find((entry) => entry.itemId === itemId)
+  const prompt = item?.body.kind === 'approval' || item?.body.kind === 'question' ? item.body : null
+  return item && prompt && prompt.resolution.state !== 'pending' ? { item, prompt } : null
+}
+
 export function validatePendingPrompt(
   ctx: Pick<AgentSessionTurnContext, 'journal' | 'sessionId'>,
   input: {

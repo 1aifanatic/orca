@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
 import {
   structuredAgentSessionSendBody,
@@ -21,7 +21,6 @@ import {
 } from './mobile-structured-agent-prompts'
 import {
   requestStructuredAgentSessionMutation,
-  retainStructuredSessionOperationId as retainStructuredOpId,
   timeoutForDeadline,
   type StructuredAgentSessionMutationResult
 } from './mobile-structured-agent-session-rpc'
@@ -96,9 +95,9 @@ export function useMobileStructuredAgentSession(args: {
   } = args
   const promptCancelSupported = hostSupport?.promptCancel ?? null
   const sessionKey = encodeNativeChatTranscriptIdentity([sourceIdentity, agent, sessionId])
-  const operationIdsRef = useRef(new Map<string, string>())
   const commandPendingRef = useRef(false)
-  useEffect(() => () => operationIdsRef.current.clear(), [])
+  // A Stop of the turn one is already stopping joins it.
+  const inFlightStopsRef = useRef(new Map<string, Promise<boolean>>())
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
   const { state, stateRef, loadingOlder, loadEarlier } = useMobileStructuredAgentState(stateArgs)
   useMobileStructuredSendOperationReconciliation(state.submissions)
@@ -114,23 +113,15 @@ export function useMobileStructuredAgentSession(args: {
         return { status: 'rejected' }
       }
       const targetFence = current.fence
-      const key = `${sessionKey}:${fingerprintMethod}:${JSON.stringify(fields)}`
-      const clientOperationId = retainStructuredOpId(
-        operationIdsRef.current,
-        key,
-        operationIdsRef.current.get(key)
-      )
       const result = await requestStructuredAgentSessionMutation<TValue>({
         client,
         method,
         fingerprintMethod,
         sessionId,
         expectedRuntimeFence: targetFence,
-        fields,
-        clientOperationId
+        fields
       })
       if (result.status === 'accepted') {
-        operationIdsRef.current.delete(key)
         return {
           status: 'accepted',
           value: result.value,
@@ -138,14 +129,12 @@ export function useMobileStructuredAgentSession(args: {
         }
       }
       if (result.status === 'unknown') {
-        operationIdsRef.current.delete(key)
         return result
       }
-      operationIdsRef.current.delete(key)
       onSendError(result.message)
       return { status: 'rejected' }
     },
-    [client, enabled, onSendError, sessionId, sessionKey]
+    [client, enabled, onSendError, sessionId]
   )
 
   const options = useMobileStructuredAgentOptions({
@@ -187,9 +176,7 @@ export function useMobileStructuredAgentSession(args: {
         client,
         sessionId,
         fence: currentFence,
-        sessionKey,
         pending: commandPendingRef,
-        operationIds: operationIdsRef.current,
         controller: {
           agent: agent === 'claude' ? 'claude' : 'codex',
           snapshot: optionSnapshot,
@@ -251,15 +238,14 @@ export function useMobileStructuredAgentSession(args: {
       requestMobileStructuredAgentSessionCancel({
         client,
         enabled,
+        inFlight: inFlightStopsRef.current,
         onSendError,
-        operationIds: operationIdsRef.current,
         prompt,
         promptCancelSupported,
         sessionId,
-        sessionKey,
         stateRef
       }),
-    [client, enabled, onSendError, promptCancelSupported, sessionId, sessionKey, stateRef]
+    [client, enabled, onSendError, promptCancelSupported, sessionId, stateRef]
   )
 
   const messages = useMemo(
