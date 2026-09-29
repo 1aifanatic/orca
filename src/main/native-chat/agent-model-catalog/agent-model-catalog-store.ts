@@ -38,10 +38,12 @@ export type AgentModelCatalogSuccess = {
 
 export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
 
-/** Who lists: a live session asks the child it already runs; a probe spawns a throwaway one. */
-export type AgentModelCatalogLister = AgentModelCatalogSuccess['origin']
+/** Who lists, by identity: a live session's own connection, or the session-less probe. */
+export type AgentModelCatalogLister = object
 
 type CatalogFailure = { detail: string; failedAt: number }
+
+type InFlightListings = Map<AgentModelCatalogLister, Promise<AgentModelCatalogEntry | null>>
 
 /** A live session's handle into the store, pinned at spawn to the account home
  *  THAT child launched under — an account switched afterwards must never
@@ -84,10 +86,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
-  private readonly refreshes: Record<
-    AgentModelCatalogLister,
-    Map<string, Promise<AgentModelCatalogEntry | null>>
-  > = { 'live-session': new Map(), probe: new Map() }
+  private readonly refreshes = new Map<string, InFlightListings>()
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
 
@@ -182,43 +181,46 @@ export class AgentModelCatalogStore {
     this.failures.set(fingerprint, { detail, failedAt: this.now() })
   }
 
-  /** Joins an in-flight refresh by the same lister rather than starting a second. A live
-   *  session never joins a probe: a probe that hangs must not decide whether a chat starts.
-   *  Resolves with the entry on success and null on failure — never rejects. */
+  /** Joins an in-flight refresh by the same lister rather than starting a second. Never
+   *  joins another lister's: a probe or another chat's Codex that hangs must not decide
+   *  whether this chat starts. Resolves with the entry on success, null on failure. */
   refresh(
     fingerprint: string,
     agent: 'claude' | 'codex',
     lister: AgentModelCatalogLister,
     listModels: () => Promise<AgentModelCatalogSuccess>
   ): Promise<AgentModelCatalogEntry | null> {
-    const refreshes = this.refreshes[lister]
-    const inFlight = refreshes.get(fingerprint)
+    const listers: InFlightListings = this.refreshes.get(fingerprint) ?? new Map()
+    const inFlight = listers.get(lister)
     if (inFlight) {
       return inFlight
     }
+    const settle = (): void => {
+      listers.delete(lister)
+      if (listers.size === 0 && this.refreshes.get(fingerprint) === listers) {
+        this.refreshes.delete(fingerprint)
+      }
+    }
     const run = listModels().then(
       (success) => {
-        refreshes.delete(fingerprint)
+        settle()
         return this.recordSuccess(fingerprint, agent, success)
       },
       (error: unknown) => {
-        refreshes.delete(fingerprint)
+        settle()
         this.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))
         return null
       }
     )
-    refreshes.set(fingerprint, run)
+    listers.set(lister, run)
+    this.refreshes.set(fingerprint, listers)
     return run
   }
 
   /** True when a read should kick a background refresh: nothing known or the
    *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
-    if (
-      this.refreshes['live-session'].has(fingerprint) ||
-      this.refreshes.probe.has(fingerprint) ||
-      this.hasActiveFailure(fingerprint)
-    ) {
+    if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
       return false
     }
     const entry = this.entries.get(fingerprint)

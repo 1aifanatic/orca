@@ -79,8 +79,9 @@ describe('agent model catalog store', () => {
     const fetch = vi.fn(
       () => new Promise<AgentModelCatalogSuccess>((resolve) => (settle = resolve))
     )
-    const first = store.refresh('fp-1', 'codex', 'live-session', fetch)
-    const second = store.refresh('fp-1', 'codex', 'live-session', fetch)
+    const session = {}
+    const first = store.refresh('fp-1', 'codex', session, fetch)
+    const second = store.refresh('fp-1', 'codex', session, fetch)
     expect(fetch).toHaveBeenCalledTimes(1)
     settle(success('gpt-a'))
     const [entryA, entryB] = await Promise.all([first, second])
@@ -88,20 +89,18 @@ describe('agent model catalog store', () => {
     expect(entryA!.models[0]!.id).toBe('gpt-a')
   })
 
-  it('never makes a live session wait on a probe that hangs', async () => {
+  it('never makes a live session wait on another lister that hangs', async () => {
     const store = new AgentModelCatalogStore()
     let failProbe!: (error: Error) => void
     const probe = store.refresh(
       'fp-1',
       'codex',
-      'probe',
+      {},
       () => new Promise<AgentModelCatalogSuccess>((_resolve, reject) => (failProbe = reject))
     )
     expect(store.shouldRefresh('fp-1')).toBe(false)
 
-    const live = await store.refresh('fp-1', 'codex', 'live-session', async () =>
-      success('gpt-live')
-    )
+    const live = await store.refresh('fp-1', 'codex', {}, async () => success('gpt-live'))
     expect(live!.models[0]!.id).toBe('gpt-live')
 
     // The probe still reports its own failure; the live listing it lost to stays served.
@@ -113,7 +112,7 @@ describe('agent model catalog store', () => {
 
   it('records a failed refresh as a failure and resolves null without rejecting', async () => {
     const store = new AgentModelCatalogStore()
-    const entry = await store.refresh('fp-1', 'codex', 'probe', async () => {
+    const entry = await store.refresh('fp-1', 'codex', {}, async () => {
       throw new Error('no provider')
     })
     expect(entry).toBeNull()

@@ -55,7 +55,7 @@ async function fetchCodexListingThroughStore(
   const entry = await access.store.refresh(
     access.fingerprint,
     'codex',
-    'live-session',
+    session.connection,
     async () => {
       const listing = await fetchCodexModelCatalogListing({
         connection: session.connection,

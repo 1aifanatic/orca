@@ -105,10 +105,25 @@ describe('Codex session options through the host catalog store', () => {
   it('restores a new chat from its own connection while a session-less probe hangs', async () => {
     const store = new AgentModelCatalogStore()
     // Opening the chat's picker kicked the host probe for this account; its Codex never answers.
-    void store.refresh(FINGERPRINT, 'codex', 'probe', () => new Promise<never>(() => {}))
+    void store.refresh(FINGERPRINT, 'codex', {}, () => new Promise<never>(() => {}))
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const session = storeSession(request, store)
     // The acquire-time restore read: joining the probe would fail the chat at the probe's deadline.
+    const result = await readLiveCodexSessionOptions(session, undefined)
+    expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
+    expect(modelListCalls(request)).toBe(1)
+  })
+
+  it("restores a new chat from its own connection while another chat's listing hangs", async () => {
+    const store = new AgentModelCatalogStore()
+    // Another chat on the same account is mid-listing and its Codex never answers.
+    const wedged = storeSession(
+      vi.fn(() => new Promise<never>(() => {})),
+      store
+    )
+    void readLiveCodexSessionOptions(wedged, undefined)
+    const request = vi.fn(async () => listAnswer('gpt-live'))
+    const session = storeSession(request, store)
     const result = await readLiveCodexSessionOptions(session, undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
     expect(modelListCalls(request)).toBe(1)
