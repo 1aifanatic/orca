@@ -533,6 +533,57 @@ describe('mobile structured queued messages', () => {
     )
   })
 
+  it('a replay the host answers with the draft it later sent under another id spends the record', async () => {
+    const journalKey = 'orca:mobileStructuredSendOperations:v1'
+    let attempts = 0
+    let lostId = ''
+    sendRequest.mockImplementation(async (method, params) => {
+      if (method === 'agentSession.send') {
+        attempts += 1
+        const id = String(fieldsOf(fieldsOf(params).envelope).clientOperationId)
+        if (attempts === 1) {
+          lostId = id
+          throw markRpcDeliveryUnknown(new Error('Connection closed'))
+        }
+        if (id === lostId) {
+          // A Stop requeued the draft and it later drained under a fresh id.
+          return mutationOk({
+            clientMessageId: id,
+            submission: {
+              clientMessageId: 'drained-under-fresh-id',
+              fence: 3,
+              payloadFingerprint: 'fp',
+              dispatchState: 'accepted',
+              providerItemId: 'item-1',
+              reason: null,
+              submittedAt: 10,
+              resolvedAt: 11
+            }
+          })
+        }
+        return mutationOk({
+          clientMessageId: id,
+          queued: { messageId: id, position: 1, state: 'waiting' }
+        })
+      }
+      return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+    })
+    await mountSession(CAPABLE)
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+    })
+    expect(stored.get(journalKey)).toContain(lostId)
+    // No submission will ever settle the lost id, so this answer is what spends it.
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+    })
+    expect(stored.has(journalKey)).toBe(false)
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('queued')
+    })
+    expect(requestOf('agentSession.send', 2).envelope.clientOperationId).not.toBe(lostId)
+  })
+
   describe('cards from the published list', () => {
     it('renders published drafts as cards and follows later frames', async () => {
       await mountSession(

@@ -65,6 +65,26 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
+  it('spends a replayed id whose draft the host later sent under another id', () => {
+    // Nothing will ever settle the replayed id; which send this is stays unconfirmed.
+    const drained = structuredSendResultFixture('accepted')
+    if (!('submission' in drained)) {
+      throw new Error('expected a submission answer')
+    }
+    const replay: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
+      status: 'accepted',
+      value: {
+        clientMessageId: 'retained-draft-id',
+        submission: { ...drained.submission, clientMessageId: 'fresh-id' }
+      }
+    }
+    expect(mobileStructuredSendDelivery(replay, true)).toEqual({
+      outcome: 'unknown',
+      operationIdSpent: true,
+      error: null
+    })
+  })
+
   it('does not report a retained payload replay as a new accepted send', () => {
     for (const dispatchState of ['accepted', 'pending'] as const) {
       expect(mobileStructuredSendDelivery(accepted(dispatchState), true)).toEqual({
