@@ -20,6 +20,7 @@ export function installOpenCodePluginInCanonicalConfig(
       agent === 'opencode2' ? 'orca-opencode2-status.js' : 'orca-opencode-status.js'
     const pluginPath = join(configDir, 'plugins', pluginFileName)
     mkdirSync(join(configDir, 'plugins'), { recursive: true })
+    writeOpenCodeTuiPlugin(join(configDir, 'plugins'), pluginFileName, source)
     if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
       try {
         unlinkSync(pluginPath)
@@ -28,7 +29,6 @@ export function installOpenCodePluginInCanonicalConfig(
       }
       writeFileSync(pluginPath, source)
     }
-    writeOpenCodeTuiPlugin(join(configDir, 'plugins'), pluginFileName, source)
     return true
   } catch (err) {
     process.stderr.write(

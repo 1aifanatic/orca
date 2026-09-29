@@ -188,6 +188,24 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
     }
   )
 
+  // Why: a service that reloads between the two writes must already find the TUI copy and stand down.
+  it('writes the TUI copy before the server plugin file', () => {
+    const pluginsDir = join(resolveOpenCodeConfigDirectory(), 'plugins')
+    const serverPath = join(pluginsDir, 'orca-opencode2-status.js')
+    const tuiDir = join(pluginsDir, 'orca-opencode2-status-tui')
+    rmSync(serverPath, { recursive: true, force: true })
+    rmSync(tuiDir, { recursive: true, force: true })
+    // A directory in the server file's place makes that write fail.
+    mkdirSync(serverPath, { recursive: true })
+    try {
+      openCode2HookService.buildPtyEnv(daemonSessionId)
+      expect(existsSync(join(tuiDir, 'tui.js'))).toBe(true)
+    } finally {
+      rmSync(serverPath, { recursive: true, force: true })
+      rmSync(tuiDir, { recursive: true, force: true })
+    }
+  })
+
   // Why: #22234 — OpenCode 2 installs under the plain `opencode` name, and its loader
   // rejects a default export that only has server(). Asserting the emitted *source* is
   // not enough; the installed file is what the v2 server validates, so load it.

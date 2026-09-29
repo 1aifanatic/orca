@@ -296,6 +296,7 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
+    this.writeTuiPlugin(pluginsDir, source)
     if (!isOverlayOpenCodePluginCurrent(pluginPath, source)) {
       try {
         unlinkSync(pluginPath)
@@ -304,7 +305,6 @@ export class OpenCodeHookService {
       }
       writeFileSync(pluginPath, source)
     }
-    this.writeTuiPlugin(pluginsDir, source)
   }
 
   private writePluginToConfigDir(configDir: string): void {
@@ -312,10 +312,10 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
+    this.writeTuiPlugin(pluginsDir, source)
     if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
       writeFileSync(pluginPath, source)
     }
-    this.writeTuiPlugin(pluginsDir, source)
   }
 
   private writeTuiPlugin(pluginsDir: string, source: string): void {
