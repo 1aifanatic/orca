@@ -532,6 +532,43 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('draws a lost-reply send the host recorded in doubt as sent: never re-sent, and the next goes out', async () => {
+    mocks.call
+      .mockRejectedValueOnce(new Error('socket closed'))
+      .mockImplementation(async (_target, _method, params) =>
+        acceptedResultFor(
+          (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId,
+          11
+        )
+      )
+    const { result, rerender } = renderHook(
+      ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions
+        }),
+      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
+    )
+
+    act(() => expect(result.current.send('first')).toBe(true))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
+    const firstId = result.current.outbox[0]!.clientMessageId
+    rerender({ submissions: [unknownResultFor(firstId, 10).value.submission] })
+    act(() => expect(result.current.send('second')).toBe(true))
+    // Past the probe's first delay, so a re-send of the doubted head would have gone out.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+    })
+
+    const sent = mocks.call.mock.calls.map(
+      (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
+    )
+    expect(sent).toEqual(['first', 'second'])
+    expect(result.current.blockedClientMessageId).toBeNull()
+  })
+
   it('retains a send operation after a pending-admission refusal', async () => {
     mocks.call
       .mockResolvedValueOnce(refusedResult('agent_session_checkpoint_stale'))

@@ -33,11 +33,9 @@ function slotsOf(messages: NativeChatMessage[]) {
     messages,
     turnKeys,
     activeTurnKey: selectNativeChatActiveTurnKey(messages),
-    currentTurnKey: undefined,
     receipts: new Map<string, NativeChatResolvedPrompt>(),
     turnStatuses: { active: null, completedByTurn: {} },
     turnDiffs: new Map<string, NativeChatTurnDiff>(),
-    showTurnStatus: false,
     expandedTurnKeys: new Set<string>(),
     isWorking: false,
     lifecycleWorking: false
