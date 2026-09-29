@@ -1,4 +1,6 @@
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
+import { getFirstCommandToken } from '../../shared/command-token-scanner'
+import { isShellProcess } from '../../shared/shell-process-detection'
 import type {
   PosixFence,
   RemoteForegroundEvidence,
@@ -119,7 +121,12 @@ export function resolveRemoteForegroundEvidenceFromRows(
     ...metadata,
     verdict: 'live',
     processName: candidate?.name.processName ?? null,
-    fence
+    fence,
+    // Why the root's own name: an agent exec'd as the PTY command also owns its foreground group.
+    shellForeground:
+      !candidate &&
+      root.tpgid === root.pgid &&
+      isShellProcess(getFirstCommandToken(root.command).replace(/^-/, ''))
   }
 }
 

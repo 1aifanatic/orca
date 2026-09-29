@@ -79,6 +79,10 @@ export type RemoteForegroundEvidence =
       verdict: 'live'
       processName: string | null
       fence: PosixFence | WindowsFence
+      /** Host-computed: the PTY root is a shell that owns the terminal's foreground group and no
+       *  agent is recognized in it. Absent on hosts that predate the field, which then cannot
+       *  certify an agent exit by read. */
+      shellForeground?: boolean
     } & HostObservation)
   | ({ verdict: 'unverifiable'; reason: string } & HostObservation)
   | ({ verdict: 'exited'; reason: string } & HostObservation)
@@ -169,6 +173,7 @@ export function isRemoteForegroundEvidence(value: unknown): value is RemoteForeg
   if (input.verdict === 'live') {
     return (
       (input.processName === null || typeof input.processName === 'string') &&
+      (input.shellForeground === undefined || typeof input.shellForeground === 'boolean') &&
       (isPosixFence(input.fence) || isWindowsFence(input.fence))
     )
   }

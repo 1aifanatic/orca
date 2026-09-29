@@ -84,4 +84,53 @@ describe('host-stamped remote foreground resolver', () => {
       )
     ).toMatchObject({ verdict: 'unverifiable', reason: 'windows_ssh_foreground_unavailable' })
   })
+
+  describe('shell in foreground', () => {
+    const idleShell = (command: string, extra: ProcessTableRow[] = []): ProcessTableRow[] => [
+      {
+        pid: 100,
+        ppid: 1,
+        pgid: 100,
+        tpgid: 100,
+        tty: '/dev/pts/2',
+        startTime: 'root-start',
+        stat: 'Ss+',
+        command
+      },
+      ...extra
+    ]
+    const resolve = (rows: ProcessTableRow[]) =>
+      resolveRemoteForegroundEvidence({ rootPid: 100, fallbackProcess: 'zsh' }, metadata, rows)
+
+    it.each(['/bin/zsh', '-zsh', 'bash --login'])('marks %s at its prompt', (command) => {
+      expect(resolve(idleShell(command))).toMatchObject({
+        verdict: 'live',
+        processName: null,
+        shellForeground: true
+      })
+    })
+
+    it('does not mark a shell whose foreground group runs another program', () => {
+      expect(resolve(rowsFor(['vim notes.md']))).toMatchObject({
+        verdict: 'live',
+        processName: null,
+        shellForeground: false
+      })
+    })
+
+    it('does not mark a recognized agent', () => {
+      expect(resolve(rowsFor(['node /opt/claude']))).toMatchObject({
+        verdict: 'live',
+        processName: 'claude',
+        shellForeground: false
+      })
+    })
+
+    it('does not mark an agent that is itself the PTY root', () => {
+      expect(resolve(idleShell('claude --resume'))).toMatchObject({
+        verdict: 'live',
+        shellForeground: false
+      })
+    })
+  })
 })
