@@ -16,10 +16,22 @@ import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 // Why bounded: detection only decides chat vs shell, so a slow host must not hold the workspace empty.
 const DEFAULT_CHAT_DETECTION_TIMEOUT_MS = 5_000
 
+/**
+ * The host whose agent list picks the default chat; undefined when the workspace opens a shell
+ * whatever that list says. Shared by the wait and the open so they cannot drift.
+ */
 function defaultChatDetectionTarget(
   state: AppState,
   worktreeId: string
 ): AgentDetectionTarget | undefined {
+  // Why: a 'blank' default means the user wants workspaces to open without an agent.
+  if (
+    !agentTabsDefaultToNativeChat(state.settings) ||
+    state.settings?.defaultTuiAgent === 'blank'
+  ) {
+    return undefined
+  }
+  // Why: an unresolved owner is an unknown host, not the local machine.
   return parseAgentDetectionTargetKey(getAgentDetectionTargetKeyForWorktree(state, worktreeId))
 }
 
@@ -39,9 +51,6 @@ function readDetectedAgents(state: AppState, target: AgentDetectionTarget): TuiA
 /** True when the default chat could open here but the workspace host's agent list has not loaded. */
 export function emptyWorkspaceDefaultChatAwaitsDetection(worktreeId: string): boolean {
   const state = useAppStore.getState()
-  if (!agentTabsDefaultToNativeChat(state.settings)) {
-    return false
-  }
   const target = defaultChatDetectionTarget(state, worktreeId)
   return target !== undefined && readDetectedAgents(state, target) === null
 }
@@ -70,15 +79,10 @@ export function openDefaultAgentChatInEmptyWorkspace(
   worktreeId: string
 ): { primaryTabId: string | null } | null {
   const state = useAppStore.getState()
-  if (!agentTabsDefaultToNativeChat(state.settings)) {
-    return null
-  }
-  // Why: an unresolved owner is an unknown host, not the local machine.
   const target = defaultChatDetectionTarget(state, worktreeId)
   if (!target) {
     return null
   }
-  // Why: a 'blank' default means the user wants workspaces to open without an agent.
   const agent = pickTuiAgent(
     state.settings?.defaultTuiAgent,
     readDetectedAgents(state, target) ?? [],

@@ -124,6 +124,15 @@ describe('agent detection for the default chat', () => {
     expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(false)
   })
 
+  // Why: Blank Terminal opens a shell whatever the host has, so waiting only delays that shell.
+  it('does not wait when the default agent is Blank Terminal', () => {
+    seedSettings({ defaultTuiAgent: 'blank' })
+    mocks.detectionTargetKey.mockReturnValue('ssh:conn-1')
+    useAppStore.setState({ remoteDetectedAgentIds: {} })
+
+    expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(false)
+  })
+
   it('probes the workspace host and gives up after a bounded wait', async () => {
     vi.useFakeTimers()
     seedSettings({})

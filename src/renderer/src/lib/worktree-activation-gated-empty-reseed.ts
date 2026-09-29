@@ -12,6 +12,7 @@ import {
 } from './empty-workspace-default-agent-chat'
 import {
   claimEmptyWorkspaceDefaultSurface,
+  isEmptyWorkspaceDefaultSurfacePending,
   releaseEmptyWorkspaceDefaultSurface
 } from './empty-workspace-default-surface-claims'
 
@@ -34,18 +35,23 @@ export function gateAndReseedEmptyWorkspace(
     if (outcome !== 'empty') {
       return
     }
-    if (!intent.seedUserDefaultSurface || !emptyWorkspaceDefaultChatAwaitsDetection(workspaceKey)) {
+    const awaitsDetection =
+      intent.seedUserDefaultSurface && emptyWorkspaceDefaultChatAwaitsDetection(workspaceKey)
+    if (!awaitsDetection && !isEmptyWorkspaceDefaultSurfacePending(workspaceKey)) {
       reseedGatedEmptyWorkspace(workspaceKey, intent)
       return
     }
     // Why: the default agent depends on the host's list; seeding before it loads locks in a shell.
-    if (!claimEmptyWorkspaceDefaultSurface(workspaceKey)) {
+    // A wait already pending takes this later intent instead, so the latest activation wins.
+    if (!claimEmptyWorkspaceDefaultSurface(workspaceKey, intent)) {
       return
     }
     const settle = (): void => {
-      releaseEmptyWorkspaceDefaultSurface(workspaceKey)
+      const latestIntent = releaseEmptyWorkspaceDefaultSurface(workspaceKey)
       // Re-checks the active workspace, host, and emptiness the wait may have changed.
-      reseedGatedEmptyWorkspace(workspaceKey, intent)
+      if (latestIntent) {
+        reseedGatedEmptyWorkspace(workspaceKey, latestIntent)
+      }
     }
     void loadEmptyWorkspaceDefaultChatDetection(workspaceKey).then(settle, settle)
   })

@@ -264,6 +264,63 @@ describe('the gated reseed that seeds an empty workspace in Electron', () => {
     expect(tabCount(worktree.id)).toBe(0)
   })
 
+  // Why: the wait used to keep the first activation's intent, so returning to the workspace through
+  // history (no host id) failed the first intent's host check and left it with no surface at all.
+  it('seeds for the latest activation when the workspace is reopened during the wait', async () => {
+    defaultChat.open.mockReturnValue({ primaryTabId: null })
+    defaultChat.awaitsDetection.mockReturnValue(true)
+    let finishDetection!: () => void
+    defaultChat.loadDetection.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishDetection = resolve
+      })
+    )
+    const worktree = makeWorktree()
+    seedEmptyActivatableWorktree(worktree)
+    const gate = useElectronActivationGate()
+
+    activateAndRevealWorktree(worktree.id, {
+      ...USER_OPEN,
+      executionHostId: 'local',
+      notifyHostRuntime: false
+    })
+    await gate.mock.results[0]?.value
+    useAppStore.setState({ activeWorktreeId: 'repo-1::/elsewhere' })
+    activateAndRevealWorktree(worktree.id, { ...USER_OPEN, notifyHostRuntime: false })
+    await gate.mock.results[1]?.value
+    expect(useAppStore.getState().activeWorkspaceExecutionHostId).toBeNull()
+    finishDetection()
+    await flushPromises()
+
+    expect(defaultChat.loadDetection).toHaveBeenCalledTimes(1)
+    expect(isEmptyWorkspaceDefaultSurfacePending(worktree.id)).toBe(false)
+    expect(defaultChat.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('seeds a shell when a plain activation follows the user open during the wait', async () => {
+    defaultChat.awaitsDetection.mockReturnValue(true)
+    let finishDetection!: () => void
+    defaultChat.loadDetection.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishDetection = resolve
+      })
+    )
+    const worktree = makeWorktree()
+    seedEmptyActivatableWorktree(worktree)
+    const gate = useElectronActivationGate()
+
+    activateAndRevealWorktree(worktree.id, { ...USER_OPEN, notifyHostRuntime: false })
+    await gate.mock.results[0]?.value
+    activateAndRevealWorktree(worktree.id, { notifyHostRuntime: false })
+    await gate.mock.results[1]?.value
+    expect(tabCount(worktree.id)).toBe(0)
+    finishDetection()
+    await flushPromises()
+
+    expect(defaultChat.open).not.toHaveBeenCalled()
+    expect(tabCount(worktree.id)).toBe(1)
+  })
+
   it('re-checks the active workspace after the wait', async () => {
     defaultChat.awaitsDetection.mockReturnValue(true)
     let finishDetection!: () => void

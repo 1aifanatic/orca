@@ -1,20 +1,29 @@
+import type { GatedEmptyWorkspaceReseedIntent } from './worktree-initial-terminal-seeding'
+
 // Why: while a gated reseed waits on agent detection, it owns the workspace's first surface;
 // any other seeder landing in that wait would put a shell beside the chat it is about to open.
-const workspacesAwaitingDefaultSurface = new Set<string>()
+// Why the intent: the wait seeds for the latest activation, so a later one must not be dropped.
+const pendingIntentByWorkspace = new Map<string, GatedEmptyWorkspaceReseedIntent>()
 
-/** False when another reseed already owns this workspace's default surface. */
-export function claimEmptyWorkspaceDefaultSurface(workspaceKey: string): boolean {
-  if (workspacesAwaitingDefaultSurface.has(workspaceKey)) {
-    return false
-  }
-  workspacesAwaitingDefaultSurface.add(workspaceKey)
-  return true
+/** Records this activation's intent; false when a wait already pending now carries it instead. */
+export function claimEmptyWorkspaceDefaultSurface(
+  workspaceKey: string,
+  intent: GatedEmptyWorkspaceReseedIntent
+): boolean {
+  const alreadyPending = pendingIntentByWorkspace.has(workspaceKey)
+  pendingIntentByWorkspace.set(workspaceKey, intent)
+  return !alreadyPending
 }
 
-export function releaseEmptyWorkspaceDefaultSurface(workspaceKey: string): void {
-  workspacesAwaitingDefaultSurface.delete(workspaceKey)
+/** Ends the wait and returns the latest activation's intent. */
+export function releaseEmptyWorkspaceDefaultSurface(
+  workspaceKey: string
+): GatedEmptyWorkspaceReseedIntent | undefined {
+  const intent = pendingIntentByWorkspace.get(workspaceKey)
+  pendingIntentByWorkspace.delete(workspaceKey)
+  return intent
 }
 
 export function isEmptyWorkspaceDefaultSurfacePending(workspaceKey: string): boolean {
-  return workspacesAwaitingDefaultSurface.has(workspaceKey)
+  return pendingIntentByWorkspace.has(workspaceKey)
 }

@@ -49,6 +49,8 @@ vi.mock('../terminal-pane/terminal-parked-tab-watchers', () => ({
   disposeAllParkedTerminalWatchers: vi.fn()
 }))
 
+const PENDING_INTENT = { callerProvidesSurface: false, seedUserDefaultSurface: true }
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
 afterEach(async () => {
@@ -210,13 +212,30 @@ describe('passive terminal seeding retries until a decision applies', () => {
     const finishGate = deferredGate()
     root = createRoot(document.createElement('div'))
     await act(async () => root?.render(<Watcher />))
-    claimEmptyWorkspaceDefaultSurface('wt-1')
+    claimEmptyWorkspaceDefaultSurface('wt-1', PENDING_INTENT)
     try {
       await finishGate('empty')
       expect(mocks.createTab).not.toHaveBeenCalled()
     } finally {
       releaseEmptyWorkspaceDefaultSurface('wt-1')
     }
+  })
+
+  // Why: that reseed bails once the user leaves, so a workspace left mid-wait must seed on return.
+  it('seeds on return to a workspace left while a reseed awaited agent detection', async () => {
+    mocks.gate.mockResolvedValue('empty')
+    claimEmptyWorkspaceDefaultSurface('wt-1', PENDING_INTENT)
+    root = createRoot(document.createElement('div'))
+    try {
+      await act(async () => root?.render(<Watcher />))
+      expect(mocks.createTab).not.toHaveBeenCalled()
+    } finally {
+      releaseEmptyWorkspaceDefaultSurface('wt-1')
+    }
+
+    await act(async () => root?.render(<Watcher worktreeId="wt-2" />))
+    await act(async () => root?.render(<Watcher />))
+    expect(mocks.createTab).toHaveBeenCalledTimes(1)
   })
 
   it('seeds after leaving and returning to a blocked workspace', async () => {

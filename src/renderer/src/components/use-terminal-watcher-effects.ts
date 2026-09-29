@@ -224,15 +224,19 @@ export function useTerminalWatcherEffects(controller: TerminalWatcherController)
       ) {
         return
       }
+      // A reseed awaiting agent detection owns the surface. Left unmarked: that reseed bails if the
+      // user leaves during the wait, so a later return must seed here.
+      if (outcome === 'empty' && isEmptyWorkspaceDefaultSurfacePending(activeWorktreeId)) {
+        return
+      }
       // Why mark only once a decision applies: a cancelled or blocked check must stay retryable,
       // and a rerun shares the gate's in-flight promise instead of repeating its work.
       startupActivationGateWorktreeIdsRef.current.add(activeWorktreeId)
       if (outcome !== 'empty') {
         return
       }
-      // A reseed awaiting agent detection, or a pending chat create, owns the surface already.
+      // A pending or unanswered chat create owns the surface even before its tab is published.
       if (
-        isEmptyWorkspaceDefaultSurfacePending(activeWorktreeId) ||
         AGENT_SESSION_PROVIDER_HANDLE_PROVIDERS.some(
           (agent) => getStructuredAgentLaunchStatus(activeWorktreeId, agent) !== 'idle'
         )
