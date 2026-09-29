@@ -1,7 +1,18 @@
 import { isAbsolute } from 'node:path'
-import { codexExecutableCapability } from '../main/codex/codex-native-terminal-capability'
+import { CodexExecutableCapability } from '../shared/codex-executable-capability'
+import { probeCodexTerminalVersion } from '../main/codex/codex-native-terminal-capability'
 import { supportsWslCodexNoDaemon } from '../main/codex/codex-wsl-terminal-capability'
 import type { RelayDispatcher } from './dispatcher'
+import { buildRelayCommandEnv } from './relay-command-env'
+
+// Why the relay command env: SSH exec channels skip shell startup files, so the
+// probe needs the same PATH agent detection uses to find a launcher's runtime.
+const codexExecutableCapability = new CodexExecutableCapability((executable, invokedPath) =>
+  probeCodexTerminalVersion(executable, {
+    invokedPath,
+    env: buildRelayCommandEnv(process.env, process.platform)
+  })
+)
 
 export function registerCodexTerminalCapability(dispatcher: RelayDispatcher): void {
   dispatcher.onRequest('preflight.codexTerminalLaunchCapability', async (params) => {

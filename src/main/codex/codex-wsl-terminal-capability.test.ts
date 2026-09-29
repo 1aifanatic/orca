@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { runProcess, supports, probes } = vi.hoisted(() => ({
   runProcess: vi.fn(),
   supports: vi.fn(),
-  probes: new Array<(path: string) => Promise<string>>()
+  probes: new Array<(path: string, invokedPath: string) => Promise<string>>()
 }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess }))
 vi.mock('../wsl/wsl-executable-path', () => ({
@@ -10,7 +10,7 @@ vi.mock('../wsl/wsl-executable-path', () => ({
 }))
 vi.mock('../../shared/codex-executable-capability', () => ({
   CodexExecutableCapability: class {
-    constructor(probe: (path: string) => Promise<string>) {
+    constructor(probe: (path: string, invokedPath: string) => Promise<string>) {
       probes.push(probe)
     }
     supportsNoDaemon = supports
@@ -36,12 +36,25 @@ describe('WSL Codex capability scope', () => {
       ['\\\\wsl.localhost\\Debian\\opt\\codex']
     ])
   })
-  it('runs the named guest executable through --exec without a login shell or Windows fallback', async () => {
-    expect(await probes[0]('\\\\wsl.localhost\\Ubuntu\\opt\\codex')).toBe('codex-cli 0.156.0')
+  it('runs the named guest executable through --exec with its launcher directory on PATH', async () => {
+    expect(
+      await probes[0](
+        '\\\\wsl.localhost\\Ubuntu\\pkg\\codex\\bin\\codex.js',
+        '\\\\wsl.localhost\\Ubuntu\\home\\u\\.nvm\\bin\\codex'
+      )
+    ).toBe('codex-cli 0.156.0')
     expect(runProcess).toHaveBeenCalledExactlyOnceWith({
       program: 'C:\\Windows\\System32\\wsl.exe',
-      args: ['-d', 'Ubuntu', '--exec', '/opt/codex', '--version'],
-      timeoutMs: 1_000,
+      args: [
+        '-d',
+        'Ubuntu',
+        '--exec',
+        '/usr/bin/env',
+        'PATH=/home/u/.nvm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        '/pkg/codex/bin/codex.js',
+        '--version'
+      ],
+      timeoutMs: 5_000,
       maxOutputBytes: 4_096
     })
   })
@@ -52,7 +65,7 @@ describe('WSL Codex capability scope', () => {
     expect(await supportsWslCodexNoDaemon('codex', 'Ubuntu')).toBe(false)
     expect(await supportsWslCodexNoDaemon('/opt/codex', 'bad/distro')).toBe(false)
     expect(supports).not.toHaveBeenCalled()
-    expect(await probes[0]('C:\\codex.exe')).toBe('')
+    expect(await probes[0]('C:\\codex.exe', 'C:\\codex.exe')).toBe('')
     expect(runProcess).not.toHaveBeenCalled()
   })
 })

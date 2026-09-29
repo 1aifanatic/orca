@@ -18,17 +18,21 @@ async function binary(content = Buffer.from('7f454c460000', 'hex')) {
 }
 
 describe('Codex terminal execution capability', () => {
-  it.each(['codex-cli 0.156.0', 'codex-cli 0.157.1', 'codex-cli 0.158.0'])(
-    'accepts released support: %s',
-    (output) => {
-      expect(codexSupportsNoDaemon(output)).toBe(true)
-    }
-  )
+  it.each([
+    'codex-cli 0.156.0',
+    'codex-cli 0.156.0-alpha.1',
+    'codex-cli 0.157.1',
+    'codex-cli 0.158.0-alpha.15.4'
+  ])('accepts released support: %s', (output) => {
+    expect(codexSupportsNoDaemon(output)).toBe(true)
+  })
   it.each([
     'codex-cli 0.155.0',
     '',
     '0.157.0',
-    'codex-cli 0.156.0-alpha.1',
+    'codex-cli 0.155.1',
+    'codex-cli 0.155.0-alpha.18',
+    'codex-cli 0.157.0 extra',
     'error: codex-cli 0.157.0'
   ])('keeps old or unproven launches unchanged: %s', (output) => {
     expect(codexSupportsNoDaemon(output)).toBe(false)
@@ -67,13 +71,43 @@ describe('Codex terminal execution capability', () => {
       expect(probe).toHaveBeenCalledTimes(2)
     }
   )
-  it('does not retain script evidence across changes to the executable it delegates to', async () => {
-    const path = await binary(Buffer.from('#!/bin/sh\nexec other-codex "$@"'))
+  it('caches a script launcher by its own file identity and probes it with its invoked path', async () => {
+    const path = await binary(Buffer.from('#!/usr/bin/env node\nrequire("./codex")'))
+    const link = `${path}-invoked`
+    await symlink(path, link)
     const probe = vi.fn(async () => 'codex-cli 0.156.0')
     const cache = new CodexExecutableCapability(probe)
-    expect(await cache.supportsNoDaemon(path)).toBe(true)
+    expect(await cache.supportsNoDaemon(link)).toBe(true)
+    expect(await cache.supportsNoDaemon(link)).toBe(true)
+    expect(probe).toHaveBeenCalledExactlyOnceWith(await realpath(path), link)
     probe.mockResolvedValue('codex-cli 0.155.0')
-    expect(await cache.supportsNoDaemon(path)).toBe(false)
+    await writeFile(path, '#!/usr/bin/env node\nrequire("./older-codex")')
+    expect(await cache.supportsNoDaemon(link)).toBe(false)
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+  it('re-proves positive evidence after a bounded time and failed probes sooner', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const path = await binary()
+      const probe = vi.fn(async () => '')
+      const cache = new CodexExecutableCapability(probe)
+      expect(await cache.supportsNoDaemon(path)).toBe(false)
+      vi.setSystemTime(Date.now() + 29_000)
+      expect(await cache.supportsNoDaemon(path)).toBe(false)
+      expect(probe).toHaveBeenCalledTimes(1)
+      probe.mockResolvedValue('codex-cli 0.156.0')
+      vi.setSystemTime(Date.now() + 2_000)
+      expect(await cache.supportsNoDaemon(path)).toBe(true)
+      vi.setSystemTime(Date.now() + 9 * 60_000)
+      expect(await cache.supportsNoDaemon(path)).toBe(true)
+      expect(probe).toHaveBeenCalledTimes(2)
+      probe.mockResolvedValue('codex-cli 0.155.0')
+      vi.setSystemTime(Date.now() + 2 * 60_000)
+      expect(await cache.supportsNoDaemon(path)).toBe(false)
+      expect(probe).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('does not share evidence between execution hosts or paths', async () => {
     const path = await binary()

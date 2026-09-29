@@ -1,8 +1,16 @@
-import { open, realpath, stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { codexSupportsNoDaemon } from './codex-terminal-launch-policy'
 
 type Evidence = { identity: string; supported: boolean; expiresAt: number }
-type Probe = (executable: string) => Promise<string>
+/** `executable` is the canonical file; `invokedPath` is what the shell will run. */
+type Probe = (executable: string, invokedPath: string) => Promise<string>
+
+const MAX_EVIDENCE_ENTRIES = 128
+// Why short: a failed or timed-out probe must not latch the shared-server fallback.
+const NEGATIVE_EVIDENCE_MS = 30_000
+// Why finite: a version-manager shim can select an older Codex without changing
+// its own file, and a stale positive would pass it an unknown flag.
+const POSITIVE_EVIDENCE_MS = 10 * 60_000
 
 /** Lives only on the execution host. No capability received from a client is trusted. */
 export class CodexExecutableCapability {
@@ -15,8 +23,7 @@ export class CodexExecutableCapability {
     try {
       const path = await realpath(executable)
       const before = await this.identity(path)
-      const cacheable = await this.isNativeExecutable(path)
-      const cached = cacheable ? this.cache.get(path) : undefined
+      const cached = this.cache.get(path)
       if (cached?.identity === before && cached.expiresAt > Date.now()) {
         return cached.supported
       }
@@ -25,7 +32,7 @@ export class CodexExecutableCapability {
       if (pending) {
         return pending
       }
-      const task = this.observe(path, before, cacheable)
+      const task = this.observe(path, before, executable)
       this.pending.set(key, task)
       try {
         return await task
@@ -42,39 +49,23 @@ export class CodexExecutableCapability {
     return `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`
   }
 
-  private async isNativeExecutable(path: string): Promise<boolean> {
-    const file = await open(path, 'r')
+  private async observe(path: string, before: string, invokedPath: string): Promise<boolean> {
     try {
-      const bytes = Buffer.alloc(4)
-      await file.read(bytes, 0, 4, 0)
-      // Launch scripts can select another binary without themselves changing.
-      return (
-        ['7f454c46', 'cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe'].includes(
-          bytes.toString('hex')
-        ) || bytes.subarray(0, 2).toString() === 'MZ'
-      )
-    } finally {
-      await file.close()
-    }
-  }
-
-  private async observe(path: string, before: string, cacheable: boolean): Promise<boolean> {
-    try {
-      const supported = codexSupportsNoDaemon(await this.probe(path))
+      const supported = codexSupportsNoDaemon(await this.probe(path, invokedPath))
       if (before !== (await this.identity(path))) {
         return false
       }
-      if (this.cache.size >= 128) {
+      // Why scripts are cached too: package-manager updates replace the launcher
+      // file, and re-probing an interpreter on every launch is the slow path.
+      this.cache.delete(path)
+      if (this.cache.size >= MAX_EVIDENCE_ENTRIES) {
         this.cache.delete(this.cache.keys().next().value ?? '')
       }
-      if (cacheable) {
-        const evidence = {
-          identity: before,
-          supported,
-          expiresAt: supported ? Infinity : Date.now() + 30_000
-        }
-        this.cache.set(path, evidence)
-      }
+      this.cache.set(path, {
+        identity: before,
+        supported,
+        expiresAt: Date.now() + (supported ? POSITIVE_EVIDENCE_MS : NEGATIVE_EVIDENCE_MS)
+      })
       return supported
     } catch {
       return false

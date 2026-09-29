@@ -1,8 +1,8 @@
-// Codex rust-v0.156.0 added --no-daemon; rust-v0.155.0 has no such option.
+// Codex rust-v0.156.0-alpha.1 (the first 0.156 build) added --no-daemon; 0.155.x has none.
 export const CODEX_NO_DAEMON_FIRST_VERSION = '0.156.0'
 
 export function codexSupportsNoDaemon(output: string): boolean {
-  const match = /^codex-cli (\d+)\.(\d+)\.(\d+)\s*$/.exec(output.trim())
+  const match = /^codex-cli (\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.]+)?\s*$/.exec(output.trim())
   if (!match) {
     return false
   }
