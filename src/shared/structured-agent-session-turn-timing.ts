@@ -10,6 +10,7 @@ import type {
   AgentJournalTurnLifecycleState
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
+import { structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatSettledTurn, NativeChatSettledTurns } from './native-chat-turn-status'
 
 export type StructuredAgentTurnTiming = {
@@ -72,76 +73,44 @@ function readTiming(
   }
 }
 
-/** One turn record, read in journal order. */
-type StructuredAgentJournalTurn = {
-  timing: StructuredAgentTurnTiming | null
-  /** The user message the host names as the turn's opener; null when it names
-   *  none (an older host, or a turn the provider opened and keyed to itself). */
-  openedBy: string | null
-}
-
+/** Every root turn record in one pass over the journal, keyed by its anchor (see
+ *  `structuredAgentTurnAnchors`: the user message that opened it, or the record itself for a turn
+ *  no message opened) and by provider turn id. Untimed rows are skipped from the anchor map unless
+ *  explicitly unverifiable (null). */
 type StructuredAgentJournalTurns = {
-  /** Timing keyed by the user message that opened each turn. */
-  byUserItem: ReadonlyMap<string, StructuredAgentTurnTiming | null>
-  byTurnId: ReadonlyMap<string, StructuredAgentJournalTurn>
+  byAnchor: ReadonlyMap<string, StructuredAgentTurnTiming | null>
+  byTurnId: ReadonlyMap<string, StructuredAgentTurnTiming | null>
 }
 
-/** Every turn record in one pass over the journal. A row can name its user
- *  message directly or by a provider key that resolves through its alias.
- *  Rows from older hosts carry no key and fall back, for timing only,
- *  to the nearest user message before them in journal order — the submission
- *  row is written ahead of dispatch, so it always precedes the provider's
- *  turn-start. Untimed rows are skipped unless explicitly unverifiable (null). */
 function readStructuredAgentJournalTurns(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = []
 ): StructuredAgentJournalTurns {
-  const itemIds = new Set(items.map((item) => item.itemId))
-  const aliases = new Map<string, string>()
-  // Codex folds a send issued mid-turn into the running turn under the SAME provider
-  // key, so the earliest submission that names a key is the prompt that opened the turn.
-  for (const submission of submissions) {
-    if (submission.providerItemId && !aliases.has(submission.providerItemId)) {
-      aliases.set(submission.providerItemId, agentJournalSubmissionKey(submission.clientMessageId))
-    }
-  }
-  const byUserItem = new Map<string, StructuredAgentTurnTiming | null>()
-  const byTurnId = new Map<string, StructuredAgentJournalTurn>()
-  let precedingUserItemId: string | null = null
+  const anchors = structuredAgentTurnAnchors(items, submissions)
+  const byAnchor = new Map<string, StructuredAgentTurnTiming | null>()
+  const byTurnId = new Map<string, StructuredAgentTurnTiming | null>()
   let precedingTurnEndedAt: number | undefined
   for (const item of items) {
-    if (item.body.kind === 'message' && item.body.role === 'user') {
-      precedingUserItemId = item.itemId
-      continue
-    }
-    const turn = readAgentJournalTurn(item.body)
-    if (!turn) {
+    const anchor = anchors.get(item.itemId)
+    const turn = anchor === undefined ? null : readAgentJournalTurn(item.body)
+    if (anchor === undefined || !turn) {
       continue
     }
     const timing = readTiming(item, precedingTurnEndedAt)
     precedingTurnEndedAt = timing?.completedAt ?? item.observedAt
-    const key = turn.userItemId
-    const named = key === undefined ? null : itemIds.has(key) ? key : (aliases.get(key) ?? null)
-    byTurnId.set(turn.turnId, {
-      timing,
-      openedBy: named === item.itemId ? null : named
-    })
-    if (!timing && turn.state !== 'unverifiable') {
-      continue
-    }
-    const userItemId = key === undefined ? precedingUserItemId : named
-    if (userItemId !== null) {
-      byUserItem.set(userItemId, timing)
+    byTurnId.set(turn.turnId, timing)
+    if (timing || turn.state === 'unverifiable') {
+      byAnchor.set(anchor, timing)
     }
   }
-  return { byUserItem, byTurnId }
+  return { byAnchor, byTurnId }
 }
 
 export function selectStructuredAgentTurnTimings(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = []
 ): ReadonlyMap<string, StructuredAgentTurnTiming | null> {
-  return readStructuredAgentJournalTurns(items, submissions).byUserItem
+  return readStructuredAgentJournalTurns(items, submissions).byAnchor
 }
 
 /** The live turn's lifecycle timing, or null when its row carries no host start
@@ -150,7 +119,7 @@ export function selectStructuredAgentRunningTurnTiming(
   items: readonly AgentJournalRenderItem[],
   turnId: string
 ): StructuredAgentTurnTiming | null {
-  return readStructuredAgentJournalTurns(items).byTurnId.get(turnId)?.timing ?? null
+  return readStructuredAgentJournalTurns(items).byTurnId.get(turnId) ?? null
 }
 
 /** The single instant every reading of a turn's elapsed time counts from: the
@@ -218,7 +187,7 @@ function settledTurnsOf(
   submissions: readonly AgentJournalSubmission[]
 ): NativeChatSettledTurns {
   const settled = new Map<string, NativeChatSettledTurn | null>()
-  for (const [userItemId, timing] of turns.byUserItem) {
+  for (const [userItemId, timing] of turns.byAnchor) {
     const workedSeconds = completedStructuredAgentTurnSeconds(timing)
     settled.set(
       userItemId,
@@ -237,8 +206,8 @@ function settledTurnsOf(
 }
 
 /** Everything a chat surface reads off the journal for its turn bars, from one
- *  pass: settled durations, the running turn's timing, and the user message that
- *  owns its bar — which a message sent while the turn runs is not. */
+ *  pass: settled durations and the running turn's timing. Which bar carries the
+ *  running clock is the turn membership's answer (`nativeChatTurnMembership`). */
 export function selectStructuredAgentTurnBars(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[],
@@ -246,13 +215,10 @@ export function selectStructuredAgentTurnBars(
 ): {
   settledTurns: NativeChatSettledTurns
   runningTiming: StructuredAgentTurnTiming | null
-  activeTurnOpenedBy: string | null
 } {
   const turns = readStructuredAgentJournalTurns(items, submissions)
-  const running = turnId === null ? undefined : turns.byTurnId.get(turnId)
   return {
     settledTurns: settledTurnsOf(turns, submissions),
-    runningTiming: running?.timing ?? null,
-    activeTurnOpenedBy: running?.openedBy ?? null
+    runningTiming: turnId === null ? null : (turns.byTurnId.get(turnId) ?? null)
   }
 }

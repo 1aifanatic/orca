@@ -3,6 +3,7 @@
 // restore's own only for a chat the last run left mid-work. Restore stays the cost it was when
 // every chat had its own file, and opens no file it does not restore.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
-import { latestStructuredAgentSessionPrompt } from '../../../shared/structured-agent-session-projection'
+import { latestStructuredAgentSessionPrompt } from '../../../shared/structured-agent-session-latest-request'
 import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import Database from '../../sqlite/sync-database'
@@ -136,13 +137,18 @@ async function seedLegacyChat(
     await journal.appendItem(
       { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 't', ordinal: 50 },
       { kind: 'tool-call', name: 'Read', input: {}, state: 'running' },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   }
   await journal.resolveDispatch(
     midWork === 'unresolved send'
       ? // Handed over, and never answered.
-        { clientMessageId: `client-${sessionId}`, fence: 1, state: 'pending' }
+        {
+          clientMessageId: `client-${sessionId}`,
+          fence: 1,
+          state: 'pending',
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
+        }
       : {
           clientMessageId: `client-${sessionId}`,
           fence: 1,
@@ -159,7 +165,7 @@ async function seedLegacyChat(
     await journal.appendItem(
       { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 't', ordinal },
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `reply ${ordinal}` }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   }
   await journal.close()
@@ -446,7 +452,7 @@ describe('startup restore of chats still in their per-chat files', () => {
     await journal.appendItem(
       { provider: 'codex', threadId: 'thread-chat-a', turnId: 't', ordinal: 9 },
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'after' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
 
     const stored = readTestJournalRows(hostDb(), 'chat-a', rows[0]!.epoch)

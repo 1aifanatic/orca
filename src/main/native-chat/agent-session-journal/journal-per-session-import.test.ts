@@ -2,6 +2,7 @@
 // that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
 // reappears after a downgrade is set aside on disk, and the chat keeps this build's history.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type * as NodeFs from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -75,7 +76,7 @@ async function historyRows(
   await journal.appendItem(
     item(1),
     { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: reply }] },
-    { fence: 1 }
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   const rows = readTestJournalRows(
     openTestJournalHostDatabase(scratch).db,
@@ -287,7 +288,7 @@ describe('importing a per-chat journal', () => {
     await other.appendItem(
       item(1),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'another chat' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const journal = await openChat()
 
@@ -445,7 +446,7 @@ describe('importing a per-chat journal', () => {
     await journal.appendItem(
       item(2),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'after the upgrade' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
     // The process exits and the database closes.
@@ -617,7 +618,7 @@ describe('importing a per-chat journal', () => {
     await founded.appendItem(
       item(1),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'FOUNDED HERE' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const foundedEpoch = founded.epoch
     await journals.closeAll()
@@ -681,7 +682,7 @@ describe('importing a per-chat journal', () => {
     await upgraded.appendItem(
       item(2),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'this build' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await journals.closeAll()
     const older = await historyRows('epoch-downgrade', 'older build, cycle 1')

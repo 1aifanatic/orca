@@ -224,6 +224,20 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
       })
     )
   }
+  // The provider going idle is what re-derives a doubted send: it can no longer be holding it.
+  const releaseUnansweredDispatches = ({ sessionId }: { sessionId: string }): void => {
+    void host
+      ?.releaseUnansweredDispatches({
+        sessionId,
+        reason: DISPATCH_DOUBT_PROVIDER_IDLE
+      })
+      .catch((error) =>
+        deps.onError?.({
+          scope: `structured-agent-session-unanswered-dispatch:${sessionId}`,
+          error
+        })
+      )
+  }
   const codex = new CodexStructuredSessionAdapter({
     resolveLaunch: createCodexStructuredLaunchResolver({
       store,
@@ -242,19 +256,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
     onChildWorkEvidence: (sessionId, evidence) =>
       host?.publishChildWorkEvidence(sessionId, evidence),
     onDispatchSettledLate,
-    onPrimaryThreadStoppedRunning: ({ sessionId }) => {
-      void host
-        ?.releaseUnansweredDispatches({
-          sessionId,
-          reason: DISPATCH_DOUBT_PROVIDER_IDLE
-        })
-        .catch((error) =>
-          deps.onError?.({
-            scope: `structured-agent-session-unanswered-dispatch:${sessionId}`,
-            error
-          })
-        )
-    },
+    onPrimaryThreadStoppedRunning: releaseUnansweredDispatches,
     onEvent: (event) => {
       if (event.type === 'ended' && 'cause' in event && event.cause === 'unexpected-exit') {
         lifecycle.deliver(event)
@@ -283,6 +285,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
     onChildWorkEvidence: (sessionId, evidence) =>
       host?.publishChildWorkEvidence(sessionId, evidence),
     onDispatchSettledLate,
+    onSessionIdle: releaseUnansweredDispatches,
     ...(deps.openClaudeConnection ? { openClaudeConnection: deps.openClaudeConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
     modelCatalog: agentModelCatalogStore

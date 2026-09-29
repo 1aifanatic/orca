@@ -6,6 +6,7 @@
 // same host the collaborators use, so the store keeps the state and this owns
 // the sequence.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { replayJournal, type JournalLoad } from './journal-open'
 import { createJournalReducerState } from './journal-reducer'
@@ -65,7 +66,9 @@ export async function restoreJournalStore(
     publishRepairEpoch: () =>
       collaborators.epochController.start('unreconcilable_prefix', host.state().highestFence),
     adopt: host.adopt,
-    appendItem: (identity, body, fence) => host.journal().appendItem(identity, body, { fence }),
+    // Repair and file-format notices are about the conversation, not any turn in it.
+    appendItem: (identity, body, fence) =>
+      host.journal().appendItem(identity, body, { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }),
     agent: host.identity.agent,
     highestFence: () => host.state().highestFence,
     malformedRows: host.malformedRows,

@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // Republishing an epoch is ONE transaction.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -116,9 +117,10 @@ describe('journal epoch replacement', () => {
   ])('discards every superseded row in the same transaction as %s', async (_name, retire) => {
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
     const peer = await journals.open({ identity: PEER, stateDirectory: root })
-    await journal.appendItem(item(1), { kind: 'status', text: 'old' }, { fence: 1 })
-    await journal.appendItem(item(2), { kind: 'status', text: 'older' }, { fence: 1 })
-    await peer.appendItem(item(1), { kind: 'status', text: 'peer' }, { fence: 1 })
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    await journal.appendItem(item(1), { kind: 'status', text: 'old' }, scope)
+    await journal.appendItem(item(2), { kind: 'status', text: 'older' }, scope)
+    await peer.appendItem(item(1), { kind: 'status', text: 'peer' }, scope)
     const before = journal.epoch
 
     await retire(journal)

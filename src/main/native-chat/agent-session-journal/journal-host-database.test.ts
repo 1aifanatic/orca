@@ -1,6 +1,7 @@
 // The one connection every chat's writes share: its transactions, its busy handling, and the order
 // in which it closes at quit.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -103,7 +104,10 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
     await new Promise<void>((resolve) => holder.stdout.once('data', () => resolve()))
 
     await expect(
-      journal.appendItem(item(1), text('after the wait'), { fence: 1 })
+      journal.appendItem(item(1), text('after the wait'), {
+        fence: 1,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
     ).resolves.toBeDefined()
     expect(await exited).toBe(0)
   })
@@ -121,9 +125,16 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
       throw busy
     })
 
-    await expect(journal.appendItem(item(1), text('refused'), { fence: 1 })).rejects.toBe(busy)
+    await expect(
+      journal.appendItem(item(1), text('refused'), {
+        fence: 1,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
+    ).rejects.toBe(busy)
     vi.mocked(database.db.exec).mockImplementation(exec)
-    await expect(journal.appendItem(item(2), text('next'), { fence: 1 })).resolves.toBeDefined()
+    await expect(
+      journal.appendItem(item(2), text('next'), { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    ).resolves.toBeDefined()
     expect(journal.snapshot().items.map((entry) => entry.body)).toEqual([text('next')])
   })
 
@@ -150,7 +161,10 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
     expect(journal.submissions()).toEqual([])
     expect(rows()).toEqual(rowsBefore)
     await expect(
-      other.appendItem(item(1), text('another chat'), { fence: 1 })
+      other.appendItem(item(1), text('another chat'), {
+        fence: 1,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
     ).resolves.toBeDefined()
   })
 
@@ -180,7 +194,12 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
       )
     ).toThrow('FOREIGN KEY constraint failed')
     expect(connection.isTransaction).toBe(true)
-    await expect(other.appendItem(item(1), text('refused'), { fence: 1 })).rejects.toMatchObject({
+    await expect(
+      other.appendItem(item(1), text('refused'), {
+        fence: 1,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
+    ).rejects.toMatchObject({
       refusal: {
         code: 'agent_session_journal_unreadable',
         details: { reason: 'journalUnavailable' }
@@ -192,7 +211,9 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
     stopFailing()
     // Restored with the ROLLBACK: no later commit runs at the copy's unsynced level.
     expect(Number(connection.pragma('synchronous', { simple: true }))).toBe(2)
-    await expect(other.appendItem(item(1), text('served'), { fence: 1 })).resolves.toBeDefined()
+    await expect(
+      other.appendItem(item(1), text('served'), { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    ).resolves.toBeDefined()
     expect(readTestJournalRows(connection, OTHER.sessionId, other.epoch)).not.toHaveLength(0)
   })
 
@@ -216,7 +237,10 @@ describe('quit', () => {
         flushAllStreamedEvents: async () => {
           // A child's last row, delivered while quit is draining its sink.
           await new Promise<void>((resolve) => setTimeout(resolve, 10))
-          await journal.appendItem(item(1), text('written during quit'), { fence: 1 })
+          await journal.appendItem(item(1), text('written during quit'), {
+            fence: 1,
+            turnScope: AGENT_JOURNAL_THREAD_SCOPE
+          })
         }
       } as never,
       adapter: { closeAll: async () => undefined },

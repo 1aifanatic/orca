@@ -76,7 +76,7 @@ export function MobileNativeChatOverlay({
         turnIndicator={controller.nativeChatTurnIndicator}
         workingStartedAt={controller.nativeChatWorkingStartedAt}
         settledTurns={controller.nativeChatSettledTurns}
-        activeTurnOpenedBy={controller.nativeChatActiveTurnOpenedBy}
+        turnJournal={controller.nativeChatTurnJournal}
         streaming={streaming}
         onStop={controller.handleNativeChatStop}
         ask={controller.nativeChatAsk}
