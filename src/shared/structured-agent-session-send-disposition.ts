@@ -236,8 +236,7 @@ export function disposeStructuredAgentSessionSendResult(
     return {
       entries: dropEntry(input),
       error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   const submission = result.value.submission

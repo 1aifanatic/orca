@@ -4,6 +4,7 @@
 // replay-preference rule for a refused draft.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -42,8 +43,10 @@ const settleRejected: QueuedMessageTestRig['settleRejected'] = (...args) =>
 describe('the one queue gate', () => {
   /** A /compact whose request failed but whose result arrives later: the record
    *  holds `phase: 'prepared'` with no journal commit until the late result. */
-  async function compactWithLateResult(): Promise<(result: { error?: string }) => Promise<void>> {
-    let late: ((result: { error?: string }) => Promise<void>) | undefined
+  async function compactWithLateResult(): Promise<
+    (result: StructuredSessionCompactionResult) => Promise<void>
+  > {
+    let late: ((result: StructuredSessionCompactionResult) => Promise<void>) | undefined
     compact.mockImplementationOnce(async (input) => {
       late = input.onLateResult
       throw new Error('compact request timed out')
@@ -77,7 +80,7 @@ describe('the one queue gate', () => {
     // Nothing drains while the command is in doubt.
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(await submission(draftId)).toBeUndefined()
-    await late({})
+    await late({ outcome: 'compacted' })
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
     expect(await drafts()).toHaveLength(0)
   })
@@ -93,7 +96,7 @@ describe('the one queue gate', () => {
       ok: false,
       refusal: { message: expect.stringContaining('conversation operation') }
     })
-    await late({})
+    await late({ outcome: 'compacted' })
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
 
