@@ -100,6 +100,48 @@ describe('merged selectable prose', () => {
     expect(paragraphOf('After code.')).toEqual([undefined, 0])
   })
 
+  it('scales prose and list text while headings and markers keep their own style', async () => {
+    const { MobileMarkdown } = await import('./MobileMarkdown')
+    act(() => {
+      renderer = create(
+        createElement(MobileMarkdown, {
+          content: '## Plan\nBody text\n1. step',
+          rangeSelectable: true,
+          // Native chat's scale at the default font size.
+          textScale: 1.25
+        })
+      )
+    })
+    const styleOf = (text: string) => {
+      const { fontSize, lineHeight, fontWeight, fontFamily, color } = runs(renderer!).find((node) =>
+        node.props.text.includes(text)
+      )!.props.style
+      return { fontSize, lineHeight, fontWeight, fontFamily, color }
+    }
+    expect(styleOf('Plan')).toEqual({
+      fontSize: 15,
+      lineHeight: 21,
+      fontWeight: 'bold',
+      fontFamily: undefined,
+      color: '#e0e0e0'
+    })
+    expect(styleOf('Body')).toEqual({
+      fontSize: 13 * 1.25,
+      lineHeight: 19 * 1.25,
+      fontWeight: 'normal',
+      fontFamily: undefined,
+      color: '#e0e0e0'
+    })
+    expect(styleOf('step')).toEqual({
+      fontSize: 14 * 1.25,
+      lineHeight: 20 * 1.25,
+      fontWeight: 'normal',
+      fontFamily: undefined,
+      color: '#e0e0e0'
+    })
+    expect(styleOf('1.')).toMatchObject({ fontSize: 13, fontFamily: 'monospace', color: '#a1a1a1' })
+  })
+
   it('keeps inline links tappable inside merged prose', async () => {
     const { MobileMarkdown } = await import('./MobileMarkdown')
     const onOpenFile = vi.fn()
