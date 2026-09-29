@@ -52,6 +52,13 @@ const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRes
 const PROVIDER_REFUSAL = agentSessionFailureFact('providerRejected', {
   detail: { text: 'Claude refused this payload', audience: 'person' }
 })
+/** A provider refusal as a settled rejection stores it: its sentence and typed fact. */
+function refusal(text: string) {
+  return agentSessionFailureWords(
+    agentSessionFailureFact('providerRejected', { detail: { text, audience: 'person' } }),
+    { surface: 'rejection' }
+  )
+}
 
 async function open(): Promise<AgentSessionJournal> {
   const journal = await journals.open({
@@ -227,13 +234,13 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'Claude refused this payload',
+      ...refusal('Claude refused this payload'),
       rejection: PROVIDER_REFUSAL,
       fence: 0
     })
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
-    expect(row?.returnedReason).toBe('Claude refused this payload')
+    expect(row?.returnedReason).toBe(refusal('Claude refused this payload').reason)
     expect(row?.returnedRejection).toEqual(PROVIDER_REFUSAL)
   })
 
@@ -250,7 +257,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'late duplicate',
+      ...refusal('late duplicate'),
       fence: 0
     })
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
@@ -303,7 +310,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'first refusal',
+      ...refusal('first refusal'),
       rejection: PROVIDER_REFUSAL,
       fence: 0
     })
@@ -318,7 +325,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'duplicate of first refusal',
+      ...refusal('duplicate of first refusal'),
       fence: 0
     })
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
@@ -326,14 +333,15 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'resend-1',
       state: 'rejected',
-      reason: 'second refusal',
+      ...refusal('second refusal'),
       fence: 0
     })
     const returned = journal.queuedMessages.get('draft-1')
     expect(returned?.state).toBe('returned')
-    expect(returned?.returnedReason).toBe('second refusal')
+    expect(returned?.returnedReason).toBe(refusal('second refusal').reason)
     // The first refusal's fact does not outlive it: the pair is the second submission's.
-    expect(returned?.returnedRejection).toBeNull()
+    expect(returned?.returnedRejection).toEqual(refusal('second refusal').rejection)
+    expect(returned?.returnedRejection).not.toEqual(PROVIDER_REFUSAL)
   })
 
   it('a rejection never revives a withdrawn draft', async () => {
@@ -343,7 +351,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'refused',
+      ...refusal('refused'),
       fence: 0
     })
     await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
@@ -351,7 +359,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'again',
+      ...refusal('again'),
       fence: 0
     })
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('withdrawn')
@@ -364,7 +372,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'stored refusal',
+      ...refusal('stored refusal'),
       fence: 0
     })
     await journal.replaceEpochItems('handle_forked', 0, [])
@@ -372,7 +380,7 @@ describe('returned transition (D1/N4)', () => {
     journal = await open()
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
-    expect(row?.returnedReason).toBe('stored refusal')
+    expect(row?.returnedReason).toBe(refusal('stored refusal').reason)
   })
 })
 
@@ -385,7 +393,7 @@ describe('withdraw', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'refused',
+      ...refusal('refused'),
       fence: 0
     })
     const withdrawn = await journal.queuedMessages.withdraw({
@@ -447,7 +455,7 @@ describe('open-time repair and retention', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'refused while downgraded',
+      ...refusal('refused while downgraded'),
       rejection: PROVIDER_REFUSAL,
       fence: 0
     })
@@ -462,7 +470,7 @@ describe('open-time repair and retention', () => {
     journal = await open()
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
-    expect(row?.returnedReason).toBe('refused while downgraded')
+    expect(row?.returnedReason).toBe(refusal('refused while downgraded').reason)
     expect(row?.returnedRejection).toEqual(PROVIDER_REFUSAL)
   })
 
@@ -522,7 +530,7 @@ describe('open-time repair and retention', () => {
     await journal.resolveDispatch({
       clientMessageId: 'returned-1',
       state: 'rejected',
-      reason: 'refused',
+      ...refusal('refused'),
       fence: 0
     })
     await journal.close()
@@ -599,7 +607,7 @@ describe('holds', () => {
     await journal.resolveDispatch({
       clientMessageId: 'draft-1',
       state: 'rejected',
-      reason: 'refused',
+      ...refusal('refused'),
       fence: 0
     })
     await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })

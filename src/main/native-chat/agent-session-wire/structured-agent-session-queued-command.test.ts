@@ -78,7 +78,7 @@ describe('a /compact in flight', () => {
       () =>
         new Promise<Awaited<ReturnType<NonNullable<StructuredAgentSessionAdapter['compact']>>>>(
           (resolve) => {
-            finish = () => resolve({})
+            finish = () => resolve({ outcome: 'compacted' })
           }
         )
     )
