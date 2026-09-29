@@ -119,6 +119,23 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
         recordedPty.paneKey === this.makeRuntimePaneKey(leaf) &&
         !incomingPtyIds.has(existing.ptyId) &&
         this.getPtyLivenessVerdict(existing.ptyId)?.status !== 'exited'
+      if (leaf.worktreeId.includes('live-mount') && leaf.ptyId === null) {
+        console.log(
+          '[mount-host]',
+          JSON.stringify({
+            leaf,
+            existingPtyId: existing?.ptyId,
+            recorded: recordedPty && {
+              ptyId: recordedPty.ptyId,
+              owned: recordedPty.runtimeSessionOwned,
+              worktreeId: recordedPty.worktreeId,
+              tabId: recordedPty.tabId,
+              paneKey: recordedPty.paneKey
+            },
+            preserveRuntimeOwnedPty
+          })
+        )
+      }
       const ptyId =
         (preserveLivePtysDuringReload || preserveRuntimeOwnedPty) &&
         leaf.ptyId === null &&
