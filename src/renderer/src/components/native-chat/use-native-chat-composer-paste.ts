@@ -7,6 +7,11 @@ import type { AgentType } from '../../../../shared/agent-status-types'
 import { NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES } from './native-chat-composer-target'
 import { nativeChatPasteUnavailableNotice } from '@/lib/native-chat-paste-request'
 import {
+  clipboardEventImageFile,
+  clipboardEventPromptText,
+  type ClipboardEventLike
+} from './native-chat-clipboard-payload'
+import {
   nativeChatLocalAttachmentUnsupportedNotice,
   nativeChatWorktreeNotReadyNotice,
   type NativeChatAttachmentOwner
@@ -29,23 +34,6 @@ export type UseNativeChatComposerPasteArgs = {
   insertTypedText: (text: string) => boolean
   setCaret: (caret: number) => void
   setNotice: (notice: string | null) => void
-}
-
-/** Minimal shape shared by React's synthetic ClipboardEvent and the native DOM
- *  ClipboardEvent — the pane-level listener delivers the native one. */
-type ClipboardEventLike = {
-  clipboardData: DataTransfer | null
-  preventDefault: () => void
-  defaultPrevented: boolean
-}
-
-function clipboardEventImageFile(event: ClipboardEventLike): File | null {
-  const data = event.clipboardData
-  if (!data) {
-    return null
-  }
-  const item = Array.from(data.items).find((candidate) => candidate.type.startsWith('image/'))
-  return item?.getAsFile() ?? null
 }
 
 /** Owners whose attachment path is a file this client can write right now. */
@@ -181,7 +169,7 @@ export function useNativeChatComposerPaste({
         return
       }
       const imageFile = clipboardEventImageFile(event)
-      const text = event.clipboardData?.getData('text/plain')
+      const text = clipboardEventPromptText(event, imageFile !== null)
       if (!imageFile && !text) {
         return
       }

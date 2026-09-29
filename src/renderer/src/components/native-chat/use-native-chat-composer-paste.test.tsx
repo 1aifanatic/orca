@@ -695,3 +695,56 @@ describe('pastes the composer cannot take', () => {
     expect(setNotice).toHaveBeenLastCalledWith(REFUSAL)
   })
 })
+
+describe('file-manager copies', () => {
+  function fileCopyEvent(files: File[], text: string): ClipboardEvent {
+    const data = new DataTransfer()
+    for (const file of files) {
+      data.items.add(file)
+    }
+    data.setData('text/plain', text)
+    return new ClipboardEvent('paste', { clipboardData: data, cancelable: true })
+  }
+  const png = (name: string): File => new File(['image'], name, { type: 'image/png' })
+
+  it.each([
+    ['a single file', [png('shot.png')], 'shot.png'],
+    [
+      'several files',
+      [png('a.png'), new File(['pdf'], 'b.pdf', { type: 'application/pdf' })],
+      'a.png\nb.pdf'
+    ],
+    ['a file label with a trailing newline', [png('shot.png')], 'shot.png\r\n']
+  ])('attaches %s without inserting its name', async (_label, files, text) => {
+    mocks.saveClipboardImageAsTempFile.mockResolvedValue('/tmp/shot.png')
+    const insertTypedText = vi.fn(() => true)
+    const store = createChipStore()
+    const probe = await renderProbe({
+      resolveAttachmentOwner: () => ({ kind: 'local' }),
+      insertTypedText,
+      store
+    })
+    await act(async () => probe.latest().handlePaste(fileCopyEvent(files, text)))
+    expect(insertTypedText).not.toHaveBeenCalled()
+    expect(store.chips).toEqual([
+      expect.objectContaining({ path: '/tmp/shot.png', pending: false })
+    ])
+  })
+
+  it.each([
+    ['rich text with an image rendition', [png('image.png')], 'Quarterly numbers'],
+    [
+      'a non-image file, which is not attached',
+      [new File(['pdf'], 'b.pdf', { type: 'application/pdf' })],
+      'b.pdf'
+    ]
+  ])('still inserts the text of %s', async (_label, files, text) => {
+    const insertTypedText = vi.fn(() => true)
+    const probe = await renderProbe({
+      resolveAttachmentOwner: () => ({ kind: 'local' }),
+      insertTypedText
+    })
+    await act(async () => probe.latest().handlePaste(fileCopyEvent(files, text)))
+    expect(insertTypedText).toHaveBeenCalledExactlyOnceWith(text)
+  })
+})
