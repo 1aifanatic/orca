@@ -107,8 +107,9 @@ ingests the summary into the hook server as a status row:
 
 Sessions with no request (`status === null`) produce no row. A request is a
 turn record, an assistant message, a user message the provider journaled itself
-(history, an older host), an accepted or unanswered send, a send a crash or a
-dead agent left in doubt (drawn as sent; it adds no verdict of its own), or a
+(history, an older host), an accepted or unanswered send, a send left in doubt
+by a crash, a dead agent, its turn's end, a Stop or a start that threw (drawn as
+sent; it adds no verdict of its own), or a
 send the agent or its start refused; a send that was withdrawn, or refused
 because a restart or a close came before it was handed over, fails nobody and
 makes nothing listable.

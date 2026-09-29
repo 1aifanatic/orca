@@ -19,11 +19,17 @@ export class JournalItemAppender {
   append(
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
-    options: JournalItemAppendOptions
+    options: JournalItemAppendOptions,
+    /** Runs inside the serialized build, before the row is applied. */
+    beforeBuild?: () => void
   ): Promise<JournalAppendResult> {
     const itemId = agentJournalItemKey(identity)
+    const build = journalItemRowBuilder(this.deps.state, identity, body, options)
     return this.deps
-      .enqueue(journalItemRowBuilder(this.deps.state, identity, body, options))
+      .enqueue((seq, ts) => {
+        beforeBuild?.()
+        return build(seq, ts)
+      })
       .then((row) => ({
         cursor: { epoch: row.epoch, sequence: row.seq },
         itemId,

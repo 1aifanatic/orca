@@ -50,6 +50,8 @@ let host: StructuredAgentSessionHost
 let fence: number
 let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
+/** Codex answers the next `turn/start` without naming a turn, so the send binds to none. */
+let answerWithoutTurn: boolean
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -111,6 +113,7 @@ function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessage
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-turn-end-'))
   answers = 0
+  answerWithoutTurn = false
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -132,7 +135,8 @@ beforeEach(async () => {
         }
         if (method === 'turn/start') {
           answers += 1
-          return turns.routes['turn/start']()
+          const answer = turns.routes['turn/start']()
+          return answerWithoutTurn ? {} : answer
         }
         if (method === 'turn/interrupt') {
           return turns.routes['turn/interrupt'](params)
@@ -212,6 +216,57 @@ describe('a Codex send its turn ended without taking it', () => {
     const after = await settled()
     expect(verdictOf(after.submissions, opening)).toBe('accepted')
     expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
+    expect(after.owesWork).toBe(false)
+  })
+})
+
+describe('a Codex send its turn ended without answering', () => {
+  it('settles in doubt when the turn completes without echoing it', async () => {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    const followUp = await send('and check the tests')
+    await vi.waitFor(() => expect(answers).toBe(2))
+
+    turns.end('completed')
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, followUp)).not.toBe('pending')
+    )
+    const after = await settled()
+    expect(after.submissions.find((entry) => entry.clientMessageId === followUp)).toMatchObject({
+      dispatchState: 'unknown',
+      reason: 'turn_settled_before_acknowledgement',
+      recovered: true
+    })
+    expect(after.owesWork).toBe(false)
+  })
+
+  // Codex follows every error it will not retry with its turn's failed completion.
+  it('settles in doubt after an error Codex will not retry ends its turn', async () => {
+    answerWithoutTurn = true
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+
+    handlers?.onNotification?.('error', {
+      threadId: THREAD,
+      turnId: turns.turnId,
+      willRetry: false,
+      error: { message: 'Selected model is at capacity. Please try a different model.' }
+    })
+    turns.end('failed', 'Selected model is at capacity. Please try a different model.')
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).not.toBe('pending')
+    )
+    const after = await settled()
+    expect(after.submissions[0]).toMatchObject({
+      dispatchState: 'unknown',
+      reason: 'turn_settled_before_acknowledgement',
+      recovered: true
+    })
     expect(after.owesWork).toBe(false)
   })
 })

@@ -397,6 +397,92 @@ describe('a session with a turn in flight', () => {
     clock += IDLE_MS
     await waitForEviction()
   })
+
+  // The provider ending its turn ends what a send handed to it was owed; a late echo still lands.
+  it('settles an unanswered send in doubt when its turn ends, and is then stopped', async () => {
+    await attach()
+    emitTurnLifecycle('running', 1)
+    await host.flushStreamedEvents(SESSION)
+    await sendPending('steered, never echoed')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    emitTurnLifecycle('completed', 2)
+    await host.flushStreamedEvents(SESSION)
+    const [sent] = (await host.journalSnapshot(SESSION)).submissions
+    expect(sent).toMatchObject({
+      dispatchState: 'unknown',
+      reason: 'turn_settled_before_acknowledgement',
+      recovered: true
+    })
+    const items = (await host.journalSnapshot(SESSION)).items
+    expect(items.some((item) => item.body.kind === 'status' && item.body.failure)).toBe(false)
+
+    await host.settleLateDispatch({
+      sessionId: SESSION,
+      clientMessageId: sent!.clientMessageId,
+      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 3 }
+    })
+    expect((await host.journalSnapshot(SESSION)).submissions[0]?.dispatchState).toBe('accepted')
+    clock += IDLE_MS
+    await waitForEviction()
+  })
+
+  it('keeps an unanswered send owed when only an earlier turn is revised', async () => {
+    await attach()
+    emitTurnLifecycle('running', 1)
+    emitTurnLifecycle('completed', 2)
+    sink?.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 3 },
+      { kind: 'turn', turnId: 'turn-2', state: 'running' }
+    )
+    await host.flushStreamedEvents(SESSION)
+    await sendPending('steered into turn-2')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    emitTurnLifecycle('completed', 2)
+    await host.flushStreamedEvents(SESSION)
+
+    expect((await host.journalSnapshot(SESSION)).submissions[0]?.dispatchState).toBe('pending')
+  })
+
+  // Stop is never gated on what the provider answers: it ends whatever a send was still owed.
+  it('settles an unanswered send in doubt on Stop, and the chat reads idle', async () => {
+    await attach()
+    await sendPending('admitted, never echoed')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    const stopped = await host.cancel(CALLER, {
+      envelope: envelope('agentSession.cancel', { turnId: 'turn-1' }),
+      turnId: 'turn-1'
+    })
+
+    expect(stopped).toMatchObject({ ok: true })
+    const snapshot = await host.journalSnapshot(SESSION)
+    expect(snapshot.submissions[0]).toMatchObject({
+      dispatchState: 'unknown',
+      reason: 'stopped_before_acknowledgement',
+      recovered: true
+    })
+    expect(hasUnansweredStructuredAgentSessionDispatch(snapshot.submissions)).toBe(false)
+    clock += IDLE_MS
+    await waitForEviction()
+  })
+
+  it('still stops when settling the send fails', async () => {
+    await attach()
+    await sendPending('admitted, never echoed')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+    const journal = host['sessions'].get(SESSION)!.journal
+    vi.spyOn(journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(new Error('disk full'))
+
+    const stopped = await host.cancel(CALLER, {
+      envelope: envelope('agentSession.cancel', { turnId: 'turn-1' }),
+      turnId: 'turn-1'
+    })
+
+    expect(stopped).toMatchObject({ ok: true })
+    expect(hostErrors).toEqual([expect.objectContaining({ message: 'disk full' })])
+  })
 })
 
 describe('startup', () => {
@@ -706,14 +792,15 @@ describe('an unexpected provider exit', () => {
     expect(dispatch).toHaveBeenCalledOnce()
     expect(hostErrors).toContainEqual(expect.objectContaining({ message: 'journal failed' }))
     const history = await host.history({ sessionId: SESSION, direction: 'tail' })
-    expect(history.ok && history.page.submissions[0]?.dispatchState).toBe('unknown')
-    // A send whose delivery outcome is unknown IS work in progress, so the reassuring outcome is
-    // written — its failure fact beside it, and never the old bare `Provider exited: <reason>` row.
+    expect(history.ok && history.page.submissions[0]).toMatchObject({
+      dispatchState: 'unknown',
+      recovered: true
+    })
+    // The start that threw settled its send in doubt, so no response was in progress to report.
     const statuses = history.ok
       ? history.page.items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
       : []
-    expect(statuses).toEqual([UNEXPECTED_PROVIDER_EXIT_OUTCOME])
-    expect(statuses.some((text) => text.startsWith('Provider exited'))).toBe(false)
+    expect(statuses).toEqual([])
 
     dispatch.mockResolvedValueOnce({
       state: 'accepted',

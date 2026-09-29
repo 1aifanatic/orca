@@ -142,8 +142,8 @@ export class StructuredAgentSessionIdleSweep {
 
   /** Work the running child still owes. Scoped to the child: with none, nothing here can pin the
    *  handle, and a leftover prompt or turn row is only history. A send the child has neither
-   *  answered nor refused — pending, or a live `unknown` — is owed too: stopping the child would
-   *  retire it in doubt. The provider's answer, refusal or idle report settles it, as does an exit. */
+   *  answered nor refused is owed too: stopping the child would retire it in doubt. Its answer or
+   *  refusal settles it, as do its turn's end, a Stop, a start that threw and an exit. */
   private owesWork(
     sessionId: string,
     session: StructuredAgentSessionHostSession,

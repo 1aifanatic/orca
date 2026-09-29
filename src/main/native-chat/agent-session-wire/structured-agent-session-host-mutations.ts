@@ -26,7 +26,9 @@ import {
   type AgentJournalDispatchRejection
 } from '../../../shared/agent-session-failure-words'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { DISPATCH_DOUBT_STOPPED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
@@ -182,13 +184,31 @@ export function cancelStructuredAgentSessionTurn(
           await context.stopAgent(ctx.sessionId)
           return { ok: true, value: { turnId: params.turnId, cancelled: true } }
         }
-        return child
-          ? plan.run(ctx)
-          : { ok: true, value: { turnId: params.turnId, cancelled: withdrawn.length > 0 } }
+        try {
+          return child
+            ? await plan.run(ctx)
+            : { ok: true, value: { turnId: params.turnId, cancelled: withdrawn.length > 0 } }
+        } finally {
+          await settleSendsLeftByStop(context, ctx)
+        }
       }
     },
     openForWrite(context, params.envelope)
   )
+}
+
+/** After the interrupt, so the provider's own answer for a send it withdrew lands first. Nothing
+ *  is owed a handed-over send once the user stopped: it settles in doubt, drawn as sent, and a late
+ *  answer from the provider still replaces that. A failure here is reported, never Stop's. */
+async function settleSendsLeftByStop(
+  context: StructuredAgentSessionMutationContext,
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'fence' | 'journal'>
+): Promise<void> {
+  try {
+    await ctx.journal.markPendingSubmissionsUnknown(ctx.fence, DISPATCH_DOUBT_STOPPED)
+  } catch (error) {
+    context.deps.onEventSinkError?.({ sessionId: ctx.sessionId, error })
+  }
 }
 
 export function respondToStructuredAgentSessionPrompt(

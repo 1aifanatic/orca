@@ -15,7 +15,8 @@ export class JournalLifecycleBatchAppender {
     }
   ) {}
 
-  append(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
+  /** `beforeBuild` runs inside the serialized build, before the row is applied. */
+  append(input: JournalLifecycleBatchInput, beforeBuild?: () => void): Promise<AgentJournalCursor> {
     if (this.wasApplied(input.settlementId)) {
       return Promise.resolve(this.deps.cursor())
     }
@@ -30,6 +31,7 @@ export class JournalLifecycleBatchAppender {
         if (this.wasApplied(input.settlementId)) {
           throw SETTLEMENT_ALREADY_APPLIED
         }
+        beforeBuild?.()
         return build(seq, ts)
       })
       .then((row) => ({ epoch: row.epoch, sequence: row.seq }))

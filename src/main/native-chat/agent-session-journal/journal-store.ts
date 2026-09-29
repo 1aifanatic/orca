@@ -24,6 +24,7 @@ import {
 import { agentSessionJournalCloseRetries } from './journal-close-retry'
 import { openJournalDatabase, type OpenJournalDatabase } from './journal-database'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
+import { journalTurnEndDispatchSettlement } from './journal-turn-end-dispatch-settlement'
 import { readJournalSince } from './journal-cursor'
 import { readJournalRowsAfterCursor, type JournalLoad } from './journal-open'
 import { journalDatabaseFile } from './journal-paths'
@@ -275,7 +276,8 @@ export class AgentSessionJournal {
     body: AgentJournalItemBody,
     options: JournalItemAppendOptions = { fence: 0 }
   ): Promise<JournalAppendResult> {
-    return this.itemAppender.append(identity, body, options)
+    const turnEnd = journalTurnEndDispatchSettlement(this, () => this.state, [body], options)
+    return turnEnd.after(this.itemAppender.append(identity, body, options, turnEnd.capture))
   }
 
   appendTombstone(
@@ -289,7 +291,9 @@ export class AgentSessionJournal {
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
-    return this.lifecycleBatchAppender.append(input)
+    const bodies = input.mutations.flatMap((entry) => (entry.kind === 'item' ? [entry.body] : []))
+    const turnEnd = journalTurnEndDispatchSettlement(this, () => this.state, bodies, input)
+    return turnEnd.after(this.lifecycleBatchAppender.append(input, turnEnd.capture))
   }
 
   /**

@@ -26,9 +26,9 @@ export function isUnansweredStructuredAgentSessionDispatch(
  * on that echo to call a session working leaves the whole gap reading idle in the chat and in
  * every session list, so the send itself is the evidence.
  *
- * A live `unknown` still counts because an ambiguous adapter reply does not prove the provider
- * stopped. A recovered `unknown` does not — it outlived the host generation that sent it, so
- * there is nothing still running to report.
+ * A live `unknown` (only an older host writes one) still counts: an ambiguous adapter reply does
+ * not prove the provider stopped. A recovered `unknown` does not — the provider's turn end, a
+ * Stop, a start that threw or the end of the host generation left nothing owing it an answer.
  */
 export function hasUnansweredStructuredAgentSessionDispatch(
   submissions: readonly AgentJournalSubmission[],
