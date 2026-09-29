@@ -88,7 +88,7 @@ describe('getRelayShellLaunchConfig', () => {
     rmSync(homeDir, { recursive: true, force: true })
   })
 
-  it('installs the Codex version gate for a login fish', () => {
+  it('installs the Codex launch policy for a login fish', () => {
     const config = getRelayShellLaunchConfig(
       '/usr/bin/fish',
       { ORCA_CODEX_LAUNCH_POLICY: '1' },
@@ -107,7 +107,7 @@ describe('getRelayShellLaunchConfig', () => {
     },
     { shell: '/usr/bin/pwsh', platform: 'linux' as const, leading: ['-l', '-NoLogo'] }
   ])(
-    'installs the encoded Codex version gate for $shell on $platform',
+    'installs the encoded Codex launch policy for $shell on $platform',
     ({ shell, platform, leading }) => {
       const config = getRelayShellLaunchConfig(shell, { ORCA_CODEX_LAUNCH_POLICY: '1' }, platform)
       expect(config.args.slice(0, leading.length)).toEqual(leading)

@@ -516,20 +516,6 @@ describe('Codex shell launch preflight command', () => {
     ).toBeNull()
   })
 
-  it('enables the launch policy without consulting hooks or the selected Codex home', () => {
-    const { userDataPath, resourcesPath } = makeCliRoot()
-    const launcher = join(resourcesPath, 'bin', 'orca')
-    writeExecutable(launcher, '#!/bin/sh\nexit 0\n')
-    expect(
-      resolveCodexShellLaunchPreflightCommand({
-        isPackaged: true,
-        userDataPath,
-        resourcesPath,
-        platform: 'darwin'
-      })
-    ).toBe(launcher)
-  })
-
   it.each([{ isWsl: true, isPackaged: false }])(
     'does not enable an unsupported preflight for %o',
     (options) => {

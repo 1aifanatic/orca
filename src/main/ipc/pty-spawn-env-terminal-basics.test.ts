@@ -451,7 +451,7 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).not.toBe('orca')
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT.startsWith('/tmp/hijack-scratch')).toBe(false)
     })
-    it('keeps the capability gate when Codex hooks are disabled', async () => {
+    it('still carries the hook-prep launcher when Codex hooks are disabled', async () => {
       const env = await withBundledCli(() =>
         spawnAndGetEnv(
           undefined,
