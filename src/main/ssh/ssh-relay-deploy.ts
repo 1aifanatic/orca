@@ -50,7 +50,11 @@ import {
   RELAY_DEPLOY_TIMEOUT_MS
 } from './ssh-relay-deploy-timing'
 import { createSshOperationAbortError, shellEscape } from './ssh-connection-utils'
-import { commandWithNodePath, readRemoteHomeCommand } from './ssh-remote-commands'
+import {
+  commandInRemoteDirectory,
+  commandWithNodePath,
+  readRemoteHomeCommand
+} from './ssh-remote-commands'
 import {
   cleanupOwnedRelayUploadStageCommand,
   parseReservedRelayUploadStage,
@@ -1501,9 +1505,8 @@ function windowsRelayLaunchCommand(
     errFile,
     ...(ripgrepPath ? ['--ripgrep-path', ripgrepPath] : [])
   ]
-  return commandWithNodePath(
+  return commandInRemoteDirectory(
     hostPlatform,
-    nodePath,
     remoteDir,
     `& ${powerShellLiteral(nodePath)} ${args.map(powerShellLiteral).join(' ')}; if ($LASTEXITCODE -ne 0) { throw "Bun detached launch failed with exit $LASTEXITCODE" }`
   )
