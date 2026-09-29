@@ -60,8 +60,8 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
 
 function configureJournalPragmas(db: Database.Database, stored: number): void {
   if (stored === 0) {
-    // Only takes on an empty file, and only before WAL: it is what lets freed pages go back in
-    // bounded steps rather than a full VACUUM, which could never be switched on later.
+    // Only takes on an empty file, and only before WAL, so it is set now: nothing reclaims pages
+    // yet, but a later pass can free them in bounded steps rather than a full VACUUM.
     db.pragma('auto_vacuum = INCREMENTAL')
   }
   db.pragma('journal_mode = WAL')
