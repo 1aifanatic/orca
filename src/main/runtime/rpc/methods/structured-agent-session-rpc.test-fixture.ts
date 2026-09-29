@@ -98,6 +98,7 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
       [
         STATUS_SESSION,
         {
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only these five members of its journal.
           journal: {
             isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
