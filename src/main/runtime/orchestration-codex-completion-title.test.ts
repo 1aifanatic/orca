@@ -104,6 +104,30 @@ describe('Codex completion title mailbox delivery', () => {
     }
   )
 
+  it('recovers a completed turn from the cached foreground read without a fresh scan', async () => {
+    vi.useFakeTimers()
+    const { db, runtime, write, run, getForegroundProcess, completeWithNativeTitles } =
+      completionFixture()
+    const confirmForegroundProcess = vi.fn(async () => 'zsh')
+    runtime.setPtyController({
+      write,
+      writeWithSettlement: settledWriteStub(write),
+      kill: vi.fn(),
+      getForegroundProcess,
+      confirmForegroundProcess
+    })
+    await runtime.listTerminals()
+    insertDirectRunMessage(db, run.id, 'Worker progress')
+    completeWithNativeTitles()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(write.mock.calls.map(([, data]) => data)).toEqual([
+      expect.stringContaining('You have 1 orchestration message'),
+      '\r'
+    ])
+    expect(confirmForegroundProcess).not.toHaveBeenCalled()
+    db.close()
+  })
+
   it.each([
     { name: 'shell', process: 'zsh' },
     { name: 'unverifiable foreground', process: null },

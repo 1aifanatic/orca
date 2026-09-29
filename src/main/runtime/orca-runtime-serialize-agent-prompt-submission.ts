@@ -68,9 +68,10 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
 
   protected readPtyForegroundProcessFromController(
     ptyId: string,
-    afterTitleObservation = 0
+    afterTitleObservation = 0,
+    fresh = true
   ): Promise<PtyForegroundProcessRead> | null {
-    return this.ptyForegroundAgent.confirm(ptyId, afterTitleObservation)
+    return this.ptyForegroundAgent.confirm(ptyId, afterTitleObservation, fresh)
   }
 
   protected confirmPtyAgentExit(
@@ -102,9 +103,11 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       lifecycleGeneration: generation,
       titleObservedAt
     }
+    // Why cached: the per-turn hook recovery only restores `idle`; it never certifies an exit.
     const foregroundRead = this.readPtyForegroundProcessFromController(
       ptyId,
-      pty?.lastOscTitleAt ?? 0
+      pty?.lastOscTitleAt ?? 0,
+      !recoverCompletedHook
     )
     // Why: no host to ask now; the next contact with it re-reads once.
     const awaitHostContact = (): void => {

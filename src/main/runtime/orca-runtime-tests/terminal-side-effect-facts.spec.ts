@@ -414,18 +414,17 @@ describe('terminal side-effect fact channel', () => {
     runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
     batches.length = 0
 
-    const getForegroundProcess = vi.fn().mockResolvedValueOnce('codex')
-    // Only a fresh read may certify the shell; the cached read above recognized the agent.
-    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
+    // Exit decisions take only the fresh read; the cached name may outlive the agent.
+    const confirmForegroundProcess = vi.fn().mockResolvedValueOnce('codex')
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
-      getForegroundProcess,
+      getForegroundProcess: vi.fn().mockResolvedValue('codex'),
       confirmForegroundProcess
     })
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 101)
 
-    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(confirmForegroundProcess).toHaveBeenCalledOnce())
     await vi.waitFor(() =>
       expect(batches.flatMap((batch) => batch.facts)).toEqual([
         { kind: 'title', normalizedTitle: 'bichir', rawTitle: 'bichir' }
@@ -442,7 +441,7 @@ describe('terminal side-effect fact channel', () => {
     )
     await Promise.resolve()
 
-    getForegroundProcess.mockResolvedValueOnce('zsh')
+    confirmForegroundProcess.mockResolvedValueOnce('zsh')
     runtime.onPtyData('pty-1', '\x1b]0;other cwd\x07', 102)
 
     await vi.waitFor(() =>
@@ -451,9 +450,41 @@ describe('terminal side-effect fact channel', () => {
         evidence: 'foreground-shell'
       })
     )
-    expect(getForegroundProcess).toHaveBeenCalledTimes(2)
-    expect(confirmForegroundProcess).toHaveBeenCalledOnce()
+    expect(confirmForegroundProcess).toHaveBeenCalledTimes(2)
   })
+
+  it.each(['cmd.exe', 'zsh'])(
+    'publishes an exit on a fresh %s read while the cached name still says claude',
+    async (shell) => {
+      const { runtime, batches } = createSideEffectRuntime()
+      syncSinglePty(runtime)
+      const getForegroundProcess = vi.fn().mockResolvedValue('claude')
+      const confirmForegroundProcess = vi.fn().mockResolvedValue(shell)
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess,
+        confirmForegroundProcess
+      })
+      runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;✳ Claude Code\x07')
+      const pty = runtime['ptysById'].get('pty-1')
+      if (!pty) {
+        throw new Error('expected the synced PTY record')
+      }
+      pty.foregroundAgent = 'claude'
+      batches.length = 0
+
+      runtime.onPtyData('pty-1', `\x1b]0;${shell}\x07`, 100)
+
+      await vi.waitFor(() =>
+        expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+          kind: 'agent-exited',
+          evidence: 'foreground-shell'
+        })
+      )
+      expect(pty.foregroundAgent).toBeNull()
+    }
+  )
 
   it('does not confirm an agent exit from a foreground read predating its title', async () => {
     const { runtime, batches } = createSideEffectRuntime()
@@ -462,7 +493,7 @@ describe('terminal side-effect fact channel', () => {
     const staleRead = new Promise<string>((resolve) => {
       resolveStaleRead = resolve
     })
-    const getForegroundProcess = vi.fn().mockReturnValueOnce(staleRead).mockResolvedValueOnce('zsh')
+    const getForegroundProcess = vi.fn().mockReturnValueOnce(staleRead)
     const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
     runtime.setPtyController({
       write: () => true,
@@ -474,10 +505,11 @@ describe('terminal side-effect fact channel', () => {
     runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 100)
     expect(getForegroundProcess).toHaveBeenCalledOnce()
+    expect(confirmForegroundProcess).not.toHaveBeenCalled()
 
     resolveStaleRead('codex')
 
-    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(confirmForegroundProcess).toHaveBeenCalledOnce())
     await vi.waitFor(() =>
       expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
         kind: 'agent-exited',

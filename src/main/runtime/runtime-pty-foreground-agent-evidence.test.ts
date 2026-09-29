@@ -76,6 +76,79 @@ describe('foreground identity on unknown observations', () => {
     expect(h.pty.foregroundAgent).toBe('claude')
     expect(h.confirm).not.toHaveBeenCalled()
   })
+  // The Windows daemon tracker keeps the last agent name until an async scan retires it.
+  it.each(['cmd.exe', 'zsh'])(
+    'confirms an exit on a fresh %s read while the cached name still says claude',
+    async (shell) => {
+      const h = setup()
+      const getForegroundProcess = vi.fn(async () => 'claude')
+      h.confirm.mockResolvedValue(shell)
+      h.replace({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess,
+        confirmForegroundProcess: h.confirm
+      })
+      const result = await h.agent.confirm('pty-1')
+      expect(result?.judgement.verdict).toBe('exited')
+      expect(h.pty.foregroundAgent).toBeNull()
+      expect(getForegroundProcess).not.toHaveBeenCalled()
+    }
+  )
+  it('does not let a pending cached refresh answer an exit confirmation', async () => {
+    const h = setup()
+    let answerCached: (value: string) => void = () => {}
+    const getForegroundProcess = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          answerCached = resolve
+        })
+    )
+    h.confirm.mockResolvedValue('cmd.exe')
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess,
+      confirmForegroundProcess: h.confirm
+    })
+    const refreshed = h.agent.refresh('pty-1')
+    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
+    const confirmed = h.agent.confirm('pty-1')
+    answerCached('claude')
+    await refreshed
+    expect((await confirmed)?.judgement.verdict).toBe('exited')
+    expect(h.pty.foregroundAgent).toBeNull()
+    expect(h.confirm).toHaveBeenCalledOnce()
+  })
+  it('lets a refresh reuse a pending fresh exit read', async () => {
+    const h = setup()
+    const getForegroundProcess = vi.fn(async () => 'claude')
+    h.confirm.mockResolvedValue('cmd.exe')
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess,
+      confirmForegroundProcess: h.confirm
+    })
+    const confirmed = h.agent.confirm('pty-1')
+    await h.agent.refresh('pty-1')
+    await confirmed
+    expect(h.confirm).toHaveBeenCalledOnce()
+    expect(getForegroundProcess).not.toHaveBeenCalled()
+    expect(h.pty.foregroundAgent).toBeNull()
+  })
+  it('keeps the per-turn hook recovery on the cached read', async () => {
+    const h = setup()
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => 'claude',
+      confirmForegroundProcess: h.confirm
+    })
+    const result = await h.agent.confirm('pty-1', 0, false)
+    expect(result?.judgement.verdict).toBe('live')
+    expect(h.confirm).not.toHaveBeenCalled()
+  })
   it('rejects a result for a replaced terminal incarnation', async () => {
     const h = setup()
     let answer: (value: string) => void = () => {}

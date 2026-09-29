@@ -38,19 +38,29 @@ export class RuntimePtyForegroundAgent {
 
   constructor(private readonly deps: Dependencies) {}
 
-  read(ptyId: string, afterTitle = 0): Promise<PtyForegroundProcessRead> | null {
+  private read(
+    ptyId: string,
+    afterTitle: number,
+    requireFresh: boolean
+  ): Promise<PtyForegroundProcessRead> | null {
     const controller = this.deps.getController()
     if (!controller) {
       return null
     }
+    // Every remote read is a host inspection, so only a local read can be cached.
+    const fresh = requireFresh || Boolean(this.deps.getPty(ptyId)?.connectionId)
     const pending = this.reads.get(ptyId)
-    if (pending?.controller === controller && pending.startedAfterTitleObservation >= afterTitle) {
+    if (
+      pending?.controller === controller &&
+      pending.startedAfterTitleObservation >= afterTitle &&
+      (pending.fresh || !fresh)
+    ) {
       return pending.promise
     }
     if (pending?.controller === controller) {
       return pending.promise.then(
         () =>
-          this.read(ptyId, afterTitle) ?? {
+          this.read(ptyId, afterTitle, requireFresh) ?? {
             controller,
             judgement: judgeForegroundAgent({ kind: 'unavailable' })
           }
@@ -62,11 +72,12 @@ export class RuntimePtyForegroundAgent {
     }
     let processRead: Promise<ForegroundAgentJudgement>
     try {
-      processRead = this.readProcess(controller, ptyId)
+      processRead = this.readProcess(controller, ptyId, fresh)
     } catch {
       const entry: PtyForegroundProcessReadEntry = {
         controller,
         startedAfterTitleObservation: afterTitle,
+        fresh,
         promise: Promise.resolve(unavailable)
       }
       entry.promise = entry.promise.finally(() => this.deleteRead(ptyId, entry))
@@ -83,7 +94,7 @@ export class RuntimePtyForegroundAgent {
       )
       .catch(() => unavailable)
       .finally(() => this.deleteRead(ptyId, entry))
-    entry = { controller, startedAfterTitleObservation: afterTitle, promise }
+    entry = { controller, startedAfterTitleObservation: afterTitle, fresh, promise }
     this.reads.set(ptyId, entry)
     return entry.promise
   }
@@ -119,10 +130,13 @@ export class RuntimePtyForegroundAgent {
     return entry.promise
   }
 
-  /** Exit confirmation and `pty.foregroundAgent` come from this one current-incarnation read. */
-  confirm(ptyId: string, afterTitle = 0): Promise<PtyForegroundProcessRead> | null {
+  /**
+   * Exit confirmation and `pty.foregroundAgent` come from this one current-incarnation read.
+   * `fresh`: an exit decision must not take a cached agent name that outlives the agent.
+   */
+  confirm(ptyId: string, afterTitle = 0, fresh = true): Promise<PtyForegroundProcessRead> | null {
     const pty = this.deps.getPty(ptyId)
-    const read = this.read(ptyId, afterTitle)
+    const read = this.read(ptyId, afterTitle, fresh)
     if (!pty || !read) {
       return read
     }
@@ -177,7 +191,7 @@ export class RuntimePtyForegroundAgent {
       return false
     }
     const incarnationId = pty.incarnationId
-    const result = await this.read(ptyId, afterTitle)
+    const result = await this.read(ptyId, afterTitle, false)
     return result && this.isCurrent(ptyId, pty, incarnationId, result)
       ? this.apply(ptyId, pty, result.judgement)
       : false
@@ -218,13 +232,16 @@ export class RuntimePtyForegroundAgent {
 
   private async readProcess(
     controller: RuntimePtyController,
-    ptyId: string
+    ptyId: string,
+    fresh: boolean
   ): Promise<ForegroundAgentJudgement> {
     const pty = this.deps.getPty(ptyId)
     if (!pty?.connectionId) {
-      const cached = await controller.getForegroundProcess(ptyId)
-      if (recognizeAgentProcess(cached)) {
-        return judgeForegroundAgent({ kind: 'process-name', processName: cached })
+      if (!fresh || !controller.confirmForegroundProcess) {
+        const cached = await controller.getForegroundProcess(ptyId)
+        if (recognizeAgentProcess(cached)) {
+          return judgeForegroundAgent({ kind: 'process-name', processName: cached })
+        }
       }
       // Cached display names cannot certify that the agent returned to its shell.
       return judgeForegroundAgent(
