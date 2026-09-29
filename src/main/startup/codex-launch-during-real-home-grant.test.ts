@@ -96,6 +96,7 @@ const { isAgentStatusHooksEnabledForAgent } =
   await import('../../shared/agent-status-hooks-setting')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
+const { applyAgentWorkspaceTrust } = await import('../agent-workspace-trust')
 const { prepareCodexSessionResumeForLaunch } = await import('./codex-session-resume-launch')
 const {
   computeTrustedHash,
@@ -184,11 +185,16 @@ function resume(): Promise<unknown> {
   })
 }
 
-function launch(workspacePath: string): Promise<string | null> {
-  return prepareCodexRuntimeHomeForLaunch(undefined, undefined, {
-    launchAgent: 'codex',
-    workspacePath
+/** A pane launch: home prep, then the spawn hook's project-trust write, as the spawn builder runs them. */
+async function launch(workspacePath: string): Promise<string | null> {
+  const home = await prepareCodexRuntimeHomeForLaunch()
+  await applyAgentWorkspaceTrust('codex', workspacePath, {
+    env: undefined,
+    claudeAuth: null,
+    wslDistro: null,
+    connectionId: null
   })
+  return home
 }
 
 /** Real-home sessions time out at their own limit, as on a cold host; managed homes approve. */

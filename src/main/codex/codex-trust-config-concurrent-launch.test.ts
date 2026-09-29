@@ -25,6 +25,7 @@ const { CodexAppServerUnsupportedError } = await import('./codex-app-server-clie
 const { codexAppServerCapabilityCache } = await import('./codex-app-server-capability-cache')
 const { _internals, grantManagedCodexHookTrust } = await import('./codex-hook-trust-grant')
 const { markCodexProjectTrusted } = await import('../agent-trust-presets')
+const { getLocalCodexTrustConfigFiles } = await import('./codex-home-paths')
 const { setCodexTrustGrantTelemetry } = await import('./codex-trust-grant-telemetry')
 const {
   computeTrustKey,
@@ -196,7 +197,7 @@ describe('two Codex pane launches against one config.toml', () => {
       await tick()
       await tick()
       // Why: the grant holds no lane across its session, so a launch's write lands at once.
-      await markCodexProjectTrusted(workspace)
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
       expect(readFileSync(tomlPath, 'utf-8')).toContain('trust_level = "trusted"')
 
       releaseSession()
@@ -382,7 +383,7 @@ describe('reentrancy under concurrency', () => {
       // write nested inside both.
       const outcome = await runExclusivelyForCodexTrustConfig(tomlPath, () =>
         runExclusivelyForCodexTrustConfig(systemToml, async () => {
-          await markCodexProjectTrusted(workspace)
+          await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
           return grantManagedCodexHookTrust(buildPlan(entries))
         })
       )
