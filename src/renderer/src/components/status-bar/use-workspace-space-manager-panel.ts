@@ -8,10 +8,7 @@ import { getWorktreeOnHostFromState } from '../../store/selectors'
 import { runWorktreeBatchDelete } from '../sidebar/delete-worktree-flow'
 import { showWorkspaceListChangedToast } from '../sidebar/stale-workspace-list-toast'
 import { toWorktreeDeleteIdentities } from '../sidebar/worktree-delete-request'
-import {
-  commitFocusIfFailedDeleteRemovedWorktree,
-  prepareActiveWorktreeFocusAfterDelete
-} from '../sidebar/active-worktree-focus-after-delete'
+import { prepareActiveWorktreeFocusAfterDelete } from '../sidebar/active-worktree-focus-after-delete'
 import { translate } from '@/i18n/i18n'
 import type { WorkspaceSpaceSortKey } from './workspace-space-presentation'
 import { useWorkspaceSpaceManagerBindings } from './use-workspace-space-manager-bindings'
@@ -183,12 +180,6 @@ export function useWorkspaceSpaceManagerPanel() {
       // Why: Space keeps normal deletes non-force so uncommitted work is not
       // discarded silently; a failed row gets this explicit recovery path.
       const commitFocus = prepareActiveWorktreeFocusAfterDelete(worktree.worktreeId)
-      const recoverFocusAfterFailure = (): void => {
-        void commitFocusIfFailedDeleteRemovedWorktree(
-          { id: worktree.worktreeId, executionHostId: worktree.executionHostId ?? null },
-          commitFocus
-        )
-      }
       // Why (#11960): explicit force recovery, so it may also waive PTY-stop proof.
       void removeWorktree(
         { id: worktree.worktreeId, executionHostId: worktree.executionHostId ?? null },
@@ -197,7 +188,6 @@ export function useWorkspaceSpaceManagerPanel() {
       )
         .then((result) => {
           if (!result.ok) {
-            recoverFocusAfterFailure()
             toast.error(
               translate(
                 'auto.components.status.bar.WorkspaceSpaceManagerPanel.2965415393',
@@ -213,7 +203,6 @@ export function useWorkspaceSpaceManagerPanel() {
           ])
         })
         .catch((error: unknown) => {
-          recoverFocusAfterFailure()
           toast.error(
             translate(
               'auto.components.status.bar.WorkspaceSpaceManagerPanel.2965415393',
