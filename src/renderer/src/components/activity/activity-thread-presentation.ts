@@ -73,10 +73,11 @@ export function agentTitle(event: ActivityEvent): string {
   }
   if (event.state === 'done') {
     switch (agentMainAgentVerdict(event.entry)) {
+      // A turn cut short by anything but the user is a fault, as a failure is.
       case 'failure':
+      case 'interruption':
         return 'Agent failed'
       case 'cancellation':
-      case 'interruption':
         return 'Agent interrupted'
       case 'unconfirmed':
         return 'Couldn’t confirm agent finished'
@@ -108,9 +109,9 @@ export function agentMeta(event: ActivityEvent): string {
   if (event.state === 'done') {
     switch (agentMainAgentVerdict(event.entry)) {
       case 'failure':
+      case 'interruption':
         return `${agent} failed`
       case 'cancellation':
-      case 'interruption':
         return `${agent} interrupted`
       case 'unconfirmed':
         return `${agent} unconfirmed`
@@ -181,26 +182,6 @@ function threadCurrentState(
     thread.latestEvent?.state ??
     null
   )
-}
-
-// A user's Stop deliberately keeps the done glyph (#2569); a death nobody asked for, like a
-// failure, is news and does not.
-export function threadAgentState(thread: AgentPaneThread): AgentDotState {
-  const id = activityThreadStatusId(thread)
-  if (id !== 'interrupted') {
-    return id
-  }
-  const verdictEntry = threadVerdictEntry(thread)
-  switch (verdictEntry ? agentMainAgentVerdict(verdictEntry) : null) {
-    case 'cancellation':
-      return 'done'
-    case 'interruption':
-    case 'success':
-    case 'failure':
-    case 'unconfirmed':
-    case null:
-      return 'interrupted'
-  }
 }
 
 export function threadAgentStateLabel(thread: AgentPaneThread): string {
@@ -277,7 +258,7 @@ export function activityThreadRowCopy(thread: AgentPaneThread): ActivityThreadRo
   })
   const liveState = threadCurrentState(thread)
   const toolPreviewState = liveState === 'monitoring' ? null : liveState
-  const state = threadAgentState(thread)
+  const state = activityThreadStatusId(thread)
   const needsAttention = state === 'waiting' || state === 'blocked' || state === 'permission'
   if (renderedPreview && !previewDuplicatesIdentity(renderedPreview, taskTitle, workspaceLabel)) {
     return {

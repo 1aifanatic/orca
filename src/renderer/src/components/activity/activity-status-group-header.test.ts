@@ -51,24 +51,27 @@ function statusGroups(newer: Ending, older: Ending) {
   return buildActivityThreadGroups(buildAgentPaneThreads({ events, liveAgentByPaneKey }), 'status')
 }
 
-describe('the Interrupted group header', () => {
+describe('the status group headers', () => {
   it.each([
     { newer: 'cancellation', older: 'interruption' },
     { newer: 'interruption', older: 'cancellation' }
   ] as const)(
-    'draws the interrupted dot over a crash, whichever row is newest ($newer newest)',
+    "never mixes a user's Stop with a crash, whichever is newest ($newer newest)",
     ({ newer, older }) => {
       const groups = statusGroups(newer, older)
 
-      expect(groups).toHaveLength(1)
-      expect(groups[0]).toMatchObject({ key: 'interrupted', state: 'interrupted' })
+      // A crash sits with failures; the Stop alone heads Interrupted, below it.
+      expect(groups.map((group) => [group.key, group.state, group.label])).toEqual([
+        ['failed', 'failed', 'Failed'],
+        ['interrupted', 'interrupted', 'Interrupted']
+      ])
     }
   )
 
-  it("keeps the done check when every row is a user's Stop (#2569)", () => {
+  it("heads a group of user's Stops with the interrupted glyph", () => {
     const groups = statusGroups('cancellation', 'cancellation')
 
     expect(groups).toHaveLength(1)
-    expect(groups[0]).toMatchObject({ key: 'interrupted', state: 'done' })
+    expect(groups[0]).toMatchObject({ key: 'interrupted', state: 'interrupted' })
   })
 })

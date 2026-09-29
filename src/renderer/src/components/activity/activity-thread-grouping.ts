@@ -9,7 +9,6 @@ import {
   agentMeta,
   agentSummary,
   agentTitle,
-  threadAgentState,
   threadAgentStateLabel,
   type ActivityThreadStatusId
 } from './activity-thread-presentation'
@@ -22,8 +21,9 @@ const ACTIVITY_STATUS_GROUP_RANK: Record<ActivityThreadStatusId, number> = {
   blocked: 1,
   permission: 2,
   failed: 3,
-  interrupted: 4,
-  unconfirmed: 5,
+  unconfirmed: 4,
+  // A user's Stop is not news, but it is not a finish either.
+  interrupted: 5,
   working: 6,
   monitoring: 7,
   unverifiable: 8,
@@ -43,12 +43,9 @@ export function getActivityThreadGroup(
     return { key: 'all', label: '' }
   }
   if (groupBy === 'status') {
-    // One thread's header; a built group's is folded over all its rows (statusGroupHeaderState).
-    return {
-      key: activityThreadStatusId(thread),
-      label: threadAgentStateLabel(thread),
-      state: threadAgentState(thread)
-    }
+    // The key is the glyph every row in the group draws, so it heads the group too.
+    const status = activityThreadStatusId(thread)
+    return { key: status, label: threadAgentStateLabel(thread), state: status }
   }
   if (groupBy === 'project') {
     return thread.repo
@@ -89,15 +86,7 @@ export function buildActivityThreadGroups(
   if (groupBy !== 'status') {
     return groups
   }
-  return groups
-    .map((group) => ({ ...group, state: statusGroupHeaderState(group.threads) }))
-    .sort((a, b) => activityStatusRank(a.threads[0]) - activityStatusRank(b.threads[0]))
-}
-
-// Interrupted mixes a Stop's done check with a crash's dot: the check heads it only when every row
-// draws it, so a crash never sits under a finished-looking header.
-function statusGroupHeaderState(threads: AgentPaneThread[]): AgentDotState {
-  return threads.map(threadAgentState).find((state) => state !== 'done') ?? 'done'
+  return groups.sort((a, b) => activityStatusRank(a.threads[0]) - activityStatusRank(b.threads[0]))
 }
 
 function buildThreadSearchText(thread: AgentPaneThread): string {

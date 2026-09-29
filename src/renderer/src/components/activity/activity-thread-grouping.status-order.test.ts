@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { buildActivityThreadGroups, getActivityThreadGroup } from './activity-thread-grouping'
-import { threadAgentState } from './activity-thread-presentation'
+import { activityThreadStatusId } from './activity-thread-presentation'
 import type { AgentPaneThread } from './activity-thread-types'
 import {
   makeRepo,
@@ -108,7 +108,7 @@ describe('status group order', () => {
     expect(groups.map((group) => group.state)).toEqual(['blocked', 'working', 'done'])
     for (const group of groups) {
       for (const thread of group.threads) {
-        expect(threadAgentState(thread)).toBe(group.state)
+        expect(activityThreadStatusId(thread)).toBe(group.state)
       }
     }
   })
