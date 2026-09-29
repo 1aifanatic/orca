@@ -111,3 +111,32 @@ export async function convergeClaudeWorktreeTrustOnHost(
     clearTimeout(timer)
   }
 }
+
+/**
+ * Converges many worktrees at once. Revocations share one read and at most one write per
+ * config file; a grant's already-trusted check is per worktree, so grants stay single.
+ */
+export async function convergeClaudeWorktreesTrustOnHost(
+  requests: readonly ClaudeWorktreeTrustHostRequest[]
+): Promise<void> {
+  const revokedKeysByFile = new Map<string, Set<string>>()
+  for (const request of requests.filter((candidate) => !candidate.trusted)) {
+    const keys = revokedKeysByFile.get(request.configFile) ?? new Set<string>()
+    claudeKeysForHostPath(request.worktreeRoot, request).forEach((key) => keys.add(key))
+    revokedKeysByFile.set(request.configFile, keys)
+  }
+  for (const [configFile, keys] of revokedKeysByFile) {
+    // Why: one unwritable file must not keep the others' entries in place.
+    await convergeClaudeFolderTrust({
+      configFile,
+      folderKeys: [...keys],
+      inheritedTrustKeys: [],
+      trusted: false
+    }).catch((error: unknown) => {
+      console.warn(`[claude-trust] revoke in ${configFile} failed; entries remain`, error)
+    })
+  }
+  for (const request of requests.filter((candidate) => candidate.trusted)) {
+    await convergeClaudeWorktreeTrustOnHost(request)
+  }
+}

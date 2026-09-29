@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-/** Relay request that converges one worktree's entry outside a spawn (worktree removal). */
+/** Relay request that converges worktrees' entries outside a spawn (removal, setting turned off). */
 export const CLAUDE_TRUST_CONVERGE_METHOD = 'claudeTrust.converge'
 
 /**
@@ -27,6 +27,12 @@ const claudeTrustConfigEnvSchema = z.object({
 
 export type ClaudeTrustConfigEnv = z.infer<typeof claudeTrustConfigEnvSchema>
 
+/** `claudeTrust.converge` params: every request targets the one config file `env` names. */
+export type ClaudeTrustConvergeParams = {
+  requests: ClaudeFolderTrustSpawnRequest[]
+  env: ClaudeTrustConfigEnv
+}
+
 /** Only the config-file keys; anything else, or a malformed value, yields none. */
 export function readClaudeTrustConfigEnv(value: unknown): ClaudeTrustConfigEnv {
   const parsed = claudeTrustConfigEnvSchema.safeParse(value)
@@ -45,4 +51,11 @@ export function parseClaudeFolderTrustSpawnRequest(
     mainCheckoutPath: parsed.data.mainCheckoutPath ?? null,
     trusted: parsed.data.trusted
   }
+}
+
+/** A malformed entry is dropped alone, so it cannot block the rest of the batch. */
+export function parseClaudeTrustConvergeRequests(value: unknown): ClaudeFolderTrustSpawnRequest[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => parseClaudeFolderTrustSpawnRequest(item) ?? [])
+    : []
 }

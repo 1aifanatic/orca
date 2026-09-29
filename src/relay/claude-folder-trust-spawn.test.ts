@@ -69,10 +69,38 @@ describe('applyRelayClaudeTrustConverge', () => {
       JSON.stringify({ projects: { [worktree]: { hasTrustDialogAccepted: true } } })
     )
     await applyRelayClaudeTrustConverge({
-      request: { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false },
+      requests: [{ worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false }],
       env: { CLAUDE_CONFIG_DIR: configDir, HOME: '/elsewhere' }
     })
     expect(JSON.parse(readFileSync(configFile, 'utf-8'))).toEqual({ projects: {} })
+  })
+
+  it('revokes every worktree in the batch and skips a malformed entry', async () => {
+    vi.stubEnv('HOME', root)
+    vi.stubEnv('USERPROFILE', root)
+    const configFile = join(configDir, '.claude.json')
+    const removed = join(root, 'removed-wt')
+    writeFileSync(
+      configFile,
+      JSON.stringify({
+        projects: {
+          [worktree]: { hasTrustDialogAccepted: true },
+          [removed]: { hasTrustDialogAccepted: true },
+          '/mine': { hasTrustDialogAccepted: true, allowedTools: [] }
+        }
+      })
+    )
+    await applyRelayClaudeTrustConverge({
+      requests: [
+        { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false },
+        { worktreeRoot: 42, trusted: false },
+        { worktreeRoot: removed, mainCheckoutPath: null, trusted: false }
+      ],
+      env: { CLAUDE_CONFIG_DIR: configDir }
+    })
+    expect(JSON.parse(readFileSync(configFile, 'utf-8'))).toEqual({
+      projects: { '/mine': { hasTrustDialogAccepted: true, allowedTools: [] } }
+    })
   })
 })
 
