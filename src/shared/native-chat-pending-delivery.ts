@@ -1,7 +1,6 @@
 import type { AgentStatusEntry, AgentStatusState } from './agent-status-types'
 
 export const NATIVE_CHAT_UNCONFIRMED_COPY = 'Delivery unconfirmed — check chat before retrying'
-export const NATIVE_CHAT_REJECTED_COPY = 'Message not sent'
 /** How long a send may go without starting a turn before its absence is checked. */
 export const NATIVE_CHAT_UNSTARTED_SEND_DEADLINE_MS = 20_000
 

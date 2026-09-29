@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../../store'
+import { translate } from '@/i18n/i18n'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   captureNativeChatDeliveryOrigin,
   observeNativeChatDeliveryOrigin,
-  nativeChatDeliveryCheckDelay,
-  NATIVE_CHAT_REJECTED_COPY,
-  NATIVE_CHAT_UNCONFIRMED_COPY
+  nativeChatDeliveryCheckDelay
 } from '../../../../shared/native-chat-pending-delivery'
 import {
   appendPendingSendCache,
@@ -179,7 +178,12 @@ export function useNativeChatPendingDelivery(args: {
       }
       result.set(`pending:${entry.id}`, {
         text:
-          entry.delivery === 'rejected' ? NATIVE_CHAT_REJECTED_COPY : NATIVE_CHAT_UNCONFIRMED_COPY,
+          entry.delivery === 'rejected'
+            ? translate('components.native-chat.messageNotSent', 'Message not sent')
+            : translate(
+                'components.native-chat.deliveryUnconfirmed',
+                'Delivery unconfirmed — check chat before retrying'
+              ),
         onDismiss: () => cancel(entry.id)
       })
     }

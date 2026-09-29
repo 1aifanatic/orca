@@ -17876,7 +17876,10 @@
         "label": "Context {{used}} of {{window}} tokens, {{percent}}% used",
         "title": "Context",
         "estimated": "Estimated from the last response."
-      }
+      },
+      "dismissDeliveryNotice": "Dismiss",
+      "messageNotSent": "Message not sent",
+      "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying"
     },
     "tab": {
       "bar": {
