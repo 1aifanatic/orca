@@ -28,6 +28,7 @@ type Tick = {
 }
 
 function overlayElement(tick: Tick): ReturnType<typeof createElement> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these controller members; the rest of the controller is unreachable from it.
   const controller = {
     showNativeChat: tick.show ?? true,
     nativeChatSession: { messages: tick.messages ?? [], status: 'ready' },
