@@ -82,9 +82,10 @@ export function clearQueuePause(
 type QueueCardState = { state: string; holdReason: string | null }
 
 /** A card a pause holds back: waiting, with no hold of its own, wherever it sits.
- *  While one exists the pause is KEPT — a Stop records it, and it is retired only
- *  once none remains — so deleting a returned card that blocks such cards leaves
- *  them paused rather than sending them unasked. */
+ *  While one exists — or a hand-off still owed a return to waiting
+ *  (`queuePauseHoldsBack`) — the pause is KEPT: a Stop records it, and it is
+ *  retired only once none remains, so deleting a returned card that blocks such
+ *  cards leaves them paused rather than sending them unasked. */
 export function isPausableQueuedMessage(row: QueueCardState): boolean {
   return row.state === 'waiting' && row.holdReason === null
 }
@@ -146,7 +147,11 @@ export function retireQueuePauseIfNothingHeld(
   db: Database.Database,
   input: { sessionId: string; owedToWaiting: (consumedRef: string) => boolean }
 ): number {
-  if (queuePauseHoldsBack(db, input)) {
+  // Runs on every appended journal row: with no pause recorded there is nothing to judge.
+  const recorded = db
+    .prepare('SELECT 1 FROM queued_message_pauses WHERE session_id = ?')
+    .get(input.sessionId)
+  if (recorded === undefined || queuePauseHoldsBack(db, input)) {
     return 0
   }
   return Number(
