@@ -17,15 +17,20 @@ export function fishCodexNoDaemonProbe(): string {
 end`
 }
 
+// Why restored: a Codex the shell refuses to run (a policy-blocked codex.ps1) must
+// leave $LASTEXITCODE where a launch without Orca would, not at the probe's 0.
 export function powerShellCodexNoDaemonProbe(): string {
   return `function Global:__OrcaCodexSupportsNoDaemon {
     param([string]$Executable)
+    $orcaPriorExitCode = $global:LASTEXITCODE
     try {
         $global:LASTEXITCODE = 0
         & $Executable --no-daemon --version *> $null
         return $LASTEXITCODE -eq 0
     } catch {
         return $false
+    } finally {
+        $global:LASTEXITCODE = $orcaPriorExitCode
     }
 }`
 }

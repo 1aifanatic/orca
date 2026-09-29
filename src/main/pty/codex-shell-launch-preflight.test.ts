@@ -471,6 +471,42 @@ describe('PowerShell Codex shell launch preflight', () => {
     expect(result.stdout.trim()).toBe('args=--no-daemon hi')
   })
 
+  it.skipIf(!pwshAvailable)(
+    'leaves $LASTEXITCODE as it was when that Codex cannot run at all',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-blocked-'))
+      const bin = join(root, 'bin')
+      roots.push(root)
+      mkdirSync(bin)
+      // Stands in for npm's codex.ps1 under an execution policy that refuses it.
+      writeFileSync(join(bin, 'codex.ps1'), "throw 'blocked by execution policy'\n")
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+        ORCA_CODEX_LAUNCH_POLICY: '1'
+      }
+      delete env.ORCA_CODEX_HOME
+
+      const result = spawnSync(
+        'pwsh',
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-Command',
+          [
+            getPowerShellCodexShellLaunchPreflight(),
+            "if ($IsWindows) { cmd /c 'exit 5' } else { sh -c 'exit 5' }",
+            'try { codex hi } catch { }',
+            '"exit=$LASTEXITCODE"'
+          ].join('\n')
+        ],
+        { encoding: 'utf-8', env }
+      )
+
+      expect(result.stdout.trim().split(/\r?\n/).at(-1)).toBe('exit=5')
+    }
+  )
+
   it.skipIf(!pwshAvailable)('fails open when native errors are promoted', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-failure-'))
     const bin = join(root, 'bin')
