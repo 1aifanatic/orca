@@ -194,6 +194,48 @@ describe('the idle sweep', () => {
     expect(rig.adapter.closeSession).not.toHaveBeenCalled()
   })
 
+  // Stopping the child would retire the send in doubt; the provider's idle report settles it.
+  it('never stops an agent while a send it took is still in doubt, and stops it once settled', async () => {
+    rig.adapter.dispatch.mockResolvedValueOnce({
+      state: 'unknown',
+      reason: 'provider_write_outcome_unknown: timeout'
+    })
+    await foundRestTestChat(rig)
+    await vi.waitFor(async () =>
+      expect((await rig.host.journalSnapshot(SESSION)).submissions).toEqual([
+        expect.objectContaining({ dispatchState: 'unknown' })
+      ])
+    )
+    rig.clock.now += 2 * IDLE_MS
+
+    await sweepTicks()
+    expect(rig.adapter.closeSession).not.toHaveBeenCalled()
+    await rig.host.releaseUnansweredDispatches({
+      sessionId: SESSION,
+      reason: 'provider_idle_before_acknowledgement'
+    })
+    rig.clock.now += IDLE_MS + 1
+    await vi.waitFor(() => expect(rig.adapter.closeSession).toHaveBeenCalledWith(SESSION))
+    // Settled without a row: the send is drawn as sent, and nothing explains the idle agent.
+    const settled = await rig.host.journalSnapshot(SESSION)
+    expect(settled.submissions).toEqual([
+      expect.objectContaining({ dispatchState: 'unknown', recovered: true })
+    ])
+    expect(settled.items.some((item) => item.body.kind === 'status')).toBe(false)
+  })
+
+  it('never stops an agent a handed-over send still waits on to open its turn', async () => {
+    rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+    await foundRestTestChat(rig)
+    rig.clock.now += 2 * IDLE_MS
+
+    await sweepTicks()
+    expect(rig.adapter.closeSession).not.toHaveBeenCalled()
+    expect((await rig.host.journalSnapshot(SESSION)).submissions).toEqual([
+      expect.objectContaining({ dispatchState: 'pending' })
+    ])
+  })
+
   it('stops an agent whose chat is still open on screen (P2-12)', async () => {
     await foundRestTestChat(rig)
     const reader = collectSubscriber()

@@ -378,14 +378,23 @@ describe('a session with a turn in flight', () => {
     await waitForEviction()
   })
 
-  // Codex settles an admitted send only on its echo, which may never come; the stop retires it.
-  it('is stopped with an admitted send outstanding once no turn runs', async () => {
+  // Stopping the child would retire an admitted send in doubt; its echo settles it first.
+  it('is not stopped while an admitted send awaits its echo, and is once the echo lands', async () => {
     await attach()
-    await sendPending('admitted, never echoed')
+    await sendPending('admitted, not yet echoed')
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
 
     clock += IDLE_MS
+    await waitOutSeveralSweeps()
+    expect(closeSession).not.toHaveBeenCalled()
 
+    const [sent] = (await host.journalSnapshot(SESSION)).submissions
+    await host.settleLateDispatch({
+      sessionId: SESSION,
+      clientMessageId: sent!.clientMessageId,
+      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 0 }
+    })
+    clock += IDLE_MS
     await waitForEviction()
   })
 })
