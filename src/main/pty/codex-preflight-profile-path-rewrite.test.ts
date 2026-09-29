@@ -55,7 +55,11 @@ function buildFixture(options: { aliasCodex?: boolean } = {}): Fixture {
   mkdirSync(homePath, { recursive: true })
 
   // The CLI Orca ships, at the absolute path Orca controls; only WSL panes run it.
-  writeStub(getBundledLauncherPath('win32', resourcesPath) as string, intendedMarker)
+  const launcherPath = getBundledLauncherPath('win32', resourcesPath)
+  if (!launcherPath) {
+    throw new Error('Windows has a bundled launcher path')
+  }
+  writeStub(launcherPath, intendedMarker)
   // The impostor a user's own bin directory could hold under every CLI name Orca uses.
   for (const name of ['orca', 'orca-ide', 'orca-dev']) {
     writeStub(join(hijackDir, name), hijackMarker)
