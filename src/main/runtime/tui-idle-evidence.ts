@@ -216,8 +216,8 @@ const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex
  * the cwd (plus a thread name) and no agent name, so neither the explicit-idle nor the
  * sustained-title lane can fire. The ready screen proves the TUI is up; the quiescence
  * demand keeps a mid-turn streaming pane from satisfying, mirroring the tier-3 lane's
- * positive-evidence-plus-quiet shape. Scoped to those agents and agent-unknown panes:
- * another agent's scrollback quoting them must not settle its wait.
+ * positive-evidence-plus-quiet shape. Scoped to those agents and agent-unknown panes (which
+ * read only Muse's screen): another agent's scrollback quoting them must not settle its wait.
  */
 export function hasQuietReadyScreen(
   record: TuiIdleEvidenceRecord,

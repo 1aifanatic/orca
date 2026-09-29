@@ -31,12 +31,8 @@ vi.mock('electron', () => ({
 const QUIESCENCE_MS = 3000
 
 // codex-cli recordings at 120x40 (see each .meta.json); STA-8834. Each launches, runs a turn,
-// and ends idle; the timed ones also replay as plain strings here.
-const TIMED_FIXTURES = [
-  'codex-0-155-1-timed-turn',
-  'codex-0-157-1-timed-turn',
-  'codex-0-158-0-timed-turn'
-]
+// and ends idle; the timed ones also replay as plain strings here. 0.157 idles via STA-8628's.
+const TIMED_FIXTURES = ['codex-0-155-1-timed-turn', 'codex-0-158-0-timed-turn']
 const SETTLED_IDLE_FIXTURES = ['codex-0-150-1-turn', ...TIMED_FIXTURES]
 const DIALOG_FIXTURES = [
   'codex-0-157-1-update-dialog',
@@ -107,10 +103,13 @@ describe('Codex composer ready screen, frame by frame', () => {
     30_000
   )
 
-  it.each(SETTLED_IDLE_FIXTURES)('%s: ready on the final idle screen', async (name) => {
-    const frames = await collectFrames(readRuntimeFixture(name))
-    expect(isCodexComposerReadyScreen(screenOf(frames.at(-1)!))).toBe(true)
-  })
+  it.each([...SETTLED_IDLE_FIXTURES, ...STA_8628_FIXTURES])(
+    '%s: ready on the final idle screen',
+    async (name) => {
+      const frames = await collectFrames(readRuntimeFixture(name))
+      expect(isCodexComposerReadyScreen(screenOf(frames.at(-1)!))).toBe(true)
+    }
+  )
 
   it.each(DIALOG_FIXTURES)('%s: not ready while the dialog owns the screen', async (name) => {
     const frames = await collectFrames(readRuntimeFixture(name))
@@ -123,7 +122,38 @@ describe('Codex composer ready screen, frame by frame', () => {
 
   it('reads the placeholder only as the composer line, not quoted mid-line', () => {
     const quoted = ['$ grep placeholder notes.txt', 'the box says › Ask Codex to do anything', '$']
-    expect(isQuietReadyScreenBody('', null, () => quoted)).toBe(false)
+    expect(isQuietReadyScreenBody('', 'codex', () => quoted)).toBe(false)
+  })
+
+  it('reads the busy row only above the composer, not a status row quoted in the answer', () => {
+    const screenLines = [
+      '>_ OpenAI Codex (v0.158.0)',
+      '   ~/repo',
+      '',
+      '› what does the status row look like mid-turn?',
+      '',
+      '• It reads like this:',
+      '',
+      '  • Working (0s • esc to interrupt)',
+      '',
+      '  The timer counts up until the turn ends, and the row',
+      '  disappears once the answer is complete.',
+      '',
+      '› Ask Codex to do anything',
+      '',
+      '  gpt-5.6-sol medium · ~/repo',
+      '  ? for shortcuts'
+    ]
+    expect(isQuietReadyScreenBody('', 'codex', () => screenLines)).toBe(true)
+    const composer = screenLines.indexOf('› Ask Codex to do anything')
+    const busy = [
+      ...screenLines.slice(0, composer),
+      '• Working (3s • esc to interrupt)',
+      '  └ Tip: start a fresh idea with /new',
+      '',
+      ...screenLines.slice(composer)
+    ]
+    expect(isQuietReadyScreenBody('', 'codex', () => busy)).toBe(false)
   })
 
   it('settles a quiet composer under an answer asking "Would you like to proceed?"', () => {
@@ -280,7 +310,14 @@ describe('agent gate', () => {
     }
     expect(readScreenLines).not.toHaveBeenCalled()
     expect(isQuietReadyScreenBody('', 'codex', readScreenLines)).toBe(true)
-    expect(isQuietReadyScreenBody('', null, readScreenLines)).toBe(true)
+  })
+
+  it('leaves an agent-unknown pane showing a cat-ed Codex transcript pending', () => {
+    const catted = ['$ cat session.log', '› Ask Codex to do anything', '  ? for shortcuts', '$ ']
+    const readScreenLines = vi.fn(() => catted)
+    expect(isQuietReadyScreenBody(catted.join('\n'), null, readScreenLines)).toBe(false)
+    expect(readScreenLines).not.toHaveBeenCalled()
+    expect(isQuietReadyScreenBody('', 'codex', readScreenLines)).toBe(true)
   })
 })
 

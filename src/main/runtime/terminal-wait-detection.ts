@@ -83,21 +83,18 @@ export function isKnownReadyPromptBody(
 /**
  * Tier 1b body evidence: a ready screen from an agent with no title rest signal. Unlike tier 1
  * it only proves the TUI is up, so the ranking holds it to quiescence.
- * Why per-agent gates: another agent's screen can quote Muse's banner or Codex's placeholder.
+ * Why codex panes only: a `cat`ed transcript or pager in an unknown pane can show the composer.
  */
 export function isQuietReadyScreenBody(
   waitText: string,
   agent: TuiAgent | null,
   readScreenLines: () => readonly string[] | null
 ): boolean {
-  if ((agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)) {
-    return true
+  if (agent === 'codex') {
+    const screen = readScreen(readScreenLines)
+    return screen !== null && isCodexComposerReadyScreen(screen)
   }
-  if (agent !== null && agent !== 'codex') {
-    return false
-  }
-  const screen = readScreen(readScreenLines)
-  return screen !== null && isCodexComposerReadyScreen(screen)
+  return (agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)
 }
 
 function readScreen(readScreenLines: () => readonly string[] | null): string | null {
