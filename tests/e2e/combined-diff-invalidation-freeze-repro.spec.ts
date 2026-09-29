@@ -215,7 +215,8 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
         cdp.once('Tracing.tracingComplete', (event) => resolve(event.stream ?? ''))
       })
       await cdp.send('Tracing.start', {
-        categories: 'devtools.timeline,blink.user_timing',
+        categories:
+          'devtools.timeline,blink.user_timing,disabled-by-default-devtools.timeline.invalidationTracking',
         transferMode: 'ReturnAsStream'
       })
       const measurement = await orcaPage.evaluate(
