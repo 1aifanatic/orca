@@ -14,6 +14,7 @@ export function bunProfileTestPaths({ artifact = false } = {}) {
       ? [
           'src/relay/windows-detached-launch.integration.test.ts',
           'src/main/daemon/pty-subprocess/bun-pty-process.integration.test.ts',
+          'src/main/daemon/pty-subprocess/bun-pty-process-windows-direct.integration.test.ts',
           'src/main/pty/posix-pty-process-groups.integration.test.ts',
           'src/main/daemon/pty-subprocess/bun-pty-job-control.integration.test.ts',
           'src/main/daemon/pty-subprocess/bun-pty-process-suspension.test.ts',
