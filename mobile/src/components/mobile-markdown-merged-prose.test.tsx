@@ -43,8 +43,12 @@ async function renderMarkdown(content: string): Promise<ReactTestRenderer> {
   return renderer!
 }
 
+function nodes(tree: ReactTestRenderer, name: string) {
+  return tree.root.findAll((node) => node.type === name)
+}
+
 function runs(tree: ReactTestRenderer) {
-  return tree.root.findAll((node) => node.type === 'OrcaSelectableTextRun')
+  return nodes(tree, 'OrcaSelectableTextRun')
 }
 
 const REPLY = [
@@ -71,8 +75,8 @@ describe('merged selectable prose', () => {
   it('renders each run of prose as one native text view', async () => {
     const tree = await renderMarkdown(REPLY)
     // Two prose runs plus the code block: once one view per block and list item.
-    expect(tree.root.findAll((node) => node.type === 'OrcaSelectableText')).toHaveLength(3)
-    expect(tree.root.findAll((node) => node.type === 'Text' && node.props.style?.width)).toEqual([])
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(3)
+    expect(nodes(tree, 'Text').filter((node) => node.props.style?.width)).toEqual([])
     expect(
       runs(tree)
         .map((node) => node.props.text)
@@ -172,9 +176,7 @@ describe('merged selectable prose', () => {
     // The adapter reads native support once at load, so register a fresh copy.
     vi.doMock('./MobileSelectableText', () => import('./MobileSelectableText.ios'))
     const tree = await renderMarkdown(REPLY)
-    expect(tree.root.findAll((node) => node.type === 'OrcaSelectableText')).toHaveLength(0)
-    expect(
-      tree.root.findAll((node) => node.type === 'Text' && node.props.style?.width === 22)
-    ).toHaveLength(2)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(0)
+    expect(nodes(tree, 'Text').filter((node) => node.props.style?.width === 22)).toHaveLength(2)
   })
 })
