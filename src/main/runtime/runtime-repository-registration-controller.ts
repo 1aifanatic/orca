@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { DEFAULT_REPO_BADGE_COLOR } from '../../shared/constants'
 import {
@@ -16,6 +16,7 @@ import { prepareLocalWorktreeRootForRepo } from '../worktree-root-preparation'
 import type { RuntimeStore } from './runtime-store-contract'
 import { runtimePathsEqual } from './runtime-worktree-path-identity'
 import { runtimeRepoMatchesExecutionHost } from './runtime-worktree-selection'
+import { removeHostTree } from '../host-tree-removal'
 
 type RuntimeRepositoryRegistrationDependencies = {
   getStore: () => RuntimeStore | null
@@ -181,9 +182,9 @@ export class RuntimeRepositoryRegistrationController {
       return null
     } catch (error) {
       if (createdDir) {
-        await rm(targetPath, { recursive: true, force: true }).catch(() => {})
+        await removeHostTree(targetPath).catch(() => {})
       } else if (step === 'commit') {
-        await rm(join(targetPath, '.git'), { recursive: true, force: true }).catch(() => {})
+        await removeHostTree(join(targetPath, '.git')).catch(() => {})
       }
       const message = error instanceof Error ? error.message : String(error)
       if (step === 'commit' && /Please tell me who you are|user\.name|user\.email/i.test(message)) {

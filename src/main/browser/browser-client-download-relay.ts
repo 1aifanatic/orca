@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync } from 'node:fs'
-import { open, rm, stat } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -11,6 +11,7 @@ import {
 } from '../../shared/browser-client-file-channel-protocol'
 import type { BrowserClientHostedPageInventory } from '../../shared/browser-client-host-protocol'
 import type { BrowserClientFileChannelTransport } from './browser-client-file-channel-transport'
+import { removeHostTree } from '../host-tree-removal'
 
 export const BROWSER_CLIENT_FILE_CHANNEL_WRITE_METHOD = 'browser.clientHost.fileChannel.write'
 export const BROWSER_CLIENT_FILE_CHANNEL_ABORT_METHOD = 'browser.clientHost.fileChannel.abort'
@@ -73,7 +74,7 @@ const nodeRelayFilesystem: RelayFilesystem = {
   },
   size: async (filePath) => (await stat(filePath)).size,
   removeDirectory: async (directory) => {
-    await rm(directory, { recursive: true, force: true })
+    await removeHostTree(directory)
   }
 }
 

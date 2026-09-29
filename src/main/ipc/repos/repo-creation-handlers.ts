@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import { ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, readdir, rm } from 'node:fs/promises'
+import { access, mkdir, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type { Store } from '../../persistence'
@@ -20,6 +20,7 @@ import { notifyReposChanged } from './repos-changed-notification'
 import { addLocalRepoFromPath } from './local-repo-registration'
 import { addRemoteRepoFromPath } from './remote-repo-registration'
 import { createRemoteRepo } from './remote-repo-creation'
+import { removeHostTree } from '../../host-tree-removal'
 
 const GIT_AVAILABILITY_TIMEOUT_MS = 1500
 
@@ -231,9 +232,9 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
         } catch (err) {
           // Only rm the dir if we made it (pre-existing folders must survive retry); otherwise strip just the .git/ that git init created.
           if (createdDir) {
-            await rm(targetPath, { recursive: true, force: true }).catch(() => {})
+            await removeHostTree(targetPath).catch(() => {})
           } else if (step === 'commit') {
-            await rm(join(targetPath, '.git'), { recursive: true, force: true }).catch(() => {})
+            await removeHostTree(join(targetPath, '.git')).catch(() => {})
           }
           const message = err instanceof Error ? err.message : String(err)
           if (

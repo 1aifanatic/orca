@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, realpath } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -23,6 +23,7 @@ import { checkoutPluginGitSource } from './plugin-git-repository'
 import { readPluginCurrentPointer } from './plugin-current-pointer'
 import { readPluginInstallProvenance } from './plugin-install-provenance'
 import { publishPluginInstall } from './plugin-install-publication'
+import { removeHostTree } from '../host-tree-removal'
 
 export type { PluginInstallResult } from './plugin-install-staging'
 
@@ -139,7 +140,7 @@ export async function installPluginFromGit(input: {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     } finally {
-      await rm(stagingDir, { recursive: true, force: true })
+      await removeHostTree(stagingDir)
     }
   })
 }
@@ -188,7 +189,7 @@ export async function installPluginFromMarketplace(input: {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     } finally {
-      await rm(stagingDir, { recursive: true, force: true })
+      await removeHostTree(stagingDir)
     }
   })
 }
@@ -319,5 +320,5 @@ async function removeResolvedPluginDirectory(rootDir: string, pluginKey: string)
   ) {
     throw new Error(`refusing to remove plugin path outside ${rootReal}`)
   }
-  await rm(resolve(rootDir, pluginKey), { recursive: true, force: true })
+  await removeHostTree(resolve(rootDir, pluginKey))
 }

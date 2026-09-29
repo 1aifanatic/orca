@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PluginManifest } from '../../shared/plugins/plugin-manifest'
@@ -16,6 +16,7 @@ import type {
   PluginMarketplaceService
 } from './plugin-marketplace-service'
 import { marketplaceSourceId } from './plugin-marketplace-store'
+import { removeHostTree } from '../host-tree-removal'
 
 export type PluginMarketplaceInstallPreview = {
   marketplaceSourceId: string
@@ -93,7 +94,7 @@ export class PluginMarketplaceInstaller {
         ...(listing.blockedByKillList ? { blockedByKillList: listing.blockedByKillList } : {})
       }
     } finally {
-      await rm(stagingDirectory, { recursive: true, force: true })
+      await removeHostTree(stagingDirectory)
     }
   }
 

@@ -19,6 +19,7 @@ import {
   removeModelDownloadFiles,
   removeModelDownloadStaging
 } from './speech-model-download-cleanup'
+import { removeHostTree } from '../host-tree-removal'
 
 type DownloadHandle = {
   abort: () => void
@@ -205,7 +206,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
         return
       }
 
-      await rm(modelDir, { recursive: true, force: true })
+      await removeHostTree(modelDir)
       await rename(stagingDir, modelDir)
       this.updateState(modelId, 'ready')
     } catch (err) {
@@ -244,15 +245,15 @@ export class ModelManager extends SpeechModelDownloadTransport {
     this.cancelDownload(modelId)
     const modelDir = this.getModelDir(modelId)
     if (existsSync(modelDir)) {
-      await rm(modelDir, { recursive: true, force: true })
+      await removeHostTree(modelDir)
     }
-    await rm(`${modelDir}.partial`, { recursive: true, force: true })
+    await removeHostTree(`${modelDir}.partial`)
     await rm(join(this.modelsDir, `${modelId}.tar.bz2`), { force: true })
     // Why: also delete the pre-migration copy, or the next launch re-migrates it and resurrects the model.
     if (this.migrationSourceDir) {
       const sourceModelDir = this.getSafeModelDir(modelId, this.migrationSourceDir)
       if (existsSync(sourceModelDir)) {
-        await rm(sourceModelDir, { recursive: true, force: true })
+        await removeHostTree(sourceModelDir)
       }
     }
     this.modelStates.delete(modelId)

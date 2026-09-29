@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { removeTree } from '../../shared/windows-transient-lock-removal'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
 import type { SessionFileCandidate } from '../ai-vault/session-scanner-types'
 import { TranscriptMessageChannel } from '../ai-vault/session-transcript-channel'
@@ -118,7 +118,7 @@ export async function openSessionSearchIndexFile(name: string): Promise<SessionS
         open = false
         db.close()
       }
-      await removeTree(root)
+      removeTreeSync(root)
     }
   }
 }

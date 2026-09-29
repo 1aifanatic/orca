@@ -1,23 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { join, resolve } from 'node:path'
 
-const { accessMock, lstatMock, mkdirMock, opendirMock, rmMock, writeFileMock } = vi.hoisted(() => ({
-  accessMock: vi.fn(),
-  lstatMock: vi.fn(),
-  mkdirMock: vi.fn(),
-  opendirMock: vi.fn(),
-  rmMock: vi.fn(),
-  writeFileMock: vi.fn()
-}))
+const { accessMock, lstatMock, mkdirMock, opendirMock, removeHostTreeMock, writeFileMock } =
+  vi.hoisted(() => ({
+    accessMock: vi.fn(),
+    lstatMock: vi.fn(),
+    mkdirMock: vi.fn(),
+    opendirMock: vi.fn(),
+    removeHostTreeMock: vi.fn(),
+    writeFileMock: vi.fn()
+  }))
 
 vi.mock('node:fs/promises', () => ({
   access: accessMock,
   lstat: lstatMock,
   mkdir: mkdirMock,
   opendir: opendirMock,
-  rm: rmMock,
   writeFile: writeFileMock
 }))
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 import {
   cleanupExpiredRemoteClipboardStaging,
@@ -81,7 +82,7 @@ describe('remote clipboard staging ownership', () => {
     lstatMock.mockResolvedValue(safeDirectoryStats())
     mkdirMock.mockResolvedValue(undefined)
     opendirMock.mockResolvedValue(openedDirectory([]))
-    rmMock.mockResolvedValue(undefined)
+    removeHostTreeMock.mockResolvedValue(undefined)
     writeFileMock.mockResolvedValue(undefined)
   })
 
@@ -123,13 +124,8 @@ describe('remote clipboard staging ownership', () => {
 
     await cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
-    expect(rmMock).toHaveBeenCalledOnce()
-    expect(rmMock).toHaveBeenCalledWith(join(STAGING_ROOT, EXPIRED_TRANSFER), {
-      force: true,
-      maxRetries: 3,
-      recursive: true,
-      retryDelay: 100
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledOnce()
+    expect(removeHostTreeMock).toHaveBeenCalledWith(join(STAGING_ROOT, EXPIRED_TRANSFER))
   })
 
   it('rejects a symlinked owned parent before opening it', async () => {
@@ -142,7 +138,7 @@ describe('remote clipboard staging ownership', () => {
     await expect(cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)).resolves.toBeUndefined()
 
     expect(opendirMock).not.toHaveBeenCalled()
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
   })
 
   it.skipIf(typeof process.getuid !== 'function')(
@@ -176,7 +172,7 @@ describe('remote clipboard staging ownership', () => {
     await cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
     expect(lstatMock).not.toHaveBeenCalledWith(TEMP_ROOT)
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
   })
 
   it('contains explicit removals to direct owned children', async () => {
@@ -185,7 +181,7 @@ describe('remote clipboard staging ownership', () => {
     ).toBe(false)
     expect(await removeRemoteClipboardTransferDirectory(TEMP_ROOT, STAGING_ROOT)).toBe(false)
 
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
   })
 
   it('treats an already-removed transfer as cleanup success', async () => {
@@ -200,14 +196,14 @@ describe('remote clipboard staging ownership', () => {
       removeRemoteClipboardTransferDirectory(TEMP_ROOT, join(STAGING_ROOT, EXPIRED_TRANSFER))
     ).resolves.toBe(true)
 
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
   })
 
   it('continues past Windows-style lock failures and retries on a later sweep', async () => {
     opendirMock.mockResolvedValue(
       openedDirectory([directoryEntry(EXPIRED_TRANSFER), directoryEntry(`1759990000000-${UUID_B}`)])
     )
-    rmMock.mockImplementation(async (targetPath: string) => {
+    removeHostTreeMock.mockImplementation(async (targetPath: string) => {
       if (targetPath.endsWith(EXPIRED_TRANSFER)) {
         throw Object.assign(new Error('locked'), { code: 'EPERM' })
       }
@@ -215,20 +211,20 @@ describe('remote clipboard staging ownership', () => {
 
     await expect(cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)).resolves.toBeUndefined()
 
-    expect(rmMock).toHaveBeenCalledTimes(2)
-    rmMock.mockResolvedValue(undefined)
+    expect(removeHostTreeMock).toHaveBeenCalledTimes(2)
+    removeHostTreeMock.mockResolvedValue(undefined)
     await cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
-    expect(rmMock).toHaveBeenCalledTimes(4)
+    expect(removeHostTreeMock).toHaveBeenCalledTimes(4)
   })
 
   it('bounds locked-file timer retries', async () => {
     vi.useFakeTimers()
-    rmMock.mockRejectedValue(Object.assign(new Error('locked'), { code: 'EPERM' }))
+    removeHostTreeMock.mockRejectedValue(Object.assign(new Error('locked'), { code: 'EPERM' }))
 
     scheduleRemoteClipboardTransferCleanup(TEMP_ROOT, join(STAGING_ROOT, EXPIRED_TRANSFER))
     await vi.advanceTimersByTimeAsync(TTL_MS + 4 * RETRY_MS)
 
-    expect(rmMock).toHaveBeenCalledTimes(4)
+    expect(removeHostTreeMock).toHaveBeenCalledTimes(4)
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -249,7 +245,7 @@ describe('remote clipboard staging ownership', () => {
 
     await cleanupExpiredRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
-    expect(rmMock).toHaveBeenCalledTimes(257)
+    expect(removeHostTreeMock).toHaveBeenCalledTimes(257)
     expect(peak).toBe(8)
   })
 })
@@ -261,7 +257,7 @@ describe('legacy remote clipboard staging compatibility', () => {
     lstatMock.mockResolvedValue(safeDirectoryStats())
     mkdirMock.mockResolvedValue(undefined)
     opendirMock.mockResolvedValue(openedDirectory([]))
-    rmMock.mockResolvedValue(undefined)
+    removeHostTreeMock.mockResolvedValue(undefined)
     writeFileMock.mockResolvedValue(undefined)
   })
 
@@ -285,7 +281,7 @@ describe('legacy remote clipboard staging compatibility', () => {
     expect(visited).toBe(4_096)
     expect(reachedLateLegacyChild).toBe(false)
     expect(lstatMock).toHaveBeenCalledOnce()
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
     expect(writeFileMock).toHaveBeenCalledWith(MARKER_PATH, '', {
       flag: 'wx',
       mode: 0o600
@@ -303,13 +299,8 @@ describe('legacy remote clipboard staging compatibility', () => {
 
     await cleanupLegacyRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
-    expect(rmMock).toHaveBeenCalledOnce()
-    expect(rmMock).toHaveBeenCalledWith(join(TEMP_ROOT, LEGACY_EXPIRED), {
-      force: true,
-      maxRetries: 3,
-      recursive: true,
-      retryDelay: 100
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledOnce()
+    expect(removeHostTreeMock).toHaveBeenCalledWith(join(TEMP_ROOT, LEGACY_EXPIRED))
     expect(writeFileMock).toHaveBeenCalledOnce()
   })
 
@@ -320,7 +311,7 @@ describe('legacy remote clipboard staging compatibility', () => {
     lstatMock.mockImplementation(async (targetPath: string) =>
       safeDirectoryStats(targetPath.endsWith(LEGACY_FRESH) ? NOW_MS - 1_000 : undefined)
     )
-    rmMock.mockRejectedValue(Object.assign(new Error('locked'), { code: 'EBUSY' }))
+    removeHostTreeMock.mockRejectedValue(Object.assign(new Error('locked'), { code: 'EBUSY' }))
 
     await cleanupLegacyRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
@@ -341,7 +332,7 @@ describe('legacy remote clipboard staging compatibility', () => {
 
     await cleanupLegacyRemoteClipboardStaging(TEMP_ROOT, NOW_MS)
 
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
     expect(writeFileMock).toHaveBeenCalledOnce()
   })
 

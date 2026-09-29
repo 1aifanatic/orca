@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, open, readFile, rm } from 'node:fs/promises'
+import { mkdir, open, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   AGENT_PLUGIN_MANIFEST_PATH,
@@ -23,6 +23,7 @@ import {
   type TarByteReader
 } from './skill-package-tar'
 import { SkillInstallOperationError } from './skill-install-operation-error'
+import { removeHostTree } from '../host-tree-removal'
 
 export type SkillBundleExtractionResult = {
   pluginManifest: AgentPluginManifestV1
@@ -256,7 +257,7 @@ export async function extractSkillBundleArchive(input: {
     archive.abort(failure)
     await archive.archiveIdentity.catch(() => undefined)
     if (destinationCreated) {
-      await rm(input.destinationDirectory, { recursive: true, force: true })
+      await removeHostTree(input.destinationDirectory)
     }
     throw failure
   }

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -8,6 +8,7 @@ import {
   BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES
 } from '../../shared/browser-client-file-channel-protocol'
 import { normalizeBrowserDownloadFilename } from '../../shared/browser-download-filename'
+import { removeHostTree } from '../host-tree-removal'
 
 export type BrowserClientStagedUpload = {
   stagingId: string
@@ -53,7 +54,7 @@ const nodeStagingFilesystem: StagingFilesystem = {
     await writeFile(filePath, contents, { mode: 0o600 })
   },
   removeDirectory: async (directory) => {
-    await rm(directory, stagingRemovalOptions)
+    await removeHostTree(directory)
   },
   removeDirectorySync: (directory) => {
     rmSync(directory, stagingRemovalOptions)

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, realpath, rm } from 'node:fs/promises'
+import { mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   SkillSharePreview,
@@ -11,6 +11,7 @@ import type { SkillCloudVersion } from '../../shared/skill-cloud-contract'
 import { createSkillBundleArchive, type CreatedSkillBundle } from './skill-bundle-creation'
 import type { SkillCloudService } from './skill-cloud-service'
 import { readSkillInstallReceipt } from './skill-install-provenance'
+import { removeHostTree } from '../host-tree-removal'
 
 const PREPARATION_TTL_MS = 30 * 60 * 1000
 const MAX_PREPARATIONS = 8
@@ -141,7 +142,7 @@ export class SkillSharePreparationService {
       this.preparations.set(preparationId, value)
       return preview(preparationId, value)
     } catch (error) {
-      await rm(directory, { recursive: true, force: true })
+      await removeHostTree(directory)
       throw error
     } finally {
       this.preparingCount -= 1
@@ -216,7 +217,7 @@ export class SkillSharePreparationService {
     const preparation = this.preparations.get(preparationId)
     preparation?.controller?.abort()
     this.preparations.delete(preparationId)
-    await rm(join(this.root, preparationId), { recursive: true, force: true })
+    await removeHostTree(join(this.root, preparationId))
   }
 
   async dispose(): Promise<void> {
@@ -224,7 +225,7 @@ export class SkillSharePreparationService {
       preparation.controller?.abort()
     }
     this.preparations.clear()
-    await rm(this.root, { recursive: true, force: true })
+    await removeHostTree(this.root)
   }
 
   private async prune(): Promise<void> {
@@ -240,7 +241,7 @@ export class SkillSharePreparationService {
         if (this.options.initializeRoot) {
           await this.options.initializeRoot()
         } else {
-          await rm(this.root, { recursive: true, force: true })
+          await removeHostTree(this.root)
           await mkdir(this.root, { recursive: true, mode: 0o700 })
         }
       })()

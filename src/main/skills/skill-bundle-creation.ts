@@ -27,6 +27,7 @@ import {
 } from './skill-package-identity'
 import { writeSkillTarGzip, type SkillTarWriteEntry } from './skill-package-tar'
 import { startSkillPhaseOperation } from './skill-operation-observability'
+import { removeHostTree } from '../host-tree-removal'
 
 export type SkillBundleSource = {
   id?: string
@@ -236,7 +237,7 @@ async function createSkillBundleArchiveUnobserved(
     await renameSkillPathWithWindowsRetry(temporaryArchive, input.archivePath)
     return { pluginManifest, manifest, archivePath: input.archivePath, ...archiveIdentity }
   } finally {
-    await rm(workDirectory, { recursive: true, force: true })
+    await removeHostTree(workDirectory)
     await rm(temporaryArchive, { force: true }).catch(() => undefined)
   }
 }

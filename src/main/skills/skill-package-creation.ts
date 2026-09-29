@@ -18,6 +18,7 @@ import {
 } from './skill-package-identity'
 import { extractSkillPackageArchive } from './skill-package-extraction'
 import { writeSkillTarGzip, type SkillTarWriteEntry } from './skill-package-tar'
+import { removeHostTree } from '../host-tree-removal'
 
 export type CreatedSkillPackage = {
   manifest: SkillPackageManifestV1
@@ -129,7 +130,7 @@ async function createSkillPackageArchiveUnobserved(
     await renameSkillPathWithWindowsRetry(temporaryArchive, input.archivePath)
     return { manifest, archivePath: input.archivePath, ...archiveIdentity }
   } finally {
-    await rm(workDirectory, { recursive: true, force: true })
+    await removeHostTree(workDirectory)
     await rm(temporaryArchive, { force: true }).catch(() => undefined)
   }
 }

@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs'
-import type * as NodeFsPromises from 'node:fs/promises'
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as HostTreeRemoval from '../host-tree-removal'
 
 import {
   BROWSER_CLIENT_UPLOAD_STAGING_MAX_BYTES_PER_PAGE,
@@ -11,15 +11,15 @@ import {
   BrowserClientUploadStaging
 } from './browser-client-upload-staging'
 
-const nodeRemovals = vi.hoisted(() => ({ rm: [] as { target: unknown; options: unknown }[] }))
+const hostTreeRemovals = vi.hoisted((): { targets: string[] } => ({ targets: [] }))
 
-vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof NodeFsPromises>()
+vi.mock('../host-tree-removal', async (importOriginal) => {
+  const actual = await importOriginal<typeof HostTreeRemoval>()
   return {
     ...actual,
-    rm: (target: unknown, options: unknown) => {
-      nodeRemovals.rm.push({ target, options })
-      return (actual.rm as (t: unknown, o: unknown) => Promise<void>)(target, options)
+    removeHostTree: (target: string) => {
+      hostTreeRemovals.targets.push(target)
+      return actual.removeHostTree(target)
     }
   }
 })
@@ -310,7 +310,7 @@ describe('BrowserClientUploadStaging', () => {
     expect(staging.activeStagingCount()).toBe(1)
   })
 
-  it('retries the staged removal so a briefly held file is not orphaned', async () => {
+  it('removes through the retrying host tree removal so a briefly held file is not orphaned', async () => {
     const staging = new BrowserClientUploadStaging(stagingRoot)
     const staged = await staging.stage({
       browserPageId: 'page-1',
@@ -318,15 +318,14 @@ describe('BrowserClientUploadStaging', () => {
       files: [{ remotePath: 'a.txt', contents: Buffer.from('a') }]
     })
     const directory = staging.stagedDirectory(staged.stagingId)
-    nodeRemovals.rm.length = 0
+    if (directory === undefined) {
+      throw new Error('expected a staged directory')
+    }
+    hostTreeRemovals.targets.length = 0
 
     expect(await staging.release(staged.stagingId)).toBe(true)
 
-    expect(nodeRemovals.rm).toEqual([
-      {
-        target: directory,
-        options: { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }
-      }
-    ])
+    expect(hostTreeRemovals.targets).toEqual([directory])
+    expect(existsSync(directory)).toBe(false)
   })
 })

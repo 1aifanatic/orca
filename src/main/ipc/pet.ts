@@ -8,6 +8,7 @@ import { importPetBundle } from './pet-bundle-import'
 import { classifyFile } from './pet-image-formats'
 import { MAX_BYTES } from './pet-import-size-limits'
 import { getPetsDir, isSafeId, resolvePetFile } from './pet-storage-paths'
+import { removeHostTree } from '../host-tree-removal'
 
 // Why: renderer IPC inputs are untrusted — validate shape here; resolvePetFile still gates the actual filesystem path.
 const PetFileRequestSchema = z.object({
@@ -136,7 +137,7 @@ export function registerPetHandlers(): void {
           return
         }
         try {
-          await rm(target, { recursive: true, force: true })
+          await removeHostTree(target)
         } catch (error) {
           console.warn('[pet-overlay] pet:delete (bundle) failed', error)
         }

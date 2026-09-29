@@ -26,9 +26,9 @@ vi.mock('../windows/windows-process-table', () => ({
 }))
 vi.mock('node:fs/promises', () => ({
   mkdtemp: fixture.temp,
-  writeFile: fixture.write,
-  rm: fixture.remove
+  writeFile: fixture.write
 }))
+vi.mock('../host-tree-removal', () => ({ removeHostTree: fixture.remove }))
 vi.mock('../ipc/parcel-watcher-process-supervisor', () => ({
   WatcherProcessSupervisor: class {
     subscribe = fixture.subscribe
@@ -89,7 +89,7 @@ describe('bundled native readiness', () => {
     expect(fixture.pty).toHaveBeenCalledOnce()
     expect(fixture.unsubscribe).toHaveBeenCalledOnce()
     expect(fixture.dispose).toHaveBeenCalledOnce()
-    expect(fixture.remove).toHaveBeenCalledWith('/temp/probe', { recursive: true, force: true })
+    expect(fixture.remove).toHaveBeenCalledWith('/temp/probe')
     expect(vi.getTimerCount()).toBe(0)
   })
 

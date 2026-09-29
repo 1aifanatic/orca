@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, open, readFile, rm } from 'node:fs/promises'
+import { mkdir, open, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   SKILL_PACKAGE_MAX_MANIFEST_BYTES,
@@ -21,6 +21,7 @@ import {
 } from './skill-install-filesystem'
 import { SKILL_INSTALL_CANCELLED_FAILURE } from '../../shared/skill-install-failure'
 import { SkillInstallOperationError } from './skill-install-operation-error'
+import { removeHostTree } from '../host-tree-removal'
 
 export type SkillPackageExtractionResult = {
   manifest: SkillPackageManifestV1
@@ -227,7 +228,7 @@ export async function extractSkillPackageArchive(input: {
     archive.abort(failure)
     await archive.archiveIdentity.catch(() => undefined)
     if (destinationCreated) {
-      await rm(input.destinationDirectory, { recursive: true, force: true })
+      await removeHostTree(input.destinationDirectory)
     }
     throw failure
   }

@@ -6,6 +6,7 @@ import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
 import { constants, copyFile, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { renameLocalPathSerializedByDestination } from '../destination-serialized-local-rename'
+import { removeHostTree } from '../host-tree-removal'
 
 export class RuntimeFileCommandsWithCreateFileExplorerDirNoClobber extends RuntimeFileCommandsWithWriteFileExplorerFile {
   async createFileExplorerDirNoClobber(
@@ -160,7 +161,7 @@ export class RuntimeFileCommandsWithCreateFileExplorerDirNoClobber extends Runti
       preserveSymlink: true
     })
     // Why: a non-local runtime has no client Trash; this delete is permanent, so the renderer confirms before calling.
-    await rm(targetPath, { recursive: recursive === true, force: true })
+    await (recursive === true ? removeHostTree(targetPath) : rm(targetPath, { force: true }))
     return { ok: true }
   }
 }

@@ -17,7 +17,7 @@ const {
   fstatSyncMock,
   closeSyncMock,
   getPathMock,
-  rmAsyncMock,
+  removeHostTreeMock,
   deleteWslFishHistoryFileMock
 } = vi.hoisted(() => ({
   existsSyncMock: vi.fn(),
@@ -39,7 +39,7 @@ const {
   })),
   closeSyncMock: vi.fn(),
   getPathMock: vi.fn(),
-  rmAsyncMock: vi.fn(async () => undefined),
+  removeHostTreeMock: vi.fn(async () => undefined),
   deleteWslFishHistoryFileMock: vi.fn(async () => undefined)
 }))
 
@@ -62,10 +62,11 @@ vi.mock('fs', () => ({
 // transitive readFile/mkdir would otherwise resolve to undefined.
 vi.mock('node:fs/promises', async () => ({
   ...(await vi.importActual<typeof FsPromises>('node:fs/promises')),
-  rm: rmAsyncMock,
   // The tombstone drain lists pending-delete asynchronously; same fixture as the sync reads.
   readdir: async (path: string) => readdirSyncMock(path) ?? []
 }))
+
+vi.mock('./host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 const { parseWslPathMock, toLinuxPathMock } = vi.hoisted(() => ({
   parseWslPathMock: vi.fn((_path: string) => null as { distro: string; linuxPath: string } | null),
@@ -112,8 +113,8 @@ describe('terminal-history', () => {
     renameSyncMock.mockReset()
     readFileSyncMock.mockReset()
     readdirSyncMock.mockReset()
-    rmAsyncMock.mockReset()
-    rmAsyncMock.mockResolvedValue(undefined)
+    removeHostTreeMock.mockReset()
+    removeHostTreeMock.mockResolvedValue(undefined)
     getPathMock.mockReturnValue('/fake/userData')
     installFakeAppEnvironment({ getPath: getPathMock })
     existsSyncMock.mockReturnValue(true)
@@ -552,10 +553,7 @@ describe('terminal-history', () => {
       deleteWorktreeHistoryDir('repo-1::/path/wt')
       expect(renameSyncMock).toHaveBeenCalled()
       expect(rmSyncMock).not.toHaveBeenCalled()
-      expect(rmAsyncMock).toHaveBeenCalledWith(
-        expect.stringContaining('.pending-delete'),
-        expect.objectContaining({ recursive: true, force: true })
-      )
+      expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('.pending-delete'))
       await flushPendingWorktreeHistoryDeletions()
     })
 
@@ -647,14 +645,14 @@ describe('terminal-history', () => {
 
       // Why: a path-derived worktree ID can be recreated at the same path, so an async rm aimed at the
       // live directory could delete a freshly recreated worktree's history. GC reclaims it instead.
-      expect(rmAsyncMock).not.toHaveBeenCalled()
+      expect(removeHostTreeMock).not.toHaveBeenCalled()
       expect(rmSyncMock).not.toHaveBeenCalled()
       await flushPendingWorktreeHistoryDeletions()
     })
 
     it('does not throw when the async removal itself fails', async () => {
       existsSyncMock.mockReturnValue(true)
-      rmAsyncMock.mockRejectedValueOnce(new Error('async fail'))
+      removeHostTreeMock.mockRejectedValueOnce(new Error('async fail'))
       expect(() => deleteWorktreeHistoryDir('repo-1::/path/wt')).not.toThrow()
       await expect(flushPendingWorktreeHistoryDeletions()).resolves.toBeUndefined()
     })
@@ -677,14 +675,11 @@ describe('terminal-history', () => {
         }
         return []
       })
-      rmAsyncMock.mockImplementation(async () => {
+      removeHostTreeMock.mockImplementation(async () => {
         leftoverTombstonePresent = false
       })
       await flushPendingWorktreeHistoryDeletions()
-      expect(rmAsyncMock).toHaveBeenCalledWith(
-        expect.stringContaining('leftover-tombstone'),
-        expect.objectContaining({ recursive: true, force: true })
-      )
+      expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('leftover-tombstone'))
     })
   })
 

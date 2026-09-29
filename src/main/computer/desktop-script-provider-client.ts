@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
@@ -40,6 +40,7 @@ import { DesktopScriptSnapshotStore } from './desktop-script-snapshot-store'
 import { normalizeBridgeApp, renderSnapshot } from './desktop-script-snapshot-rendering'
 import { normalizeComputerActionResult } from './computer-action-verification-normalization'
 import { RuntimeClientError } from './runtime-client-error'
+import { removeHostTree } from '../host-tree-removal'
 
 export function shouldUseDesktopScriptProvider(): boolean {
   return desktopScriptPlatform() !== null && resolveDesktopScriptProviderPath() !== null
@@ -242,7 +243,7 @@ export class DesktopScriptProviderClient {
       }
       return checkedBridgeResponse(response, stderr)
     } finally {
-      await rm(operationDirectory, { force: true, recursive: true })
+      await removeHostTree(operationDirectory)
     }
   }
 

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runPtySpawnHealthProbe } from '../daemon/pty-subprocess/spawn-preflight'
@@ -10,6 +10,7 @@ import {
   isWindowsProcessStartTimeAvailable,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
+import { removeHostTree } from '../host-tree-removal'
 
 /** The candidate process owns disposable PTY and watcher probes before it touches user state. */
 export async function preflightOrcadBunNativeRuntime(
@@ -65,7 +66,7 @@ export async function preflightOrcadBunNativeRuntime(
       await subscription?.unsubscribe()
     } finally {
       supervisor.dispose()
-      await rm(directory, { recursive: true, force: true })
+      await removeHostTree(directory)
     }
   }
 }

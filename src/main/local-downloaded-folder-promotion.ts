@@ -1,8 +1,9 @@
 import { fstatSync, lstatSync } from 'node:fs'
-import { link, lstat, mkdir, open, readdir, rm, rmdir, unlink } from 'node:fs/promises'
+import { link, lstat, mkdir, open, readdir, rmdir, unlink } from 'node:fs/promises'
 import type { BigIntStats } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
+import { removeHostTree } from './host-tree-removal'
 
 const LOCAL_COPY_CHUNK_BYTES = 1024 * 1024
 
@@ -264,5 +265,5 @@ export async function promoteLocalDownloadedFolder(
     }
     throw error
   }
-  await rm(tempPath, { recursive: true, force: true }).catch(() => {})
+  await removeHostTree(tempPath).catch(() => {})
 }

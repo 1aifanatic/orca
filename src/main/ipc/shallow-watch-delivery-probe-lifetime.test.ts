@@ -14,9 +14,9 @@ const h = vi.hoisted(() => ({
 vi.mock('node:fs', () => ({ watch: h.watch }))
 vi.mock('node:fs/promises', () => ({
   mkdtemp: h.mkdir,
-  writeFile: h.write,
-  rm: h.remove
+  writeFile: h.write
 }))
+vi.mock('../host-tree-removal', () => ({ removeHostTree: h.remove }))
 
 import {
   detectShallowWatchDelivery,
@@ -51,10 +51,7 @@ afterEach(() => {
 function expectReleased(): void {
   expect(h.close).toHaveBeenCalledOnce()
   expect(vi.getTimerCount()).toBe(0)
-  expect(h.remove).toHaveBeenCalledExactlyOnceWith('/fake-shallow-probe', {
-    recursive: true,
-    force: true
-  })
+  expect(h.remove).toHaveBeenCalledExactlyOnceWith('/fake-shallow-probe')
 }
 
 describe('shallow probe resource ownership', () => {

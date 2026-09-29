@@ -1,4 +1,4 @@
-import { readdir, rm } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   PLUGIN_CONTENT_HASH_PATTERN,
@@ -16,6 +16,7 @@ import {
   readPluginInstallProvenance,
   writePluginInstallProvenance
 } from './plugin-install-provenance'
+import { removeHostTree } from '../host-tree-removal'
 
 /** Publishes executable identity and provenance as one recoverable mutation,
  * then retains only current plus one rollback version. */
@@ -88,7 +89,7 @@ async function pruneHistoricalVersions(pluginDir: string, retained: ReadonlySet<
           PLUGIN_CONTENT_HASH_PATTERN.test(entry.name) &&
           !retained.has(entry.name)
       )
-      .map((entry) => rm(join(pluginDir, entry.name), { recursive: true, force: true }))
+      .map((entry) => removeHostTree(join(pluginDir, entry.name)))
   )
   await prunePluginInstallProvenance(pluginDir, retained)
 }

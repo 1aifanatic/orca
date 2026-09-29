@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
-import { chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -25,6 +25,7 @@ import {
   verifyFileSha256,
   type OrcadBunRuntimeMaterializeOptions
 } from './orcad-bun-runtime-materializer'
+import { removeHostTree } from '../host-tree-removal'
 
 const TemplateTargetSchema = z
   .object({
@@ -134,7 +135,7 @@ export async function assembleOrcadArtifact(args: {
     }
     return targetDir
   } finally {
-    await rm(stagingDir, { recursive: true, force: true })
+    await removeHostTree(stagingDir)
   }
 }
 

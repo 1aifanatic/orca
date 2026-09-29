@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { app, ipcMain } from 'electron'
 import {
@@ -7,6 +7,7 @@ import {
   type WriteTerminalRenderDesyncEvidenceResult
 } from '../../shared/terminal-render-desync-evidence'
 import { isTrustedUIRenderer } from './ui'
+import { removeHostTree } from '../host-tree-removal'
 
 const EVIDENCE_DIRECTORY = 'terminal-render-desync-evidence'
 const MAX_PNG_DATA_URL_BYTES = 40 * 1024 * 1024
@@ -105,7 +106,7 @@ async function pruneRenderDesyncEvidence(root: string, currentDirectory: string)
     const removableIndex = captures.findIndex((capture) => capture.directory !== currentDirectory)
     const index = Math.max(removableIndex, 0)
     const [capture] = captures.splice(index, 1)
-    await rm(capture.directory, { recursive: true, force: true })
+    await removeHostTree(capture.directory)
     totalBytes -= capture.bytes
     if (capture.directory === currentDirectory) {
       throw new Error('Render-desync evidence exceeds the aggregate storage budget')

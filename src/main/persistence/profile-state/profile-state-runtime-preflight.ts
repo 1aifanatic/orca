@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -9,6 +9,7 @@ import {
 import { readProfileStateSnapshot } from './profile-state-documents'
 import { runProfileStateBackupWorker } from './profile-state-backup-worker'
 import { ProfileStateWriteWorkerClient } from './profile-state-writer-worker-client'
+import { removeHostTree } from '../../host-tree-removal'
 
 export type ProfileStateRuntimePreflightResult = {
   sqliteVersion: string
@@ -61,7 +62,7 @@ export async function preflightProfileStateRuntime(
     try {
       await writer?.close()
     } finally {
-      await rm(directory, { recursive: true, force: true })
+      await removeHostTree(directory)
     }
   }
 }

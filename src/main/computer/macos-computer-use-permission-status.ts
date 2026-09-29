@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -13,6 +13,7 @@ import {
   resolveMacOSComputerUseExecutablePath
 } from './macos-native-provider-paths'
 import { RuntimeClientError } from './runtime-client-error'
+import { removeHostTree } from '../host-tree-removal'
 
 const PERMISSION_STATUS_HELPER_LAUNCH_TIMEOUT_MS = 5_000
 
@@ -95,7 +96,7 @@ async function readPermissionStatusFromHelperApp(
     }
     throw new RuntimeClientError('accessibility_error', 'Timed out checking permissions')
   } finally {
-    await rm(tempDir, { recursive: true, force: true })
+    await removeHostTree(tempDir)
   }
 }
 

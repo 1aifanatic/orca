@@ -8,7 +8,7 @@ import {
   normalizeHostedReviewBaseRef,
   normalizeHostedReviewHeadRef
 } from '../../../../shared/hosted-review-refs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
@@ -25,6 +25,7 @@ import {
 import { getOriginGitHubApiRepository, githubHostExecOptions } from '../../github-api-repository'
 import { classifyCreatePRError, parseCreatePRPayload } from './create-pr-error-classification'
 import { findOpenPRByHeadBase, readPullRequestTemplate } from './pull-request-template'
+import { removeHostTree } from '../../../host-tree-removal'
 export async function createGitHubPullRequest(
   repoPath: string,
   input: CreateHostedReviewInput,
@@ -162,7 +163,7 @@ export async function createGitHubPullRequest(
       return classified
     }
   } finally {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
+    await removeHostTree(tempDir).catch(() => undefined)
     release()
   }
 }

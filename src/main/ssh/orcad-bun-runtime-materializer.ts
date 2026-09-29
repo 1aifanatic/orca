@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, readdirSync } from 'node:fs'
-import { chmod, link, mkdir, open, rm } from 'node:fs/promises'
+import { chmod, link, mkdir, open } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { runProcess, type ProcessResult } from '../../shared/child-process/run-process'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
@@ -15,6 +15,7 @@ import {
   orcadBunReleaseUrl,
   type OrcadBunTarget
 } from '../../shared/orcad-bun-runtime'
+import { removeHostTree } from '../host-tree-removal'
 
 const MAX_BUN_ARCHIVE_BYTES = 200 * 1024 * 1024
 
@@ -81,7 +82,7 @@ export async function materializeCachedOrcadBunRuntime(
     await verifyFileSha256(runtimePath, asset.executableSha256, `${target} cached Bun executable`)
     return runtimePath
   } finally {
-    await rm(temporaryDir, { recursive: true, force: true })
+    await removeHostTree(temporaryDir)
   }
 }
 

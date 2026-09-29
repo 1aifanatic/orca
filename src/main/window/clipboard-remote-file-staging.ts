@@ -1,6 +1,7 @@
 import type { Dir, Stats } from 'node:fs'
-import { access, lstat, mkdir, opendir, rm, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, opendir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { removeHostTree } from '../host-tree-removal'
 
 const REMOTE_CLIPBOARD_STAGING_ROOT_NAME = 'orca-clipboard-files'
 const REMOTE_CLIPBOARD_LEGACY_PREFIX = 'orca-clipboard-file-'
@@ -17,12 +18,6 @@ const LEGACY_DIRECTORY_PATTERN = new RegExp(
   `^${REMOTE_CLIPBOARD_LEGACY_PREFIX}\\d{1,16}-${UUID_PATTERN}$`,
   'i'
 )
-const REMOVE_OPTIONS = {
-  recursive: true,
-  force: true,
-  maxRetries: 3,
-  retryDelay: 100
-} as const
 
 type CleanupResult = 'failed' | 'fresh' | 'ignored' | 'removed'
 
@@ -121,7 +116,7 @@ export async function removeRemoteClipboardTransferDirectory(
     if (!isSafeOwnedDirectory(transferStats)) {
       return false
     }
-    await rm(transferDirectory, REMOVE_OPTIONS)
+    await removeHostTree(transferDirectory)
     return true
   } catch (error) {
     return isMissingPathError(error)
@@ -230,7 +225,7 @@ async function cleanupDirectory(directory: string, nowMs: number): Promise<Clean
     if (nowMs - directoryStats.mtimeMs < REMOTE_CLIPBOARD_FILE_TTL_MS) {
       return 'fresh'
     }
-    await rm(directory, REMOVE_OPTIONS)
+    await removeHostTree(directory)
     return 'removed'
   } catch (error) {
     return isMissingPathError(error) ? 'ignored' : 'failed'

@@ -1,11 +1,12 @@
 import { isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
 import type { Stats } from 'node:fs'
-import { lstat, mkdir, rm } from 'node:fs/promises'
+import { lstat, mkdir } from 'node:fs/promises'
 import {
   isWindowsAbsolutePathLike,
   normalizeRuntimePathForComparison,
   normalizeRuntimePathSeparators
 } from '../../shared/cross-platform-path'
+import { removeHostTree } from '../host-tree-removal'
 
 export type ClaimedCloneTarget = {
   canCleanup: boolean
@@ -109,7 +110,7 @@ export async function cleanupClaimedCloneTarget(
     return
   }
 
-  await rm(clonePath, { recursive: true, force: true }).catch(() => {
+  await removeHostTree(clonePath).catch(() => {
     // Best-effort cleanup - do not mask the original clone failure.
   })
 }

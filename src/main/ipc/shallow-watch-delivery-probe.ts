@@ -1,7 +1,8 @@
 import { watch } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { removeHostTree } from '../host-tree-removal'
 
 // Why: fs.watch reports success and then delivers nothing on hosts where the
 // platform notification path is broken — observed on a macOS 26.3.1 machine
@@ -39,7 +40,7 @@ export async function measureShallowWatchDelivery(timeoutMs = PROBE_TIMEOUT_MS):
     return false
   } finally {
     if (directory) {
-      await rm(directory, { recursive: true, force: true }).catch(() => {})
+      await removeHostTree(directory).catch(() => {})
     }
   }
 }

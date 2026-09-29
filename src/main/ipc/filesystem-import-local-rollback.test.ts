@@ -3,14 +3,16 @@ import { join, resolve } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { lstatMock, mkdirMock, openMock, readdirMock, rmMock, unlinkMock } = vi.hoisted(() => ({
-  lstatMock: vi.fn(),
-  mkdirMock: vi.fn(),
-  openMock: vi.fn(),
-  readdirMock: vi.fn(),
-  rmMock: vi.fn(),
-  unlinkMock: vi.fn()
-}))
+const { lstatMock, mkdirMock, openMock, readdirMock, removeHostTreeMock, unlinkMock } = vi.hoisted(
+  () => ({
+    lstatMock: vi.fn(),
+    mkdirMock: vi.fn(),
+    openMock: vi.fn(),
+    readdirMock: vi.fn(),
+    removeHostTreeMock: vi.fn(),
+    unlinkMock: vi.fn()
+  })
+)
 
 vi.mock('./filesystem-auth', () => ({ authorizeExternalPath: vi.fn() }))
 vi.mock('node:fs/promises', () => ({
@@ -18,9 +20,9 @@ vi.mock('node:fs/promises', () => ({
   mkdir: mkdirMock,
   open: openMock,
   readdir: readdirMock,
-  rm: rmMock,
   unlink: unlinkMock
 }))
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 import { importOneSource } from './filesystem-import-local'
 import { recursiveCopyDir } from './filesystem-import-local-tree-copy'
@@ -67,7 +69,7 @@ beforeEach(() => {
     (entries.get(path) ?? []).map(({ name, kind }) => ({ name, ...statFor(kind) }))
   )
   mkdirMock.mockResolvedValue(undefined)
-  rmMock.mockResolvedValue(undefined)
+  removeHostTreeMock.mockResolvedValue(undefined)
   unlinkMock.mockResolvedValue(undefined)
   openMock.mockRejectedValue(new Error('unexpected file copy'))
 })
@@ -84,7 +86,7 @@ describe('local directory import rollback ownership', () => {
         reason: code
       })
       expect(mkdirMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: false })
-      expect(rmMock).not.toHaveBeenCalled()
+      expect(removeHostTreeMock).not.toHaveBeenCalled()
       expect(openMock).not.toHaveBeenCalled()
     }
   )
@@ -106,7 +108,7 @@ describe('local directory import rollback ownership', () => {
       expect(mkdirMock).toHaveBeenCalledExactlyOnceWith(join(destination, 'incoming copy'), {
         recursive: false
       })
-      expect(rmMock).not.toHaveBeenCalled()
+      expect(removeHostTreeMock).not.toHaveBeenCalled()
     }
   )
 
@@ -117,19 +119,19 @@ describe('local directory import rollback ownership', () => {
       status: 'failed',
       reason: 'source unreadable'
     })
-    expect(rmMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledExactlyOnceWith(target)
   })
 
   it('keeps the copy error when best-effort cleanup also fails', async () => {
     addEntry(source, 'lost.txt', 'file')
     openMock.mockRejectedValue(new Error('source changed'))
-    rmMock.mockRejectedValue(new Error('cleanup denied'))
+    removeHostTreeMock.mockRejectedValue(new Error('cleanup denied'))
 
     expect(await importOneSource(source, destination, new Set())).toMatchObject({
       status: 'failed',
       reason: 'source changed'
     })
-    expect(rmMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledExactlyOnceWith(target)
   })
 
   it('rolls back the owned root once when a nested mkdir fails', async () => {
@@ -144,7 +146,7 @@ describe('local directory import rollback ownership', () => {
       [target, { recursive: false }],
       [join(target, 'child'), { recursive: false }]
     ])
-    expect(rmMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledExactlyOnceWith(target)
   })
 
   it.each(['symlink', 'unsupported', 'missing'])(
@@ -162,7 +164,7 @@ describe('local directory import rollback ownership', () => {
         status: 'failed'
       })
       expect(mkdirMock).toHaveBeenCalledTimes(2)
-      expect(rmMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: true, force: true })
+      expect(removeHostTreeMock).toHaveBeenCalledExactlyOnceWith(target)
       expect(openMock).not.toHaveBeenCalled()
     }
   )
@@ -181,7 +183,7 @@ describe('local directory import rollback ownership', () => {
         reason: 'symlink'
       })
       expect(mkdirMock).not.toHaveBeenCalled()
-      expect(rmMock).not.toHaveBeenCalled()
+      expect(removeHostTreeMock).not.toHaveBeenCalled()
     }
   )
 
@@ -229,7 +231,7 @@ describe('local directory import rollback ownership', () => {
     expect(Buffer.concat(chunks).toString()).toBe('payload')
     expect(closeSource).toHaveBeenCalledOnce()
     expect(closeDestination).toHaveBeenCalledOnce()
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
     expect(unlinkMock).not.toHaveBeenCalled()
   })
 
@@ -240,7 +242,7 @@ describe('local directory import rollback ownership', () => {
       status: 'failed'
     })
     expect(mkdirMock).not.toHaveBeenCalled()
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
     expect(unlinkMock).not.toHaveBeenCalled()
   })
 
@@ -249,6 +251,6 @@ describe('local directory import rollback ownership', () => {
     readdirMock.mockRejectedValue(failure)
 
     await expect(recursiveCopyDir(source, target)).rejects.toBe(failure)
-    expect(rmMock).toHaveBeenCalledExactlyOnceWith(target, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledExactlyOnceWith(target)
   })
 })

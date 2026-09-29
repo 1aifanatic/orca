@@ -1,5 +1,5 @@
 import type { Dirent, Stats } from 'node:fs'
-import { lstat, readdir, realpath, rm, stat } from 'node:fs/promises'
+import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import type { SkillPackageManifestV1 } from '../../shared/skill-package-manifest'
 import { renameSkillPathWithWindowsRetry } from './skill-filesystem-retry'
 import { runSkillCandidateTasks } from './skill-candidate-concurrency'
@@ -8,6 +8,7 @@ import {
   observeSkillPackage,
   type ObservedSkillPackage
 } from './skill-package-identity'
+import { removeHostTree } from '../host-tree-removal'
 
 export type SkillInstalledFileMode = { path: string; executable: boolean }
 
@@ -63,7 +64,7 @@ export const nativeSkillInstallFilesystem: SkillInstallFilesystem = {
         : undefined
     ),
   rename: renameSkillPathWithWindowsRetry,
-  remove: (path) => rm(path, { recursive: true, force: true }),
+  remove: (path) => removeHostTree(path),
   // Why the bounded pool rather than `Promise.all`: a delete plan enumerates
   // every discovery root, and unbounded fan-out here is the same burst of
   // filesystem-metadata work discovery already learned to cap.

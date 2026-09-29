@@ -14,6 +14,7 @@ const {
   readFileMock,
   readdirMock,
   rmMock,
+  removeHostTreeMock,
   unlinkMock
 } = vi.hoisted(() => ({
   handleMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   readFileMock: vi.fn(),
   readdirMock: vi.fn(),
   rmMock: vi.fn(),
+  removeHostTreeMock: vi.fn(),
   unlinkMock: vi.fn()
 }))
 
@@ -45,6 +47,8 @@ vi.mock('fs/promises', () => ({
   rm: rmMock,
   unlink: unlinkMock
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 import { registerFilesystemMutationHandlers } from './filesystem-mutations'
 
@@ -164,6 +168,7 @@ describe('fs:importExternalPaths', () => {
     readFileMock.mockReset()
     readdirMock.mockReset()
     rmMock.mockReset()
+    removeHostTreeMock.mockReset()
     unlinkMock.mockReset()
 
     handleMock.mockImplementation((channel: string, handler: never) => {
@@ -178,6 +183,7 @@ describe('fs:importExternalPaths', () => {
     readFileMock.mockResolvedValue(Buffer.from('file-content'))
     readdirMock.mockResolvedValue([])
     rmMock.mockResolvedValue(undefined)
+    removeHostTreeMock.mockResolvedValue(undefined)
     unlinkMock.mockResolvedValue(undefined)
 
     registerFilesystemMutationHandlers(store as never)
@@ -420,10 +426,7 @@ describe('fs:importExternalPaths', () => {
       reason: "Symlink not allowed in 'normal.txt'"
     })
     expect(openMock).not.toHaveBeenCalledWith(childPath, expect.anything())
-    expect(rmMock).toHaveBeenCalledWith(path.join(destDir, 'mixeddir'), {
-      recursive: true,
-      force: true
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(path.join(destDir, 'mixeddir'))
   })
 
   it('rejects unauthorized destinations', async () => {

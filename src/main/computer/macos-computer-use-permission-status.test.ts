@@ -1,9 +1,10 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const resolveHelperAppPathMock = vi.hoisted(() => vi.fn())
+const removeHostTreeMock = vi.hoisted(() => vi.fn())
 const resolveHelperExecutablePathMock = vi.hoisted(() => vi.fn())
 const permissionStatusTempDir = '/tmp/orca-computer-use-permissions-test'
 const permissionStatusPath = join(permissionStatusTempDir, 'status.json')
@@ -31,9 +32,10 @@ vi.mock('child_process', () => ({
 vi.mock('fs/promises', () => ({
   mkdtemp: vi.fn(),
   readFile: vi.fn(),
-  rm: vi.fn(),
   stat: vi.fn()
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 vi.mock('./macos-native-provider-paths', () => ({
   resolveMacOSComputerUseAppPath: resolveHelperAppPathMock,
@@ -49,7 +51,7 @@ describe('getComputerUsePermissionStatus', () => {
     vi.mocked(execFileSync).mockReset()
     vi.mocked(mkdtemp).mockReset()
     vi.mocked(readFile).mockReset()
-    vi.mocked(rm).mockReset()
+    removeHostTreeMock.mockReset()
     vi.mocked(stat).mockReset()
     resolveHelperAppPathMock.mockReset()
     resolveHelperExecutablePathMock.mockReset()
@@ -89,10 +91,7 @@ describe('getComputerUsePermissionStatus', () => {
       code: 'accessibility_error',
       message: 'Could not check permissions: failed to launch helper'
     })
-    expect(rm).toHaveBeenCalledWith(permissionStatusTempDir, {
-      recursive: true,
-      force: true
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(permissionStatusTempDir)
   })
 
   it('removes permission status helper listeners after close', async () => {
@@ -156,10 +155,7 @@ describe('getComputerUsePermissionStatus', () => {
     expect(settled).toBe(true)
     await rejection
     expect(child.kill).toHaveBeenCalled()
-    expect(rm).toHaveBeenCalledWith(permissionStatusTempDir, {
-      recursive: true,
-      force: true
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(permissionStatusTempDir)
   })
 
   it('reads permission status through the helper app identity', async () => {
@@ -188,10 +184,7 @@ describe('getComputerUsePermissionStatus', () => {
     )
     expect(spawnSync).not.toHaveBeenCalled()
     expect(readFile).toHaveBeenCalledWith(permissionStatusPath, 'utf8')
-    expect(rm).toHaveBeenCalledWith(permissionStatusTempDir, {
-      recursive: true,
-      force: true
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(permissionStatusTempDir)
   })
 
   it('returns unavailable permission status when the helper app is missing on macOS', async () => {

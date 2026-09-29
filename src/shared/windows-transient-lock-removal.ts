@@ -6,7 +6,6 @@
 
 import type { RmOptions } from 'node:fs'
 import { rmSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
 
 export const WINDOWS_RM_MAX_RETRIES = 8
 export const WINDOWS_RM_RETRY_DELAY_MS = 150
@@ -58,7 +57,7 @@ export function removeTreeSync(targetPath: string): void {
   }
 }
 
-/** Recursively remove a directory, retrying the transient Windows locks. */
+/** Async-signature `removeTreeSync` for test teardown; a pool-backed recursive `rm` is banned here. */
 export async function removeTree(targetPath: string): Promise<void> {
-  await rm(targetPath, transientLockRemovalOptions())
+  removeTreeSync(targetPath)
 }

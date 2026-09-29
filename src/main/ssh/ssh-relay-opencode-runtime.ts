@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { copyFile, link, mkdtemp, rm } from 'node:fs/promises'
+import { copyFile, link, mkdtemp } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
@@ -30,6 +30,7 @@ import {
   promoteOpenCodeRuntimeCommand,
   publishOpenCodeRuntimeReferenceCommand
 } from './ssh-relay-opencode-runtime-commands'
+import { removeHostTree } from '../host-tree-removal'
 
 const SETUP_TIMEOUT_MS = 180_000
 export type RemoteOpenCodeRuntimeOutcome =
@@ -243,7 +244,7 @@ async function install(
         }
         executable = promoted.executable
       } finally {
-        await rm(localStage, { recursive: true, force: true }).catch(() => {})
+        await removeHostTree(localStage).catch(() => {})
       }
     }
     const referenceName = 'opencode-sqlite-runtime.json'

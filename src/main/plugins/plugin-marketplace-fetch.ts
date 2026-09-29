@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
 } from '../../shared/plugins/plugin-marketplace'
 import { checkoutPluginGitSource } from './plugin-git-repository'
 import type { PluginMarketplaceRegisteredSource } from './plugin-marketplace-store'
+import { removeHostTree } from '../host-tree-removal'
 
 const MARKETPLACE_INDEX_MAX_BYTES = 16 * 1024 * 1024
 
@@ -33,7 +34,7 @@ export async function fetchPluginMarketplace(
     const marketplace = await readPluginMarketplaceIndex(stagingDirectory)
     return { marketplaceCommit, marketplace }
   } finally {
-    await rm(stagingDirectory, { recursive: true, force: true })
+    await removeHostTree(stagingDirectory)
   }
 }
 

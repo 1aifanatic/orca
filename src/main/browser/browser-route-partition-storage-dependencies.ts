@@ -1,5 +1,4 @@
 import { session } from 'electron'
-import { rm } from 'node:fs/promises'
 import {
   releaseBrowserRoutePartitionStorage,
   type BrowserRoutePartitionStorageDependencies
@@ -9,6 +8,7 @@ import {
   routePartitionDataRoot
 } from './browser-route-partition-binding-runtime'
 import { browserSessionRegistry } from './browser-session-registry'
+import { removeHostTree } from '../host-tree-removal'
 
 export function browserRoutePartitionStorageDependencies(
   isPartitionLive: (partition: string) => boolean
@@ -24,7 +24,7 @@ export function browserRoutePartitionStorageDependencies(
       browserSessionRegistry.clearRoutePartitionPolicies(partition)
     },
     // Why: force ignores an already-absent directory, keeping the sweep idempotent.
-    removePartitionDirectory: (directory) => rm(directory, { recursive: true, force: true })
+    removePartitionDirectory: (directory) => removeHostTree(directory)
   }
 }
 

@@ -18,7 +18,7 @@ const {
   fsLstatMock,
   fsMkdirMock,
   fsOpendirMock,
-  fsRmMock,
+  removeHostTreeMock,
   fsWriteFileMock,
   fsOpenMock,
   fsStatMock,
@@ -54,7 +54,7 @@ const {
   fsLstatMock: vi.fn(),
   fsMkdirMock: vi.fn(),
   fsOpendirMock: vi.fn(),
-  fsRmMock: vi.fn(),
+  removeHostTreeMock: vi.fn(),
   fsWriteFileMock: vi.fn(),
   fsOpenMock: vi.fn(),
   fsStatMock: vi.fn(),
@@ -79,7 +79,6 @@ vi.mock('node:fs/promises', () => ({
   lstat: fsLstatMock,
   mkdir: fsMkdirMock,
   opendir: fsOpendirMock,
-  rm: fsRmMock,
   open: fsOpenMock,
   stat: fsStatMock,
   realpath: vi.fn(), // unused here; only satisfies filesystem-path-containment's named import
@@ -88,6 +87,8 @@ vi.mock('node:fs/promises', () => ({
     writeFile: fsWriteFileMock
   }
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 vi.mock('../ipc/filesystem-auth', () => ({
   PATH_ACCESS_DENIED_MESSAGE:
@@ -218,8 +219,8 @@ describe('registerClipboardHandlers', () => {
       async *[Symbol.asyncIterator]() {},
       close: vi.fn().mockResolvedValue(undefined)
     }))
-    fsRmMock.mockReset()
-    fsRmMock.mockResolvedValue(undefined)
+    removeHostTreeMock.mockReset()
+    removeHostTreeMock.mockResolvedValue(undefined)
     fsWriteFileMock.mockReset()
     fsOpenMock.mockReset()
     fsStatMock.mockReset()
@@ -360,7 +361,7 @@ describe('registerClipboardHandlers', () => {
     expect(provider.downloadFile).toHaveBeenCalledWith('/remote/report.pdf', tempPath)
     expect(fsStatMock).toHaveBeenCalledWith(tempPath)
     expect(resolveAuthorizedPathMock).not.toHaveBeenCalled()
-    expect(fsRmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
   })
 
   it('does not materialize remote directories for OS clipboard copy', async () => {
@@ -406,12 +407,7 @@ describe('registerClipboardHandlers', () => {
     ).rejects.toThrow('transfer failed')
 
     expect(provider.downloadFile).toHaveBeenCalledWith('/remote/report.pdf', tempPath)
-    expect(fsRmMock).toHaveBeenCalledWith(tempDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 3,
-      retryDelay: 100
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tempDir)
     expect(clipboardWriteBufferMock).not.toHaveBeenCalled()
   })
 

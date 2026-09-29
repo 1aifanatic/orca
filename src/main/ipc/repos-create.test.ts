@@ -20,7 +20,7 @@ const {
   mkdirMock,
   accessMock,
   readdirMock,
-  rmMock,
+  removeHostTreeMock,
   gitExecFileAsyncMock,
   homedirMock,
   invalidateAuthorizedRootsCacheMock,
@@ -39,7 +39,7 @@ const {
   mkdirMock: vi.fn(),
   accessMock: vi.fn(),
   readdirMock: vi.fn(),
-  rmMock: vi.fn(),
+  removeHostTreeMock: vi.fn(),
   gitExecFileAsyncMock: vi.fn(),
   homedirMock: vi.fn(),
   invalidateAuthorizedRootsCacheMock: vi.fn(),
@@ -57,9 +57,10 @@ vi.mock('electron', () => ({
 vi.mock('fs/promises', () => ({
   mkdir: mkdirMock,
   access: accessMock,
-  readdir: readdirMock,
-  rm: rmMock
+  readdir: readdirMock
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 // `availableParallelism` is read at module load by the git admission scheduler,
 // which this module graph reaches; a partial `os` mock breaks that import.
@@ -147,7 +148,7 @@ describe('repos:create', () => {
     accessMock.mockReset().mockRejectedValue(new Error('ENOENT'))
     readdirMock.mockReset().mockResolvedValue([])
     mkdirMock.mockReset().mockResolvedValue(undefined)
-    rmMock.mockReset().mockResolvedValue(undefined)
+    removeHostTreeMock.mockReset().mockResolvedValue(undefined)
     gitExecFileAsyncMock.mockReset().mockResolvedValue({ stdout: '', stderr: '' })
     homedirMock.mockReset().mockReturnValue('/Users/alice')
 
@@ -359,7 +360,7 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'broken', kind: 'git' })
 
-    expect(rmMock).toHaveBeenCalledWith(tmpPath('broken'), { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tmpPath('broken'))
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     expect(result).toMatchObject({ error: expect.stringContaining('Failed to initialize') })
   })
@@ -372,7 +373,7 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'preexisting', kind: 'git' })
 
-    expect(rmMock).not.toHaveBeenCalled()
+    expect(removeHostTreeMock).not.toHaveBeenCalled()
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     expect(result).toMatchObject({ error: expect.stringContaining('Failed to initialize') })
   })
@@ -383,7 +384,7 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'initfail', kind: 'git' })
 
-    expect(rmMock).toHaveBeenCalledWith(tmpPath('initfail'), { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tmpPath('initfail'))
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     // Loose match — handler distinguishes init vs commit failures, and we want
     // to tolerate small wording tweaks as long as it still mentions "initialize".
@@ -400,7 +401,7 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'commitfail', kind: 'git' })
 
-    expect(rmMock).toHaveBeenCalledWith(tmpPath('commitfail'), { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tmpPath('commitfail'))
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     expect(result).toMatchObject({ error: expect.stringContaining('commit') })
   })
@@ -418,14 +419,8 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'pre-existing', kind: 'git' })
 
-    expect(rmMock).toHaveBeenCalledWith(tmpPath('pre-existing', '.git'), {
-      recursive: true,
-      force: true
-    })
-    expect(rmMock).not.toHaveBeenCalledWith(tmpPath('pre-existing'), {
-      recursive: true,
-      force: true
-    })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tmpPath('pre-existing', '.git'))
+    expect(removeHostTreeMock).not.toHaveBeenCalledWith(tmpPath('pre-existing'))
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     expect(result).toMatchObject({ error: expect.stringContaining('commit') })
   })
@@ -442,7 +437,7 @@ describe('repos:create', () => {
 
     const result = await callCreate({ parentPath: '/tmp', name: 'authorless', kind: 'git' })
 
-    expect(rmMock).toHaveBeenCalledWith(tmpPath('authorless'), { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tmpPath('authorless'))
     expect(mockStore.addRepo).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       error: expect.stringContaining('Git author identity is not configured')

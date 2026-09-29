@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { cp, mkdir, rm } from 'node:fs/promises'
+import { cp, mkdir } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import {
   PLUGIN_MANIFEST_FILENAME,
@@ -23,6 +23,7 @@ import { hashPluginTree } from './plugin-content-hash'
 import { publishPluginInstall } from './plugin-install-publication'
 import { readPluginManifestText } from './plugin-manifest-file'
 import { pluginInstallTrustError } from './plugin-install-trust'
+import { removeHostTree } from '../host-tree-removal'
 
 export type PluginInstallResult =
   | {
@@ -151,13 +152,13 @@ export async function installStagedPluginTree(input: {
     if (!existingHash.ok || existingHash.hash !== sourceInspection.contentHash) {
       // Why: bundled resources are release-index verified above, so they can
       // safely restore a damaged immutable install instead of staying broken.
-      await rm(versionDir, { recursive: true, force: true })
+      await removeHostTree(versionDir)
     }
   }
   if (!existsSync(versionDir)) {
     const stagedVersionDir = `${versionDir}.staging`
     try {
-      await rm(stagedVersionDir, { recursive: true, force: true })
+      await removeHostTree(stagedVersionDir)
       await mkdir(pluginDir, { recursive: true })
       // Source trees can change while copying. Hashing the destination closes
       // that race before the immutable directory becomes current.
@@ -197,7 +198,7 @@ export async function installStagedPluginTree(input: {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     } finally {
-      await rm(stagedVersionDir, { recursive: true, force: true })
+      await removeHostTree(stagedVersionDir)
     }
   } else {
     // Never repoint at an existing hash directory without proving its bytes;

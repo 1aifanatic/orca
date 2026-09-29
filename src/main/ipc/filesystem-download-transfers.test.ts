@@ -11,6 +11,7 @@ import {
   openMock,
   renameMock,
   rmMock,
+  removeHostTreeMock,
   getSshFilesystemProviderMock,
   promoteLocalDownloadedFolderMock,
   resetFilesystemIpcMocks
@@ -18,6 +19,10 @@ import {
 
 vi.mock('electron', async () => (await import('./filesystem-test-harness')).electronMock)
 vi.mock('fs/promises', async () => (await import('./filesystem-test-harness')).fsPromisesMock)
+vi.mock(
+  '../host-tree-removal',
+  async () => (await import('./filesystem-test-harness')).hostTreeRemovalMock
+)
 vi.mock(
   '../wsl-unc-delete',
   async () => (await import('./filesystem-test-harness')).wslUncDeleteMock
@@ -572,7 +577,7 @@ describe('registerFilesystemHandlers', () => {
 
     const tempPath = provider.downloadFolder.mock.calls[0][1]
     expect(promoteLocalDownloadedFolderMock).not.toHaveBeenCalled()
-    expect(rmMock).toHaveBeenCalledWith(tempPath, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tempPath)
   })
 
   it('logs a recursive temporary-folder cleanup failure without masking the transfer error', async () => {
@@ -584,7 +589,7 @@ describe('registerFilesystemHandlers', () => {
     getSshFilesystemProviderMock.mockReturnValue(provider)
     showOpenDialogMock.mockResolvedValue({ canceled: false, filePaths: ['/downloads'] })
     statMock.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
-    rmMock.mockRejectedValueOnce(cleanupError)
+    removeHostTreeMock.mockRejectedValueOnce(cleanupError)
     registerFilesystemHandlers(store as never)
 
     try {
@@ -631,7 +636,7 @@ describe('registerFilesystemHandlers', () => {
     await expect(result).rejects.toThrow('window closed')
     const tempPath = provider.downloadFolder.mock.calls[0][1]
     expect(promoteLocalDownloadedFolderMock).not.toHaveBeenCalled()
-    expect(rmMock).toHaveBeenCalledWith(tempPath, { recursive: true, force: true })
+    expect(removeHostTreeMock).toHaveBeenCalledWith(tempPath)
     expect(folderDownloadSender.listenerCount('destroyed')).toBe(0)
   })
 })

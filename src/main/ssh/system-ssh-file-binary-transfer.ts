@@ -1,5 +1,5 @@
 import { constants, createWriteStream } from 'node:fs'
-import { lstat, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, open, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Writable } from 'node:stream'
@@ -22,6 +22,7 @@ import {
   writeWindowsRemoteFile,
   type WindowsWriteSource
 } from './system-ssh-windows-write-strategy'
+import { removeHostTree } from '../host-tree-removal'
 
 export {
   WINDOWS_STDIN_WRITE_CHUNK_BYTES,
@@ -233,7 +234,7 @@ async function withTemporaryLocalFile<T>(
     await writeFile(localPath, contents, { mode: 0o600 })
     return await send(localPath)
   } finally {
-    await rm(directory, { recursive: true, force: true }).catch(() => {})
+    await removeHostTree(directory).catch(() => {})
   }
 }
 

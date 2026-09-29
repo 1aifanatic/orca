@@ -24,6 +24,7 @@ export const statMock: IpcMock = vi.fn()
 export const openMock: IpcMock = vi.fn()
 export const renameMock: IpcMock = vi.fn()
 export const rmMock: IpcMock = vi.fn()
+export const removeHostTreeMock: IpcMock = vi.fn()
 export const realpathMock: IpcMock = vi.fn()
 export const lstatMock: IpcMock = vi.fn()
 export const commitChangesMock: IpcMock = vi.fn()
@@ -79,6 +80,8 @@ export const fsPromisesMock = {
 }
 
 export const wslUncDeleteMock = { tryDeleteWslUncPath: tryDeleteWslUncPathMock }
+
+export const hostTreeRemovalMock = { removeHostTree: removeHostTreeMock }
 
 export const crashBreadcrumbMock = { recordCrashBreadcrumb: recordCrashBreadcrumbMock }
 
@@ -223,6 +226,7 @@ function collectMocks(moduleMock: Record<string, unknown>): IpcMock[] {
 const ALL_MOCKS = [
   electronMock,
   fsPromisesMock,
+  hostTreeRemovalMock,
   wslUncDeleteMock,
   crashBreadcrumbMock,
   folderPromotionMock,
@@ -272,6 +276,7 @@ export function resetFilesystemIpcMocks(): void {
   statMock.mockResolvedValue({ size: 10, isDirectory: () => false, mtimeMs: 123 })
   renameMock.mockResolvedValue(undefined)
   rmMock.mockResolvedValue(undefined)
+  removeHostTreeMock.mockResolvedValue(undefined)
   openMock.mockResolvedValue({
     read: vi.fn(async (buffer: Buffer) => {
       buffer.fill(0x61)

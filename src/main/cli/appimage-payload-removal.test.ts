@@ -27,15 +27,17 @@ describe('removeExtractedAppImagePayload', () => {
     expect(existsSync(root)).toBe(false)
   })
 
-  it('disables asar interception for the removal', async () => {
+  // Why: `process.noAsar` is process-wide; flipping it mid-removal would change asar semantics for
+  // every concurrent reader in the process, and the native walk makes the toggle unnecessary.
+  it('removes the payload without toggling process-wide asar interception', async () => {
     const root = await makePayloadTree()
-    let observed: boolean | undefined
-    const originalRealpath = process.noAsar
+    const assigned: boolean[] = []
+    const noAsarBefore = process.noAsar
     Object.defineProperty(process, 'noAsar', {
       configurable: true,
-      get: () => observed ?? originalRealpath,
+      get: () => noAsarBefore,
       set: (value: boolean) => {
-        observed ??= value
+        assigned.push(value)
       }
     })
     try {
@@ -44,13 +46,14 @@ describe('removeExtractedAppImagePayload', () => {
       Object.defineProperty(process, 'noAsar', {
         configurable: true,
         writable: true,
-        value: originalRealpath
+        value: noAsarBefore
       })
     }
-    expect(observed).toBe(true)
+    expect(assigned).toEqual([])
+    expect(existsSync(root)).toBe(false)
   })
 
-  it('restores the previous asar setting after a failure', async () => {
+  it('surfaces a removal failure and leaves the asar setting untouched', async () => {
     process.noAsar = false
     await expect(
       removeExtractedAppImagePayload(join(tmpdir(), 'orca-missing', 'nested', '\0invalid'))

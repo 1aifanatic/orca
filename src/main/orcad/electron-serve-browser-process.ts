@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { createServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +23,7 @@ import {
   electronSidecarRuntimeMethodName,
   TARGETLESS_BROWSER_METHODS
 } from './electron-sidecar-method-routing'
+import { removeHostTree } from '../host-tree-removal'
 
 const START_TIMEOUT_MS = 120_000
 const STOP_TIMEOUT_MS = 5_000
@@ -185,7 +186,7 @@ export class ElectronServeBrowserProcess {
       }
     }
     if (sidecarDataPath) {
-      await rm(sidecarDataPath, { recursive: true, force: true })
+      await removeHostTree(sidecarDataPath)
     }
   }
 

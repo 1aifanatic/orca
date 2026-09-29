@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog } from 'electron'
-import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import type { CustomPet } from '../../shared/pet-types'
@@ -10,6 +10,7 @@ import { resolveBundleSpritesheetSource } from './pet-bundle-spritesheet-source'
 import { MAX_MANIFEST_BYTES } from './pet-import-size-limits'
 import { getPetsDir } from './pet-storage-paths'
 import { copyFileNoFollow, isSymlink } from './pet-symlink-safe-copy'
+import { removeHostTree } from '../host-tree-removal'
 
 export async function importPetBundle(
   event: Electron.IpcMainInvokeEvent
@@ -76,13 +77,13 @@ export async function importPetBundle(
   // Why: stage into a sibling .tmp then atomically rename, so a mid-copy failure can't leave a half-imported bundle.
   const tmpDir = `${destDir}.tmp`
   try {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    await removeHostTree(tmpDir).catch(() => {})
     await mkdir(tmpDir, { recursive: true })
     await copyFileNoFollow(sheetSrc, join(tmpDir, sheetFileName))
     await copyFileNoFollow(manifestPath, join(tmpDir, 'pet.json'))
     await rename(tmpDir, destDir)
   } catch {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    await removeHostTree(tmpDir).catch(() => {})
     throw new Error('Could not save the pet bundle.')
   }
 

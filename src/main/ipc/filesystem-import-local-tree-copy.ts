@@ -1,7 +1,8 @@
 import { constants } from 'node:fs'
-import { lstat, mkdir, open, readdir, rm, unlink } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir, unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { removeHostTree } from '../host-tree-removal'
 
 /**
  * Pre-scan a directory tree for symlinks. Returns true if any symlink
@@ -29,7 +30,7 @@ export async function recursiveCopyDir(srcDir: string, destDir: string): Promise
   try {
     await copyDirectoryContents(srcDir, destDir)
   } catch (error) {
-    await rm(destDir, { recursive: true, force: true }).catch(() => {})
+    await removeHostTree(destDir).catch(() => {})
     throw error
   }
 }
