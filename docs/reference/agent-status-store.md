@@ -197,9 +197,13 @@ pane key two writers. Removing that filter is the first step of PR 2.
 
 ### The main agent fact
 
-Claude, Codex and Grok hook rows and structured-session rows publish the combined
+Claude, Codex, Grok and OpenCode hook rows and structured-session rows publish the combined
 `state` and, beside it, the main agent's own state as `payload.mainAgent`. Other agents'
-rows and terminal-title-only rows carry none, and readers fall back to `state`:
+rows and terminal-title-only rows carry none, and readers fall back to `state`. OpenCode's
+plugin sends the root session's own state (`root_state`) and the name of the error that ended
+its turn (`root_turn_error_name`) beside its pane fold; `MessageAbortedError` is a
+`cancellation`, any other name a `failure`, and a plugin that predates the fields publishes no
+`mainAgent`:
 
 ```ts
 mainAgent?: { state: AgentStatusState; outcome?: AgentJournalTurnOutcome; stateStartedAt: number }
