@@ -23,12 +23,8 @@ function resolveFs(): AsarTransparentFs {
     // Why require and not an import: `original-fs` only exists inside Electron (main and the
     // run-as-node daemon), so vitest, the `orca` CLI, plain-node entrypoints and Bun must resolve
     // `node:fs/promises` instead — and there the shim does not exist, so plain `fs` already is.
-    const originalFs: { promises?: Partial<AsarTransparentFs> } =
-      createRequire(__filename)('original-fs')
-    const { lstat, readdir, rm, rmdir, unlink } = originalFs.promises ?? {}
-    return lstat && readdir && rm && rmdir && unlink
-      ? { lstat, readdir, rm, rmdir, unlink }
-      : nodeFsPromises
+    const originalFs: { promises?: AsarTransparentFs } = createRequire(__filename)('original-fs')
+    return originalFs.promises ?? nodeFsPromises
   } catch {
     return nodeFsPromises
   }
