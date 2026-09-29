@@ -12,6 +12,8 @@ const HELP_PROBE_TIMEOUT_MS = 5_000
 
 export type LocalCodexLaunch = {
   command: string | undefined
+  /** False for SSH and WSL spawns: their shell's codex function probes on that host. */
+  executesOnThisHost: boolean
   /** Shell the provider will launch; undefined means the platform default. */
   shellOverride: string | undefined
   /** Env the PTY gets on top of this process's own. */
@@ -21,16 +23,16 @@ export type LocalCodexLaunch = {
 
 /**
  * The launch command with `--no-daemon` after the Codex executable, applying the
- * shell codex function's rule (codex-shell-launch-preflight.ts) where that
+ * shell codex function's rule (src/shared/codex-shell-function.ts) where that
  * function never runs: cmd.exe defines none, and a path-named binary bypasses it.
  * Everywhere else the function probes the binary the shell itself resolves after
- * the user's startup files, which main cannot see. Call only for launches that
- * execute on this host. Null (synchronously) when nothing applies, so non-Codex
- * spawns never await.
+ * the user's startup files, which main cannot see. Null (synchronously) when
+ * nothing applies: an extra await tick would reorder the pane-spawn reservation
+ * races the spawn handlers arbitrate right after this.
  */
 export function planCodexNoDaemonLaunch(launch: LocalCodexLaunch): Promise<string> | null {
   const { command } = launch
-  if (!command) {
+  if (!command || !launch.executesOnThisHost) {
     return null
   }
   const shell =

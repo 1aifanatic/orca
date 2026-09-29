@@ -114,7 +114,7 @@ export type ShellLaunchConfig = {
   supportsReadyMarker: boolean
 }
 
-export const UNWRAPPED: ShellLaunchConfig = {
+const UNWRAPPED: ShellLaunchConfig = {
   args: null,
   env: {},
   supportsReadyMarker: false

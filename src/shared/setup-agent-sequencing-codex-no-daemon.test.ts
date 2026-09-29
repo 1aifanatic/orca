@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,8 +8,12 @@ import { createSequencedSetupAgentCommands } from './setup-agent-sequencing'
 // Why: the POSIX gate evals the agent in a fresh `bash -lc`, which never reads
 // Orca's shell wrapper, so it must carry the codex --no-daemon rule itself.
 const roots: string[] = []
+const gates: ChildProcess[] = []
 
 afterEach(() => {
+  for (const gate of gates.splice(0)) {
+    gate.kill()
+  }
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true })
   }
@@ -25,7 +29,9 @@ function prepareGate(startupCommand: string) {
     runnerScriptPath: runner,
     startupCommand,
     platform: 'posix',
-    nonce: 'n1'
+    nonce: 'n1',
+    // Why: a failed assertion must not leave a gate polling for the default two hours.
+    waitTimeoutSeconds: 5
   })
   return {
     sequenced,
@@ -68,6 +74,7 @@ describe.skipIf(process.platform === 'win32')('sequenced setup gate runs codex',
   it('with --no-daemon when setup is what installs codex', async () => {
     const gate = prepareGate('codex --yolo')
     const child = spawn('bash', ['-c', gate.sequenced.startupCommand], { env: gate.env })
+    gates.push(child)
     let stdout = ''
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
     const exited = new Promise((resolve) => child.on('close', resolve))

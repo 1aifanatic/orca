@@ -99,15 +99,13 @@ export async function buildRuntimePtySpawnOptions(
   }
   deleteRequestedEnvKeys(ctx.env, ctx.spawnOptions.envToDelete)
   promoteAgentTeamsShimPath(ctx.env, ctx.requestedAgentTeamsPath)
-  const noDaemonLaunch =
-    args.connectionId || ctx.codexSelectionTarget.runtime === 'wsl'
-      ? null
-      : planCodexNoDaemonLaunch({
-          command: ctx.launchCommand,
-          shellOverride: ctx.daemonShellOverride,
-          env: ctx.env,
-          cwd: ctx.cwd
-        })
+  const noDaemonLaunch = planCodexNoDaemonLaunch({
+    command: ctx.launchCommand,
+    executesOnThisHost: !args.connectionId && ctx.codexSelectionTarget.runtime !== 'wsl',
+    shellOverride: ctx.daemonShellOverride,
+    env: ctx.env,
+    cwd: ctx.cwd
+  })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand
   if (launchCommand !== undefined) {
     ctx.spawnOptions.command = launchCommand

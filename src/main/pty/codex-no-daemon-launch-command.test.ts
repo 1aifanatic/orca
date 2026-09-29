@@ -33,6 +33,7 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch', () => {
   function plan(command: string, overrides: Partial<LocalCodexLaunch> = {}) {
     return planCodexNoDaemonLaunch({
       command,
+      executesOnThisHost: true,
       shellOverride: undefined,
       env: {},
       cwd: dir,
@@ -55,6 +56,10 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch', () => {
     ['--remote=ws://h:1']
   ])('leaves `codex %s` alone: it needs the shared server or has the flag', (args) => {
     expect(plan(`${codex} ${args}`)).toBeNull()
+  })
+
+  it('leaves SSH and WSL launches to the codex function on that host', () => {
+    expect(plan(`${codex} --yolo`, { executesOnThisHost: false })).toBeNull()
   })
 
   it('honours ORCA_CODEX_ISOLATE=0 from the pane env', () => {

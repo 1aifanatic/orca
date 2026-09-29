@@ -78,15 +78,13 @@ export async function buildPtyIpcSpawnOptions(
   if (ctx.combinedEnvToDelete) {
     ctx.spawnOptions.envToDelete = ctx.combinedEnvToDelete
   }
-  const noDaemonLaunch =
-    args.connectionId || ctx.codexSelectionTarget.runtime === 'wsl'
-      ? null
-      : planCodexNoDaemonLaunch({
-          command: ctx.launchCommand,
-          shellOverride: ctx.effectiveShellOverride,
-          env: ctx.spawnEnv,
-          cwd: ctx.cwd
-        })
+  const noDaemonLaunch = planCodexNoDaemonLaunch({
+    command: ctx.launchCommand,
+    executesOnThisHost: !args.connectionId && ctx.codexSelectionTarget.runtime !== 'wsl',
+    shellOverride: ctx.effectiveShellOverride,
+    env: ctx.spawnEnv,
+    cwd: ctx.cwd
+  })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand
   if (launchCommand !== undefined) {
     ctx.spawnOptions.command = launchCommand

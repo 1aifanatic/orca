@@ -38,7 +38,7 @@ import {
 } from '../../../shared/agent-process-recognition'
 import { ORCA_HERMES_STARTUP_QUERY_ENV } from '../../../shared/hermes-startup-query'
 import { WINDOWS_GIT_BASH_SHELL } from '../../../shared/windows-terminal-shell'
-import { getShellLaunchConfig, resolvePtyShellPath, UNWRAPPED } from '../shell-ready'
+import { getShellLaunchConfig, resolvePtyShellPath } from '../shell-ready'
 import { resolveWslSessionContext } from '../wsl-session-context'
 import { finalizeDaemonPtyEnvironment, rescrubDaemonPtyEnvironment } from './spawn-environment'
 import type { PtySubprocessOptions } from '../pty-subprocess'
@@ -209,13 +209,11 @@ export function createPtyShellLaunchPlan(
       emitsStartupIdentity: waitsForShellReady
     })
     const shellLaunch = keepsConfiguredShellUnwrapped(features, opts)
-      ? UNWRAPPED
+      ? null
       : getShellLaunchConfig(shellPath, features)
-    Object.assign(env, shellLaunch.env)
-    shellArgs =
-      !opts.command && !opts.launchAgent && opts.terminalShellArgs !== undefined
-        ? opts.terminalShellArgs
-        : (shellLaunch.args ?? ['-l'])
+    Object.assign(env, shellLaunch?.env)
+    shellArgs = (!opts.command && !opts.launchAgent ? opts.terminalShellArgs : undefined) ??
+      shellLaunch?.args ?? ['-l']
   }
 
   seedPowerlevel10kWizardEnv(env, { envToDelete: opts.envToDelete })
