@@ -14,31 +14,31 @@ export const JOURNAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024
 /** Every commit but a first-use copy's batches, which no reader follows until a synced commit. */
 export const JOURNAL_SYNCHRONOUS = 'FULL'
 
-/** A newer build wrote this database: this build neither reads nor writes it. */
-export class JournalDatabaseNewerSchemaError extends Error {
-  constructor(
-    readonly storedVersion: number,
-    dbPath: string
-  ) {
-    super(
-      `chat journal ${dbPath} uses schema ${storedVersion}; this build knows only up to ${JOURNAL_DB_SCHEMA_VERSION}`
-    )
-    this.name = 'JournalDatabaseNewerSchemaError'
-  }
+export type OpenJournalDatabase = {
+  db: Database.Database
+  /** A newer `user_version` was met: this build reads and never writes. */
+  readOnly: boolean
 }
 
 export function journalPragmaNumber(db: Database.Database, name: string): number {
   return Number(db.pragma(name, { simple: true }) ?? 0)
 }
 
-export function openJournalDatabase(dbPath: string): Database.Database {
+export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
   const probe = new Database(dbPath)
+  let stored: number
+  try {
+    stored = journalPragmaNumber(probe, 'user_version')
+  } catch (error) {
+    probe.close()
+    throw error
+  }
+  if (stored > JOURNAL_DB_SCHEMA_VERSION) {
+    probe.close()
+    return { db: new Database(dbPath, { readonly: true, fileMustExist: true }), readOnly: true }
+  }
   let transferred = false
   try {
-    const stored = journalPragmaNumber(probe, 'user_version')
-    if (stored > JOURNAL_DB_SCHEMA_VERSION) {
-      throw new JournalDatabaseNewerSchemaError(stored, dbPath)
-    }
     if (stored !== 0 && stored < JOURNAL_DB_SCHEMA_VERSION) {
       // Only unreleased development builds wrote these shapes; left as found, never migrated.
       throw new Error(`chat journal ${dbPath} uses unreleased schema ${stored}; move it aside`)
@@ -47,7 +47,7 @@ export function openJournalDatabase(dbPath: string): Database.Database {
     createJournalSchema(probe, stored)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
-    return probe
+    return { db: probe, readOnly: false }
   } finally {
     if (!transferred) {
       probe.close()

@@ -13,7 +13,6 @@ import {
   JournalHostDatabase,
   journalDatabasePath
 } from '../native-chat/agent-session-journal/journal-host-database'
-import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../native-chat/agent-session-journal/journal-open-failure'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import Database from '../sqlite/sync-database'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
@@ -99,22 +98,18 @@ describe('a process whose journal will not open', () => {
     expect(gateRefusal).toThrow('the gate admitted the request')
   })
 
-  // T5: a newer build's database is refused as one that can clear, and left byte-identical.
-  it('refuses a database a newer Orca wrote, and leaves it byte-identical', async () => {
+  // T5: a newer build's database is not refused: the host installs over it read-only, so chats
+  // stay visible, and the file is left byte-identical.
+  it('installs over a database a newer Orca wrote, and leaves it byte-identical', async () => {
     const path = journalDatabasePath(root)
     const seeded = new Database(path)
     seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
     seeded.close()
     const before = await digest(path)
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    await expect(install()).rejects.toMatchObject({
-      refusal: { message: JOURNAL_NEWER_SCHEMA_MESSAGE, details: { reason: 'journalUnavailable' } }
-    })
-    expect(gateRefusal()).toEqual({
-      reason: 'journalUnavailable',
-      message: JOURNAL_NEWER_SCHEMA_MESSAGE
-    })
+    await expect(install()).resolves.toBeDefined()
+    expect(gateRefusal).toThrow('the gate admitted the request')
+    await stopStructuredAgentSessionRuntime()
     expect(await digest(path)).toBe(before)
   })
 })

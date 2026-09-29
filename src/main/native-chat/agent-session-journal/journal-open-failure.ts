@@ -11,7 +11,6 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
-import { JournalDatabaseNewerSchemaError } from './journal-database'
 import { AgentSessionJournalError } from './journal-write-guards'
 
 export type JournalOpenFailure = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
@@ -47,10 +46,7 @@ export const JOURNAL_NEWER_SCHEMA_MESSAGE =
 
 /** A newer Orca wrote the database, or one of this chat's rows: an update is what gets past it. */
 export function isJournalWrittenByNewerOrca(error: unknown): boolean {
-  return (
-    error instanceof JournalDatabaseNewerSchemaError ||
-    (error instanceof AgentSessionJournalError && error.code === 'journal_read_only')
-  )
+  return error instanceof AgentSessionJournalError && error.code === 'journal_read_only'
 }
 
 /** Why a journal open failed, and the words a released client prints for it. */

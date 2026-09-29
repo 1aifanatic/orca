@@ -7,11 +7,13 @@
 // the sequence.
 
 import type { JournalEpochController } from './journal-epoch-controller'
-import { replayJournal } from './journal-open'
+import { replayJournal, type JournalLoad } from './journal-open'
+import { createJournalReducerState } from './journal-reducer'
 import type { JournalStoreHost } from './journal-store-collaborators'
 import { openJournalStoreState } from './journal-store-open'
 import { deleteJournalRepairedSuffix } from './journal-repair-marker'
 import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
+import { AgentSessionJournalError } from './journal-write-guards'
 
 export async function restoreJournalStore(
   host: JournalStoreHost,
@@ -21,6 +23,9 @@ export async function restoreJournalStore(
     database: host.database(),
     identity: host.identity,
     legacyDirectory: host.legacyDirectory
+  }
+  if (source.database.readOnly) {
+    return restoreFromNewerDatabase(host, source)
   }
   // A restore reads a chat still in its per-chat file from there, and copies it before its first use.
   const preview = host.deferPerSessionImport ? await previewPerSessionJournal(source) : null
@@ -66,5 +71,36 @@ export async function restoreJournalStore(
     malformedRows: host.malformedRows,
     setMalformedRows: host.setMalformedRows,
     readOnly: host.readOnly
+  })
+}
+
+/**
+ * A newer Orca's database: each chat shows what this build can read of it, from the database or a
+ * per-chat file never copied in, and nothing is written, copied, repaired or founded. Every write
+ * the store is asked for is refused as read-only.
+ */
+async function restoreFromNewerDatabase(
+  host: JournalStoreHost,
+  source: Parameters<typeof previewPerSessionJournal>[0]
+): Promise<void> {
+  const { sessionId } = host.identity
+  let loaded: JournalLoad | null
+  try {
+    loaded =
+      (await previewPerSessionJournal(source)) ?? replayJournal(source.database.db, sessionId)
+  } catch (error) {
+    // Tables the newer schema changed: still a chat only an update opens, not a damaged one.
+    throw new AgentSessionJournalError(
+      'journal_read_only',
+      `agent-session journal for ${sessionId} could not be read under a newer schema`,
+      { cause: error }
+    )
+  }
+  host.setOpenedCorrupt(false)
+  host.adopt({
+    state: loaded?.state ?? createJournalReducerState(sessionId, ''),
+    readOnly: true,
+    corrupt: false,
+    malformedRows: 0
   })
 }

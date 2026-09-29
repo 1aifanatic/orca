@@ -7,7 +7,6 @@ import Database from '../../sqlite/sync-database'
 import {
   JOURNAL_BUSY_TIMEOUT_MS,
   JOURNAL_SIZE_LIMIT_BYTES,
-  JournalDatabaseNewerSchemaError,
   journalPragmaNumber,
   openJournalDatabase
 } from './journal-database'
@@ -66,7 +65,7 @@ afterEach(async () => {
 
 describe('the host journal database open', () => {
   it('creates every table and reads back every load-bearing pragma', () => {
-    const db = openJournalDatabase(dbPath)
+    const db = openJournalDatabase(dbPath).db
     try {
       const tables = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -89,19 +88,28 @@ describe('the host journal database open', () => {
     }
   })
 
-  // T5: a newer build's database is refused and left byte-identical.
-  it('refuses a newer user_version without touching the file', async () => {
-    const seeded = openJournalDatabase(dbPath)
+  // T5: a newer build's database opens read-only, its rows readable, and is left byte-identical.
+  it('opens a newer user_version read-only without touching the file', async () => {
+    const seeded = openJournalDatabase(dbPath).db
     publishJournalSessionEpoch(seeded, SESSION, 'epoch-1')
     insertJournalRow(seeded, 'session-1', epochRow(1))
     seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 5}`)
     seeded.close()
     const before = await digest(dbPath)
 
-    expect(() => openJournalDatabase(dbPath)).toThrow(JournalDatabaseNewerSchemaError)
+    const opened = openJournalDatabase(dbPath)
+    try {
+      expect(opened.readOnly).toBe(true)
+      expect(readJournalSessionEpoch(opened.db, 'session-1')).toBe('epoch-1')
+      expect([...iterateJournalEpochRows(opened.db, 'session-1', 'epoch-1')]).toHaveLength(1)
+      expect(() => insertJournalRow(opened.db, 'session-1', epochRow(2))).toThrow(/readonly/i)
+    } finally {
+      opened.db.close()
+    }
 
     expect(await digest(dbPath)).toBe(before)
-    await expect(stat(`${dbPath}-wal`)).rejects.toThrow()
+    // A read-only reader of a WAL file may leave an empty log beside it, never a frame.
+    expect((await stat(`${dbPath}-wal`).catch(() => null))?.size ?? 0).toBe(0)
   })
 
   it('closes the raw connection when schema setup throws', async () => {
@@ -115,7 +123,7 @@ describe('the host journal database open', () => {
 
 describe('journal row statements', () => {
   it('serves replay, resume, suffix truncation and an epoch discard', () => {
-    const db = openJournalDatabase(dbPath)
+    const db = openJournalDatabase(dbPath).db
     try {
       db.exec('BEGIN IMMEDIATE')
       for (let seq = 1; seq <= 5; seq += 1) {
@@ -146,7 +154,7 @@ describe('journal row statements', () => {
   })
 
   it('deletes only the rows no pointer names', () => {
-    const db = openJournalDatabase(dbPath)
+    const db = openJournalDatabase(dbPath).db
     try {
       insertJournalRow(db, 'session-1', epochRow(1, 'epoch-copying'))
       insertJournalRow(db, 'session-2', epochRow(1, 'epoch-live'))
@@ -165,7 +173,7 @@ describe('journal row statements', () => {
   })
 
   it('refuses a duplicate sequence inside one epoch of one chat', () => {
-    const db = openJournalDatabase(dbPath)
+    const db = openJournalDatabase(dbPath).db
     try {
       insertJournalRow(db, 'session-1', epochRow(1))
       expect(() => insertJournalRow(db, 'session-1', epochRow(1))).toThrow()
@@ -177,7 +185,7 @@ describe('journal row statements', () => {
   })
 
   it('moves the epoch pointer in place and forgets the saved status with it', () => {
-    const db = openJournalDatabase(dbPath)
+    const db = openJournalDatabase(dbPath).db
     try {
       publishJournalSessionEpoch(db, SESSION, 'epoch-1')
       db.exec("UPDATE journal_sessions SET status_json = '{}', status_seq = 3")

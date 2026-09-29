@@ -1,5 +1,5 @@
 // Why structured chats are refused in this process: its chat journal would not open at install
-// (damaged, written by a newer Orca, or unavailable). Everything else goes on without a host.
+// (damaged or unavailable). Everything else goes on without a host.
 
 import {
   isAgentSessionRefusalError,

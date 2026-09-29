@@ -3,7 +3,8 @@
 // read — on both version axes, because only one of them is detectable before a
 // read.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,8 +12,11 @@ import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
+import { JOURNAL_DB_SCHEMA_VERSION } from '../agent-session-journal/journal-database-schema'
+import { journalDatabasePath } from '../agent-session-journal/journal-host-database'
 import { replayJournal } from '../agent-session-journal/journal-open'
 import {
+  closeTestJournalHostDatabases,
   createTrackedJournalOpener,
   openTestJournalHostDatabase,
   loadTestJournal,
@@ -118,6 +122,12 @@ async function withJournalDatabase(
   run: (db: Database.Database) => void
 ): Promise<void> {
   run(openTestJournalHostDatabase(directory).db)
+}
+
+async function digest(path: string): Promise<string> {
+  return createHash('sha256')
+    .update(await readFile(path))
+    .digest('hex')
 }
 
 /** The same logical hole `findSequenceGap` detects at replay. */
@@ -248,6 +258,50 @@ describe('openAgentSessionJournalWithRecovery', () => {
       expect(rows.some((entry) => entry.rowJson.includes('"v":99'))).toBe(true)
       expect(rows).toHaveLength(3)
     })
+  })
+
+  // A downgrade: the database a newer Orca stamped opens read-only. The chat shows its history, a
+  // send says to update, and the file is left byte-identical.
+  it('shows a chat from a database a newer Orca stamped, and a send says to update', async () => {
+    await seedJournal(2)
+    await withJournalDatabase(journalDir, (db) => {
+      db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+    })
+    closeTestJournalHostDatabases()
+    const path = journalDatabasePath(journalDir)
+    const before = await digest(path)
+
+    const opened = await openAgentSessionJournalWithRecovery({
+      identity: IDENTITY,
+      database: openTestJournalHostDatabase(journalDir),
+      fence: 1,
+      historyFilePath
+    })
+    journals.track(opened.journal)
+
+    expect(opened.recovery).toBeNull()
+    expect(opened.journal.isReadOnly).toBe(true)
+    const texts = opened.journal.snapshot().items.map((entry) => JSON.stringify(entry.body))
+    expect(texts.filter((text) => /item-[12]/.test(text))).toHaveLength(2)
+    const sent = await performSend(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a refused append returns before anything but the journal and fence is read.
+      { sessionId: CODEX_SESSION, journal: opened.journal, fence: 1 } as AgentSessionTurnContext,
+      {
+        clientMessageId: 'client-after-downgrade',
+        payloadFingerprint: 'fp',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
+      }
+    )
+    expect(sent).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' },
+        message: JOURNAL_NEWER_SCHEMA_MESSAGE
+      }
+    })
+    await journals.closeAll()
+    expect(await digest(path)).toBe(before)
   })
 
   // T-logical-per-chat: one file holds every chat, and damage one chat's replay finds is still

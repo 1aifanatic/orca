@@ -10,8 +10,8 @@
 // is still the tip of the live epoch.
 
 /** DB shape version, carried in `PRAGMA user_version`. Independent of the row body version
- *  (`JournalRow.v`): a newer build can change either alone. A newer version latches this build
- *  out, so every change stays additive. Versions below 3 were never released (journal-database.ts). */
+ *  (`JournalRow.v`): a newer build can change either alone. A newer version opens read-only here,
+ *  so every change stays additive. Versions below 3 were never released (journal-database.ts). */
 export const JOURNAL_DB_SCHEMA_VERSION = 3
 
 export function createJournalTablesSql(): string {

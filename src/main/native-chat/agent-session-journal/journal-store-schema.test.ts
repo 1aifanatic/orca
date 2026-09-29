@@ -5,7 +5,8 @@
 //
 // A newer build can change either alone, so both are needed.
 
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -16,7 +17,6 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
-import { JournalDatabaseNewerSchemaError } from './journal-database'
 import { journalDatabasePath } from './journal-host-database'
 import type { AgentSessionJournal } from './journal-store'
 import {
@@ -69,6 +69,12 @@ async function withDatabase(run: (db: Database.Database) => void): Promise<void>
   }
 }
 
+async function digest(path: string): Promise<string> {
+  return createHash('sha256')
+    .update(await readFile(path))
+    .digest('hex')
+}
+
 /** Appends a raw `row_json` the way a newer build or a bad write would leave it. */
 async function appendRawRow(epoch: string, seq: number, rowJson: string): Promise<void> {
   await withDatabase((db) => {
@@ -103,16 +109,45 @@ afterEach(async () => {
 })
 
 describe('axis 1: the database shape', () => {
-  // A newer build's database is not opened at all, so nothing here can write to it.
-  it('refuses a database a newer build stamped, and writes nothing', async () => {
+  // A newer build's database opens read-only: its chats read, and nothing here writes to it.
+  it('reads a database a newer build stamped, refuses every write, and writes nothing', async () => {
     const journal = await open()
     await journal.appendItem(item(0), body('a'), { fence: 1 })
     await journal.close()
     await withDatabase((db) => db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`))
-    const before = await stat(journalDatabasePath(root))
+    const before = await digest(journalDatabasePath(root))
 
-    await expect(open()).rejects.toBeInstanceOf(JournalDatabaseNewerSchemaError)
-    expect((await stat(journalDatabasePath(root))).size).toBe(before.size)
+    const reopened = await open()
+    expect(reopened.isReadOnly).toBe(true)
+    expect(reopened.snapshot().items.map((entry) => entry.body)).toEqual([body('a')])
+    await expect(reopened.appendItem(item(1), body('b'), { fence: 1 })).rejects.toMatchObject({
+      code: 'journal_read_only'
+    })
+    // A chat the database never held opens empty rather than being founded, and refuses the same way.
+    const unwritten = await journals.open({
+      identity: { ...IDENTITY, sessionId: 'session-2' },
+      stateDirectory: root
+    })
+    expect(unwritten.isReadOnly).toBe(true)
+    expect(unwritten.snapshot().items).toEqual([])
+    await expect(unwritten.appendItem(item(1), body('b'), { fence: 1 })).rejects.toMatchObject({
+      code: 'journal_read_only'
+    })
+    await journals.closeAll()
+    expect(await digest(journalDatabasePath(root))).toBe(before)
+  })
+
+  // Tables a newer schema changed read as a chat only an update opens, not as damage.
+  it('refuses as read-only a chat whose tables a newer build changed', async () => {
+    const journal = await open()
+    await journal.appendItem(item(0), body('a'), { fence: 1 })
+    await journal.close()
+    await withDatabase((db) => {
+      db.exec('ALTER TABLE journal_sessions RENAME TO journal_sessions_v4')
+      db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+    })
+
+    await expect(open()).rejects.toMatchObject({ code: 'journal_read_only' })
   })
 
   it('refuses the schema escape hatch on a store latched by a newer row', async () => {

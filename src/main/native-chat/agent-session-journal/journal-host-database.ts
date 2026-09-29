@@ -8,7 +8,12 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { JOURNAL_SYNCHRONOUS, openJournalDatabase, runJournalTransaction } from './journal-database'
+import {
+  JOURNAL_SYNCHRONOUS,
+  openJournalDatabase,
+  runJournalTransaction,
+  type OpenJournalDatabase
+} from './journal-database'
 import { journalOpenRefusalError } from './journal-open-failure'
 import { journalDirectoryFor } from './journal-paths'
 import { AgentSessionJournalError } from './journal-write-guards'
@@ -21,14 +26,17 @@ export function journalDatabasePath(stateDirectory: string): string {
 
 export class JournalHostDatabase {
   private connection: Database.Database | null
+  /** A newer Orca wrote the database: every chat's history reads, and no chat writes. */
+  readonly readOnly: boolean
   /** A failed transaction's ROLLBACK failed too, so the transaction may still be open. */
   private stranded = false
 
   private constructor(
     readonly stateDirectory: string,
-    connection: Database.Database
+    opened: OpenJournalDatabase
   ) {
-    this.connection = connection
+    this.connection = opened.db
+    this.readOnly = opened.readOnly
   }
 
   static open(stateDirectory: string): JournalHostDatabase {

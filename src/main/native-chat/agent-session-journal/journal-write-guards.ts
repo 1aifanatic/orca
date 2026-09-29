@@ -6,9 +6,10 @@
 export class AgentSessionJournalError extends Error {
   constructor(
     readonly code: 'journal_read_only' | 'journal_stale_fence' | 'journal_closed',
-    message: string
+    message: string,
+    options?: ErrorOptions
   ) {
-    super(message)
+    super(message, options)
     this.name = 'AgentSessionJournalError'
   }
 }

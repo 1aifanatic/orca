@@ -25,7 +25,7 @@ afterEach(async () => {
 /** What the journal's own open, then a chat's replay, throws for the file as it stands. */
 function openFailure(): unknown {
   try {
-    const db = openJournalDatabase(journalDatabasePath(root))
+    const db = openJournalDatabase(journalDatabasePath(root)).db
     try {
       replayJournal(db, 'session-1')
     } finally {
@@ -56,7 +56,7 @@ describe('classifyJournalOpenFailure', () => {
 
   it('calls a journal whose pages are damaged corrupt', async () => {
     const path = journalDatabasePath(root)
-    const opened = openJournalDatabase(path)
+    const opened = openJournalDatabase(path).db
     opened.exec('PRAGMA journal_mode = DELETE')
     opened.close()
     const bytes = await readFile(path)
