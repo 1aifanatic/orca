@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const fixture = vi.hoisted(
   (): {
     shellPid?: number
+    wrapper: boolean
     available: boolean
     immediateExit: boolean
     dispose: ReturnType<typeof vi.fn>
@@ -14,6 +15,7 @@ const fixture = vi.hoisted(
     kill: ReturnType<typeof vi.fn>
   } => ({
     shellPid: Number.NaN,
+    wrapper: true,
     available: true,
     immediateExit: false,
     dispose: vi.fn(),
@@ -31,6 +33,9 @@ vi.mock('./bun-pty-process', () => ({
     pid: 41,
     get shellProcessId() {
       return fixture.shellPid
+    },
+    get jobRootProcessIsWrapper() {
+      return fixture.wrapper ? true : undefined
     },
     write: fixture.write,
     kill: fixture.kill,
@@ -81,6 +86,26 @@ it.each([undefined, 41, 0])(
     await expect(runPtySpawnHealthProbe()).rejects.toThrow('could not identify the Windows shell')
   }
 )
+
+it.each([undefined, 0])('refuses a direct launch without shell identity %s', async (pid) => {
+  fixture.shellPid = pid
+  fixture.wrapper = false
+  try {
+    await expect(runPtySpawnHealthProbe()).rejects.toThrow('could not identify the Windows shell')
+  } finally {
+    fixture.wrapper = true
+  }
+})
+
+it('accepts a direct launch whose shell is the job root', async () => {
+  fixture.shellPid = 41
+  fixture.wrapper = false
+  try {
+    await expect(runPtySpawnHealthProbe()).resolves.toBeUndefined()
+  } finally {
+    fixture.wrapper = true
+  }
+})
 
 it('accepts successful exit with the separate original shell identity', async () => {
   fixture.shellPid = 42

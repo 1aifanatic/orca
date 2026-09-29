@@ -215,7 +215,8 @@ export async function runPtySpawnHealthProbe(): Promise<void> {
           (typeof shellPid !== 'number' ||
             !Number.isSafeInteger(shellPid) ||
             shellPid <= 0 ||
-            shellPid === proc.pid)
+            // A direct launch makes the shell the job root; only a gate root must differ.
+            (shellPid === proc.pid && proc.jobRootProcessIsWrapper === true))
         ) {
           finish(new Error('PTY spawn health check could not identify the Windows shell'))
         } else {
