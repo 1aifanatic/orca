@@ -37,11 +37,13 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
       blockedIdRef.current,
       inFlightIdRef.current
     )
-    if (next.length === outboxRef.current.length) {
+    const current = outboxRef.current
+    if (next.length === current.length && next.every((entry, index) => entry === current[index])) {
       return
     }
-    const withdrawn = outboxRef.current.filter((entry) => !next.includes(entry))
-    restoreWithdrawn.byStop(withdrawn)
+    // By id: a kept entry may come back parked, as a new object.
+    const kept = new Set(next.map((entry) => entry.clientMessageId))
+    restoreWithdrawn.byStop(current.filter((entry) => !kept.has(entry.clientMessageId)))
     outboxRef.current = next
     setOutbox(next)
     writeOutbox(sessionId, next)

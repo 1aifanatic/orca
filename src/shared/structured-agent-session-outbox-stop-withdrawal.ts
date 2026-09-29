@@ -36,13 +36,24 @@ function issuedQueueDeliverySendAwaitingAnswer(entry: StructuredAgentSessionOutb
   )
 }
 
+/** An in-doubt send a Stop keeps is parked for the user's Retry, as a recovered unknown is
+ *  (`retryAfterUnknownSubmittedAt: -1`): the probe would resend it onto the session the user just
+ *  stopped, where it starts a turn nobody asked for if the host never got the first attempt. */
+function parkedAcrossStop(
+  entry: StructuredAgentSessionOutboxEntry
+): StructuredAgentSessionOutboxEntry {
+  return entry.state === 'unconfirmed' && entry.retryAfterUnknownSubmittedAt === null
+    ? { ...entry, retryAfterUnknownSubmittedAt: -1 }
+    : entry
+}
+
 /**
  * What a Stop leaves in the outbox: nothing the journal does not already hold may go out after it,
  * so every such entry goes, as a message the host withdraws leaves the chat. The send on its way
  * stays: it reaches the host ahead of the Stop, and it comes back from the host's answer, since
  * the agent may already have it. One waiting on Retry keeps it, and so does an issued queue send
  * whose answer is out (a queued receipt retires it against the published card; a withdrawn
- * submission restores it from the journal).
+ * submission restores it from the journal); one in doubt waits for Retry from then on.
  */
 export function withdrawUnsentStructuredAgentSessionOutboxEntries(
   entries: readonly StructuredAgentSessionOutboxEntry[],
@@ -51,12 +62,14 @@ export function withdrawUnsentStructuredAgentSessionOutboxEntries(
   inFlightClientMessageId: string | null
 ): StructuredAgentSessionOutboxEntry[] {
   const unsent = unsentStructuredAgentSessionOutboxEntry(submissions, blockedClientMessageId)
-  return entries.filter(
-    (entry) =>
-      entry.clientMessageId === inFlightClientMessageId ||
-      !unsent(entry) ||
-      issuedQueueDeliverySendAwaitingAnswer(entry)
-  )
+  return entries
+    .filter(
+      (entry) =>
+        entry.clientMessageId === inFlightClientMessageId ||
+        !unsent(entry) ||
+        issuedQueueDeliverySendAwaitingAnswer(entry)
+    )
+    .map(parkedAcrossStop)
 }
 
 /** Whether a Stop has something here to withdraw: a message that would still go out on its own. */
