@@ -531,13 +531,12 @@ describe('terminal side-effect fact channel', () => {
       getForegroundProcess: vi.fn().mockResolvedValue('zsh'),
       confirmForegroundProcess
     })
-    const ptys: unknown = Reflect.get(runtime, 'ptysById')
-    const pty: unknown = ptys instanceof Map ? ptys.get('pty-1') : undefined
-    if (!pty || typeof pty !== 'object') {
+    const pty = runtime['ptysById'].get('pty-1')
+    if (!pty) {
       throw new Error('expected the synced PTY record')
     }
     // Stands in for a launch Orca started; the record's launch identity is not public.
-    Reflect.set(pty, 'launchAgent', 'claude')
+    pty.launchAgent = 'claude'
     // The first case is a user shell integration's first-prompt D, before Orca's startup command.
     runtime.onPtyData('pty-1', bytes, 100)
     // Why a macrotask: every mocked read resolves in microtasks, so an owed exit has landed by then.

@@ -169,16 +169,12 @@ describe('PtyHandler.resize against a stale PTY handle', () => {
   it('does not turn a torn-down record into a host exit tombstone', async () => {
     const exited = vi.fn()
     handler.setExitListener(exited)
-    const records: unknown = Reflect.get(handler, 'ptys')
-    if (!(records instanceof Map)) {
-      throw new Error('missing managed PTYs')
-    }
-    const managed: unknown = records.get(PTY_1)
-    if (!managed || typeof managed !== 'object') {
+    const managed = handler['ptys'].get(PTY_1)
+    if (!managed) {
       throw new Error('missing PTY')
     }
-    const incarnationId: unknown = Reflect.get(managed, 'incarnationId')
-    Reflect.set(managed, 'disposed', true)
+    const incarnationId = managed.incarnationId
+    managed.disposed = true
     await dispatcher.callRequest('pty.listProcesses', {})
     expect(exited).not.toHaveBeenCalled()
     expect(dispatcher._notifications.filter((event) => event.method === 'pty.exit')).toEqual([])

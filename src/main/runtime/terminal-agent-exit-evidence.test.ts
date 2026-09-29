@@ -4,8 +4,15 @@ import type { TerminalSideEffectFact } from '../../shared/terminal-side-effect-f
 import { OrcaRuntimeWithAgentExitConfirmation } from './orca-runtime-agent-exit-confirmation'
 import { judgeForegroundAgent } from '../../shared/foreground-agent-verdict'
 import { noteShellCommandStarted } from './shell-command-agent-hold'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
 
-const readResult = (controller: object, processName: string | null) => ({
+const stubController = (): RuntimePtyController => ({
+  write: () => true,
+  kill: () => true,
+  getForegroundProcess: async () => null
+})
+
+const readResult = (controller: RuntimePtyController, processName: string | null) => ({
   controller,
   judgement: judgeForegroundAgent({ kind: 'process-name', processName })
 })
@@ -42,7 +49,7 @@ class ExitHarness extends OrcaRuntimeWithAgentExitConfirmation {
 function setup() {
   const runtime = new ExitHarness(null)
   const facts: TerminalSideEffectFact[] = []
-  const controller = {}
+  const controller = stubController()
   const pty: {
     connected: boolean
     incarnationId: string
@@ -117,7 +124,7 @@ describe('host-confirmed agent exit', () => {
           : Promise.resolve(
               kind === 'unavailable'
                 ? { controller: h.controller, judgement: judgeForegroundAgent({ kind }) }
-                : readResult({}, 'zsh')
+                : readResult(stubController(), 'zsh')
             )
       )
       h.tracker.handleChunk('\x1b]0;workspace\x07')
