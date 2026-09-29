@@ -7,7 +7,7 @@ import {
   getWorkspaceCleanupHostIdentity,
   resolveWorkspaceCleanupRemovalHostId
 } from '../../../../shared/workspace-cleanup-host-identity'
-import { composeWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
+import { getWorktreeDeleteStateKey } from '@/store/slices/worktrees/teardown/worktree-delete-state'
 import type { WorkspaceCleanupFailure } from '@/store/slices/workspace-cleanup'
 import {
   startWorkspaceCleanupBackgroundRemoval,
@@ -16,7 +16,7 @@ import {
 import { filterWorkspaceCleanupRemovalCandidates } from './workspace-cleanup-removal-candidates'
 import { createWorkspaceCleanupSnapshotPruneBatch } from './workspace-cleanup-snapshot-prune-batch'
 import { useWorkspaceCleanupUnverifiedRemoval } from './use-workspace-cleanup-unverified-removal'
-import { moveFocusOffActiveWorktreeBeforeDelete } from '../sidebar/active-worktree-focus-after-delete'
+import { withWorkspaceCleanupFocusAfterDelete } from './workspace-cleanup-focus-after-delete'
 import {
   useWorkspaceCleanupAgentStopGate,
   type WorkspaceCleanupAgentStopRequest
@@ -94,11 +94,9 @@ export function useWorkspaceCleanupRemoval({
 
   const clearQueuedDeleteState = useCallback(
     (worktreeId: string, executionHostId?: WorkspaceCleanupFailure['executionHostId']) => {
-      const deleteStateByWorktreeId = useAppStore.getState().deleteStateByWorktreeId
-      const key = executionHostId
-        ? composeWorktreeHostIdentity(executionHostId, worktreeId)
-        : worktreeId
-      const deleteState = deleteStateByWorktreeId[key]
+      const state = useAppStore.getState()
+      const deleteState =
+        state.deleteStateByWorktreeId[getWorktreeDeleteStateKey(state, worktreeId, executionHostId)]
       // Why: candidates that fail before removal starts would otherwise stay
       // marked "Queued for deletion" in the sidebar; rows already in the
       // 'deleting' phase or failed with an error keep their own state.
@@ -201,7 +199,6 @@ export function useWorkspaceCleanupRemoval({
       Object.fromEntries(removableIdentities.map((identity) => [identity, 'queued' as const]))
     )
     markWorktreesQueuedForDeletion(removableDeleteStateTargets)
-    moveFocusOffActiveWorktreeBeforeDelete(removableDeleteStateTargets)
     const handleRemovalError = (): void => {
       for (const target of removableDeleteStateTargets) {
         if (typeof target === 'string') {
@@ -219,7 +216,10 @@ export function useWorkspaceCleanupRemoval({
       const snapshotPruneBatch = createWorkspaceCleanupSnapshotPruneBatch()
       startWorkspaceCleanupBackgroundRemoval({
         candidates: removableCandidates,
-        removeCandidates,
+        removeCandidates: withWorkspaceCleanupFocusAfterDelete(
+          removeCandidates,
+          removableCandidates
+        ),
         snapshotPruneBatch,
         onProgress: (progress) => {
           if (mountedRef.current) {

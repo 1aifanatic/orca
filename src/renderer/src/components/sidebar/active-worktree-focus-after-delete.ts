@@ -4,7 +4,6 @@ import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { isRuntimeOwnedSshTargetId, parseExecutionHostId } from '../../../../shared/execution-host'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import type { WorktreeDeleteStateTarget } from '../../store/slices/worktree-helpers'
 import { getWorktreeVisitTimestamp } from '@/lib/worktree-visit-recency'
 import { getDeleteStateForWorktreeHost } from './worktree-delete-state-host-match'
 
@@ -43,13 +42,13 @@ function isHostedOnRuntimeOwnedSshTarget(
 function pickNextWorktreeIdAfterDelete(
   state: AppStoreState,
   repoId: string,
-  deletedWorktreeIds: ReadonlySet<string>
+  deletedWorktreeId: string
 ): string | null {
   const deleteState = state.deleteStateByWorktreeId
   const repoById = getRepoMapFromState(state)
   const siblings = (state.worktreesByRepo[repoId] ?? []).filter(
     (worktree) =>
-      !deletedWorktreeIds.has(worktree.id) &&
+      worktree.id !== deletedWorktreeId &&
       !getDeleteStateForWorktreeHost(worktree, deleteState)?.isDeleting &&
       // Skip siblings hosted on the now-destroyed runtime-owned SSH target (see helper).
       !isHostedOnRuntimeOwnedSshTarget(worktree, repoById)
@@ -85,7 +84,7 @@ function focusNextWorktreeAfterActiveDelete(
   ) {
     return
   }
-  const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, new Set([deletedWorktreeId]))
+  const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, deletedWorktreeId)
   if (nextWorktreeId) {
     // Keep successor focus from replacing the deleted row's spatial context.
     activateAndRevealWorktree(nextWorktreeId, { revealInSidebar: false })
@@ -109,51 +108,4 @@ export function prepareActiveWorktreeFocusAfterDelete(worktreeId: string): () =>
     state.activeWorktreeId === worktreeId
   const repoId = getWorktreeMapFromState(state).get(worktreeId)?.repoId ?? null
   return () => focusNextWorktreeAfterActiveDelete(worktreeId, repoId, wasViewing)
-}
-
-/**
- * Before a batch delete starts, moves focus off the workspace the user is viewing when it is
- * one of `targets`, so the store never clears the selection mid-batch. Never throws.
- */
-export function moveFocusOffActiveWorktreeBeforeDelete(
-  targets: readonly (string | WorktreeDeleteStateTarget)[]
-): void {
-  // Why: callers start the deletes right after; a focus failure must not stop them.
-  try {
-    const state = useAppStore.getState()
-    const { activeWorktreeId, activeWorkspaceExecutionHostId } = state
-    if (
-      state.activeView !== 'terminal' ||
-      state.activePendingCreationId !== null ||
-      !activeWorktreeId
-    ) {
-      return
-    }
-    // A null active host is an unqualified selection, so the id alone identifies it.
-    const deletesActive = targets.some((target) =>
-      typeof target === 'string'
-        ? target === activeWorktreeId
-        : target.id === activeWorktreeId &&
-          (!target.hostId ||
-            !activeWorkspaceExecutionHostId ||
-            target.hostId === activeWorkspaceExecutionHostId)
-    )
-    const repoId = deletesActive
-      ? state.getKnownWorktreeById(activeWorktreeId, activeWorkspaceExecutionHostId ?? undefined)
-          ?.repoId
-      : undefined
-    if (!repoId) {
-      return
-    }
-    // Why ids, not delete state: a target qualified as `local` misses an unhosted row's delete state.
-    const batchWorktreeIds = new Set(
-      targets.map((target) => (typeof target === 'string' ? target : target.id))
-    )
-    const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, batchWorktreeIds)
-    if (nextWorktreeId) {
-      activateAndRevealWorktree(nextWorktreeId, { revealInSidebar: false })
-    }
-  } catch (error) {
-    console.error('Could not move focus off a workspace being deleted', error)
-  }
 }
