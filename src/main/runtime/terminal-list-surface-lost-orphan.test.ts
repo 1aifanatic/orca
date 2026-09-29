@@ -262,7 +262,9 @@ describe('runtime-owned terminal projection gaps', () => {
   it.each(['removed', 'replaced', 'moved'] as const)(
     'retains a published unmounted pane until it is explicitly %s',
     async (change) => {
-      const runtime = makeRuntime()
+      const session = sessionStillHoldingBothPanes()
+      session.terminalLayoutsByTabId['tab-dropped'].root = { type: 'leaf', leafId: DROPPED_LEAF }
+      const runtime = makeRuntime(session)
       runtime.markRuntimeOwned(DROPPED_PTY)
       const before = await runtime.listTerminals(`id:${WORKTREE_ID}`)
       const snapshot: RuntimeMobileSessionTabsSnapshot = {
@@ -319,6 +321,10 @@ describe('runtime-owned terminal projection gaps', () => {
         ]
       })
       expect(runtime.projectedPty('tab-dropped', DROPPED_LEAF)).toBeUndefined()
+      if (change === 'removed') {
+        const result = await runtime.listTerminals(`id:${WORKTREE_ID}`)
+        expect(result.terminals.find(({ ptyId }) => ptyId === DROPPED_PTY)?.orphaned).toBe(true)
+      }
     }
   )
 
