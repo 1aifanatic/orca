@@ -301,6 +301,13 @@ export function NativeChatStructuredSession(
         agentLabel={agentLabel}
         onRetry={provisionalLaunch.retry}
       />
+      {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
+      <NativeChatQueuedMessageList
+        controller={controller.queuedMessages}
+        focusComposer={() => {
+          composerRef.current?.focus()
+        }}
+      />
       <NativeChatStructuredSessionStatus
         sessionId={props.sessionId}
         agentLabel={agentLabel}
@@ -329,13 +336,6 @@ export function NativeChatStructuredSession(
           onChange={(change) => void controller.threadGoal?.change(change)}
         />
       ) : null}
-      {/* Host-held drafts stack directly above the composer; they are never transcript rows. */}
-      <NativeChatQueuedMessageList
-        controller={controller.queuedMessages}
-        focusComposer={() => {
-          composerRef.current?.focus()
-        }}
-      />
       {/* Prompt cards take the composer's slot, below the background-task dock. */}
       {prompt && approval ? (
         <NativeChatApprovalCard
