@@ -53,10 +53,10 @@ const result = await runProcess({
   ],
   cwd: resolve(root, 'mobile'),
   timeoutMs: RECORDING_TIMEOUT_MS,
-  env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', RPC_FOUNDATION_MODE: '--record' }
+  env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', RPC_FOUNDATION_MODE: '--record' },
+  // Streamed, not captured: a capture holds a ~2 min run silent and clips its tail past 8 MB.
+  stdio: 'inherit'
 })
-process.stdout.write(result.stdout)
-process.stderr.write(result.stderr)
 if (result.timedOut) {
   // Why: a killed run writes a partial reporter line and nothing else, which reads as a failing
   // test rather than as a run that never finished.
