@@ -510,7 +510,8 @@ async function assertExactPtyReceivedMarker(
   expect(unrelatedWrites).not.toContain(command)
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ orcaPage }, testInfo) => {
+  await orcaPage.screenshot({ path: testInfo.outputPath('terminal-mount-after.png') })
   rmSync(spawnLedgerPath, { force: true })
   rmSync(setupLedgerPath, { force: true })
   rmSync(canaryLedgerPath, { force: true })
