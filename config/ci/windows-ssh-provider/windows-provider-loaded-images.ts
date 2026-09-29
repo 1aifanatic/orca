@@ -43,7 +43,7 @@ export async function inspectProviderImages(
       ),
       args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
       timeoutMs: 15000,
-      env: { ORCA_BACKGROUND_LAUNCH: '1' },
+      env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1' },
       maxOutputBytes: 65536
     })
     if (result.timedOut || result.code !== 0) {
