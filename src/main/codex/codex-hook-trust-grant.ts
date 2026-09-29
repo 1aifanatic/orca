@@ -23,7 +23,6 @@ import {
   type CodexTrustGrantLedgerEntry
 } from './codex-trust-grant-ledger'
 import type { CodexTrustEntry } from './config-toml-trust'
-import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import {
   resolveCodexTrustGrantHost,
   type ResolvedCodexTrustGrantHost
@@ -31,7 +30,6 @@ import {
 import {
   buildExpectedEntries,
   findLedgerGrant,
-  removeSelfComputedTrustBeforeGrant,
   type CodexManagedTrustGrantPlan,
   type ExpectedManagedEntry
 } from './codex-managed-trust-grant-plan'
@@ -189,7 +187,8 @@ async function runGrantAttempt(
   plan: CodexManagedTrustGrantPlan,
   expected: ExpectedManagedEntry[],
   resolvedHost: ResolvedCodexTrustGrantHost,
-  hostKey: CodexAppServerHostKey
+  hostKey: CodexAppServerHostKey,
+  beforeSession: (() => void) | undefined
 ): Promise<CodexManagedTrustGrantOutcome> {
   // Why no config.toml restore on failure: the session writes trust only at
   // Orca's own keys, bound to Orca's command by its hash, and each caller settles
@@ -211,11 +210,7 @@ async function runGrantAttempt(
     return await runWithCapability(
       hostKey,
       async () => {
-        if (plan.fallbackWritesSelfComputedTrust) {
-          await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
-            removeSelfComputedTrustBeforeGrant(plan)
-          )
-        }
+        beforeSession?.()
         return completeGrant(
           attempt,
           await runSession(
@@ -278,10 +273,12 @@ export async function findCurrentManagedCodexHookTrust(
  * verbatim hashes, or a fallback marker — a managed-home caller then writes
  * computeTrustedHash trust, and the real-home caller withdraws its entry. Never
  * throws: any unexpected failure is a fallback, because hook install is
- * best-effort launch prep.
+ * best-effort launch prep. `beforeSession` runs, under the caller's lane, only
+ * when a session will run: never on a ledger hit, cooldown or cached fallback.
  */
 export async function grantManagedCodexHookTrust(
-  plan: CodexManagedTrustGrantPlan
+  plan: CodexManagedTrustGrantPlan,
+  beforeSession?: () => void
 ): Promise<CodexManagedTrustGrantOutcome> {
   try {
     if (process.env[DISABLE_ENV_FLAG] === '1') {
@@ -311,7 +308,7 @@ export async function grantManagedCodexHookTrust(
     }
     // Why no lane across the session: Codex writes its own records, and a held
     // lane would queue every launch's config.toml write behind a cold app-server.
-    return await runGrantAttempt(plan, expected, resolvedHost, hostKey)
+    return await runGrantAttempt(plan, expected, resolvedHost, hostKey, beforeSession)
   } catch (error) {
     return fallback(plan, 'error', error)
   }

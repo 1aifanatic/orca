@@ -29,10 +29,6 @@ export type CodexManagedTrustGrantPlan = {
   useDefaultCodexHome?: boolean
   /** Off the launch path: a cold-start budget, and no cooldown; the caller schedules retries. */
   background?: boolean
-  /** This home's fallback writes computeTrustedHash trust, so a grant first clears
-   *  it; the fallback rewrites it if the grant fails. Never set for the real home,
-   *  where a matching record is Codex's own and nothing would put it back. */
-  fallbackWritesSelfComputedTrust?: boolean
 }
 
 export type ExpectedManagedEntry = {
@@ -50,7 +46,9 @@ export function buildExpectedEntries(plan: CodexManagedTrustGrantPlan): Expected
 }
 
 /** Windows fallback writes equivalent separator variants that Codex's canonical
- *  RPC key may not overwrite, leaving conflicting logical trust behind. */
+ *  RPC key may not overwrite, leaving conflicting logical trust behind. Only for a
+ *  home whose fallback writes that trust back: in ~/.codex a matching record is
+ *  Codex's own, and nothing would restore it. */
 export function removeSelfComputedTrustBeforeGrant(plan: CodexManagedTrustGrantPlan): void {
   const trustStates = readHookTrustEntries(plan.tomlPath)
   const ownedKeys = plan.managedEntries

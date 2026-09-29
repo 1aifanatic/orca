@@ -15,6 +15,7 @@ import {
   grantManagedCodexHookTrust,
   type CodexManagedTrustGrantPlan
 } from './codex-hook-trust-grant'
+import { removeSelfComputedTrustBeforeGrant } from './codex-managed-trust-grant-plan'
 import { setCodexTrustGrantTelemetry } from './codex-trust-grant-telemetry'
 import { readCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
 import {
@@ -164,11 +165,7 @@ describe('grantManagedCodexHookTrust', () => {
       ...managedEntry('stop'),
       sourcePath: String.raw`C:\Users\Alice\.codex\hooks.json`
     }
-    const plan: CodexManagedTrustGrantPlan = {
-      ...buildPlan([entry]),
-      telemetryLane: 'managed',
-      fallbackWritesSelfComputedTrust: true
-    }
+    const plan: CodexManagedTrustGrantPlan = { ...buildPlan([entry]), telemetryLane: 'managed' }
     // Why: the managed fallback lane's write, both separator variants.
     upsertHookTrustEntries(plan.tomlPath, [entry])
     expect(readHookTrustEntries(plan.tomlPath).get(computeTrustKey(entry))?.trustedHash).toBe(
@@ -180,8 +177,26 @@ describe('grantManagedCodexHookTrust', () => {
     })
     _internals.setGrantSessionRunner(runner)
 
-    expect(await grantManagedCodexHookTrust(plan)).toMatchObject({ lane: 'rpc' })
+    expect(
+      await grantManagedCodexHookTrust(plan, () => removeSelfComputedTrustBeforeGrant(plan))
+    ).toMatchObject({ lane: 'rpc' })
     expect(runner).toHaveBeenCalledTimes(1)
+  })
+
+  it("runs the caller's pre-session step only when a session runs", async () => {
+    const entries = [managedEntry('session_start')]
+    _internals.setGrantSessionRunner(async () => grantedSessionResult(entries))
+    const plan = buildPlan(entries)
+    const beforeSession = vi.fn()
+
+    expect(await grantManagedCodexHookTrust(plan, beforeSession)).toMatchObject({ lane: 'rpc' })
+    expect(beforeSession).toHaveBeenCalledTimes(1)
+    upsertHookTrustEntries(plan.tomlPath, [
+      { ...entries[0], trustedHash: 'sha256:codex-session_start' }
+    ])
+    // Why: a clear before the ledger check would delete the record the ledger proves, forcing a session per launch.
+    expect(await grantManagedCodexHookTrust(plan, beforeSession)).toMatchObject({ lane: 'rpc' })
+    expect(beforeSession).toHaveBeenCalledTimes(1)
   })
 
   it('skips the RPC session while the ledger grant still holds, and re-grants on config drift', async () => {

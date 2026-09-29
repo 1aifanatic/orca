@@ -20,7 +20,11 @@ import {
   wrapReadablePosixHookCommand,
   writeCodexHooksJson
 } from './codex-hook-definition'
-import { grantManagedCodexHookTrust } from './codex-hook-trust-grant'
+import {
+  grantManagedCodexHookTrust,
+  type CodexManagedTrustGrantPlan
+} from './codex-hook-trust-grant'
+import { removeSelfComputedTrustBeforeGrant } from './codex-managed-trust-grant-plan'
 import { getManagedScript } from './codex-hook-script'
 import {
   removeStaleWslRuntimeManagedHookTrustEntries,
@@ -109,15 +113,18 @@ async function installManagedHooksIntoWslRuntimeExclusively(
       trustEntries,
       previousLedgerHome ? [previousLedgerHome] : []
     )
-    const grant = await grantManagedCodexHookTrust({
+    const grantPlan: CodexManagedTrustGrantPlan = {
       runtimeHomePath,
       tomlPath: plan.tomlPath,
       managedCommand: command,
       managedEntries: trustEntries,
       host: { kind: 'wsl', distro: plan.wslDistro, linuxRuntimeHome: plan.linuxRuntimeHome },
-      telemetryLane: 'managed',
-      fallbackWritesSelfComputedTrust: true
-    })
+      telemetryLane: 'managed'
+    }
+    // Why: the fallback below writes this trust back if the session fails.
+    const grant = await grantManagedCodexHookTrust(grantPlan, () =>
+      removeSelfComputedTrustBeforeGrant(grantPlan)
+    )
     if (grant.lane === 'fallback') {
       // Why: WSL runtime homes may carry user hook approvals we did not rebuild
       // here; only upsert Orca's entries instead of sweeping the whole source.
