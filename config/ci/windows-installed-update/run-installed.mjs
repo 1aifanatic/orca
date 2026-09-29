@@ -137,7 +137,8 @@ async function expectGeneration(owner, label) {
   if (owner.entryPath) {
     check(
       `${label} daemon entry is inside its generation`,
-      owner.entryPath.toLowerCase().startsWith(join(managedRoot, owner.generation).toLowerCase())
+      owner.entryPath.toLowerCase().startsWith(join(managedRoot, owner.generation).toLowerCase()),
+      { entryPath: owner.entryPath, generationRoot: join(managedRoot, owner.generation) }
     )
   }
 }
