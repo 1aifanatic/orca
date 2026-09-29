@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -53,6 +53,12 @@ async function withManagedCli(
     expect(before.code, before.stderr).toBe(0)
     mkdirSync(join(root, 'out', 'cli'), { recursive: true })
     writeFileSync(join(root, 'out', 'cli', 'index.js'), FIXTURE_CLI)
+    // The launcher runs the CLI on the bundled Bun runtime beside `out/cli`, as the product does.
+    const runtime = join(process.cwd(), 'out', 'cli-runtime', `win32-${process.arch}`)
+    if (!existsSync(runtime)) {
+      throw new Error('Build the CLI runtime first: node config/scripts/build-cli-runtime.mjs')
+    }
+    cpSync(runtime, join(root, 'out', 'cli-runtime', `win32-${process.arch}`), { recursive: true })
     for (const [path, content] of buildLocalShellReadyWrapperFiles(join(root, 'wrapper'))) {
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, content)
