@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import {
   completedStructuredAgentTurnSeconds,
@@ -363,7 +364,8 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
         // The new child is already working when its start lands, ahead of the queued revision.
         events?.appendItem(
           { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-turn-2' },
-          { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: RELAUNCHED_AT }
+          { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: RELAUNCHED_AT },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
         )
         return {
           process,

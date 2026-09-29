@@ -668,9 +668,11 @@ it('delivers the next message after a command whose child died and whose settlem
     cause: 'unexpected-exit'
   })
   await vi.waitFor(() => expect(state.host['sessions'].get(SESSION)?.child).toBeNull())
-  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('running')
+  // The exit it recorded settles what the failed write left running, so the command holds nothing.
+  await vi.waitFor(async () =>
+    expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+  )
 
-  // The next start settles what the gone child left running, so the command holds nothing.
   await expect(state.host.send(CALLER, sendParams('after it'))).resolves.toMatchObject({
     ok: true
   })
