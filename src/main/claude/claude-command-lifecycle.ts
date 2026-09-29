@@ -24,7 +24,8 @@ export function observeClaudeCommandLifecycle(
     return
   }
   const state = message.state
-  if (state === 'queued' || state === 'started') {
+  if (state === 'started' || (state === 'queued' && waiter.commandLifecycle !== 'started')) {
+    // Forward only: a redelivered command re-emits `queued`, but it has still started.
     waiter.commandLifecycle = state
   } else if (state === 'cancelled' && waiter.commandLifecycle !== 'started') {
     settleCancelledClaudeDispatchWaiters(session, [waiter.sentUuid], onSettledLate)

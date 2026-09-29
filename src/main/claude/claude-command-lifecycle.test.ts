@@ -94,6 +94,8 @@ async function replayCapture(
     withoutCapabilities?: string[]
     /** Leave out captured frames, to model a sequence the capture brackets. */
     omitFrame?: (frame: Record<string, unknown>) => boolean
+    /** Frames to deliver right after a captured one, in the capture's own uuids. */
+    afterFrame?: (frame: Record<string, unknown>) => Record<string, unknown>[]
     /** Stop after the control request settles; its tail answers the CLI's own control path. */
     stopAfterControl?: boolean
   } = {}
@@ -166,6 +168,9 @@ async function replayCapture(
       )
     }
     connection.handlers.onMessage?.(mapped)
+    for (const extra of options.afterFrame?.(frame) ?? []) {
+      connection.handlers.onMessage?.(mapUuids(extra))
+    }
   }
   const liveUuid = (clientMessageId: string): string => {
     const dispatch = capture.find(
@@ -373,6 +378,19 @@ describe('a send the CLI started, then cancelled', () => {
     const replay = await replayCapture('auth-failed', {
       omitFrame: (frame) =>
         frame.type === 'user' || frame.type === 'assistant' || frame.type === 'result'
+    })
+
+    expect(replay.settlementsFor('client-A')).toEqual([])
+  })
+
+  it('stays started when a redelivered command re-emits queued before its cancelled frame', async () => {
+    const replay = await replayCapture('auth-failed', {
+      omitFrame: (frame) =>
+        frame.type === 'user' || frame.type === 'assistant' || frame.type === 'result',
+      afterFrame: (frame) =>
+        frame.type === 'command_lifecycle' && frame.state === 'started'
+          ? [{ ...frame, state: 'queued' }]
+          : []
     })
 
     expect(replay.settlementsFor('client-A')).toEqual([])
