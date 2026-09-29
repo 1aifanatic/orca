@@ -13,6 +13,7 @@ describe('SESSION_RELEVANT_FIELDS', () => {
     tabsByWorktree: true,
     ptyIdsByTabId: true,
     terminalLayoutsByTabId: true,
+    localOnlyScrollbackByTabId: true,
     activeTabIdByWorktree: true,
     openFiles: true,
     editorDrafts: true,
@@ -35,9 +36,10 @@ describe('SESSION_RELEVANT_FIELDS', () => {
     lastKnownRelayPtyIdByTabId: true,
     lastVisitedAtByWorktreeId: true,
     defaultTerminalTabsAppliedByWorktreeId: true,
-    closedTerminalTabTombstonesByTabId: true,
     sleepingAgentSessionsByPaneKey: true,
-    clientHostedBrowserCloseIntentsByEnvironment: true
+    clientHostedBrowserCloseIntentsByEnvironment: true,
+    pendingReconnectPtyIdByTabId: true,
+    deferredSshSessionIdsByTabId: true
   }
 
   it('contains every key of WorkspaceSessionSnapshot', () => {

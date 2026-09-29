@@ -1,8 +1,7 @@
 import { agentTypeToIconAgent } from '@/lib/agent-status'
 import { useAppStore } from '@/store'
 import { getConnectionId } from '@/lib/connection-context'
-import { replayIntoTerminal } from '../replay-guard'
-import { POST_REPLAY_REATTACH_RESET } from '../../../../../shared/terminal-mode-reset-profiles'
+import { CONFIRMED_SHELL_MODE_RESET } from '../../../../../shared/terminal-mode-reset-profiles'
 import {
   isLocalNativeWindowsConpty,
   resolveWindowsShellOverride
@@ -10,6 +9,8 @@ import {
 import { createTerminalCommandLifecycle } from '../terminal-command-lifecycle'
 import { createPaneForegroundAgentTracker } from '../pane-foreground-agent-tracker'
 import { isRemoteExecutionHostPtyId } from '../remote-execution-host-pty'
+import { inspectRuntimeTerminalProcess } from '@/runtime/runtime-terminal-inspection'
+import { parseAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import { dispatchTerminalCommandFinishedEvent } from '@/hooks/terminal-command-finished-event'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { resolveCommittedTitleAgentType } from '@/lib/pane-agent-evidence'
@@ -126,9 +127,11 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       reconcile?.()
     }
   }
+  const isRemotePtyId = (id: string): boolean =>
+    Boolean(isRemoteExecutionHostPtyId(id) || parseAppSshPtyId(id))
   session.isForegroundTrackingAllowed = (id: string): boolean => {
-    if (isRemoteExecutionHostPtyId(id)) {
-      return false
+    if (isRemoteExecutionHostPtyId(id) || parseAppSshPtyId(id)) {
+      return true
     }
     if (!navigator.userAgent.includes('Windows')) {
       return true
@@ -153,25 +156,33 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
   session.paneForegroundAgentTracker = createPaneForegroundAgentTracker({
     getPtyId: () => session.transport.getPtyId(),
     isTrackablePtyId: session.isForegroundTrackingAllowed,
-    readForegroundProcess: (id) => window.api.pty.getForegroundProcess(id),
-    confirmForegroundProcess: (id) => window.api.pty.confirmForegroundProcess(id),
+    readForegroundProcess: (id, options) =>
+      isRemotePtyId(id)
+        ? inspectRuntimeTerminalProcess(useAppStore.getState().settings, id, options)
+        : window.api.pty.getForegroundProcess(id),
+    confirmForegroundProcess: (id, options) =>
+      isRemotePtyId(id)
+        ? inspectRuntimeTerminalProcess(useAppStore.getState().settings, id, options)
+        : window.api.pty.confirmForegroundProcess(id),
+    isRemotePtyId,
+    getExpectedIncarnationId: () => session.remotePtyIncarnationId ?? null,
     publish: (entry) => useAppStore.getState().setPaneForegroundAgent(session.cacheKey, entry),
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
     onConfirmedShellForeground: (reason) => {
+      // Why: a confirmed local shell proves any hibernation record for this pane is stale;
+      // otherwise the tab resolver can repaint the exited agent from sleeping occupancy.
+      const state = useAppStore.getState()
+      const sleepingRecord = session.getSleepingRecordForPane(state)
+      if (sleepingRecord) {
+        session.clearSleepingRecordProviderDuplicates(state, sleepingRecord)
+      }
       session.clearStaleAgentTabTitleOnConfirmedShell()
       // Why: a hard-killed agent leaves mouse/focus/kitty modes armed, and the
       // surviving shell then receives pointer moves as typed SGR reports; the
       // replay guard keeps xterm's auto-replies from leaking to the shell.
-      replayIntoTerminal(session.pane, session.deps.replayingPanesRef, POST_REPLAY_REATTACH_RESET, {
-        breadcrumbIdentity: {
-          tabId: session.deps.tabId,
-          worktreeId: session.deps.worktreeId,
-          ptyId: session.transport.getPtyId()
-        },
-        shouldRefreshViewportSynchronously: session.shouldRefreshForegroundSynchronously
-      })
+      session.writeInputModeGround(CONFIRMED_SHELL_MODE_RESET)
       if (reason === 'visible-pty') {
-        useAppStore.getState().clearAgentLaunchConfig(session.cacheKey)
+        state.clearAgentLaunchConfig(session.cacheKey)
         return
       }
       session.settleDeferredCommandFinishedStatusDrop({ confirmedShell: true })

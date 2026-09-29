@@ -1,3 +1,4 @@
+import { agentTokenUsageSchema } from './telemetry-agent-token-usage-schema'
 import {
   agentErrorSchema,
   agentPromptSentSchema,
@@ -14,10 +15,14 @@ import {
   agentHookTransportBlockedSchema,
   agentHookUnattributedSchema,
   codexTrustGrantSchema,
+  daemonAdoptedSchema,
   daemonAuditEligibilitySchema,
+  daemonFolderAccessNoticeSchema,
   daemonLifecycleSchema,
+  daemonPtyCwdVerdictSchema,
   daemonStartFailedSchema,
   mainThreadHangDetectedSchema,
+  profileStateAuthoritySelectedSchema,
   remoteOutboundBudgetCloseSchema,
   runtimeRpcStartFailedSchema,
   settingsChangedSchema
@@ -112,6 +117,7 @@ export const eventSchemas = {
   setup_script_prompt_shown: setupScriptPromptShownSchema,
   setup_script_prompt_action: setupScriptPromptActionSchema,
 
+  agent_token_usage: agentTokenUsageSchema,
   agent_started: agentStartedSchema,
   agent_prompt_sent: agentPromptSentSchema,
   agent_error: agentErrorSchema,
@@ -122,9 +128,14 @@ export const eventSchemas = {
   daemon_start_failed: daemonStartFailedSchema,
   main_thread_hang_detected: mainThreadHangDetectedSchema,
   daemon_lifecycle: daemonLifecycleSchema,
+  daemon_adopted: daemonAdoptedSchema,
+  daemon_pty_cwd_denied: daemonPtyCwdVerdictSchema,
+  daemon_pty_cwd_readable: daemonPtyCwdVerdictSchema,
+  daemon_folder_access_notice: daemonFolderAccessNoticeSchema,
   daemon_audit_eligibility: daemonAuditEligibilitySchema,
   runtime_rpc_start_failed: runtimeRpcStartFailedSchema,
   remote_outbound_budget_close: remoteOutboundBudgetCloseSchema,
+  profile_state_authority_selected: profileStateAuthoritySelectedSchema,
 
   codex_trust_grant: codexTrustGrantSchema,
 

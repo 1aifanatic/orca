@@ -6,6 +6,9 @@ on:
       - '.github/workflows/computer-e2e.yml'
       - 'config/electron-builder.config.cjs'
       - 'config/scripts/build-computer-macos.mjs'
+      - 'config/scripts/build-native-for-platform.mjs'
+      - 'config/scripts/build-native-for-platform.test.mjs'
+      - 'config/scripts/pnpm-cli-invocation.mjs'
       - 'config/scripts/build-windows-cli-launcher.mjs'
       - 'config/scripts/build-windows-cli-launcher.test.mjs'
       - 'config/scripts/computer-e2e-workflow.test.mjs'
@@ -55,6 +58,10 @@ on:
   schedule:
     - cron: '0 6 * * *'
 
+concurrency:
+  group: computer-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   native-smoke:
     if: github.event_name == 'pull_request'
@@ -70,7 +77,7 @@ jobs:
         with:
           persist-credentials: false
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3 python3-gi gir1.2-atspi-2.0 at-spi2-core gedit xvfb xclip xdotool
+        run: sudo apt-get update && sudo apt-get install -y python3 python3-gi gir1.2-atspi-2.0 at-spi2-core
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
@@ -118,7 +125,7 @@ jobs:
           src/shared/remote-runtime-client.test.ts
       - run: pnpm verify:computer-native
       - run: pnpm build:cli
-      - run: pnpm build:electron-vite
+      - run: pnpm run build:electron-vite:parallel
       # Why: boot the BUILT daemon-entry under plain Node the way production
       # forks it. v1.4.129-rc.1 shipped a daemon that exited at module load
       # (leaked electron require) while every other check passed; this fails
@@ -153,6 +160,12 @@ jobs:
           pnpm vitest run
           config/scripts/macos-computer-helper-owner-loss-group-recovery.test.mjs
           config/scripts/macos-computer-helper-owner-loss-processes.test.mjs
+      # Why: the parallel launcher's cancellation tests are darwin-only and no
+      # other PR job runs on macOS.
+      - name: Parallel native build launcher cancellation
+        run: >-
+          pnpm vitest run --config config/vitest.config.ts
+          config/scripts/build-native-for-platform.test.mjs
       - name: Authenticated helper owner-loss smoke
         run: pnpm bench:macos-computer-helper-owner-loss --expect reaped --trials 1
       - name: Swift tests and signed universal helper verification
@@ -174,7 +187,7 @@ jobs:
           native-runtime: electron
       - run: pnpm verify:computer-native
       - run: pnpm build:cli
-      - run: pnpm build:electron-vite
+      - run: pnpm run build:electron-vite:parallel
       - run: xvfb-run --auto-servernum dbus-run-session -- pnpm test:e2e:computer --reporter=verbose tests/e2e/computer-linux.e2e.ts
 
   windows:
@@ -191,5 +204,5 @@ jobs:
           native-runtime: electron
       - run: pnpm verify:computer-native
       - run: pnpm build:cli
-      - run: pnpm build:electron-vite
+      - run: pnpm run build:electron-vite:parallel
       - run: pnpm test:e2e:computer --reporter=verbose tests/e2e/computer-windows.e2e.ts tests/e2e/computer-windows-store.e2e.ts

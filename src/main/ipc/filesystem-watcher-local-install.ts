@@ -16,6 +16,7 @@ import {
   retainLocalWatcherPhysicalFailure,
   trackDetachedLocalUnsubscribe
 } from './filesystem-watcher-listener-lifecycle'
+import { cancelLocalBatchFlush } from './filesystem-watcher-batch-control'
 
 export async function installLocalWatcher(
   rootKey: string,
@@ -26,48 +27,50 @@ export async function installLocalWatcher(
 ): Promise<LocalWatcherInstallResult> {
   let root: WatchedRoot
   try {
-    const s = await stat(rootPath)
-    if (!s.isDirectory()) {
-      console.warn(`[filesystem-watcher] not a directory: ${rootKey}`)
+    try {
+      const s = await stat(rootPath)
+      if (!s.isDirectory()) {
+        console.warn(`[filesystem-watcher] not a directory: ${rootKey}`)
+        rememberUnwatchableRoot(rootKey)
+        return 'unavailable'
+      }
+    } catch {
+      console.warn(`[filesystem-watcher] cannot stat root: ${rootKey}`)
       rememberUnwatchableRoot(rootKey)
       return 'unavailable'
     }
-  } catch {
-    console.warn(`[filesystem-watcher] cannot stat root: ${rootKey}`)
-    rememberUnwatchableRoot(rootKey)
-    return 'unavailable'
-  }
 
-  try {
-    // Why: WSL paths use one snapshot subprocess inside the distro so `wsl --shutdown` can kill it; native Windows uses @parcel/watcher.
-    root = isWslPath(worktreePath)
-      ? await createWslWatcher(
-          rootKey,
-          worktreePath,
-          {
-            ignoreDirs: WATCHER_IGNORE_DIRS,
-            scheduleBatchFlush: scheduleLocalBatchFlush,
-            watchedRoots: watcherLifecycleState.watchedRoots
-          },
-          cancelToken.abortController.signal
-        )
-      : await createLocalWatcher(rootKey, rootPath, cancelToken.abortController.signal)
-  } catch (error) {
-    // Why: setup can fail after its child misses the exit deadline; retain that owner even when the renderer-facing error is swallowed.
-    retainLocalWatcherPhysicalFailure(rootKey, error)
-    if (cancelToken.cancelled) {
-      if (isWatcherProcessFailure(error) && error.code === 'process_unavailable') {
-        throw error
+    try {
+      // Why: WSL paths use one snapshot subprocess inside the distro so `wsl --shutdown` can kill it; native Windows uses @parcel/watcher.
+      root = isWslPath(worktreePath)
+        ? await createWslWatcher(
+            rootKey,
+            worktreePath,
+            {
+              ignoreDirs: WATCHER_IGNORE_DIRS,
+              scheduleBatchFlush: scheduleLocalBatchFlush,
+              watchedRoots: watcherLifecycleState.watchedRoots
+            },
+            cancelToken.abortController.signal
+          )
+        : await createLocalWatcher(rootKey, rootPath, cancelToken.abortController.signal)
+    } catch (error) {
+      // Why: setup can fail after its child misses the exit deadline; retain that owner even when the renderer-facing error is swallowed.
+      retainLocalWatcherPhysicalFailure(rootKey, error)
+      if (cancelToken.cancelled) {
+        if (isWatcherProcessFailure(error) && error.code === 'process_unavailable') {
+          throw error
+        }
+        return 'cancelled'
       }
-      return 'cancelled'
+      // Why: capacity is transient — allow retry once another child exits instead of caching this root as permanently failed.
+      if (error instanceof WatcherChildCapacityError) {
+        scheduleCapacityRetry(cancelToken.listeners)
+        return 'capacity'
+      }
+      rememberUnwatchableRoot(rootKey)
+      return 'unavailable'
     }
-    // Why: capacity is transient — allow retry once another child exits instead of caching this root as permanently failed.
-    if (error instanceof WatcherChildCapacityError) {
-      scheduleCapacityRetry(cancelToken.listeners)
-      return 'capacity'
-    }
-    rememberUnwatchableRoot(rootKey)
-    return 'unavailable'
   } finally {
     if (watcherLifecycleState.inFlightLocalInstalls.get(rootKey) === cancelToken) {
       watcherLifecycleState.inFlightLocalInstalls.delete(rootKey)
@@ -78,9 +81,7 @@ export async function installLocalWatcher(
     Array.from(cancelToken.listeners.entries()).filter(([, listener]) => !listener.isDestroyed())
   )
   if (cancelToken.cancelled || liveListeners.size === 0) {
-    if (root.batch.timer) {
-      clearTimeout(root.batch.timer)
-    }
+    cancelLocalBatchFlush(root)
     void trackDetachedLocalUnsubscribe(rootKey, root)
     return 'cancelled'
   }

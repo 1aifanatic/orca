@@ -4,13 +4,18 @@ import { defineConfig, type UserConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { createBootstrapFatalExitBanner } from './config/build-plugins/bootstrap-fatal-exit-banner'
-import { createPlainNodeEntryGuardPlugin } from './config/build-plugins/plain-node-entry-guard'
+import { createPdfjsViewerAssetsPlugin } from './config/build-plugins/pdfjs-viewer-assets'
+import {
+  CLI_MAIN_ENTRY_NAMES,
+  createPlainNodeEntryGuardPlugin
+} from './config/build-plugins/plain-node-entry-guard'
 import packageJson from './package.json' with { type: 'json' }
 
 const BUNDLED_MAIN_DEPENDENCIES = new Set([
+  '@streamparser/json',
   '@xterm/headless',
   '@xterm/addon-serialize',
-  'psl',
+  'tldts',
   // Why: Windows NSIS deploys app.asar before external resources; bootstrap must
   // not race the later resources/node_modules copy.
   'zod'
@@ -194,6 +199,14 @@ function createMainBootstrapPlugin() {
 export const electronViteConfig: UserConfig = {
   main: {
     build: {
+      // Why: 'esbuild' makes rolldown disable its own minifier and re-print every
+      // chunk through esbuild, which is undeclared here and only resolves via
+      // pnpm hoisting. 'oxc' is rolldown's in-process minifier.
+      minify: 'oxc',
+      // Why: 'hidden' emits .js.map with no sourceMappingURL, so the shipped
+      // bundle never references maps that packaging strips out. Release CI
+      // uploads them so minified crash traces stay decodable.
+      sourcemap: 'hidden',
       // Why: daemon-entry.js is asar-unpacked so child_process.fork() can
       // execute it from disk. Node's module resolution from the unpacked
       // directory cannot reach into app.asar; startup-critical pure JS must
@@ -232,6 +245,16 @@ export const electronViteConfig: UserConfig = {
           'port-scan-command-worker-entry': resolve(
             'src/main/ports/port-scan-command-worker-entry.ts'
           ),
+          // Why: the Claude/Codex/OpenCode usage scans walk whole history
+          // corpora and read SQLite synchronously; a worker thread keeps that
+          // off the main-process event loop.
+          'usage-scan-worker-entry': resolve('src/main/usage/usage-scan-worker-entry.ts'),
+          'profile-state-backup-worker-entry': resolve(
+            'src/main/persistence/profile-state/profile-state-backup-worker-entry.ts'
+          ),
+          'profile-state-writer-worker-entry': resolve(
+            'src/main/persistence/profile-state/profile-state-writer-worker-entry.ts'
+          ),
           // Why: forked with ELECTRON_RUN_AS_NODE so @parcel/watcher faults
           // can't take down the main process (issue #7547).
           'parcel-watcher-process-entry': resolve('src/main/ipc/parcel-watcher-process-entry.ts'),
@@ -240,13 +263,9 @@ export const electronViteConfig: UserConfig = {
           'main-thread-hang-watchdog-entry': resolve(
             'src/main/hang-watchdog/main-thread-hang-watchdog-entry.ts'
           ),
-          // Why: electron-vite cleans out/main in dev. The dev CLI imports
-          // this path for `orca agent hooks ...`, so it must survive rebuilds.
-          'agent-hooks/managed-agent-hook-controls': resolve(
-            'src/main/agent-hooks/managed-agent-hook-controls.ts'
-          ),
-          // Why: account import mutates the user's macOS Keychain from the CLI.
-          'claude-accounts/keychain': resolve('src/main/claude-accounts/keychain.ts')
+          ...Object.fromEntries(
+            CLI_MAIN_ENTRY_NAMES.map((module) => [module, resolve(`src/main/${module}.ts`)])
+          )
         },
         // Why: Rolldown's SSR default is ESM, but Electron and sidecar launchers
         // consume these stable CommonJS paths.
@@ -280,7 +299,7 @@ export const electronViteConfig: UserConfig = {
   preload: {
     build: {
       externalizeDeps: {
-        exclude: ['@electron-toolkit/preload', 'zod']
+        exclude: ['zod']
       }
     }
   },
@@ -291,13 +310,14 @@ export const electronViteConfig: UserConfig = {
         '@': resolve('src/renderer/src')
       }
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), createPdfjsViewerAssetsPlugin()],
     worker: {
       format: 'es'
     },
     build: {
       manifest: true,
       modulePreload: { polyfill: true },
+      minify: 'oxc',
       target: 'es2020',
       // Why: the pop-out dashboard is a second top-level window with its own
       // React root. It gets its own HTML entry so it can boot independently of

@@ -2,11 +2,13 @@ import { useCallback, type RefObject } from 'react'
 import type { TextInput } from 'react-native'
 import {
   getTerminalLiveAccessoryBytesDecision,
-  getTerminalLiveAccessoryLocalEditText
+  getTerminalLiveAccessoryLocalEditText,
+  terminalLiveAccessoryInputEndsLine
 } from './terminal-live-text-commit'
 import type { TerminalLiveAccessoryInput } from './terminal-live-accessory-input'
 import { sendTerminalLiveControlAfterPendingFlush } from './terminal-live-control-send-order'
 import type { TerminalLiveInputSender } from './terminal-live-input-sender'
+import { writeTerminalLiveInputText } from './terminal-live-input-text-write'
 
 export type TerminalLiveAccessoryInputCommitResult =
   | { readonly kind: 'allow-raw' }
@@ -32,6 +34,7 @@ type TerminalLiveAccessoryInputCommitOptions = {
   readonly liveInputComposingRef: RefObject<boolean | undefined>
   readonly liveInputRef: RefObject<TextInput | null>
   readonly liveInputTerminalHandles: ReadonlySet<string>
+  readonly onInteraction: () => void
   readonly pendingLiveInputHandleRef: RefObject<string | null>
   readonly sentLiveInputTextRef: RefObject<string>
   readonly sendLiveTerminalInputRef: RefObject<TerminalLiveInputSender>
@@ -48,6 +51,7 @@ export function useTerminalLiveAccessoryInputCommit({
   liveInputComposingRef,
   liveInputRef,
   liveInputTerminalHandles,
+  onInteraction,
   pendingLiveInputHandleRef,
   sentLiveInputTextRef,
   sendLiveTerminalInputRef,
@@ -64,6 +68,7 @@ export function useTerminalLiveAccessoryInputCommit({
       if (!liveInputTerminalHandles.has(activeHandle)) {
         return getTerminalLiveAccessoryInactiveInputCommitResult(waitForPendingLiveInputFlush)
       }
+      onInteraction()
       const ownsPendingState = pendingLiveInputHandleRef.current === activeHandle
       if (pendingLiveInputHandleRef.current && !ownsPendingState) {
         clearPendingLiveInputCommit()
@@ -72,12 +77,17 @@ export function useTerminalLiveAccessoryInputCommit({
       const sentText = ownsPendingState ? sentLiveInputTextRef.current : ''
       const decision = getTerminalLiveAccessoryBytesDecision({ ...input, heldText, sentText })
       switch (decision.kind) {
-        case 'send-now':
+        case 'send-now': {
           // Why: raw accessory bytes must wait behind any in-flight mirror send
-          // so composed Hangul reaches the PTY before follow-up controls.
-          return (await waitForPendingLiveInputFlush())
-            ? { kind: 'allow-raw' }
-            : { kind: 'suppress-raw' }
+          // so composed Hangul reaches the PTY before follow-up controls. A control
+          // that ends the line ends the field's editing session with the same call
+          // the held-text branch below makes — without it the echoed text stayed in
+          // the field and the next keystrokes appended to it.
+          const ready = terminalLiveAccessoryInputEndsLine(input.bytes)
+            ? await flushPendingLiveInputText(activeHandle)
+            : await waitForPendingLiveInputFlush()
+          return ready ? { kind: 'allow-raw' } : { kind: 'suppress-raw' }
+        }
         case 'local-edit': {
           const editedText = getTerminalLiveAccessoryLocalEditText({
             localEdit: decision.localEdit,
@@ -86,7 +96,7 @@ export function useTerminalLiveAccessoryInputCommit({
           // Why: accessory buttons do not emit native TextInput edits, so the
           // field is edited here and the mirror diff syncs the PTY echo.
           setLiveInputCapture(editedText)
-          liveInputRef.current?.setNativeProps({ text: editedText })
+          writeTerminalLiveInputText(liveInputRef, editedText)
           // Preserve undefined so Android's heuristic hold still settles on its timer.
           const sent = await applyLiveInputMirror(
             activeHandle,
@@ -116,6 +126,7 @@ export function useTerminalLiveAccessoryInputCommit({
       liveInputComposingRef,
       liveInputRef,
       liveInputTerminalHandles,
+      onInteraction,
       pendingLiveInputHandleRef,
       sentLiveInputTextRef,
       sendLiveTerminalInputRef,

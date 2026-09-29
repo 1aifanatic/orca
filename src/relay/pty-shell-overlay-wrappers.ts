@@ -28,9 +28,11 @@ function getRelayZshWrapperSpec(): ZshStartupHookSpec {
     headerLabel: 'Orca relay zsh overlay wrapper',
     readyMarkerEscaped: SHELL_READY_MARKER_ESCAPED,
     osc133CommandMarkers: false,
+    startupCommandDelivery: false,
     overlayRestoreComment:
       '# Why: remote startup files can re-export user defaults after relay spawn.',
     restores: {
+      managedWslCli: false,
       agentTeamsPath: false,
       remoteCliBinDir: true,
       codexHome: false,

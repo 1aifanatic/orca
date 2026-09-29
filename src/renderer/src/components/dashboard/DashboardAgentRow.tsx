@@ -4,56 +4,39 @@ import { AgentStateDot, agentStateLabel, type AgentDotState } from '@/components
 import { AgentIcon } from '@/lib/agent-catalog'
 import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { DashboardAgentChildDisclosure } from './DashboardAgentChildDisclosure'
 import { DashboardAgentRowMessage } from './DashboardAgentRowMessage'
 import { DashboardAgentRowTrailingControls } from './DashboardAgentRowTrailingControls'
 import { DashboardAgentRowToolStep } from './DashboardAgentRowToolStep'
 import { showsAgentToolPreview } from '@/lib/agent-row-tool-preview'
-import type { AgentStatusState } from '../../../../shared/agent-status-types'
+import { agentNoUpdateLabel, formatCompactDuration } from '@/lib/agent-row-decay-state'
+import { agentRowDotState as asDotState } from '@/lib/agent-row-dot-state'
+import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
 import type { DashboardAgentRow as DashboardAgentRowData } from './useDashboardData'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
 import { useAgentRowConversationName } from './use-agent-row-conversation-name'
 import { lastEnteredDoneAt } from './agent-finished-timestamp'
-
-// Why: narrow the dashboard's rollup states to shared dot states, defaulting unknowns to 'idle' so a row never crashes.
-function asDotState(
-  state: AgentStatusState | 'idle',
-  workingMode?: DashboardAgentRowData['entry']['workingMode']
-): AgentDotState {
-  switch (state) {
-    case 'working':
-      return workingMode === 'monitoring' ? 'monitoring' : 'working'
-    case 'blocked':
-    case 'waiting':
-    case 'done':
-    case 'idle':
-      return state
-  }
-  return 'idle'
-}
 
 function formatTimeAgo(ts: number, now: number): string {
   const delta = now - ts
   if (delta < 60_000) {
     return 'just now'
   }
-  const minutes = Math.floor(delta / 60_000)
-  if (minutes < 60) {
-    return `${minutes}m ago`
-  }
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) {
-    return `${hours}h ago`
-  }
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return `${formatCompactDuration(delta)} ago`
 }
 
-function stateDotTooltipLabel(agent: DashboardAgentRowData, dotState: AgentDotState): string {
-  if (agent.entry.interrupted === true) {
+function stateDotTooltipLabel(
+  agent: DashboardAgentRowData,
+  dotState: AgentDotState,
+  now: number
+): string {
+  if (dotState === 'interrupted') {
     return 'Interrupted by user'
   }
-  return agentStateLabel(dotState)
+  // Why: report the observation, not a verdict on the agent — the elapsed gap is what
+  // lets the user apply context Orca has no way to know (a long build, a slow download).
+  return dotState === 'unverifiable'
+    ? agentNoUpdateLabel(agent.entry, now)
+    : agentStateLabel(dotState)
 }
 
 type Props = {
@@ -72,12 +55,10 @@ type Props = {
   hideExpand?: boolean
   /** Reuse the row's hover tint to show the focused terminal pane's agent. */
   isFocusedPane?: boolean
-  // Why: inline-card orchestration rows fold children under a leading chevron.
+  // Why: inline-card orchestration rows can fold their child agents.
   childAgentCount?: number
   childAgentsExpanded?: boolean
   onToggleChildAgents?: () => void
-  // Why: leaf siblings reserve the chevron gutter so state dots align.
-  reserveDisclosureGutter?: boolean
   // Why: chevron indentation replaces fixed-offset lineage connector art.
   hideLineageConnectors?: boolean
   // Why: send-popover target mode makes row clicks send/no-op instead of navigating.
@@ -99,7 +80,6 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
   childAgentCount,
   childAgentsExpanded = false,
   onToggleChildAgents,
-  reserveDisclosureGutter = false,
   hideLineageConnectors = false,
   sendTargetStatus,
   sendTargetDisabledReason,
@@ -158,7 +138,8 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
   const toolName = showsTool ? (agent.entry.toolName?.trim() ?? '') : ''
   const toolInput = showsTool ? (agent.entry.toolInput?.trim() ?? '') : ''
   const lastAssistantMessage = agent.entry.lastAssistantMessage?.trim() ?? ''
-  const isInterrupted = agent.entry.interrupted === true
+  const verdictDotState = agentVerdictDisplayMark(agent.entry)
+  const isInterrupted = verdictDotState === 'interrupted'
   const lineage = agent.lineage
   const isLineageChild = lineage?.depth === 1
   const lineageChildCount = lineage?.childCount ?? 0
@@ -169,18 +150,21 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
           lineageChildCount === 1 ? 'agent' : 'agents'
         }`
       : [formatAgentTypeLabel(agent.agentType), model].filter(Boolean).join(' · ')
-  // Why: interrupted is a terminal outcome, so surface it in the leading state dot.
-  const dotState: AgentDotState = isInterrupted
-    ? 'interrupted'
-    : asDotState(agent.state, agent.entry.workingMode)
-  const dotTooltipLabel = stateDotTooltipLabel(agent, dotState)
+  // Why: a stop or a failure is a terminal outcome, so surface it in the leading state dot; a
+  // failure does so even while subagents still run.
+  const dotState: AgentDotState =
+    verdictDotState ?? asDotState(agent.state, agent.entry.workingMode)
+  const dotTooltipLabel = stateDotTooltipLabel(agent, dotState, now)
+  // Why: the elapsed gap is the whole content of an `unverifiable` row, so it rides the
+  // row's own timestamp slot rather than hiding in a hover tooltip.
+  const noUpdateLabel = dotState === 'unverifiable' ? agentNoUpdateLabel(agent.entry, now) : null
 
   // Why: always show the chevron so the row's right edge doesn't flicker as content grows/shrinks.
 
   const startedTimeAgo = startedAt !== null ? formatTimeAgo(startedAt, now) : null
   const doneTimeAgo = doneAt !== null ? formatTimeAgo(doneAt, now) : null
-  const relativeTimestamp = doneTimeAgo ?? startedTimeAgo
-  const tsParts: string[] = []
+  const relativeTimestamp = noUpdateLabel ?? doneTimeAgo ?? startedTimeAgo
+  const tsParts: string[] = noUpdateLabel ? [noUpdateLabel] : []
   if (startedTimeAgo !== null) {
     tsParts.push(`started ${startedTimeAgo}`)
   }
@@ -197,7 +181,7 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
       onClick={handleActivate}
       className={cn(
         // Why: named group scopes the X-reveal to this row, not every row in the card.
-        'group/agent-row relative flex flex-col -ml-2 py-1',
+        'agent-disclosure-row group/agent-row relative -ml-2 flex flex-col py-1',
         isLineageChild ? 'pl-5 pr-2' : 'px-2',
         // Why: hover wash stays softer than the enclosing card's highlight.
         'cursor-pointer rounded-sm worktree-agent-row-hover',
@@ -240,12 +224,6 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
         </span>
       ) : null}
       <div className="flex items-center gap-1.5">
-        <DashboardAgentChildDisclosure
-          childAgentCount={childAgentCount}
-          childAgentsExpanded={childAgentsExpanded}
-          onToggleChildAgents={onToggleChildAgents}
-          reserveDisclosureGutter={reserveDisclosureGutter}
-        />
         {/* Why: state dot sits in the leading gutter so the eye can scan one column for row state. */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -300,6 +278,9 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
         <DashboardAgentRowTrailingControls
           paneKey={agent.paneKey}
           relativeTimestamp={relativeTimestamp}
+          childAgentCount={childAgentCount}
+          childAgentsExpanded={childAgentsExpanded}
+          onToggleChildAgents={onToggleChildAgents}
           expanded={expanded}
           hideExpand={hideExpand}
           hideDismiss={agent.rowSource === 'subagent'}

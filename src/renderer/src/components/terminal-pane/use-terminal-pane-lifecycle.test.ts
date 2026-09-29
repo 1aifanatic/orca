@@ -12,7 +12,6 @@ import {
   resolvePaneSeedCwd,
   resolveQueuedInitialCwd,
   replayLayoutWithOneShotParkIntent,
-  resetTerminalKeyboardProtocolAfterInterrupt,
   retireMountedTerminalPaneSurface,
   shouldDetachPaneTransportOnUnmount,
   splitPaneWithOneShotStartup,
@@ -136,16 +135,19 @@ describe('applyTerminalPaneCloseRequest', () => {
   it('retires mounted authority and binding while preserving the process and sleeping fence', () => {
     const retireAgentPaneAuthority = vi.fn()
     const syncPanePtyLayoutBinding = vi.fn()
+    const clearExitedPanePtyLayoutBindingForLeaf = vi.fn()
     const clearTabPtyId = vi.fn()
     const transport = { detach: vi.fn(), destroy: vi.fn() }
 
     retireMountedTerminalPaneSurface({
       paneKey: 'legacy-worker:11111111-1111-4111-8111-111111111111',
+      leafId: '11111111-1111-4111-8111-111111111111',
       paneId: 2,
       tabId: 'legacy-worker',
       ptyId: 'pty-legacy',
       retireAgentPaneAuthority,
       syncPanePtyLayoutBinding,
+      clearExitedPanePtyLayoutBindingForLeaf,
       clearTabPtyId,
       transport
     })
@@ -154,27 +156,14 @@ describe('applyTerminalPaneCloseRequest', () => {
       'legacy-worker:11111111-1111-4111-8111-111111111111',
       { preserveSleepingAgentSession: true }
     )
-    expect(syncPanePtyLayoutBinding).toHaveBeenCalledWith(2, null)
+    expect(clearExitedPanePtyLayoutBindingForLeaf).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'pty-legacy'
+    )
+    expect(syncPanePtyLayoutBinding).not.toHaveBeenCalled()
     expect(clearTabPtyId).toHaveBeenCalledWith('legacy-worker', 'pty-legacy')
     expect(transport.detach).toHaveBeenCalledOnce()
     expect(transport.destroy).not.toHaveBeenCalled()
-  })
-})
-
-describe('resetTerminalKeyboardProtocolAfterInterrupt', () => {
-  it('does not write to an xterm whose pipeline is certified dead', async () => {
-    const { _resetWritePipelineHealthForTests, notifyUndeliverableWrite } =
-      await import('@/lib/pane-manager/terminal-write-pipeline-health')
-    const terminal = { write: vi.fn() }
-    try {
-      notifyUndeliverableWrite(terminal, 'replay-wedged')
-
-      resetTerminalKeyboardProtocolAfterInterrupt(terminal as never)
-
-      expect(terminal.write).not.toHaveBeenCalled()
-    } finally {
-      _resetWritePipelineHealthForTests(terminal)
-    }
   })
 })
 

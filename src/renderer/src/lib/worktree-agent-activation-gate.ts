@@ -3,34 +3,37 @@ import type { PtyListedSession } from '../../../shared/pty-listed-session'
 import { parsePtySessionId, PTY_SESSION_ID_SEPARATOR } from '../../../shared/pty-session-id-format'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
+import { worktreeIdsEqual } from '../../../shared/worktree/id'
+import { listActivationPtySessions } from './worktree-activation-pty-inventory'
 import {
   resumeSleepingAgentSessionsForWorktree,
   type ResumeSleepingAgentSessionsOptions
 } from './resume-sleeping-agent-session'
 import { getProviderSessionClaimKey } from './sleeping-agent-pane-ownership'
-import { bindLivePtyToExactSurface } from './worktree-agent-live-surface-adoption'
+import {
+  adoptLiveWorkspacePtySurfaces,
+  type LiveSurfaceAdoptionStore
+} from './worktree-agent-live-surface-adoption'
+import type { LiveTerminalSurfaceOwnerIndex } from './worktree-live-terminal-surface-owners'
+import { readWorktreeLiveTerminalSurfaceOwners } from './worktree-live-terminal-surface-owners'
 import { isStructuredAgentSyntheticSleepingRecord } from './structured-agent-synthetic-sleeping-record'
 import {
   readWorktreeStructuredActivationInventory,
   type StructuredActivationInventory
 } from './worktree-agent-structured-inventory'
 
-type ActivationStore = Pick<
-  ReturnType<typeof useAppStore.getState>,
-  | 'createTab'
-  | 'ptyIdsByTabId'
-  | 'sleepingAgentSessionsByPaneKey'
-  | 'tabsByWorktree'
-  | 'terminalLayoutsByTabId'
-  | 'unifiedTabsByWorktree'
-  | 'updateTabPtyId'
-  | 'replaceTerminalLayoutPanePtyId'
->
+type ActivationStore = LiveSurfaceAdoptionStore &
+  Pick<
+    ReturnType<typeof useAppStore.getState>,
+    'sleepingAgentSessionsByPaneKey' | 'unifiedTabsByWorktree'
+  >
 
 type ActivationGateDeps = {
   getState: () => ActivationStore
   awaitReady?: () => Promise<boolean>
   listSessions: () => Promise<PtyListedSession[]>
+  /** Host-recorded PTY→surface ownership; null when the host could not answer. */
+  listSurfaceOwners: (worktreeId: string) => Promise<LiveTerminalSurfaceOwnerIndex | null>
   hasStructuredSession?: (worktreeId: string) => Promise<boolean | StructuredActivationInventory>
   resume: (worktreeId: string, options?: ResumeSleepingAgentSessionsOptions) => number
 }
@@ -87,10 +90,6 @@ function hasStructuredSession(store: ActivationStore, worktreeId: string): boole
   )
 }
 
-function ptyIsAlreadyBound(store: ActivationStore, ptyId: string): boolean {
-  return Object.values(store.ptyIdsByTabId).some((ids) => ids.includes(ptyId))
-}
-
 function sessionBelongsToWorkspace(sessionId: string, worktreeId: string): boolean {
   if (parsePtySessionId(sessionId).worktreeId === worktreeId) {
     return true
@@ -103,13 +102,14 @@ function sessionBelongsToWorkspace(sessionId: string, worktreeId: string): boole
   )
 }
 
-function liveSleepingAgentClaimKeys(
+function liveSleepingAgentClaims(
   store: ActivationStore,
   worktreeId: string,
   livePtyIds: ReadonlySet<string>,
   structuredInventory: StructuredActivationInventory | null
-): Set<string> {
+): { keys: Set<string>; claimedPtyIds: Set<string> } {
   const keys = new Set<string>()
+  const claimedPtyIds = new Set<string>()
   for (const record of Object.values(store.sleepingAgentSessionsByPaneKey)) {
     if (record.worktreeId !== worktreeId) {
       continue
@@ -128,16 +128,13 @@ function liveSleepingAgentClaimKeys(
       keys.add(getProviderSessionClaimKey(record))
       continue
     }
-    // Packaged hydration can omit renderer bindings while main retains this session's exact TUI.
-    const structuredOwnerPtyId =
-      structuredOwner?.owner === 'tui' ? structuredOwner.terminal?.ptyId : undefined
-    const persistedPtyId =
-      layoutPtyId ?? (tabPtyIds?.length === 1 ? tabPtyIds[0] : undefined) ?? structuredOwnerPtyId
+    const persistedPtyId = layoutPtyId ?? (tabPtyIds?.length === 1 ? tabPtyIds[0] : undefined)
     if (persistedPtyId && livePtyIds.has(persistedPtyId)) {
+      claimedPtyIds.add(persistedPtyId)
       keys.add(getProviderSessionClaimKey(record))
     }
   }
-  return keys
+  return { keys, claimedPtyIds }
 }
 
 export async function runWorktreeAgentActivationGate(
@@ -167,16 +164,7 @@ export async function runWorktreeAgentActivationGate(
   const structuredTabs = structuredInventory?.snapshot.tabs.filter(
     (tab) => tab.type === 'agent-session'
   )
-  if (
-    structuredTabs?.some((tab) => {
-      const owner = structuredInventory?.ownerBySessionId.get(tab.sessionId)
-      return (
-        !owner ||
-        (owner.owner === 'tui' &&
-          (!owner.terminal || parsePaneKey(owner.terminal.paneKey)?.tabId !== owner.terminal.tabId))
-      )
-    })
-  ) {
+  if (structuredTabs?.some((tab) => !structuredInventory?.ownerBySessionId.has(tab.sessionId))) {
     return 'blocked'
   }
   if (
@@ -195,35 +183,35 @@ export async function runWorktreeAgentActivationGate(
     return 'blocked'
   }
 
-  const liveWorkspaceSessions = sessions.filter((session) =>
-    sessionBelongsToWorkspace(session.id, worktreeId)
+  // Why either signal rather than a preference: a relay row's worktreeId can be seeded from the
+  // host's own ORCA_WORKTREE_ID, so it must widen the id-prefix match, never replace it — a session
+  // dropped from this set is a live agent the gate would fork a second writer onto.
+  const liveWorkspaceSessions = sessions.filter(
+    (session) =>
+      (session.worktreeId !== undefined && worktreeIdsEqual(session.worktreeId, worktreeId)) ||
+      sessionBelongsToWorkspace(session.id, worktreeId)
   )
   const liveWorkspacePtyIds = new Set(liveWorkspaceSessions.map((session) => session.id))
-  for (const owner of structuredInventory?.ownerBySessionId.values() ?? []) {
-    if (owner.owner !== 'tui') {
-      continue
-    }
-    if (
-      !owner.terminal ||
-      !liveWorkspacePtyIds.has(owner.terminal.ptyId) ||
-      !bindLivePtyToExactSurface(deps.getState(), worktreeId, owner.terminal)
-    ) {
-      return 'blocked'
-    }
-  }
+  let liveSurfaceAdopted = false
   if (liveWorkspaceSessions.length > 0) {
-    for (const session of liveWorkspaceSessions) {
-      const store = deps.getState()
-      if (ptyIsAlreadyBound(store, session.id)) {
-        continue
-      }
-      store.createTab(worktreeId, undefined, undefined, {
-        initialPtyId: session.id,
-        activate: false,
-        recordInteraction: false
+    // Why: an unreadable census adopts nothing and mints nothing, so reporting 'adopted'
+    // would suppress the caller's seed and leave the workspace with no surface at all —
+    // fail-closed must still leave the user a usable pane (STA-5701).
+    const adoption = await adoptLiveWorkspacePtySurfaces(
+      deps.getState,
+      worktreeId,
+      [...liveWorkspacePtyIds],
+      deps.listSurfaceOwners
+    )
+    liveSurfaceAdopted = adoption.surfaced
+    // A live agent the user can no longer see has to be diagnosable from the console.
+    if (adoption.declinedPtyIds.length > 0) {
+      console.warn('[worktree-activation] live PTYs left without a surface', {
+        worktreeId,
+        declinedPtyIds: adoption.declinedPtyIds
       })
     }
-    if (!workspaceHasSleepingAgentSessions(deps.getState(), worktreeId)) {
+    if (liveSurfaceAdopted && !workspaceHasSleepingAgentSessions(deps.getState(), worktreeId)) {
       return 'adopted'
     }
   }
@@ -231,17 +219,32 @@ export async function runWorktreeAgentActivationGate(
   if (structured && !workspaceHasSleepingAgentSessions(deps.getState(), worktreeId)) {
     return 'structured'
   }
-  const launched = deps.resume(worktreeId, {
-    skipClaimKeys: liveSleepingAgentClaimKeys(
-      deps.getState(),
-      worktreeId,
-      liveWorkspacePtyIds,
-      structuredInventory
+  const store = deps.getState()
+  const claims = liveSleepingAgentClaims(
+    store,
+    worktreeId,
+    liveWorkspacePtyIds,
+    structuredInventory
+  )
+  const hasUnclaimedRecovery = Object.values(store.sleepingAgentSessionsByPaneKey).some(
+    (record) =>
+      record.worktreeId === worktreeId && !claims.keys.has(getProviderSessionClaimKey(record))
+  )
+  // A surfaced PTY without a conversation claim may still own the sleeping session.
+  if (
+    hasUnclaimedRecovery &&
+    liveWorkspaceSessions.some(
+      (session) => session.agentOwnership !== 'absent' && !claims.claimedPtyIds.has(session.id)
     )
-  })
+  ) {
+    return 'blocked'
+  }
+  const launched = deps.resume(worktreeId, { skipClaimKeys: claims.keys })
+  // 'empty' is the caller's directive — "this gate produced no surface, seed one" — not a
+  // claim the host had nothing; the callers re-check their own seeding guards first.
   return launched > 0
     ? 'resumed'
-    : liveWorkspaceSessions.length > 0
+    : liveSurfaceAdopted
       ? 'adopted'
       : structured
         ? 'structured'
@@ -259,7 +262,10 @@ export function gateWorktreeAgentActivation(
     getState: () => useAppStore.getState(),
     awaitReady: waitForWorkspaceSessionReady,
     listSessions: () =>
-      typeof window === 'undefined' ? Promise.resolve([]) : window.api.pty.listSessions(),
+      typeof window === 'undefined'
+        ? Promise.resolve([])
+        : listActivationPtySessions(useAppStore.getState(), worktreeId),
+    listSurfaceOwners: readWorktreeLiveTerminalSurfaceOwners,
     hasStructuredSession: readWorktreeStructuredActivationInventory,
     resume: resumeSleepingAgentSessionsForWorktree
   }).finally(() => {

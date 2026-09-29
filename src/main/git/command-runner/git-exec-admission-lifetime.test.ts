@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as GitFetchHeadLockModule from '../../../shared/git-fetch-head-lock'
 
 const {
   execFileMock,
@@ -28,10 +29,27 @@ vi.mock('../../../shared/child-process/process-tree-termination', () => ({
   signalProcessTree: signalProcessTreeMock,
   forceTerminateProcessTree: forceTerminateProcessTreeMock
 }))
+// Why: the real FETCH_HEAD key derivation walks the filesystem (realpath/stat/readFile), so
+// concurrent same-repo callers join the lock lane in libuv threadpool completion order rather
+// than call order. Keep the real FIFO lock and drop only the key walk, which owns its coverage
+// in `src/shared/git-fetch-head-lock.test.ts`.
+vi.mock('../../../shared/git-fetch-head-lock', async (importOriginal) => {
+  const actual = await importOriginal<typeof GitFetchHeadLockModule>()
+  const { runWithGitOperationLock } = await import('../../../shared/git-operation-lock')
+  return {
+    ...actual,
+    runWithGitFetchHeadLock: <T>(
+      worktreePath: string,
+      signal: AbortSignal | undefined,
+      run: () => Promise<T>
+    ): Promise<T> => runWithGitOperationLock(worktreePath, signal, run)
+  }
+})
 
 import { gitExecFileAsync, gitExecFileAsyncBuffer } from './git-exec-file'
 import { execFileCapture } from './exec-file-capture'
 import {
+  acquireGitAdmission,
   GitAdmissionScheduler,
   _gitAdmissionSnapshotForTests,
   _resetGitAdmissionForTests
@@ -49,6 +67,10 @@ function mockChild(pid: number | undefined = 1234): ChildProcess {
   return child as unknown as ChildProcess
 }
 
+async function settleAdmissionGrant(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0)
+}
+
 describe('git exec admission lifetime', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -63,12 +85,36 @@ describe('git exec admission lifetime', () => {
     _resetGitAdmissionForTests()
   })
 
+  it('keeps the SSH policy probe queued beyond its execution budget until caller cancellation', async () => {
+    _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
+    const holding = acquireGitAdmission({ args: ['status'], cwd: '/repo' })
+    await settleAdmissionGrant()
+    const blocker = await holding
+    const controller = new AbortController()
+    const pending = gitExecFileAsync(['fetch', 'origin'], {
+      cwd: '/repo',
+      env: { ...process.env, GIT_SSH_COMMAND: '' },
+      useConfiguredSshCommandForNetwork: true,
+      signal: controller.signal
+    })
+    const rejection = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await settleAdmissionGrant()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(_gitAdmissionSnapshotForTests().queued).toBe(1)
+    expect(execFileMock).not.toHaveBeenCalled()
+    controller.abort()
+    await rejection
+    blocker.release()
+    expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
+  })
+
   it('retains the string-exec permit after timeout settlement until close', async () => {
     const child = mockChild()
     execFileMock.mockReturnValue(child)
     const pending = gitExecFileAsync(['status'], { cwd: '/repo', timeout: 10 })
     const rejection = expect(pending).rejects.toThrow('timed out')
-    await vi.waitFor(() => expect(execFileMock).toHaveBeenCalledOnce())
+    await settleAdmissionGrant()
+    expect(execFileMock).toHaveBeenCalledOnce()
 
     await vi.advanceTimersByTimeAsync(10)
     await rejection
@@ -171,7 +217,8 @@ describe('git exec admission lifetime', () => {
       timeout: 10
     })
     const rejection = expect(pending).rejects.toThrow('timed out')
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
+    await settleAdmissionGrant()
+    expect(spawnMock).toHaveBeenCalledOnce()
 
     await vi.advanceTimersByTimeAsync(2010)
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)
@@ -182,6 +229,69 @@ describe('git exec admission lifetime', () => {
     child.emit('close', null, 'SIGKILL')
     await Promise.resolve()
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+  })
+
+  it.each([false, true])(
+    'waits beyond the execution timeout before spawning (buffer: %s)',
+    async (buffer) => {
+      _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
+      const holding = acquireGitAdmission({ args: ['status'], cwd: '/repo' })
+      await settleAdmissionGrant()
+      const blocker = await holding
+      const child = mockChild()
+      let callback: ExecCallback | undefined
+      execFileMock.mockImplementation((_command, _args, _options, received: ExecCallback) => {
+        callback = received
+        return child
+      })
+      const pending = buffer
+        ? gitExecFileAsyncBuffer(['status'], { cwd: '/repo', timeout: 50 })
+        : gitExecFileAsync(['status'], { cwd: '/repo', timeout: 50 })
+      await settleAdmissionGrant()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(execFileMock).not.toHaveBeenCalled()
+      expect(_gitAdmissionSnapshotForTests().queued).toBe(1)
+      blocker.release()
+      await settleAdmissionGrant()
+      expect(execFileMock).toHaveBeenCalledOnce()
+      await vi.advanceTimersByTimeAsync(49)
+      callback?.(null, buffer ? Buffer.from('ok') : 'ok', buffer ? Buffer.alloc(0) : '')
+      child.emit('close', 0, null)
+      expect((await pending).stdout.toString()).toBe('ok')
+      expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
+      expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+    }
+  )
+
+  it('still reports a caller abort of a queued command as an abort', async () => {
+    vi.useRealTimers()
+    _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
+    const blocker = mockChild()
+    let finishBlocker: ExecCallback | undefined
+    execFileMock.mockImplementation(
+      (_command: string, _args: string[], _options: unknown, callback: ExecCallback) => {
+        finishBlocker = callback
+        return blocker
+      }
+    )
+    const holding = gitExecFileAsync(['status'], { cwd: '/repo' })
+    await vi.waitFor(() => expect(finishBlocker).toBeTypeOf('function'))
+
+    const controller = new AbortController()
+    const queued = gitExecFileAsync(['status'], {
+      cwd: '/repo',
+      timeout: 60_000,
+      signal: controller.signal
+    })
+    await vi.waitFor(() => expect(_gitAdmissionSnapshotForTests().queued).toBe(1))
+    controller.abort()
+
+    await expect(queued).rejects.toMatchObject({ name: 'AbortError' })
+    expect(execFileMock).toHaveBeenCalledOnce()
+
+    finishBlocker?.(null, '', '')
+    blocker.emit('close', 0, null)
+    await expect(holding).resolves.toEqual({ stdout: '', stderr: '' })
   })
 
   it('serializes FETCH_HEAD callers before they enter admission', async () => {

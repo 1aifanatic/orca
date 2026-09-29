@@ -1,3 +1,4 @@
+import { isCurrentWatcherSender } from './filesystem-watcher-sender-lifetime'
 import type { WebContents } from 'electron'
 import type { FsChangedPayload } from '../../shared/filesystem-entry-types'
 import {
@@ -10,10 +11,12 @@ import { getLocalWatcherRoot } from './filesystem-watcher-paths'
 import { watcherLifecycleState } from './filesystem-watcher-lifecycle-state'
 import {
   abandonLocalUnsubscribes,
+  registerWatcherSenderCleanup,
   clearLocalCapacityRetry,
   trackDetachedLocalUnsubscribe
 } from './filesystem-watcher-listener-lifecycle'
 import { subscribeLocalWatcher } from './filesystem-watcher-local-subscription'
+import { cancelLocalBatchFlush } from './filesystem-watcher-batch-control'
 
 export async function closeLocalWatcherForWorktreePath(
   worktreePath: string,
@@ -100,9 +103,7 @@ export async function closeLocalWatcherForWorktreePath(
   if (!root) {
     return
   }
-  if (root.batch.timer) {
-    clearTimeout(root.batch.timer)
-  }
+  cancelLocalBatchFlush(root)
   watcherLifecycleState.watchedRoots.delete(rootKey)
   // Why: the in-process Parcel fallback has no unsubscribe timeout of its own, so an unbounded await
   // here would hang delete forever and hold the removal gate. The promise stays tracked in
@@ -125,29 +126,40 @@ export async function restoreLocalWatcherAfterFailedRemoval(worktreePath: string
     return
   }
   watcherLifecycleState.suspendedLocalWatcherListeners.delete(rootKey)
-  const failures: unknown[] = []
-  const failedListeners = new Map<number, WebContents>()
-  for (const sender of suspended.listeners.values()) {
-    if (sender.isDestroyed()) {
+  const failures: { sender: WebContents; signal: AbortSignal; error: unknown }[] = []
+  const owners = Array.from(suspended.listeners.values(), (sender) => ({
+    sender,
+    signal: registerWatcherSenderCleanup(sender)
+  }))
+  for (const { sender, signal } of owners) {
+    if (!isCurrentWatcherSender(sender, signal)) {
       continue
     }
     try {
-      await subscribeLocalWatcher(suspended.worktreePath, sender)
+      await subscribeLocalWatcher(suspended.worktreePath, sender, undefined, signal)
+      if (!isCurrentWatcherSender(sender, signal)) {
+        continue
+      }
       sender.send('fs:changed', {
         worktreePath: suspended.worktreePath,
         events: [{ kind: 'overflow', absolutePath: suspended.worktreePath }]
       } satisfies FsChangedPayload)
     } catch (error) {
-      failures.push(error)
-      failedListeners.set(sender.id, sender)
+      if (!isCurrentWatcherSender(sender, signal)) {
+        continue
+      }
+      failures.push({ sender, signal, error })
     }
   }
-  if (failures.length > 0) {
+  const liveFailures = failures.filter(({ sender, signal }) =>
+    isCurrentWatcherSender(sender, signal)
+  )
+  if (liveFailures.length > 0) {
     watcherLifecycleState.suspendedLocalWatcherListeners.set(rootKey, {
       worktreePath: suspended.worktreePath,
-      listeners: failedListeners
+      listeners: new Map(liveFailures.map(({ sender }) => [sender.id, sender]))
     })
-    throw failures[0]
+    throw liveFailures[0].error
   }
 }
 

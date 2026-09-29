@@ -1,5 +1,7 @@
+import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 import type {
   WorktreeDefaultTabsLaunch,
   WorktreeSetupLaunch,
@@ -8,6 +10,11 @@ import type {
 import type { FeatureInteractionId } from '../../shared/feature-interactions'
 import type { KeybindingActionId } from '../../shared/keybindings'
 import type { BrowserFindSource } from '../../shared/browser-find-source'
+import type {
+  BrowserHistoryNavigateCommand,
+  BrowserPageCommandTarget
+} from '../../shared/browser-page-command-target'
+import type { BrowserPageZoomCommand } from '../../shared/browser-page-zoom'
 import type {
   AgentProviderSessionMetadata,
   SleepingAgentLaunchConfig
@@ -48,6 +55,10 @@ export type UiCommandEventApi = {
   consumePendingOpenSettings: () => Promise<boolean>
   onOpenSkillShare: (callback: (shareId: string) => void) => () => void
   consumePendingSkillShare: () => Promise<string | null>
+  /** OS "Open With" markdown paths pushed while a renderer is already listening. */
+  onOpenMarkdownFiles: (callback: (documents: MarkdownDocument[]) => void) => () => void
+  /** Drains the "Open With" paths queued before this renderer's listener attached. */
+  consumePendingMarkdownFileOpens: () => Promise<MarkdownDocument[]>
   onOpenSetupGuide: (callback: () => void) => () => void
   onOpenFeatureTour: (callback: () => void) => () => void
   onOpenCrashReport: (callback: () => void) => () => void
@@ -101,12 +112,17 @@ export type UiCommandEventApi = {
     code?: 'browser_tab_not_found'
   }) => void
   onNewTerminalTab: (callback: () => void) => () => void
-  onFocusBrowserAddressBar: (callback: () => void) => () => void
+  onFocusBrowserAddressBar: (callback: (target: BrowserPageCommandTarget) => void) => () => void
   onFindInBrowserPage: (source: BrowserFindSource, callback: () => void) => () => void
-  onReloadBrowserPage: (callback: () => void) => () => void
-  onBrowserHistoryNavigate: (callback: (direction: 'back' | 'forward') => void) => () => void
-  onZoomBrowserPage: (callback: (direction: 'in' | 'out' | 'reset') => void) => () => void
-  onHardReloadBrowserPage: (callback: () => void) => () => void
+  onReloadBrowserPage: (callback: (target: BrowserPageCommandTarget) => void) => () => void
+  onBrowserHistoryNavigate: (
+    callback: (command: BrowserHistoryNavigateCommand) => void
+  ) => () => void
+  onZoomBrowserPage: (callback: (command: BrowserPageZoomCommand) => void) => () => void
+  onScrollBrowserPage?: (
+    callback: (event: { browserPageId: string; deltaX: number; deltaY: number }) => void
+  ) => () => void
+  onHardReloadBrowserPage: (callback: (target: BrowserPageCommandTarget) => void) => () => void
   onCloseActiveTab: (callback: (payload?: CloseActiveTabPayload) => void) => () => void
   onCloseFloatingItem: (callback: (payload: { sourceId: string }) => void) => () => void
   onSelectFloatingIndex: (callback: (payload: { index: number }) => void) => () => void
@@ -169,6 +185,8 @@ export type UiCommandEventApi = {
       paneRuntimeId: number
       direction: 'horizontal' | 'vertical'
       command?: string
+      worktreeId?: string
+      sourceLeafId?: string
       telemetrySource?: TerminalPaneSplitSource
       newLeafId?: string
     }) => void
@@ -186,7 +204,14 @@ export type UiCommandEventApi = {
       scrollToBottomIfOutputSinceLastView?: boolean
     }) => void
   ) => () => void
-  onFocusEditorTab: (callback: (data: { tabId: string; worktreeId: string }) => void) => () => void
+  onFocusEditorTab: (
+    callback: (data: {
+      tabId: string
+      worktreeId: string
+      /** The user clicked a notification, so revealing the tab is navigation and not a courtesy. */
+      userInitiated?: boolean
+    }) => void
+  ) => () => void
   onCloseSessionTab: (callback: (data: { tabId: string; worktreeId: string }) => void) => () => void
   onSessionTabCloseRequest: (callback: (request: SessionTabCloseRequest) => void) => () => void
   respondSessionTabClose: (response: SessionTabCloseResponse) => void
@@ -212,9 +237,7 @@ export type UiCommandEventApi = {
   ) => () => void
   onMobileMarkdownRequest: (callback: (request: RuntimeMobileMarkdownRequest) => void) => () => void
   respondMobileMarkdownRequest: (response: RuntimeMobileMarkdownResponse) => void
-  onCloseTerminal: (
-    callback: (data: { tabId: string; paneRuntimeId?: number }) => void
-  ) => () => void
+  onCloseTerminal: (callback: (target: TerminalSurfaceCloseTarget) => void) => () => void
   onTerminalTabCloseRequest: (callback: (request: TerminalTabCloseRequest) => void) => () => void
   respondTerminalTabClose: (response: TerminalTabCloseResponse) => void
   onSleepWorktree: (callback: (data: { worktreeId: string }) => void) => () => void

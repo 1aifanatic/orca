@@ -1,11 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { rmSync, mkdtempSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import type { PersistedState } from '../shared/persisted-state-types'
-import type { ProjectGroup } from '../shared/project-group-types'
-import { getDefaultWorkspaceSession } from '../shared/constants'
 import {
+  closeTestStores,
   testState,
   createStore,
   writeDataFile,
@@ -14,7 +8,22 @@ import {
   makeTerminalTab,
   makeWorktreeLineage
 } from './persistence-test-harness'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { rmSync, mkdtempSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import type { PersistedState } from '../shared/persisted-state-types'
+import type { ProjectGroup } from '../shared/project-group-types'
+import { getDefaultWorkspaceSession } from '../shared/constants'
+
 import {
+  advanceSshConnectionGeneration,
+  assertSshMutationExpectation,
+  resetSshConnectionGenerations
+} from './ssh/ssh-connection-generation'
+import { getRuntimeOwnedSshTargetId } from './ssh/ssh-connection-store'
+import {
+  _getLocalWorktreeScanGenerationCacheSize,
   getLocalWorktreeScanGeneration,
   isLocalWorktreeScanGenerationCurrent
 } from './local-worktree-scan-generation'
@@ -67,7 +76,8 @@ describe('Store', () => {
     getCohortAtEmitMock.mockReturnValue({ nth_repo_added: 2 })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
   // ── 5. addRepo and getRepo ──────────────────────────────────────────
@@ -98,6 +108,18 @@ describe('Store', () => {
     const beforeReAdd = getLocalWorktreeScanGeneration(repoId)
     store.addRepo(makeRepo({ id: repoId, path: '/replacement' }))
     expect(isLocalWorktreeScanGenerationCurrent(repoId, beforeReAdd)).toBe(false)
+  })
+
+  it('forgets scan generations when repos are removed', async () => {
+    const store = await createStore()
+    const initialCacheSize = _getLocalWorktreeScanGenerationCacheSize()
+    for (let index = 0; index < 200; index += 1) {
+      const repoId = `scan-churn-${index}`
+      store.addRepo(makeRepo({ id: repoId }))
+      store.removeProject(repoId)
+    }
+
+    expect(_getLocalWorktreeScanGenerationCacheSize()).toBe(initialCacheSize)
   })
 
   it('setResolvedRepoGitUsername persists the enriched username for hydration', async () => {
@@ -686,6 +708,39 @@ describe('Store', () => {
     expect(store.getWorktreeMeta('only::/repo/wt')).toBeUndefined()
   })
 
+  it('removing and recreating a runtime-owned SSH target fences the old incarnation', async () => {
+    resetSshConnectionGenerations(3)
+    try {
+      const store = await createStore()
+      const targetId = getRuntimeOwnedSshTargetId('vm-1')
+      const target = {
+        id: targetId,
+        label: 'ephemeral vm',
+        host: 'vm-old.example.com',
+        port: 22,
+        username: 'dev',
+        source: 'manual' as const,
+        owner: { type: 'on-demand-runtime' as const, runtimeId: 'vm-1' }
+      }
+      store.addSshTarget(target)
+      const staleGeneration = advanceSshConnectionGeneration(targetId)
+
+      store.removeSshTarget(targetId)
+      store.addSshTarget({ ...target, host: 'vm-new.example.com' })
+      const replacementGeneration = advanceSshConnectionGeneration(targetId)
+
+      // A delayed write from the discarded VM must not pass the replacement's fence.
+      expect(() => assertSshMutationExpectation(targetId, targetId, staleGeneration)).toThrow(
+        'SSH connection changed; refresh and try again'
+      )
+      expect(() =>
+        assertSshMutationExpectation(targetId, targetId, replacementGeneration)
+      ).not.toThrow()
+    } finally {
+      resetSshConnectionGenerations()
+    }
+  })
+
   // ── 6c. reassignSshTargetId re-adopts orphaned workspaces ─────────────
 
   it('reassignSshTargetId re-points repos and worktree metas onto the new id', async () => {
@@ -737,7 +792,10 @@ describe('Store', () => {
 
   it('reassignSshTargetId persists a worktree-meta-only re-point (no matching repo)', async () => {
     const store = await createStore()
-    // A meta on the old SSH host with no repo row — the re-point must still be persisted, not memory-only.
+    // A meta on the old SSH host with no repo row for that host — the re-point must still be
+    // persisted, not memory-only. The repo id stays registered so the load-time orphan sweep,
+    // which only reads repo ids, leaves the row alone.
+    store.addRepo(makeRepo({ id: 'r1', path: '/r1' }))
     store.setWorktreeMeta('r1::/remote/wt', { displayName: 'wt', hostId: 'ssh:ssh-old' })
 
     const repoIds = store.reassignSshTargetId('ssh-old', 'ssh-new')
@@ -787,6 +845,7 @@ describe('Store', () => {
 
   it('reassignSshTargetId re-keys a session partition stored under the old ssh host id', async () => {
     const store = await createStore()
+    store.addRepo(makeRepo({ id: 'r1', path: '/r1' }))
     store.setWorkspaceSession(
       {
         activeRepoId: null,

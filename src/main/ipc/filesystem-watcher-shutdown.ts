@@ -1,13 +1,17 @@
 import { disposeWatcherProcess } from './parcel-watcher-process'
 import { watcherLifecycleState } from './filesystem-watcher-lifecycle-state'
 import { trackDetachedLocalUnsubscribe } from './filesystem-watcher-listener-lifecycle'
+import { cancelLocalBatchFlush } from './filesystem-watcher-batch-control'
 
 /** Tear down all watchers on app shutdown. */
 export async function closeAllWatchers(): Promise<void> {
   // Why: drop the intent with the rest of the state, but keep the provider-registration
   // subscription — a new fs:watchWorktree reopens the subsystem and still needs the re-arm hook.
   watcherLifecycleState.desiredRemoteWatchers.clear()
-  watcherLifecycleState.senderCleanupRegistered.clear()
+  for (const lifetime of watcherLifecycleState.senderLifetimes.values()) {
+    lifetime.dispose()
+  }
+  watcherLifecycleState.senderLifetimes.clear()
   watcherLifecycleState.unwatchableRoots.clear()
   watcherLifecycleState.suspendedLocalWatcherListeners.clear()
   watcherLifecycleState.suspendedRemoteWatcherListeners.clear()
@@ -57,9 +61,7 @@ export async function closeAllWatchers(): Promise<void> {
   }
 
   for (const [rootKey, root] of watcherLifecycleState.watchedRoots) {
-    if (root.batch.timer) {
-      clearTimeout(root.batch.timer)
-    }
+    cancelLocalBatchFlush(root)
     await trackDetachedLocalUnsubscribe(rootKey, root).catch(() => undefined)
   }
   watcherLifecycleState.watchedRoots.clear()
