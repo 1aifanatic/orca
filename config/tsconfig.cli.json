@@ -155,6 +155,7 @@
     "../src/main/codex/codex-trust-config-mutation-queue.ts",
     "../src/main/codex/codex-trust-grant-telemetry.ts",
     "../src/main/codex/codex-trust-grant-host.ts",
+    "../src/main/codex/codex-trust-grant-cooldown.ts",
     "../src/main/codex/codex-trust-grant-ledger.ts",
     "../src/main/codex/codex-user-hook-trust-moves.ts",
     "../src/main/codex/codex-wsl-hook-install-plan.ts",
