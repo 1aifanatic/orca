@@ -86,14 +86,14 @@ describe('foreground identity on unknown observations', () => {
     expect(h.pty.foregroundAgent).toBe('claude')
   })
   it.each([
-    ['an old relay without evidence', 'missing', 'claude'],
-    ['stale evidence', 'stale', 'claude'],
-    ['evidence for another incarnation', 'wrong-incarnation', 'claude'],
-    ['an SSH-to-Windows host', 'windows', 'claude'],
-    ['another program in front', 'vim', 'claude'],
-    ['an old host that cannot mark the shell', 'old-host-shell', 'claude'],
-    ['the shell back at its prompt', 'shell', null]
-  ] as const)('on SSH, %s leaves foregroundAgent %j', async (_label, kind, expected) => {
+    ['an old relay without evidence', 'claude', 'missing'],
+    ['stale evidence', 'claude', 'stale'],
+    ['evidence for another incarnation', 'claude', 'wrong-incarnation'],
+    ['an SSH-to-Windows host', 'claude', 'windows'],
+    ['another program in front', 'claude', 'vim'],
+    ['an old host that cannot mark the shell', 'claude', 'old-host-shell'],
+    ['the shell back at its prompt', null, 'shell']
+  ] as const)('on SSH, %s leaves foregroundAgent %j', async (_label, expected, kind) => {
     const h = setup(true)
     h.replace({
       write: () => true,
