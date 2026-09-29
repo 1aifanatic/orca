@@ -2,7 +2,7 @@ import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 
 /** Whether only the user's Retry sends this entry again: a refused one, the one the drain stopped
- *  on, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
+ *  on, one a Stop outlived, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
 function awaitsStructuredAgentSessionRetry(
   entry: StructuredAgentSessionOutboxEntry,
   blockedClientMessageId: string | null
@@ -10,6 +10,7 @@ function awaitsStructuredAgentSessionRetry(
   return (
     entry.state === 'rejected' ||
     entry.clientMessageId === blockedClientMessageId ||
+    entry.outlivedStop === true ||
     (entry.state === 'unconfirmed' && entry.retryAfterUnknownSubmittedAt !== null)
   )
 }
@@ -36,14 +37,14 @@ function issuedQueueDeliverySendAwaitingAnswer(entry: StructuredAgentSessionOutb
   )
 }
 
-/** An in-doubt send a Stop keeps is parked for the user's Retry, as a recovered unknown is
- *  (`retryAfterUnknownSubmittedAt: -1`): the probe would resend it onto the session the user just
- *  stopped, where it starts a turn nobody asked for if the host never got the first attempt. */
-function parkedAcrossStop(
+/** A queue send whose answer is out when a Stop lands is marked, so no later unknown answer
+ *  leaves it to the probe: resent onto the session the user just stopped, it would start a turn
+ *  if the host never got the first attempt. */
+function markedOutlivingStop(
   entry: StructuredAgentSessionOutboxEntry
 ): StructuredAgentSessionOutboxEntry {
-  return entry.state === 'unconfirmed' && entry.retryAfterUnknownSubmittedAt === null
-    ? { ...entry, retryAfterUnknownSubmittedAt: -1 }
+  return issuedQueueDeliverySendAwaitingAnswer(entry) && entry.outlivedStop !== true
+    ? { ...entry, outlivedStop: true }
     : entry
 }
 
@@ -69,7 +70,7 @@ export function withdrawUnsentStructuredAgentSessionOutboxEntries(
         !unsent(entry) ||
         issuedQueueDeliverySendAwaitingAnswer(entry)
     )
-    .map(parkedAcrossStop)
+    .map(markedOutlivingStop)
 }
 
 /** Whether a Stop has something here to withdraw: a message that would still go out on its own. */

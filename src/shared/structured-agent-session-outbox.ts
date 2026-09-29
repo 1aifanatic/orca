@@ -31,9 +31,12 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
-  /** Ask the host to hold the send as a draft while the agent is working. Decided once at
-   *  enqueue (capability + setting) so a retry replays the same operation fingerprint. */
+  /** The user's intent to have the host hold the send as a draft while the agent is working.
+   *  Each request decides the wire field from it (structured-agent-session-outbox-delivery). */
   delivery?: 'queue-if-active'
+  /** A Stop landed while this queue send's answer was out: only the user's Retry sends it again,
+   *  never the unconfirmed probe, which would start a turn on the session the user stopped. */
+  outlivedStop?: true
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
    *  is sent again or delivered, instead of outliving it as a separate error. */
   lastFailure?: StructuredAgentSessionAttemptFailure
@@ -306,6 +309,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...(entry.delivery === 'queue-if-active' ? { delivery: 'queue-if-active' as const } : {}),
+    ...(entry.outlivedStop === true ? { outlivedStop: true as const } : {}),
     ...(lastFailure ? { lastFailure } : {})
   }
 }

@@ -27,7 +27,7 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
     const rotated = outboxRef.current.map((entry) =>
       entry.clientMessageId === clientMessageId
         ? {
-            ...entry,
+            ...retriedByUser(entry),
             clientMessageId: args.createOperationId(),
             state: 'queued' as const,
             lastAttemptAt: null,
@@ -52,7 +52,7 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   const next = outboxRef.current.map((entry) =>
     entry.clientMessageId === clientMessageId
       ? {
-          ...entry,
+          ...retriedByUser(entry),
           state: 'queued' as const,
           retryAfterUnknownSubmittedAt
         }
@@ -64,4 +64,12 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   }
   outboxRef.current = next
   setOutbox(next)
+}
+
+/** The user's own Retry is what a Stop left the entry waiting for. */
+function retriedByUser({
+  outlivedStop: _retried,
+  ...entry
+}: StructuredAgentSessionOutboxEntry): StructuredAgentSessionOutboxEntry {
+  return entry
 }
