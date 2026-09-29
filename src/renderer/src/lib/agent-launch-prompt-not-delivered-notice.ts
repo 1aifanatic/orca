@@ -18,6 +18,8 @@ export function showAgentLaunchPromptNotDeliveredNotice(args: {
       "The agent started, but your prompt wasn't sent. Copy it and paste it once the agent is ready."
     ),
     {
+      // The action is the only copy of the prompt, so the notice stays until the user dismisses it.
+      duration: Infinity,
       action: {
         label: translate('auto.lib.agent.launch.prompt.not.delivered.notice.copy', 'Copy prompt'),
         onClick: () => {
