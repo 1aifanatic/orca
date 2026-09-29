@@ -40,7 +40,7 @@ export async function runStopWithQueuePause<TValue>(
     }
     recorded = true
     try {
-      await ctx.journal.queuedMessages.recordPause()
+      await ctx.journal.queuedMessages.recordPause('stopped')
     } catch (error) {
       console.warn("[agent-session] Stop's queue pause skipped:", {
         sessionId: ctx.sessionId,

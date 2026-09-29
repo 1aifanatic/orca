@@ -17,7 +17,8 @@ import {
   clearQueuePause,
   readQueuePause,
   recordQueuePause,
-  type QueuePauseFact
+  type QueuePauseFact,
+  type QueuePauseReason
 } from './queued-message-pause-table'
 import {
   consumeQueuedMessageInTransaction,
@@ -142,10 +143,10 @@ export class JournalQueuedMessages {
     return this.paused.fact
   }
 
-  /** A Stop took effect here: the queue is paused from this journal position on. */
-  recordPause(): Promise<void> {
+  /** A Stop (or a /clear's carry) took effect here: the queue is paused from this position on. */
+  recordPause(reason: QueuePauseReason): Promise<void> {
     const { epoch, lastSequence: sequence } = this.deps.state()
-    const fact: QueuePauseFact = { reason: 'stopped', epoch, sequence, recordedAt: this.deps.now() }
+    const fact: QueuePauseFact = { reason, epoch, sequence, recordedAt: this.deps.now() }
     return this.transact(
       (db) => recordQueuePause(db, { sessionId: this.deps.sessionId, fact }),
       () => true

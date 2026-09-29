@@ -1,13 +1,15 @@
 // Whether the queue is paused, and why — DERIVED, never stored as a flag. The
 // queue is paused when:
 //   - 'stopped': the user's last Stop took effect (its recorded journal
-//     position) and no turn a person asked for has started since; or
+//     position) and no turn a person asked for has started since — or
+//     'cleared', the same for a /clear's replacement, whose carried cards
+//     start paused; or
 //   - 'restarted': a waiting draft was written by another host process and no
 //     turn a person asked for has started since this conversation opened.
 // A person's turn is a submission whose recorded origin is `client` (a send over
 // the client send RPC, or a card they sent now) that the provider accepted.
 // Orchestration mail, a restart continuation, a host-sent launch prompt and the
-// queue's own drain are `host` and never lift it. An explicit Resume lifts both.
+// queue's own drain are `host` and never lift it. An explicit Resume lifts any.
 
 import { randomUUID } from 'node:crypto'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
@@ -75,7 +77,7 @@ function restartEnded(journal: PauseJournal): boolean {
 export function structuredQueuePause(journal: PauseJournal): AgentSessionQueuePause | null {
   const stop = journal.queuedMessages.pause()
   if (stop && !stopEnded(journal, stop)) {
-    return { reason: 'stopped' }
+    return { reason: stop.reason }
   }
   if (restartPending(journal) && !restartEnded(journal)) {
     return { reason: 'restarted' }

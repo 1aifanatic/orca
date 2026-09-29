@@ -10,13 +10,13 @@ export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
 export type AgentSessionQueuedMessagePausedReason = typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
 
 /** The whole queue is paused and sends nothing on its own: 'stopped' — the user
- *  interrupted ("Queue paused because you interrupted"; a /clear carries its
- *  cards over paused the same way) — or 'restarted' — Orca restarted with cards
- *  waiting. Resume (`agentSession.queuedMessagesResume`), or the user's own next
+ *  interrupted ("Queue paused because you interrupted") — 'cleared' — a /clear
+ *  carried the cards into a fresh conversation — or 'restarted' — Orca restarted
+ *  with cards waiting. Resume (`agentSession.queuedMessagesResume`), or the user's own next
  *  turn starting, lifts it; Send-now on one card sends that card and leaves the
  *  rest paused until its turn starts. A client treats an unknown reason as a
  *  plain pause, so a newer host can add one. */
-export type AgentSessionQueuePause = { reason: 'stopped' | 'restarted' }
+export type AgentSessionQueuePause = { reason: 'stopped' | 'restarted' | 'cleared' }
 
 export type AgentSessionQueuedMessagesResumeResult = {
   /** False when nothing was paused, and on a replay of an already-run Resume. */
