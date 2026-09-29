@@ -407,6 +407,20 @@ describe('launching a source-control button’s agent through the host', () => {
     expect([...heldDuringStep]).toEqual(['group-2'])
     expect(agentLaunchTabReservationCountForTests()).toBe(0)
   })
+
+  it('lets go of the held group when the caller’s pre-launch step throws, and sends nothing', async () => {
+    const beforeLaunch = vi.fn((): boolean => {
+      throw new Error('reveal failed')
+    })
+
+    const result = await launchSourceControlAgent({ ...ARGS, beforeLaunch }).catch(
+      (error: unknown) => error
+    )
+
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+    expect(result).toEqual({ kind: 'failed', message: 'reveal failed' })
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+  })
 })
 
 describe('a launch on a paired host', () => {

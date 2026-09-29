@@ -184,11 +184,6 @@ export async function launchSourceControlAgent(
     ...(sessionId ? { sessionId } : {}),
     onRevealed: accept
   })
-  // After the hold: a workspace reveal reconciles tabs, which drops an unheld empty split.
-  if (args.beforeLaunch?.() === false) {
-    placement.settle(null)
-    return { kind: 'aborted' }
-  }
   let launched: AgentLaunchResult | null = null
   const params = {
     agent: args.agent,
@@ -203,6 +198,10 @@ export async function launchSourceControlAgent(
     ...(sessionId ? { sessionId } : {})
   }
   try {
+    // After the hold: a workspace reveal reconciles tabs, which drops an unheld empty split.
+    if (args.beforeLaunch?.() === false) {
+      return { kind: 'aborted' }
+    }
     const sent = await sendReplayingAmbiguousLaunch(target, params)
     if (!sent) {
       return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
