@@ -47,7 +47,7 @@ export type ZshWrapperRestoreSpec = {
   remoteCliBinDir: boolean
   /** Orca's runtime CODEX_HOME. */
   codexHome: boolean
-  /** The `codex()` wrapper that runs Orca's launch preflight. */
+  /** Whether the always-installed `codex` wrapper also runs Orca's hook preflight. */
   codexLaunchPreflight: boolean
 }
 
@@ -127,8 +127,7 @@ function getOverlayRestoreBlocks(spec: ZshStartupHookSpec): (string | null)[] {
     MIMOCODE_HOME_RESTORE,
     spec.restores.remoteCliBinDir ? REMOTE_CLI_BIN_DIR_RESTORE : null,
     getPosixOmpShellWrapper(),
-    spec.restores.codexHome ? CODEX_HOME_RESTORE : null,
-    spec.restores.codexLaunchPreflight ? getPosixCodexShellLaunchPreflight() : null
+    spec.restores.codexHome ? CODEX_HOME_RESTORE : null
   ]
 }
 
@@ -175,6 +174,11 @@ ${permanentPrecmd}
 ${joinBlocks([
   spec.restores.managedWslCli ? indentBlock(WSL_MANAGED_CLI_PATH_RESTORE, '  ') : null,
   featureGuard('overlay', getOverlayRestoreBlocks(spec)),
+  // Why outside the overlay guard: a system-default Codex home carries no overlay key.
+  indentBlock(
+    getPosixCodexShellLaunchPreflight({ hookPrep: spec.restores.codexLaunchPreflight }),
+    '  '
+  ).replace(/\n$/, ''),
   // Why no /etc/zshrc repair branch: ZDOTDIR was handed back before that file
   // ran, so the value it derives is the user's own path. #11044 is unreachable.
   `  if [[ -n "\${_orca_histfile:-}" ]]; then
