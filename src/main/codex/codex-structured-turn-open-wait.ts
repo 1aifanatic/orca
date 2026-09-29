@@ -1,8 +1,11 @@
 // A Stop's wait for the turn Codex answered a send into to open, or provably not to: it ended,
 // the thread stopped running, or the child is gone. Held in memory only.
 
-import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
-import { readCodexThreadId, readCodexTurnId } from './codex-structured-thread-facts'
+import {
+  codexThreadStoppedRunning,
+  readCodexThreadId,
+  readCodexTurnId
+} from './codex-structured-thread-facts'
 
 export type CodexTurnOpenWaits = {
   /** Resolves once `turnId` opens or can no longer, and after `withinMs` at the latest. */
@@ -37,7 +40,7 @@ export function createCodexTurnOpenWaits(): CodexTurnOpenWaits {
       if ((readCodexThreadId(params) ?? threadId) !== threadId) {
         return
       }
-      if (readCodexProviderVerdict(method, params) === 'thread-stopped-running') {
+      if (method === 'thread/status/changed' && codexThreadStoppedRunning(params)) {
         release()
         return
       }
