@@ -40,6 +40,7 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { AgentSessionRecordStore } from './agent-session-record-store'
+import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import {
@@ -194,18 +195,25 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
     throw new Error(CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED)
   }
   const journalDatabase = openStructuredAgentSessionJournalDatabase(deps.stateDirectory)
-  const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
-  const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
-  let store: AgentSessionRecordStore
   try {
-    store = await AgentSessionRecordStore.open({
-      directory: join(deps.stateDirectory, RECORD_STORE_DIR_NAME),
-      hostId: deps.hostId
-    })
+    return await installOnJournal(deps, journalDatabase)
   } catch (error) {
+    // Nothing else holds the connection yet, and the next install opens its own.
     journalDatabase.close()
     throw error
   }
+}
+
+async function installOnJournal(
+  deps: StructuredAgentSessionRuntimeDeps,
+  journalDatabase: JournalHostDatabase
+): Promise<InstalledRuntime> {
+  const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
+  const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
+  const store = await AgentSessionRecordStore.open({
+    directory: join(deps.stateDirectory, RECORD_STORE_DIR_NAME),
+    hostId: deps.hostId
+  })
   let host: StructuredAgentSessionHost | null = null
   const lifecycle = createStructuredAgentSessionLifecycleDelivery({
     handle: (event) => host?.handleAdapterEvent(event),
