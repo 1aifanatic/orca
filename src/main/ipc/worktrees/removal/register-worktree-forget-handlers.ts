@@ -35,6 +35,7 @@ import {
   preservedBranchCleanupByScope
 } from './preserved-branch-cleanup'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
+import { forgetFailedWorktreeRemoval } from '../../../worktree-removal-table'
 
 export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): void {
   const { mainWindow, store, runtime, worktreeRemovalsInFlight } = context
@@ -117,6 +118,9 @@ export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): voi
         })
 
         runtime.clearOptimisticReconcileToken(args.worktreeId)
+        if (!ownerHost || ownerHost.kind === 'local') {
+          forgetFailedWorktreeRemoval(args.worktreeId)
+        }
         // The resolved owner, not args.hostId: an orphan forget with no hostId still has to purge its SSH/runtime partition.
         removeWorktreeMetadataAndTransientState(
           store,

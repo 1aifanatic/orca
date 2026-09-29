@@ -1,7 +1,10 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithRemoveManagedWorktree } from './orca-runtime-remove-managed-worktree'
 import type { ExecutionHostId } from '../../shared/execution-host'
-import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
+import type {
+  RemoveManagedWorktreeOptions,
+  RuntimeWorktreeRemovalTarget
+} from './runtime-worktree-selection'
 import { resolveRuntimeWorktreeRemovalTarget } from './runtime-worktree-removal-target'
 import type { RuntimeStore } from './runtime-store-contract'
 import { splitWorktreeId } from '../../shared/worktree/id'
@@ -22,9 +25,14 @@ import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution
 import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, parseExecutionHostId } from '../../shared/execution-host'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
-import { resumeInterruptedWorktreeRemovals } from '../worktree-background-removal'
+import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
+import {
+  resumeInterruptedWorktreeRemovals,
+  retryFailedWorktreeRemoval,
+  waitForPendingWorktreeRemoval
+} from '../worktree-background-removal'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
 export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWithRemoveManagedWorktree {
@@ -49,18 +57,47 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       return
     }
     resumeInterruptedWorktreeRemovals((record) =>
+      interruptedLocalWorktreeRemovalJob(record, this.localRemovalJobHost(store))
+    )
+  }
+
+  /**
+   * The removal a request for this worktree waits on: the one still running, or the leftover of one
+   * that failed after Git dropped the registration, run again.
+   */
+  protected joinOrRetryWorktreeRemoval(
+    worktreeId: string,
+    options: RemoveManagedWorktreeOptions
+  ): Promise<RemoveWorktreeResult> | undefined {
+    const hostId = parseExecutionHostId(options.hostId)?.id
+    const store = this.store
+    const pending = waitForPendingWorktreeRemoval(worktreeId, hostId)
+    if (pending || !store) {
+      return pending
+    }
+    return retryFailedWorktreeRemoval(worktreeId, hostId, (record) =>
       interruptedLocalWorktreeRemovalJob(record, {
-        store,
-        acquireWatcherRemoval: this.acquireFileWatcherRemoval,
-        closeWatchers: (path) => this.closeFileWatchersForRemoval(path),
-        preservedBranchCleanup: this.preservedBranchCleanup,
-        purge: ({ worktreeId, repoId }) =>
-          this.purgeRemovedWorktree(store, worktreeId, repoId, LOCAL_EXECUTION_HOST_ID),
-        onRemoved: ({ worktreeId, worktreePath }) =>
-          this.emitWorktreeLifecycle({ kind: 'removed', worktreeId, path: worktreePath }),
-        publish: (repoId) => this.publishWorktreeRemovalChange(repoId)
+        ...this.localRemovalJobHost(store),
+        stopPtys: () =>
+          this.stopPtysForDestructiveWorktreeRemoval(record.worktreeId, {
+            allowUnverifiedStop: options.allowUnverifiedPtyStop === true
+          })
       })
     )
+  }
+
+  protected localRemovalJobHost(store: RuntimeStore) {
+    return {
+      store,
+      acquireWatcherRemoval: this.acquireFileWatcherRemoval,
+      closeWatchers: (path) => this.closeFileWatchersForRemoval(path),
+      preservedBranchCleanup: this.preservedBranchCleanup,
+      purge: ({ worktreeId, repoId }) =>
+        this.purgeRemovedWorktree(store, worktreeId, repoId, LOCAL_EXECUTION_HOST_ID),
+      onRemoved: ({ worktreeId, worktreePath }) =>
+        this.emitWorktreeLifecycle({ kind: 'removed', worktreeId, path: worktreePath }),
+      publish: (repoId) => this.publishWorktreeRemovalChange(repoId)
+    }
   }
 
   // Host state every removal path drops once Git has let go of the checkout.

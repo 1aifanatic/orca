@@ -170,7 +170,7 @@ import {
   retireGeneratedWorktreeName
 } from '../worktree-name-retirement'
 import { createRetiredNameLookup } from '../../shared/worktree/retired-name-registry'
-import { findPendingWorktreeRemovalConflict } from '../worktree-background-removal'
+import { findPendingWorktreeRemovalConflict } from '../worktree-removal-table'
 
 const SSH_WORKTREE_CREATE_FETCH_FRESHNESS_MS = 30_000
 const SSH_WORKTREE_CREATE_FETCH_CACHE_MAX = 512

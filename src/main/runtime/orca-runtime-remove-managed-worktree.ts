@@ -6,10 +6,7 @@ import {
 } from '../worktree-removal-repo-owner'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import { getRepoExecutionHostId, parseExecutionHostId } from '../../shared/execution-host'
-import {
-  finishAcceptedWorktreeRemoval,
-  waitForPendingWorktreeRemoval
-} from '../worktree-background-removal'
+import { finishAcceptedWorktreeRemoval } from '../worktree-background-removal'
 import { preservedBranchCleanupScopeKey } from '../../shared/preserved-branch-cleanup'
 import {
   getRuntimeWorktreeRemovalOptionsKey,
@@ -54,7 +51,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
     const cleanupHostId = parseExecutionHostId(hostId)?.id
     const removalTarget = await this.resolveWorktreeRemovalTarget(worktreeSelector, cleanupHostId)
     // Why: a retry or a second client asking while Git still deletes joins that removal.
-    const pending = waitForPendingWorktreeRemoval(removalTarget.id, cleanupHostId)
+    const pending = this.joinOrRetryWorktreeRemoval(removalTarget.id, options)
     if (pending) {
       return options.waitForBackgroundRemoval ? await pending : { removing: true }
     }
