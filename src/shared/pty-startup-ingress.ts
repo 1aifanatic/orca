@@ -1,4 +1,4 @@
-import { parsePtyStartupQuery } from './pty-startup-query'
+import { nextQueryCandidate, parsePtyStartupQuery } from './pty-startup-query'
 import { PtyOwnerColorQueryReplies } from './pty-owner-color-query-replies'
 import { TerminalKittyKeyboardModeTracker } from './terminal-kitty-keyboard-mode-tracker'
 import type { TerminalOscColorQuerySlot } from './terminal-osc-color-reply'
@@ -256,7 +256,7 @@ export class PtyStartupIngress {
     let scanOffset = 0
     let emittedOffset = 0
     while (scanOffset < input.data.length) {
-      const candidateIndex = input.data.indexOf('\x1b', scanOffset)
+      const candidateIndex = nextQueryCandidate(input.data, scanOffset, this.kittyQueryOpen)
       if (candidateIndex === -1) {
         this.emit(slicePtyIngressSourceSpan(input, emittedOffset), false)
         return

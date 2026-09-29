@@ -47,6 +47,23 @@ describe('PTY owner colour replies for the terminal life', () => {
     expect(writes).toEqual([HOST_BACKGROUND_REPLY])
   })
 
+  it('answers a query torn right after its ESC once the Kitty window has closed', () => {
+    const { ingress, writes, visible } = createHarness({
+      colors: HOST,
+      kittyKeyboardProtocol: true,
+      deadlineMs: 60_000
+    })
+    ingress.accept('\x1b[?u')
+    const sgr = '\x1b[31mred\x1b[0m \x1b[1;32mgreen\x1b[0m '.repeat(50)
+
+    ingress.accept(`${sgr}out\x1b`)
+    ingress.accept(']11;?\x07done')
+    ingress.drainAndClose()
+
+    expect(writes).toEqual(['\x1b[?0u', HOST_BACKGROUND_REPLY])
+    expect(visible()).toBe(`${sgr}outdone`)
+  })
+
   it('releases a torn candidate that never completes instead of withholding it forever', () => {
     vi.useFakeTimers()
     const { ingress, writes, visible } = createHarness()
