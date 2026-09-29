@@ -79,28 +79,54 @@ export function clearQueuePause(
   )
 }
 
-/** A card a pause can hold back: waiting, with no hold of its own. A returned
- *  card waits for the user anyway, and a held one for its own Send, so a pause
- *  over only those has nothing for Resume to send. */
-export function isPausableQueuedMessage(row: {
-  state: string
-  holdReason: string | null
-}): boolean {
+type QueueCardState = { state: string; holdReason: string | null }
+
+/** A card a pause holds back: waiting, with no hold of its own, wherever it sits.
+ *  While one exists the pause is KEPT — a Stop records it, and it is retired only
+ *  once none remains — so deleting a returned card that blocks such cards leaves
+ *  them paused rather than sending them unasked. */
+export function isPausableQueuedMessage(row: QueueCardState): boolean {
   return row.state === 'waiting' && row.holdReason === null
 }
 
-/** A pause is over the cards it paused: once none is left it can hold back
+/** Whether Resume would send anything: a pausable card not behind a returned one,
+ *  which blocks everything after it until the user acts, exactly as the drain
+ *  reads it. Only then is the kept pause PUBLISHED, so its header never offers a
+ *  Resume that sends nothing. */
+export function hasResumableQueuedMessage(rows: readonly QueueCardState[]): boolean {
+  for (const row of rows) {
+    if (row.state === 'returned') {
+      return false
+    }
+    if (isPausableQueuedMessage(row)) {
+      return true
+    }
+  }
+  return false
+}
+
+/** A pause is over the cards it paused: once none is left it holds back
  *  (`isPausableQueuedMessage`), the fact goes too, in the same transaction as the
- *  write that removed the last one, so it can never outlive them and catch a
- *  card typed long after. */
+ *  write that took the last one, so it can never outlive them and catch a card
+ *  typed long after. */
 export function retireQueuePauseIfEmpty(db: Database.Database, sessionId: string): number {
+  const rows = db
+    .prepare('SELECT state, hold_reason FROM queued_messages WHERE session_id = ?')
+    .all(sessionId)
+    .flatMap((row) =>
+      typeof row === 'object' &&
+      row !== null &&
+      'state' in row &&
+      typeof row.state === 'string' &&
+      'hold_reason' in row &&
+      (row.hold_reason === null || typeof row.hold_reason === 'string')
+        ? [{ state: row.state, holdReason: row.hold_reason }]
+        : []
+    )
+  if (rows.some(isPausableQueuedMessage)) {
+    return 0
+  }
   return Number(
-    db
-      .prepare(
-        `DELETE FROM queued_message_pauses WHERE session_id = ?
-           AND NOT EXISTS (SELECT 1 FROM queued_messages
-                           WHERE session_id = ? AND state = 'waiting' AND hold_reason IS NULL)`
-      )
-      .run(sessionId, sessionId).changes ?? 0
+    db.prepare('DELETE FROM queued_message_pauses WHERE session_id = ?').run(sessionId).changes ?? 0
   )
 }

@@ -36,7 +36,7 @@ export async function runStopWithQueuePause<TValue>(
 ): Promise<TurnOutcome<TValue>> {
   let recorded = false
   return stop(async () => {
-    // A pause is over the cards it can hold back — the withdrawal's sent-back
+    // A pause is over the cards it holds back — the withdrawal's sent-back
     // hand-offs included. With none it would only catch a card typed long after.
     if (recorded || !ctx.journal.queuedMessages.list().some(isPausableQueuedMessage)) {
       return
