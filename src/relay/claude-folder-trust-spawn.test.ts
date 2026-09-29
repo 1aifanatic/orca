@@ -50,6 +50,12 @@ describe('applyRelayClaudeFolderTrust', () => {
     })
   })
 
+  it("never pre-trusts the relay host's home folder", async () => {
+    writeFileSync(join(root, '.claude.json'), '{}')
+    await applyRelayClaudeFolderTrust({ workspacePath: root }, { HOME: root })
+    expect(readFileSync(join(root, '.claude.json'), 'utf-8')).toBe('{}')
+  })
+
   it('never creates a config file Claude has not written', async () => {
     const emptyHome = join(root, 'empty-home')
     mkdirSync(emptyHome)

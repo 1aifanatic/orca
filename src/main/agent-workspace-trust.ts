@@ -1,3 +1,4 @@
+import { homedir } from 'node:os'
 import { markQoderWorkspaceTrusted } from './qoder/workspace-trust'
 import {
   type AgentTrustPreset,
@@ -19,6 +20,8 @@ import {
 import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-auth/runtime-auth-types'
 import type { ClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
+import { isHomeOrFilesystemRoot } from '../shared/home-or-filesystem-root'
+import { getCachedWslHome } from './wsl-home-cache'
 
 /** What a trust writer needs to reach the file the launched agent will read. */
 export type AgentTrustLaunchContext = {
@@ -74,6 +77,17 @@ function isWslLaunch(workspacePath: string, context: AgentTrustLaunchContext): b
   )
 }
 
+/** Homes an agent on this machine may read trust under; SSH hosts check their own. */
+function localHomePaths(workspacePath: string, context: AgentTrustLaunchContext) {
+  const wslWorkspace = parseWslUncPath(workspacePath)
+  return [
+    homedir(),
+    context.env?.HOME,
+    context.env?.USERPROFILE,
+    wslWorkspace ? getCachedWslHome(wslWorkspace.distro) : null
+  ]
+}
+
 function startTrustWrite(
   preset: AgentTrustPreset,
   workspacePath: string,
@@ -102,6 +116,15 @@ export async function applyAgentWorkspaceTrust(
   workspacePath: string,
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
+  if (
+    isHomeOrFilesystemRoot(
+      workspacePath,
+      context.connectionId ? [] : localHomePaths(workspacePath, context)
+    )
+  ) {
+    // Why: trust on a home or a root would cover every folder under it for some agents.
+    return {}
+  }
   if (preset === 'claude' && context.connectionId) {
     // Why: the relay owns the remote file, its lock and the agent's final env.
     return { claudeFolderTrust: { workspacePath } }

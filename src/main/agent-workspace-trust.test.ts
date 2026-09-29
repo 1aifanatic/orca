@@ -1,5 +1,5 @@
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ClaudeFolderTrustFile from './claude/claude-folder-trust-file'
@@ -122,6 +122,36 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain('did not settle')
     remoteWrite.release()
     warn.mockRestore()
+  })
+
+  it.each([
+    ['the home folder', homedir(), local],
+    ['the home the spawn env names', '/home/agent', { ...local, env: { HOME: '/home/agent' } }],
+    ['a filesystem root', '/', local],
+    ['a drive root', 'C:\\', local],
+    ['a filesystem root over SSH', '/', { ...local, connectionId: 'ssh-1' }]
+  ])('never pre-trusts %s for any preset', async (_label, workspacePath, context) => {
+    for (const preset of [
+      'claude',
+      'codex',
+      'cursor',
+      'copilot',
+      'qoder',
+      'antigravity'
+    ] as const) {
+      await expect(applyAgentWorkspaceTrust(preset, workspacePath, context)).resolves.toEqual({})
+    }
+    for (const writer of [
+      mocks.codex,
+      mocks.cursor,
+      mocks.copilot,
+      mocks.qoder,
+      mocks.antigravity,
+      mocks.remote,
+      mocks.claudeGrant
+    ]) {
+      expect(writer).not.toHaveBeenCalled()
+    }
   })
 
   it.each([

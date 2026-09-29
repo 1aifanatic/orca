@@ -77,6 +77,22 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
     )
   })
 
+  it('never pre-trusts the remote home folder', async () => {
+    const fsProvider = makeFsProvider({ realpath: vi.fn(async (path: string) => path) })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    for (const preset of ['codex', 'cursor', 'copilot', 'qoder'] as const) {
+      await markRemoteAgentWorkspaceTrusted({
+        preset,
+        connectionId: 'ssh-1',
+        workspacePath: '/home/u'
+      })
+    }
+
+    expect(fsProvider.createDir).not.toHaveBeenCalled()
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
+
   it('writes Cursor trust marker on the remote host', async () => {
     const fsProvider = makeFsProvider()
     mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
