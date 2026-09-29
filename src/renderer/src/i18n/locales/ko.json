@@ -17749,12 +17749,11 @@
         "alreadySent": "이 메시지는 이미 전송되었습니다.",
         "editAlreadySent": "이미 전송되었습니다 — 텍스트는 입력창에 남아 있습니다.",
         "listLabel": "대기 중인 메시지",
-        "pausedHold": "일시 중지됨 — 다음 메시지 이후에 전송됩니다",
         "behindReturnedHold": "대기 중 — 앞의 메시지에 확인이 필요합니다",
         "awaitingAnswerHold": "답변을 기다리는 중",
         "steer": "지금 보내기",
         "send": "보내기",
-        "steerHint": "턴이 끝날 때까지 기다리지 않고 지금 보냅니다",
+        "steerHint": "모델을 중단하지 않고 보냅니다",
         "sendHint": "이 메시지를 지금 보냅니다",
         "delete": "삭제",
         "moreActions": "추가 작업",
@@ -17762,7 +17761,12 @@
         "turnOffQueueing": "대기열 사용 안 함",
         "withdrawnHold": "전송 전에 중지됨",
         "pausedSendFailed": "보낼 수 없습니다. 보내기를 눌러 다시 시도하세요.",
-        "paused": "일시 중지됨"
+        "paused": "일시 중지됨",
+        "queuePausedStopped": "중단했기 때문에 대기열이 일시 중지되었습니다",
+        "queuePausedRestarted": "Orca가 다시 시작되어 대기열이 일시 중지되었습니다",
+        "queuePausedCleared": "대화를 지워서 대기열이 일시 중지되었습니다",
+        "queuePaused": "대기열이 일시 중지되었습니다",
+        "resume": "재개"
       }
     },
     "tab": {

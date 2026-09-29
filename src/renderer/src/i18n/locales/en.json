@@ -17878,12 +17878,11 @@
         "estimated": "Estimated from the last response."
       },
       "queuedMessages": {
-        "pausedHold": "Paused — sends after your next message",
         "behindReturnedHold": "Waiting — a message ahead needs attention",
         "awaitingAnswerHold": "Waiting for your answer",
         "steer": "Steer",
         "send": "Send",
-        "steerHint": "Send now without waiting for the turn to end",
+        "steerHint": "Submit without interrupting the model",
         "sendHint": "Send this message now",
         "delete": "Delete",
         "moreActions": "More actions",
@@ -17894,7 +17893,12 @@
         "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry.",
-        "paused": "Paused"
+        "paused": "Paused",
+        "queuePausedStopped": "Queue paused because you interrupted",
+        "queuePausedRestarted": "Queue paused because Orca restarted",
+        "queuePausedCleared": "Queue paused after you cleared the conversation",
+        "queuePaused": "Queue paused",
+        "resume": "Resume"
       }
     },
     "tab": {

@@ -17714,12 +17714,11 @@
         "alreadySent": "此消息已发送。",
         "editAlreadySent": "已发送 — 你的文本仍在输入框中。",
         "listLabel": "排队的消息",
-        "pausedHold": "已暂停 — 将在你的下一条消息后发送",
         "behindReturnedHold": "等待中 — 前面有一条消息需要处理",
         "awaitingAnswerHold": "等待你的回答",
         "steer": "立即发送",
         "send": "发送",
-        "steerHint": "立即发送，无需等待本轮结束",
+        "steerHint": "提交且不中断模型",
         "sendHint": "立即发送此消息",
         "delete": "删除",
         "moreActions": "更多操作",
@@ -17727,7 +17726,12 @@
         "turnOffQueueing": "关闭排队",
         "withdrawnHold": "在发送前已停止",
         "pausedSendFailed": "无法发送。点按发送以重试。",
-        "paused": "已暂停"
+        "paused": "已暂停",
+        "queuePausedStopped": "因你中断了操作，队列已暂停",
+        "queuePausedRestarted": "因 Orca 重新启动，队列已暂停",
+        "queuePausedCleared": "清除对话后，队列已暂停",
+        "queuePaused": "队列已暂停",
+        "resume": "继续"
       }
     },
     "tab": {

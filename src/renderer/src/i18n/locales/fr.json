@@ -17813,12 +17813,11 @@
         "alreadySent": "Ce message a déjà été envoyé.",
         "editAlreadySent": "Déjà envoyé — votre texte reste dans la zone de saisie.",
         "listLabel": "Messages en file d'attente",
-        "pausedHold": "En pause — envoyé après votre prochain message",
         "behindReturnedHold": "En attente — un message précédent nécessite votre attention",
         "awaitingAnswerHold": "En attente de votre réponse",
         "steer": "Envoyer maintenant",
         "send": "Envoyer",
-        "steerHint": "Envoyer maintenant sans attendre la fin du tour",
+        "steerHint": "Envoyer sans interrompre le modèle",
         "sendHint": "Envoyer ce message maintenant",
         "delete": "Supprimer",
         "moreActions": "Plus d'actions",
@@ -17826,7 +17825,12 @@
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
-        "paused": "En pause"
+        "paused": "En pause",
+        "queuePausedStopped": "File d'attente en pause, car vous avez interrompu",
+        "queuePausedRestarted": "File d'attente en pause, car Orca a redémarré",
+        "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
+        "queuePaused": "File d'attente en pause",
+        "resume": "Reprendre"
       }
     },
     "tab": {

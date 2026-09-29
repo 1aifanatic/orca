@@ -1,4 +1,6 @@
 import { useRef } from 'react'
+import { Pause, Play } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useAppStore } from '../../store'
 import { translate } from '@/i18n/i18n'
 import { NativeChatQueuedMessageCard } from './NativeChatQueuedMessageCard'
@@ -33,27 +35,77 @@ export function NativeChatQueuedMessageList({
   return (
     <div aria-live="polite">
       {cards.length > 0 ? (
-        <ul
-          ref={listRef}
-          aria-label={translate(
-            'components.native-chat.queuedMessages.listLabel',
-            'Queued messages'
-          )}
-          className="mx-auto flex w-full max-w-4xl flex-col gap-1 px-4 py-1"
-        >
-          {cards.map((card) => (
-            <NativeChatQueuedMessageCard
-              key={card.messageId}
-              card={card}
-              showsSteerShortcut={card === newest}
-              onSteer={() => refocusAfter(controller.steer(card.messageId))}
-              onDelete={() => refocusAfter(controller.remove(card.messageId))}
-              onEdit={() => refocusAfter(controller.edit(card.messageId))}
-              onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-1 px-4 py-1">
+          {controller.pause ? (
+            <NativeChatQueuePauseRow
+              pause={controller.pause}
+              onResume={() => void controller.resume()}
             />
-          ))}
-        </ul>
+          ) : null}
+          <ul
+            ref={listRef}
+            aria-label={translate(
+              'components.native-chat.queuedMessages.listLabel',
+              'Queued messages'
+            )}
+            className="flex flex-col gap-1"
+          >
+            {cards.map((card) => (
+              <NativeChatQueuedMessageCard
+                key={card.messageId}
+                card={card}
+                showsSteerShortcut={card === newest}
+                onSteer={() => refocusAfter(controller.steer(card.messageId))}
+                onDelete={() => refocusAfter(controller.remove(card.messageId))}
+                onEdit={() => refocusAfter(controller.edit(card.messageId))}
+                onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
+              />
+            ))}
+          </ul>
+        </div>
       ) : null}
+    </div>
+  )
+}
+
+/** Why the queue sends nothing on its own. An unknown reason (a newer host) is a plain pause. */
+function queuePauseText(pause: { reason: string }): string {
+  switch (pause.reason) {
+    case 'stopped':
+      return translate(
+        'components.native-chat.queuedMessages.queuePausedStopped',
+        'Queue paused because you interrupted'
+      )
+    case 'restarted':
+      return translate(
+        'components.native-chat.queuedMessages.queuePausedRestarted',
+        'Queue paused because Orca restarted'
+      )
+    case 'cleared':
+      return translate(
+        'components.native-chat.queuedMessages.queuePausedCleared',
+        'Queue paused after you cleared the conversation'
+      )
+    default:
+      return translate('components.native-chat.queuedMessages.queuePaused', 'Queue paused')
+  }
+}
+
+function NativeChatQueuePauseRow({
+  pause,
+  onResume
+}: {
+  pause: { reason: string }
+  onResume: () => void
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2 px-2.5 text-xs text-muted-foreground">
+      <Pause className="size-3.5 shrink-0" aria-hidden />
+      <p className="min-w-0 flex-1 truncate">{queuePauseText(pause)}</p>
+      <Button type="button" variant="ghost" size="xs" onClick={onResume}>
+        <Play className="size-3" />
+        {translate('components.native-chat.queuedMessages.resume', 'Resume')}
+      </Button>
     </div>
   )
 }

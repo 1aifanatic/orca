@@ -13,10 +13,7 @@ import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/st
 import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import {
-  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
-  QUEUED_MESSAGE_PAUSED_STOPPED
-} from '../../../../shared/agent-session-wire'
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 
@@ -47,13 +44,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       )
     }
     case 'paused':
-      // Markers localize; an absent or unknown one (newer host) is a plain pause, never shown raw.
-      if (card.pausedReason === QUEUED_MESSAGE_PAUSED_STOPPED) {
-        return translate(
-          'components.native-chat.queuedMessages.pausedHold',
-          'Paused — sends after your next message'
-        )
-      }
+      // A card's own hold; the queue's pause is the list's header. Markers localize, and an absent
+      // or unknown one (newer host) is a plain pause, never shown raw.
       if (card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
         return translate(
           'components.native-chat.queuedMessages.pausedSendFailed',
@@ -77,8 +69,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
   }
 }
 
-/** Steer names the mid-turn jump; a paused or returned card is not waiting on the
- *  turn anymore, so its action and tooltip are plainly Send. */
+/** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own
+ *  or returned is not waiting on the turn, so its action and tooltip are plainly Send. */
 export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   label: string
   hint: string
@@ -93,7 +85,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
     label: translate('components.native-chat.queuedMessages.steer', 'Steer'),
     hint: translate(
       'components.native-chat.queuedMessages.steerHint',
-      'Send now without waiting for the turn to end'
+      'Submit without interrupting the model'
     )
   }
 }

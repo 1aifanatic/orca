@@ -48,6 +48,7 @@ function createHarness(
     useStructuredAgentSessionQueuedMessages({
       enabled: overrides.enabled ?? true,
       queuedMessages: overrides.queuedMessages ?? [draft('draft-1', 1), draft('draft-2', 2)],
+      queuePause: null,
       submissions: [],
       hasPendingPrompt: false,
       composerScopeKey: 'composerScopeKey' in overrides ? overrides.composerScopeKey : SCOPE,

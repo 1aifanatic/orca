@@ -174,6 +174,7 @@ export function useStructuredAgentSession(args: {
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
     queuedMessages: transportState.queuedMessages,
+    queuePause: transportState.queuePause,
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     composerScopeKey,

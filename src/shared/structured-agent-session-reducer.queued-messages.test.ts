@@ -150,4 +150,21 @@ describe('structured agent session reducer: queuedMessages', () => {
     })
     expect(after.queuedMessages).toEqual([])
   })
+
+  it('carries the queue pause with the list it rode with, and clears it with the next list', () => {
+    const paused = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
+      type: 'event',
+      event: { ...snapshot([queued('draft-1', 1)]), queuePause: { reason: 'stopped' } }
+    })
+    expect(paused.queuePause).toEqual({ reason: 'stopped' })
+    // A batch with no list leaves the pause as it was.
+    const kept = reduceStructuredAgentSession(paused, { type: 'event', event: batch(2) })
+    expect(kept.queuePause).toEqual({ reason: 'stopped' })
+    // A list published without a pause means the queue drains on its own again.
+    const resumed = reduceStructuredAgentSession(kept, {
+      type: 'event',
+      event: batch(3, [queued('draft-1', 1)])
+    })
+    expect(resumed.queuePause).toBeNull()
+  })
 })

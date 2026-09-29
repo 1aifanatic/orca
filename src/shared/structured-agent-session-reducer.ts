@@ -8,6 +8,7 @@ import type {
   AgentSessionSlashCommand,
   AgentSessionHistoryPage,
   AgentSessionQueuedMessage,
+  AgentSessionQueuePause,
   AgentSessionSubscribeEvent,
   AgentSessionTurnActivity
 } from './agent-session-wire'
@@ -41,6 +42,8 @@ export type StructuredAgentSessionState = {
   backgroundTasks?: AgentSessionBackgroundTaskState | null
   /** Host-held drafts. Absent = no claim yet (older host); `[]`/null = empty. */
   queuedMessages?: AgentSessionQueuedMessage[] | null
+  /** The queue's pause, published with the list; null when it sends on its own. */
+  queuePause?: AgentSessionQueuePause | null
   commands?: AgentSessionSlashCommand[] | null
   activity?: AgentSessionTurnActivity | null
   /** Absent until a frame from a host that stamps `hostNow` has been applied. */
@@ -83,13 +86,14 @@ function hostClockField(
   return hostClock ? { hostClock } : {}
 }
 
-/** First defined claim wins; no claim at all leaves the field absent (older host). */
-function queuedMessagesField(...claims: (AgentSessionQueuedMessage[] | null | undefined)[]): {
-  queuedMessages?: AgentSessionQueuedMessage[] | null
-} {
+type QueuePublication = Pick<StructuredAgentSessionState, 'queuedMessages' | 'queuePause'>
+
+/** First claim with a list wins, and its pause rides with it; no claim at all leaves both absent
+ *  (older host). */
+function queuePublicationField(...claims: QueuePublication[]): QueuePublication {
   for (const claim of claims) {
-    if (claim !== undefined) {
-      return { queuedMessages: claim }
+    if (claim.queuedMessages !== undefined) {
+      return { queuedMessages: claim.queuedMessages, queuePause: claim.queuePause ?? null }
     }
   }
   return {}
@@ -205,7 +209,7 @@ export function reduceStructuredAgentSession(
       ...replacePage(action.page, action.page.fence ?? null, state.backgroundTasks, state.activity),
       commands: state.commands,
       // Live subscription state stays authoritative over a possibly stale history answer.
-      ...queuedMessagesField(state.queuedMessages, action.page.queuedMessages),
+      ...queuePublicationField(state, action.page),
       ...hostClockField(action.page.hostNow, receivedAt, state.hostClock)
     }
   }
@@ -240,7 +244,7 @@ export function reduceStructuredAgentSession(
       ...replacePage(event.page, event.fence, event.backgroundTasks, event.activity),
       commands: event.commands,
       // A snapshot omits the list when unchanged since the last frame sent to this subscriber.
-      ...queuedMessagesField(event.queuedMessages, event.page.queuedMessages, state.queuedMessages),
+      ...queuePublicationField(event, event.page, state),
       ...hostClockField(event.hostNow, receivedAt, state.hostClock)
     }
   }
@@ -298,7 +302,7 @@ export function reduceStructuredAgentSession(
     error: undefined,
     readRefusal: undefined,
     commands: event.commands !== undefined ? event.commands : state.commands,
-    ...queuedMessagesField(event.queuedMessages, state.queuedMessages),
+    ...queuePublicationField(event, state),
     ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
     ...(activity !== undefined ? { activity } : {}),
     ...(lostTurnRow ? { unloadedTurnRevisions: (state.unloadedTurnRevisions ?? 0) + 1 } : {}),

@@ -15113,12 +15113,11 @@
         "alreadySent": "Este mensaje ya se envió.",
         "editAlreadySent": "Ya se envió — tu texto sigue en el cuadro de mensaje.",
         "listLabel": "Mensajes en cola",
-        "pausedHold": "En pausa — se enviará después de tu próximo mensaje",
         "behindReturnedHold": "En espera: un mensaje anterior necesita atención",
         "awaitingAnswerHold": "Esperando tu respuesta",
         "steer": "Enviar ahora",
         "send": "Enviar",
-        "steerHint": "Enviar ahora sin esperar a que termine el turno",
+        "steerHint": "Enviar sin interrumpir al modelo",
         "sendHint": "Enviar este mensaje ahora",
         "delete": "Eliminar",
         "moreActions": "Más acciones",
@@ -15126,7 +15125,12 @@
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
-        "paused": "En pausa"
+        "paused": "En pausa",
+        "queuePausedStopped": "Cola en pausa porque interrumpiste",
+        "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
+        "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
+        "queuePaused": "Cola en pausa",
+        "resume": "Reanudar"
       }
     },
     "tab": {
