@@ -198,6 +198,15 @@ describe.each([relayedClaude, grok, openCode])(
       expect(row(desktop).mainAgent).toMatchObject({ state: 'done', outcome: 'failure' })
     })
 
+    it('lets a failure through when the user resends the same prompt after the stop', async () => {
+      const { desktop, post } = await lane.start()
+      await postAll(post, lane.prompt('retry me'))
+      expect(pressCtrlC(desktop, lane.agentType)).toBe(true)
+      await postAll(post, lane.prompt('retry me'))
+      await post(lane.failure)
+      expect(row(desktop).mainAgent).toMatchObject({ state: 'done', outcome: 'failure' })
+    })
+
     it("still releases on the provider's own plain settle", async () => {
       const { desktop, post } = await lane.start()
       await postAll(post, lane.prompt('long task'))
