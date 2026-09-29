@@ -22,6 +22,7 @@ import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentS
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
+import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   async getStructuredAgentSessionCreateSupport(
@@ -93,12 +94,17 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       )
     }
-    return this.resolveStructuredAgentSessionIntent(input, ({ launchEnv }) =>
-      resolveStructuredCodexAccountHomePath({
+    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) => {
+      await applyStructuredCodexWorkspaceTrust({
+        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
+        launchEnv,
+        settings: this.requireStore().getSettings()
+      })
+      return resolveStructuredCodexAccountHomePath({
         launchEnv,
         resolveLaunchHome: this.prepareCodexStructuredLaunchFn
       })
-    )
+    })
   }
 
   /**

@@ -8,11 +8,20 @@ import {
 } from './agent-workspace-trust'
 import { AGENT_TRUST_KEYED_BY_START_FOLDER } from './execution-host-workspace-trust'
 
+type AgentWorkspaceTrustSetting =
+  | Pick<GlobalSettings, 'agentWorkspaceTrustEnabled'>
+  | null
+  | undefined
+
+function isAgentWorkspaceTrustOn(settings: AgentWorkspaceTrustSetting): boolean {
+  return settings?.agentWorkspaceTrustEnabled !== false
+}
+
 /**
  * The one place Orca pre-trusts a workspace: every Orca-started agent PTY passes
  * through a spawn builder with its declared `launchAgent`, which survives setup-script
  * wrapping. Reattaches and restores are skipped so trust is never re-run for them.
- * Returns null when there is nothing to write, so other spawns take no extra tick:
+ * Structured Codex chats have no PTY and enter below instead. Returns null when there is nothing to write, so other spawns take no extra tick:
  * the builders arbitrate pane-spawn reservation races that a tick can reorder.
  */
 export function applyAgentWorkspaceTrustToSpawn(
@@ -24,11 +33,11 @@ export function applyAgentWorkspaceTrustToSpawn(
     cwd: string | undefined
     store: { getFolderWorkspace: (id: string) => { folderPath: string } | undefined } | undefined
     isFreshLaunch: boolean
-    settings: Pick<GlobalSettings, 'agentWorkspaceTrustEnabled'> | null | undefined
+    settings: AgentWorkspaceTrustSetting
     spawnOptions: AgentTrustSpawnFields
   } & AgentTrustLaunchContext
 ): Promise<void> | null {
-  if (!args.isFreshLaunch || args.settings?.agentWorkspaceTrustEnabled === false) {
+  if (!args.isFreshLaunch || !isAgentWorkspaceTrustOn(args.settings)) {
     return null
   }
   const preset = isTuiAgent(args.launchAgent)
@@ -56,5 +65,25 @@ export function applyAgentWorkspaceTrustToSpawn(
     if (fields.agentWorkspaceTrust) {
       args.spawnOptions.agentWorkspaceTrust = fields.agentWorkspaceTrust
     }
+  })
+}
+
+/**
+ * Structured Codex chats are the one agent start with no PTY. Codex's app-server trusts the
+ * folder itself only when the chat may write it, so a read-only chat would ignore `.codex` config.
+ */
+export async function applyStructuredCodexWorkspaceTrust(args: {
+  workspacePath: string
+  launchEnv: Record<string, string | undefined>
+  settings: AgentWorkspaceTrustSetting
+}): Promise<void> {
+  if (!isAgentWorkspaceTrustOn(args.settings)) {
+    return
+  }
+  await applyAgentWorkspaceTrust('codex', args.workspacePath, {
+    env: args.launchEnv,
+    claudeAuth: null,
+    wslDistro: null,
+    connectionId: null
   })
 }
