@@ -200,7 +200,7 @@ describe('mobileStructuredSendDelivery', () => {
         {
           status: 'failed',
           message: 'Your message was not sent. Send it again.',
-          hostRejectedRequestShape: true
+          hostRejectedByRequestSchema: true
         },
         true
       )

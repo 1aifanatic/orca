@@ -61,7 +61,7 @@ export function mobileStructuredSendDelivery(
   if (result.status !== 'accepted') {
     return {
       outcome: 'rejected',
-      operationIdSpent: !retained || result.hostRejectedRequestShape === true,
+      operationIdSpent: !retained || result.hostRejectedByRequestSchema === true,
       error: result.message
     }
   }
