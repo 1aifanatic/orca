@@ -46,6 +46,9 @@ beforeEach(async () => {
   await git(['init', '-q'], repoPath)
   await git(['config', 'user.email', 'removal@example.invalid'], repoPath)
   await git(['config', 'user.name', 'Worktree Removal'], repoPath)
+  // Why: a commit's detached auto-maintenance can still be writing packs when teardown deletes the repo.
+  await git(['config', 'maintenance.auto', 'false'], repoPath)
+  await git(['config', 'gc.auto', '0'], repoPath)
   await writeFile(join(repoPath, 'seed.txt'), 'seed\n')
   // Committed before the worktree exists so its branch stays merged and branch cleanup can run.
   await mkdir(join(repoPath, 'node_modules', 'pkg'), { recursive: true })
