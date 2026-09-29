@@ -84,7 +84,11 @@ export function appendPendingSendCache(
   scope: NativeChatPendingSendScope,
   entry: NativeChatPendingSend
 ): NativeChatPendingSend[] {
-  const existing = readPendingSendCache(scope)
+  const contentKey = nativeChatPendingContentKey(entry)
+  // Why: a resend replaces its failed copy; kept, that copy would claim the resend's row and pin it.
+  const existing = readPendingSendCache(scope).filter(
+    (candidate) => !candidate.delivery || nativeChatPendingContentKey(candidate) !== contentKey
+  )
   const next = assignNativeChatPendingOccurrence(existing, entry)
   return writePendingSendCache(scope, [...existing, next])
 }

@@ -84,6 +84,26 @@ describe('terminal Chat pending delivery', () => {
     })
     expect(result.current.pending).toEqual([])
   })
+  it.each(['rejected', 'unconfirmed'] as const)(
+    'retires a resend of a %s message once its row lands',
+    async (outcome) => {
+      const { result, rerender } = render()
+      act(() => {
+        const id = result.current.record('try again')
+        if (outcome === 'rejected') {
+          result.current.reject(id)
+        } else {
+          result.current.holdUnconfirmed(id)
+        }
+      })
+      await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+      expect(result.current.pending[0]?.delivery).toBe(outcome)
+      act(() => result.current.record('try again'))
+      expect(result.current.pending.map((entry) => entry.delivery)).toEqual([undefined])
+      rerender({ messages: [boundary, userRow('try again'), { ...boundary, id: 'answer' }] })
+      expect(result.current.pending).toEqual([])
+    }
+  )
   it('keeps the hold deadline across a remount', async () => {
     const first = render()
     act(() => {
