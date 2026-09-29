@@ -337,9 +337,13 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('returned')
     // Send on the returned card re-consumes under a fresh submission id.
     await consumeDraft(journal, 'draft-1', { as: 'resend-1', expect: 'returned' })
-    const resent = journal.queuedMessages.get('draft-1')
-    expect(resent?.state).toBe('dispatched')
-    expect(resent?.consumedAs).toBe('resend-1')
+    // The earlier refusal retires with the card: the row now describes the re-send.
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'dispatched',
+      consumedAs: 'resend-1',
+      returnedReason: null,
+      returnedRejection: null
+    })
     // A duplicate resolution of the FIRST submission is ignored by the journal
     // and must not alter the draft's current relation.
     await journal.resolveDispatch({

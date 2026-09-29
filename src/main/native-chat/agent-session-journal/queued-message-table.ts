@@ -190,7 +190,8 @@ export function consumeQueuedMessageInTransaction(
   const changed = db
     .prepare(
       `UPDATE queued_messages
-       SET state = 'dispatched', hold_reason = NULL, settled_at = ?, settled_by_op = ?, consumed_as = ?
+       SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
+           settled_at = ?, settled_by_op = ?, consumed_as = ?
        WHERE session_id = ? AND message_id = ? AND state = ?
          AND (? IS NOT NULL OR (state = 'waiting' AND consumed_as IS NULL))`
     )
