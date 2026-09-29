@@ -1,14 +1,20 @@
 // @vitest-environment happy-dom
 
 // End to end for A1: a frame off the host's turn-completion stream lights the unread indicators
-// for a structured chat whose transcript is not on screen. Everything between the wire and the
-// store is real here — the renderer feed, the neutral attention policy, the structured surface
-// adapter and the store reducers — so only the transport itself is a mock.
+// and sends one OS notification for a structured chat whose transcript is not on screen.
+// Everything between the wire and the store is real here — the renderer feed, the neutral
+// attention policy, the structured surface adapter, the store reducers and the delivery tail — so
+// only the transport and the preload bridge are mocks.
 
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { AgentJournalTurnOutcome } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionTurnCompletionEvent } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusEvent,
+  AgentSessionTurnCompletion,
+  AgentSessionTurnCompletionEvent
+} from '../../../../shared/agent-session-wire'
+import type { NotificationDispatchRequest } from '../../../../shared/notification-settings-types'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import type { Tab } from '../../../../shared/tab-types'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -22,7 +28,9 @@ type TestStore = {
 type BridgeMocks = {
   store: TestStore | null
   emitters: ((event: AgentSessionTurnCompletionEvent) => void)[]
+  statusEmitters: ((event: AgentSessionStatusEvent) => void)[]
   subscribeCompletions: Mock
+  subscribeStatus: Mock
   supportsCapability: Mock
   unsubscribe: Mock
 }
@@ -30,7 +38,9 @@ type BridgeMocks = {
 const mocks = vi.hoisted<BridgeMocks>(() => ({
   store: null,
   emitters: [],
+  statusEmitters: [],
   subscribeCompletions: vi.fn(),
+  subscribeStatus: vi.fn(),
   supportsCapability: vi.fn(),
   unsubscribe: vi.fn()
 }))
@@ -53,11 +63,16 @@ vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  subscribeStructuredAgentSessionTurnCompletions: mocks.subscribeCompletions
+  subscribeStructuredAgentSessionTurnCompletions: mocks.subscribeCompletions,
+  subscribeStructuredAgentSessionStatus: mocks.subscribeStatus
 }))
 
 import { StructuredAgentSessionAttentionBridge } from './StructuredAgentSessionAttentionBridge'
 import { resetStructuredAgentSessionTurnCompletionFeedsForTests } from '@/runtime/structured-agent-session-turn-completion-feed'
+import {
+  getStructuredAgentSessionStatusFeed,
+  resetStructuredAgentSessionStatusFeedsForTests
+} from '@/runtime/structured-agent-session-status-feed'
 import {
   makeTabGroup,
   makeUnifiedTab,
@@ -84,25 +99,52 @@ function chatTab(overrides: Partial<Tab> = {}): Tab {
   })
 }
 
+function turnCompletion(
+  sessionId = SESSION,
+  outcome: AgentJournalTurnOutcome = 'success'
+): AgentSessionTurnCompletion {
+  return {
+    scope: {
+      executionHostId: 'local',
+      wslDistro: null,
+      workspaceId: 'host-side-workspace',
+      workspaceKind: 'git-worktree'
+    },
+    sessionId,
+    turnId: `turn-for-${sessionId}`,
+    outcome,
+    completedAt: 1
+  }
+}
+
 function completionFrame(
   sessionId = SESSION,
   outcome: AgentJournalTurnOutcome = 'success'
 ): AgentSessionTurnCompletionEvent {
-  return {
-    type: 'completion',
-    completion: {
-      scope: {
-        executionHostId: 'local',
-        wslDistro: null,
-        workspaceId: 'host-side-workspace',
-        workspaceKind: 'git-worktree'
-      },
-      sessionId,
-      turnId: `turn-for-${sessionId}`,
-      outcome,
-      completedAt: 1
-    }
+  return { type: 'completion', completion: turnCompletion(sessionId, outcome) }
+}
+
+/** A host that predates the outcome field, which the current wire type makes required. */
+function completionFrameWithoutOutcome(): AgentSessionTurnCompletionEvent {
+  const completion = turnCompletion()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an older sender omits a field the wire type requires, which no checked type can express.
+  delete (completion as { outcome?: AgentJournalTurnOutcome }).outcome
+  return { type: 'completion', completion }
+}
+
+/** Every request the renderer handed the preload notification bridge, in order. */
+const dispatched: NotificationDispatchRequest[] = []
+/** Every retirement an acknowledgement asked main for, in order. */
+const dismissed: { ids: string[]; paneKeys?: string[] }[] = []
+
+/** The single dispatch a settled turn is allowed to make. */
+function onlyDispatch(): NotificationDispatchRequest {
+  expect(dispatched).toHaveLength(1)
+  const request = dispatched[0]
+  if (!request) {
+    throw new Error('unreachable: length asserted above')
   }
+  return request
 }
 
 /** The host side of a turn-completion subscription the bridge opened. */
@@ -126,8 +168,33 @@ function indicators(): Record<string, unknown> {
 describe('StructuredAgentSessionAttentionBridge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    dispatched.length = 0
+    dismissed.length = 0
+    // happy-dom makes globalThis the window, so this is `window.api` as the delivery tail reads it.
+    vi.stubGlobal('api', {
+      // Settling a working row queues a PR refresh that reads this.
+      gh: {},
+      notifications: {
+        dispatch: (request: NotificationDispatchRequest) => {
+          dispatched.push(request)
+          return Promise.resolve({ delivered: true })
+        },
+        dismiss: (ids: string[], paneKeys?: string[]) => {
+          dismissed.push({ ids, paneKeys })
+          return Promise.resolve({ dismissed: 0 })
+        }
+      }
+    })
     resetStructuredAgentSessionTurnCompletionFeedsForTests()
+    resetStructuredAgentSessionStatusFeedsForTests()
     mocks.emitters.length = 0
+    mocks.statusEmitters.length = 0
+    mocks.subscribeStatus.mockImplementation(
+      (_target: unknown, emit: (event: AgentSessionStatusEvent) => void) => {
+        mocks.statusEmitters.push(emit)
+        return Promise.resolve({ unsubscribe: vi.fn() })
+      }
+    )
     mocks.subscribeCompletions.mockImplementation(
       (_target: unknown, emit: (event: AgentSessionTurnCompletionEvent) => void) => {
         mocks.emitters.push(emit)
@@ -164,7 +231,9 @@ describe('StructuredAgentSessionAttentionBridge', () => {
 
   afterEach(() => {
     cleanup()
+    vi.unstubAllGlobals()
     resetStructuredAgentSessionTurnCompletionFeedsForTests()
+    resetStructuredAgentSessionStatusFeedsForTests()
   })
 
   it('lights the unread indicators when the host reports a successful turn', async () => {
@@ -179,19 +248,127 @@ describe('StructuredAgentSessionAttentionBridge', () => {
       paneDot: 'agent-completion',
       tabDot: 'agent-completion'
     })
+    expect(onlyDispatch()).toMatchObject({
+      source: 'agent-task-complete',
+      surface: 'agent-session',
+      worktreeId: WORKSPACE,
+      paneKey: CHAT_SUBJECT,
+      agentState: 'done',
+      agentTurnOutcome: 'success'
+    })
   })
 
+  // A settled turn is news whichever way it settled, exactly as the CLI lane treats one. The
+  // difference is wording, which main picks from the verdict.
   it.each(['failure', 'cancellation'] as const)(
-    'lights nothing for a %s the host reports',
+    'lights the indicators and hands main the %s the host reports',
     async (outcome) => {
       render(<StructuredAgentSessionAttentionBridge />)
       await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
 
       act(() => hostStream()(completionFrame(SESSION, outcome)))
 
-      expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
+      expect(indicators()).toEqual({
+        workspaceBold: true,
+        paneDot: 'agent-completion',
+        tabDot: 'agent-completion'
+      })
+      expect(onlyDispatch()).toMatchObject({ agentState: 'done', agentTurnOutcome: outcome })
     }
   )
+
+  // The row's start moves after the banner is minted: a completion can outrun the settled
+  // re-projection (working -> done), and a settled row is re-stamped with no history entry by any
+  // later journal row, such as the status note a cancel appends (done -> done).
+  it.each(['working', 'done'] as const)(
+    'retires the banner it raised after a %s row moves its start',
+    async (rowStateAtDispatch) => {
+      mocks.store
+        ?.getState()
+        .setAgentStatus(
+          CHAT_SUBJECT,
+          { state: rowStateAtDispatch, prompt: 'Stop that', agentType: 'claude' },
+          'Chat',
+          { updatedAt: 1_000, stateStartedAt: 1_000 },
+          { tabId: CHAT_TAB, worktreeId: WORKSPACE }
+        )
+      render(<StructuredAgentSessionAttentionBridge />)
+      await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+
+      act(() => hostStream()(completionFrame(SESSION, 'cancellation')))
+      const raised = onlyDispatch()
+      expect(raised).toMatchObject({ paneKey: CHAT_SUBJECT, notificationId: expect.any(String) })
+      mocks.store
+        ?.getState()
+        .setAgentStatus(
+          CHAT_SUBJECT,
+          { state: 'done', prompt: 'Stop that', agentType: 'claude' },
+          'Chat',
+          { updatedAt: 2_000, stateStartedAt: 2_000, allowOlderTimestamp: true },
+          { tabId: CHAT_TAB, worktreeId: WORKSPACE }
+        )
+      expect(mocks.store?.getState().agentStatusByPaneKey[CHAT_SUBJECT]?.stateStartedAt).toBe(2_000)
+
+      mocks.store?.getState().acknowledgeAgents([CHAT_SUBJECT])
+
+      // The id rebuilt from the moved row can no longer name the banner; main retires it by the
+      // subject it was announced under, which is what this request must carry.
+      expect(dismissed.flatMap(({ ids }) => ids)).not.toContain(raised.notificationId)
+      expect(dismissed.flatMap(({ paneKeys }) => paneKeys ?? [])).toContain(CHAT_SUBJECT)
+    }
+  )
+
+  // Remote clients receive the status and completion streams over separate sockets, unordered, so
+  // the wording must come from the completion alone. The mirror is set to disagree in each case.
+  function mirrorStatus(status: 'idle' | 'attention'): void {
+    mocks.statusEmitters[0]?.({
+      type: 'status',
+      session: {
+        sessionId: SESSION,
+        workspaceId: 'host-side-workspace',
+        agent: 'claude',
+        status,
+        latestPrompt: 'Ship it',
+        updatedAt: 1
+      }
+    })
+  }
+
+  it.each([
+    { awaitingUser: true, mirror: 'idle', agentState: 'blocked' },
+    { awaitingUser: undefined, mirror: 'attention', agentState: 'done' }
+  ] as const)(
+    'words awaitingUser=$awaitingUser as $agentState whatever the status mirror says ($mirror)',
+    async ({ awaitingUser, mirror, agentState }) => {
+      const stopStatus = getStructuredAgentSessionStatusFeed({ kind: 'local' }).activate()
+      render(<StructuredAgentSessionAttentionBridge />)
+      await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+      await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+      const completion = turnCompletion()
+
+      act(() => {
+        mirrorStatus(mirror)
+        hostStream()({
+          type: 'completion',
+          completion: awaitingUser ? { ...completion, awaitingUser } : completion
+        })
+      })
+
+      expect(indicators().paneDot).toBe('agent-completion')
+      expect(onlyDispatch()).toMatchObject({ agentState, agentTurnOutcome: 'success' })
+      stopStatus()
+    }
+  )
+
+  it('lights nothing for a turn whose outcome the host never stated', async () => {
+    render(<StructuredAgentSessionAttentionBridge />)
+    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+
+    act(() => hostStream()(completionFrameWithoutOutcome()))
+
+    expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
+    expect(dispatched).toEqual([])
+  })
 
   it('ignores a completion for another session on the same host', async () => {
     render(<StructuredAgentSessionAttentionBridge />)
