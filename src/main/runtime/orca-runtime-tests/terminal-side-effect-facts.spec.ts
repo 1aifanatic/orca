@@ -518,6 +518,35 @@ describe('terminal side-effect fact channel', () => {
     ).toHaveLength(1)
   })
 
+  it.each([
+    ['before its 133;C', '\x1b]133;D;0\x07\x1b]133;A\x07', 0],
+    ['that closes its 133;C', '\x1b]133;C\x07\x1b]133;D;0\x07', 1]
+  ])('counts a launched agent exit at a 133;D %s accordingly', async (_label, bytes, exits) => {
+    const { runtime, batches } = createSideEffectRuntime()
+    syncSinglePty(runtime)
+    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
+    runtime.setPtyController({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: vi.fn().mockResolvedValue('zsh'),
+      confirmForegroundProcess
+    })
+    const ptys: unknown = Reflect.get(runtime, 'ptysById')
+    const pty: unknown = ptys instanceof Map ? ptys.get('pty-1') : undefined
+    if (!pty || typeof pty !== 'object') {
+      throw new Error('expected the synced PTY record')
+    }
+    // Stands in for a launch Orca started; the record's launch identity is not public.
+    Reflect.set(pty, 'launchAgent', 'claude')
+    // The first case is a user shell integration's first-prompt D, before Orca's startup command.
+    runtime.onPtyData('pty-1', bytes, 100)
+    // Why a macrotask: every mocked read resolves in microtasks, so an owed exit has landed by then.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(
+      batches.flatMap((batch) => batch.facts).filter((fact) => fact.kind === 'agent-exited')
+    ).toHaveLength(exits)
+  })
+
   it('treats synchronous foreground read failures as unavailable', async () => {
     const { runtime, batches } = createSideEffectRuntime()
     syncSinglePty(runtime)

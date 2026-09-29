@@ -1,6 +1,7 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { startSpan } from '../observability/tracer'
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
+import { takeShellCommandFinishedAgentHold } from './shell-command-agent-hold'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
@@ -176,8 +177,8 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
    */
   protected confirmPtyAgentExitAtCommandFinished(ptyId: string): void {
     const pty = this.ptysById.get(ptyId)
-    // Why launchAgent counts: Orca's shell integration emits 133;D only after the command it ran.
-    if (!pty?.connected || (!pty.launchAgent && !pty.foregroundAgent && !pty.lastAgentStatus)) {
+    const heldAgent = pty ? takeShellCommandFinishedAgentHold(pty) : false
+    if (!pty?.connected || !heldAgent) {
       return
     }
     const incarnationId = pty.incarnationId

@@ -3,6 +3,7 @@ import { createTerminalTitleTracker } from '../../shared/terminal-output-side-ef
 import type { TerminalSideEffectFact } from '../../shared/terminal-side-effect-facts'
 import { OrcaRuntimeWithSerializeAgentPromptSubmission } from './orca-runtime-serialize-agent-prompt-submission'
 import { judgeForegroundAgent } from '../../shared/foreground-agent-verdict'
+import { noteShellCommandStarted } from './shell-command-agent-hold'
 
 const readResult = (controller: object, processName: string | null) => ({
   controller,
@@ -16,6 +17,12 @@ vi.mock('./orca-runtime-controller-knows-pty-is-live', () => ({
 class ExitHarness extends OrcaRuntimeWithSerializeAgentPromptSubmission {
   confirm(): void {
     this.confirmPtyAgentExit('pty-1')
+  }
+  commandStarted(): void {
+    const pty = this.ptysById.get('pty-1')
+    if (pty) {
+      noteShellCommandStarted(pty)
+    }
   }
   commandFinished(): void {
     this.confirmPtyAgentExitAtCommandFinished('pty-1')
@@ -31,6 +38,7 @@ function setup() {
     incarnationId: string
     lastOscTitleAt: number
     lastAgentStatus: string | null
+    lastAgentStatusObservedLive: boolean
     launchAgent: string | null
     foregroundAgent: string | null
     connectionId?: string
@@ -39,6 +47,7 @@ function setup() {
     incarnationId: 'inc-1',
     lastOscTitleAt: 1,
     lastAgentStatus: null,
+    lastAgentStatusObservedLive: false,
     launchAgent: null,
     foregroundAgent: null
   }
@@ -149,6 +158,7 @@ describe('agent exit at the shell 133;D', () => {
   it('publishes one exit when a read shows the shell after an agent title', async () => {
     const h = setup()
     h.pty.lastAgentStatus = 'idle'
+    h.pty.lastAgentStatusObservedLive = true
     h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
     h.runtime.commandFinished()
     await vi.waitFor(() =>
@@ -169,6 +179,7 @@ describe('agent exit at the shell 133;D', () => {
   ])('keeps the agent when the read shows %s', async (_label, process) => {
     const h = setup()
     h.pty.launchAgent = 'claude'
+    h.runtime.commandStarted()
     h.read.mockResolvedValue(readResult(h.controller, process))
     h.runtime.commandFinished()
     await vi.waitFor(() => expect(h.read).toHaveBeenCalledOnce())
@@ -187,10 +198,79 @@ describe('agent exit at the shell 133;D', () => {
     expect(h.markExited).toHaveBeenCalledWith('pty-1')
     h.tracker.dispose()
   })
+  it('ends a launched agent at the 133;D that closes its command', async () => {
+    const h = setup()
+    h.pty.launchAgent = 'claude'
+    h.runtime.commandStarted()
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.runtime.commandFinished()
+    await vi.waitFor(() =>
+      expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'foreground-shell' }])
+    )
+    h.tracker.dispose()
+  })
   it('does not read for a 133;D on a pane that never held an agent', () => {
     const h = setup()
     h.runtime.commandFinished()
     expect(h.read).not.toHaveBeenCalled()
+    h.tracker.dispose()
+  })
+})
+
+describe('a 133;D printed before the launched agent starts', () => {
+  const shellAtPrompt = { verdict: 'exited', processName: null, canCertifyExit: true } as const
+  it.each([
+    ['a local shell', (h: ReturnType<typeof setup>) => readResult(h.controller, 'zsh')],
+    [
+      'an SSH host showing its shell',
+      (h: ReturnType<typeof setup>) => {
+        h.pty.connectionId = 'ssh-1'
+        return { controller: h.controller, judgement: shellAtPrompt }
+      }
+    ],
+    [
+      'a host that cannot read the foreground',
+      (h: ReturnType<typeof setup>) => {
+        h.pty.connectionId = 'ssh-old'
+        return {
+          controller: h.controller,
+          judgement: judgeForegroundAgent({ kind: 'host-without-evidence' })
+        }
+      }
+    ]
+  ])('does not end the launch on %s', async (_label, answer) => {
+    const h = setup()
+    h.pty.launchAgent = 'claude'
+    h.read.mockResolvedValue(answer(h))
+    // A user shell integration's first-prompt D, before Orca's startup command runs.
+    h.runtime.commandFinished()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(h.facts).toEqual([])
+    expect(h.markExited).not.toHaveBeenCalled()
+    h.tracker.dispose()
+  })
+  it('does not count a command started by an earlier incarnation', async () => {
+    const h = setup()
+    h.pty.launchAgent = 'claude'
+    h.runtime.commandStarted()
+    h.pty.incarnationId = 'inc-2'
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.runtime.commandFinished()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(h.facts).toEqual([])
+    h.tracker.dispose()
+  })
+  it('counts one 133;D per started command when a user integration doubles the marks', async () => {
+    const h = setup()
+    h.pty.launchAgent = 'claude'
+    h.runtime.commandStarted()
+    h.runtime.commandStarted()
+    h.read.mockResolvedValue(readResult(h.controller, 'claude'))
+    h.runtime.commandFinished()
+    h.runtime.commandFinished()
+    await vi.waitFor(() => expect(h.read).toHaveBeenCalledOnce())
     h.tracker.dispose()
   })
 })

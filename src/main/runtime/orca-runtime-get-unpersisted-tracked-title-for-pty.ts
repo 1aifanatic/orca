@@ -4,6 +4,7 @@ import { getDecorativeAgentTitleSignature } from '../../shared/agent-decorative-
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
 import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-records'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
+import { noteShellCommandStarted } from './shell-command-agent-hold'
 import { detectAgentStatusFromTitle } from '../../shared/agent-detection'
 import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-detector'
 
@@ -142,6 +143,12 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
         },
         onAgentExitCandidate: () => {
           this.confirmPtyAgentExit(ptyId)
+        },
+        onCommandStarted: () => {
+          const pty = this.ptysById.get(ptyId)
+          if (pty) {
+            noteShellCommandStarted(pty)
+          }
         },
         onCommandFinished: (exitCode: number | null) => {
           this.confirmPtyAgentExitAtCommandFinished(ptyId)
