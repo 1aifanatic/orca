@@ -84,7 +84,7 @@ let queuedTrashDeletions: Promise<void> = Promise.resolve()
 export function scheduleWorktreeTrashDeletion(trashPath: string): void {
   queuedTrashDeletions = queuedTrashDeletions.then(async () => {
     try {
-      await removeHostTree(trashPath)
+      await removeHostTree(trashPath, { lane: 'background' })
     } catch (error) {
       // Why only a warning: the directory is already invisible to the user, and the startup sweep retries it.
       console.warn(`[worktrees] Failed to delete trashed worktree at ${trashPath}`, error)
@@ -121,7 +121,7 @@ export async function sweepStaleWorktreeTrash(
         continue
       }
       try {
-        await removeHostTree(join(trashRoot, entry))
+        await removeHostTree(join(trashRoot, entry), { lane: 'background' })
         removed += 1
       } catch (error) {
         console.warn(

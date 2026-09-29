@@ -275,7 +275,10 @@ describe('history GC prune decisions', () => {
 
     await runHistoryGc(new Set([LIVE_WORKTREE_ID]))
 
-    expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('abc123.1700000000000'))
+    expect(removeHostTreeMock).toHaveBeenCalledWith(
+      expect.stringContaining('abc123.1700000000000'),
+      { lane: 'background' }
+    )
   })
 
   it('continues the pass after one orphan tombstone fails', async () => {

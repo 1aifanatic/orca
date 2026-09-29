@@ -10,18 +10,25 @@ import { PrioritySemaphore } from '../shared/priority-semaphore'
 const REMOVE_TREE_WORKER_SOURCE = `const { workerData } = require('node:worker_threads')
 require('node:fs').rmSync(workerData.path, workerData.options)`
 
-// Why a cap: each worker is its own isolate (~10 MB), and history-tombstone drains start dozens of
-// removals at once (64 simultaneous workers measured ~700 MB). Deletes are disk-bound, so running
-// more than the old pool's four at a time buys nothing.
-const MAX_CONCURRENT_TREE_REMOVALS = 4
-const treeRemovalSlots = new PrioritySemaphore(MAX_CONCURRENT_TREE_REMOVALS)
+/** `background`: fire-and-forget bulk deletes (worktree trash, history tombstones). `interactive`: a caller awaits it. */
+export type TreeRemovalLane = 'interactive' | 'background'
+
+// Why only background is capped: each worker is its own isolate (~10 MB) and history-tombstone
+// drains start dozens at once (64 simultaneous measured ~700 MB), while an awaited delete must never
+// queue behind a multi-minute trash delete. Awaited deletes are bounded by the callers awaiting them.
+const MAX_CONCURRENT_BACKGROUND_TREE_REMOVALS = 4
+const backgroundTreeRemovalSlots = new PrioritySemaphore(MAX_CONCURRENT_BACKGROUND_TREE_REMOVALS)
 
 /** Recursive remove that leaves the async fs thread pool free; rejects with the fs error (its `code` intact). */
 export async function removeTreeOffThreadPool(
   targetPath: string,
-  options: RmOptions
+  options: RmOptions,
+  lane: TreeRemovalLane
 ): Promise<void> {
-  const release = await treeRemovalSlots.acquire(0)
+  if (lane === 'interactive') {
+    return runTreeRemovalWorker(targetPath, options)
+  }
+  const release = await backgroundTreeRemovalSlots.acquire(0)
   try {
     await runTreeRemovalWorker(targetPath, options)
   } finally {

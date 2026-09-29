@@ -66,7 +66,7 @@ function scheduleSessionTreeRemoval(dir: string): void {
     clearTimeout(pendingRetry)
     sessionTreeRemovalRetryTimers.delete(dir)
   }
-  const removal = removeHostTree(dir)
+  const removal = removeHostTree(dir, { lane: 'background' })
     .then(() => {
       sessionTreeRemovalAttempts.delete(dir)
     })

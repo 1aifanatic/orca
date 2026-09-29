@@ -7,7 +7,7 @@
 
 import { win32 } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { removeTreeOffThreadPool } from './tree-removal-worker'
+import { removeTreeOffThreadPool, type TreeRemovalLane } from './tree-removal-worker'
 import { isWindowsAbsolutePathLike } from '../shared/cross-platform-path'
 import { isWslUncPath } from '../shared/wsl-paths'
 import { transientLockRemovalOptions } from '../shared/windows-transient-lock-removal'
@@ -44,7 +44,10 @@ function isTransientWindowsRemovalError(error: unknown): boolean {
 }
 
 /** Recursively remove a host directory tree, retrying the transient Windows failures. */
-export async function removeHostTree(targetPath: string): Promise<void> {
+export async function removeHostTree(
+  targetPath: string,
+  { lane = 'interactive' }: { lane?: TreeRemovalLane } = {}
+): Promise<void> {
   const removalPath = toHostRemovalPath(targetPath)
   const retryDelays = process.platform === 'win32' ? WINDOWS_REMOVE_RETRY_DELAYS_MS : []
   // Why: large Windows trees commonly surface transient ENOTEMPTY/EPERM while Node walks and
@@ -54,7 +57,7 @@ export async function removeHostTree(targetPath: string): Promise<void> {
 
   while (true) {
     try {
-      await removeTreeOffThreadPool(removalPath, rmOptions)
+      await removeTreeOffThreadPool(removalPath, rmOptions, lane)
       return
     } catch (error) {
       if (attempt >= retryDelays.length || !isTransientWindowsRemovalError(error)) {

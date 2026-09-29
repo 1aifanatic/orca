@@ -61,7 +61,10 @@ describe('tombstoned session tree removal retries', () => {
     expect(removeHostTreeMock).toHaveBeenCalledTimes(
       SESSION_TREE_REMOVAL_RETRY_DELAYS_MS.length + 1
     )
-    expect(removeHostTreeMock).toHaveBeenLastCalledWith(expect.stringContaining('.pending-delete'))
+    expect(removeHostTreeMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('.pending-delete'),
+      { lane: 'background' }
+    )
   })
 
   it('does not re-arm a retry after the removal succeeds', async () => {

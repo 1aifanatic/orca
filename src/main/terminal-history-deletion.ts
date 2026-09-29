@@ -217,7 +217,8 @@ function scheduleHistoryTreeRemoval(dir: string, wslDistro?: string): void {
           )
         })
       : null
-  const removal = (cleanup ? cleanup.then(() => removeHostTree(dir)) : removeHostTree(dir))
+  const removeTree = (): Promise<void> => removeHostTree(dir, { lane: 'background' })
+  const removal = (cleanup ? cleanup.then(removeTree) : removeTree())
     .then(() => {
       removalSucceeded = true
       historyTreeRemovalAttempts.delete(dir)

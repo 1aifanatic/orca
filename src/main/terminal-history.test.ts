@@ -553,7 +553,9 @@ describe('terminal-history', () => {
       deleteWorktreeHistoryDir('repo-1::/path/wt')
       expect(renameSyncMock).toHaveBeenCalled()
       expect(rmSyncMock).not.toHaveBeenCalled()
-      expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('.pending-delete'))
+      expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('.pending-delete'), {
+        lane: 'background'
+      })
       await flushPendingWorktreeHistoryDeletions()
     })
 
@@ -679,7 +681,10 @@ describe('terminal-history', () => {
         leftoverTombstonePresent = false
       })
       await flushPendingWorktreeHistoryDeletions()
-      expect(removeHostTreeMock).toHaveBeenCalledWith(expect.stringContaining('leftover-tombstone'))
+      expect(removeHostTreeMock).toHaveBeenCalledWith(
+        expect.stringContaining('leftover-tombstone'),
+        { lane: 'background' }
+      )
     })
   })
 
