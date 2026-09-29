@@ -344,8 +344,23 @@ it('keeps a dialog reopened mid-resume open over the chats still offered', async
   const dialog = document.querySelector('[role="dialog"]')
   expect(dialog?.textContent).toContain('Prompt c')
   expect(dialog?.textContent).not.toContain('Prompt a')
-  // The run is over, so the chat left out is actionable again.
+  // The run is over, so the chat left out is actionable again, and this opening ticks it afresh.
   expect(button('Dismiss all').disabled).toBe(false)
+  expect(checkbox(0).getAttribute('data-state')).toBe('checked')
+  expect(button('Resume 1 chat').disabled).toBe(false)
+})
+
+it('starts each opening from the default ticks, not the ones left at the last close', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => checkbox(1).click())
+  expect(button('Resume 1 chat')).toBeTruthy()
+  await act(async () => button('Close').click())
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+
+  await act(async () => requestNativeChatResumeOnRestartDialog())
+  expect(checkbox(1).getAttribute('data-state')).toBe('checked')
+  expect(button('Resume 2 chats').disabled).toBe(false)
 })
 
 // Resuming spends the host's claims, so the offer has to shrink with it. A count left standing over

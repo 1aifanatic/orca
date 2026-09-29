@@ -88,6 +88,15 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
    *  selection because the list is the host's and arrives — and shrinks — under an open dialog; a
    *  stored selection would need seeding from an effect every time it changed. */
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  // Each opening starts from the rows' defaults. This component never unmounts, so an untick made
+  // before a close would otherwise greet a reopen, e.g. as "Resume 0 chats" over what a run left.
+  const [openedWith, setOpenedWith] = useState(open)
+  if (openedWith !== open) {
+    setOpenedWith(open)
+    if (open) {
+      setOverrides(new Map())
+    }
+  }
   /** Derived from the host's own list, so an action can never name a chat it did not list. */
   const chosen = useMemo(
     () =>
