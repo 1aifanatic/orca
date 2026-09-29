@@ -42,9 +42,8 @@ export function structuredAgentSessionEntryAttempt(
   entry: StructuredAgentSessionOutboxEntry,
   host: StructuredAgentSessionQueueDelivery
 ): { stored: StructuredAgentSessionOutboxEntry; wire: StructuredAgentSessionOutboxEntry } {
-  const sentDelivery = structuredAgentSessionEntryAsksToQueue(entry, host)
-    ? 'queue-if-active'
-    : null
+  const sentDelivery: StructuredAgentSessionOutboxEntry['sentDelivery'] =
+    structuredAgentSessionEntryAsksToQueue(entry, host) ? 'queue-if-active' : null
   const stored = entry.lastAttemptAt !== null ? entry : { ...entry, sentDelivery }
   return {
     stored,
