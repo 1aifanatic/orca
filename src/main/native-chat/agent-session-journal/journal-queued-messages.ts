@@ -22,7 +22,6 @@ import {
   holdQueuedMessages,
   insertQueuedMessage,
   listQueuedMessages,
-  pruneQueuedMessages,
   queuedMessagesSettledByOp,
   releaseStopShapedQueuedMessageHolds,
   returnDispatchedQueuedMessage,
@@ -30,6 +29,7 @@ import {
   type QueuedMessageHoldReason,
   type QueuedMessageRow
 } from './queued-message-table'
+import { pruneQueuedMessages } from './queued-message-retention'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
@@ -235,6 +235,7 @@ export class JournalQueuedMessages {
         sessionId: this.deps.sessionId,
         consumedRef: row.clientMessageId,
         reason: row.reason,
+        rejection: row.rejection,
         now: this.deps.now()
       })
     ) {
@@ -308,6 +309,7 @@ export class JournalQueuedMessages {
                 sessionId: this.deps.sessionId,
                 consumedRef: row.consumedAs ?? row.messageId,
                 reason: submission?.reason ?? null,
+                rejection: submission?.rejection,
                 now
               })
             ) {

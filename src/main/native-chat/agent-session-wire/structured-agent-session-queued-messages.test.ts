@@ -184,6 +184,12 @@ describe('drain', () => {
     await eventually(async () =>
       expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
     )
+    // Classified like a rejected submission: from the fact, not the sentence.
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.[0]?.returnedRejection).toEqual({
+      kind: 'providerRejected',
+      detail: { text: 'provider refused this payload', audience: 'person' }
+    })
     // The lone returned card traps nothing: a new capable send goes immediately.
     const overtaking = await send('sent past the card', 'queue-if-active').result
     expect(overtaking).toMatchObject({ ok: true, value: { submission: expect.anything() } })
@@ -373,9 +379,10 @@ describe('Stop and Delete', () => {
     expect(stopped).toMatchObject({ ok: true })
     expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
     const page = await host.history({ sessionId: SESSION, direction: 'tail' })
-    expect(page.ok && page.page.queuedMessages?.[0]?.returnedReason).toBe(
-      DISPATCH_REJECTED_CANCELLED
-    )
+    expect(page.ok && page.page.queuedMessages?.[0]).toMatchObject({
+      returnedReason: DISPATCH_REJECTED_CANCELLED,
+      returnedRejection: { kind: 'cancelled' }
+    })
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 

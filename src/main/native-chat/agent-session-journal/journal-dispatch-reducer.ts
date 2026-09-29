@@ -23,12 +23,7 @@ export function applyJournalDispatchRow(
   submission.dispatchState = row.state
   submission.providerItemId = row.providerItemId
   submission.reason = row.reason
-  // Read where it can be placed; a kind it cannot place is kept as written, so the classifier
-  // still knows a fact was there without this build claiming what it says.
-  const rejection =
-    row.state === 'rejected'
-      ? (readAgentSessionFailureFact(row.rejection) ?? unreadFailureFact(row.rejection))
-      : undefined
+  const rejection = row.state === 'rejected' ? readStoredRejectionFact(row.rejection) : undefined
   if (rejection) {
     submission.rejection = rejection
   } else {
@@ -53,6 +48,13 @@ export function applyJournalDispatchRow(
     cursor: { epoch: row.epoch, sequence: row.seq },
     acceptedAt: row.ts
   })
+}
+
+/** A stored rejection fact, read where it can be placed; a kind it cannot place is kept as
+ *  written, so the classifier still knows a fact was there without this build claiming what it
+ *  says. Shared with the queued-draft table, whose returned card mirrors its submission. */
+export function readStoredRejectionFact(value: unknown): UnreadAgentSessionFailureFact | undefined {
+  return readAgentSessionFailureFact(value) ?? unreadFailureFact(value)
 }
 
 function unreadFailureFact(value: unknown): UnreadAgentSessionFailureFact | undefined {

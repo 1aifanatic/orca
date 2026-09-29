@@ -49,6 +49,9 @@ const STOP_WITHDRAWAL = agentSessionFailureWords(agentSessionFailureFact('cancel
 const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
   surface: 'rejection'
 })
+const PROVIDER_REFUSAL = agentSessionFailureFact('providerRejected', {
+  detail: { text: 'Claude refused this payload', audience: 'person' }
+})
 
 async function open(): Promise<AgentSessionJournal> {
   const journal = await journals.open({
@@ -225,11 +228,13 @@ describe('returned transition (D1/N4)', () => {
       clientMessageId: 'draft-1',
       state: 'rejected',
       reason: 'Claude refused this payload',
+      rejection: PROVIDER_REFUSAL,
       fence: 0
     })
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
     expect(row?.returnedReason).toBe('Claude refused this payload')
+    expect(row?.returnedRejection).toEqual(PROVIDER_REFUSAL)
   })
 
   it('a late rejection row after acceptance settles nothing and returns no card', async () => {
@@ -259,15 +264,17 @@ describe('returned transition (D1/N4)', () => {
     expect(await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)).toEqual(['draft-1'])
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: STOP_WITHDRAWAL.reason
+      returnedReason: STOP_WITHDRAWAL.reason,
+      returnedRejection: { kind: 'cancelled' }
     })
-    // Atomic with the rejection row: a crash before the Stop answered keeps the text.
+    // Atomic with the rejection row: a crash before the Stop answered keeps the text and its fact.
     await journal.close()
     clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: STOP_WITHDRAWAL.reason
+      returnedReason: STOP_WITHDRAWAL.reason,
+      returnedRejection: { kind: 'cancelled' }
     })
   })
 
@@ -281,9 +288,11 @@ describe('returned transition (D1/N4)', () => {
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
       journal.wroteBeforeOpen(submission.acceptedSequence)
     )
+    // The restart's reason is a sentence, not a marker: only the fact classifies the card.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: HOST_RESTARTED.reason
+      returnedReason: HOST_RESTARTED.reason,
+      returnedRejection: { kind: 'hostRestarted' }
     })
   })
 
@@ -295,6 +304,7 @@ describe('returned transition (D1/N4)', () => {
       clientMessageId: 'draft-1',
       state: 'rejected',
       reason: 'first refusal',
+      rejection: PROVIDER_REFUSAL,
       fence: 0
     })
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('returned')
@@ -322,6 +332,8 @@ describe('returned transition (D1/N4)', () => {
     const returned = journal.queuedMessages.get('draft-1')
     expect(returned?.state).toBe('returned')
     expect(returned?.returnedReason).toBe('second refusal')
+    // The first refusal's fact does not outlive it: the pair is the second submission's.
+    expect(returned?.returnedRejection).toBeNull()
   })
 
   it('a rejection never revives a withdrawn draft', async () => {
@@ -436,6 +448,7 @@ describe('open-time repair and retention', () => {
       clientMessageId: 'draft-1',
       state: 'rejected',
       reason: 'refused while downgraded',
+      rejection: PROVIDER_REFUSAL,
       fence: 0
     })
     await journal.close()
@@ -443,13 +456,14 @@ describe('open-time repair and retention', () => {
     // draft back to dispatched behind the stored fact.
     const db = new Database(journalDatabaseFile(root))
     db.prepare(
-      "UPDATE queued_messages SET state = 'dispatched', returned_reason = NULL WHERE message_id = ?"
+      "UPDATE queued_messages SET state = 'dispatched', returned_reason = NULL, returned_rejection = NULL WHERE message_id = ?"
     ).run('draft-1')
     db.close()
     journal = await open()
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
     expect(row?.returnedReason).toBe('refused while downgraded')
+    expect(row?.returnedRejection).toEqual(PROVIDER_REFUSAL)
   })
 
   it('returns a dispatched row whose submission a Stop withdrew with no hook, never leaving it dispatched', async () => {
