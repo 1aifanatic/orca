@@ -307,7 +307,10 @@ export function clearClaudePendingWaitForAgent(
     setClaudeMainAgentTurnState(state, paneKey, { ...lead, approvals: remaining })
     return
   }
-  setClaudeMainAgentTurnState(state, paneKey, lead.stateBeforeWait ?? { state: 'working' })
+  setClaudeMainAgentTurnState(state, paneKey, {
+    ...(lead.stateBeforeWait ?? { state: 'working' as const }),
+    ...(lead.announcedCalls ? { announcedCalls: lead.announcedCalls } : {})
+  })
   const previousTool = state.lastToolByPaneKey.get(paneKey)
   state.lastToolByPaneKey.set(
     paneKey,

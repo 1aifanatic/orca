@@ -157,13 +157,15 @@ export function normalizeClaudeEvent(
   }
 
   // Why before the ledger fold: which child prompts outlive a main agent turn end is this event's inventory.
-  const childWorkOutlivesTurn =
-    (isTurnBoundary || isManualCompactCompletion) &&
-    eventAgentId === undefined &&
-    foldClaudeTurnEndChildWork(state, paneKey, {
-      backgroundTasks,
-      manualCompact: isManualCompactCompletion
-    })
+  const mainAgentTurnEnd =
+    (isTurnBoundary || isManualCompactCompletion) && eventAgentId === undefined
+      ? {
+          childOutlivesTurn: foldClaudeTurnEndChildWork(state, paneKey, {
+            backgroundTasks,
+            manualCompact: isManualCompactCompletion
+          })
+        }
+      : undefined
 
   const eventToolUseId = readFirstString(hookPayload, ['tool_use_id', 'toolUseId'])
   const raisedTool =
@@ -186,8 +188,7 @@ export function normalizeClaudeEvent(
         }
       : {}),
     raisesQuestionWait: isAskUserQuestionWait,
-    endsTurn: isManualCompactCompletion,
-    childWorkOutlivesTurn,
+    mainAgentTurnEnd,
     // Why the row's own classifier: an injected prompt (a task notification, a teammate's message)
     // lands inside the running turn, so it must answer exactly what it did when the server held the row.
     opensUserTurn:

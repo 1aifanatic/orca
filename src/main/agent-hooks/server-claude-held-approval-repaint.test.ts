@@ -166,6 +166,21 @@ describe('a held Claude approval under repaint and re-statement', () => {
     expect(row()?.state).toBe('working')
   })
 
+  // Clearing a child's prompt mid-turn must keep the announced ids that mark the second prompt real.
+  it('still tells two identical prompts apart after a child prompt cleared mid-turn', async () => {
+    const child = { agent_id: 'a1f00d', agent_type: 'general-purpose' }
+    await post({ hook_event_name: 'UserPromptSubmit', prompt: 'twice' })
+    await post({ hook_event_name: 'PreToolUse', ...ALPHA, tool_use_id: 'toolu-first' })
+    await post({ hook_event_name: 'PreToolUse', ...ALPHA, tool_use_id: 'toolu-second' })
+    await post({ hook_event_name: 'PermissionRequest', ...child, ...BETA })
+    await post({ hook_event_name: 'SubagentStop', ...child })
+    await post({ hook_event_name: 'PermissionRequest', ...ALPHA })
+    await post({ hook_event_name: 'PermissionRequest', ...ALPHA })
+
+    await post({ hook_event_name: 'PostToolUse', ...ALPHA, tool_use_id: 'toolu-first' })
+    expect(row()?.state).toBe('waiting')
+  })
+
   // The renderer keys a wait's one needs-input alert on `waiting` + `stateStartedAt`, and a `working`
   // row in between resets that key (pinned renderer-side in
   // agent-completion-coordinator-attention-dispatch.test.ts). So one wait must reach readers as an

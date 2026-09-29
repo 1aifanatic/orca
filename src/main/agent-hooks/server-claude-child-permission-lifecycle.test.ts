@@ -213,6 +213,59 @@ describe('Claude child permission lifecycle', () => {
       }
     })
 
+    // Why: the retired child's card must not ride on another owner's work; main cleared it when that work ended.
+    it('clears a retired child permission at the Stop while another child keeps working', async () => {
+      const { server, postClaudeHook } = await createServer()
+      try {
+        await raiseChildPrompt(postClaudeHook)
+        await postClaudeHook({ ...TURN, hook_event_name: 'SubagentStart', agent_id: 'aother' })
+        await postClaudeHook({
+          ...TURN,
+          hook_event_name: 'Stop',
+          background_tasks: [
+            { id: CHILD_ID, type: 'subagent', status: 'completed' },
+            { id: 'aother', type: 'subagent', status: 'running' }
+          ]
+        })
+        expect(server.getStatusSnapshot()[0]).toMatchObject({
+          state: 'working',
+          mainAgent: { state: 'done' }
+        })
+
+        await postClaudeHook({ ...TURN, hook_event_name: 'SubagentStop', agent_id: 'aother' })
+        expect(server.getStatusSnapshot()[0]).toMatchObject({ state: 'done' })
+      } finally {
+        server.stop()
+      }
+    })
+
+    const RETIRED_CHILD = { id: CHILD_ID, type: 'subagent', status: 'completed' }
+    it.each([
+      [
+        'a background shell',
+        { background_tasks: [RETIRED_CHILD, { id: 'b1', type: 'local_bash', status: 'running' }] }
+      ],
+      [
+        'a session cron',
+        { background_tasks: [RETIRED_CHILD], session_crons: [{ id: 'c1', cron: '*/5 * * * *' }] }
+      ]
+    ])(
+      'clears a retired child permission at the Stop while %s keeps the pane working',
+      async (_work, liveWork) => {
+        const { server, postClaudeHook } = await createServer()
+        try {
+          await raiseChildPrompt(postClaudeHook)
+          await postClaudeHook({ ...TURN, hook_event_name: 'Stop', ...liveWork })
+          expect(server.getStatusSnapshot()[0]).toMatchObject({
+            state: 'working',
+            mainAgent: { state: 'done' }
+          })
+        } finally {
+          server.stop()
+        }
+      }
+    )
+
     it('keeps a child permission through a manual compact while other child work runs', async () => {
       const { server, postClaudeHook } = await createServer()
       try {

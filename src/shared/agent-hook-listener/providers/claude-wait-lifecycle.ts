@@ -116,7 +116,10 @@ export function clearClaudeAnsweredQuestionWait(
     lead?.state === 'waiting'
       ? (lead.stateBeforeWait ?? { state: 'working' as const })
       : { state: 'working' as const }
-  const restored = setClaudeMainAgentTurnState(state, paneKey, { ...stash })
+  const restored = setClaudeMainAgentTurnState(state, paneKey, {
+    ...stash,
+    ...(lead?.announcedCalls ? { announcedCalls: lead.announcedCalls } : {})
+  })
   const publishedMainAgent = claudeMainAgentStatusForPayload(restored)
   const resolved = resolveClaudePaneStatus(state, paneKey, restored)
   return {

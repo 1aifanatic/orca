@@ -243,6 +243,53 @@ describe('Claude pending-approval lifecycle', () => {
     }
   })
 
+  // A teammate's own prompt or turn end reaches the main agent's pane as a hook carrying its agent_id.
+  it('keeps the main agent permission through a child prompt and a child Stop', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production' })
+    try {
+      const teammate = { agent_id: 'areviewer-0123abcd', agent_type: 'reviewer' }
+      await postClaudeHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'set perms' })
+      await postClaudeHook(server, { hook_event_name: 'SubagentStart', ...teammate })
+      await postClaudeHook(server, {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: 'chmod 644 alpha.txt' },
+        tool_use_id: 'toolu-main'
+      })
+      await postClaudeHook(server, {
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'Bash',
+        tool_input: { command: 'chmod 644 alpha.txt' }
+      })
+      await postClaudeHook(server, {
+        hook_event_name: 'UserPromptSubmit',
+        ...teammate,
+        prompt: 'review alpha.txt'
+      })
+      await postClaudeHook(server, { hook_event_name: 'Stop', ...teammate, background_tasks: [] })
+
+      expect(server.getStatusSnapshot()[0]).toMatchObject({
+        state: 'waiting',
+        toolName: 'Bash',
+        mainAgent: { state: 'waiting' }
+      })
+      expect(server._getStateForTests().claudeLeadStateByPaneKey.get(PANE)?.approvals).toEqual([
+        expect.objectContaining({ toolName: 'Bash', toolUseId: 'toolu-main' })
+      ])
+
+      await postClaudeHook(server, {
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: 'chmod 644 alpha.txt' },
+        tool_use_id: 'toolu-main'
+      })
+      expect(server.getStatusSnapshot()[0]?.state).toBe('working')
+    } finally {
+      server.stop()
+    }
+  })
+
   // STA-3049 — Orca's hook transport is at-least-once: the shell spools a POST it could not make
   // and the server re-ingests it later. The spool deliberately skips PreToolUse/PostToolUse, so it
   // can re-deliver a prompt while structurally never re-delivering the completion that settles it.

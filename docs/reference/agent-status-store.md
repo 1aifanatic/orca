@@ -285,8 +285,9 @@ reader does not mistake them for drift:
   not on the children. The row reads `waiting` while the set is non-empty and
   publishes the displaced state as `mainAgent` while only children are owed
   answers. A prompt leaves the set when its own call completes, its child
-  stops, or the turn ends; Claude sends no hook on Deny or Esc, so those
-  linger until the next one of these.
+  stops, or the turn ends (a child's prompt outlives the main agent's turn
+  end only while that child is still working); Claude sends no hook on Deny
+  or Esc, so those linger until the next one of these.
 - The structured lane has no per-child wait: a child's pending prompt makes
   the session `attention`, which reads as the main agent's own `blocked`.
 - The Codex hook lane drops its roster on a root `Stop` when it tracks no

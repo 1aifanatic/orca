@@ -204,29 +204,37 @@ function recordAnnouncedCall(
   return next
 }
 
-/** Every turn-ending path funnels through this one sweep, so no ending path can forget to
- *  release what Claude never answered for. Spreading the clear across call sites is how a row
- *  strands when one path — an interrupt, a session swap, a crash — skips its own copy.
- *  Returns undefined when the event is not a boundary. */
+/** The boundaries that end a turn's prompts wholesale: a typed prompt and the main agent's turn
+ *  end. A session start, a child's end, an inferred interrupt and a typed question answer settle
+ *  prompts outside this fold. Returns undefined when the event is not a boundary. */
 function sweepClaudeApprovalsAtTurnBoundary(
   records: readonly ClaudeApprovalRecord[],
-  eventName: unknown,
-  endsTurn: boolean,
+  agentId: string | undefined,
   opensUserTurn: boolean,
-  childWorkOutlivesTurn: boolean
+  mainAgentTurnEnd: ClaudeMainAgentTurnEnd | undefined
 ): readonly ClaudeApprovalRecord[] | undefined {
-  if (opensUserTurn || eventName === 'SessionStart') {
+  // Why: a child's own prompt or turn end ends nothing of the main agent's turn.
+  if (agentId !== undefined) {
+    return undefined
+  }
+  if (opensUserTurn) {
     return []
   }
-  if (endsTurn || eventName === 'Stop' || eventName === 'StopFailure') {
+  if (mainAgentTurnEnd) {
     // Why: the main agent's turn ending answers none of a background child's prompts, but one
-    // outlives it only while the pane still shows child work; a child the inventory retired asks nothing.
-    const childOwned = childWorkOutlivesTurn
-      ? records.filter((record) => record.agentId !== undefined)
-      : []
-    return childOwned.length === records.length ? records : childOwned
+    // outlives it only while that child's work does; a child the inventory retired asks nothing.
+    const survivors = records.filter(
+      (record) => record.agentId !== undefined && mainAgentTurnEnd.childOutlivesTurn(record.agentId)
+    )
+    return survivors.length === records.length ? records : survivors
   }
   return undefined
+}
+
+/** The main agent's turn ended (Stop, StopFailure, a manual compact). */
+export type ClaudeMainAgentTurnEnd = {
+  /** Whether a child's prompt outlives the turn, judged after this event's inventory. */
+  readonly childOutlivesTurn: (agentId: string) => boolean
 }
 
 /** What the previous lead-turn record carries into this event's fold. */
@@ -276,10 +284,8 @@ export function foldClaudeApprovalEvent(input: {
   raisedCard?: ClaudeApprovalCard
   /** That wait is an AskUserQuestion, which IS its call's PreToolUse rather than following it. */
   raisesQuestionWait: boolean
-  /** This event closes the main agent's turn with no Stop (a manual compact), so it sweeps as one. */
-  endsTurn: boolean
-  /** At a main agent turn end, the pane still shows child work after this event's inventory. */
-  childWorkOutlivesTurn: boolean
+  /** Present when this event ends the main agent's turn. */
+  mainAgentTurnEnd?: ClaudeMainAgentTurnEnd
   /** A prompt the user typed, which opens a new turn. A harness-injected `UserPromptSubmit` does not:
    *  it arrives inside the running turn (reusing its prompt_id) and answers no permission prompt. */
   opensUserTurn: boolean
@@ -300,10 +306,9 @@ export function foldClaudeApprovalEvent(input: {
       : undefined
   const swept = sweepClaudeApprovalsAtTurnBoundary(
     carriedOver?.approvals ?? [],
-    eventName,
-    input.endsTurn,
+    agentId,
     input.opensUserTurn,
-    input.childWorkOutlivesTurn
+    input.mainAgentTurnEnd
   )
   if (swept) {
     // Why: whatever the turn never answered for died with it, and nothing may be inherited by the
