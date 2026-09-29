@@ -15,8 +15,8 @@ import { clearClaudeAnsweredQuestionWait } from './claude-wait-lifecycle'
 // Which event ends which outstanding Claude prompt. Each row is one event against a pane holding
 // four prompts — the main agent's permission and question, child X's permission, child Y's
 // question — and names the prompts left and how many announced call ids survive. `main` is what
-// the main branch did (one prompt slot, held on the server while the pane resolved working);
-// `why` explains a deliberate difference. Hook bodies are hand-built to the captured shapes.
+// the main branch did with each prompt raised alone (one prompt slot, held on the server while the
+// pane resolved working), probed against it; `why` explains a deliberate difference. Hook bodies are hand-built to the captured shapes.
 
 type Payload = Record<string, unknown>
 type Label = string
@@ -90,13 +90,13 @@ type Row = {
 // oxfmt-ignore
 const ROWS: Row[] = [
   // Tool events
-  { event: 'PreToolUse, main agent, a new call', send: pre(SIBLING, 'toolu-s'), left: ['main:permission', 'X:permission', 'Y:question'], announced: 5, main: 'same: the permission held, the question dropped' },
+  { event: 'PreToolUse, main agent, a new call', send: pre(SIBLING, 'toolu-s'), left: ['main:permission', 'X:permission', 'Y:question'], announced: 5, main: "same for the main agent's prompts; dropped Y's question", why: "a child's question is its own; the main agent's activity answers none of it" },
   { event: 'PreToolUse, main agent, the approved call again', send: pre(MAIN_CALL, 'toolu-m'), left: ['main:permission', 'X:permission', 'Y:question'], announced: 4, main: 'released the permission as the call resuming', why: 'Claude announces a call before prompting for it, so a PreToolUse answers nothing' },
-  { event: 'PreToolUse, child X', send: pre(SIBLING, 'toolu-xs', X), left: ALL, announced: 5, main: 'released: the re-stated child row disarmed the hold', why: 'a child call answers no prompt' },
+  { event: 'PreToolUse, child X', send: pre(SIBLING, 'toolu-xs', X), left: ALL, announced: 5, main: 'held, but disarmed the hold, so the next sibling completion released it', why: 'a child call answers no prompt' },
   { event: 'PreToolUse, child Y (its question pending)', send: pre(SIBLING, 'toolu-ys', Y), left: ['main:permission', 'X:permission', 'main:question'], announced: 5, main: 'same for the question' },
   { event: 'PostToolUse, main agent, the approved call by id', send: { ...pre(MAIN_CALL, 'toolu-m'), hook_event_name: 'PostToolUse' }, left: ['X:permission', 'Y:question', 'main:question'], announced: 4, main: 'same (released the one slot)' },
-  { event: 'PostToolUse, main agent, the approved call by tool and input', send: { hook_event_name: 'PostToolUse', ...MAIN_CALL }, left: ['X:permission', 'Y:question', 'main:question'], announced: 4, main: 'same' },
-  { event: 'PostToolUse, main agent, a sibling call', send: { ...pre(SIBLING, 'toolu-s'), hook_event_name: 'PostToolUse' }, left: ALL, announced: 4, main: 'held the permission; the question dropped', why: 'a sibling finishing answers no question still on screen' },
+  { event: 'PostToolUse, main agent, the approved call by tool and input', send: { hook_event_name: 'PostToolUse', ...MAIN_CALL }, left: ['X:permission', 'Y:question', 'main:question'], announced: 4, main: 'held the permission (no id to release on); dropped both questions', why: "the call's own completion answers its prompt, and no question" },
+  { event: 'PostToolUse, main agent, a sibling call', send: { ...pre(SIBLING, 'toolu-s'), hook_event_name: 'PostToolUse' }, left: ALL, announced: 4, main: "same (the sibling's own id kept both questions)" },
   { event: 'PostToolUseFailure, main agent, the approved call (id only)', send: { hook_event_name: 'PostToolUseFailure', tool_use_id: 'toolu-m' }, left: ['X:permission', 'Y:question', 'main:question'], announced: 4, main: 'held until the turn ended', why: 'the fix: a failed approved call was still approved' },
   { event: 'PostToolUse, child X, its approved call', send: { ...pre(X_CALL, 'toolu-x', X), hook_event_name: 'PostToolUse' }, left: ['main:permission', 'Y:question', 'main:question'], announced: 4, main: 'same' },
   // Prompts
@@ -108,13 +108,14 @@ const ROWS: Row[] = [
   { event: 'UserPromptSubmit, typed by a child', send: { hook_event_name: 'UserPromptSubmit', ...TEAMMATE, prompt: 'review x.ts' }, left: ALL, announced: 4, main: 'same (re-stated waiting)' },
   // Main agent turn ends
   { event: 'Stop, child-attributed', send: stop([], TEAMMATE), left: ALL, announced: 4, main: 'same (re-stated waiting)' },
-  { event: 'Stop, main agent, no inventory (older build)', send: stop(), left: CHILDREN, announced: 0, main: 'held all while the pane resolved working', why: "a Stop proves the main agent isn't blocked on its own prompt" },
-  { event: 'Stop, main agent, X and Y running', send: stop([task(X, 'running'), task(Y, 'running')]), left: CHILDREN, announced: 0, main: 'held all while the pane resolved working', why: 'as above' },
-  { event: 'Stop, main agent, X completed and Y running', send: stop([task(X, 'completed'), task(Y, 'running')]), left: ['Y:question'], announced: 0, main: "held X's prompt until Y's work ended", why: 'a child the inventory retired asks nothing, whatever else runs' },
-  { event: 'Stop, main agent, X and Y completed, a shell running', send: stop([task(X, 'completed'), task(Y, 'completed'), SHELL_RUNNING]), left: [], announced: 0, main: "held for the shell's whole run", why: 'as above' },
+  { event: 'Stop, main agent, no inventory (older build)', send: stop(), left: CHILDREN, announced: 0, main: 'held both permissions while the pane resolved working; dropped both questions', why: "a Stop proves the main agent isn't blocked on its own prompt; a working child's question is still on screen" },
+  { event: 'Stop, main agent, X and Y running', send: stop([task(X, 'running'), task(Y, 'running')]), left: CHILDREN, announced: 0, main: 'held both permissions while the pane resolved working; dropped both questions', why: 'as above' },
+  { event: 'Stop, main agent, X completed and Y running', send: stop([task(X, 'completed'), task(Y, 'running')]), left: ['Y:question'], announced: 0, main: "held X's prompt until Y's work ended; dropped Y's question", why: 'a child the inventory retired asks nothing, whatever else runs' },
+  { event: 'Stop, main agent, X and Y completed, a shell running', send: stop([task(X, 'completed'), task(Y, 'completed'), SHELL_RUNNING]), left: [], announced: 0, main: "held X's prompt for the shell's whole run", why: 'as above' },
   { event: 'Stop, main agent, empty inventory', send: stop([]), left: [], announced: 0, main: 'same (the done row replaced it)' },
   { event: 'Stop, main agent, an untracked child and a shell', before: [permission(X_CALL, UNTRACKED)], send: stop([task(X, 'completed'), task(Y, 'completed'), SHELL_RUNNING]), left: [`${UNTRACKED.agent_id}:permission`], announced: 0, main: 'same (held while the pane resolved working)' },
-  { event: 'StopFailure, main agent', send: { hook_event_name: 'StopFailure', error: 'rate_limit' }, left: CHILDREN, announced: 0, main: 'held all while the pane resolved working', why: 'as for Stop' },
+  { event: 'Stop, main agent, a prompting teammate still listed', before: [{ hook_event_name: 'SubagentStart', ...TEAMMATE }, permission(SIBLING, TEAMMATE)], send: stop([task(X, 'completed'), task(Y, 'completed'), { id: 't1', type: 'teammate', status: 'running' }]), left: [`${TEAMMATE.agent_id}:permission`], announced: 0, main: 'same (held while the pane resolved working)' },
+  { event: 'StopFailure, main agent', send: { hook_event_name: 'StopFailure', error: 'rate_limit' }, left: CHILDREN, announced: 0, main: 'held both permissions while the pane resolved working; dropped both questions', why: 'as for Stop' },
   { event: 'PostCompact, manual', send: { hook_event_name: 'PostCompact', trigger: 'manual' }, left: CHILDREN, announced: 0, main: 'held all while the pane resolved working', why: 'as for Stop' },
   // Events that map to nothing
   ...['PreCompact', 'Notification', 'PostToolBatch', 'SessionEnd'].map((name): Row => ({ event: name, send: { hook_event_name: name }, left: ALL, announced: 4, main: 'same (not mapped)' })),
