@@ -27,8 +27,10 @@ const base = {
 
 type GitResult = { stdout: string; stderr: string }
 
-function fetchCalls(): [string[], Record<string, unknown>][] {
-  return gitExecFileAsyncMock.mock.calls.filter(([argv]: [string[]]) => argv.includes('fetch'))
+function fetchCalls(): unknown[][] {
+  return gitExecFileAsyncMock.mock.calls.filter(
+    (call: unknown[]) => Array.isArray(call[0]) && call[0].includes('fetch')
+  )
 }
 
 let pendingFetches: ((result: GitResult) => void)[] = []
