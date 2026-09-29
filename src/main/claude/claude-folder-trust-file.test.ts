@@ -202,6 +202,19 @@ describe('grantClaudeFolderTrust', () => {
     await grantClaudeFolderTrust({ configFile: file, folderKeys: ['/wt'] })
     expect(statSync(home).mode & 0o777).toBe(0o755)
   })
+
+  it('grants every folder of a launch burst instead of losing some to its own lock', async () => {
+    const file = join(root, '.claude.json')
+    writeConfig(file, {})
+    const keys = Array.from({ length: 12 }, (_, index) => `/wt-${index}`)
+    const outcomes = await Promise.all(
+      keys.map((key) => grantClaudeFolderTrust({ configFile: file, folderKeys: [key] }))
+    )
+    expect(outcomes).toEqual(keys.map(() => 'granted'))
+    expect(readConfig(file).projects).toEqual(
+      Object.fromEntries(keys.map((key) => [key, { hasTrustDialogAccepted: true }]))
+    )
+  })
 })
 
 describe('grantClaudeWorkspaceTrust', () => {

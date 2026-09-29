@@ -13,6 +13,7 @@ import { dirname, join, posix, resolve, win32 } from 'node:path'
 import { homedir } from 'node:os'
 import { lock } from 'proper-lockfile'
 import { renameFileWithWindowsRetry } from '../codex-accounts/fs-utils'
+import { runKeyedSerializedOperation } from '../cli/keyed-promise-queue'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth/runtime-auth-types'
 
@@ -35,6 +36,9 @@ type ClaudeConfigEnv = {
 // half-stale refresh timer stays inside setTimeout's 32-bit range.
 const NEVER_STALE_MS = 2 ** 30
 const LOCK_RETRIES = { retries: 4, factor: 2, minTimeout: 50, maxTimeout: 250 }
+// Why: concurrent grants in one process retry the file lock in lockstep, so a launch burst
+// would lose most of them to `locked`; queue them so only Claude itself contends for the lock.
+const grantQueueByConfigFile = new Map<string, Promise<void>>()
 
 function pathApi(style: ClaudeTrustPathStyle): typeof posix {
   return style === 'win32' ? win32 : posix
@@ -161,7 +165,16 @@ function writeConfigAtomically(target: string, config: Record<string, unknown>):
  * creates the file, never breaks Claude's lock, and never rewrites a file it could
  * not read and parse.
  */
-export async function grantClaudeFolderTrust(args: {
+export function grantClaudeFolderTrust(args: {
+  configFile: string
+  folderKeys: readonly string[]
+}): Promise<ClaudeFolderTrustOutcome> {
+  return runKeyedSerializedOperation(grantQueueByConfigFile, args.configFile, () =>
+    grantClaudeFolderTrustNow(args)
+  )
+}
+
+async function grantClaudeFolderTrustNow(args: {
   configFile: string
   folderKeys: readonly string[]
 }): Promise<ClaudeFolderTrustOutcome> {
