@@ -35,7 +35,12 @@ export { encodePowerShellCommand } from '../shared/powershell-command-encoding'
  * `/K` to stdin because node-pty's argv escaping mangled their quotes; PowerShell
  * never needed that workaround, because `-EncodedCommand` is quoting-proof.
  */
-const POWERSHELL_OSC133_BOOTSTRAP = `# Orca OSC 133 shell integration for PowerShell.
+// Why the Codex wrapper is a parameter: Windows launches load it from the generated
+// wrapper tree so it does not eat the startup command's share of the command line.
+export function getPowerShellOsc133Bootstrap(
+  codexLaunchPreflight = getPowerShellCodexShellLaunchPreflight()
+): string {
+  return `# Orca OSC 133 shell integration for PowerShell.
 # Profiles have already loaded normally by the time -EncodedCommand runs.
 # Restore managed ownership before the shell-integration compatibility guard.
 if ($env:ORCA_OPENCODE_CONFIG_DIR) { $env:OPENCODE_CONFIG_DIR = $env:ORCA_OPENCODE_CONFIG_DIR }
@@ -56,7 +61,7 @@ if ($ExecutionContext.SessionState.LanguageMode -eq "FullLanguage" -and
     } catch { Write-Error $_ -ErrorAction Continue }
 
 ${getPowerShellOmpShellWrapper()}
-${getPowerShellCodexShellLaunchPreflight()}
+${codexLaunchPreflight}
 
     $Global:__OrcaOsc133State = @{
         OriginalPrompt = $function:prompt
@@ -98,9 +103,6 @@ ${getPowerShellCodexShellLaunchPreflight()}
     }
 }
 `
-
-export function getPowerShellOsc133Bootstrap(): string {
-  return POWERSHELL_OSC133_BOOTSTRAP
 }
 
 export function isPowerShellExecutableName(shellName: string): boolean {

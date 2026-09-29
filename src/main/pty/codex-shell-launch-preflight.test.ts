@@ -17,6 +17,7 @@ import {
   getFishCodexShellLaunchPreflight,
   getPosixCodexShellLaunchPreflight,
   getPowerShellCodexShellLaunchPreflight,
+  getPowerShellCodexShellLaunchPreflightLoader,
   resolveCodexShellLaunchPreflightCommand
 } from './codex-shell-launch-preflight'
 import { fishRequirementViolation, resolveFishBinary } from '../../shared/fish-binary-requirement'
@@ -415,6 +416,42 @@ describe('PowerShell Codex shell launch preflight', () => {
 
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout.trim()).toBe(expected)
+  })
+
+  it.skipIf(!pwshAvailable)('installs the wrapper when loaded from a quoted script path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-loader-'))
+    const bin = join(root, 'bin')
+    // Why a quote: the Windows bootstrap names this file by a PowerShell literal.
+    const scriptPath = join(root, "wrapper's dir", 'codex-launch.ps1')
+    roots.push(root)
+    mkdirSync(bin)
+    mkdirSync(join(root, "wrapper's dir"))
+    writeFileSync(scriptPath, getPowerShellCodexShellLaunchPreflight())
+    const isWindows = process.platform === 'win32'
+    writeExecutable(
+      join(bin, isWindows ? 'codex.cmd' : 'codex'),
+      isWindows ? '@echo args=%*\r\n' : '#!/bin/sh\necho "args=$*"\n'
+    )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight')
+    }
+    delete env.ORCA_CODEX_HOME
+
+    const result = spawnSync(
+      'pwsh',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-Command',
+        `${getPowerShellCodexShellLaunchPreflightLoader(scriptPath)}\ncodex hi`
+      ],
+      { encoding: 'utf-8', env }
+    )
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout.trim()).toBe('args=--no-daemon hi')
   })
 
   it.skipIf(!pwshAvailable)('fails open when native errors are promoted', () => {

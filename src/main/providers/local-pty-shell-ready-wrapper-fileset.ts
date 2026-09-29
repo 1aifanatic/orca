@@ -6,13 +6,24 @@
 import { ZSH_WRAPPER_DIR_MARKER_CONTENT, ZSH_WRAPPER_DIR_MARKER_FILE } from '../shell-templates'
 import type { ShellWrapperFile } from '../shell-wrapper-file-writer'
 import { buildZshStartupHook, type ZshStartupHookSpec } from '../zsh-startup-wrapper-builder'
+import { getPowerShellCodexShellLaunchPreflight } from '../pty/codex-shell-launch-preflight'
 import { getBashShellReadyRcfileContent } from './local-pty-shell-ready-bash-rcfile'
 import { SHELL_READY_MARKER_ESCAPED } from './local-pty-shell-ready-marker'
 
 /** Paths in the generated tree, kept separate so existence checks do not rebuild wrapper bytes. */
 export function getLocalShellReadyWrapperPaths(root: string): readonly string[] {
   const zshDir = `${root}/zsh`
-  return [`${zshDir}/.zshenv`, `${zshDir}/${ZSH_WRAPPER_DIR_MARKER_FILE}`, `${root}/bash/rcfile`]
+  return [
+    `${zshDir}/.zshenv`,
+    `${zshDir}/${ZSH_WRAPPER_DIR_MARKER_FILE}`,
+    `${root}/bash/rcfile`,
+    getPowerShellCodexLaunchScriptPath(root)
+  ]
+}
+
+/** Loaded by the Windows PowerShell bootstrap rather than inlined into its command line. */
+export function getPowerShellCodexLaunchScriptPath(root: string): string {
+  return `${root}/powershell/codex-launch.ps1`
 }
 
 export function getLocalZshWrapperSpec(): ZshStartupHookSpec {
@@ -42,10 +53,12 @@ export function getLocalZshWrapperSpec(): ZshStartupHookSpec {
 // .zprofile, .zshrc and .zlogin from the user's own directory. Nothing Orca
 // writes is read after this file.
 export function buildLocalShellReadyWrapperFiles(root: string): readonly ShellWrapperFile[] {
-  const [zshEnvPath, zshMarkerPath, bashRcfilePath] = getLocalShellReadyWrapperPaths(root)
+  const [zshEnvPath, zshMarkerPath, bashRcfilePath, powerShellCodexPath] =
+    getLocalShellReadyWrapperPaths(root)
   return [
     [zshEnvPath, buildZshStartupHook(getLocalZshWrapperSpec())],
     [zshMarkerPath, ZSH_WRAPPER_DIR_MARKER_CONTENT],
-    [bashRcfilePath, getBashShellReadyRcfileContent()]
+    [bashRcfilePath, getBashShellReadyRcfileContent()],
+    [powerShellCodexPath, getPowerShellCodexShellLaunchPreflight()]
   ]
 }

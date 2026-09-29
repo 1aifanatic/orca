@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildWslInteractiveLoginShellCommand } from '../../shared/wsl-login-shell-command'
 import { resolveSetupRunnerCommand } from '../../shared/setup-runner-command'
 import { resolveWindowsShellLaunchArgs } from './windows-shell-args'
+import { getPowerShellCodexShellLaunchPreflight } from '../pty/codex-shell-launch-preflight'
 // Why resolved rather than hardcoded: the wrapper tree is content-addressed.
 import { getShellReadyWrapperRoot } from './local-pty-shell-ready-wrapper-root'
 
@@ -258,6 +259,50 @@ describe('resolveWindowsShellLaunchArgs', () => {
     )
 
     expect(withWindowsPreflight).toEqual(baseline)
+  })
+
+  it('keeps room for a 5,000-character PowerShell startup command in the launch args', () => {
+    // Why pinned: origin/main embedded about 5,000 characters; inlining the Codex
+    // wrapper dropped that to about 2,800, moving long worker prompts to typed delivery.
+    const startupCommand = `codex ${'x'.repeat(4994)}`
+    const result = resolveWindowsShellLaunchArgs(
+      'powershell.exe',
+      'C:\\Users\\alice',
+      'C:\\Users\\alice',
+      undefined,
+      startupCommand
+    )
+
+    expect(result.startupCommandDeliveredInShellArgs).toBe(true)
+    expect(decodePowerShellCommand(result).trimEnd().endsWith(startupCommand)).toBe(true)
+  })
+
+  it('loads the PowerShell Codex wrapper from the generated wrapper tree', () => {
+    const command = decodePowerShellCommand(
+      resolveWindowsShellLaunchArgs('powershell.exe', 'C:\\Users\\alice', 'C:\\Users\\alice')
+    )
+    const scriptPath = command.match(/\[IO\.File\]::ReadAllText\('([^']+)'\)/)?.[1]
+
+    expect(command).not.toContain('function Global:codex')
+    expect(scriptPath?.startsWith(getShellReadyWrapperRoot())).toBe(true)
+    expect(readFileSync(scriptPath ?? '', 'utf8')).toBe(getPowerShellCodexShellLaunchPreflight())
+  })
+
+  it('inlines the PowerShell Codex wrapper when the wrapper tree cannot be written', () => {
+    const blockingFile = join(userDataPath, 'not-a-directory')
+    writeFileSync(blockingFile, '')
+    process.env.ORCA_USER_DATA_PATH = blockingFile
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const command = decodePowerShellCommand(
+        resolveWindowsShellLaunchArgs('powershell.exe', 'C:\\Users\\alice', 'C:\\Users\\alice')
+      )
+      expect(command).toContain(getPowerShellCodexShellLaunchPreflight())
+      expect(command).not.toContain('ReadAllText')
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('starts Git Bash as an interactive login shell with UTF-8 console setup', () => {

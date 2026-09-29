@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   encodePowerShellCommand,
   getPowerShellOsc133Bootstrap
 } from './powershell-osc133-bootstrap'
 import { getShellLaunchConfig } from './daemon/shell-ready'
 import { resolveWindowsShellLaunchArgs } from './providers/windows-shell-args'
+import { getPowerShellCodexLaunchScriptPath } from './providers/local-pty-shell-ready-wrapper-fileset'
+import { getShellReadyWrapperRoot } from './providers/local-pty-shell-ready-wrapper-root'
+import { getPowerShellCodexShellLaunchPreflightLoader } from './pty/codex-shell-launch-preflight'
 import { STARTUP_COMMAND_FEATURES } from './shell-startup-launch-intent-fixtures'
 
 describe('PowerShell OSC 133 bootstrap', () => {
@@ -54,13 +60,39 @@ describe('PowerShell OSC 133 bootstrap', () => {
   describe.each([
     [
       'daemon shell-ready',
-      () => getShellLaunchConfig('powershell.exe', STARTUP_COMMAND_FEATURES).args ?? []
+      () => getShellLaunchConfig('powershell.exe', STARTUP_COMMAND_FEATURES).args ?? [],
+      () => getPowerShellOsc133Bootstrap()
     ],
     [
       'windows shell args',
-      () => resolveWindowsShellLaunchArgs('pwsh.exe', 'C:\\repo', 'C:\\repo').shellArgs
+      () => resolveWindowsShellLaunchArgs('pwsh.exe', 'C:\\repo', 'C:\\repo').shellArgs,
+      // Why: Windows loads the Codex wrapper from the generated tree to keep command-line room.
+      () =>
+        getPowerShellOsc133Bootstrap(
+          getPowerShellCodexShellLaunchPreflightLoader(
+            getPowerShellCodexLaunchScriptPath(getShellReadyWrapperRoot())
+          )
+        )
     ]
-  ])('%s PowerShell launch', (_name, getArgs) => {
+  ])('%s PowerShell launch', (_name, getArgs, getExpectedBootstrap) => {
+    let previousUserDataPath: string | undefined
+    let userDataPath: string
+
+    beforeEach(() => {
+      previousUserDataPath = process.env.ORCA_USER_DATA_PATH
+      userDataPath = mkdtempSync(join(tmpdir(), 'powershell-bootstrap-test-'))
+      process.env.ORCA_USER_DATA_PATH = userDataPath
+    })
+
+    afterEach(() => {
+      if (previousUserDataPath === undefined) {
+        delete process.env.ORCA_USER_DATA_PATH
+      } else {
+        process.env.ORCA_USER_DATA_PATH = previousUserDataPath
+      }
+      rmSync(userDataPath, { recursive: true, force: true })
+    })
+
     it('delivers the bootstrap unmangled', () => {
       const args = getArgs()
       const encodedIndex = args.indexOf('-EncodedCommand')
@@ -71,7 +103,7 @@ describe('PowerShell OSC 133 bootstrap', () => {
 
       const delivered = Buffer.from(args[encodedIndex + 1] ?? '', 'base64').toString('utf16le')
 
-      expect(delivered.startsWith(getPowerShellOsc133Bootstrap())).toBe(true)
+      expect(delivered.startsWith(getExpectedBootstrap())).toBe(true)
     })
   })
 })

@@ -8,6 +8,12 @@ import {
 } from '../../shared/wsl-login-shell-command'
 import { getBashWrapperLaunchArgs } from './local-pty-shell-ready'
 import { ensureShellReadyWrappersAt } from './local-pty-shell-ready-wrapper-generation'
+import { getPowerShellCodexLaunchScriptPath } from './local-pty-shell-ready-wrapper-fileset'
+import { getShellReadyWrapperRoot } from './local-pty-shell-ready-wrapper-root'
+import {
+  getPowerShellCodexShellLaunchPreflight,
+  getPowerShellCodexShellLaunchPreflightLoader
+} from '../pty/codex-shell-launch-preflight'
 import {
   encodePowerShellCommand,
   getPowerShellOsc133Bootstrap
@@ -112,6 +118,16 @@ function getPowerShellRestoreCwdCommand(cwd: string): string {
   ].join('\n')
 }
 
+// Why loaded from the wrapper tree: the startup command shares this payload's
+// command-line budget, and inlining the Codex wrapper halved what fits.
+function getPowerShellCodexLaunchPreflight(): string {
+  const root = getShellReadyWrapperRoot()
+  if (!ensureShellReadyWrappersAt(root)) {
+    return getPowerShellCodexShellLaunchPreflight()
+  }
+  return getPowerShellCodexShellLaunchPreflightLoader(getPowerShellCodexLaunchScriptPath(root))
+}
+
 function getPowerShellEncodedCommand(
   cwd: string,
   startupCommand?: string
@@ -119,7 +135,7 @@ function getPowerShellEncodedCommand(
   encodedCommand: string
   startupCommandDeliveredInShellArgs?: boolean
 } {
-  const bootstrap = `${getPowerShellOsc133Bootstrap()}${getPowerShellRestoreCwdCommand(cwd)}`
+  const bootstrap = `${getPowerShellOsc133Bootstrap(getPowerShellCodexLaunchPreflight())}${getPowerShellRestoreCwdCommand(cwd)}`
   if (!startupCommand || startupCommand.length > STARTUP_COMMAND_TEXT_MAX_CHARS) {
     return { encodedCommand: encodePowerShellCommand(bootstrap) }
   }

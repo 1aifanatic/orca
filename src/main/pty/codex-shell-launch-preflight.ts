@@ -1,6 +1,7 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildPosixCommandPathLookupScript } from '../../shared/posix-command-path-lookup'
+import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { getBundledLauncherPath } from '../cli/bundled-cli-launcher-path'
 import {
   fishCodexInteractiveArgv,
@@ -158,4 +159,11 @@ if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
     }
 }
 Remove-Variable orcaCodexCommand -ErrorAction SilentlyContinue`
+}
+
+// Why ScriptBlock over dot-sourcing the path: execution policy gates script
+// files, never inline text, so this reaches Restricted/AllSigned hosts as the
+// inlined wrapper does.
+export function getPowerShellCodexShellLaunchPreflightLoader(scriptPath: string): string {
+  return `try { . ([ScriptBlock]::Create([IO.File]::ReadAllText(${quotePowerShellLiteral(scriptPath)}))) } catch { Write-Error $_ -ErrorAction Continue }`
 }
