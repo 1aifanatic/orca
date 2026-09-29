@@ -1,6 +1,7 @@
 import { lstat } from 'node:fs/promises'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree/removal'
+import { windowsLongPathGitArgs } from '../../shared/windows-long-path-git-args'
 import { isSubmoduleWorktreeRemovalRefusal } from '../../shared/worktree/submodule-removal'
 import { removeHostTree } from '../host-tree-removal'
 import { withSpan } from '../observability/tracer'
@@ -62,7 +63,10 @@ async function performRemoveWorktree(
 
   // Why no timeout: this is a write, so none applies by default, and Git deletes the whole checkout
   // here (prod p90 29 s); a deadline would kill a legitimate large delete halfway through.
-  const args = ['worktree', 'remove']
+  // Why long paths: creation checks out with them on Windows, so deleting without them fails with
+  // "Filename too long" (#6433) and leaves the branch behind via the Windows recovery.
+  const longPathArgs = windowsLongPathGitArgs(repoPath)
+  const args = [...longPathArgs, 'worktree', 'remove']
   if (force) {
     args.push('--force')
   }
@@ -76,7 +80,7 @@ async function performRemoveWorktree(
     // Why: Git refuses non-force removal of a worktree with an initialised submodule even when clean; re-prove cleanliness, then --force.
     await assertWorktreeCleanForRemoval(worktreePath, false, options)
     await gitExecFileAsync(
-      ['worktree', 'remove', '--force', worktreePath],
+      [...longPathArgs, 'worktree', 'remove', '--force', worktreePath],
       gitExecOptions(repoPath, options)
     )
   }

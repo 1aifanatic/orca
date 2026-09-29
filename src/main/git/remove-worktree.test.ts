@@ -346,7 +346,7 @@ branch refs/heads/main
         knownRemovedWorktree: { branch: '', head: '', locked: false }
       })
 
-      expect(getGitCalls()).toEqual([`git worktree remove ${worktreePath}`])
+      expect(getGitCalls()).toEqual([`git -c core.longpaths=true worktree remove ${worktreePath}`])
     } finally {
       Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
     }
