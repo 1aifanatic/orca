@@ -1,6 +1,7 @@
 #include "OrcaSelectableTextShadowNode.h"
 #include "OrcaSelectableTextRunShadowNode.h"
 #import "OrcaSelectableTextAttributedString.h"
+#import "OrcaSelectableTextLayoutManager.h"
 #import <UIKit/UIKit.h>
 #include <react/renderer/components/view/ViewShadowNode.h>
 #include <react/renderer/mounting/ShadowView.h>
@@ -19,16 +20,13 @@ namespace {
 struct OrcaSelectableTextMeasureKey {
   AttributedString attributedString;
   std::vector<OrcaSelectableTextParagraphStyleRange> paragraphStyleRanges;
-  int numberOfLines;
-  int ellipsizeMode;
   LayoutConstraints layoutConstraints;
 };
 
 bool operator==(const OrcaSelectableTextMeasureKey &lhs, const OrcaSelectableTextMeasureKey &rhs)
 {
   return areAttributedStringsEquivalentLayoutWise(lhs.attributedString, rhs.attributedString) &&
-      lhs.paragraphStyleRanges == rhs.paragraphStyleRanges && lhs.numberOfLines == rhs.numberOfLines &&
-      lhs.ellipsizeMode == rhs.ellipsizeMode && lhs.layoutConstraints == rhs.layoutConstraints;
+      lhs.paragraphStyleRanges == rhs.paragraphStyleRanges && lhs.layoutConstraints == rhs.layoutConstraints;
 }
 
 } // namespace
@@ -43,7 +41,7 @@ struct std::hash<facebook::react::OrcaSelectableTextMeasureKey> {
       facebook::react::hash_combine(
           seed, range.location, range.length, range.firstLineHeadIndent, range.headIndent, range.paragraphSpacing);
     }
-    facebook::react::hash_combine(seed, key.numberOfLines, key.ellipsizeMode, key.layoutConstraints);
+    facebook::react::hash_combine(seed, key.layoutConstraints);
     return seed;
   }
 };
@@ -59,34 +57,22 @@ SimpleThreadSafeCache<OrcaSelectableTextMeasureKey, Size, kSimpleThreadSafeCache
   return cache;
 }
 
-// React Native's text measurer can't see paragraph indents, so measure with TextKit
-// configured exactly like the view's UITextView.
+// React Native's text measurer can't see paragraph indents, so measure with the view's TextKit stack.
 Size measureWithTextKit(const OrcaSelectableTextMeasureKey &key)
 {
+  const auto &constraints = key.layoutConstraints;
   NSTextStorage *textStorage = [[NSTextStorage alloc]
       initWithAttributedString:OrcaSelectableTextNSAttributedString(
                                    key.attributedString, key.paragraphStyleRanges)];
-  NSLayoutManager *layoutManager = [[NSLayoutManager alloc] init];
-  layoutManager.usesFontLeading = NO;
-  const auto &constraints = key.layoutConstraints;
+  // Like RCTTextLayoutManager: measuring an empty string can crash or freeze TextKit.
+  if (textStorage.length == 0) {
+    return constraints.clamp({0, 0});
+  }
   const CGFloat maximumWidth =
       std::isfinite(constraints.maximumSize.width) ? constraints.maximumSize.width : CGFLOAT_MAX;
   NSTextContainer *textContainer =
-      [[NSTextContainer alloc] initWithSize:CGSizeMake(maximumWidth, CGFLOAT_MAX)];
-  textContainer.lineFragmentPadding = 0;
-  textContainer.maximumNumberOfLines = key.numberOfLines;
-  const auto ellipsizeMode = static_cast<OrcaSelectableTextEllipsizeMode>(key.ellipsizeMode);
-  if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Head) {
-    textContainer.lineBreakMode = NSLineBreakByTruncatingHead;
-  } else if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Middle) {
-    textContainer.lineBreakMode = NSLineBreakByTruncatingMiddle;
-  } else if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Clip) {
-    textContainer.lineBreakMode = NSLineBreakByClipping;
-  } else {
-    textContainer.lineBreakMode = NSLineBreakByTruncatingTail;
-  }
-  [layoutManager addTextContainer:textContainer];
-  [textStorage addLayoutManager:layoutManager];
+      OrcaSelectableTextMakeTextContainer(textStorage, CGSizeMake(maximumWidth, CGFLOAT_MAX));
+  NSLayoutManager *layoutManager = textContainer.layoutManager;
   [layoutManager ensureLayoutForTextContainer:textContainer];
   // Like React Native's measurer (RCTTextLayoutManager), wrapped text takes the full width.
   NSString *string = textStorage.string;
@@ -247,8 +233,6 @@ Size OrcaSelectableTextShadowNode::measureContent(
     const OrcaSelectableTextMeasureKey key{
         baseAttributedString,
         paragraphStyleRanges,
-        baseProps.numberOfLines,
-        static_cast<int>(baseProps.ellipsizeMode),
         layoutConstraints,
     };
     return measureCache().get(key, [&]() -> Size { return measureWithTextKit(key); });

@@ -30,3 +30,14 @@
 }
 
 @end
+
+NSTextContainer *OrcaSelectableTextMakeTextContainer(NSTextStorage *textStorage, CGSize size)
+{
+  OrcaSelectableTextLayoutManager *layoutManager = [[OrcaSelectableTextLayoutManager alloc] init];
+  layoutManager.usesFontLeading = NO;
+  [textStorage addLayoutManager:layoutManager];
+  NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:size];
+  textContainer.lineFragmentPadding = 0;
+  [layoutManager addTextContainer:textContainer];
+  return textContainer;
+}

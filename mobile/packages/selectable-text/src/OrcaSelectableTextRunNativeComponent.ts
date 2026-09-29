@@ -47,7 +47,6 @@ interface NativeProps extends ViewProps {
   paragraphHeadIndent?: WithDefault<Float, 0>
   paragraphSpacing?: WithDefault<Float, 0>
   onPress?: BubblingEventHandler<TargetedEvent>
-  onLongPress?: BubblingEventHandler<TargetedEvent>
 }
 
 export default codegenNativeComponent<NativeProps>('OrcaSelectableTextRun', {

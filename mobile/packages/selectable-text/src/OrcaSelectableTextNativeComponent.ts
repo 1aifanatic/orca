@@ -21,12 +21,8 @@ interface SelectionChangeEvent extends TargetedEvent {
   end: Int32
 }
 
-type EllipsizeMode = 'head' | 'middle' | 'tail' | 'clip'
-
 interface NativeProps extends ViewProps {
-  numberOfLines?: Int32
   allowFontScaling?: WithDefault<boolean, true>
-  ellipsizeMode?: WithDefault<EllipsizeMode, 'tail'>
   selectable?: boolean
   /**
    * Callback fired when the text selection changes.

@@ -28,11 +28,10 @@ export type SelectionChangeEvent = NativeSyntheticEvent<{
 
 export type SelectableTextProps = Omit<
   TextProps,
-  'onPress' | 'onLongPress' | 'onTextLayout' | 'style'
+  'onPress' | 'onLongPress' | 'onTextLayout' | 'style' | 'numberOfLines' | 'ellipsizeMode'
 > & {
   style?: StyleProp<TextStyle>
   onPress?: () => void
-  onLongPress?: () => void
   onSelectionChange?: (event: SelectionChangeEvent) => void
 }
 
@@ -51,7 +50,6 @@ type RunsProps = {
   children: ReactNode
   style: TextStyle
   onPress?: () => void
-  onLongPress?: () => void
 }
 
 // Fragments would put bare strings under the native view, so lift their children.
@@ -81,7 +79,7 @@ function joinAdjacentText(children: ReactNode[]): ReactNode[] {
   return joined
 }
 
-function Runs({ children, style, onPress, onLongPress }: RunsProps): ReactNode {
+function Runs({ children, style, onPress }: RunsProps): ReactNode {
   const paragraph = useContext(ParagraphStyleContext)
   const runStyle = useMemo(() => toRunStyle(style), [style])
   const runs = joinAdjacentText(flattenFragments(children)).map((child, index) => {
@@ -100,7 +98,6 @@ function Runs({ children, style, onPress, onLongPress }: RunsProps): ReactNode {
         paragraphHeadIndent={paragraph?.headIndent}
         paragraphSpacing={paragraph?.spacing}
         onPress={onPress ? () => onPress() : undefined}
-        onLongPress={onLongPress ? () => onLongPress() : undefined}
       />
     )
   })
@@ -111,12 +108,11 @@ function NestedText({
   parentStyle,
   style,
   children,
-  onPress,
-  onLongPress
+  onPress
 }: SelectableTextProps & { parentStyle: TextStyle }): ReactNode {
   const inherited = useMemo(() => inheritTextStyle(parentStyle, style), [parentStyle, style])
   return (
-    <Runs style={inherited} onPress={onPress} onLongPress={onLongPress}>
+    <Runs style={inherited} onPress={onPress}>
       {children}
     </Runs>
   )
@@ -124,7 +120,7 @@ function NestedText({
 
 export function SelectableText(props: SelectableTextProps): ReactNode {
   const parentStyle = useContext(InheritedStyleContext)
-  const { style, children, onPress, onLongPress, onSelectionChange, ...rest } = props
+  const { style, children, onPress, onSelectionChange, ...rest } = props
   const rootStyle = useMemo(() => inheritTextStyle({}, style), [style])
   if (parentStyle) {
     return <NestedText {...props} parentStyle={parentStyle} />
@@ -132,7 +128,7 @@ export function SelectableText(props: SelectableTextProps): ReactNode {
   // Only opted-in selectable text pays for a UITextView.
   if (Platform.OS !== 'ios' || rest.selectable !== true) {
     return (
-      <Text {...rest} style={style} onPress={onPress} onLongPress={onLongPress}>
+      <Text {...rest} style={style} onPress={onPress}>
         {children}
       </Text>
     )
@@ -143,7 +139,7 @@ export function SelectableText(props: SelectableTextProps): ReactNode {
       style={toRunStyle(rootStyle)}
       onSelectionChange={onSelectionChange}
     >
-      <Runs style={rootStyle} onPress={onPress} onLongPress={onLongPress}>
+      <Runs style={rootStyle} onPress={onPress}>
         {children}
       </Runs>
     </OrcaSelectableTextNativeComponent>

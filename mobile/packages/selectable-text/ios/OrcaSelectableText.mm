@@ -50,23 +50,19 @@ using namespace facebook::react;
     self.clipsToBounds = true;
 
     _textStorage = [[NSTextStorage alloc] init];
-    OrcaSelectableTextLayoutManager *layoutManager = [[OrcaSelectableTextLayoutManager alloc] init];
-    [_textStorage addLayoutManager:layoutManager];
-    NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:CGSizeMake(0, CGFLOAT_MAX)];
+    NSTextContainer *textContainer =
+        OrcaSelectableTextMakeTextContainer(_textStorage, CGSizeMake(0, CGFLOAT_MAX));
     textContainer.widthTracksTextView = YES;
-    [layoutManager addTextContainer:textContainer];
+    // A default UITextView uses TextKit 2 on iOS 16+; this TextKit 1 stack is what measurement matches.
     _textView = [[UITextView alloc] initWithFrame:CGRectZero textContainer:textContainer];
     _textView.scrollEnabled = false;
     _textView.editable = false;
     _textView.textContainerInset = UIEdgeInsetsZero;
-    _textView.textContainer.lineFragmentPadding = 0;
     _textView.delegate = self;
-    // Must match the shadow node, which measures with usesFontLeading = NO.
-    _textView.layoutManager.usesFontLeading = NO;
     [self addSubview:_textView];
 
-    const auto longPressGestureRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:self
-                                                                                          action:@selector(handleLongPressIfNecessary:)];
+    // No action: a hold long enough to start a selection must not also count as a tap.
+    const auto longPressGestureRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:nil action:nil];
     longPressGestureRecognizer.delegate = self;
 
     const auto pressGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self
@@ -111,15 +107,27 @@ using namespace facebook::react;
 - (void)layoutSubviews
 {
   [super layoutSubviews];
-  // _textView's frame is assigned inside drawRect, which only fires when
-  // state changes. Trigger a redraw whenever the host frame moves out from
-  // under it (rotation, parent relayout) so the text view resizes.
+  [self syncTextViewFrame];
+}
+
+- (void)finalizeUpdates:(RNComponentViewUpdateMask)updateMask
+{
+  [super finalizeUpdates:updateMask];
+  if (updateMask & RNComponentViewUpdateMaskState) {
+    [self syncAttributedText];
+  }
+  [self syncTextViewFrame];
+}
+
+- (void)syncTextViewFrame
+{
+  // Re-assigning the frame flushes layout, which clears the selection; only move it when it changed.
   if (!CGRectEqualToRect(_textView.frame, _view.frame)) {
-    [self setNeedsDisplay];
+    _textView.frame = _view.frame;
   }
 }
 
-- (void)drawRect:(CGRect)rect
+- (void)syncAttributedText
 {
   if (!_state) {
     return;
@@ -129,41 +137,29 @@ using namespace facebook::react;
   const auto convertedAttrString =
       OrcaSelectableTextNSAttributedString(stateData.attributedString, stateData.paragraphStyleRanges);
 
-  // Setting attributedText clears any active text selection, and re-assigning
-  // the frame triggers a layout flush that has the same effect. Bail out
-  // entirely when nothing actually changed so a JS-side state update made in
-  // response to onSelectionChange doesn't deselect what the user is selecting.
-  const BOOL textChanged = ![_textView.attributedText isEqualToAttributedString:convertedAttrString];
-  const BOOL frameChanged = !CGRectEqualToRect(_textView.frame, _view.frame);
-  if (!textChanged && !frameChanged) {
+  // Setting attributedText clears any active text selection. Bail out when
+  // nothing actually changed so a JS-side state update made in response to
+  // onSelectionChange doesn't deselect what the user is selecting.
+  if ([_textView.attributedText isEqualToAttributedString:convertedAttrString]) {
     return;
   }
-  if (textChanged) {
-    // Reassigning attributedText clears any active selection. Save it and
-    // restore after, while suppressing the synthetic textViewDidChangeSelection
-    // events the clear-then-restore would otherwise produce — those would
-    // round-trip to JS and re-trigger this same path, causing a loop.
-    const NSRange savedRange = _textView.selectedRange;
-    _suppressSelectionChange = YES;
-    _textView.attributedText = convertedAttrString;
-    if (savedRange.length > 0 && NSMaxRange(savedRange) <= _textView.attributedText.length) {
-      _textView.selectedRange = savedRange;
-    }
-    _suppressSelectionChange = NO;
+  // Reassigning attributedText clears any active selection. Save it and
+  // restore after, while suppressing the synthetic textViewDidChangeSelection
+  // events the clear-then-restore would otherwise produce — those would
+  // round-trip to JS and re-trigger this same path, causing a loop.
+  const NSRange savedRange = _textView.selectedRange;
+  _suppressSelectionChange = YES;
+  _textView.attributedText = convertedAttrString;
+  if (savedRange.length > 0 && NSMaxRange(savedRange) <= _textView.attributedText.length) {
+    _textView.selectedRange = savedRange;
   }
-  if (frameChanged) {
-    _textView.frame = _view.frame;
-  }
+  _suppressSelectionChange = NO;
 }
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
 {
   const auto &oldViewProps = *std::static_pointer_cast<OrcaSelectableTextProps const>(_props);
   const auto &newViewProps = *std::static_pointer_cast<OrcaSelectableTextProps const>(props);
-
-  if (oldViewProps.numberOfLines != newViewProps.numberOfLines) {
-    _textView.textContainer.maximumNumberOfLines = newViewProps.numberOfLines;
-  }
 
   if (oldViewProps.selectable != newViewProps.selectable) {
     _textView.selectable = newViewProps.selectable;
@@ -174,19 +170,6 @@ using namespace facebook::react;
       _textView.adjustsFontForContentSizeCategory = newViewProps.allowFontScaling;
     }
   }
-
-  if (oldViewProps.ellipsizeMode != newViewProps.ellipsizeMode) {
-    if (newViewProps.ellipsizeMode == OrcaSelectableTextEllipsizeMode::Head) {
-      _textView.textContainer.lineBreakMode = NSLineBreakMode::NSLineBreakByTruncatingHead;
-    } else if (newViewProps.ellipsizeMode == OrcaSelectableTextEllipsizeMode::Middle) {
-      _textView.textContainer.lineBreakMode = NSLineBreakMode::NSLineBreakByTruncatingMiddle;
-    } else if (newViewProps.ellipsizeMode == OrcaSelectableTextEllipsizeMode::Tail) {
-      _textView.textContainer.lineBreakMode = NSLineBreakMode::NSLineBreakByTruncatingTail;
-    } else if (newViewProps.ellipsizeMode == OrcaSelectableTextEllipsizeMode::Clip) {
-      _textView.textContainer.lineBreakMode = NSLineBreakMode::NSLineBreakByClipping;
-    }
-  }
-  
 
   // I'm not sure if this is really the right way to handle this style. This means that the entire _view_ the text
   // is in will have this background color applied. To apply it just to a particular part of a string, you'd need
@@ -203,7 +186,6 @@ using namespace facebook::react;
 - (void)updateState:(const facebook::react::State::Shared &)state oldState:(const facebook::react::State::Shared &)oldState
 {
   _state = std::static_pointer_cast<const OrcaSelectableTextShadowNode::ConcreteState>(state);
-  [self setNeedsDisplay];
 }
 
 // MARK: - UIGestureRecognizerDelegate
@@ -280,16 +262,6 @@ using namespace facebook::react;
 
   if (child) {
     child->onPress({});
-  }
-}
-
-- (void)handleLongPressIfNecessary:(UILongPressGestureRecognizer*)sender
-{
-  const auto location = [self getLocationOfPress:sender];
-  const auto child = [self getTouchChild:location];
-
-  if (child) {
-    child->onLongPress({});
   }
 }
 
