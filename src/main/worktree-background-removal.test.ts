@@ -75,6 +75,33 @@ describe('background worktree removal', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
+  it('answers a request whose delete a concurrent removal of the same worktree replaced', async () => {
+    // The desktop IPC and runtime RPC removal paths coalesce separately, so both can be accepted.
+    const first = deferred<Record<string, never>>()
+    const second = deferred<{ preservedBranch: { branchName: string; head: string } }>()
+    const firstResult = startBackgroundWorktreeRemoval({
+      removal,
+      run: () => first.promise,
+      publish: () => {}
+    })
+    const secondResult = startBackgroundWorktreeRemoval({
+      removal,
+      run: () => second.promise,
+      publish: () => {}
+    })
+
+    first.resolve({})
+    await expect(firstResult).resolves.toEqual({})
+    expect(isPending()).toBe(true)
+
+    second.resolve({ preservedBranch: { branchName: 'feature', head: 'abc' } })
+    await expect(secondResult).resolves.toEqual({
+      preservedBranch: { branchName: 'feature', head: 'abc' }
+    })
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(isPending()).toBe(false)
+  })
+
   it('rejects with the delete error and clears the row so a retry starts over', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = startBackgroundWorktreeRemoval({

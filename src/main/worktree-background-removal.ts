@@ -189,6 +189,7 @@ function runBackgroundWorktreeRemoval(
   stopControllers.add(controller)
   const settled: Promise<void> = settleBackgroundWorktreeRemoval(
     record,
+    settlementsByWorktreeId.get(record.worktreeId),
     job,
     recorded,
     controller.signal
@@ -203,6 +204,7 @@ function runBackgroundWorktreeRemoval(
 
 async function settleBackgroundWorktreeRemoval(
   record: WorktreeRemovalRecord,
+  settlement: RemovalSettlement | undefined,
   job: BackgroundWorktreeRemovalJob,
   recorded: Promise<void>,
   stopSignal: AbortSignal
@@ -227,11 +229,12 @@ async function settleBackgroundWorktreeRemoval(
   const cleared = pendingByWorktreeId.get(record.worktreeId) === record
   if (cleared) {
     pendingByWorktreeId.delete(record.worktreeId)
-    const settlement = settlementsByWorktreeId.get(record.worktreeId)
     settlementsByWorktreeId.delete(record.worktreeId)
-    if (settlement) {
-      settle(settlement)
-    }
+  }
+  // Why this run's own settlement: desktop IPC and runtime RPC coalesce separately, so a concurrent
+  // removal can replace the record, and the request waiting on this delete must still get its reply.
+  if (settlement) {
+    settle(settlement)
   }
   // Why notify before the clear is on disk: the clear is bookkeeping; a crash before it lands only
   // re-runs a finish that re-derives what is left from Git.
