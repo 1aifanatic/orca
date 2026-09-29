@@ -329,20 +329,23 @@ describe('DashboardAgentRow', () => {
   it.each([
     ['recorded', { mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 2_000 } }],
     ["an old host's flag", { interrupted: true }]
-  ] as const)("renders a user's Stop (%s) as interrupted, with plain text on the secondary line", (_, ending) => {
-    const markup = renderEndedRow(ending)
-    const promptIndex = markup.indexOf('Give me a quick update')
-    const interruptedIndex = markup.indexOf('>interrupted<')
+  ] as const)(
+    "renders a user's Stop (%s) as interrupted, with plain text on the secondary line",
+    (_, ending) => {
+      const markup = renderEndedRow(ending)
+      const promptIndex = markup.indexOf('Give me a quick update')
+      const interruptedIndex = markup.indexOf('>interrupted<')
 
-    // Why: the plain text belongs on the response line so it does not compete with the prompt.
-    expect(markup).toContain('data-slot="tooltip-trigger"')
-    expect(markup).toContain('aria-label="Interrupted by user"')
-    expect(markup).not.toContain('data-slot="badge"')
-    expect(interruptedIndex).toBeGreaterThan(promptIndex)
-    expect(markup).toContain('bg-muted-foreground')
-    expect(markup).not.toContain('bg-red-500')
-    expect(markup).not.toContain('lucide-circle-check')
-  })
+      // Why: the plain text belongs on the response line so it does not compete with the prompt.
+      expect(markup).toContain('data-slot="tooltip-trigger"')
+      expect(markup).toContain('aria-label="Interrupted by user"')
+      expect(markup).not.toContain('data-slot="badge"')
+      expect(interruptedIndex).toBeGreaterThan(promptIndex)
+      expect(markup).toContain('bg-muted-foreground')
+      expect(markup).not.toContain('bg-red-500')
+      expect(markup).not.toContain('lucide-circle-check')
+    }
+  )
 
   it('reserves a real working tool line before tool metadata arrives', () => {
     const emptyToolMarkup = renderRow(makeAgent())

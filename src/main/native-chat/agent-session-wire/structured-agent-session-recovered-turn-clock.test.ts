@@ -140,13 +140,14 @@ describe('a turn recovery settled after its host went away', () => {
       'an exit observed before the restart',
       { state: 'interrupted', completedAt: EXIT_OBSERVED },
       'interruption',
-      'interrupted'
+      // A turn the user did not stop is a fault, marked as a failure is.
+      'failed'
     ]
   ] satisfies [
     string,
     StructuredAgentSessionTurnVerdict,
     'unconfirmed' | 'interruption',
-    'unconfirmed' | 'interrupted'
+    'unconfirmed' | 'failed'
   ][])(
     'is done as of the recovery with the end the host observed, never a success: %s',
     async (_label, verdict, outcome, mark) => {

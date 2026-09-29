@@ -96,9 +96,7 @@ describe('mobile monitoring indicators', () => {
       renderer = create(createElement(AgentStateDot, { state }))
     })
 
-    const dot = renderer?.root
-      .findAllByType('View')
-      .find((view) => Array.isArray(view.props.style))
+    const dot = renderer?.root.findAllByType('View').find((view) => Array.isArray(view.props.style))
     expect(dot?.props.style).toContainEqual({ backgroundColor: color })
   })
 })
