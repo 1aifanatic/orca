@@ -1,20 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as WorktreeCreatePreparation from '../worktree-create-preparation'
 import type { Project } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
 import { _resetWslCachesForTests, _setWslCachesForTests } from '../wsl'
 
 const mocks = vi.hoisted(() => ({
-  prefetchWorktreeCreateBase: vi.fn(),
-  prepareWorktreeCreateForRepo: vi.fn()
+  prefetchWorktreeCreateBase: vi.fn()
 }))
 
 vi.mock('../worktree-create-base-prefetch', () => ({
   prefetchWorktreeCreateBase: mocks.prefetchWorktreeCreateBase
-}))
-vi.mock('../worktree-create-preparation', async (importOriginal) => ({
-  ...(await importOriginal<typeof WorktreeCreatePreparation>()),
-  prepareWorktreeCreateForRepo: mocks.prepareWorktreeCreateForRepo
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
@@ -54,7 +48,6 @@ const hostPlatform = process.platform
 
 beforeEach(() => {
   mocks.prefetchWorktreeCreateBase.mockReset().mockResolvedValue(undefined)
-  mocks.prepareWorktreeCreateForRepo.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -104,21 +97,15 @@ describe('prefetchManagedWorktreeCreateBase (orca-runtime-get-worktree-terminal-
     )
   })
 
-  it('prepares the checkout the prefetch resolved', async () => {
-    _setWslCachesForTests({ available: true, distros: ['Ubuntu'] })
-    setPlatform('win32')
-    mocks.prefetchWorktreeCreateBase.mockImplementation(async ({ prepareCheckout }) => {
-      await prepareCheckout('origin/main')
-      return 'origin/main'
-    })
+  it('only refreshes the base; it never starts a checkout', async () => {
+    setPlatform('darwin')
     const runtime = new OrcaRuntimeService(makeStore() as never)
 
     await runtime.prefetchManagedWorktreeCreateBase({ repoSelector: 'repo-1' })
 
-    expect(mocks.prepareWorktreeCreateForRepo).toHaveBeenCalledWith(
-      expect.anything(),
-      repo,
-      'origin/main'
+    expect(mocks.prefetchWorktreeCreateBase).toHaveBeenCalledOnce()
+    expect(mocks.prefetchWorktreeCreateBase.mock.calls[0]?.[0]).not.toHaveProperty(
+      'prepareCheckout'
     )
   })
 })

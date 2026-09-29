@@ -659,7 +659,6 @@ describe('registerWorktreeHandlers', () => {
       startupTerminal?: { spawned: boolean; surface?: string }
       timing?: {
         phases: { phase: string }[]
-        preparedCheckout?: { status: string; reason?: string }
       }
     }
     expect(createSetupRunnerScriptMock).toHaveBeenCalledWith(
@@ -726,8 +725,6 @@ describe('registerWorktreeHandlers', () => {
         'spawn_startup_terminal'
       ])
     )
-    // Nothing warmed this repo, so the create must report the cold path rather than stay silent.
-    expect(result.timing?.preparedCheckout).toEqual({ status: 'miss', reason: 'none_armed' })
   })
 
   it('returns the wrapped setup command when startup spawned but setup creation failed', async () => {

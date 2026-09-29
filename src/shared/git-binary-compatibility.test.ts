@@ -205,7 +205,8 @@ describeBinaryCompatibility('real Git binary compatibility', () => {
     await rm(join(repoPath, 'deferred-trash'), { recursive: true, force: true })
   })
 
-  it('removes locked prepared worktrees without a separate unlock', async () => {
+  // Why pin this: the startup sweep reclaims retired locked spare checkouts with one doubled --force.
+  it('removes a locked worktree without a separate unlock', async () => {
     await runGit(['worktree', 'add', '--detach', '--no-checkout', 'compat-discard', 'HEAD'])
     await runGit(['-C', 'compat-discard', 'reset', '--hard', 'HEAD'])
     await runGit(['worktree', 'lock', '--reason', 'owned preparation', 'compat-discard'])
@@ -213,72 +214,6 @@ describeBinaryCompatibility('real Git binary compatibility', () => {
     expect((await runGit(['worktree', 'list', '--porcelain'])).stdout).not.toContain(
       'compat-discard'
     )
-  })
-
-  it('supports prepared worktree creation and finalization', async () => {
-    const head = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
-    await runGit(['worktree', 'add', '--detach', '--no-checkout', 'compat-prepared', 'HEAD'])
-    await runGit(['-C', 'compat-prepared', 'reset', '--hard', 'HEAD'])
-    await runGit([
-      'worktree',
-      'lock',
-      '--reason',
-      'orca-create-preparation:v1:compat',
-      'compat-prepared'
-    ])
-    // Why: `-f -f` moves a locked preparation while preserving its lock reason (Git >=2.25).
-    await runGit(['worktree', 'move', '-f', '-f', 'compat-prepared', 'compat-final'])
-    await runGit([
-      '-C',
-      'compat-final',
-      'checkout',
-      '--no-track',
-      '-b',
-      'compat-prepared-final',
-      head
-    ])
-
-    await expect(runGit(['-C', 'compat-final', 'branch', '--show-current'])).resolves.toMatchObject(
-      { stdout: 'compat-prepared-final\n' }
-    )
-    await expect(runGit(['-C', 'compat-final', 'rev-parse', 'HEAD'])).resolves.toMatchObject({
-      stdout: `${head}\n`
-    })
-    await runGit(['worktree', 'unlock', 'compat-final'])
-    await runGit(['worktree', 'remove', '--force', 'compat-final'])
-    await runGit(['branch', '-D', 'compat-prepared-final'])
-  })
-
-  // Why pin this: the prepared-checkout retarget bound reads these as data, and it fails closed,
-  // so a version that printed a different shape would silently stop every retarget rather than
-  // error. Built with `commit-tree` so the check leaves no ref, branch, or worktree behind.
-  it('measures retarget drift identically on every supported Git', async () => {
-    const tree = (await runGit(['rev-parse', 'HEAD^{tree}'])).stdout.trim()
-    const head = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
-    const ahead1 = (await runGit(['commit-tree', tree, '-p', head, '-m', 'drift 1'])).stdout.trim()
-    const ahead2 = (
-      await runGit(['commit-tree', tree, '-p', ahead1, '-m', 'drift 2'])
-    ).stdout.trim()
-
-    await expect(
-      runGit(['rev-list', '--count', '--max-count=101', '--end-of-options', `${head}..${ahead2}`])
-    ).resolves.toMatchObject({ stdout: '2\n' })
-    // `--max-count` must report the capped number, not the full one: the bound reads it as a
-    // ceiling, so a Git that returned the true count would reject every retarget instead.
-    await expect(
-      runGit(['rev-list', '--count', '--max-count=1', '--end-of-options', `${head}..${ahead2}`])
-    ).resolves.toMatchObject({ stdout: '1\n' })
-    await expect(
-      runGit(['rev-list', '--count', '--max-count=101', '--end-of-options', `${ahead2}..${head}`])
-    ).resolves.toMatchObject({ stdout: '0\n' })
-
-    await expect(runGit(['merge-base', '--end-of-options', head, ahead2])).resolves.toMatchObject({
-      stdout: `${head}\n`
-    })
-    // A parentless commit shares no history, which is the case the bound must reject however few
-    // commits each side carries.
-    const unrelated = (await runGit(['commit-tree', tree, '-m', 'unrelated root'])).stdout.trim()
-    await expect(runGit(['merge-base', '--end-of-options', head, unrelated])).rejects.toBeDefined()
   })
 
   // Why pin this: Orca answers "which remote has this URL" from one `git remote -v`

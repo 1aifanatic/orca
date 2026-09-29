@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const isOnBatteryPowerMock = vi.hoisted(() => vi.fn(() => false))
-const hasPendingPreparationsMock = vi.hoisted(() => vi.fn(() => false))
+const createInFlightMock = vi.hoisted(() => vi.fn(() => false))
 const hasRemovalsInFlightMock = vi.hoisted(() => vi.fn(() => false))
 const setProbeMock = vi.hoisted(() => vi.fn())
 const disposeMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -21,8 +21,8 @@ vi.mock('electron', () => ({
   }
 }))
 
-vi.mock('./worktree-create-preparation', () => ({
-  hasPendingWorktreeCreatePreparations: hasPendingPreparationsMock
+vi.mock('./git/local-worktree-create-activity', () => ({
+  isLocalWorktreeCreateInFlight: createInFlightMock
 }))
 
 vi.mock('./ipc/worktrees/worktree-ipc-context', () => ({
@@ -50,7 +50,7 @@ function installProbe(
 
 beforeEach(() => {
   isOnBatteryPowerMock.mockReturnValue(false)
-  hasPendingPreparationsMock.mockReturnValue(false)
+  createInFlightMock.mockReturnValue(false)
   hasRemovalsInFlightMock.mockReturnValue(false)
   postponeMock.mockClear()
   powerListeners.clear()
@@ -72,8 +72,8 @@ describe('repo maintenance idle gate', () => {
     expect(installProbe({ getWorkingAgentCount: () => 1 }).probe()).toBe(true)
   })
 
-  it('vetoes while a worktree create is prepared or in flight', () => {
-    hasPendingPreparationsMock.mockReturnValue(true)
+  it('vetoes while a worktree create is in flight', () => {
+    createInFlightMock.mockReturnValue(true)
 
     expect(installProbe().probe()).toBe(true)
   })

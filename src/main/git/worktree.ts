@@ -35,6 +35,5 @@ export {
   listWorktreesSharedStrict,
   listWorktreesSharedStrictAllowingTrueEmpty
 } from './worktree-scan-cache'
-export { bumpWorktreeScanGeneration as notifyPreparedWorktreeMutation } from './worktree-scan-cache'
 export { addSparseWorktree } from './worktree-sparse-add'
 export { parseCoreSparseCheckoutFlag } from './worktree-sparse-state'

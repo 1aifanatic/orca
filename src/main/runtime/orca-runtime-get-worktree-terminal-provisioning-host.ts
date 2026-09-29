@@ -7,7 +7,6 @@ import type {
 import type { TerminalCreateOptions } from './runtime-terminal-contracts'
 import type { WorktreeStartupReadinessHost } from './runtime-worktree-startup-readiness'
 import { prefetchWorktreeCreateBase } from '../worktree-create-base-prefetch'
-import { prepareWorktreeCreateForRepo } from '../worktree-create-preparation'
 import { getWorktreeCreatePrefetchGitOptions } from '../project-runtime-git-options'
 
 export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRuntimeWithActivateManagedWorktree {
@@ -54,8 +53,7 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
       repo,
       baseBranch: args.baseBranch,
       runtime: this,
-      gitOptions: getWorktreeCreatePrefetchGitOptions(store, repo),
-      prepareCheckout: (base) => prepareWorktreeCreateForRepo(store, repo, base)
+      gitOptions: getWorktreeCreatePrefetchGitOptions(store, repo)
     })
   }
 }

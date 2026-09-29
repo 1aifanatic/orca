@@ -21,7 +21,6 @@
 // itself becomes a `noopSpan` that swallows all calls — call sites do not
 // need to branch on whether tracing is on.
 
-import type { PreparedCheckoutOutcome } from '../../shared/worktree/create-types'
 import { startSpan, withSpan, type ActiveSpan } from './tracer'
 
 const GIT_FAST_SUCCESS_THRESHOLD_MS = 250
@@ -263,22 +262,9 @@ export function addWorktreeCreatePhaseAttributes(
   timing: {
     totalDurationMs: number
     phases: readonly WorktreeCreatePhaseTiming[]
-    preparedCheckout?: PreparedCheckoutOutcome
   }
 ): void {
   span.setAttribute('worktree.create.total_ms', Math.round(timing.totalDurationMs))
-  if (timing.preparedCheckout) {
-    span.setAttribute('worktree.create.prepared_checkout', timing.preparedCheckout.status)
-    if (timing.preparedCheckout.status === 'hit') {
-      // A retargeted hit still pays a reset, so it must not be read as a free hit.
-      span.setAttribute(
-        'worktree.create.prepared_checkout_retargeted',
-        timing.preparedCheckout.retargeted
-      )
-    } else {
-      span.setAttribute('worktree.create.prepared_checkout_miss', timing.preparedCheckout.reason)
-    }
-  }
   for (const phase of timing.phases) {
     span.setAttribute(`worktree.create.phase.${phase.phase}_ms`, Math.round(phase.durationMs))
   }

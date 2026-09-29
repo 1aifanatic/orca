@@ -32,6 +32,10 @@ import {
 import { initializeMainProcessAutomations } from './main-process-automations'
 import { initializeMainProcessPlugins } from './main-process-plugins'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
+import {
+  collectRetiredPreparationSweepTargets,
+  sweepRetiredWorktreeCreatePreparations
+} from '../retired-worktree-create-preparation-sweep'
 import { runAfterFirstWindowShown } from './first-window-deferral'
 import { logStartupMilestone } from './startup-diagnostics'
 
@@ -87,6 +91,11 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
     ).catch((error) => {
       console.warn('[worktrees] Failed to sweep leftover worktree directories:', error)
     })
+    void sweepRetiredWorktreeCreatePreparations(collectRetiredPreparationSweepTargets(store)).catch(
+      (error) => {
+        console.warn('[worktrees] Failed to reclaim retired spare checkouts:', error)
+      }
+    )
   }, WORKTREE_TRASH_SWEEP_FALLBACK_MS)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   // Why (#16441): the real-home grant runs a codex app-server session. It stays

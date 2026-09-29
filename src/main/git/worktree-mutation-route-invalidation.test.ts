@@ -36,8 +36,7 @@ vi.mock('./worktree', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeModule>()),
   resolveWorktreeAddBaseContext: vi.fn(async () => ({ effectiveBase: 'origin/main' })),
   persistWorktreeCreationBase: vi.fn(),
-  configurePushAutoSetupRemote: vi.fn(),
-  notifyPreparedWorktreeMutation: vi.fn()
+  configurePushAutoSetupRemote: vi.fn()
 }))
 
 vi.mock('./worktree-scan-cache', () => ({
@@ -46,11 +45,6 @@ vi.mock('./worktree-scan-cache', () => ({
 }))
 
 import { addWorktree } from './worktree-add'
-import {
-  discardPreparedWorktree,
-  finalizePreparedWorktree,
-  prepareWorktreeCreateCheckout
-} from './worktree-create-preparation'
 import { moveWorktree } from './worktree-move'
 import { removeWorktree } from './worktree-removal'
 import {
@@ -62,7 +56,6 @@ import {
 const REPO = String.raw`C:\repo`
 const LINKED = String.raw`C:\ws\linked`
 const MOVED = String.raw`C:\ws\moved`
-const PREPARED = String.raw`C:\ws\.orca-preparing\wt`
 
 function hasCachedHostRoute(path: string): boolean {
   return usesHostGitForWslLinkedWorktree(path, 'Ubuntu', 'win32')
@@ -121,49 +114,6 @@ describe('worktree mutations invalidate the WSL linked-worktree Git route', () =
 
     await removeWorktree(REPO, LINKED, true)
 
-    expect(hasCachedHostRoute(LINKED)).toBe(false)
-  })
-
-  it('drops the route after a prepared worktree is discarded', async () => {
-    seedWslLinkedWorktreeGitRoutingForTests(LINKED)
-
-    await discardPreparedWorktree(REPO, LINKED)
-
-    expect(hasCachedHostRoute(LINKED)).toBe(false)
-  })
-
-  it('drops the target route after the prepared checkout is added', async () => {
-    seedWslLinkedWorktreeGitRoutingForTests(PREPARED)
-
-    await prepareWorktreeCreateCheckout(REPO, PREPARED, 'origin/main', 'orca preparation')
-
-    expect(hasCachedHostRoute(PREPARED)).toBe(false)
-  })
-
-  it('drops both routes after the prepared checkout is moved into place', async () => {
-    seedWslLinkedWorktreeGitRoutingForTests(PREPARED)
-    seedWslLinkedWorktreeGitRoutingForTests(LINKED)
-
-    await finalizePreparedWorktree(REPO, PREPARED, LINKED, 'feature', 'origin/main')
-
-    expect(hasCachedHostRoute(PREPARED)).toBe(false)
-    expect(hasCachedHostRoute(LINKED)).toBe(false)
-  })
-
-  it('drops both routes when the finalize move fails', async () => {
-    seedWslLinkedWorktreeGitRoutingForTests(PREPARED)
-    seedWslLinkedWorktreeGitRoutingForTests(LINKED)
-    gitExecFileAsyncMock.mockImplementation(async (args: string[]) =>
-      args.includes('move')
-        ? Promise.reject(new Error('fatal: destination exists'))
-        : { stdout: '', stderr: '' }
-    )
-
-    await expect(
-      finalizePreparedWorktree(REPO, PREPARED, LINKED, 'feature', 'origin/main')
-    ).rejects.toThrow('destination exists')
-
-    expect(hasCachedHostRoute(PREPARED)).toBe(false)
     expect(hasCachedHostRoute(LINKED)).toBe(false)
   })
 

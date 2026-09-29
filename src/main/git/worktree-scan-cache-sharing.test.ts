@@ -36,9 +36,9 @@ import {
   listWorktreesStrict,
   moveWorktree,
   removeWorktree,
-  notifyPreparedWorktreeMutation,
   WORKTREE_LIST_TIMEOUT_MS
 } from './worktree'
+import { bumpWorktreeScanGeneration } from './worktree-scan-cache'
 import { registerWorktreeSuiteHooks } from './worktree-test-harness'
 
 registerWorktreeSuiteHooks()
@@ -211,7 +211,7 @@ describe('listWorktrees in-flight sharing', () => {
 
     const staleScan = listWorktreeGraph('/repo')
     expect(resolvers).toHaveLength(1)
-    notifyPreparedWorktreeMutation('/repo')
+    bumpWorktreeScanGeneration('/repo')
     const freshScan = listWorktreeGraph('/repo')
     expect(resolvers).toHaveLength(2)
 

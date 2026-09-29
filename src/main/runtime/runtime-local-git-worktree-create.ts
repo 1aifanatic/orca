@@ -17,10 +17,6 @@ import type { RemoteFetchResult, RemoteTrackingBase } from './runtime-remote-fet
 import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { isGeneratedWorktreeCreateName } from '../worktree-create-candidates'
 import {
-  consumePreparedWorktreeCreate,
-  type PreparationRearmHolder
-} from '../worktree-create-preparation'
-import {
   failedWorktreeCreationNeedsRetirement,
   retireGeneratedWorktreeName
 } from '../worktree-name-retirement'
@@ -36,7 +32,6 @@ export async function createRuntimeLocalGitWorktree(args: {
     localBaseRefSuggestionDismissed?: boolean
   }
   baseBranch: string
-  workspaceRoot: string
   branchName: string
   worktreePath: string
   effectiveSanitizedName?: string
@@ -58,7 +53,6 @@ export async function createRuntimeLocalGitWorktree(args: {
     options?: LocalGitExecOptions
   ) => Promise<RemoteFetchResult>
   fetchRemote: (repoPath: string, remote: string, options?: LocalGitExecOptions) => Promise<void>
-  rearm: PreparationRearmHolder
 }): Promise<{
   remoteTrackingBase: RemoteTrackingBase | null
   sparseDirectories: string[]
@@ -124,13 +118,10 @@ export async function createRuntimeLocalGitWorktree(args: {
     !args.settings.localBaseRefSuggestionDismissed &&
     Boolean(remoteTrackingBase)
   const remoteOption = remoteTrackingBase ? { remoteTrackingBase } : undefined
-  const preparedWorktreeOptions: AddWorktreeOptions = {
+  const addOptions: AddWorktreeOptions = {
     ...remoteOption,
     ...(suggestLocalBaseRefUpdate ? { suggestLocalBaseRefUpdate } : {}),
-    ...args.localWorktreeGitOptions
-  }
-  const addOptions: AddWorktreeOptions = {
-    ...preparedWorktreeOptions,
+    ...args.localWorktreeGitOptions,
     ...(args.checkoutExistingBranch ? { checkoutExistingBranch: true } : {})
   }
   const shouldRetireGeneratedName =
@@ -139,28 +130,7 @@ export async function createRuntimeLocalGitWorktree(args: {
     isGeneratedWorktreeCreateName(args.effectiveSanitizedName!)
   let addResult: AddWorktreeResult
   try {
-    const preparedAttempt =
-      sparseDirectories.length === 0 && !args.checkoutExistingBranch
-        ? await consumePreparedWorktreeCreate({
-            repoPath: args.repo.path,
-            workspaceRoot: args.workspaceRoot,
-            worktreePath: args.worktreePath,
-            branch: args.branchName,
-            baseBranch: args.baseBranch,
-            refreshLocalBaseRef: args.settings.refreshLocalBaseRefOnWorktreeCreate,
-            options: preparedWorktreeOptions
-          })
-        : null
-    // This path has no create-span recorder, so the miss reason is only observable on the IPC path.
-    if (preparedAttempt?.status === 'miss' && preparedAttempt.rearm) {
-      args.rearm.fire = preparedAttempt.rearm
-    }
-    if (preparedAttempt?.status === 'hit') {
-      addResult = preparedAttempt.result
-      // Deferred, not fired: re-arming is a full `reset --hard`, and the caller still has
-      // materialization probes and terminals ahead of it.
-      args.rearm.fire = preparedAttempt.rearm
-    } else if (sparseDirectories.length > 0) {
+    if (sparseDirectories.length > 0) {
       addResult =
         (await addSparseWorktree(
           args.repo.path,
