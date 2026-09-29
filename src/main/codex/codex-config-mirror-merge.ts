@@ -1,8 +1,7 @@
 import { readMcpServerTomlOwnership } from './config-toml-mcp-servers'
-import {
-  getProjectsDefinedOutsideTables,
-  repairUnparseableCodexConfig
-} from './codex-managed-config-validity'
+import { getTomlTable, parseCodexConfigToml } from './codex-config-toml-document'
+import { repairUnparseableCodexConfig } from './codex-config-toml-repair'
+import { normalizeCodexProjectPathForLookup } from './config-toml-trust'
 import {
   deduplicateProjectTomlSections,
   getMcpServerTomlSectionName,
@@ -83,4 +82,23 @@ export function mergeSystemCodexConfigIntoRuntime(
       )
       .map((section) => section.block)
   ])
+}
+
+/** Project keys ~/.codex defines inline or with dotted keys rather than as `[projects."…"]` tables. */
+function getProjectsDefinedOutsideTables(config: string): ReadonlySet<string> {
+  const parsed = parseCodexConfigToml(config)
+  const projects = parsed.ok ? getTomlTable(parsed.table.projects) : null
+  if (!projects) {
+    return new Set()
+  }
+  const tableProjects = new Set(
+    getTomlSections(config)
+      .filter((section) => isRuntimeProjectTomlSection(section.header))
+      .map((section) => getTomlSectionHeaderKey(section.header))
+  )
+  return new Set(
+    Object.keys(projects)
+      .map((projectPath) => `project:${normalizeCodexProjectPathForLookup(projectPath)}`)
+      .filter((key) => !tableProjects.has(key))
+  )
 }

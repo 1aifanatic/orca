@@ -14,6 +14,7 @@ import {
 import {
   clearCodexConfigTomlEditRefusalReport,
   CodexConfigTomlEditRefusedError,
+  refuseUnreadableCodexConfigResult,
   reportCodexConfigTomlEditRefusal,
   reportCodexTrustWriteRefusals
 } from './codex-config-toml-checked-edit'
@@ -388,5 +389,32 @@ describe('Codex config reports about one file log once per kind', () => {
       rmSync(dir, { recursive: true, force: true })
       warn.mockRestore()
     }
+  })
+})
+
+describe('a whole-document mirror result', () => {
+  const unreadable = 'model = "a"\nmodel = "b"\n'
+  const refuse = (inputs: (string | null)[]) =>
+    refuseUnreadableCodexConfigResult({
+      configPath: '/tmp/mirror-result-probe/config.toml',
+      result: unreadable,
+      inputs,
+      context: 'Skipped mirroring the Codex config into a managed home'
+    })
+
+  it('is refused when every input parses, counting Orca-repairable duplicates as parsing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const orcaDuplicates =
+        '["projects"."/r"]\ntrust_level = "trusted"\n\n[projects."/r"]\ntrust_level = "trusted"\n'
+      expect(refuse(['model = "a"\n', null, orcaDuplicates])).toBe(true)
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('is written as before when an input was broken by hand', () => {
+    expect(refuse(['model = "a"\n', 'broken = \n'])).toBe(false)
   })
 })

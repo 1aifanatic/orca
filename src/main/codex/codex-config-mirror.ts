@@ -15,17 +15,8 @@ import { preserveRuntimeConflictValues } from './codex-config-settings-preservat
 import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
 import {
   clearCodexConfigTomlEditRefusalReport,
-  type CodexConfigTomlEditRefusedError,
-  reportCodexConfigTomlEditRefusal
+  refuseUnreadableCodexConfigResult
 } from './codex-config-toml-checked-edit'
-import {
-  findManagedConfigRefusal,
-  applyUnparseableCodexSourceRule,
-  backUpDiscardedManagedConfig,
-  findUnparseableManagedCodexConfig,
-  isVerbatimCodexSourceCopy,
-  refuseUnparseableManagedConfig
-} from './codex-managed-config-validity'
 import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
 import {
   prepareSystemConfigForFreshRuntimeMirror,
@@ -87,19 +78,7 @@ function mirrorSystemConfigIntoManagedCodexHome(homes: CodexSettingsPromotionHom
   if (mirrorResult.status === 'refused-invalid') {
     // Why: writing a config Codex cannot parse breaks every managed-home launch;
     // keep the last good copy and advance nothing, like an unreadable source.
-    reportCodexConfigTomlEditRefusal(
-      mirrorResult.error,
-      'Skipped mirroring the Codex config into a managed home'
-    )
     return false
-  }
-  if (mirrorResult.status === 'refused-unparseable-source') {
-    // Why: the managed home keeps its own state; nothing mirrored, so nothing advances.
-    return false
-  }
-  if (mirrorResult.status === 'copied-unparseable') {
-    // Why: a mirror ran (the verbatim copy), so no daemon guard may edit it and no baseline advances from it.
-    return true
   }
   if (mirrorResult.status === 'refused-indeterminate') {
     // Why: no mirror ran, so this must behave exactly like the throwing path
@@ -156,29 +135,18 @@ export function ensureCodexDaemonSocketGuard(runtimeHomePath: string): void {
   }
 }
 
-/**
- * For a managed home when no source config was read. Orca's verbatim copy goes
- * through the full mirror, which re-reads the source and replaces the copy once
- * it is gone or blank; any other config gets only the daemon guard.
- */
-export function syncManagedCodexHomeWithoutSourceConfig(homes: CodexSettingsPromotionHomes): void {
-  const observation = observeAgentStateFile(join(homes.runtimeHomePath, 'config.toml'))
-  if (observation.kind === 'present' && isVerbatimCodexSourceCopy(observation.value)) {
-    syncSystemConfigIntoManagedCodexHome(homes)
-    return
-  }
-  ensureCodexDaemonSocketGuard(homes.runtimeHomePath)
-}
-
-function writeCodexDaemonSocketGuard(
-  runtimeHomePath: string,
-  runtimeConfig: string | null,
-  baseConfig = runtimeConfig ?? ''
-): void {
-  const guarded = applyCodexDaemonSocketGuard(baseConfig, runtimeHomePath)
+function writeCodexDaemonSocketGuard(runtimeHomePath: string, runtimeConfig: string | null): void {
+  const guarded = applyCodexDaemonSocketGuard(runtimeConfig ?? '', runtimeHomePath)
   if (guarded !== (runtimeConfig ?? '')) {
     const runtimeConfigPath = join(runtimeHomePath, 'config.toml')
-    if (refuseUnparseableManagedConfig(runtimeConfigPath, guarded)) {
+    if (
+      refuseUnreadableCodexConfigResult({
+        configPath: runtimeConfigPath,
+        result: guarded,
+        inputs: [runtimeConfig],
+        context: 'Skipped writing a managed Codex config'
+      })
+    ) {
       return
     }
     writeFileAtomicallyIfUnchanged(runtimeConfigPath, runtimeConfig, guarded)
@@ -187,10 +155,8 @@ function writeCodexDaemonSocketGuard(
 
 type CodexConfigMirrorResult =
   | { status: 'skipped-missing-source' }
-  | { status: 'copied-unparseable' }
-  | { status: 'refused-unparseable-source' }
   | { status: 'refused-indeterminate'; error: unknown }
-  | { status: 'refused-invalid'; error: CodexConfigTomlEditRefusedError }
+  | { status: 'refused-invalid' }
   | {
       status: 'mirrored'
       preservedConflictKeys: ReadonlySet<string>
@@ -223,16 +189,12 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
   // it would erase every ordinary setting from an existing managed runtime, and
   // a 0-byte file is what a half-written or unhydrated cloud-synced home shows.
   if (rawSystemConfig.trim() === '') {
-    const runtimeConfig = runtimeConfigExists ? runtimeConfigObservation.value : null
-    // Why: once the user deletes or empties a broken ~/.codex, Orca's copy of it holds nothing to keep.
-    const replacesVerbatimCopy = runtimeConfig !== null && isVerbatimCodexSourceCopy(runtimeConfig)
     // Why: no mirror write happens here, but the daemon guard must still land.
     writeCodexDaemonSocketGuard(
       runtimeHomePath,
-      runtimeConfig,
-      replacesVerbatimCopy ? '' : (runtimeConfig ?? '')
+      runtimeConfigExists ? runtimeConfigObservation.value : null
     )
-    return runtimeConfig !== null && !replacesVerbatimCopy
+    return runtimeConfigExists
       ? { status: 'skipped-missing-source' }
       : {
           status: 'mirrored',
@@ -242,41 +204,16 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
         }
   }
 
-  const existingRuntimeConfig =
-    runtimeConfigObservation.kind === 'present' ? runtimeConfigObservation.value : null
-  const unparseableSource = applyUnparseableCodexSourceRule({
-    sourcePath: systemConfigPath,
-    runtimeConfigPath,
-    source: rawSystemConfig,
-    runtime: existingRuntimeConfig,
-    writeVerbatimCopy: (copy) => writeFileAtomically(runtimeConfigPath, copy)
-  })
-  if (unparseableSource) {
-    return {
-      status: unparseableSource === 'copied' ? 'copied-unparseable' : 'refused-unparseable-source'
-    }
-  }
-  const runtimeParses =
-    existingRuntimeConfig !== null &&
-    findUnparseableManagedCodexConfig(existingRuntimeConfig) === null
   const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(systemHomePath, systemConfigDir)
-  // Why: a managed config Codex cannot parse (the verbatim copy of a broken ~/.codex) holds nothing to keep; reseed it.
-  if (!runtimeParses || existingRuntimeConfig === null) {
+  if (!runtimeConfigExists) {
     const freshRuntimeConfig = applyCodexDaemonSocketGuard(
       prepareSystemConfigForFreshRuntimeMirror(rawSystemConfig, sourceConfigDir),
       runtimeHomePath
     )
-    const refusal = findManagedConfigRefusal(runtimeConfigPath, freshRuntimeConfig)
-    if (refusal) {
-      return { status: 'refused-invalid', error: refusal }
+    if (refuseUnreadableMirrorResult(runtimeConfigPath, freshRuntimeConfig, [rawSystemConfig])) {
+      return { status: 'refused-invalid' }
     }
     const ownership = readMcpServerTomlOwnership(freshRuntimeConfig)
-    backUpDiscardedManagedConfig({
-      sourcePath: systemConfigPath,
-      runtimeConfigPath,
-      source: rawSystemConfig,
-      discarded: existingRuntimeConfig
-    })
     writeFileAtomically(runtimeConfigPath, freshRuntimeConfig)
     return {
       status: 'mirrored',
@@ -291,7 +228,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     readMcpServerTomlOwnership(systemConfig)
   // Why: reuse the bytes already observed above rather than re-reading. A second
   // read could succeed where the first failed and re-open the gap this closes.
-  const runtimeConfig = existingRuntimeConfig
+  const runtimeConfig = runtimeConfigObservation.value
   const preserved = preserveRuntimeConflictValues(
     mergeSystemCodexConfigIntoRuntime(
       runtimeConfig,
@@ -303,9 +240,13 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
   )
   const nextRuntimeConfig = applyCodexDaemonSocketGuard(preserved.content, runtimeHomePath)
   if (nextRuntimeConfig !== runtimeConfig) {
-    const refusal = findManagedConfigRefusal(runtimeConfigPath, nextRuntimeConfig)
-    if (refusal) {
-      return { status: 'refused-invalid', error: refusal }
+    if (
+      refuseUnreadableMirrorResult(runtimeConfigPath, nextRuntimeConfig, [
+        rawSystemConfig,
+        runtimeConfig
+      ])
+    ) {
+      return { status: 'refused-invalid' }
     }
     writeFileAtomically(runtimeConfigPath, nextRuntimeConfig)
   }
@@ -316,4 +257,17 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     mirroredMcpServerNames,
     mirroredMcpServerRoot
   }
+}
+
+function refuseUnreadableMirrorResult(
+  runtimeConfigPath: string,
+  result: string,
+  inputs: readonly (string | null)[]
+): boolean {
+  return refuseUnreadableCodexConfigResult({
+    configPath: runtimeConfigPath,
+    result,
+    inputs,
+    context: 'Skipped mirroring the Codex config into a managed home'
+  })
 }

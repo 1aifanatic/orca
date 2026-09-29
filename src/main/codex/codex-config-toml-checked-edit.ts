@@ -8,7 +8,8 @@ import {
 } from './codex-config-toml-document'
 import {
   removedValuesSurviveIn,
-  repairOrcaCodexConfigDuplicatesWithRemovals
+  repairOrcaCodexConfigDuplicatesWithRemovals,
+  repairUnparseableCodexConfig
 } from './codex-config-toml-repair'
 import type { TomlAssignmentLine } from './codex-config-toml-structure'
 
@@ -156,7 +157,7 @@ export function applyCheckedCodexConfigTomlEdit(
   return result.content
 }
 
-/** For whole-document producers (the managed-home mirror): the result must at least parse. */
+/** For whole-document writers: the result must at least parse. */
 export function assertCodexConfigTomlParses(content: string): void {
   const parsed = parseCodexConfigToml(content)
   if (!parsed.ok) {
@@ -168,12 +169,45 @@ export function assertCodexConfigTomlParses(content: string): void {
   }
 }
 
+/**
+ * For whole-document producers (the managed-home mirrors): true, and reported
+ * once, when `result` does not parse although every input does after Orca's own
+ * repair. An input the user broke by hand is mirrored as it is.
+ */
+export function refuseUnreadableCodexConfigResult(args: {
+  configPath: string
+  result: string
+  inputs: readonly (string | null)[]
+  context: string
+}): boolean {
+  const parsed = parseCodexConfigToml(args.result)
+  if (
+    parsed.ok ||
+    args.inputs.some(
+      (input) => input !== null && !parseCodexConfigToml(repairUnparseableCodexConfig(input)).ok
+    )
+  ) {
+    clearCodexConfigTomlEditRefusalReport(args.configPath)
+    return false
+  }
+  reportCodexConfigTomlEditRefusal(
+    new CodexConfigTomlEditRefusedError({
+      reason: 'result-invalid',
+      detail: `the result would not be valid TOML (${parsed.message}).`,
+      line: parsed.line,
+      configPath: args.configPath
+    }),
+    args.context
+  )
+  return true
+}
+
 // Keyed by file, then by what Orca was doing, so interleaved reports about one file each log once.
 const reportedMessages = new Map<string, Map<string, string>>()
 const TRUST_WRITE_CONTEXT = 'Skipped marking a workspace trusted for Codex'
 
 /** Logs once per file, kind, and message, so a launch-time retry does not flood the log. */
-export function reportCodexConfigOnce(key: string, message: string, kind = ''): void {
+function reportCodexConfigOnce(key: string, message: string, kind = ''): void {
   let byKind = reportedMessages.get(key)
   if (!byKind) {
     byKind = new Map()

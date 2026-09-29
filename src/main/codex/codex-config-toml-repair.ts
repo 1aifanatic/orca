@@ -35,6 +35,12 @@ export function repairOrcaCodexConfigDuplicates(content: string): string {
   return repairOrcaCodexConfigDuplicatesWithRemovals(content).content
 }
 
+// Why (#22592): a config Orca broke earlier must not carry its duplicates into
+// every managed home; launch prep repairs the file itself on the next trust write.
+export function repairUnparseableCodexConfig(config: string): string {
+  return parseCodexConfigToml(config).ok ? config : repairOrcaCodexConfigDuplicates(config)
+}
+
 export type CodexConfigRepair = {
   content: string
   /** Removed assignments whose values a caller must still find, when the repaired file does not parse on its own. */

@@ -231,9 +231,12 @@ describe('syncSystemConfigIntoManagedCodexHome', () => {
   })
 
   it('leaves values with lone-surrogate unicode escapes untouched', () => {
-    expect(
-      prepareSystemConfigForFreshRuntimeMirror('log_dir = "logs\\uD800dir"\n', '/home/me/.codex')
-    ).toContain('log_dir = "logs\\uD800dir"')
+    writeFileSync(getSystemConfigPath(), 'log_dir = "logs\\uD800dir"\n', 'utf-8')
+
+    syncSystemConfigIntoManagedCodexHome()
+
+    const runtimeConfig = readFileSync(getRuntimeConfigPath(), 'utf-8')
+    expect(runtimeConfig).toContain('log_dir = "logs\\uD800dir"')
   })
 
   it('leaves absolute, home-prefixed, env-shaped, and URL path references untouched', () => {

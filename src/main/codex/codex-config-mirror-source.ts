@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { rewriteRelativePathConfigValues } from './codex-config-path-reference-rewrite'
 import { normalizeDeprecatedCodexHookFeatureFlag } from './config-toml-deprecated-hook-flag'
-import { repairUnparseableCodexConfig } from './codex-managed-config-validity'
+import { repairUnparseableCodexConfig } from './codex-config-toml-repair'
 import { stripRuntimeOwnedTomlSections } from './config-toml-runtime-owned-sections'
 
 // Why: how ~/.codex is prepared before it is mirrored into an Orca-owned Codex home.

@@ -7,13 +7,7 @@ import { observeAgentStateFile } from './codex-path-observation'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
 import type { CodexSettingsPromotionHomes } from './config-settings-promotion'
 import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
-import {
-  applyUnparseableCodexSourceRule,
-  backUpDiscardedManagedConfig,
-  findUnparseableManagedCodexConfig,
-  isVerbatimCodexSourceCopy,
-  refuseUnparseableManagedConfig
-} from './codex-managed-config-validity'
+import { refuseUnreadableCodexConfigResult } from './codex-config-toml-checked-edit'
 import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
 import {
   prepareSystemConfigForFreshRuntimeMirror,
@@ -48,33 +42,13 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
   }
   const runtimeConfigBeforeMirror =
     runtimeConfigObservation.kind === 'present' ? runtimeConfigObservation.value : null
-  if (
-    applyUnparseableCodexSourceRule({
-      sourcePath: systemConfigPath,
-      runtimeConfigPath,
-      source: rawSystemConfig,
-      runtime: runtimeConfigBeforeMirror,
-      writeVerbatimCopy: (copy) =>
-        writeFileAtomicallyIfUnchanged(runtimeConfigPath, runtimeConfigBeforeMirror, copy)
-    })
-  ) {
-    return
-  }
-  const runtimeParses =
-    runtimeConfigBeforeMirror !== null &&
-    findUnparseableManagedCodexConfig(runtimeConfigBeforeMirror) === null
-  // Why: a missing cloud-synced source is not proof the user cleared config,
-  // but Orca's copy of a since-removed broken source holds nothing to keep.
-  let mirroredRuntimeConfig =
-    runtimeConfigBeforeMirror !== null && !isVerbatimCodexSourceCopy(runtimeConfigBeforeMirror)
-      ? runtimeConfigBeforeMirror
-      : ''
+  // Why: a missing cloud-synced source is not proof the user cleared config.
+  let mirroredRuntimeConfig = runtimeConfigBeforeMirror ?? ''
   if (rawSystemConfig.trim() !== '') {
     const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(homes.systemHomePath)
     // The retired home has no ownership baseline; its entire MCP root stays canonical.
-    // Why: sections are never carried out of a managed config Codex cannot parse.
     mirroredRuntimeConfig =
-      runtimeConfigBeforeMirror !== null && runtimeParses
+      runtimeConfigBeforeMirror !== null
         ? mergeSystemCodexConfigIntoRuntime(
             runtimeConfigBeforeMirror,
             prepareSystemConfigForRuntimeMirror(rawSystemConfig, sourceConfigDir),
@@ -90,17 +64,14 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
   )
   if (
     (runtimeConfigBeforeMirror ?? '') === nextRuntimeConfig ||
-    refuseUnparseableManagedConfig(runtimeConfigPath, nextRuntimeConfig)
+    refuseUnreadableCodexConfigResult({
+      configPath: runtimeConfigPath,
+      result: nextRuntimeConfig,
+      inputs: [rawSystemConfig, runtimeConfigBeforeMirror],
+      context: 'Skipped mirroring the Codex config into a managed home'
+    })
   ) {
     return
-  }
-  if (rawSystemConfig.trim() !== '') {
-    backUpDiscardedManagedConfig({
-      sourcePath: systemConfigPath,
-      runtimeConfigPath,
-      source: rawSystemConfig,
-      discarded: runtimeConfigBeforeMirror
-    })
   }
   // Why: stage first, then compare immediately before replace so a retained
   // Codex trust write during mirror preparation wins.

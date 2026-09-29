@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import {
-  syncManagedCodexHomeWithoutSourceConfig,
+  ensureCodexDaemonSocketGuard,
   syncSystemConfigIntoManagedCodexHome
 } from '../codex/codex-config-mirror'
 import { readCodexTopLevelModelProvider } from '../codex/codex-model-provider-config'
@@ -112,10 +112,7 @@ export class CodexConfigMirror {
       // Why: with no ~/.codex/config.toml there is nothing to mirror, but Codex still cannot start in a long home without the daemon guard.
       // WSL homes are skipped: their ownership check is a blocking wsl.exe call (startup, account switch), and WSL launch prep guards the home it launches.
       if (!parseWslUncPath(managedHomePath)) {
-        syncManagedCodexHomeWithoutSourceConfig({
-          runtimeHomePath: this.assertManagedHomePath(managedHomePath, expectedAccountId),
-          systemHomePath: join(homedir(), '.codex')
-        })
+        ensureCodexDaemonSocketGuard(this.assertManagedHomePath(managedHomePath, expectedAccountId))
       }
       return
     }

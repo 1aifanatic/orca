@@ -6,7 +6,6 @@ import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
 import { upsertPromotedSettingsInContent } from './codex-config-settings-upsert'
-import { findUnparseableManagedCodexConfig } from './codex-managed-config-validity'
 import {
   applyCheckedCodexConfigTomlEdit,
   CodexConfigTomlEditRefusedError,
@@ -123,7 +122,10 @@ export function promoteCodexRuntimeSettingsToSystem(
     return promoteCodexRuntimeSettingsToSystemUnsafe(homes ?? getHostPromotionHomes())
   } catch (error) {
     // Why: promotion is best-effort launch prep; a malformed file must not block Codex launch.
-    console.warn('[codex-settings-promotion] failed to promote runtime settings', error)
+    // A refused edit was already reported once per file.
+    if (!(error instanceof CodexConfigTomlEditRefusedError)) {
+      console.warn('[codex-settings-promotion] failed to promote runtime settings', error)
+    }
     return null
   }
 }
@@ -146,10 +148,6 @@ function promoteCodexRuntimeSettingsToSystemUnsafe(
     // empty plan here would instead let the mirror proceed against a runtime
     // config nobody read.
     throw runtimeTomlObservation.error
-  }
-  if (findUnparseableManagedCodexConfig(runtimeTomlObservation.value) !== null) {
-    // Why: an unparseable managed config is a verbatim copy of a broken ~/.codex, never the user's in-Codex change.
-    return emptyPromotionPlan()
   }
   // Why: without a baseline, a stale runtime scalar looks like a fresh in-Codex change; skip until the mirror writes one.
   const baselineObservation = observeCodexSettingsBaseline(runtimeHomePath)
@@ -209,40 +207,42 @@ function promoteCodexRuntimeSettingsToSystemUnsafe(
     writeTargetObservation.kind === 'present'
       ? writeTargetObservation.value
       : extractOrdinaryCodexSettings(runtimeTomlObservation.value)
+  const promote = (content: string): string => {
+    const withPromotedSettings = upsertPromotedSettingsInContent(content, updates)
+    // Why: plan against the content actually being edited, not a second read of the
+    // source — when the system config is seeded from the runtime, its registration
+    // tables are already present and re-appending them would duplicate the table.
+    return applyCodexRegistrationPromotions(
+      withPromotedSettings,
+      planCodexRegistrationPromotion(
+        runtimeTomlObservation.value,
+        withPromotedSettings,
+        baseline?.registrations ?? new Map()
+      )
+    )
+  }
   // Why (#22592): this is the user's real config, so the edit must leave it readable and change only what it promotes.
   let nextContent: string
   try {
-    nextContent = applyCheckedCodexConfigTomlEdit(systemContent, (content) => {
-      const withPromotedSettings = upsertPromotedSettingsInContent(content, updates)
-      // Why: plan against the content actually being edited, not a second read of the
-      // source — when the system config is seeded from the runtime, its registration
-      // tables are already present and re-appending them would duplicate the table.
-      return {
-        content: applyCodexRegistrationPromotions(
-          withPromotedSettings,
-          planCodexRegistrationPromotion(
-            runtimeTomlObservation.value,
-            withPromotedSettings,
-            baseline?.registrations ?? new Map()
-          )
-        ),
-        ownedPaths: [
-          ...[...updates.keys()].map((key) => key.split('.')),
-          ['marketplaces'],
-          ['plugins']
-        ]
-      }
-    })
+    nextContent = applyCheckedCodexConfigTomlEdit(systemContent, (content) => ({
+      content: promote(content),
+      ownedPaths: [
+        ...[...updates.keys()].map((key) => key.split('.')),
+        ['marketplaces'],
+        ['plugins']
+      ]
+    }))
   } catch (error) {
     if (!(error instanceof CodexConfigTomlEditRefusedError)) {
       throw error
     }
     const refusal = error.forConfigPath(systemTomlPath)
-    reportCodexConfigTomlEditRefusal(refusal, 'Skipped promoting Codex settings')
-    if (refusal.reason === 'input-invalid') {
-      // Why: an unparseable ~/.codex is copied verbatim by the mirror, so promotion must not stall it.
+    if (refusal.reason === 'input-invalid' && promote(systemContent) === systemContent) {
+      // Why: nothing to write back, so a ~/.codex the user broke by hand is mirrored as before.
       return { conflicts, runtimeValuesToPreserve, mirroredMcpServers, mirroredMcpServerRoot }
     }
+    // Why: a write-back that cannot land stalls the mirror, which would otherwise erase the runtime change.
+    reportCodexConfigTomlEditRefusal(refusal, 'Skipped promoting Codex settings')
     throw refusal
   }
   if (nextContent === systemContent) {
