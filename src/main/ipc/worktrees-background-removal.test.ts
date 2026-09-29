@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addWorktreeMock,
+  getEffectiveHooksMock,
   listWorktreesMock,
-  removeWorktreeMock
+  removeWorktreeMock,
+  runHookMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
@@ -190,6 +192,44 @@ describe('worktrees:remove in the background', () => {
     await expect(first).resolves.toMatchObject(preserved)
     await expect(repeat).resolves.toMatchObject(preserved)
     expect(removeWorktreeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs same-repo archive hooks one at a time while their Git deletes overlap', async () => {
+    const [main, feature] = mockKnownFeatureWorktree()
+    const secondId = 'repo-1::/workspace/second-wt'
+    listWorktreesMock.mockResolvedValue([
+      main,
+      feature,
+      { ...feature, path: '/workspace/second-wt', branch: 'second', head: 'second' }
+    ])
+    getEffectiveHooksMock.mockReturnValue({ scripts: { archive: 'git update-ref refs/x HEAD' } })
+    const hookReleases: (() => void)[] = []
+    runHookMock.mockImplementation(
+      () =>
+        new Promise((resolve) => hookReleases.push(() => resolve({ success: true, output: '' })))
+    )
+    const gitReleases: (() => void)[] = []
+    removeWorktreeMock.mockImplementation(
+      () => new Promise((resolve) => gitReleases.push(() => resolve({})))
+    )
+
+    const first = remove({ worktreeId: featureId })
+    const second = remove({ worktreeId: secondId })
+    await vi.waitFor(() => expect(runHookMock).toHaveBeenCalledTimes(1))
+    // Let the second request reach the host's acceptance queue before checking it waits there.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(runHookMock).toHaveBeenCalledTimes(1)
+
+    hookReleases[0]?.()
+    await vi.waitFor(() => expect(runHookMock).toHaveBeenCalledTimes(2))
+    hookReleases[1]?.()
+    await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(2))
+
+    for (const release of gitReleases) {
+      release()
+    }
+    await expect(first).resolves.not.toHaveProperty('removing')
+    await expect(second).resolves.not.toHaveProperty('removing')
   })
 
   it('gives a create with the same name the next free name while the delete runs', async () => {

@@ -16,6 +16,7 @@ import {
   finishAcceptedWorktreeRemoval,
   waitForPendingWorktreeRemoval
 } from '../../../worktree-background-removal'
+import { runSerializedWorktreeRemovalAcceptance } from '../../../worktree-removal-acceptance-queue'
 
 export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): void {
   const { store, options, worktreeRemovalsInFlight } = context
@@ -47,14 +48,11 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
 
       // Why: concurrent stale-toast/double-click/sidebar races can hit the same worktree; share the op so only one path touches Git and disk.
       const removal = withWorktreeSpan({ stage: 'remove', path: worktreePath }, async () => {
-        const accepted = await executeWorktreeRemoval(
-          context,
-          args,
-          repo,
-          repoId,
-          worktreePath,
-          removalHostId
-        )
+        const accept = (): Promise<RemoveWorktreeResult> =>
+          executeWorktreeRemoval(context, args, repo, repoId, worktreePath, removalHostId)
+        const accepted = await (repo.connectionId
+          ? accept()
+          : runSerializedWorktreeRemovalAcceptance(repo.path, accept))
         const result = await finishAcceptedWorktreeRemoval(accepted, args.worktreeId, removalHostId)
         // A background job reports its own lifecycle when Git finishes.
         if (!accepted.removing) {

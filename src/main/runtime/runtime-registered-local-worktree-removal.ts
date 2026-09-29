@@ -27,8 +27,18 @@ import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
 import { removesInBackground, startBackgroundWorktreeRemoval } from '../worktree-background-removal'
+import { runSerializedWorktreeRemovalAcceptance } from '../worktree-removal-acceptance-queue'
 
-export async function removeRuntimeRegisteredLocalWorktree(args: {
+/** Runs after the previous same-repo removal was accepted; see runSerializedWorktreeRemovalAcceptance. */
+export function removeRuntimeRegisteredLocalWorktree(
+  args: Parameters<typeof acceptRuntimeRegisteredLocalWorktreeRemoval>[0]
+): Promise<RemoveWorktreeResult & { warning?: string }> {
+  return runSerializedWorktreeRemovalAcceptance(args.repo.path, () =>
+    acceptRuntimeRegisteredLocalWorktreeRemoval(args)
+  )
+}
+
+async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
   repo: Repo
   target: RuntimeWorktreeRemovalTarget
   registeredWorktree: GitWorktreeInfo
@@ -169,7 +179,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
 }
 
 export type RuntimeLocalWorktreeRemovalFinishArgs = Pick<
-  Parameters<typeof removeRuntimeRegisteredLocalWorktree>[0],
+  Parameters<typeof acceptRuntimeRegisteredLocalWorktreeRemoval>[0],
   | 'repo'
   | 'removedPushTarget'
   | 'store'

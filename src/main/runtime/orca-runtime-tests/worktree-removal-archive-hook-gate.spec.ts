@@ -23,6 +23,7 @@ import {
   ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
   asArchiveHookRefusal
 } from '../../../shared/worktree/archive-hook-removal-gate'
+import { runSerializedWorktreeRemovalAcceptance } from '../../worktree-removal-acceptance-queue'
 
 function withArchiveHook(): void {
   vi.mocked(getEffectiveHooks).mockReturnValue({
@@ -204,6 +205,30 @@ describe('archive hook removal gate', () => {
     expect(runHook).not.toHaveBeenCalled()
     expect(result.warning).toBeUndefined()
     expect(removeWorktree).toHaveBeenCalled()
+  })
+
+  it('holds a desktop removal in the same repo until this one is accepted', async () => {
+    const runtime = createWorktreeRemovalRuntime()
+    withArchiveHook()
+    const hookRun = deferred<{ success: boolean; output: string; exitCode?: number }>()
+    vi.mocked(runHook).mockReturnValue(hookRun.promise)
+    vi.mocked(removeWorktree).mockResolvedValue({})
+
+    const removal = runtime.removeManagedWorktree(TEST_WORKTREE_ID, {
+      force: false,
+      runHooks: true
+    })
+    await vi.waitFor(() => expect(runHook).toHaveBeenCalled())
+    // The desktop IPC path queues its acceptance on this same per-repo queue.
+    const sibling = vi.fn(async () => {})
+    const siblingAccepted = runSerializedWorktreeRemovalAcceptance(TEST_REPO_PATH, sibling)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(sibling).not.toHaveBeenCalled()
+
+    hookRun.resolve({ success: true, output: '', exitCode: 0 })
+    await siblingAccepted
+    expect(sibling).toHaveBeenCalledTimes(1)
+    await expect(removal).resolves.toEqual({})
   })
 
   it('does not coalesce an override retry onto the refusal already in flight', async () => {
