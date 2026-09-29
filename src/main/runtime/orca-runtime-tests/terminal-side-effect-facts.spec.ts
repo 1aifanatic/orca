@@ -589,6 +589,34 @@ describe('terminal side-effect fact channel', () => {
     ).toHaveLength(1)
   })
 
+  it('confirms an exit at the shell 133;D on a fresh read while the cached name still says claude', async () => {
+    const { runtime, batches } = createSideEffectRuntime()
+    syncSinglePty(runtime)
+    const getForegroundProcess = vi.fn().mockResolvedValue('claude')
+    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
+    runtime.setPtyController({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess,
+      confirmForegroundProcess
+    })
+    runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;✳ Claude Code\x07')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    getForegroundProcess.mockClear()
+    batches.length = 0
+
+    runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 100)
+
+    await vi.waitFor(() =>
+      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+        kind: 'agent-exited',
+        evidence: 'foreground-shell'
+      })
+    )
+    expect(confirmForegroundProcess).toHaveBeenCalledOnce()
+    expect(getForegroundProcess).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['before its 133;C', '\x1b]133;D;0\x07\x1b]133;A\x07', 0],
     ['that closes its 133;C', '\x1b]133;C\x07\x1b]133;D;0\x07', 1]
