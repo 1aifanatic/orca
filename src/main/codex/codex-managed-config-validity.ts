@@ -91,6 +91,10 @@ export function findUnparseableCodexConfig(config: string): string | null {
  * of a broken ~/.codex.
  */
 export function findUnparseableManagedCodexConfig(config: string): string | null {
+  if (isVerbatimCodexSourceCopy(config)) {
+    // Why: a copy of a broken ~/.codex is never managed state, even where the mirror's dedupe would make it parse.
+    return 'verbatim copy of an unparseable ~/.codex'
+  }
   const parseError = findUnparseableCodexConfig(config)
   if (parseError === null) {
     return null
@@ -167,7 +171,7 @@ export function applyUnparseableCodexSourceRule(args: {
   runtimeConfigPath: string
   source: string
   runtime: string | null
-  writeVerbatimCopy: () => void
+  writeVerbatimCopy: (content: string) => void
 }): 'left-untouched' | 'copied' | null {
   const parseError = args.source.trim() === '' ? null : findUnparseableCodexConfig(args.source)
   if (parseError === null) {
@@ -179,10 +183,25 @@ export function applyUnparseableCodexSourceRule(args: {
     return 'left-untouched'
   }
   reportVerbatimUnparseableCodexSource(args.sourcePath, args.runtimeConfigPath, parseError)
-  if (args.runtime !== args.source) {
-    args.writeVerbatimCopy()
+  const copy = markVerbatimCodexSourceCopy(args.source, args.sourcePath)
+  if (args.runtime !== copy) {
+    args.writeVerbatimCopy(copy)
   }
   return 'copied'
+}
+
+const VERBATIM_COPY_MARKER = '# orca: verbatim copy of '
+
+/** Appended, so Codex reports the same line numbers as in the user's own file. */
+function markVerbatimCodexSourceCopy(source: string, sourcePath: string): string {
+  const eol = source.includes('\r\n') ? '\r\n' : '\n'
+  const body = source.endsWith('\n') ? source : `${source}${eol}`
+  return `${body}${VERBATIM_COPY_MARKER}${sourcePath}; replaced when the source parses${eol}`
+}
+
+function isVerbatimCodexSourceCopy(config: string): boolean {
+  const lastLine = config.trimEnd().split('\n').at(-1) ?? ''
+  return lastLine.trimStart().startsWith(VERBATIM_COPY_MARKER)
 }
 
 /**

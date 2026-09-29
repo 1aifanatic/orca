@@ -226,7 +226,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     runtimeConfigPath,
     source: rawSystemConfig,
     runtime: existingRuntimeConfig,
-    writeVerbatimCopy: () => writeFileAtomically(runtimeConfigPath, rawSystemConfig)
+    writeVerbatimCopy: (copy) => writeFileAtomically(runtimeConfigPath, copy)
   })
   if (unparseableSource) {
     return {

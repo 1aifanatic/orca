@@ -142,7 +142,9 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     syncSystemConfigIntoManagedCodexHome()
     syncSystemConfigIntoManagedCodexHome()
 
-    expect(readFileSync(getRuntimeConfigPath(), 'utf-8')).toBe(broken)
+    expect(readFileSync(getRuntimeConfigPath(), 'utf-8')).toBe(
+      `${broken}${verbatimMarker(getSystemConfigPath())}`
+    )
     const copies = warn.mock.calls
       .flat()
       .filter((line) => String(line).includes('copied it unchanged'))
@@ -228,7 +230,9 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
 
     syncSystemConfigIntoManagedCodexHome()
 
-    expect(readFileSync(getRuntimeConfigPath(), 'utf-8')).toBe('log_dir = "logs\\uD800dir"\n')
+    expect(readFileSync(getRuntimeConfigPath(), 'utf-8')).toBe(
+      `log_dir = "logs\\uD800dir"\n${verbatimMarker(getSystemConfigPath())}`
+    )
     warn.mockRestore()
   })
 })
@@ -236,6 +240,10 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
 // Why: an invalid save of ~/.codex followed by a fix must end exactly where the
 // same edits without the invalid save end; nothing managed-only may be lost and
 // nothing stale may be promoted into ~/.codex.
+function verbatimMarker(sourcePath: string): string {
+  return `# orca: verbatim copy of ${sourcePath}; replaced when the source parses\n`
+}
+
 describe('break-then-fix of ~/.codex keeps managed-home state', () => {
   function makeHomes(): {
     homes: { systemHomePath: string; runtimeHomePath: string }
@@ -313,6 +321,37 @@ describe('break-then-fix of ~/.codex keeps managed-home state', () => {
       expect(runtime).toContain('[projects."/w"]')
       expect(runtime).not.toContain('mcp_servers.tmp')
       expect(runtime).not.toContain('danger-full-access')
+    } finally {
+      warn.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('never treats a verbatim copy as managed state, even when the mirror dedupe would make it parse', () => {
+    const { homes, root } = makeHomes()
+    const sysPath = join(homes.systemHomePath, 'config.toml')
+    const rtPath = join(homes.runtimeHomePath, 'config.toml')
+    const good = 'model = "A"\n\n[mcp_servers.keep]\ncommand = "k"\n'
+    // Why: broken only by a duplicate project table that Orca's repair must not collapse.
+    const broken =
+      'model = "A"\n\n[marketplaces.stale]\nsource = "s"\n\n[mcp_servers.tmp]\ncommand = "t"\n\n[projects."/x"]\ntrust_level = "trusted"\nfoo = 1\n\n[projects."/x"]\nbar = 2\n'
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      writeFileSync(sysPath, broken)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      expect(readFileSync(rtPath, 'utf8')).toBe(`${broken}${verbatimMarker(sysPath)}`)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      // The user fixes ~/.codex and removes the stale marketplace, the server and the project.
+      writeFileSync(sysPath, good)
+      syncSystemConfigIntoManagedCodexHome(homes)
+      syncSystemConfigIntoManagedCodexHome(homes)
+
+      expect(readFileSync(sysPath, 'utf8')).toBe(good)
+      const runtime = readFileSync(rtPath, 'utf8')
+      expect(runtime).not.toContain('marketplaces.stale')
+      expect(runtime).not.toContain('mcp_servers.tmp')
+      expect(runtime).not.toContain('projects."/x"')
+      expect(runtime).not.toContain('orca: verbatim copy')
     } finally {
       warn.mockRestore()
       rmSync(root, { recursive: true, force: true })

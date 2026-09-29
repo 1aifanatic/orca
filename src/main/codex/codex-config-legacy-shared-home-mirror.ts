@@ -53,12 +53,8 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
       runtimeConfigPath,
       source: rawSystemConfig,
       runtime: runtimeConfigBeforeMirror,
-      writeVerbatimCopy: () =>
-        writeFileAtomicallyIfUnchanged(
-          runtimeConfigPath,
-          runtimeConfigBeforeMirror,
-          rawSystemConfig
-        )
+      writeVerbatimCopy: (copy) =>
+        writeFileAtomicallyIfUnchanged(runtimeConfigPath, runtimeConfigBeforeMirror, copy)
     })
   ) {
     return
