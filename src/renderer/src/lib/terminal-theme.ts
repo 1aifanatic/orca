@@ -4,13 +4,13 @@ import type { GlobalSettings } from '../../../shared/global-settings-types'
 import {
   makeCustomTerminalThemeSelection,
   normalizeTerminalCustomThemes,
-  parseCustomTerminalThemeSelection,
   terminalCustomThemeToXtermTheme,
   type TerminalCustomTheme
 } from '../../../shared/terminal-custom-themes'
 import {
   DEFAULT_TERMINAL_THEME_DARK,
   DEFAULT_TERMINAL_THEME_LIGHT,
+  lookupTerminalTheme,
   selectTerminalTheme
 } from '../../../shared/terminal-theme-selection'
 
@@ -49,30 +49,11 @@ export function getBuiltinTheme(name: string): ITheme | null {
   return getTheme(name)
 }
 
-function findCustomTheme(
-  settings: Pick<GlobalSettings, 'terminalCustomThemes'> | undefined,
-  selection: string
-): TerminalCustomTheme | null {
-  const customId = parseCustomTerminalThemeSelection(selection)
-  if (!customId || !settings) {
-    return null
-  }
-  return (
-    normalizeTerminalCustomThemes(settings.terminalCustomThemes).find(
-      (theme) => theme.id === customId
-    ) ?? null
-  )
-}
-
 export function getTerminalTheme(
   settings: Pick<GlobalSettings, 'terminalCustomThemes'> | undefined,
   selection: string
 ): ITheme | null {
-  const customTheme = findCustomTheme(settings, selection)
-  if (customTheme) {
-    return terminalCustomThemeToXtermTheme(customTheme)
-  }
-  return getTheme(selection)
+  return lookupTerminalTheme(settings, selection)
 }
 
 export function getTerminalThemePreview(

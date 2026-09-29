@@ -6,6 +6,7 @@ import {
 } from './terminal-custom-themes'
 import type { TerminalOscColorQueryReplyColors } from './terminal-osc-color-reply'
 import { TERMINAL_THEME_CATALOG } from './terminal-themes'
+import type { TerminalThemeMap } from './terminal-themes/types'
 
 export const DEFAULT_TERMINAL_THEME_DARK = 'Ghostty Default Style Dark'
 export const DEFAULT_TERMINAL_THEME_LIGHT = 'Builtin Tango Light'
@@ -34,15 +35,28 @@ export function selectTerminalTheme(
   return { mode, useLightVariant, themeName }
 }
 
+/** A selection names a user-imported theme or a built-in one; one lookup for both. */
+export function lookupTerminalTheme(
+  settings: Pick<GlobalSettings, 'terminalCustomThemes'> | undefined,
+  selection: string
+): TerminalThemeMap[string] | null {
+  const customId = parseCustomTerminalThemeSelection(selection)
+  const custom =
+    customId && settings
+      ? normalizeTerminalCustomThemes(settings.terminalCustomThemes).find(
+          ({ id }) => id === customId
+        )
+      : undefined
+  return custom
+    ? terminalCustomThemeToXtermTheme(custom)
+    : (TERMINAL_THEME_CATALOG[selection] ?? null)
+}
+
 function themeColors(
   selection: string,
   settings: Pick<GlobalSettings, 'terminalCustomThemes'>
 ): TerminalOscColorQueryReplyColors | null {
-  const customId = parseCustomTerminalThemeSelection(selection)
-  const custom = customId
-    ? normalizeTerminalCustomThemes(settings.terminalCustomThemes).find(({ id }) => id === customId)
-    : undefined
-  const theme = custom ? terminalCustomThemeToXtermTheme(custom) : TERMINAL_THEME_CATALOG[selection]
+  const theme = lookupTerminalTheme(settings, selection)
   return theme ? { foreground: theme.foreground, background: theme.background } : null
 }
 

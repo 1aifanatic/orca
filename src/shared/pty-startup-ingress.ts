@@ -286,7 +286,7 @@ export class PtyStartupIngress {
       const querySpan = slicePtyIngressSourceSpan(input, candidateIndex, query.endIndex)
       const answered =
         query.kind === 'kitty'
-          ? this.delivery.answer(`\x1b[?${this.kittyModes.flags}u`)
+          ? this.delivery.answer(`\x1b[?${this.kittyModes.flags}u`, 'owner')
           : this.answerColorQuery(query.slots)
       if (query.kind === 'kitty' && answered) {
         this.kittyQueryOpen = false
@@ -306,7 +306,10 @@ export class PtyStartupIngress {
   /** True when at least the first reply landed; a failed write stops the rest in order. */
   private answerColorQuery(slots: readonly TerminalOscColorQuerySlot[]): boolean {
     const replies = this.colorQueries.replies(slots)
-    return replies.length > 0 && replies.findIndex((reply) => !this.delivery.answer(reply)) !== 0
+    return (
+      replies.length > 0 &&
+      replies.findIndex((reply) => !this.delivery.answer(reply, 'owner')) !== 0
+    )
   }
 
   private releaseQueryPending(): void {

@@ -93,4 +93,21 @@ describe('PTY owner colour replies for the terminal life', () => {
     // ...but a later match in ordinary output is no longer taken for it.
     expect(late.visible()).toBe(`${printed}${collision}`)
   })
+
+  it("keeps the long echo watch for a viewer's relayed reply after the startup window", () => {
+    // A cooked-mode app queries mid-print: the relayed reply's echo trails ~2 KB of output.
+    vi.useFakeTimers()
+    const reply = '\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\'
+    const echo = reply.replaceAll('\x1b', '^[')
+    const printed = 'x'.repeat(2_048)
+    const { ingress, writes, visible } = createHarness()
+    vi.advanceTimersByTime(5_000)
+
+    expect(ingress.answerLiveQueryReply(reply)).toBe(true)
+    ingress.accept(printed)
+    ingress.accept(echo)
+
+    expect(writes).toEqual([reply])
+    expect(visible()).toBe(printed)
+  })
 })
