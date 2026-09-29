@@ -61,10 +61,6 @@ function translateOpenCode2Event(inputType, data) {
     properties = { ...properties, requestID: properties.id };
   } else if (type === "session.text.started" || type === "session.text.delta" || type === "session.text.ended") {
     type = type.replace("session.", "session.next.");
-  } else if (type === "session.step.started") {
-    // Why: re-derives Busy for a plugin reloaded mid-turn, which never saw execution.started.
-    // Tool events stay out: a parallel tool reports progress while a sibling form still blocks.
-    type = "session.next.step.started";
   }
   return { type, properties };
 }
