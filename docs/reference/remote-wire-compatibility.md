@@ -245,7 +245,7 @@ The cross-version suite derives the old client's list by removing this capabilit
 baseline's own list, per the rule above, so the downgrade stays exercised after a release ships
 it.
 
-The same boundary carries a second downgrade, `agent-session.recovered-send.v1`
+The same boundary carries a second downgrade, `agent-session.crash-doubted-send.v1`
 (`structured-agent-session-recovered-send-capability.ts`). A send a crash or a dead agent left in
 doubt for good (`unknown` with `recovered`) is drawn as an ordinary sent message; a client that
 predates that reading drew it unconfirmed, with a Retry that held its queue. Such a client is
