@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, _internals } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
-import { createAgentCompletionCoordinator } from '../../renderer/src/components/terminal-pane/agent-completion-coordinator'
 
 const { getCohortAtEmitMock, trackMock } = vi.hoisted(() => ({
   getCohortAtEmitMock: vi.fn(),
@@ -134,49 +133,119 @@ describe('a held Claude approval under repaint and re-statement', () => {
     expect(row()?.state).toBe('working')
   })
 
-  it('raises exactly one needs-input alert across every re-statement of one wait', async () => {
-    const dispatchAttention = vi.fn()
-    const coordinator = createAgentCompletionCoordinator({
-      paneKey: PANE,
-      statusLane: 'hook',
-      getPtyId: () => 'pty-1',
-      getSettings: () => null,
-      inspectProcess: vi.fn(),
-      dispatchCompletion: vi.fn(),
-      dispatchAttention,
-      isLive: () => true
-    })
+  // The renderer keys a wait's one needs-input alert on `waiting` + `stateStartedAt`, and a `working`
+  // row in between resets that key (pinned renderer-side in
+  // agent-completion-coordinator-attention-dispatch.test.ts). So one wait must reach readers as an
+  // unbroken run of `waiting` rows sharing one `stateStartedAt`, however often it is re-stated.
+  it('publishes every re-statement of one wait as the same unbroken wait', async () => {
     const pushed: { state: string; stateStartedAt?: number }[] = []
     server.subscribeEnrichedStatus((enriched) => {
-      const snapshot = { ...enriched.payload, stateStartedAt: enriched.stateStartedAt }
-      pushed.push(snapshot)
-      coordinator.observeHookStatus(snapshot)
+      pushed.push({ state: enriched.payload.state, stateStartedAt: enriched.stateStartedAt })
     })
-    try {
-      await raiseAlphaBesideBeta()
-      await post({
-        hook_event_name: 'PostToolUse',
-        agent_id: 'agent-child-a',
-        tool_name: 'Read',
-        tool_input: { file_path: '/tmp/child.txt' },
-        tool_use_id: 'toolu-child'
-      })
-      await post({ hook_event_name: 'PostToolUse', ...BETA, tool_use_id: 'toolu-beta' })
-      // A repaint that dropped the card here would make the next re-statement a fresh alert.
-      osc('working')
-      await post({
-        hook_event_name: 'PreToolUse',
-        tool_name: 'Grep',
-        tool_input: { pattern: 'todo' },
-        tool_use_id: 'toolu-grep'
-      })
+    await raiseAlphaBesideBeta()
+    await post({
+      hook_event_name: 'PostToolUse',
+      agent_id: 'agent-child-a',
+      tool_name: 'Read',
+      tool_input: { file_path: '/tmp/child.txt' },
+      tool_use_id: 'toolu-child'
+    })
+    await post({ hook_event_name: 'PostToolUse', ...BETA, tool_use_id: 'toolu-beta' })
+    // A repaint that dropped the card here would make the next re-statement a fresh alert.
+    osc('working')
+    await post({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Grep',
+      tool_input: { pattern: 'todo' },
+      tool_use_id: 'toolu-grep'
+    })
 
-      const waits = pushed.filter((payload) => payload.state === 'waiting')
-      expect(waits.length).toBeGreaterThan(1)
-      expect(new Set(waits.map((payload) => payload.stateStartedAt)).size).toBe(1)
-      expect(dispatchAttention).toHaveBeenCalledTimes(1)
-    } finally {
-      coordinator.dispose()
-    }
+    const firstWait = pushed.findIndex((payload) => payload.state === 'waiting')
+    const during = pushed.slice(firstWait)
+    expect(during.length).toBeGreaterThan(1)
+    expect(during.every((payload) => payload.state === 'waiting')).toBe(true)
+    expect(new Set(during.map((payload) => payload.stateStartedAt)).size).toBe(1)
+  })
+
+  // The card is the live prompt's. Answering the main agent's prompt while a child's is still on
+  // screen must show the child's command, not the one that just ran.
+  it('shows the prompt still outstanding once the other one is answered', async () => {
+    await post({ hook_event_name: 'UserPromptSubmit', prompt: 'delegate and run' })
+    await post({
+      hook_event_name: 'PreToolUse',
+      agent_id: 'agent-child-a',
+      tool_name: 'Bash',
+      tool_input: { command: 'child cmd' },
+      tool_use_id: 'toolu-child'
+    })
+    await post({
+      hook_event_name: 'PermissionRequest',
+      agent_id: 'agent-child-a',
+      tool_name: 'Bash',
+      tool_input: { command: 'child cmd' }
+    })
+    await post({ hook_event_name: 'PreToolUse', ...ALPHA, tool_use_id: 'toolu-alpha' })
+    await post({ hook_event_name: 'PermissionRequest', ...ALPHA })
+    expect(row()).toMatchObject({ state: 'waiting', toolInput: 'chmod 644 alpha.txt' })
+
+    await post({ hook_event_name: 'PostToolUse', ...ALPHA, tool_use_id: 'toolu-alpha' })
+    expect(row()).toMatchObject({ state: 'waiting', toolName: 'Bash', toolInput: 'child cmd' })
+
+    await post({
+      hook_event_name: 'PostToolUse',
+      agent_id: 'agent-child-a',
+      tool_name: 'Bash',
+      tool_input: { command: 'child cmd' },
+      tool_use_id: 'toolu-child'
+    })
+    expect(row()?.state).toBe('working')
+  })
+
+  // A typed answer settles only the question on screen; a child's permission raised beside it is
+  // still live, so the row stays a wait showing that prompt.
+  it('keeps a child prompt live when the main agent question beside it is answered', async () => {
+    await post({ hook_event_name: 'UserPromptSubmit', prompt: 'delegate and ask' })
+    await post({
+      hook_event_name: 'PermissionRequest',
+      agent_id: 'agent-child-a',
+      tool_name: 'Bash',
+      tool_input: { command: 'child cmd' }
+    })
+    await post({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'AskUserQuestion',
+      tool_input: { questions: [{ question: 'Proceed?' }] },
+      tool_use_id: 'toolu-question'
+    })
+    const asked = row()
+    expect(asked).toMatchObject({ state: 'waiting', toolName: 'AskUserQuestion' })
+
+    expect(
+      server.inferQuestionAnswered({
+        paneKey: PANE,
+        baselineUpdatedAt: asked?.receivedAt ?? 0,
+        baselineStateStartedAt: asked?.stateStartedAt ?? 0,
+        baselinePrompt: asked?.prompt ?? '',
+        baselineAgentType: 'claude'
+      })
+    ).toBe(true)
+    expect(row()).toMatchObject({
+      state: 'waiting',
+      toolName: 'Bash',
+      toolInput: 'child cmd',
+      stateStartedAt: asked?.stateStartedAt,
+      mainAgent: { state: 'working' }
+    })
+    expect(row()?.interactivePrompt).toContain('child cmd')
+    osc('working')
+    expect(row()?.state).toBe('waiting')
+
+    await post({
+      hook_event_name: 'PostToolUse',
+      agent_id: 'agent-child-a',
+      tool_name: 'Bash',
+      tool_input: { command: 'child cmd' }
+    })
+    expect(row()).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
   })
 })

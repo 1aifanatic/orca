@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { ToolSnapshot } from '../listener-event'
 
 /** What kind of evidence settles a prompt.
  *
@@ -16,6 +17,9 @@ export type ClaudeToolCallIdentity = {
   readonly inputDigest?: string
 }
 
+/** What the pane's card shows for one prompt, taken from the event that raised it. */
+export type ClaudeApprovalCard = Pick<ToolSnapshot, 'toolName' | 'toolInput' | 'interactivePrompt'>
+
 /** One prompt Claude raised on a pane and has not been observed answering for. */
 export type ClaudeApprovalRecord = ClaudeToolCallIdentity & {
   /** Subagent that owns the prompt; absent for the lead session. */
@@ -23,6 +27,7 @@ export type ClaudeApprovalRecord = ClaudeToolCallIdentity & {
   /** Only when the raising event carried one. `PermissionRequest` never does. */
   readonly toolUseId?: string
   readonly settledBy: ClaudeApprovalSettlement
+  readonly card: ClaudeApprovalCard
 }
 
 /** A tool call announced or completed on a pane, as the ledger reads it. */
@@ -129,6 +134,14 @@ export function claudeHasOutstandingApproval(
   records: readonly ClaudeApprovalRecord[] | undefined
 ): boolean {
   return (records ?? []).length > 0
+}
+
+/** The card of the newest prompt still outstanding (Claude 2.1.284 showed the newest queued dialog
+ *  first); an answered prompt's text must never stand in for the one still on screen. */
+export function claudeLiveApprovalCard(
+  records: readonly ClaudeApprovalRecord[] | undefined
+): ClaudeApprovalCard | undefined {
+  return records?.at(-1)?.card
 }
 
 /** Only children are owed answers, so the pane is paused but the main agent itself is not. */
@@ -239,6 +252,8 @@ export function foldClaudeApprovalEvent(input: {
   toolInput: unknown
   /** This event puts the pane in a human-input wait. */
   raisesWait: boolean
+  /** The card the raised prompt shows; read only when `raisesWait`. */
+  raisedCard?: ClaudeApprovalCard
   /** That wait is an AskUserQuestion, which IS its call's PreToolUse rather than following it. */
   raisesQuestionWait: boolean
   /** This event closes the turn, so the ledger is swept whatever state it is in. */
@@ -298,7 +313,8 @@ export function foldClaudeApprovalEvent(input: {
       : typeof announcedOwner === 'string'
         ? { toolUseId: announcedOwner }
         : {}),
-    settledBy: input.raisesQuestionWait ? 'any-tool-event' : 'completion'
+    settledBy: input.raisesQuestionWait ? 'any-tool-event' : 'completion',
+    card: input.raisedCard ?? {}
   }
   // Why: a duplicate delivery of the same live prompt must not stack a second obligation — unless
   // this turn announced two identical calls, where a second prompt is real and merging would hide it.

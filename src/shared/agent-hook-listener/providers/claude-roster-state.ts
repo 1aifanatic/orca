@@ -6,7 +6,6 @@ import type {
 } from '../../agent-status-types'
 import {
   continueMainAgentStatus,
-  mainAgentTurnInterrupted,
   foldAgentLeadStatus,
   type AgentLeadStatusResolution
 } from '../../agent-lead-status-fold'
@@ -319,42 +318,4 @@ export function clearClaudePendingWaitForAgent(
         }
       : {}
   )
-}
-
-/** Clear an AskUserQuestion wait after the answer is typed (answering emits no hook event; the caller infers it from the submit keystroke). Restores the stashed pre-wait lead state or 'working', drops the cached card, and returns the pane state to emit (gated up to 'working' while children run). */
-export function clearClaudeAnsweredQuestionWait(
-  state: HookListenerState,
-  paneKey: string
-): Pick<ClaudeLeadTurnState, 'state' | 'turnCompletedAt'> & {
-  interrupted?: true
-  workingMode?: AgentWorkingMode
-  mainAgent?: AgentMainAgentStatus
-} {
-  const lead = state.claudeLeadStateByPaneKey.get(paneKey)
-  const stash =
-    lead?.state === 'waiting'
-      ? (lead.stateBeforeWait ?? { state: 'working' as const })
-      : { state: 'working' as const }
-  const restored = setClaudeMainAgentTurnState(state, paneKey, { ...stash })
-  const publishedMainAgent = claudeMainAgentStatusForPayload(restored)
-  const previousTool = state.lastToolByPaneKey.get(paneKey)
-  state.lastToolByPaneKey.set(
-    paneKey,
-    previousTool?.lastAssistantMessage
-      ? {
-          lastAssistantMessage: previousTool.lastAssistantMessage,
-          lastAssistantMessageIsToolOutput: previousTool.lastAssistantMessageIsToolOutput
-        }
-      : {}
-  )
-  const resolved = resolveClaudePaneStatus(state, paneKey, restored)
-  return {
-    state: resolved.stateName,
-    ...(resolved.workingMode ? { workingMode: resolved.workingMode } : {}),
-    ...(mainAgentTurnInterrupted(restored) ? { interrupted: true as const } : {}),
-    ...(restored.turnCompletedAt !== undefined
-      ? { turnCompletedAt: restored.turnCompletedAt }
-      : {}),
-    ...(publishedMainAgent ? { mainAgent: publishedMainAgent } : {})
-  }
 }

@@ -31,7 +31,8 @@ import {
   voidClaimsOfReplacedClaudeSession
 } from './claude-roster-state'
 import { buildClaudeStatusPayload } from './claude-status-build'
-import { holdClaudeWait } from './claude-wait-hold'
+import { extractClaudeToolFields } from './claude-tool-fields'
+import { holdClaudeWait } from './claude-wait-lifecycle'
 
 export function normalizeClaudeEvent(
   state: HookListenerState,
@@ -151,6 +152,8 @@ export function normalizeClaudeEvent(
   }
 
   const eventToolUseId = readFirstString(hookPayload, ['tool_use_id', 'toolUseId'])
+  const raisedTool =
+    reportedStateName === 'waiting' ? extractClaudeToolFields(eventName, hookPayload) : undefined
   const { toolCall, announcedCalls, approvals } = foldClaudeApprovalEvent({
     carriedOver: previousLead,
     eventName,
@@ -159,6 +162,15 @@ export function normalizeClaudeEvent(
     toolName: eventToolName,
     toolInput: hookPayload['tool_input'],
     raisesWait: reportedStateName === 'waiting',
+    ...(raisedTool
+      ? {
+          raisedCard: {
+            toolName: raisedTool.toolName,
+            toolInput: raisedTool.toolInput,
+            interactivePrompt: raisedTool.interactivePrompt
+          }
+        }
+      : {}),
     raisesQuestionWait: isAskUserQuestionWait,
     endsTurn: isManualCompactCompletion,
     isReplay

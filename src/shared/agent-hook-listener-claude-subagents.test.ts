@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  clearClaudeAnsweredQuestionWait,
   markClaudeLeadTurnInterrupted,
   seedClaudeSubagentRosterFromSnapshots
 } from './agent-hook-listener/providers/claude-roster-state'
+import { clearClaudeAnsweredQuestionWait } from './agent-hook-listener/providers/claude-wait-lifecycle'
 import {
   clearPaneCacheState,
   createHookListenerState,
