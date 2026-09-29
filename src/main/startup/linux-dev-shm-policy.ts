@@ -42,7 +42,7 @@ export function configureLinuxDevShmUsage(): void {
           ? 'small'
           : 'ok'
   const disable = reason === 'force' || reason === 'small' || reason === 'unreadable'
-  // Why hasSwitch: headless serve and user argv may already carry it.
+  // Why hasSwitch: user argv may already carry it (headless serve appends its own later).
   if (disable && !app.commandLine.hasSwitch('disable-dev-shm-usage')) {
     app.commandLine.appendSwitch('disable-dev-shm-usage')
   }
