@@ -28,7 +28,7 @@ async function contents(path: string): Promise<string> {
     throw error
   }
 }
-it.skipIf(process.platform !== 'win32' || !runtime)(
+it.skipIf(process.platform !== 'win32')(
   'restricts handles, preserves argv and logs, and survives its owned SSH-style job',
   async () => {
     if (!runtime) {
@@ -84,6 +84,8 @@ it.skipIf(process.platform !== 'win32' || !runtime)(
       const child = JSON.parse(await readFile(join(directory, 'child.json'), 'utf8'))
       expect(launch).toEqual({ pid: child.pid, parentInJob: true })
       expect(child).toMatchObject({ args, childInJob: false, markerInherited: false })
+      const owned = JSON.parse(await readFile(join(directory, 'owned-child.json'), 'utf8'))
+      expect(owned).toEqual({ pid: child.pid, creation: child.creation })
       expect(child.creation).toMatch(/^\d+$/)
       const first = Number(await contents(join(directory, 'tick')))
       await waitFor(async () => Number(await contents(join(directory, 'tick'))) > first + 2)
@@ -112,17 +114,15 @@ it.skipIf(process.platform !== 'win32' || !runtime)(
       expect(await contents(join(directory, 'stderr.log'))).toBe('replacement stderr\n')
     } finally {
       if (launched) {
-        await writeFile(join(directory, 'stop'), '')
-        // The fixture never kills by PID; it waits on a handle after matching creation time.
-        if (await contents(join(directory, 'child.json'))) {
+        // Cleanup opens a creation-time-matched handle before asking the child to exit.
+        if (await contents(join(directory, 'owned-child.json'))) {
           const cleanup = await execute(['inspect', directory])
-          expect(cleanup.timedOut, cleanup.stderr).toBe(false)
-          expect(cleanup.code, cleanup.stderr).toBe(0)
+          expect(cleanup.timedOut, `${cleanup.stderr}; evidence: ${directory}`).toBe(false)
+          expect(cleanup.code, `${cleanup.stderr}; evidence: ${directory}`).toBe(0)
           cleaned = true
         } else {
-          // A launch failing before its receipt still has the independent 15-second watchdog.
-          await delay(16_000)
-          cleaned = true
+          await writeFile(join(directory, 'stop'), '')
+          expect.fail(`Cleanup unverifiable without owned child identity; evidence: ${directory}`)
         }
       }
       if (!launched || cleaned) {

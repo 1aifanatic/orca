@@ -32,7 +32,7 @@ type NativeApi = {
   ): number
   OpenProcess(access: number, inherit: number, pid: number): Pointer
   WaitForSingleObject(handle: Pointer, timeout: number): number
-  GetLastError(): number
+  TerminateProcess(handle: Pointer, code: number): number
   GetHandleInformation(handle: Pointer, flags: Pointer): number
   CloseHandle(handle: Pointer): number
 }
@@ -57,12 +57,52 @@ const library = ffi.dlopen<NativeApi>('kernel32.dll', {
   GetProcessTimes: { args: ['u64', 'ptr', 'ptr', 'ptr', 'ptr'], returns: 'i32' },
   OpenProcess: { args: ['u32', 'i32', 'u32'], returns: 'u64' },
   WaitForSingleObject: { args: ['u64', 'u32'], returns: 'u32' },
-  GetLastError: { args: [], returns: 'u32' },
+  TerminateProcess: { args: ['u64', 'u32'], returns: 'i32' },
   GetHandleInformation: { args: ['u64', 'ptr'], returns: 'i32' },
   CloseHandle: { args: ['u64'], returns: 'i32' }
 })
 const api = library.symbols
-const readLastErrorCode = api.GetLastError
+const objectLibrary = ffi.dlopen<{
+  NtQueryObject(
+    handle: Pointer,
+    kind: number,
+    buffer: Pointer,
+    size: number,
+    returned: Pointer
+  ): number
+}>('ntdll.dll', {
+  NtQueryObject: { args: ['u64', 'u32', 'ptr', 'u32', 'ptr'], returns: 'u32' }
+})
+function markerMatches(handle: Pointer): boolean {
+  const buffer = new Uint8Array(4096)
+  const returned = new Uint32Array(1)
+  const status = objectLibrary.symbols.NtQueryObject(
+    handle,
+    2,
+    ffi.ptr(buffer),
+    buffer.length,
+    ffi.ptr(returned)
+  )
+  if (status === 0xc0000008) {
+    return false
+  }
+  assert.equal(status, 0, 'unable to identify possible inherited marker handle')
+  const view = new DataView(buffer.buffer)
+  const length = view.getUint16(0, true)
+  const offset = Number(view.getBigUint64(8, true) - BigInt(ffi.ptr(buffer)))
+  assert(Number.isSafeInteger(offset) && offset >= 0 && offset + length <= buffer.length)
+  const type = Buffer.from(buffer.buffer, offset, length).toString('utf16le')
+  if (type !== 'File') {
+    assert(type.length > 0, 'unidentified native object type')
+    return false
+  }
+  const path = new Uint16Array(32768)
+  const size = api.GetFinalPathNameByHandleW(handle, ffi.ptr(path), path.length, 0)
+  assert(size > 0 && size < path.length, 'unable to identify possible inherited file')
+  return Buffer.from(path.buffer, 0, size * 2)
+    .toString('utf16le')
+    .endsWith('inheritable-marker.txt')
+}
 function utf16(value: string): Uint16Array {
   const output = new Uint16Array(value.length + 1)
   for (let i = 0; i < value.length; i++) {
@@ -106,18 +146,22 @@ async function main(): Promise<void> {
   const watchdog = setTimeout(() => process.exit(2), 15_000)
   try {
     if (mode === 'inspect') {
-      const receipt = JSON.parse(readFileSync(join(directory, 'child.json'), 'utf8'))
+      const receipt = JSON.parse(readFileSync(join(directory, 'owned-child.json'), 'utf8'))
       assert(Number.isInteger(receipt.pid) && typeof receipt.creation === 'string')
-      const handle = api.OpenProcess(0x100000 | 0x1000, 0, receipt.pid)
-      if (!handle) {
-        assert.equal(readLastErrorCode(), 87, 'unable to prove child exited')
-        return
-      }
+      const handle = api.OpenProcess(0x100000 | 0x1000 | 1, 0, receipt.pid)
+      assert(handle, 'cleanup unverifiable: cannot open owned process; preserve evidence')
       try {
         if (identity(handle) !== receipt.creation) {
           return
         }
-        assert.equal(api.WaitForSingleObject(handle, 10_000), 0, 'owned child did not exit')
+        writeFileSync(join(directory, 'stop'), '')
+        const status = api.WaitForSingleObject(handle, 10_000)
+        if (status === 258) {
+          assert(api.TerminateProcess(handle, 2), 'owned child could not be terminated')
+          assert.equal(api.WaitForSingleObject(handle, 3_000), 0, 'owned child did not terminate')
+          throw new Error('Owned child required forced cleanup; preserve evidence')
+        }
+        assert.equal(status, 0, 'owned child exit is unverifiable')
       } finally {
         api.CloseHandle(handle)
       }
@@ -135,16 +179,7 @@ async function main(): Promise<void> {
       } finally {
         api.CloseHandle(job)
       }
-      const path = new Uint16Array(32768)
-      const size = api.GetFinalPathNameByHandleW(
-        BigInt(markerHandle),
-        ffi.ptr(path),
-        path.length,
-        0
-      )
-      const inheritedPath =
-        size && size < path.length ? Buffer.from(path.buffer, 0, size * 2).toString('utf16le') : ''
-      const markerInherited = inheritedPath.endsWith('inheritable-marker.txt')
+      const markerInherited = markerMatches(BigInt(markerHandle))
       publish(
         join(directory, 'child.json'),
         JSON.stringify({
@@ -199,6 +234,7 @@ async function main(): Promise<void> {
     const markerFlags = new Uint32Array(1)
     assert(api.GetHandleInformation(marker, ffi.ptr(markerFlags)))
     assert.equal(markerFlags[0] & 1, 1, 'marker handle must be inheritable')
+    assert(markerMatches(marker), 'marker identification positive control failed')
     const pid = launchDetachedWindowsRelay({
       executable: process.execPath,
       args: [__filename, 'child', directory, jobName, String(marker), ...args],
@@ -206,6 +242,16 @@ async function main(): Promise<void> {
       stdoutPath: join(directory, 'stdout.log'),
       stderrPath: join(directory, 'stderr.log')
     })
+    const childHandle = api.OpenProcess(0x100000 | 0x1000, 0, pid)
+    assert(childHandle, 'unable to capture detached child identity')
+    try {
+      publish(
+        join(directory, 'owned-child.json'),
+        JSON.stringify({ pid, creation: identity(childHandle) })
+      )
+    } finally {
+      api.CloseHandle(childHandle)
+    }
     await waitFor(join(directory, 'child.json'))
     writeFileSync(join(directory, 'launch.json'), JSON.stringify({ pid, parentInJob: member(job) }))
     api.CloseHandle(marker)
@@ -213,6 +259,7 @@ async function main(): Promise<void> {
     process.exit(0)
   } finally {
     clearTimeout(watchdog)
+    objectLibrary.close()
     library.close()
   }
 }
