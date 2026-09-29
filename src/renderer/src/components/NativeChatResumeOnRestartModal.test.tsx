@@ -12,6 +12,7 @@ import { TooltipProvider } from './ui/tooltip'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
+  getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import {
@@ -306,7 +307,45 @@ it('closes on Resume and shows the resume in the status bar until the host answe
   )
   expect(document.body.textContent).not.toContain('Resuming')
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+  // Nothing is left to show, so the reopen request is retired rather than left to latch.
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBe(false)
   expect(toast).toHaveBeenCalledWith('Resumed 2 chats and asked them to continue')
+})
+
+// A dialog the user reopened mid-run is theirs: the run's answer must not close it over a chat
+// they left out of the resume and can now act on.
+it('keeps a dialog reopened mid-resume open over the chats still offered', async () => {
+  const third = { ...offered[1]!, sessionId: 'c', latestPrompt: 'Prompt c' }
+  const continued = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? Promise.resolve({ sessions: [...offered, third] })
+      : continued.promise
+  )
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  await act(async () => checkbox(2).click())
+  await act(async () => button('Resume 2 chats').click())
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => button('1 chat to resume').click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+
+  await act(async () =>
+    continued.resolve({
+      resumed: offered.map(({ sessionId }) => ({ sessionId, outcome: 'resumed' })),
+      continued: offered.map(({ sessionId }) => ({ sessionId, outcome: 'continued' })),
+      sessions: [third]
+    })
+  )
+  const dialog = document.querySelector('[role="dialog"]')
+  expect(dialog?.textContent).toContain('Prompt c')
+  expect(dialog?.textContent).not.toContain('Prompt a')
+  // The run is over, so the chat left out is actionable again.
+  expect(button('Dismiss all').disabled).toBe(false)
 })
 
 // Resuming spends the host's claims, so the offer has to shrink with it. A count left standing over
@@ -372,6 +411,35 @@ it('resumes and continues once when the launch begins opted in', async () => {
   expect(toast).toHaveBeenCalledWith('Resumed 2 chats and asked them to continue')
   expect(offerIds()).toEqual([])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+})
+
+// No dialog to watch, so the status bar is the only sign an automatic resume is running.
+it('shows an opted-in launch resume in the status bar while it runs', async () => {
+  useAppStore.setState({
+    settings: {
+      ...getDefaultSettings(''),
+      experimentalStructuredNativeChat: true,
+      nativeChatResumeWorkOnRestart: true
+    }
+  })
+  const continued = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? Promise.resolve({ sessions: offered })
+      : continued.promise
+  )
+  await mount(<NativeChatResumeStatusSegment iconOnly={false} />)
+  expect(button('Resuming 2 chats').getAttribute('aria-label')).toBe(
+    'Resuming 2 chats. Click to open details.'
+  )
+  await act(async () =>
+    continued.resolve({
+      resumed: offered.map(({ sessionId }) => ({ sessionId, outcome: 'resumed' })),
+      continued: offered.map(({ sessionId }) => ({ sessionId, outcome: 'continued' })),
+      sessions: []
+    })
+  )
+  expect(document.body.textContent).not.toContain('Resuming')
 })
 
 // An opted-in launch reports the chats the host would not take, exactly as the button does.

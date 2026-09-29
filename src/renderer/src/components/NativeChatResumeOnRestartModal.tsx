@@ -121,10 +121,13 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       void persistPreference()
       if (handOff) {
         consumeNativeChatResumeOnRestartDialogRequest()
+        // Any dialog open when it settles was reopened by the user and is theirs to close; the
+        // store retires the request itself once the host confirms nothing is left.
+        await continueNativeChatRestartOffer(sessionIds)
+        return
       }
       await continueNativeChatRestartOffer(sessionIds)
-      // A dialog still open (a row retry) or reopened mid-run stays open when a chat did not carry
-      // on: its row now says what to do about it.
+      // A row retry keeps its dialog open while a chat did not carry on: that row says what to do.
       if (getNativeChatRestartOffer().failed.length === 0) {
         consumeNativeChatResumeOnRestartDialogRequest()
       }

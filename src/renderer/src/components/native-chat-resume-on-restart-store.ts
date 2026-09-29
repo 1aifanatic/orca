@@ -17,7 +17,10 @@ import {
   type ResumeCandidate,
   type ResumeFailure
 } from './native-chat-resume-on-restart-grouping'
-import { requestNativeChatResumeOnRestartDialog } from './native-chat-resume-on-restart-dialog'
+import {
+  consumeNativeChatResumeOnRestartDialogRequest,
+  requestNativeChatResumeOnRestartDialog
+} from './native-chat-resume-on-restart-dialog'
 
 /**
  * Which interrupted chats the host is still offering to resume, and every action that moves that.
@@ -71,6 +74,15 @@ function publish(next: NativeChatRestartOffer): void {
   offer = next
   syncOfferedChatWatch()
   emit()
+}
+
+/** A confirmed host answer. One with nothing left also retires any open request for the dialog,
+ *  which has nothing to show; a failed read only hides rows, so it keeps the request. */
+function publishAnswer(next: NativeChatRestartOffer): void {
+  publish(next)
+  if (next.candidates.length === 0 && next.failed.length === 0) {
+    consumeNativeChatResumeOnRestartDialogRequest()
+  }
 }
 
 function syncResuming(): void {
@@ -224,7 +236,7 @@ async function readNativeChatRestartOffer(current = () => true): Promise<HostOff
     }
     const failed = failedFrom(offered)
     if (current()) {
-      publish({ candidates: offered.sessions, failed, listedAt: Date.now() })
+      publishAnswer({ candidates: offered.sessions, failed, listedAt: Date.now() })
     }
     return { candidates: offered.sessions, failed, available: true }
   } catch {
@@ -290,7 +302,7 @@ export async function continueNativeChatRestartOffer(
       failureToastActions
     )
     if (Array.isArray(result.sessions)) {
-      publish({ candidates: result.sessions, failed, listedAt: Date.now() })
+      publishAnswer({ candidates: result.sessions, failed, listedAt: Date.now() })
     } else {
       await refreshNativeChatRestartOffer()
     }
@@ -321,7 +333,11 @@ export async function dismissNativeChatRestartOffer(sessionIds?: readonly string
       sessionIds ? { sessionIds: [...sessionIds] } : {}
     )
     if (Array.isArray(result.sessions)) {
-      publish({ candidates: result.sessions, failed: failedFrom(result), listedAt: Date.now() })
+      publishAnswer({
+        candidates: result.sessions,
+        failed: failedFrom(result),
+        listedAt: Date.now()
+      })
     } else {
       await refreshNativeChatRestartOffer()
     }
