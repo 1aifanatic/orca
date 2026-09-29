@@ -100,4 +100,26 @@ describe('Resume on a paused queue', () => {
     expect(ids).toHaveLength(3)
     expect(new Set(ids).size).toBe(3)
   })
+
+  it('reports a Resume in flight until it settles', async () => {
+    const answer = Promise.withResolvers<unknown>()
+    mocks.call.mockReturnValueOnce(answer.promise)
+    const { result } = renderController()
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.resume()
+    })
+    expect(result.current.resuming).toBe(true)
+    await act(async () => {
+      answer.resolve({
+        ok: true,
+        replayed: false,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 1 },
+        value: { resumed: true }
+      })
+      await pending
+    })
+    expect(result.current.resuming).toBe(false)
+  })
 })
