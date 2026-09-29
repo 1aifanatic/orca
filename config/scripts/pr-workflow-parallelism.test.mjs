@@ -7,7 +7,6 @@ import { MOBILE_WEB_APP_DEPENDENCIES_REQUIRED_ENV } from './mobile-web-app-bundl
 
 const workflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
 const prTestLocWorkflow = parse(readFileSync('.github/workflows/pr-test-loc.yml', 'utf8'))
-const trackingWorkflow = parse(readFileSync('.github/workflows/track-community-prs.yaml', 'utf8'))
 const releasePolicyWorkflow = parse(readFileSync('.github/workflows/release-policy.yml', 'utf8'))
 const issueLabelWorkflow = parse(readFileSync('.github/workflows/issue-os-labeler.yaml', 'utf8'))
 const unitTestWorkflow = parse(readFileSync('.github/workflows/unit-tests.yml', 'utf8'))
@@ -55,7 +54,6 @@ describe('PR workflow parallelism', () => {
     expect(workflow.jobs.typecheck['runs-on']).toBe('ubuntu-24.04-arm')
     expect(workflow.jobs.verify['runs-on']).toBe('ubuntu-slim')
     expect(prTestLocWorkflow.jobs.loc['runs-on']).toBe('ubuntu-slim')
-    expect(trackingWorkflow.jobs['track-community-pr']['runs-on']).toBe('ubuntu-slim')
     expect(releasePolicyWorkflow.jobs.enforce['runs-on']).toBe('ubuntu-slim')
     expect(issueLabelWorkflow.jobs['apply-os-label']['runs-on']).toBe('ubuntu-slim')
   })
@@ -499,6 +497,22 @@ describe('PR workflow parallelism', () => {
     for (const checkout of fullHistoryCheckouts) {
       expect(checkout.with.filter).toBe('blob:none')
     }
+  })
+
+  it('keeps advisory unit-selection evidence off the gate', () => {
+    // It is continue-on-error, so it can never fail a PR. Living inside unit-tests.yml made a
+    // caller's `needs: test` wait for it anyway, holding verify ~36s past the last shard. Pinned
+    // here so it cannot drift back onto the critical path.
+    const evidence = workflow.jobs.unit_selection_evidence
+    expect(evidence.uses).toBe('./.github/workflows/unit-selection-evidence.yml')
+    expect(evidence.needs).toEqual(['test'])
+    expect(workflow.jobs.verify.needs).not.toContain('unit_selection_evidence')
+    expect(unitTestWorkflow.jobs.selection_evidence).toBeUndefined()
+    const evidenceWorkflow = parse(
+      readFileSync('.github/workflows/unit-selection-evidence.yml', 'utf8')
+    )
+    const job = evidenceWorkflow.jobs.selection_evidence
+    expect(job['continue-on-error']).toBe(true)
   })
 
   it('keeps verify as the aggregate required check', () => {
