@@ -16,7 +16,12 @@ import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 
 type ForegroundPty = Pick<
   RuntimePtyWorktreeRecord,
-  'connectionId' | 'incarnationId' | 'connected' | 'launchAgent' | 'foregroundAgent'
+  | 'connectionId'
+  | 'incarnationId'
+  | 'connected'
+  | 'launchAgent'
+  | 'foregroundAgent'
+  | 'foregroundAgentIncarnationId'
 >
 
 type Dependencies = {
@@ -200,6 +205,9 @@ export class RuntimePtyForegroundAgent {
       judgement.verdict === 'live'
         ? (recognizeAgentProcess(judgement.processName)?.agent ?? null)
         : null
+    if (agent) {
+      pty.foregroundAgentIncarnationId = pty.incarnationId
+    }
     if (pty.foregroundAgent === agent) {
       return false
     }

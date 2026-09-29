@@ -67,6 +67,8 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchAgent: TuiAgent | null
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TuiAgent | null
+  /** The incarnation whose read last named `foregroundAgent`; a same-id respawn keeps the name. */
+  foregroundAgentIncarnationId?: PtyIncarnationId | null
   connected: boolean
   disconnectedAt: number | null
   lastExitCode: number | null

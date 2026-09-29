@@ -141,6 +141,7 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
         return false
       }
       trackedPty.foregroundAgent = agent
+      trackedPty.foregroundAgentIncarnationId = trackedPty.incarnationId
       return true
     } catch {
       return false

@@ -41,6 +41,7 @@ function setup() {
     lastAgentStatusObservedLive: boolean
     launchAgent: string | null
     foregroundAgent: string | null
+    foregroundAgentIncarnationId?: string | null
     connectionId?: string
   } = {
     connected: true,
@@ -190,6 +191,7 @@ describe('agent exit at the shell 133;D', () => {
   it('retires the agent on the 133;D where no read can ever name the shell', async () => {
     const h = setup()
     h.pty.foregroundAgent = 'claude'
+    h.pty.foregroundAgentIncarnationId = 'inc-1'
     h.read.mockResolvedValue(readResult(h.controller, 'wsl.exe'))
     h.runtime.commandFinished()
     await vi.waitFor(() =>
@@ -259,6 +261,21 @@ describe('a 133;D printed before the launched agent starts', () => {
     h.runtime.commandFinished()
     await Promise.resolve()
     await Promise.resolve()
+    expect(h.facts).toEqual([])
+    h.tracker.dispose()
+  })
+  it('does not count an agent a read saw in an earlier incarnation', async () => {
+    const h = setup()
+    h.pty.launchAgent = 'claude'
+    h.pty.foregroundAgent = 'claude'
+    h.pty.foregroundAgentIncarnationId = 'inc-1'
+    // A same-id respawn: the new shell prints its first-prompt D before the agent relaunches.
+    h.pty.incarnationId = 'inc-2'
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.runtime.commandFinished()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(h.read).not.toHaveBeenCalled()
     expect(h.facts).toEqual([])
     h.tracker.dispose()
   })

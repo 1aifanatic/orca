@@ -5,7 +5,11 @@ type ShellCommandPty = Pick<RuntimePtyWorktreeRecord, 'incarnationId' | 'running
 type AgentHoldPty = ShellCommandPty &
   Pick<
     RuntimePtyWorktreeRecord,
-    'launchAgent' | 'foregroundAgent' | 'lastAgentStatus' | 'lastAgentStatusObservedLive'
+    | 'launchAgent'
+    | 'foregroundAgent'
+    | 'foregroundAgentIncarnationId'
+    | 'lastAgentStatus'
+    | 'lastAgentStatusObservedLive'
   >
 
 /** OSC 133;C: the next 133;D ends a command this incarnation started. */
@@ -26,7 +30,7 @@ export function takeShellCommandFinishedAgentHold(pty: AgentHoldPty): boolean {
   pty.runningShellCommand = undefined
   return (
     endsLaunchedCommand ||
-    Boolean(pty.foregroundAgent) ||
+    (Boolean(pty.foregroundAgent) && pty.foregroundAgentIncarnationId === pty.incarnationId) ||
     (Boolean(pty.lastAgentStatus) && pty.lastAgentStatusObservedLive)
   )
 }

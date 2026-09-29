@@ -10,7 +10,12 @@ import type { TerminalProcessInspection } from '../../shared/terminal-process-in
 function setup(remote = false) {
   const pty: Pick<
     RuntimePtyWorktreeRecord,
-    'connectionId' | 'incarnationId' | 'connected' | 'launchAgent' | 'foregroundAgent'
+    | 'connectionId'
+    | 'incarnationId'
+    | 'connected'
+    | 'launchAgent'
+    | 'foregroundAgent'
+    | 'foregroundAgentIncarnationId'
   > = {
     connectionId: remote ? 'ssh-host' : null,
     incarnationId: 'generation-1',
@@ -109,6 +114,17 @@ describe('foreground identity on unknown observations', () => {
     })
     await h.agent.refresh('pty-1')
     expect(h.pty.foregroundAgent).toBe(expected)
+  })
+  it('stamps each read that names the agent with the incarnation it saw', async () => {
+    const h = setup()
+    h.confirm.mockResolvedValue('claude')
+    await h.agent.refresh('pty-1')
+    expect(h.pty.foregroundAgentIncarnationId).toBe('generation-1')
+    // A same-id respawn running the same agent must not keep the predecessor's stamp.
+    h.pty.incarnationId = 'generation-2'
+    await h.agent.confirm('pty-1')
+    expect(h.pty.foregroundAgent).toBe('claude')
+    expect(h.pty.foregroundAgentIncarnationId).toBe('generation-2')
   })
   it('clears foregroundAgent from the same read that confirms an exit', async () => {
     const h = setup()
