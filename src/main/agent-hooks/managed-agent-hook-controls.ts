@@ -6,6 +6,7 @@ import {
 import { normalizeDisabledTuiAgents } from '../../shared/tui-agent-selection'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
+import { codexExecutableCapability } from '../codex/codex-native-terminal-capability'
 import { detectLocalManagedAgentCliPresence } from './local-agent-cli-presence'
 import {
   MANAGED_AGENT_HOOK_ASYNC_REMOVERS,
@@ -206,6 +207,9 @@ export async function installManagedAgentHooks(
       agent === 'claude' && presence.executablePath
         ? await probeClaudeCliVersion(presence.executablePath)
         : null
+    if (agent === 'codex') {
+      void codexExecutableCapability.supportsNoDaemon(presence.executablePath)
+    }
     results.push(
       await runInstaller(entry, options.onInstallError, {
         ...(options.userInitiated !== undefined ? { userInitiated: options.userInitiated } : {}),

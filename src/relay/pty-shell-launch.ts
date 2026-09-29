@@ -1,3 +1,8 @@
+import {
+  getFishCodexShellLaunchPreflight,
+  getPowerShellCodexShellLaunchPreflight
+} from '../main/pty/codex-shell-launch-preflight'
+import { isPowerShellExecutableName } from '../main/powershell-osc133-bootstrap'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -73,6 +78,20 @@ export function getRelayShellLaunchConfig(
     args: POSIX_LOGIN_ARGS,
     env: {},
     supportsReadyMarker: false
+  }
+  if (env.ORCA_CODEX_LAUNCH_PREFLIGHT && isPowerShellExecutableName(shellName)) {
+    return {
+      args: ['-NoLogo', '-NoExit', '-Command', getPowerShellCodexShellLaunchPreflight()],
+      env: {},
+      supportsReadyMarker: false
+    }
+  }
+  if (env.ORCA_CODEX_LAUNCH_PREFLIGHT && shellName === 'fish' && platform !== 'win32') {
+    return {
+      args: ['-l', '-C', getFishCodexShellLaunchPreflight()],
+      env: {},
+      supportsReadyMarker: false
+    }
   }
   if (platform === 'win32') {
     // Why: pwsh also exists on POSIX remotes; Windows-specific shell args must

@@ -280,29 +280,24 @@ export function buildPtyHostEnv(
   if (opts.skipCodexHomeEnv) {
     delete baseEnv.CODEX_HOME
     delete baseEnv.ORCA_CODEX_HOME
-    delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
   } else if (opts.selectedCodexHomePath) {
     baseEnv.CODEX_HOME = opts.selectedCodexHomePath
     // Why: user startup files may re-export CODEX_HOME; shell-ready wrappers restore this runtime home before Codex launches.
     baseEnv.ORCA_CODEX_HOME = opts.selectedCodexHomePath
-    const preflightCommand = resolveCodexShellLaunchPreflightCommand({
-      hooksEnabled: opts.codexStatusHooksEnabled ?? opts.agentStatusHooksEnabled,
-      isPackaged: opts.isPackaged,
-      isWsl: opts.isWsl,
-      managedHomePath: opts.selectedCodexHomePath,
-      userDataPath: opts.userDataPath,
-      resourcesPath: opts.resourcesPath
-    })
-    if (preflightCommand) {
-      baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT = preflightCommand
-    } else {
-      delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
-    }
   } else if (opts.stripInheritedOrcaCodexHome) {
     stripInheritedOrcaCodexHomeOverride(baseEnv)
-    delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
-  } else {
-    delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
+  }
+  delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
+  const preflightCommand = resolveCodexShellLaunchPreflightCommand({
+    hooksEnabled: opts.codexStatusHooksEnabled ?? opts.agentStatusHooksEnabled,
+    isPackaged: opts.isPackaged,
+    isWsl: opts.isWsl,
+    managedHomePath: opts.selectedCodexHomePath,
+    userDataPath: opts.userDataPath,
+    resourcesPath: opts.resourcesPath
+  })
+  if (preflightCommand) {
+    baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT = preflightCommand
   }
 
   // Why: an inherited copy (e.g. Orca launched from a WSL pane) names another launch's CLI.

@@ -6,7 +6,7 @@ export const AGENT_HOOK_COMMAND_SPECS: CommandSpec[] = [
     path: ['agent', 'hooks', 'prepare-codex'],
     summary: 'Repair Orca-managed Codex hook trust before a shell launch',
     usage: 'orca agent hooks prepare-codex',
-    allowedFlags: [...GLOBAL_FLAGS]
+    allowedFlags: [...GLOBAL_FLAGS, 'launch-executable', 'launch-wsl-distro']
   },
   {
     path: ['agent', 'hooks', 'status'],

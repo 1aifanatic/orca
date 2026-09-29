@@ -438,6 +438,43 @@ describe('agent hooks CLI handler', () => {
     }
   )
 
+  it.each([true, false])(
+    'returns a launch flag only for proven executable support (%s)',
+    async (supported) => {
+      vi.stubEnv('ORCA_TERMINAL_HANDLE', 'term-test')
+      vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
+      callMock.mockResolvedValue({ result: { supported } })
+      const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+      await main(
+        ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
+        userDataPath
+      )
+      expect(callMock).toHaveBeenCalledExactlyOnceWith(
+        'agentHooks.codexTerminalLaunchCapability',
+        {
+          executablePath: '/opt/codex',
+          terminalHandle: 'term-test',
+          wslDistro: 'Ubuntu'
+        },
+        { timeoutMs: 2_000 }
+      )
+      expect(output.mock.calls.flat().join('')).toBe(supported ? '--no-daemon\n' : '')
+      expect(prepareManagedCodexHomeBeforeShellLaunchMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('returns no launch flag when the runtime is older or unreachable, without retrying', async () => {
+    callMock.mockRejectedValue(new Error('method_not_found'))
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    await main(
+      ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
+      userDataPath
+    )
+    expect(callMock).toHaveBeenCalledOnce()
+    expect(output).not.toHaveBeenCalled()
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).not.toHaveBeenCalled()
+  })
+
   it('prepares managed Codex trust with the current hooks setting', async () => {
     const state = getDefaultPersistedState(userDataPath)
     state.settings.agentStatusHooksEnabled = false

@@ -131,9 +131,12 @@ export function getShellLaunchConfig(
     }
   }
 
-  // Why: mirrors daemon/shell-ready.ts; markerless fish stays unwrapped. The
+  // Why: mirrors daemon/shell-ready.ts; overlays also need launch policy. The
   // selection is baked into the init command, so fish needs no feature env var.
-  if (shellName === 'fish' && (features.includes('ready') || startupCommand !== undefined)) {
+  if (
+    shellName === 'fish' &&
+    (features.includes('ready') || features.includes('overlay') || startupCommand !== undefined)
+  ) {
     return {
       args: [
         '-l',

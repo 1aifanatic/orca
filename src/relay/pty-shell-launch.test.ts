@@ -88,6 +88,22 @@ describe('getRelayShellLaunchConfig', () => {
     rmSync(homeDir, { recursive: true, force: true })
   })
 
+  it.each([
+    { shell: '/usr/bin/fish', platform: 'linux' as const },
+    {
+      shell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      platform: 'win32' as const
+    }
+  ])('installs Codex capability checks for $shell', ({ shell, platform }) => {
+    const config = getRelayShellLaunchConfig(
+      shell,
+      { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
+      platform
+    )
+    expect(config.args.join(' ')).toContain('prepare-codex --launch-executable')
+    expect(config.supportsReadyMarker).toBe(false)
+  })
+
   it.skipIf(process.platform === 'win32')(
     'preserves a user ZDOTDIR exported from .zshenv for later startup files',
     () => {

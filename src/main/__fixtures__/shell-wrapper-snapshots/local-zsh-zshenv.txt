@@ -143,6 +143,65 @@ __orca_deferred_init() {
 
     # Why: Codex must keep using Orca's runtime CODEX_HOME after rc files.
     [[ -n "${ORCA_CODEX_HOME:-}" ]] && export CODEX_HOME="${ORCA_CODEX_HOME}"
+    __orca_codex_interactive() {
+      local __orca_arg
+      for __orca_arg in "$@"; do [ "$__orca_arg" != --no-daemon ] || return 1; done
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --) return 0 ;;
+          --no-daemon|--help|-h|--version|-V) return 1 ;;
+          -c|--config|-m|--model|-p|--profile|-s|--sandbox|-a|--ask-for-approval|-C|--cd|--add-dir|-i|--image|--enable|--disable) [ "$#" -gt 1 ] || return 1; shift 2 ;;
+          -c=*|--config=*|-m=*|--model=*|-p=*|--profile=*|-s=*|--sandbox=*|-a=*|--ask-for-approval=*|-C=*|--cd=*|--add-dir=*|-i=*|--image=*|--enable=*|--disable=*) shift ;;
+          --search|--full-auto|--dangerously-bypass-approvals-and-sandbox|--yolo|--no-alt-screen|--oss) shift ;;
+          -*) return 1 ;;
+          exec|e|review|login|logout|mcp|mcp-server|app-server|completion|sandbox|debug|apply|a|cloud|features|help|agents|tcp-tunnel|plugin|remote-control|app|update|doctor|execpolicy|queue|archive|delete|migrate-rollouts|unarchive|cloud-tasks|responses-api-proxy|stdio-to-uds|exec-server) return 1 ;;
+          *) return 0 ;;
+        esac
+      done
+      return 0
+    }
+    __orca_codex_path() {
+    _orca_lookup_command='codex'
+    __orca_lookup_result=
+    case "$_orca_lookup_command" in
+      */*)
+        case "$_orca_lookup_command" in
+          /*) _orca_lookup_candidate=$_orca_lookup_command ;;
+          *) _orca_lookup_candidate=${PWD%/}/$_orca_lookup_command ;;
+        esac
+        if [ -x "$_orca_lookup_candidate" ] && [ ! -d "$_orca_lookup_candidate" ]; then
+          __orca_lookup_result=$_orca_lookup_candidate
+        fi
+        ;;
+      *)
+        _orca_lookup_remaining=${PATH-}
+        while :; do
+          case "$_orca_lookup_remaining" in
+            *:*)
+              _orca_lookup_component=${_orca_lookup_remaining%%:*}
+              _orca_lookup_remaining=${_orca_lookup_remaining#*:}
+              _orca_lookup_has_more=1
+              ;;
+            *)
+              _orca_lookup_component=$_orca_lookup_remaining
+              _orca_lookup_has_more=
+              ;;
+          esac
+          [ -n "$_orca_lookup_component" ] || _orca_lookup_component=.
+          case "$_orca_lookup_component" in
+            /*) _orca_lookup_candidate=$_orca_lookup_component/$_orca_lookup_command ;;
+            *) _orca_lookup_candidate=${PWD%/}/$_orca_lookup_component/$_orca_lookup_command ;;
+          esac
+          if [ -x "$_orca_lookup_candidate" ] && [ ! -d "$_orca_lookup_candidate" ]; then
+            __orca_lookup_result=$_orca_lookup_candidate
+            break
+          fi
+          [ -n "$_orca_lookup_has_more" ] || break
+        done
+        ;;
+    esac
+      printf '%s' "$__orca_lookup_result"
+    }
     # Why: a typed alias expands inside the shell, after pane launch prep.
     # Why unalias inside the substitution: an alias named codex makes command -v
     # report the alias text, and the subshell leaves the user's own alias intact.
@@ -154,6 +213,15 @@ __orca_deferred_init() {
       # which otherwise rewrites this header at parse time and aborts the whole file.
       function codex {
         "${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
+        local __orca_executable __orca_flag
+        __orca_executable="$(__orca_codex_path)"
+        if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@"; then
+          __orca_flag="$("${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex --launch-executable "$__orca_executable" --launch-wsl-distro "${WSL_DISTRO_NAME:-}" 2>/dev/null)" || __orca_flag=''
+          if [ "$__orca_flag" = --no-daemon ]; then
+            "$__orca_executable" --no-daemon "$@"
+            return $?
+          fi
+        fi
         command codex "$@"
       }
     fi

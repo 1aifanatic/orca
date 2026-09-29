@@ -1,6 +1,12 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { buildPosixCommandPathLookupScript } from '../../shared/posix-command-path-lookup'
 import { getBundledLauncherPath } from '../cli/bundled-cli-launcher-path'
+import {
+  fishCodexInteractiveArgv,
+  posixCodexInteractiveArgv,
+  powerShellCodexInteractiveArgv
+} from './codex-terminal-argv-policy'
 
 const DEV_LAUNCHER_DIR = ['cli', 'bin']
 const DEV_COMMAND_NAME = 'orca-dev'
@@ -29,9 +35,6 @@ export type CodexShellLaunchPreflightCommandOptions = {
 export function resolveCodexShellLaunchPreflightCommand(
   options: CodexShellLaunchPreflightCommandOptions
 ): string | null {
-  if (!options.hooksEnabled || !options.managedHomePath) {
-    return null
-  }
   const platform = options.platform ?? process.platform
   const candidate = options.isPackaged
     ? options.resourcesPath
@@ -66,7 +69,12 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
 }
 
 export function getPosixCodexShellLaunchPreflight(): string {
-  return `# Why: a typed alias expands inside the shell, after pane launch prep.
+  return `${posixCodexInteractiveArgv()}
+__orca_codex_path() {
+${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }).replace(/\bresolved\b/g, '__orca_lookup_result')}
+  printf '%s' "$__orca_lookup_result"
+}
+# Why: a typed alias expands inside the shell, after pane launch prep.
 # Why unalias inside the substitution: an alias named codex makes command -v
 # report the alias text, and the subshell leaves the user's own alias intact.
 # Why || : twice — zsh alone aborts inside the substitution, but every shell's
@@ -77,6 +85,15 @@ if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIG
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
     "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
+    local __orca_executable __orca_flag
+    __orca_executable="$(__orca_codex_path)"
+    if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@"; then
+      __orca_flag="$("\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex --launch-executable "$__orca_executable" --launch-wsl-distro "\${WSL_DISTRO_NAME:-}" 2>/dev/null)" || __orca_flag=''
+      if [ "$__orca_flag" = --no-daemon ]; then
+        "$__orca_executable" --no-daemon "$@"
+        return $?
+      fi
+    fi
     command codex "$@"
   }
 fi
@@ -85,13 +102,22 @@ unset __orca_codex_binary
 }
 
 export function getFishCodexShellLaunchPreflight(): string {
-  return `# Why captured: an unquoted (type -t codex) expands to zero words when codex is
+  return `${fishCodexInteractiveArgv()}
+# Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
 set -l __orca_codex_type (type -t codex 2>/dev/null)
 if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
   function codex
     command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
+    set -l executable (command -v codex 2>/dev/null)
+    if test -n "$executable"; and __orca_codex_interactive $argv
+      set -l flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
+      if test "$flag" = --no-daemon
+        command "$executable" --no-daemon $argv
+        return $status
+      end
+    end
     command codex $argv
   end
 end
@@ -99,7 +125,8 @@ set -e __orca_codex_type`
 }
 
 export function getPowerShellCodexShellLaunchPreflight(): string {
-  return `$orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
+  return `${powerShellCodexInteractiveArgv()}
+$orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
     function Global:codex {
@@ -113,7 +140,14 @@ if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
             $global:LASTEXITCODE = 127
             return
         }
-        & $orcaCodexExecutable.Source @args
+        $orcaCodexFlags = @()
+        if (__OrcaCodexInteractive -Tokens $args) {
+            try {
+                $flag = & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex --launch-executable $orcaCodexExecutable.Source 2>$null
+                if ($LASTEXITCODE -eq 0 -and $flag -eq '--no-daemon') { $orcaCodexFlags = @('--no-daemon') }
+            } catch { }
+        }
+        & $orcaCodexExecutable.Source @orcaCodexFlags @args
         $global:LASTEXITCODE = $LASTEXITCODE
     }
 }

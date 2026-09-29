@@ -197,6 +197,27 @@ async function setAgentHooksEnabled(
 
 export const AGENT_HOOK_HANDLERS: Record<string, CommandHandler> = {
   'agent hooks prepare-codex': async ({ client, flags }) => {
+    const executablePath = flags.get('launch-executable')
+    if (typeof executablePath === 'string') {
+      const wslDistro = flags.get('launch-wsl-distro') ?? process.env.WSL_DISTRO_NAME
+      try {
+        const response = await client.call<{ supported?: boolean }>(
+          'agentHooks.codexTerminalLaunchCapability',
+          {
+            executablePath,
+            terminalHandle: process.env.ORCA_TERMINAL_HANDLE ?? '',
+            ...(typeof wslDistro === 'string' && wslDistro ? { wslDistro } : {})
+          },
+          { timeoutMs: 2_000 }
+        )
+        if (response.result.supported === true) {
+          process.stdout.write('--no-daemon\n')
+        }
+      } catch {
+        /* Older or unreachable hosts retain their existing launch behavior. */
+      }
+      return
+    }
     rejectRemoteHookSelection(flags)
     if (process.env.WSL_DISTRO_NAME?.trim()) {
       try {

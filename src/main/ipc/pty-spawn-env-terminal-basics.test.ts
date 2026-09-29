@@ -444,16 +444,18 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).not.toBe('orca')
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT.startsWith('/tmp/hijack-scratch')).toBe(false)
     })
-    it('does not install the Codex launch preflight when Codex hooks are disabled', async () => {
-      const env = await spawnAndGetEnv(
-        undefined,
-        undefined,
-        () => TEST_CODEX_HOME,
-        () => ({ agentStatusHooksEnabled: true, disabledTuiAgents: ['codex'] })
+    it('keeps the capability gate when Codex hooks are disabled', async () => {
+      const env = await withBundledCli(() =>
+        spawnAndGetEnv(
+          undefined,
+          undefined,
+          () => TEST_CODEX_HOME,
+          () => ({ agentStatusHooksEnabled: true, disabledTuiAgents: ['codex'] })
+        )
       )
 
       expect(env.CODEX_HOME).toBe(TEST_CODEX_HOME)
-      expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBeUndefined()
+      expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBe(BUNDLED_CLI_PATH)
     })
     it('resumes an automatic Codex session from its prepared originating home', async () => {
       const selectedHome = vi.fn(() => '/managed/current/home')

@@ -1,14 +1,19 @@
 import { execFile } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { promisify } from 'node:util'
-import path, { win32 } from 'node:path'
+import path from 'node:path'
 import type { RelayDispatcher } from './dispatcher'
 import { buildRelayCommandEnv } from './relay-command-env'
 import { isPwshAvailableAsync } from '../main/pwsh'
 import { isWslAvailableAsync, listWslDistrosAsync } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
+import { AGENT_PATH_PREFIX, getAbsoluteCommandPath } from './preflight-command-path'
 import { runProcess } from '../shared/child-process/run-process'
+import {
+  registerCodexTerminalCapability,
+  warmCodexTerminalCapability
+} from './preflight-codex-terminal'
 
 const execFileAsync = promisify(execFile)
 
@@ -36,7 +41,6 @@ type AgentDetectionCommand = {
 
 const SUPPORTED_POSIX_SHELLS = new Set(['sh', 'dash', 'bash', 'zsh', 'fish'])
 const CONSERVATIVE_SYSTEM_SHELL_DIRS = new Set(['/bin', '/usr/bin'])
-const AGENT_PATH_PREFIX = '__ORCA_AGENT_PATH__'
 
 export class PreflightHandler {
   constructor(private readonly dispatcher: RelayDispatcher) {
@@ -44,6 +48,7 @@ export class PreflightHandler {
   }
 
   private registerHandlers(): void {
+    registerCodexTerminalCapability(this.dispatcher)
     this.dispatcher.onRequest('preflight.detectAgents', (p) => this.detectAgents(p))
     this.dispatcher.onRequest('preflight.detectWindowsTerminalCapabilities', () =>
       this.detectWindowsTerminalCapabilities()
@@ -84,6 +89,7 @@ export class PreflightHandler {
         foundCommands.has(command.cmd) &&
         (command.requiredCommands ?? []).every((required) => foundCommands.has(required))
     )
+    warmCodexTerminalCapability(detectedCommands, results)
     const versions: Record<string, string> = {}
     for (const command of detectedCommands) {
       if (
@@ -246,25 +252,6 @@ export async function resolveCommandPathForRelay(
 
 export function hasAbsoluteCommandPath(output: string, platform: NodeJS.Platform): boolean {
   return getAbsoluteCommandPath(output, platform) !== null
-}
-
-function getAbsoluteCommandPath(output: string, platform: NodeJS.Platform): string | null {
-  const pathOps = platform === 'win32' ? win32 : path
-  return (
-    output
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .map((line) => {
-        const resolvedPath =
-          platform === 'win32'
-            ? line
-            : line.startsWith(AGENT_PATH_PREFIX)
-              ? line.slice(AGENT_PATH_PREFIX.length)
-              : ''
-        return pathOps.isAbsolute(resolvedPath) ? resolvedPath : null
-      })
-      .find((resolvedPath): resolvedPath is string => resolvedPath !== null) ?? null
-  )
 }
 
 function buildPosixCommandLookupSpec(command: string, shell: string): CommandLookupSpec {

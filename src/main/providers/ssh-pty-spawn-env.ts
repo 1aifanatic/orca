@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path'
 import { seedPowerlevel10kWizardEnv } from '../pty/powerlevel10k-wizard-env'
 import type { RemoteCliBridgeEnv } from './ssh-pty-provider-contract'
 
@@ -18,6 +19,11 @@ export function buildSshPtySpawnEnv(args: {
           ? `${args.remoteCliBridgeEnv.binDir}${pathDelimiter}${pathValue}`
           : args.remoteCliBridgeEnv.binDir
     }
+    const remotePath = pathDelimiter === ';' ? win32 : posix
+    merged.ORCA_CODEX_LAUNCH_PREFLIGHT = remotePath.join(
+      args.remoteCliBridgeEnv.binDir,
+      pathDelimiter === ';' ? 'orca.exe' : 'orca'
+    )
     merged.ORCA_REMOTE_CLI_BIN_DIR = args.remoteCliBridgeEnv.binDir
     merged.ORCA_RELAY_DIR = args.remoteCliBridgeEnv.relayDir
     merged.ORCA_RELAY_NODE_PATH = args.remoteCliBridgeEnv.nodePath

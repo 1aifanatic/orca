@@ -2,6 +2,27 @@ function __orca_shell_ready_marker --on-event fish_prompt
   builtin printf "\033]777;orca-shell-ready\007"
   functions -e __orca_shell_ready_marker
 end
+function __orca_codex_interactive
+  contains -- --no-daemon $argv; and return 1
+  while test (count $argv) -gt 0
+    switch $argv[1]
+      case --
+        return 0
+      case --no-daemon --help -h --version -V
+        return 1
+      case -c --config -m --model -p --profile -s --sandbox -a --ask-for-approval -C --cd --add-dir -i --image --enable --disable
+        test (count $argv) -gt 1; or return 1
+        set -e argv[1..2]
+      case '-c=*' '--config=*' '-m=*' '--model=*' '-p=*' '--profile=*' '-s=*' '--sandbox=*' '-a=*' '--ask-for-approval=*' '-C=*' '--cd=*' '--add-dir=*' '-i=*' '--image=*' '--enable=*' '--disable=*' --search --full-auto --dangerously-bypass-approvals-and-sandbox --yolo --no-alt-screen --oss
+        set -e argv[1]
+      case '-*' exec e review login logout mcp mcp-server app-server completion sandbox debug apply a cloud features help agents tcp-tunnel plugin remote-control app update doctor execpolicy queue archive delete migrate-rollouts unarchive cloud-tasks responses-api-proxy stdio-to-uds exec-server
+        return 1
+      case '*'
+        return 0
+    end
+  end
+  return 0
+end
 # Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
@@ -9,6 +30,14 @@ set -l __orca_codex_type (type -t codex 2>/dev/null)
 if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
   function codex
     command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
+    set -l executable (command -v codex 2>/dev/null)
+    if test -n "$executable"; and __orca_codex_interactive $argv
+      set -l flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
+      if test "$flag" = --no-daemon
+        command "$executable" --no-daemon $argv
+        return $status
+      end
+    end
     command codex $argv
   end
 end

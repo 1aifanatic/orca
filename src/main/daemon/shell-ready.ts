@@ -177,17 +177,17 @@ export function getShellLaunchConfig(
     }
   }
 
-  // Why: mirrors local-pty-shell-ready.ts; markerless fish stays unwrapped. The
+  // Why: mirrors local-pty-shell-ready.ts; overlays also need launch policy. The
   // selection is baked into the init command, so fish needs no feature env var.
-  if (shellName === 'fish' && features.includes('ready')) {
+  if (shellName === 'fish' && (features.includes('ready') || features.includes('overlay'))) {
     return {
       args: [
         '-l',
         '-C',
-        `${getFishShellReadyInitCommand(SHELL_READY_MARKER)}\n${getFishCodexShellLaunchPreflight()}`
+        `${getFishShellReadyInitCommand(SHELL_READY_MARKER, features.includes('ready'))}\n${getFishCodexShellLaunchPreflight()}`
       ],
       env: {},
-      supportsReadyMarker: true
+      supportsReadyMarker: features.includes('ready')
     }
   }
 

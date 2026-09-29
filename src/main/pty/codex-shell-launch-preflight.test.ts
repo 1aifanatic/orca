@@ -556,10 +556,27 @@ describe('Codex shell launch preflight command', () => {
     ).toBeNull()
   })
 
+  it.each([false, true])(
+    'enables capability checks with hooks=%s and system-default home',
+    (hooksEnabled) => {
+      const { userDataPath, resourcesPath } = makeCliRoot()
+      const launcher = join(resourcesPath, 'bin', 'orca')
+      writeExecutable(launcher, '#!/bin/sh\nexit 0\n')
+      expect(
+        resolveCodexShellLaunchPreflightCommand({
+          hooksEnabled,
+          isPackaged: true,
+          managedHomePath: null,
+          userDataPath,
+          resourcesPath,
+          platform: 'darwin'
+        })
+      ).toBe(launcher)
+    }
+  )
+
   it.each([
-    { hooksEnabled: false, isWsl: false, managedHomePath: '/managed/home' },
-    { hooksEnabled: true, isWsl: true, managedHomePath: '/managed/home', isPackaged: false },
-    { hooksEnabled: true, isWsl: false, managedHomePath: null }
+    { hooksEnabled: true, isWsl: true, managedHomePath: '/managed/home', isPackaged: false }
   ])('does not enable an unsupported preflight for %o', (options) => {
     const { userDataPath, resourcesPath } = makeCliRoot()
     writeExecutable(join(resourcesPath, 'bin', 'orca'), '#!/bin/sh\nexit 0\n')
