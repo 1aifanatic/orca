@@ -42,7 +42,10 @@ import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { isStructuredAgentSessionThinking } from '../../../../shared/structured-agent-session-live-turn'
 import { nativeChatSubagentLabels } from '../../../../shared/native-chat-subagent-attribution'
-import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
+import {
+  selectNativeChatActiveTurnKey,
+  type NativeChatSettledTurns
+} from '../../../../shared/native-chat-turn-status'
 import {
   nativeChatTurnDiffs,
   type NativeChatDiffReveal,
@@ -74,6 +77,7 @@ export function NativeChatMessageList({
   allowFileUriLinks = false,
   workingStartedAt,
   settledTurns,
+  activeTurnOpenedBy,
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
@@ -93,6 +97,8 @@ export function NativeChatMessageList({
   /** Recorded turn durations keyed by user message id (the host's, or the transcript's).
    *  A turn missing here shows the duration this list observed, if it saw the turn run. */
   settledTurns?: NativeChatSettledTurns
+  /** The user message the host says opened the running turn (structured lane). */
+  activeTurnOpenedBy?: string | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
@@ -152,9 +158,7 @@ export function NativeChatMessageList({
   const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
-  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
-  const currentTurnKey =
-    latestUserIndex === -1 ? undefined : (messages[latestUserIndex]?.id ?? undefined)
+  const currentTurnKey = messages.findLast((message) => message.role === 'user')?.id ?? undefined
   // Resolve each row's turn boundary once. Prefix slice/findLast in the render
   // loop becomes quadratic for long transcripts.
   const turnKeys = useMemo(() => {
@@ -179,9 +183,10 @@ export function NativeChatMessageList({
     () => (journalItems ? isStructuredAgentSessionThinking(journalItems) : false),
     [journalItems]
   )
+  const activeTurnKey = selectNativeChatActiveTurnKey(messages, activeTurnOpenedBy)
   const turnStatuses = useNativeChatTurnStatus({
     messages,
-    latestUserIndex,
+    activeTurnKey,
     isWorking,
     workingStartedAt,
     settledTurns,
@@ -201,7 +206,7 @@ export function NativeChatMessageList({
       buildNativeChatTranscriptSlots({
         messages,
         turnKeys,
-        latestUserIndex,
+        activeTurnKey,
         currentTurnKey,
         receipts,
         turnStatuses,
@@ -212,10 +217,10 @@ export function NativeChatMessageList({
         subagentLabels
       }),
     [
+      activeTurnKey,
       currentTurnKey,
       expandedTurnIds,
       isWorking,
-      latestUserIndex,
       lifecycleWorking,
       messages,
       receipts,
