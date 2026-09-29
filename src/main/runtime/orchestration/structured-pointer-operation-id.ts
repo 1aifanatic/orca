@@ -7,7 +7,8 @@
  * as a second turn, and the host replays a recorded id's verdict without reaching the provider, so
  * a retry after a failed send starts nothing. It is re-minted only when the send is genuinely a
  * different call: a different batch of mail or session, or one the journal shows is owed again
- * (see `decideStructuredPointerAttempt`). Age cannot resolve delivery ambiguity.
+ * (see `decideStructuredPointerAttempt`). Age never re-mints a send the host recorded: its verdict
+ * is the only evidence of whether the nudge landed.
  *
  * Reuse is keyed on the MESSAGE IDS in the batch, never on the pointer body: the body names only
  * how many messages are waiting, so two unrelated same-size batches share a fingerprint. Reusing a
@@ -20,6 +21,7 @@ import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
+import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-session-host-authority'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { OrchestrationDb } from './db'
 import type { StructuredPointerOperationRow } from './db/messages/structured-pointer-operation-store'
@@ -27,21 +29,20 @@ import type { StructuredPointerOperationRow } from './db/messages/structured-poi
 /** What the pointer lane reads off a session's journal for its own sends. */
 export type StructuredPointerSubmission = Pick<
   AgentJournalSubmission,
-  'clientMessageId' | 'dispatchState' | 'rejection'
+  'clientMessageId' | 'dispatchState' | 'submittedAt'
 >
 
 /**
  * What to do with a mailbox's pointer, given its operation row and the session's recorded sends.
  *
- * - `mint`: a new send. The batch or session changed, or the row's send failed and the journal
- *   says a retry is owed: a later send ran (the agent works again), the row was left by an earlier
- *   process (its restart settled the send without a turn), or the agent refused it only while an
- *   account switch was settling.
+ * - `stamp`: the row's send ran; the batch is pointed.
+ * - `park`: the row's send is still in flight; its settlement is the next edge.
+ * - `mint`: a new send. The batch or session changed; the agent ran a turn after the row was
+ *   minted; an earlier process minted it, so its attempt died with that process; or the host never
+ *   recorded it and would now refuse it as too old to admit.
  * - `reuse`: resend under the row's id. Unrecorded, it is a first delivery; recorded as failed, the
  *   host replays that verdict and starts nothing, so a provider that dies on every turn is not
  *   restarted by every status edge, and a user's Stop stays stopped.
- * - `stamp`: the row's send ran; the batch is pointed.
- * - `park`: the row's send is still in flight; its settlement is the next edge.
  */
 export type StructuredPointerAttempt = 'mint' | 'reuse' | 'stamp' | 'park'
 
@@ -49,10 +50,11 @@ export function decideStructuredPointerAttempt(input: {
   row: StructuredPointerOperationRow | undefined
   sessionId: string
   batchFingerprint: string
-  /** The session's recorded sends, oldest first. */
+  /** The session's recorded sends; a rewind may have dropped the row's. */
   submissions: readonly StructuredPointerSubmission[]
-  /** When this process's lane started; a row minted before it outlived its attempt. */
-  laneStartedAtMs: number
+  /** Whether this process minted the row's id. */
+  mintedByThisProcess: boolean
+  now: number
 }): StructuredPointerAttempt {
   const { row, submissions } = input
   if (
@@ -62,22 +64,19 @@ export function decideStructuredPointerAttempt(input: {
   ) {
     return 'mint'
   }
-  const index = submissions.findIndex((entry) => entry.clientMessageId === row.operation_id)
-  const sent = submissions[index]
-  if (!sent) {
-    return 'reuse'
-  }
-  if (sent.dispatchState === 'accepted') {
+  const sent = submissions.find((entry) => entry.clientMessageId === row.operation_id)
+  if (sent?.dispatchState === 'accepted') {
     return 'stamp'
   }
-  if (sent.dispatchState === 'pending') {
+  if (sent?.dispatchState === 'pending') {
     return 'park'
   }
-  const ranSince = submissions.slice(index + 1).some((entry) => entry.dispatchState === 'accepted')
-  const leftByEarlierProcess = row.minted_at_ms < input.laneStartedAtMs
-  const accountSwitchSettling =
-    sent.dispatchState === 'rejected' && sent.rejection?.kind === 'accountSwitchInProgress'
-  return ranSince || leftByEarlierProcess || accountSwitchSettling ? 'mint' : 'reuse'
+  const ranSince = submissions.some(
+    (entry) => entry.dispatchState === 'accepted' && entry.submittedAt > row.minted_at_ms
+  )
+  const tooOldToAdmit =
+    !sent && input.now - row.minted_at_ms > AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS
+  return ranSince || !input.mintedByThisProcess || tooOldToAdmit ? 'mint' : 'reuse'
 }
 
 export function mintAgentSessionOperationId(now: number): string {
@@ -118,7 +117,8 @@ export function resolveStructuredPointerOperation(args: {
   /** The rows this nudge stands for; batch identity, not the body, decides reuse. */
   messageIds: readonly string[]
   submissions: readonly StructuredPointerSubmission[]
-  laneStartedAtMs: number
+  /** The operation id this process last sent for this mailbox, if any. */
+  sentByThisProcess: string | undefined
   now?: number
 }): StructuredPointerOperation {
   const now = args.now ?? Date.now()
@@ -130,7 +130,8 @@ export function resolveStructuredPointerOperation(args: {
     sessionId: args.sessionId,
     batchFingerprint,
     submissions: args.submissions,
-    laneStartedAtMs: args.laneStartedAtMs
+    mintedByThisProcess: stored?.operation_id === args.sentByThisProcess,
+    now
   })
   if (attempt === 'stamp' || attempt === 'park') {
     return { kind: attempt }

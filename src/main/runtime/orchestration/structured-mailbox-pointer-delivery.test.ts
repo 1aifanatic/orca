@@ -301,8 +301,8 @@ describe('structured mailbox pointer delivery', () => {
     await flush()
     const first = send.mock.calls[0]![0].operationId
     setSubmissions([
-      { clientMessageId: first, dispatchState: 'unknown' },
-      { clientMessageId: 'user-turn', dispatchState: 'accepted' }
+      { clientMessageId: first, dispatchState: 'unknown', submittedAt: Date.now() },
+      { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 1 }
     ])
     delivery.onJournalActivity('session-1')
     await flush()
@@ -322,7 +322,9 @@ describe('structured mailbox pointer delivery', () => {
       batch_fingerprint: structuredPointerBatchFingerprint('session-1', ['m1']),
       minted_at_ms: 0
     })
-    setSubmissions([{ clientMessageId: 'earlier-process-op', dispatchState: 'unknown' }])
+    setSubmissions([
+      { clientMessageId: 'earlier-process-op', dispatchState: 'unknown', submittedAt: Date.now() }
+    ])
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -330,12 +332,42 @@ describe('structured mailbox pointer delivery', () => {
     expect(reminted).not.toBe('earlier-process-op')
     // Minted by this process, the new id replays from here on.
     setSubmissions([
-      { clientMessageId: 'earlier-process-op', dispatchState: 'unknown' },
-      { clientMessageId: reminted, dispatchState: 'unknown' }
+      { clientMessageId: 'earlier-process-op', dispatchState: 'unknown', submittedAt: Date.now() },
+      { clientMessageId: reminted, dispatchState: 'unknown', submittedAt: Date.now() }
     ])
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send.mock.calls[1]![0].operationId).toBe(reminted)
+  })
+
+  it('keeps replaying its own send across a clock step, and re-mints only for a rewind that ran a turn', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const { delivery, send, setSubmissions } = harness({
+        journal: idleJournal(),
+        dispatchState: 'unknown'
+      })
+      // The wall clock steps back an hour after the lane started: its own row is still its own.
+      vi.setSystemTime(Date.now() - 60 * 60 * 1000)
+      delivery.deliverForHandle('dispatch:d1')
+      await flush()
+      const first = send.mock.calls[0]![0].operationId
+      setSubmissions([
+        { clientMessageId: first, dispatchState: 'unknown', submittedAt: Date.now() }
+      ])
+      delivery.onJournalActivity('session-1')
+      await flush()
+      expect(send.mock.calls[1]![0].operationId).toBe(first)
+      // A rewind dropped that send from the journal, and the person's turn ran after it.
+      setSubmissions([
+        { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 1 }
+      ])
+      delivery.onJournalActivity('session-1')
+      await flush()
+      expect(send.mock.calls[2]![0].operationId).not.toBe(first)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('stamps a pointer whose echo arrived after the lane stopped waiting, sending nothing more', async () => {
@@ -346,11 +378,11 @@ describe('structured mailbox pointer delivery', () => {
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     const first = send.mock.calls[0]![0].operationId
-    setSubmissions([{ clientMessageId: first, dispatchState: 'pending' }])
+    setSubmissions([{ clientMessageId: first, dispatchState: 'pending', submittedAt: Date.now() }])
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
-    setSubmissions([{ clientMessageId: first, dispatchState: 'accepted' }])
+    setSubmissions([{ clientMessageId: first, dispatchState: 'accepted', submittedAt: Date.now() }])
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)

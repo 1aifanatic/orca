@@ -17,6 +17,9 @@ import {
   AgentSessionPreSpawnError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
+import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
+import { refuse } from '../../shared/agent-session-wire-refusals'
 import { OrcaRuntimeService } from './orca-runtime'
 import { OrchestrationDb } from './orchestration/db'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
@@ -544,46 +547,105 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     return { runId, starts: providerFaults.starts - before }
   }
 
-  it('waits for the next message after a start the person must fix, and retries nothing before it', async () => {
-    const { runId, starts } = await refusedStartsFor(
-      () => new AgentSessionAcquisitionRefusal('not signed in', 'notSignedIn')
-    )
-    expect(starts).toBe(1)
-    // A later edge would only start it to be refused again.
-    const before = providerFaults.starts
-    await edgesAnswered()
-    expect(providerFaults.starts).toBe(before)
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
-
-    // Signed in, the person's next message starts the agent, and the pointer follows its turn.
-    providerFaults.refuseStart = null
-    expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
-    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
-    const revived = connectionFor(COORDINATOR)
-    // The pointer may queue behind the message before its turn runs; the message is still first.
-    await vi.waitFor(() => expect(revived.turns.length).toBeGreaterThanOrEqual(1), WAIT)
-    expect(revived.turns[0]!.text).toContain('again')
-    await settleTurn(COORDINATOR, 0)
-    await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
-    expect(revived.turns[1]!.text).toMatch(POINTER)
-  })
-
-  it('points mail at the first edge after an account switch settles, with no message needed', async () => {
-    const { starts } = await refusedStartsFor(
+  it.each([
+    [
+      'one the person must fix',
+      () => new AgentSessionAcquisitionRefusal('no login', 'notSignedIn')
+    ],
+    [
+      'an account switch in progress',
       () =>
         new AgentSessionPreSpawnError(new Error('switching accounts'), {
           reason: 'accountSwitchInProgress'
         })
-    )
-    // Its refusal's own edges came before the give-back, so nothing looped.
-    expect(starts).toBe(1)
-    providerFaults.refuseStart = null
-    const before = providerFaults.starts
-    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
-    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+    ]
+  ])(
+    'holds mail after a start refused as %s until a turn runs, adding nothing on later edges',
+    async (_label, refusal) => {
+      const { runId, starts } = await refusedStartsFor(refusal)
+      expect(starts).toBe(1)
+      // Later edges replay the refusal: no start, and no new pointer and failure rows in the chat.
+      const before = providerFaults.starts
+      for (let edge = 0; edge < 5; edge += 1) {
+        runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      await edgesAnswered()
+      expect(providerFaults.starts).toBe(before)
+      expect(await pointerSends()).toHaveLength(1)
+      expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+
+      // Fixed, the person's next message starts the agent, and the pointer follows its turn.
+      providerFaults.refuseStart = null
+      expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
+      await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+      const revived = connectionFor(COORDINATOR)
+      await vi.waitFor(() => expect(revived.turns.length).toBeGreaterThanOrEqual(1), WAIT)
+      expect(revived.turns[0]!.text).toContain('again')
+      await settleTurn(COORDINATOR, 0)
+      await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
+      expect(revived.turns[1]!.text).toMatch(POINTER)
+    }
+  )
+
+  it('points held mail after the next turn that runs, even once a rewind dropped its send', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    providerFaults.crashOnTurnStart = 'exit-then-throw'
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+    await edgesAnswered()
+    // What a rewind's recovery does: the journal is rebuilt, and no send is on record any more.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the host keeps its conversations private; this is the one journal call rewind recovery makes.
+    const open = (host as unknown as { sessions: Map<string, { journal: AgentSessionJournal }> })
+      .sessions
+    const fence = host.deps.store.getRecord(COORDINATOR)!.lease.runtimeFence
+    await open.get(COORDINATOR)!.journal.replaceEpochItems('handle_forked', fence, [])
+    expect(await pointerSends()).toEqual([])
+
+    providerFaults.crashOnTurnStart = 'off'
+    expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
     const revived = connectionFor(COORDINATOR)
-    await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
-    expect(revived.turns[0]!.text).toMatch(POINTER)
+    expect(revived).not.toBe(chat)
+    await settleTurn(COORDINATOR, revived.turns.length - 1)
+    await vi.waitFor(() => expect(turnText(revived.turns.at(-1)!)).toMatch(POINTER), WAIT)
+    await settleTurn(COORDINATOR, revived.turns.length - 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
+  })
+
+  it('points again under a new id once a send the host never recorded is too old to admit', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    // The first pointer is refused before the host records it, so the journal holds no verdict.
+    const realSend = host.send
+    const refused = vi.spyOn(host, 'send').mockImplementationOnce(async () => ({
+      ok: false as const,
+      refusal: refuse(
+        'agent_session_operation_invalid',
+        { reason: 'conversationCommandInFlight' },
+        'busy'
+      )
+    }))
+    refused.mockImplementation((caller, params) => realSend(caller, params))
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(refused).toHaveBeenCalledTimes(1), WAIT)
+    const held = db.getStructuredPointerOperation(`run:${runId}`)?.operation_id
+
+    // No edge for a day: the host would now refuse that id as expired, on every retry.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(Date.now() + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 60_000)
+      await edgesAnswered()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(chat.turns.map(turnText)).toEqual([ptyPointer(`run:${runId}`)])
+      expect(db.getStructuredPointerOperation(`run:${runId}`)?.operation_id).not.toBe(held)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('holds mail a refused turn left in doubt until the next result, then points it once', async () => {

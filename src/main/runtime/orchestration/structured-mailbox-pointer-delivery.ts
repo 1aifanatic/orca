@@ -106,7 +106,9 @@ export class OrchestrationStructuredMailboxPointerDelivery<
    * edge until the next explicit check.
    */
   private readonly parkedUntilJournalEdge = new Map<string, ParkedPointerDelivery>()
-  private readonly startedAtMs = Date.now()
+  /** The operation id this lane last sent per mailbox: a row holding any other id outlived the
+   *  process that minted it. A fact, not a clock reading, so no clock step can fake it. */
+  private readonly sentOperationIds = new Map<string, string>()
 
   constructor(private readonly deps: StructuredPointerDeliveryDependencies<TWaiter>) {}
 
@@ -226,18 +228,20 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       body,
       messageIds: staged,
       submissions: session?.submissions ?? [],
-      laneStartedAtMs: this.startedAtMs
+      sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
     })
     if (operation.kind === 'stamp') {
       // A send this lane gave up waiting on ran after all.
       db.markAsDelivered(staged)
       db.deleteStructuredPointerOperation(mailboxHandle)
+      this.sentOperationIds.delete(mailboxHandle)
       return
     }
     if (operation.kind === 'park') {
-      this.retain(mailboxHandle, sessionId, 'dispatch-unknown', reservedTypes)
+      this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
       return
     }
+    this.sentOperationIds.set(mailboxHandle, operation.operationId)
     const outcome = await this.deps.host.send({
       sessionId,
       dispatchId: target.dispatchId,
@@ -259,6 +263,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     // The nudge landed as its own turn, so the next settle edge is the natural retry point for
     // anything that arrives while it runs.
     db.deleteStructuredPointerOperation(mailboxHandle)
+    this.sentOperationIds.delete(mailboxHandle)
   }
 
   /**

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from '../../../shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+} from '../../../shared/agent-session-host-authority'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
   decideStructuredPointerAttempt,
@@ -14,20 +17,20 @@ function body(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
-/** A send under a fresh row, with nothing recorded yet: the id this batch resolves to. */
+/** The id this batch resolves to, as this process sends it; unrecorded unless `submissions` say. */
 function resolveId(
   args: Omit<
     Parameters<typeof resolveStructuredPointerOperation>[0],
-    'submissions' | 'laneStartedAtMs'
-  >
+    'submissions' | 'sentByThisProcess'
+  > & { submissions?: StructuredPointerSubmission[] }
 ): {
   operationId: string
   payloadFingerprint: string
 } {
   const resolved = resolveStructuredPointerOperation({
     ...args,
-    submissions: [],
-    laneStartedAtMs: 0
+    submissions: args.submissions ?? [],
+    sentByThisProcess: args.db.getStructuredPointerOperation(args.mailboxHandle)?.operation_id
   })
   if (resolved.kind !== 'send') {
     throw new Error(`expected a send, got ${resolved.kind}`)
@@ -95,6 +98,7 @@ describe('structured pointer operation id', () => {
   })
 
   it('never re-mints an ambiguous batch after the host replay window expires', () => {
+    // The host recorded the send `unknown`: whether the nudge landed is still open, however old.
     const db = fakeDb()
     const first = resolveId({
       db,
@@ -110,6 +114,9 @@ describe('structured pointer operation id', () => {
       sessionId: 's1',
       body: body('2 messages'),
       messageIds: ['m1', 'm2'],
+      submissions: [
+        { clientMessageId: first.operationId, dispatchState: 'unknown', submittedAt: 1_000 }
+      ],
       now: 1_000 + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
     })
     expect(aged.operationId).toBe(first.operationId)
@@ -195,25 +202,32 @@ describe('what a pointer attempt does with its operation row', () => {
 
   function decide(
     submissions: StructuredPointerSubmission[],
-    overrides: { batchFingerprint?: string; laneStartedAtMs?: number; sessionId?: string } = {}
+    overrides: {
+      batchFingerprint?: string
+      sessionId?: string
+      mintedByThisProcess?: boolean
+      now?: number
+    } = {}
   ) {
     return decideStructuredPointerAttempt({
       row,
       sessionId: overrides.sessionId ?? 's1',
       batchFingerprint: overrides.batchFingerprint ?? 'batch-1',
       submissions,
-      laneStartedAtMs: overrides.laneStartedAtMs ?? 1_000
+      mintedByThisProcess: overrides.mintedByThisProcess ?? true,
+      now: overrides.now ?? 3_000
     })
   }
 
-  const sent = (dispatchState: StructuredPointerSubmission['dispatchState'], kind?: string) => ({
+  const sent = (dispatchState: StructuredPointerSubmission['dispatchState']) => ({
     clientMessageId: 'op1',
     dispatchState,
-    ...(kind ? { rejection: { kind } } : {})
+    submittedAt: 2_000
   })
-  const userTurn = (dispatchState: StructuredPointerSubmission['dispatchState']) => ({
+  const userTurn = (dispatchState: StructuredPointerSubmission['dispatchState'], at = 2_500) => ({
     clientMessageId: 'user-1',
-    dispatchState
+    dispatchState,
+    submittedAt: at
   })
 
   it('mints for a new batch, a new session, or no row at all', () => {
@@ -225,13 +239,16 @@ describe('what a pointer attempt does with its operation row', () => {
         sessionId: 's1',
         batchFingerprint: 'batch-1',
         submissions: [],
-        laneStartedAtMs: 0
+        mintedByThisProcess: false,
+        now: 0
       })
     ).toBe('mint')
   })
 
   it('sends under the same id when the host never recorded it', () => {
-    expect(decide([userTurn('accepted')])).toBe('reuse')
+    expect(decide([])).toBe('reuse')
+    // A turn that ran before the row was minted is no news.
+    expect(decide([userTurn('accepted', 1_500)])).toBe('reuse')
   })
 
   it('stamps a send that ran, and parks one still in flight', () => {
@@ -241,25 +258,31 @@ describe('what a pointer attempt does with its operation row', () => {
 
   it.each([
     ['in doubt', sent('unknown')],
-    ['refused to start', sent('rejected', 'notSignedIn')],
-    ['stopped by the person', sent('rejected', 'cancelled')]
-  ])('replays a send that %s instead of starting the agent again', (_label, failed) => {
+    ['refused', sent('rejected')]
+  ])('replays a send that was %s instead of starting the agent again', (_label, failed) => {
     expect(decide([failed])).toBe('reuse')
     // A later send that has not run yet is no evidence the agent works again.
     expect(decide([failed, userTurn('pending')])).toBe('reuse')
+    // Age never re-mints a recorded send.
+    expect(decide([failed], { now: 2_000 + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 1 })).toBe(
+      'reuse'
+    )
   })
 
-  it('mints once a later send ran, since the agent works again', () => {
+  it('mints once the agent ran a turn after the row was minted, recorded send or not', () => {
     expect(decide([sent('unknown'), userTurn('accepted')])).toBe('mint')
-    expect(decide([sent('rejected', 'cancelled'), userTurn('accepted')])).toBe('mint')
+    expect(decide([sent('rejected'), userTurn('accepted')])).toBe('mint')
+    // A rewind dropped the row's own send from the journal.
+    expect(decide([userTurn('accepted')])).toBe('mint')
   })
 
-  it('mints a failed send an earlier process left behind', () => {
-    expect(decide([sent('unknown')], { laneStartedAtMs: 3_000 })).toBe('mint')
-    expect(decide([sent('rejected', 'hostRestarted')], { laneStartedAtMs: 3_000 })).toBe('mint')
+  it('mints a row an earlier process left behind, recorded send or not', () => {
+    expect(decide([sent('unknown')], { mintedByThisProcess: false })).toBe('mint')
+    expect(decide([], { mintedByThisProcess: false })).toBe('mint')
   })
 
-  it('mints after a refusal that ends on its own once an account switch settles', () => {
-    expect(decide([sent('rejected', 'accountSwitchInProgress')])).toBe('mint')
+  it('mints an unrecorded send once the host would refuse it as too old to admit', () => {
+    expect(decide([], { now: 2_000 + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS })).toBe('reuse')
+    expect(decide([], { now: 2_000 + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 1 })).toBe('mint')
   })
 })
