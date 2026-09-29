@@ -6,10 +6,7 @@ import type {
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import type { StructuredAgentHostClock } from '../../../src/shared/structured-agent-session-reducer'
-import {
-  selectStructuredAgentRunningTurnTiming,
-  selectStructuredAgentSettledTurns
-} from '../../../src/shared/structured-agent-session-turn-timing'
+import { selectStructuredAgentTurnBars } from '../../../src/shared/structured-agent-session-turn-timing'
 import {
   stepStructuredAgentTurnClock,
   type StructuredAgentTurnClockLatch
@@ -35,16 +32,12 @@ export function useMobileStructuredAgentTurnTiming(
   turnJournal: NativeChatTurnJournal
   workingStartedAt: number | null
 } {
-  const settledTurns = useMemo(
-    () => selectStructuredAgentSettledTurns(items, submissions),
-    [items, submissions]
+  const { settledTurns, runningTiming } = useMemo(
+    () => selectStructuredAgentTurnBars(items, submissions, turnId),
+    [items, submissions, turnId]
   )
   const turnJournal = useMemo(() => ({ items, submissions }), [items, submissions])
   const [latch, setLatch] = useState<StructuredAgentTurnClockLatch | null>(null)
-  const runningTiming = useMemo(
-    () => (turnId === null ? null : selectStructuredAgentRunningTurnTiming(items, turnId)),
-    [items, turnId]
-  )
   // Stamp during render (React's derive-from-props pattern) so the first paint of
   // a new turn already counts from the right instant.
   const step = stepStructuredAgentTurnClock({

@@ -24,12 +24,18 @@ export type StructuredAgentTurnTiming = {
   completedAt?: number
   /** The provider's own measurement; used when exact host endpoints are unavailable. */
   durationMs?: number
+  /** Host clock this turn's send stopped waiting behind the journal's previous
+   *  turn; present only when the send was issued before that turn ended. */
+  queuedUntil?: number
   /** Host clock when the lifecycle row was appended; with `startedAt` it gives
    *  the host-side lag a client must subtract to anchor a live counter. */
   observedAt: number
 }
 
-function readTiming(item: AgentJournalRenderItem): StructuredAgentTurnTiming | null {
+function readTiming(
+  item: AgentJournalRenderItem,
+  precedingTurnEndedAt: number | undefined
+): StructuredAgentTurnTiming | null {
   const turn = readAgentJournalTurn(item.body)
   if (!turn) {
     return null
@@ -50,36 +56,61 @@ function readTiming(item: AgentJournalRenderItem): StructuredAgentTurnTiming | n
     durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0
       ? durationMs
       : undefined
+  // A send queued behind the previous turn counts from that turn's end (recorded, else its row's
+  // last host revision), never past this turn's own start: the provider opens it only after.
+  const queuedUntil =
+    precedingTurnEndedAt === undefined ? undefined : Math.min(precedingTurnEndedAt, startedAt)
   return {
     state,
     startedAt,
     ...(requested !== undefined ? { requestedAt: requested } : {}),
     ...(end !== undefined ? { completedAt: end } : {}),
     ...(measured !== undefined ? { durationMs: measured } : {}),
+    ...(requested !== undefined && queuedUntil !== undefined && queuedUntil > requested
+      ? { queuedUntil }
+      : {}),
     observedAt: item.observedAt
   }
 }
 
-/** Timing keyed by each turn's anchor (see `structuredAgentTurnAnchors`): the user message that
- *  opened it, or the turn record itself for a turn no message opened. Untimed rows are skipped
- *  unless explicitly unverifiable (null). */
+/** Every root turn record in one pass over the journal, keyed by its anchor (see
+ *  `structuredAgentTurnAnchors`: the user message that opened it, or the record itself for a turn
+ *  no message opened) and by provider turn id. Untimed rows are skipped from the anchor map unless
+ *  explicitly unverifiable (null). */
+type StructuredAgentJournalTurns = {
+  byAnchor: ReadonlyMap<string, StructuredAgentTurnTiming | null>
+  byTurnId: ReadonlyMap<string, StructuredAgentTurnTiming | null>
+}
+
+function readStructuredAgentJournalTurns(
+  items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[] = []
+): StructuredAgentJournalTurns {
+  const anchors = structuredAgentTurnAnchors(items, submissions)
+  const byAnchor = new Map<string, StructuredAgentTurnTiming | null>()
+  const byTurnId = new Map<string, StructuredAgentTurnTiming | null>()
+  let precedingTurnEndedAt: number | undefined
+  for (const item of items) {
+    const anchor = anchors.get(item.itemId)
+    const turn = anchor === undefined ? null : readAgentJournalTurn(item.body)
+    if (anchor === undefined || !turn) {
+      continue
+    }
+    const timing = readTiming(item, precedingTurnEndedAt)
+    precedingTurnEndedAt = timing?.completedAt ?? item.observedAt
+    byTurnId.set(turn.turnId, timing)
+    if (timing || turn.state === 'unverifiable') {
+      byAnchor.set(anchor, timing)
+    }
+  }
+  return { byAnchor, byTurnId }
+}
+
 export function selectStructuredAgentTurnTimings(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = []
 ): ReadonlyMap<string, StructuredAgentTurnTiming | null> {
-  const anchors = structuredAgentTurnAnchors(items, submissions)
-  const timings = new Map<string, StructuredAgentTurnTiming | null>()
-  for (const item of items) {
-    const anchor = anchors.get(item.itemId)
-    const timing = readTiming(item)
-    if (
-      anchor !== undefined &&
-      (timing || readAgentJournalTurn(item.body)?.state === 'unverifiable')
-    ) {
-      timings.set(anchor, timing)
-    }
-  }
-  return timings
+  return readStructuredAgentJournalTurns(items, submissions).byAnchor
 }
 
 /** The live turn's lifecycle timing, or null when its row carries no host start
@@ -88,20 +119,15 @@ export function selectStructuredAgentRunningTurnTiming(
   items: readonly AgentJournalRenderItem[],
   turnId: string
 ): StructuredAgentTurnTiming | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]
-    if (item && readAgentJournalTurn(item.body)?.turnId === turnId) {
-      return readTiming(item)
-    }
-  }
-  return null
+  return readStructuredAgentJournalTurns(items).byTurnId.get(turnId) ?? null
 }
 
 /** The single instant every reading of a turn's elapsed time counts from: the
- *  send that opened it when the host named one, the provider turn-open otherwise.
+ *  send that opened it when the host named one — or, for a send queued behind the
+ *  previous turn, that turn's end — and the provider turn-open otherwise.
  *  One origin is what keeps the live counter and the settled duration agreeing. */
 export function structuredAgentTurnOrigin(timing: StructuredAgentTurnTiming): number {
-  return timing.requestedAt ?? timing.startedAt
+  return timing.queuedUntil ?? timing.requestedAt ?? timing.startedAt
 }
 
 /** Whole seconds a settled turn ran, or null when the host never observed its end. */
@@ -111,9 +137,9 @@ export function completedStructuredAgentTurnSeconds(
   if (!timing || (timing.state !== 'completed' && timing.state !== 'interrupted')) {
     return null
   }
-  // Provider durations may begin at turn-open, so exact host endpoints preserve the live origin.
+  // Provider durations may begin before the live origin (turn-open, or a turn this send queued behind).
   if (timing.requestedAt !== undefined && timing.completedAt !== undefined) {
-    return Math.max(0, Math.floor((timing.completedAt - timing.requestedAt) / 1000))
+    return Math.max(0, Math.floor((timing.completedAt - structuredAgentTurnOrigin(timing)) / 1000))
   }
   if (timing.durationMs !== undefined) {
     return Math.floor(timing.durationMs / 1000)
@@ -153,8 +179,15 @@ export function selectStructuredAgentSettledTurns(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = []
 ): NativeChatSettledTurns {
+  return settledTurnsOf(readStructuredAgentJournalTurns(items, submissions), submissions)
+}
+
+function settledTurnsOf(
+  turns: StructuredAgentJournalTurns,
+  submissions: readonly AgentJournalSubmission[]
+): NativeChatSettledTurns {
   const settled = new Map<string, NativeChatSettledTurn | null>()
-  for (const [userItemId, timing] of selectStructuredAgentTurnTimings(items, submissions)) {
+  for (const [userItemId, timing] of turns.byAnchor) {
     const workedSeconds = completedStructuredAgentTurnSeconds(timing)
     settled.set(
       userItemId,
@@ -170,4 +203,22 @@ export function selectStructuredAgentSettledTurns(
     }
   }
   return settled
+}
+
+/** Everything a chat surface reads off the journal for its turn bars, from one
+ *  pass: settled durations and the running turn's timing. Which bar carries the
+ *  running clock is the turn membership's answer (`nativeChatTurnMembership`). */
+export function selectStructuredAgentTurnBars(
+  items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[],
+  turnId: string | null
+): {
+  settledTurns: NativeChatSettledTurns
+  runningTiming: StructuredAgentTurnTiming | null
+} {
+  const turns = readStructuredAgentJournalTurns(items, submissions)
+  return {
+    settledTurns: settledTurnsOf(turns, submissions),
+    runningTiming: turnId === null ? null : (turns.byTurnId.get(turnId) ?? null)
+  }
 }

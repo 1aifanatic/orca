@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type {
@@ -190,7 +192,49 @@ describe('a Codex turn a conversation command claims', () => {
 
     expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
     expect(resultRows(writes).map((write) => write.body)).toEqual([
-      { kind: 'status', text: 'Unavailable', tone: 'error' }
+      {
+        kind: 'status',
+        text: 'Compaction failed: Unavailable.',
+        failure: {
+          kind: 'compactionFailed',
+          detail: { text: 'Unavailable', audience: 'person' }
+        },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('says only that the compaction failed when a turn that did not complete gave no words', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'failed' } }))
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(resultRows(writes).map((write) => write.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction failed.',
+        failure: { kind: 'compactionFailed' },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('reports a turn that completed without Codex reporting a compaction as unconfirmed', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'completed' } }))
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(resultRows(writes).map((write) => write.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction completion is unconfirmed.',
+        failure: { kind: 'compactionUnconfirmed' },
+        tone: 'error'
+      }
     ])
   })
 
@@ -205,6 +249,8 @@ describe('a Codex turn a conversation command claims', () => {
         error: { message: 'Unavailable' }
       })
     )
+    // The error is a row; only the completion ends the turn.
+    expect(commandTurn(writes)).toMatchObject({ state: 'running' })
     // Codex still completes the turn it failed, as status failed.
     emit(
       notification('turn/completed', {
@@ -226,6 +272,56 @@ describe('a Codex turn a conversation command claims', () => {
         turnScope: { kind: 'turn', turnItemId: COMMAND_TURN_KEY }
       })
     ])
+  })
+
+  it("ends a captured failed compaction on its completion, below one row of Codex's own", () => {
+    // A real app-server's compaction turn: two retried stream errors, the turn-ending error, then
+    // the failed completion.
+    const captured: { case: string; t: number; method: string; params: object }[] = readFileSync(
+      join(__dirname, '__fixtures__', 'codex-app-server-turn-endings.jsonl'),
+      'utf8'
+    )
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line))
+      .filter((frame) => frame.case === '0.158.0-compact-overloaded')
+    const compactionTurn = captured.findLastIndex((frame) => frame.method === 'turn/started')
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    for (const frame of captured.slice(compactionTurn)) {
+      emit({
+        type: 'notification',
+        sessionId: SESSION,
+        threadId: THREAD,
+        method: frame.method,
+        params: { ...frame.params, threadId: THREAD },
+        observedAt: frame.t
+      })
+    }
+
+    expect(codexTurnRecords(writes)).toEqual([])
+    const completion = captured.at(-1)!
+    expect(completion.method).toBe('turn/completed')
+    expect(commandTurn(writes)).toMatchObject({
+      state: 'completed',
+      outcome: 'failure',
+      completedAt: completion.t
+    })
+    // Every row is one of Codex's frames, inside the command's turn; the completion adds none.
+    const scope = { kind: 'turn', turnItemId: COMMAND_TURN_KEY }
+    const rows = resultRows(writes)
+    expect(rows.map((write) => write.key)).not.toContain(
+      agentJournalItemKey(COMMAND.resultIdentity)
+    )
+    expect(rows.map((write) => write.turnScope)).toEqual(rows.map(() => scope))
+    expect(
+      rows.some(
+        (write) =>
+          write.body.kind === 'status' &&
+          write.body.tone === 'error' &&
+          write.body.text.includes('Selected model is at capacity')
+      )
+    ).toBe(true)
   })
 
   it('leaves the next turn to write its own record after a failed compaction', () => {

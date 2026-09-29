@@ -27,6 +27,7 @@ function Harness({
   isWorking = true,
   settledTurns,
   turnJournal,
+  workingStartedAt,
   scopeKey = 'host\0worktree\0tab-a'
 }: {
   messages: readonly NativeChatMessage[]
@@ -34,6 +35,7 @@ function Harness({
   isWorking?: boolean
   settledTurns?: NativeChatSettledTurns
   turnJournal?: NativeChatTurnJournal
+  workingStartedAt?: number | null
   scopeKey?: string
 }): React.JSX.Element {
   const disclosure = useMobileNativeChatTurnDisclosure({
@@ -42,6 +44,7 @@ function Harness({
     isWorking,
     settledTurns,
     turnJournal,
+    workingStartedAt,
     scopeKey
   })
   return createElement('result', { disclosure })
@@ -209,6 +212,166 @@ describe('useMobileNativeChatTurnDisclosure', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  describe('keeps the live bar under the prompt that opened the running turn, not a mid-turn send', () => {
+    const tool: NativeChatMessage = {
+      id: 'tool-a',
+      role: 'assistant',
+      blocks: [
+        { type: 'tool-call', name: 'Bash', input: { command: 'sleep 15' }, state: 'running' }
+      ],
+      timestamp: null,
+      source: 'transcript'
+    }
+    const messages = [userMessage('A'), tool, userMessage('B')]
+    const user = (
+      id: string,
+      sequence: number,
+      turnScope?: AgentJournalTurnScope
+    ): AgentJournalRenderItem => ({
+      itemId: id,
+      revision: 0,
+      sequence,
+      observedAt: sequence,
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: id }] },
+      ...(turnScope ? { turnScope } : {})
+    })
+    const turn = (
+      turnId: string,
+      sequence: number,
+      state: 'running' | 'interrupted',
+      userItemId: string,
+      turnScope?: AgentJournalTurnScope
+    ): AgentJournalRenderItem => ({
+      itemId: turnId,
+      revision: 0,
+      sequence,
+      observedAt: sequence,
+      body: { kind: 'turn', turnId, state, userItemId },
+      ...(turnScope ? { turnScope } : {})
+    })
+    const toolItem = (
+      sequence: number,
+      turnScope?: AgentJournalTurnScope
+    ): AgentJournalRenderItem => ({
+      itemId: 'tool-a',
+      revision: 0,
+      sequence,
+      observedAt: sequence,
+      body: {
+        kind: 'tool-call',
+        name: 'Bash',
+        input: { command: 'sleep 15' },
+        state: 'running'
+      },
+      ...(turnScope ? { turnScope } : {})
+    })
+    const rows = () => {
+      const disclosure = renderer!.root.findByType('result').props.disclosure
+      return messages.map((message, index) => disclosure.resolveRow(index, message))
+    }
+    const render = (props: Parameters<typeof Harness>[0]) =>
+      act(() => {
+        if (renderer) {
+          renderer.update(createElement(Harness, props))
+        } else {
+          renderer = create(createElement(Harness, props))
+        }
+      })
+
+    it("on a host that states each row's turn, the steered message and the work are one live turn", () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(10_000)
+        const t1 = { kind: 'turn', turnItemId: 't1' } as const
+        const thread = { kind: 'thread' } as const
+        // B was handed over while A's turn runs, so the host scopes it to that turn.
+        const whileA = [
+          user('A', 1, thread),
+          turn('t1', 2, 'running', 'A', thread),
+          toolItem(3, t1),
+          user('B', 4, t1)
+        ]
+        render({
+          messages,
+          enabled: true,
+          workingStartedAt: 5_000,
+          turnJournal: { items: whileA, submissions: [] }
+        })
+        let [rowA, rowTool, rowB] = rows()
+        expect(rowA.turnStatus).toEqual({ startedAt: 5_000, thinking: false, workedSeconds: null })
+        expect(rowB.turnStatus).toBeNull()
+        expect([rowA, rowTool, rowB].map((row) => row.activeTurnIsWorking)).toEqual([
+          true,
+          true,
+          true
+        ])
+
+        // B's own turn opens: A takes the host's settled duration, B counts from A's end.
+        const whileB = [
+          user('A', 1, thread),
+          turn('t1', 2, 'interrupted', 'A', thread),
+          toolItem(3, t1),
+          user('B', 4, t1),
+          turn('t2', 5, 'running', 'B', thread)
+        ]
+        render({
+          messages,
+          enabled: true,
+          workingStartedAt: 22_000,
+          settledTurns: new Map([['A', { startedAt: 5_000, workedSeconds: 17 }]]),
+          turnJournal: { items: whileB, submissions: [] }
+        })
+        ;[rowA, rowTool, rowB] = rows()
+        expect(rowA.turnStatus).toEqual({ startedAt: 5_000, thinking: false, workedSeconds: 17 })
+        expect(rowB.turnStatus).toEqual({ startedAt: 22_000, thinking: false, workedSeconds: null })
+        expect(rowB.activeTurnIsWorking).toBe(true)
+        expect(rowTool.activeTurnIsWorking).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('on a host that states no turn, the bar follows the record while liveness follows position', () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(10_000)
+        const whileA = [user('A', 1), turn('t1', 2, 'running', 'A'), toolItem(3), user('B', 4)]
+        render({
+          messages,
+          enabled: true,
+          workingStartedAt: 5_000,
+          turnJournal: { items: whileA, submissions: [] }
+        })
+        let [rowA, rowTool, rowB] = rows()
+        expect(rowA.turnStatus).toEqual({ startedAt: 5_000, thinking: false, workedSeconds: null })
+        expect(rowB.turnStatus).toBeNull()
+        // Row liveness still follows the transcript's grouping under the newest prompt.
+        expect(rowTool.activeTurnIsWorking).toBe(false)
+        expect(rowB.activeTurnIsWorking).toBe(true)
+
+        const whileB = [
+          user('A', 1),
+          turn('t1', 2, 'interrupted', 'A'),
+          toolItem(3),
+          user('B', 4),
+          turn('t2', 5, 'running', 'B')
+        ]
+        render({
+          messages,
+          enabled: true,
+          workingStartedAt: 22_000,
+          settledTurns: new Map([['A', { startedAt: 5_000, workedSeconds: 17 }]]),
+          turnJournal: { items: whileB, submissions: [] }
+        })
+        ;[rowA, , rowB] = rows()
+        expect(rowA.turnStatus).toEqual({ startedAt: 5_000, thinking: false, workedSeconds: 17 })
+        expect(rowB.turnStatus).toEqual({ startedAt: 22_000, thinking: false, workedSeconds: null })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   it('keeps at most the latest 128 turns expanded', () => {

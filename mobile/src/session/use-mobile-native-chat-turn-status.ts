@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  NATIVE_CHAT_UNANCHORED_TURN_KEY,
   reduceNativeChatTurnTiming,
   selectNativeChatTurnStatuses,
   type NativeChatSettledTurns,
@@ -9,7 +10,6 @@ import {
 
 export type { NativeChatTurnStatus }
 
-export const MOBILE_UNANCHORED_TURN_KEY = '__unanchored__'
 const EMPTY_TURN_TIMING_BY_TURN: NativeChatTurnTimingByTurn = Object.freeze({})
 
 type ScopedTurnTiming = {
@@ -21,7 +21,7 @@ type ScopedTurnTiming = {
  *  state machine the desktop renderer uses so the two surfaces stamp turns alike. */
 export function useMobileNativeChatTurnStatus({
   turnKeys,
-  liveTurnKey,
+  barTurnKey,
   enabled,
   isWorking,
   workingStartedAt,
@@ -31,7 +31,8 @@ export function useMobileNativeChatTurnStatus({
 }: {
   /** Each row's turn, as `nativeChatTurnMembership` places it. */
   turnKeys: readonly (string | undefined)[]
-  liveTurnKey: string | undefined
+  /** The turn whose bar carries the live clock (`nativeChatTurnMembership`). */
+  barTurnKey: string | undefined
   enabled: boolean
   isWorking: boolean
   workingStartedAt?: number | null
@@ -46,7 +47,7 @@ export function useMobileNativeChatTurnStatus({
   completedByTurn: Readonly<Record<string, NativeChatTurnStatus>>
   activeTurnKey: string
 } {
-  const activeTurnKey = (enabled ? liveTurnKey : undefined) ?? MOBILE_UNANCHORED_TURN_KEY
+  const activeTurnKey = (enabled ? barTurnKey : undefined) ?? NATIVE_CHAT_UNANCHORED_TURN_KEY
   const [scopedTiming, setScopedTiming] = useState<ScopedTurnTiming>(() => ({
     scopeKey,
     timingByTurn: {}

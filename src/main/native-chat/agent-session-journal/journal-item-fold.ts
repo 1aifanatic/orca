@@ -26,7 +26,9 @@ export function upsertJournalItem(
   state: JournalReducerState,
   itemId: string,
   revision: number,
-  next: AgentJournalRenderItem
+  next: AgentJournalRenderItem,
+  /** The creating write's fence: the generation a running turn belongs to. */
+  fence: number
 ): void {
   const tombstoned = state.tombstones.get(itemId)
   if (tombstoned !== undefined && revision <= tombstoned) {
@@ -39,6 +41,7 @@ export function upsertJournalItem(
   state.derivedTurnScope.observe(itemId, isRootAgentJournalItem(next), existing?.body, next.body)
   if (!existing) {
     state.items.set(itemId, next)
+    state.itemFences.set(itemId, fence)
     state.tombstones.delete(itemId)
     return
   }
@@ -90,4 +93,5 @@ export function removeJournalItem(
   }
   state.tombstones.set(itemId, revision)
   state.items.delete(itemId)
+  state.itemFences.delete(itemId)
 }

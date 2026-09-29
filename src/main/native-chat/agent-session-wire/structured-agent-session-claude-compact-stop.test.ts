@@ -275,9 +275,14 @@ it('tells why a /compact ended when its Claude child exits after taking it', asy
   await vi.waitFor(async () => {
     await host.flushStreamedEvents(SESSION)
     const snapshot = await host.journalSnapshot(SESSION)
+    // The exit's words are the host's sentence, never Claude's log text.
     const exitRow = snapshot.items.find(
-      (item) => item.body.kind === 'status' && item.body.text.includes('claude stream-json exited')
+      (item) => item.body.kind === 'status' && item.body.failure?.kind === 'providerExited'
     )
+    expect(exitRow?.body).toMatchObject({
+      text: 'Claude stopped while this response was in progress. You can continue in this conversation.',
+      tone: 'error'
+    })
     expect(exitRow?.turnScope).toEqual({
       kind: 'turn',
       turnItemId: structuredAgentSessionCommandTurn(cmid).itemId

@@ -7,15 +7,15 @@ import {
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import {
-  settleStaleStructuredAgentSessionState,
-  unexpectedProviderExitOutcome
-} from './structured-agent-session-dead-generation-settlement'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   settleUnexpectedStructuredAgentSessionExit,
   type StructuredAgentSessionUnexpectedExitContext,
   type StructuredAgentSessionUnexpectedExitSession
 } from './structured-agent-session-unexpected-exit'
+
+const exitOutcome = (agent: string): string =>
+  `${agent} stopped while this response was in progress. You can continue in this conversation.`
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
@@ -93,9 +93,11 @@ describe('provider-exit settlement', () => {
       child: { generation: GENERATION, fence: 7, phase: 'ready' },
       journal: {
         cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+        itemBody: () => null,
         snapshot: () => ({
           items: [lifecycleItem('turn-1', 1, { state: 'running', startedAt: 1_000 })]
         }),
+        itemFence: () => 7,
         appendLifecycleBatch,
         markPendingSubmissionsUnknown: vi.fn(async () => [])
       }
@@ -123,7 +125,7 @@ describe('provider-exit settlement', () => {
         observedAt
       }
     )
-    // Released, not latched: the next acquire or read restore settles what this write left.
+    // Released, not latched: a later settle from this evidence finishes what this write left.
     expect(record.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
@@ -164,6 +166,7 @@ describe('provider-exit settlement', () => {
       child: { generation: GENERATION, fence: 7, phase: 'ready' },
       journal: {
         cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+        itemBody: () => null,
         snapshot: () => ({ items }),
         appendLifecycleBatch,
         markPendingSubmissionsUnknown: vi.fn(async () => [])
@@ -221,7 +224,8 @@ describe('provider-exit settlement', () => {
           },
           body: {
             kind: 'status',
-            text: unexpectedProviderExitOutcome('provider exited'),
+            text: exitOutcome('The agent'),
+            failure: { kind: 'providerExited' },
             tone: 'error'
           },
           // The exit belongs to the turn it ended.
@@ -281,6 +285,7 @@ describe('provider-exit settlement', () => {
         child: { generation: GENERATION, fence: 7, phase: 'ready' },
         journal: {
           cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+          itemBody: () => null,
           snapshot: () => ({ items }),
           appendLifecycleBatch,
           markPendingSubmissionsUnknown: vi.fn(async () => []),
@@ -322,7 +327,8 @@ describe('provider-exit settlement', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: unexpectedProviderExitOutcome('provider exited after completing the turn'),
+              text: exitOutcome('Claude'),
+              failure: { kind: 'providerExited' },
               tone: 'error'
             }
           })
@@ -337,6 +343,7 @@ describe('provider-exit settlement', () => {
       child: { generation: GENERATION, fence: 7, phase: 'ready' },
       journal: {
         cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+        itemBody: () => null,
         snapshot: () => ({ items: [] }),
         appendLifecycleBatch: vi.fn(async () => ({ epoch: 'epoch-1', sequence: 1 })),
         markPendingSubmissionsUnknown,
@@ -373,7 +380,8 @@ describe('provider-exit settlement', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: unexpectedProviderExitOutcome('provider exited'),
+              text: exitOutcome('Claude'),
+              failure: { kind: 'providerExited' },
               tone: 'error'
             }
           })
@@ -387,6 +395,7 @@ describe('provider-exit settlement', () => {
       child: { generation: GENERATION, fence: 7, phase: 'ready' },
       journal: {
         cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+        itemBody: () => null,
         markPendingSubmissionsUnknown: vi.fn(async () => []),
         rejectPendingSubmissions: vi.fn(async () => []),
         snapshot: () => ({

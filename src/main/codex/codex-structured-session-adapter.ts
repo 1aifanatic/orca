@@ -13,6 +13,7 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
 import { dispatchCodexTurn, isCodexTurnOptionKey } from './codex-structured-turn-start'
+import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { supportsCodexStructuredLocation } from './codex-structured-location-support'
 import { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
 import {
@@ -33,6 +34,10 @@ import {
   translateCodexNotification
 } from './codex-structured-provider-events'
 import { CodexStructuredTurnCancellation } from './codex-structured-turn-cancellation'
+import {
+  codexDispatchRejection,
+  settleCodexSendsInEndedTurn
+} from './codex-structured-turn-end-settlement'
 import { createCodexStructuredNotificationRetry } from './codex-structured-notification-retry'
 import { acquireCodexStructuredSession } from './codex-structured-session-acquire'
 import { changeCodexThreadGoal } from './codex-structured-thread-goal'
@@ -151,11 +156,17 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       return admission
     }
     if (event.type === 'notification') {
+      // Only an admitted turn end settles; a refused one settles on the retry that lands.
+      settleCodexSendsInEndedTurn(session, event.method, event.params, (settlement) =>
+        this.deps.onDispatchSettledLate?.({ sessionId: event.sessionId, ...settlement })
+      )
       // After the admission check, so a refused frame is observed by the strip
       // only on the retry that also reaches the journal.
-      if (session.backgroundTasks.observe(event)) {
+      if (session.backgroundTasks.observe(event, session.prompts.takeAbandonedCommands())) {
         this.deps.onBackgroundTasksChanged?.(event.sessionId, session.backgroundTasks.state)
       }
+      // After the journal and the parent's republished row, never ahead of either.
+      session.backgroundTasks.publishChildWork()
     }
     this.deps.onEvent?.(event)
     return admission
@@ -252,7 +263,13 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     } catch (error) {
       session.translator?.forgetCommand(input.command.turnId)
       if (isCodexAppServerRequestError(error)) {
-        return { state: 'rejected', reason: error.message }
+        // Codex's own words, when it gave any, are the one part of the error a person can use.
+        return {
+          state: 'rejected',
+          ...codexDispatchRejection(
+            agentSessionFailureFact('providerRejected', { detail: providerDiagnosticOf(error) })
+          )
+        }
       }
       throw error
     }

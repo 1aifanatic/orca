@@ -172,7 +172,15 @@ describe('a captured /compact as the open Claude turn', () => {
       )
     ).toEqual([
       expect.objectContaining({
-        body: { kind: 'status', text: 'API Error: Request was aborted.', tone: 'error' }
+        body: {
+          kind: 'status',
+          text: 'Compaction failed: API Error: Request was aborted.',
+          failure: {
+            kind: 'compactionFailed',
+            detail: { text: 'API Error: Request was aborted.', audience: 'person' }
+          },
+          tone: 'error'
+        }
       })
     ])
   })
@@ -279,6 +287,65 @@ describe('the command turn at each point the ordinary result path threads throug
       state: 'completed',
       contextUsage: { window: { tokens: 1_000_000 } }
     })
+  })
+
+  it("reports a compaction Claude refused in Claude's own words, and one with none plainly", () => {
+    const worded = harness()
+    worded.begin('compact-input')
+    worded.frame({
+      type: 'system',
+      subtype: 'status',
+      compact_result: 'failed',
+      compact_error: 'Not enough messages to compact.'
+    })
+    worded.frame({ type: 'result', subtype: 'success', is_error: false })
+    expect(worded.commandTurn()).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(worded.drawn().map((row) => row.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction failed: Not enough messages to compact.',
+        failure: {
+          kind: 'compactionFailed',
+          detail: { text: 'Not enough messages to compact.', audience: 'person' }
+        },
+        tone: 'error'
+      }
+    ])
+
+    const unworded = harness()
+    unworded.begin('compact-input')
+    unworded.frame({ type: 'system', subtype: 'status', compact_result: 'failed' })
+    unworded.frame({ type: 'result', subtype: 'success', is_error: false })
+    expect(unworded.drawn().map((row) => row.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction failed.',
+        failure: { kind: 'compactionFailed' },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('reports a result with no compaction and no failure as a compaction Claude never confirmed', () => {
+    const { begin, frame, commandTurn, drawn } = harness()
+    begin('compact-input')
+    frame({ type: 'result', subtype: 'success', is_error: false })
+    expect(commandTurn()).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(drawn().map((row) => row.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction completion is unconfirmed.',
+        failure: { kind: 'compactionUnconfirmed' },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('fails a command whose result ended in error', () => {
+    const { begin, frame, commandTurn } = harness()
+    begin('compact-input')
+    frame({ type: 'result', subtype: 'error_during_execution', is_error: true })
+    expect(commandTurn()).toMatchObject({ state: 'completed', outcome: 'failure' })
   })
 
   it("draws one error row, the provider's, for a command whose result is an error", () => {

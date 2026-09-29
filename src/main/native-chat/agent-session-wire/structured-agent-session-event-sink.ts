@@ -211,6 +211,7 @@ export function createDeferredStructuredAgentSessionEventSink(
       {
         bytes: Buffer.byteLength(JSON.stringify({ settlementId, mutations }), 'utf8') + 512,
         coalescingKey: `lifecycle:${settlementId}`,
+        keepsFirst: true,
         run: (bound) =>
           bound.journal.appendLifecycleBatch({
             settlementId,

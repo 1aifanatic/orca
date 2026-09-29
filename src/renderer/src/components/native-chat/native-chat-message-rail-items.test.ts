@@ -42,6 +42,7 @@ function slotsOf(messages: NativeChatMessage[]) {
   return buildNativeChatTranscriptSlots({
     messages,
     turnKeys,
+    activeTurnKey: undefined,
     currentTurnKey: undefined,
     receipts: new Map<string, NativeChatResolvedPrompt>(),
     turnStatuses: { active: null, completedByTurn: {} },
