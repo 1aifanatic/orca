@@ -25,6 +25,7 @@ import {
   MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS
 } from './journal-row-schema'
 import { boundInlineText, DEFAULT_JOURNAL_PAYLOAD_LIMITS } from './journal-payload-bounds'
+import { assertSubmissionIdUnused } from './journal-write-guards'
 import type { ResolveDispatchInput } from './journal-store-contracts'
 
 type RowBuilder<T> = (seq: number, ts: number) => T
@@ -67,8 +68,10 @@ export function journalSubmissionRowBuilder(
     handoverRecorded?: true
   }
 ): RowBuilder<JournalSubmissionRow> {
-  return (seq, ts) =>
-    buildJournalSubmissionRow({ state: state(), providerHandle, ...input, seq, ts })
+  return (seq, ts) => {
+    assertSubmissionIdUnused(state().submissions, input.clientMessageId)
+    return buildJournalSubmissionRow({ state: state(), providerHandle, ...input, seq, ts })
+  }
 }
 
 export function journalDispatchRowBuilder(

@@ -173,6 +173,12 @@ export function sendQueuedStructuredAgentMessage(
     fields: { messageId },
     conversationWrite: true,
     run: async (ctx): Promise<TurnOutcome<AgentSessionSendResult>> => {
+      // A rerun of this operation after it consumed the card (its answer never
+      // settled): answer with the submission it made, never append it again.
+      const consumedHere = submissionFor(ctx, operationId)
+      if (consumedHere && ctx.journal.queuedMessages.get(messageId)?.consumedAs === operationId) {
+        return { ok: true, value: { clientMessageId: operationId, submission: consumedHere } }
+      }
       // The one queue gate; Send-now's override set is exactly `working` (plus
       // FIFO order and the stored hold, which the consume below clears).
       const record = context.deps.store.getRecord(ctx.sessionId)

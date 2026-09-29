@@ -193,3 +193,39 @@ describe('replay preference', () => {
     }
   })
 })
+
+describe('Send-now rerun', () => {
+  it('a Send whose answer never settled answers again with the submission it made, never re-sending it', async () => {
+    const working = await workingSend()
+    const queued = await send('refused twice', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+    await settleRejected(draftId, 'first refusal')
+    await eventually(async () =>
+      expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+    )
+    const operationId = hostTestOperationId()
+    expect(await sendNow(draftId, operationId)).toMatchObject({ ok: true })
+    await settleRejected(operationId, 'second refusal')
+    await eventually(async () =>
+      expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+    )
+    // The host died before the Send's answer settled: its ledger row is still pending, so it reruns.
+    for (const row of store['transactions'].state.operations.values()) {
+      if (row.operationId === operationId) {
+        row.outcome = { status: 'pending' }
+      }
+    }
+    const count = (await host.journalSnapshot(SESSION)).submissions.length
+    expect(await sendNow(draftId, operationId)).toMatchObject({
+      ok: true,
+      value: { clientMessageId: operationId, submission: { dispatchState: 'rejected' } }
+    })
+    expect((await host.journalSnapshot(SESSION)).submissions).toHaveLength(count)
+    expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+  })
+})

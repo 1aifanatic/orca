@@ -186,6 +186,31 @@ describe('consume', () => {
     expect(journal.submissions().map((entry) => entry.clientMessageId)).toEqual(['draft-1'])
   })
 
+  it('never records a second submission under an id it already holds, whatever state it settled in', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    await journal.resolveDispatch({
+      clientMessageId: 'draft-1',
+      state: 'rejected',
+      ...refusal('refused'),
+      fence: 0
+    })
+    const cursor = journal.cursor()
+    await expect(
+      journal.appendSubmission({
+        clientMessageId: 'draft-1',
+        payloadFingerprint: 'fp-draft-1',
+        body: message('queued text'),
+        fence: 0,
+        handoverRecorded: true
+      })
+    ).rejects.toMatchObject({ code: 'journal_submission_exists' })
+    // The refusal stands: re-appending would reset it to pending and hand it over again.
+    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    expect(journal.cursor()).toEqual(cursor)
+  })
+
   it('a second consume of the same draft fails and appends nothing (exactly-once)', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
@@ -292,6 +317,13 @@ describe('returned transition (D1/N4)', () => {
     await consumeDraft(journal, 'draft-1')
     await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
     // Its own id already names a rejected submission: one id, one delivery.
+    await expect(consumeDraft(journal, 'draft-1')).rejects.toMatchObject({
+      code: 'journal_submission_exists'
+    })
+    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    // Even once an epoch replacement forgets that submission, the draft remembers its id is spent.
+    await journal.replaceEpochItems('handle_forked', 0, [])
+    expect(journal.submission('draft-1')).toBeUndefined()
     await expect(consumeDraft(journal, 'draft-1')).rejects.toBeInstanceOf(
       QueuedMessageNotConsumableError
     )
