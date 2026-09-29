@@ -42,7 +42,7 @@ export async function settleLaunchPromptDisposal(
   if (created.promptRodeLaunchCommand) {
     return HANDED_TO_TERMINAL
   }
-  return deliverTerminalLaunchPrompt(execution, created.outcome.handle)
+  return deliverTerminalLaunchPrompt(execution, created.outcome.handle, { freshLaunch: true })
 }
 
 /**
@@ -81,7 +81,8 @@ async function deliverStructuredLaunchPrompt(
  */
 export async function deliverTerminalLaunchPrompt(
   execution: AgentLaunchExecution,
-  handle: string
+  handle: string,
+  { freshLaunch }: { freshLaunch: boolean }
 ): Promise<AgentLaunchPromptDisposal> {
   const { intent, surfaces } = execution
   if (!intent.prompt || intent.prompt.delivery !== 'submit') {
@@ -90,6 +91,7 @@ export async function deliverTerminalLaunchPrompt(
   const delivered = await surfaces.deliverTerminalPrompt?.({
     handle,
     agent: intent.agent,
+    freshLaunch,
     prompt: intent.prompt
   })
   return delivered ? HANDED_TO_TERMINAL : NOT_DELIVERED

@@ -57,16 +57,18 @@ async function waitThroughBlockingPrompts(
   runtime: TerminalPromptRuntime,
   handle: string,
   agent: TuiAgent,
+  freshLaunch: boolean,
   clock: ReadinessClock
 ): Promise<RuntimeTerminalWait | undefined> {
   const deadline = clock.now() + AGENT_READY_TIMEOUT_MS
   for (;;) {
-    const wait = await waitForLaunchedAgentComposer(
-      runtime,
-      handle,
-      agent,
-      Math.max(0, deadline - clock.now())
-    )
+    // At least 1 ms: the terminal wait reads 0 as "use the 5-minute default", and a late sleep can
+    // land past the deadline.
+    const timeoutMs = Math.max(1, deadline - clock.now())
+    const wait = freshLaunch
+      ? await waitForLaunchedAgentComposer(runtime, handle, agent, timeoutMs)
+      : // A reused pane was not freshly launched: its composer marker may be long gone.
+        await runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
     if (!wait?.blockedReason || wait.satisfied || deadline - clock.now() <= BLOCKED_RECHECK_MS) {
       return wait
     }
@@ -92,6 +94,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   runtime: TerminalPromptRuntime
   handle: string
   agent: TuiAgent
+  /** False for a reused terminal, whose agent was already running before this launch. */
+  freshLaunch: boolean
   text: string
   clock?: ReadinessClock
 }): Promise<boolean> {
@@ -103,6 +107,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       args.runtime,
       args.handle,
       args.agent,
+      args.freshLaunch,
       args.clock ?? REAL_CLOCK
     )
     // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an

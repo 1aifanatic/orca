@@ -67,6 +67,8 @@ export type AgentLaunchSurfaceFactory = {
     handle: string
     /** The launched agent, whose own readiness signal the write waits for. */
     agent: TuiAgent
+    /** False for a reused terminal, which has no fresh launch readiness to wait for. */
+    freshLaunch: boolean
     prompt: AgentLaunchPrompt
   }): Promise<boolean>
 }

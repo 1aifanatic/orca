@@ -57,6 +57,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
@@ -82,6 +83,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
@@ -100,6 +102,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
@@ -117,6 +120,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
@@ -130,6 +134,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
@@ -144,6 +149,7 @@ describe('writing a launch prompt into a terminal agent', () => {
         runtime: stub.runtime,
         handle: 'term_1',
         agent: 'claude',
+        freshLaunch: true,
         text: '   '
       })
     ).toBe(false)
@@ -160,6 +166,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing',
       clock
     })
@@ -180,6 +187,7 @@ describe('writing a launch prompt into a terminal agent', () => {
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       text: 'do the thing',
       clock: fakeClock()
     })
@@ -199,6 +207,7 @@ describe('writing a launch prompt into a terminal agent', () => {
         runtime: stub.runtime,
         handle: 'term_1',
         agent,
+        freshLaunch: true,
         text: 'do the thing'
       })
 
@@ -209,18 +218,65 @@ describe('writing a launch prompt into a terminal agent', () => {
   )
 
   it('keeps the text when an agent shows no readiness evidence at all', async () => {
-    // The no-evidence decision point currently reports not-ready: nothing is pasted blind.
+    // Nothing is pasted blind.
     const stub = runtimeStub({ wait: { satisfied: false, status: 'running' } })
 
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
       agent: 'goose',
+      freshLaunch: true,
       text: 'do the thing'
     })
 
     expect(delivered).toBe(false)
     expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+  })
+  it('never lets a re-wait fall back to the terminal wait’s 5-minute default', async () => {
+    // A late 1 s re-check sleep can land past the deadline; 0 would read as "use the default".
+    const stub = runtimeStub({
+      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
+    })
+    let now = 0
+    const lateClock = {
+      now: () => now,
+      sleep: async (ms: number) => {
+        now += ms + 1_000
+      }
+    }
+
+    await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'do the thing',
+      clock: lateClock
+    })
+
+    for (const [, options] of stub.waitForTerminal.mock.calls) {
+      expect(options?.timeoutMs).toBeGreaterThan(0)
+    }
+  })
+
+  it('waits on a reused terminal’s idle state, not a fresh launch’s composer marker', async () => {
+    // A long-running grok pane may no longer show its composer marker in recent output.
+    const stub = runtimeStub({})
+
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_existing',
+      agent: 'grok',
+      freshLaunch: false,
+      text: 'do the thing'
+    })
+
+    expect(delivered).toBe(true)
+    expect(stub.waitForFreshWorkerComposer).not.toHaveBeenCalled()
+    expect(stub.waitForTerminal).toHaveBeenCalledWith('term_existing', {
+      condition: 'tui-idle',
+      timeoutMs: 60_000
+    })
   })
 })
 

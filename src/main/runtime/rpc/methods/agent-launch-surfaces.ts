@@ -155,11 +155,12 @@ export function agentLaunchSurfaceFactory(
         ...(promptRodeLaunchCommand ? { promptRodeLaunchCommand } : {})
       }
     },
-    deliverTerminalPrompt: async ({ handle, agent, prompt }) =>
+    deliverTerminalPrompt: async ({ handle, agent, freshLaunch, prompt }) =>
       deliverTerminalAgentLaunchPrompt({
         runtime: context.runtime,
         handle,
         agent,
+        freshLaunch,
         text: prompt.text
       })
   }

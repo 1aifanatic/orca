@@ -335,6 +335,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_1',
       agent: 'aider',
+      freshLaunch: true,
       prompt: SUBMIT
     })
     // Folding it into argv would have appended it as an argument the CLI does not accept.
@@ -369,6 +370,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_1',
       agent: 'claude',
+      freshLaunch: true,
       prompt: SUBMIT
     })
   })
@@ -381,6 +383,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_agent_first',
       agent: 'claude',
+      freshLaunch: true,
       prompt: SUBMIT
     })
   })
@@ -399,6 +402,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_existing',
       agent: 'claude',
+      freshLaunch: false,
       prompt: SUBMIT
     })
   })
