@@ -1,4 +1,4 @@
-import { stripCodexDaemonOverride } from './codex-daemon-socket-path-guard'
+import { stripCodexDaemonOverride } from './codex-daemon-auto-start-override'
 import {
   createTomlLineScanState,
   getTomlTableHeader,

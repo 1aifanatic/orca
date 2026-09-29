@@ -18,9 +18,9 @@ import { join } from 'node:path'
 import type * as CodexFsUtils from '../codex-accounts/fs-utils'
 
 // Why: temp homes exceed sun_path on macOS but not on Linux; keep asserted config bytes host-independent.
-vi.mock('./codex-daemon-socket-path-guard', async (importOriginal) => ({
+vi.mock('./codex-daemon-auto-start-override', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  applyCodexDaemonSocketGuard: (config: string) => config
+  applyCodexDaemonAutoStartOverride: (config: string) => config
 }))
 
 const { homedirMock, promotionTestState } = vi.hoisted(() => ({

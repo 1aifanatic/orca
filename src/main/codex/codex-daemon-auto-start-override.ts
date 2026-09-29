@@ -1,6 +1,3 @@
-import { realpathSync } from 'node:fs'
-import { parseWslUncPath } from '../../shared/wsl-paths'
-import { unixSocketPathByteLimit } from '../../shared/unix-socket-path-limit'
 import { upsertTableSettingsInContent } from './codex-config-settings-upsert'
 import {
   createTomlLineScanState,
@@ -14,61 +11,29 @@ import { parseTomlKeyPath, parseTomlTableHeaderPath } from './config-toml-key-pa
 /**
  * Codex >= 0.157 auto-starts one shared app-server per CODEX_HOME that runs every
  * later session's hooks and tools with the first session's environment and dies
- * with it. #23900's `--no-daemon` covers launches through Orca's `codex` shell
- * function; this is the backup for launches that skip it (cmd.exe, scripts,
- * absolute paths) in homes Orca owns, which never auto-start the server. It does
- * not stop a launch joining a server already running there. Long homes also
- * exceed `sun_path`, where Codex cannot start at all without it; most account
- * homes are that long, so the new reach is mainly the shared runtime home on
- * Windows, and on Linux when it is not on the real-home lane.
+ * with it. Every home Orca owns carries `[features] daemon_auto_start = false`, so
+ * launches that skip the `codex` shell function's `--no-daemon` (cmd.exe, scripts,
+ * absolute paths) run their own server; it also lets Codex start at all in homes
+ * whose socket path exceeds `sun_path`. It does not stop a launch joining a server
+ * already running there, and profile-level (`[profiles.X.features]`) and `-c`
+ * overrides still win.
  */
-const DAEMON_SOCKET_SEGMENTS = ['app-server-control', 'app-server-control.sock']
 // Why: older Orca builds strip only this exact text, so it must never change.
 export const CODEX_DAEMON_OVERRIDE_MARKER = '# orca: CODEX_HOME too long for the daemon socket'
 const DAEMON_OVERRIDE_RAW = `false ${CODEX_DAEMON_OVERRIDE_MARKER}`
-
-export function codexDaemonSocketPath(homePath: string, platform = process.platform): string {
-  const wsl = parseWslUncPath(homePath)
-  if (wsl) {
-    return [wsl.linuxPath.replace(/\/+$/, ''), ...DAEMON_SOCKET_SEGMENTS].join('/')
-  }
-  // Why: Codex canonicalizes CODEX_HOME before building the socket path, so a
-  // short symlinked alias still resolves to the long real path. Its
-  // AbsolutePathBuf strips the Windows \\?\ prefix, so none is counted here.
-  let canonical = homePath
-  try {
-    canonical = realpathSync.native(homePath)
-  } catch {
-    // Unresolvable homes are measured as spelled.
-  }
-  const separator = platform === 'win32' ? '\\' : '/'
-  return [canonical.replace(/[\\/]+$/, ''), ...DAEMON_SOCKET_SEGMENTS].join(separator)
-}
-
-export function codexDaemonSocketPathExceedsLimit(
-  homePath: string,
-  platform = process.platform
-): boolean {
-  // Why: WSL homes run Linux Codex; Windows Codex's uds_windows also uses a 108-byte sun_path.
-  const os = platform === 'darwin' && !parseWslUncPath(homePath) ? 'darwin' : 'linux'
-  const socketPath = codexDaemonSocketPath(homePath, platform)
-  return Buffer.byteLength(socketPath, 'utf8') > unixSocketPathByteLimit(os)
-}
 
 const unguardableHomesWarned = new Set<string>()
 const overriddenHomesWarned = new Set<string>()
 
 /**
  * Forces `daemon_auto_start = false` into a home Orca owns, even over a user's
- * explicit `true` mirrored from ~/.codex, matching the shell function, which adds
- * `--no-daemon` regardless of config. Callers pass only Orca's runtime homes; the
- * user's ~/.codex reaches the mirror solely as its read-only source. Profile-level
- * (`[profiles.X.features]`) and `-c` overrides still win; that is accepted.
+ * explicit `true` mirrored from ~/.codex, matching the shell function's
+ * unconditional `--no-daemon`. Callers pass only Orca's runtime homes; the user's
+ * ~/.codex reaches the mirror only as its read-only source.
  */
-export function applyCodexDaemonSocketGuard(
+export function applyCodexDaemonAutoStartOverride(
   config: string,
-  orcaOwnedHomePath: string,
-  platform = process.platform
+  orcaOwnedHomePath: string
 ): string {
   // Why: upsert rewrites an existing daemon_auto_start line in place, so re-applying is a no-op.
   const guarded = upsertTableSettingsInContent(
@@ -81,18 +46,15 @@ export function applyCodexDaemonSocketGuard(
     warnOncePerHome(
       overriddenHomesWarned,
       orcaOwnedHomePath,
-      `[codex-config] A Codex config sets features.daemon_auto_start = true; Orca turns it off in its own Codex home ${orcaOwnedHomePath} so each Orca tab runs its own Codex server. Orca never edits ~/.codex/config.toml; a value set only inside ${orcaOwnedHomePath} is replaced there.`
+      `[codex-config] A Codex config sets features.daemon_auto_start = true; Orca turns it off in its own Codex home ${orcaOwnedHomePath} so each Orca tab runs its own Codex server. Orca does not change this setting in ~/.codex/config.toml; a value set only inside ${orcaOwnedHomePath} is replaced there.`
     )
   }
   if (!applied && !/\bdaemon_auto_start\s*=\s*false\b/.test(guarded)) {
-    const consequence = codexDaemonSocketPathExceedsLimit(orcaOwnedHomePath, platform)
-      ? 'Codex may fail with "path must be shorter than SUN_LEN"'
-      : "Codex may start a shared background server that runs every tab's hooks with one tab's environment"
     // Why: an inline `features = {...}` or `[[features]]` blocks the upsert; say so once instead of failing silently.
     warnOncePerHome(
       unguardableHomesWarned,
       orcaOwnedHomePath,
-      `[codex-config] Could not turn off Codex daemon auto-start in ${orcaOwnedHomePath}: its config defines features in a form Orca cannot extend. ${consequence}; rewrite features in ~/.codex/config.toml as a [features] table so Orca can add the setting to its own copy.`
+      `[codex-config] Could not turn off Codex daemon auto-start in ${orcaOwnedHomePath}: its config defines features in a form Orca cannot extend. Codex may start a shared background server that runs every tab's hooks with one tab's environment, and in a long home may fail with "path must be shorter than SUN_LEN"; rewrite features in ~/.codex/config.toml as a [features] table so Orca can add the setting to its own copy.`
     )
   }
   return guarded

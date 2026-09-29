@@ -19,12 +19,12 @@ import {
 import { readCodexSettingsBaseline } from './config-settings-baseline'
 import { getCodexConfigSyncStatus, reportCodexConfigSyncOutcome } from './config-sync-stall'
 import { preserveRuntimeConflictValues } from './codex-config-settings-preservation'
-import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
+import { applyCodexDaemonAutoStartOverride } from './codex-daemon-auto-start-override'
 import {
-  ensureCodexDaemonSocketGuard,
+  ensureCodexDaemonAutoStartOverride,
   refuseUserCodexHomeAsTarget,
-  writeCodexDaemonSocketGuard
-} from './codex-owned-home-daemon-guard'
+  writeCodexDaemonAutoStartOverride
+} from './codex-daemon-auto-start-override-write'
 import {
   deduplicateProjectTomlSections,
   getMcpServerTomlSectionName,
@@ -50,7 +50,7 @@ export function syncSystemConfigIntoManagedCodexHome(
   if (!mirrorSystemConfigIntoManagedCodexHome(homes)) {
     // Why: a stalled settings mirror must not also withhold the daemon guard,
     // or Codex starts a shared server here (or cannot start at all in a long home).
-    ensureCodexDaemonSocketGuard(homes.runtimeHomePath)
+    ensureCodexDaemonAutoStartOverride(homes.runtimeHomePath)
   }
 }
 
@@ -169,7 +169,7 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
         : prepareSystemConfigForFreshRuntimeMirror(rawSystemConfig, sourceConfigDir)
   }
   // Why: retained pre-rollout panes still use this home, so a refresh must keep the daemon guard.
-  const nextRuntimeConfig = applyCodexDaemonSocketGuard(
+  const nextRuntimeConfig = applyCodexDaemonAutoStartOverride(
     mirroredRuntimeConfig,
     homes.runtimeHomePath
   )
@@ -217,7 +217,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
   // a 0-byte file is what a half-written or unhydrated cloud-synced home shows.
   if (rawSystemConfig.trim() === '') {
     // Why: no mirror write happens here, but the daemon guard must still land.
-    writeCodexDaemonSocketGuard(
+    writeCodexDaemonAutoStartOverride(
       runtimeHomePath,
       runtimeConfigExists ? runtimeConfigObservation.value : null
     )
@@ -233,7 +233,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
 
   const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(systemHomePath, systemConfigDir)
   if (!runtimeConfigExists) {
-    const freshRuntimeConfig = applyCodexDaemonSocketGuard(
+    const freshRuntimeConfig = applyCodexDaemonAutoStartOverride(
       prepareSystemConfigForFreshRuntimeMirror(rawSystemConfig, sourceConfigDir),
       runtimeHomePath
     )
@@ -262,7 +262,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     ),
     promotionPlan.runtimeValuesToPreserve
   )
-  const nextRuntimeConfig = applyCodexDaemonSocketGuard(preserved.content, runtimeHomePath)
+  const nextRuntimeConfig = applyCodexDaemonAutoStartOverride(preserved.content, runtimeHomePath)
   if (nextRuntimeConfig !== runtimeConfig) {
     writeFileAtomically(runtimeConfigPath, nextRuntimeConfig)
   }

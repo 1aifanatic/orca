@@ -3,7 +3,7 @@ import { writeFileAtomicallyIfUnchanged } from '../codex-accounts/fs-utils'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { observeAgentStateFile } from './codex-path-observation'
 import { getSystemCodexHomePath } from './codex-home-paths'
-import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
+import { applyCodexDaemonAutoStartOverride } from './codex-daemon-auto-start-override'
 
 const refusedUserHomeTargets = new Set<string>()
 
@@ -27,7 +27,7 @@ export function refuseUserCodexHomeAsTarget(
 }
 
 /** Applies only the daemon guard, for passes that have no source config to mirror. */
-export function ensureCodexDaemonSocketGuard(
+export function ensureCodexDaemonAutoStartOverride(
   runtimeHomePath: string,
   systemHomePath: string = getSystemCodexHomePath()
 ): void {
@@ -37,21 +37,21 @@ export function ensureCodexDaemonSocketGuard(
   try {
     const observation = observeAgentStateFile(join(runtimeHomePath, 'config.toml'))
     if (observation.kind !== 'indeterminate') {
-      writeCodexDaemonSocketGuard(
+      writeCodexDaemonAutoStartOverride(
         runtimeHomePath,
         observation.kind === 'present' ? observation.value : null
       )
     }
   } catch (error) {
-    console.warn('[codex-config] Failed to apply the Codex daemon socket guard:', error)
+    console.warn('[codex-config] Failed to turn off Codex daemon auto-start:', error)
   }
 }
 
-export function writeCodexDaemonSocketGuard(
+export function writeCodexDaemonAutoStartOverride(
   runtimeHomePath: string,
   runtimeConfig: string | null
 ): void {
-  const guarded = applyCodexDaemonSocketGuard(runtimeConfig ?? '', runtimeHomePath)
+  const guarded = applyCodexDaemonAutoStartOverride(runtimeConfig ?? '', runtimeHomePath)
   if (guarded !== (runtimeConfig ?? '')) {
     writeFileAtomicallyIfUnchanged(join(runtimeHomePath, 'config.toml'), runtimeConfig, guarded)
   }

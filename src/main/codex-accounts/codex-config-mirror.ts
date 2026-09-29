@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
-import { ensureCodexDaemonSocketGuard } from '../codex/codex-owned-home-daemon-guard'
+import { ensureCodexDaemonAutoStartOverride } from '../codex/codex-daemon-auto-start-override-write'
 import { readCodexTopLevelModelProvider } from '../codex/codex-model-provider-config'
 import type { Store } from '../persistence'
 import { toWindowsWslPath } from '../wsl'
@@ -110,7 +110,9 @@ export class CodexConfigMirror {
       // Why: with no ~/.codex/config.toml there is nothing to mirror, but the account home still needs the daemon guard.
       // WSL homes are skipped: their ownership check is a blocking wsl.exe call (startup, account switch), and WSL launch prep guards the home it launches.
       if (!parseWslUncPath(managedHomePath)) {
-        ensureCodexDaemonSocketGuard(this.assertManagedHomePath(managedHomePath, expectedAccountId))
+        ensureCodexDaemonAutoStartOverride(
+          this.assertManagedHomePath(managedHomePath, expectedAccountId)
+        )
       }
       return
     }
