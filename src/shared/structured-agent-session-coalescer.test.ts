@@ -120,9 +120,9 @@ describe('structured agent session event coalescer', () => {
     coalescer.flush()
     expect(events[0]).toMatchObject({ queuedMessages: [], queuePause: { reason: 'restarted' } })
 
-    coalescer.push({ ...batch(3), queuedMessages: [], queuePause: { reason: 'stopped' } })
-    coalescer.push({ ...batch(4), queuedMessages: [], queuePause: null })
+    coalescer.push({ ...batch(3), queuedMessages: [], queuePause: null })
+    coalescer.push({ ...batch(4), queuedMessages: [], queuePause: { reason: 'stopped' } })
     coalescer.flush()
-    expect(events[1]).toMatchObject({ queuePause: null })
+    expect(events[1]).toMatchObject({ queuePause: { reason: 'stopped' } })
   })
 })
