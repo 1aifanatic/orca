@@ -9,7 +9,7 @@ import {
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { isPausableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
+import { hasResumableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
 import { structuredQueuePause } from './structured-agent-session-queued-pause'
 
 export type QueuePublication = {
@@ -82,8 +82,8 @@ export function sameQueuePause(
 export function readQueuePublication(journal: AgentSessionJournal): QueuePublication {
   const queuedMessages = readPublishedQueuedMessages(journal)
   // Read per emit: the pause also turns on submissions (a person's turn starting).
-  // Only over a card it can hold back: otherwise Resume would offer to send nothing.
-  const pausable = journal.queuedMessages.list().some(isPausableQueuedMessage)
+  // Only over a card Resume would send: otherwise its header would offer to send nothing.
+  const pausable = hasResumableQueuedMessage(journal.queuedMessages.list())
   const queuePause = pausable ? structuredQueuePause(journal) : null
   const previous = publications.get(journal)
   if (

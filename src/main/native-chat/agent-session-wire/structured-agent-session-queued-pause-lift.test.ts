@@ -137,8 +137,9 @@ describe("a Stop's queue pause", () => {
 
   it('a card sent now that the provider refuses lifts nothing', async () => {
     const working = await rig.workingSend()
-    const sentId = await queuedDraft('sent now, refused')
+    // Ahead of the refused card, so its return blocks nothing Resume would send.
     const heldId = await queuedDraft('held by the stop')
+    const sentId = await queuedDraft('sent now, refused')
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
     await rig.sendNow(sentId)
@@ -265,6 +266,31 @@ describe('a pause only over cards Resume could send', () => {
     expect(await rig.queuePause()).toBeNull()
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
     expect(journal?.queuedMessages.pause()).toBeNull()
+  })
+
+  it('a waiting card behind a returned one publishes no pause, and the fact is retired', async () => {
+    const working = await rig.workingSend()
+    const refusedId = await queuedDraft('refused before the stop')
+    const behindId = await queuedDraft('waits behind the card')
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(refusedId)).toBeDefined())
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    // Paused while the refused card's hand-off is still out: the card behind it is resumable.
+    await journal.queuedMessages.recordPause('stopped')
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    await rig.settleRejected(await rig.handoffId(refusedId), 'provider refused this payload')
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([
+        { messageId: refusedId, state: 'returned' },
+        { messageId: behindId, state: 'waiting' }
+      ])
+    )
+    // The returned card blocks the one behind it, so Resume would send nothing.
+    expect(await rig.queuePause()).toBeNull()
+    expect(journal.queuedMessages.pause()).toBeNull()
   })
 
   it('a restart over only a card held by its own failed send publishes no pause', async () => {
