@@ -6,7 +6,6 @@ import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resoluti
 import type { ClaudeSession } from './claude-structured-session-state'
 
 const INTERRUPT_CANCEL_QUEUED_CAPABILITY = 'interrupt_cancel_queued_v1'
-const COMMAND_LIFECYCLE_CAPABILITY = 'msg_lifecycle_v1'
 
 export function supportsClaudeQueuedInterruptCancellation(session: ClaudeSession): boolean {
   return session.capabilities.includes(INTERRUPT_CANCEL_QUEUED_CAPABILITY)
@@ -34,14 +33,6 @@ export async function cancelClaudeTurn(
     return { cancelled: false }
   }
   const cancelQueued = supportsClaudeQueuedInterruptCancellation(session)
-  // With no lifecycle frames, stdin order is the proof: the CLI reads these before the interrupt.
-  if (!session.capabilities.includes(COMMAND_LIFECYCLE_CAPABILITY)) {
-    for (const waiter of session.dispatchWaiters) {
-      if (waiter.written) {
-        waiter.writtenBeforeInterrupt = true
-      }
-    }
-  }
   try {
     const receipt = await session.connection.interrupt({
       ...(cancelQueued ? { cancelQueued: true } : {}),

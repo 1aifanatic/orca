@@ -497,6 +497,41 @@ describe('a send the CLI holds', () => {
     expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
   })
 
+  // 2.1.280's end-of-turn cleanup can report idle before it re-reads its queue.
+  it('leaves a queued send the CLI idles before starting to open its turn and be accepted', async () => {
+    const replay = await replayCapture('auth-failed', {
+      afterFrame: (frame) =>
+        isLifecycleFrame(frame, 'queued')
+          ? [
+              {
+                type: 'system',
+                subtype: 'session_state_changed',
+                state: 'idle',
+                uuid: 'idle-before-start',
+                session_id: frame.session_id
+              }
+            ]
+          : []
+    })
+    const uuid = replay.liveUuid('client-A')
+
+    expect(replay.settlementsFor('client-A')).toEqual([acceptedAs(uuid)])
+    expect(replay.turnStates.get(uuid)).toBe('completed')
+  })
+
+  it('does not hold the child for a send the CLI has only queued, nor release it at idle', async () => {
+    const replay = await replayCapture('auth-failed', {
+      omitFrame: (frame) =>
+        isTurnOutput(frame) ||
+        isLifecycleFrame(frame, 'started') ||
+        isLifecycleFrame(frame, 'cancelled')
+    })
+
+    expect(replay.idles).toEqual(['session-1'])
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
+    expect(replay.settlementsFor('client-A')).toEqual([])
+  })
+
   it.each(['interrupt-lost', 'cancel-async', 'batch-lead', 'auth-failed'])(
     'holds nothing once the %s capture has run to its idle',
     async (name) => {
@@ -505,73 +540,6 @@ describe('a send the CLI holds', () => {
       expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
     }
   )
-})
-
-describe('a Stop on a CLI that reports no lifecycle', () => {
-  const OLDER_CLI = ['msg_lifecycle_v1', 'interrupt_receipt_v1', 'interrupt_cancel_queued_v1']
-  const withoutLifecycle = (frame: Record<string, unknown>) => isLifecycleFrame(frame)
-
-  it('releases the send the interrupt caught at the next idle, and never one written after it', async () => {
-    const replay = await replayCapture('interrupt-lost', {
-      withoutCapabilities: OLDER_CLI,
-      omitFrame: withoutLifecycle,
-      atControl: async (point) => {
-        // Armed ahead of the interrupt, but its write finishes after it.
-        const send = point.connection.send
-        const gated = Promise.withResolvers<void>()
-        const reachedGate = Promise.withResolvers<void>()
-        point.connection.send = async (message, beforeDispatch) => {
-          point.connection.send = send
-          await beforeDispatch?.()
-          reachedGate.resolve()
-          await gated.promise
-          point.connection.sent.push(message)
-        }
-        const unwritten = point.adapter.dispatch({
-          sessionId: 'session-1',
-          clientMessageId: 'client-D',
-          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'D' }] },
-          fence: 7
-        })
-        await reachedGate.promise
-        // An older CLI's interrupt answers with no receipt.
-        point.routes.interrupt = () => {
-          point.deliverInFlight()
-          return {}
-        }
-        await point.adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })
-        gated.resolve()
-        await expect(unwritten).resolves.toEqual({ state: 'admitted' })
-        await expect(
-          point.adapter.dispatch({
-            sessionId: 'session-1',
-            clientMessageId: 'client-C',
-            body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'C' }] },
-            fence: 7
-          })
-        ).resolves.toEqual({ state: 'admitted' })
-      }
-    })
-
-    expect(replay.connection.calls.filter((call) => call.subtype === 'interrupt')).toEqual([
-      { subtype: 'interrupt', params: {} }
-    ])
-    expect(replay.settlementsFor('client-B')).toEqual([IDLE_IN_DOUBT])
-    expect(replay.settlementsFor('client-A')).toEqual([acceptedAs(replay.liveUuid('client-A'))])
-    // Read after the interrupt, so the CLI may still run them.
-    expect(replay.settlementsFor('client-C')).toEqual([])
-    expect(replay.settlementsFor('client-D')).toEqual([])
-  })
-
-  it('leaves a written send pending at idle when no interrupt came after it', async () => {
-    const replay = await replayCapture('interrupt-lost', {
-      withoutCapabilities: OLDER_CLI,
-      omitFrame: withoutLifecycle
-    })
-
-    expect(replay.idles).toEqual(['session-1'])
-    expect(replay.settlementsFor('client-B')).toEqual([])
-  })
 })
 
 describe('the CLI reporting its session idle', () => {

@@ -1,6 +1,6 @@
 // A Claude send whose write ended in doubt is recorded `unknown`, and a live `unknown` reads as
-// work still owed. The CLI reports `session_state_changed idle` only once its queue has drained,
-// so that report retires the doubt; a send whose dispatch is still `pending` is left alone.
+// work still owed. The CLI reporting `session_state_changed idle` retires the doubt; a send whose
+// dispatch is still `pending` is left alone unless the CLI had started it.
 // Against the production runtime, adapter, record store and host, with only the CLI scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'

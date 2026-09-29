@@ -66,23 +66,19 @@ export function observeClaudeCommandLifecycle(
   }
 }
 
-/** A send the CLI has taken and neither echoed nor ended: the idle sweep must not rest its child. */
+/** A send the CLI started and neither echoed nor ended: the idle sweep must not rest its child. */
 export function claudeHoldsDispatch(session: ClaudeSession): boolean {
-  return session.dispatchWaiters.some((waiter) => waiter.commandLifecycle !== undefined)
+  return session.dispatchWaiters.some((waiter) => waiter.commandLifecycle === 'started')
 }
 
 /**
- * `session_state_changed idle` comes only once the CLI's queue has drained, so a send it took that
- * is still unanswered here left without an echo — a turn that threw can leave `started` with no
- * terminal state. What proves it took one is its lifecycle frame or, on a CLI with none, its
- * position on stdin: written ahead of an interrupt, it was read before the interrupt was.
+ * At idle, only a `started` send still unanswered is doubt: a turn that threw leaves it with no
+ * terminal state. A `queued` one may still start; the CLI can idle before it re-reads its queue.
  */
 export function releaseClaudeDispatchesUnansweredAtIdle(
   session: ClaudeSession,
   onSettledLate?: ClaudeLateDispatchSettlement
 ): void {
-  const taken = session.dispatchWaiters.filter(
-    (waiter) => waiter.commandLifecycle !== undefined || waiter.writtenBeforeInterrupt
-  )
-  releaseClaudeDispatchWaitersInDoubt(session, taken, DISPATCH_DOUBT_PROVIDER_IDLE, onSettledLate)
+  const started = session.dispatchWaiters.filter((waiter) => waiter.commandLifecycle === 'started')
+  releaseClaudeDispatchWaitersInDoubt(session, started, DISPATCH_DOUBT_PROVIDER_IDLE, onSettledLate)
 }

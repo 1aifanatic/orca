@@ -97,7 +97,7 @@ export type ClaudeStructuredSessionAdapterDeps = {
   onEvent?: (event: ClaudeStructuredSessionEvent) => void
   /** Direct settlement path for provider-proven late dispatch outcomes. */
   onDispatchSettledLate?: (input: { sessionId: string } & ClaudeLateDispatchOutcome) => void
-  /** The CLI reported `session_state_changed idle`, which it sends only once its queue drains. */
+  /** The CLI reported `session_state_changed idle`: its turn is over. */
   onSessionIdle?: (input: { sessionId: string }) => void
   onBackgroundTasksChanged?: (
     sessionId: string,
@@ -145,10 +145,6 @@ export type ClaudeDispatchWaiter = {
   retired?: boolean
   /** The CLI's last non-terminal `command_lifecycle` state for this send; in memory only. */
   commandLifecycle?: 'queued' | 'started'
-  /** The SDK finished writing this send to the CLI's stdin. */
-  written?: true
-  /** Written ahead of an interrupt, so a CLI that reports no lifecycle has read it by its idle. */
-  writtenBeforeInterrupt?: true
   /** Bounded digest/summary for compatibility CLIs that mint UUIDs. */
   replayContentKey: string
 }

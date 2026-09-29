@@ -95,8 +95,8 @@ export function releaseClaudeDispatchWaitersInDoubt(
   }
 }
 
-/** Nothing expires a waiter, so the child's death is what ends every live one.
- *  Retired rather than dropped: their identities stay joinable, bounded by
+/** Nothing expires a waiter; the child's death ends every one its echo, a lifecycle frame or the
+ *  CLI's idle has not. Retired rather than dropped: their identities stay joinable, bounded by
  *  `MAX_RETIRED_DISPATCH_WAITERS`. */
 export function retireClaudeDispatchWaiters(session: ClaudeSession): void {
   failClaudeStartup(session, new Error('claude stream-json ended before startup completed'))
@@ -199,9 +199,6 @@ export async function dispatchClaudeTurn(
       waiter.resolve(null)
     }
     return { state: 'unknown', reason: dispatchWriteOutcomeUnknownReason(error) }
-  }
-  if (pending.replay) {
-    pending.replay.waiter.written = true
   }
   // The write is the admission signal. Awaiting the echo here would block on the
   // turn already running, which is why the deadline this replaces kept declaring
