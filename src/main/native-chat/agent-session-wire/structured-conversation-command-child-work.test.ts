@@ -64,7 +64,7 @@ function devServer(overrides: Partial<AgentChildWorkView> = {}): AgentChildWorkV
 beforeEach(async () => {
   records = []
   resetHostTestOperationIds()
-  compact.mockReset().mockResolvedValue({})
+  compact.mockReset().mockResolvedValue({ outcome: 'compacted' })
   directory = await mkdtemp(join(tmpdir(), 'orca-command-child-work-'))
   store = await AgentSessionRecordStore.open({
     directory: join(directory, 'store'),
