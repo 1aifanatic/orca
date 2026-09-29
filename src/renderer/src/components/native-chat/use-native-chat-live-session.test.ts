@@ -551,10 +551,13 @@ describe('useNativeChatLiveSession — transport routing', () => {
   // `waiting`; the transcript's marker is what ends the wait.
   it('ends a hook wait once the transcript records the turn interrupted', async () => {
     const waitStartedAt = Date.now() - 1_000
+    useAppStore.getState().setAgentStatus(PANE, { state: 'waiting', prompt: '', agentType: AGENT })
+    const row = useAppStore.getState().agentStatusByPaneKey[PANE]
+    if (!row) {
+      throw new Error('the store dropped the status row this test depends on')
+    }
     useAppStore.setState({
-      agentStatusByPaneKey: {
-        [PANE]: { state: 'waiting', stateStartedAt: waitStartedAt, updatedAt: Date.now() } as never
-      }
+      agentStatusByPaneKey: { [PANE]: { ...row, stateStartedAt: waitStartedAt } }
     })
     const transport = getMockTransport('env-1')
     await render({ paneKey: PANE, agent: AGENT, sessionId: SESSION, runtimeEnvironmentId: 'env-1' })
