@@ -32,7 +32,10 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
     }
   }
   session.onAgentExitCandidate = (): void => {
-    session.paneForegroundAgentTracker?.onVisiblePtyBound(true)
+    // Why: the title tracker re-arms on unknown; with no identity left there is nothing to confirm.
+    if (session.paneHasKnownAgentIdentity()) {
+      session.paneForegroundAgentTracker?.onVisiblePtyBound(true)
+    }
   }
   session.onAgentExited = (): void => {
     // Only host-confirmed shell evidence reaches this callback.

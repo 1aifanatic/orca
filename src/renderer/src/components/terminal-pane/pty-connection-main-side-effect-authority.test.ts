@@ -165,7 +165,7 @@ describe('connectPanePty', () => {
       'onBell',
       'onAgentBecameIdle',
       'onAgentBecameWorking',
-      'onAgentExited'
+      'onAgentExitCandidate'
     ] as const
 
     function enableMainAuthority(): void {
@@ -677,5 +677,43 @@ describe('connectPanePty', () => {
       onBell()
       expect(deps.markWorktreeUnread).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('confirms byte-parser exit candidates only while the pane holds an agent identity', async () => {
+    vi.useFakeTimers()
+    mockStoreState.settings = { ...mockStoreState.settings, terminalMainSideEffectAuthority: false }
+    const { connectPanePty } = await import('./pty-connection')
+    const transport = createMockTransport()
+    transportFactoryQueue.push(transport)
+    connectPanePty(
+      createPane(1) as never,
+      createManager(1) as never,
+      createDeps({ isVisibleRef: { current: false } }) as never
+    )
+    await vi.advanceTimersByTimeAsync(20)
+    await flushAsyncTicks()
+    const onAgentExitCandidate = createdTransportOptions[0]?.onAgentExitCandidate
+    if (typeof onAgentExitCandidate !== 'function') {
+      throw new Error('Expected onAgentExitCandidate to be registered')
+    }
+    const ptyId = transport.getPtyId()
+    const reads = (): number =>
+      [window.api.pty.getForegroundProcess, window.api.pty.confirmForegroundProcess]
+        .flatMap((read) => vi.mocked(read).mock.calls)
+        .filter(([id]) => id === ptyId).length
+    const baseline = reads()
+
+    // Why: the renderer title tracker re-arms on every neutral title, so a plain shell must not pay a read per prompt.
+    onAgentExitCandidate()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(reads()).toBe(baseline)
+
+    mockStoreState.paneForegroundAgentByPaneKey[makePaneKey('tab-1', LEAF_1)] = {
+      agent: 'claude',
+      shellForeground: false
+    }
+    onAgentExitCandidate()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(reads()).toBeGreaterThan(baseline)
   })
 })
