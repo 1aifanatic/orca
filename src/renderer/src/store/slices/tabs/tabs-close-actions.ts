@@ -8,7 +8,6 @@ import {
   sanitizeRecentTabIds
 } from '../tab-group-state'
 import { buildActiveSurfacePatch } from './tabs-surface'
-import { isWorktreeLeaving } from '../worktrees/teardown/worktree-delete-state'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { beginStructuredAgentSessionTabClose } from '@/runtime/structured-agent-session-tab-retirement'
@@ -118,17 +117,14 @@ export function createTabsCloseActions(
           nextActiveGroupIdByWorktree = collapsedState.activeGroupIdByWorktree
         }
         // Why: the landing fallback answers "the user emptied this worktree". An unwound create
-        // never added a tab, so it must leave the selection exactly as the click found it. A
-        // workspace being deleted loses its tabs to the delete (its shells exit first); its row
-        // removal owns where focus goes next.
+        // never added a tab, so it must leave the selection exactly as the click found it.
         const shouldDeactivateWorktree =
           !opts?.preserveWorktreeSelection &&
           current.activeWorktreeId === worktreeId &&
           nextTabs.length === 0 &&
           (current.tabsByWorktree[worktreeId] ?? []).length === 0 &&
           (current.browserTabsByWorktree[worktreeId] ?? []).length === 0 &&
-          !current.openFiles.some((file) => file.worktreeId === worktreeId) &&
-          !isWorktreeLeaving(current.deleteStateByWorktreeId, worktreeId)
+          !current.openFiles.some((file) => file.worktreeId === worktreeId)
         return {
           unifiedTabsByWorktree: { ...current.unifiedTabsByWorktree, [worktreeId]: nextTabs },
           groupsByWorktree: {

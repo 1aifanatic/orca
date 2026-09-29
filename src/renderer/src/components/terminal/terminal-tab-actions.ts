@@ -24,7 +24,6 @@ import {
   shouldConfirmRunningTerminalClose
 } from './running-terminal-close-guard'
 import { closeLocalTerminalTabState } from './close-local-terminal-tab-state'
-import { isWorktreeLeaving } from '@/store/slices/worktrees/teardown/worktree-delete-state'
 import { getTerminalIncarnationHandle } from './terminal-close-incarnation'
 import {
   getWorktreeTerminalTabIds,
@@ -250,7 +249,7 @@ export function closeTerminalTab(
           if (browserTab) {
             current.setActiveBrowserTab(browserTab.id)
             current.setActiveTabType('browser', owningWorktreeId)
-          } else if (!isWorktreeLeaving(current.deleteStateByWorktreeId, owningWorktreeId)) {
+          } else {
             current.setActiveWorktree(null)
           }
         }

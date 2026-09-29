@@ -3,7 +3,6 @@ import { useAppStore } from '../../store'
 import { requestEditorFileClose } from '../editor/editor-autosave'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
-import { isWorktreeLeaving } from '@/store/slices/worktrees/teardown/worktree-delete-state'
 
 export function createWorkspaceTabCloseCommands({
   worktreeId,
@@ -43,7 +42,7 @@ export function createWorkspaceTabCloseCommands({
     }
     // Why: split-group closes bypass legacy Terminal.tsx; deselect the emptied worktree here or the window goes blank instead of landing.
     const { renderableTabCount } = state.reconcileWorktreeTabModel(worktreeId)
-    if (renderableTabCount === 0 && !isWorktreeLeaving(state.deleteStateByWorktreeId, worktreeId)) {
+    if (renderableTabCount === 0) {
       setActiveWorktree(null)
     }
   }

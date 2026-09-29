@@ -441,7 +441,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'terminal-entity-1',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       reconcileWorktreeTabModel: vi.fn(() => ({ renderableTabCount: 0 })),
       closeTab,
       closeUnifiedTab,
@@ -498,7 +497,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'terminal-entity-1',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       closeTab,
       closeUnifiedTab,
       setActiveTab,
@@ -579,7 +577,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'pinned-entity-1',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       reconcileWorktreeTabModel: vi.fn(() => ({ renderableTabCount: 0 })),
       closeTab: vi.fn(),
       closeUnifiedTab: vi.fn(),
@@ -728,7 +725,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'tab-2',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       closeTab,
       setActiveTab: vi.fn()
     })
@@ -750,7 +746,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'tab-2',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       closeTab,
       setActiveTab: vi.fn()
     })
@@ -772,7 +767,6 @@ describe('closeTerminalTab', () => {
       activeTabId: 'tab-2',
       openFiles: [],
       browserTabsByWorktree: {},
-      deleteStateByWorktreeId: {},
       closeTab,
       setActiveTab: vi.fn()
     })

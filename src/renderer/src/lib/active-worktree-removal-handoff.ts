@@ -70,21 +70,12 @@ function countRowsWithId(rows: readonly Worktree[] | undefined, worktreeId: stri
   return rows?.reduce((count, row) => (row.id === worktreeId ? count + 1 : count), 0) ?? 0
 }
 
-/** The workspace the user was viewing, when this update removed its row and emptied the selection. */
-export function findRemovedActiveWorktree(
+/** The last-viewed workspace, when this update removed its row. */
+function findRemovedWorktree(
   state: AppStoreState,
-  previous: AppStoreState
+  previous: AppStoreState,
+  worktreeId: string
 ): RemovedActiveWorktree | null {
-  const worktreeId = previous.activeWorktreeId
-  if (
-    worktreeId === null ||
-    state.activeWorktreeId !== null ||
-    state.worktreesByRepo === previous.worktreesByRepo ||
-    previous.activeView !== 'terminal' ||
-    previous.activePendingCreationId !== null
-  ) {
-    return null
-  }
   // Folder workspaces have no row here, and no sibling to hand focus to.
   const removedRow = getWorktreeOnHostFromState(previous, worktreeId, undefined)
   if (!removedRow) {
@@ -120,16 +111,32 @@ function focusSuccessor(removed: RemovedActiveWorktree): void {
 /**
  * Every path that removes the workspace the user is viewing — an in-Orca delete, a delete that
  * failed after git dropped the worktree, `git worktree remove`, the CLI, another client — ends in
- * a store update that drops its row and empties the selection. This hands focus to a sibling at
- * that one point, so no removal path has to remember to do it.
+ * a store update that drops its row. This hands focus to a sibling at that one point, so no
+ * removal path has to remember to do it.
  */
 export function installActiveWorktreeRemovalHandoff(): () => void {
+  // Why remembered rather than read from the previous state: removal stops the workspace's
+  // shells, and closing its last tab can empty the selection before the row leaves.
+  let lastViewedWorktreeId = useAppStore.getState().activeWorktreeId
   return useAppStore.subscribe((state, previous) => {
-    const removed = findRemovedActiveWorktree(state, previous)
-    if (removed) {
-      // Why deferred: activating re-enters the store mid-notification, and a caller that
-      // navigates synchronously right after the removal must win.
-      queueMicrotask(() => focusSuccessor(removed))
+    if (state.activeWorktreeId !== null) {
+      lastViewedWorktreeId = state.activeWorktreeId
+      return
     }
+    if (lastViewedWorktreeId === null || state.worktreesByRepo === previous.worktreesByRepo) {
+      return
+    }
+    const removed = findRemovedWorktree(state, previous, lastViewedWorktreeId)
+    if (!removed) {
+      return
+    }
+    lastViewedWorktreeId = null
+    // Top-level views and the creation panel keep a workspace id without showing it.
+    if (state.activeView !== 'terminal' || state.activePendingCreationId !== null) {
+      return
+    }
+    // Why deferred: activating re-enters the store mid-notification, and a caller that
+    // navigates synchronously right after the removal must win.
+    queueMicrotask(() => focusSuccessor(removed))
   })
 }

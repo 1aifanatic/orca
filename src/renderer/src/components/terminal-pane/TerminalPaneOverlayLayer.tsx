@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { useAppStore } from '../../store'
-import { isWorktreeLeaving } from '@/store/slices/worktrees/teardown/worktree-delete-state'
 import {
   findActivityTerminalPortal,
   type ActivityTerminalPortalTarget
@@ -71,7 +70,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
       return
     }
     const { renderableTabCount } = reconcileWorktreeTabModel(worktreeId)
-    if (renderableTabCount === 0 && !isWorktreeLeaving(state.deleteStateByWorktreeId, worktreeId)) {
+    if (renderableTabCount === 0) {
       setActiveWorktree(null)
     }
   }, [reconcileWorktreeTabModel, setActiveWorktree, worktreeId])

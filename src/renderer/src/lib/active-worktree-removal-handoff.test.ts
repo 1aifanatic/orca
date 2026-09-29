@@ -163,6 +163,39 @@ describe('active workspace removal hand-off, through the real removal writers', 
     expect(store.getState().activeWorktreeId).toBe(older.id)
   })
 
+  it('moves on when the workspace shells exit before a refresh drops it (git worktree remove, CLI)', async () => {
+    const store = seed([main, older, recent, viewed])
+    install()
+    // The host stops the workspace's shells first; closing its only tab empties the selection.
+    store.setState({ activeWorktreeId: null })
+    mockApi.worktrees.list.mockResolvedValue([main, older, recent])
+
+    await store.getState().fetchWorktrees('repo1')
+    await flushMicrotasks()
+
+    expect(store.getState().activeWorktreeId).toBe(recent.id)
+  })
+
+  it('moves on when a failed delete already emptied the selection and a refresh drops it', async () => {
+    const store = seed([main, older, recent, viewed])
+    install()
+    mockApi.worktrees.remove.mockImplementationOnce(async () => {
+      store.setState({ activeWorktreeId: null })
+      throw new Error('EPERM: operation not permitted')
+    })
+
+    const result = await store.getState().removeWorktree({ id: viewed.id, executionHostId: null })
+    await flushMicrotasks()
+    expect(result.ok).toBe(false)
+    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+
+    mockApi.worktrees.list.mockResolvedValue([main, older, recent])
+    await store.getState().fetchWorktrees('repo1')
+    await flushMicrotasks()
+
+    expect(store.getState().activeWorktreeId).toBe(recent.id)
+  })
+
   it('falls back to the main workspace when the removed one was the last', async () => {
     const store = seed([main, viewed])
     install()
@@ -247,11 +280,12 @@ describe('when the hand-off must not move the user', () => {
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
   })
 
-  it('does not act when the selection empties without the row leaving', async () => {
-    const store = seed([main, older, viewed])
+  it('does not move the user after they picked another workspace and emptied it', async () => {
+    const store = seed([main, older, recent, viewed])
     install()
 
-    // Closing the last tab lands on the empty screen on purpose.
+    store.setState({ activeWorktreeId: older.id })
+    // Closing older's last tab lands on the empty screen; viewed is no longer the last one viewed.
     store.setState({ activeWorktreeId: null })
     dropRow(store, viewed.id)
     await flushMicrotasks()
