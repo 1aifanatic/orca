@@ -9,7 +9,12 @@ import type {
 } from '../../shared/runtime-types'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
-import { collectRendererPublishedEmptyTerminalPanes } from './renderer-published-empty-terminal-panes'
+import {
+  collectRendererPublishedEmptyTerminalPanes,
+  createRuntimeOwnedPtyResolver,
+  chooseProjectedPtyId,
+  shouldPreservePublishedRuntimePane
+} from './runtime-owned-terminal-projection'
 
 /** The runtime indexes graph tabs by bare id, so duplicate ids cannot be routed safely. */
 function assertUniqueRuntimeGraphTabIds(tabs: readonly RuntimeSyncedTab[]): void {
@@ -85,37 +90,25 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
     )
     const nextLeaves = new Map<string, RuntimeLeafRecord>()
     const graphSyncedAt = this.nextTitleObservationSequence()
-    // Bumped before the leaf loop so surfaces this statement records are stamped with it, and a
-    // surface recorded after it is immune until the next one (pty-recorded-surface-topology.ts).
-    // The headless placeholder is exempt: it is published once at launch so status clients see a
-    // ready server, names no renderer pane, and is never replaced. Counting it as a statement left
-    // every claim written without standing — a persisted replay, an inventory restore, a TUI-owner
-    // recovery — permanently orphaned on a headless host, with no graph that could ever re-stamp
-    // it (#18191).
+    // Stamp renderer statements before the leaf loop; the headless placeholder names no pane and is exempt.
     if (windowId !== HEADLESS_RUNTIME_WINDOW_ID) {
       this.graphSequence += 1
     }
 
-    // Why: renderer reloads can briefly republish the same leaf with no ptyId;
-    // keep live CLI handles usable while the UI graph rebuilds.
     const preserveLivePtysDuringReload = this.graphStatus === 'reloading'
     const incomingPtyIds = new Set(lifecycleLeaves.map((leaf) => leaf.ptyId))
+    // oxfmt-ignore
     const published = collectRendererPublishedEmptyTerminalPanes(
       graph,
       this.mobileSessionTabsByWorktree,
       this.acceptedRendererMobileSnapshotByWorktree
     )
-    const canPreserveRuntimeOwnedPty = (leaf: RuntimeLeafRecord): boolean => {
-      const pty = leaf.ptyId ? this.ptysById.get(leaf.ptyId) : undefined
-      return (
-        pty?.runtimeSessionOwned === true &&
-        pty.worktreeId === leaf.worktreeId &&
-        pty.tabId === leaf.tabId &&
-        pty.paneKey === this.makeRuntimePaneKey(leaf) &&
-        !incomingPtyIds.has(pty.ptyId) &&
-        this.getPtyLivenessVerdict(pty.ptyId)?.status !== 'exited'
-      )
-    }
+    // oxfmt-ignore
+    const retainedRuntimePtyId = createRuntimeOwnedPtyResolver(
+      this.ptysById.values(),
+      (ptyId) => this.getPtyLivenessVerdict(ptyId)?.status === 'exited',
+      incomingPtyIds
+    )
     for (const leaf of lifecycleLeaves) {
       if (leaf.ptyId) {
         if (leaf.parked) {
@@ -124,23 +117,22 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
           this.orchestrationMailboxPointerDelivery.clearPtyColdParked(leaf.ptyId)
         }
       }
-      const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId)
-      const existing = this.leaves.get(leafKey)
-      // A mounting renderer's empty projection cannot orphan the host-owned PTY in this exact pane.
-      const preserveRuntimeOwnedPty =
-        existing?.worktreeId === leaf.worktreeId && canPreserveRuntimeOwnedPty(existing)
-      const ptyId =
-        (preserveLivePtysDuringReload || preserveRuntimeOwnedPty) &&
-        leaf.ptyId === null &&
-        existing?.ptyId
-          ? existing.ptyId
-          : leaf.ptyId
+      const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId),
+        existing = this.leaves.get(leafKey)
+      const ptyId = chooseProjectedPtyId(
+        leaf.ptyId,
+        existing?.ptyId,
+        preserveLivePtysDuringReload,
+        this.makeRuntimePaneKey(leaf),
+        leaf.worktreeId,
+        leaf.tabId,
+        retainedRuntimePtyId
+      )
       const ptyGeneration =
         existing && existing.ptyId !== ptyId
           ? existing.ptyGeneration + 1
           : (existing?.ptyGeneration ?? 0)
       const existingPty = ptyId ? this.ptysById.get(ptyId) : undefined
-      // Retained history stays addressable, but a renderer graph cannot revoke a host-certified exit.
       const connected = ptyId !== null && this.getPtyLivenessVerdict(ptyId)?.status !== 'exited'
       const tailSource = existing?.ptyId === ptyId ? existing : existingPty
 
@@ -214,12 +206,8 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
           ? this.handleByPtyIncarnation.get(oldLeaf.ptyId)
           : undefined
         // Inactive panes may lack transport leaves while the renderer still publishes their exact surface.
-        const preservePublishedRuntimePane =
-          oldLeaf &&
-          published.emptyPaneWorktrees.get(this.makeRuntimePaneKey(oldLeaf)) ===
-            oldLeaf.worktreeId &&
-          !published.boundPtyIds.has(oldLeaf.ptyId) &&
-          canPreserveRuntimeOwnedPty(oldLeaf)
+        // oxfmt-ignore
+        const preservePublishedRuntimePane = oldLeaf && shouldPreservePublishedRuntimePane(this.makeRuntimePaneKey(oldLeaf), oldLeaf.worktreeId, oldLeaf.tabId, oldLeaf.ptyId, published.emptyPaneWorktrees.get(oldLeafKey), published.boundPtyIds, retainedRuntimePtyId)
         if (
           oldLeaf?.ptyId &&
           (preservePublishedRuntimePane ||
@@ -271,7 +259,6 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
     this.leaves = nextLeaves
     this.rebuildLeafPtyIndex()
     this.reconcilePtyIncarnationHandles()
-    // Why: the emitted client payload is a function of the stored snapshot AND
     // the tab/leaf graph (handles/titles/connected resolve from leaf state), so
     // a graph-only change — e.g. a restored leaf binding its ptyId while the
     // snapshot pair is unchanged — must also fan out, or a paired client stays
@@ -289,7 +276,6 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
       if (!stored) {
         continue
       }
-      // Why: web clients drop same-epoch frames whose version isn't strictly
       // newer, so a graph-only change must mint a fresh stored version (like
       // the PTY touch path does) or the re-emitted payload — e.g. the
       // pending-handle → ready flip — is discarded and the client stays stale.
