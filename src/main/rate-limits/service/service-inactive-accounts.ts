@@ -97,7 +97,7 @@ export abstract class RateLimitServiceInactiveAccounts extends RateLimitServiceP
     if (accounts.length === 0) {
       return
     }
-    // Why: account switching can activate a previewed account while its RPC-only fetch is still in flight; ignore stale results.
+    // Why: account switching can activate a previewed account while its usage fetch is still in flight; ignore stale results.
     const fetchGeneration = this.inactiveCodexAccountsGeneration
     const controller = this.beginFetchCycle()
     const signal = controller.signal

@@ -284,6 +284,27 @@ describe('fetchCodexRateLimits', () => {
     expect(ptySpawnMock).not.toHaveBeenCalled()
   })
 
+  it('shows the RPC exit reason when the HTTP fallback is rejected', async () => {
+    const rpcChild = makeRpcChild()
+    childSpawnMock.mockReturnValue(rpcChild)
+    mockBackendUsage()
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 401 } as Response)
+
+    const resultPromise = fetchCodexRateLimits()
+    await vi.advanceTimersByTimeAsync(0)
+    rpcChild.emit('close', 1, null)
+
+    await expect(resultPromise).resolves.toMatchObject({
+      provider: 'codex',
+      session: null,
+      weekly: null,
+      status: 'error',
+      error: expect.stringContaining('exit code 1')
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(ptySpawnMock).not.toHaveBeenCalled()
+  })
+
   it('removes RPC listeners when the app-server timeout settles', async () => {
     const rpcChild = makeRpcChild()
     childSpawnMock.mockReturnValue(rpcChild)
