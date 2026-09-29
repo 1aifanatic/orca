@@ -6,6 +6,7 @@ import {
 import { admitRemoteForegroundEvidence } from '../../shared/remote-foreground-evidence-admission'
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
+import { judgeWithForegroundShellName } from './host-foreground-shell-name'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type {
   PtyForegroundAgentRefresh,
@@ -265,24 +266,26 @@ export class RuntimePtyForegroundAgent {
       }
     }
     const incarnationId = pty.incarnationId
+    const expectedPtyId = parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId
     const started = performance.now()
     const inspection = await controller.inspectProcess?.(
       ptyId,
       incarnationId ? { expectedIncarnationId: incarnationId } : {}
     )
+    const judgement = judgeForegroundAgent(
+      observeHostInspection(inspection, (evidence) =>
+        admitRemoteForegroundEvidence(evidence, {
+          expectedPtyId,
+          expectedIncarnationId: incarnationId,
+          requestStartedAtMonotonic: started,
+          receivedAtMonotonic: performance.now(),
+          lastAuthorityGeneration: null,
+          lastObservationEpoch: -1
+        })
+      )
+    )
     return {
-      judgement: judgeForegroundAgent(
-        observeHostInspection(inspection, (evidence) =>
-          admitRemoteForegroundEvidence(evidence, {
-            expectedPtyId: parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId,
-            expectedIncarnationId: incarnationId,
-            requestStartedAtMonotonic: started,
-            receivedAtMonotonic: performance.now(),
-            lastAuthorityGeneration: null,
-            lastObservationEpoch: -1
-          })
-        )
-      ),
+      judgement: judgeWithForegroundShellName(judgement, inspection, expectedPtyId, incarnationId),
       fresh: true
     }
   }

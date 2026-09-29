@@ -192,7 +192,8 @@ describe('foreground identity on unknown observations', () => {
   })
   it.each([
     ['an old relay without evidence', 'claude', 'missing'],
-    ['stale evidence', 'claude', 'stale'],
+    // The reply's own live foreground name still proves the shell when the record is too old.
+    ['stale evidence with the shell in front', null, 'stale'],
     ['evidence for another incarnation', 'claude', 'wrong-incarnation'],
     ['an SSH-to-Windows host', 'claude', 'windows'],
     ['another program in front', 'claude', 'vim'],
@@ -212,6 +213,60 @@ describe('foreground identity on unknown observations', () => {
     })
     await h.agent.refresh('pty-1')
     expect(h.pty.foregroundAgent).toBe(expected)
+  })
+  it.each([
+    ['zsh', 'exited', null],
+    ['2.1.258', 'unverifiable', 'claude']
+  ] as const)(
+    'on an SSH pane whose host process table is unreadable, foreground %s is %s',
+    async (foregroundProcess, verdict, expected) => {
+      const h = setup(true)
+      h.replace({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'claude',
+        inspectProcess: async (): Promise<TerminalProcessInspection> => ({
+          foregroundProcess,
+          hasChildProcesses: false,
+          foregroundProcessEvidence: {
+            authorityGeneration: 'host-1',
+            observationEpoch: 1,
+            capturedAgeMs: 0,
+            ptyId: 'pty-1',
+            ptyIncarnationId: 'generation-1',
+            verdict: 'unverifiable',
+            reason: 'process_table_unreadable'
+          }
+        })
+      })
+      const result = await h.agent.confirm('ssh:target-1@@pty-1')
+      expect(result?.judgement.verdict).toBe(verdict)
+      expect(h.pty.foregroundAgent).toBe(expected)
+    }
+  )
+  it('does not take the shell name from a reply naming another PTY incarnation', async () => {
+    const h = setup(true)
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => 'claude',
+      inspectProcess: async (): Promise<TerminalProcessInspection> => ({
+        foregroundProcess: 'zsh',
+        hasChildProcesses: false,
+        foregroundProcessEvidence: {
+          authorityGeneration: 'host-1',
+          observationEpoch: 1,
+          capturedAgeMs: 0,
+          ptyId: 'pty-1',
+          ptyIncarnationId: 'generation-0',
+          verdict: 'unverifiable',
+          reason: 'process_table_unreadable'
+        }
+      })
+    })
+    const result = await h.agent.confirm('ssh:target-1@@pty-1')
+    expect(result?.judgement.verdict).toBe('unverifiable')
+    expect(h.pty.foregroundAgent).toBe('claude')
   })
   it('stamps each read that names the agent with the incarnation it saw', async () => {
     const h = setup()
