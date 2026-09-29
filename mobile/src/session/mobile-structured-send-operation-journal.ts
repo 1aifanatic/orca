@@ -248,7 +248,33 @@ export async function clearMobileStructuredQueuedSendOperations(input: {
   })
 }
 
-/** Test-only: drain in-memory serialization while preserving durable storage. */
+/** Ids sent past a saved record storage would not clear, by operation key, for this app run
+ *  only: a retry of that text replays the same id instead of minting another, which could
+ *  deliver it twice. Dies with the app, or when the host answers the id as spent. */
+const bypassedOperationIds = new Map<string, string>()
+
+export function bypassedMobileStructuredSendOperationId(operationKey: string): string | undefined {
+  return bypassedOperationIds.get(operationKey)
+}
+
+export function rememberBypassedMobileStructuredSendOperation(
+  operationKey: string,
+  operationId: string
+): void {
+  bypassedOperationIds.set(operationKey, operationId)
+}
+
+export function forgetBypassedMobileStructuredSendOperation(
+  operationKey: string,
+  operationId: string
+): void {
+  if (bypassedOperationIds.get(operationKey) === operationId) {
+    bypassedOperationIds.delete(operationKey)
+  }
+}
+
+/** Test-only: drain in-memory serialization and bypassed ids while preserving durable storage. */
 export function resetMobileStructuredSendOperationJournalForTests(): void {
   mutations.tail = Promise.resolve()
+  bypassedOperationIds.clear()
 }

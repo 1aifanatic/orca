@@ -16,9 +16,12 @@ import {
 import { structuredSessionOperationId } from './structured-session-operation-id'
 import { mobileStructuredSendDelivery } from './mobile-structured-send-delivery'
 import {
+  bypassedMobileStructuredSendOperationId,
   clearMobileStructuredSendOperation,
+  forgetBypassedMobileStructuredSendOperation,
   getOrCreateMobileStructuredSendOperation,
-  mobileStructuredSendOperationKey
+  mobileStructuredSendOperationKey,
+  rememberBypassedMobileStructuredSendOperation
 } from './mobile-structured-send-operation-journal'
 
 export async function sendMobileStructuredAgentSessionMessage(input: {
@@ -36,8 +39,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   /** Internal: the one fresh-id resend after a withdrawn replay. */
   resendingAfterWithdrawal?: true
   /** Internal: that resend when the withdrawn id's record could not be cleared. It bypasses the
-   *  record, so failing storage never blocks the send, and is unrecorded, so its own lost answer
-   *  cannot be replayed. */
+   *  record, so failing storage never blocks the send; its id is kept in memory for this app run,
+   *  so a retry after a lost answer replays it rather than sending again. */
   bypassRetainedRecord?: true
 }): Promise<MobileNativeChatSendOutcome> {
   const timeoutMs = timeoutForDeadline(input.deadline)
@@ -79,13 +82,11 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   let operation: Awaited<ReturnType<typeof getOrCreateMobileStructuredSendOperation>>
   try {
     operation = input.bypassRetainedRecord
-      ? {
-          operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
-          operationId: structuredSessionOperationId(),
-          retained: false,
-          payloadFingerprint: requestedPayloadFingerprint,
-          attachmentPaths: input.attachments.map((attachment) => attachment.path)
-        }
+      ? bypassOperation(
+          input.delivery ? queuedOperationKey : immediateOperationKey,
+          requestedPayloadFingerprint,
+          input.attachments.map((attachment) => attachment.path)
+        )
       : await getOrCreateMobileStructuredSendOperation({
           operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
           // A retained id replays exactly as first sent, whatever the capability says now;
@@ -128,6 +129,9 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     timeoutMs
   })
   const outcome = mobileStructuredSendDelivery(result, operation.retained)
+  if (input.bypassRetainedRecord && outcome.operationIdSpent) {
+    forgetBypassedMobileStructuredSendOperation(operationKey, operation.operationId)
+  }
   let released = false
   if (outcome.operationIdSpent) {
     try {
@@ -155,7 +159,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
       resendingAfterWithdrawal: true,
       ...(released ? {} : { bypassRetainedRecord: true as const })
     })
-    if (!released && resent !== 'rejected') {
+    // Only when the resend is known to have gone out; an unconfirmed one may not have.
+    if (!released && (resent === 'accepted' || resent === 'queued')) {
       input.onError("Sent, but this phone couldn't update its record of sent messages.")
     }
     return resent
@@ -170,4 +175,25 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     input.onError(outcome.error)
   }
   return outcome.outcome
+}
+
+/** The id a resend past an uncleared record goes out under: the one this app run already used
+ *  for this text, replayed, or a fresh one remembered for the next retry. */
+function bypassOperation(
+  operationKey: string,
+  payloadFingerprint: string,
+  attachmentPaths: string[]
+): Awaited<ReturnType<typeof getOrCreateMobileStructuredSendOperation>> {
+  const bypassed = bypassedMobileStructuredSendOperationId(operationKey)
+  const operationId = bypassed ?? structuredSessionOperationId()
+  if (bypassed === undefined) {
+    rememberBypassedMobileStructuredSendOperation(operationKey, operationId)
+  }
+  return {
+    operationKey,
+    operationId,
+    retained: bypassed !== undefined,
+    payloadFingerprint,
+    attachmentPaths
+  }
 }
