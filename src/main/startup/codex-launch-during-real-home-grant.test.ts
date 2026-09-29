@@ -3,13 +3,17 @@ import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HookDefinition } from '../agent-hooks/installer-utils'
-import type { CodexHookTrustGrantRequest } from '../codex/codex-app-server-client'
+import type {
+  CodexHookTrustGrantRequest,
+  CodexHookTrustGrantSessionResult
+} from '../codex/codex-app-server-client'
+import { CodexAppServerTimeoutError } from '../codex/codex-app-server-session'
 import { isCodexManagedCommand, setupCodexHookHomes } from '../codex/hook-service-test-harness'
 
 // Why this file (QA case 4, full launch path): Codex's approval of the real-home
-// entry runs in the background. A launch during it must settle on the managed
-// home at once, with that home's hook install and the project trust write done.
-// A resume has no other home, so it must not spawn beside an unapproved entry.
+// entry runs in the background. A launch during it goes to the managed home and
+// waits only on that home's own setup, which is bounded by its inline approval.
+// A resume has no other home, so it starts at once.
 
 const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
@@ -101,6 +105,39 @@ function settlesWithin<T>(promise: Promise<T>, ms: number): Promise<boolean> {
   ]).finally(() => clearTimeout(timer))
 }
 
+/** What codex app-server does once it answers: approves every expected entry. */
+function approveAll(request: CodexHookTrustGrantRequest): CodexHookTrustGrantSessionResult {
+  const entries = request.expectedTrustKeys.map((key) => {
+    const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
+    return { key, entry, trustedHash: computeTrustedHash(entry) }
+  })
+  upsertHookTrustEntries(
+    join(request.hooksListCwd, 'config.toml'),
+    entries.map(({ entry, trustedHash }) => ({ ...entry, trustedHash }))
+  )
+  return {
+    outcome: 'granted',
+    wroteTrust: true,
+    entries: entries.map(({ key, trustedHash }) => ({
+      key,
+      normalizedKey: normalizeHookTrustKeyForLookup(key),
+      trustedHash
+    }))
+  }
+}
+
+function isRealHomeSession(request: CodexHookTrustGrantRequest): boolean {
+  return request.invocation.envToDelete?.includes('CODEX_HOME') === true
+}
+
+function workspaceDirs(): string[] {
+  return ['one', 'two'].map((name) => {
+    const path = join(homes.tmpHome, name)
+    mkdirSync(path, { recursive: true })
+    return path
+  })
+}
+
 /** How Codex will treat each Orca entry in the real ~/.codex/hooks.json. */
 function realHomeOrcaEntryTrust(): string[] {
   const hooksPath = join(homes.tmpHome, '.codex', 'hooks.json')
@@ -160,18 +197,17 @@ describe('a Codex launch while the real-home approval hangs', () => {
       release = resolve
     })
     let realHomeSessions = 0
+    let managedSessions = 0
     grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
-      if (request.invocation.envToDelete?.includes('CODEX_HOME')) {
+      if (isRealHomeSession(request)) {
         realHomeSessions += 1
         await hung
+        throw new Error('codex app-server exited before completing the session')
       }
-      throw Object.assign(new Error('spawn codex ENOENT'), { code: 'ENOENT' })
+      managedSessions += 1
+      return approveAll(request)
     })
-    const workspaces = ['one', 'two'].map((name) => {
-      const path = join(homes.tmpHome, name)
-      mkdirSync(path, { recursive: true })
-      return path
-    })
+    const workspaces = workspaceDirs()
 
     try {
       const first = launch(workspaces[0])
@@ -181,6 +217,8 @@ describe('a Codex launch while the real-home approval hangs', () => {
       expect(await settlesWithin(second, 2_000)).toBe(true)
       expect(await second).toBe(getOrcaManagedCodexHomePath())
       expect(realHomeSessions).toBe(1)
+      // Why: the second launch finds the managed home's approval in its ledger.
+      expect(managedSessions).toBe(1)
 
       const managedHooks = readFileSync(join(getOrcaManagedCodexHomePath(), 'hooks.json'), 'utf-8')
       expect(managedHooks).toContain('codex-hook')
@@ -194,6 +232,58 @@ describe('a Codex launch while the real-home approval hangs', () => {
       await realHomeInternals.settledLaneForTesting()
     }
   })
+
+  it("waits up to the managed home's own 10 s approval when that home is cold too", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let release: () => void = () => {}
+    const hung = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const managedTimeouts: number[] = []
+    grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+      if (isRealHomeSession(request)) {
+        await hung
+        throw new Error('codex app-server exited before completing the session')
+      }
+      managedTimeouts.push(request.invocation.timeoutMs)
+      // Why: as the real session does, a cold app-server fails at its own deadline.
+      return new Promise<never>((_resolve, reject) =>
+        setTimeout(
+          () => reject(new CodexAppServerTimeoutError('codex app-server session timed out')),
+          request.invocation.timeoutMs
+        )
+      )
+    })
+    const workspaces = workspaceDirs()
+
+    try {
+      let firstSettled = false
+      const first = launch(workspaces[0]).finally(() => {
+        firstSettled = true
+      })
+      await vi.advanceTimersByTimeAsync(9_999)
+      expect(firstSettled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(firstSettled).toBe(true)
+      expect(await first).toBe(getOrcaManagedCodexHomePath())
+      expect(managedTimeouts).toEqual([10_000])
+
+      // Why: the managed home's failed approval cools down for 5 minutes, so the next launch does not wait.
+      let secondSettled = false
+      const second = launch(workspaces[1]).finally(() => {
+        secondSettled = true
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(secondSettled).toBe(true)
+      expect(await second).toBe(getOrcaManagedCodexHomePath())
+      expect(managedTimeouts).toEqual([10_000])
+    } finally {
+      release()
+      // Why: a failed assertion must not leave a managed session holding the lane.
+      await vi.advanceTimersByTimeAsync(60_000)
+      await realHomeInternals.settledLaneForTesting()
+    }
+  })
 })
 
 describe('a Codex resume into the real ~/.codex while its approval runs', () => {
@@ -204,23 +294,7 @@ describe('a Codex resume into the real ~/.codex while its approval runs', () => 
     })
     grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
       await approval
-      const entries = request.expectedTrustKeys.map((key) => {
-        const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
-        return { key, entry, trustedHash: computeTrustedHash(entry) }
-      })
-      upsertHookTrustEntries(
-        join(homes.tmpHome, '.codex', 'config.toml'),
-        entries.map(({ entry, trustedHash }) => ({ ...entry, trustedHash }))
-      )
-      return {
-        outcome: 'granted' as const,
-        wroteTrust: true,
-        entries: entries.map(({ key, trustedHash }) => ({
-          key,
-          normalizedKey: normalizeHookTrustKeyForLookup(key),
-          trustedHash
-        }))
-      }
+      return approveAll(request)
     })
 
     expect(await settlesWithin(resume(), 200)).toBe(true)
