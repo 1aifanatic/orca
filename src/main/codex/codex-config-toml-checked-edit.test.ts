@@ -1,14 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { parse } from 'smol-toml'
 import {
   readHookTrustEntriesFromContent,
   removeHookTrustEntriesFromContent,
   upsertHookTrustEntriesInContent,
+  upsertProjectTrustLevel,
   upsertProjectTrustLevelInContent,
   type CodexTrustEntry
 } from './config-toml-trust'
 import {
+  clearCodexConfigTomlEditRefusalReport,
   CodexConfigTomlEditRefusedError,
+  reportCodexConfigTomlEditRefusal,
   reportCodexTrustWriteRefusals
 } from './codex-config-toml-checked-edit'
 import { getTomlTable, readTomlValueAtPath } from './codex-config-toml-document'
@@ -331,6 +337,55 @@ describe('refused trust writes are reported once per file', () => {
       expect(warn).toHaveBeenCalledTimes(1)
       expect(String(warn.mock.calls[0]?.[0])).toContain('/tmp/report-once-probe/config.toml')
     } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('Codex config reports about one file log once per kind', () => {
+  it('does not re-log interleaved trust, promotion, and mirror reports on every launch', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const dir = mkdtempSync(join(tmpdir(), 'codex-report-once-'))
+    try {
+      const systemPath = join(dir, 'system.toml')
+      const runtimePath = join(dir, 'runtime.toml')
+      const refusal = (configPath: string) =>
+        new CodexConfigTomlEditRefusedError({
+          reason: 'input-invalid',
+          detail: 'the file is not valid TOML',
+          configPath
+        })
+      for (let launch = 0; launch < 4; launch++) {
+        reportCodexTrustWriteRefusals(
+          new AggregateError([refusal(systemPath), refusal(runtimePath)], 'trust write failed')
+        )
+        reportCodexConfigTomlEditRefusal(refusal(systemPath), 'Skipped promoting Codex settings')
+        reportCodexConfigTomlEditRefusal(
+          refusal(runtimePath),
+          'Skipped writing a managed Codex config'
+        )
+      }
+      const trustReports = () =>
+        warn.mock.calls.filter(([message]) => String(message).includes('trusted for Codex'))
+      expect(trustReports()).toHaveLength(2)
+      expect(warn).toHaveBeenCalledTimes(4)
+
+      // A mirror pass that succeeds forgets mirror reports, not a trust refusal that still recurs.
+      clearCodexConfigTomlEditRefusalReport(runtimePath)
+      reportCodexTrustWriteRefusals(refusal(runtimePath))
+      reportCodexConfigTomlEditRefusal(
+        refusal(runtimePath),
+        'Skipped writing a managed Codex config'
+      )
+      expect(trustReports()).toHaveLength(2)
+      expect(warn).toHaveBeenCalledTimes(5)
+
+      writeFileSync(systemPath, 'model = "a"\n')
+      upsertProjectTrustLevel(systemPath, '/work/repo', 'trusted')
+      reportCodexTrustWriteRefusals(refusal(systemPath))
+      expect(trustReports()).toHaveLength(3)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
       warn.mockRestore()
     }
   })
