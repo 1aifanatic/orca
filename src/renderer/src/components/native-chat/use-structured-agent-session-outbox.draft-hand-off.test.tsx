@@ -165,8 +165,13 @@ describe('an outbox entry the host handed off as a queued draft', () => {
       }
     }))
     const view = renderOutbox()
-    expect(view.result.current.send('follow-up')).toBe(true)
-    await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+    act(() => {
+      expect(view.result.current.send('follow-up')).toBe(true)
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+    // Let the answer land before reading the outbox.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(view.result.current.outbox).toEqual([])
     expect(view.result.current.error).toBeNull()
     // Single-flight is free again: the next send goes out.
     expect(view.result.current.send('next')).toBe(true)
