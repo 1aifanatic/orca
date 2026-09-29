@@ -9,6 +9,7 @@ import {
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { isPausableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
 import { structuredQueuePause } from './structured-agent-session-queued-pause'
 
 export type QueuePublication = {
@@ -69,16 +70,26 @@ function readPublishedQueuedMessages(journal: AgentSessionJournal): AgentSession
   return list
 }
 
+/** Presence first: a pause appearing or clearing is a change even when neither side
+ *  names a reason this build can read. */
+export function sameQueuePause(
+  previous: { reason?: string } | null,
+  next: { reason?: string } | null
+): boolean {
+  return (previous === null) === (next === null) && previous?.reason === next?.reason
+}
+
 export function readQueuePublication(journal: AgentSessionJournal): QueuePublication {
   const queuedMessages = readPublishedQueuedMessages(journal)
   // Read per emit: the pause also turns on submissions (a person's turn starting).
-  // A pause over no cards is nothing to show.
-  const queuePause = queuedMessages.length > 0 ? structuredQueuePause(journal) : null
+  // Only over a card it can hold back: otherwise Resume would offer to send nothing.
+  const pausable = journal.queuedMessages.list().some(isPausableQueuedMessage)
+  const queuePause = pausable ? structuredQueuePause(journal) : null
   const previous = publications.get(journal)
   if (
     previous &&
     previous.queuedMessages === queuedMessages &&
-    previous.queuePause?.reason === queuePause?.reason
+    sameQueuePause(previous.queuePause, queuePause)
   ) {
     return previous
   }

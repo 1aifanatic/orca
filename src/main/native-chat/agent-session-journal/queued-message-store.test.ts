@@ -707,6 +707,25 @@ describe("the queue's Stop fact", () => {
     expect(journal.queuedMessages.pause()).toMatchObject({ reason: 'cleared' })
   })
 
+  it('retires with the last card it can hold back, in the write that took it: a hold of its own, or a refusal', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-held')
+    await journal.queuedMessages.recordPause('stopped')
+    await journal.queuedMessages.hold({ messageIds: ['draft-held'], reason: 'send_failed' })
+    expect(journal.queuedMessages.pause()).toBeNull()
+    await queueDraft(journal, 'draft-refused')
+    await consumeDraft(journal, 'draft-refused')
+    await journal.queuedMessages.recordPause('stopped')
+    await journal.resolveDispatch({
+      clientMessageId: 'sub-draft-refused',
+      state: 'rejected',
+      ...refusal('refused'),
+      fence: 0
+    })
+    expect(journal.queuedMessages.get('draft-refused')?.state).toBe('returned')
+    expect(journal.queuedMessages.pause()).toBeNull()
+  })
+
   it('lifting retires only the Stop fact it judged, never one recorded since', async () => {
     const journal = await open()
     await journal.queuedMessages.recordPause('stopped')

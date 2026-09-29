@@ -60,10 +60,7 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
  *  queue not paused. The admission rule (§accept) and the drain's selection
  *  both read it. */
 function oldestActionableQueuedMessage(
-  journal: Pick<
-    AgentSessionJournal,
-    'queuedMessages' | 'submissions' | 'cursor' | 'wroteBeforeOpen'
-  >
+  journal: Pick<AgentSessionJournal, 'queuedMessages' | 'cursor' | 'wroteBeforeOpen'>
 ): QueuedMessageRow | null {
   const rows = journal.queuedMessages.list()
   // Nothing waiting costs no pause derivation: this runs on every journal publish.
@@ -361,7 +358,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
           fence,
           handoverRecorded: true
         },
-        { messageId: next.messageId, expect: 'waiting', settledByOp: null }
+        {
+          messageId: next.messageId,
+          expect: 'waiting',
+          settledByOp: null,
+          hostInstance: structuredAgentSessionHostInstance()
+        }
       )
     } catch (error) {
       if (error instanceof QueuedMessageNotConsumableError) {
