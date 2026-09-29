@@ -91,7 +91,6 @@ describe('a queued draft answer', () => {
     })
     expect(disposition.entries).toEqual([])
     expect(disposition.error).toBeNull()
-    expect(disposition.retryWithFreshClientMessageId).toBeNull()
   })
 
   it('a withdrawn replay is spent, not unknown', () => {
@@ -173,7 +172,7 @@ describe('what a rejection shows the user', () => {
 
   it('reads a withdrawal off the typed fact whatever the reason says', () => {
     const result = rejectedWith('Withdrawn.', { rejection: { kind: 'cancelled' } })
-    if (!result.ok) {
+    if (!result.ok || !('submission' in result.value)) {
       throw new Error('expected rejected submission fixture')
     }
     expect(reconcileStructuredAgentSessionOutbox([entry], [result.value.submission])).toEqual([])

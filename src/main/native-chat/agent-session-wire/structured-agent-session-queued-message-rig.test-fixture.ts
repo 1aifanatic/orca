@@ -42,9 +42,9 @@ export async function createQueuedMessageTestRig() {
   const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
     async () => undefined
   )
-  const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(
-    async () => ({})
-  )
+  const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
+    outcome: 'compacted' as const
+  }))
   const store = await AgentSessionRecordStore.open({
     directory: join(root, 'store'),
     hostId: 'local'
