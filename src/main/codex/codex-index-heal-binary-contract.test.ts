@@ -4,13 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { zstdCompressSync } from 'node:zlib'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
-import {
-  REAL_AGENT_TESTS_ENV,
-  REAL_AGENT_TESTS_SKIP_NOTE,
-  realAgentTestsEnabled
-} from '../real-agent-tests-opt-in-test-support'
+import { realAgentTestsEnabled } from '../real-agent-tests-opt-in-test-support'
 import SyncDatabase from '../sqlite/sync-database'
 import { runCodexAppServerSession, type CodexAppServerRpc } from './codex-app-server-session'
 import { findNewestCodexStateDbPath, readCodexStateDbBackfillStatus } from './codex-state-db'
@@ -31,25 +27,22 @@ import { findNewestCodexStateDbPath, readCodexStateDbBackfillStatus } from './co
 const execFileAsync = promisify(execFile)
 const binary = process.env.ORCA_CODEX_CONTRACT_BINARY
 const expectedVersion = process.env.ORCA_CODEX_CONTRACT_VERSION
-const describeCodexContract = binary ? describe : describe.skip
+const contractRunnable = Boolean(binary) && realAgentTestsEnabled()
+const describeCodexContract = contractRunnable ? describe : describe.skip
 
 // Why this guard: skipping is the right local-dev default, but a CI job whose whole
 // purpose is the real binary must not pass by reporting zero assertions. The job sets
 // ORCA_CODEX_CONTRACT_REQUIRED=1, which turns a missing binary or opt-in into a red test.
-describe.runIf(
-  process.env.ORCA_CODEX_CONTRACT_REQUIRED === '1' && (!binary || !realAgentTestsEnabled())
-)('codex binary index-heal contract prerequisites', () => {
-  it.runIf(!binary)('was given a Codex binary to run against', () => {
-    expect.fail(
-      'ORCA_CODEX_CONTRACT_REQUIRED=1 but ORCA_CODEX_CONTRACT_BINARY is unset, so the contract would have silently skipped'
-    )
-  })
-  it.runIf(!realAgentTestsEnabled())('was allowed to start a real agent CLI', () => {
-    expect.fail(
-      `ORCA_CODEX_CONTRACT_REQUIRED=1 but ${REAL_AGENT_TESTS_ENV} is not 1, so the contract would have silently skipped`
-    )
-  })
-})
+describe.runIf(process.env.ORCA_CODEX_CONTRACT_REQUIRED === '1' && !contractRunnable)(
+  'codex binary index-heal contract prerequisites',
+  () => {
+    it('was given a Codex binary to run against', () => {
+      expect.fail(
+        'ORCA_CODEX_CONTRACT_REQUIRED=1 needs ORCA_CODEX_CONTRACT_BINARY and ORCA_RUN_REAL_AGENT_TESTS=1, or the contract silently skips'
+      )
+    })
+  }
+)
 
 // Why fixed: `thread/read` never reaches the network, and a whole session is
 // spawn + initialize + one RPC. A generous ceiling still fails fast on a wedged child.
@@ -67,9 +60,6 @@ describeCodexContract(
     const disposableHomes: string[] = []
 
     beforeAll(async () => {
-      if (!realAgentTestsEnabled()) {
-        return
-      }
       // Why assert the version: the whole point of a real-binary check is that the
       // binary drifts. A job that quietly ran some other Codex would report a
       // contract this repo never verified.
@@ -77,10 +67,6 @@ describeCodexContract(
         timeout: SESSION_TIMEOUT_MS
       })
       expect(stdout.trim()).toBe(`codex-cli ${expectedVersion}`)
-    })
-
-    beforeEach((ctx) => {
-      ctx.skip(!realAgentTestsEnabled(), REAL_AGENT_TESTS_SKIP_NOTE)
     })
 
     afterEach(() => {

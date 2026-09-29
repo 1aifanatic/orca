@@ -45,9 +45,11 @@ describe('real Claude CLI availability', () => {
   it('skips without spawning anything unless real-agent tests are opted into', async () => {
     vi.stubEnv(REAL_AGENT_TESTS_ENV, undefined)
 
-    const { realClaudeSkipReason, realClaudeAuthStatus } = await loadAvailability()
+    const { realClaudeAvailable, realClaudeAuthenticated, realClaudeAuthStatus } =
+      await loadAvailability()
 
-    expect(realClaudeSkipReason).toContain(`${REAL_AGENT_TESTS_ENV}=1`)
+    expect(realClaudeAvailable).toBe(false)
+    expect(realClaudeAuthenticated).toBe(false)
     expect(realClaudeAuthStatus).toBeNull()
     expect(spawnSyncMock).not.toHaveBeenCalled()
     expect(spawnMock).not.toHaveBeenCalled()
@@ -56,10 +58,10 @@ describe('real Claude CLI availability', () => {
   it('probes the CLI once opted into', async () => {
     vi.stubEnv(REAL_AGENT_TESTS_ENV, '1')
 
-    const { realClaudeSkipReason } = await loadAvailability()
+    const { realClaudeAvailable } = await loadAvailability()
 
     // The mocked probe fails, so this proves the gate, not a real CLI.
-    expect(realClaudeSkipReason).toMatch(/no runnable Claude CLI/)
+    expect(realClaudeAvailable).toBe(false)
     expect(spawnSyncMock).toHaveBeenCalledTimes(1)
     expect(spawnSyncMock.mock.calls[0]?.[1]).toContain('--version')
   })

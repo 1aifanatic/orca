@@ -1,5 +1,5 @@
 // Whether a real, signed-in Claude CLI is present — the gate every real-CLI
-// suite skips on. Probed once per test process, and only when real-agent tests are opted into.
+// suite skips on. Probed once per test process, and only with ORCA_RUN_REAL_AGENT_TESTS=1.
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -7,10 +7,7 @@ import { runProcessSync, type ProcessResult } from '../../shared/child-process/r
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { CLAUDE_AUTH_ENV_VARS } from '../claude-accounts/environment'
 import { resolveClaudeCommand } from '../codex-cli/command'
-import {
-  REAL_AGENT_TESTS_SKIP_NOTE,
-  realAgentTestsEnabled
-} from '../real-agent-tests-opt-in-test-support'
+import { realAgentTestsEnabled } from '../real-agent-tests-opt-in-test-support'
 
 export const realClaudeCommand = resolveClaudeCommand()
 
@@ -29,9 +26,8 @@ function probeRealClaude(args: string[]): ProcessResult | null {
   }
 }
 
-const optedIn = realAgentTestsEnabled()
-
-const realClaudeAvailable = optedIn && probeRealClaude(['--version'])?.code === 0
+export const realClaudeAvailable =
+  realAgentTestsEnabled() && probeRealClaude(['--version'])?.code === 0
 
 /** The CLI's own account report — the only source of truth for where it writes that
  *  is not derived from Orca's own path expressions. */
@@ -50,14 +46,7 @@ export const realClaudeAuthStatus = (() => {
   }
 })()
 
-/** Why every real-CLI test in this process skips, or null when they may run. */
-export const realClaudeSkipReason: string | null = !optedIn
-  ? REAL_AGENT_TESTS_SKIP_NOTE
-  : !realClaudeAvailable
-    ? `no runnable Claude CLI at ${realClaudeCommand}`
-    : realClaudeAuthStatus?.loggedIn !== true
-      ? 'the Claude CLI is not signed in'
-      : null
+export const realClaudeAuthenticated = realClaudeAuthStatus?.loggedIn === true
 
 /** The config dir and env auth the availability probe above saw, for a real-CLI launch.
  *  The connection strips an inherited CLAUDE_CONFIG_DIR and inherited auth vars, so

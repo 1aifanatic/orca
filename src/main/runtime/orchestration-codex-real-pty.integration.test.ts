@@ -3,17 +3,14 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as pty from 'node-pty'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { AgentHookServer } from '../agent-hooks/server'
 import { getManagedScript } from '../codex/codex-hook-script'
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import { extractAllOscTitles } from '../../shared/osc-title-extraction'
 import { extractOscTitleScanTail } from '../../shared/osc-title-scan-tail'
 import { settledWriteStub } from '../providers/settled-pty-write-stub'
-import {
-  REAL_AGENT_TESTS_SKIP_NOTE,
-  realAgentTestsEnabled
-} from '../real-agent-tests-opt-in-test-support'
+import { realAgentTestsEnabled } from '../real-agent-tests-opt-in-test-support'
 import {
   createBoundRun,
   createDatabase,
@@ -40,11 +37,7 @@ const trials = (['before', 'after'] as const).flatMap((arrival) =>
 )
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-beforeEach((ctx) => {
-  ctx.skip(!realAgentTestsEnabled(), REAL_AGENT_TESTS_SKIP_NOTE)
-})
-
-it.skipIf(!binary || process.platform === 'win32').each(trials)(
+it.skipIf(!binary || !realAgentTestsEnabled() || process.platform === 'win32').each(trials)(
   'submits mail arriving $arrival a real Codex completion (trial $trial)',
   async ({ arrival }) => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), 'orca-codex-mailbox-')))

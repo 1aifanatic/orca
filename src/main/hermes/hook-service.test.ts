@@ -7,10 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
 import { makePaneKey } from '../../shared/stable-pane-id'
-import {
-  REAL_AGENT_TESTS_SKIP_NOTE,
-  realAgentTestsEnabled
-} from '../real-agent-tests-opt-in-test-support'
+import { realAgentTestsEnabled } from '../real-agent-tests-opt-in-test-support'
 import { HermesHookService, _internals } from './hook-service'
 
 const PANE_KEY = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
@@ -110,9 +107,10 @@ describe('HermesHookService', () => {
     expect(status.detail).toContain('not enabled')
   })
 
-  it('is visible to the real hermes CLI when hermes is installed', (ctx) => {
-    ctx.skip(!realAgentTestsEnabled(), REAL_AGENT_TESTS_SKIP_NOTE)
-    const hermesAvailable = spawnSync('hermes', ['--version'], { encoding: 'utf-8' }).status === 0
+  it('is visible to the real hermes CLI when hermes is installed', () => {
+    const hermesAvailable =
+      realAgentTestsEnabled() &&
+      spawnSync('hermes', ['--version'], { encoding: 'utf-8' }).status === 0
     if (!hermesAvailable) {
       return
     }
