@@ -542,6 +542,20 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       ])
     })
 
+    // Why: Orca reads every MessagePart as Working, so reply text must not bury an open request.
+    it('keeps Needs input while the root streams text beside a waiting background child', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A spawns a background task')
+      await pump(tui, [...a.start, ...childStart(SES_A), permission(SES_CHILD)])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`))
+      await pump(tui, a.finish)
+      await tick(300)
+      expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`)
+      await cleanup?.()
+    })
+
     it('clears Needs input answered while disconnected once the TUI reconnects', async () => {
       const tui = fakeTui()
       const cleanup = await start(tui)

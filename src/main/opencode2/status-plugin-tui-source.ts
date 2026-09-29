@@ -197,6 +197,8 @@ async function setupOpenCode2Tui(ctx) {
         return;
       }
       if (event.type === "session.text.ended" && isOwned && sessionID === root && typeof properties.text === "string" && properties.text) {
+        // Why: Orca reads any MessagePart as Working, which would bury this pane's Needs input.
+        if (memory.last.startsWith("waiting:")) return;
         const part = { role: "assistant", text: properties.text, messageID: properties.assistantMessageID, sessionID: root, factoryID };
         // Why queued: the reply must not overtake this turn's SessionStart, prompt or Busy.
         void enqueueLifecycle(() => queueAssistantPart({ ...part, authorityRevision: stateArrivalRevision }));
