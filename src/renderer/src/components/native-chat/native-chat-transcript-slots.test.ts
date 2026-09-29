@@ -252,6 +252,19 @@ describe('a turn a crash or a dead agent cut off', () => {
     }
   )
 
+  it('folds a failure the agent answered past in the same turn', () => {
+    const slots = build(
+      [
+        text('u', 'go', 'user'),
+        statusRow('failed-step', 'providerExited'),
+        toolRun('work'),
+        text('a', 'Done after all.')
+      ],
+      { turnStatuses: settled }
+    )
+    expect(slots.map((slot) => slot.message.id)).toEqual(['u', 'a'])
+  })
+
   it('still folds a provider retry, which is the turn working', () => {
     const slots = build(
       [text('u', 'go', 'user'), statusRow('retry', 'providerRetrying'), text('a', 'Done.')],

@@ -21,18 +21,20 @@ export type NativeChatTurnFoldRow = {
   role: NativeChatRole
   /** Whether the row draws prose — the only thing that can be an answer. */
   rendersProse: boolean
-  /** Whether the row outlives the turn that started it: a spawn roster, a
-   *  background task, or a reported failure (`nativeChatRowReportsFailure`).
-   *  That row is the durable report of how the work ended — often the only
-   *  one — so it never folds. */
+  /** Whether the row carries work that outlives the turn that started it: a
+   *  spawn roster or a background task. That row is the durable report of how
+   *  the work ended — often the only one — so it never folds. */
   outlivesTurn: boolean
+  /** Whether the row reports a failure (`nativeChatRowReportsFailure`). It stays
+   *  out of the fold only while nothing the agent answered comes after it. */
+  reportsFailure: boolean
   /** The subagent that produced the row. Absent ⇒ the session's own agent. */
   agentId?: string
 }
 
-/** A failure row — the agent stopped, the session did not survive a restart — says how the turn
- *  or the chat ended and what to do next, so it is never the turn's hidden work. A provider retry
- *  is not a failure yet. */
+/** A failure row — the agent stopped, the session did not survive a restart. When it is how the
+ *  turn ended it says what to do next; one the agent answered past was only on the way. A
+ *  provider retry is not a failure yet. */
 export function nativeChatRowReportsFailure(blocks: readonly NativeChatBlock[]): boolean {
   return blocks.some(
     (block) =>
@@ -100,7 +102,7 @@ export function nativeChatTurnFold({
   for (const [index, row] of rows.entries()) {
     const { turnKey } = row
     // Outside the fold by construction: the reader's own message anchors the
-    // turn, and a roster, background-task or failure row outlives it.
+    // turn, and a roster or background-task row outlives it.
     if (
       turnKey === undefined ||
       row.role === 'user' ||
@@ -109,10 +111,15 @@ export function nativeChatTurnFold({
     ) {
       continue
     }
+    const answer = answers.get(turnKey)
     // A turn that produced no prose folds whole: its status row is the anchor,
     // so there is still something on screen to open. Keeping such a turn
     // unfolded instead would put every command it ran back in the transcript.
-    if (index === answers.get(turnKey)) {
+    if (index === answer) {
+      continue
+    }
+    // A failure with no answer after it is how the turn ended, so it stays in view.
+    if (row.reportsFailure && (answer === undefined || index > answer)) {
       continue
     }
     foldableTurnKeys.add(turnKey)

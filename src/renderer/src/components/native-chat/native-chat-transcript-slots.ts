@@ -107,10 +107,10 @@ export function buildNativeChatTranscriptSlots(
       rendersProse: content.markdown.length > 0 || content.hasImages,
       // The raw blocks, not the renderable ones: a childless roster draws no row
       // and its plain-text twin is then the only record the spawn happened.
-      outlivesTurn:
-        message.blocks.some(
-          (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
-        ) || nativeChatRowReportsFailure(message.blocks),
+      outlivesTurn: message.blocks.some(
+        (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
+      ),
+      reportsFailure: nativeChatRowReportsFailure(message.blocks),
       ...(agentId === null ? {} : { agentId })
     }
   })
