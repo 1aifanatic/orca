@@ -149,7 +149,6 @@ async function expectGeneration(owner, label) {
       { entryPath: owner.entryPath, installedEntry }
     )
   }
-
 }
 async function terminal(worktreeId) {
   const handle = (
@@ -240,8 +239,52 @@ async function continuity(stage, owner, live, worktreeId) {
   receipt.stages.push({ stage, owner: current, terminals })
 }
 // Pre-PTY stale-bundle replacement is darwin-only (resolvePackagedDarwinAppVersion); on Windows a
+function descendantsOf(table, pid) {
+  const found = []
+  const frontier = [pid]
+  while (frontier.length > 0) {
+    const parent = frontier.pop()
+    for (const row of table) {
+      if (row.ppid === parent && !found.some((seen) => seen.pid === row.pid)) {
+        found.push(row)
+        frontier.push(row.pid)
+      }
+    }
+  }
+  return found.map((row) => ({
+    pid: row.pid,
+    ppid: row.ppid,
+    name: row.name,
+    command: row.command?.slice(0, 300)
+  }))
+}
+const ptyHostCount = (table, owner) =>
+  table.filter((row) => row.ppid === owner.pid && /^bun-runtime\.exe$/iu.test(row.name)).length
+// A killed terminal must release its per-terminal PTY host, or the daemon can never idle out.
+async function expectHostReleased(stage, owner, item) {
+  const before = await processTable()
+  const hosts = before ? ptyHostCount(before, owner) : null
+  await close(item)
+  const deadline = Date.now() + 30_000
+  let after = null
+  while (Date.now() < deadline) {
+    after = await processTable()
+    if (after && hosts !== null && ptyHostCount(after, owner) === hosts - 1) {
+      break
+    }
+    await delay(500)
+  }
+  const released = Boolean(after && hosts !== null && ptyHostCount(after, owner) === hosts - 1)
+  check(
+    `${stage}: closed terminal releases its PTY host`,
+    released,
+    released
+      ? {}
+      : { hostsBefore: hosts, tree: after ? descendantsOf(after, owner.pid) : 'unverifiable' }
+  )
+}
 // Why: a daemon only idles out with zero sessions and zero clients; name what is still attached.
-async function drainEvidence(verdict) {
+async function drainEvidence(verdict, ownerPid) {
   const table = await processTable()
   const survivors = (table ? processesUnder(table, [installLocation, managedRoot]) : []).map(
     (row) => ({ pid: row.pid, ppid: row.ppid, name: row.name, command: row.command?.slice(0, 400) })
@@ -254,6 +297,7 @@ async function drainEvidence(verdict) {
     verdict,
     snapshot: table ? 'complete' : 'unverifiable',
     survivors,
+    ownerTree: table ? descendantsOf(table, ownerPid) : 'unverifiable',
     logFiles: existsSync(logs) ? readdirSync(logs) : [],
     daemonLog
   }
@@ -269,7 +313,7 @@ async function switchGeneration(stage, owner, live, worktreeId, label) {
   check(
     `${stage}: drained owner exited before relaunch`,
     drained === 'exited',
-    drained === 'exited' ? {} : await drainEvidence(drained)
+    drained === 'exited' ? {} : await drainEvidence(drained, owner.pid)
   )
   serve = await startServe(installLocation, profile, env)
   const item = await terminal(worktreeId)
@@ -403,6 +447,10 @@ try {
   await expectGeneration(ownerA, 'A')
   owned.daemons.push(ownerA)
   receipt.stages.push({ stage: 'A', owner: ownerA, terminals: firstEvidence })
+  // Control before any update: separates a general kill-path leak from an update-specific one.
+  const control = await terminal(worktrees.git)
+  await observe(control, true)
+  await expectHostReleased('A (before update)', ownerA, control)
   for (const path of [
     sentinels.legacyHostFile,
     sentinels.hostSibling,
