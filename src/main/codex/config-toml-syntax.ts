@@ -93,32 +93,3 @@ function isCompleteTomlTableHeader(line: string): boolean {
   }
   return false
 }
-
-function unescapeTomlBasicStringEscape(next: string): string {
-  const escaped: Record<string, string> = {
-    n: '\n',
-    r: '\r',
-    t: '\t',
-    b: '\b',
-    f: '\f',
-    '"': '"',
-    '\\': '\\'
-  }
-  return escaped[next] ?? `\\${next}`
-}
-
-export function unescapeTomlBasicString(escaped: string): string {
-  let result = ''
-  let index = 0
-  while (index < escaped.length) {
-    const char = escaped[index]
-    if (char === '\\' && index + 1 < escaped.length) {
-      result += unescapeTomlBasicStringEscape(escaped[index + 1]!)
-      index += 2
-      continue
-    }
-    result += char
-    index += 1
-  }
-  return result
-}
