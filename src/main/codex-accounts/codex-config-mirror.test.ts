@@ -21,9 +21,8 @@ vi.mock('node:os', async () => {
 })
 
 import { CodexConfigMirror } from './codex-config-mirror'
-import { CODEX_DAEMON_OVERRIDE_MARKER } from '../codex/codex-daemon-socket-path-guard'
 
-const OVERRIDE_LINE = `daemon_auto_start = false ${CODEX_DAEMON_OVERRIDE_MARKER}`
+const OVERRIDE_LINE = 'daemon_auto_start = false # orca: CODEX_HOME too long for the daemon socket'
 
 describe('CodexConfigMirror without ~/.codex/config.toml', () => {
   let root: string

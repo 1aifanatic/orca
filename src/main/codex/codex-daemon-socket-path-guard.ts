@@ -23,13 +23,8 @@ import { parseTomlKeyPath, parseTomlTableHeaderPath } from './config-toml-key-pa
  * Windows, and on Linux when it is not on the real-home lane.
  */
 const DAEMON_SOCKET_SEGMENTS = ['app-server-control', 'app-server-control.sock']
-export const CODEX_DAEMON_OVERRIDE_MARKER = '# orca: no shared Codex server in an Orca-owned home'
-// Why: homes guarded before this marker was reworded still carry it; Orca must keep recognizing its own line.
-const LEGACY_CODEX_DAEMON_OVERRIDE_MARKERS = ['# orca: CODEX_HOME too long for the daemon socket']
-const CODEX_DAEMON_OVERRIDE_MARKERS = [
-  CODEX_DAEMON_OVERRIDE_MARKER,
-  ...LEGACY_CODEX_DAEMON_OVERRIDE_MARKERS
-]
+// Why: older Orca builds strip only this exact text, so it must never change.
+export const CODEX_DAEMON_OVERRIDE_MARKER = '# orca: CODEX_HOME too long for the daemon socket'
 const DAEMON_OVERRIDE_RAW = `false ${CODEX_DAEMON_OVERRIDE_MARKER}`
 
 export function codexDaemonSocketPath(homePath: string, platform = process.platform): string {
@@ -111,8 +106,7 @@ function warnOncePerHome(warned: Set<string>, homePath: string, message: string)
 }
 
 function isCodexDaemonOverrideLine(line: string): boolean {
-  const trimmed = line.trimEnd()
-  return CODEX_DAEMON_OVERRIDE_MARKERS.some((marker) => trimmed.endsWith(marker))
+  return line.trimEnd().endsWith(CODEX_DAEMON_OVERRIDE_MARKER)
 }
 
 /** True when the config sets `features.daemon_auto_start = true` in a line Orca did not write. */
@@ -155,7 +149,9 @@ function hasUserDaemonAutoStartEnabled(config: string): boolean {
 
 /** True when a config holds nothing but Orca's daemon override, i.e. no user settings. */
 export function isOnlyCodexDaemonOverride(config: string): boolean {
-  return hasCodexDaemonOverrideMarker(config) && stripCodexDaemonOverride(config).trim() === ''
+  return (
+    config.includes(CODEX_DAEMON_OVERRIDE_MARKER) && stripCodexDaemonOverride(config).trim() === ''
+  )
 }
 
 /**
@@ -163,7 +159,7 @@ export function isOnlyCodexDaemonOverride(config: string): boolean {
  * removal, so the override never leaks into the user's real ~/.codex.
  */
 export function stripCodexDaemonOverride(config: string): string {
-  if (!hasCodexDaemonOverrideMarker(config)) {
+  if (!config.includes(CODEX_DAEMON_OVERRIDE_MARKER)) {
     return config
   }
   const usesCrlf = config.includes('\r\n')
@@ -207,8 +203,4 @@ export function stripCodexDaemonOverride(config: string): string {
     kept.pop()
   }
   return kept.length === 0 ? '' : joinPreservingTrailingNewline(kept, usesCrlf)
-}
-
-function hasCodexDaemonOverrideMarker(config: string): boolean {
-  return CODEX_DAEMON_OVERRIDE_MARKERS.some((marker) => config.includes(marker))
 }

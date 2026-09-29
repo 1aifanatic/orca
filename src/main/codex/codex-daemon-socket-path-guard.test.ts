@@ -13,7 +13,6 @@ vi.mock('electron', () => ({
 
 import {
   applyCodexDaemonSocketGuard,
-  CODEX_DAEMON_OVERRIDE_MARKER,
   codexDaemonSocketPath,
   codexDaemonSocketPathExceedsLimit,
   stripCodexDaemonOverride
@@ -29,9 +28,8 @@ import { extractOrdinaryCodexSettings } from './config-toml-runtime-owned-sectio
 
 const UUID = '9dd962e2-449d-44c4-9733-0633f255064a'
 const MAC_MANAGED_HOME = `/Users/john/Library/Application Support/orca/codex-accounts/${UUID}/home`
-const OVERRIDE_LINE = `daemon_auto_start = false ${CODEX_DAEMON_OVERRIDE_MARKER}`
-const LEGACY_OVERRIDE_LINE =
-  'daemon_auto_start = false # orca: CODEX_HOME too long for the daemon socket'
+// Spelled out, not built from the constant: older Orca builds strip only this exact line.
+const OVERRIDE_LINE = 'daemon_auto_start = false # orca: CODEX_HOME too long for the daemon socket'
 const WINDOWS_MANAGED_HOME = 'C:\\Users\\neil\\AppData\\Roaming\\orca\\codex-runtime-home\\home'
 
 // The socket suffix is 43 bytes: sun_path 104 (macOS) / 108 (Linux) leaves 60 / 64 for the home.
@@ -152,15 +150,6 @@ describe('applyCodexDaemonSocketGuard', () => {
     expect(applyCodexDaemonSocketGuard(config, homeOfLength(20), 'linux')).toBe(
       `${config}\n[features]\n${OVERRIDE_LINE}\n`
     )
-  })
-
-  it('rewrites a line marked by an older Orca in place and strips it like its own', () => {
-    const legacy = `model = "m"\n\n[features]\n${LEGACY_OVERRIDE_LINE}\n`
-    expect(applyCodexDaemonSocketGuard(legacy, homeOfLength(20), 'linux')).toBe(
-      `model = "m"\n\n[features]\n${OVERRIDE_LINE}\n`
-    )
-    expect(stripCodexDaemonOverride(legacy)).toBe('model = "m"\n')
-    expect(extractOrdinaryCodexSettings(legacy)).toBe('model = "m"')
   })
 
   it('warns once instead of failing silently when inline features block the override', () => {
