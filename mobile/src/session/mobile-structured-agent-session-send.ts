@@ -35,6 +35,10 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   onError: (message: string) => void
   /** Internal: the one fresh-id resend after a withdrawn replay. */
   resendingAfterWithdrawal?: true
+  /** Internal: that resend when the withdrawn id's record could not be cleared. It bypasses the
+   *  record, so failing storage never blocks the send, and is unrecorded, so its own lost answer
+   *  cannot be replayed. */
+  bypassRetainedRecord?: true
 }): Promise<MobileNativeChatSendOutcome> {
   const timeoutMs = timeoutForDeadline(input.deadline)
   if (timeoutMs === null) {
@@ -74,16 +78,24 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   const immediateOperationKey = operationKeyFor(undefined)
   let operation: Awaited<ReturnType<typeof getOrCreateMobileStructuredSendOperation>>
   try {
-    operation = await getOrCreateMobileStructuredSendOperation({
-      operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
-      // A retained id replays exactly as first sent, whatever the capability says now;
-      // a host that refuses that request shape retires it, so the next send goes out fresh.
-      alternateOperationKey: input.delivery ? immediateOperationKey : queuedOperationKey,
-      callerIdentity: input.callerIdentity,
-      payloadFingerprint: requestedPayloadFingerprint,
-      attachmentPaths: input.attachments.map((attachment) => attachment.path),
-      createOperationId: structuredSessionOperationId
-    })
+    operation = input.bypassRetainedRecord
+      ? {
+          operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
+          operationId: structuredSessionOperationId(),
+          retained: false,
+          payloadFingerprint: requestedPayloadFingerprint,
+          attachmentPaths: input.attachments.map((attachment) => attachment.path)
+        }
+      : await getOrCreateMobileStructuredSendOperation({
+          operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
+          // A retained id replays exactly as first sent, whatever the capability says now;
+          // a host that refuses that request shape retires it, so the next send goes out fresh.
+          alternateOperationKey: input.delivery ? immediateOperationKey : queuedOperationKey,
+          callerIdentity: input.callerIdentity,
+          payloadFingerprint: requestedPayloadFingerprint,
+          attachmentPaths: input.attachments.map((attachment) => attachment.path),
+          createOperationId: structuredSessionOperationId
+        })
   } catch {
     input.onError('Message not sent')
     return 'rejected'
@@ -133,14 +145,24 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     result.status === 'accepted' &&
     'queued' in result.value &&
     result.value.queued?.state === 'withdrawn'
-  if (withdrawnReplay && released && operation.retained && !input.resendingAfterWithdrawal) {
+  if (withdrawnReplay && operation.retained && !input.resendingAfterWithdrawal) {
     // The retained id's draft was withdrawn, so it never reached the agent:
-    // this identical message is a new one, not a replay to swallow.
-    return sendMobileStructuredAgentSessionMessage({ ...input, resendingAfterWithdrawal: true })
+    // this identical message is a new one, not a replay to swallow. A record
+    // storage would not clear is bookkeeping: it is reported, never allowed to
+    // block the send.
+    const resent = await sendMobileStructuredAgentSessionMessage({
+      ...input,
+      resendingAfterWithdrawal: true,
+      ...(released ? {} : { bypassRetainedRecord: true as const })
+    })
+    if (!released && resent !== 'rejected') {
+      input.onError("Sent, but this phone couldn't update its record of sent messages.")
+    }
+    return resent
   }
   if (withdrawnReplay) {
-    // Not resent (its id could not be released): no card and no bubble holds the text, so it
-    // goes back to the composer rather than vanishing.
+    // Not resent: no card and no bubble holds the text, so it goes back to the
+    // composer rather than vanishing.
     input.onError('Message not sent')
     return 'rejected'
   }

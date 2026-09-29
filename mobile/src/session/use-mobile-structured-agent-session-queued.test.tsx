@@ -496,7 +496,7 @@ describe('mobile structured queued messages', () => {
     expect(ids[2]).not.toBe(ids[0])
   })
 
-  it('a withdrawn replay whose id cannot be released goes back to the composer, never silent', async () => {
+  it('a withdrawn replay whose record storage will not clear still goes out fresh, and says so', async () => {
     let attempts = 0
     sendRequest.mockImplementation(async (method) => {
       if (method === 'agentSession.send') {
@@ -504,9 +504,10 @@ describe('mobile structured queued messages', () => {
         if (attempts === 1) {
           throw markRpcDeliveryUnknown(new Error('Connection closed'))
         }
+        const state = attempts === 2 ? 'withdrawn' : 'waiting'
         return mutationOk({
           clientMessageId: `client-${attempts}`,
-          queued: { messageId: `client-${attempts}`, position: 1, state: 'withdrawn' }
+          queued: { messageId: `client-${attempts}`, position: 1, state }
         })
       }
       return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
@@ -515,14 +516,21 @@ describe('mobile structured queued messages', () => {
     await act(async () => {
       expect(await hook!.sendWithOutcome('again')).toBe('unknown')
     })
-    // The retained id cannot be cleared, so the fresh resend is off the table.
+    // The retained record cannot be cleared; that must not keep this text from being sent.
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
     await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('rejected')
+      expect(await hook!.sendWithOutcome('again')).toBe('queued')
     })
-    expect(attempts).toBe(2)
-    expect(onSendError).toHaveBeenCalledWith('Message not sent')
+    expect(attempts).toBe(3)
+    const ids = [0, 1, 2].map(
+      (index) => requestOf('agentSession.send', index).envelope.clientOperationId
+    )
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
+    expect(onSendError).toHaveBeenCalledWith(
+      "Sent, but this phone couldn't update its record of sent messages."
+    )
   })
 
   describe('cards from the published list', () => {
