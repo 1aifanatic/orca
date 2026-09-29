@@ -11,7 +11,10 @@
 import * as nodeFsPromises from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
-export type AsarTransparentFs = Pick<typeof nodeFsPromises, 'lstat' | 'readdir' | 'rm'>
+export type AsarTransparentFs = Pick<
+  typeof nodeFsPromises,
+  'lstat' | 'readdir' | 'rm' | 'rmdir' | 'unlink'
+>
 
 let resolved: AsarTransparentFs | undefined
 
@@ -22,8 +25,10 @@ function resolveFs(): AsarTransparentFs {
     // `node:fs/promises` instead — and there the shim does not exist, so plain `fs` already is.
     const originalFs: { promises?: Partial<AsarTransparentFs> } =
       createRequire(__filename)('original-fs')
-    const { lstat, readdir, rm } = originalFs.promises ?? {}
-    return lstat && readdir && rm ? { lstat, readdir, rm } : nodeFsPromises
+    const { lstat, readdir, rm, rmdir, unlink } = originalFs.promises ?? {}
+    return lstat && readdir && rm && rmdir && unlink
+      ? { lstat, readdir, rm, rmdir, unlink }
+      : nodeFsPromises
   } catch {
     return nodeFsPromises
   }

@@ -51,6 +51,8 @@ function useCountedRealFs(overrides: object = {}): void {
     lstat: counted(realFs.lstat),
     readdir: counted(realFs.readdir),
     rm: counted(realFs.rm),
+    rmdir: counted(realFs.rmdir),
+    unlink: counted(realFs.unlink),
     ...overrides
   }
 }
@@ -70,6 +72,16 @@ function buildTree(target: string, directories: number, filesPerDirectory: numbe
     }
   }
   return target
+}
+
+// Why: a directory listing may classify a link (a Windows junction) as a directory; only lstat decides.
+async function readdirReportingLinksAsDirectories(path: string): Promise<Dirent[]> {
+  const entries = await realFs.readdir(path, { withFileTypes: true })
+  return entries.map((entry) =>
+    Object.assign(entry, {
+      isDirectory: () => entry.isSymbolicLink() || Dirent.prototype.isDirectory.call(entry)
+    })
+  )
 }
 
 afterEach(() => {
@@ -111,7 +123,7 @@ describe('removeTreeWithBoundedFsCalls', () => {
         return { isDirectory: () => false }
       }),
       readdir: vi.fn(),
-      rm: vi.fn((path: string) => hold(`rm ${path}`))
+      unlink: vi.fn((path: string) => hold(`unlink ${path}`))
     }
     const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
     const release = async (label: string): Promise<void> => {
@@ -139,6 +151,20 @@ describe('removeTreeWithBoundedFsCalls', () => {
     await Promise.all(deletes)
   })
 
+  // Why: Windows refuses a plain unlink/rmdir of a read-only or briefly locked entry; `rm` clears the
+  // read-only flag and retries.
+  it('falls back to rm for an entry a plain unlink or rmdir refuses', async () => {
+    const refuse = async (): Promise<never> => {
+      throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' })
+    }
+    useCountedRealFs({ unlink: refuse, rmdir: refuse })
+    const target = buildTree(join(makeRoot(), 'tree'), 2, 3)
+
+    await removeTreeWithBoundedFsCalls(target, options, 'interactive')
+
+    expect(existsSync(target)).toBe(false)
+  })
+
   it('unlinks a directory symlink that points out of the tree without touching its target', async () => {
     useCountedRealFs()
     const root = makeRoot()
@@ -154,7 +180,6 @@ describe('removeTreeWithBoundedFsCalls', () => {
     expect(existsSync(join(outside, 'keep.txt'))).toBe(true)
   })
 
-  // Why: a directory listing may classify a link (a Windows junction) as a directory; only lstat decides.
   it('does not follow a link that the directory listing reports as a directory', async () => {
     const root = makeRoot()
     const outside = join(root, 'outside')
@@ -162,15 +187,7 @@ describe('removeTreeWithBoundedFsCalls', () => {
     writeFileSync(join(outside, 'keep.txt'), 'x')
     const target = buildTree(join(root, 'tree'), 1, 2)
     symlinkSync(outside, join(target, 'linked'), 'junction')
-    const readdirReportingLinksAsDirectories = async (path: string): Promise<Dirent[]> => {
-      const entries = await realFs.readdir(path, { withFileTypes: true })
-      return entries.map((entry) =>
-        Object.assign(entry, {
-          isDirectory: () => entry.isSymbolicLink() || Dirent.prototype.isDirectory.call(entry)
-        })
-      )
-    }
-    useCountedRealFs({ readdir: vi.fn(readdirReportingLinksAsDirectories) })
+    useCountedRealFs({ readdir: readdirReportingLinksAsDirectories })
 
     await removeTreeWithBoundedFsCalls(target, options, 'background')
 
@@ -191,8 +208,8 @@ describe('removeTreeWithBoundedFsCalls', () => {
     expect(existsSync(join(outside, 'pkg-0', 'lib', '0.js'))).toBe(true)
   })
 
-  it('completes on a symlink loop', async () => {
-    useCountedRealFs()
+  it('completes on a link loop, even one listed as a directory', async () => {
+    useCountedRealFs({ readdir: readdirReportingLinksAsDirectories })
     const root = makeRoot()
     const target = buildTree(join(root, 'tree'), 1, 1)
     symlinkSync(target, join(target, 'pkg-0', 'lib', 'loop'), 'junction')

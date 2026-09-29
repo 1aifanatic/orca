@@ -66,11 +66,20 @@ export async function removeTreeWithBoundedFsCalls(
 ): Promise<void> {
   const fs = asarTransparentFs()
 
+  // Why unlink/rmdir first: one pool op per entry. `rm` (lstat, Windows read-only fix, lock
+  // retries) runs only when that fails.
+  const removeEntry = (path: string, isDirectory: boolean): Promise<void> =>
+    withFsCallSlot(lane, () =>
+      (isDirectory ? fs.rmdir(path) : fs.unlink(path)).catch(() => fs.rm(path, options))
+    )
+
   const removeTree = async (path: string): Promise<void> => {
     let children: Dirent[] = []
+    let isDirectory = false
     try {
       // Why lstat and never the Dirent alone: a symlink or junction must be unlinked, not followed.
-      if ((await withFsCallSlot(lane, () => fs.lstat(path))).isDirectory()) {
+      isDirectory = (await withFsCallSlot(lane, () => fs.lstat(path))).isDirectory()
+      if (isDirectory) {
         children = await withFsCallSlot(lane, () => fs.readdir(path, { withFileTypes: true }))
       }
     } catch (error) {
@@ -80,11 +89,9 @@ export async function removeTreeWithBoundedFsCalls(
     }
     await removeEach(children, CHILD_REMOVAL_FAN_OUT, (child) => {
       const childPath = join(path, child.name)
-      return child.isDirectory()
-        ? removeTree(childPath)
-        : withFsCallSlot(lane, () => fs.rm(childPath, options))
+      return child.isDirectory() ? removeTree(childPath) : removeEntry(childPath, false)
     })
-    await withFsCallSlot(lane, () => fs.rm(path, options))
+    await removeEntry(path, isDirectory)
   }
 
   await removeTree(targetPath)
