@@ -7,7 +7,11 @@ import {
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import type { RealHomeCodexHookSlotWrite } from './codex-real-home-hook-entry-plan'
-import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
+import {
+  assertHooksJsonGeneration,
+  getRealHomeConfigTomlPath,
+  getRealHomeHooksJsonPath
+} from './codex-real-home-hooks-json'
 import { readHookTrustEntries } from './config-toml-trust'
 import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
@@ -46,7 +50,8 @@ export function withdrawUntrustedRealHomeWrites(
     return 0
   }
   const hooksJsonPath = getRealHomeHooksJsonPath()
-  const { config } = readHooksJsonWithRaw(hooksJsonPath)
+  const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
+  const { raw: previousRaw, config } = readHooksJsonWithRaw(hooksJsonPath)
   if (!config?.hooks) {
     return 0
   }
@@ -90,12 +95,10 @@ export function withdrawUntrustedRealHomeWrites(
       tomlPath: getRealHomeConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,
-      writeHooks: () =>
-        writeHooksJson(
-          resolveHooksJsonWritePath(hooksJsonPath),
-          { ...config, hooks: nextHooks },
-          { preserveMode: true }
-        )
+      writeHooks: () => {
+        assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
+        writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks }, { preserveMode: true })
+      }
     })
   }
   return withdrew

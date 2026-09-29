@@ -1,20 +1,34 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type * as NodeOs from 'node:os'
+import type * as EntryTrust from './codex-real-home-entry-trust'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { wrapPosixHookCommand, type HookDefinition } from '../agent-hooks/installer-utils'
 import type { CodexManagedTrustGrantPlan } from './codex-hook-trust-grant'
 import { computeTrustedHash, upsertHookTrustEntries } from './config-toml-trust'
 
-const { homedirMock, grantMock } = vi.hoisted(() => ({
+const { homedirMock, grantMock, beforeTrustRead } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>(),
-  grantMock: vi.fn()
+  grantMock: vi.fn(),
+  // Why: the withdrawal's only step between its hooks.json read and write.
+  beforeTrustRead: { run: null as (() => void) | null }
 }))
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
   return { ...actual, homedir: homedirMock }
+})
+vi.mock('./codex-real-home-entry-trust', async (importOriginal) => {
+  const actual = await importOriginal<typeof EntryTrust>()
+  return {
+    readOrcaEntryTrust: (...args: Parameters<typeof actual.readOrcaEntryTrust>) => {
+      const run = beforeTrustRead.run
+      beforeTrustRead.run = null
+      run?.()
+      return actual.readOrcaEntryTrust(...args)
+    }
+  }
 })
 vi.mock('./codex-hook-trust-grant', () => ({
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS: 300_000,
@@ -61,6 +75,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  beforeTrustRead.run = null
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   grantMock.mockReset()
@@ -211,3 +226,21 @@ it.skipIf(process.platform === 'win32')(
     expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(original)
   }
 )
+
+it('keeps a hooks.json save that lands between the withdrawal read and its write', async () => {
+  writeHooks({ hooks: {} })
+  grantMock.mockReturnValue({ lane: 'fallback', reason: 'error' })
+  beforeTrustRead.run = () => {
+    writeFileSync(hooksJsonPath(), SAVED_MEANWHILE)
+  }
+
+  expect(
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: true,
+      userDataPath: userDataDir,
+      writePolicy: 'add-missing-only'
+    })
+  ).toBe('unavailable')
+
+  expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(SAVED_MEANWHILE)
+})
