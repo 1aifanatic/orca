@@ -19,6 +19,7 @@ import { currentAgentSessionThreadGoalBySequence } from '../../../shared/agent-s
 import type { AgentSessionContextUsage } from '../../../shared/agent-session-context-usage'
 import { latestStructuredAgentContextFacts } from '../../../shared/structured-agent-session-context-usage'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
+import { isSavableStructuredAgentSessionProjection } from '../../../shared/structured-agent-session-saved-status'
 import {
   activeStructuredAgentSessionTurnIdBySequence,
   newestStructuredAgentSessionTurnBySequence
@@ -204,7 +205,11 @@ export class AgentSessionJournal {
   /** Saves the settled listing status at the fold's position, after the rows it describes. */
   saveListingStatus(projection: StructuredAgentSessionStatusProjection): void {
     // Not yet copied: no host row to annotate, and saving must not force the copy.
-    if (!this.readOnly && !this.queue.owing) {
+    if (
+      !this.readOnly &&
+      !this.queue.owing &&
+      isSavableStructuredAgentSessionProjection(projection)
+    ) {
       this.listingStatus.save(this.cursor(), projection, this.state.lastActivityAt)
     }
   }
@@ -248,6 +253,9 @@ export class AgentSessionJournal {
 
   /** Includes revisions and completion tombstones, whose timestamps disappear from render items. */
   lastActivityAt = (): number => this.state.lastActivityAt
+
+  /** Fence of the writer that created the item, while it is in the timeline. */
+  itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
 
   submissions = (): AgentJournalSubmission[] => [...this.state.submissions.values()]
 
