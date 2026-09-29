@@ -5,10 +5,7 @@ import type { AgentJournalDispatchState } from '../../../src/shared/agent-sessio
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from '../../../src/shared/agent-session-host-authority'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
-import {
-  structuredAgentSessionDomainFingerprint,
-  structuredAgentSessionPayloadFingerprint
-} from '../../../src/shared/structured-agent-session-mutation'
+import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import { structuredAgentSessionSendBody } from '../../../src/shared/structured-agent-session-outbox'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
@@ -37,20 +34,20 @@ function operationIdAt(timestamp: number, entropy: string): string {
 
 /** A journal entry exactly as the build before per-press ids wrote it for this harness. */
 function v1Entry(text: string, operationId: string) {
-  const intentFingerprint = structuredAgentSessionDomainFingerprint({
-    domain: 'mobile.agentSession.send.intent',
+  const intentFingerprint = structuredAgentSessionPayloadFingerprint({
+    method: 'mobile.agentSession.send.intent',
     sessionId: SESSION_KEY,
     fields: { text, attachments: [] }
   })
   return {
-    operationKey: structuredAgentSessionDomainFingerprint({
-      domain: 'mobile.agentSession.send.operation',
+    operationKey: structuredAgentSessionPayloadFingerprint({
+      method: 'mobile.agentSession.send.operation',
       sessionId: SESSION_KEY,
       fields: { intentFingerprint }
     }),
     operationId,
-    callerFingerprint: structuredAgentSessionDomainFingerprint({
-      domain: 'mobile.agentSession.send.caller',
+    callerFingerprint: structuredAgentSessionPayloadFingerprint({
+      method: 'mobile.agentSession.send.caller',
       sessionId: '',
       fields: {}
     }),

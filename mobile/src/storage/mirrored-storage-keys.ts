@@ -78,9 +78,8 @@ function note(key: string, value: string | null): void {
  * refused page write left this map holding a value no store had taken and the next `init` handed
  * the page exactly that. There is nothing to undo, because nothing is written until the answer.
  *
- * Returns the store's own promise, so a caller that has something to say about a refusal — the v1
- * send journal's reconciliation is the one — still hears it, and a caller that has not is
- * unchanged.
+ * Returns the store's own promise, so a caller that has something to say about a refusal still
+ * hears it, and a caller that has not is unchanged.
  */
 export function persistMirrored(key: string, value: string | null): Promise<void> {
   const write = value === null ? AsyncStorage.removeItem(key) : AsyncStorage.setItem(key, value)
