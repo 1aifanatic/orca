@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/runtime-worktree-contracts'
 import {
   _resetPendingWorktreeRemovalsForTests,
+  snapshotPendingWorktreeRemovals,
   startBackgroundWorktreeRemoval
 } from '../../worktree-background-removal'
 import {
@@ -67,11 +68,16 @@ describe('worktree listings while a checkout is being deleted', () => {
 
   it('marks the row for a desktop or web client that negotiated the marker', () => {
     const context = { clientCapabilities: ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES }
-    expect(projectWorktreeListRemovals(listResult(), context).worktrees).toEqual([
+    expect(
+      projectWorktreeListRemovals(listResult(), context, snapshotPendingWorktreeRemovals())
+        .worktrees
+    ).toEqual([
       { id: removingId, hostId: 'local', removing: true },
       { id: keptId, hostId: 'local' }
     ])
-    expect(projectWorktreePsRemovals(psResult(), context).worktrees).toEqual([
+    expect(
+      projectWorktreePsRemovals(psResult(), context, snapshotPendingWorktreeRemovals()).worktrees
+    ).toEqual([
       { worktreeId: removingId, hostId: 'local', removing: true },
       { worktreeId: keptId, hostId: 'local' }
     ])
@@ -85,10 +91,18 @@ describe('worktree listings while a checkout is being deleted', () => {
       NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
       remoteRuntimeClientCapabilities()
     ]) {
-      const list = projectWorktreeListRemovals(listResult(), { clientCapabilities })
+      const list = projectWorktreeListRemovals(
+        listResult(),
+        { clientCapabilities },
+        snapshotPendingWorktreeRemovals()
+      )
       expect(list.worktrees.map((row) => row.id)).toEqual([keptId])
       expect(list.totalCount).toBe(1)
-      const ps = projectWorktreePsRemovals(psResult(), { clientCapabilities })
+      const ps = projectWorktreePsRemovals(
+        psResult(),
+        { clientCapabilities },
+        snapshotPendingWorktreeRemovals()
+      )
       expect(ps.worktrees.map((row) => row.worktreeId)).toEqual([keptId])
       expect(ps.totalCount).toBe(1)
     }

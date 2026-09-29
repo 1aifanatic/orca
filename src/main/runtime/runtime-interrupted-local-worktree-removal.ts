@@ -5,7 +5,10 @@ import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree/removal'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { Store } from '../persistence'
-import type { BackgroundWorktreeRemovalJob } from '../worktree-background-removal'
+import {
+  releaseStartupRemovalFence,
+  type BackgroundWorktreeRemovalJob
+} from '../worktree-background-removal'
 import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import { listWorktreesStrict } from '../git/worktree'
@@ -52,7 +55,11 @@ export function interruptedLocalWorktreeRemovalJob(
         store: host.store,
         stopSignal,
         removedPushTarget,
-        acquireWatcherRemoval: host.acquireWatcherRemoval,
+        acquireWatcherRemoval: (path) => {
+          // Why same tick: the gate takes over the loading fence's path with no gap for a spawn.
+          releaseStartupRemovalFence(record.worktreeId)
+          return host.acquireWatcherRemoval(path)
+        },
         closeWatchers: host.closeWatchers,
         preserveBranchHead: (result, fallbackHead) =>
           host.preservedBranchCleanup.preserveHead(result, fallbackHead),

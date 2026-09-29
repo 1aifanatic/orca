@@ -33,15 +33,22 @@ import {
 } from '../../../persistence/host-qualified-worktree-meta'
 import type { WorktreeMeta } from '../../../../shared/worktree/meta-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { projectPendingWorktreeRemovals } from '../../../worktree-background-removal'
+import {
+  projectPendingWorktreeRemovals,
+  snapshotPendingWorktreeRemovals,
+  type PendingWorktreeRemovals
+} from '../../../worktree-background-removal'
 import { getLocalWorktreeScanGeneration } from '../../../local-worktree-scan-generation'
 import { getRegisteredWorktreeRootsRevision } from '../../registered-worktree-roots-cache'
 
 const WORKTREE_LIST_ALL_CONCURRENCY = 8
 
 // Why always marked: the desktop renderer ships with this main process, so it reads the marker.
-function markLocalWorktreesUnderRemoval<T extends Worktree>(worktrees: T[]): T[] {
-  return projectPendingWorktreeRemovals(worktrees, (worktree) => worktree.id, true)
+function markLocalWorktreesUnderRemoval<T extends Worktree>(
+  worktrees: T[],
+  pendingAtScan: PendingWorktreeRemovals
+): T[] {
+  return projectPendingWorktreeRemovals(worktrees, (worktree) => worktree.id, true, pendingAtScan)
 }
 
 async function mapWithConcurrency<T, R>(
@@ -109,6 +116,7 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
         let sideEffectToken: DetectedWorktreeSideEffectToken | undefined
         let metadataPrune: DetectedWorktreeMetadataPrune | undefined
         let hygieneDue: boolean | undefined
+        const pendingAtScan = snapshotPendingWorktreeRemovals()
         if (isFolderRepo(repo)) {
           return listVisibleFolderWorkspaces(store, repo)
         } else if (connectionId) {
@@ -162,7 +170,7 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
         const worktrees = buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
           .filter((worktree) => worktree.visible)
           .map((worktree) => stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadata))
-        return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees)
+        return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees, pendingAtScan)
       } catch (err) {
         warnOnce(
           loggedWorktreeListFailures,
@@ -208,6 +216,7 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
       let sideEffectToken: DetectedWorktreeSideEffectToken | undefined
       let metadataPrune: DetectedWorktreeMetadataPrune | undefined
       let hygieneDue: boolean | undefined
+      const pendingAtScan = snapshotPendingWorktreeRemovals()
       if (isFolderRepo(repo)) {
         return listVisibleFolderWorkspaces(store, repo)
       } else if (connectionId) {
@@ -255,7 +264,7 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
       const worktrees = buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
         .filter((worktree) => worktree.visible)
         .map((worktree) => stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadata))
-      return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees)
+      return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees, pendingAtScan)
     } catch (err) {
       warnOnce(
         loggedWorktreeListFailures,

@@ -18,6 +18,11 @@ import { restoreMissingWorktreeGitFile } from '../git/worktree-git-file-restore'
 import { listWorktreesStrict } from '../git/worktree'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import {
+  acquireWatcherRemovalGate,
+  beginTerminalInstall,
+  beginWatcherInstall
+} from '../ipc/watcher-removal-gate'
+import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
   loadWorktreeRemovalRecords,
@@ -115,6 +120,9 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
   // A request that joins before the finish starts gets the finish's result.
   const joined = waitForPendingWorktreeRemoval(record.worktreeId)
   expect(joined).toBeDefined()
+  // Session restore runs before the resume: nothing may open a handle in the half-deleted checkout.
+  expect(() => beginTerminalInstall(worktreePath)).toThrow(/being removed/)
+  expect(() => beginWatcherInstall(worktreePath)).toThrow(/being removed/)
 
   const storeStub = {
     getRepo: (id: string) => (id === repo.id && !options.repoGone ? repo : undefined),
@@ -127,7 +135,12 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
     interruptedLocalWorktreeRemovalJob(interrupted, {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the finish reads only repos and worktree metadata from the store here; git options and push-target cleanup are stubbed or short-circuit without a push target.
       store: storeStub as unknown as Store,
-      acquireWatcherRemoval: async () => ({ finish: async () => {} }),
+      // Takes the real gate synchronously, as the runtime's does.
+      acquireWatcherRemoval: async (path) => {
+        const gate = acquireWatcherRemovalGate(path)
+        expect(() => beginTerminalInstall(worktreePath)).toThrow(/being removed/)
+        return { finish: async () => gate.release() }
+      },
       closeWatchers: async () => {},
       preservedBranchCleanup: {
         preserveHead: (result) => result ?? {},
@@ -145,6 +158,8 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
   await _settlePendingWorktreeRemovalsForTests()
   expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
   expect(waitForPendingWorktreeRemoval(record.worktreeId)).toBeUndefined()
+  // Released on every outcome, including a finish that ended before taking its own gate.
+  beginTerminalInstall(worktreePath)()
   return { outcome, purged, remember }
 }
 

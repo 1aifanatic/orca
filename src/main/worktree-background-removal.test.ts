@@ -7,6 +7,7 @@ import {
   finishAcceptedWorktreeRemoval,
   projectPendingWorktreeRemovals,
   removesInBackground,
+  snapshotPendingWorktreeRemovals,
   startBackgroundWorktreeRemoval,
   waitForPendingWorktreeRemoval
 } from './worktree-background-removal'
@@ -182,15 +183,56 @@ describe('background worktree removal', () => {
       { id: removal.worktreeId, hostId: 'ssh:box' as const }
     ]
 
-    expect(projectPendingWorktreeRemovals(rows, (row) => row.id, true)).toEqual([
+    expect(
+      projectPendingWorktreeRemovals(rows, (row) => row.id, true, snapshotPendingWorktreeRemovals())
+    ).toEqual([
       { id: removal.worktreeId, hostId: 'local', removing: true },
       { id: 'repo-1::/work/other' },
       { id: removal.worktreeId, hostId: 'ssh:box' }
     ])
-    expect(projectPendingWorktreeRemovals(rows, (row) => row.id, false)).toEqual([
-      { id: 'repo-1::/work/other' },
-      { id: removal.worktreeId, hostId: 'ssh:box' }
-    ])
+    expect(
+      projectPendingWorktreeRemovals(
+        rows,
+        (row) => row.id,
+        false,
+        snapshotPendingWorktreeRemovals()
+      )
+    ).toEqual([{ id: 'repo-1::/work/other' }, { id: removal.worktreeId, hostId: 'ssh:box' }])
+  })
+
+  it('drops a row a listing read before Git finished deleting it, and keeps one whose delete failed', async () => {
+    const other = { ...removal, worktreeId: 'repo-1::/work/other' }
+    const removed = deferred<Record<string, never>>()
+    const failed = deferred<Record<string, never>>()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    void startBackgroundWorktreeRemoval({ removal, run: () => removed.promise, publish: () => {} })
+    void startBackgroundWorktreeRemoval({
+      removal: other,
+      run: async () => {
+        await failed.promise
+        throw new Error('git failed')
+      },
+      publish: () => {}
+    })
+    // The listing reads Git while both deletes run and replies after both ended.
+    const pendingAtScan = snapshotPendingWorktreeRemovals()
+    removed.resolve({})
+    failed.resolve({})
+    await _settlePendingWorktreeRemovalsForTests()
+    const rows: { id: string; hostId?: undefined }[] = [
+      { id: removal.worktreeId },
+      { id: other.worktreeId }
+    ]
+
+    for (const clientReadsMarker of [true, false]) {
+      expect(
+        projectPendingWorktreeRemovals(rows, (row) => row.id, clientReadsMarker, pendingAtScan)
+      ).toEqual([{ id: other.worktreeId }])
+    }
+    // A listing that began after the delete finished reads Git's current answer as-is.
+    expect(
+      projectPendingWorktreeRemovals(rows, (row) => row.id, true, snapshotPendingWorktreeRemovals())
+    ).toBe(rows)
   })
 
   it('keeps WSL checkouts on the inline delete', () => {
@@ -200,6 +242,13 @@ describe('background worktree removal', () => {
 
   it('returns listings untouched when nothing is being removed', () => {
     const rows: { id: string; hostId?: undefined }[] = [{ id: removal.worktreeId }]
-    expect(projectPendingWorktreeRemovals(rows, (row) => row.id, false)).toBe(rows)
+    expect(
+      projectPendingWorktreeRemovals(
+        rows,
+        (row) => row.id,
+        false,
+        snapshotPendingWorktreeRemovals()
+      )
+    ).toBe(rows)
   })
 })

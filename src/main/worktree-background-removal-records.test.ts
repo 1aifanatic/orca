@@ -8,6 +8,7 @@ import {
   loadWorktreeRemovalRecords,
   projectPendingWorktreeRemovals,
   resumeInterruptedWorktreeRemovals,
+  snapshotPendingWorktreeRemovals,
   startBackgroundWorktreeRemoval,
   stopBackgroundWorktreeRemovals,
   waitForPendingWorktreeRemoval
@@ -192,13 +193,17 @@ describe('durable worktree removal records', () => {
       { id: removal.worktreeId },
       { id: 'repo-1::/work/other' }
     ]
-    expect(projectPendingWorktreeRemovals(rows, (row) => row.id, true)).toEqual([
-      { id: removal.worktreeId, removing: true },
-      { id: 'repo-1::/work/other' }
-    ])
-    expect(projectPendingWorktreeRemovals(rows, (row) => row.id, false)).toEqual([
-      { id: 'repo-1::/work/other' }
-    ])
+    expect(
+      projectPendingWorktreeRemovals(rows, (row) => row.id, true, snapshotPendingWorktreeRemovals())
+    ).toEqual([{ id: removal.worktreeId, removing: true }, { id: 'repo-1::/work/other' }])
+    expect(
+      projectPendingWorktreeRemovals(
+        rows,
+        (row) => row.id,
+        false,
+        snapshotPendingWorktreeRemovals()
+      )
+    ).toEqual([{ id: 'repo-1::/work/other' }])
 
     const publish = vi.fn()
     const resumed: string[] = []

@@ -5,6 +5,7 @@ import {
   projectWorktreeListRemovals,
   projectWorktreePsRemovals
 } from '../worktree-removal-marker-projection'
+import { snapshotPendingWorktreeRemovals } from '../../../worktree-background-removal'
 import {
   WorktreeDetectedListParams,
   WorktreeListParams,
@@ -16,6 +17,7 @@ export const WORKTREE_CATALOG_METHODS = [
     name: 'worktree.ps',
     params: WorktreePsParams,
     handler: async (params, context) => {
+      const pendingAtScan = snapshotPendingWorktreeRemovals()
       const result = projectWorktreePsRemovals(
         await context.runtime.getWorktreePs(
           params.limit,
@@ -24,7 +26,8 @@ export const WORKTREE_CATALOG_METHODS = [
             params.supportsWorktreeVisibilitySourceDefaults
           )
         ),
-        context
+        context,
+        pendingAtScan
       )
       // Why: callers that never send the field get the byte-exact legacy response.
       return params.afterSnapshotId === undefined
@@ -35,15 +38,18 @@ export const WORKTREE_CATALOG_METHODS = [
   defineMethod({
     name: 'worktree.list',
     params: WorktreeListParams,
-    handler: async (params, context) =>
-      projectWorktreeListRemovals(
+    handler: async (params, context) => {
+      const pendingAtScan = snapshotPendingWorktreeRemovals()
+      return projectWorktreeListRemovals(
         await context.runtime.listManagedWorktrees(
           params.repo,
           params.limit,
           supportsWorktreeVisibilitySourceDefaults(context)
         ),
-        context
+        context,
+        pendingAtScan
       )
+    }
   }),
   defineMethod({
     name: 'worktree.listRetiredNames',
@@ -53,14 +59,17 @@ export const WORKTREE_CATALOG_METHODS = [
   defineMethod({
     name: 'worktree.detectedList',
     params: WorktreeDetectedListParams,
-    handler: async (params, context) =>
-      projectWorktreeListRemovals(
+    handler: async (params, context) => {
+      const pendingAtScan = snapshotPendingWorktreeRemovals()
+      return projectWorktreeListRemovals(
         await context.runtime.listDetectedManagedWorktrees(
           params.repo,
           undefined,
           supportsWorktreeVisibilitySourceDefaults(context)
         ),
-        context
+        context,
+        pendingAtScan
       )
+    }
   })
 ]

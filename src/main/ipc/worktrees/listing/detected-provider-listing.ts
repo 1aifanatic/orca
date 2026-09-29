@@ -1,4 +1,7 @@
-import { projectPendingWorktreeRemovals } from '../../../worktree-background-removal'
+import {
+  projectPendingWorktreeRemovals,
+  snapshotPendingWorktreeRemovals
+} from '../../../worktree-background-removal'
 import {
   getRepoExecutionHostId,
   getSshTargetIdForExecutionHost
@@ -129,6 +132,7 @@ export async function listDetectedWorktreesForCapturedRepo(
         catalogVersion: getLocalWorktreeCatalogVersion(repo.id)
       }
     }
+    const pendingAtScan = snapshotPendingWorktreeRemovals()
     const scan = await scanUntilNotOvertaken(
       repo.id,
       connectionId && provider
@@ -191,7 +195,8 @@ export async function listDetectedWorktreesForCapturedRepo(
           projectPendingWorktreeRemovals(
             buildDetectedGitWorktrees(store, repo, gitWorktrees, allMeta),
             (worktree) => worktree.id,
-            true
+            true,
+            pendingAtScan
           )
     }
   } catch (err) {

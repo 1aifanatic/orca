@@ -4,7 +4,10 @@ import type {
   RuntimeWorktreeListResult,
   RuntimeWorktreePsResult
 } from '../../../shared/runtime-worktree-contracts'
-import { projectPendingWorktreeRemovals } from '../../worktree-background-removal'
+import {
+  projectPendingWorktreeRemovals,
+  type PendingWorktreeRemovals
+} from '../../worktree-background-removal'
 import type { RpcContext } from './core'
 
 // Why no in-process default: callers without negotiation (the CLI, host-side readers) print or act
@@ -19,11 +22,16 @@ export function readsWorktreeRemovalMarker(
 
 export function projectWorktreeListRemovals<
   T extends RuntimeWorktreeListResult | DetectedWorktreeListResult
->(result: T, context: Pick<RpcContext, 'clientCapabilities'>): T {
+>(
+  result: T,
+  context: Pick<RpcContext, 'clientCapabilities'>,
+  pendingAtScan: PendingWorktreeRemovals
+): T {
   const worktrees = projectPendingWorktreeRemovals<T['worktrees'][number]>(
     result.worktrees,
     (worktree) => worktree.id,
-    readsWorktreeRemovalMarker(context)
+    readsWorktreeRemovalMarker(context),
+    pendingAtScan
   )
   if (worktrees === result.worktrees) {
     return result
@@ -36,12 +44,14 @@ export function projectWorktreeListRemovals<
 
 export function projectWorktreePsRemovals(
   result: RuntimeWorktreePsResult,
-  context: Pick<RpcContext, 'clientCapabilities'>
+  context: Pick<RpcContext, 'clientCapabilities'>,
+  pendingAtScan: PendingWorktreeRemovals
 ): RuntimeWorktreePsResult {
   const worktrees = projectPendingWorktreeRemovals(
     result.worktrees,
     (summary) => summary.worktreeId,
-    readsWorktreeRemovalMarker(context)
+    readsWorktreeRemovalMarker(context),
+    pendingAtScan
   )
   return worktrees === result.worktrees
     ? result
