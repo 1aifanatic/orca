@@ -127,6 +127,12 @@ describe('nativeChatTurnFold', () => {
       expect(folded.has(3)).toBe(true)
     })
 
+    it('folds an earlier failure the turn failed past, keeping the one it ended in', () => {
+      expect([...fold([row({ role: 'user' }), failure(), failure()])]).toEqual([1])
+      const afterAnswer = fold([row({ role: 'user' }), row(), failure(), failure()])
+      expect([...afterAnswer]).toEqual([2])
+    })
+
     it('stays in view when it is tied to no turn', () => {
       expect(fold([failure({ turnKey: undefined }), row({ role: 'user' }), row()]).size).toBe(0)
     })
