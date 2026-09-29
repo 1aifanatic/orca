@@ -273,13 +273,12 @@ describe('listing after a local removal that partly fails', () => {
     'does not answer from a listing cached before git dropped the worktree ($platform)',
     async ({ platform, folderRetry }) => {
       mockKnownFeatureWorktree()
-      const listedPaths = async (): Promise<string[]> => {
-        const result = (await handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })) as {
-          worktrees: { path: string }[]
-        }
-        return result.worktrees.map((worktree) => worktree.path)
-      }
-      expect(await listedPaths()).toContain('/workspace/feature-wt')
+      const listDetected = () => handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })
+      expect(await listDetected()).toMatchObject({
+        worktrees: expect.arrayContaining([
+          expect.objectContaining({ path: '/workspace/feature-wt' })
+        ])
+      })
       const removePath = vi
         .spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
         .mockRejectedValue(new Error(folderRetry))
@@ -313,7 +312,10 @@ describe('listing after a local removal that partly fails', () => {
         removePath.mockRestore()
       }
 
-      expect(await listedPaths()).not.toContain('/workspace/feature-wt')
+      // Only the main worktree is left.
+      expect(await listDetected()).toMatchObject({
+        worktrees: [expect.objectContaining({ path: '/workspace/repo' })]
+      })
     }
   )
 })
