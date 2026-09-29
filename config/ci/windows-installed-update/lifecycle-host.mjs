@@ -68,14 +68,15 @@ export async function runInstaller(installer, extra, receipt, expectedIdentity) 
     throw new Error(`Installer exited ${result.code}${result.timedOut ? ' (timeout)' : ''}`)
   }
   const deadline = Date.now() + 180_000
+  let last = null
   while (Date.now() < deadline) {
     const entries = await uninstallEntries()
     const entry = entries.length === 1 ? entries[0] : null
-    if (
-      entry?.version === receipt.version &&
-      entry.location &&
-      existsSync(join(entry.location, 'Orca.exe'))
-    ) {
+    last = { entries, executable: null, identityMismatch: null }
+    if (entry?.version === receipt.version && entry.location) {
+      last.executable = existsSync(join(entry.location, 'Orca.exe'))
+    }
+    if (last.executable) {
       const installed = await hashIdentity(entry.location)
       if (JSON.stringify(installed) === JSON.stringify(expectedIdentity)) {
         return {
@@ -86,10 +87,16 @@ export async function runInstaller(installer, extra, receipt, expectedIdentity) 
           identityMatched: true
         }
       }
+      last.identityMismatch = Object.keys(expectedIdentity).filter(
+        (field) => installed[field] !== expectedIdentity[field]
+      )
     }
     await delay(1_000)
   }
-  throw new Error(`Installed product never matched ${receipt.label} ${receipt.version}`)
+  // Keep the last observation so a mismatch names its cause instead of only timing out.
+  throw new Error(
+    `Installed product never matched ${receipt.label} ${receipt.version}: ${JSON.stringify(last)}`
+  )
 }
 
 export async function runUninstaller() {
