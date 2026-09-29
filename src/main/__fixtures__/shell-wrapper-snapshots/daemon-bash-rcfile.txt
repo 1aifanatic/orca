@@ -109,16 +109,23 @@ if [[ -n "${__orca_codex_binary:-}" && -x "${__orca_codex_binary}" ]]; then
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
     # Why local: zsh's warn_create_global warns for each global a function creates.
-    local __orca_codex_arg __orca_codex_isolate="${ORCA_CODEX_ISOLATE:-1}"
+    local __orca_codex_arg __orca_codex_shared_arg=
     if [[ -n "${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
       "${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
     for __orca_codex_arg in "$@"; do
-      case "$__orca_codex_arg" in agents|queue|--no-daemon|--remote|--remote=*) __orca_codex_isolate=0 ;; esac
+      case "$__orca_codex_arg" in agents|queue|--no-daemon|--remote|--remote=*) __orca_codex_shared_arg=1 ;; esac
     done
     # Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
-    if [[ "$__orca_codex_isolate" != 0 ]]; then
-      case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) set -- --no-daemon "$@" ;; esac
+    if [[ -z "$__orca_codex_shared_arg" ]]; then
+      case "$(command codex --help 2>/dev/null </dev/null)" in
+        *--no-daemon*)
+          if [[ "${ORCA_CODEX_ISOLATE:-}" == 0 ]]; then
+            set -- -c features.daemon_auto_start=true "$@"
+          else
+            set -- --no-daemon "$@"
+          fi ;;
+      esac
     fi
     command codex "$@"
   }

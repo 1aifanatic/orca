@@ -11,8 +11,12 @@ if test "$__orca_codex_type" = file
     if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
-    if test "$ORCA_CODEX_ISOLATE" != 0; and not string match -qr -- '^(agents|queue|--no-daemon|--remote|--remote=.*)$' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
-      set argv --no-daemon $argv
+    if not string match -qr -- '^(agents|queue|--no-daemon|--remote|--remote=.*)$' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
+      if test "$ORCA_CODEX_ISOLATE" = 0
+        set argv -c features.daemon_auto_start=true $argv
+      else
+        set argv --no-daemon $argv
+      end
     end
     command codex $argv
   end

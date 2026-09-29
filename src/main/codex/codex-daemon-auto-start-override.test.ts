@@ -135,8 +135,7 @@ describe('syncSystemConfigIntoManagedCodexHome daemon guard', () => {
   let systemHomePath: string
 
   beforeEach(() => {
-    // Why: /tmp keeps the short home under every sun_path limit on POSIX hosts.
-    root = mkdtempSync(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'cx-'))
+    root = mkdtempSync(join(tmpdir(), 'cx-'))
     systemHomePath = join(root, 's')
     mkdirSync(systemHomePath)
   })

@@ -67,6 +67,7 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
 
 // Why --no-daemon: Codex 0.156+ otherwise shares one server per CODEX_HOME that runs every tab's
 // hooks with the first tab's Orca env and dies with it (#22873). These args need that server or exit 2.
+// ORCA_CODEX_ISOLATE=0 re-enables that server via -c features.daemon_auto_start=true, over Orca's home config.
 export const CODEX_SHARED_SERVER_ARGS = ['agents', 'queue', '--no-daemon', '--remote'] as const
 const CODEX_SHARED_SERVER_ARG_PATTERN = `^(${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=.*)$`
 
@@ -82,16 +83,23 @@ if [[ -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
     # Why local: zsh's warn_create_global warns for each global a function creates.
-    local __orca_codex_arg __orca_codex_isolate="\${ORCA_CODEX_ISOLATE:-1}"
+    local __orca_codex_arg __orca_codex_shared_arg=
     if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
       "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
     for __orca_codex_arg in "$@"; do
-      case "$__orca_codex_arg" in ${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=*) __orca_codex_isolate=0 ;; esac
+      case "$__orca_codex_arg" in ${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=*) __orca_codex_shared_arg=1 ;; esac
     done
     # Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
-    if [[ "$__orca_codex_isolate" != 0 ]]; then
-      case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) set -- --no-daemon "$@" ;; esac
+    if [[ -z "$__orca_codex_shared_arg" ]]; then
+      case "$(command codex --help 2>/dev/null </dev/null)" in
+        *--no-daemon*)
+          if [[ "\${ORCA_CODEX_ISOLATE:-}" == 0 ]]; then
+            set -- -c features.daemon_auto_start=true "$@"
+          else
+            set -- --no-daemon "$@"
+          fi ;;
+      esac
     fi
     command codex "$@"
   }
@@ -110,8 +118,12 @@ if test "$__orca_codex_type" = file
     if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
-    if test "$ORCA_CODEX_ISOLATE" != 0; and not string match -qr -- '${CODEX_SHARED_SERVER_ARG_PATTERN}' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
-      set argv --no-daemon $argv
+    if not string match -qr -- '${CODEX_SHARED_SERVER_ARG_PATTERN}' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
+      if test "$ORCA_CODEX_ISOLATE" = 0
+        set argv -c features.daemon_auto_start=true $argv
+      else
+        set argv --no-daemon $argv
+      end
     end
     command codex $argv
   end
@@ -138,10 +150,10 @@ if ($orcaCodexCommand -and
             } catch {
             }
         }
-        if ($env:ORCA_CODEX_ISOLATE -ne '0' -and -not (@($args) -cmatch '${CODEX_SHARED_SERVER_ARG_PATTERN}')) {
+        if (-not (@($args) -cmatch '${CODEX_SHARED_SERVER_ARG_PATTERN}')) {
             try {
                 if ((& $orcaCodexExecutable.Source --help 2>$null) -match '--no-daemon') {
-                    $orcaCodexFlags = @('--no-daemon')
+                    $orcaCodexFlags = @(if ($env:ORCA_CODEX_ISOLATE -eq '0') { '-c', 'features.daemon_auto_start=true' } else { '--no-daemon' })
                 }
             } catch {
             }

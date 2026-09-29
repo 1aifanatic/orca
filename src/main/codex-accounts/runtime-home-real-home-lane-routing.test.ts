@@ -31,7 +31,7 @@ function expectBaselineKeptWithLaunchDatePending(markerPath: string): void {
   ).toBe(true)
 }
 
-// Why: temp homes exceed sun_path on macOS but not on Linux; keep asserted config bytes host-independent.
+// Why: every Orca-owned home gets the daemon override; keep it out of the asserted config bytes.
 vi.mock('../codex/codex-daemon-auto-start-override', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   applyCodexDaemonAutoStartOverride: (config: string) => config
