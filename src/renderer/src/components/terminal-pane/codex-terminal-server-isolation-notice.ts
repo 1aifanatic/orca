@@ -55,14 +55,14 @@ function showCodexTerminalServerIsolationNotice(): void {
   toast.info(
     translate(
       'terminal.codexTerminalServerIsolationNotice.title',
-      'Each Codex terminal now runs on its own server'
+      'Orca now runs Codex without its shared server'
     ),
     {
       // Why a stable id: StrictMode can run the effect twice before the seen flag lands.
       id: 'codex-terminal-server-isolation-notice',
       description: translate(
         'terminal.codexTerminalServerIsolationNotice.description',
-        "This keeps Orca's status and closing tabs working. Codex terminals in Orca won't appear in Codex's agents overview."
+        'This makes status more reliable. You can turn it back on in Settings.'
       ),
       duration: Infinity,
       action: {
