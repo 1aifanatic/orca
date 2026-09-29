@@ -10,12 +10,12 @@ import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  type AgentSessionSendResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
-import {
-  isUnsettledQueuedMessage,
-  queuedMessageNeedsFreshSubmissionId
-} from '../agent-session-journal/queued-message-table'
+import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
+import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
+import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -203,13 +203,7 @@ export async function maybeQueueStructuredAgentSessionSend(
     delivery?: 'queue-if-active'
   }
 ): Promise<
-  | {
-      ok: true
-      value: {
-        clientMessageId: string
-        queued: { messageId: string; position: number; state: QueuedMessageRow['state'] }
-      }
-    }
+  | { ok: true; value: AgentSessionSendResult }
   | { ok: false; refusal: AgentSessionWireRefusal }
   | null
 > {
@@ -217,7 +211,13 @@ export async function maybeQueueStructuredAgentSessionSend(
   if (params.delivery !== 'queue-if-active' || !queuedMessageBodyIsTextOnly(params.body)) {
     return null
   }
-  // A recorded submission under this id replays through today's path.
+  // Asked again with no ledger answer: a send this host queued answers as its replay would —
+  // its hand-off goes out under a fresh id, so no submission under this id guards it.
+  const queuedBefore = queuedSendAnswer(ctx.journal, clientMessageId)
+  if (queuedBefore) {
+    return { ok: true, value: queuedBefore }
+  }
+  // A recorded direct submission under this id replays through today's path.
   if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
     return null
   }
@@ -339,8 +339,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
-    // A draft a withdrawal sent back to waiting has spent its own id.
-    const submissionId = queuedMessageNeedsFreshSubmissionId(next) ? randomUUID() : next.messageId
+    // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
+    const submissionId = createStructuredAgentSessionOperationId(randomUUID)
     try {
       await journal.appendSubmission(
         {

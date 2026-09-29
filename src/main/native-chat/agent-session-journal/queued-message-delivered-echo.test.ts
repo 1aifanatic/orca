@@ -59,7 +59,7 @@ async function withdrawnDraft(text: string): Promise<AgentSessionJournal> {
   })
   await journal.appendSubmission(
     {
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       payloadFingerprint: fingerprint,
       body,
       fence: 0,
@@ -70,7 +70,7 @@ async function withdrawnDraft(text: string): Promise<AgentSessionJournal> {
   await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
   expect(journal.queuedMessages.get('draft-1')).toMatchObject({
     state: 'waiting',
-    consumedAs: 'draft-1'
+    consumedAs: null
   })
   return journal
 }
@@ -94,7 +94,7 @@ describe("a waiting draft whose 'never delivered' claim an echo disproves", () =
       settledByOp: null
     })
     // The rejection stays terminal: the echo is kept apart, not folded into it.
-    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.snapshot().items.map((item) => item.itemId)).toHaveLength(2)
   })
 

@@ -30,7 +30,8 @@ export function queuedMessageSettlementOwed(
   return rows.some(
     (row) =>
       row.state === 'dispatched' &&
-      consumedSubmissionWasRejected(submissions.get(row.consumedAs ?? row.messageId))
+      row.consumedAs !== null &&
+      consumedSubmissionWasRejected(submissions.get(row.consumedAs))
   )
 }
 
@@ -41,9 +42,13 @@ export function settleOwedQueuedMessages(
 ): number {
   let settled = 0
   for (const row of listQueuedMessages(db, input.sessionId)) {
-    const consumedRef = row.consumedAs ?? row.messageId
-    const submission = input.submissions.get(consumedRef)
-    if (row.state !== 'dispatched' || !consumedSubmissionWasRejected(submission)) {
+    const consumedRef = row.consumedAs
+    const submission = consumedRef === null ? undefined : input.submissions.get(consumedRef)
+    if (
+      row.state !== 'dispatched' ||
+      consumedRef === null ||
+      !consumedSubmissionWasRejected(submission)
+    ) {
       continue
     }
     const changed = settleRejectedQueuedMessage(db, {

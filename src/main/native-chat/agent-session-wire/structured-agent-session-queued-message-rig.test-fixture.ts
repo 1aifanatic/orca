@@ -156,6 +156,15 @@ export async function createQueuedMessageTestRig() {
     )
   }
 
+  /** The submission id a draft went out under: never the draft's own id. */
+  async function handoffId(draftId: string): Promise<string> {
+    const sent = await handoff(draftId)
+    if (!sent) {
+      throw new Error(`draft ${draftId} has not been handed off`)
+    }
+    return sent.clientMessageId
+  }
+
   async function drafts(
     sessionId = SESSION
   ): Promise<{ messageId: string; state: string; paused?: true }[]> {
@@ -233,6 +242,7 @@ export async function createQueuedMessageTestRig() {
     deleteQueued,
     submission,
     handoff,
+    handoffId,
     drafts,
     workingSend,
     settleAccepted,

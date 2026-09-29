@@ -14,31 +14,34 @@ import type { JournalRow } from './journal-row-schema'
 import type { QueuedMessageRow } from './queued-message-table'
 
 /** The waiting draft this appended row proves was delivered, or null. Called
- *  before the row applies, for every row, so the common case costs one scan of
- *  the cached draft list. */
+ *  before the row applies, for every row, so a row that is no new provider
+ *  echo of a user message returns before anything else is read. */
 export function draftDeliveredByEcho(
   state: JournalReducerState,
   drafts: readonly QueuedMessageRow[],
   row: JournalRow
 ): string | null {
-  const spent = drafts.filter(
-    (draft) =>
-      draft.state === 'waiting' &&
-      draft.consumedAs !== null &&
-      state.submissions.get(draft.consumedAs)?.dispatchState === 'rejected'
+  const echoes = appendedItems(row).filter(
+    (item) =>
+      isProviderUserMessageEcho(item.itemId, item.body) &&
+      !state.items.has(item.itemId) &&
+      !state.aliases.has(item.itemId) &&
+      journalEchoClaimant(state, item.itemId, item.body) === null
   )
-  if (spent.length === 0) {
+  if (echoes.length === 0) {
     return null
   }
-  for (const item of appendedItems(row)) {
-    if (
-      !isProviderUserMessageEcho(item.itemId, item.body) ||
-      state.items.has(item.itemId) ||
-      state.aliases.has(item.itemId) ||
-      journalEchoClaimant(state, item.itemId, item.body) !== null
-    ) {
-      continue
+  // Waiting drafts some earlier hand-off of which was rejected as never delivered.
+  const rejectedHandOffs = new Set<string>()
+  for (const submission of state.submissions.values()) {
+    if (submission.queuedMessageId !== undefined && submission.dispatchState === 'rejected') {
+      rejectedHandOffs.add(submission.queuedMessageId)
     }
+  }
+  const spent = drafts.filter(
+    (draft) => draft.state === 'waiting' && rejectedHandOffs.has(draft.messageId)
+  )
+  for (const item of echoes) {
     const fingerprint = structuredAgentSessionPayloadFingerprint({
       method: 'agentSession.send',
       sessionId: state.sessionId,

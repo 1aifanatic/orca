@@ -49,8 +49,11 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
     () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
   )
   await rig.settleAccepted(working, 'working')
-  await eventually(async () => expect(await rig.submission(a)).toBeDefined())
-  expect((await rig.submission(a))?.handedOverAt).toBeUndefined()
+  await eventually(async () => expect(await rig.handoff(a)).toBeDefined())
+  // Never under the draft's own id: the submission names A by its link.
+  const firstA = await rig.handoffId(a)
+  expect(firstA).not.toBe(a)
+  expect((await rig.submission(firstA))?.handedOverAt).toBeUndefined()
 
   expect(await rig.stop()).toMatchObject({ ok: true })
   release()
@@ -70,21 +73,21 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
   expect(await rig.drafts()).toEqual(paused)
   await rig.settleAccepted(d.id, 'd')
 
-  // After D's turn, A drains first, under a fresh id: its own names the withdrawn submission.
-  const before = new Set([working, a, d.id])
+  // After D's turn, A drains first, under another fresh id: the first names the withdrawn submission.
+  const before = new Set([working, firstA, d.id])
   let resentA = ''
   await eventually(async () => {
     const fresh = (await submissionIds()).filter((id) => !before.has(id))
     expect(fresh).toHaveLength(1)
     resentA = fresh[0] ?? ''
   })
-  expect((await rig.submission(a))?.dispatchState).toBe('rejected')
+  expect((await rig.submission(firstA))?.dispatchState).toBe('rejected')
   // Both hand-offs of A name it; D, a direct send, names no draft.
   expect((await rig.submission(resentA))?.queuedMessageId).toBe(a)
-  expect((await rig.submission(a))?.queuedMessageId).toBe(a)
+  expect((await rig.submission(firstA))?.queuedMessageId).toBe(a)
   expect(await rig.submission(d.id)).not.toHaveProperty('queuedMessageId')
   expect((await rig.submission(resentA))?.payloadFingerprint).toBe(
-    (await rig.submission(a))?.payloadFingerprint
+    (await rig.submission(firstA))?.payloadFingerprint
   )
   expect(await rig.drafts()).toEqual([
     { messageId: b, state: 'waiting' },
@@ -95,9 +98,9 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
   await rig.settleAccepted(resentA, 'a')
   await eventually(async () => expect((await rig.handoff(b))?.queuedMessageId).toBe(b))
   expect(await rig.handoff(c)).toBeUndefined()
-  await handedOver(b)
-  await rig.settleAccepted(b, 'b')
-  await eventually(async () => expect(await rig.submission(c)).toBeDefined())
+  await handedOver(await rig.handoffId(b))
+  await rig.settleAccepted(await rig.handoffId(b), 'b')
+  await eventually(async () => expect(await rig.handoff(c)).toBeDefined())
   expect(await rig.drafts()).toEqual([])
 })
 
@@ -109,7 +112,8 @@ it('a Stop that fails after withdrawing a consumed draft releases it, and it sen
     () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
   )
   await rig.settleAccepted(working, 'working')
-  await eventually(async () => expect(await rig.submission(a)).toBeDefined())
+  await eventually(async () => expect(await rig.handoff(a)).toBeDefined())
+  const firstA = await rig.handoffId(a)
   const withdraw = AgentSessionJournal.prototype.rejectQueuedSubmissions
   const failing = vi
     .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
@@ -127,8 +131,8 @@ it('a Stop that fails after withdrawing a consumed draft releases it, and it sen
     failing.mockRestore()
     release()
   }
-  expect((await rig.submission(a))?.dispatchState).toBe('rejected')
-  const before = new Set([working, a])
+  expect((await rig.submission(firstA))?.dispatchState).toBe('rejected')
+  const before = new Set([working, firstA])
   await eventually(async () => {
     expect((await submissionIds()).filter((id) => !before.has(id))).toHaveLength(1)
     expect(await rig.drafts()).toEqual([])

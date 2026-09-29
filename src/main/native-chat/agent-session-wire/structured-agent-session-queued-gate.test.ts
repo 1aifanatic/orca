@@ -80,9 +80,9 @@ describe('the one queue gate', () => {
     const draftId = queued.value.queued.messageId
     // Nothing drains while the command is in doubt.
     await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(await submission(draftId)).toBeUndefined()
+    expect(await rig.handoff(draftId)).toBeUndefined()
     await late({ outcome: 'compacted' })
-    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
     expect(await drafts()).toHaveLength(0)
   })
 
@@ -98,7 +98,7 @@ describe('the one queue gate', () => {
       refusal: { message: expect.stringContaining('conversation operation') }
     })
     await late({ outcome: 'compacted' })
-    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 
   it('Send-now refuses on a pending prompt and overrides a running turn', async () => {
@@ -175,8 +175,8 @@ describe('replay preference', () => {
       value: { queued: { state: 'waiting' } }
     })
     await settleAccepted(working, 'a')
-    await eventually(async () => expect(await submission(clientOperationId)).toBeDefined())
-    await settleRejected(clientOperationId, 'provider refused this payload')
+    await eventually(async () => expect(await rig.handoff(clientOperationId)).toBeDefined())
+    await settleRejected(await rig.handoffId(clientOperationId), 'provider refused this payload')
     await eventually(async () =>
       expect(await drafts()).toMatchObject([{ messageId: clientOperationId, state: 'returned' }])
     )
@@ -213,13 +213,52 @@ describe('the hand-off link on answers', () => {
     await eventually(async () =>
       expect((await rig.handoff(clientOperationId))?.queuedMessageId).toBe(clientOperationId)
     )
-    expect(await host.send(CALLER, params)).toMatchObject({
+    const replayed = await host.send(CALLER, params)
+    expect(replayed).toMatchObject({
       ok: true,
       replayed: true,
       value: { submission: { queuedMessageId: clientOperationId } }
     })
+    // Handed off under a fresh id, never the draft's (the send operation's) own.
+    expect(
+      replayed.ok && 'submission' in replayed.value && replayed.value.submission.clientMessageId
+    ).not.toBe(clientOperationId)
     // The first send, direct, names no draft.
     expect(await submission(working)).not.toHaveProperty('queuedMessageId')
+  })
+
+  it('a queued send asked again after its ledger row is gone answers with its hand-off, never sending twice', async () => {
+    const working = await workingSend()
+    const body = hostTestMessage('asked again')
+    const clientOperationId = hostTestOperationId()
+    const params = {
+      envelope: envelope(
+        { body, delivery: 'queue-if-active' },
+        'agentSession.send',
+        clientOperationId
+      ),
+      body,
+      delivery: 'queue-if-active' as const,
+      userSend: true as const
+    }
+    await host.send(CALLER, params)
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(clientOperationId)).toBeDefined())
+    const handedOffAs = await rig.handoffId(clientOperationId)
+    // The ledger forgot the id, so the send runs again rather than replaying.
+    const operations = store['transactions'].state.operations
+    for (const [key, row] of operations) {
+      if (row.operationId === clientOperationId) {
+        operations.delete(key)
+      }
+    }
+    const count = (await host.journalSnapshot(SESSION)).submissions.length
+    expect(await host.send(CALLER, params)).toMatchObject({
+      ok: true,
+      replayed: false,
+      value: { submission: { clientMessageId: handedOffAs, queuedMessageId: clientOperationId } }
+    })
+    expect((await host.journalSnapshot(SESSION)).submissions).toHaveLength(count)
   })
 })
 
@@ -232,8 +271,8 @@ describe('Send-now rerun', () => {
     }
     const draftId = queued.value.queued.messageId
     await settleAccepted(working, 'a')
-    await eventually(async () => expect(await submission(draftId)).toBeDefined())
-    await settleRejected(draftId, 'first refusal')
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+    await settleRejected(await rig.handoffId(draftId), 'first refusal')
     await eventually(async () =>
       expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
     )

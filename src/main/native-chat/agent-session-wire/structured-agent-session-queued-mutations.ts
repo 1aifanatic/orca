@@ -15,10 +15,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import {
-  queuedMessageNeedsFreshSubmissionId,
-  type QueuedMessageRow
-} from '../agent-session-journal/queued-message-table'
+import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
@@ -156,10 +153,9 @@ function mutateQueued<TValue>(
 /**
  * Send-now. It overrides ONLY queue policy — FIFO order, pause, the busy-turn
  * wait — through the same send block and pending-prompt gates as any send;
- * supersession, Stop and prepared commands are never overridden. A draft whose
- * own id is spent — a returned card, or one a withdrawal sent back to waiting —
- * re-consumes under a fresh submission id (this operation's id), recorded as
- * `consumed_as`, so one id still means one delivery.
+ * supersession, Stop and prepared commands are never overridden. The card goes
+ * out under this operation's id, never its own, and the submission names it by
+ * `queuedMessageId`; one id still means one delivery.
  */
 export function sendQueuedStructuredAgentMessage(
   context: StructuredAgentSessionMutationContext,
@@ -176,7 +172,7 @@ export function sendQueuedStructuredAgentMessage(
       // A rerun of this operation after it consumed the card (its answer never
       // settled): answer with the submission it made, never append it again.
       const consumedHere = submissionFor(ctx, operationId)
-      if (consumedHere && ctx.journal.queuedMessages.get(messageId)?.consumedAs === operationId) {
+      if (consumedHere?.queuedMessageId === messageId) {
         return { ok: true, value: { clientMessageId: operationId, submission: consumedHere } }
       }
       // The one queue gate; Send-now's override set is exactly `working` (plus
@@ -201,12 +197,12 @@ export function sendQueuedStructuredAgentMessage(
       }
       if (row.state === 'dispatched') {
         // Already a submission — answer with it rather than sending twice.
-        const submission = submissionFor(ctx, row.consumedAs ?? row.messageId)
+        const submission = row.consumedAs === null ? undefined : submissionFor(ctx, row.consumedAs)
         return submission
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
       }
-      const submissionId = queuedMessageNeedsFreshSubmissionId(row) ? operationId : row.messageId
+      const submissionId = operationId
       try {
         await ctx.journal.appendSubmission(
           {
@@ -244,7 +240,7 @@ export function sendQueuedStructuredAgentMessage(
       if (!row || row.state !== 'dispatched') {
         return null
       }
-      const submission = submissionFor(ctx, row.consumedAs ?? row.messageId)
+      const submission = row.consumedAs === null ? undefined : submissionFor(ctx, row.consumedAs)
       return submission ? { clientMessageId: submission.clientMessageId, submission } : null
     }
   }

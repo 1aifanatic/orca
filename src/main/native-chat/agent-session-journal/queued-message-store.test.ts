@@ -87,7 +87,7 @@ async function consumeDraft(
   const draft = journal.queuedMessages.get(messageId)
   await journal.appendSubmission(
     {
-      clientMessageId: options.as ?? messageId,
+      clientMessageId: options.as ?? `sub-${messageId}`,
       payloadFingerprint: draft?.fingerprint ?? `fp-${messageId}`,
       body: draft?.body ?? message('queued text'),
       fence: 0,
@@ -182,8 +182,18 @@ describe('consume', () => {
     await consumeDraft(journal, 'draft-1')
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('dispatched')
-    expect(row?.consumedAs).toBeNull()
-    expect(journal.submissions().map((entry) => entry.clientMessageId)).toEqual(['draft-1'])
+    expect(row?.consumedAs).toBe('sub-draft-1')
+    expect(journal.submissions().map((entry) => entry.clientMessageId)).toEqual(['sub-draft-1'])
+  })
+
+  it('never hands a draft off under its own id: the submission names it by link, not id equality', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await expect(consumeDraft(journal, 'draft-1', { as: 'draft-1' })).rejects.toBeInstanceOf(
+      QueuedMessageNotConsumableError
+    )
+    expect(journal.submissions()).toHaveLength(0)
+    expect(journal.queuedMessages.get('draft-1')?.state).toBe('waiting')
   })
 
   it('never records a second submission under an id it already holds, whatever state it settled in', async () => {
@@ -191,7 +201,7 @@ describe('consume', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('refused'),
       fence: 0
@@ -199,7 +209,7 @@ describe('consume', () => {
     const cursor = journal.cursor()
     await expect(
       journal.appendSubmission({
-        clientMessageId: 'draft-1',
+        clientMessageId: 'sub-draft-1',
         payloadFingerprint: 'fp-draft-1',
         body: message('queued text'),
         fence: 0,
@@ -207,7 +217,7 @@ describe('consume', () => {
       })
     ).rejects.toMatchObject({ code: 'journal_submission_exists' })
     // The refusal stands: re-appending would reset it to pending and hand it over again.
-    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.cursor()).toEqual(cursor)
   })
 
@@ -218,7 +228,7 @@ describe('consume', () => {
     await expect(consumeDraft(journal, 'draft-1', { as: 'second-id' })).rejects.toBeInstanceOf(
       QueuedMessageNotConsumableError
     )
-    expect(journal.submissions().map((entry) => entry.clientMessageId)).toEqual(['draft-1'])
+    expect(journal.submissions().map((entry) => entry.clientMessageId)).toEqual(['sub-draft-1'])
   })
 
   it('a consume racing a withdraw loses and appends nothing', async () => {
@@ -257,7 +267,7 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('Claude refused this payload'),
       rejection: PROVIDER_REFUSAL,
@@ -274,13 +284,13 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'accepted',
       providerIdentity: { provider: 'claude', sessionId: 'native-1', uuid: 'echo-1' },
       fence: 0
     })
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('late duplicate'),
       fence: 0
@@ -293,13 +303,13 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     // The Stop's own withdrawal path: the queued (not handed over) submission.
-    expect(await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)).toEqual(['draft-1'])
+    expect(await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)).toEqual(['sub-draft-1'])
     // Nothing failed: no refusal to show, its position kept, its spent id recorded.
     const requeued = {
       state: 'waiting',
       position: 1,
       holdReason: 'stopped',
-      consumedAs: 'draft-1',
+      consumedAs: null,
       returnedReason: null,
       returnedRejection: null
     }
@@ -311,28 +321,27 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.queuedMessages.get('draft-1')).toMatchObject(requeued)
   })
 
-  it('a draft sent back to waiting consumes again only under a fresh submission id', async () => {
+  it('a draft sent back to waiting hands off again under a fresh id, never a spent one', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
-    // Its own id already names a rejected submission: one id, one delivery.
+    // The spent id already names a rejected submission: one id, one delivery.
     await expect(consumeDraft(journal, 'draft-1')).rejects.toMatchObject({
       code: 'journal_submission_exists'
     })
-    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
-    // Even once an epoch replacement forgets that submission, the draft remembers its id is spent.
-    await journal.replaceEpochItems('handle_forked', 0, [])
-    expect(journal.submission('draft-1')).toBeUndefined()
-    await expect(consumeDraft(journal, 'draft-1')).rejects.toBeInstanceOf(
-      QueuedMessageNotConsumableError
-    )
+    expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     await consumeDraft(journal, 'draft-1', { as: 'fresh-1' })
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'dispatched',
       consumedAs: 'fresh-1'
     })
-    expect(journal.submission('fresh-1')?.dispatchState).toBe('pending')
+    // Both hand-offs name the draft.
+    expect(journal.submission('fresh-1')).toMatchObject({
+      dispatchState: 'pending',
+      queuedMessageId: 'draft-1'
+    })
+    expect(journal.submission('sub-draft-1')?.queuedMessageId).toBe('draft-1')
   })
 
   it('a restart between consume and handover sends the draft back to waiting under the restart hold', async () => {
@@ -350,7 +359,7 @@ describe('returned transition (D1/N4)', () => {
       state: 'waiting',
       holdReason: null,
       hostInstance: 'proc-1',
-      consumedAs: 'draft-1',
+      consumedAs: null,
       returnedReason: null
     })
   })
@@ -360,7 +369,7 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('first refusal'),
       rejection: PROVIDER_REFUSAL,
@@ -379,7 +388,7 @@ describe('returned transition (D1/N4)', () => {
     // A duplicate resolution of the FIRST submission is ignored by the journal
     // and must not alter the draft's current relation.
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('duplicate of first refusal'),
       fence: 0
@@ -405,7 +414,7 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('refused'),
       fence: 0
@@ -413,7 +422,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('withdrawn')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('again'),
       fence: 0
@@ -426,7 +435,7 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('stored refusal'),
       fence: 0
@@ -447,7 +456,7 @@ describe('withdraw', () => {
     await queueDraft(journal, 'draft-2', 'second text')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('refused'),
       fence: 0
@@ -509,7 +518,7 @@ describe('open-time repair and retention', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('refused while downgraded'),
       rejection: PROVIDER_REFUSAL,
@@ -538,7 +547,7 @@ describe('open-time repair and retention', () => {
     await journal.close()
     const db = new Database(journalDatabaseFile(root))
     db.prepare(
-      "UPDATE queued_messages SET state = 'dispatched', hold_reason = NULL, consumed_as = NULL WHERE message_id = ?"
+      "UPDATE queued_messages SET state = 'dispatched', hold_reason = NULL, consumed_as = 'sub-draft-1' WHERE message_id = ?"
     ).run('draft-1')
     db.close()
     clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
@@ -547,7 +556,7 @@ describe('open-time repair and retention', () => {
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'waiting',
       holdReason: 'stopped',
-      consumedAs: 'draft-1',
+      consumedAs: null,
       returnedReason: null
     })
   })
@@ -565,7 +574,7 @@ describe('open-time repair and retention', () => {
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED)
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'waiting',
-      consumedAs: 'draft-1'
+      consumedAs: null
     })
   })
 
@@ -574,7 +583,7 @@ describe('open-time repair and retention', () => {
     await queueDraft(journal, 'accepted-1')
     await consumeDraft(journal, 'accepted-1')
     await journal.resolveDispatch({
-      clientMessageId: 'accepted-1',
+      clientMessageId: 'sub-accepted-1',
       state: 'accepted',
       providerIdentity: { provider: 'claude', sessionId: 'native-1', uuid: 'echo-1' },
       fence: 0
@@ -588,7 +597,7 @@ describe('open-time repair and retention', () => {
     await queueDraft(journal, 'returned-1')
     await consumeDraft(journal, 'returned-1')
     await journal.resolveDispatch({
-      clientMessageId: 'returned-1',
+      clientMessageId: 'sub-returned-1',
       state: 'rejected',
       ...refusal('refused'),
       fence: 0
@@ -665,7 +674,7 @@ describe('holds', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...refusal('refused'),
       fence: 0
