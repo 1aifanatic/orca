@@ -2,11 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import { getDefaultSettings } from '../../../shared/constants'
 import { useAppStore } from '@/store'
-import { openDefaultAgentChatInEmptyWorkspace } from './empty-workspace-default-agent-chat'
+import {
+  emptyWorkspaceDefaultChatAwaitsDetection,
+  loadEmptyWorkspaceDefaultChatDetection,
+  openDefaultAgentChatInEmptyWorkspace
+} from './empty-workspace-default-agent-chat'
 
 const mocks = vi.hoisted(() => ({
   launchAgentInNewTab: vi.fn(),
-  planAgentSessionLaunch: vi.fn()
+  planAgentSessionLaunch: vi.fn(),
+  detectionTargetKey: vi.fn<() => string | undefined>()
 }))
 
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({
@@ -15,7 +20,10 @@ vi.mock('@/lib/launch-agent-in-new-tab', () => ({
 vi.mock('@/lib/agent-session-launch-plan', () => ({
   planAgentSessionLaunch: mocks.planAgentSessionLaunch
 }))
-vi.mock('@/lib/connection-context', () => ({ getConnectionId: () => null }))
+vi.mock('@/hooks/useAgentDetectionTarget', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getAgentDetectionTargetKeyForWorktree: mocks.detectionTargetKey
+}))
 
 const initialAppStoreState = useAppStore.getState()
 
@@ -34,6 +42,7 @@ function seedSettings(settings: Partial<GlobalSettings>): void {
 }
 
 beforeEach(() => {
+  mocks.detectionTargetKey.mockReturnValue('local')
   mocks.planAgentSessionLaunch.mockReturnValue({ route: 'structured-native-chat' })
   mocks.launchAgentInNewTab.mockReturnValue({
     surface: { kind: 'local-agent-session', tabId: 'chat-tab', sessionId: 's-1' }
@@ -41,6 +50,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   useAppStore.setState(initialAppStoreState, true)
 })
@@ -75,5 +85,61 @@ describe('openDefaultAgentChatInEmptyWorkspace', () => {
 
     expect(openDefaultAgentChatInEmptyWorkspace('wt-1')).toBeNull()
     expect(mocks.launchAgentInNewTab).not.toHaveBeenCalled()
+  })
+
+  it('reads the agents detected on the workspace SSH host', () => {
+    seedSettings({})
+    mocks.detectionTargetKey.mockReturnValue('ssh:conn-1')
+    useAppStore.setState({ remoteDetectedAgentIds: { 'conn-1': ['claude'] } })
+
+    openDefaultAgentChatInEmptyWorkspace('wt-1')
+
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'claude' })
+    )
+  })
+
+  it('treats a workspace whose host is unresolved as unknown', () => {
+    seedSettings({})
+    mocks.detectionTargetKey.mockReturnValue(undefined)
+
+    expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(false)
+    expect(openDefaultAgentChatInEmptyWorkspace('wt-1')).toBeNull()
+    expect(mocks.launchAgentInNewTab).not.toHaveBeenCalled()
+  })
+})
+
+describe('agent detection for the default chat', () => {
+  it('waits only while chat is the default and the host list has not loaded', () => {
+    seedSettings({})
+    mocks.detectionTargetKey.mockReturnValue('ssh:conn-1')
+    useAppStore.setState({ remoteDetectedAgentIds: {} })
+    expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(true)
+
+    useAppStore.setState({ remoteDetectedAgentIds: { 'conn-1': [] } })
+    expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(false)
+
+    seedSettings({ openAgentTabsInChatByDefault: false })
+    useAppStore.setState({ remoteDetectedAgentIds: {} })
+    expect(emptyWorkspaceDefaultChatAwaitsDetection('wt-1')).toBe(false)
+  })
+
+  it('probes the workspace host and gives up after a bounded wait', async () => {
+    vi.useFakeTimers()
+    seedSettings({})
+    mocks.detectionTargetKey.mockReturnValue('ssh:conn-1')
+    const ensureRemoteDetectedAgents = vi.fn(() => new Promise<never>(() => {}))
+    useAppStore.setState({ ensureRemoteDetectedAgents })
+    let settled = false
+
+    void loadEmptyWorkspaceDefaultChatDetection('wt-1').then(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(ensureRemoteDetectedAgents).toHaveBeenCalledWith('conn-1')
+    expect(settled).toBe(true)
   })
 })

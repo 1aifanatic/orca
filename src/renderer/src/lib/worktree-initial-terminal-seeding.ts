@@ -30,6 +30,7 @@ import {
 } from '@/lib/worktree-setup-issue-command-queue'
 import { applyDefaultTerminalTabs } from '@/lib/worktree-default-terminal-tabs'
 import { openDefaultAgentChatInEmptyWorkspace } from '@/lib/empty-workspace-default-agent-chat'
+import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
 
 function getSetupRunnerCommandPlatformForLaunch(setup: WorktreeSetupLaunch): 'windows' | 'posix' {
   return getSetupRunnerCommandPlatformForPath(
@@ -53,6 +54,7 @@ export function reseedGatedEmptyWorkspace(
   const state = useAppStore.getState()
   if (
     callerProvidesSurface === true ||
+    isEmptyWorkspaceDefaultSurfacePending(workspaceKey) ||
     state.activeWorktreeId !== workspaceKey ||
     (executionHostId !== undefined && state.activeWorkspaceExecutionHostId !== executionHostId)
   ) {

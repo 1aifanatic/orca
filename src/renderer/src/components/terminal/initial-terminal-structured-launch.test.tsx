@@ -3,6 +3,10 @@ import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalWatcherEffects } from '../use-terminal-watcher-effects'
+import {
+  claimEmptyWorkspaceDefaultSurface,
+  releaseEmptyWorkspaceDefaultSurface
+} from '@/lib/empty-workspace-default-surface-claims'
 
 const mocks = vi.hoisted(() => {
   const storeTabsByWorktree: Record<string, unknown[]> = {}
@@ -200,6 +204,19 @@ describe('passive terminal seeding retries until a decision applies', () => {
     mocks.storeTabsByWorktree = { 'wt-1': [] }
     await finishGate('empty')
     expect(mocks.createTab).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the seed to an activation reseed awaiting agent detection', async () => {
+    const finishGate = deferredGate()
+    root = createRoot(document.createElement('div'))
+    await act(async () => root?.render(<Watcher />))
+    claimEmptyWorkspaceDefaultSurface('wt-1')
+    try {
+      await finishGate('empty')
+      expect(mocks.createTab).not.toHaveBeenCalled()
+    } finally {
+      releaseEmptyWorkspaceDefaultSurface('wt-1')
+    }
   })
 
   it('seeds after leaving and returning to a blocked workspace', async () => {

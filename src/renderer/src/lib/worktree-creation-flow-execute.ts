@@ -176,8 +176,7 @@ export async function executeWorktreeCreation(
     try {
       activation = activateAndRevealWorktree(worktree.id, {
         sidebarRevealBehavior: 'auto',
-        // Why: pass a Blank Terminal pick (null) through so the workspace opens a shell, not the default chat.
-        agent: preparedRequest.agent,
+        ...(preparedRequest.agent !== null ? { agent: preparedRequest.agent } : {}),
         ...(result.setup ? { setup: result.setup } : {}),
         ...(result.defaultTabs ? { defaultTabs: result.defaultTabs } : {}),
         ...(startupOpt ? { startup: startupOpt } : {}),

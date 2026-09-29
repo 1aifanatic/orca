@@ -14,6 +14,7 @@ import { isTerminalWorkspaceEmptiedOnPurpose } from '../../../shared/closed-term
 import { gateWorktreeAgentActivation } from '@/lib/worktree-agent-activation-gate'
 import { createWorkspaceTerminalHostAuthoritySelector } from '@/lib/workspace-terminal-host-authority'
 import { getStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
+import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
 import { AGENT_SESSION_PROVIDER_HANDLE_PROVIDERS } from '../../../shared/agent-session-provider-handle'
 import type { TerminalColdActivationController } from './terminal-cold-activation'
 import { selectParkedEquivalentMountTabIds } from './terminal/startup-terminal-tab-hold'
@@ -229,8 +230,9 @@ export function useTerminalWatcherEffects(controller: TerminalWatcherController)
       if (outcome !== 'empty') {
         return
       }
-      // A pending or unanswered chat create owns the surface even before its tab is published.
+      // A reseed awaiting agent detection, or a pending chat create, owns the surface already.
       if (
+        isEmptyWorkspaceDefaultSurfacePending(activeWorktreeId) ||
         AGENT_SESSION_PROVIDER_HANDLE_PROVIDERS.some(
           (agent) => getStructuredAgentLaunchStatus(activeWorktreeId, agent) !== 'idle'
         )

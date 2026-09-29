@@ -9,10 +9,12 @@ import type { WorktreeStartupPayload } from '@/lib/worktree-startup-payload'
 import type { IssueCommandLaunch } from '@/lib/worktree-setup-issue-command-queue'
 
 export type WorktreeActivationSurfaceSelection = {
-  /** The create picker's selection; null means Blank Terminal, absent means no pick was made. */
+  /** The create picker's selection; null means Blank Terminal. */
   agent?: TuiAgent | null
   /** A navigation caller is about to open its own editor, diff, or other non-terminal surface. */
   providesInitialSurface?: boolean
+  /** Set only where the user deliberately opened this existing workspace; absent keeps the shell seed. */
+  navigationIntent?: 'user-open'
 }
 
 export type WorktreeActivationOptions = WorktreeActivationSurfaceSelection & {
@@ -39,9 +41,13 @@ export function activationProvidesInitialSurface(
   return selection?.providesInitialSurface === true || selection?.agent != null
 }
 
-/** No pick and no caller-owned surface: an empty workspace gets the user's default surface. */
+/** A deliberate user open with no surface choice: an empty workspace gets the user's default surface. */
 export function activationSeedsUserDefaultSurface(
   selection?: WorktreeActivationSurfaceSelection
 ): boolean {
-  return selection?.agent === undefined && selection?.providesInitialSurface !== true
+  return (
+    selection?.navigationIntent === 'user-open' &&
+    selection.agent === undefined &&
+    selection.providesInitialSurface !== true
+  )
 }
