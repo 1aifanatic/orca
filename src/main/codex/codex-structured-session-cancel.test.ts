@@ -215,11 +215,12 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
     await expect(pending).resolves.toEqual({ cancelled: true })
   })
 
-  it('keeps the turn live when process termination cannot be verified', async () => {
+  it('confirms an interrupt Codex answered when the turn processes cannot be proven gone', async () => {
     const events: CodexStructuredSessionEvent[] = []
     const codex = fakeCodex()
     codex.routes['turn/interrupt'] = () => {
-      completeTurn(codex)
+      // Codex sends the turn's end after its answer.
+      setTimeout(() => completeTurn(codex), 4)
       return {}
     }
     const adapter = await acquired(codex, events, {
@@ -228,8 +229,10 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
 
     await expect(
       adapter.cancelTurn({ sessionId: 'session-1', turnId: 'turn-1', fence: 7 })
-    ).resolves.toEqual({ cancelled: false, unconfirmed: true })
-    expect(events).toContainEqual(expect.objectContaining({ method: 'turn/completed' }))
+    ).resolves.toEqual({ cancelled: true })
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(expect.objectContaining({ method: 'turn/completed' }))
+    )
   })
 
   it('accepts an immediate resend after verified interruption', async () => {

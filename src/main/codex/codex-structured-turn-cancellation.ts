@@ -117,7 +117,12 @@ export class CodexStructuredTurnCancellation {
       interruptReceipt,
       targetsPrimaryTurn ? this.terminate(session.connection, baseline) : Promise.resolve(true)
     ])
-    if (terminated && acknowledged) {
+    // Codex answers a turn's interrupt only as that turn ends, so the answer is what confirms the
+    // Stop. The process sweep is cleanup: an unreadable process table says nothing about the turn.
+    if (acknowledged) {
+      if (!terminated) {
+        console.warn('[codex-structured] could not prove an interrupted turn left no processes')
+      }
       const completion = state.deferredCompletions.get(key)
       let confirmationError: unknown
       let promptAdmission = ADMITTED
@@ -153,9 +158,6 @@ export class CodexStructuredTurnCancellation {
     // A failed cancellation must not permanently divert the provider's later
     // completion for this turn. Let the normal completion path settle it.
     this.releaseCompletion(session, key)
-    if (acknowledged) {
-      return { cancelled: false, unconfirmed: true }
-    }
     if (!requestError) {
       return { cancelled: false }
     }
