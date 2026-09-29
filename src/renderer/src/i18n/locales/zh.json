@@ -12062,7 +12062,7 @@
         },
         "claude-worktree-trust-copy": {
           "title": "为 Claude 信任 Orca 创建的工作树",
-          "description": "在 Orca 创建的工作树中，Claude Code 会跳过“trust this folder?”提示，因此仓库的 Claude 钩子和设置会在 Claude 未先询问的情况下运行。您自己添加的文件夹和检出目录，以及来自派生仓库的拉取请求的工作树，仍会询问。"
+          "description": "当 Orca 在它创建的工作树中启动 Claude 时，Claude 会跳过“trust this folder?”提示，因此仓库的 Claude 钩子和设置会在不先询问的情况下运行。在您自己添加的文件夹和检出目录中，以及来自派生仓库的拉取请求的工作树中，Claude 仍会询问。"
         }
       },
       "right": {

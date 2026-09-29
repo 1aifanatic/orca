@@ -11,7 +11,7 @@ export function getClaudeWorktreeTrustTitle(): string {
 export function getClaudeWorktreeTrustDescription(): string {
   return translate(
     'auto.components.settings.claude-worktree-trust-copy.description',
-    'Claude Code skips its "trust this folder?" prompt in worktrees Orca created, so the repo\'s Claude hooks and settings run without Claude asking first. Folders and checkouts you added yourself, and worktrees of pull requests from forks, still ask.'
+    'When Orca starts Claude in a worktree it created, Claude skips its "trust this folder?" prompt, so the repo\'s Claude hooks and settings run without asking first. Claude still asks in folders and checkouts you added yourself, and in worktrees of pull requests from forks.'
   )
 }
 

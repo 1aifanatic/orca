@@ -12229,7 +12229,7 @@
         },
         "claude-worktree-trust-copy": {
           "title": "Trust worktrees Orca creates for Claude",
-          "description": "Claude Code skips its \"trust this folder?\" prompt in worktrees Orca created, so the repo's Claude hooks and settings run without Claude asking first. Folders and checkouts you added yourself, and worktrees of pull requests from forks, still ask."
+          "description": "When Orca starts Claude in a worktree it created, Claude skips its \"trust this folder?\" prompt, so the repo's Claude hooks and settings run without asking first. Claude still asks in folders and checkouts you added yourself, and in worktrees of pull requests from forks."
         }
       },
       "right": {

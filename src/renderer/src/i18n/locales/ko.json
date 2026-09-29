@@ -12062,7 +12062,7 @@
         },
         "claude-worktree-trust-copy": {
           "title": "Orca가 만든 워크트리를 Claude에서 신뢰",
-          "description": "Orca가 만든 워크트리에서는 Claude Code가 \"trust this folder?\" 확인을 건너뛰므로, 저장소의 Claude 훅과 설정이 Claude의 확인 없이 실행됩니다. 직접 추가한 폴더와 체크아웃, 포크에서 온 풀 리퀘스트의 워크트리에서는 계속 확인합니다."
+          "description": "Orca가 만든 워크트리에서 Orca가 Claude를 시작하면 Claude는 \"trust this folder?\" 확인을 건너뛰므로, 저장소의 Claude 훅과 설정이 확인 없이 실행됩니다. 직접 추가한 폴더와 체크아웃, 포크에서 온 풀 리퀘스트의 워크트리에서는 Claude가 계속 확인합니다."
         }
       },
       "right": {

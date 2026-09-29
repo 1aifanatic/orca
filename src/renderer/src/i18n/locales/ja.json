@@ -12062,7 +12062,7 @@
         },
         "claude-worktree-trust-copy": {
           "title": "Orca が作成したワークツリーを Claude で信頼する",
-          "description": "Orca が作成したワークツリーでは、Claude Code は「trust this folder?」の確認を省略するため、リポジトリの Claude フックと設定は Claude が確認することなく実行されます。自分で追加したフォルダーやチェックアウト、フォークからのプルリクエストのワークツリーでは、引き続き確認されます。"
+          "description": "Orca が作成したワークツリーで Orca が Claude を起動すると、Claude は「trust this folder?」の確認を省略するため、リポジトリの Claude フックと設定は確認なしで実行されます。自分で追加したフォルダーやチェックアウト、フォークからのプルリクエストのワークツリーでは、Claude は引き続き確認します。"
         }
       },
       "right": {

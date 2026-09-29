@@ -10501,7 +10501,7 @@
         },
         "claude-worktree-trust-copy": {
           "title": "Confiar en los worktrees que Orca crea para Claude",
-          "description": "Claude Code omite su pregunta \"trust this folder?\" en los worktrees que creó Orca, así que los hooks y ajustes de Claude del repositorio se ejecutan sin que Claude pregunte antes. Las carpetas y los checkouts que agregaste tú, y los worktrees de pull requests de forks, siguen preguntando."
+          "description": "Cuando Orca inicia Claude en un worktree que creó, Claude omite su pregunta \"trust this folder?\", así que los hooks y ajustes de Claude del repositorio se ejecutan sin preguntar antes. Claude sigue preguntando en las carpetas y los checkouts que agregaste tú, y en los worktrees de pull requests de forks."
         }
       },
       "right": {
