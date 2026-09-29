@@ -32,9 +32,6 @@ jobs:
         include:
           - { label: A, ordinal: 1, arch: x64, runner: windows-2022 }
           - { label: B, ordinal: 2, arch: x64, runner: windows-2022 }
-          # Native arm64 installers are not shipped today; x64 below also runs emulated on ARM.
-          - { label: A, ordinal: 1, arch: arm64, runner: windows-11-arm }
-          - { label: B, ordinal: 2, arch: arm64, runner: windows-11-arm }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -133,8 +130,8 @@ jobs:
       matrix:
         include:
           - { arch: x64, runner: windows-2022 }
+          # Orca ships only an x64 installer; ARM users run it emulated.
           - { arch: x64, runner: windows-11-arm }
-          - { arch: arm64, runner: windows-11-arm }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
