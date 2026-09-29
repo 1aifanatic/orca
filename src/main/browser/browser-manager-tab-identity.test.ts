@@ -345,6 +345,36 @@ describe('tab identity ownership', () => {
     expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: GUEST_CLEAN_UA })
   })
 
+  it('does not let a mid-apply debugger detach leave a mobile identity to reinstall', async () => {
+    mocks.processUserAgentMode = 'clean'
+    mocks.processUserAgent = GUEST_CLEAN_UA
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const opened = openTab(ORDINARY_URL)
+    const detach = debuggerDetachHandler(opened.handle)
+    opened.handle.debuggerSendCommand.mockImplementation((method: string) => {
+      if (method !== 'Emulation.setTouchEmulationEnabled') {
+        return Promise.resolve(undefined)
+      }
+      opened.handle.debuggerIsAttached.mockReturnValue(false)
+      detach()
+      return Promise.reject(new Error('Debugger is not attached'))
+    })
+
+    await expect(browserManager.setViewportOverride(opened.tab, PRESETS.mobile)).resolves.toBe(
+      false
+    )
+    // Another CDP client (the agent bridge) re-attaches before the preset is sent again.
+    opened.handle.debuggerIsAttached.mockReturnValue(true)
+    opened.handle.debuggerSendCommand.mockClear()
+    navigate('https://example.org/')
+    const observed = await observe(opened, 'https://example.org/')
+    expect(opened.handle.debuggerSendCommand).not.toHaveBeenCalledWith(
+      'Emulation.setUserAgentOverride',
+      expect.anything()
+    )
+    expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: GUEST_CLEAN_UA })
+  })
+
   it('heals a mid-redirect process override on the next navigation', async () => {
     mocks.processUserAgentMode = 'clean'
     mocks.processUserAgent = GUEST_CLEAN_UA

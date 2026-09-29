@@ -159,6 +159,11 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
             })
           : dbg.sendCommand('Emulation.clearDeviceMetricsOverride', {})
     )
+    // Why record before any further await: a debugger detach clears the metrics, and its handler
+    // must land after this write, not be overwritten by it.
+    if (metricsApplied) {
+      this.recordAppliedViewportOverride(browserTabId, webContentsId, override)
+    }
     const touchApplied = await this.runViewportEmulationStep(browserTabId, 'touch emulation', () =>
       dbg.sendCommand('Emulation.setTouchEmulationEnabled', {
         enabled: override?.mobile ?? false,
@@ -167,9 +172,6 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
     )
     if (this.webContentsIdByTabId.get(browserTabId) !== webContentsId) {
       return false
-    }
-    if (metricsApplied) {
-      this.recordAppliedViewportOverride(browserTabId, webContentsId, override)
     }
     // Why: identity follows the device metrics Chromium actually holds, not the request, so a failed
     // metrics write never pairs a phone identity with a desktop viewport, or the reverse.
