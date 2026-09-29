@@ -491,9 +491,14 @@ describe('mobile structured queued messages', () => {
           throw markRpcDeliveryUnknown(new Error('Connection closed'))
         }
         const state = attempts === 2 ? 'withdrawn' : 'waiting'
+        // A pruned deleted card's receipt names no place in the queue: position 0.
         return mutationOk({
           clientMessageId: `client-${attempts}`,
-          queued: { messageId: `client-${attempts}`, position: attempts, state }
+          queued: {
+            messageId: `client-${attempts}`,
+            position: state === 'withdrawn' ? 0 : 1,
+            state
+          }
         })
       }
       return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
