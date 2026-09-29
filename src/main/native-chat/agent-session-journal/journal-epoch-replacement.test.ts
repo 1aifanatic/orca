@@ -1,16 +1,17 @@
 // Republishing an epoch is ONE transaction.
 
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { journalDatabasePath, type JournalHostDatabase } from './journal-host-database'
+import type { JournalHostDatabase } from './journal-host-database'
 import { replaceJournalEpoch } from './journal-epoch-replacement'
 import type { JournalLoad } from './journal-open'
+import type { AgentSessionJournal } from './journal-store'
 import { readJournalSessionEpoch } from './journal-row-table'
 import {
   createTrackedJournalOpener,
@@ -26,6 +27,12 @@ const IDENTITY: AgentSessionJournalIdentity = {
   providerHandle: { kind: 'codex', threadId: 'thread-1' }
 }
 
+const PEER: AgentSessionJournalIdentity = {
+  ...IDENTITY,
+  sessionId: 'session-peer',
+  providerHandle: { kind: 'codex', threadId: 'thread-peer' }
+}
+
 let root: string
 let clock = 1_000
 let database: JournalHostDatabase
@@ -34,6 +41,15 @@ const journals = createTrackedJournalOpener()
 function now(): number {
   clock += 1
   return clock
+}
+
+/** Rows stored under the chat and epoch, whatever the chat's pointer names. */
+function storedRows(sessionId: string, epoch: string): number {
+  return Number(
+    database.db
+      .prepare('SELECT count(*) AS total FROM journal_rows WHERE session_id = ? AND epoch = ?')
+      .get(sessionId, epoch)?.total
+  )
 }
 
 function item(ordinal: number): AgentJournalItemIdentity {
@@ -87,43 +103,29 @@ describe('journal epoch replacement', () => {
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch ?? '')).toHaveLength(2)
   })
 
-  it('discards every superseded row in the same transaction', async () => {
+  // Keyed by identity: a retired epoch's rows go by (chat, epoch), and no other chat's go with them.
+  it.each([
+    [
+      'a replace',
+      (journal: AgentSessionJournal) =>
+        journal.replaceEpochItems('legacy_import', 1, [
+          { identity: item(9), body: { kind: 'status', text: 'republished' } }
+        ])
+    ],
+    ['a rollover', (journal: AgentSessionJournal) => journal.rollEpoch('handle_forked', 1)]
+  ])('discards every superseded row in the same transaction as %s', async (_name, retire) => {
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+    const peer = await journals.open({ identity: PEER, stateDirectory: root })
     await journal.appendItem(item(1), { kind: 'status', text: 'old' }, { fence: 1 })
     await journal.appendItem(item(2), { kind: 'status', text: 'older' }, { fence: 1 })
+    await peer.appendItem(item(1), { kind: 'status', text: 'peer' }, { fence: 1 })
     const before = journal.epoch
 
-    await journal.replaceEpochItems('legacy_import', 1, [
-      { identity: item(9), body: { kind: 'status', text: 'republished' } }
-    ])
+    await retire(journal)
 
     expect(journal.epoch).not.toBe(before)
-    expect(readTestJournalRows(database.db, IDENTITY.sessionId, before)).toHaveLength(0)
-    expect(journal.snapshot().items.map((entry) => entry.body)).toEqual([
-      { kind: 'status', text: 'republished' }
-    ])
-  })
-
-  // `auto_vacuum = INCREMENTAL` only marks freed pages; nothing hands them back unless asked. A
-  // rewind that replaces a large chat must not leave the file holding its old history forever.
-  it('hands the pages a large replace freed back to the filesystem', async () => {
-    const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
-    const text = 'x'.repeat(4_000)
-    for (let ordinal = 1; ordinal <= 400; ordinal += 1) {
-      await journal.appendItem(item(ordinal), { kind: 'status', text }, { fence: 1 })
-    }
-    database.db.pragma('wal_checkpoint(TRUNCATE)')
-    const grown = (await stat(journalDatabasePath(root))).size
-
-    await journal.replaceEpochItems('legacy_import', 1, [
-      { identity: item(9), body: { kind: 'status', text: 'republished' } }
-    ])
-    // The replace schedules the reclaim itself; this only waits for it.
-    await vi.waitFor(
-      () => expect(Number(database.db.pragma('freelist_count', { simple: true }))).toBeLessThan(8),
-      { timeout: 2_000 }
-    )
-    database.db.pragma('wal_checkpoint(TRUNCATE)')
-    expect((await stat(journalDatabasePath(root))).size).toBeLessThan(grown / 4)
+    expect(storedRows(IDENTITY.sessionId, before)).toBe(0)
+    expect(storedRows(IDENTITY.sessionId, journal.epoch)).toBe(journal.cursor().sequence)
+    expect(storedRows(PEER.sessionId, peer.epoch)).toBe(2)
   })
 })

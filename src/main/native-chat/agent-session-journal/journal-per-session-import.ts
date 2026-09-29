@@ -3,17 +3,16 @@
 // Not `journal-legacy-import.ts`, which reads the PROVIDER's own transcript. This reads Orca's own
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
 // cursor, an `acceptedSequence` or a restart offer taken before the upgrade still points at the
-// same row after it. A file that reappears after a downgrade is copied again only when it carried
-// the copied history on and this build has not written past the copy; any other is set aside,
-// never read again (see journal-per-session-reimport.ts).
+// same row after it. A file that reappears after a downgrade is set aside, never read again (see
+// journal-per-session-reimport.ts).
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
-// The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
-// copied block reads back as the file does (every row's sequence, time and bytes), one transaction
-// publishes the chat's pointer with its repair and import markers, so the chat is imported all at
-// once or not at all. A try that stops midway leaves only that reserved block, which the next try
-// clears and copies again. A copy that does not read back as the file is never published: the
-// file stays, and the chat is refused as unreadable.
+// The rows go in under the file's epoch, which the chat's pointer does not name yet, so no reader
+// sees them. Once they read back as the file does (every row's sequence, time and bytes), one
+// transaction publishes the chat's pointer with its repair and import markers, so the chat is
+// imported all at once or not at all. A try that stops midway leaves only unpublished rows, which
+// the next try deletes before it copies again. A copy that does not read back as the file is never
+// published: the file stays, and the chat is refused as unreadable.
 //
 // Only after that commit is the file deleted, its connection closed first. A read that fails
 // leaves the file where it is for the next open, and the open is refused rather than served empty:
@@ -32,7 +31,6 @@ import {
   planPerSessionImport,
   isPerSessionJournalSetAside,
   readPerSessionImportMarker,
-  reimportedJournalRows,
   setAsidePerSessionJournal,
   writePerSessionImportMarker,
   type PerSessionImportPlan,
@@ -46,24 +44,19 @@ import {
   readLegacyHead,
   readLegacyRepair,
   retireLegacyJournal,
-  type ImportBatch,
-  type ImportedRow
+  type ImportBatch
 } from './journal-per-session-source'
 import { parseJournalRow } from './journal-row-schema'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
-  allocateJournalBlock,
-  deleteJournalBlock,
-  journalRowId,
+  deleteUnpublishedJournalRows,
   publishJournalSessionEpoch,
   readJournalRowsAfter,
-  readJournalSessionPointer
+  readJournalSessionEpoch
 } from './journal-row-table'
 
-const INSERT_ROW = 'INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)'
-const SELECT_IMPORT_BLOCK = 'SELECT block FROM journal_import_blocks WHERE session_id = ?'
-const RESERVE_IMPORT_BLOCK = 'INSERT INTO journal_import_blocks (session_id, block) VALUES (?, ?)'
-const RELEASE_IMPORT_BLOCK = 'DELETE FROM journal_import_blocks WHERE session_id = ?'
+const INSERT_ROW =
+  'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
 const UPSERT_REPAIR = `INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
@@ -73,7 +66,6 @@ export type PerSessionJournalImportDeps = {
   openSource?: (path: string) => Database.Database
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
-  now?: () => number
   batchRows?: number
 }
 
@@ -117,16 +109,16 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   if (isPerSessionJournalSetAside(input.database.db, sessionId)) {
     return 'kept'
   }
-  const current = readJournalSessionPointer(input.database.db, sessionId)
+  const published = readJournalSessionEpoch(input.database.db, sessionId) !== null
   const source = (input.openSource ?? openLegacySource)(sourcePath)
   let legacy: PerSessionJournalHead | null
   let plan: PerSessionImportPlan | null = null
   try {
     legacy = readLegacyHead(source, sessionId)
     if (legacy) {
-      plan = planPerSessionImport({ db: input.database.db, sessionId, legacy, current })
-      if (plan.kind === 'first' || plan.kind === 'again') {
-        await copyLegacyJournal(input, source, legacy, plan)
+      plan = planPerSessionImport({ db: input.database.db, sessionId, legacy, published })
+      if (plan.kind === 'first') {
+        await copyLegacyJournal(input, source, legacy)
       }
     }
   } finally {
@@ -135,7 +127,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   if (!legacy) {
     // Never written. Left in place while its chat is unfounded: that open's empty chat may still
     // owe the notice about a pre-SQLite transcript beside it.
-    if (!current) {
+    if (!published) {
       return 'absent'
     }
     retireLegacyJournal(input.legacyDirectory, input.remove)
@@ -168,7 +160,7 @@ export async function previewPerSessionJournal(
   const db = input.database.db
   const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
   if (
-    readJournalSessionPointer(db, sessionId) ||
+    readJournalSessionEpoch(db, sessionId) !== null ||
     readPerSessionImportMarker(db, sessionId) ||
     !existsSync(sourcePath)
   ) {
@@ -187,76 +179,42 @@ export async function previewPerSessionJournal(
   }
 }
 
-function* arrayBatches(rows: readonly ImportedRow[], batchRows: number): Generator<ImportBatch> {
-  for (let from = 0; ; from += batchRows) {
-    const last = from + batchRows >= rows.length
-    yield { rows: rows.slice(from, from + batchRows), last }
-    if (last) {
-      return
-    }
-  }
-}
-
 /**
- * Batches into a reserved block no reader follows. Once the block reads back as the file does, one
- * transaction publishes the chat's pointer with its repair marker and the import marker.
+ * Batches under the file's epoch, which no reader follows until the chat's pointer names it. Once
+ * the rows read back as the file does, one transaction publishes the pointer with the chat's repair
+ * marker and the import marker.
  */
 async function copyLegacyJournal(
   input: ImportInput,
   source: Database.Database,
-  legacy: PerSessionJournalHead,
-  plan: Extract<PerSessionImportPlan, { kind: 'first' | 'again' }>
+  legacy: PerSessionJournalHead
 ): Promise<void> {
   const { sessionId } = input.identity
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
-  // A second copy is read whole, to follow its rows with the disclosure row.
-  const reimported =
-    plan.kind === 'again'
-      ? reimportedJournalRows({
-          sessionId,
-          epoch,
-          rows: [...legacyRowBatches(source, sessionId, legacy.epoch, batchRows)].flatMap(
-            (batch) => batch.rows
-          ),
-          now: (input.now ?? Date.now)()
-        })
-      : null
-  const batches = reimported
-    ? arrayBatches(reimported, batchRows)
-    : legacyRowBatches(source, sessionId, legacy.epoch, batchRows)
-  let block: number | null = null
-  for (const batch of batches) {
-    if (block !== null) {
+  let first = true
+  for (const batch of legacyRowBatches(source, sessionId, epoch, batchRows)) {
+    if (!first) {
       await yieldToEventLoop()
     }
-    // Unsynced: no reader follows the reserved block, and the publish's synced commit covers it.
-    block = input.database.unsyncedTransaction((db) => {
-      const target = block ?? reserveImportBlock(db, sessionId)
+    // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
+    input.database.unsyncedTransaction((db) => {
+      if (first) {
+        // What an earlier try that stopped midway left.
+        deleteUnpublishedJournalRows(db, sessionId)
+      }
       const insert = db.prepare(INSERT_ROW)
       for (const row of batch.rows) {
         // Copied as stored: the bytes are the row, its epoch and sequence included.
-        insert.run(journalRowId(target, row.seq), row.ts, row.rowJson)
+        insert.run(sessionId, epoch, row.seq, row.ts, row.rowJson)
       }
-      return target
     })
+    first = false
   }
-  const target = block ?? input.database.transaction((db) => reserveImportBlock(db, sessionId))
-  await verifyCopiedJournal(
-    input,
-    reimported
-      ? arrayBatches(reimported, batchRows)
-      : legacyRowBatches(source, sessionId, legacy.epoch, batchRows),
-    { epoch, block: target }
-  )
+  await verifyCopiedJournal(input, legacyRowBatches(source, sessionId, epoch, batchRows), epoch)
   input.database.transaction((db) => {
-    const retired = readJournalSessionPointer(db, sessionId)
-    if (retired) {
-      deleteJournalBlock(db, retired.block)
-    }
-    publishJournalSessionEpoch(db, input.identity, { epoch, block: target })
-    db.prepare(RELEASE_IMPORT_BLOCK).run(sessionId)
+    publishJournalSessionEpoch(db, input.identity, epoch)
     if (repair) {
       db.prepare(UPSERT_REPAIR).run(
         sessionId,
@@ -267,17 +225,13 @@ async function copyLegacyJournal(
     }
     writePerSessionImportMarker(db, sessionId, legacy)
   })
-  if (plan.kind === 'again') {
-    // The block this copy replaced.
-    void input.database.reclaimFreePages()
-  }
 }
 
 /** Mismatches already logged, so a chat refused on every open logs once. */
 const loggedMismatches = new Set<string>()
 
 /**
- * The copied block, read back from the host's database, against a second read of what was copied:
+ * The copied rows, read back from the host's database, against a second read of what was copied:
  * the same rows, byte for byte, and the same epoch, tip, row count, items and submissions, or the
  * copy is refused and never published. Both reads go a batch at a time, so no check holds the main
  * thread longer than a copy batch does.
@@ -285,11 +239,11 @@ const loggedMismatches = new Set<string>()
 async function verifyCopiedJournal(
   input: ImportInput,
   expected: Iterable<ImportBatch>,
-  copied: { epoch: string; block: number }
+  epoch: string
 ): Promise<void> {
   const { sessionId } = input.identity
   const want = await copyFacts(sessionId, expected)
-  const got = await copyFacts(sessionId, copiedBatches(input, copied))
+  const got = await copyFacts(sessionId, copiedBatches(input, epoch))
   if (want === got) {
     return
   }
@@ -331,14 +285,12 @@ async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Pro
   return `${epoch}:${tip}:${rows}:${state.items.size}:${state.submissions.size}:${content.digest('hex')}`
 }
 
-function* copiedBatches(
-  input: ImportInput,
-  copied: { epoch: string; block: number }
-): Generator<ImportBatch> {
+function* copiedBatches(input: ImportInput, epoch: string): Generator<ImportBatch> {
+  const { sessionId } = input.identity
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
-  let afterSeq = 0
+  let afterSeq = Number.MIN_SAFE_INTEGER
   for (;;) {
-    const rows = readJournalRowsAfter(input.database.db, copied, afterSeq, batchRows)
+    const rows = readJournalRowsAfter(input.database.db, sessionId, epoch, afterSeq, batchRows)
     const lastSeq = rows.at(-1)?.seq
     const last = rows.length < batchRows || lastSeq === undefined
     yield { rows, last }
@@ -347,16 +299,4 @@ function* copiedBatches(
     }
     afterSeq = lastSeq
   }
-}
-
-/** The block this chat's copy goes into. One an earlier try left behind is emptied and reused. */
-function reserveImportBlock(db: Database.Database, sessionId: string): number {
-  const staged = db.prepare(SELECT_IMPORT_BLOCK).get(sessionId)?.block
-  if (typeof staged === 'number') {
-    deleteJournalBlock(db, staged)
-    return staged
-  }
-  const block = allocateJournalBlock(db)
-  db.prepare(RESERVE_IMPORT_BLOCK).run(sessionId, block)
-  return block
 }

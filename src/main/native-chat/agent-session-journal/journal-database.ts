@@ -39,6 +39,10 @@ export function openJournalDatabase(dbPath: string): Database.Database {
     if (stored > JOURNAL_DB_SCHEMA_VERSION) {
       throw new JournalDatabaseNewerSchemaError(stored, dbPath)
     }
+    if (stored !== 0 && stored < JOURNAL_DB_SCHEMA_VERSION) {
+      // Only unreleased development builds wrote these shapes; left as found, never migrated.
+      throw new Error(`chat journal ${dbPath} uses unreleased schema ${stored}; move it aside`)
+    }
     configureJournalPragmas(probe, stored)
     createJournalSchema(probe, stored)
     hardenSqliteDatabaseFiles(dbPath)

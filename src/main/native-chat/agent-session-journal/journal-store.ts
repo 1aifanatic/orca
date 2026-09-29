@@ -74,8 +74,6 @@ export class AgentSessionJournal {
   private readonly mintEpoch: () => string
 
   private state: JournalReducerState
-  /** The block the live epoch's rows are keyed under; moves with the epoch. */
-  private block = -1
   private readOnly = false
   private malformedRows = 0
   private openedCorrupt = false
@@ -112,7 +110,6 @@ export class AgentSessionJournal {
       owe: (work) => this.queue.owe(work),
       database: () => this.database,
       state: () => this.state,
-      block: () => this.block,
       readOnly: () => this.readOnly,
       setReadOnly: (readOnly) => {
         this.readOnly = readOnly
@@ -276,7 +273,8 @@ export class AgentSessionJournal {
         rowsAfter: (afterSequence) =>
           readJournalRowsAfterCursor(
             this.database.db,
-            { epoch: this.state.epoch, block: this.block },
+            this.identity.sessionId,
+            this.state.epoch,
             afterSequence,
             limit
           ),

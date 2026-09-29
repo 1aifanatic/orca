@@ -25,7 +25,7 @@ import {
   legacyJournalDatabaseFile
 } from '../agent-session-journal/journal-paths'
 import {
-  readJournalSessionPointer,
+  readJournalSessionEpoch,
   type JournalStoredRow
 } from '../agent-session-journal/journal-row-table'
 import { previewPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
@@ -298,7 +298,7 @@ describe('startup restore of chats still in their per-chat files', () => {
       const journal = sessions.get(sessionId)!.journal
       expect(journal.cursor().sequence).toBe(rows.get(sessionId)!.length)
       expect(texts(journal.snapshot().items)).toContain('reply 1')
-      expect(readJournalSessionPointer(hostDb(), sessionId)).toBeNull()
+      expect(readJournalSessionEpoch(hostDb(), sessionId)).toBeNull()
       expect(existsSync(legacyJournalDatabaseFile(legacyDirFor(sessionId)))).toBe(true)
     }
     // Publishing a restored chat's status saves it for the listing; that is no reason to copy.
@@ -331,7 +331,7 @@ describe('startup restore of chats still in their per-chat files', () => {
         readTestJournalRows(hostDb(), 'chat-mid-work', rows[0]!.epoch).slice(0, rows.length)
       ).toEqual(rows)
       expect(existsSync(legacyFile('chat-mid-work'))).toBe(false)
-      expect(readJournalSessionPointer(hostDb(), 'chat-settled')).toBeNull()
+      expect(readJournalSessionEpoch(hostDb(), 'chat-settled')).toBeNull()
       expect(existsSync(legacyFile('chat-settled'))).toBe(true)
       expect(importCount()).toBe(1)
     }
@@ -469,7 +469,7 @@ describe('startup restore of chats still in their per-chat files', () => {
     let ticking = true
     const tick = (): void => {
       seen.push({
-        published: readJournalSessionPointer(hostDb(), 'chat-a') !== null,
+        published: readJournalSessionEpoch(hostDb(), 'chat-a') !== null,
         copied: Number(hostDb().prepare('SELECT count(*) AS n FROM journal_rows').get()?.n),
         folded: journal.cursor().sequence
       })

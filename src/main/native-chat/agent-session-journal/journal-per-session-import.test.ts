@@ -1,7 +1,6 @@
 // A chat's per-chat journal file from an earlier build is copied into the host's one database on
 // that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
-// reappears after a downgrade and carried the copied epoch on is copied again while this build has
-// not written past the copy; any other is set aside on disk, and the chat keeps its history.
+// reappears after a downgrade is set aside on disk, and the chat keeps this build's history.
 
 import type * as NodeFs from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
@@ -21,13 +20,13 @@ import {
   closeTestJournalHostDatabases,
   createTrackedJournalOpener,
   liveTestJournalRows,
+  loadTestJournal,
   openTestJournalHostDatabase,
   readTestJournalRows
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY } from './journal-per-session-reimport'
-import { readJournalSessionPointer, type JournalStoredRow } from './journal-row-table'
+import { readJournalSessionEpoch, type JournalStoredRow } from './journal-row-table'
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFs>()
@@ -237,7 +236,7 @@ describe('importing a per-chat journal', () => {
     let ticking = true
     const tick = (): void => {
       turns.push({
-        published: readJournalSessionPointer(database.db, IDENTITY.sessionId) !== null,
+        published: readJournalSessionEpoch(database.db, IDENTITY.sessionId) !== null,
         copied: rowCount(database.db)
       })
       if (ticking) {
@@ -260,8 +259,8 @@ describe('importing a per-chat journal', () => {
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
   })
 
-  // A quit between two batches: the next open copies the chat again from the start, with no
-  // duplicate or leftover row, and no other chat is ever handed the block the copy reserved.
+  // A quit between two batches: no reader sees the rows copied so far, and the next open copies the
+  // chat again from the start, with no duplicate or leftover row.
   it('copies a chat again cleanly after a copy stopped midway', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
@@ -277,9 +276,9 @@ describe('importing a per-chat journal', () => {
       })
     ).rejects.toMatchObject({ code: 'journal_closed' })
     const reopened = openTestJournalHostDatabase(root)
-    const reserved = reopened.db.prepare('SELECT block FROM journal_import_blocks').get()?.block
     expect(rowCount(reopened.db)).toBe(1)
-    expect(readJournalSessionPointer(reopened.db, IDENTITY.sessionId)).toBeNull()
+    expect(readJournalSessionEpoch(reopened.db, IDENTITY.sessionId)).toBeNull()
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toBeNull()
 
     const other = await journals.open({
       identity: { ...IDENTITY, sessionId: 'session-other' },
@@ -290,7 +289,6 @@ describe('importing a per-chat journal', () => {
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'another chat' }] },
       { fence: 1 }
     )
-    expect(readJournalSessionPointer(reopened.db, 'session-other')?.block).not.toBe(reserved)
     const journal = await openChat()
 
     expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
@@ -298,9 +296,6 @@ describe('importing a per-chat journal', () => {
     expect(rowCount(reopened.db)).toBe(
       rows.length + liveTestJournalRows(reopened.db, 'session-other').length
     )
-    expect(
-      reopened.db.prepare('SELECT count(*) AS total FROM journal_import_blocks').get()
-    ).toEqual({ total: 0 })
   })
 
   it('copies a chat once when two opens of it import at the same time', async () => {
@@ -400,7 +395,7 @@ describe('importing a per-chat journal', () => {
     }
 
     expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
-    expect(readJournalSessionPointer(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(readJournalSessionEpoch(database.db, IDENTITY.sessionId)).toBeNull()
     expect(
       database.db.prepare('SELECT count(*) AS total FROM journal_imports').get()
     ).toMatchObject({
@@ -434,7 +429,7 @@ describe('importing a per-chat journal', () => {
     })
 
     expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
-    expect(readJournalSessionPointer(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(readJournalSessionEpoch(database.db, IDENTITY.sessionId)).toBeNull()
     expect(errors).toHaveBeenCalledOnce()
   })
 
@@ -460,7 +455,6 @@ describe('importing a per-chat journal', () => {
     const reopened = await openChat()
     expect(reopened.cursor()).toEqual({ epoch, sequence: rows.length + 1 })
     expect(texts(reopened)).toContain('after the upgrade')
-    expect(texts(reopened)).not.toContain(JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY.clientMessageId)
     expect(await leftovers()).toEqual([])
   })
 
@@ -558,7 +552,6 @@ describe('importing a per-chat journal', () => {
       expect(reopened.epoch).toBe(first.epoch)
       expect(texts(reopened)).toContain('ORIGINAL HISTORY')
       expect(texts(reopened)).not.toContain('typed in the older build')
-      expect(texts(reopened)).not.toContain('continued in an older version of Orca')
       await journals.closeAll()
     }
     const database = openTestJournalHostDatabase(root)
@@ -715,16 +708,14 @@ describe('importing a per-chat journal', () => {
       expect(texts(reopened)).toContain('this build')
       expect(texts(reopened)).not.toContain('older build, cycle 1')
       expect(texts(reopened)).not.toContain('cycle 2')
-      expect(texts(reopened)).not.toContain('continued in an older version of Orca')
       expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
       await journals.closeAll()
     }
   })
 
   // The delete failed, so the older build found the copied file and carried its epoch on, while
-  // this build wrote nothing past the copy: the file is the copied history plus the older build's
-  // rows, copied again under the same epoch, with the row that says so.
-  it('copies again a file an older build carried on under the copied epoch', async () => {
+  // this build wrote nothing past the copy. This build's history still wins: the file is set aside.
+  it('sets aside a file an older build carried on under the copied epoch', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     removeFails()
@@ -732,14 +723,16 @@ describe('importing a per-chat journal', () => {
     await openChat()
     await journals.closeAll()
     appendOlderRow(epoch, rows, rows.length + 1)
+    const bytes = await readFile(legacyJournalDatabaseFile(legacyDir()))
     await removeWorks()
 
     const reopened = await openChat()
 
     expect(reopened.epoch).toBe(epoch)
-    expect(texts(reopened)).toContain('older')
-    expect(texts(reopened)).toContain('continued in an older version of Orca')
-    expect(existsSync(legacyDir())).toBe(false)
+    expect(reopened.cursor()).toEqual({ epoch, sequence: rows.length })
+    expect(texts(reopened)).not.toContain('older')
+    expect(sharedRowsContaining('older')).toBe(0)
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(bytes)).toBe(true)
   })
 
   /** The older build appends one row to the per-chat file the failed delete left, at its epoch. */
@@ -764,71 +757,4 @@ describe('importing a per-chat journal', () => {
       .all()
       .filter((row) => String(row.row_json).includes(text)).length
   }
-
-  // N-R3.1: the delete failed, this build appended, and an older build then appended to that same
-  // file. Copying the file again would replace what this build wrote, so it is set aside.
-  it('keeps this build’s history, and the older file untouched, when both builds wrote past the copy', async () => {
-    const { epoch, rows } = await historyRows()
-    await writeLegacyJournal(epoch, rows)
-    removeFails()
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const journal = await openChat()
-    await journal.appendItem(
-      item(2),
-      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'this build' }] },
-      { fence: 1 }
-    )
-    await journals.closeAll()
-    appendOlderRow(epoch, rows, rows.length + 1)
-    const bytes = await readFile(legacyJournalDatabaseFile(legacyDir()))
-    await removeWorks()
-
-    const reopened = await openChat()
-
-    expect(reopened.epoch).toBe(epoch)
-    expect(texts(reopened)).toContain('this build')
-    expect(texts(reopened)).not.toContain('older')
-    expect(texts(reopened)).not.toContain('continued in an older version of Orca')
-    expect(sharedRowsContaining('this build')).toBeGreaterThan(0)
-    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(bytes)).toBe(true)
-  })
-
-  // This build rolled its epoch after the copy (a rewind), and the older build then carried the
-  // leftover file on under the copied epoch: the file no longer holds what this build has. The new
-  // epoch restarts its sequence, so this build's tip is brought level with the recorded one.
-  it('keeps this build’s history when it rolled its epoch after the copy', async () => {
-    const { epoch, rows } = await historyRows()
-    await writeLegacyJournal(epoch, rows)
-    removeFails()
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const journal = await openChat()
-    let cursor = await journal.rollEpoch('handle_forked', 1)
-    for (let ordinal = 3; cursor.sequence < rows.length; ordinal += 1) {
-      const appended = await journal.appendItem(
-        item(ordinal),
-        {
-          kind: 'message',
-          role: 'assistant',
-          blocks: [{ type: 'text', text: 'after the rewind' }]
-        },
-        { fence: 1 }
-      )
-      cursor = appended.cursor
-    }
-    expect(cursor.sequence).toBe(rows.length)
-    const rolledEpoch = journal.epoch
-    await journals.closeAll()
-    appendOlderRow(epoch, rows, rows.length + 1)
-    const bytes = await readFile(legacyJournalDatabaseFile(legacyDir()))
-    await removeWorks()
-
-    const reopened = await openChat()
-
-    expect(rolledEpoch).not.toBe(epoch)
-    expect(reopened.epoch).toBe(rolledEpoch)
-    expect(texts(reopened)).toContain('after the rewind')
-    expect(texts(reopened)).not.toContain('older')
-    expect(texts(reopened)).not.toContain('continued in an older version of Orca')
-    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(bytes)).toBe(true)
-  })
 })

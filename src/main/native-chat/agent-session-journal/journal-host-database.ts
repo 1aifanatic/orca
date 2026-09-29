@@ -5,11 +5,9 @@
 // open, close, retry or leak, and the connection closes exactly once, last, at host teardown.
 
 import { mkdirSync } from 'node:fs'
-import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { freePageCount, reclaimFreePagesStep } from '../../sqlite/sqlite-free-page-reclaim'
 import { JOURNAL_SYNCHRONOUS, openJournalDatabase, runJournalTransaction } from './journal-database'
 import { journalOpenRefusalError } from './journal-open-failure'
 import { journalDirectoryFor } from './journal-paths'
@@ -23,7 +21,6 @@ export function journalDatabasePath(stateDirectory: string): string {
 
 export class JournalHostDatabase {
   private connection: Database.Database | null
-  private reclaiming: Promise<void> | null = null
   /** A failed transaction's ROLLBACK failed too, so the transaction may still be open. */
   private stranded = false
 
@@ -89,16 +86,6 @@ export class JournalHostDatabase {
     return journalDirectoryFor(this.stateDirectory, identity)
   }
 
-  /**
-   * Hands the pages a delete freed back to the filesystem, one bounded step per turn of the event
-   * loop, after the transaction that freed them. Called by everything that deletes rows. Passes
-   * coalesce: one already running picks up whatever the new delete freed.
-   */
-  reclaimFreePages(): Promise<void> {
-    this.reclaiming ??= this.runReclaim()
-    return this.reclaiming
-  }
-
   /** Last, after every store has drained. A close that fails keeps the handle, so the retried
    *  teardown closes this same connection. */
   close(): void {
@@ -121,28 +108,5 @@ export class JournalHostDatabase {
     }
     connection.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
     this.stranded = false
-  }
-
-  private async runReclaim(): Promise<void> {
-    try {
-      await yieldToEventLoop()
-      while (!this.isClosed) {
-        const db = this.db
-        const before = freePageCount(db)
-        const remaining = reclaimFreePagesStep(db)
-        // A step that frees nothing (a file created without incremental auto-vacuum) ends the pass;
-        // pages a delete freed since the last step do not.
-        if (remaining === 0 || remaining >= before) {
-          return
-        }
-        await yieldToEventLoop()
-      }
-    } catch (error) {
-      // Bookkeeping: a failed step only leaves pages for the next delete's pass.
-      console.warn('[agent-session-journal] reclaiming freed pages failed', error)
-    } finally {
-      // Cleared as the pass ends, not a microtask later, so a delete right after starts a new one.
-      this.reclaiming = null
-    }
   }
 }

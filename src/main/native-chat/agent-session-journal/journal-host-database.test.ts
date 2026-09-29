@@ -18,7 +18,6 @@ import {
   openTestJournalHostDatabase,
   readTestJournalRows
 } from './journal-host-database-test-support'
-import { deleteJournalBlock, journalRowId } from './journal-row-table'
 import type Database from '../../sqlite/sync-database'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -174,8 +173,10 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
     expect(() =>
       database.unsyncedTransaction((db) =>
         db
-          .prepare('INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)')
-          .run(journalRowId(99, 1), 1, '{}')
+          .prepare(
+            'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
+          )
+          .run('copying', 'epoch-copying', 1, 1, '{}')
       )
     ).toThrow('FOREIGN KEY constraint failed')
     expect(connection.isTransaction).toBe(true)
@@ -231,37 +232,5 @@ describe('quit', () => {
     expect(
       readTestJournalRows(reopened.db, IDENTITY.sessionId, journal.epoch).map((row) => row.seq)
     ).toEqual([1, 2])
-  })
-})
-
-describe('handing freed pages back', () => {
-  // About one page per row; each block frees more than one reclaim step's worth.
-  function fillBlock(
-    db: ReturnType<typeof openTestJournalHostDatabase>['db'],
-    block: number
-  ): void {
-    const insert = db.prepare('INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)')
-    db.exec('BEGIN')
-    for (let seq = 1; seq <= 3500; seq += 1) {
-      insert.run(journalRowId(block, seq), 1, 'x'.repeat(3500))
-    }
-    db.exec('COMMIT')
-  }
-
-  it('reclaims what a delete frees while a pass is already running', async () => {
-    const database = openTestJournalHostDatabase(root)
-    const freePages = () => Number(database.db.pragma('freelist_count', { simple: true }))
-    fillBlock(database.db, 0)
-    fillBlock(database.db, 1)
-    deleteJournalBlock(database.db, 0)
-    const pass = database.reclaimFreePages()
-    // The pass takes its first step, then a second chat's delete lands before its next one.
-    await new Promise((resolve) => setImmediate(resolve))
-    expect(freePages()).toBeGreaterThan(0)
-    deleteJournalBlock(database.db, 1)
-
-    expect(database.reclaimFreePages()).toBe(pass)
-    await pass
-    expect(freePages()).toBe(0)
   })
 })

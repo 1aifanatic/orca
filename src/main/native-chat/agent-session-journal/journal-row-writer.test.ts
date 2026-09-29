@@ -12,7 +12,6 @@ import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-sess
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalRow } from './journal-row-schema'
 import { JournalRowWriter } from './journal-row-writer'
-import { readJournalSessionPointer } from './journal-row-table'
 import {
   openTestJournalHostDatabase,
   readTestJournalRows,
@@ -66,7 +65,6 @@ describe('journal row writer', () => {
       now: () => 1,
       serialize: (run) => run(),
       database: () => database,
-      block: () => readJournalSessionPointer(database.db, SESSION_ID)?.block ?? -1,
       readOnly: () => readOnly,
       highestFence: () => 0,
       nextSequence: () => sequence,

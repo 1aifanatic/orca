@@ -5,15 +5,11 @@
 import { resolve } from 'node:path'
 import { JournalHostDatabase } from './journal-host-database'
 import { replayJournal, type JournalLoad } from './journal-open'
-import type { JournalRow } from './journal-row-schema'
+import { serializeJournalRow, type JournalRow } from './journal-row-schema'
 import {
-  allocateJournalBlock,
-  insertJournalRow,
   iterateJournalEpochRows,
-  journalRowId,
   publishJournalSessionEpoch,
-  readJournalSessionPointer,
-  type JournalBlockPointer,
+  readJournalSessionEpoch,
   type JournalStoredRow
 } from './journal-row-table'
 import type Database from '../../sqlite/sync-database'
@@ -83,25 +79,21 @@ export function loadTestJournal(stateDirectory: string, sessionId: string): Jour
 
 // Staging on-disk states for a case, addressed the way the case thinks of them: by chat and sequence.
 
-function livePointer(db: Database.Database, sessionId: string): JournalBlockPointer {
-  const pointer = readJournalSessionPointer(db, sessionId)
-  if (!pointer) {
+function liveEpoch(db: Database.Database, sessionId: string): string {
+  const epoch = readJournalSessionEpoch(db, sessionId)
+  if (epoch === null) {
     throw new Error(`no journal for ${sessionId}`)
   }
-  return pointer
+  return epoch
 }
 
-/** Points the chat at a new epoch in a fresh block, as a publish would. */
+/** Points the chat at a new epoch, as a publish would. */
 export function publishTestJournalEpoch(
   db: Database.Database,
   sessionId: string,
   epoch: string
 ): void {
-  publishJournalSessionEpoch(
-    db,
-    { sessionId, workspaceId: 'ws-1' },
-    { epoch, block: allocateJournalBlock(db) }
-  )
+  publishJournalSessionEpoch(db, { sessionId, workspaceId: 'ws-1' }, epoch)
 }
 
 /** The chat's rows of `epoch` — none once that epoch is no longer the live one. */
@@ -110,22 +102,24 @@ export function readTestJournalRows(
   sessionId: string,
   epoch: string
 ): JournalStoredRow[] {
-  const pointer = readJournalSessionPointer(db, sessionId)
-  return pointer?.epoch === epoch ? [...iterateJournalEpochRows(db, pointer)] : []
+  return readJournalSessionEpoch(db, sessionId) === epoch
+    ? [...iterateJournalEpochRows(db, sessionId, epoch)]
+    : []
 }
 
 /** The chat's rows of whichever epoch is live now. */
 export function liveTestJournalRows(db: Database.Database, sessionId: string): JournalStoredRow[] {
-  const pointer = readJournalSessionPointer(db, sessionId)
-  return pointer ? [...iterateJournalEpochRows(db, pointer)] : []
+  const epoch = readJournalSessionEpoch(db, sessionId)
+  return epoch === null ? [] : [...iterateJournalEpochRows(db, sessionId, epoch)]
 }
 
+/** The row under the chat's live epoch, whatever epoch its body names. */
 export function insertTestJournalRow(
   db: Database.Database,
   sessionId: string,
   row: JournalRow
 ): void {
-  insertJournalRow(db, livePointer(db, sessionId).block, row)
+  insertTestJournalRowJson(db, sessionId, row.seq, serializeJournalRow(row), row.ts)
 }
 
 /** A raw `row_json` at `seq`, the way a newer build or a bad write would leave it. */
@@ -133,13 +127,12 @@ export function insertTestJournalRowJson(
   db: Database.Database,
   sessionId: string,
   seq: number,
-  rowJson: string
+  rowJson: string,
+  ts = 1
 ): void {
-  db.prepare('INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)').run(
-    journalRowId(livePointer(db, sessionId).block, seq),
-    1,
-    rowJson
-  )
+  db.prepare(
+    'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
+  ).run(sessionId, liveEpoch(db, sessionId), seq, ts, rowJson)
 }
 
 export function updateTestJournalRowJson(
@@ -148,14 +141,15 @@ export function updateTestJournalRowJson(
   seq: number,
   rowJson: string
 ): void {
-  db.prepare('UPDATE journal_rows SET row_json = ? WHERE id = ?').run(
-    rowJson,
-    journalRowId(livePointer(db, sessionId).block, seq)
-  )
+  db.prepare(
+    'UPDATE journal_rows SET row_json = ? WHERE session_id = ? AND epoch = ? AND seq = ?'
+  ).run(rowJson, sessionId, liveEpoch(db, sessionId), seq)
 }
 
 export function deleteTestJournalRow(db: Database.Database, sessionId: string, seq: number): void {
-  db.prepare('DELETE FROM journal_rows WHERE id = ?').run(
-    journalRowId(livePointer(db, sessionId).block, seq)
+  db.prepare('DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq = ?').run(
+    sessionId,
+    liveEpoch(db, sessionId),
+    seq
   )
 }

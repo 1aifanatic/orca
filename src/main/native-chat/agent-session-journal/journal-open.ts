@@ -15,8 +15,7 @@ import {
 import {
   iterateJournalEpochRows,
   readJournalRowsAfter,
-  readJournalSessionPointer,
-  type JournalBlockPointer
+  readJournalSessionEpoch
 } from './journal-row-table'
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
@@ -27,8 +26,6 @@ const FIRST_JOURNAL_SEQUENCE = 1
 
 export type JournalLoad = {
   state: JournalReducerState
-  /** The block the live epoch's rows are keyed under. */
-  block: number
   /** A row from a future schema was met: no writes, no deletion. */
   readOnly: boolean
   /** Set when the surviving prefix is unusable and the caller must roll the epoch. */
@@ -43,15 +40,15 @@ export type JournalLoad = {
 
 /** Replays one chat from the host's database. Returns null when the chat has no journal yet. */
 export function replayJournal(db: Database.Database, sessionId: string): JournalLoad | null {
-  const pointer = readJournalSessionPointer(db, sessionId)
-  if (!pointer) {
+  const epoch = readJournalSessionEpoch(db, sessionId)
+  if (epoch === null) {
     return null
   }
   return foldJournalRows({
     sessionId,
-    pointer,
-    repairedFrom: pendingJournalRepairSequence(db, sessionId, pointer.epoch),
-    rows: iterateJournalEpochRows(db, pointer)
+    epoch,
+    repairedFrom: pendingJournalRepairSequence(db, sessionId, epoch),
+    rows: iterateJournalEpochRows(db, sessionId, epoch)
   })
 }
 
@@ -70,7 +67,7 @@ export function foldJournalRows(
 
 export type JournalRowFoldInput = {
   sessionId: string
-  pointer: JournalBlockPointer
+  epoch: string
   /** The sequence a pending repair on this epoch left free. */
   repairedFrom: number | null
 }
@@ -81,8 +78,8 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
   add: (entry: { seq: number; rowJson: string }) => boolean
   finish: () => JournalLoad
 } {
-  const { pointer, repairedFrom } = input
-  const state = createJournalReducerState(input.sessionId, pointer.epoch)
+  const { repairedFrom } = input
+  const state = createJournalReducerState(input.sessionId, input.epoch)
   let expectedSequence = FIRST_JOURNAL_SEQUENCE
   let gapSequence: number | undefined
   let unanchoredSequence: number | undefined
@@ -135,7 +132,6 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
     state.oldestSequence = FIRST_JOURNAL_SEQUENCE
     return {
       state,
-      block: pointer.block,
       readOnly: latched,
       corrupt:
         gapSequence !== undefined ||
@@ -154,12 +150,13 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
  *  cannot parse, exactly as replay does. */
 export function readJournalRowsAfterCursor(
   db: Database.Database,
-  pointer: JournalBlockPointer,
+  sessionId: string,
+  epoch: string,
   afterSequence: number,
   limit?: number
 ): JournalRow[] {
   const rows: JournalRow[] = []
-  for (const stored of readJournalRowsAfter(db, pointer, afterSequence, limit)) {
+  for (const stored of readJournalRowsAfter(db, sessionId, epoch, afterSequence, limit)) {
     const parsed = parseJournalRow(stored.rowJson)
     if (!parsed.ok) {
       break

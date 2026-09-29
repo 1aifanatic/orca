@@ -14,20 +14,14 @@ import {
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import { journalDatabasePath } from './journal-host-database'
 import {
-  allocateJournalBlock,
-  deleteJournalBlock,
+  deleteJournalEpochRows,
   deleteJournalRowSuffix,
+  deleteUnpublishedJournalRows,
   insertJournalRow,
   iterateJournalEpochRows,
-  JOURNAL_BLOCK_LIMIT,
-  JOURNAL_SEQUENCE_LIMIT,
-  JournalKeySpaceError,
-  journalRowId,
   publishJournalSessionEpoch,
   readJournalRowsAfter,
-  readJournalSessionPointer,
-  readJournalTip,
-  type JournalBlockPointer
+  readJournalSessionEpoch
 } from './journal-row-table'
 import type { JournalRow } from './journal-row-schema'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
@@ -50,8 +44,8 @@ function epochRow(seq: number, epoch = 'epoch-1'): JournalRow {
 
 const SESSION = { sessionId: 'session-1', workspaceId: 'ws-1' }
 
-function rowsOf(db: Database.Database, pointer: JournalBlockPointer): number[] {
-  return [...iterateJournalEpochRows(db, pointer)].map((row) => row.seq)
+function rowsOf(db: Database.Database, sessionId: string, epoch: string): number[] {
+  return [...iterateJournalEpochRows(db, sessionId, epoch)].map((row) => row.seq)
 }
 
 async function digest(path: string): Promise<string> {
@@ -98,8 +92,8 @@ describe('the host journal database open', () => {
   // T5: a newer build's database is refused and left byte-identical.
   it('refuses a newer user_version without touching the file', async () => {
     const seeded = openJournalDatabase(dbPath)
-    publishJournalSessionEpoch(seeded, SESSION, { epoch: 'epoch-1', block: 0 })
-    insertJournalRow(seeded, 0, epochRow(1))
+    publishJournalSessionEpoch(seeded, SESSION, 'epoch-1')
+    insertJournalRow(seeded, 'session-1', epochRow(1))
     seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 5}`)
     seeded.close()
     const before = await digest(dbPath)
@@ -120,44 +114,63 @@ describe('the host journal database open', () => {
 })
 
 describe('journal row statements', () => {
-  it('serves replay, resume, the tip, suffix truncation and a block discard', () => {
+  it('serves replay, resume, suffix truncation and an epoch discard', () => {
     const db = openJournalDatabase(dbPath)
     try {
-      const pointer = { epoch: 'epoch-1', block: 0 }
-      const other = { epoch: 'epoch-other', block: 1 }
       db.exec('BEGIN IMMEDIATE')
       for (let seq = 1; seq <= 5; seq += 1) {
-        insertJournalRow(db, pointer.block, epochRow(seq))
+        insertJournalRow(db, 'session-1', epochRow(seq))
       }
-      insertJournalRow(db, other.block, epochRow(1, 'epoch-other'))
-      publishJournalSessionEpoch(db, SESSION, pointer)
-      publishJournalSessionEpoch(db, { sessionId: 'session-2', workspaceId: 'ws-1' }, other)
+      insertJournalRow(db, 'session-2', epochRow(1))
+      publishJournalSessionEpoch(db, SESSION, 'epoch-1')
+      publishJournalSessionEpoch(db, { sessionId: 'session-2', workspaceId: 'ws-1' }, 'epoch-1')
       db.exec('COMMIT')
 
-      expect(readJournalSessionPointer(db, 'session-1')).toEqual(pointer)
-      expect(readJournalSessionPointer(db, 'absent')).toBeNull()
-      expect(rowsOf(db, pointer)).toEqual([1, 2, 3, 4, 5])
-      expect(readJournalTip(db, pointer.block)).toBe(5)
-      expect(readJournalRowsAfter(db, pointer, 3).map((row) => row.seq)).toEqual([4, 5])
+      expect(readJournalSessionEpoch(db, 'session-1')).toBe('epoch-1')
+      expect(readJournalSessionEpoch(db, 'absent')).toBeNull()
+      expect(rowsOf(db, 'session-1', 'epoch-1')).toEqual([1, 2, 3, 4, 5])
+      expect(readJournalRowsAfter(db, 'session-1', 'epoch-1', 3).map((row) => row.seq)).toEqual([
+        4, 5
+      ])
 
-      expect(deleteJournalRowSuffix(db, pointer.block, 4)).toBe(2)
-      expect(rowsOf(db, pointer)).toEqual([1, 2, 3])
+      expect(deleteJournalRowSuffix(db, 'session-1', 'epoch-1', 4)).toBe(2)
+      expect(rowsOf(db, 'session-1', 'epoch-1')).toEqual([1, 2, 3])
 
       // Another chat in the same file is untouched by this chat's discard.
-      deleteJournalBlock(db, pointer.block)
-      expect(rowsOf(db, pointer)).toEqual([])
-      expect(rowsOf(db, other)).toEqual([1])
+      deleteJournalEpochRows(db, 'session-1', 'epoch-1')
+      expect(rowsOf(db, 'session-1', 'epoch-1')).toEqual([])
+      expect(rowsOf(db, 'session-2', 'epoch-1')).toEqual([1])
     } finally {
       db.close()
     }
   })
 
-  it('refuses a duplicate sequence inside one block', () => {
+  it('deletes only the rows no pointer names', () => {
     const db = openJournalDatabase(dbPath)
     try {
-      insertJournalRow(db, 0, epochRow(1))
-      expect(() => insertJournalRow(db, 0, epochRow(1))).toThrow()
-      insertJournalRow(db, 1, epochRow(1))
+      insertJournalRow(db, 'session-1', epochRow(1, 'epoch-copying'))
+      insertJournalRow(db, 'session-2', epochRow(1, 'epoch-live'))
+      insertJournalRow(db, 'session-2', epochRow(1, 'epoch-stale'))
+      publishJournalSessionEpoch(db, { sessionId: 'session-2', workspaceId: 'ws-1' }, 'epoch-live')
+
+      deleteUnpublishedJournalRows(db, 'session-1')
+      deleteUnpublishedJournalRows(db, 'session-2')
+
+      expect(rowsOf(db, 'session-1', 'epoch-copying')).toEqual([])
+      expect(rowsOf(db, 'session-2', 'epoch-live')).toEqual([1])
+      expect(rowsOf(db, 'session-2', 'epoch-stale')).toEqual([])
+    } finally {
+      db.close()
+    }
+  })
+
+  it('refuses a duplicate sequence inside one epoch of one chat', () => {
+    const db = openJournalDatabase(dbPath)
+    try {
+      insertJournalRow(db, 'session-1', epochRow(1))
+      expect(() => insertJournalRow(db, 'session-1', epochRow(1))).toThrow()
+      insertJournalRow(db, 'session-1', epochRow(1, 'epoch-2'))
+      insertJournalRow(db, 'session-2', epochRow(1))
     } finally {
       db.close()
     }
@@ -166,45 +179,15 @@ describe('journal row statements', () => {
   it('moves the epoch pointer in place and forgets the saved status with it', () => {
     const db = openJournalDatabase(dbPath)
     try {
-      publishJournalSessionEpoch(db, SESSION, { epoch: 'epoch-1', block: 0 })
+      publishJournalSessionEpoch(db, SESSION, 'epoch-1')
       db.exec("UPDATE journal_sessions SET status_json = '{}', status_seq = 3")
-      publishJournalSessionEpoch(db, SESSION, { epoch: 'epoch-2', block: 1 })
-      expect(readJournalSessionPointer(db, 'session-1')).toEqual({ epoch: 'epoch-2', block: 1 })
+      publishJournalSessionEpoch(db, SESSION, 'epoch-2')
+      expect(readJournalSessionEpoch(db, 'session-1')).toBe('epoch-2')
       expect(
         db
           .prepare('SELECT count(*) AS total, max(status_json) AS status FROM journal_sessions')
           .get()
       ).toMatchObject({ total: 1, status: null })
-    } finally {
-      db.close()
-    }
-  })
-})
-
-// T-block: the key's bounds, where Number arithmetic has to stay exact.
-describe('block keys', () => {
-  it('keys the last sequence of the last block exactly, below 2^53', () => {
-    const db = openJournalDatabase(dbPath)
-    try {
-      const pointer = { epoch: 'epoch-1', block: JOURNAL_BLOCK_LIMIT - 1 }
-      const seq = JOURNAL_SEQUENCE_LIMIT - 1
-      expect(journalRowId(pointer.block, seq)).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER)
-      insertJournalRow(db, pointer.block, epochRow(seq))
-      insertJournalRow(db, pointer.block - 1, epochRow(seq))
-      expect(readJournalRowsAfter(db, pointer, 0).map((row) => row.seq)).toEqual([seq])
-      expect(readJournalTip(db, pointer.block)).toBe(seq)
-    } finally {
-      db.close()
-    }
-  })
-
-  it('refuses a sequence outside its block, and a block past the last', () => {
-    expect(() => journalRowId(0, JOURNAL_SEQUENCE_LIMIT)).toThrow(JournalKeySpaceError)
-    expect(() => journalRowId(0, 0)).toThrow(JournalKeySpaceError)
-    const db = openJournalDatabase(dbPath)
-    try {
-      publishJournalSessionEpoch(db, SESSION, { epoch: 'epoch-1', block: JOURNAL_BLOCK_LIMIT - 1 })
-      expect(() => allocateJournalBlock(db)).toThrow(JournalKeySpaceError)
     } finally {
       db.close()
     }
@@ -241,36 +224,23 @@ describe('schema creation', () => {
     }
   })
 
-  // A database an earlier head of this schema wrote gains the set-aside table and keeps its rows.
-  it('upgrades a version 1 database in place', () => {
-    const v1 = new Database(dbPath)
-    v1.pragma('auto_vacuum = INCREMENTAL')
-    v1.pragma('journal_mode = WAL')
-    v1.exec(`
+  // Versions 1 and 2 were written only by unreleased builds; neither is migrated.
+  it.each([1, 2])('refuses a version %i database without touching the file', async (version) => {
+    const earlier = new Database(dbPath)
+    earlier.pragma('journal_mode = WAL')
+    earlier.exec(`
 CREATE TABLE journal_rows (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, row_json TEXT NOT NULL);
 CREATE TABLE journal_sessions (session_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL,
   epoch TEXT NOT NULL, block INTEGER NOT NULL UNIQUE, status_json TEXT, status_seq INTEGER);
-CREATE TABLE journal_repairs (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL,
-  content_from INTEGER NOT NULL, repaired_at INTEGER NOT NULL);
-CREATE TABLE journal_imports (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL, tip INTEGER NOT NULL);
-CREATE TABLE journal_import_blocks (session_id TEXT PRIMARY KEY, block INTEGER NOT NULL UNIQUE);
-INSERT INTO journal_sessions VALUES ('s1', 'ws', 'e1', 0, NULL, NULL);
-INSERT INTO journal_imports VALUES ('s1', 'e0', 3);`)
-    v1.pragma('user_version = 1')
-    v1.close()
+INSERT INTO journal_sessions VALUES ('s1', 'ws', 'e1', 0, NULL, NULL);`)
+    earlier.pragma(`user_version = ${version}`)
+    earlier.pragma('journal_mode = DELETE')
+    earlier.close()
+    const before = await digest(dbPath)
 
-    const db = openJournalDatabase(dbPath)
-    try {
-      expect(journalPragmaNumber(db, 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
-      expect(
-        db.prepare("SELECT name FROM sqlite_master WHERE name = 'journal_set_aside'").get()
-      ).toBeTruthy()
-      expect(db.prepare('SELECT session_id, epoch, tip FROM journal_imports').all()).toEqual([
-        { session_id: 's1', epoch: 'e0', tip: 3 }
-      ])
-      expect(journalPragmaNumber(db, 'auto_vacuum')).toBe(2)
-    } finally {
-      db.close()
-    }
+    expect(() => openJournalDatabase(dbPath)).toThrow(`unreleased schema ${version}`)
+
+    expect(await digest(dbPath)).toBe(before)
+    await expect(stat(`${dbPath}-wal`)).rejects.toThrow()
   })
 })

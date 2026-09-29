@@ -48,7 +48,7 @@ export async function restoreJournalStore(
       deleteJournalRepairedSuffix({
         database: host.database(),
         sessionId: host.identity.sessionId,
-        pointer: { epoch: host.state().epoch, block: host.block() },
+        epoch: host.state().epoch,
         fromSeq,
         contentFrom,
         now: host.now()

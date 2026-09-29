@@ -97,7 +97,7 @@ export async function foldLegacyJournal(
 ): Promise<JournalLoad> {
   const fold = startJournalRowFold({
     sessionId,
-    pointer: { epoch: legacy.epoch, block: -1 },
+    epoch: legacy.epoch,
     repairedFrom: source.prepare(HAS_LEGACY_TABLE).get('journal_repairs')
       ? pendingJournalRepairSequence(source, sessionId, legacy.epoch)
       : null

@@ -81,7 +81,7 @@ function observeForwardReads() {
   const prepare = Database.prototype.prepare
   vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database, sql) {
     const statement = prepare.call(this, sql)
-    if (sql.includes('id > ?') && !observed.has(statement)) {
+    if (sql.includes('seq > ?') && !observed.has(statement)) {
       observed.add(statement)
       const all = statement.all.bind(statement)
       vi.spyOn(statement, 'all').mockImplementation((...args) => {

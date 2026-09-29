@@ -1,10 +1,9 @@
 // Opening a new epoch.
 //
-// One transaction: discard the superseded epoch's block, insert the new epoch
-// row at sequence 1 of a fresh block, move the session projection onto it, and
-// retire any repair marker the superseded epoch was carrying. Superseded rows
-// are DELETED rather than retained — nothing would ever shed them — and the
-// pages they held go back to the filesystem after the commit.
+// One transaction: discard every row of the superseded epoch, insert the new
+// epoch row at sequence 1, move the session projection onto it, and retire any
+// repair marker the superseded epoch was carrying. Superseded rows are DELETED
+// rather than retained — nothing would ever shed them.
 
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
@@ -13,11 +12,10 @@ import type { JournalLoad } from './journal-open'
 import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
-  allocateJournalBlock,
-  deleteJournalBlock,
+  deleteJournalEpochRows,
   insertJournalRow,
   publishJournalSessionEpoch,
-  readJournalSessionPointer
+  readJournalSessionEpoch
 } from './journal-row-table'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 
@@ -44,16 +42,14 @@ export function publishNewEpoch(input: {
   }
 
   const { sessionId } = input.identity
-  const block = input.database.transaction((db) => {
-    const retired = readJournalSessionPointer(db, sessionId)
-    const fresh = allocateJournalBlock(db)
-    if (retired) {
-      deleteJournalBlock(db, retired.block)
+  input.database.transaction((db) => {
+    const retired = readJournalSessionEpoch(db, sessionId)
+    if (retired !== null) {
+      deleteJournalEpochRows(db, sessionId, retired)
     }
     clearJournalRepairMarker(db, sessionId)
-    insertJournalRow(db, fresh, row)
-    publishJournalSessionEpoch(db, input.identity, { epoch: input.epoch, block: fresh })
-    return fresh
+    insertJournalRow(db, sessionId, row)
+    publishJournalSessionEpoch(db, input.identity, input.epoch)
   })
 
   // COMMIT landed: on disk the superseded prefix is gone and this epoch is the
@@ -62,6 +58,5 @@ export function publishNewEpoch(input: {
   const state = createJournalReducerState(sessionId, input.epoch)
   applyJournalRow(state, row)
   state.oldestSequence = 1
-  input.onPublished({ state, block, readOnly: false, corrupt: false, malformedRows: 0 })
-  void input.database.reclaimFreePages()
+  input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
 }

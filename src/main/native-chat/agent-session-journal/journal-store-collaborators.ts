@@ -31,7 +31,6 @@ export type JournalStoreHost = {
   owe: (work: () => Promise<void>) => void
   database: () => JournalHostDatabase
   state: () => JournalReducerState
-  block: () => number
   readOnly: () => boolean
   setReadOnly: (readOnly: boolean) => void
   cursor: () => AgentJournalCursor
@@ -76,7 +75,6 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       now: host.now,
       serialize: host.serialize,
       database: host.database,
-      block: host.block,
       readOnly: host.readOnly,
       highestFence: () => host.state().highestFence,
       nextSequence: () => host.state().lastSequence + 1,
