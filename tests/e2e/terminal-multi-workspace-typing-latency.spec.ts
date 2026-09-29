@@ -64,7 +64,7 @@ import {
 import {
   sustainedLoadReadyFilePath,
   typingProbeReadyMarker,
-  writeCodexShapedEchoProbeScript,
+  writeCodexEchoProbeScript,
   writeSustainedAgentLoadScript,
   writeTypingEchoProbeScript
 } from './sustained-agent-typing-load-scripts'
@@ -851,7 +851,7 @@ test.describe('Multi-workspace sustained typing latency bench', () => {
     const probePath = path.join(testRepoPath, `.orca-mwt-probe-${runId}.mjs`)
     const sidecarPath = path.join(testRepoPath, `.orca-mwt-arrivals-${runId}.jsonl`)
     writeSustainedAgentLoadScript(loadPath, runId, testRepoPath)
-    writeCodexShapedEchoProbeScript(probePath, runId, sidecarPath, {
+    writeCodexEchoProbeScript(probePath, runId, sidecarPath, {
       frameRows: CODEX_FRAME_ROWS,
       splitDelayMs: CODEX_SPLIT_DELAY_MS
     })

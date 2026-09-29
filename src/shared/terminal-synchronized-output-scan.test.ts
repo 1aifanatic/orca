@@ -104,7 +104,7 @@ describe('resolveSynchronizedOutputSafeSplit', () => {
   })
 
   it('never returns past the limit or breaks byte-exactness across many shapes', () => {
-    const shapes = [
+    const outputSamples = [
       `${OPEN}${'a'.repeat(50)}${CLOSE}`,
       `${'a'.repeat(50)}${CLOSE}${'b'.repeat(50)}`,
       `${OPEN}${OPEN}${'a'.repeat(30)}${CLOSE}${CLOSE}`,
@@ -113,7 +113,7 @@ describe('resolveSynchronizedOutputSafeSplit', () => {
       CLOSE.repeat(10),
       `${OPEN.repeat(10)}tail`
     ]
-    for (const data of shapes) {
+    for (const data of outputSamples) {
       for (let limit = 1; limit <= data.length + 3; limit++) {
         const splitAt = resolveSynchronizedOutputSafeSplit(data, limit)
         expect(splitAt).toBeGreaterThan(0)

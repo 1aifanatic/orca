@@ -166,7 +166,7 @@ process.stdin.on('data', (chunk) => {
  * is the gap between body and close, i.e. how long the latch stays open at the
  * source before Orca's delivery adds any of its own.
  */
-function codexShapedEchoProbeScript(
+function codexEchoProbeScript(
   runId: string,
   arrivalSidecarPath: string,
   frameRows: number,
@@ -219,7 +219,7 @@ process.stdin.on('data', (chunk) => {
 `
 }
 
-export function writeCodexShapedEchoProbeScript(
+export function writeCodexEchoProbeScript(
   scriptPath: string,
   runId: string,
   arrivalSidecarPath: string,
@@ -228,7 +228,7 @@ export function writeCodexShapedEchoProbeScript(
   mkdirSync(path.dirname(scriptPath), { recursive: true })
   writeFileSync(
     scriptPath,
-    codexShapedEchoProbeScript(runId, arrivalSidecarPath, options.frameRows, options.splitDelayMs)
+    codexEchoProbeScript(runId, arrivalSidecarPath, options.frameRows, options.splitDelayMs)
   )
 }
 
