@@ -5,6 +5,7 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../shared/terminal-tab-types'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { spawnSurfaceClaimSequence } from './pty-recorded-surface-topology'
+import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 
 // #18191: a terminal whose pane the graph dropped kept reporting `orphaned: false` with a
 // `tabId` no tab has — "field-for-field identical to a healthy one", so an operator polling
@@ -258,6 +259,69 @@ describe('terminal inventory after a pane is dropped', () => {
 })
 
 describe('runtime-owned terminal projection gaps', () => {
+  it.each(['removed', 'replaced', 'moved'] as const)(
+    'retains a published unmounted pane until it is explicitly %s',
+    async (change) => {
+      const runtime = makeRuntime()
+      runtime.markRuntimeOwned(DROPPED_PTY)
+      const before = await runtime.listTerminals(`id:${WORKTREE_ID}`)
+      const snapshot: RuntimeMobileSessionTabsSnapshot = {
+        worktree: WORKTREE_ID,
+        publicationEpoch: 'test',
+        snapshotVersion: 1,
+        activeGroupId: null,
+        activeTabId: null,
+        activeTabType: null,
+        tabs: [
+          {
+            type: 'terminal',
+            id: 'mobile-dropped',
+            title: 'Setup',
+            parentTabId: 'tab-dropped',
+            leafId: DROPPED_LEAF,
+            ptyId: null,
+            isActive: false,
+            parentLayout: {
+              root: { type: 'leaf', leafId: DROPPED_LEAF },
+              activeLeafId: DROPPED_LEAF,
+              expandedLeafId: null
+            }
+          }
+        ]
+      }
+      const graph = {
+        tabs: [tab('tab-kept', KEPT_LEAF)],
+        leaves: [leaf('tab-kept', KEPT_LEAF, KEPT_PTY)]
+      }
+      runtime.syncWindowGraph(1, { ...graph, mobileSessionTabs: [snapshot] })
+      expect((await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals).toEqual(before.terminals)
+      runtime.syncWindowGraph(1, {
+        ...graph,
+        mobileSessionTabs: [],
+        unchangedMobileSessionWorktrees: [WORKTREE_ID]
+      })
+      expect((await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals).toEqual(before.terminals)
+      runtime.syncWindowGraph(1, {
+        ...graph,
+        mobileSessionTabs: [
+          {
+            ...snapshot,
+            snapshotVersion: 2,
+            tabs:
+              change === 'removed'
+                ? []
+                : snapshot.tabs.map((surface) => ({
+                    ...surface,
+                    ptyId: change === 'replaced' ? 'replacement-pty' : DROPPED_PTY,
+                    ...(change === 'moved' ? { parentTabId: 'tab-moved', leafId: KEPT_LEAF } : {})
+                  }))
+          }
+        ]
+      })
+      expect(runtime.projectedPty('tab-dropped', DROPPED_LEAF)).toBeUndefined()
+    }
+  )
+
   it.each(['unverifiable', 'exited', 'different-workspace', 'replacement'] as const)(
     'respects %s evidence while an existing pane publishes null',
     async (scenario) => {

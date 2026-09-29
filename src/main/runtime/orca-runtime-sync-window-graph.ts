@@ -9,6 +9,7 @@ import type {
 } from '../../shared/runtime-types'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
+import { collectRendererPublishedEmptyTerminalPanes } from './renderer-published-empty-terminal-panes'
 
 /** The runtime indexes graph tabs by bare id, so duplicate ids cannot be routed safely. */
 function assertUniqueRuntimeGraphTabIds(tabs: readonly RuntimeSyncedTab[]): void {
@@ -99,6 +100,22 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
     // keep live CLI handles usable while the UI graph rebuilds.
     const preserveLivePtysDuringReload = this.graphStatus === 'reloading'
     const incomingPtyIds = new Set(lifecycleLeaves.map((leaf) => leaf.ptyId))
+    const published = collectRendererPublishedEmptyTerminalPanes(
+      graph,
+      this.mobileSessionTabsByWorktree,
+      this.acceptedRendererMobileSnapshotByWorktree
+    )
+    const canPreserveRuntimeOwnedPty = (leaf: RuntimeLeafRecord): boolean => {
+      const pty = leaf.ptyId ? this.ptysById.get(leaf.ptyId) : undefined
+      return (
+        pty?.runtimeSessionOwned === true &&
+        pty.worktreeId === leaf.worktreeId &&
+        pty.tabId === leaf.tabId &&
+        pty.paneKey === this.makeRuntimePaneKey(leaf) &&
+        !incomingPtyIds.has(pty.ptyId) &&
+        this.getPtyLivenessVerdict(pty.ptyId)?.status !== 'exited'
+      )
+    }
     for (const leaf of lifecycleLeaves) {
       if (leaf.ptyId) {
         if (leaf.parked) {
@@ -109,16 +126,9 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
       }
       const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId)
       const existing = this.leaves.get(leafKey)
-      const recordedPty = existing?.ptyId ? this.ptysById.get(existing.ptyId) : undefined
       // A mounting renderer's empty projection cannot orphan the host-owned PTY in this exact pane.
       const preserveRuntimeOwnedPty =
-        recordedPty?.runtimeSessionOwned === true &&
-        recordedPty.worktreeId === leaf.worktreeId &&
-        existing?.worktreeId === leaf.worktreeId &&
-        recordedPty.tabId === leaf.tabId &&
-        recordedPty.paneKey === this.makeRuntimePaneKey(leaf) &&
-        !incomingPtyIds.has(existing.ptyId) &&
-        this.getPtyLivenessVerdict(existing.ptyId)?.status !== 'exited'
+        existing?.worktreeId === leaf.worktreeId && canPreserveRuntimeOwnedPty(existing)
       const ptyId =
         (preserveLivePtysDuringReload || preserveRuntimeOwnedPty) &&
         leaf.ptyId === null &&
@@ -203,13 +213,21 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
         const retainedIncarnation = oldLeaf?.ptyId
           ? this.handleByPtyIncarnation.get(oldLeaf.ptyId)
           : undefined
+        // Inactive panes may lack transport leaves while the renderer still publishes their exact surface.
+        const preservePublishedRuntimePane =
+          oldLeaf &&
+          published.emptyPaneWorktrees.get(this.makeRuntimePaneKey(oldLeaf)) ===
+            oldLeaf.worktreeId &&
+          !published.boundPtyIds.has(oldLeaf.ptyId) &&
+          canPreserveRuntimeOwnedPty(oldLeaf)
         if (
-          preserveLivePtysDuringReload &&
           oldLeaf?.ptyId &&
-          (this.handleByPtyId.has(oldLeaf.ptyId) ||
-            (retainedIncarnation &&
-              retainedIncarnation.incarnationId ===
-                this.ptysById.get(oldLeaf.ptyId)?.incarnationId)) &&
+          (preservePublishedRuntimePane ||
+            (preserveLivePtysDuringReload &&
+              (this.handleByPtyId.has(oldLeaf.ptyId) ||
+                (retainedIncarnation &&
+                  retainedIncarnation.incarnationId ===
+                    this.ptysById.get(oldLeaf.ptyId)?.incarnationId)))) &&
           !nextPtyIds.has(oldLeaf.ptyId)
         ) {
           // Why: a CLI-created agent keeps using its exported handle even if
