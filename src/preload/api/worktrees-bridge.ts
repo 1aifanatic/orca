@@ -10,6 +10,8 @@ import type {
 import type { WorktreeHeadIdentity } from '../../shared/worktree/types'
 import type { PreloadApi } from '../api-types'
 
+type WorktreesChangedEvent = Parameters<Parameters<PreloadApi['worktrees']['onChanged']>[0]>[0]
+
 export const worktreesApi = {
   list: (args) => ipcRenderer.invoke('worktrees:list', args),
   listRetiredNames: (args) => ipcRenderer.invoke('worktrees:listRetiredNames', args),
@@ -68,16 +70,9 @@ export const worktreesApi = {
   getBranchRenameFailureOutput: (args) =>
     ipcRenderer.invoke('worktrees:getBranchRenameFailureOutput', args),
 
-  onChanged: (
-    callback: (data: {
-      repoId: string
-      renamed?: { oldWorktreeId: string; newWorktreeId: string }
-    }) => void
-  ): (() => void) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      data: { repoId: string; renamed?: { oldWorktreeId: string; newWorktreeId: string } }
-    ) => callback(data)
+  onChanged: (callback: (data: WorktreesChangedEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: WorktreesChangedEvent) =>
+      callback(data)
     ipcRenderer.on('worktrees:changed', listener)
     return () => ipcRenderer.removeListener('worktrees:changed', listener)
   },

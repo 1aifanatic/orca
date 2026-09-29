@@ -28,6 +28,7 @@ import {
   invalidateRuntimeClientEventReplay
 } from './runtime-environment-subscription-selection'
 import type { WorktreeEventRuntime } from './worktree-event-runtime'
+import { applyBackgroundWorktreeRemovalOutcome } from './background-worktree-removal-bridge'
 
 export function registerRuntimeClientIpcBridge(
   unsubs: (() => void)[],
@@ -110,6 +111,12 @@ export function registerRuntimeClientIpcBridge(
       return
     }
     if (event.type === 'worktreesChanged') {
+      if (event.removalOutcome) {
+        applyBackgroundWorktreeRemovalOutcome(
+          toRuntimeExecutionHostId(environmentId),
+          event.removalOutcome
+        )
+      }
       void ensureRuntimeEventRepoKnown(environmentId, event.repoId).then(() =>
         worktreeChangeRefreshQueue.enqueue({
           repoId: event.repoId,

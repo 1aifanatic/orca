@@ -9,6 +9,7 @@ import type {
   ProviderRequestId
 } from '../../shared/detected-worktree-provider-contract'
 import type { ExecutionHostId } from '../../shared/execution-host'
+import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import type { RetiredNameRegistry } from '../../shared/worktree/retired-name-registry'
 import type {
   FolderWorkspacePathStatus,
@@ -134,7 +135,14 @@ export type WorktreeApi = {
   /** Full CLI output of the last branch auto-rename generation failure, held
    *  in main memory only — null after a restart or once the failure clears. */
   getBranchRenameFailureOutput: (args: { worktreeId: string }) => Promise<string | null>
-  onChanged: (callback: (data: { repoId: string }) => void) => () => void
+  onChanged: (
+    callback: (data: {
+      repoId: string
+      renamed?: { oldWorktreeId: string; newWorktreeId: string }
+      /** Set when a background removal on this host ended. */
+      removalOutcome?: WorktreeRemovalOutcome
+    }) => void
+  ) => () => void
   onGitStatusMetadataChanged: (callback: (data: { repoId: string }) => void) => () => void
   onHeadIdentitiesChanged: (
     callback: (data: { repoId: string; identities: WorktreeHeadIdentity[] }) => void

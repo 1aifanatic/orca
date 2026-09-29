@@ -4,6 +4,10 @@ import { callRuntimeRpc, type getActiveRuntimeTarget } from '../../../../runtime
 import { toRuntimeWorktreeSelector } from '../../../../runtime/runtime-worktree-selector'
 import type { RemoveWorktreeOptions } from '../../worktree-removal-options'
 import { ARCHIVE_HOOK_TIMEOUT_MS } from '../../../../../../shared/worktree/archive-hook-removal-gate'
+import {
+  backgroundRemovalHostId,
+  waitForBackgroundWorktreeRemoval
+} from './background-worktree-removal'
 
 /**
  * Sends the destructive removal over whichever transport owns this workspace.
@@ -23,6 +27,20 @@ export async function dispatchWorktreeRemoval(args: {
   /** Re-checks mid-flight ownership immediately before the destructive call. */
   assertCurrent: () => void
 }): Promise<RemoveWorktreeResult> {
+  const accepted = await requestWorktreeRemoval(args)
+  // The card stays Deleting while the host's Git finishes; its outcome settles this.
+  return accepted?.removing
+    ? waitForBackgroundWorktreeRemoval({
+        hostId: backgroundRemovalHostId(args.target),
+        worktreeId: args.worktreeId,
+        accepted
+      })
+    : accepted
+}
+
+async function requestWorktreeRemoval(
+  args: Parameters<typeof dispatchWorktreeRemoval>[0]
+): Promise<RemoveWorktreeResult> {
   const { worktreeId, hostId, force, skipArchive, forgetLocalOnly, target, options } = args
   const snapshotPruneBatch = options?.snapshotPruneBatchId
     ? { snapshotPruneBatchId: options.snapshotPruneBatchId }
