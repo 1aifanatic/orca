@@ -39,7 +39,10 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
       state: row.state,
       ...(paused ? { paused: true as const } : {}),
       ...(pausedReason !== undefined ? { pausedReason } : {}),
-      ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {})
+      ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {}),
+      ...(row.state === 'returned' && row.returnedRejection
+        ? { returnedRejection: row.returnedRejection }
+        : {})
     })
   }
   return published

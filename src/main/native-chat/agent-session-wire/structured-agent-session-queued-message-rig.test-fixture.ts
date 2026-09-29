@@ -5,6 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, vi, type Mock } from 'vitest'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -182,12 +184,16 @@ export async function createQueuedMessageTestRig() {
     })
   }
 
-  async function settleRejected(id: string, reason: string): Promise<void> {
+  /** A provider refusal, written as the host writes one: the sentence and the typed fact. */
+  async function settleRejected(id: string, providerText: string): Promise<void> {
+    const detail = { text: providerText, audience: 'person' as const }
     await host.settleLateDispatch({
       sessionId: SESSION,
       clientMessageId: id,
       state: 'rejected',
-      reason
+      ...agentSessionFailureWords(agentSessionFailureFact('providerRejected', { detail }), {
+        surface: 'rejection'
+      })
     })
   }
 
