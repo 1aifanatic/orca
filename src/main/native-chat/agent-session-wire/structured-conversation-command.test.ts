@@ -427,35 +427,117 @@ describe('a clear that never committed', () => {
     expect(store.getRecord(orphan)?.lease).toMatchObject({ claimStatus: 'released' })
   })
 
-  // The replacement's start cannot be replayed once the crash released it, so the retry clears
-  // nothing; it starts no second replacement, latches nothing, and says a new /clear will run.
-  it('retried under the same operation id after a crash, starts no second replacement and leaves the chat usable', async () => {
+  function otherRecordIds(): string[] {
+    return store
+      .listRecords()
+      .flatMap((record) => (record.sessionId === HOST_TEST_SESSION ? [] : [record.sessionId]))
+  }
+
+  function startsFor(sessionId: string): number {
+    return vi
+      .mocked(adapter.acquire)
+      .mock.calls.filter(([input]) => input.identity.sessionId === sessionId).length
+  }
+
+  function sendTo(sessionId: string, text: string) {
+    const body = hostTestMessage(text)
+    return host.send(caller, {
+      body,
+      envelope: {
+        sessionId,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: store.getRecord(sessionId)!.lease.runtimeFence,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.send',
+          sessionId,
+          fields: { body }
+        })
+      }
+    })
+  }
+
+  /** The chat reads cleared onto `replacement`, which starts its agent for its first message. */
+  async function expectClearedOnto(replacement: string): Promise<void> {
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
+    expect(await host.send(caller, sendParams('into the old chat'))).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCleared' } }
+    })
+    const started = startsFor(replacement)
+    expect(await sendTo(replacement, 'first message')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(startsFor(replacement)).toBe(started + 1))
+  }
+
+  // A restart stopped the replacement the first try started, which leaves it at rest like any
+  // quiet chat, so the retry switches to it.
+  it('retried under the same operation id after a crash, finishes onto the replacement it started', async () => {
     const params = commandParams('clear')
     const orphan = await clearThatDiesBeforeItsCommit(params)
     await restartHost()
     await host.restoreReadableSessions(store.listVisibleSessionIds())
+    const result = await host.conversationCommand(caller, params)
+    expect(result).toMatchObject({
+      ok: true,
+      value: { phase: 'committed', state: 'completed', replacementSessionId: orphan }
+    })
+    expect(result.ok && result.value.error).toBeFalsy()
+    expect(otherRecordIds()).toEqual([orphan])
+    expect(startsFor(orphan)).toBe(1)
+    await expectClearedOnto(orphan)
+  })
+
+  it('retried in the same app session once the idle sweep stopped the replacement, finishes onto it', async () => {
+    const params = commandParams('clear')
+    const attach = host.attach.bind(host)
+    // The replacement starts, but the answer the clear gets proves nothing either way.
+    vi.spyOn(host, 'attach').mockImplementationOnce(async (...args) => {
+      await attach(...args)
+      return {
+        ok: false,
+        refusal: { code: 'agent_session_operation_capacity', message: 'Too many operations.' }
+      }
+    })
+    await expect(host.conversationCommand(caller, params)).rejects.toThrow('Too many operations.')
+    const [orphan] = otherRecordIds()
+    expect(store.getRecord(orphan!)?.lease.claimStatus).not.toBe('released')
+    clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+    await host.collaboratorsForTests().lifetime.idleSweep.tick()
+    expect(store.getRecord(orphan!)?.lease).toMatchObject({ claimStatus: 'released' })
+    const result = await host.conversationCommand(caller, params)
+    expect(result).toMatchObject({
+      ok: true,
+      value: { phase: 'committed', state: 'completed', replacementSessionId: orphan }
+    })
+    expect(result.ok && result.value.error).toBeFalsy()
+    expect(startsFor(orphan!)).toBe(1)
+    await expectClearedOnto(orphan!)
+  })
+
+  it('retried after the replacement definitely failed to start, still reads that failure', async () => {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(
+      new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn')
+    )
+    vi.spyOn(store, 'setConversationCommand').mockRejectedValueOnce(
+      new Error('crash before the commit')
+    )
+    const params = commandParams('clear')
+    await expect(host.conversationCommand(caller, params)).rejects.toThrow(
+      'crash before the commit'
+    )
+    const [replacement] = otherRecordIds()
+    expect(store.getRecord(replacement!)?.lease).toMatchObject({ claimStatus: 'released' })
     expect(await host.conversationCommand(caller, params)).toMatchObject({
       ok: true,
       value: {
         state: 'completed',
-        error:
-          "This /clear didn't finish, so the chat is unchanged. Run /clear again to start fresh.",
-        failure: {
-          kind: 'clearUnfinished',
-          refusal: {
-            code: 'agent_session_ownership_unknown',
-            details: { reason: 'ownerUnproven' }
-          }
-        }
+        replacementSessionId: undefined,
+        error: 'Codex is not signed in for the selected account. Sign in, then run /clear again.',
+        failure: { kind: 'notSignedIn' }
       }
     })
-    expect(
-      store
-        .listRecords()
-        .map((record) => record.sessionId)
-        .toSorted()
-    ).toEqual([orphan, HOST_TEST_SESSION].toSorted())
-    expect(await host.send(caller, sendParams('after the retry'))).toMatchObject({ ok: true })
+    expect(startsFor(replacement!)).toBe(1)
+    expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
   })
 
   it('starts nothing for that replacement after a crash, and releases what it held', async () => {
