@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   findLandedUnconfirmedSends,
@@ -17,11 +17,14 @@ export function useMobileNativeChatUnconfirmedSend(
 ) {
   const mountedRef = useRef(false)
   const activeDraftKeyRef = useRef(draftKey)
-  activeDraftKeyRef.current = draftKey
   const activePendingKeyRef = useRef(pendingKey)
-  activePendingKeyRef.current = pendingKey
   const messagesRef = useRef(messages)
-  messagesRef.current = messages
+  // Why an effect: a held send reports after commit, so refs synced here are current then.
+  useLayoutEffect(() => {
+    activeDraftKeyRef.current = draftKey
+    activePendingKeyRef.current = pendingKey
+    messagesRef.current = messages
+  })
   // Why: a relay drop mid-send loses only the ack in the common case — the
   // desktop already delivered the message. Hold the send instead of claiming
   // failure (which baits a duplicate): stay quiet when the transcript echo
