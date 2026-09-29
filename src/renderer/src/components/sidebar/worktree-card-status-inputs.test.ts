@@ -7,9 +7,11 @@ import type {
 } from '../../../../shared/terminal-tab-types'
 import {
   EMPTY_LIVE_PTY_IDS,
+  EMPTY_PANE_FOREGROUND_AGENTS,
   EMPTY_RUNTIME_PANE_TITLES,
   EMPTY_TERMINAL_LAYOUT_ROOTS,
   selectLivePtyIdsForWorktree,
+  selectPaneForegroundAgentsForWorktree,
   selectTerminalLayoutRootsForWorktree,
   selectTerminalLayoutRootsForWorktrees,
   selectRuntimePaneTitlesForWorktree
@@ -218,5 +220,35 @@ describe('worktree card status input selectors', () => {
     expect(Object.isFrozen(EMPTY_RUNTIME_PANE_TITLES)).toBe(true)
     expect(Object.isFrozen(EMPTY_LIVE_PTY_IDS)).toBe(true)
     expect(Object.isFrozen(EMPTY_TERMINAL_LAYOUT_ROOTS)).toBe(true)
+  })
+
+  it("selects only this worktree's pane foreground reads, keeping identity across other writes", () => {
+    const worktreeId = 'repo1::/path/wt1'
+    const ownPaneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const ownEntry = { agent: 'codex' as const, shellForeground: false }
+    const state: Parameters<typeof selectPaneForegroundAgentsForWorktree>[0] = {
+      tabsByWorktree: {
+        [worktreeId]: [makeTab('tab-1', worktreeId)],
+        other: [makeTab('tab-2', 'other')]
+      },
+      paneForegroundAgentByPaneKey: {
+        [ownPaneKey]: ownEntry,
+        'tab-2:22222222-2222-4222-8222-222222222222': { agent: 'claude', shellForeground: false }
+      }
+    }
+    const selected = selectPaneForegroundAgentsForWorktree(state, worktreeId)
+    expect(selected).toEqual({ [ownPaneKey]: ownEntry })
+
+    const otherWrite = {
+      ...state,
+      paneForegroundAgentByPaneKey: {
+        ...state.paneForegroundAgentByPaneKey,
+        'tab-2:22222222-2222-4222-8222-222222222222': { agent: null, shellForeground: true }
+      }
+    }
+    expect(selectPaneForegroundAgentsForWorktree(otherWrite, worktreeId)).toBe(selected)
+    expect(selectPaneForegroundAgentsForWorktree(otherWrite, 'missing')).toBe(
+      EMPTY_PANE_FOREGROUND_AGENTS
+    )
   })
 })

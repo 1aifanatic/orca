@@ -1,4 +1,6 @@
 import type { AppState } from '@/store/types'
+import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
+import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import { createWorktreeRecordSelector } from '@/store/worktree-record-selector-cache'
 
@@ -9,12 +11,19 @@ import { createWorktreeRecordSelector } from '@/store/worktree-record-selector-c
 // across worktrees instead of failing locally.
 export const EMPTY_RUNTIME_PANE_TITLES: Record<string, Record<number, string>> = Object.freeze({})
 export const EMPTY_LIVE_PTY_IDS: Record<string, string[]> = Object.freeze({})
+export const EMPTY_PANE_FOREGROUND_AGENTS: Record<string, PaneForegroundAgentEntry> = Object.freeze(
+  {}
+)
 export const EMPTY_TERMINAL_LAYOUT_ROOTS: Record<
   string,
   TerminalPaneLayoutNode | null | undefined
 > = Object.freeze({})
 
 type WorktreeCardStatusInputState = Pick<AppState, 'runtimePaneTitlesByTabId' | 'ptyIdsByTabId'> & {
+  tabsByWorktree: Record<string, readonly { id: string }[]>
+}
+
+type WorktreeCardForegroundInputState = Partial<Pick<AppState, 'paneForegroundAgentByPaneKey'>> & {
   tabsByWorktree: Record<string, readonly { id: string }[]>
 }
 
@@ -52,6 +61,26 @@ export const selectLivePtyIdsForWorktree = createWorktreeRecordSelector<
       const ids = state.ptyIdsByTabId[tab.id]
       if (ids && ids.length > 0) {
         out[tab.id] = ids
+      }
+    }
+    return out
+  }
+})
+
+/** This worktree's pane foreground-process reads, keyed by pane key. */
+export const selectPaneForegroundAgentsForWorktree = createWorktreeRecordSelector<
+  WorktreeCardForegroundInputState,
+  Record<string, PaneForegroundAgentEntry>
+>({
+  readSources: (state) => [state.tabsByWorktree, state.paneForegroundAgentByPaneKey],
+  empty: EMPTY_PANE_FOREGROUND_AGENTS,
+  build: (state, worktreeId) => {
+    const tabIds = new Set((state.tabsByWorktree[worktreeId] ?? []).map((tab) => tab.id))
+    const out: Record<string, PaneForegroundAgentEntry> = {}
+    for (const [paneKey, entry] of Object.entries(state.paneForegroundAgentByPaneKey ?? {})) {
+      const tabId = parsePaneKey(paneKey)?.tabId
+      if (tabId && tabIds.has(tabId)) {
+        out[paneKey] = entry
       }
     }
     return out
