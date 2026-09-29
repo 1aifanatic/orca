@@ -183,7 +183,7 @@ off the context `client-context.tsx` keeps module-private, and each used to carr
 `exports.recorderHostClientContext = Ctx;`. That string names a local no type checker follows, so
 five spellings were five independent ways to reach a `ReferenceError` seconds into a recording.
 `hostClientContextExposure` is the one copy; the trade is that it sits inside `recorderSha256`, so
-editing it re-records all 786 goldens rather than the five families. A rename of the local is still
+editing it re-records all 789 goldens rather than the five families. A rename of the local is still
 invisible to `tsc` — nothing short of editing the product module makes a private local checkable —
 so a rename lands as a `ReferenceError` in every recording that mounts through it.
 
@@ -376,8 +376,8 @@ families because no reference states are defined for them.
 
 ## What this oracle does and does not see
 
-It replays 397 manifest scenarios against frozen goldens and fails on any divergence: 786 goldens
-over 790 tests, all inside `pnpm --dir mobile test`. Counted with
+It replays 398 manifest scenarios against frozen goldens and fails on any divergence: 789 goldens
+over 792 tests, all inside `pnpm --dir mobile test`. Counted with
 `python3 -c "import json;print(len(json.load(open('mobile/rpc-foundation/pilot-scenarios.json'))['scenarios']))"`,
 `find mobile/rpc-foundation/goldens -type f | wc -l`, and the reported total of
 `vitest run src/test-support/rpc-recording/{pilot,family}-recordings.test.ts src/test-support/rpc-recording/derived-goldens.test.ts`. Counts quoted further down are measurements of
@@ -617,7 +617,7 @@ the drop happened under, and records a non-empty report as a `reply-salvage` eff
 operation, the method, the decoded variant, the dropped paths and the count. Nothing in the product
 tree changes: the report was already being built and thrown away.
 
-44 of the 786 goldens carry one, and every other checked read in the corpus decodes its reply
+44 of the 789 goldens carry one, and every other checked read in the corpus decodes its reply
 whole (`grep -l reply-salvage mobile/rpc-foundation/goldens/*.json | wc -l`). The matrix varies the
 envelope a host sends rather than the shape of a row inside a result, so on most families this
 observation pins an absence rather than a recorded drop. What it buys is the next tightening: an element or member schema narrowed so a recorded row stops parsing moves the
