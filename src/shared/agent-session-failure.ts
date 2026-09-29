@@ -38,6 +38,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'compactionUnconfirmed',
   'cancelUnconfirmed',
   'answerUnconfirmed',
+  /** A send left in doubt was retired with no reply, and no exit or restart row says why. */
+  'messageUnanswered',
   'hostFault',
   /** Orca stopped an agent whose start never finished. */
   'hostStopped',
@@ -56,6 +58,7 @@ const STATUS_ROW_ONLY_FAILURE_KINDS = [
   'compactionUnconfirmed',
   'cancelUnconfirmed',
   'answerUnconfirmed',
+  'messageUnanswered',
   'providerRetrying'
 ] as const satisfies readonly AgentSessionFailureKind[]
 

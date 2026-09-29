@@ -324,3 +324,37 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
     expect(stopAgent).not.toHaveBeenCalled()
   })
 })
+
+describe('a send still in doubt when the sweep puts the agent to rest', () => {
+  it('leaves one row saying the agent did not respond, and no second on reopen', async () => {
+    rig.adapter.dispatch.mockResolvedValueOnce({
+      state: 'unknown',
+      reason: 'provider_write_outcome_unknown: timeout'
+    })
+    await foundRestTestChat(rig)
+    await vi.waitFor(() =>
+      expect(openSession()?.journal.submissions()).toEqual([
+        expect.objectContaining({ dispatchState: 'unknown' })
+      ])
+    )
+    rig.clock.now += IDLE_MS + 1
+
+    await sweepOnce(rig.host)
+    expect(rig.host.hasSession(SESSION)).toBe(false)
+    const reopened = await rig.host.journalSnapshot(SESSION)
+
+    expect(reopened.submissions).toEqual([
+      expect.objectContaining({ dispatchState: 'unknown', recovered: true })
+    ])
+    expect(
+      reopened.items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
+    ).toEqual([
+      {
+        kind: 'status',
+        tone: 'notice',
+        text: "Codex didn't respond to your last message. Send a message to continue.",
+        failure: { kind: 'messageUnanswered' }
+      }
+    ])
+  })
+})

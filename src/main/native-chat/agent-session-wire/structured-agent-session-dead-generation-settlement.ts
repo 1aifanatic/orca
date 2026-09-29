@@ -106,7 +106,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   showUnexpectedExitOutcome?: boolean
   /** Why the provider stopped, as the adapter told it; the row's sentence is this fact's. */
   exitFailure?: SubmissionRejectionFact
-  /** Who a failed start's sentence names. */
+  /** Who the row's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
@@ -126,9 +126,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
-    await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
-      : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
+    const sendsLeftInDoubt = startupFailure
+      ? await input.journal.rejectPendingSubmissions(input.fence, startupFailure).then(() => [])
+      : await input.journal.markPendingSubmissionsUnknown(
+          input.fence,
+          input.pendingSubmissionReason
+        )
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
@@ -157,6 +160,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
           )
         }
       })
+    } else if (sendsLeftInDoubt.length > 0) {
+      // An expected close: no exit row says why the send got no reply.
+      mutations.push(unansweredSendsRow(input.settlementId, input.failureTextContext))
     }
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
@@ -263,6 +269,29 @@ function staleSettlementRow(
     }
   }
   return null
+}
+
+/**
+ * The row for sends a boundary retired in doubt when no exit or restart row covers them: an
+ * expected close, or the provider going idle without answering. Keyed by the boundary, so a
+ * repeated settlement revises its one row instead of adding another.
+ */
+export function unansweredSendsRow(
+  boundaryId: string,
+  failureTextContext?: AgentSessionFailureWordsContext
+): JournalLifecycleMutationInput {
+  return {
+    kind: 'item',
+    identity: { provider: 'orca', clientMessageId: boundaryId },
+    body: {
+      kind: 'status',
+      tone: 'notice',
+      ...agentSessionFailureWords(agentSessionFailureFact('messageUnanswered'), {
+        ...failureTextContext,
+        surface: 'row'
+      })
+    }
+  }
 }
 
 function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {
