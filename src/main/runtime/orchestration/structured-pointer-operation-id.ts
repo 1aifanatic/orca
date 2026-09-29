@@ -107,7 +107,8 @@ export function structuredPointerPayloadFingerprint(
 
 export type StructuredPointerOperation =
   | { kind: 'send'; operationId: string; payloadFingerprint: string }
-  | { kind: 'stamp' | 'park' }
+  | { kind: 'stamp' }
+  | { kind: 'park' }
 
 export function resolveStructuredPointerOperation(args: {
   db: OrchestrationDb
