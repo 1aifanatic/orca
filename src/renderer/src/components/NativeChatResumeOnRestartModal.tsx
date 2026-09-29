@@ -42,8 +42,8 @@ import {
  * The "don't ask again" box removes the PROMPT, never a safety check — an opted-in launch calls
  * the same RPC, which re-derives the same predicate and staggers the same way.
  *
- * Resume hands off to the status bar, as a skill update does: the dialog closes at once and the
- * status-bar entry carries the resume, then any chat it could not carry on.
+ * Resume closes the dialog at once and the status-bar entry carries the run, then any chat it could
+ * not carry on. The run lives in the store, as a skill update's does, so the dialog is one view of it.
  *
  * A chat an earlier resume could not carry on is listed too, as the same row plus what went wrong
  * and what to do; selecting it and resuming is a retry, unless the host says a retry cannot run.
