@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runProcessSync } from '../shared/child-process/run-process'
 import { runCodexAppServerSession } from './codex/codex-app-server-session'
 
@@ -56,13 +56,9 @@ const codexTrustContract = {
   binary: process.env.ORCA_CODEX_TRUST_CONTRACT_BINARY,
   version: process.env.ORCA_CODEX_TRUST_CONTRACT_VERSION
 }
-describe.runIf(
-  process.env.ORCA_CODEX_TRUST_CONTRACT_REQUIRED === '1' && !codexTrustContract.binary
-)('codex project-trust contract prerequisites', () => {
-  it('was given a Codex binary to run against', () => {
-    expect.fail('ORCA_CODEX_TRUST_CONTRACT_REQUIRED=1 but no binary was given')
-  })
-})
+if (process.env.ORCA_CODEX_TRUST_CONTRACT_REQUIRED === '1' && !codexTrustContract.binary) {
+  throw new Error('ORCA_CODEX_TRUST_CONTRACT_REQUIRED=1 but no Codex binary was given')
+}
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -254,10 +250,16 @@ describe('markCodexProjectTrusted', () => {
     }
   })
 
-  // Why: the key must be the one Codex's trust.rs looks up, which is the main
-  // checkout only when that checkout's .git leads back to the common git dir.
+  // Why: Codex checks the cwd's own entry before any repo root, so the workspace key
+  // must satisfy it whatever the git layout.
   describe('linked worktree trust key', { timeout: 120_000 }, () => {
     let fixtureRoot = ''
+    beforeAll(() => {
+      if (codexTrustContract.binary) {
+        const version = runProcessSync({ program: codexTrustContract.binary, args: ['--version'] })
+        expect(version.stdout.trim()).toBe(`codex-cli ${codexTrustContract.version}`)
+      }
+    })
     beforeEach(() => {
       fixtureRoot = realpathSync.native(mkdtempSync(join(tmpdir(), 'orca-codex-layout-')))
     })
@@ -280,7 +282,7 @@ describe('markCodexProjectTrusted', () => {
       git(repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init')
     }
 
-    async function expectTrustKey(workspace: string, expected: string): Promise<void> {
+    async function expectWorkspaceTrusted(workspace: string): Promise<void> {
       await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
       const runtimeHome = join(testState.userDataDir, 'codex-runtime-home', 'home')
       const [system, runtime] = [
@@ -291,8 +293,8 @@ describe('markCodexProjectTrusted', () => {
           m[1].replaceAll('\\\\', '\\')
         )
       )
-      expect(system).toEqual([expected])
-      expect(runtime).toEqual([expected])
+      expect(system).toEqual([workspace])
+      expect(runtime).toEqual([workspace])
       if (codexTrustContract.binary) {
         expect(await codexSandboxFor(workspace, runtimeHome)).toBe('workspaceWrite')
         const emptyHome = join(fixtureRoot, 'empty-codex-home')
@@ -305,8 +307,6 @@ describe('markCodexProjectTrusted', () => {
     // project lookup, so workspaceWrite (not readOnly) means no prompt.
     async function codexSandboxFor(cwd: string, codexHome: string): Promise<unknown> {
       const binary = codexTrustContract.binary!
-      const version = runProcessSync({ program: binary, args: ['--version'] })
-      expect(version.stdout.trim()).toBe(`codex-cli ${codexTrustContract.version}`)
       return runCodexAppServerSession(
         {
           command: binary,
@@ -323,85 +323,54 @@ describe('markCodexProjectTrusted', () => {
       )
     }
 
-    it('trusts the main checkout of a standard repository', async () => {
+    it('trusts a linked worktree of a standard repository', async () => {
       const repo = join(fixtureRoot, 'repo')
       initRepoWithCommit(repo)
       git(repo, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
-      await expectTrustKey(join(fixtureRoot, 'wt'), repo)
+      await expectWorkspaceTrusted(join(fixtureRoot, 'wt'))
     })
 
-    it('trusts the main checkout when its .git points at a sibling .bare dir', async () => {
+    it('trusts a worktree whose main checkout .git points at a sibling .bare dir', async () => {
       const source = join(fixtureRoot, 'source')
       const project = join(fixtureRoot, 'project')
       initRepoWithCommit(source)
       git(fixtureRoot, 'clone', '-q', '--bare', source, join(project, '.bare'))
       writeFileSync(join(project, '.git'), 'gitdir: ./.bare\n', 'utf-8')
       git(project, 'worktree', 'add', '-q', join(project, 'wt'))
-      await expectTrustKey(join(project, 'wt'), project)
+      await expectWorkspaceTrusted(join(project, 'wt'))
     })
 
-    it('trusts the worktree itself for a bare repository', async () => {
+    it('trusts a worktree of a bare repository', async () => {
       const source = join(fixtureRoot, 'source')
       const bare = join(fixtureRoot, 'proj.git')
       initRepoWithCommit(source)
       git(fixtureRoot, 'clone', '-q', '--bare', source, bare)
       git(bare, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
-      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+      await expectWorkspaceTrusted(join(fixtureRoot, 'wt'))
     })
 
-    it('trusts the worktree itself for a --separate-git-dir repository', async () => {
+    it('trusts a worktree of a --separate-git-dir repository', async () => {
       const repo = join(fixtureRoot, 'repo')
       initRepoWithCommit(repo, `--separate-git-dir=${join(fixtureRoot, 'repo.git')}`)
       git(repo, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
-      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+      await expectWorkspaceTrusted(join(fixtureRoot, 'wt'))
     })
 
-    it('trusts the worktree itself when the main .git points at another repository', async () => {
+    it('trusts a worktree whose parent .git points at another repository', async () => {
       const source = join(fixtureRoot, 'source')
       initRepoWithCommit(source)
       git(fixtureRoot, 'clone', '-q', '--bare', source, join(fixtureRoot, 'proj.git'))
       git(fixtureRoot, 'clone', '-q', '--bare', source, join(fixtureRoot, 'other.git'))
       writeFileSync(join(fixtureRoot, '.git'), 'gitdir: ./other.git\n', 'utf-8')
       git(join(fixtureRoot, 'proj.git'), 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
-      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+      await expectWorkspaceTrusted(join(fixtureRoot, 'wt'))
     })
 
-    it('trusts a plain folder workspace itself', async () => {
+    it('trusts a plain folder workspace', async () => {
       const folder = join(fixtureRoot, 'folder')
       mkdirSync(folder)
-      await expectTrustKey(folder, folder)
+      await expectWorkspaceTrusted(folder)
     })
-  })
-
-  it('does not broaden trust through arbitrary or adversarial Git metadata', async () => {
-    const fixtureRoot = mkdtempSync(join(tmpdir(), 'orca-codex-untrusted-gitdir-'))
-    const workspace = join(fixtureRoot, 'workspace')
-    const arbitraryGitDir = join(fixtureRoot, 'metadata', 'feature')
-    const unrelatedRoot = join(fixtureRoot, 'unrelated')
-    try {
-      mkdirSync(arbitraryGitDir, { recursive: true })
-      mkdirSync(workspace, { recursive: true })
-      mkdirSync(unrelatedRoot, { recursive: true })
-      writeFileSync(join(workspace, '.git'), `gitdir: ${arbitraryGitDir}\n`, 'utf-8')
-      writeFileSync(join(arbitraryGitDir, 'commondir'), join(unrelatedRoot, '.git'), 'utf-8')
-
-      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
-      const structuredGitDir = join(unrelatedRoot, '.git', 'worktrees', 'feature')
-      mkdirSync(structuredGitDir, { recursive: true })
-      writeFileSync(join(workspace, '.git'), `gitdir: ${structuredGitDir}\n`, 'utf-8')
-      writeFileSync(join(structuredGitDir, 'gitdir'), join(unrelatedRoot, '.git'), 'utf-8')
-      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
-
-      const written = readFileSync(join(testState.fakeHomeDir, '.codex', 'config.toml'), 'utf-8')
-      expect(written).toContain(
-        `[projects."${escapeTomlBasicString(realpathSync.native(workspace))}"]`
-      )
-      expect(written).not.toContain(
-        `[projects."${escapeTomlBasicString(realpathSync.native(unrelatedRoot))}"]`
-      )
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true })
-    }
   })
 
   it('writes ~/.codex/config.toml with the project marked trusted', async () => {

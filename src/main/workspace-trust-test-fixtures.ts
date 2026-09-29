@@ -29,5 +29,4 @@ export function linkGitWorktree(mainCheckout: string, worktree: string): void {
   mkdirSync(worktree, { recursive: true })
   writeFileSync(join(worktree, '.git'), `gitdir: ${gitDir}\n`)
   writeFileSync(join(gitDir, 'gitdir'), join(worktree, '.git'))
-  writeFileSync(join(gitDir, 'commondir'), '../..\n')
 }

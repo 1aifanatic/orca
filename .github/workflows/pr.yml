@@ -485,8 +485,8 @@ jobs:
             pnpm exec vitest run --config config/vitest.config.ts \
             src/main/pty/codex-no-daemon-binary-contract.test.ts
 
-      # Why the no-daemon install: it is the newest pinned Codex, and trust.rs is
-      # what decides whether a worktree launch stops at the trust prompt.
+      # Why the no-daemon install: it is the newest pinned Codex, and its project
+      # lookup decides whether a worktree launch stops at the trust prompt.
       - name: Verify Codex project-trust contract
         env:
           ORCA_CODEX_TRUST_CONTRACT_REQUIRED: '1'

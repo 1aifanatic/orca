@@ -57,6 +57,7 @@ const GIT_COMPAT_PREFIXES = [
 // job pins --no-daemon for Orca's codex shell wrapper and the project-trust key.
 const CODEX_INDEX_HEAL_CONTRACT_PREFIXES = [
   'src/main/agent-trust-presets',
+  'src/main/codex/config-toml-trust',
   'src/main/pty/codex-no-daemon-binary-contract',
   'src/main/pty/codex-shell-launch-preflight',
   'src/main/codex/codex-index-heal-binary-contract',
