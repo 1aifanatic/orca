@@ -36,7 +36,8 @@ export function isWorktreeCreatePreparation(worktree: {
 }): boolean {
   // The Git lock reason is the durable ownership proof. A path can be chosen
   // by a user (including for an uncommitted detached worktree), so path shape
-  // alone must never hide or force-remove it. A crash before locking may leave
-  // an unlocked detached entry for manual cleanup, but cannot delete user data.
+  // alone must never hide it. An unlocked spare that was checked out stays for
+  // the user to remove; the startup sweep force-removes an unlocked one only
+  // when it was never checked out (no index) and holds nothing but HEAD's files.
   return parseWorktreePreparationOwnerPid(worktree.lockReason) !== null
 }

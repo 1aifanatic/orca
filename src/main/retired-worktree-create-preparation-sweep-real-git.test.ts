@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -16,11 +16,14 @@ vi.mock('./git/runner', async (importOriginal) => {
   return { ...actual, gitExecFileAsync: vi.fn(actual.gitExecFileAsync) }
 })
 
+const { gitExecFileAsync: actualGitExecFileAsync } =
+  await vi.importActual<typeof GitRunner>('./git/runner')
 const DEAD_PID = 999_991
 const LIVE_PID = 999_992
 const roots: string[] = []
 
 afterEach(async () => {
+  vi.mocked(gitExecFileAsync).mockImplementation(actualGitExecFileAsync)
   _resetLocalWorktreeCreateActivityForTests()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -78,6 +81,15 @@ async function registrations(repo: string): Promise<Map<string, string>> {
   return locks
 }
 
+const author = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com']
+
+function sweepDeadOwners(workspaceRoot: string, repo: string) {
+  return sweepRetiredWorktreeCreatePreparations(
+    { workspaceRoots: [workspaceRoot], repos: [{ path: repo }] },
+    { isProcessAlive: () => false }
+  )
+}
+
 function sweepGitCalls(): string[][] {
   return vi.mocked(gitExecFileAsync).mock.calls.map(([args]) => args)
 }
@@ -120,9 +132,6 @@ it('reclaims every shape an older build could leave, in one launch and without a
   const droppedRepo = await makeRepo(root, 'dropped-from-orca')
   const workspaceRoot = join(root, 'workspaces')
   const spares = join(workspaceRoot, '.orca-preparing')
-  // Quit after `reset --hard`, before the lock: a clean, unlocked spare the sidebar lists.
-  const unlockedSpare = join(spares, spareName(DEAD_PID, '11111111'))
-  await addSpare(repo, unlockedSpare)
   // Quit mid `reset --hard`: no index yet, only some of HEAD's files written.
   const unfinishedSpare = join(spares, spareName(DEAD_PID, '22222222'))
   await addSpare(repo, unfinishedSpare, { noCheckout: true })
@@ -158,8 +167,8 @@ it('reclaims every shape an older build could leave, in one launch and without a
   const first = await sweepRetiredWorktreeCreatePreparations(targets, dead)
 
   expect(sweepGitCalls().some((args) => args.includes('list'))).toBe(false)
-  expect(first).toEqual({ reclaimed: 7, removedDirectories: 1 })
-  for (const path of [unlockedSpare, unfinishedSpare, droppedRepoSpare, halfDeletedSpare]) {
+  expect(first).toEqual({ reclaimed: 6, removedDirectories: 1 })
+  for (const path of [unfinishedSpare, droppedRepoSpare, halfDeletedSpare]) {
     expect(existsSync(path)).toBe(false)
   }
   expect(existsSync(spares)).toBe(false)
@@ -169,10 +178,12 @@ it('reclaims every shape an older build could leave, in one launch and without a
   expect(repoRegistrations.get(movedDetached)).toBe('unlocked')
   expect(repoRegistrations.get(movedBranched)).toBe('unlocked')
   expect([...(await registrations(droppedRepo)).keys()]).toEqual([droppedRepo])
+  vi.mocked(gitExecFileAsync).mockClear()
   expect(await sweepRetiredWorktreeCreatePreparations(targets, dead)).toEqual({
     reclaimed: 0,
     removedDirectories: 0
   })
+  expect(sweepGitCalls()).toEqual([])
 })
 
 it('keeps anything that may hold the user’s work', async () => {
@@ -269,4 +280,143 @@ it('waits for a local create to finish before reclaiming anything', async () => 
 
   expect(await sweep).toEqual({ reclaimed: 1, removedDirectories: 0 })
   expect(existsSync(spare)).toBe(false)
+})
+
+it('never touches an unlocked spare that was checked out, nor spawns Git for it', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  await writeFile(join(repo, '.git', 'info', 'exclude'), '.env\n')
+  const workspaceRoot = join(root, 'workspaces')
+  const spares = join(workspaceRoot, '.orca-preparing')
+  // Listed in the sidebar, so the user may have committed on its detached HEAD...
+  const committedSpare = join(spares, spareName(DEAD_PID, '11111111'))
+  await addSpare(repo, committedSpare)
+  await writeFile(join(committedSpare, 'work.txt'), 'user work\n')
+  await gitExecFileAsync(['add', 'work.txt'], { cwd: committedSpare })
+  await gitExecFileAsync([...author, 'commit', '-qm', 'user commit'], { cwd: committedSpare })
+  const { stdout: userCommit } = await gitExecFileAsync(['rev-parse', 'HEAD'], {
+    cwd: committedSpare
+  })
+  // ...or kept ignored files there, which Git's clean check does not see.
+  const ignoredFileSpare = join(spares, spareName(DEAD_PID, '22222222'))
+  await addSpare(repo, ignoredFileSpare)
+  await writeFile(join(ignoredFileSpare, '.env'), 'SECRET=1\n')
+  vi.mocked(gitExecFileAsync).mockClear()
+
+  expect(await sweepDeadOwners(workspaceRoot, repo)).toEqual({
+    reclaimed: 0,
+    removedDirectories: 0
+  })
+
+  expect(sweepGitCalls()).toEqual([])
+  const { stdout: head } = await gitExecFileAsync(['rev-parse', 'HEAD'], { cwd: committedSpare })
+  expect(head).toBe(userCommit)
+  expect(await readFile(join(ignoredFileSpare, '.env'), 'utf-8')).toBe('SECRET=1\n')
+  const repoRegistrations = await registrations(repo)
+  expect(repoRegistrations.get(committedSpare)).toBe('unlocked')
+  expect(repoRegistrations.get(ignoredFileSpare)).toBe('unlocked')
+})
+
+it('keeps a never-checked-out spare holding files the user’s config hides from status', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  await gitExecFileAsync(['config', 'status.showUntrackedFiles', 'no'], { cwd: repo })
+  await writeFile(join(repo, '.git', 'info', 'exclude'), '.env\n')
+  const workspaceRoot = join(root, 'workspaces')
+  const spares = join(workspaceRoot, '.orca-preparing')
+  const untrackedFileSpare = join(spares, spareName(DEAD_PID, '11111111'))
+  await addSpare(repo, untrackedFileSpare, { noCheckout: true })
+  await writeFile(join(untrackedFileSpare, 'notes.md'), 'user notes\n')
+  const ignoredFileSpare = join(spares, spareName(DEAD_PID, '22222222'))
+  await addSpare(repo, ignoredFileSpare, { noCheckout: true })
+  await writeFile(join(ignoredFileSpare, '.env'), 'SECRET=1\n')
+
+  expect(await sweepDeadOwners(workspaceRoot, repo)).toEqual({
+    reclaimed: 0,
+    removedDirectories: 0
+  })
+
+  expect(await readFile(join(untrackedFileSpare, 'notes.md'), 'utf-8')).toBe('user notes\n')
+  expect(await readFile(join(ignoredFileSpare, '.env'), 'utf-8')).toBe('SECRET=1\n')
+})
+
+it('deletes a spare Git pruned, but keeps one whose repo moved away', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const movedRepo = await makeRepo(root, 'moved')
+  const workspaceRoot = join(root, 'workspaces')
+  const spares = join(workspaceRoot, '.orca-preparing')
+  const prunedSpare = join(spares, spareName(DEAD_PID, '11111111'))
+  await addSpare(repo, prunedSpare)
+  await rm(join(repo, '.git', 'worktrees', spareName(DEAD_PID, '11111111')), { recursive: true })
+  const movedRepoSpare = join(spares, spareName(DEAD_PID, '22222222'))
+  await addSpare(movedRepo, movedRepoSpare)
+  await writeFile(join(movedRepoSpare, 'file.txt'), 'user edit\n')
+  await rename(movedRepo, join(root, 'moved-elsewhere'))
+
+  expect(await sweepDeadOwners(workspaceRoot, repo)).toEqual({
+    reclaimed: 0,
+    removedDirectories: 1
+  })
+
+  expect(existsSync(prunedSpare)).toBe(false)
+  expect(await readFile(join(movedRepoSpare, 'file.txt'), 'utf-8')).toBe('user edit\n')
+})
+
+it('holds each deletion for a create that starts mid-sweep', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const workspaceRoot = join(root, 'workspaces')
+  const spares = join(workspaceRoot, '.orca-preparing')
+  const orphanDirectory = join(spares, spareName(DEAD_PID, '11111111'))
+  await mkdir(orphanDirectory, { recursive: true })
+  const lockedSpare = join(spares, spareName(DEAD_PID, '22222222'))
+  await addSpare(repo, lockedSpare, { lockPid: DEAD_PID })
+  let release: (() => void) | undefined
+  vi.mocked(gitExecFileAsync).mockClear()
+
+  const sweep = sweepRetiredWorktreeCreatePreparations(
+    { workspaceRoots: [workspaceRoot], repos: [{ path: repo }] },
+    // The user starts a create after the sweep began.
+    { isProcessAlive: () => ((release ??= holdLocalWorktreeCreate()), false) }
+  )
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(release).toBeDefined()
+  expect(existsSync(orphanDirectory)).toBe(true)
+  expect(sweepGitCalls()).toEqual([])
+  release?.()
+
+  expect(await sweep).toEqual({ reclaimed: 1, removedDirectories: 1 })
+  expect(existsSync(orphanDirectory)).toBe(false)
+  expect(existsSync(lockedSpare)).toBe(false)
+})
+
+it('holds the next deletion for a create that starts while one is running', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const workspaceRoot = join(root, 'workspaces')
+  const spares = [spareName(DEAD_PID, '11111111'), spareName(DEAD_PID, '22222222')].map((name) =>
+    join(workspaceRoot, '.orca-preparing', name)
+  )
+  for (const spare of spares) {
+    await addSpare(repo, spare, { lockPid: DEAD_PID })
+  }
+  let release: (() => void) | undefined
+  vi.mocked(gitExecFileAsync).mockClear()
+  vi.mocked(gitExecFileAsync).mockImplementation((args, options) => {
+    if (args.includes('remove')) {
+      release ??= holdLocalWorktreeCreate()
+    }
+    return actualGitExecFileAsync(args, options)
+  })
+  const removals = (): number => sweepGitCalls().filter((args) => args.includes('remove')).length
+
+  const sweep = sweepDeadOwners(workspaceRoot, repo)
+  await vi.waitFor(() => expect(spares.filter((spare) => !existsSync(spare))).toHaveLength(1))
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(removals()).toBe(1)
+  release?.()
+
+  expect(await sweep).toEqual({ reclaimed: 2, removedDirectories: 0 })
+  expect(removals()).toBe(2)
 })

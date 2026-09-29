@@ -1,10 +1,12 @@
 // Why this exists: Orca used to build a spare checkout under `<workspace root>/.orca-preparing`
-// while the create composer was open. That feature is gone, so every spare an older build left on
-// disk — registered with Git (locked or not), or an orphaned directory — has to be reclaimed once.
+// while the create composer was open. That feature is gone, so the spares an older build left on
+// disk — locked registrations, never-checked-out checkouts, orphaned directories — are reclaimed.
+// An unlocked spare that was checked out was listed in the sidebar and may be the user's work now,
+// so, like anything else the sweep cannot prove is Orca's, it stays for the user to remove.
 //
 // Why read Git's files instead of listing worktrees: the on-disk records work on every Git version
-// (the listing's lock reason needs 2.31+), and once the leftovers are gone a launch costs a few
-// directory reads and spawns no Git at all.
+// (the listing's lock reason needs 2.31+), and a kept entry costs only file reads per launch, save
+// a never-checked-out spare holding added files, which Git re-checks each time.
 
 import { lstat, mkdtemp, readdir, readFile, rm, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -83,15 +85,11 @@ async function readTrimmedFile(path: string): Promise<string | undefined> {
   }
 }
 
-/** The admin directory a checkout's `.git` file names; null once Git no longer knows the checkout. */
-async function findAdminDir(checkoutPath: string): Promise<string | null> {
+/** The Git directory a checkout's `.git` file names, whether or not it still exists. */
+async function readGitDirPointer(checkoutPath: string): Promise<string | null> {
   const pointer = await nullWhenMissing(readFile(join(checkoutPath, '.git'), 'utf-8'))
   const gitDir = pointer && /^gitdir:\s*(.+)$/m.exec(pointer)?.[1]?.trim()
-  if (!gitDir) {
-    return null
-  }
-  const adminDir = resolve(checkoutPath, gitDir)
-  return (await nullWhenMissing(lstat(adminDir))) ? adminDir : null
+  return gitDir ? resolve(checkoutPath, gitDir) : null
 }
 
 async function findCommonDirOfGitDir(gitDir: string): Promise<string> {
@@ -106,7 +104,7 @@ async function findRepoCommonDir(repoPath: string): Promise<string | null> {
     return dotGit
   }
   // A `.git` file makes the repo itself a linked checkout; no `.git` at all, a bare repo.
-  const gitDir = dotGitStat ? await findAdminDir(repoPath) : repoPath
+  const gitDir = dotGitStat ? await readGitDirPointer(repoPath) : repoPath
   return gitDir ? findCommonDirOfGitDir(gitDir) : null
 }
 
@@ -128,6 +126,7 @@ async function runWorktreeCommand(
   worktreePath: string,
   args: string[]
 ): Promise<void> {
+  await whenLocalWorktreeCreatesSettle()
   try {
     await runWithGitReadCacheInvalidation(() =>
       runBackgroundGit(host.cwd, [...host.args, 'worktree', ...args, worktreePath], {
@@ -144,14 +143,16 @@ async function runWorktreeCommand(
 
 /** True when every file in the checkout is HEAD's own: a spare whose checkout never finished. */
 async function holdsOnlyHeadContent(checkoutPath: string): Promise<boolean> {
+  await whenLocalWorktreeCreatesSettle()
   // A scratch index, so the check never writes the checkout's own index.
   const scratch = await mkdtemp(join(tmpdir(), 'orca-retired-spare-'))
   const env = { ...process.env, GIT_INDEX_FILE: join(scratch, 'index') }
   try {
     await runBackgroundGit(checkoutPath, ['read-tree', 'HEAD'], { env })
+    // Flags, not the user's config, decide what is listed: every untracked and ignored file too.
     const { stdout } = await runBackgroundGit(
       checkoutPath,
-      ['status', '--porcelain', '--ignore-submodules=none'],
+      ['status', '--porcelain', '--untracked-files=all', '--ignored', '--ignore-submodules=none'],
       { env }
     )
     // Files the checkout never wrote read as deleted; anything else is content someone added.
@@ -171,8 +172,17 @@ async function reclaimSpareDirectory(
   if (!(await lstat(sparePath)).isDirectory()) {
     return null
   }
-  const adminDir = await findAdminDir(sparePath)
-  if (!adminDir) {
+  const hasDotGit = (await nullWhenMissing(lstat(join(sparePath, '.git')))) !== null
+  const adminDir = hasDotGit ? await readGitDirPointer(sparePath) : null
+  if (!adminDir || !(await nullWhenMissing(lstat(adminDir)))) {
+    // Git does not know it. With no `.git` it was never registered, or an older build's delete got
+    // past it; otherwise Git pruned it only if its repo is still there (a moved or renamed repo took
+    // the entry along), and a `.git` naming no admin directory is not ours to judge.
+    const repoHead = adminDir && join(dirname(dirname(adminDir)), 'HEAD')
+    if (hasDotGit && !(repoHead && (await nullWhenMissing(lstat(repoHead))))) {
+      return null
+    }
+    await whenLocalWorktreeCreatesSettle()
     await removeHostTree(sparePath)
     return 'removedDirectories'
   }
@@ -192,31 +202,33 @@ async function reclaimSpareDirectory(
     await runWorktreeCommand(host, sparePath, ['remove', '--force', '--force'])
     return 'reclaimed'
   }
-  // Older builds locked a spare only after its checkout, and an unlocked one shows in the sidebar,
-  // so it may hold user work: Git's own clean check decides, except for a checkout that never
-  // finished (no index yet), which Git always calls dirty.
-  const hasIndex = (await lstat(join(adminDir, 'index')).catch(() => null)) !== null
-  const neverCheckedOut = !hasIndex && (await holdsOnlyHeadContent(sparePath))
-  await runWorktreeCommand(host, sparePath, neverCheckedOut ? ['remove', '--force'] : ['remove'])
+  // Older builds locked a spare only after its checkout, so an unlocked one with an index was
+  // listed in the sidebar and may be the user's worktree now (commits on its detached HEAD, ignored
+  // files): never touched. Only a checkout that never finished, holding only HEAD's files, is Orca's.
+  const hasIndex = (await nullWhenMissing(lstat(join(adminDir, 'index')))) !== null
+  if (hasIndex || !(await holdsOnlyHeadContent(sparePath))) {
+    return null
+  }
+  await runWorktreeCommand(host, sparePath, ['remove', '--force'])
   return 'reclaimed'
 }
 
 async function sweepPreparationFolder(
   workspaceRoot: string,
   isOwnerRunning: (pid: number) => boolean,
-  hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>
-): Promise<SweepResult> {
-  const result: SweepResult = { reclaimed: 0, removedDirectories: 0 }
+  hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>,
+  result: SweepResult
+): Promise<void> {
   const preparationRoot = join(workspaceRoot, WORKTREE_CREATE_PREPARATION_DIRECTORY)
   let entries: string[]
   try {
     // lstat: a symlinked folder is not ours to walk.
     if (!(await lstat(preparationRoot)).isDirectory()) {
-      return result
+      return
     }
     entries = await readdir(preparationRoot)
   } catch {
-    return result
+    return
   }
   for (const entry of entries) {
     const ownerPid = Number(entry.split('-')[0])
@@ -235,7 +247,6 @@ async function sweepPreparationFolder(
   }
   // Only succeeds once empty, so a live older Orca's spare (or a user's file) keeps the folder.
   await rmdir(preparationRoot).catch(() => {})
-  return result
 }
 
 /** Reclaims dead owners' locks the folders cannot reach; returns how many. */
@@ -288,7 +299,8 @@ async function sweepLockedRegistrations(
 
 /**
  * Background and one item at a time: spare folders first (they reach every repo's spares), then
- * the locks they cannot reach. Never throws.
+ * the locks they cannot reach. Every Git spawn and deletion waits for local creates to settle, so
+ * none starts during a create that began mid-sweep. Never throws.
  */
 export async function sweepRetiredWorktreeCreatePreparations(
   targets: RetiredPreparationSweepTargets,
@@ -297,7 +309,6 @@ export async function sweepRetiredWorktreeCreatePreparations(
   const isProcessAlive = deps.isProcessAlive ?? isProcessAliveDefault
   // This build never creates spares, so one naming this process is an older Orca's reused pid.
   const isOwnerRunning = (pid: number): boolean => pid !== process.pid && isProcessAlive(pid)
-  await whenLocalWorktreeCreatesSettle()
   const hostByCommonDir = new Map<string, WorktreeGitHost>()
   for (const repo of targets.repos) {
     const commonDir = await findRepoCommonDir(repo.path).catch(() => null)
@@ -308,9 +319,7 @@ export async function sweepRetiredWorktreeCreatePreparations(
   }
   const result: SweepResult = { reclaimed: 0, removedDirectories: 0 }
   for (const workspaceRoot of new Set(targets.workspaceRoots)) {
-    const folder = await sweepPreparationFolder(workspaceRoot, isOwnerRunning, hostByCommonDir)
-    result.reclaimed += folder.reclaimed
-    result.removedDirectories += folder.removedDirectories
+    await sweepPreparationFolder(workspaceRoot, isOwnerRunning, hostByCommonDir, result)
   }
   for (const [commonDir, host] of hostByCommonDir) {
     result.reclaimed += await sweepLockedRegistrations(commonDir, host, isOwnerRunning)
