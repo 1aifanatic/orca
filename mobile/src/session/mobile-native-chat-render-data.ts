@@ -42,8 +42,6 @@ export function mobileNativeChatEmptyState(
 /** An optimistic user echo: the text and/or the local preview URIs of any images
  *  ridden along on the send, shown until the transcript catches up. */
 export type MobileNativeChatPendingItem = {
-  delivery?: 'unconfirmed' | 'confirmed'
-  onDismiss?: () => void
   id: string
   text: string
   images?: string[]

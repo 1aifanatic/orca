@@ -54,7 +54,10 @@ export type NativeChatComposerProps = {
   onStop?: () => void
   /** Render an optimistic echo until the real transcript turn lands. */
   onOptimisticSend?: (text: string, imagePaths?: string[]) => string | undefined
+  /** Mark an optimistic echo whose write the host refused. */
   onOptimisticSendRejected?: (pendingId: string) => void
+  /** Hold an optimistic echo whose write acknowledgment was lost. */
+  onOptimisticSendUnconfirmed?: (pendingId: string) => void
   /** Remove an optimistic echo when its delayed submit is canceled. */
   onOptimisticSendCanceled?: (pendingId: string) => void
   /** Record a dispatched slash command that does not create a chat turn. */

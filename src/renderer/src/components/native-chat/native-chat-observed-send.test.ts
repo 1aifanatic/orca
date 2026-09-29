@@ -36,12 +36,18 @@ it('observes a refused write, skips Enter, and releases the queue for the next u
     NATIVE_CHAT_SUBMIT
   ])
 })
-it('does not report a lost acknowledgment as rejection or resend it, but still submits', async () => {
+it('reports a lost acknowledgment once as unconfirmed, never as rejection, and still submits', async () => {
   const rejected = vi.fn()
+  const unconfirmed = vi.fn()
   io.verified.mockRejectedValueOnce(new Error('lost acknowledgment'))
-  sendNativeChatMessage(null, 'pane', 'uncertain', { onWriteRejected: rejected })
+  io.verified.mockRejectedValueOnce(new Error('lost acknowledgment'))
+  sendNativeChatMessage(null, 'pane', 'uncertain', {
+    onWriteRejected: rejected,
+    onWriteUnconfirmed: unconfirmed
+  })
   await vi.advanceTimersByTimeAsync(120000)
   expect(rejected).not.toHaveBeenCalled()
+  expect(unconfirmed).toHaveBeenCalledOnce()
   expect(io.verified.mock.calls.map((call) => call[2])).toEqual([
     buildNativeChatPasteBytes('uncertain'),
     NATIVE_CHAT_SUBMIT

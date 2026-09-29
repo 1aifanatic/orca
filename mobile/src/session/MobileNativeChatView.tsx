@@ -281,7 +281,6 @@ export function MobileNativeChatView({
     ({ item, index }: { item: NativeChatMessage; index: number }) => (
       <MobileNativeChatMessage
         message={item}
-        deliveryNotice={pending.find((entry) => entry.id === item.id && entry.delivery)}
         toolsExpanded={toolsExpanded}
         fontScale={fontScale}
         onOpenFile={onOpenFile}
@@ -291,7 +290,7 @@ export function MobileNativeChatView({
         {...turns.resolveRow(index, item)}
       />
     ),
-    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, subagentLabels, turns, pending]
+    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, subagentLabels, turns]
   )
 
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)

@@ -1,4 +1,3 @@
-import { useNativeChatPendingDelivery } from './use-native-chat-pending-delivery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useAppStore } from '../../store'
@@ -23,6 +22,7 @@ import {
   pendingSendsAsMessages,
   shouldPruneLaunchPrompt
 } from './native-chat-pending'
+import { useNativeChatPendingDelivery } from './use-native-chat-pending-delivery'
 import {
   appendCommandMarkerCache,
   applyCommandMarkerBoundaries,
@@ -156,14 +156,7 @@ export function NativeChatResolvedView({
     () => ({ paneKey, agent, sessionId }),
     [paneKey, agent, sessionId]
   )
-  const delivery = useNativeChatPendingDelivery({
-    paneKey,
-    agent,
-    sessionId,
-    transcriptPath,
-    runtimeEnvironmentId,
-    messages: session.messages
-  })
+  const delivery = useNativeChatPendingDelivery({ paneKey, agent, messages: session.messages })
   const { pending, record, clear } = delivery
   // Slash commands aren't chat turns, so they get a small local "Ran /clear"
   // system line instead of a user bubble. Capped + cached per conversation.
@@ -412,6 +405,7 @@ export function NativeChatResolvedView({
           onOptimisticSend={onOptimisticSend}
           onOptimisticSendCanceled={delivery.cancel}
           onOptimisticSendRejected={delivery.reject}
+          onOptimisticSendUnconfirmed={delivery.holdUnconfirmed}
           onSlashCommand={onSlashCommand}
           onSwitchToTerminal={onSwitchToTerminal}
           readTerminalScreen={readTerminalScreen}

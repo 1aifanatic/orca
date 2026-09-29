@@ -1,7 +1,6 @@
-import { NATIVE_CHAT_UNCONFIRMED_COPY } from '../../../src/shared/native-chat-pending-delivery'
 import { MobileSelectableText as Text } from '../components/MobileSelectableText'
 import { memo } from 'react'
-import { Image, Pressable, Text as NativeText, View } from 'react-native'
+import { Image, Text as NativeText, View } from 'react-native'
 import { splitNativeChatBlocks } from '../../../src/shared/native-chat-tool-fold'
 import { selectActiveToolCall } from '../../../src/shared/native-chat-tool-activity'
 import { isImageRefBlock, isTextBlock } from '../../../src/shared/native-chat-types'
@@ -70,7 +69,6 @@ function Prose({
 
 function MobileNativeChatMessageImpl({
   message,
-  deliveryNotice,
   toolsExpanded = false,
   fontScale = 1,
   onOpenFile,
@@ -83,7 +81,6 @@ function MobileNativeChatMessageImpl({
   subagentLabel
 }: {
   message: NativeChatMessage
-  deliveryNotice?: { onDismiss?: () => void }
   toolsExpanded?: boolean
   /** Multiplies all chat text sizes for pinch-to-zoom (1 = no change). */
   fontScale?: number
@@ -133,14 +130,6 @@ function MobileNativeChatMessageImpl({
   return (
     <>
       <View style={[styles.row, isUser && styles.rowUser]}>
-        {isUser && deliveryNotice ? (
-          <View>
-            <NativeText style={styles.subagentCaption}>{NATIVE_CHAT_UNCONFIRMED_COPY}</NativeText>
-            <Pressable accessibilityRole="button" onPress={deliveryNotice.onDismiss}>
-              <NativeText style={styles.subagentCaption}>Dismiss</NativeText>
-            </Pressable>
-          </View>
-        ) : null}
         <View
           style={[
             styles.content,

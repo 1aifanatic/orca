@@ -1,25 +1,13 @@
-import { useMobileNativeChatUnconfirmedSend } from './use-mobile-native-chat-unconfirmed-send'
-import { captureNativeChatDeliveryOrigin } from '../../../src/shared/native-chat-pending-delivery'
-import {
-  useMobileNativeChatPendingDeliveryState,
-  type MobileNativeChatDeliveryTracking
-} from './use-mobile-native-chat-pending-delivery'
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction
-} from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countUserTextOccurrences,
   findLandedImagePreviewEchoes,
+  findLandedUnconfirmedSends,
   mergeLandedImagePreviewEchoes,
   migrateImagePreviewMessageIds,
-  normalizeReconcileText
+  normalizeReconcileText,
+  type UnconfirmedSend
 } from './mobile-native-chat-draft-reconcile'
 import { rebaseMobileNativeChatPendingBaselines } from './mobile-native-chat-pending-baseline'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
@@ -41,6 +29,9 @@ export type { MobileNativeChatPendingMessage, MobileNativeChatSendOrigin }
 const NO_PENDING_MESSAGES: MobileNativeChatPendingMessage[] = []
 const NO_IMAGE_PREVIEWS: Record<string, string[]> = {}
 
+// Ack-lost sends wait for a transcript echo before surfacing as unconfirmed.
+const UNCONFIRMED_SEND_DEADLINE_MS = 20_000
+
 export function useMobileNativeChatDrafts(args: {
   hostId: string
   worktreeId: string
@@ -61,7 +52,6 @@ export function useMobileNativeChatDrafts(args: {
    *  is an empty conversation, not a read that failed or never ran. Only then
    *  does a send's captured tail describe a real boundary. */
   transcriptSettled: boolean
-  deliveryTracking?: MobileNativeChatDeliveryTracking
 }): {
   composerText: string
   setComposerText: Dispatch<SetStateAction<string>>
@@ -115,6 +105,12 @@ export function useMobileNativeChatDrafts(args: {
   const draftEditGenerationsRef = useRef(new MobileNativeChatDraftEditGenerations())
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const activeDraftKeyRef = useRef(draftKey)
+  activeDraftKeyRef.current = draftKey
+  const activePendingKeyRef = useRef(pendingKey)
+  activePendingKeyRef.current = pendingKey
+  const mountedRef = useRef(false)
+
   const { readSeededLaunchDraft, readSeededLaunchDraftSeed } = useMobileNativeChatLaunchDraftSeed({
     draftKey,
     messages,
@@ -147,9 +143,6 @@ export function useMobileNativeChatDrafts(args: {
       const normalizedText = normalizeReconcileText(text)
       return {
         draftKey,
-        ...(args.deliveryTracking
-          ? { deliveryOrigin: captureNativeChatDeliveryOrigin(args.deliveryTracking.status) }
-          : {}),
         draftEditGeneration: draftEditGenerationsRef.current.readDraft(draftKey),
         pendingKey,
         normalizedText,
@@ -161,7 +154,7 @@ export function useMobileNativeChatDrafts(args: {
         baselineResolved: transcriptSettled
       }
     },
-    [draftKey, pendingKey, transcriptSettled, args.deliveryTracking]
+    [draftKey, pendingKey, transcriptSettled]
   )
 
   // Why: over relay the send RPC can take seconds (or lose only its ack), and a
@@ -188,7 +181,7 @@ export function useMobileNativeChatDrafts(args: {
 
   const acceptSend = useCallback(
     (origin: MobileNativeChatSendOrigin, text: string, images?: string[]) => {
-      if (!origin.pendingKey && !images?.length && !origin.deliveryOrigin) {
+      if (!origin.pendingKey && !images?.length) {
         return
       }
       pendingCounterRef.current += 1
@@ -207,12 +200,74 @@ export function useMobileNativeChatDrafts(args: {
     []
   )
 
-  const holdUnconfirmedSend = useMobileNativeChatUnconfirmedSend(
-    draftKey,
-    pendingKey,
-    messages,
-    acceptSend
+  // Why: a relay drop mid-send loses only the ack in the common case — the
+  // desktop already delivered the message. Hold the send instead of claiming
+  // failure (which baits a duplicate): stay quiet when the transcript echo
+  // lands, and surface the uncertainty if the deadline passes without one.
+  // The composer was already cleared at send time, so this never touches drafts.
+  const unconfirmedRef = useRef<UnconfirmedSend[]>([])
+  const holdUnconfirmedSend = useCallback(
+    (origin: MobileNativeChatSendOrigin, text: string, onUnconfirmed: () => void) => {
+      if (!mountedRef.current) {
+        return
+      }
+      const isActiveTranscript =
+        activeDraftKeyRef.current === origin.draftKey &&
+        (origin.pendingKey === null || activePendingKeyRef.current === origin.pendingKey)
+      const entry: UnconfirmedSend = {
+        draftKey: origin.draftKey,
+        pendingKey: origin.pendingKey,
+        text,
+        normalizedText: origin.normalizedText,
+        baselineTailMessageId: origin.baselineTailMessageId,
+        deadline: null
+      }
+      // Why: the transcript event can beat the lost RPC acknowledgement.
+      if (
+        isActiveTranscript &&
+        findLandedUnconfirmedSends(messagesRef.current, [entry]).length > 0
+      ) {
+        return
+      }
+      entry.deadline = setTimeout(() => {
+        unconfirmedRef.current = unconfirmedRef.current.filter((held) => held !== entry)
+        onUnconfirmed()
+      }, UNCONFIRMED_SEND_DEADLINE_MS)
+      unconfirmedRef.current = [...unconfirmedRef.current, entry]
+    },
+    []
   )
+
+  useEffect(() => {
+    if (!draftKey || unconfirmedRef.current.length === 0) {
+      return
+    }
+    const relevant = unconfirmedRef.current.filter(
+      (entry) =>
+        entry.draftKey === draftKey &&
+        (entry.pendingKey === null || entry.pendingKey === pendingKey)
+    )
+    const landed = findLandedUnconfirmedSends(messages, relevant)
+    if (landed.length === 0) {
+      return
+    }
+    const landedSet = new Set(landed)
+    unconfirmedRef.current = unconfirmedRef.current.filter((entry) => !landedSet.has(entry))
+    for (const entry of landed) {
+      clearTimeout(entry.deadline ?? undefined)
+    }
+  }, [messages, draftKey, pendingKey])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      for (const entry of unconfirmedRef.current) {
+        clearTimeout(entry.deadline ?? undefined)
+      }
+      unconfirmedRef.current = []
+    }
+  }, [])
 
   const waitingForSession = draftKey
     ? (pendingWaitingForSession[draftKey] ?? NO_PENDING_MESSAGES)
@@ -232,15 +287,6 @@ export function useMobileNativeChatDrafts(args: {
     ? (pendingBySession[pendingKey] ?? NO_PENDING_MESSAGES)
     : NO_PENDING_MESSAGES
   const pending = combineMobileNativeChatPending(sessionPending, waitingForSession)
-  const settleDelivery = useMobileNativeChatPendingDeliveryState(
-    pending,
-    args.deliveryTracking,
-    pendingKey,
-    draftKey,
-    setPendingBySession,
-    setPendingWaitingForSession
-  )
-
   useEffect(() => {
     if (!pendingKey) {
       return
@@ -287,24 +333,11 @@ export function useMobileNativeChatDrafts(args: {
     })
   }, [messages, pending, pendingKey, transcriptSettled])
 
-  // Why memoized: the view keys its list data and renderItem on this array's identity.
-  const renderedPending = useMemo(
-    () =>
-      pending.some((entry) => entry.delivery)
-        ? pending.map((entry) =>
-            entry.delivery === 'unconfirmed'
-              ? { ...entry, onDismiss: () => settleDelivery(new Set([entry.id]), new Set(), true) }
-              : { ...entry, delivery: undefined }
-          )
-        : pending,
-    [pending, settleDelivery]
-  )
-
   return {
     composerText: draftKey ? (drafts[draftKey] ?? '') : '',
     setComposerText,
     getComposerEditGeneration: draftEditGenerationsRef.current.readComposer,
-    pending: renderedPending,
+    pending,
     imagePreviewsByMessageId: pendingKey
       ? (imagePreviewsBySession[pendingKey] ?? NO_IMAGE_PREVIEWS)
       : NO_IMAGE_PREVIEWS,

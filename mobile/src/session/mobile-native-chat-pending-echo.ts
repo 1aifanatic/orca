@@ -1,11 +1,7 @@
-import type { NativeChatDeliveryOrigin } from '../../../src/shared/native-chat-pending-delivery'
 import { normalizeReconcileText } from './mobile-native-chat-draft-reconcile'
 
 export type MobileNativeChatPendingMessage = {
   id: string
-  deliveryOrigin?: NativeChatDeliveryOrigin
-  delivery?: 'unconfirmed' | 'confirmed'
-  onDismiss?: () => void
   text: string
   expectedOccurrence: number
   /** Local preview URIs carried by the send for its optimistic echo. */
@@ -19,7 +15,6 @@ export type MobileNativeChatPendingMessage = {
 }
 
 export type MobileNativeChatSendOrigin = {
-  deliveryOrigin?: NativeChatDeliveryOrigin
   draftKey: string
   draftEditGeneration: number
   pendingKey: string | null
@@ -69,7 +64,6 @@ export function appendMobileNativeChatPending(
       {
         id,
         text,
-        ...(origin.deliveryOrigin ? { deliveryOrigin: origin.deliveryOrigin } : {}),
         expectedOccurrence:
           origin.normalizedText === ''
             ? expectedImageEchoOrdinal

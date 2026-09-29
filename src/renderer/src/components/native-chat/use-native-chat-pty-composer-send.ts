@@ -32,6 +32,7 @@ export function useNativeChatPtyComposerSend(args: {
   classifySend: NativeChatPickerState['classifySend']
   onOptimisticSend?: (text: string, imagePaths?: string[]) => string | undefined
   onOptimisticSendRejected?: (pendingId: string) => void
+  onOptimisticSendUnconfirmed?: (pendingId: string) => void
   onSlashCommand?: (command: string) => void
   sessionOptionsSurface: NativeChatPtySessionOptionsSurface | null
   terminalTabId: string
@@ -72,6 +73,11 @@ export function useNativeChatPtyComposerSend(args: {
             onWriteRejected: () => {
               if (pendingId) {
                 args.onOptimisticSendRejected?.(pendingId)
+              }
+            },
+            onWriteUnconfirmed: () => {
+              if (pendingId) {
+                args.onOptimisticSendUnconfirmed?.(pendingId)
               }
             }
           }

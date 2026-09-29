@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAppStore } from '../../store'
 import { translate } from '@/i18n/i18n'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
-import {
-  captureNativeChatDeliveryOrigin,
-  observeNativeChatDeliveryOrigin,
-  nativeChatDeliveryCheckDelay
-} from '../../../../shared/native-chat-pending-delivery'
 import {
   appendPendingSendCache,
   nextNativeChatPendingSendId,
@@ -16,30 +10,28 @@ import {
   writePendingSendCache,
   type NativeChatPendingSend
 } from './native-chat-pending'
-import { getNativeChatSessionTransport } from './native-chat-session-transport'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
+
+/** How long a send whose write acknowledgment was lost waits for its row; the phone's hold matches. */
+export const NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS = 20_000
 
 const NO_NOTICES: ReadonlyMap<string, NativeChatDeliveryNotice> = new Map()
 
-/** Pending presentation follows the existing status store; a fresh read checks each completed turn. */
+/** Optimistic terminal-Chat echoes plus the definite send outcomes the transport reports. */
 export function useNativeChatPendingDelivery(args: {
   paneKey: string
   agent: AgentType
-  sessionId: string | null
-  transcriptPath?: string | null
-  runtimeEnvironmentId: string | null
   messages: NativeChatMessage[]
 }) {
-  const { paneKey, agent, sessionId, transcriptPath, runtimeEnvironmentId, messages } = args
+  const { paneKey, agent, messages } = args
   const scope = useMemo(() => ({ paneKey, agent }), [paneKey, agent])
-  const status = useAppStore((s) => s.agentStatusByPaneKey[paneKey])
   const [pending, setPending] = useState(() => readPendingSendCache(scope))
   useEffect(() => setPending(readPendingSendCache(scope)), [scope])
   const save = useCallback(
     (update: (entries: NativeChatPendingSend[]) => NativeChatPendingSend[]) => {
       const current = readPendingSendCache(scope)
       const next = update(current)
-      // Why: prune and status observation run on every stream/status update; a no-op must not re-render.
+      // Why: pruning runs on every stream update; a no-op must not re-render the list.
       if (next !== current) {
         setPending(writePendingSendCache(scope, next))
       }
@@ -49,24 +41,6 @@ export function useNativeChatPendingDelivery(args: {
   useEffect(() => {
     save((entries) => prunePendingSends(entries, messages))
   }, [messages, save])
-  useEffect(() => {
-    save((entries) => {
-      const next = entries.map((entry) => {
-        if (
-          !entry.deliveryOrigin ||
-          entry.delivery === 'rejected' ||
-          entry.delivery === 'confirmed'
-        ) {
-          return entry
-        }
-        const origin = observeNativeChatDeliveryOrigin(entry.deliveryOrigin, status)
-        return origin === entry.deliveryOrigin
-          ? entry
-          : { ...entry, deliveryOrigin: origin, delivery: undefined }
-      })
-      return next.every((entry, index) => entry === entries[index]) ? entries : next
-    })
-  }, [status, save])
   const record = useCallback(
     (text: string, imagePaths?: string[]) => {
       const sentAt = Date.now()
@@ -77,15 +51,12 @@ export function useNativeChatPendingDelivery(args: {
         sentAt,
         afterMessageId: boundary?.id ?? null,
         afterMessageTimestamp: boundary?.timestamp ?? null,
-        ...(imagePaths ? { imagePaths } : {}),
-        ...(agent === 'claude'
-          ? { deliveryOrigin: captureNativeChatDeliveryOrigin(status, sentAt) }
-          : {})
+        ...(imagePaths ? { imagePaths } : {})
       }
       setPending(appendPendingSendCache(scope, entry))
       return entry.id
     },
-    [messages, agent, status, scope]
+    [messages, scope]
   )
   const cancel = useCallback(
     (id: string) => save((entries) => entries.filter((entry) => entry.id !== id)),
@@ -98,82 +69,71 @@ export function useNativeChatPendingDelivery(args: {
       ),
     [save]
   )
+  const holdUnconfirmed = useCallback(
+    (id: string) =>
+      save((entries) =>
+        entries.map((entry) =>
+          entry.id === id && !entry.delivery && entry.writeUnconfirmedAt === undefined
+            ? { ...entry, writeUnconfirmedAt: Date.now() }
+            : entry
+        )
+      ),
+    [save]
+  )
   const clear = useCallback(() => save(() => []), [save])
 
+  // A lost acknowledgment is the only unconfirmed trigger: an ordinary send, including one Claude
+  // queues mid-turn, has no transport doubt and stays pending until its row lands.
+  const nextHoldDeadline = useMemo(() => {
+    const deadlines = pending.flatMap((entry) =>
+      entry.writeUnconfirmedAt !== undefined && !entry.delivery
+        ? [entry.writeUnconfirmedAt + NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS]
+        : []
+    )
+    return deadlines.length > 0 ? Math.min(...deadlines) : null
+  }, [pending])
   useEffect(() => {
-    if (agent !== 'claude') {
+    if (nextHoldDeadline === null) {
       return
     }
-    const candidates = pending.filter((entry) => entry.deliveryOrigin && !entry.delivery)
-    const checks = candidates.flatMap((entry) => {
-      const delay = entry.deliveryOrigin
-        ? nativeChatDeliveryCheckDelay(entry.deliveryOrigin, status)
-        : null
-      return delay === null ? [] : [{ entry, delay }]
-    })
-    if (checks.length === 0) {
-      return
-    }
-    let cancelled = false
     const timer = setTimeout(
       () => {
-        void (async () => {
-          const due = checks
-            .filter(
-              ({ entry }) =>
-                entry.deliveryOrigin &&
-                nativeChatDeliveryCheckDelay(entry.deliveryOrigin, status) === 0
-            )
-            .map(({ entry }) => entry)
+        const now = Date.now()
+        save((entries) => {
+          const due = entries.filter(
+            (entry) =>
+              entry.writeUnconfirmedAt !== undefined &&
+              !entry.delivery &&
+              entry.writeUnconfirmedAt + NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS <= now
+          )
           if (due.length === 0) {
-            return
+            return entries
           }
-          const result = sessionId
-            ? await getNativeChatSessionTransport(runtimeEnvironmentId)
-                .readSession(agent, sessionId, 500, transcriptPath ?? undefined)
-                .catch(() => null)
-            : null
-          if (cancelled) {
-            return
-          }
-          // A failed or not-yet-created transcript cannot prove absence after an idle fact.
-          if (status && !status.restoredUnconfirmed && (!result || !('messages' in result))) {
-            return
-          }
-          const history = result && 'messages' in result ? result.messages : messages
           const unmatched = new Set(
-            pendingSendsAsMessages(due, history).map((message) => message.id)
+            pendingSendsAsMessages(due, messages).map((message) => message.id)
           )
-          const dueIds = new Set(due.map((entry) => entry.id))
-          save((entries) =>
-            entries.flatMap((entry) => {
-              if (!dueIds.has(entry.id) || entry.delivery === 'rejected') {
-                return [entry]
-              }
-              return unmatched.has(`pending:${entry.id}`)
-                ? [{ ...entry, delivery: 'unconfirmed' as const }]
-                : [{ ...entry, delivery: 'confirmed' as const }]
-            })
+          if (unmatched.size === 0) {
+            return entries
+          }
+          return entries.map((entry) =>
+            due.includes(entry) && unmatched.has(`pending:${entry.id}`)
+              ? { ...entry, delivery: 'unconfirmed' as const }
+              : entry
           )
-        })().catch(() => {
-          /* A failed read is not evidence of non-delivery. */
         })
       },
-      Math.min(...checks.map(({ delay }) => delay))
+      Math.max(0, nextHoldDeadline - Date.now())
     )
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [agent, pending, status, sessionId, transcriptPath, runtimeEnvironmentId, messages, save])
+    return () => clearTimeout(timer)
+  }, [nextHoldDeadline, messages, save])
 
   const notices = useMemo(() => {
-    if (!pending.some((entry) => entry.delivery && entry.delivery !== 'confirmed')) {
+    if (!pending.some((entry) => entry.delivery)) {
       return NO_NOTICES
     }
     const result = new Map<string, NativeChatDeliveryNotice>()
     for (const entry of pending) {
-      if (!entry.delivery || entry.delivery === 'confirmed') {
+      if (!entry.delivery) {
         continue
       }
       result.set(`pending:${entry.id}`, {
@@ -189,5 +149,5 @@ export function useNativeChatPendingDelivery(args: {
     }
     return result
   }, [pending, cancel])
-  return { pending, record, cancel, reject, clear, notices }
+  return { pending, record, cancel, reject, holdUnconfirmed, clear, notices }
 }

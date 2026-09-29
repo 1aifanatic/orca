@@ -1,4 +1,3 @@
-import type { NativeChatDeliveryOrigin } from '../../../../shared/native-chat-pending-delivery'
 // Pure logic for desktop optimistic "queued" composer sends (mobile parity).
 // A sent prompt is echoed immediately as a queued entry and pruned once its real
 // user turn lands in the transcript. Kept separate from the view so the prune
@@ -26,8 +25,10 @@ import {
 export type NativeChatPendingSend = {
   /** Renderer-minted id, unique per send, used as the list key. */
   id: string
-  deliveryOrigin?: NativeChatDeliveryOrigin
-  delivery?: 'unconfirmed' | 'rejected' | 'confirmed'
+  /** Definite send outcome; absent while the send is simply awaiting its transcript row. */
+  delivery?: 'unconfirmed' | 'rejected'
+  /** When a write's acknowledgment was lost, so a remount keeps the original hold deadline. */
+  writeUnconfirmedAt?: number
   /** The exact draft text the user submitted. */
   text: string
   /** Image paths that were sent through the TUI image attachment paste path. */
