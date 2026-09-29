@@ -169,7 +169,7 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       })
 
       expect(mockSpawn.mock.calls[0]?.[0]?.command).toBe(
-        "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'run the automation'"
+        "claude '--dangerously-skip-permissions' 'run the automation'"
       )
       expect(mockSpawn.mock.calls[0]?.[0]?.startupCommandDelivery).toBeUndefined()
       const dataSidecar = mockSubscribeToPtyData.mock.calls[0]?.[1] as (data: string) => void
@@ -178,7 +178,7 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
 
       expect(mockWrite).toHaveBeenCalledWith(
         'pty-1',
-        "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'run the automation'\r",
+        "claude '--dangerously-skip-permissions' 'run the automation'\r",
         'launch'
       )
     } finally {
@@ -437,7 +437,7 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       expect(mockRegisterAgentLaunchConfig).toHaveBeenCalledWith(
         `${tabId}:${leafId}`,
         {
-          agentCommand: "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions'",
+          agentCommand: "claude '--dangerously-skip-permissions'",
           agentArgs: '--dangerously-skip-permissions',
           agentEnv: {}
         },
@@ -542,7 +542,7 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
         method: 'terminal.create',
         params: expect.objectContaining({
           worktree: 'id:wt-1',
-          command: "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'run remotely'",
+          command: "claude '--dangerously-skip-permissions' 'run remotely'",
           terminalKittyKeyboardProtocol: true,
           launchAgent: 'claude',
           presentation: 'background'

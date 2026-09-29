@@ -56,16 +56,6 @@ async function buildOptions(args: PtySpawnIpcArgs, env: Record<string, string>) 
 const PANE = { cols: 80, rows: 24 }
 
 describe('renderer pty spawn: Claude folder trust', () => {
-  it('strips an inherited trust bypass so later commands in the shell cannot skip the prompt', async () => {
-    const options = await buildOptions(PANE, {})
-    expect(options.envToDelete).toContain('CLAUDE_CODE_SANDBOXED')
-  })
-
-  it('keeps a bypass the launch env sets explicitly', async () => {
-    const options = await buildOptions(PANE, { CLAUDE_CODE_SANDBOXED: '1' })
-    expect(options.envToDelete ?? []).not.toContain('CLAUDE_CODE_SANDBOXED')
-  })
-
   it('sends the desired trust state to the relay for an Orca-created SSH worktree', async () => {
     const options = await buildOptions(
       {

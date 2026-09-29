@@ -4,7 +4,6 @@ import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { CLAUDE_AUTH_ENV_VARS } from '../../../claude-accounts/environment'
 import { LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS } from '../../../pty/legacy-terminal-shim-dir'
 import { PI_PROCESS_OWNER_ENV_KEYS } from '../../../pty/pi-process-owner-env'
-import { CLAUDE_TRUST_BYPASS_ENV } from '../../../../shared/claude-skip-permissions-trust'
 import { CODEX_HOME_ENV_KEYS } from '../host-env/codex-home'
 import {
   mergePtyEnvDeletions,
@@ -43,8 +42,6 @@ export async function buildPtyIpcSpawnOptions(
     args.envToDelete ?? [],
     // Persistent daemons and older SSH hosts must not resurrect a parent Pi's ownership.
     PI_PROCESS_OWNER_ENV_KEYS,
-    // Why: an inherited trust bypass would let any later `claude` in this shell skip Claude's prompt.
-    ctx.spawnEnv?.[CLAUDE_TRUST_BYPASS_ENV] === undefined ? [CLAUDE_TRUST_BYPASS_ENV] : [],
     ctx.agentTeamsEnvToDelete ?? [],
     // Why: disable old hosts without removing ORCA_REAL_* while their Windows shim remains on PATH.
     ctx.isDaemonHostSpawn || args.connectionId ? LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS : [],

@@ -318,24 +318,3 @@ describe('ClaudeAgentTeamsService', () => {
     }
   })
 })
-
-describe('Claude Agent Teams trust bypass', () => {
-  it('extends a skip-permissions leader decision to its teammate panes only when set', () => {
-    const service = new ClaudeAgentTeamsService()
-    const bypassed = service.createLaunchEnv({
-      leaderHandle: 'leader-a',
-      baseEnv: { PATH: '/usr/bin' },
-      shimDir: '/tmp/orca-shim',
-      shimBin: '/usr/bin/orca',
-      trustBypass: true
-    })
-    const ordinary = service.createLaunchEnv({
-      leaderHandle: 'leader-b',
-      baseEnv: { PATH: '/usr/bin', CLAUDE_CODE_SANDBOXED: '1' },
-      shimDir: '/tmp/orca-shim',
-      shimBin: '/usr/bin/orca'
-    })
-    expect(bypassed.env.CLAUDE_CODE_SANDBOXED).toBe('1')
-    expect(ordinary.env.CLAUDE_CODE_SANDBOXED).toBeUndefined()
-  })
-})

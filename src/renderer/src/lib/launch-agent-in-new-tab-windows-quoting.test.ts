@@ -272,7 +272,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
       'tab-1',
       expect.objectContaining({
-        command: `CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
+        command: `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
       })
     )
   })
@@ -327,7 +327,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
       'tab-1',
       expect.objectContaining({
-        command: `CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
+        command: `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
       })
     )
   })

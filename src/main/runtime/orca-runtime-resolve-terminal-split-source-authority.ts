@@ -16,7 +16,6 @@ import {
 } from './claude-agent-teams-shim-env'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
 import { convergeClaudeWorktreeTrustForLocalSpawn } from '../claude/claude-worktree-trust-spawn'
-import { CLAUDE_TRUST_BYPASS_ENV } from '../../shared/claude-skip-permissions-trust'
 
 export class OrcaRuntimeWithResolveTerminalSplitSourceAuthority extends OrcaRuntimeWithSplitPtyBackedTerminal {
   protected resolveTerminalSplitSourceAuthority(
@@ -157,9 +156,7 @@ export class OrcaRuntimeWithResolveTerminalSplitSourceAuthority extends OrcaRunt
       leaderHandle: args.handle,
       baseEnv,
       shimDir,
-      shimBin,
-      // Why: only the CLI's own env counts — the launch prefix puts it there for this leader alone.
-      trustBypass: args.baseEnv?.[CLAUDE_TRUST_BYPASS_ENV] === '1'
+      shimBin
     })
     const env = auth ? { ...auth.envPatch, ...launch.env } : launch.env
     return envToDelete ? { env, envToDelete } : { env }

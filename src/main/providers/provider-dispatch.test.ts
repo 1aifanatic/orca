@@ -175,8 +175,6 @@ describe('PTY provider dispatch', () => {
         'CLAUDE_CODE_CHILD_SESSION',
         'CLAUDE_CODE_SESSION_ID',
         'CLAUDE_CODE_BRIDGE_SESSION_ID',
-        // Why: an inherited Claude trust bypass must not survive into a remote pane's shell.
-        'CLAUDE_CODE_SANDBOXED',
         'ORCA_PI_STATUS_OWNED',
         'ORCA_PRIME_AGENT_STATUS_OWNED',
         'ORCA_PI_TITLE_MARKER_OWNED',
