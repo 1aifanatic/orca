@@ -28,7 +28,7 @@ afterEach(() => rig.dispose())
 /** No drain step may convert the draft: wait out any that were scheduled. */
 async function expectNeverSent(draftId: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 250))
-  expect(await rig.submission(draftId)).toBeUndefined()
+  expect(await rig.handoff(draftId)).toBeUndefined()
   expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
 }
 
@@ -49,8 +49,9 @@ async function stoppedDraft(): Promise<string> {
   return draftId
 }
 
-async function handedOver(id: string): Promise<void> {
-  await eventually(async () => expect((await rig.submission(id))?.handedOverAt).toBeDefined())
+/** A queued draft handed off and handed over, found by its hand-off link. */
+async function handedOver(draftId: string): Promise<void> {
+  await eventually(async () => expect((await rig.handoff(draftId))?.handedOverAt).toBeDefined())
 }
 
 /** A user send the host accepted and handed over, still unanswered by the provider. */
@@ -70,7 +71,7 @@ describe("a Stop's queue pause", () => {
     await expectNeverSent(draftId)
     const started = await handedOverUserSend('this one starts')
     await rig.settleAccepted(started, 'started')
-    await eventually(async () => expect(await rig.submission(draftId)).toBeDefined())
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 
   it('a Stop after the user send supersedes it: that send starting its turn lifts nothing', async () => {
@@ -98,10 +99,10 @@ describe("a Stop's queue pause", () => {
     const typedId = await queuedDraft('typed while stopping')
     await rig.settleAccepted(working, 'stopped')
     await handedOver(typedId)
-    expect(await rig.submission(olderId)).toBeUndefined()
+    expect(await rig.handoff(olderId)).toBeUndefined()
     expect(await rig.drafts()).toEqual([{ messageId: olderId, state: 'waiting', paused: true }])
-    await rig.settleAccepted(typedId, 'typed')
-    await eventually(async () => expect(await rig.submission(olderId)).toBeDefined())
+    await rig.settleAccepted(await rig.handoffId(typedId), 'typed')
+    await eventually(async () => expect(await rig.handoff(olderId)).toBeDefined())
   })
 
   it("Send-now's card starting its turn lifts the other stopped cards, which drain after it", async () => {
@@ -116,8 +117,8 @@ describe("a Stop's queue pause", () => {
     })
     await handedOver(sentId)
     expect(await rig.drafts()).toEqual([{ messageId: heldId, state: 'waiting', paused: true }])
-    await rig.settleAccepted(sentId, 'sent-now')
-    await eventually(async () => expect(await rig.submission(heldId)).toBeDefined())
+    await rig.settleAccepted(await rig.handoffId(sentId), 'sent-now')
+    await eventually(async () => expect(await rig.handoff(heldId)).toBeDefined())
   })
 
   it('a consumed draft the provider refuses lifts nothing: the stopped cards stay held', async () => {
@@ -127,9 +128,9 @@ describe("a Stop's queue pause", () => {
     const typedId = await queuedDraft('typed while stopping')
     await rig.settleAccepted(working, 'stopped')
     await handedOver(typedId)
-    await rig.settleRejected(typedId, 'turn/start refused')
+    await rig.settleRejected(await rig.handoffId(typedId), 'turn/start refused')
     await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.submission(olderId)).toBeUndefined()
+    expect(await rig.handoff(olderId)).toBeUndefined()
     expect(await rig.drafts()).toContainEqual({
       messageId: olderId,
       state: 'waiting',
@@ -188,8 +189,29 @@ describe('a failed Stop', () => {
     ])
     // The one it would have paused sends when the turn ends, as if no Stop was pressed.
     await rig.settleAccepted(working, 'working')
-    await eventually(async () => expect(await rig.submission(fresh)).toBeDefined())
-    expect(await rig.submission(earlier)).toBeUndefined()
+    await eventually(async () => expect(await rig.handoff(fresh)).toBeDefined())
+    expect(await rig.handoff(earlier)).toBeUndefined()
+  })
+
+  it('keeps its holds when it fails after the interrupt reached the agent', async () => {
+    await rig.workingSend()
+    const draftId = await queuedDraft('paused by stop')
+    const append = AgentSessionJournal.prototype.appendItem
+    const failing = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendItem')
+      .mockImplementation(async function (this: AgentSessionJournal, ...args) {
+        // The status note written after the provider was asked to stop.
+        if (args[1].kind === 'status') {
+          throw new Error('disk full')
+        }
+        return append.apply(this, args)
+      })
+    try {
+      await expect(rig.stop()).rejects.toThrow('disk full')
+    } finally {
+      failing.mockRestore()
+    }
+    await expectNeverSent(draftId)
   })
 })
 

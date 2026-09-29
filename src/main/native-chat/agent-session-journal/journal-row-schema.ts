@@ -81,6 +81,9 @@ export type JournalSubmissionRow = JournalRowBase & {
   /** Accepted to be handed over by a later `dispatch{pending}` row; absent on rows whose writer
    *  dispatched in the same step. Older readers keep the key and ignore it. */
   handoverRecorded?: true
+  /** The queued draft this submission hands off; absent for a direct send. Older readers keep
+   *  the key and ignore it. */
+  queuedMessageId?: string
 }
 
 export type JournalDispatchRow = JournalRowBase & {

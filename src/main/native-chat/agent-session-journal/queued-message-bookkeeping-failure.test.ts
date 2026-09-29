@@ -59,7 +59,7 @@ async function queueAndConsume(journal: AgentSessionJournal, messageId: string):
   })
   await journal.appendSubmission(
     {
-      clientMessageId: messageId,
+      clientMessageId: `sub-${messageId}`,
       payloadFingerprint: `fp-${messageId}`,
       body,
       fence: 0,
@@ -89,13 +89,13 @@ describe('draft bookkeeping inside a journal append', () => {
       throw new Error('table queued_messages has no column named returned_rejection')
     })
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...REFUSAL,
       fence: 0
     })
     // The journal's own answer stands: Stop, failed starts and refusals depend on it.
-    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
     expect(warn).toHaveBeenCalledWith(
       '[journal-append] row bookkeeping skipped:',
@@ -103,7 +103,7 @@ describe('draft bookkeeping inside a journal append', () => {
     )
     await journal.close()
     journal = await open()
-    expect(journal.submission('draft-1')?.dispatchState).toBe('rejected')
+    expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
       returnedReason: REFUSAL.reason,
@@ -128,7 +128,7 @@ describe('draft bookkeeping inside a journal append', () => {
     expect(journal.isReadOnly).toBe(false)
     await queueAndConsume(journal, 'draft-1')
     await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
+      clientMessageId: 'sub-draft-1',
       state: 'rejected',
       ...REFUSAL,
       fence: 0

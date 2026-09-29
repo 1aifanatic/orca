@@ -42,7 +42,8 @@ export function pruneQueuedMessages(
     if (row.state !== 'dispatched' || row.settledAt === null || row.settledAt >= cutoff) {
       continue
     }
-    const verdict = input.submissionVerdict(row.consumedAs ?? row.messageId)
+    // A dispatched row always names its hand-off; one that does not has nothing to wait for.
+    const verdict = row.consumedAs === null ? 'absent' : input.submissionVerdict(row.consumedAs)
     if (verdict === 'terminal-not-refused' || verdict === 'absent') {
       db.prepare('DELETE FROM queued_messages WHERE session_id = ? AND message_id = ?').run(
         input.sessionId,

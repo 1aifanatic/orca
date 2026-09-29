@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   createQueuedMessageTestRig,
@@ -99,10 +100,10 @@ describe('a /compact in flight', () => {
     const draftId = await queuedId(rig.send('sent while compacting', 'queue-if-active').result)
     expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
     await new Promise((resolve) => setTimeout(resolve, 150))
-    expect(await rig.submission(draftId)).toBeUndefined()
+    expect(await rig.handoff(draftId)).toBeUndefined()
     finish()
     expect(await settled).toMatchObject({ ok: true, value: { command: 'compact' } })
-    await eventually(async () => expect(await rig.submission(draftId)).toBeDefined())
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
     expect(await rig.drafts()).toHaveLength(0)
   })
 
@@ -149,12 +150,42 @@ describe('a /compact in flight', () => {
         refusal: { message: 'Wait for the conversation operation to finish.' }
       })
       expect(await rig.drafts()).toEqual([{ messageId: keptId, state: 'waiting' }])
-      expect(await rig.submission(keptId)).toBeUndefined()
+      expect(await rig.handoff(keptId)).toBeUndefined()
     } finally {
       finish()
     }
     expect(await settled).toMatchObject({ ok: true, value: { command: 'compact' } })
-    await eventually(async () => expect(await rig.submission(keptId)).toBeDefined())
+    await eventually(async () => expect(await rig.handoff(keptId)).toBeDefined())
+  })
+
+  it('Send-now is refused before any lane, never queued behind a side-lane Stop to run after the compaction', async () => {
+    const { finish, settled } = await compactInFlight()
+    const keptId = await queuedId(rig.send('queued while compacting', 'queue-if-active').result)
+    // A Stop on the side lane, parked inside its withdrawal step.
+    let releaseStop: () => void = () => undefined
+    const stopParked = new Promise<void>((resolve) => (releaseStop = resolve))
+    const withdraw = AgentSessionJournal.prototype.rejectQueuedSubmissions
+    const parked = vi
+      .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
+      .mockImplementation(async function (this: AgentSessionJournal, ...args) {
+        if (args[1].rejection.kind === 'cancelled') {
+          await stopParked
+        }
+        return withdraw.apply(this, args)
+      })
+    const stopped = rig.stop()
+    try {
+      await eventually(() => expect(parked).toHaveBeenCalled())
+      const hung = new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2_000))
+      expect(await Promise.race([rig.sendNow(keptId), hung])).toEqual(WAIT_REFUSAL)
+    } finally {
+      finish()
+      await settled
+      releaseStop()
+      await stopped
+      parked.mockRestore()
+    }
+    expect(await rig.handoff(keptId)).toBeUndefined()
   })
 
   it('an immediate or image send keeps the refusal it gets today', async () => {
@@ -222,7 +253,7 @@ describe('/clear', () => {
       value: { submission: expect.anything() }
     })
     const journal = rig.host.collaboratorsForTests().sessions.get(replacementId)?.journal
-    const sent = journal?.submission(draftId)
+    const sent = journal?.submissions().findLast((entry) => entry.queuedMessageId === draftId)
     if (!journal || !sent) {
       throw new Error('expected the carried draft sent on the replacement')
     }
@@ -236,7 +267,7 @@ describe('/clear', () => {
       (item) => item.body.kind === 'message' && item.body.role === 'user'
     )
     expect(userBubbles).toHaveLength(1)
-    expect(snapshot.submissions.find((entry) => entry.clientMessageId === draftId)).toMatchObject({
+    expect(snapshot.submissions.find((entry) => entry.queuedMessageId === draftId)).toMatchObject({
       dispatchState: 'accepted'
     })
   })

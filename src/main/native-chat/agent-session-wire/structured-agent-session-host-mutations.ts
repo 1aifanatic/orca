@@ -183,7 +183,7 @@ export function cancelStructuredAgentSessionTurn(
       // The cards stay published as paused; nothing is withdrawn and no text
       // ever rides the answer.
       run: (ctx) =>
-        runStopWithQueueHold(ctx, context.sessions.get(ctx.sessionId), async () => {
+        runStopWithQueueHold(ctx, context.sessions.get(ctx.sessionId), async (reachingProvider) => {
           // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
           const withdrawn = await ctx.journal.rejectQueuedSubmissions(
             ctx.fence,
@@ -193,6 +193,7 @@ export function cancelStructuredAgentSessionTurn(
           const child = context.sessions.get(ctx.sessionId)?.child
           if (child?.phase === 'starting') {
             // A start that may never land is the one thing here Stop has to end; the chat stays.
+            reachingProvider()
             await context.stopAgent(ctx.sessionId)
             return { ok: true, value: { ...named, cancelled: true } }
           }
@@ -206,12 +207,14 @@ export function cancelStructuredAgentSessionTurn(
               ctx.fence
             )
           const record = context.deps.store.getRecord(ctx.sessionId)
-          return child && inFlight
-            ? plan.run({
-                ...ctx,
-                failureTextContext: structuredAgentSessionFailureWordsContext(record)
-              })
-            : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+          if (!child || !inFlight) {
+            return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+          }
+          reachingProvider()
+          return plan.run({
+            ...ctx,
+            failureTextContext: structuredAgentSessionFailureWordsContext(record)
+          })
         })
     },
     openForWrite(context, params.envelope)

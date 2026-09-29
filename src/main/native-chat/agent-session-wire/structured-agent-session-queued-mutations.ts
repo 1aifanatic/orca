@@ -15,10 +15,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import {
-  queuedMessageNeedsFreshSubmissionId,
-  type QueuedMessageRow
-} from '../agent-session-journal/queued-message-table'
+import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
@@ -34,7 +31,10 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { compactInFlightContext } from './structured-conversation-command-lane'
+import {
+  compactInFlightContext,
+  conversationOperationWaitRefusal
+} from './structured-conversation-command-lane'
 
 function invalid(message: string): {
   ok: false
@@ -128,14 +128,11 @@ export async function carryQueuedMessagesToClearReplacement(
 
 function mutateQueued<TValue>(
   context: StructuredAgentSessionMutationContext,
+  lane: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  // A /compact holds the main lane for its whole provider call: Delete answers
-  // at once, and Send-now reaches its `command` refusal at once, on the side
-  // lane draft-only sends use. The drain stays on the main lane, behind it.
-  const lane = compactInFlightContext(context, envelope.sessionId) ?? context
   return lane.serialize(envelope.sessionId, () =>
     admitAndRunAgentSessionMutation({
       store: context.deps.store,
@@ -156,10 +153,9 @@ function mutateQueued<TValue>(
 /**
  * Send-now. It overrides ONLY queue policy — FIFO order, pause, the busy-turn
  * wait — through the same send block and pending-prompt gates as any send;
- * supersession, Stop and prepared commands are never overridden. A draft whose
- * own id is spent — a returned card, or one a withdrawal sent back to waiting —
- * re-consumes under a fresh submission id (this operation's id), recorded as
- * `consumed_as`, so one id still means one delivery.
+ * supersession, Stop and prepared commands are never overridden. The card goes
+ * out under this operation's id, never its own, and the submission names it by
+ * `queuedMessageId`; one id still means one delivery.
  */
 export function sendQueuedStructuredAgentMessage(
   context: StructuredAgentSessionMutationContext,
@@ -173,6 +169,12 @@ export function sendQueuedStructuredAgentMessage(
     fields: { messageId },
     conversationWrite: true,
     run: async (ctx): Promise<TurnOutcome<AgentSessionSendResult>> => {
+      // A rerun of this operation after it consumed the card (its answer never
+      // settled): answer with the submission it made, never append it again.
+      const consumedHere = submissionFor(ctx, operationId)
+      if (consumedHere?.queuedMessageId === messageId) {
+        return { ok: true, value: { clientMessageId: operationId, submission: consumedHere } }
+      }
       // The one queue gate; Send-now's override set is exactly `working` (plus
       // FIFO order and the stored hold, which the consume below clears).
       const record = context.deps.store.getRecord(ctx.sessionId)
@@ -195,12 +197,12 @@ export function sendQueuedStructuredAgentMessage(
       }
       if (row.state === 'dispatched') {
         // Already a submission — answer with it rather than sending twice.
-        const submission = submissionFor(ctx, row.consumedAs ?? row.messageId)
+        const submission = row.consumedAs === null ? undefined : submissionFor(ctx, row.consumedAs)
         return submission
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
       }
-      const submissionId = queuedMessageNeedsFreshSubmissionId(row) ? operationId : row.messageId
+      const submissionId = operationId
       try {
         await ctx.journal.appendSubmission(
           {
@@ -238,11 +240,17 @@ export function sendQueuedStructuredAgentMessage(
       if (!row || row.state !== 'dispatched') {
         return null
       }
-      const submission = submissionFor(ctx, row.consumedAs ?? row.messageId)
+      const submission = row.consumedAs === null ? undefined : submissionFor(ctx, row.consumedAs)
       return submission ? { clientMessageId: submission.clientMessageId, submission } : null
     }
   }
-  return mutateQueued(context, caller, params.envelope, plan)
+  // A /compact holds the main lane for its whole provider call, so the refusal
+  // is answered before any lane: a Send queued on the side lane could outlive
+  // the compaction and append unserialized against the main lane.
+  if (compactInFlightContext(context, params.envelope.sessionId)) {
+    return Promise.resolve(conversationOperationWaitRefusal())
+  }
+  return mutateQueued(context, context, caller, params.envelope, plan)
 }
 
 /** Delete = discard, with no body in the answer: the card leaving the published
@@ -290,5 +298,8 @@ export function deleteQueuedStructuredAgentMessage(
       return replayed ? { deleted: true, messageId } : null
     }
   }
-  return mutateQueued(context, caller, params.envelope, plan)
+  // Answers at once during a /compact on the side lane draft-only sends use; its
+  // compare-and-set withdrawal is safe on either lane. The drain stays behind it.
+  const lane = compactInFlightContext(context, params.envelope.sessionId) ?? context
+  return mutateQueued(context, lane, caller, params.envelope, plan)
 }
