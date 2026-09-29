@@ -34,7 +34,9 @@ import {
   isGenerationName,
   managedRootFor,
   processVerdict,
-  processesUnder
+  processesUnder,
+  descendantsOf,
+  ptyHostCount
 } from './windows-evidence.mjs'
 
 const args = new Map(
@@ -92,6 +94,7 @@ const sentinels = {
 }
 let serve = null
 let installLocation = null
+let seeded = {}
 let pinner = null
 const owned = { daemons: [], shells: [] }
 
@@ -239,34 +242,6 @@ async function continuity(stage, owner, live, worktreeId) {
   receipt.stages.push({ stage, owner: current, terminals })
 }
 // Pre-PTY stale-bundle replacement is darwin-only (resolvePackagedDarwinAppVersion); on Windows a
-// Decodes a PowerShell -EncodedCommand so the receipt names which script a shell runs.
-function encodedPowerShell(command) {
-  const encoded = /-EncodedCommand\s+([A-Za-z0-9+/=]+)/u.exec(command ?? '')?.[1]
-  return encoded ? Buffer.from(encoded, 'base64').toString('utf16le').slice(0, 1500) : undefined
-}
-function descendantsOf(table, pid) {
-  const found = []
-  const frontier = [pid]
-  while (frontier.length > 0) {
-    const parent = frontier.pop()
-    for (const row of table) {
-      if (row.ppid === parent && !found.some((seen) => seen.pid === row.pid)) {
-        found.push(row)
-        frontier.push(row.pid)
-      }
-    }
-  }
-  return found.map((row) => ({
-    pid: row.pid,
-    ppid: row.ppid,
-    name: row.name,
-    created: row.created,
-    command: row.command?.slice(0, 300),
-    script: encodedPowerShell(row.command)
-  }))
-}
-const ptyHostCount = (table, owner) =>
-  table.filter((row) => row.ppid === owner.pid && /^bun-runtime\.exe$/iu.test(row.name)).length
 // A killed terminal must release its per-terminal PTY host, or the daemon can never idle out.
 async function expectHostReleased(stage, owner, item) {
   const before = await processTable()
@@ -313,6 +288,16 @@ async function drainEvidence(verdict, ownerPid) {
 async function switchGeneration(stage, owner, live, worktreeId, label) {
   for (const item of live) {
     await close(item)
+  }
+  // Adding a workspace can open its own fallback terminal; draining means closing every one.
+  for (const workspace of Object.values(seeded)) {
+    const listed = await cli(serve, env, ['terminal', 'list', '--worktree', workspace])
+    receipt.stages.push({
+      stage: `${stage}: remaining terminals before drain`,
+      workspace,
+      handles: (listed?.terminals ?? []).map((terminal) => terminal.handle)
+    })
+    await cli(serve, env, ['terminal', 'close', '--worktree', workspace, '--all'])
   }
   await stopServe(serve)
   serve = null
@@ -445,6 +430,7 @@ try {
   await install('A', [])
   serve = await startServe(installLocation, profile, env)
   const worktrees = await seedWorkspaces()
+  seeded = worktrees
   const live = [await terminal(worktrees.git), await terminal(worktrees.folder)]
   const firstEvidence = []
   for (const item of live) {

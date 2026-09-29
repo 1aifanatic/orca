@@ -108,3 +108,32 @@ export function processesUnder(table, roots) {
 export function managedRootFor(localAppData) {
   return join(localAppData, 'Orca', 'terminal-daemon-host', 'managed-v1')
 }
+
+// Decodes a PowerShell -EncodedCommand so the receipt names which script a shell runs.
+export function encodedPowerShell(command) {
+  const encoded = /-EncodedCommand\s+([A-Za-z0-9+/=]+)/u.exec(command ?? '')?.[1]
+  return encoded ? Buffer.from(encoded, 'base64').toString('utf16le').slice(0, 1500) : undefined
+}
+export function descendantsOf(table, pid) {
+  const found = []
+  const frontier = [pid]
+  while (frontier.length > 0) {
+    const parent = frontier.pop()
+    for (const row of table) {
+      if (row.ppid === parent && !found.some((seen) => seen.pid === row.pid)) {
+        found.push(row)
+        frontier.push(row.pid)
+      }
+    }
+  }
+  return found.map((row) => ({
+    pid: row.pid,
+    ppid: row.ppid,
+    name: row.name,
+    created: row.created,
+    command: row.command?.slice(0, 300),
+    script: encodedPowerShell(row.command)
+  }))
+}
+export const ptyHostCount = (table, owner) =>
+  table.filter((row) => row.ppid === owner.pid && /^bun-runtime\.exe$/iu.test(row.name)).length
