@@ -146,10 +146,12 @@ export function flushPendingData(session: PtyIpcSession): void {
             id,
             {
               id,
+              // 2026 release before the 2031 data: that payload ends with a retained
+              // partial private-mode sequence an ESC after it would abort.
               data:
                 pending.data +
-                getDroppedMode2031RendererData(pending) +
-                getDroppedSynchronizedOutputRendererData(pending),
+                getDroppedSynchronizedOutputRendererData(pending) +
+                getDroppedMode2031RendererData(pending),
               droppedOutput: true
             },
             pending.projectionAdmissionIds

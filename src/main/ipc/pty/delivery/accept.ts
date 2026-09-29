@@ -102,10 +102,13 @@ export function acceptPtyDataForRenderer(
     pending.droppedOutput === true &&
     !overflowMarkedBeforeAppend &&
     session.pendingOverflowMarkedPtys.has(payload.id)
+  // Why the 2026 release goes BEFORE the 2031 data: that payload ends with a
+  // deliberately-retained INCOMPLETE private-mode sequence (extractPrivateModeScanTail),
+  // and an ESC after it would abort the dangling CSI and lose the carried mode.
   const nextData =
     pending.data +
-    getDroppedMode2031RendererData(pending) +
-    getDroppedSynchronizedOutputRendererData(pending)
+    getDroppedSynchronizedOutputRendererData(pending) +
+    getDroppedMode2031RendererData(pending)
   const isInteractiveOutput = shouldSendInteractiveOutputNow(
     payload.id,
     nextData,
