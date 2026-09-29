@@ -3,8 +3,8 @@
  *
  * The button states the agent, the workspace and the generated prompt; the host decides whether it
  * runs as a chat or a terminal agent and how the prompt reaches it (on the launch command when the
- * typed line can carry it, else pasted once the agent is ready). This side only places the tab the
- * host reveals and reports the receipt back to the button.
+ * typed line can carry it, else pasted once the agent is ready). This side only places and focuses
+ * the tab the host reveals and reports the receipt back to the button.
  */
 
 import { toast } from 'sonner'
@@ -25,14 +25,8 @@ import {
 } from '@/runtime/runtime-rpc-client'
 import { createAgentSessionOperationId } from '@/runtime/agent-session-operation-id'
 import { isAmbiguousCreateFailure } from '@/runtime/agent-session-create-operation'
-import { reserveAgentLaunchTab } from '@/lib/agent-launch-tab-reservations'
+import { placeAgentLaunchTab } from '@/lib/agent-launch-tab-placement'
 import { createBrowserUuid } from '@/lib/browser-uuid'
-import {
-  clearWebSessionFocusIntentIfMatches,
-  recordWebSessionFocusIntent,
-  resolveWebSessionVisibleTabId
-} from '@/runtime/web-session-focus-intent'
-import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../shared/agent-launch-intent'
 import { classifyAgentLaunchReplayRefusal } from '../../../shared/agent-launch-replay-refusal'
 import { isRecoverableRemoteRuntimeConnectionError } from '../../../shared/remote-runtime-client-error-classification'
@@ -167,6 +161,7 @@ export async function launchSourceControlAgent(
     return { kind: 'aborted' }
   }
   const tabId = createBrowserUuid()
+  const leafId = createBrowserUuid()
   const { viewMode, sessionOptions } = launchViewOptions({ ...args, prompt: trimmedPrompt })
   let accepted = false
   const accept = (): void => {
@@ -175,34 +170,19 @@ export async function launchSourceControlAgent(
       args.onLaunchAccepted?.()
     }
   }
-  // A paired host reveals the tab in its own window; only the local reveal reads a reservation.
-  const release =
-    target.kind === 'local'
-      ? reserveAgentLaunchTab(tabId, {
-          worktreeId: args.worktreeId,
-          ...(args.groupId ? { groupId: args.groupId } : {}),
-          focus: true,
-          ...(viewMode ? { viewMode } : {}),
-          onRevealed: accept
-        })
-      : () => {}
   const sessionId = isAgentSessionHandleProvider(args.agent)
     ? createStructuredAgentSessionId(args.agent, createBrowserUuid)
     : undefined
-  // Why: a chat the host starts arrives through the session-tabs mirror, which focuses only a tab
-  // the client asked for; the terminal reveal reads the reservation instead.
-  const chatHostTabId = target.kind === 'local' && sessionId ? `agent-session:${sessionId}` : null
-  const chatFocusOwner = { environmentId: LOCAL_STRUCTURED_SESSION_OWNER }
-  if (chatHostTabId) {
-    recordWebSessionFocusIntent(
-      chatFocusOwner,
-      args.worktreeId,
-      chatHostTabId,
-      undefined,
-      resolveWebSessionVisibleTabId(useAppStore.getState(), args.worktreeId)
-    )
-  }
-  let startedChat = false
+  const placement = placeAgentLaunchTab({
+    target,
+    worktreeId: args.worktreeId,
+    ...(args.groupId ? { groupId: args.groupId } : {}),
+    tabId,
+    leafId,
+    ...(sessionId ? { sessionId } : {}),
+    onRevealed: accept
+  })
+  let launched: AgentLaunchResult | null = null
   const params = {
     agent: args.agent,
     operationId: createAgentSessionOperationId(),
@@ -211,7 +191,8 @@ export async function launchSourceControlAgent(
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(sessionOptions ? { sessionOptions } : {}),
     launchSource: args.launchSource,
-    paneKey: makePaneKey(tabId, createBrowserUuid()),
+    paneKey: makePaneKey(tabId, leafId),
+    ...(viewMode ? { viewMode } : {}),
     ...(sessionId ? { sessionId } : {})
   }
   try {
@@ -225,7 +206,7 @@ export async function launchSourceControlAgent(
     if (!isAgentLaunchResult(sent.result)) {
       return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
     }
-    startedChat = sent.result.outcome.kind === 'structured'
+    launched = sent.result
     // A chat, a reused pane or a missed reveal never reads the reservation; the reply still means
     // the surface exists.
     accept()
@@ -233,10 +214,7 @@ export async function launchSourceControlAgent(
   } catch (error) {
     return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
   } finally {
-    release()
-    if (chatHostTabId && !startedChat) {
-      clearWebSessionFocusIntentIfMatches(chatFocusOwner, args.worktreeId, chatHostTabId)
-    }
+    placement.settle(launched)
   }
 }
 

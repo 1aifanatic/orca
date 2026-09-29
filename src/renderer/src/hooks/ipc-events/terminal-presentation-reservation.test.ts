@@ -106,13 +106,12 @@ describe('revealing a tab an agent launch reserved', () => {
       reserveAgentLaunchTab('tab-reserved', {
         worktreeId: 'wt-1',
         groupId: 'group-2',
-        focus: true,
-        viewMode: 'terminal',
         onRevealed
       })
     )
 
-    reveal(hostReveal('tab-reserved'))
+    // The launch carried the button's view mode to the host, whose reveal passes it back.
+    reveal({ ...hostReveal('tab-reserved'), viewMode: 'terminal' })
 
     expect(mocks.createTab).toHaveBeenCalledWith(
       'wt-1',
@@ -135,9 +134,7 @@ describe('revealing a tab an agent launch reserved', () => {
     mocks.activateWorktree.mockImplementation(() => {
       heldDuringActivation.push([...agentLaunchReservedGroupIds('wt-1')])
     })
-    releases.push(
-      reserveAgentLaunchTab('tab-reserved', { worktreeId: 'wt-1', groupId: 'group-2', focus: true })
-    )
+    releases.push(reserveAgentLaunchTab('tab-reserved', { worktreeId: 'wt-1', groupId: 'group-2' }))
 
     reveal(hostReveal('tab-reserved'))
 
@@ -162,7 +159,6 @@ describe('revealing a tab an agent launch reserved', () => {
     releases.push(
       reserveAgentLaunchTab('tab-reserved', {
         worktreeId: 'wt-1',
-        focus: true,
         onRevealed: () => {
           throw new Error('caller bookkeeping failed')
         }

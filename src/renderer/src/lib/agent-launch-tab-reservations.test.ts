@@ -7,7 +7,7 @@ import {
   claimAgentLaunchTabReservation
 } from './agent-launch-tab-reservations'
 
-const PLACEMENT = { worktreeId: 'wt-1', groupId: 'group-2', focus: true }
+const PLACEMENT = { worktreeId: 'wt-1', groupId: 'group-2' }
 
 /** What the reveal does: claim the placement, then consume it once the tab exists. */
 function reveal(tabId: string, worktreeId: string, now: number) {

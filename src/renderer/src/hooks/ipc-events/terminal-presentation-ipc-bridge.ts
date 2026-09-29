@@ -56,9 +56,7 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
               : null
           const reservation = claim?.reservation ?? null
           const terminalPresentation = reservation
-            ? reservation.focus
-              ? 'focused'
-              : 'background'
+            ? 'focused'
             : resolveTerminalPresentation({
                 presentation,
                 activate,
@@ -102,8 +100,8 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
                     ? {
                         launchAgent,
                         // Why: a paired client resolved explicit mode before PTY materialization; only omitted mode uses host defaults.
-                        ...((reservation?.viewMode ?? viewMode)
-                          ? { viewMode: reservation?.viewMode ?? viewMode }
+                        ...(viewMode
+                          ? { viewMode }
                           : initialAgentTabViewModeProps(store.settings, {
                               agent: launchAgent,
                               nativeChatTranscriptIsLocalReadable:

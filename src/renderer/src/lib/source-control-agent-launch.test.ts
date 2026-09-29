@@ -1,19 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 
-const mocks = vi.hoisted(() => ({
-  callRuntimeRpc: vi.fn(),
-  runtimeEnvironmentSupportsCapability: vi.fn(),
-  ensureLocalRuntimeCapabilities: vi.fn(),
-  getRuntimeEnvironmentIdForWorktree: vi.fn(),
-  isWebRuntimeSessionActive: vi.fn(),
-  toastError: vi.fn(),
-  toastWarning: vi.fn(),
-  showNotDelivered: vi.fn()
-}))
+const mocks = vi.hoisted(() => {
+  const state: { settings: Record<string, unknown> } = { settings: {} }
+  return {
+    callRuntimeRpc: vi.fn(),
+    runtimeEnvironmentSupportsCapability: vi.fn(),
+    ensureLocalRuntimeCapabilities: vi.fn(),
+    getRuntimeEnvironmentIdForWorktree: vi.fn(),
+    isWebRuntimeSessionActive: vi.fn(),
+    toastError: vi.fn(),
+    toastWarning: vi.fn(),
+    showNotDelivered: vi.fn(),
+    settleTerminalPlacement: vi.fn(),
+    refreshSessionTabs: vi.fn(),
+    state
+  }
+})
 
 vi.mock('@/store', () => ({
-  useAppStore: { getState: () => ({ settings: {} }) }
+  useAppStore: { getState: () => mocks.state }
+}))
+vi.mock('@/runtime/web-runtime-terminal-placement-settlement', () => ({
+  settleWebRuntimeTerminalPlacement: mocks.settleTerminalPlacement
+}))
+vi.mock('@/runtime/web-runtime-session-snapshot', () => ({
+  refreshWebRuntimeSessionTabsSnapshot: mocks.refreshSessionTabs
 }))
 vi.mock('@/lib/connection-context', () => ({ getConnectionIdFromState: () => null }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
@@ -52,7 +64,14 @@ import {
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
-import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
+import {
+  peekWebSessionFocusIntent,
+  resetWebSessionFocusIntentForTests
+} from '@/runtime/web-session-focus-intent'
+import {
+  peekWebSessionTerminalPlacementGroup,
+  resetWebSessionTerminalPlacementsForTests
+} from '@/runtime/web-session-terminal-placement'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 
 const HOST_CAPABILITIES = [
@@ -89,6 +108,11 @@ function sentParams(call = 0): Record<string, unknown> {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  resetWebSessionFocusIntentForTests()
+  resetWebSessionTerminalPlacementsForTests()
+  mocks.state = { settings: {} }
+  mocks.settleTerminalPlacement.mockResolvedValue(undefined)
+  mocks.refreshSessionTabs.mockResolvedValue(undefined)
   mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue(null)
   mocks.isWebRuntimeSessionActive.mockReturnValue(false)
   mocks.ensureLocalRuntimeCapabilities.mockResolvedValue(HOST_CAPABILITIES)
@@ -141,7 +165,15 @@ describe('launching a source-control button’s agent through the host', () => {
 
     await launchSourceControlAgent(ARGS)
 
-    expect(placement).toMatchObject({ worktreeId: 'wt-1', groupId: 'group-2', focus: true })
+    expect(placement).toMatchObject({ worktreeId: 'wt-1', groupId: 'group-2' })
+  })
+
+  it('sends the view mode the button would have opened the tab in, so the host reveals it that way', async () => {
+    mocks.state = { settings: { experimentalNativeChat: true, openAgentTabsInChatByDefault: true } }
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(sentParams()).toHaveProperty('viewMode', 'chat')
   })
 
   it('reports the surface accepted at the reveal, before the prompt’s delivery settles', async () => {
@@ -201,7 +233,7 @@ describe('launching a source-control button’s agent through the host', () => {
     expect(
       peekWebSessionFocusIntent({ environmentId: LOCAL_STRUCTURED_SESSION_OWNER }, 'wt-1')
     ).toMatchObject({
-      hostTabId: `agent-session:${sentParams().sessionId}`
+      hostTabId: `agent-session:${String(sentParams().sessionId)}`
     })
   })
 
@@ -343,25 +375,6 @@ describe('launching a source-control button’s agent through the host', () => {
     expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
   })
 
-  it('launches on a capable paired host, whose own window places the tab', async () => {
-    mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue('env-1')
-    mocks.isWebRuntimeSessionActive.mockReturnValue(true)
-    mocks.runtimeEnvironmentSupportsCapability.mockResolvedValue(true)
-    let reservations = -1
-    mocks.callRuntimeRpc.mockImplementation(async () => {
-      reservations = agentLaunchTabReservationCountForTests()
-      return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
-    })
-
-    await launchSourceControlAgent(ARGS)
-
-    expect(mocks.callRuntimeRpc.mock.calls[0]?.[0]).toEqual({
-      kind: 'environment',
-      environmentId: 'env-1'
-    })
-    expect(reservations).toBe(0)
-  })
-
   it('runs the caller’s pre-launch step only for a host that takes the launch, and honours a no', async () => {
     const beforeLaunch = vi.fn(() => false)
 
@@ -372,6 +385,89 @@ describe('launching a source-control button’s agent through the host', () => {
     beforeLaunch.mockClear()
     await launchSourceControlAgent({ ...ARGS, beforeLaunch })
     expect(beforeLaunch).not.toHaveBeenCalled()
+  })
+})
+
+describe('a launch on a paired host', () => {
+  const PAIRED = { environmentId: 'env-1' }
+
+  beforeEach(() => {
+    mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue('env-1')
+    mocks.isWebRuntimeSessionActive.mockReturnValue(true)
+    mocks.runtimeEnvironmentSupportsCapability.mockResolvedValue(true)
+  })
+
+  function pairedRecords() {
+    const pane = parsePaneKey(sentParams().paneKey)!
+    return {
+      pane,
+      focus: peekWebSessionFocusIntent(PAIRED, 'wt-1'),
+      group: peekWebSessionTerminalPlacementGroup({
+        ...PAIRED,
+        worktreeId: 'wt-1',
+        hostTabId: pane.tabId
+      })
+    }
+  }
+
+  it('records where the tab goes and that it takes focus before it asks, since the tab arrives before the reply', async () => {
+    let beforeReply: ReturnType<typeof pairedRecords> | null = null
+    mocks.callRuntimeRpc.mockImplementation(async () => {
+      beforeReply = pairedRecords()
+      return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    })
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(mocks.callRuntimeRpc.mock.calls[0]?.[0]).toEqual({ kind: 'environment', ...PAIRED })
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+    const { pane, focus, group } = beforeReply!
+    expect(focus).toMatchObject({ hostTabId: pane.tabId, leafId: pane.leafId })
+    expect(group).toBe('group-2')
+    expect(mocks.settleTerminalPlacement).toHaveBeenCalledWith('env-1', 'wt-1', pane.tabId, {
+      groupId: 'group-2',
+      activate: true
+    })
+  })
+
+  it.each([
+    [
+      'refused',
+      () => {
+        throw rpcRefusal('invalid_argument')
+      }
+    ],
+    [
+      'unconfirmed',
+      () => {
+        throw new Error('socket closed')
+      }
+    ]
+  ])('withdraws the placement and focus when the launch is %s', async (_label, answer) => {
+    mocks.callRuntimeRpc.mockImplementation(async () => answer())
+
+    await launchSourceControlAgent(ARGS)
+
+    const { focus, group } = pairedRecords()
+    expect(focus).toBeNull()
+    expect(group).toBeUndefined()
+  })
+
+  it('moves focus to the chat when the host starts one instead of a terminal', async () => {
+    mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => ({
+      ...launchResult({ delivery: 'submit', outcome: 'journaled', messageId: 'm1' }),
+      outcome: { kind: 'structured', sessionId: params.sessionId, handle: 'chat_1' }
+    }))
+
+    await launchSourceControlAgent(ARGS)
+
+    const { focus, group } = pairedRecords()
+    expect(focus).toMatchObject({ hostTabId: `agent-session:${String(sentParams().sessionId)}` })
+    expect(group).toBeUndefined()
+    // The chat's tab arrived before the reply, so its snapshot is applied again under the intent.
+    expect(mocks.refreshSessionTabs).toHaveBeenCalledWith('env-1', 'wt-1', {
+      acceptCurrentSnapshot: true
+    })
   })
 })
 

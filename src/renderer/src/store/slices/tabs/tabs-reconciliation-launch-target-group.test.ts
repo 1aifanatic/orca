@@ -81,7 +81,7 @@ describe('reconciling a workspace while a launch is on its way to an empty group
   })
 
   it('keeps the empty group a button launched from until the launch’s tab arrives', () => {
-    releases.push(reserveAgentLaunchTab('tab-new', { worktreeId: WT, groupId: 'g-2', focus: true }))
+    releases.push(reserveAgentLaunchTab('tab-new', { worktreeId: WT, groupId: 'g-2' }))
 
     store.getState().reconcileWorktreeTabModel(WT)
 
@@ -90,11 +90,7 @@ describe('reconciling a workspace while a launch is on its way to an empty group
   })
 
   it('lets the group go once the launch settles without a tab', () => {
-    const release = reserveAgentLaunchTab('tab-new', {
-      worktreeId: WT,
-      groupId: 'g-2',
-      focus: true
-    })
+    const release = reserveAgentLaunchTab('tab-new', { worktreeId: WT, groupId: 'g-2' })
     store.getState().reconcileWorktreeTabModel(WT)
 
     release()

@@ -2,7 +2,7 @@
  * Where a host-created agent tab goes, recorded by the caller before it asks the host to launch.
  *
  * The host reveal is the only tab creator, and it knows nothing about placement: which tab group the
- * user launched from, whether the tab takes focus. The caller mints the tab id (the `paneKey` it
+ * user launched from, and that the tab takes focus. The caller mints the tab id (the `paneKey` it
  * sends), records its placement here under that id, and the reveal reads it when the tab arrives.
  * Placement never crosses the wire.
  *
@@ -14,12 +14,10 @@
 /** Longer than the launch's readiness budget plus spawn, so a slow but live launch keeps its entry. */
 export const AGENT_LAUNCH_TAB_RESERVATION_TTL_MS = 120_000
 
+/** A reserved tab always takes focus as it appears, as a launch from a button does. */
 export type AgentLaunchTabReservation = {
   worktreeId: string
   groupId?: string
-  /** Whether the tab takes focus as it appears, as a launch from a button does. */
-  focus: boolean
-  viewMode?: 'terminal' | 'chat'
   /** Runs once the tab exists, before the launch reply arrives. */
   onRevealed?: (tabId: string) => void
 }
