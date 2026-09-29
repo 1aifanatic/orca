@@ -2,10 +2,14 @@ import { constants } from 'node:os'
 import { createBunPtyTerminalIo } from './bun-pty-terminal-io'
 import {
   assignCurrentProcessToBunPtyHostJob,
-  createWindowsBunPtyJob,
+  type PreparedWindowsBunPtyJob,
   type WindowsBunPtyJob
 } from './windows-bun-pty-job'
-import { createWindowsBunPtyLaunch, type WindowsBunPtyLaunch } from './windows-bun-pty-launch'
+import type { WindowsBunPtyLaunch } from './windows-bun-pty-launch'
+import {
+  acquireWindowsBunPtyJob,
+  selectWindowsBunPtyLaunch
+} from './windows-bun-pty-launch-selection'
 import type {
   BunPtyProcess,
   BunPtySpawnArgs,
@@ -24,6 +28,7 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
   let processHandle: BunSubprocess
   let windowsLaunch: WindowsBunPtyLaunch | null = null
   let windowsJob: WindowsBunPtyJob | null = null
+  let preparedJob: PreparedWindowsBunPtyJob | null = null
   let windowsTerminal: BunTerminal | null = null
   let processExitCode: number | undefined
   let terminalFinished = false
@@ -103,7 +108,9 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
     if (!(deps.assignHostJob ?? assignCurrentProcessToBunPtyHostJob)()) {
       throw new Error('Windows Bun PTY host crash ownership is unavailable')
     }
-    windowsLaunch = (deps.createWindowsLaunch ?? createWindowsBunPtyLaunch)(args)
+    const selected = selectWindowsBunPtyLaunch(args, runtime, deps)
+    windowsLaunch = selected.launch
+    preparedJob = selected.preparedJob
   }
   try {
     const terminalOptions: BunTerminalOptions = {
@@ -135,20 +142,18 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
             windowsVerbatimArguments: windowsLaunch.windowsVerbatimArguments
           }
         : {}),
+      ...(preparedJob ? { windowsJob: preparedJob.handleValue } : {}),
       terminal: windowsTerminal ?? terminalOptions
     })
   } catch (error) {
     windowsTerminal?.close()
     windowsLaunch?.dispose()
+    preparedJob?.discard()
     throw error
   }
   if (windowsLaunch) {
     try {
-      windowsJob = (deps.createJob ?? createWindowsBunPtyJob)(
-        processHandle.pid,
-        undefined,
-        args.windowsJobKillOnClose === true
-      )
+      windowsJob = acquireWindowsBunPtyJob(processHandle.pid, preparedJob, args, deps)
       if (!windowsJob) {
         throw new Error('Windows Bun PTY job ownership is unavailable')
       }
@@ -187,7 +192,7 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
         waitForSpawn: () => windowsLaunch?.waitForSpawn(processHandle.exited) ?? Promise.resolve(),
         terminateOwnedTree: () => windowsJob?.terminate() ?? 'unavailable',
         listOwnedProcessIds: () => windowsJob?.listProcessIds() ?? null,
-        jobRootProcessIsWrapper: true as const,
+        ...(preparedJob ? {} : { jobRootProcessIsWrapper: true as const }),
         signalProcess(signal: string) {
           if (signal === 'SIGWINCH') {
             return
@@ -253,7 +258,8 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
   return {
     pid: processHandle.pid,
     get shellProcessId() {
-      return windowsLaunch?.readShellProcessId()
+      // A direct launch has no wrapper: the job root is the shell.
+      return preparedJob ? processHandle.pid : windowsLaunch?.readShellProcessId()
     },
     handleFlowControl: false,
     processNameIsSpawnFile: true,

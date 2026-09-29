@@ -158,3 +158,42 @@ export function createWindowsBunPtyLaunch(
     }
   }
 }
+
+/** Launch for a runtime that creates the shell inside its job: no resident gate process. */
+export function createWindowsDirectBunPtyLaunch(args: {
+  file: string
+  args: string[]
+  env: Record<string, string>
+}): WindowsBunPtyLaunch {
+  const isCmd = win32.basename(args.file).toLowerCase() === 'cmd.exe'
+  if (isCmd) {
+    validateWindowsCmdArguments([args.file, ...args.args])
+  }
+  const directory = mkdtempSync(join(tmpdir(), 'orca-bun-pty-'))
+  const clearPath = join(directory, 'clear.cmd')
+  try {
+    writeFileSync(clearPath, `@echo off\r\n<nul set /p "=${CLEAR_SEQUENCE}"\r\n`, {
+      encoding: 'ascii',
+      flag: 'wx'
+    })
+  } catch (error) {
+    removeLaunchDirectory(directory)
+    throw error
+  }
+  let disposed = false
+  return {
+    command: [args.file, ...args.args],
+    clearCommand: [getCmdExePath(), buildWindowsCmdShimCommandLine(clearPath, [])],
+    env: args.env,
+    // cmd owns the command text following /K or /C; it must not receive CRT argv escaping.
+    windowsVerbatimArguments: isCmd,
+    readShellProcessId: () => undefined,
+    waitForSpawn: () => Promise.resolve(),
+    release() {},
+    dispose() {
+      if (!disposed) {
+        disposed = removeLaunchDirectory(directory)
+      }
+    }
+  }
+}

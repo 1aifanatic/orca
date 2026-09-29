@@ -380,6 +380,7 @@ describe('Bun.Terminal PTY adapter', () => {
     }
     const proc = spawn({
       platform: 'win32',
+      supportsDirectJobSpawn: () => false,
       assignHostJob: () => true,
       createJob: () => job,
       createWindowsLaunch: () => ({
@@ -504,7 +505,13 @@ describe('Bun.Terminal PTY adapter', () => {
         readShellProcessId: () => reportedShellPid
       }))
       const proc = spawn(
-        { platform: 'win32', assignHostJob, createJob, createWindowsLaunch },
+        {
+          platform: 'win32',
+          supportsDirectJobSpawn: () => false,
+          assignHostJob,
+          createJob,
+          createWindowsLaunch
+        },
         killOnClose
       )
 
@@ -593,6 +600,7 @@ describe('Bun.Terminal PTY adapter', () => {
     expect(() =>
       spawn({
         platform: 'win32',
+        supportsDirectJobSpawn: () => false,
         assignHostJob: () => true,
         createJob: () => null,
         createWindowsLaunch: () => ({
@@ -624,6 +632,7 @@ describe('Bun.Terminal PTY adapter', () => {
     expect(() =>
       spawn({
         platform: 'win32',
+        supportsDirectJobSpawn: () => false,
         assignHostJob: () => false,
         createWindowsLaunch
       })
@@ -644,6 +653,7 @@ describe('Bun.Terminal PTY adapter', () => {
     }
     const proc = spawn({
       platform: 'win32',
+      supportsDirectJobSpawn: () => false,
       assignHostJob: () => true,
       createJob: () => job,
       createWindowsLaunch: () => ({
@@ -683,6 +693,7 @@ describe('Bun.Terminal PTY adapter', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const proc = spawn({
       platform: 'win32',
+      supportsDirectJobSpawn: () => false,
       assignHostJob: () => true,
       createJob: () => ({
         listProcessIds: vi.fn(() => []),
@@ -729,6 +740,7 @@ describe('Bun.Terminal PTY adapter', () => {
     expect(() =>
       spawn({
         platform: 'win32',
+        supportsDirectJobSpawn: () => false,
         assignHostJob: () => true,
         createJob: () => job,
         createWindowsLaunch: () => ({

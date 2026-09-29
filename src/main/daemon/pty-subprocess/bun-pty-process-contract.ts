@@ -1,7 +1,7 @@
 import type { TerminalProcess } from '../../../shared/terminal-process'
 import type { JobTerminationOutcome } from '../../windows/windows-pty-job'
 import type { WindowsBunPtyJobNative } from './windows-bun-pty-native'
-import type { WindowsBunPtyJob } from './windows-bun-pty-job'
+import type { WindowsBunPtyJob, prepareWindowsBunPtyJob } from './windows-bun-pty-job'
 import type { createWindowsBunPtyLaunch } from './windows-bun-pty-launch'
 
 export type BunTerminal = {
@@ -37,6 +37,8 @@ export type BunRuntime = {
       env: Record<string, string>
       terminal: BunTerminal | BunTerminalOptions
       windowsVerbatimArguments?: boolean
+      /** Orca-patched Bun only: job handle the terminal child is created inside. */
+      windowsJob?: number
       onExit?(process: BunSubprocess, exitCode: number, signalCode: string | null): void
     }
   ): BunSubprocess
@@ -74,6 +76,8 @@ export type SpawnBunPtyDeps = {
     killOnClose?: boolean
   ) => WindowsBunPtyJob | null
   createWindowsLaunch?: typeof createWindowsBunPtyLaunch
+  prepareJob?: typeof prepareWindowsBunPtyJob
+  supportsDirectJobSpawn?: (runtime: BunRuntime) => boolean
   readProcessTable?: () => string
   signalProcessGroup?: (pgid: number, signal: NodeJS.Signals) => void
 }

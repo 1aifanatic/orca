@@ -178,14 +178,10 @@ class BunPtyJob implements WindowsBunPtyJob {
   }
 }
 
-export function createWindowsBunPtyJob(
-  rootPid: number,
-  native: WindowsBunPtyJobNative | null = loadWindowsBunPtyJobNative(),
-  killOnClose = false
-): WindowsBunPtyJob | null {
-  if (!native || !Number.isInteger(rootPid) || rootPid <= 0) {
-    return null
-  }
+function createConfiguredJob(
+  native: WindowsBunPtyJobNative,
+  killOnClose: boolean
+): WindowsNativeHandle | null {
   const job = native.createJob()
   if (
     job === null ||
@@ -194,6 +190,21 @@ export function createWindowsBunPtyJob(
     if (job !== null) {
       native.closeHandle(job)
     }
+    return null
+  }
+  return job
+}
+
+export function createWindowsBunPtyJob(
+  rootPid: number,
+  native: WindowsBunPtyJobNative | null = loadWindowsBunPtyJobNative(),
+  killOnClose = false
+): WindowsBunPtyJob | null {
+  if (!native || !Number.isInteger(rootPid) || rootPid <= 0) {
+    return null
+  }
+  const job = createConfiguredJob(native, killOnClose)
+  if (job === null) {
     return null
   }
   const process = native.openProcess(
@@ -214,6 +225,60 @@ export function createWindowsBunPtyJob(
     return null
   }
   return new BunPtyJob(rootPid, job, native)
+}
+
+/** A job created before spawn, so the runtime can create the shell inside it. */
+export type PreparedWindowsBunPtyJob = {
+  handleValue: number
+  adopt(rootPid: number): WindowsBunPtyJob | null
+  discard(): void
+}
+
+export function prepareWindowsBunPtyJob(
+  native: WindowsBunPtyJobNative | null = loadWindowsBunPtyJobNative(),
+  killOnClose = false
+): PreparedWindowsBunPtyJob | null {
+  if (!native) {
+    return null
+  }
+  const job = createConfiguredJob(native, killOnClose)
+  if (job === null) {
+    return null
+  }
+  const handleValue = Number(job)
+  if (!Number.isSafeInteger(handleValue) || handleValue <= 0) {
+    native.closeHandle(job)
+    return null
+  }
+  let settled = false
+  const discard = (): void => {
+    if (settled) {
+      return
+    }
+    settled = true
+    native.terminateJob(job)
+    native.closeHandle(job)
+  }
+  return {
+    handleValue,
+    adopt(rootPid) {
+      if (settled) {
+        return null
+      }
+      // Membership is the proof: a runtime that ignored the job must not own an unconfined tree.
+      if (
+        !Number.isInteger(rootPid) ||
+        rootPid <= 0 ||
+        !native.queryProcessIds(job)?.includes(rootPid)
+      ) {
+        discard()
+        return null
+      }
+      settled = true
+      return new BunPtyJob(rootPid, job, native)
+    },
+    discard
+  }
 }
 
 export function __resetWindowsBunPtyJobForTests(): void {
