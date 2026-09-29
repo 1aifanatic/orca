@@ -322,7 +322,13 @@ off the row (`mainAgent.outcome: 'cancellation'`), never stored beside it, and
 dies on a new turn (a main agent prompt submission, a changed or explicit
 prompt, a session start) or the provider's own settled `mainAgent`. Child and
 replayed events under the hold keep the cancelled main agent and are re-folded
-with their own child evidence.
+with their own child evidence. A settled `mainAgent` whose outcome is `failure`
+does not release the hold: the user's stop is that turn's verdict, and a
+provider error landing after it (the aborted request failing on its way out)
+ends the same turn, so the row keeps the cancellation. Relayed Claude, Grok and
+OpenCode need this rule, because their listeners never learn of the cancel Orca
+inferred; a local Claude listener already carries the cancellation into its
+`StopFailure`, so there the two paths agree.
 
 ## PR 1b: the runtime's retained row store is deleted
 
