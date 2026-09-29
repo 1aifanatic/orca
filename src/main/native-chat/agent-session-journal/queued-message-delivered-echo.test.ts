@@ -1,6 +1,6 @@
-// A draft sent back to waiting after a "never delivered" rejection is withdrawn
-// when the provider echoes that message: the first send reached the agent, so
-// sending it again would repeat it.
+// A draft sent back to waiting after a handed-over hand-off was rejected as
+// never delivered is withdrawn when the provider echoes that message: the
+// first send reached the agent, so sending it again would repeat it.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -41,8 +41,13 @@ function echo(journal: AgentSessionJournal, uuid: string, text: string) {
   })
 }
 
-/** A draft consumed, then withdrawn by a Stop before the agent had it: back to waiting. */
-async function withdrawnDraft(text: string): Promise<AgentSessionJournal> {
+/** A draft consumed and handed to the agent, then rejected as never delivered (the provider
+ *  confirmed a Stop withdrew it): back to waiting. `handedOver: false` rejects it before
+ *  hand-over instead, which proves it was never written. */
+async function withdrawnDraft(
+  text: string,
+  options: { handedOver: boolean } = { handedOver: true }
+): Promise<AgentSessionJournal> {
   const journal = await journals.open({
     identity: IDENTITY,
     journalDir: root,
@@ -67,7 +72,17 @@ async function withdrawnDraft(text: string): Promise<AgentSessionJournal> {
     },
     { messageId: 'draft-1', expect: 'waiting', settledByOp: null }
   )
-  await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
+  if (options.handedOver) {
+    await journal.resolveDispatch({ clientMessageId: 'sub-draft-1', state: 'pending', fence: 0 })
+    await journal.resolveDispatch({
+      clientMessageId: 'sub-draft-1',
+      state: 'rejected',
+      ...STOP_WITHDRAWAL,
+      fence: 0
+    })
+  } else {
+    await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
+  }
   expect(journal.queuedMessages.get('draft-1')).toMatchObject({
     state: 'waiting',
     consumedAs: null
@@ -96,6 +111,12 @@ describe("a waiting draft whose 'never delivered' claim an echo disproves", () =
     // The rejection stays terminal: the echo is kept apart, not folded into it.
     expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.snapshot().items.map((item) => item.itemId)).toHaveLength(2)
+  })
+
+  it('stays waiting when the rejected hand-off never reached the agent: the echo is some other message', async () => {
+    const journal = await withdrawnDraft('did it land?', { handedOver: false })
+    await echo(journal, 'echo-1', 'did it land?')
+    expect(journal.queuedMessages.get('draft-1')?.state).toBe('waiting')
   })
 
   it('stays waiting for an echo of some other text', async () => {

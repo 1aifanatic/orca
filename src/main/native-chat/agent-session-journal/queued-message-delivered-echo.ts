@@ -31,10 +31,16 @@ export function draftDeliveredByEcho(
   if (echoes.length === 0) {
     return null
   }
-  // Waiting drafts some earlier hand-off of which was rejected as never delivered.
+  // Waiting drafts some earlier hand-off of which was handed over, then rejected as never
+  // delivered. One rejected before hand-over is provably unwritten: an echo matching it is some
+  // other message, and must not delete the card.
   const rejectedHandOffs = new Set<string>()
   for (const submission of state.submissions.values()) {
-    if (submission.queuedMessageId !== undefined && submission.dispatchState === 'rejected') {
+    if (
+      submission.queuedMessageId !== undefined &&
+      submission.dispatchState === 'rejected' &&
+      submission.handedOverAt !== undefined
+    ) {
       rejectedHandOffs.add(submission.queuedMessageId)
     }
   }
