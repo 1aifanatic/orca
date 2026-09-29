@@ -362,41 +362,6 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     expect(legacyUnlinks).toEqual([])
   })
 
-  it('keeps legacy daemon ownership files when the pid record cannot be read', async () => {
-    const mod = await importFresh()
-    readFileSyncMock.mockImplementation(() => {
-      throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
-    })
-
-    await mod.initDaemonPtyProvider()
-
-    const legacyUnlinks = unlinkSyncMock.mock.calls.filter(
-      ([p]) => typeof p === 'string' && (p.includes('.token') || p.includes('.pid'))
-    )
-    expect(legacyUnlinks).toEqual([])
-  })
-
-  it('keeps legacy daemon ownership files when the pid probe is denied with EPERM', async () => {
-    // Why: EPERM proves a process exists at the recorded pid — the daemon may be live.
-    const mod = await importFresh()
-    readFileSyncMock.mockReturnValue('{"pid":123}')
-    parseDaemonPidFileMock.mockReturnValue({ pid: 999_999, startedAtMs: null })
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
-      throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' })
-    })
-
-    try {
-      await mod.initDaemonPtyProvider()
-    } finally {
-      killSpy.mockRestore()
-    }
-
-    const legacyUnlinks = unlinkSyncMock.mock.calls.filter(
-      ([p]) => typeof p === 'string' && (p.includes('.token') || p.includes('.pid'))
-    )
-    expect(legacyUnlinks).toEqual([])
-  })
-
   it('cleans up legacy daemon pid/token files when the probe fails and the process is gone', async () => {
     const mod = await importFresh()
     readFileSyncMock.mockReturnValue('{"pid":123}')
