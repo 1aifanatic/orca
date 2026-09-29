@@ -161,7 +161,8 @@ vi.mock('./NativeChatComposer', () => ({
       },
       insertTypedText: () => true,
       handlePasteEvent: mocks.handlePasteEvent,
-      pasteFromClipboard: mocks.pasteFromClipboard
+      pasteFromClipboard: mocks.pasteFromClipboard,
+      contains: (node: Node | null) => fieldRef.current?.contains(node) === true
     }))
     return <textarea ref={fieldRef} data-testid="structured-composer" />
   })

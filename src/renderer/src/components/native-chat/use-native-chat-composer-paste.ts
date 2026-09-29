@@ -5,6 +5,7 @@ import { translate } from '@/i18n/i18n'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES } from './native-chat-composer-target'
+import { nativeChatPasteUnavailableNotice } from '@/lib/native-chat-paste-request'
 import {
   nativeChatLocalAttachmentUnsupportedNotice,
   nativeChatWorktreeNotReadyNotice,
@@ -98,6 +99,12 @@ export function useNativeChatComposerPaste({
     }
   }, [lifetime])
   const canPaste = useCallback(() => lifetime.active && !disabledRef.current, [lifetime])
+  // A disabled composer still answers a paste, so it never vanishes silently.
+  const showPasteUnavailable = useCallback(() => {
+    if (lifetime.active) {
+      setNotice(nativeChatPasteUnavailableNotice())
+    }
+  }, [lifetime, setNotice])
 
   // Image failures do not decide whether text can be inserted.
   const saveClipboardImageForOwner = useCallback(
@@ -180,13 +187,16 @@ export function useNativeChatComposerPaste({
       }
       event.preventDefault()
       if (!canPaste()) {
+        showPasteUnavailable()
         return
       }
       setNotice(null)
       if (text) {
         try {
           assertClipboardTextWithinLimit(text, { maxBytes: NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES })
-          insertTypedText(text)
+          if (!insertTypedText(text)) {
+            showPasteUnavailable()
+          }
         } catch (error) {
           setNotice(extractIpcErrorMessage(error, 'Paste failed.'))
         }
@@ -240,6 +250,7 @@ export function useNativeChatComposerPaste({
       caret,
       dropPendingImageAttachment,
       insertTypedText,
+      showPasteUnavailable,
       resolveAttachmentOwner,
       saveClipboardImageForOwner,
       setCaret,
@@ -250,6 +261,7 @@ export function useNativeChatComposerPaste({
 
   const pasteFromClipboard = useCallback(() => {
     if (!canPaste()) {
+      showPasteUnavailable()
       return
     }
     setNotice(null)
@@ -257,8 +269,8 @@ export function useNativeChatComposerPaste({
     const textRead = window.api.ui
       .readClipboardText({ maxBytes: NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES })
       .then((text) => {
-        if (text && canPaste()) {
-          insertTypedText(text)
+        if (text && !(canPaste() && insertTypedText(text))) {
+          showPasteUnavailable()
         }
         return text
       })
@@ -309,6 +321,7 @@ export function useNativeChatComposerPaste({
     lifetime,
     dropPendingImageAttachment,
     insertTypedText,
+    showPasteUnavailable,
     resolveAttachmentOwner,
     saveClipboardImageForOwner,
     setNotice,

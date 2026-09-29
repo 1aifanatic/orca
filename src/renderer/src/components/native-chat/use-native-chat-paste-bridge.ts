@@ -1,10 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import type { RefObject } from 'react'
 import { isEditableTarget } from '@/lib/editable-target'
-import {
-  NativeChatPasteRequest,
-  NATIVE_CHAT_PASTE_REQUEST_EVENT
-} from '@/lib/native-chat-paste-request'
+import { NATIVE_CHAT_PASTE_REQUEST_EVENT } from '@/lib/native-chat-paste-request'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import { pasteTextIntoTextControl, TEXT_CONTROL_PASTE_MAX_BYTES } from '@/lib/text-control-paste'
 import type { NativeChatComposerHandle } from './NativeChatComposer'
@@ -51,7 +48,17 @@ export function useNativeChatPasteBridge({
     if (!root) {
       return
     }
-    const deliverEvent = (event: ClipboardEvent | NativeChatPasteRequest): void => {
+    const onPaste = (event: ClipboardEvent): void => {
+      if (event.defaultPrevented) {
+        return
+      }
+      if (isEditableTarget(event.target)) {
+        // Other text fields (search, answer) keep their native paste.
+        if (event.target instanceof Node && composerRef.current?.contains(event.target)) {
+          composerRef.current.handlePasteEvent(event)
+        }
+        return
+      }
       const composer = composerRef.current
       if (composer) {
         composer.handlePasteEvent(event)
@@ -69,33 +76,15 @@ export function useNativeChatPasteBridge({
           })
         }
       }
+      // Neither input mounted: left unclaimed so the pane's chat cover refuses it visibly.
     }
-    const onPaste = (event: ClipboardEvent): void => {
-      if (event.defaultPrevented) {
-        return
-      }
-      if (isEditableTarget(event.target)) {
-        // Only the composer field owns image capture; search/answer inputs keep native paste.
-        if (event.target instanceof Element && event.target.closest('[data-composer-scope-key]')) {
-          composerRef.current?.handlePasteEvent(event)
-        }
-        return
-      }
-      deliverEvent(event)
-    }
+    // Named-pane pastes (terminal context menu, a paste on the cover itself) carry no event data.
     const onPasteRequest = (event: Event): void => {
-      if (!(event instanceof NativeChatPasteRequest)) {
-        return
-      }
       if (!composerRef.current && !questionAnswerInputRef?.current) {
         return
       }
-      if (event.clipboardData) {
-        deliverEvent(event)
-      } else {
-        event.preventDefault()
-        pasteClipboardIntoComposer()
-      }
+      event.preventDefault()
+      pasteClipboardIntoComposer()
     }
     root.addEventListener('paste', onPaste, { capture: true })
     root.addEventListener(NATIVE_CHAT_PASTE_REQUEST_EVENT, onPasteRequest)
@@ -119,13 +108,13 @@ export function useNativeChatPasteBridge({
       }
       if (
         isEditableTarget(activeElement) &&
-        !activeElement.closest('[data-composer-scope-key]') &&
+        !composerRef.current?.contains(activeElement) &&
         activeElement !== questionAnswerInputRef?.current
       ) {
         return
       }
-      // No paste target mounted: leave the event unclaimed so the shared
-      // app-menu handler can resolve the focused text control itself.
+      // No paste target mounted: leave the event unclaimed. The shared handler
+      // then pastes natively, which the pane's chat cover turns into a refusal.
       if (!composerRef.current && !questionAnswerInputRef?.current) {
         return
       }

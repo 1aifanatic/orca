@@ -650,3 +650,48 @@ it('refuses oversized event text without inserting it', async () => {
   expect(insertTypedText).not.toHaveBeenCalled()
   expect(setNotice).toHaveBeenCalledWith(expect.stringContaining('too large'))
 })
+
+describe('pastes the composer cannot take', () => {
+  const REFUSAL = "Can't paste — this chat isn't accepting input right now."
+
+  it.each(['event', 'menu'] as const)(
+    'explains a %s paste into a disabled composer',
+    async (source) => {
+      const insertTypedText = vi.fn(() => true)
+      const setNotice = vi.fn()
+      mocks.readClipboardText.mockResolvedValue('hello')
+      const probe = await renderProbe({
+        disabled: true,
+        resolveAttachmentOwner: () => ({ kind: 'local' }),
+        insertTypedText,
+        setNotice
+      })
+      await act(async () => {
+        if (source === 'event') {
+          const data = new DataTransfer()
+          data.setData('text/plain', 'hello')
+          probe
+            .latest()
+            .handlePaste(new ClipboardEvent('paste', { clipboardData: data, cancelable: true }))
+        } else {
+          probe.latest().pasteFromClipboard()
+        }
+      })
+      expect(insertTypedText).not.toHaveBeenCalled()
+      expect(mocks.readClipboardText).not.toHaveBeenCalled()
+      expect(setNotice).toHaveBeenCalledWith(REFUSAL)
+    }
+  )
+
+  it('explains text the composer input could not accept', async () => {
+    const setNotice = vi.fn()
+    mocks.readClipboardText.mockResolvedValue('hello')
+    const probe = await renderProbe({
+      resolveAttachmentOwner: () => ({ kind: 'local' }),
+      insertTypedText: () => false,
+      setNotice
+    })
+    await act(async () => probe.latest().pasteFromClipboard())
+    expect(setNotice).toHaveBeenLastCalledWith(REFUSAL)
+  })
+})

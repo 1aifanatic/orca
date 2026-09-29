@@ -9,7 +9,6 @@ import {
 } from './terminal-clipboard-event-paste'
 import { assertClipboardTextWithinLimitWithYield } from '../../../../shared/clipboard-text'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
-import { requestNativeChatOverlayPaste } from '@/lib/native-chat-paste-request'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import {
   APP_MENU_SELECTION_ACTION_EVENT,
@@ -17,17 +16,12 @@ import {
 } from '@/lib/app-menu-selection-actions'
 import { isEditableTarget } from '@/lib/editable-target'
 import { copyTerminalSelection } from './terminal-selection-copy'
+import { isInsideNativeChatCover } from './native-chat-covered-pane'
 import type { TerminalPaneCloseController } from './use-terminal-pane-close-actions'
 import {
   formatClipboardImagePasteError,
   type TerminalPanePasteExecution
 } from './terminal-pane-paste-execution'
-
-const NATIVE_CHAT_ROOT_SELECTOR = '[data-native-chat-root="true"]'
-
-function isInsideNativeChatRoot(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(NATIVE_CHAT_ROOT_SELECTOR) !== null
-}
 
 export function registerTerminalPanePasteListeners({
   container,
@@ -70,26 +64,11 @@ export function registerTerminalPanePasteListeners({
         !event.altKey)
     )
   }
-  const routeChatPaste = (
-    target: EventTarget | null,
-    data: DataTransfer | null = null
-  ): boolean => {
-    if (!(target instanceof Element)) {
-      return false
-    }
-    if (isEditableTarget(target)) {
-      return false
-    }
-    const pane = managerRef.current
-      ?.getPanes()
-      .find((candidate) => candidate.container.contains(target))
-    return pane ? requestNativeChatOverlayPaste(pane.container, data) : false
-  }
   const onKeyPaste = (event: KeyboardEvent): void => {
     const target = event.target
     if (
       (target instanceof Element && target.closest('[data-terminal-search-root]')) ||
-      isInsideNativeChatRoot(target)
+      isInsideNativeChatCover(target)
     ) {
       return
     }
@@ -118,17 +97,6 @@ export function registerTerminalPanePasteListeners({
     }
     event.preventDefault()
     event.stopPropagation()
-    suppressNextNativePaste = true
-    if (pasteSuppressionTimerId !== null) {
-      window.clearTimeout(pasteSuppressionTimerId)
-    }
-    pasteSuppressionTimerId = window.setTimeout(() => {
-      pasteSuppressionTimerId = null
-      suppressNextNativePaste = false
-    }, 0)
-    if (routeChatPaste(target)) {
-      return
-    }
     const manager = managerRef.current
     if (!manager) {
       return
@@ -137,6 +105,14 @@ export function registerTerminalPanePasteListeners({
     if (!pane) {
       return
     }
+    suppressNextNativePaste = true
+    if (pasteSuppressionTimerId !== null) {
+      window.clearTimeout(pasteSuppressionTimerId)
+    }
+    pasteSuppressionTimerId = window.setTimeout(() => {
+      pasteSuppressionTimerId = null
+      suppressNextNativePaste = false
+    }, 0)
     pasteFromClipboard(pane, 'keyboard')
   }
 
@@ -144,7 +120,7 @@ export function registerTerminalPanePasteListeners({
     const target = event.target
     if (
       (target instanceof Element && target.closest('[data-terminal-search-root]')) ||
-      isInsideNativeChatRoot(target)
+      isInsideNativeChatCover(target)
     ) {
       return
     }
@@ -160,9 +136,6 @@ export function registerTerminalPanePasteListeners({
     }
     event.preventDefault()
     event.stopPropagation()
-    if (routeChatPaste(target, event.clipboardData)) {
-      return
-    }
     const manager = managerRef.current
     if (!manager) {
       return
@@ -190,15 +163,12 @@ export function registerTerminalPanePasteListeners({
       !(activeElementAtDispatch instanceof Element) ||
       !container.contains(activeElementAtDispatch) ||
       activeElementAtDispatch.closest('[data-terminal-search-root]') ||
-      isInsideNativeChatRoot(activeElementAtDispatch)
+      isInsideNativeChatCover(activeElementAtDispatch)
     ) {
       return
     }
     event.preventDefault()
     event.stopPropagation()
-    if (routeChatPaste(activeElementAtDispatch)) {
-      return
-    }
     const manager = managerRef.current
     if (!manager) {
       return
@@ -233,7 +203,7 @@ export function registerTerminalPanePasteListeners({
       !container.contains(activeElement) ||
       isEditableTarget(activeElement) ||
       activeElement.closest('[data-terminal-search-root]') ||
-      isInsideNativeChatRoot(activeElement)
+      isInsideNativeChatCover(activeElement)
     ) {
       return
     }

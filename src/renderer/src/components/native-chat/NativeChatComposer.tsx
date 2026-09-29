@@ -185,7 +185,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       ? !hasPty || !onStop
       : disabled || hasPendingAttachment || (draft.trim() === '' && imageAttachments.length === 0)
 
-    const { insertTypedText, insertPastedText, focus } = useNativeChatTypedInsertion({
+    const { insertTypedText, insertPastedText, focus, contains } = useNativeChatTypedInsertion({
       textareaRef,
       caret,
       draft,
@@ -203,7 +203,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setNotice
     })
 
-    const { handlePaste, pasteFromClipboard } = useNativeChatComposerPaste({
+    const { handlePaste: handlePasteEvent, pasteFromClipboard } = useNativeChatComposerPaste({
       targetKey: JSON.stringify([
         paneKey,
         targetPtyId,
@@ -226,8 +226,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     useImperativeHandle(
       ref,
-      () => ({ focus, insertTypedText, handlePasteEvent: handlePaste, pasteFromClipboard }),
-      [focus, insertTypedText, handlePaste, pasteFromClipboard]
+      () => ({ focus, insertTypedText, handlePasteEvent, pasteFromClipboard, contains }),
+      [focus, insertTypedText, handlePasteEvent, pasteFromClipboard, contains]
     )
 
     const { pickAttachment } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
@@ -395,7 +395,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
           }
           attachments.flushPendingAttachments()
         }}
-        onPaste={handlePaste}
+        onPaste={handlePasteEvent}
         pickerListboxId={picker.listboxId}
         onChoosePickerItem={goalMode.interceptPick(completeItem)}
         goalMode={goalMode}

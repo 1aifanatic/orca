@@ -41,6 +41,7 @@ import {
 } from '../../../../shared/native-chat-streaming'
 import {
   shouldFocusNativeChatComposerFromEditingKey,
+  shouldFocusNativeChatInputForPaste,
   shouldFocusNativeChatPaneFromPointerTarget,
   shouldRedirectNativeChatTyping
 } from './native-chat-typing-redirect'
@@ -372,6 +373,13 @@ export function NativeChatResolvedView({
         // but inserts nothing — let the now-focused field handle the keystroke.
         if (shouldFocusNativeChatComposerFromEditingKey(event)) {
           composerRef.current?.focus()
+          return
+        }
+        // The question card replaces the composer, so at most one input exists. If it
+        // cannot take focus (disabled), the paste reaches the bridge, which explains why.
+        if (shouldFocusNativeChatInputForPaste(event, getShortcutPlatform() === 'darwin')) {
+          const input = composerRef.current ?? questionAnswerInputRef.current
+          input?.focus()
           return
         }
         if (!shouldRedirectNativeChatTyping(event)) {

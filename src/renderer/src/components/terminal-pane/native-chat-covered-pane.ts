@@ -15,6 +15,11 @@ export function paneIsCoveredByNativeChat(
   return pane?.container.querySelector(NATIVE_CHAT_COVER_SELECTOR) != null
 }
 
+/** True for anything inside a chat cover, including the shell before a chat root mounts. */
+export function isInsideNativeChatCover(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(NATIVE_CHAT_COVER_SELECTOR) !== null
+}
+
 /** Mirrors focusActivePane's target so the guard tracks exactly the pane that would take focus. */
 export function activePaneIsCoveredByNativeChat(manager: PaneManager): boolean {
   return paneIsCoveredByNativeChat(manager.getActivePane() ?? manager.getPanes()[0])

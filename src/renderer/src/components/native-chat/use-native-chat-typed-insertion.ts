@@ -19,6 +19,7 @@ export function useNativeChatTypedInsertion(args: {
   insertTypedText: (text: string) => boolean
   insertPastedText: (text: string) => boolean
   focus: () => boolean
+  contains: (node: Node | null) => boolean
 } {
   const { textareaRef, caret, draft, setDraft, setCaret, setHistory, setActiveSuggestion } = args
 
@@ -60,5 +61,10 @@ export function useNativeChatTypedInsertion(args: {
     return true
   }, [textareaRef])
 
-  return { insertTypedText, insertPastedText, focus }
+  const contains = useCallback(
+    (node: Node | null): boolean => textareaRef.current?.contains?.(node) === true,
+    [textareaRef]
+  )
+
+  return { insertTypedText, insertPastedText, focus, contains }
 }
