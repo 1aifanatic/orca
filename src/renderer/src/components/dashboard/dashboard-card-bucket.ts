@@ -23,13 +23,17 @@ export function dashboardBucketForDotState(state: DashboardCardDisplayState): Da
   }
 }
 
-/** The card's column. A seen verdict on a finished row settles into Idle like a seen completion,
- *  while its dot keeps the mark. */
+/** The card's column. A verdict files like a completion (Done until seen, then Idle) while its dot
+ *  keeps the mark; a failure also outranks live subagent work, as on the worktree card, but never
+ *  a subagent's question. */
 export function dashboardCardBucket(
   card: Pick<DashboardCard, 'dotState' | 'workingMode' | 'unseen' | 'verdictMark'>
 ): DashboardBucket {
-  if (card.verdictMark && card.dotState === 'done' && !card.unseen) {
-    return 'idle'
+  const liveBucket = dashboardBucketForDotState(
+    dashboardCardDisplayState({ ...card, verdictMark: undefined })
+  )
+  if (!card.verdictMark || liveBucket === 'attention') {
+    return liveBucket
   }
-  return dashboardBucketForDotState(dashboardCardDisplayState(card))
+  return card.dotState === 'working' || card.unseen ? 'done' : 'idle'
 }

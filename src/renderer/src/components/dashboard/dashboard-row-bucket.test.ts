@@ -56,6 +56,24 @@ describe('dashboardRowBucketProjection', () => {
     expect(projected).toMatchObject({ unseen: false, verdictMark: 'failed', bucket: 'done' })
   })
 
+  it("files a failed main agent under Needs you while a subagent's question is pending", () => {
+    const projected = dashboardRowBucketProjection(
+      row('waiting', { state: 'done', outcome: 'failure', stateStartedAt: 1_500 }),
+      { [PANE_KEY]: 5_000 }
+    )
+    expect(projected).toMatchObject({ verdictMark: 'failed', bucket: 'attention' })
+  })
+
+  it('files a failure whose subagents went silent like a completion', () => {
+    const failed = { state: 'done' as const, outcome: 'failure' as const, stateStartedAt: 1_500 }
+    const decayed = { ...row('working', failed), state: 'idle' as const }
+    expect(dashboardRowBucketProjection(decayed)).toMatchObject({ bucket: 'done' })
+    expect(dashboardRowBucketProjection(decayed, { [PANE_KEY]: 5_000 })).toMatchObject({
+      verdictMark: 'failed',
+      bucket: 'idle'
+    })
+  })
+
   it('projects a row without a verdict exactly as before', () => {
     const projected = dashboardRowBucketProjection(row('done'), { [PANE_KEY]: 5_000 })
     expect(projected).toMatchObject({ verdictMark: undefined, bucket: 'idle' })

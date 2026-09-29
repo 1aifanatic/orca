@@ -195,4 +195,17 @@ describe('patchDashboardSnapshotFromAgentStatus', () => {
       dashboardCardDisplayState({ dotState: 'waiting', unseen: false, verdictMark: 'failed' })
     ).toBe('failed')
   })
+
+  it("keeps a subagent's question under Needs you when the main agent failed", () => {
+    const mainAgent = { state: 'done' as const, outcome: 'failure' as const, stateStartedAt: 200 }
+    const result = patchDashboardSnapshotFromAgentStatus(
+      snapshot([card({ unseen: false })]),
+      event({ state: 'waiting', mainAgent })
+    )
+    expect(result.snapshot.cards[0]).toMatchObject({
+      bucket: 'attention',
+      verdictMark: 'failed',
+      askSummary: '{"question":"Continue?"}'
+    })
+  })
 })
