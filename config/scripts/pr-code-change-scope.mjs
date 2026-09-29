@@ -173,6 +173,8 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/persistence/tracking-repos/worktree-identity-migration.ts',
   'src/main/runtime/orchestration/db.ts',
   'src/main/runtime/orchestration/db/contract-constants.ts',
+  // Why: the orchestration downgrade suite opens a current-schema database with old code; db.ts reaches this transitively.
+  'src/main/runtime/orchestration/db/schema/',
   'mobile/src/worktree/agent-row-display.ts'
 ]
 

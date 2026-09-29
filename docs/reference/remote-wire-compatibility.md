@@ -204,7 +204,9 @@ nowhere else — the unit shards exclude the directory, because a shallow shard 
 for an extracted release to skew against. The job therefore names the directory rather than a
 list of files. Which diffs start the job is a separate list, `CROSS_VERSION_WIRE_PREFIXES` in
 `config/scripts/pr-code-change-scope.mjs`, and every module a suite pairs must be on it.
-`config/scripts/cross-version-wire-lane-registration.test.mjs` holds both.
+`config/scripts/cross-version-wire-lane-registration.test.mjs` holds both, but it sees only the
+modules a suite loads directly; one reached through them, such as the orchestration schema
+migrations behind `db.ts`, has to be added to the list by hand.
 
 ## Worked example: `agentWait` on terminal and worker reads
 

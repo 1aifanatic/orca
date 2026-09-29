@@ -361,7 +361,8 @@ describe('per-job path classification', () => {
       'src/main/runtime/mobile-session-terminal-retirement-proof.ts',
       'src/main/persistence/tracking-repos/worktree-identity-migration.ts',
       'src/main/runtime/orchestration/db.ts',
-      'src/main/runtime/orchestration/db/contract-constants.ts'
+      'src/main/runtime/orchestration/db/contract-constants.ts',
+      'src/main/runtime/orchestration/db/schema/migrate-v42.ts'
     ]) {
       expectClassification([file], {
         'cross-version-wire': true,

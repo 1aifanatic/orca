@@ -97,7 +97,10 @@ function resolveModule(specifier) {
   return candidates.find((path) => existsSync(join(projectDir, path))) ?? specifier
 }
 
-/** Each module the suites load for pairing, with the first file that loads it. */
+/**
+ * Each module the suites load for pairing, with the first file that loads it. Only direct
+ * loads: a module reached through one (the orchestration schema, via db.ts) is gated by hand.
+ */
 function readPairedModules() {
   const modules = new Map()
   for (const name of readdirSync(join(projectDir, LANE_DIRECTORY)).sort()) {
