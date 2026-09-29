@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
-import { openForWrite } from './structured-agent-session-send-preparation'
+import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
@@ -67,7 +67,8 @@ export function runStructuredConversationCommand(
       adapter: context.deps.adapter,
       callerKey: caller.callerKey,
       envelope,
-      prepareSession: openForWrite(context, envelope),
+      // Starts the agent only to settle a rewind in doubt, as a send does; a /clear itself starts nothing.
+      prepareSession: sendPreparation(context, envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
       flushStreamedEvents: context.flushStreamedEvents,
