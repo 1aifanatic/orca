@@ -10,6 +10,10 @@ import {
   RendererRecoveryCircuitBreaker
 } from '../crash-reporting/renderer-recovery-circuit-breaker'
 import {
+  createLowCommitOomRecoveryGate,
+  type LowCommitOomVerdict
+} from '../crash-reporting/low-commit-oom-recovery-gate'
+import {
   buildEditableContextMenuTemplate,
   matchingRichMarkdownContextMenuTableTarget,
   parseRichMarkdownContextMenuTableTarget
@@ -159,6 +163,7 @@ export function installMainWindowFocusLifecycle(args: {
     windowMs: DEFAULT_RENDERER_RECOVERY_WINDOW_MS,
     maxRecoveries: DEFAULT_RENDERER_RECOVERY_MAX_RECOVERIES
   })
+  const lowCommitOomGate = createLowCommitOomRecoveryGate()
   const clearRendererRecoveryTimer = (): void => {
     if (rendererRecoveryTimer) {
       clearTimeout(rendererRecoveryTimer)
@@ -175,7 +180,10 @@ export function installMainWindowFocusLifecycle(args: {
     reloadMainWindow,
     rendererWebContentsId
   })
-  const scheduleRendererRecovery = (details: Electron.RenderProcessGoneDetails): void => {
+  const scheduleRendererRecovery = (
+    details: Electron.RenderProcessGoneDetails,
+    lowCommit: LowCommitOomVerdict | null
+  ): void => {
     if (
       rendererRecoveryTimer ||
       !details ||
@@ -195,6 +203,18 @@ export function installMainWindowFocusLifecycle(args: {
         opts?.shouldRecoverRenderer?.(details, rendererWebContentsId) === false ||
         mainWindow.isDestroyed()
       ) {
+        return
+      }
+      if (lowCommit) {
+        // Why: a reload would OOM again on the starved host; only the user can free commit.
+        recoveryReloadWatchdog.escalate(
+          {
+            details,
+            recentRecoveryCount: rendererRecoveryCircuitBreaker.recentRecoveryCount(Date.now())
+          },
+          'low-commit',
+          lowCommit
+        )
         return
       }
       const recovery = rendererRecoveryCircuitBreaker.registerRecoveryAttempt(Date.now())
@@ -228,7 +248,11 @@ export function installMainWindowFocusLifecycle(args: {
     if (!isWindowClosing()) {
       console.error('[window] Renderer process gone; close confirmation will be bypassed', details)
     }
-    scheduleRendererRecovery(details)
+    // Why read at gone time: the sampler's next tick would see commit the corpse just released.
+    scheduleRendererRecovery(
+      details,
+      details ? lowCommitOomGate.observe(details, Date.now()) : null
+    )
   })
   mainWindow.webContents.on('destroyed', () => {
     retireBrowserClientPageRenderer(rendererWebContents)
