@@ -227,7 +227,7 @@ export function resolveWorktreeStatus(args: {
   if (args.hasRetainedFailed) {
     return 'failed'
   }
-  // A stop follows live states, but must not collapse into success.
+  // A turn cut short follows live states, but must not collapse into success.
   if (args.hasInterrupted) {
     return 'interrupted'
   }
