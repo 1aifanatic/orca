@@ -10,12 +10,12 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionBackgroundTaskState,
-  AgentSessionQueuedMessage,
   AgentSessionSlashCommand,
   AgentSessionSubscribeEvent,
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
 import { buildSubscriberFrame } from './agent-session-subscriber-frame-fields'
+import type { QueuePublication } from './structured-agent-session-queued-publication'
 import { deliverToSubscriber } from './agent-session-subscriber-catch-up'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { emptyAgentSessionBatch } from './agent-session-empty-batch'
@@ -39,14 +39,14 @@ export type Subscriber = {
   commands?: AgentSessionSlashCommand[] | null
   /** The last draft list actually SENT — never advanced on a page that withheld
    *  it, or the final replacement would be suppressed by the identity dedup. */
-  queuedMessages?: AgentSessionQueuedMessage[]
+  queuePublication?: QueuePublication
 }
 
 export type AgentSessionSubscribersHooks = {
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
   /** Revision-stable per emit: an unchanged list keeps its reference, so token
    *  streams never re-serialize it; any draft-table write changes it. */
-  readQueuedMessages?: (sessionId: string) => AgentSessionQueuedMessage[] | undefined
+  readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   /** Fires after publications that can change journal content. */
   onJournalPublished?: (sessionId: string, journal: AgentSessionJournal) => void
   now?: () => number
@@ -251,7 +251,7 @@ export class AgentSessionSubscribers {
       subscriber.emit(built.frame)
       subscriber.commands = built.commands
       if (built.attachedQueued) {
-        subscriber.queuedMessages = built.queued
+        subscriber.queuePublication = built.queued
       }
     } catch {
       this.drop(subscriber)

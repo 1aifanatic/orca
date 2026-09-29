@@ -286,7 +286,8 @@ function applySubmission(
     // A malformed stored link is dropped, never the row.
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }
-      : {})
+      : {}),
+    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row), row.fence)

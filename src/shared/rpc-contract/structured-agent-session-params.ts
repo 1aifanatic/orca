@@ -223,6 +223,10 @@ export const QueuedMessageActionParams = z
   })
   .strict()
 
+/** `agentSession.queuedMessagesResume`: ends the queue's pause (a Stop's, or a
+ *  restart's) so the cards send again. Gated like the draft actions above. */
+export const QueuedMessagesResumeParams = z.object({ envelope: MutationEnvelope }).strict()
+
 export const RespondParams = z
   .object({
     envelope: MutationEnvelope,

@@ -56,6 +56,7 @@ export function sendPlan(params: {
   body: AgentJournalMessageItem
   retryUnknown?: true
   delivery?: 'queue-if-active'
+  userSend?: true
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -76,6 +77,7 @@ export function sendPlan(params: {
       // Asked at acceptance: a send accepted after this one is queued behind it.
       params.beforeRun?.()
       return performSend(ctx, {
+        origin: params.userSend ? 'client' : 'host',
         clientMessageId,
         payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
         body: params.body

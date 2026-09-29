@@ -75,7 +75,6 @@ export class StructuredAgentSessionHost {
     serialize: (sessionId, task) => this.serialize(sessionId, task),
     flushStreamedEvents: (sessionId) => this.flushStreamedEvents(sessionId),
     wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
-    touch: (sessionId) => this.sessions.touch(sessionId),
     mutationContext: () => this.mutationContext()
   })
   // Every journal publish is activity: the one renewal the idle sweep reads.
@@ -291,6 +290,7 @@ export class StructuredAgentSessionHost {
 
   queuedMessageSend = this.queued.queuedMessageSend
   queuedMessageDelete = this.queued.queuedMessageDelete
+  queuedMessagesResume = this.queued.queuedMessagesResume
 
   waitForSendSettlement = this.clientDelivery.waitForSendSettlement
 

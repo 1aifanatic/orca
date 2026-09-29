@@ -51,7 +51,7 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { compactInFlightContext } from './structured-conversation-command-lane'
-import { runStopWithQueueHold } from './structured-agent-session-queued-stop'
+import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -118,9 +118,10 @@ export function sendStructuredAgentSessionTurn(
     retryUnknown?: true
     delivery?: 'queue-if-active'
     /** Host-local, set only by the client-facing `agentSession.send` RPC (the
-     *  renderer's launch prompt included): lifts a Stop's or a restart's queue
-     *  pause once its turn starts. Orchestration mail, a restart continuation
-     *  and `agent.launch`'s host-sent prompt never set it. */
+     *  renderer's launch prompt included): recorded as the submission's `client`
+     *  origin, whose started turn ends a Stop's or a restart's queue pause.
+     *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
+     *  prompt never set it. */
     userSend?: true
     /** Host-local: admitted beside a /compact's lane, so it may only become a
      *  draft — a send the gate no longer holds is refused, never dispatched. */
@@ -178,12 +179,11 @@ export function cancelStructuredAgentSessionTurn(
     params.envelope,
     {
       ...plan,
-      // Stop's queued-draft step, the same for every client: hold the waiting
-      // frontier NOW — the drain must not send a draft the user is stopping.
-      // The cards stay published as paused; nothing is withdrawn and no text
-      // ever rides the answer.
+      // Stop's queue step, the same for every client: once the Stop takes effect
+      // the queue is paused. The cards stay published; nothing is withdrawn and no
+      // text ever rides the answer.
       run: (ctx) =>
-        runStopWithQueueHold(ctx, context.sessions.get(ctx.sessionId), async (reachingProvider) => {
+        runStopWithQueuePause(ctx, async (tookEffect) => {
           // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
           const withdrawn = await ctx.journal.rejectQueuedSubmissions(
             ctx.fence,
@@ -193,7 +193,7 @@ export function cancelStructuredAgentSessionTurn(
           const child = context.sessions.get(ctx.sessionId)?.child
           if (child?.phase === 'starting') {
             // A start that may never land is the one thing here Stop has to end; the chat stays.
-            reachingProvider()
+            await tookEffect()
             await context.stopAgent(ctx.sessionId)
             return { ok: true, value: { ...named, cancelled: true } }
           }
@@ -208,9 +208,12 @@ export function cancelStructuredAgentSessionTurn(
             )
           const record = context.deps.store.getRecord(ctx.sessionId)
           if (!child || !inFlight) {
+            if (withdrawn.length > 0) {
+              await tookEffect()
+            }
             return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
           }
-          reachingProvider()
+          await tookEffect()
           return plan.run({
             ...ctx,
             failureTextContext: structuredAgentSessionFailureWordsContext(record)

@@ -77,6 +77,11 @@ export const STRUCTURED_CALLS: {
     result: { ok: true, replayed: false }
   },
   {
+    method: 'agentSession.queuedMessagesResume',
+    hostMethod: 'queuedMessagesResume',
+    result: { ok: true, replayed: false }
+  },
+  {
     method: REWIND_METHOD,
     hostMethod: 'rewind',
     result: { ok: true, replayed: false, value: { itemId: 'item-1', epoch: 'rewound-epoch' } }
@@ -267,6 +272,8 @@ export function paramsFor(method: string): unknown {
       const fields = { messageId: 'queued-1' }
       return { envelope: envelope({ method, fields, fence }), ...fields }
     }
+    case 'agentSession.queuedMessagesResume':
+      return { envelope: envelope({ method, fields: {}, fence }) }
     case 'agentSession.respondToApproval':
     case 'agentSession.respondToQuestion': {
       const fields = { itemId: 'item-1', expectedRevision: 1, optionId: 'allow' }

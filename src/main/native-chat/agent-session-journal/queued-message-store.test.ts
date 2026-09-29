@@ -308,7 +308,7 @@ describe('returned transition (D1/N4)', () => {
     const requeued = {
       state: 'waiting',
       position: 1,
-      holdReason: 'stopped',
+      holdReason: null,
       consumedAs: null,
       returnedReason: null,
       returnedRejection: null
@@ -344,7 +344,7 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.submission('sub-draft-1')?.queuedMessageId).toBe('draft-1')
   })
 
-  it('a restart between consume and handover sends the draft back to waiting under the restart hold', async () => {
+  it("a restart between consume and handover sends the draft back to waiting under the restart's pause", async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
@@ -354,7 +354,7 @@ describe('returned transition (D1/N4)', () => {
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
       journal.wroteBeforeOpen(submission.acceptedSequence)
     )
-    // No stored hold: the restart's own hold derives from the row's host instance.
+    // No stored hold: the restart's pause derives from the row's host instance.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'waiting',
       holdReason: null,
@@ -555,7 +555,7 @@ describe('open-time repair and retention', () => {
     // The same settlement the live hook applies.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'waiting',
-      holdReason: 'stopped',
+      holdReason: null,
       consumedAs: null,
       returnedReason: null
     })
@@ -629,11 +629,11 @@ describe('holds', () => {
   it('a hold is stored on the row, survives reopen, and withdraw clears it', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
-    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('stopped')
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('send_failed')
     await journal.close()
     journal = await open()
-    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('stopped')
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('send_failed')
     await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'withdrawn',
@@ -650,15 +650,6 @@ describe('holds', () => {
       state: 'dispatched',
       holdReason: null
     })
-  })
-
-  it('a hold naming no drafts touches nothing — a Stop with no drafts costs no write', async () => {
-    const journal = await open()
-    await journal.close()
-    // A closed handle would refuse any transaction; an empty hold never opens one.
-    await expect(
-      journal.queuedMessages.hold({ messageIds: [], reason: 'stopped' })
-    ).resolves.toEqual([])
   })
 
   it('a withdraw naming no drafts touches nothing — a Delete race with no rows costs no write', async () => {
@@ -679,86 +670,89 @@ describe('holds', () => {
       ...refusal('refused'),
       fence: 0
     })
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
       holdReason: null
     })
   })
+})
 
-  it('undoing a hold gives each row back the hold it replaced, and leaves a row re-held since alone', async () => {
-    const journal = await open()
-    await queueDraft(journal, 'draft-failed')
-    await queueDraft(journal, 'draft-plain')
-    await queueDraft(journal, 'draft-stopped')
-    await journal.queuedMessages.hold({ messageIds: ['draft-failed'], reason: 'send_failed' })
-    await journal.queuedMessages.hold({ messageIds: ['draft-stopped'], reason: 'stopped' })
-    const held = await journal.queuedMessages.hold({
-      messageIds: ['draft-failed', 'draft-plain', 'draft-stopped'],
-      reason: 'stopped'
-    })
-    // Already 'stopped' before: not this hold's to undo.
-    expect(held).toEqual([
-      { messageId: 'draft-failed', previousHold: 'send_failed' },
-      { messageId: 'draft-plain', previousHold: null }
-    ])
-    await journal.queuedMessages.restoreHolds({ from: 'stopped', changes: held })
-    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.holdReason])).toEqual([
-      ['draft-failed', 'send_failed'],
-      ['draft-plain', null],
-      ['draft-stopped', 'stopped']
-    ])
+describe("the queue's Stop fact", () => {
+  it('records where the Stop took effect, survives reopen, and the latest Stop replaces an earlier one', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await journal.queuedMessages.recordPause()
+    const first = journal.queuedMessages.pause()
+    expect(first).toMatchObject({ reason: 'stopped', sequence: journal.cursor().sequence })
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'later' },
+      { kind: 'status', text: 'later' },
+      { fence: 0 }
+    )
+    await journal.queuedMessages.recordPause()
+    expect(journal.queuedMessages.pause()?.sequence).toBe((first?.sequence ?? 0) + 1)
+    await journal.close()
+    journal = await open()
+    expect(journal.queuedMessages.pause()?.sequence).toBe((first?.sequence ?? 0) + 1)
+    // The pause is the queue's, never a row's.
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBeNull()
   })
 
-  it("releaseStopHolds lifts stop-shaped holds only: a stored 'stopped' and the restart hold; send_failed stays", async () => {
+  it('lifting retires only the Stop fact it judged, never one recorded since', async () => {
     const journal = await open()
-    await queueDraft(journal, 'draft-1')
-    await queueDraft(journal, 'draft-2')
-    // Written by another host instance: held by derivation, no stored reason.
+    await journal.queuedMessages.recordPause()
+    const judged = journal.queuedMessages.pause()
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'later' },
+      { kind: 'status', text: 'later' },
+      { fence: 0 }
+    )
+    await journal.queuedMessages.recordPause()
+    expect(await journal.queuedMessages.liftPause({ stop: judged, adoptInto: null })).toBe(false)
+    expect(journal.queuedMessages.pause()).not.toBeNull()
+    expect(
+      await journal.queuedMessages.liftPause({
+        stop: journal.queuedMessages.pause(),
+        adoptInto: null
+      })
+    ).toBe(true)
+    expect(journal.queuedMessages.pause()).toBeNull()
+  })
+
+  it("adopting a restart's rows moves them into this instance and clears an older build's stored 'stopped' hold; send_failed stays", async () => {
+    const journal = await open()
     await journal.queuedMessages.insert({
       messageId: 'draft-restart',
       body: message('written before the restart'),
       fingerprint: 'fp-draft-restart',
       hostInstance: 'proc-0'
     })
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
-    await journal.queuedMessages.hold({ messageIds: ['draft-2'], reason: 'send_failed' })
-    await journal.queuedMessages.releaseStopHolds({ hostInstance: 'proc-1' })
-    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBeNull()
-    expect(journal.queuedMessages.get('draft-2')?.holdReason).toBe('send_failed')
-    // The restart-held row is adopted into the lifting instance — the same fact
-    // the derivation reads, so nothing else needs to change for it to unpause.
-    expect(journal.queuedMessages.get('draft-restart')).toMatchObject({
-      holdReason: null,
-      hostInstance: 'proc-1'
-    })
+    await queueDraft(journal, 'draft-legacy')
+    await queueDraft(journal, 'draft-failed')
+    await journal.queuedMessages.hold({ messageIds: ['draft-failed'], reason: 'send_failed' })
+    const db = new Database(journalDatabaseFile(root))
+    db.prepare("UPDATE queued_messages SET hold_reason = 'stopped' WHERE message_id = ?").run(
+      'draft-legacy'
+    )
+    db.close()
+    journal.queuedMessages.invalidate()
+    expect(await journal.queuedMessages.liftPause({ stop: null, adoptInto: 'proc-1' })).toBe(true)
+    expect(
+      journal.queuedMessages.list().map((row) => [row.messageId, row.hostInstance, row.holdReason])
+    ).toEqual([
+      ['draft-restart', 'proc-1', null],
+      ['draft-legacy', 'proc-1', null],
+      ['draft-failed', 'proc-1', 'send_failed']
+    ])
   })
 
-  it('a release with nothing to lift changes nothing and fires no commit notification', async () => {
+  it('a lift with nothing to lift changes nothing and fires no commit notification', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
     const revision = journal.queuedMessages.revision()
-    // Every dispatched user send calls this; one with no stop-shaped holds must not publish.
-    await journal.queuedMessages.releaseStopHolds({ hostInstance: 'proc-1' })
+    expect(await journal.queuedMessages.liftPause({ stop: null, adoptInto: 'proc-1' })).toBe(false)
     expect(journal.queuedMessages.revision()).toBe(revision)
-    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('send_failed')
-  })
-
-  it("an insert can be born held — /clear's carry must never be visible unheld", async () => {
-    const journal = await open()
-    const row = await journal.queuedMessages.insert({
-      messageId: 'carried-1',
-      body: message('carried text'),
-      fingerprint: 'fp-carried-1',
-      hostInstance: 'proc-1',
-      holdReason: 'stopped'
-    })
-    expect(row.holdReason).toBe('stopped')
-    expect(journal.queuedMessages.get('carried-1')).toMatchObject({
-      state: 'waiting',
-      holdReason: 'stopped'
-    })
   })
 })
 
@@ -774,9 +768,9 @@ describe('the commit listener', () => {
     // An idempotent replay changes nothing and stays silent.
     await queueDraft(journal, 'draft-1')
     expect(commits).toBe(1)
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
     expect(commits).toBe(2)
-    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
     expect(commits).toBe(2)
     await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
     expect(commits).toBe(3)
