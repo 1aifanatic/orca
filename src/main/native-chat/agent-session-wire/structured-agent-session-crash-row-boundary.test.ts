@@ -30,7 +30,7 @@ describe('an Orca crash reads as the restart whenever its proof lands', () => {
         workspaceId: 'workspace-1',
         hostId: 'local',
         agent: 'claude',
-        providerHandle: { kind: 'claude', sessionId: 'claude-1' }
+        providerHandle: { kind: 'claude', sessionId: 'claude-1', leafUuid: null }
       },
       journalDir: root,
       now: () => 9_000

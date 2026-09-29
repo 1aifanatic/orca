@@ -22,8 +22,12 @@ function turnRow(turnId: string, ordinal: number): AgentJournalItemIdentity {
   return { provider: 'claude', sessionId: 'claude-1', uuid: `${turnId}-${ordinal}` }
 }
 
-function turn(turnId: string, state: AgentJournalTurnItem['state']): AgentJournalTurnItem {
-  return { kind: 'turn', turnId, state }
+function turn(
+  turnId: string,
+  state: AgentJournalTurnItem['state'],
+  outcome?: AgentJournalTurnItem['outcome']
+): AgentJournalTurnItem {
+  return { kind: 'turn', turnId, state, ...(outcome ? { outcome } : {}) }
 }
 
 async function open(): Promise<AgentSessionJournal> {
@@ -33,7 +37,7 @@ async function open(): Promise<AgentSessionJournal> {
       workspaceId: 'ws-1',
       hostId: 'host-1',
       agent: 'claude',
-      providerHandle: { kind: 'claude', sessionId: 'claude-1' }
+      providerHandle: { kind: 'claude', sessionId: 'claude-1', leafUuid: null }
     },
     journalDir: root,
     now: () => ++clock,
@@ -68,14 +72,21 @@ afterEach(async () => {
 })
 
 describe('a turn the provider ends', () => {
-  it.each(['completed', 'failed', 'interrupted'] as const)(
-    'settles the sends it left unanswered in doubt when it %s',
-    async (state) => {
+  it.each([
+    ['completed', 'success'],
+    ['completed', 'failure'],
+    ['interrupted', 'cancellation'],
+    ['unverifiable', undefined]
+  ] as const)(
+    'settles the sends it left unanswered in doubt when it ends %s (%s)',
+    async (state, outcome) => {
       const journal = await open()
       await journal.appendItem(turnRow('turn-1', 0), turn('turn-1', 'running'), { fence: FENCE })
       await handOver(journal, 'steer')
 
-      await journal.appendItem(turnRow('turn-1', 1), turn('turn-1', state), { fence: FENCE })
+      await journal.appendItem(turnRow('turn-1', 1), turn('turn-1', state, outcome), {
+        fence: FENCE
+      })
 
       expect(dispatchOf(journal, 'steer')).toMatchObject({
         dispatchState: 'unknown',
