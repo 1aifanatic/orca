@@ -18,8 +18,8 @@ vi.mock('node:fs/promises', () => ({
   readFile: readFileMock
 }))
 
-vi.mock('./tree-removal-worker', () => ({
-  removeTreeOffThreadPool: removeTreeMock
+vi.mock('./tree-removal-walk', () => ({
+  removeTreeWithBoundedFsCalls: removeTreeMock
 }))
 
 import {

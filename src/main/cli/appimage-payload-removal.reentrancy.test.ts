@@ -22,7 +22,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 describe('removeExtractedAppImagePayload reentrancy', () => {
   // The old hazard was a process-wide asar toggle handed back while a later removal still ran; the
-  // native removal holds no such flag, so overlapping removals must leave it untouched throughout.
+  // shared removal holds no such flag, so overlapping removals must leave it untouched throughout.
   it('leaves asar interception untouched while overlapping removals settle', async () => {
     process.noAsar = false
     const first = deferred()

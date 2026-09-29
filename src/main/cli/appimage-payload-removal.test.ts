@@ -28,7 +28,7 @@ describe('removeExtractedAppImagePayload', () => {
   })
 
   // Why: `process.noAsar` is process-wide; flipping it mid-removal would change asar semantics for
-  // every concurrent reader in the process, and the native walk makes the toggle unnecessary.
+  // every concurrent reader in the process, and the unpatched-fs walk makes the toggle unnecessary.
   it('removes the payload without toggling process-wide asar interception', async () => {
     const root = await makePayloadTree()
     const assigned: boolean[] = []

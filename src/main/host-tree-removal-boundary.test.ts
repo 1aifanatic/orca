@@ -7,10 +7,10 @@ import { describe, expect, it } from 'vitest'
  *
  * An async recursive `rm` queues every entry of the tree on libuv's shared 4-thread pool, so every
  * other async fs call in the process waits behind the whole tree. A trashed worktree held chat sends
- * in the main process for minutes that way. `removeHostTree` deletes off that pool; this test is what
+ * in the main process for minutes that way. `removeHostTree` caps its share of that pool; this test is what
  * stops the next call site from going around it.
  */
-const OWNER_FILES = new Set(['src/main/host-tree-removal.ts', 'src/main/tree-removal-worker.ts'])
+const OWNER_FILES = new Set(['src/main/host-tree-removal.ts', 'src/main/tree-removal-walk.ts'])
 const SCANNED_ROOTS = ['src/main', 'src/shared']
 const IGNORED_DIRECTORIES = new Set([
   'node_modules',
