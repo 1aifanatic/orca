@@ -149,6 +149,22 @@ export async function createQueuedMessageTestRig() {
     )
   }
 
+  /** The latest submission that hands off this draft, found by its link. */
+  async function handoff(draftId: string): Promise<AgentJournalSubmission | undefined> {
+    return (await host.journalSnapshot(SESSION)).submissions.findLast(
+      (entry) => entry.queuedMessageId === draftId
+    )
+  }
+
+  /** The submission id a draft went out under: never the draft's own id. */
+  async function handoffId(draftId: string): Promise<string> {
+    const sent = await handoff(draftId)
+    if (!sent) {
+      throw new Error(`draft ${draftId} has not been handed off`)
+    }
+    return sent.clientMessageId
+  }
+
   async function drafts(
     sessionId = SESSION
   ): Promise<{ messageId: string; state: string; paused?: true }[]> {
@@ -225,6 +241,8 @@ export async function createQueuedMessageTestRig() {
     sendNow,
     deleteQueued,
     submission,
+    handoff,
+    handoffId,
     drafts,
     workingSend,
     settleAccepted,

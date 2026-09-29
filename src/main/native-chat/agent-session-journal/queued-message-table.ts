@@ -46,8 +46,9 @@ export type QueuedMessageRow = {
   settledAt: number | null
   /** The operation ledger's caller-scoped key, making settled rows mutation receipts. */
   settledByOp: string | null
-  /** The draft's current submission when it differs from `messageId` (a re-send); on a waiting
-   *  row, the spent submission a withdrawal sent it back from. */
+  /** The submission that last handed it off: set on every dispatched row, kept on a returned
+   *  card, cleared when a withdrawal sends it back to waiting. Host-only; the published link is
+   *  the submission's `queuedMessageId`. */
   consumedAs: string | null
 }
 
@@ -123,9 +124,9 @@ export function getQueuedMessage(
 }
 
 /**
- * The one waiting→dispatched (or returned→dispatched) transition; a draft
- * whose own id is spent (`queuedMessageNeedsFreshSubmissionId`) consumes only
- * under a fresh one. MUST run inside the caller's transaction — the journal
+ * The one waiting→dispatched (or returned→dispatched) transition, always under
+ * a fresh submission id — never the draft's own — so no reader can mistake id
+ * equality for the hand-off link. MUST run inside the caller's transaction — the journal
  * writer's, between BEGIN IMMEDIATE and COMMIT — so a failed submission append
  * rolls the consume back and a failed consume rolls the append back. Returns
  * false when the draft was not in the expected state, in which case the caller
@@ -137,40 +138,46 @@ export function consumeQueuedMessageInTransaction(
     sessionId: string
     messageId: string
     expect: 'waiting' | 'returned'
-    /** The submission id: fresh for a re-send, the draft id otherwise. */
+    /** The fresh submission id; never the draft's own id. */
     consumedAs: string
     settledByOp: string | null
     now: number
   }
 ): boolean {
-  const consumedAs = input.consumedAs === input.messageId ? null : input.consumedAs
+  if (input.consumedAs === input.messageId) {
+    return false
+  }
   const changed = db
     .prepare(
       `UPDATE queued_messages
        SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
            settled_at = ?, settled_by_op = ?, consumed_as = ?
-       WHERE session_id = ? AND message_id = ? AND state = ?
-         AND (? IS NOT NULL OR (state = 'waiting' AND consumed_as IS NULL))`
+       WHERE session_id = ? AND message_id = ? AND state = ?`
     )
     .run(
       input.now,
       input.settledByOp,
-      consumedAs,
+      input.consumedAs,
       input.sessionId,
       input.messageId,
-      input.expect,
-      consumedAs
+      input.expect
     )
   return Number(changed.changes ?? 0) === 1
 }
 
 /** Compare-and-transition unsettled rows (waiting ∪ returned) to withdrawn
  *  tombstones stamped with the operation's caller-scoped key, kept only so a
- *  replay of the settling operation answers "spent". Returns the rows actually
- *  transitioned; their text stays in this database, never on the wire. */
+ *  replay of the settling operation answers "spent"; null when the host itself
+ *  withdrew it. Returns the rows actually transitioned; their text stays in
+ *  this database, never on the wire. */
 export function withdrawQueuedMessages(
   db: Database.Database,
-  input: { sessionId: string; messageIds: readonly string[]; settledByOp: string; now: number }
+  input: {
+    sessionId: string
+    messageIds: readonly string[]
+    settledByOp: string | null
+    now: number
+  }
 ): QueuedMessageRow[] {
   const withdrawn: QueuedMessageRow[] = []
   for (const messageId of input.messageIds) {
@@ -196,11 +203,10 @@ export function withdrawQueuedMessages(
 
 /**
  * dispatched → returned, or back to waiting (`rejectedDraftSettlement`),
- * matched on the draft's CURRENT submission relation (`COALESCE(consumed_as,
- * message_id)`), so a re-send refused again still settles while a late
- * duplicate of the original refusal matches nothing. A draft back to waiting
- * keeps its position and records the spent submission in `consumed_as`, so
- * its next consume mints a fresh id; it carries no refusal.
+ * matched on the draft's CURRENT hand-off (`consumed_as`), so a re-send refused
+ * again still settles while a late duplicate of an earlier refusal matches
+ * nothing. A draft back to waiting keeps its position and carries no refusal;
+ * its spent submissions stay findable by their `queuedMessageId` link.
  */
 export function settleRejectedQueuedMessage(
   db: Database.Database,
@@ -218,16 +224,16 @@ export function settleRejectedQueuedMessage(
       ? db
           .prepare(
             `UPDATE queued_messages
-             SET state = 'waiting', hold_reason = ?, consumed_as = COALESCE(consumed_as, message_id),
+             SET state = 'waiting', hold_reason = ?, consumed_as = NULL,
                  returned_reason = NULL, returned_rejection = NULL, settled_at = NULL, settled_by_op = NULL
-             WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
+             WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
           )
           .run(settlement.holdReason, input.sessionId, input.consumedRef)
       : db
           .prepare(
             `UPDATE queued_messages
              SET state = 'returned', returned_reason = ?, returned_rejection = ?, settled_at = ?
-             WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
+             WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
           )
           .run(
             input.reason,
@@ -237,14 +243,6 @@ export function settleRejectedQueuedMessage(
             input.consumedRef
           )
   return Number(changed.changes ?? 0) > 0
-}
-
-/** A consume under the draft's own id would reuse a spent submission id: a
- *  returned card's, or one a withdrawal sent back to waiting. */
-export function queuedMessageNeedsFreshSubmissionId(
-  row: Pick<QueuedMessageRow, 'state' | 'consumedAs'>
-): boolean {
-  return row.state === 'returned' || row.consumedAs !== null
 }
 
 /** Replay receipts: every row a given caller-scoped operation settled. */

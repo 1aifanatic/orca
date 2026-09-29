@@ -25,6 +25,7 @@ import {
   type TurnOutcome
 } from './structured-agent-session-turns'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
+import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
 
 /** The body-only hash: what the reducer recomputes to alias a provider echo
  *  onto its submission, so the stored value must never include control fields. */
@@ -81,25 +82,11 @@ export function sendPlan(params: {
       })
     },
     replay: (ctx, outcome) => {
-      // A send this host queued answers from the DRAFT first: a refused
-      // conversion is a returned card holding the text, and a replay answering
-      // with the rejected submission instead would put the same text on a
-      // Retry row AND the card. A withdrawn draft replays as spent — never as
-      // missing-submission doubt.
-      const draft = ctx.journal.queuedMessages.get(clientMessageId)
-      if (draft) {
-        if (draft.state === 'dispatched') {
-          const consumed = ctx.journal
-            .submissions()
-            .find((entry) => entry.clientMessageId === (draft.consumedAs ?? draft.messageId))
-          if (consumed) {
-            return { clientMessageId, submission: consumed }
-          }
-        }
-        return {
-          clientMessageId,
-          queued: { messageId: draft.messageId, position: draft.position, state: draft.state }
-        }
+      // A send this host queued answers from its draft, then its hand-off; a
+      // withdrawn draft replays as spent — never as missing-submission doubt.
+      const queued = queuedSendAnswer(ctx.journal, clientMessageId)
+      if (queued) {
+        return queued
       }
       const submission = ctx.journal
         .submissions()

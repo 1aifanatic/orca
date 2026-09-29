@@ -42,13 +42,15 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  *  the Stop then withdraws rejoins this hold at its own position, through the
  *  journal's settlement of that withdrawal. Stored on the rows, so the pause
  *  survives handle eviction and restart. A user send made BEFORE this Stop no
- *  longer lifts anything, even if its turn still starts. A Stop that fails
- *  (throws or is refused) changes nothing, so it undoes exactly what it added
- *  here — never an earlier Stop's or a restart's hold. */
+ *  longer lifts anything, even if its turn still starts. A Stop that throws
+ *  before any step reached the provider changed nothing, so it undoes exactly
+ *  what it added here — never an earlier Stop's or a restart's hold. Once
+ *  `reachingProvider` is called the interrupt may have landed, so a later
+ *  failure keeps the holds; so does a Stop the agent refused, which answers ok. */
 export async function runStopWithQueueHold<TValue>(
   ctx: AgentSessionTurnContext,
   session: StructuredAgentSessionHostSession | undefined,
-  stop: () => Promise<TurnOutcome<TValue>>
+  stop: (reachingProvider: () => void) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
   const awaitingBefore = [...(session?.userSendsAwaitingTurn ?? [])]
   session?.userSendsAwaitingTurn?.clear()
@@ -87,14 +89,15 @@ export async function runStopWithQueueHold<TValue>(
       reportQueuedHoldFailure(ctx.sessionId, "a failed Stop's queued-draft hold undo", error)
     }
   }
+  let reachedProvider = false
   try {
-    const outcome = await stop()
-    if (!outcome.ok) {
+    return await stop(() => {
+      reachedProvider = true
+    })
+  } catch (error) {
+    if (!reachedProvider) {
       await undo()
     }
-    return outcome
-  } catch (error) {
-    await undo()
     throw error
   }
 }

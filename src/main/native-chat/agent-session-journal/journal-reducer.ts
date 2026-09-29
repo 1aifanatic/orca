@@ -151,15 +151,37 @@ export function resolveJournalItemId(
   if (aliased) {
     return aliased
   }
-  const identity = parseAgentJournalItemKey(itemId)
-  if (
-    !body ||
-    body.kind !== 'message' ||
-    body.role !== 'user' ||
-    !identity ||
-    identity.provider === 'orca'
-  ) {
+  const submissionId = journalEchoClaimant(state, itemId, body)
+  if (!submissionId) {
     return itemId
+  }
+  state.aliases.set(itemId, submissionId)
+  return submissionId
+}
+
+/** A user message the provider wrote: the only item a submission's echo can be. */
+export function isProviderUserMessageEcho(
+  itemId: string,
+  body: AgentJournalRenderItem['body']
+): boolean {
+  const identity = parseAgentJournalItemKey(itemId)
+  return (
+    body.kind === 'message' &&
+    body.role === 'user' &&
+    identity !== null &&
+    identity.provider !== 'orca'
+  )
+}
+
+/** The submission item a provider's echo of a user message would fold into, read without
+ *  claiming it; null when the item is not such an echo, or no submission may claim it. */
+export function journalEchoClaimant(
+  state: JournalReducerState,
+  itemId: string,
+  body?: AgentJournalRenderItem['body']
+): string | null {
+  if (!body || !isProviderUserMessageEcho(itemId, body)) {
+    return null
   }
   const fingerprint = structuredAgentSessionPayloadFingerprint({
     method: 'agentSession.send',
@@ -181,12 +203,7 @@ export function resolveJournalItemId(
         candidate.payloadFingerprint === fingerprint &&
         state.items.get(agentJournalSubmissionKey(candidate.clientMessageId))?.revision === 0
     )
-  if (!submission) {
-    return itemId
-  }
-  const submissionId = agentJournalSubmissionKey(submission.clientMessageId)
-  state.aliases.set(itemId, submissionId)
-  return submissionId
+  return submission ? agentJournalSubmissionKey(submission.clientMessageId) : null
 }
 
 function resolveItemId(state: JournalReducerState, itemId: string): string {
@@ -265,7 +282,11 @@ function applySubmission(
     reason: null,
     submittedAt: row.ts,
     resolvedAt: null,
-    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {})
+    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
+    // A malformed stored link is dropped, never the row.
+    ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
+      ? { queuedMessageId: row.queuedMessageId }
+      : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row), row.fence)
