@@ -132,15 +132,15 @@ function run(
   // Why a file for bash/zsh: it is read line by line like a startup file, so an alias it defines applies.
   const scriptFile = join(bin, '..', 'script.sh')
   writeFileSync(scriptFile, body)
-  const [command, args] =
+  const [command, args]: [string, string[]] =
     shell === 'bash'
       ? ['/bin/bash', ['--noprofile', '--norc', scriptFile]]
       : shell === 'zsh'
         ? ['/bin/zsh', ['-f', scriptFile]]
         : shell === 'fish'
-          ? [fishLookup.path, ['--no-config', '-c', body]]
+          ? [fishLookup.path ?? 'fish', ['--no-config', '-c', body]]
           : ['pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', body]]
-  const result = spawnSync(command as string, args as string[], {
+  const result = spawnSync(command, args, {
     encoding: 'utf-8',
     env: {
       ...process.env,
