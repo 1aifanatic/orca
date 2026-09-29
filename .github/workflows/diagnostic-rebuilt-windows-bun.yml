@@ -90,6 +90,12 @@ jobs:
       - name: Run existing Bun artifact tests
         shell: pwsh
         run: |
+          $package = Get-Content .build/native-qualification/package.json -Raw | ConvertFrom-Json
+          if ($package.architecture -ne $env:QUALIFICATION_ARCH) { throw 'Provider architecture mismatch' }
+          $expected = (Resolve-Path out/orcad/conpty/conpty.dll).Path
+          if ($package.conptyLibrary -ne $expected) { throw 'Provider selector mismatch' }
+          $env:BUN_CONPTY_LIBRARY = $package.conptyLibrary
+          Write-Output "Direct Bun test provider: $env:BUN_CONPTY_LIBRARY"
           pnpm test:bun:profile --artifact 2>&1 | Tee-Object .build/native-qualification/profile.log
           exit $LASTEXITCODE
       - name: Run packaged companion tests

@@ -65,7 +65,7 @@ export async function verifyPackage(candidate, productRoot) {
     assert.equal(readPeMachine(file), PE_MACHINE[candidate.architecture])
     companions[name] = expected
   }
-  return { ...candidate, companions }
+  return { ...candidate, companions, conptyLibrary: resolve(productRoot, 'out/orcad/conpty/conpty.dll') }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
