@@ -57,7 +57,8 @@ export function getDroppedMode2031RendererData(pending: PendingPtyData): string 
 }
 
 /** Releases xterm's DEC 2026 render hold when the dropped span left a frame open.
- *  Without it the pane paints nothing until xterm's 1000ms forced flush. */
+ *  Without it the pane freezes on its last painted frame until xterm's 1000ms
+ *  forced flush. */
 export function getDroppedSynchronizedOutputRendererData(pending: PendingPtyData): string {
   return pending.droppedSynchronizedOutputState?.active === true ? '\x1b[?2026l' : ''
 }

@@ -41,11 +41,17 @@ function isLowSurrogate(value: number): boolean {
 
 /**
  * Bulk-write split policy: frame-align first so a held remainder cannot strand an
- * open DEC 2026 frame's closing \x1b[?2026l (xterm then paints nothing until its
+ * open DEC 2026 frame's closing \x1b[?2026l (xterm then stops repainting until its
  * 1s timeout), then let the surrogate clamp have the final say.
  */
 export function clampToSafeBulkWriteSplitIndex(value: string, end: number): number {
-  return clampToSafeSplitIndex(value, 0, resolveSynchronizedOutputSafeSplit(value, end))
+  // Math.max(1): the surrogate clamp can decrement an aligned index to 0 (e.g.
+  // ('\u{1F600}aaaa', 1)), and a 0-length slice would never shift the batcher's
+  // queue entry, spinning its drain loop.
+  return Math.max(
+    1,
+    clampToSafeSplitIndex(value, 0, resolveSynchronizedOutputSafeSplit(value, end))
+  )
 }
 
 export function clampToSafeSplitIndex(value: string, start: number, end: number): number {

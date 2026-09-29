@@ -1342,7 +1342,7 @@ export class PtyHandler {
         : (this.dispatcher.maxLegacyPtyDataChars?.(paramsWithoutData, pending.data, desiredChars) ??
           desiredChars)
     // Why before the surrogate guard: splitting inside an open DEC 2026 frame
-    // strands the closing \x1b[?2026l in the remainder, and xterm paints nothing
+    // strands the closing \x1b[?2026l in the remainder, and xterm stops repainting
     // until it arrives or its 1000ms timeout fires. The surrogate guard keeps the
     // final say so a frame boundary can never sever a pair.
     if (!pending.transformed && !pending.sourceChunk && chunkChars > 0) {

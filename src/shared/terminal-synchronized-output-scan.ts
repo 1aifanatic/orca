@@ -2,8 +2,8 @@
  * DEC mode 2026 (synchronized output) latch tracking.
  *
  * Why this module is shared: like terminal-mode-reset-profiles, the latch is a
- * terminal-protocol contract rather than a renderer concern. xterm renders
- * nothing while the latch is open and force-flushes only after a 1000ms
+ * terminal-protocol contract rather than a renderer concern. xterm stops
+ * repainting while the latch is open and force-flushes only after a 1000ms
  * timeout, so whichever side of the PTY relay last touched a pane's bytes has
  * to know whether it left a frame open — main's drop paths included, not just
  * the renderer's foreground coalescer.
@@ -106,7 +106,7 @@ export function advanceDroppedSynchronizedOutputLatch(
  * DEC 2026 frame.
  *
  * A blind byte-offset split puts `\x1b[?2026h` in one chunk and its
- * `\x1b[?2026l` in the next, so xterm stops painting until the remainder is
+ * `\x1b[?2026l` in the next, so xterm stops repainting until the remainder is
  * delivered on a later flush — behind every other pane's output — or until its
  * 1000ms forced flush. It can also sever the 8-byte marker itself.
  *
@@ -154,5 +154,11 @@ export function resolveSynchronizedOutputSafeSplit(
     // reset profiles release the latch.
     return candidate > 0 ? candidate : limit
   }
-  return lastClose + SYNCHRONIZED_OUTPUT_END_SEQUENCE.length
+  const aligned = lastClose + SYNCHRONIZED_OUTPUT_END_SEQUENCE.length
+  // Why the floor: a caller that cannot refill the shortfall in the same round
+  // (main's flush re-queues the remainder with eligibleRound = round + 1) would
+  // lose up to half its per-PTY throughput when frames land just past the
+  // midpoint. Below the floor, prefer throughput and let the reset profiles
+  // release the latch.
+  return aligned * 2 >= limit ? aligned : candidate > 0 ? candidate : limit
 }

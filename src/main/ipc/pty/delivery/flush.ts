@@ -166,7 +166,7 @@ export function flushPendingData(session: PtyIpcSession): void {
       const { data } = pending
       const indivisible = pending.transformed === true
       // Why not a blind offset: splitting inside an open DEC 2026 frame strands
-      // the closing \x1b[?2026l on a later flush, and xterm paints nothing until
+      // the closing \x1b[?2026l on a later flush, and xterm stops repainting until
       // it arrives or its 1000ms timeout fires.
       const splitAt = indivisible
         ? data.length

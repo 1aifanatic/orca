@@ -121,7 +121,8 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
       if (clearBeforeReplay) {
         // RELEASE_SYNCHRONIZED_OUTPUT: a reconnect is exactly the event that severs a
         // frame mid-flight, so this xterm may hold an open 2026 latch — and \x1b[2J does
-        // not clear it, which would make the whole replay paint nothing.
+        // not clear it, so the pane would stay frozen on its last painted frame and the
+        // whole replay would go unseen until xterm's 1s timeout.
         await session.writeReplayDataAsync(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
         if (!isCurrentPayload()) {
           continue

@@ -58,13 +58,19 @@ export const POST_REPLAY_LIVE_AGENT_SNAPSHOT_RESET = RESET_TERMINAL_CURSOR_STYLE
 // writes the clipboard.
 export const ABORT_TRUNCATED_CONTROL_STRING = '\x18'
 
+// Trade-off, stated because it is not free: the pane was FROZEN on its last
+// coherent frame, not blank (bufferRows records a row range and clears nothing).
+// Releasing the latch where no repaint follows in the same write — RESET_AFTER_BYTE_GAP
+// is written alone — can flash a partial frame in place of that coherent one. A byte
+// gap already means the stream is damaged and a restore follows, so a stale frame that
+// outlives the damage is the worse option.
 // Why this is grounded everywhere a byte gap or a repaint happens: xterm renders
 // NOTHING while DEC 2026 is open and only force-flushes after 1000ms, so a gap
 // that swallowed a TUI's closing \x1b[?2026l leaves the pane blank for a full
 // second per frame — and Orca is otherwise incapable of closing a latch it
 // opened. Unlike the modes deliberately left ungrounded below, a snapshot never
 // re-asserts 2026, and closing a frame early costs one premature repaint against
-// a second of blank screen.
+// a second of frozen, increasingly stale output.
 export const RELEASE_SYNCHRONIZED_OUTPUT = '\x1b[?2026l'
 
 // Why the DECSC first: xterm's `?1049l` runs restoreCursor() even on the normal
@@ -88,7 +94,7 @@ const SHOW_CURSOR = '\x1b[?25h'
 export function buildProcessBoundaryGround(opts: { keepFocusReporting: boolean }): string {
   const focus = opts.keepFocusReporting ? '' : RESET_FOCUS_REPORTING
   // RELEASE_SYNCHRONIZED_OUTPUT first: the process that opened a 2026 frame is
-  // gone, so nothing will ever close it, and xterm paints nothing until it does.
+  // gone, so nothing will ever close it, and xterm stops repainting until it does.
   return `${RELEASE_SYNCHRONIZED_OUTPUT}${RESET_KITTY_KEYBOARD_PROTOCOL}${LEAVE_ALTERNATE_SCREEN_KEEPING_NORMAL_CURSOR}${RESET_MOUSE_REPORTING}${RESET_LEGACY_MOUSE_ENCODINGS}${focus}${RESET_BRACKETED_PASTE}${RESET_APPLICATION_CURSOR_AND_KEYPAD}${SHOW_CURSOR}${RESET_TERMINAL_CURSOR_STYLE}${RESET_KITTY_KEYBOARD_PROTOCOL}${RESET_GRAPHIC_RENDITION}${SAVE_GROUNDED_CURSOR}`
 }
 
