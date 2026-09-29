@@ -137,7 +137,10 @@ describe('durable worktree removal records', () => {
     _resetPendingWorktreeRemovalsForTests()
     expect(isWorktreeRemovalPending(removal.worktreeId)).toBe(false)
     await loadWorktreeRemovalRecords(directory)
-    const rows = [{ id: removal.worktreeId }, { id: 'repo-1::/work/other' }]
+    const rows: { id: string; hostId?: undefined }[] = [
+      { id: removal.worktreeId },
+      { id: 'repo-1::/work/other' }
+    ]
     expect(projectPendingWorktreeRemovals(rows, (row) => row.id, true)).toEqual([
       { id: removal.worktreeId, removing: true },
       { id: 'repo-1::/work/other' }

@@ -125,7 +125,9 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     const { outcome, purged } = await finishAfterRestart()
 
     expect(outcome).toMatchObject({ status: 'removed' })
-    expect(outcome?.preservedBranch).toBeUndefined()
+    expect(
+      outcome && 'preservedBranch' in outcome ? outcome.preservedBranch : undefined
+    ).toBeUndefined()
     expect(existsSync(worktreePath)).toBe(false)
     expect(await git(['worktree', 'list'])).not.toContain(worktreePath)
     expect(await git(['branch', '--list', 'feature'])).toBe('')
@@ -173,7 +175,9 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     const { outcome, purged } = await finishAfterRestart({ head })
 
     expect(outcome).toMatchObject({ status: 'removed' })
-    expect(outcome?.preservedBranch).toBeUndefined()
+    expect(
+      outcome && 'preservedBranch' in outcome ? outcome.preservedBranch : undefined
+    ).toBeUndefined()
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
 
