@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-session-host-authority'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
+import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -56,6 +57,8 @@ function sendParams(text: string) {
 
 const generationRoot = () => join(directory, `generation-${generation}`)
 
+let ownerProbe: AgentSessionOwnerProbe = { outcome: 'pid-absent' }
+
 async function openHost(): Promise<void> {
   store = await AgentSessionRecordStore.open({
     directory: join(generationRoot(), 'store'),
@@ -68,8 +71,8 @@ async function openHost(): Promise<void> {
     claimKeyId: 'key',
     now: () => clock,
     mintSpawnToken: () => `spawn-${acquisitions}`,
-    // The owners a restarted host finds died with the process that started them.
-    probeOwner: async () => ({ outcome: 'pid-absent' })
+    // The owners a restarted host finds died with the process that started them, unless a test says otherwise.
+    probeOwner: async () => ownerProbe
   })
   hosts.push(host)
 }
@@ -88,6 +91,7 @@ async function restartHost(): Promise<void> {
 
 beforeEach(async () => {
   resetHostTestOperationIds()
+  ownerProbe = { outcome: 'pid-absent' }
   acquisitions = 0
   generation = 0
   clock = HOST_TEST_NOW
@@ -634,5 +638,37 @@ describe('a clear that never committed', () => {
     const replacement = await clearCommits()
     expect(replacement).not.toBe(failed)
     expect(store.listVisibleSessionIds()).toEqual([replacement])
+  })
+
+  it("does not gate another window's /clear on a replacement whose stop is only unproven", async () => {
+    const orphan = await clearThatDiesBeforeItsCommit()
+    ownerProbe = { outcome: 'indeterminate', reason: 'test' }
+    await restartHost()
+    await host.restoreReadableSessions(store.listVisibleSessionIds())
+    expect(store.getRecord(orphan)?.lease.claimStatus).not.toBe('released')
+    const result = await host.conversationCommand({ callerKey: 'mobile' }, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { state: 'completed', replacementSessionId: expect.any(String) }
+    })
+    expect(result.ok && result.value.replacementSessionId).not.toBe(orphan)
+  })
+
+  it('starts afresh when a retry under a new operation id follows a start that definitely failed', async () => {
+    failNextReplacementStart()
+    vi.spyOn(store, 'setConversationCommand').mockRejectedValueOnce(
+      new Error('crash before the commit')
+    )
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow(
+      'crash before the commit'
+    )
+    const [failed] = otherRecordIds()
+    const result = await host.conversationCommand(caller, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { state: 'completed', replacementSessionId: expect.any(String) }
+    })
+    expect(result.ok && result.value.error).toBeFalsy()
+    expect(result.ok && result.value.replacementSessionId).not.toBe(failed)
   })
 })

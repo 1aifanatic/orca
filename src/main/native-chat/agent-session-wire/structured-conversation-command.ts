@@ -9,7 +9,10 @@ import type {
   AgentSessionMutationEnvelope,
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
-import { agentSessionLeaseIsReleased } from '../../../shared/agent-session-lease-adjudication'
+import {
+  agentSessionLeaseAdmitsWriter,
+  agentSessionLeaseIsReleased
+} from '../../../shared/agent-session-lease-adjudication'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import {
   attachFingerprintFields,
@@ -95,20 +98,22 @@ function clearTryToFinish(
         committed.operationId === row.operationId)
     ) {
       earliest = null
-    } else if (
-      earliest === null &&
-      store.getOperationRow(
+    } else if (earliest === null) {
+      const start = store.getOperationRow(
         callerKey,
         clearReplacementIds(sessionId, callerKey, row.operationId).attachOperationId
       )
-    ) {
-      earliest = row.operationId
+      // A start that failed left nothing to finish, and replaying it would repeat that failure.
+      if (start && start.outcome.status !== 'failed') {
+        earliest = row.operationId
+      }
     }
   }
   return earliest ?? operationId
 }
 
-/** Another caller's uncommitted /clear holds a replacement that is running, or not proven stopped. */
+/** Another caller's uncommitted /clear holds a replacement whose agent is running. One whose stop
+ *  is merely unproven gates nothing: only that caller's own start would ever settle it. */
 function otherCallersClearIsLive(
   store: AgentSessionRecordStore,
   sessionId: string,
@@ -122,7 +127,7 @@ function otherCallersClearIsLive(
     const replacement = store.getRecord(
       clearReplacementIds(sessionId, row.callerKey, row.operationId).sessionId
     )
-    return replacement !== null && !agentSessionLeaseIsReleased(replacement.lease)
+    return replacement !== null && agentSessionLeaseAdmitsWriter(replacement.lease)
   })
 }
 
