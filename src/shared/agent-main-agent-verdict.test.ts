@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   agentMainAgentVerdict,
   agentTurnEndedUncleanly,
-  agentTurnEndedOnRequest,
+  agentTurnEndedOnPurpose,
   agentVerdictDisplayMark,
   agentVerdictFields,
   type AgentMainAgentVerdictSource
@@ -47,7 +47,7 @@ describe('agentMainAgentVerdict', () => {
       const label = JSON.stringify(row)
       expect(agentMainAgentVerdict(row), label).toBe(verdict)
       expect(agentTurnEndedUncleanly(row), label).toBe(verdict !== null && verdict !== 'success')
-      expect(agentTurnEndedOnRequest(row), label).toBe(
+      expect(agentTurnEndedOnPurpose(row), label).toBe(
         verdict === 'cancellation' || verdict === 'superseded'
       )
       expect(agentVerdictDisplayMark(row), label).toBe(
@@ -123,7 +123,7 @@ describe('agentMainAgentVerdict', () => {
       expect(agentVerdictDisplayMark(row)).toBe(mark)
       expect(agentTurnEndedUncleanly(row)).toBe(true)
       // Nobody asked for it, so attention ranks it as news, like a completion or a failure.
-      expect(agentTurnEndedOnRequest(row)).toBe(false)
+      expect(agentTurnEndedOnPurpose(row)).toBe(false)
     }
   })
 

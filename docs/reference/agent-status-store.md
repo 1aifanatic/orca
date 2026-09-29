@@ -262,8 +262,8 @@ Policy splits the verdict two ways. Clean-finish policy (hibernation, pane
 ownership, the star-nag value moment) treats a failure, an interruption and an
 unconfirmed end like a cancellation (`agentTurnEndedUncleanly`). Attention
 (completion time, Smart Sort, sticky retention, Cmd+J Recent) demotes only a
-turn a request ended, the user's stop or a newer request that replaced it
-(`agentTurnEndedOnRequest`); a failure, an interruption or
+turn ended on purpose, the user's stop or a newer request that replaced it
+(`agentTurnEndedOnPurpose`); a failure, an interruption or
 an unconfirmed end ranks like a completion.
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,

@@ -88,11 +88,11 @@ export function agentTurnEndedUncleanly(row: AgentMainAgentVerdictSource): boole
   }
 }
 
-/** A request ended the turn: the user's Stop, or a newer request that replaced it. Attention
- *  (completion time, Smart Sort, sticky retention) demotes only this: a failure, or a turn cut off
- *  or ended in a way nobody asked for, is news the user has not seen, so it ranks like a
- *  completion. */
-export function agentTurnEndedOnRequest(row: AgentMainAgentVerdictSource): boolean {
+/** The turn was ended on purpose, not by a fault: the user's Stop, or a newer request that
+ *  replaced it. Attention (completion time, Smart Sort, sticky retention) demotes only this: a
+ *  failure, or a turn cut off or ended in a way nobody asked for, is news the user has not seen,
+ *  so it ranks like a completion. */
+export function agentTurnEndedOnPurpose(row: AgentMainAgentVerdictSource): boolean {
   const verdict = agentMainAgentVerdict(row)
   switch (verdict) {
     case 'cancellation':

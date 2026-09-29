@@ -24,9 +24,9 @@ export type ClaudeCurrentTurn = {
 export type ClaudeTurnEnd = {
   state: 'completed' | 'interrupted'
   completedAt: number
-  /** Only an end the PROVIDER reported carries one. An end the host inferred —
-   *  the child going away, a new turn superseding this one — leaves it absent,
-   *  which reads as unknown rather than claiming the turn worked. */
+  /** An end the provider reported carries its verdict, and a turn a newer one
+   *  replaced carries `superseded`. The child going away leaves it absent, which
+   *  reads as unknown rather than claiming the turn worked. */
   outcome?: AgentJournalTurnOutcome
   /** The SDK's own measured turn duration; only a result frame carries one. */
   durationMs?: number

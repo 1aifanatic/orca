@@ -13,7 +13,7 @@ import type {
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
 import {
-  agentTurnEndedOnRequest,
+  agentTurnEndedOnPurpose,
   agentVerdictDisplayMark
 } from '../../../shared/agent-main-agent-verdict'
 import { AgentHookServer, _internals } from '../../agent-hooks/server'
@@ -172,7 +172,7 @@ describe('a turn recovery settled after its host went away', () => {
       expect(row?.interrupted ?? false).toBe(false)
       // The sidebar and tab read the published row, with no user action in between.
       expect(row && agentVerdictDisplayMark(row)).toBe(mark)
-      expect(row && agentTurnEndedOnRequest(row)).toBe(false)
+      expect(row && agentTurnEndedOnPurpose(row)).toBe(false)
       // The dot and the OS notification come only from a completion event, and none is sent.
       expect(session.completionEvents).toEqual([])
     }
