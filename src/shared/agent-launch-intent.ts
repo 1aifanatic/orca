@@ -93,6 +93,8 @@ export type AgentLaunchIntent = {
   /** The `tabId:leafId` a terminal launch creates its pane under, for a caller that places its own
    *  tabs. Not a route input; refused when that pane is already live. */
   paneKey?: string
+  /** How a terminal launched into an existing workspace first shows its tab. Not a route input. */
+  viewMode?: 'terminal' | 'chat'
   /** The caller-minted id of the chat session a structured launch creates. Not a route input;
    *  refused when that session already exists. */
   sessionId?: string

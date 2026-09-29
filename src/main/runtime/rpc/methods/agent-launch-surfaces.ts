@@ -118,6 +118,7 @@ export function agentLaunchSurfaceFactory(
       cwd,
       launchSource,
       paneKey,
+      viewMode,
       options
     }) => {
       const launchPreferences = toAgentLaunchPreferences(options)
@@ -143,6 +144,8 @@ export function agentLaunchSurfaceFactory(
         // A live reserved pane would be attached, not launched into, so the runtime refuses it.
         ...(paneKey ? { ...paneIdentity(paneKey), requireFreshPane: true } : {}),
         ...(launchSource ? { launchSource } : {}),
+        // Not `presentation`: a focused create takes the renderer path, which drops the pane identity.
+        ...(viewMode ? { viewMode } : {}),
         onPtySpawnDispatched: terminalSpawn.onPtySpawnDispatched
       })
       const terminal = await created.catch(terminalSpawn.rethrow)

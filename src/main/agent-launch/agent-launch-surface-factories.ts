@@ -35,6 +35,8 @@ export type AgentLaunchSurfaceFactory = {
     launchSource?: string
     /** The caller-minted pane to create; refused with `AgentLaunchPaneAlreadyLiveError` if live. */
     paneKey?: string
+    /** How the tab first shows, as the caller would have opened it. */
+    viewMode?: 'terminal' | 'chat'
   }): Promise<{
     handle: string
     /** The pane this create minted; a factory whose runtime reports none omits it, never invents. */

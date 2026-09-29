@@ -25,6 +25,14 @@ const createStructuredSession = vi.hoisted(() => vi.fn())
 vi.mock('./structured-agent-session-create', () => ({
   createStructuredAgentSessionForWorktree: createStructuredSession
 }))
+const deliverTerminalPrompt = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('./agent-launch-terminal-prompt', () => ({
+  deliverTerminalAgentLaunchPrompt: deliverTerminalPrompt
+}))
+const commitChatPrompt = vi.hoisted(() => vi.fn(async () => 'message-1'))
+vi.mock('./agent-launch-structured-prompt', () => ({
+  commitStructuredAgentSessionLaunchPrompt: commitChatPrompt
+}))
 
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
 const AGENT_LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
@@ -59,6 +67,8 @@ function chatActivation(): unknown {
 }
 
 beforeEach(() => {
+  deliverTerminalPrompt.mockClear()
+  commitChatPrompt.mockClear()
   createStructuredSession
     .mockReset()
     .mockResolvedValue({ ok: true, value: { sessionId: 'sess-1' } })
@@ -90,6 +100,27 @@ describe('a paired client launching into an existing workspace', () => {
       CALLER
     )
   })
+
+  // Why: a pasted prompt waits up to a minute for the agent; the caller's view must not wait with it.
+  it.each([
+    ['terminal', {}, deliverTerminalPrompt],
+    ['chat', STRUCTURED_PREFERENCE, commitChatPrompt]
+  ] as const)(
+    'selects the new %s for the caller before its prompt is delivered',
+    async (_surface, settings, deliver) => {
+      const runtime = selectionRuntime({ settings, terminalPaneKey: PANE_KEY })
+
+      await launch(
+        { ...EXISTING_LAUNCH, prompt: { text: 'Fix it.\nLog:', delivery: 'submit' } },
+        runtime
+      )
+
+      const selectedAt = runtime.selectCreatedMobileSessionTabForClient.mock.invocationCallOrder[0]
+      const deliveredAt = deliver.mock.invocationCallOrder[0]
+      expect(deliveredAt).toBeDefined()
+      expect(selectedAt).toBeLessThan(deliveredAt!)
+    }
+  )
 
   it('still reports the launch when selecting its tab fails', async () => {
     const runtime = selectionRuntime({ settings: {}, terminalPaneKey: PANE_KEY })

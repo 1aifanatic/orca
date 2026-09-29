@@ -70,7 +70,11 @@ export type AgentLaunchExecution = {
   vocabulary?: AgentLaunchModeVocabulary
   /** Attributes a throw to the step that was running, the way a dispatch's own stages do. */
   onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
+  /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
+  onSurfacePublished?: (surface: AgentLaunchPublishedSurface) => void
 }
+
+export type AgentLaunchPublishedSurface = Pick<AgentLaunchResult, 'outcome' | 'worktreeId'>
 
 export async function executeAgentLaunch(
   execution: AgentLaunchExecution
@@ -95,9 +99,12 @@ export async function executeAgentLaunch(
   // A reused terminal already downgraded in the pre-flight; there is nothing to create. Its agent
   // was running before this launch existed, so argv is unreachable and the PTY is the only way in.
   if (intent.reuseTerminal) {
-    return {
+    const reused = published(execution, {
       outcome: { kind: 'terminal', handle: intent.reuseTerminal.handle },
-      worktreeId: existingWorktreeId(intent.target),
+      worktreeId: existingWorktreeId(intent.target)
+    })
+    return {
+      ...reused,
       receipt: preflight,
       ...promptReceipt(
         intent,
@@ -111,13 +118,16 @@ export async function executeAgentLaunch(
   const placed = await resolveWorkspace(execution, preflight)
   // Agent-first creation already produced the agent, so the pre-flight verdict is final.
   if (placed.startupTerminalHandle) {
-    return {
+    const startup = published(execution, {
       outcome: {
         kind: 'terminal',
         handle: placed.startupTerminalHandle,
         ...(placed.startupTerminalPaneKey ? { paneKey: placed.startupTerminalPaneKey } : {})
       },
-      worktreeId: placed.worktreeId,
+      worktreeId: placed.worktreeId
+    })
+    return {
+      ...startup,
       receipt: preflight,
       ...(placed.warning ? { warning: placed.warning } : {}),
       ...promptReceipt(
@@ -169,13 +179,21 @@ export async function executeAgentLaunch(
   // not start while looking at it. Telling those apart needs `createManagedWorktree` to stop
   // multiplexing "couldn't copy untracked files" and "startup terminal failed" into one string.
   const warning = combineLaunchWarnings(placed.warning, created.warning)
+  const surface = published(execution, { outcome: created.outcome, worktreeId: placed.worktreeId })
   return {
-    outcome: created.outcome,
-    worktreeId: placed.worktreeId,
+    ...surface,
     receipt: settled,
     ...(warning ? { warning } : {}),
     ...promptReceipt(intent, await settleLaunchPromptDisposal(execution, created))
   }
+}
+
+function published(
+  execution: AgentLaunchExecution,
+  surface: AgentLaunchPublishedSurface
+): AgentLaunchPublishedSurface {
+  execution.onSurfacePublished?.(surface)
+  return surface
 }
 
 function downgradeAgentLaunchModeForStructuredRefusal(
@@ -319,7 +337,8 @@ async function createTerminalSurface(
     worktreeId,
     agent: intent.agent,
     ...(startupPrompt ? { startupPrompt } : {}),
-    ...terminalLaunchInputs(intent)
+    ...terminalLaunchInputs(intent),
+    ...(intent.viewMode ? { viewMode: intent.viewMode } : {})
   })
   return {
     outcome: {

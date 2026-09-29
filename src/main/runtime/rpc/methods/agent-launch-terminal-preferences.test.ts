@@ -80,6 +80,16 @@ describe('a terminal launch into an existing workspace', () => {
     expect(terminalOptions(runtime)).toMatchObject({ launchPreferences: PICKS })
   })
 
+  it('opens the tab in the view mode the caller asked for, without asking for a focused create', async () => {
+    const runtime = runtimeStub({ settings: TERMINAL_ONLY })
+
+    await launch({ ...EXISTING_LAUNCH, viewMode: 'chat' }, runtime)
+
+    // A focused create takes the renderer path, which drops the caller's pane identity.
+    expect(terminalOptions(runtime)).toMatchObject({ viewMode: 'chat' })
+    expect(terminalOptions(runtime)).not.toHaveProperty('presentation')
+  })
+
   it('drops options that are not launch preferences', async () => {
     const runtime = runtimeStub({ settings: TERMINAL_ONLY })
 
