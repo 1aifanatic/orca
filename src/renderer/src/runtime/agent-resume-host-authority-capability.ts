@@ -20,6 +20,7 @@ import {
 const RESUME_HOST_AUTHORITY_CAPABILITY_BY_AGENT = {
   // These shipped inside agent-session.host-authority.v1's enum, so the generic probe covers them.
   claude: undefined,
+  codebuddy: undefined,
   codex: undefined,
   qoder: AGENT_SESSION_QODER_RESUME_RUNTIME_CAPABILITY,
   gemini: undefined,
