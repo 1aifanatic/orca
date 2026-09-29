@@ -24,11 +24,16 @@ export function useMobileNativeChatRowProps(
 ): readonly MobileNativeChatRowProps[] {
   const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const [reuseRowProps] = useState(createRowPropsReuse)
-  return reuseRowProps(
-    data.map((message, index) => ({
-      subagentLabel: nativeChatSubagentLabel(subagentLabels, message),
-      ...resolveTurnRow(index, message)
-    })),
-    (index) => data[index]!.id
+  // Why: the view re-renders on every composer keystroke; only row or turn changes need this pass.
+  return useMemo(
+    () =>
+      reuseRowProps(
+        data.map((message, index) => ({
+          subagentLabel: nativeChatSubagentLabel(subagentLabels, message),
+          ...resolveTurnRow(index, message)
+        })),
+        (index) => data[index]!.id
+      ),
+    [reuseRowProps, data, subagentLabels, resolveTurnRow]
   )
 }

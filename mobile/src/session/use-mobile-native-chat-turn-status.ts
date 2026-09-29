@@ -101,9 +101,7 @@ export function useMobileNativeChatTurnStatus({
     })
   }, [activeTurnKey, enabled, isWorking, messages, scopeKey, turnKeysByItemId, workingStartedAt])
 
-  // Why: the selection rebuilds its status objects on every call, and a streaming
-  // turn re-renders ~20x/s. Without this, every settled turn's row gets fresh
-  // props each tick and the memoized message rows all re-render.
+  // Why: the selection rebuilds every status object, and a streaming turn re-renders ~20x/s.
   const turnIsWorking = enabled && isWorking
   const turnIsThinking = enabled && thinking
   const settledByTurn = enabled ? (settledTurns ?? undefined) : undefined
