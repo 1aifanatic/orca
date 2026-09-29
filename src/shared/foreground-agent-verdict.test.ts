@@ -121,6 +121,7 @@ describe('the shared blindness rule', () => {
       true
     ],
     ['tmux in front', processName('tmux'), true, true],
+    ['zellij in front', processName('zellij'), true, true],
     ['ssh.exe in front', processName('C:\\Windows\\System32\\OpenSSH\\ssh.exe'), true, true],
     ['a remote multiplexer', host(unverifiable('multiplexer_boundary')), true, true],
     ['the WSL bridge', processName('wsl.exe'), false, true],

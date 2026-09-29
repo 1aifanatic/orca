@@ -38,6 +38,7 @@ const WSL_BRIDGE_NAMES = new Set(['wsl', 'wslhost'])
 const AGENT_HOST_NAMES = new Set([
   'tmux',
   'screen',
+  'zellij',
   'ssh',
   'mosh',
   'mosh-client',
