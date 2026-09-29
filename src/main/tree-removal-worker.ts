@@ -5,12 +5,31 @@
 
 import type { RmOptions } from 'node:fs'
 import { Worker } from 'node:worker_threads'
+import { PrioritySemaphore } from '../shared/priority-semaphore'
 
 const REMOVE_TREE_WORKER_SOURCE = `const { workerData } = require('node:worker_threads')
 require('node:fs').rmSync(workerData.path, workerData.options)`
 
+// Why a cap: each worker is its own isolate (~10 MB), and history-tombstone drains start dozens of
+// removals at once (64 simultaneous workers measured ~700 MB). Deletes are disk-bound, so running
+// more than the old pool's four at a time buys nothing.
+const MAX_CONCURRENT_TREE_REMOVALS = 4
+const treeRemovalSlots = new PrioritySemaphore(MAX_CONCURRENT_TREE_REMOVALS)
+
 /** Recursive remove that leaves the async fs thread pool free; rejects with the fs error (its `code` intact). */
-export function removeTreeOffThreadPool(targetPath: string, options: RmOptions): Promise<void> {
+export async function removeTreeOffThreadPool(
+  targetPath: string,
+  options: RmOptions
+): Promise<void> {
+  const release = await treeRemovalSlots.acquire(0)
+  try {
+    await runTreeRemovalWorker(targetPath, options)
+  } finally {
+    release()
+  }
+}
+
+function runTreeRemovalWorker(targetPath: string, options: RmOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(REMOVE_TREE_WORKER_SOURCE, {
       eval: true,
