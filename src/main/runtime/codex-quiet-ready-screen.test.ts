@@ -192,7 +192,8 @@ describe('Codex composer ready screen, frame by frame', () => {
     const verdict = evaluateTuiIdle({
       record: { lastAgentStatus: null, lastOutputAt: 0, lastOscTitle: null },
       readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText),
-      readPositiveBodyEvidence: () => isKnownReadyPromptBody(waitText, 'codex', () => screenLines),
+      readPositiveBodyEvidence: () =>
+        isKnownReadyPromptBody(waitText, 'codex', () => screenLines, true),
       readQuietReadyBodyEvidence: () =>
         isQuietReadyScreenBody(waitText, 'codex', () => screenLines),
       agent: 'codex',
@@ -288,7 +289,7 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
           record: { lastAgentStatus: null, lastOutputAt: times[index]!, lastOscTitle: null },
           readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText),
           readPositiveBodyEvidence: () =>
-            isKnownReadyPromptBody(waitText, 'codex', () => screenLines),
+            isKnownReadyPromptBody(waitText, 'codex', () => screenLines, true),
           readQuietReadyBodyEvidence: () =>
             isQuietReadyScreenBody(waitText, 'codex', () => screenLines),
           agent: 'codex',
@@ -315,15 +316,42 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
     120_000
   )
 
-  it('reads the header as tier-1 evidence only for an agent-unknown pane', () => {
-    const header = [
-      '│ >_ OpenAI Codex (v0.157.1)                               │',
-      '│ model:       GPT-6-Sol high   /model to change           │',
-      '│ directory:   ~/repo/app                                  │'
-    ]
-    expect(isKnownReadyPromptBody(header.join('\n'), 'codex', () => header)).toBe(false)
-    expect(isKnownReadyPromptBody(header.join('\n'), null, () => header)).toBe(true)
+  const header = [
+    '│ >_ OpenAI Codex (v0.157.1)                               │',
+    '│ model:       GPT-6-Sol high   /model to change           │',
+    '│ directory:   ~/repo/app                                  │'
+  ]
+
+  it('reads the header as tier-1 evidence only for a pane with no output clock', () => {
+    const waitText = header.join('\n')
+    expect(isKnownReadyPromptBody(waitText, 'codex', () => header, true)).toBe(false)
+    expect(isKnownReadyPromptBody(waitText, 'codex', () => header, false)).toBe(true)
+    expect(isKnownReadyPromptBody(waitText, null, () => header, true)).toBe(true)
   })
+
+  // Why: a restored or reattached pane has no lastOutputAt, so the quiet lane can never fire.
+  it.each([
+    [null, 'ready-strong'],
+    [0, 'ready-strong'],
+    [Date.now() + 60_000, 'pending']
+  ] as const)(
+    'a codex pane whose lastOutputAt is %s reads its header as %s',
+    (lastOutputAt, kind) => {
+      const waitText = header.join('\n')
+      const record = { lastAgentStatus: null, lastOutputAt, lastOscTitle: null }
+      const verdict = evaluateTuiIdle({
+        record,
+        readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText),
+        readPositiveBodyEvidence: () =>
+          isKnownReadyPromptBody(waitText, 'codex', () => header, record.lastOutputAt !== null),
+        readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText, 'codex', () => header),
+        agent: 'codex',
+        firstPartyStatus: null,
+        quiescenceMs: QUIESCENCE_MS
+      })
+      expect(verdict.kind).toBe(kind)
+    }
+  )
 })
 
 describe('never less ready than origin/main', () => {
@@ -344,7 +372,7 @@ describe('never less ready than origin/main', () => {
             const base = {
               readTailBlockedReason: () => detectTerminalWaitBlockedReason(frame.waitText),
               readPositiveBodyEvidence: () =>
-                isKnownReadyPromptBody(frame.waitText, agent, () => frame.screenLines),
+                isKnownReadyPromptBody(frame.waitText, agent, () => frame.screenLines, true),
               agent,
               firstPartyStatus: null,
               quiescenceMs: QUIESCENCE_MS

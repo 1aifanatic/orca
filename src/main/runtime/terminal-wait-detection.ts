@@ -62,9 +62,12 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
  */
 export function isKnownReadyPromptSettled(preview: string): boolean {
   const normalized = preview.toLowerCase()
+  return isReadyPromptSettled(normalized, findKnownReadyPromptIndex(normalized))
+}
+
+function isReadyPromptSettled(normalized: string, readyIndex: number | null): boolean {
   return (
-    isReadyPromptUnblocked(normalized, findKnownReadyPromptIndex(normalized)) &&
-    !isCodexProvisionalStartupText(normalized)
+    isReadyPromptUnblocked(normalized, readyIndex) && !isCodexProvisionalStartupText(normalized)
   )
 }
 
@@ -72,26 +75,31 @@ export function isKnownReadyPromptSettled(preview: string): boolean {
  * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
  * visible grid, or null when the runtime has no trustworthy one.
  *
- * Why not for a Codex pane: its header stays up through every turn, so it proves only that Codex
- * started; isQuietReadyScreenBody holds it to quiescence instead.
- * Why an unknown pane keeps it: quiescence needs an output clock, which an adopted pane lacks.
+ * Why not for a clocked Codex pane: its header stays up through every turn, so it proves only
+ * that Codex started; isQuietReadyScreenBody holds it to quiescence instead.
+ * Why a clockless pane keeps it: quiescence needs an output clock, which a restored pane lacks.
  */
 export function isKnownReadyPromptBody(
   waitText: string,
   agent: TuiAgent | null,
-  readScreenLines: () => readonly string[] | null
+  readScreenLines: () => readonly string[] | null,
+  hasOutputClock: boolean
 ): boolean {
   if (agent === 'qoder') {
     return isQoderComposerReady(readScreenLines())
   }
-  if (agent === 'codex') {
+  if (agent === 'codex' && hasOutputClock) {
     return false
   }
   if (isKnownReadyPromptSettled(waitText)) {
     return true
   }
   // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
-  return agent === null && isCodexScreenHeaderReady(readScreen(readScreenLines))
+  if (agent !== null && agent !== 'codex') {
+    return false
+  }
+  const screen = readScreen(readScreenLines)
+  return screen !== null && isCodexScreenHeaderReady(screen)
 }
 
 /**
@@ -106,8 +114,15 @@ export function isQuietReadyScreenBody(
 ): boolean {
   if (agent === 'codex') {
     const screen = readScreen(readScreenLines)
-    const composerReady = screen !== null && isCodexComposerReadyScreen(screen)
-    return composerReady || isCodexScreenHeaderReady(screen) || isCodexReadyPromptSettled(waitText)
+    if (
+      screen !== null &&
+      (isCodexComposerReadyScreen(screen) || isCodexScreenHeaderReady(screen))
+    ) {
+      return true
+    }
+    // Why the provisional veto here too: a daemon start can stay quiet past the quiescence window.
+    const normalized = waitText.toLowerCase()
+    return isReadyPromptSettled(normalized, findCodexReadyPromptIndex(normalized))
   }
   return (agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)
 }
@@ -118,17 +133,8 @@ export function isQuietReadyScreenBody(
  * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
  * mid-paint) garbles the header, so the text rule keeps every verdict it gives on its own.
  */
-function isCodexScreenHeaderReady(screen: string | null): boolean {
-  return screen !== null && isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
-}
-
-// Why the provisional veto here too: a daemon start can stay quiet past the quiescence window.
-function isCodexReadyPromptSettled(preview: string): boolean {
-  const normalized = preview.toLowerCase()
-  return (
-    isReadyPromptUnblocked(normalized, findCodexReadyPromptIndex(normalized)) &&
-    !isCodexProvisionalStartupText(normalized)
-  )
+function isCodexScreenHeaderReady(screen: string): boolean {
+  return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
 }
 
 function readScreen(readScreenLines: () => readonly string[] | null): string | null {

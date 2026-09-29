@@ -6,7 +6,11 @@ import {
   replayTranscript,
   type TranscriptReplayFrame
 } from './agent-transcript-replay-test-harness'
-import { detectTerminalWaitBlockedReason, isQuietReadyScreenBody } from './terminal-wait-detection'
+import {
+  detectTerminalWaitBlockedReason,
+  isKnownReadyPromptBody,
+  isQuietReadyScreenBody
+} from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -115,6 +119,9 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
         if (screen.includes(heading)) {
           headingFrames += 1
           expect(isQuietReadyScreenBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+            false
+          )
+          expect(isKnownReadyPromptBody(frame.waitText, null, () => frame.screenLines, true)).toBe(
             false
           )
         }

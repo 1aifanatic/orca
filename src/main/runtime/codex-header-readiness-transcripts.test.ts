@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTranscriptPane } from './agent-transcript-pane-test-harness'
+import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import {
   readRuntimeFixture,
   replayTranscript,
@@ -99,7 +99,9 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
           expect(isQuietReadyScreenBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
             false
           )
-          expect(isKnownReadyPromptBody(frame.waitText, null, () => frame.screenLines)).toBe(false)
+          expect(isKnownReadyPromptBody(frame.waitText, null, () => frame.screenLines, true)).toBe(
+            false
+          )
         }
       }
       // Presence precondition for the text-copy fixtures: the text rules alone would say ready here.
@@ -270,6 +272,39 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       ).rejects.toThrow(/timeout/)
       // Presence precondition: the visible-screen probe actually ran.
       expect(readVisibleScreen).toHaveBeenCalled()
+    }, 15_000)
+
+    // Why: restored bytes set no lastOutputAt, so the quiet lane has no clock to wait out.
+    it('settles a restored Codex pane from its header, as main did', async () => {
+      const { runtime, handle } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'codex',
+        launchAgent: 'codex',
+        data: ''
+      })
+      runtime.seedTerminalRestoreTail(TRANSCRIPT_PANE_PTY_ID, {
+        text: [
+          '╭──────────────────────────────────────────╮',
+          '│ >_ OpenAI Codex (v0.157.1)               │',
+          '│ model:       gpt-6-sol high   /model to change │',
+          '│ directory:   ~/repo/app                  │',
+          '╰──────────────────────────────────────────╯',
+          '› Ask Codex to do anything',
+          '  gpt-6-sol high · ~/repo/app'
+        ].join('\r\n')
+      })
+      // Why a text read: the visible-screen probe must not be what settles the wait.
+      vi.spyOn(runtime, 'readTerminal').mockResolvedValue({
+        handle,
+        status: 'running',
+        tail: [],
+        truncated: false,
+        nextCursor: null,
+        source: 'text'
+      })
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 2_500 })
+      ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
     }, 15_000)
 
     it('keeps timing out on the garbled 80x24 default grid, as before', async () => {
