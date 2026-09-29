@@ -138,6 +138,8 @@ export function consumeQueuedMessageInTransaction(
     /** The fresh submission id; never the draft's own id. */
     consumedAs: string
     settledByOp: string | null
+    /** The handing-off process; absent keeps the row's own. */
+    hostInstance?: string
     now: number
   }
 ): boolean {
@@ -148,13 +150,14 @@ export function consumeQueuedMessageInTransaction(
     .prepare(
       `UPDATE queued_messages
        SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
-           settled_at = ?, settled_by_op = ?, consumed_as = ?
+           settled_at = ?, settled_by_op = ?, consumed_as = ?, host_instance = COALESCE(?, host_instance)
        WHERE session_id = ? AND message_id = ? AND state = ?`
     )
     .run(
       input.now,
       input.settledByOp,
       input.consumedAs,
+      input.hostInstance ?? null,
       input.sessionId,
       input.messageId,
       input.expect

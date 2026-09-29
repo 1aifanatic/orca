@@ -12,6 +12,7 @@ import {
 } from '../../../shared/agent-session-host-authority'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
+import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   clearQueuePause,
@@ -247,12 +248,7 @@ export class JournalQueuedMessages {
    *  throws so the whole append — draft transition AND submission row — rolls back. */
   consumeInTransaction(
     db: Database.Database,
-    input: {
-      messageId: string
-      expect: 'waiting' | 'returned'
-      consumedAs: string
-      settledByOp: string | null
-    }
+    input: JournalSubmissionConsume & { consumedAs: string }
   ): void {
     const { db: own } = this.deps.database()
     if (own !== db) {
@@ -360,15 +356,9 @@ export class JournalQueuedMessages {
 export function queuedMessageConsumeHook(
   queuedMessages: JournalQueuedMessages,
   consumedAs: string,
-  consume: { messageId: string; expect: 'waiting' | 'returned'; settledByOp: string | null }
+  consume: JournalSubmissionConsume
 ): (db: Database.Database) => void {
-  return (db) =>
-    queuedMessages.consumeInTransaction(db, {
-      messageId: consume.messageId,
-      expect: consume.expect,
-      consumedAs,
-      settledByOp: consume.settledByOp
-    })
+  return (db) => queuedMessages.consumeInTransaction(db, { ...consume, consumedAs })
 }
 
 export class QueuedMessageNotConsumableError extends Error {

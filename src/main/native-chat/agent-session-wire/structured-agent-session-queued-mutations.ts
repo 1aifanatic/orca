@@ -224,7 +224,8 @@ export function sendQueuedStructuredAgentMessage(
           {
             messageId,
             expect: row.state,
-            settledByOp: agentSessionOperationKey(ctx.resolvedBy, operationId)
+            settledByOp: agentSessionOperationKey(ctx.resolvedBy, operationId),
+            hostInstance: structuredAgentSessionHostInstance()
           }
         )
       } catch (error) {

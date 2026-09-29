@@ -15,7 +15,10 @@ import {
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
-import { structuredQueuePause } from './structured-agent-session-queued-pause'
+import {
+  structuredAgentSessionHostInstance,
+  structuredQueuePause
+} from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
 
@@ -260,7 +263,45 @@ describe("a restart's pause", () => {
     // the lift adopted the rows into this process.
     await rig.host.close(HOST_TEST_SESSION)
     expect(await rig.queuePause()).toBeNull()
-    expect(await rig.drafts()).toEqual([{ messageId: second, state: 'waiting' }])
+    expect(await rig.drafts()).toContainEqual({ messageId: second, state: 'waiting' })
+  })
+})
+
+describe('a card handed off after a restart', () => {
+  it('belongs to the process that sent it: withdrawn back to waiting, it raises no restart pause', async () => {
+    const working = await rig.workingSend()
+    const draftId = await queuedDraft('refused, then re-sent after a restart')
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+    await rig.settleRejected(await rig.handoffId(draftId), 'provider refused this payload')
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'returned' }])
+    )
+    await rig.restartHostProcess()
+    // Sent again in this process, then withdrawn by a Stop before the agent had it.
+    let release: () => void = () => undefined
+    rig.awaitStarted.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+    )
+    expect(await rig.sendNow(draftId)).toMatchObject({ ok: true })
+    await rig.stop()
+    release()
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+    )
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    expect(journal.queuedMessages.get(draftId)?.hostInstance).toBe(
+      structuredAgentSessionHostInstance()
+    )
+    // With the Stop's pause gone, nothing else holds it: no restart happened since it was sent.
+    await journal.queuedMessages.liftPause({
+      stop: journal.queuedMessages.pause(),
+      adoptInto: null
+    })
+    expect(structuredQueuePause(journal)).toBeNull()
   })
 })
 

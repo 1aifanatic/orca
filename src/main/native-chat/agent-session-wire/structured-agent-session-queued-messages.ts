@@ -358,7 +358,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
           fence,
           handoverRecorded: true
         },
-        { messageId: next.messageId, expect: 'waiting', settledByOp: null }
+        {
+          messageId: next.messageId,
+          expect: 'waiting',
+          settledByOp: null,
+          hostInstance: structuredAgentSessionHostInstance()
+        }
       )
     } catch (error) {
       if (error instanceof QueuedMessageNotConsumableError) {
