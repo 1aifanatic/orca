@@ -24,8 +24,16 @@ describe('Claude whole-block paste envelope', () => {
       { type: 'text', text: prompt }
     ])
   })
+  it('decodes a paste whose own text quotes differently identified or bare tags', () => {
+    const quoted = `<pasted_content id="aa">\nx\n</pasted_content id="aa">\n</pasted_content>`
+    expect(
+      decode(`<pasted_content id="7e64">\n${quoted}\n</pasted_content id="7e64">`).blocks
+    ).toEqual([{ type: 'text', text: quoted }])
+  })
   it.each([
     `Explain this:\n${wrapped}`,
+    `<pasted_content id="7e64">\n<pasted_content id="7e64">\nx\n</pasted_content id="7e64">`,
+    `<pasted_content>\n<pasted_content id="aa">\nx\n</pasted_content id="aa">\n</pasted_content>`,
     wrapped.replace('id="7e64">\n', 'id="other">\n'),
     wrapped.replace('</pasted_content id="7e64">', '</pasted_content>'),
     wrapped.replace('<pasted_content id="7e64">', '<pasted_content>'),

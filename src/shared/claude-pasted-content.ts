@@ -12,11 +12,11 @@ export function unwrapClaudePastedContent(text: string): string {
     return text
   }
   const body = trimmed.slice(open[0].length, -close.length)
-  if (
-    !body.endsWith('\n') ||
-    body.includes('<pasted_content') ||
-    body.includes('</pasted_content')
-  ) {
+  // Why: the id is what lets pasted text carry literal tags; only a same-id tag is ambiguous.
+  const ambiguous = open[1]
+    ? body.includes(close) || body.includes(`<pasted_content id="${open[1]}">`)
+    : body.includes('<pasted_content') || body.includes('</pasted_content')
+  if (!body.endsWith('\n') || ambiguous) {
     return text
   }
   return body.slice(0, body.endsWith('\r\n') ? -2 : -1)
