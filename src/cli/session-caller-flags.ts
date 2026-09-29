@@ -36,42 +36,14 @@ export function refuseConflictingSessionCallerFlags(
       !namesInjectedSession(declared, sessionId, env) &&
       !sessionAddressForHost(declared, sessionId, env)
     ) {
-      throw conflictingCallerFlag(sessionId, flagName, declared)
+      throw new RuntimeClientError(
+        'consumer_fenced',
+        `This command runs as agent session ${sessionId}, so --${flagName} ${declared} would act as a ` +
+          `different caller. Drop --${flagName}: this session's orchestration commands already act ` +
+          `as this session. No request was sent.`
+      )
     }
   }
-}
-
-/**
- * For a verb that sends no caller (`--run` names the Run), a session address the host would
- * otherwise have checked is refused here, rather than dropped unchecked.
- */
-export function refuseUnsentSessionAddress(
-  flags: ReadonlyMap<string, string | boolean>,
-  flagName: IdentityFlag,
-  env: NodeJS.ProcessEnv = process.env
-): void {
-  const sessionId = readInjectedAgentSessionId(env)
-  const declared = flags.get(flagName)
-  if (
-    sessionId &&
-    typeof declared === 'string' &&
-    sessionAddressForHost(declared, sessionId, env)
-  ) {
-    throw conflictingCallerFlag(sessionId, flagName, declared)
-  }
-}
-
-function conflictingCallerFlag(
-  sessionId: string,
-  flagName: IdentityFlag,
-  declared: string
-): RuntimeClientError {
-  return new RuntimeClientError(
-    'consumer_fenced',
-    `This command runs as agent session ${sessionId}, so --${flagName} ${declared} would act as a ` +
-      `different caller. Drop --${flagName}: this session's orchestration commands already act ` +
-      `as this session. No request was sent.`
-  )
 }
 
 const IDENTITY_FLAGS: readonly IdentityFlag[] = ['from', 'terminal']

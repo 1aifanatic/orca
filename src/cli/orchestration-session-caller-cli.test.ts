@@ -361,16 +361,15 @@ describe.each([
     expect(callsTo(method)[0]?.[callerParam]).toBeUndefined()
   })
 
-  it('refuses a session address it would not send for the host to check, before any request', async () => {
-    // With --run no caller is sent, so a `session:` address the host alone could place (another
-    // chat's, or this chat's pre-/clear root) would be dropped unchecked.
-    for (const other of [`session:${ROOT}`, 'session:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08']) {
-      await expect(invoke(command, flagMap({ run: 'run_1', from: other }))).rejects.toMatchObject({
-        code: 'consumer_fenced'
-      })
+  it.each([`session:${ROOT}`, 'session:9d4c1b2a-3e5f-4a6b-8c7d-0e1f2a3b4c5d'])(
+    'sends a session address it cannot place (%s) for the host to check, never dropping it',
+    async (declared) => {
+      // A /clear-ed chat's root is accepted by the host; anyone else is refused there, before any
+      // effect. Dropped here, a conflicting caller would pass unchecked.
+      await invoke(command, flagMap({ run: 'run_1', from: declared }))
+      expect(callsTo(method)[0]).toMatchObject({ run: 'run_1', [callerParam]: declared })
     }
-    expect(callMock).not.toHaveBeenCalled()
-  })
+  )
 })
 
 describe('the identity a session presents', () => {

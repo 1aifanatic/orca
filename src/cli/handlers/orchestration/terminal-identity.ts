@@ -177,6 +177,16 @@ export function orchestrationCallerLabel(handle: string | undefined): string {
   return handle ?? injectedSessionAddress() ?? 'unknown'
 }
 
+/**
+ * The caller for a read that `--run` scopes: no terminal is resolved, but a session's declared
+ * address still goes to the host, which places a `/clear` root and refuses anyone else.
+ */
+export function runScopedSessionCaller(flags: Map<string, string | boolean>): string | undefined {
+  const declared = getOptionalStringFlag(flags, 'from')
+  const sessionId = readInjectedAgentSessionId()
+  return declared && sessionId ? sessionAddressForHost(declared, sessionId) : undefined
+}
+
 export async function resolveCoordinatorTerminalHandle(
   flags: Map<string, string | boolean>,
   cwd: string,

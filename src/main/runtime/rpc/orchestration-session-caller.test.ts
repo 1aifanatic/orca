@@ -411,6 +411,45 @@ describe('orchestration session callers at the dispatch entry', () => {
       expect(refused).toMatchObject({ ok: false, error: { code: 'consumer_fenced' } })
     })
 
+    it.each(['orchestration.gateList', 'orchestration.taskList'])(
+      'checks a caller %s names beside --run: the /clear root is the chat, a stranger is refused',
+      async (method) => {
+        h.records.set(SESSION_X, {
+          ...sessionRecord(SESSION_X),
+          conversationCommand: {
+            command: 'clear',
+            state: 'completed',
+            replacementSessionId: SESSION_Y,
+            operationId: 'op',
+            callerKey: 'caller',
+            phase: 'committed'
+          }
+        })
+        const runId = idOf(
+          resultOf(
+            await h.dispatch(
+              orchestrationRequest(
+                'orchestration.runCreate',
+                { objective: 'o' },
+                { sessionId: SESSION_Y }
+              )
+            )
+          ).run
+        )
+        const param = ORCHESTRATION_CALLER_PARAM[method]!
+        const listed = await h.dispatch(
+          orchestrationRequest(method, { run: runId, [param]: ADDRESS_X }, { sessionId: SESSION_Y })
+        )
+        expect(resultOf(listed)).toMatchObject({ runId })
+
+        const stranger = 'session:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
+        const refused = await h.dispatch(
+          orchestrationRequest(method, { run: runId, [param]: stranger }, { sessionId: SESSION_Y })
+        )
+        expect(refused).toMatchObject({ ok: false, error: { code: 'consumer_fenced' } })
+      }
+    )
+
     it.each([ADDRESS_X, SESSION_X])('accepts the session named as %s', async (declared) => {
       const run = resultOf(
         await h.dispatch(
