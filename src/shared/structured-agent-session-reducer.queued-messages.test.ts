@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   AgentSessionHistoryPage,
   AgentSessionQueuedMessage,
+  AgentSessionQueuePause,
   AgentSessionSubscribeEvent
 } from './agent-session-wire'
 import {
@@ -43,13 +44,17 @@ function page(queuedMessages?: AgentSessionQueuedMessage[] | null): AgentSession
   }
 }
 
-function snapshot(queuedMessages?: AgentSessionQueuedMessage[] | null): AgentSessionSubscribeEvent {
+function snapshot(
+  queuedMessages?: AgentSessionQueuedMessage[] | null,
+  queuePause?: AgentSessionQueuePause | null
+): AgentSessionSubscribeEvent {
   return {
     type: 'snapshot',
     sessionId: 'session-a',
     page: page(),
     fence: 1,
-    ...(queuedMessages !== undefined ? { queuedMessages } : {})
+    ...(queuedMessages !== undefined ? { queuedMessages } : {}),
+    ...(queuePause !== undefined ? { queuePause } : {})
   }
 }
 
@@ -154,7 +159,7 @@ describe('structured agent session reducer: queuedMessages', () => {
   it('carries the queue pause with the list it rode with, and clears it with the next list', () => {
     const paused = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
       type: 'event',
-      event: { ...snapshot([queued('draft-1', 1)]), queuePause: { reason: 'stopped' } }
+      event: snapshot([queued('draft-1', 1)], { reason: 'stopped' })
     })
     expect(paused.queuePause).toEqual({ reason: 'stopped' })
     // A batch with no list leaves the pause as it was.

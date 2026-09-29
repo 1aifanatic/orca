@@ -102,10 +102,11 @@ describe('queued message cards', () => {
   })
 
   it('shows a draft a Stop put back: its rejected hand-off is what sent it back', () => {
-    const requeued = draft('requeued', 1, { paused: true, pausedReason: 'stopped' })
+    // The Stop pause belongs to the queue, so the draft itself carries no hold.
+    const requeued = draft('requeued', 1)
     expect(
       projectQueuedMessageCards([requeued], [handOff('requeued', 'rejected')], IDLE)
-    ).toMatchObject([{ messageId: 'requeued', state: 'waiting', hold: 'paused' }])
+    ).toMatchObject([{ messageId: 'requeued', state: 'waiting' }])
     for (const dispatchState of ['pending', 'accepted'] as const) {
       expect(
         projectQueuedMessageCards([requeued], [handOff('requeued', dispatchState)], IDLE)
