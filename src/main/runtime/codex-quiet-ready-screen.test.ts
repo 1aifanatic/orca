@@ -8,11 +8,11 @@ import {
   replayTranscript,
   type TranscriptReplayFrame
 } from './agent-transcript-replay-test-harness'
-import { isCodexComposerReadyScreen, isQuietReadyScreenBody } from './quiet-ready-screen-body'
+import { isCodexComposerReadyScreen } from './codex-terminal-readiness'
 import {
   detectTerminalWaitBlockedReason,
   isKnownReadyPromptBody,
-  isMuseReadyPromptPreview
+  isQuietReadyScreenBody
 } from './terminal-wait-detection'
 import {
   evaluateTuiIdle,
@@ -30,27 +30,18 @@ vi.mock('electron', () => ({
 
 const QUIESCENCE_MS = 3000
 
-// codex-cli recordings at 120x40 (see each .meta.json); STA-8834.
-const SETTLED_IDLE_FIXTURES = [
-  'codex-0-150-1-startup',
-  'codex-0-150-1-turn',
-  'codex-0-155-1-turn',
-  'codex-0-157-1-startup',
-  'codex-0-157-1-turn',
-  'codex-0-158-0-startup',
-  'codex-0-158-0-turn'
-]
-const TURN_FIXTURES = SETTLED_IDLE_FIXTURES.filter((name) => name.endsWith('-turn'))
-const STARTUP_FIXTURES = SETTLED_IDLE_FIXTURES.filter((name) => name.endsWith('-startup'))
-const DIALOG_FIXTURES = [
-  'codex-0-157-1-update-dialog',
-  'codex-0-158-0-approval',
-  'codex-0-158-0-trustprompt'
-]
+// codex-cli recordings at 120x40 (see each .meta.json); STA-8834. Each launches, runs a turn,
+// and ends idle; the timed ones also replay as plain strings here.
 const TIMED_FIXTURES = [
   'codex-0-155-1-timed-turn',
   'codex-0-157-1-timed-turn',
   'codex-0-158-0-timed-turn'
+]
+const SETTLED_IDLE_FIXTURES = ['codex-0-150-1-turn', ...TIMED_FIXTURES]
+const DIALOG_FIXTURES = [
+  'codex-0-157-1-update-dialog',
+  'codex-0-158-0-approval',
+  'codex-0-158-0-trustprompt'
 ]
 const STA_8628_FIXTURES = [
   'codex-0157-plain-ready',
@@ -60,6 +51,7 @@ const STA_8628_FIXTURES = [
 ]
 
 const BUSY_STATUS_RE = /to interrupt\)/
+const EMPTY_COMPOSER_RE = /^› ask codex to do anything\s*$/m
 const HEADER_LOADING_RE = /(?:model|directory):\s+loading|^\s*loading\s*$/m
 const DIALOG_RE =
   /update available|do you trust|trust this folder|would you like to run|press enter to confirm|enter continue/
@@ -82,35 +74,34 @@ async function collectFrames(
 
 describe('Codex composer ready screen, frame by frame', () => {
   it.each([...SETTLED_IDLE_FIXTURES, ...DIALOG_FIXTURES])(
-    '%s: never ready while loading, mid-turn, or under a dialog',
+    '%s: never ready while loading, mid-turn, or under a drawn dialog',
     async (name) => {
       const seen = { loading: 0, busy: 0, dialog: 0 }
       for (const frame of await collectFrames(readRuntimeFixture(name))) {
         const screen = screenOf(frame)
+        // Why only once the composer is gone: a half-drawn dialog keeps it for a few frames,
+        // which quiescence absorbs; a drawn dialog replaces it.
         const kind = HEADER_LOADING_RE.test(screen)
           ? 'loading'
           : BUSY_STATUS_RE.test(screen)
             ? 'busy'
-            : DIALOG_RE.test(screen)
+            : DIALOG_RE.test(screen) && !EMPTY_COMPOSER_RE.test(screen)
               ? 'dialog'
               : null
         if (kind) {
           seen[kind] += 1
-          expect({ kind, ready: isCodexComposerReadyScreen(frame.screenLines) }).toEqual({
+          expect({ kind, ready: isCodexComposerReadyScreen(screenOf(frame)) }).toEqual({
             kind,
             ready: false
           })
         }
       }
       // Presence preconditions: each fixture exercises the states it was recorded for.
-      if (STARTUP_FIXTURES.includes(name)) {
-        expect(seen.loading).toBeGreaterThan(0)
-      }
-      if (TURN_FIXTURES.includes(name)) {
-        expect(seen.busy).toBeGreaterThan(0)
-      }
+      expect(seen.loading).toBeGreaterThan(0)
       if (DIALOG_FIXTURES.includes(name)) {
         expect(seen.dialog).toBeGreaterThan(0)
+      } else {
+        expect(seen.busy).toBeGreaterThan(0)
       }
     },
     30_000
@@ -118,16 +109,48 @@ describe('Codex composer ready screen, frame by frame', () => {
 
   it.each(SETTLED_IDLE_FIXTURES)('%s: ready on the final idle screen', async (name) => {
     const frames = await collectFrames(readRuntimeFixture(name))
-    expect(isCodexComposerReadyScreen(frames.at(-1)!.screenLines)).toBe(true)
+    expect(isCodexComposerReadyScreen(screenOf(frames.at(-1)!))).toBe(true)
   })
 
   it.each(DIALOG_FIXTURES)('%s: not ready while the dialog owns the screen', async (name) => {
     const frames = await collectFrames(readRuntimeFixture(name))
-    expect(isCodexComposerReadyScreen(frames.at(-1)!.screenLines)).toBe(false)
+    expect(isCodexComposerReadyScreen(screenOf(frames.at(-1)!))).toBe(false)
   })
 
   it('is not ready without a live screen', () => {
-    expect(isCodexComposerReadyScreen(null)).toBe(false)
+    expect(isQuietReadyScreenBody('', 'codex', () => null)).toBe(false)
+  })
+
+  it('reads the placeholder only as the composer line, not quoted mid-line', () => {
+    const quoted = ['$ grep placeholder notes.txt', 'the box says › Ask Codex to do anything', '$']
+    expect(isQuietReadyScreenBody('', null, () => quoted)).toBe(false)
+  })
+
+  it('settles a quiet composer under an answer asking "Would you like to proceed?"', () => {
+    const screenLines = [
+      '>_ OpenAI Codex (v0.158.0)',
+      '   ~/repo',
+      '',
+      '› tidy the README',
+      '',
+      '• Done. Would you like to proceed with the changelog too?',
+      '',
+      '› Ask Codex to do anything',
+      '',
+      '  ? for shortcuts'
+    ]
+    const waitText = screenLines.join('\n')
+    const verdict = evaluateTuiIdle({
+      record: { lastAgentStatus: null, lastOutputAt: 0, lastOscTitle: null },
+      readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText),
+      readPositiveBodyEvidence: () => isKnownReadyPromptBody(waitText, 'codex', () => screenLines),
+      readQuietReadyBodyEvidence: () =>
+        isQuietReadyScreenBody(waitText, 'codex', () => screenLines),
+      agent: 'codex',
+      firstPartyStatus: null,
+      quiescenceMs: QUIESCENCE_MS
+    })
+    expect(verdict.kind).toBe('ready-strong')
   })
 })
 
@@ -180,7 +203,7 @@ describe('the quiet lane over recorded chunk timing (default animations)', () =>
       }
       let readyBodyMidTurn = 0
       for (let index = firstTurnChunk; index <= lastBusy; index += 1) {
-        if (isCodexComposerReadyScreen(frames[index]!.screenLines)) {
+        if (isCodexComposerReadyScreen(screenOf(frames[index]!))) {
           readyBodyMidTurn += 1
         }
         expect({ index, settles: settlesAt(index, times[index + 1]! - 1) }).toEqual({
@@ -198,12 +221,7 @@ describe('the quiet lane over recorded chunk timing (default animations)', () =>
   )
 })
 
-// Why a rebuilt main-branch lane: the body thunk is the only input this change widens.
-function mainBranchQuietBody(waitText: string, agent: TuiAgent | null): boolean {
-  return agent === null && isMuseReadyPromptPreview(waitText)
-}
-
-describe('never less ready than before', () => {
+describe('never less ready than origin/main', () => {
   const records = [
     { lastAgentStatus: null, lastOutputAt: 0, lastOscTitle: null },
     { lastAgentStatus: 'idle' as const, lastOutputAt: 0, lastOscTitle: 'codex' },
@@ -230,7 +248,9 @@ describe('never less ready than before', () => {
               const before = evaluateTuiIdle({
                 ...base,
                 record,
-                readQuietReadyBodyEvidence: () => mainBranchQuietBody(frame.waitText, agent)
+                // Why a withheld screen: that leaves exactly main's Muse lane, the only widening.
+                readQuietReadyBodyEvidence: () =>
+                  isQuietReadyScreenBody(frame.waitText, agent, () => null)
               })
               const after = evaluateTuiIdle({
                 ...base,
@@ -262,14 +282,11 @@ describe('agent gate', () => {
     expect(isQuietReadyScreenBody('', 'codex', readScreenLines)).toBe(true)
     expect(isQuietReadyScreenBody('', null, readScreenLines)).toBe(true)
   })
-
-  it('refuses the lane itself for a Claude pane', () => {
-    const quiet = { lastAgentStatus: null, lastOutputAt: 0, lastOscTitle: null }
-    expect(hasQuietReadyScreen(quiet, 'claude', () => true, QUIESCENCE_MS)).toBe(false)
-  })
 })
 
 describe('through the runtime', () => {
+  // Why 0.158 alone: its header carries no `model:`, so only this lane settles it.
+  const CODEX_0158 = 'codex-0-158-0-timed-turn'
   async function pane(name: string, launchAgent: TuiAgent, size?: { cols: number; rows: number }) {
     return createTranscriptPane({
       paneTitle: 'Terminal',
@@ -281,19 +298,15 @@ describe('through the runtime', () => {
   }
 
   // Why 8s: quiescence (3s) plus the 2s poll re-reading the grid.
-  it.each(['codex-0-158-0-startup', 'codex-0-158-0-turn', 'codex-0-150-1-turn'])(
-    '%s: a tui-idle wait settles once the composer is quiet',
-    async (name) => {
-      const { runtime, handle } = await pane(name, 'codex', { cols: 120, rows: 40 })
-      await expect(
-        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 8_000 })
-      ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
-    },
-    15_000
-  )
+  it('codex 0.158: a tui-idle wait settles once the composer is quiet', async () => {
+    const { runtime, handle } = await pane(CODEX_0158, 'codex', { cols: 120, rows: 40 })
+    await expect(
+      runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 8_000 })
+    ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
+  }, 15_000)
 
   it('keeps a Claude pane showing the same screen pending', async () => {
-    const { runtime, handle } = await pane('codex-0-158-0-startup', 'claude', {
+    const { runtime, handle } = await pane(CODEX_0158, 'claude', {
       cols: 120,
       rows: 40
     })

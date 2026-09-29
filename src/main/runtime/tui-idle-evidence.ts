@@ -9,12 +9,12 @@ import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-tit
 import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { getTuiAgentRestSignal } from '../../shared/tui-agent-rest-signal'
-import { isQuietReadyScreenBody } from './quiet-ready-screen-body'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   detectExplicitIdleStatusFromTitle,
   detectTerminalWaitBlockedReason,
-  isKnownReadyPromptBody
+  isKnownReadyPromptBody,
+  isQuietReadyScreenBody
 } from './terminal-wait-detection'
 
 /**
@@ -29,9 +29,8 @@ import {
  *   0. BLOCKED — the tail shows a prompt waiting on the user.
  *   1. STRONG READY — the agent states it is ready: an explicit idle marker in its own
  *      title, or a known ready-prompt body.
- *   1b. QUIET READY SCREEN — Muse emits no title signal at all, and an idle Codex none
- *      its header can back up from 0.158 on, so their ready-screen body stands in for the
- *      strong evidence, believed only once the stream has gone quiet.
+ *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, so their
+ *      ready-screen body stands in for the strong evidence, believed only once quiet.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
  *      inferred.
@@ -229,15 +228,13 @@ export function hasQuietReadyScreen(
   if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent)) {
     return false
   }
-  if (!readBodyEvidence()) {
-    return false
-  }
   // Why: same rule as the tier-3 lane — without an output clock there is no
   // corroboration available, so hold out instead of settling.
-  if (record.lastOutputAt === null) {
+  if (record.lastOutputAt === null || Date.now() - record.lastOutputAt < quiescenceMs) {
     return false
   }
-  return Date.now() - record.lastOutputAt >= quiescenceMs
+  // Why last: a streaming pane never pays for the screen projection.
+  return readBodyEvidence()
 }
 
 /** The one place the tiers are combined; every settle site branches only on the verdict. */
@@ -276,6 +273,8 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       : { kind: 'pending', quietForeground: 'closed' }
   }
   // Why after the veto: a first-party working account outranks inferred body evidence.
+  // Why before the working title: Codex can leave a stale spinner title after a turn, and a
+  // live spinner emits output every ~100 ms, so a spinning pane is never quiet here.
   if (
     hasQuietReadyScreen(
       input.record,

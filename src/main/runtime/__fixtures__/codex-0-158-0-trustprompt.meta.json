@@ -10,6 +10,6 @@
   ],
   "cols": 120,
   "rows": 40,
-  "note": "codex-cli 0.158.0: launch in an untrusted folder; the trust dialog is answered, then idle. STA-8834.",
+  "note": "codex-cli 0.158.0: launch in an untrusted folder; the recording ends on the unanswered trust dialog. STA-8834.",
   "exitCode": 0
 }

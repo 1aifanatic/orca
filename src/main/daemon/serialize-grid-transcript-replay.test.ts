@@ -44,15 +44,11 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'codex-0157-no-daemon-effort-override': 16,
   'codex-0157-plain-ready': 18,
   // Same extra dim bit on the 0.157/0.158 header row (STA-8834 fixtures).
-  'codex-0-157-1-startup': 2,
   'codex-0-157-1-timed-turn': 2,
-  'codex-0-157-1-turn': 8,
   'codex-0-157-1-update-dialog': 16,
   'codex-0-158-0-approval': 12,
-  'codex-0-158-0-startup': 20,
   'codex-0-158-0-timed-turn': 20,
   'codex-0-158-0-trustprompt': 36,
-  'codex-0-158-0-turn': 4,
   'claude-dialog-trust-workspace-answered': 13,
   // DSH-TUI's whale intro paints whole rows of 24-bit background, and every one of this
   // transcript's divergences is the same shape: `visible-grid row=0`, a true-colour
