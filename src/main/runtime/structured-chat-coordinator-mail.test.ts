@@ -528,10 +528,11 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     providerFaults.startDelayMs = 0
     // A fixed window, not a poll: a re-point would start the agent again in it.
     await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(providerFaults.starts - before).toBe(1)
+    expect(await pointerSends()).toHaveLength(1)
     await edgesAnswered()
     expect(providerFaults.starts - before).toBe(1)
     expect(providerFaults.turnStarts).toBe(0)
-    expect(await pointerSends()).toHaveLength(1)
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
   })
 
