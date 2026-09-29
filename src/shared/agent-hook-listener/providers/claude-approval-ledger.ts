@@ -300,7 +300,7 @@ export function foldClaudeApprovalEvent(input: {
   // never re-delivering the completion that settles it. A wait raised from replay is therefore an
   // obligation nothing can discharge — the exact stranding this ledger exists to remove. A replay
   // is evidence a prompt was once raised, never that one is outstanding now; only a live hook can
-  // say that, so a genuine prompt is never swallowed.
+  // say that. The cost: a prompt raised while no listener was up shows no card.
   if (!input.raisesWait || input.isReplay) {
     return { ...carried, approvals: settled }
   }

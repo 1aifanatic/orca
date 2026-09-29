@@ -206,7 +206,7 @@ export function normalizeClaudeEvent(
   }
 
   // Why: subagent/teammate events carry `agent_id` (lead's don't); child tool activity keeps its row live but must not become the lead's state or overwrite its tool/prompt caches (a live card would vanish).
-  // Two exceptions take the full path below: waiting-inducing events (a child needs human attention on this pane) and the blocked child's own next tool event (approval granted — clear the wait as for the lead).
+  // Two exceptions take the full path below: waiting-inducing events (a child needs human attention on this pane) and the blocked child's event that settles its last outstanding prompt.
   const isWaitingInducing = reportedStateName === 'waiting'
   const subagentOriginId =
     !isWaitingInducing &&
@@ -237,7 +237,7 @@ export function normalizeClaudeEvent(
         workingChildEvidence: true
       })
     }
-    // Why: approval granted — update the tool snapshot (drop the pending card) as the lead's own next tool event would.
+    // Why: the approved call completed — update the tool snapshot (drop the pending card) as the lead's own completion would.
     // Restore the stashed lead state, not this child's 'working': the lead may already be done, and the done-gate never upgrades working back to done once the roster drains.
     const restored = setClaudeMainAgentTurnState(state, paneKey, {
       ...(previousLead?.stateBeforeWait ?? { state: 'working' as const }),
