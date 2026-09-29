@@ -23,8 +23,6 @@ vi.mock('react-native', () => ({
 vi.mock('react-native/Libraries/Utilities/codegenNativeComponent', () => ({
   default: (name: string) => name
 }))
-// Exercise the dependency's real span conversion without a native runtime.
-vi.mock('react-native-uitextview', () => import('react-native-uitextview/src/Text'))
 vi.mock('./MobileSelectableText', () => import('./MobileSelectableText.ios'))
 vi.mock('./pr-sidebar/MermaidDiagram', () => ({ MermaidDiagram: 'MermaidDiagram' }))
 
@@ -62,7 +60,7 @@ describe('iOS selectable text boundary', () => {
       })
     )
     expect(
-      nodes(tree, 'RNUITextViewChild')
+      nodes(tree, 'OrcaSelectableTextRun')
         .map((node) => node.props.text)
         .join('')
     ).toBe('same file\nsame file')
@@ -76,7 +74,7 @@ describe('iOS selectable text boundary', () => {
       )
     )
     expect(
-      nodes(tree, 'RNUITextViewChild')
+      nodes(tree, 'OrcaSelectableTextRun')
         .map((node) => node.props.text)
         .join('')
     ).toBe('same file\nchanged file')
@@ -85,7 +83,7 @@ describe('iOS selectable text boundary', () => {
         createElement(MobileMarkdown, { content: line, rangeSelectable: true, onOpenFile })
       )
     )
-    const spans = nodes(tree, 'RNUITextViewChild')
+    const spans = nodes(tree, 'OrcaSelectableTextRun')
     expect(spans.map((node) => node.props.text).join('')).toBe('same file')
     act(() => spans.find((node) => node.props.text === 'file')!.props.onPress())
     expect(onOpenFile).toHaveBeenCalledExactlyOnceWith('src/main.ts')
@@ -99,7 +97,7 @@ describe('iOS selectable text boundary', () => {
   ] as const)('preserves font weight %s', async (fontWeight, expected) => {
     const { MobileSelectableText: Text } = await import('./MobileSelectableText.ios')
     const tree = render(createElement(Text, { selectable: true, style: { fontWeight } }, 'Weight'))
-    expect(nodes(tree, 'RNUITextViewChild')[0]!.props.style.fontWeight).toBe(expected)
+    expect(nodes(tree, 'OrcaSelectableTextRun')[0]!.props.style.fontWeight).toBe(expected)
   })
 
   it('keeps fragments, arrays, newlines and nested styles in one native root', async () => {
@@ -114,9 +112,9 @@ describe('iOS selectable text boundary', () => {
         ' after'
       )
     )
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(1)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(1)
     expect(nodes(tree, 'Text')).toHaveLength(0)
-    const spans = nodes(tree, 'RNUITextViewChild')
+    const spans = nodes(tree, 'OrcaSelectableTextRun')
     expect(spans.map((node) => node.props.text).join('')).toBe('Before one\nboldnested after')
     expect(spans.find((node) => node.props.text === 'bold')?.props.style).toMatchObject({
       fontSize: 18,
@@ -138,7 +136,7 @@ describe('iOS selectable text boundary', () => {
         onOpenFile
       })
     )
-    const spans = nodes(tree, 'RNUITextViewChild')
+    const spans = nodes(tree, 'OrcaSelectableTextRun')
     expect(spans.map((node) => node.props.text).join('')).toBe(
       'Hello 😀 src/main.ts and code.\nNext line.'
     )
@@ -146,20 +144,20 @@ describe('iOS selectable text boundary', () => {
     expect(link.props.style.color).toBeDefined()
     act(() => link.props.onPress())
     expect(onOpenFile).toHaveBeenCalledExactlyOnceWith('src/main.ts')
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(1)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(1)
   })
 
   it('keeps ordinary button labels on React Native Text', async () => {
     const { MobileSelectableText: Text } = await import('./MobileSelectableText.ios')
     const tree = render(createElement(Text, null, 'Submit'))
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(0)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(0)
     expect(nodes(tree, 'Text')).toHaveLength(1)
   })
 
   it('uses native range selection only when Markdown opts in', async () => {
     const { MobileMarkdown } = await import('./MobileMarkdown')
     const tree = render(createElement(MobileMarkdown, { content: 'Transcript prose' }))
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(0)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(0)
     expect(
       nodes(tree, 'Text').find((node) => node.children.includes('Transcript prose'))?.props
         .selectable
@@ -169,7 +167,7 @@ describe('iOS selectable text boundary', () => {
         createElement(MobileMarkdown, { content: 'Transcript prose', rangeSelectable: true })
       )
     )
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(1)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(1)
   })
 
   it('keeps code-language labels on styled React Native Text', async () => {
@@ -182,7 +180,7 @@ describe('iOS selectable text boundary', () => {
     )
     const label = nodes(tree, 'Text').find((node) => node.children.join('') === 'ts')!
     expect(label.props.style.textTransform).toBe('uppercase')
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(1)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(1)
   })
 
   it('falls back for older clients without the native view', async () => {
@@ -191,7 +189,7 @@ describe('iOS selectable text boundary', () => {
     const tree = render(
       createElement(Text, { selectable: true }, 'Old client ', createElement(Text, null, 'inline'))
     )
-    expect(nodes(tree, 'RNUITextView')).toHaveLength(0)
+    expect(nodes(tree, 'OrcaSelectableText')).toHaveLength(0)
     expect(nodes(tree, 'Text')).toHaveLength(2)
     expect(nodes(tree, 'Text')[0]!.props.selectable).toBe(true)
   })

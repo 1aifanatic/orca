@@ -1,0 +1,241 @@
+#include "OrcaSelectableTextShadowNode.h"
+#include "OrcaSelectableTextRunShadowNode.h"
+#import "OrcaSelectableTextAttributedString.h"
+#import <UIKit/UIKit.h>
+#include <react/renderer/components/view/ViewShadowNode.h>
+#include <react/renderer/textlayoutmanager/TextMeasureCache.h>
+#include <react/utils/SimpleThreadSafeCache.h>
+#include <react/utils/hash_combine.h>
+
+#include <algorithm>
+#include <cmath>
+
+namespace facebook::react {
+
+namespace {
+
+// React Native's text measure cache, plus the paragraph layout its key can't express.
+struct OrcaSelectableTextMeasureKey {
+  AttributedString attributedString;
+  std::vector<OrcaSelectableTextParagraphStyleRange> paragraphStyleRanges;
+  int numberOfLines;
+  int ellipsizeMode;
+  LayoutConstraints layoutConstraints;
+};
+
+bool operator==(const OrcaSelectableTextMeasureKey &lhs, const OrcaSelectableTextMeasureKey &rhs)
+{
+  return areAttributedStringsEquivalentLayoutWise(lhs.attributedString, rhs.attributedString) &&
+      lhs.paragraphStyleRanges == rhs.paragraphStyleRanges && lhs.numberOfLines == rhs.numberOfLines &&
+      lhs.ellipsizeMode == rhs.ellipsizeMode && lhs.layoutConstraints == rhs.layoutConstraints;
+}
+
+} // namespace
+} // namespace facebook::react
+
+template <>
+struct std::hash<facebook::react::OrcaSelectableTextMeasureKey> {
+  size_t operator()(const facebook::react::OrcaSelectableTextMeasureKey &key) const
+  {
+    auto seed = facebook::react::attributedStringHashLayoutWise(key.attributedString);
+    for (const auto &range : key.paragraphStyleRanges) {
+      facebook::react::hash_combine(
+          seed, range.location, range.length, range.firstLineHeadIndent, range.headIndent, range.paragraphSpacing);
+    }
+    facebook::react::hash_combine(seed, key.numberOfLines, key.ellipsizeMode, key.layoutConstraints);
+    return seed;
+  }
+};
+
+namespace facebook::react {
+
+namespace {
+
+// Streaming re-renders every block of a reply; unchanged text must not be laid out again.
+SimpleThreadSafeCache<OrcaSelectableTextMeasureKey, Size, kSimpleThreadSafeCacheSizeCap> &measureCache()
+{
+  static SimpleThreadSafeCache<OrcaSelectableTextMeasureKey, Size, kSimpleThreadSafeCacheSizeCap> cache;
+  return cache;
+}
+
+// React Native's text measurer can't see paragraph indents, so measure with TextKit
+// configured exactly like the view's UITextView.
+Size measureWithTextKit(const OrcaSelectableTextMeasureKey &key)
+{
+  NSTextStorage *textStorage = [[NSTextStorage alloc]
+      initWithAttributedString:OrcaSelectableTextNSAttributedString(
+                                   key.attributedString, key.paragraphStyleRanges)];
+  NSLayoutManager *layoutManager = [[NSLayoutManager alloc] init];
+  layoutManager.usesFontLeading = NO;
+  const auto &constraints = key.layoutConstraints;
+  const CGFloat maximumWidth =
+      std::isfinite(constraints.maximumSize.width) ? constraints.maximumSize.width : CGFLOAT_MAX;
+  NSTextContainer *textContainer =
+      [[NSTextContainer alloc] initWithSize:CGSizeMake(maximumWidth, CGFLOAT_MAX)];
+  textContainer.lineFragmentPadding = 0;
+  textContainer.maximumNumberOfLines = key.numberOfLines;
+  const auto ellipsizeMode = static_cast<OrcaSelectableTextEllipsizeMode>(key.ellipsizeMode);
+  if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Head) {
+    textContainer.lineBreakMode = NSLineBreakByTruncatingHead;
+  } else if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Middle) {
+    textContainer.lineBreakMode = NSLineBreakByTruncatingMiddle;
+  } else if (ellipsizeMode == OrcaSelectableTextEllipsizeMode::Clip) {
+    textContainer.lineBreakMode = NSLineBreakByClipping;
+  } else {
+    textContainer.lineBreakMode = NSLineBreakByTruncatingTail;
+  }
+  [layoutManager addTextContainer:textContainer];
+  [textStorage addLayoutManager:layoutManager];
+  [layoutManager ensureLayoutForTextContainer:textContainer];
+  const CGRect usedRect = [layoutManager usedRectForTextContainer:textContainer];
+  return {
+      std::clamp(
+          static_cast<Float>(std::ceil(usedRect.size.width)),
+          constraints.minimumSize.width,
+          constraints.maximumSize.width),
+      std::clamp(
+          static_cast<Float>(std::ceil(usedRect.size.height)),
+          constraints.minimumSize.height,
+          constraints.maximumSize.height),
+  };
+}
+
+} // namespace
+
+OrcaSelectableTextShadowNode::OrcaSelectableTextShadowNode(
+   const ShadowNode& sourceShadowNode,
+   const ShadowNodeFragment& fragment
+) : ConcreteViewShadowNode(sourceShadowNode, fragment) {
+};
+
+Size OrcaSelectableTextShadowNode::measureContent(
+  const LayoutContext& layoutContext,
+  const LayoutConstraints& layoutConstraints) const {
+    const auto &baseProps = getConcreteProps();
+    auto baseTextAttributes = TextAttributes::defaultTextAttributes();
+    baseTextAttributes.backgroundColor = baseProps.backgroundColor;
+    baseTextAttributes.allowFontScaling = baseProps.allowFontScaling;
+    
+    Float fontSizeMultiplier = 1.0;
+    if (baseTextAttributes.allowFontScaling) {
+      fontSizeMultiplier = layoutContext.fontSizeMultiplier;
+    }
+    
+    auto baseAttributedString = AttributedString{};
+    auto paragraphStyleRanges = std::vector<OrcaSelectableTextParagraphStyleRange>{};
+    size_t utf16Offset = 0;
+    const auto &children = getChildren();
+    for (size_t i = 0; i < children.size(); i++) {
+      const auto child = children[i].get();
+      if (auto textViewChild = dynamic_cast<const OrcaSelectableTextRunShadowNode *>(child)) {
+        auto &props = textViewChild->getConcreteProps();
+        auto fragment = AttributedString::Fragment{};
+        auto textAttributes = TextAttributes::defaultTextAttributes();
+
+        textAttributes.allowFontScaling = baseProps.allowFontScaling;
+        textAttributes.backgroundColor = props.backgroundColor;
+        textAttributes.fontSize = props.fontSize * fontSizeMultiplier;
+        textAttributes.lineHeight = props.lineHeight * fontSizeMultiplier;
+        textAttributes.foregroundColor = props.color;
+        textAttributes.textShadowColor = props.shadowColor;
+        textAttributes.textShadowOffset = props.shadowOffset;
+        textAttributes.textShadowRadius = props.shadowRadius;
+        textAttributes.letterSpacing = props.letterSpacing;
+        textAttributes.textDecorationColor = props.textDecorationColor;
+        textAttributes.fontFamily = props.fontFamily;
+        
+        if (props.fontStyle == OrcaSelectableTextRunFontStyle::Italic) {
+          textAttributes.fontStyle = FontStyle::Italic;
+        } else {
+          textAttributes.fontStyle = FontStyle::Normal;
+        }
+        
+        if (props.fontWeight == OrcaSelectableTextRunFontWeight::Bold) {
+          textAttributes.fontWeight = FontWeight::Bold;
+        } else if (props.fontWeight == OrcaSelectableTextRunFontWeight::UltraLight) {
+          textAttributes.fontWeight = FontWeight::UltraLight;
+        } else if (props.fontWeight == OrcaSelectableTextRunFontWeight::Light) {
+          textAttributes.fontWeight = FontWeight::Light;
+        } else if (props.fontWeight == OrcaSelectableTextRunFontWeight::Medium) {
+          textAttributes.fontWeight = FontWeight::Medium;
+        } else if (props.fontWeight == OrcaSelectableTextRunFontWeight::Semibold) {
+          textAttributes.fontWeight = FontWeight::Semibold;
+        } else if (props.fontWeight == OrcaSelectableTextRunFontWeight::Heavy) {
+          textAttributes.fontWeight = FontWeight::Heavy;
+        } else {
+          textAttributes.fontWeight = FontWeight::Regular;
+        }
+                
+        if (props.textDecorationLine == OrcaSelectableTextRunTextDecorationLine::LineThrough) {
+          textAttributes.textDecorationLineType = TextDecorationLineType::Strikethrough;
+        } else if (props.textDecorationLine == OrcaSelectableTextRunTextDecorationLine::Underline) {
+          textAttributes.textDecorationLineType = TextDecorationLineType::Underline;
+        } else {
+          textAttributes.textDecorationLineType = TextDecorationLineType::None;
+        }
+        
+        if (props.textDecorationStyle == OrcaSelectableTextRunTextDecorationStyle::Solid) {
+          textAttributes.textDecorationStyle = TextDecorationStyle::Solid;
+        } else if (props.textDecorationStyle == OrcaSelectableTextRunTextDecorationStyle::Dotted) {
+          textAttributes.textDecorationStyle = TextDecorationStyle::Dotted;
+        } else if (props.textDecorationStyle == OrcaSelectableTextRunTextDecorationStyle::Dashed) {
+          textAttributes.textDecorationStyle = TextDecorationStyle::Dashed;
+        } else if (props.textDecorationStyle == OrcaSelectableTextRunTextDecorationStyle::Double) {
+          textAttributes.textDecorationStyle = TextDecorationStyle::Double;
+        }
+        
+        if (props.textAlign == OrcaSelectableTextRunTextAlign::Left) {
+          textAttributes.alignment = TextAlignment::Left;
+        } else if (props.textAlign == OrcaSelectableTextRunTextAlign::Right) {
+          textAttributes.alignment = TextAlignment::Right;
+        } else if (props.textAlign == OrcaSelectableTextRunTextAlign::Center) {
+          textAttributes.alignment = TextAlignment::Center;
+        } else if (props.textAlign == OrcaSelectableTextRunTextAlign::Justify) {
+          textAttributes.alignment = TextAlignment::Justified;
+        } else if (props.textAlign == OrcaSelectableTextRunTextAlign::Auto) {
+          textAttributes.alignment = TextAlignment::Natural;
+        }
+        
+        textAttributes.backgroundColor = props.backgroundColor;
+
+        fragment.string = props.text;
+        fragment.textAttributes = textAttributes;
+
+        // Ranges are UTF-16 offsets into the NSString that measurement and drawing build.
+        const size_t fragmentLength = [NSString stringWithUTF8String:props.text.c_str()].length;
+        if (props.paragraphHeadIndent != 0 || props.paragraphFirstLineHeadIndent != 0 ||
+            props.paragraphSpacing != 0) {
+          paragraphStyleRanges.push_back(OrcaSelectableTextParagraphStyleRange{
+              utf16Offset,
+              fragmentLength,
+              props.paragraphFirstLineHeadIndent,
+              props.paragraphHeadIndent,
+              props.paragraphSpacing,
+          });
+        }
+        utf16Offset += fragmentLength;
+        baseAttributedString.appendFragment(std::move(fragment));
+      }
+    }
+    
+    _attributedString = baseAttributedString;
+    _paragraphStyleRanges = paragraphStyleRanges;
+
+    const OrcaSelectableTextMeasureKey key{
+        baseAttributedString,
+        paragraphStyleRanges,
+        baseProps.numberOfLines,
+        static_cast<int>(baseProps.ellipsizeMode),
+        layoutConstraints,
+    };
+    return measureCache().get(key, [&]() -> Size { return measureWithTextKit(key); });
+}
+
+void OrcaSelectableTextShadowNode::layout(LayoutContext layoutContext) {
+  ensureUnsealed();
+  setStateData(OrcaSelectableTextStateReal{
+    _attributedString,
+    _paragraphStyleRanges,
+  });
+}
+}
