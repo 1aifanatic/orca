@@ -22082,11 +22082,13 @@
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "claude",
-            "operationId": "1767225600000-00000000000040008000000000000001",
+            "operationId": "1767225600000-00000000000040008000000000000004",
             "target": {
               "kind": "existing",
               "worktree": "id:wt-1"
-            }
+            },
+            "paneKey": "00000000-0000-4000-8000-000000000001:00000000-0000-4000-8000-000000000002",
+            "sessionId": "claude_00000000_0000_4000_8000_000000000003"
           },
           "reply": {
             "ok": true,
@@ -22147,11 +22149,13 @@
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "claude",
-            "operationId": "1767225600000-00000000000040008000000000000001",
+            "operationId": "1767225600000-00000000000040008000000000000004",
             "target": {
               "kind": "existing",
               "worktree": "id:wt-1"
-            }
+            },
+            "paneKey": "00000000-0000-4000-8000-000000000001:00000000-0000-4000-8000-000000000002",
+            "sessionId": "claude_00000000_0000_4000_8000_000000000003"
           },
           "reply": {
             "ok": true,
@@ -22215,7 +22219,7 @@
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "codex",
-            "operationId": "1767225600000-00000000000040008000000000000001",
+            "operationId": "1767225600000-00000000000040008000000000000004",
             "target": {
               "kind": "existing",
               "worktree": "id:wt-1"
@@ -22224,7 +22228,9 @@
               "text": "review these notes",
               "delivery": "submit"
             },
-            "launchSource": "diff_notes_send"
+            "launchSource": "diff_notes_send",
+            "paneKey": "00000000-0000-4000-8000-000000000001:00000000-0000-4000-8000-000000000002",
+            "sessionId": "codex_00000000_0000_4000_8000_000000000003"
           },
           "reply": {
             "ok": true,
@@ -22291,7 +22297,7 @@
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "codex",
-            "operationId": "1767225600000-00000000000040008000000000000001",
+            "operationId": "1767225600000-00000000000040008000000000000004",
             "target": {
               "kind": "existing",
               "worktree": "id:wt-1"
@@ -22300,7 +22306,9 @@
               "text": "review these notes",
               "delivery": "submit"
             },
-            "launchSource": "diff_notes_send"
+            "launchSource": "diff_notes_send",
+            "paneKey": "00000000-0000-4000-8000-000000000001:00000000-0000-4000-8000-000000000002",
+            "sessionId": "codex_00000000_0000_4000_8000_000000000003"
           },
           "reply": {
             "ok": true,
