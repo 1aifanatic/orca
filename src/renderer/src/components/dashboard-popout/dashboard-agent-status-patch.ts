@@ -1,3 +1,4 @@
+import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status-types'
 import {
   dashboardCardDisplayState,
@@ -52,11 +53,13 @@ export function patchDashboardSnapshotFromAgentStatus(
   const dotState = event.state
   const workingMode =
     event.state === 'working' && event.workingMode === 'monitoring' ? event.workingMode : undefined
+  const verdictMark = agentVerdictDisplayMark(event) ?? undefined
   const bucket = dashboardBucketForDotState(
-    dashboardCardDisplayState({ dotState, workingMode, unseen })
+    dashboardCardDisplayState({ dotState, workingMode, unseen, verdictMark })
   )
+  const { verdictMark: _previousVerdictMark, ...cardWithoutVerdict } = card
   const nextCard: DashboardCard = {
-    ...card,
+    ...cardWithoutVerdict,
     ...(event.agentType ? { agentType: event.agentType } : {}),
     ...(event.prompt ? { task: event.prompt, lastUserMessage: event.prompt } : {}),
     ...(event.lastAssistantMessage !== undefined
@@ -68,6 +71,7 @@ export function patchDashboardSnapshotFromAgentStatus(
     bucket,
     dotState,
     workingMode,
+    ...(verdictMark ? { verdictMark } : {}),
     unseen,
     stateChangedAt: stateChanged ? event.stateStartedAt : card.stateChangedAt,
     statusUpdatedAt: event.receivedAt,

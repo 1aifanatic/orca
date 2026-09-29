@@ -1,8 +1,10 @@
 import type { DashboardAgentRow } from './useDashboardData'
+import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
 import {
   dashboardCardDisplayState,
   type DashboardBucket,
-  type DashboardCardDotState
+  type DashboardCardDotState,
+  type DashboardCardVerdictMark
 } from '../../../../shared/dashboard-snapshot'
 import { dashboardBucketForDotState } from './dashboard-card-bucket'
 import type { AgentRowState } from '@/lib/agent-row-decay-state'
@@ -23,6 +25,7 @@ export type DashboardRowBucketProjection = {
   isTitleDerived: boolean
   dotState: DashboardCardDotState
   workingMode: DashboardAgentRow['entry']['workingMode']
+  verdictMark: DashboardCardVerdictMark | undefined
   unseen: boolean
   bucket: DashboardBucket
 }
@@ -38,11 +41,12 @@ export function dashboardRowBucketProjection(
     row.state === 'working' && row.entry.workingMode === 'monitoring'
       ? row.entry.workingMode
       : undefined
+  const verdictMark = agentVerdictDisplayMark(row.entry) ?? undefined
   const unseen =
     !isTitleDerived && (acknowledgedAgentsByPaneKey?.[row.paneKey] ?? 0) < row.entry.stateStartedAt
   const bucket = dashboardBucketForDotState(
-    dashboardCardDisplayState({ dotState, workingMode, unseen })
+    dashboardCardDisplayState({ dotState, workingMode, unseen, verdictMark })
   )
 
-  return { isTitleDerived, dotState, workingMode, unseen, bucket }
+  return { isTitleDerived, dotState, workingMode, verdictMark, unseen, bucket }
 }

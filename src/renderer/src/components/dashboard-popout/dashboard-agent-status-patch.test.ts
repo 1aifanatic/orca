@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status-types'
-import type { DashboardCard, DashboardSnapshot } from '../../../../shared/dashboard-snapshot'
+import {
+  dashboardCardDisplayState,
+  type DashboardCard,
+  type DashboardSnapshot
+} from '../../../../shared/dashboard-snapshot'
 import { patchDashboardSnapshotFromAgentStatus } from './dashboard-agent-status-patch'
 
 function card(overrides: Partial<DashboardCard> = {}): DashboardCard {
@@ -137,5 +141,52 @@ describe('patchDashboardSnapshotFromAgentStatus', () => {
     )
 
     expect(result).toEqual({ matched: false, snapshot: original })
+  })
+
+  it('marks a failed main-agent turn under working subagents and drops it on the next turn', () => {
+    const mainAgent = { state: 'done' as const, outcome: 'failure' as const, stateStartedAt: 250 }
+    const result = patchDashboardSnapshotFromAgentStatus(
+      snapshot([card({ unseen: false })]),
+      event({ state: 'working', interactivePrompt: undefined, mainAgent, stateStartedAt: 100 })
+    )
+    expect(result.snapshot.cards[0]).toMatchObject({
+      bucket: 'done',
+      dotState: 'working',
+      verdictMark: 'failed'
+    })
+    expect(dashboardCardDisplayState(result.snapshot.cards[0]!)).toBe('failed')
+
+    const next = patchDashboardSnapshotFromAgentStatus(
+      result.snapshot,
+      event({
+        state: 'working',
+        receivedAt: 400,
+        stateStartedAt: 350,
+        interactivePrompt: undefined,
+        mainAgent: { state: 'working', stateStartedAt: 350 }
+      })
+    )
+    expect(next.snapshot.cards[0]).not.toHaveProperty('verdictMark')
+    expect(next.snapshot.cards[0]?.bucket).toBe('working')
+  })
+
+  it('keeps a user stop reading interrupted once the card is seen', () => {
+    const result = patchDashboardSnapshotFromAgentStatus(
+      snapshot([card({ unseen: false })]),
+      event({
+        state: 'done',
+        interactivePrompt: undefined,
+        mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 250 },
+        stateStartedAt: 100
+      })
+    )
+    expect(result.snapshot.cards[0]).toMatchObject({ bucket: 'done', verdictMark: 'interrupted' })
+    expect(dashboardCardDisplayState(result.snapshot.cards[0]!)).toBe('interrupted')
+  })
+
+  it('outranks a waiting row with the failed main agent, as the agent row does', () => {
+    expect(
+      dashboardCardDisplayState({ dotState: 'waiting', unseen: false, verdictMark: 'failed' })
+    ).toBe('failed')
   })
 })
