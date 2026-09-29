@@ -1,6 +1,6 @@
-// Which turn each transcript row belongs to, and where each turn draws its bar. Shared because
-// desktop and mobile both group rows and place bars from these keys, and a row grouped differently
-// on each surface is the same bug twice.
+// Which turn each transcript row belongs to, where each turn draws its bar, and the order the rows
+// draw in. Shared because desktop and mobile both group rows and place bars from these keys, and a
+// row grouped differently on each surface is the same bug twice.
 
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
@@ -91,4 +91,65 @@ export function nativeChatTurnBarRows(
     }
   })
   return bars
+}
+
+/**
+ * Row indexes in the order the transcript draws them, or null when that is journal order. A
+ * message is written when it is sent, but a provider that queues it behind the running turn opens
+ * its turn only after that turn ends: the rows the earlier turn wrote meanwhile are still that
+ * turn's. So a message that opened a turn draws after them, just before its own turn's rows.
+ */
+export function nativeChatTurnDrawOrder(
+  messages: readonly NativeChatTurnRow[],
+  turnKeys: readonly (string | undefined)[],
+  openers: ReadonlySet<string>
+): number[] | null {
+  const opensTurn = (index: number): boolean =>
+    messages[index]?.role === 'user' &&
+    turnKeys[index] === messages[index].id &&
+    openers.has(messages[index].id)
+  const firstRow = new Map<string, number>()
+  turnKeys.forEach((turnKey, index) => {
+    if (turnKey !== undefined && !firstRow.has(turnKey)) {
+      firstRow.set(turnKey, index)
+    }
+  })
+  const movedAfter = new Map<number, number[]>()
+  const moved = new Set<number>()
+  for (const [index, message] of messages.entries()) {
+    if (!opensTurn(index)) {
+      continue
+    }
+    let after = -1
+    for (let row = index + 1; row < messages.length; row += 1) {
+      const turnKey = turnKeys[row]
+      if (turnKey === undefined || opensTurn(row)) {
+        continue
+      }
+      // Its own turn's rows, or a later turn's, end the earlier turns' rows it waited behind.
+      if (turnKey === message.id || (firstRow.get(turnKey) ?? row) > index) {
+        break
+      }
+      after = row
+    }
+    if (after !== -1) {
+      moved.add(index)
+      movedAfter.set(after, [...(movedAfter.get(after) ?? []), index])
+    }
+  }
+  if (moved.size === 0) {
+    return null
+  }
+  return messages.flatMap((_, index) => [
+    ...(moved.has(index) ? [] : [index]),
+    ...(movedAfter.get(index) ?? [])
+  ])
+}
+
+/** `rows` in the transcript's draw order. */
+export function nativeChatRowsInDrawOrder<T>(
+  rows: readonly T[],
+  drawOrder: readonly number[] | null
+): readonly T[] {
+  return drawOrder === null ? rows : drawOrder.map((index) => rows[index]!)
 }

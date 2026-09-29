@@ -6,7 +6,10 @@ import {
   nativeChatTurnMembership,
   type NativeChatTurnJournal
 } from '../../../src/shared/native-chat-turn-membership'
-import { nativeChatTurnBarRows } from '../../../src/shared/native-chat-turn-grouping'
+import {
+  nativeChatRowsInDrawOrder,
+  nativeChatTurnBarRows
+} from '../../../src/shared/native-chat-turn-grouping'
 import {
   useMobileNativeChatTurnStatus,
   type NativeChatTurnStatus
@@ -60,34 +63,36 @@ export function useMobileNativeChatTurnDisclosure({
   activeActivityText: string | null
   onToggleTurn: (turnKey: string) => void
   resolveRow: (index: number, message: NativeChatMessage) => MobileNativeChatTurnRow
-  /** The list's rows: `messages` less those waiting behind the live turn. */
+  /** The list's rows, in the order they draw, less those waiting behind the live turn. */
   listMessages: readonly NativeChatMessage[]
   /** Rows waiting behind the live turn, drawn after its live status. */
   waitingRows: readonly { item: NativeChatMessage; index: number }[]
 } {
-  // Resolve each row's turn, and which turn is live, once: from the turn record when the host
-  // states scopes, else by journal order.
-  const { turnKeys, liveTurnKey } = useMemo(
-    () =>
-      enabled
-        ? nativeChatTurnMembership(messages, turnJournal)
-        : { turnKeys: NO_TURN_KEYS, liveTurnKey: undefined },
-    [enabled, messages, turnJournal]
-  )
-  // A message waiting behind the live turn draws after that turn's live status, not in the list.
-  const waiting = useMemo(() => {
-    const ids = enabled
-      ? nativeChatMessagesWaitingBehindLiveTurn(messages, turnJournal?.items)
-      : null
-    if (!ids?.size) {
-      return { listMessages: messages, waitingRows: [], indexById: null }
+  // Resolve each row's turn, which turn is live, and the order the rows draw in, once: from the
+  // turn record when the host states scopes, else by journal order.
+  const { rows, turnKeys, liveTurnKey } = useMemo(() => {
+    if (!enabled) {
+      return { rows: messages, turnKeys: NO_TURN_KEYS, liveTurnKey: undefined }
     }
+    const membership = nativeChatTurnMembership(messages, turnJournal)
     return {
-      listMessages: messages.filter((message) => !ids.has(message.id)),
-      waitingRows: messages.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
-      indexById: new Map(messages.map((message, index) => [message.id, index]))
+      rows: nativeChatRowsInDrawOrder(messages, membership.drawOrder),
+      turnKeys: nativeChatRowsInDrawOrder(membership.turnKeys, membership.drawOrder),
+      liveTurnKey: membership.liveTurnKey
     }
   }, [enabled, messages, turnJournal])
+  // A message waiting behind the live turn draws after that turn's live status, not in the list.
+  const waiting = useMemo(() => {
+    const ids = enabled ? nativeChatMessagesWaitingBehindLiveTurn(rows, turnJournal?.items) : null
+    if (!ids?.size) {
+      return { listMessages: rows, waitingRows: [], indexById: null }
+    }
+    return {
+      listMessages: rows.filter((message) => !ids.has(message.id)),
+      waitingRows: rows.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
+      indexById: new Map(rows.map((message, index) => [message.id, index]))
+    }
+  }, [enabled, rows, turnJournal])
   const turnStatuses = useMobileNativeChatTurnStatus({
     turnKeys,
     liveTurnKey,
@@ -122,7 +127,7 @@ export function useMobileNativeChatTurnDisclosure({
     },
     [scopeKey]
   )
-  const bars = useMemo(() => nativeChatTurnBarRows(messages, turnKeys), [messages, turnKeys])
+  const bars = useMemo(() => nativeChatTurnBarRows(rows, turnKeys), [rows, turnKeys])
 
   const { active, activeTurnKey, completedByTurn } = turnStatuses
   const activeActivityText = enabled && isWorking ? (activityText ?? null) : null

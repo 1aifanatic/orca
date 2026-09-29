@@ -17,7 +17,11 @@ import type {
   AgentJournalTurnLifecycle
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
-import { nativeChatJournalOrderTurnKeys, nativeChatRowTurnKeys } from './native-chat-turn-grouping'
+import {
+  nativeChatJournalOrderTurnKeys,
+  nativeChatRowTurnKeys,
+  nativeChatTurnDrawOrder
+} from './native-chat-turn-grouping'
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
 import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
@@ -114,6 +118,9 @@ export type NativeChatTurnMembership = {
    *  root turn's anchor, else the newest user row's turn (a send whose turn has not opened yet). A
    *  turn the provider opened on its own is live without one. */
   liveTurnKey: string | undefined
+  /** Row indexes in the order the transcript draws them (`nativeChatTurnDrawOrder`), or null when
+   *  that is the order given. */
+  drawOrder: readonly number[] | null
 }
 
 /**
@@ -127,7 +134,7 @@ export function nativeChatTurnMembership(
 ): NativeChatTurnMembership {
   if (!journal) {
     const turnKeys = nativeChatRowTurnKeys(messages)
-    return { turnKeys, liveTurnKey: newestUserTurnKey(messages, turnKeys) }
+    return { turnKeys, liveTurnKey: newestUserTurnKey(messages, turnKeys), drawOrder: null }
   }
   const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions)
   const running = liveStructuredAgentSessionTurnScope(journal.items)
@@ -140,7 +147,8 @@ export function nativeChatTurnMembership(
     const runningNamed = running.kind === 'turn' ? recordKeys.get(running.turnItemId) : null
     return {
       turnKeys,
-      liveTurnKey: runningNamed ?? newestUserTurnKey(messages, turnKeys)
+      liveTurnKey: runningNamed ?? newestUserTurnKey(messages, turnKeys),
+      drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoringUserItems(recordKeys))
     }
   }
   const runningKey = running.kind === 'turn' ? anchors.get(running.turnItemId) : undefined
@@ -157,7 +165,8 @@ export function nativeChatTurnMembership(
   })
   return {
     turnKeys,
-    liveTurnKey: runningKey ?? newestUserTurnKey(messages, turnKeys)
+    liveTurnKey: runningKey ?? newestUserTurnKey(messages, turnKeys),
+    drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoring)
   }
 }
 
@@ -178,6 +187,10 @@ function namedRecordKeys(
     }
   }
   return keys
+}
+
+function anchoringUserItems(recordKeys: ReadonlyMap<string, string | null>): ReadonlySet<string> {
+  return new Set([...recordKeys.values()].filter((key) => key !== null))
 }
 
 /**

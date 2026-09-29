@@ -573,6 +573,74 @@ describe('useMobileNativeChatTurnDisclosure', () => {
     }
   )
 
+  // Claude runs A; B is sent mid-turn and Claude answers it after A. The journal writes B when it
+  // is sent, so A's remaining tool run and its answer follow B there, and B's turn opens after them.
+  it.each(hosts)(
+    "draws A's remaining rows under A's bar, then B's bubble and turn, on a host that %s",
+    (_host, statesScope) => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(30_000)
+        const message = (id: string, role: 'user' | 'assistant'): NativeChatMessage => ({
+          id,
+          role,
+          blocks: [{ type: 'text', text: id }],
+          timestamp: null,
+          source: 'transcript'
+        })
+        const messages = [
+          message('A', 'user'),
+          message('a-tool-1', 'assistant'),
+          message('B', 'user'),
+          message('a-tool-2', 'assistant'),
+          message('FIRST DONE', 'assistant'),
+          message('b-answer', 'assistant')
+        ]
+        const turnJournal = journalOf(
+          [
+            ['A', said('user'), null],
+            ['tA', record('tA', 'completed', 'A'), null],
+            ['a-tool-1', said('assistant'), 'tA'],
+            // Handed over while A runs, so the host scopes it to A's turn until its own opens.
+            ['B', said('user'), 'tA'],
+            ['a-tool-2', said('assistant'), 'tA'],
+            ['FIRST DONE', said('assistant'), 'tA'],
+            ['tB', record('tB', 'running', 'B'), null],
+            ['b-answer', said('assistant'), 'tB']
+          ],
+          statesScope
+        )
+        act(() => {
+          renderer = create(
+            createElement(Harness, {
+              messages,
+              enabled: true,
+              workingStartedAt: 29_000,
+              settledTurns: new Map([['A', { startedAt: 5_000, workedSeconds: 17 }]]),
+              turnJournal
+            })
+          )
+        })
+        const disclosure = renderer!.root.findByType('result').props.disclosure
+        const list: NativeChatMessage[] = disclosure.listMessages
+        const drawn = list.map((entry, index) => {
+          const row = disclosure.resolveRow(index, entry)
+          return [entry.id, row.turnStatus?.workedSeconds, row.activeTurnIsWorking]
+        })
+        expect(drawn).toEqual([
+          ['A', 17, false],
+          ['a-tool-1', undefined, false],
+          ['a-tool-2', undefined, false],
+          ['FIRST DONE', undefined, false],
+          ['B', null, true],
+          ['b-answer', undefined, true]
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it('keeps at most the latest 128 turns expanded', () => {
     vi.useFakeTimers()
     try {

@@ -163,18 +163,16 @@ export function NativeChatMessageList({
   const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
-  // Each row's turn, and which turn is live, resolved once.
-  const { turnKeys, liveTurnKey } = useNativeChatTurnMembership(
-    messages,
-    journalItems,
-    journalSubmissions
-  )
+  // Each row's turn, which turn is live, and the order the rows draw in, resolved once.
+  const {
+    messages: rows,
+    turnKeys,
+    liveTurnKey
+  } = useNativeChatTurnMembership(messages, journalItems, journalSubmissions)
   const turnDiffs = useMemo(
     () =>
-      journalItems
-        ? nativeChatTurnDiffs(messages, turnKeys)
-        : new Map<string, NativeChatTurnDiff>(),
-    [journalItems, messages, turnKeys]
+      journalItems ? nativeChatTurnDiffs(rows, turnKeys) : new Map<string, NativeChatTurnDiff>(),
+    [journalItems, rows, turnKeys]
   )
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
@@ -202,7 +200,7 @@ export function NativeChatMessageList({
   const allSlots = useMemo(
     () =>
       buildNativeChatTranscriptSlots({
-        messages,
+        messages: rows,
         turnKeys,
         liveTurnKey,
         receipts,
@@ -218,8 +216,8 @@ export function NativeChatMessageList({
       expandedTurnIds,
       isWorking,
       lifecycleWorking,
-      messages,
       receipts,
+      rows,
       subagentLabels,
       turnDiffs,
       turnKeys,
