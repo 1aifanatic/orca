@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /** Relay request that converges one worktree's entry outside a spawn (worktree removal). */
 export const CLAUDE_TRUST_CONVERGE_METHOD = 'claudeTrust.converge'
 
@@ -11,21 +13,22 @@ export type ClaudeFolderTrustSpawnRequest = {
   trusted: boolean
 }
 
+const claudeFolderTrustSpawnRequestSchema = z.object({
+  worktreeRoot: z.string().min(1),
+  mainCheckoutPath: z.string().nullable().optional(),
+  trusted: z.boolean()
+})
+
 export function parseClaudeFolderTrustSpawnRequest(
   value: unknown
 ): ClaudeFolderTrustSpawnRequest | null {
-  if (typeof value !== 'object' || value === null) {
-    return null
-  }
-  const worktreeRoot = Reflect.get(value, 'worktreeRoot')
-  const mainCheckoutPath = Reflect.get(value, 'mainCheckoutPath')
-  const trusted = Reflect.get(value, 'trusted')
-  if (typeof worktreeRoot !== 'string' || !worktreeRoot || typeof trusted !== 'boolean') {
+  const parsed = claudeFolderTrustSpawnRequestSchema.safeParse(value)
+  if (!parsed.success) {
     return null
   }
   return {
-    worktreeRoot,
-    mainCheckoutPath: typeof mainCheckoutPath === 'string' ? mainCheckoutPath : null,
-    trusted
+    worktreeRoot: parsed.data.worktreeRoot,
+    mainCheckoutPath: parsed.data.mainCheckoutPath ?? null,
+    trusted: parsed.data.trusted
   }
 }
