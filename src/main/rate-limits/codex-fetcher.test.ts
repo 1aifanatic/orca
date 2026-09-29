@@ -108,17 +108,20 @@ function mockBackendUsage(): void {
   readFileMock.mockResolvedValue(
     JSON.stringify({ tokens: { access_token: 'access-token', account_id: 'account-id' } })
   )
-  vi.mocked(fetch).mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      plan_type: 'plus',
-      rate_limit: {
-        primary_window: { used_percent: 7, limit_window_seconds: 5 * 60 * 60 },
-        secondary_window: { used_percent: 12, limit_window_seconds: 7 * 24 * 60 * 60 }
-      },
-      rate_limit_reset_credits: { available_count: 0, credits: [] }
-    })
-  } as Response)
+  // A Response body reads once; usage and reset credits each fetch.
+  vi.mocked(fetch).mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          plan_type: 'plus',
+          rate_limit: {
+            primary_window: { used_percent: 7, limit_window_seconds: 5 * 60 * 60 },
+            secondary_window: { used_percent: 12, limit_window_seconds: 7 * 24 * 60 * 60 }
+          },
+          rate_limit_reset_credits: { available_count: 0, credits: [] }
+        })
+      )
+  )
 }
 
 describe('fetchCodexRateLimits', () => {
@@ -288,7 +291,7 @@ describe('fetchCodexRateLimits', () => {
     const rpcChild = makeRpcChild()
     childSpawnMock.mockReturnValue(rpcChild)
     mockBackendUsage()
-    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 401 } as Response)
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 401 }))
 
     const resultPromise = fetchCodexRateLimits()
     await vi.advanceTimersByTimeAsync(0)
@@ -748,7 +751,7 @@ describe('fetchCodexRateLimits', () => {
     readFileMock.mockResolvedValue(
       JSON.stringify({ tokens: { access_token: 'access-token', account_id: 'account-id' } })
     )
-    vi.mocked(fetch).mockResolvedValue({ ok: false, body: null } as Response)
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 503 }))
 
     try {
       const resultPromise = fetchCodexRateLimits({
