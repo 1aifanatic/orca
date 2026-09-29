@@ -23,7 +23,7 @@ const POSIX_GOLDEN =
   ': orca-agent-hook-form=1; if [ -n "${ORCA_PANE_KEY-}" ] && [ -n "${ORCA_AGENT_HOOK_ROOT-}" ] && [ -f "${ORCA_AGENT_HOOK_ROOT-}/agent-hooks/codex-hook.sh" ]; then /bin/sh "${ORCA_AGENT_HOOK_ROOT-}/agent-hooks/codex-hook.sh" || :; elif [ -z "${ORCA_AGENT_HOOK_ROOT-}" ] && [ -n "${ORCA_PANE_KEY-}" ] && [ -n "${ORCA_AGENT_HOOK_PORT-}" ] && [ -f "${HOME-}/.orca/agent-hooks/codex-hook.sh" ]; then /bin/sh "${HOME-}/.orca/agent-hooks/codex-hook.sh" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi'
 const WINDOWS_BARE_GOLDEN = 'C:/Users/alice/.orca/agent-hooks/codex-hook.cmd'
 const WINDOWS_CMD_GOLDEN =
-  'C:/Windows/System32/cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
+  'C:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
 // Why kept: local builds before the absolute cmd.exe wrote it; the managed installer and app start convert it.
 const WINDOWS_BARE_CMD_SPELLING =
   'cmd --% /d /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
@@ -58,7 +58,7 @@ describe('frozen Codex hook command', () => {
     (character) => {
       const name = `a${character}b`
       expect(windowsCommandFor(name)).toBe(
-        `C:/Windows/System32/cmd.exe --% /d /v:off /c @"C:/Users/${name}/.orca/agent-hooks/codex-hook.cmd"`
+        `C:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"C:/Users/${name}/.orca/agent-hooks/codex-hook.cmd"`
       )
     }
   )
@@ -81,10 +81,10 @@ describe('frozen Codex hook command', () => {
 
   it('names the system cmd.exe from %SystemRoot%, on any drive, with forward slashes', () => {
     expect(windowsCommandFor('First Last', { SystemRoot: 'D:\\Windows' })).toBe(
-      'D:/Windows/System32/cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
+      'D:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
     )
     expect(windowsCommandFor('First Last', { SystemRoot: 'C:\\WINDOWS\\' })).toBe(
-      WINDOWS_CMD_GOLDEN.replace('C:/Windows/', 'C:/WINDOWS/')
+      WINDOWS_CMD_GOLDEN.replace('C:\\Windows\\', 'C:\\WINDOWS\\')
     )
     // Why: a safe profile path never names cmd.exe, whatever the Windows directory.
     expect(windowsCommandFor('alice', { SystemRoot: 'D:\\Windows' })).toBe(WINDOWS_BARE_GOLDEN)
@@ -92,7 +92,7 @@ describe('frozen Codex hook command', () => {
 
   it('falls back to the Windows directory holding %ComSpec% when %SystemRoot% is unset', () => {
     expect(windowsCommandFor('First Last', { ComSpec: 'E:\\WinNT\\system32\\cmd.exe' })).toBe(
-      'E:/WinNT/System32/cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
+      'E:\\WinNT\\System32\\cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
     )
     // Why: both sources name the same directory on a machine, so a process missing one writes the same bytes.
     expect(windowsCommandFor('First Last', { ComSpec: 'C:\\Windows\\system32\\cmd.exe' })).toBe(
@@ -109,7 +109,7 @@ describe('frozen Codex hook command', () => {
     ['another shell in %ComSpec%', { ComSpec: 'C:\\Tools\\tcc.exe' }],
     ['a spaced %ComSpec%', { ComSpec: 'C:\\My Windows\\System32\\cmd.exe' }]
   ])(
-    'names C:/Windows/System32/cmd.exe, never a bare or quoted cmd, when the Windows directory is %s',
+    'names C:\\Windows\\System32\\cmd.exe, never a bare or quoted cmd, when the Windows directory is %s',
     (_case, env) => {
       expect(windowsCommandFor('First Last', env)).toBe(WINDOWS_CMD_GOLDEN)
     }

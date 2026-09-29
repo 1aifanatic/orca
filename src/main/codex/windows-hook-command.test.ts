@@ -28,7 +28,7 @@ describe('Codex Windows hook command', () => {
       const command = getManagedCommand(path)
       expect(command).not.toMatch(/powershell\.exe|EncodedCommand|Set-ExecutionPolicy/)
       expect(command).toBe(
-        `D:/Windows/System32/cmd.exe --% /d /v:off /c @"${path.replaceAll('\\', '/')}"`
+        `D:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"${path.replaceAll('\\', '/')}"`
       )
       expect(createManagedCommandMatcher('codex-hook.cmd')(command)).toBe(true)
       expect(wrapWindowsCmdHookCommand(path)).toContain('-EncodedCommand')

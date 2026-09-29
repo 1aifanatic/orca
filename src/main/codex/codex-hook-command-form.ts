@@ -33,9 +33,10 @@ function buildPosixCommand(): string {
   ].join(' ')
 }
 
-// Why an absolute, unquoted cmd.exe: under Codex's cmd.exe host a bare `cmd` is
-// found in the hook's cwd first (a repo's cmd.bat), and PowerShell reads a
-// quoted first token as an expression.
+// Why an absolute, unquoted, backslashed cmd.exe: under Codex's cmd.exe host a
+// bare `cmd` is found in the hook's cwd first (a repo's cmd.bat), PowerShell reads
+// a quoted first token as an expression, and cmd.exe parses a forward-slash argv0
+// as switches.
 const WINDOWS_DIRECTORY = /^[A-Za-z]:(?:\/[A-Za-z0-9_.~-]+)+$/
 const COMSPEC_IN_SYSTEM32 = /^(.+)\/system32\/cmd\.exe$/i
 // Why: still absolute when neither variable names a directory it can spell unquoted.
@@ -64,7 +65,8 @@ function buildWindowsCommand(scriptPath: string, env: WindowsDirectoryEnv): stri
   // Why: `--%` passes the rest to cmd.exe verbatim under PowerShell, /v:off keeps
   // a registry-enabled delayed expansion from dropping a `!` in the path, and the
   // `@` stops cmd.exe stripping the quotes around a path holding & or ^.
-  return `${resolveWindowsDirectory(env)}/System32/cmd.exe --% /d /v:off /c @"${forwardSlashPath}"`
+  const cmdExe = `${resolveWindowsDirectory(env)}/System32/cmd.exe`.replaceAll('/', '\\')
+  return `${cmdExe} --% /d /v:off /c @"${forwardSlashPath}"`
 }
 
 /**
