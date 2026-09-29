@@ -10,15 +10,7 @@
  * attempted now.
  */
 
-import type {
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from '../../../shared/agent-session-journal-types'
-import {
-  isSubmissionRejectionKind,
-  type SubmissionRejectionKind
-} from '../../../shared/agent-session-failure'
-import { DISPATCH_DOUBT_PROVIDER_EXITED } from '../../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import {
   activeStructuredAgentSessionTurnId,
   projectStructuredAgentSessionStatus
@@ -31,14 +23,13 @@ export type StructuredPointerRetainReason =
   | 'awaiting-human'
   | 'dispatch-rejected'
   | 'dispatch-unknown'
-  | 'awaiting-next-turn'
 
 export type StructuredPointerDecision =
   | { deliver: true }
   | { deliver: false; retain: StructuredPointerRetainReason }
 
 /** The dispatch states both provider adapters converge on. */
-export type StructuredDispatchState = 'accepted' | 'pending' | 'rejected' | 'unknown'
+export type StructuredDispatchState = 'accepted' | 'rejected' | 'unknown'
 
 /**
  * What the delivery gate needs to know about a session, read once per attempt.
@@ -50,57 +41,6 @@ export type StructuredSessionGateFacts = {
   turnRunning: boolean
   /** A pending approval or question only a human can clear. */
   awaitingHuman: boolean
-  /** The latest send never ran, and pointing again would only start the agent to fail again. */
-  latestSendHoldsMail?: boolean
-}
-
-/**
- * Whether a send rejected for this reason holds the session's mail until a later send runs: the
- * provider exited or could not start, or its start needs the person to act first. A retry nobody
- * asked for would start it again to fail again, and the person's next message retries the start.
- * A new kind does not compile until it is placed here.
- */
-const REJECTION_HOLDS_MAIL = {
-  providerExited: true,
-  providerStartFailed: true,
-  startFailed: true,
-  restartFailed: true,
-  // A start that went quiet so long the host stopped it: starting again would hang again.
-  hostStopped: true,
-  notSignedIn: true,
-  historyTooLarge: true,
-  managedAccountEnvOverride: true,
-  managedAccountUnsupported: true,
-  // Ends on its own: the next edge's retry starts the agent once the switch settles.
-  accountSwitchInProgress: false,
-  cancelled: false,
-  hostRestarted: false,
-  chatClosed: false,
-  notDelivered: false,
-  providerRejected: false,
-  attachmentInvalid: false,
-  attachmentUnreadable: false,
-  emptyMessage: false,
-  queueFull: false,
-  writeFailed: false,
-  hostFault: false
-} satisfies Record<SubmissionRejectionKind, boolean>
-
-/**
- * Whether the session's latest send never ran and its mail must wait for a later send that does:
- * its provider died before echoing it, or a start it needed failed in a way `REJECTION_HOLDS_MAIL`
- * holds. Pointing again would start that agent again, which is how a provider that dies on every
- * turn was respawned in a loop; the next turn that does run clears it.
- */
-export function latestSendHoldsMail(
-  submissions: readonly Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>[]
-): boolean {
-  const latest = submissions.at(-1)
-  if (latest?.dispatchState === 'unknown') {
-    return latest.reason === DISPATCH_DOUBT_PROVIDER_EXITED
-  }
-  const kind = latest?.dispatchState === 'rejected' ? latest.rejection?.kind : undefined
-  return isSubmissionRejectionKind(kind) && REJECTION_HOLDS_MAIL[kind]
 }
 
 /**
@@ -149,28 +89,22 @@ export function decideStructuredSessionPointerDelivery(input: {
   if (input.session.turnRunning) {
     return { deliver: false, retain: 'turn-unsettled' }
   }
-  if (input.session.latestSendHoldsMail) {
-    return { deliver: false, retain: 'awaiting-next-turn' }
-  }
   return { deliver: true }
 }
 
 /**
- * Whether the pointer has been POINTED: the provider took the turn. `accepted` is echoed and
- * `pending` is admitted and awaiting its echo; both mean the turn exists, so marking the rows
- * delivered stops them being pointed again. Neither consumes mail: `read` is only set by `check`.
+ * Only an accepted dispatch may mark mail delivered.
  *
- * `unknown` covers a dead provider child and a failed call alike — the adapters cannot tell them
- * apart — so it must retain. Treating it as delivered would drop mail whenever a child died mid-send.
+ * `unknown` covers a dead provider child and a slow acknowledgement alike — the
+ * adapters cannot tell them apart — so it must retain. Treating it as delivered
+ * would drop mail whenever a child died mid-send.
  */
-export function structuredDispatchDelivered(
-  state: StructuredDispatchState
-): state is 'accepted' | 'pending' {
-  return state === 'accepted' || state === 'pending'
+export function structuredDispatchDelivered(state: StructuredDispatchState): state is 'accepted' {
+  return state === 'accepted'
 }
 
 export function retainReasonForDispatch(
-  state: Exclude<StructuredDispatchState, 'accepted' | 'pending'>
+  state: Exclude<StructuredDispatchState, 'accepted'>
 ): StructuredPointerRetainReason {
   return state === 'rejected' ? 'dispatch-rejected' : 'dispatch-unknown'
 }

@@ -8,15 +8,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  CodexAppServerConnection,
-  CodexAppServerConnectionHandlers,
-  openCodexAppServerConnection
-} from '../codex/codex-app-server-connection'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
-import { attachFingerprintFields } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import {
   AgentSessionAcquisitionRefusal,
   AgentSessionPreSpawnError
@@ -35,137 +30,19 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+import {
+  attachParams,
+  fakeCodex,
+  operationId,
+  providerFaults,
+  resetProviderFaults,
+  type FakeConnection
+} from './structured-chat-coordinator-fake-codex-fixture'
 
 const COORDINATOR = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 const PEER_CHAT = '7e3b9d15-2c4a-4f86-a0b1-5c9e2d7f3b64'
-const WORKSPACE = 'workspace-1'
 const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const WORKER_2_PANE = 'tab_worker2:cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-
-type FakeConnection = Omit<CodexAppServerConnection, 'closed'> & {
-  closed: boolean
-  handlers: CodexAppServerConnectionHandlers
-  threadId: string | null
-  turns: { clientUserMessageId: string; text: string }[]
-}
-
-/** How the fake provider misbehaves; reset before each test. */
-const providerFaults: {
-  dieBeforeEveryEcho: boolean
-  refuseTurnStarts: number
-  /** Refuses every start with this error while set. */
-  refuseStart: (() => Error) | null
-  starts: number
-} = { dieBeforeEveryEcho: false, refuseTurnStarts: 0, refuseStart: null, starts: 0 }
-
-function fakeCodex() {
-  const connections: FakeConnection[] = []
-  let turnCounter = 0
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a fake answering the JSON-RPC calls the adapter makes, as the shipped integration test does.
-  const openConnection = (async (_launch, handlers = {}) => {
-    providerFaults.starts += 1
-    if (providerFaults.refuseStart) {
-      throw providerFaults.refuseStart()
-    }
-    const connection: FakeConnection = {
-      handlers,
-      threadId: null,
-      turns: [],
-      pid: 4321,
-      closed: false,
-      request: async (method, params) => {
-        const input = isRecord(params) ? params : {}
-        if (method === 'thread/start') {
-          connection.threadId = `thread-${connections.length}`
-          return { thread: { id: connection.threadId } }
-        }
-        if (method === 'thread/resume') {
-          connection.threadId = String(input.threadId)
-          return { thread: { id: connection.threadId } }
-        }
-        if (method === 'turn/start') {
-          if (providerFaults.refuseTurnStarts > 0) {
-            providerFaults.refuseTurnStarts -= 1
-            throw new Error('turn/start refused')
-          }
-          turnCounter += 1
-          connection.turns.push({
-            clientUserMessageId: String(input.clientUserMessageId),
-            text: JSON.stringify(input.input)
-          })
-          if (providerFaults.dieBeforeEveryEcho) {
-            setTimeout(() => connection.handlers.onExit?.(new Error('provider died')), 0)
-          }
-          return { turn: { id: `turn-${turnCounter}` } }
-        }
-        if (method === 'model/list') {
-          return {
-            data: [
-              {
-                model: 'gpt-live',
-                displayName: 'GPT Live',
-                hidden: false,
-                supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: 'Balanced' }],
-                defaultReasoningEffort: 'medium',
-                isDefault: true
-              }
-            ],
-            nextCursor: null
-          }
-        }
-        return {}
-      },
-      notify: () => {},
-      respond: () => {},
-      respondWithError: () => {},
-      close: async () => {
-        connection.closed = true
-        return true
-      }
-    }
-    connections.push(connection)
-    return connection
-  }) as typeof openCodexAppServerConnection
-  return { connections, openConnection }
-}
-
-let operations = 0
-function operationId(): string {
-  operations += 1
-  return `${Date.now()}-${operations.toString(16).padStart(32, '0')}`
-}
-
-function attachParams(sessionId: string) {
-  const params = {
-    location: {
-      executionHostId: 'local' as const,
-      wslDistro: null,
-      workspaceId: WORKSPACE,
-      workspaceKind: 'git-worktree' as const
-    },
-    provider: 'codex' as const,
-    agent: 'codex' as const,
-    accountHome: { variable: 'CODEX_HOME' as const, path: '/home/dev/.codex' },
-    runtimeKind: 'native' as const
-  }
-  const envelope = {
-    sessionId,
-    clientOperationId: operationId(),
-    expectedRuntimeFence: null,
-    payloadFingerprint: ''
-  }
-  return {
-    ...params,
-    envelope: {
-      ...envelope,
-      payloadFingerprint: computeAgentSessionPayloadFingerprint({
-        method: 'agentSession.attach',
-        sessionId,
-        fields: attachFingerprintFields({ ...params, envelope })
-      })
-    }
-  }
-}
 
 let codex: ReturnType<typeof fakeCodex>
 let root: string
@@ -363,20 +240,11 @@ async function clearChat(sessionId: string): Promise<string> {
 }
 
 beforeEach(async () => {
-  operations = 0
-  providerFaults.dieBeforeEveryEcho = false
-  providerFaults.refuseTurnStarts = 0
-  providerFaults.refuseStart = null
-  providerFaults.starts = 0
+  resetProviderFaults()
   root = await mkdtemp(join(tmpdir(), 'orca-structured-coordinator-mail-'))
   codex = fakeCodex()
   db = new OrchestrationDb(':memory:')
-  runtime = new OrcaRuntimeService()
-  runtime.setOrchestrationDb(db)
-  vi.spyOn(runtime, 'ensureStructuredAgentSessionHost').mockResolvedValue()
-  vi.spyOn(runtime, 'getTerminalPaneKey').mockImplementation((handle) =>
-    handle === 'term_worker' ? WORKER_PANE : handle === 'term_worker_2' ? WORKER_2_PANE : null
-  )
+  runtime = startRuntime()
   host = await ensureStructuredAgentSessionHost({
     stateDirectory: root,
     hostId: 'local',
@@ -392,6 +260,17 @@ beforeEach(async () => {
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })
+
+/** The runtime over the shared database; a second call is what an Orca restart leaves behind. */
+function startRuntime(): OrcaRuntimeService {
+  const started = new OrcaRuntimeService()
+  started.setOrchestrationDb(db)
+  vi.spyOn(started, 'ensureStructuredAgentSessionHost').mockResolvedValue()
+  vi.spyOn(started, 'getTerminalPaneKey').mockImplementation((handle) =>
+    handle === 'term_worker' ? WORKER_PANE : handle === 'term_worker_2' ? WORKER_2_PANE : null
+  )
+  return started
+}
 
 afterEach(async () => {
   await stopStructuredAgentSessionRuntime()
@@ -496,49 +375,61 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(acked.messages).not.toEqual(first.messages)
   })
 
-  it('gives back a pointer whose provider died before the echo, and points it with the next turn that runs', async () => {
-    // Admitted is not a turn: a provider that dies before echoing never ran the pointer, and a row
-    // left stamped "pointed" would never be pointed again — the last result would strand silently.
-    const chat = await openChat(COORDINATOR)
-    const { runId, taskId } = await coordinatorRunAndTask()
-    await finishWorker(taskId)
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
-    await vi.waitFor(
-      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
-      WAIT
-    )
-
-    chat.handlers.onExit?.(new Error('provider died before the echo'))
-    await vi.waitFor(
-      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1),
-      WAIT
-    )
-
-    // Neither the death's own edge nor an idle one starts the provider again for that mail. Each
-    // edge reads the gate off the journal, so once every read has answered, a send would be out.
-    const before = codex.connections.length
+  /** Fires both edges and waits until every gate read they started has answered. */
+  async function edgesAnswered(): Promise<void> {
     const reads = vi.spyOn(host, 'journalSnapshot')
-    const sends = vi.spyOn(host, 'send')
     runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: null })
     runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
     await vi.waitFor(() => expect(reads).toHaveBeenCalled(), WAIT)
     await Promise.all(reads.mock.results.map((read) => read.value))
     await new Promise((resolve) => setImmediate(resolve))
-    expect(sends).not.toHaveBeenCalled()
+    reads.mockRestore()
+  }
+
+  /** The operation ids the coordinator's journal recorded for its pointer turns. */
+  async function pointerSends(): Promise<string[]> {
+    const snapshot = await host.journalSnapshot(COORDINATOR)
+    return snapshot.submissions
+      .filter((submission) =>
+        snapshot.items.some(
+          (item) =>
+            item.itemId === agentJournalSubmissionKey(submission.clientMessageId) &&
+            item.body?.kind === 'message' &&
+            item.body.blocks.some((block) => block.type === 'text' && POINTER.test(block.text))
+        )
+      )
+      .map((submission) => submission.clientMessageId)
+  }
+
+  it('keeps a pointer whose provider died before the echo, and points it after the next turn that runs', async () => {
+    // A provider that dies before echoing never ran the pointer: the mail stays unpointed, and
+    // neither the death's own edge nor an idle one starts the provider again for it.
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
+
+    chat.handlers.onExit?.(new Error('provider died before the echo'))
+    const before = codex.connections.length
+    await edgesAnswered()
+    await edgesAnswered()
     expect(codex.connections.length).toBe(before)
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
-    sends.mockRestore()
 
     // The user's next message starts the agent; once its turn runs, the pointer follows it.
     expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(codex.connections.length).toBe(before + 1), WAIT)
     const revived = connectionFor(COORDINATOR)
-    // The pointer may queue behind the message before its turn runs; the message is still first.
-    await vi.waitFor(() => expect(revived.turns.length).toBeGreaterThanOrEqual(1), WAIT)
+    await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
     expect(revived.turns[0]!.text).toContain('again')
     await settleTurn(COORDINATOR, 0)
     await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
     expect(revived.turns[1]!.text).toMatch(POINTER)
+    await settleTurn(COORDINATOR, 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
   })
 
   it('does not restart a provider that dies before every echo, however many edges follow', async () => {
@@ -549,13 +440,124 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     providerFaults.dieBeforeEveryEcho = true
     const before = codex.connections.length
     await finishWorker(taskId)
-    await vi.waitFor(
-      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1),
-      WAIT
-    )
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
     // A fixed window, not a poll: a respawn loop would restart it several times in it.
     await new Promise((resolve) => setTimeout(resolve, 1_500))
+    await edgesAnswered()
     expect(codex.connections.length - before).toBe(0)
+    expect(providerFaults.turnStarts).toBe(1)
+    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+  })
+
+  it.each(['exit-then-throw', 'throw-then-exit'] as const)(
+    'does not restart a provider that crashed while taking the pointer turn (%s)',
+    async (crash) => {
+      // The crash settles the send `unknown` with the connection's own error, not as a provider
+      // exit; every status edge after it re-pointed the mail and started the provider again.
+      await openChat(COORDINATOR)
+      const { runId, taskId } = await coordinatorRunAndTask()
+      providerFaults.crashOnTurnStart = crash
+      const before = providerFaults.starts
+      await finishWorker(taskId)
+      await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+      await edgesAnswered()
+      expect(providerFaults.starts - before).toBe(0)
+      expect(providerFaults.turnStarts).toBe(1)
+      expect(await pointerSends()).toHaveLength(1)
+      expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+    }
+  )
+
+  it('points the next result once after a transient death, then holds nothing', async () => {
+    await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const second = await call(
+      'orchestration.taskCreate',
+      { spec: 'more' },
+      { sessionId: COORDINATOR }
+    )
+    providerFaults.dieBeforeEveryEcho = true
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+    await edgesAnswered()
+    // The death was transient. A new result is new mail: one pointer for both, one start.
+    providerFaults.dieBeforeEveryEcho = false
+    const before = providerFaults.starts
+    await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
+    const revived = connectionFor(COORDINATOR)
+    expect(turnText(revived.turns.at(-1)!)).toBe(
+      formatMessagePointer(2, `run:${runId}`, localOrchestrationCliCommand()).trim()
+    )
+    await settleTurn(COORDINATOR, revived.turns.length - 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
+    expect(providerFaults.starts - before).toBe(1)
+    expect(providerFaults.turnStarts).toBe(2)
+  })
+
+  it('leaves a pointer the person stopped while its agent was starting stopped', async () => {
+    await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    await host.close(COORDINATOR)
+    providerFaults.startDelayMs = 400
+    const before = providerFaults.starts
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+    // The person presses Stop while the agent is still starting.
+    const cancelled = await host.cancel(
+      { callerKey: 'test-surface' },
+      {
+        envelope: {
+          sessionId: COORDINATOR,
+          clientOperationId: operationId(),
+          expectedRuntimeFence: host.deps.store.getRecord(COORDINATOR)!.lease.runtimeFence,
+          payloadFingerprint: computeAgentSessionPayloadFingerprint({
+            method: 'agentSession.cancel',
+            sessionId: COORDINATOR,
+            fields: { turnId: 'turn-x' }
+          })
+        },
+        turnId: 'turn-x'
+      }
+    )
+    expect(cancelled).toMatchObject({ ok: true })
+    providerFaults.startDelayMs = 0
+    // A fixed window, not a poll: a re-point would start the agent again in it.
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    await edgesAnswered()
+    expect(providerFaults.starts - before).toBe(1)
+    expect(providerFaults.turnStarts).toBe(0)
+    expect(await pointerSends()).toHaveLength(1)
+    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+  })
+
+  it('points a held pointer once more after Orca restarts, under a new id', async () => {
+    await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    providerFaults.dieBeforeEveryEcho = true
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+    await edgesAnswered()
+    const [held] = await pointerSends()
+
+    // The next process: a fresh runtime over the same database redrives restored mail. The
+    // provider still dies, so exactly one start proves it is pointed once, not in a loop.
+    runtime = startRuntime()
+    dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
+    const before = providerFaults.starts
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    await edgesAnswered()
+    expect(providerFaults.starts - before).toBe(1)
+    expect(providerFaults.turnStarts).toBe(2)
+    const sends = await pointerSends()
+    expect(sends).toHaveLength(2)
+    expect(sends[0]).toBe(held)
+    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
   })
 
   /** Mail for a chat whose agent is stopped and whose every start is refused; resolves after it. */
@@ -576,17 +578,6 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     // A fixed window, not a poll: a retry loop would start it several times in it.
     await new Promise((resolve) => setTimeout(resolve, 1_500))
     return { runId, starts: providerFaults.starts - before }
-  }
-
-  /** Fires both edges and waits until every gate read they started has answered. */
-  async function edgesAnswered(): Promise<void> {
-    const reads = vi.spyOn(host, 'journalSnapshot')
-    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: null })
-    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
-    await vi.waitFor(() => expect(reads).toHaveBeenCalled(), WAIT)
-    await Promise.all(reads.mock.results.map((read) => read.value))
-    await new Promise((resolve) => setImmediate(resolve))
-    reads.mockRestore()
   }
 
   it('waits for the next message after a start the person must fix, and retries nothing before it', async () => {
@@ -631,17 +622,28 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(revived.turns[0]!.text).toMatch(POINTER)
   })
 
-  it('still points mail after a send a healthy agent refused, at its next idle edge', async () => {
-    // Only a provider that died or could not start holds mail back; a refused write on a live agent
-    // must not park it until the user's next message.
+  it('holds mail a refused turn left in doubt until the next result, then points it once', async () => {
+    // A failed turn/start cannot prove the turn never started, so the host records it `unknown`
+    // and a resend under its id replays that; new mail is a new send.
     const chat = await openChat(COORDINATOR)
-    const { taskId } = await coordinatorRunAndTask()
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const second = await call(
+      'orchestration.taskCreate',
+      { spec: 'more' },
+      { sessionId: COORDINATOR }
+    )
     providerFaults.refuseTurnStarts = 1
     const before = codex.connections.length
     await finishWorker(taskId)
-    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+    await edgesAnswered()
+    expect(chat.turns).toHaveLength(0)
+
+    await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
     await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
-    expect(chat.turns[0]!.text).toMatch(POINTER)
+    expect(turnText(chat.turns[0]!)).toBe(
+      formatMessagePointer(2, `run:${runId}`, localOrchestrationCliCommand()).trim()
+    )
     expect(codex.connections.length).toBe(before)
   })
 

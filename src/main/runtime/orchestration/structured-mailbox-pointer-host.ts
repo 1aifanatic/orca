@@ -11,11 +11,10 @@ import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type {
   StructuredMailboxPointerHost,
-  StructuredPointerSettlement
+  StructuredPointerGateFacts
 } from './structured-mailbox-pointer-delivery'
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
 import {
-  latestSendHoldsMail,
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
@@ -51,14 +50,11 @@ export async function readStructuredSessionGateFacts(
   return snapshot ? structuredSessionGateFacts(snapshot.items) : null
 }
 
-/** The pointer lane's gate: the shared idle facts, plus whether the latest send holds the mail. */
-async function readPointerGateFacts(sessionId: string): Promise<StructuredSessionGateFacts | null> {
+/** The pointer lane's gate: the shared idle facts, plus what each recorded send settled as. */
+async function readPointerGateFacts(sessionId: string): Promise<StructuredPointerGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
   return snapshot
-    ? {
-        ...structuredSessionGateFacts(snapshot.items),
-        latestSendHoldsMail: latestSendHoldsMail(snapshot.submissions)
-      }
+    ? { ...structuredSessionGateFacts(snapshot.items), submissions: snapshot.submissions }
     : null
 }
 
@@ -117,29 +113,23 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           ? { kind: 'unattached' }
           : { kind: 'sent', state: 'rejected' }
       }
-      // `pending` is admitted and awaiting its echo; its settlement says whether a turn ran. The
-      // budget covers a cold provider start.
-      const state = result.value.submission.dispatchState
-      if (state === 'pending') {
-        return {
-          kind: 'sent',
-          state,
-          settlement: host
-            .waitForSendSettlement(input.sessionId, result.value.clientMessageId, {
-              budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-            })
-            .then(
-              (settled) => pointerSettlement(settled?.value.submission.dispatchState),
-              () => 'unknown' as const
-            )
-        }
+      // `pending` is not yet an acknowledgement; only `accepted` may consume mail. Accepted is not
+      // delivered, so wait out a start; a wait that runs out parks for the next journal edge.
+      const submission =
+        result.value.submission.dispatchState === 'pending'
+          ? ((
+              await host
+                .waitForSendSettlement(input.sessionId, result.value.clientMessageId, {
+                  budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
+                })
+                .catch(() => undefined)
+            )?.value.submission ?? result.value.submission)
+          : result.value.submission
+      const state = submission.dispatchState
+      return {
+        kind: 'sent',
+        state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
       }
-      return { kind: 'sent', state: pointerSettlement(state) }
     }
   }
-}
-
-/** No verdict — the wait gave up, or the generation closed with the turn unechoed — is unknown. */
-function pointerSettlement(state: string | undefined): StructuredPointerSettlement {
-  return state === 'accepted' || state === 'rejected' ? state : 'unknown'
 }

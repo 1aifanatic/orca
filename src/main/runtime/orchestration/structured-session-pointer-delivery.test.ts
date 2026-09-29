@@ -109,14 +109,6 @@ describe('decideStructuredSessionPointerDelivery', () => {
       })
     ).toEqual({ deliver: false, retain: 'awaiting-human' })
   })
-
-  it('retains for an idle session whose latest send holds its mail', () => {
-    expect(
-      decideStructuredSessionPointerDelivery({
-        session: { turnRunning: false, awaitingHuman: false, latestSendHoldsMail: true }
-      })
-    ).toEqual({ deliver: false, retain: 'awaiting-next-turn' })
-  })
 })
 
 describe('dispatch outcome classification', () => {
