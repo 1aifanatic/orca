@@ -59,6 +59,7 @@ describe.skipIf(!existsSync(runtimePath) || process.platform === 'win32')(
       const proc = spawnBunPty({...args,args:['-e','setTimeout(()=>{process.exitCode=17},100)']}, {
         platform:'win32', assignHostJob:()=>true,
         createJob:()=>({listProcessIds:()=>[], pause:()=>true,resume:()=>true,terminate:()=> 'terminated',close(){}}),
+        supportsDirectJobSpawn:()=>false,
         createWindowsLaunch:launch => createWindowsBunPtyLaunch(launch, {
           runtimePath:process.execPath,workerPath:${JSON.stringify(join(__dirname, 'windows-bun-pty-gate-entry.ts'))}
         })
@@ -206,6 +207,7 @@ describe.skipIf(!existsSync(runtimePath) || process.platform !== 'win32')(
         shellPath:attempts[0].shellPath,shellArgs:attempts[0].shellArgs,spawnCwd:args.cwd,
         env:args.env,cols:80,rows:24,windowsFallbackAttempts:attempts
       }, {canUseBunPty:()=>true, spawnBunPty:options=>spawnBunPty(options, {
+        supportsDirectJobSpawn:()=>false,
         createWindowsLaunch:launchArgs=>{
           const launch = createWindowsBunPtyLaunch(launchArgs, {
             runtimePath:process.execPath,workerPath:${JSON.stringify(join(__dirname, 'windows-bun-pty-gate-entry.ts'))}
@@ -233,6 +235,7 @@ describe.skipIf(!existsSync(runtimePath) || process.platform !== 'win32')(
       const {createWindowsBunPtyLaunch} = require(${JSON.stringify(join(__dirname, 'windows-bun-pty-launch.ts'))})
       const script = 'for(let i=0;i<65;i++)Bun.spawn([process.execPath,"-e","setInterval(()=>{},1000)"],{stdin:"ignore",stdout:"ignore",stderr:"ignore"});setInterval(()=>console.log("tick"),10)'
       const proc = spawnBunPty({...args,args:['-e',script]}, {
+        supportsDirectJobSpawn:()=>false,
         createWindowsLaunch:launch => createWindowsBunPtyLaunch(launch, {
           runtimePath:process.execPath,workerPath:${JSON.stringify(join(__dirname, 'windows-bun-pty-gate-entry.ts'))}
         })
@@ -269,6 +272,7 @@ describe.skipIf(!existsSync(runtimePath) || process.platform !== 'win32')(
       const result = await runTerminalScript(`
       const {createWindowsBunPtyLaunch} = require(${JSON.stringify(join(__dirname, 'windows-bun-pty-launch.ts'))})
       const proc = spawnBunPty({...args,args:['-e','console.log("ready");setInterval(()=>{},1000)']}, {
+        supportsDirectJobSpawn:()=>false,
         createWindowsLaunch:launch => createWindowsBunPtyLaunch(launch, {
           runtimePath:process.execPath,workerPath:${JSON.stringify(join(__dirname, 'windows-bun-pty-gate-entry.ts'))}
         })
