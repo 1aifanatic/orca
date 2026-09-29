@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ExecutionHostId } from '../shared/execution-host'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
@@ -18,7 +19,7 @@ const removal = {
   deleteBranch: true,
   force: false
 }
-const isPending = (hostId?: string): boolean =>
+const isPending = (hostId?: ExecutionHostId): boolean =>
   waitForPendingWorktreeRemoval(removal.worktreeId, hostId) !== undefined
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
