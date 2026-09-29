@@ -14,7 +14,6 @@ import {
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import {
-  HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
   hostTestMessage,
   hostTestOperationId
@@ -99,24 +98,22 @@ describe('a /compact in flight', () => {
 
 describe('/clear', () => {
   it('in flight, refuses a capable send as today: no card lands on the source it supersedes', async () => {
-    const attach = rig.host.attach.bind(rig.host)
+    const commit = rig.store.commitConversationClear
     let release: (() => void) | undefined
     const released = new Promise<void>((resolve) => {
       release = resolve
     })
-    const spy = vi.spyOn(rig.host, 'attach').mockImplementationOnce(async (...args) => {
-      await released
-      return attach(...args)
-    })
+    const committing = vi.fn()
+    const spy = vi
+      .spyOn(rig.store, 'commitConversationClear')
+      .mockImplementationOnce(async (clear) => {
+        committing()
+        await released
+        return commit(clear)
+      })
     try {
       const cleared = command('clear')
-      await eventually(() =>
-        expect(rig.store.getRecord(SESSION)?.conversationCommand).toMatchObject({
-          command: 'clear',
-          phase: 'prepared',
-          replacementSessionId: expect.any(String)
-        })
-      )
+      await eventually(() => expect(committing).toHaveBeenCalledOnce())
       expect(await rig.send('sent while clearing', 'queue-if-active').result).toEqual(WAIT_REFUSAL)
       release?.()
       const done = await cleared
