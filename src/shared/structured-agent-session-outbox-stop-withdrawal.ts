@@ -24,10 +24,11 @@ function unsentStructuredAgentSessionOutboxEntry(
     !awaitsStructuredAgentSessionRetry(entry, blockedClientMessageId)
 }
 
-/** An issued mid-turn queue send whose answer is still out: `dispatching` is in flight now,
- *  `unconfirmed` is one left in doubt. The host may already hold it as a paused draft, so a
- *  local restore too would put the same text in two places. A `queued` entry never left, and
- *  a requeued refusal was answered, so both restore safely. */
+/** An issued mid-turn queue send whose answer is still out: `dispatching` or left in doubt as
+ *  `unconfirmed`. The host may already hold it as a paused draft, so a local restore too would
+ *  put the same text in two places. A `queued` entry never left, and a requeued refusal was
+ *  answered, so both restore safely. `dispatching` is not only the in-flight id: a `pending`
+ *  answer frees single-flight but leaves the entry `dispatching` until its journal row arrives. */
 function issuedQueueDeliverySendAwaitingAnswer(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
     entry.delivery === 'queue-if-active' &&

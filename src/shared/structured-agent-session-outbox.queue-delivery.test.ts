@@ -89,6 +89,7 @@ describe('outbox queue delivery', () => {
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
       [
         at('never-left', 'queued', 'queue-if-active'),
+        // No in-flight id: a `pending` answer freed single-flight before its journal row landed.
         at('in-flight', 'dispatching', 'queue-if-active'),
         at('in-doubt', 'unconfirmed', 'queue-if-active'),
         at('plain-in-flight', 'dispatching')
