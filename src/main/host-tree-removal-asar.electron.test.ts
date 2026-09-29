@@ -47,9 +47,17 @@ afterAll(() => {
 
 type ProbeResult = { failure: string | null; residue: string[] }
 
-function buildDriver(bundlePath: string, target: string, resultPath: string): string {
+function buildDriver(
+  bundlePath: string,
+  target: string,
+  resultPath: string,
+  refuseUnlink: boolean
+): string {
   return [
     `const fs = require('node:fs')`,
+    refuseUnlink
+      ? `for (const fsp of [require('original-fs').promises, fs.promises]) fsp.unlink = async () => { throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }) }`
+      : '',
     `const { removeHostTree } = require(${JSON.stringify(bundlePath)})`,
     // Why noAsar for the read-back: the shim would report the stranded archive as a directory here
     // too, so the residue listing has to be taken with real filesystem semantics.
@@ -103,30 +111,37 @@ function buildStrandedTree(root: string): string {
 }
 
 describe('removeHostTree against a tree holding an asar archive', () => {
-  it.runIf(FIXTURE_ASAR)(
-    'removes the whole tree under the real Electron binary',
-    async () => {
-      const root = mkdtempSync(join(tmpdir(), 'orca-host-tree-asar-'))
-      roots.push(root)
-      const bundlePath = join(root, 'host-tree-removal.cjs')
-      await bundleHostTreeRemoval(bundlePath)
-      const target = buildStrandedTree(root)
-      const resultPath = join(root, 'result.json')
-      const driverPath = join(root, 'driver.cjs')
-      writeFileSync(driverPath, buildDriver(bundlePath, target, resultPath), 'utf8')
+  // Why refuse unlinks: the walk's first attempt is a plain unlink, which the shim never sees; the
+  // `rm` fallback it takes for a read-only or locked file on Windows is what must see through it.
+  for (const { name, refuseUnlink } of [
+    { name: 'removes the whole tree under the real Electron binary', refuseUnlink: false },
+    { name: 'removes it when every unlink falls back to rm', refuseUnlink: true }
+  ]) {
+    it.runIf(FIXTURE_ASAR)(
+      name,
+      async () => {
+        const root = mkdtempSync(join(tmpdir(), 'orca-host-tree-asar-'))
+        roots.push(root)
+        const bundlePath = join(root, 'host-tree-removal.cjs')
+        await bundleHostTreeRemoval(bundlePath)
+        const target = buildStrandedTree(root)
+        const resultPath = join(root, 'result.json')
+        const driverPath = join(root, 'driver.cjs')
+        writeFileSync(driverPath, buildDriver(bundlePath, target, resultPath, refuseUnlink), 'utf8')
 
-      const run = spawnSync(electronBinary, [driverPath], {
-        encoding: 'utf8',
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-        timeout: 60_000
-      })
-      expect(run.status, run.stderr?.slice(-2000)).toBe(0)
+        const run = spawnSync(electronBinary, [driverPath], {
+          encoding: 'utf8',
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          timeout: 60_000
+        })
+        expect(run.status, run.stderr?.slice(-2000)).toBe(0)
 
-      const probe = JSON.parse(readFileSync(resultPath, 'utf8')) as ProbeResult
-      // Without the asar-transparent fs this is `ENOTEMPTY` and the residue stops at the archive,
-      // on every attempt, forever — it is not a race a retry can win.
-      expect(probe).toEqual({ failure: null, residue: [] })
-    },
-    120_000
-  )
+        const probe = JSON.parse(readFileSync(resultPath, 'utf8')) as ProbeResult
+        // Without the asar-transparent fs the archive reads as a directory, the removal fails, and
+        // the residue stops at the archive on every attempt — it is not a race a retry can win.
+        expect(probe).toEqual({ failure: null, residue: [] })
+      },
+      120_000
+    )
+  }
 })

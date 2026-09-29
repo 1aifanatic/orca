@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { performance } from 'node:perf_hooks'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { removeTreeSync } from '../shared/windows-transient-lock-removal'
@@ -45,18 +46,17 @@ describe('removeHostTree', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-host-tree-'))
     roots.push(root)
     const target = buildTree(root, 40, 50)
-    let removalSettled = false
-    const removal = removeHostTree(target).finally(() => {
-      removalSettled = true
-    })
+    const started = performance.now()
+    const removal = removeHostTree(target).then(() => performance.now() - started)
 
     for (let i = 0; i < 20; i++) {
       await stat(root)
     }
-    const chainFinishedFirst = !removalSettled
+    const chainMs = performance.now() - started
 
-    await removal
-    expect(chainFinishedFirst).toBe(true)
+    // Why a ratio and not "finished first": queued behind the tree, the chain ends within a
+    // millisecond of the delete, so ordering alone is a coin flip.
+    expect(chainMs).toBeLessThan((await removal) / 2)
     expect(existsSync(target)).toBe(false)
   }, 60_000)
 })
