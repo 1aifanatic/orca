@@ -109,6 +109,14 @@ describe('decideStructuredSessionPointerDelivery', () => {
       })
     ).toEqual({ deliver: false, retain: 'awaiting-human' })
   })
+
+  it('retains for an idle session whose provider failed the latest send', () => {
+    expect(
+      decideStructuredSessionPointerDelivery({
+        session: { turnRunning: false, awaitingHuman: false, providerFailedLastSend: true }
+      })
+    ).toEqual({ deliver: false, retain: 'provider-failed' })
+  })
 })
 
 describe('dispatch outcome classification', () => {

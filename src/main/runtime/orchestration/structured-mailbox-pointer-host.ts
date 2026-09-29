@@ -13,7 +13,9 @@ import type {
   StructuredMailboxPointerHost,
   StructuredPointerSettlement
 } from './structured-mailbox-pointer-delivery'
+import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
 import {
+  providerFailedLatestSend,
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
@@ -45,13 +47,29 @@ export function structuredSessionPointerCallerKey(sessionId: string): string {
 export async function readStructuredSessionGateFacts(
   sessionId: string
 ): Promise<StructuredSessionGateFacts | null> {
+  const snapshot = await readSessionJournal(sessionId)
+  return snapshot ? structuredSessionGateFacts(snapshot.items) : null
+}
+
+/** The pointer lane's gate: the shared idle facts, plus whether the provider failed the last send. */
+async function readPointerGateFacts(sessionId: string): Promise<StructuredSessionGateFacts | null> {
+  const snapshot = await readSessionJournal(sessionId)
+  return snapshot
+    ? {
+        ...structuredSessionGateFacts(snapshot.items),
+        providerFailedLastSend: providerFailedLatestSend(snapshot.submissions)
+      }
+    : null
+}
+
+async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
   const host = getStructuredAgentSessionHost()
   if (!host) {
     return null
   }
   try {
     // Opens a conversation the idle sweep closed; that starts no agent.
-    return structuredSessionGateFacts((await host.journalSnapshot(sessionId)).items)
+    return await host.journalSnapshot(sessionId)
   } catch (error) {
     // Not attached is a retain reason, not a failure; anything else is still unreadable.
     if ((error as Error)?.message !== AGENT_SESSION_NOT_ATTACHED.code) {
@@ -64,7 +82,7 @@ export async function readStructuredSessionGateFacts(
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
     readGateFacts(sessionId) {
-      return readStructuredSessionGateFacts(sessionId)
+      return readPointerGateFacts(sessionId)
     },
 
     currentFence(sessionId) {

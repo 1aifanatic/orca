@@ -10,7 +10,12 @@
  * attempted now.
  */
 
-import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
+import type { AgentSessionFailureKind } from '../../../shared/agent-session-failure'
+import { DISPATCH_DOUBT_PROVIDER_EXITED } from '../../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import {
   activeStructuredAgentSessionTurnId,
   projectStructuredAgentSessionStatus
@@ -23,6 +28,7 @@ export type StructuredPointerRetainReason =
   | 'awaiting-human'
   | 'dispatch-rejected'
   | 'dispatch-unknown'
+  | 'provider-failed'
 
 export type StructuredPointerDecision =
   | { deliver: true }
@@ -41,6 +47,35 @@ export type StructuredSessionGateFacts = {
   turnRunning: boolean
   /** A pending approval or question only a human can clear. */
   awaitingHuman: boolean
+  /** The latest send never ran because its provider died or could not start. */
+  providerFailedLastSend?: boolean
+}
+
+/** Rejections that say the provider could not start; every other rejection is the send's own. */
+const PROVIDER_START_FAILURE_KINDS: ReadonlySet<string> = new Set<AgentSessionFailureKind>([
+  'providerExited',
+  'providerStartFailed',
+  'startFailed',
+  'restartFailed'
+])
+
+/**
+ * Whether the session's latest send never ran because its provider died before echoing it or
+ * failed to start. Pointing again would start that provider again, which is how a provider that
+ * dies on every turn was respawned in a loop; the next turn that does run clears it.
+ */
+export function providerFailedLatestSend(
+  submissions: readonly Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>[]
+): boolean {
+  const latest = submissions.at(-1)
+  if (latest?.dispatchState === 'unknown') {
+    return latest.reason === DISPATCH_DOUBT_PROVIDER_EXITED
+  }
+  return (
+    latest?.dispatchState === 'rejected' &&
+    latest.rejection !== undefined &&
+    PROVIDER_START_FAILURE_KINDS.has(latest.rejection.kind)
+  )
 }
 
 /**
@@ -87,6 +122,9 @@ export function decideStructuredSessionPointerDelivery(input: {
   }
   if (input.session.turnRunning) {
     return { deliver: false, retain: 'turn-unsettled' }
+  }
+  if (input.session.providerFailedLastSend) {
+    return { deliver: false, retain: 'provider-failed' }
   }
   return { deliver: true }
 }
