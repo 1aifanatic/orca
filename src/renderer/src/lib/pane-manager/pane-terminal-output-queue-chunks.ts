@@ -94,12 +94,9 @@ export function takeQueuedChunk(entry: QueueEntry, limit: number): QueuedWrite |
     // Why not a blind offset: cutting inside an open DEC 2026 frame strands the
     // closing \x1b[?2026l in the residual, and xterm paints nothing until a later
     // drain delivers it or its 1000ms timeout fires.
+    // Always >= 1 here: `remaining > 0` gates the loop and the helper never
+    // returns 0 for a positive limit, so the loop cannot stall.
     const splitAt = resolveSynchronizedOutputSafeSplit(chunk.data, remaining)
-    if (splitAt === 0) {
-      // The whole window sits inside one frame's opening; take the budget rather
-      // than emit an empty write and spin.
-      break
-    }
     const prefix = chunk.data.slice(0, splitAt)
     if (dataParts) {
       dataParts.push(prefix)

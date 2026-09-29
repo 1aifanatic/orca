@@ -1,5 +1,6 @@
-import { FreebuffStatusProjection } from './freebuff-status-projection'
 /* oxlint-disable max-lines */
+import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
+import { FreebuffStatusProjection } from './freebuff-status-projection'
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
 import type * as NodePty from 'node-pty'
@@ -1340,6 +1341,19 @@ export class PtyHandler {
         ? desiredChars
         : (this.dispatcher.maxLegacyPtyDataChars?.(paramsWithoutData, pending.data, desiredChars) ??
           desiredChars)
+    // Why before the surrogate guard: splitting inside an open DEC 2026 frame
+    // strands the closing \x1b[?2026l in the remainder, and xterm paints nothing
+    // until it arrives or its 1000ms timeout fires. The surrogate guard keeps the
+    // final say so a frame boundary can never sever a pair.
+    if (!pending.transformed && !pending.sourceChunk && chunkChars > 0) {
+      const frameAligned = resolveSynchronizedOutputSafeSplit(pending.data, chunkChars)
+      // Why the floor of 2: the surrogate guard below can decrement by one, and
+      // a chunkChars of 0 takes the pause-and-retry path. Never let frame
+      // alignment walk a healthy slice into that.
+      if (frameAligned >= 2) {
+        chunkChars = frameAligned
+      }
+    }
     if (
       chunkChars > 0 &&
       chunkChars < pending.data.length &&
