@@ -3,8 +3,9 @@
 // late-result /compact journey, Send-now's override set, and the
 // replay-preference rule for a refused draft.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
+import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -123,6 +124,13 @@ describe('the one queue gate', () => {
       ok: false,
       refusal: { message: expect.stringContaining('pending request') }
     })
+    // Read in place: the gate runs on every admission and drain step.
+    const snapshot = vi.spyOn(journal, 'snapshot')
+    expect(structuredQueueHold({ journal, record: store.getRecord(SESSION), fence: 1 })).toBe(
+      'prompt'
+    )
+    expect(snapshot).not.toHaveBeenCalled()
+    snapshot.mockRestore()
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'prompt-1' },
       {

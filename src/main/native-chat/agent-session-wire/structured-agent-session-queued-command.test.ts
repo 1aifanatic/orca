@@ -1,6 +1,6 @@
 // Queued drafts across conversation commands: a capable send during a /compact
 // in flight becomes a card held by the queue gate's `command` hold and drains
-// once the compaction settles; a /clear in flight admits no draft onto the
+// once the compaction settles, while Delete and Send-now answer at once; a /clear in flight admits no draft onto the
 // source it is superseding; and a draft /clear carries to its replacement is
 // fingerprinted for the replacement, so the provider's echo folds into its
 // sent bubble.
@@ -131,6 +131,30 @@ describe('a /compact in flight', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('Delete answers and Send-now refuses while it holds the lane; the drain still waits for it', async () => {
+    const { finish, settled } = await compactInFlight()
+    const deletedId = await queuedId(rig.send('deleted while compacting', 'queue-if-active').result)
+    const keptId = await queuedId(rig.send('kept while compacting', 'queue-if-active').result)
+    const hung = new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2_000))
+    try {
+      // Both answer before the compaction does, never after it.
+      expect(await Promise.race([rig.deleteQueued(deletedId), hung])).toMatchObject({
+        ok: true,
+        value: { deleted: true }
+      })
+      expect(await Promise.race([rig.sendNow(keptId), hung])).toMatchObject({
+        ok: false,
+        refusal: { message: 'Wait for the conversation operation to finish.' }
+      })
+      expect(await rig.drafts()).toEqual([{ messageId: keptId, state: 'waiting' }])
+      expect(await rig.submission(keptId)).toBeUndefined()
+    } finally {
+      finish()
+    }
+    expect(await settled).toMatchObject({ ok: true, value: { command: 'compact' } })
+    await eventually(async () => expect(await rig.submission(keptId)).toBeDefined())
   })
 
   it('an immediate or image send keeps the refusal it gets today', async () => {

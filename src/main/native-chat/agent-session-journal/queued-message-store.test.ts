@@ -1,5 +1,5 @@
 // The draft store's contract: exactly-once consume in one transaction, the
-// returned transition following the journal's EFFECTIVE settlement, retention
+// rejected-draft settlement following the journal's EFFECTIVE settlement, retention
 // that never outruns a slow refusal, and rows that survive epoch replacement.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -263,29 +263,47 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
   })
 
-  it("a Stop's withdrawal before the agent received it returns the card, and it survives a restart", async () => {
+  it("a Stop's withdrawal before the agent received it sends the draft back to waiting, held like the rest, and it survives a restart", async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     // The Stop's own withdrawal path: the queued (not handed over) submission.
     expect(await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)).toEqual(['draft-1'])
-    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
-      state: 'returned',
-      returnedReason: STOP_WITHDRAWAL.reason,
-      returnedRejection: { kind: 'cancelled' }
-    })
-    // Atomic with the rejection row: a crash before the Stop answered keeps the text and its fact.
+    // Nothing failed: no refusal to show, its position kept, its spent id recorded.
+    const requeued = {
+      state: 'waiting',
+      position: 1,
+      holdReason: 'stopped',
+      consumedAs: 'draft-1',
+      returnedReason: null,
+      returnedRejection: null
+    }
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject(requeued)
+    // Atomic with the rejection row: a crash before the Stop answered keeps the text.
     await journal.close()
     clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
     journal = await open()
-    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
-      state: 'returned',
-      returnedReason: STOP_WITHDRAWAL.reason,
-      returnedRejection: { kind: 'cancelled' }
-    })
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject(requeued)
   })
 
-  it('a restart between consume and handover returns the card through the leftover rejection', async () => {
+  it('a draft sent back to waiting consumes again only under a fresh submission id', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
+    // Its own id already names a rejected submission: one id, one delivery.
+    await expect(consumeDraft(journal, 'draft-1')).rejects.toBeInstanceOf(
+      QueuedMessageNotConsumableError
+    )
+    await consumeDraft(journal, 'draft-1', { as: 'fresh-1' })
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'dispatched',
+      consumedAs: 'fresh-1'
+    })
+    expect(journal.submission('fresh-1')?.dispatchState).toBe('pending')
+  })
+
+  it('a restart between consume and handover sends the draft back to waiting under the restart hold', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
@@ -295,11 +313,13 @@ describe('returned transition (D1/N4)', () => {
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
       journal.wroteBeforeOpen(submission.acceptedSequence)
     )
-    // The restart's reason is a sentence, not a marker: only the fact classifies the card.
+    // No stored hold: the restart's own hold derives from the row's host instance.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
-      state: 'returned',
-      returnedReason: HOST_RESTARTED.reason,
-      returnedRejection: { kind: 'hostRestarted' }
+      state: 'waiting',
+      holdReason: null,
+      hostInstance: 'proc-1',
+      consumedAs: 'draft-1',
+      returnedReason: null
     })
   })
 
@@ -317,9 +337,13 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('returned')
     // Send on the returned card re-consumes under a fresh submission id.
     await consumeDraft(journal, 'draft-1', { as: 'resend-1', expect: 'returned' })
-    const resent = journal.queuedMessages.get('draft-1')
-    expect(resent?.state).toBe('dispatched')
-    expect(resent?.consumedAs).toBe('resend-1')
+    // The earlier refusal retires with the card: the row now describes the re-send.
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'dispatched',
+      consumedAs: 'resend-1',
+      returnedReason: null,
+      returnedRejection: null
+    })
     // A duplicate resolution of the FIRST submission is ignored by the journal
     // and must not alter the draft's current relation.
     await journal.resolveDispatch({
@@ -474,7 +498,7 @@ describe('open-time repair and retention', () => {
     expect(row?.returnedRejection).toEqual(PROVIDER_REFUSAL)
   })
 
-  it('returns a dispatched row whose submission a Stop withdrew with no hook, never leaving it dispatched', async () => {
+  it('sends back to waiting a dispatched row whose submission a Stop withdrew with no hook, never leaving it dispatched', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
@@ -482,18 +506,21 @@ describe('open-time repair and retention', () => {
     await journal.close()
     const db = new Database(journalDatabaseFile(root))
     db.prepare(
-      "UPDATE queued_messages SET state = 'dispatched', returned_reason = NULL WHERE message_id = ?"
+      "UPDATE queued_messages SET state = 'dispatched', hold_reason = NULL, consumed_as = NULL WHERE message_id = ?"
     ).run('draft-1')
     db.close()
     clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
     journal = await open()
+    // The same settlement the live hook applies.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
-      state: 'returned',
-      returnedReason: STOP_WITHDRAWAL.reason
+      state: 'waiting',
+      holdReason: 'stopped',
+      consumedAs: 'draft-1',
+      returnedReason: null
     })
   })
 
-  it('keeps a dispatched row while its submission is still pending, even past the window, so a late refusal still returns it (N5)', async () => {
+  it('keeps a dispatched row while its submission is still pending, even past the window, so a late rejection still settles it (N5)', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
@@ -502,11 +529,12 @@ describe('open-time repair and retention', () => {
     clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 60 * 60 * 1000
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
-    // The delivery loop's leftover rejection now returns the card.
+    // The delivery loop's leftover rejection now sends it back to waiting.
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED)
-    const row = journal.queuedMessages.get('draft-1')
-    expect(row?.state).toBe('returned')
-    expect(row?.returnedReason).toBe(HOST_RESTARTED.reason)
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'waiting',
+      consumedAs: 'draft-1'
+    })
   })
 
   it('prunes accepted and withdrawn rows once the replay window passes, and never waiting or returned rows', async () => {
@@ -589,7 +617,7 @@ describe('holds', () => {
     // A closed handle would refuse any transaction; an empty hold never opens one.
     await expect(
       journal.queuedMessages.hold({ messageIds: [], reason: 'stopped' })
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual([])
   })
 
   it('a withdraw naming no drafts touches nothing — a Delete race with no rows costs no write', async () => {
@@ -615,6 +643,30 @@ describe('holds', () => {
       state: 'returned',
       holdReason: null
     })
+  })
+
+  it('undoing a hold gives each row back the hold it replaced, and leaves a row re-held since alone', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-failed')
+    await queueDraft(journal, 'draft-plain')
+    await queueDraft(journal, 'draft-stopped')
+    await journal.queuedMessages.hold({ messageIds: ['draft-failed'], reason: 'send_failed' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-stopped'], reason: 'stopped' })
+    const held = await journal.queuedMessages.hold({
+      messageIds: ['draft-failed', 'draft-plain', 'draft-stopped'],
+      reason: 'stopped'
+    })
+    // Already 'stopped' before: not this hold's to undo.
+    expect(held).toEqual([
+      { messageId: 'draft-failed', previousHold: 'send_failed' },
+      { messageId: 'draft-plain', previousHold: null }
+    ])
+    await journal.queuedMessages.restoreHolds({ from: 'stopped', changes: held })
+    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.holdReason])).toEqual([
+      ['draft-failed', 'send_failed'],
+      ['draft-plain', null],
+      ['draft-stopped', 'stopped']
+    ])
   })
 
   it("releaseStopHolds lifts stop-shaped holds only: a stored 'stopped' and the restart hold; send_failed stays", async () => {

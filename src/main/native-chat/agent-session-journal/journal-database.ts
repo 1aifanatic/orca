@@ -7,7 +7,7 @@
 import Database from '../../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../../sqlite/harden-database-files'
 import { createJournalTablesSql, JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
-import { ensureQueuedMessagesTable } from './queued-message-table'
+import { ensureQueuedMessagesTable } from './queued-message-schema'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 

@@ -2,8 +2,9 @@
 // a turn — the provider accepts it — never at the host's acceptance of the send.
 // A consumed draft (drained or sent now) is a user send like any other.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { HOST_TEST_SESSION, hostTestMessage } from './structured-agent-session-host-test-data'
 import {
   QUEUED_RIG_CALLER,
@@ -164,6 +165,31 @@ describe("a Stop's queue pause", () => {
     await mail.result
     await rig.settleAccepted(mail.id, 'mail')
     await expectNeverSent(draftId)
+  })
+})
+
+describe('a failed Stop', () => {
+  it("undoes only the holds it added: an earlier Stop's stays", async () => {
+    const working = await rig.workingSend()
+    const earlier = await queuedDraft('held by the first stop')
+    await rig.stop()
+    const fresh = await queuedDraft('typed while stopping')
+    const reject = vi
+      .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
+      .mockRejectedValueOnce(new Error('disk full'))
+    try {
+      await expect(rig.stop()).rejects.toThrow('disk full')
+    } finally {
+      reject.mockRestore()
+    }
+    expect(await rig.drafts()).toEqual([
+      { messageId: earlier, state: 'waiting', paused: true },
+      { messageId: fresh, state: 'waiting' }
+    ])
+    // The one it would have paused sends when the turn ends, as if no Stop was pressed.
+    await rig.settleAccepted(working, 'working')
+    await eventually(async () => expect(await rig.submission(fresh)).toBeDefined())
+    expect(await rig.submission(earlier)).toBeUndefined()
   })
 })
 

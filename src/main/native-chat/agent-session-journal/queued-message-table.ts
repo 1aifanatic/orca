@@ -4,12 +4,13 @@
 // submission — only when consume converts it, in the same transaction as the
 // submission's append. Until then it lives here, `session_id`-keyed so it
 // survives epoch rollover and replacement (`journal-row-table.ts` deletes only
-// `journal_rows`), and after a refusal its text survives as a `returned` row a
-// rewind cannot delete.
+// `journal_rows`). After a refusal its text survives as a `returned` row a
+// rewind cannot delete; after a withdrawal it waits again.
 
 import type Database from '../../sqlite/sync-database'
 import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
@@ -45,38 +46,9 @@ export type QueuedMessageRow = {
   settledAt: number | null
   /** The operation ledger's caller-scoped key, making settled rows mutation receipts. */
   settledByOp: string | null
-  /** The draft's current submission when it differs from `messageId` (a returned-card re-send). */
+  /** The draft's current submission when it differs from `messageId` (a re-send); on a waiting
+   *  row, the spent submission a withdrawal sent it back from. */
   consumedAs: string | null
-}
-
-/**
- * Created idempotently at EVERY writable open, never lazily at first insert, so
- * no reader hits "no such table". Deliberately no `user_version` bump: an old
- * build sees stored == supported and stays writable, ignoring the table; a bump
- * would latch every opened db read-only after a downgrade (`journal-database.ts`).
- */
-export function ensureQueuedMessagesTable(db: Database.Database): void {
-  db.exec(`
-CREATE TABLE IF NOT EXISTS queued_messages (
-  session_id      TEXT    NOT NULL,
-  message_id      TEXT    NOT NULL,
-  position        INTEGER NOT NULL,
-  body_json       TEXT    NOT NULL,
-  fingerprint     TEXT    NOT NULL,
-  created_at      INTEGER NOT NULL,
-  host_instance   TEXT    NOT NULL,
-  state           TEXT    NOT NULL,
-  hold_reason     TEXT,
-  returned_reason TEXT,
-  returned_rejection TEXT,
-  settled_at      INTEGER,
-  settled_by_op   TEXT,
-  consumed_as     TEXT,
-  PRIMARY KEY (session_id, message_id)
-);
-CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
-  ON queued_messages (session_id, consumed_as) WHERE consumed_as IS NOT NULL;
-`)
 }
 
 const COLUMNS =
@@ -132,49 +104,6 @@ export function insertQueuedMessage(
   }
 }
 
-/** Hold waiting drafts from auto-sending (a Stop, a failed conversion). The
- *  hold retires with the row: consume and withdraw clear it in their own
- *  UPDATE. Returns how many rows the hold newly reached. */
-export function holdQueuedMessages(
-  db: Database.Database,
-  input: {
-    sessionId: string
-    messageIds: readonly string[]
-    reason: QueuedMessageHoldReason
-  }
-): number {
-  const update = db.prepare(
-    `UPDATE queued_messages SET hold_reason = ?
-     WHERE session_id = ? AND message_id = ? AND state = 'waiting'
-       AND (hold_reason IS NULL OR hold_reason <> ?)`
-  )
-  let held = 0
-  for (const messageId of input.messageIds) {
-    held += Number(update.run(input.reason, input.sessionId, messageId, input.reason).changes ?? 0)
-  }
-  return held
-}
-
-/** Lift the stop-shaped holds once a user send starts its turn: a stored
- *  'stopped' (Stop, /clear carry) and the DERIVED restart hold — that row is
- *  adopted into the current host instance, the same fact the derivation reads,
- *  so no second copy exists. `send_failed` and unknown markers stay: they
- *  release only through an explicit Send. Returns how many rows it lifted. */
-export function releaseStopShapedQueuedMessageHolds(
-  db: Database.Database,
-  input: { sessionId: string; hostInstance: string }
-): number {
-  return Number(
-    db
-      .prepare(
-        `UPDATE queued_messages SET hold_reason = NULL, host_instance = ?
-         WHERE session_id = ? AND state = 'waiting'
-           AND (hold_reason = 'stopped' OR (hold_reason IS NULL AND host_instance <> ?))`
-      )
-      .run(input.hostInstance, input.sessionId, input.hostInstance).changes ?? 0
-  )
-}
-
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
   return db
     .prepare(`SELECT ${COLUMNS} FROM queued_messages WHERE session_id = ? ORDER BY position ASC`)
@@ -194,12 +123,13 @@ export function getQueuedMessage(
 }
 
 /**
- * The one waiting→dispatched (or returned→dispatched, for a re-send under a
- * fresh submission id) transition. MUST run inside the caller's transaction —
- * the journal writer's, between BEGIN IMMEDIATE and COMMIT — so a failed
- * submission append rolls the consume back and a failed consume rolls the
- * append back. Returns false when the draft was not in the expected state, in
- * which case the caller throws to abort the append.
+ * The one waiting→dispatched (or returned→dispatched) transition; a draft
+ * whose own id is spent (`queuedMessageNeedsFreshSubmissionId`) consumes only
+ * under a fresh one. MUST run inside the caller's transaction — the journal
+ * writer's, between BEGIN IMMEDIATE and COMMIT — so a failed submission append
+ * rolls the consume back and a failed consume rolls the append back. Returns
+ * false when the draft was not in the expected state, in which case the caller
+ * throws to abort the append.
  */
 export function consumeQueuedMessageInTransaction(
   db: Database.Database,
@@ -207,7 +137,7 @@ export function consumeQueuedMessageInTransaction(
     sessionId: string
     messageId: string
     expect: 'waiting' | 'returned'
-    /** The fresh submission id of a returned-card re-send; the draft id otherwise. */
+    /** The submission id: fresh for a re-send, the draft id otherwise. */
     consumedAs: string
     settledByOp: string | null
     now: number
@@ -217,10 +147,20 @@ export function consumeQueuedMessageInTransaction(
   const changed = db
     .prepare(
       `UPDATE queued_messages
-       SET state = 'dispatched', hold_reason = NULL, settled_at = ?, settled_by_op = ?, consumed_as = ?
-       WHERE session_id = ? AND message_id = ? AND state = ?`
+       SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
+           settled_at = ?, settled_by_op = ?, consumed_as = ?
+       WHERE session_id = ? AND message_id = ? AND state = ?
+         AND (? IS NOT NULL OR (state = 'waiting' AND consumed_as IS NULL))`
     )
-    .run(input.now, input.settledByOp, consumedAs, input.sessionId, input.messageId, input.expect)
+    .run(
+      input.now,
+      input.settledByOp,
+      consumedAs,
+      input.sessionId,
+      input.messageId,
+      input.expect,
+      consumedAs
+    )
   return Number(changed.changes ?? 0) === 1
 }
 
@@ -255,11 +195,14 @@ export function withdrawQueuedMessages(
 }
 
 /**
- * dispatched → returned, matched on the draft's CURRENT submission relation
- * (`COALESCE(consumed_as, message_id)`), so a re-send refused again still
- * returns while a late duplicate of the original refusal matches nothing.
+ * dispatched → returned, or back to waiting (`rejectedDraftSettlement`),
+ * matched on the draft's CURRENT submission relation (`COALESCE(consumed_as,
+ * message_id)`), so a re-send refused again still settles while a late
+ * duplicate of the original refusal matches nothing. A draft back to waiting
+ * keeps its position and records the spent submission in `consumed_as`, so
+ * its next consume mints a fresh id; it carries no refusal.
  */
-export function returnDispatchedQueuedMessage(
+export function settleRejectedQueuedMessage(
   db: Database.Database,
   input: {
     sessionId: string
@@ -269,20 +212,39 @@ export function returnDispatchedQueuedMessage(
     now: number
   }
 ): boolean {
-  const changed = db
-    .prepare(
-      `UPDATE queued_messages
-       SET state = 'returned', returned_reason = ?, returned_rejection = ?, settled_at = ?
-       WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
-    )
-    .run(
-      input.reason,
-      input.rejection ? JSON.stringify(input.rejection) : null,
-      input.now,
-      input.sessionId,
-      input.consumedRef
-    )
+  const settlement = rejectedDraftSettlement({ reason: input.reason, rejection: input.rejection })
+  const changed =
+    settlement.state === 'waiting'
+      ? db
+          .prepare(
+            `UPDATE queued_messages
+             SET state = 'waiting', hold_reason = ?, consumed_as = COALESCE(consumed_as, message_id),
+                 returned_reason = NULL, returned_rejection = NULL, settled_at = NULL, settled_by_op = NULL
+             WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
+          )
+          .run(settlement.holdReason, input.sessionId, input.consumedRef)
+      : db
+          .prepare(
+            `UPDATE queued_messages
+             SET state = 'returned', returned_reason = ?, returned_rejection = ?, settled_at = ?
+             WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
+          )
+          .run(
+            input.reason,
+            input.rejection ? JSON.stringify(input.rejection) : null,
+            input.now,
+            input.sessionId,
+            input.consumedRef
+          )
   return Number(changed.changes ?? 0) > 0
+}
+
+/** A consume under the draft's own id would reuse a spent submission id: a
+ *  returned card's, or one a withdrawal sent back to waiting. */
+export function queuedMessageNeedsFreshSubmissionId(
+  row: Pick<QueuedMessageRow, 'state' | 'consumedAs'>
+): boolean {
+  return row.state === 'returned' || row.consumedAs !== null
 }
 
 /** Replay receipts: every row a given caller-scoped operation settled. */
