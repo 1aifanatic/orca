@@ -70,12 +70,12 @@ describe('mobileQueuedMessageCards', () => {
     expect(mobileQueuePauseLabel({ reason: 'restarted' })).toBe(
       'Queue paused because Orca restarted'
     )
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reasons newer than this build's union, as a newer host sends them.
-    const newer = (reason: string) => ({ reason }) as never
-    expect(mobileQueuePauseLabel(newer('cleared'))).toBe(
+    expect(mobileQueuePauseLabel({ reason: 'cleared' })).toBe(
       'Queue paused after you cleared the conversation'
     )
-    expect(mobileQueuePauseLabel(newer('later_reason'))).toBe('Queue paused')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a reason newer than this build's union, as a newer host would send it.
+    const newer = { reason: 'later_reason' } as never
+    expect(mobileQueuePauseLabel(newer)).toBe('Queue paused')
   })
 
   it('labels a reasonless pause as a plain pause, promising no release rule', () => {

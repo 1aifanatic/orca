@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentSessionQueuePause } from '../../../src/shared/agent-session-wire'
 import { MobileNativeChatQueuedMessages } from './MobileNativeChatQueuedMessages'
 
 vi.mock('react-native', () => ({
@@ -153,15 +154,13 @@ describe('MobileNativeChatQueuedMessages', () => {
     }
 
     it('heads the cards with why the queue is paused, for each reason', async () => {
-      const labels = {
-        stopped: 'Queue paused because you interrupted',
-        restarted: 'Queue paused because Orca restarted',
-        cleared: 'Queue paused after you cleared the conversation'
-      } as const
-      for (const [reason, label] of Object.entries(labels)) {
-        // SAFETY: 'cleared' is a reason a newer host sends; the row must word it already.
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a reason newer than this build's union, as the host will send it.
-        const mounted = await mountPaused({ pause: { reason } as never })
+      const rows: readonly [AgentSessionQueuePause['reason'], string][] = [
+        ['stopped', 'Queue paused because you interrupted'],
+        ['restarted', 'Queue paused because Orca restarted'],
+        ['cleared', 'Queue paused after you cleared the conversation']
+      ]
+      for (const [reason, label] of rows) {
+        const mounted = await mountPaused({ pause: { reason } })
         expect(texts(mounted)).toContain(label)
       }
     })
