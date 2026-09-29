@@ -75,9 +75,10 @@ export function isKnownReadyPromptBody(
   if (agent !== null && agent !== 'codex') {
     return isKnownReadyPromptPreview(waitText)
   }
+  const normalized = waitText.toLowerCase()
   if (
-    isKnownReadyPromptPreview(waitText) &&
-    !isCodexProvisionalStartupText(waitText.toLowerCase())
+    isReadyPromptUnblocked(normalized, findKnownReadyPromptIndex(normalized)) &&
+    !isCodexProvisionalStartupText(normalized)
   ) {
     return true
   }

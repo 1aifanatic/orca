@@ -6,6 +6,7 @@ import {
   replayTranscript as replay,
   type ReplayFrame
 } from './agent-transcript-replay-test-harness'
+import { isCodexProvisionalStartupText } from './codex-terminal-readiness'
 import { isKnownReadyPromptBody, isKnownReadyPromptPreview } from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
@@ -97,9 +98,20 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     [60, 5]
   ])('at %ix%i the screen never takes a settled header away from the text rules', (cols, rows) => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
-      const { screenLines, waitText } = await finalFrame(name, cols, rows)
-      if (isKnownReadyPromptPreview(waitText)) {
-        expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(true)
+      let settledFrames = 0
+      for await (const frame of replay(readFixture(name), cols, rows)) {
+        const waitText = frame.waitText
+        if (
+          isKnownReadyPromptPreview(waitText) &&
+          !isCodexProvisionalStartupText(waitText.toLowerCase())
+        ) {
+          settledFrames += 1
+          expect(isKnownReadyPromptBody(waitText, 'codex', () => frame.screenLines)).toBe(true)
+        }
+      }
+      // Presence precondition: the text-copy fixtures reach a settled header.
+      if (name === PLAIN || name === FRESH_HOME || name === NO_DAEMON) {
+        expect(settledFrames).toBeGreaterThan(0)
       }
     })
   })

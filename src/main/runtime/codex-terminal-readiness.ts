@@ -39,10 +39,7 @@ export function isCodexProvisionalStartupText(normalized: string): boolean {
 // Why: only Codex's live chat fills the status row under the composer (default items: model,
 // directory, thread, joined by `·`); the provisional startup screen shows just its own hints.
 function hasCodexLiveStatusRowBelow(text: string, from: number): boolean {
-  return text
-    .slice(from)
-    .split('\n')
-    .some((row) => row.includes('·') && !row.includes('waiting for startup'))
+  return text.includes('·', from)
 }
 
 // Why `loading`: a header still loading is not ready; the screen must not add readiness early.
