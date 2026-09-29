@@ -7,7 +7,12 @@ on:
     paths:
       - '.github/workflows/windows-installed-update.yml'
       - 'config/ci/windows-installed-update/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      packages_run:
+        description: Reuse installers from this run when only the harness changed since their source
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -19,13 +24,14 @@ env:
   SSH_TOOLS_SHA: c24adccff0118b490f531ee9ffffb8c0f084bcce
 jobs:
   windows_watcher:
-    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-windows-update-diagnostic'
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-windows-update-diagnostic' && inputs.packages_run == ''
     uses: ./.github/workflows/windows-watcher-artifacts.yml
     with:
       ref: ${{ github.sha }}
       artifact_prefix: windows-watcher-installed-update
   package:
     needs: windows_watcher
+    if: inputs.packages_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +131,7 @@ jobs:
           retention-days: 7
   qualify:
     needs: package
+    if: always() && (needs.package.result == 'success' || (inputs.packages_run != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -145,16 +152,29 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v8
-        with: { name: 'windows-installed-A-${{ matrix.arch }}', path: '${{ runner.temp }}/input-A' }
+        with: { name: 'windows-installed-A-${{ matrix.arch }}', path: '${{ runner.temp }}/input-A', run-id: '${{ inputs.packages_run || github.run_id }}', github-token: '${{ github.token }}' }
       - uses: actions/download-artifact@v8
-        with: { name: 'windows-installed-B-${{ matrix.arch }}', path: '${{ runner.temp }}/input-B' }
+        with: { name: 'windows-installed-B-${{ matrix.arch }}', path: '${{ runner.temp }}/input-B', run-id: '${{ inputs.packages_run || github.run_id }}', github-token: '${{ github.token }}' }
       - uses: ./.github/actions/install-node-dependencies
         with: { native-runtime: none }
       - name: Admit inputs and check the evidence oracle offline
         run: |
           $dir='config/ci/windows-installed-update'
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/result" | Out-Null
-          node "$dir/verify-inputs.mjs" "$env:RUNNER_TEMP/input-A" "$env:RUNNER_TEMP/input-B" ${{ matrix.arch }} $env:GITHUB_SHA "$env:RUNNER_TEMP/result/inputs.json"
+          $expected=$env:GITHUB_SHA
+          if('${{ inputs.packages_run }}' -ne ''){
+            # Reused installers are admitted only if nothing outside this harness changed since their source.
+            $expected=(Get-Content -Raw "$env:RUNNER_TEMP/input-A/build-receipt.json" | ConvertFrom-Json).source
+            if($expected -notmatch '^[a-f0-9]{40}$'){throw 'Reused package source unreadable'}
+            git fetch --quiet --depth=1 origin $expected
+            if($LASTEXITCODE -ne 0){throw 'Reused package source unavailable'}
+            $changed=@(git diff --name-only $expected HEAD)
+            if($LASTEXITCODE -ne 0){throw 'Reused package diff failed'}
+            $foreign=@($changed | Where-Object {$_ -notmatch '^(config/ci/windows-installed-update/|\.github/workflows/windows-installed-update\.yml$)'})
+            if($foreign.Count){throw "Product changed since reused packages: $($foreign -join ', ')"}
+            @{packagesRun='${{ inputs.packages_run }}';packageSource=$expected;harnessSource=$env:GITHUB_SHA;harnessOnlyChanges=$changed} | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/result/reuse.json"
+          }
+          node "$dir/verify-inputs.mjs" "$env:RUNNER_TEMP/input-A" "$env:RUNNER_TEMP/input-B" ${{ matrix.arch }} $expected "$env:RUNNER_TEMP/result/inputs.json"
           if($LASTEXITCODE -ne 0){throw 'Input admission failed'}
           node "$dir/evidence-oracle.check.mjs"
           if($LASTEXITCODE -ne 0){throw 'Evidence oracle failed'}

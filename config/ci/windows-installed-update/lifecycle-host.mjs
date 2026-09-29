@@ -234,6 +234,19 @@ export async function stopServe(serve) {
   return verdict
 }
 
+// `--json` output is pretty-printed; fall back to the last line for any leading log noise.
+function parseCliJson(stdout) {
+  const text = stdout.trim()
+  for (const candidate of [text, text.slice(text.indexOf('\n{') + 1), text.split('\n').at(-1)]) {
+    try {
+      return JSON.parse(candidate ?? '')
+    } catch {
+      // Reported by the caller without echoing output that may contain credentials.
+    }
+  }
+  return null
+}
+
 export async function cli(serve, env, argv) {
   const result = await runProcess({
     program: serve.launcher,
@@ -241,12 +254,7 @@ export async function cli(serve, env, argv) {
     env,
     timeoutMs: 60_000
   })
-  let data = null
-  try {
-    data = JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '')
-  } catch {
-    // Reported below without echoing output that may contain credentials.
-  }
+  const data = parseCliJson(result.stdout)
   if (result.code !== 0 || !data?.ok) {
     throw new Error(
       `CLI ${argv[0]} ${argv[1]} failed (${data?.error?.code ?? `exit ${result.code}`})`
