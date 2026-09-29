@@ -114,7 +114,7 @@ export async function buildRuntimePtySpawnOptions(
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
   }
-  await applyAgentWorkspaceTrustToSpawn({
+  const trustWrite = applyAgentWorkspaceTrustToSpawn({
     launchAgent: args.launchAgent,
     worktreeId: args.worktreeId,
     store: ctx.deps.store,
@@ -126,6 +126,9 @@ export async function buildRuntimePtySpawnOptions(
     connectionId: args.connectionId ?? null,
     spawnOptions: ctx.spawnOptions
   })
+  if (trustWrite) {
+    await trustWrite
+  }
   ctx.hadSessionSizeBeforeAttach =
     ctx.effectiveSessionAppId !== undefined ? ptySizes.has(ctx.effectiveSessionAppId) : false
   ctx.sessionSizeBeforeAttach =

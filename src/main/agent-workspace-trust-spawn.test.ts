@@ -74,15 +74,19 @@ describe('applyAgentWorkspaceTrustToSpawn', () => {
       })
     })
 
-    it('does nothing with the setting off', async () => {
-      await applyAgentWorkspaceTrustToSpawn(
-        spawnArgs({ launchAgent: agent, settings: { agentWorkspaceTrustEnabled: false } })
-      )
+    it('does nothing with the setting off', () => {
+      expect(
+        applyAgentWorkspaceTrustToSpawn(
+          spawnArgs({ launchAgent: agent, settings: { agentWorkspaceTrustEnabled: false } })
+        )
+      ).toBeNull()
       expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
     })
 
-    it('does nothing for a restored or reattached pane', async () => {
-      await applyAgentWorkspaceTrustToSpawn(spawnArgs({ launchAgent: agent, isFreshLaunch: false }))
+    it('does nothing for a restored or reattached pane', () => {
+      expect(
+        applyAgentWorkspaceTrustToSpawn(spawnArgs({ launchAgent: agent, isFreshLaunch: false }))
+      ).toBeNull()
       expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
     })
 
@@ -129,8 +133,8 @@ describe('applyAgentWorkspaceTrustToSpawn', () => {
     ['a floating terminal', { worktreeId: 'global-floating-terminal' }],
     ['an unknown folder workspace', { worktreeId: 'folder:missing' }],
     ['a spawn with no workspace', { worktreeId: undefined }]
-  ])('does nothing for %s', async (_label, overrides) => {
-    await applyAgentWorkspaceTrustToSpawn(spawnArgs(overrides))
+  ])('does nothing, and gives the builder nothing to await, for %s', (_label, overrides) => {
+    expect(applyAgentWorkspaceTrustToSpawn(spawnArgs(overrides))).toBeNull()
     expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
   })
 })

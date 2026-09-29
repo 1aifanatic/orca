@@ -93,7 +93,7 @@ export async function buildPtyIpcSpawnOptions(
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
   }
-  await applyAgentWorkspaceTrustToSpawn({
+  const trustWrite = applyAgentWorkspaceTrustToSpawn({
     launchAgent: args.launchAgent,
     worktreeId: args.worktreeId,
     store: ctx.deps.store,
@@ -105,6 +105,9 @@ export async function buildPtyIpcSpawnOptions(
     connectionId: args.connectionId ?? null,
     spawnOptions: ctx.spawnOptions
   })
+  if (trustWrite) {
+    await trustWrite
+  }
   if (ctx.reservationPaneKey) {
     ctx.spawnOptions.paneKey = ctx.reservationPaneKey
   }
