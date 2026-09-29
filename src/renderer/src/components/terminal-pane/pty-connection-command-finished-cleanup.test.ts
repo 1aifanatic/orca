@@ -515,7 +515,7 @@ describe('connectPanePty', () => {
     // The whole unavailable ladder ran and left the launch identity in place.
     expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledTimes(3)
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toBeUndefined()
-    expect(mockStoreState.agentLaunchConfigByPaneKey[paneKey]?.identity.agentType).toBe('droid')
+    expect(mockStoreState.agentLaunchConfigByPaneKey[paneKey]?.identity?.agentType).toBe('droid')
     expect(window.api.agentStatus.reconcileEndedProcess).not.toHaveBeenCalled()
   })
 

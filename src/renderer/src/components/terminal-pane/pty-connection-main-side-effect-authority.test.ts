@@ -696,7 +696,7 @@ describe('connectPanePty', () => {
     if (typeof onAgentExitCandidate !== 'function') {
       throw new Error('Expected onAgentExitCandidate to be registered')
     }
-    const ptyId = transport.getPtyId()
+    const ptyId: unknown = transport.getPtyId.mock.results.at(-1)?.value
     const reads = (): number =>
       [window.api.pty.getForegroundProcess, window.api.pty.confirmForegroundProcess]
         .flatMap((read) => vi.mocked(read).mock.calls)
