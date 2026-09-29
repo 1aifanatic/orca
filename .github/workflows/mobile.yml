@@ -162,8 +162,10 @@ jobs:
         run: pnpm test
 
       # Reports, never gates: the goldens are content-addressed JSON, so their raw diff is hashes.
-      # This decodes which recorded behaviour the pull request moves into the job summary.
+      # This decodes which recorded behaviour the pull request moves into the job summary, and runs
+      # after a red Test too, when a reviewer most wants it.
       - name: Summarize RPC recording changes
+        if: ${{ !cancelled() }}
         continue-on-error: true
         run: pnpm run rpc:diff HEAD^1 --summary "$GITHUB_STEP_SUMMARY"
 
