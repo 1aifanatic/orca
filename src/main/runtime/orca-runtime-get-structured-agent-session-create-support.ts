@@ -23,6 +23,7 @@ import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agen
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
+import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   async getStructuredAgentSessionCreateSupport(
@@ -94,13 +95,17 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       )
     }
-    return this.resolveStructuredAgentSessionIntent(input, ({ workspacePath, launchEnv }) =>
-      resolveStructuredCodexAccountHomePath({
+    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) => {
+      await applyStructuredCodexWorkspaceTrust({
+        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
         launchEnv,
-        resolveLaunchHome: this.prepareCodexStructuredLaunchFn,
-        workspacePath
+        settings: this.requireStore().getSettings()
       })
-    )
+      return resolveStructuredCodexAccountHomePath({
+        launchEnv,
+        resolveLaunchHome: this.prepareCodexStructuredLaunchFn
+      })
+    })
   }
 
   /**
@@ -131,8 +136,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       // must not sync homes, start bridges, or clear an account selection.
       path: await resolveStructuredCodexAccountHomePath({
         launchEnv,
-        resolveLaunchHome: this.resolveCodexStructuredLaunchHomeFn,
-        workspacePath: ''
+        resolveLaunchHome: this.resolveCodexStructuredLaunchHomeFn
       })
     }
   }
@@ -146,7 +150,6 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       resumeFrom?: { providerSessionId: string }
     },
     resolveAccountHomePath: (context: {
-      workspacePath: string
       launchEnv: NodeJS.ProcessEnv
       location: {
         executionHostId: string
@@ -169,7 +172,6 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       input.agent
     )
     const location = await this.resolveStructuredAgentSessionLocation(input.worktree)
-    const workspacePath = (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path
     const host = getStructuredAgentSessionHost()
     const committedReplay = resolveCommittedStructuredAgentSessionAdoptionIntent({
       host,
@@ -180,11 +182,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     if (committedReplay) {
       return committedReplay
     }
-    const selectedAccountHomePath = await resolveAccountHomePath({
-      workspacePath,
-      launchEnv,
-      location
-    })
+    const selectedAccountHomePath = await resolveAccountHomePath({ launchEnv, location })
     // Adopting pins the account home to wherever the conversation actually lives, which is not
     // necessarily the one a fresh create would pick: Codex resolves its rollout under
     // `accountHome.path`, and Claude reads its transcript under `<home>/projects`. Resuming under
