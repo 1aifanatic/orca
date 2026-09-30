@@ -167,6 +167,10 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     isRemotePtyId,
     getExpectedIncarnationId: () => session.remotePtyIncarnationId ?? null,
     publish: (entry) => useAppStore.getState().setPaneForegroundAgent(session.cacheKey, entry),
+    getPublishedEntry: () => useAppStore.getState().paneForegroundAgentByPaneKey[session.cacheKey],
+    // Why lazy: the completion coordinator is installed after this tracker.
+    onAgentProcessRead: (process) =>
+      session.agentCompletionCoordinator?.observeForegroundAgentProcess(process),
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
     onConfirmedShellForeground: (reason) => {
       // Why: a confirmed local shell proves any hibernation record for this pane is stale;
@@ -181,7 +185,8 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       // surviving shell then receives pointer moves as typed SGR reports; the
       // replay guard keeps xterm's auto-replies from leaking to the shell.
       session.writeInputModeGround(CONFIRMED_SHELL_MODE_RESET)
-      if (reason === 'visible-pty') {
+      // Why: no 133;D backs these proofs, so a deferred command-finished drop keeps its own read.
+      if (reason === 'visible-pty' || reason === 'process-exit') {
         state.clearAgentLaunchConfig(session.cacheKey)
         return
       }
