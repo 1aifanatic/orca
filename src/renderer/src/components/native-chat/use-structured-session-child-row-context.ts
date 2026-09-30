@@ -30,8 +30,26 @@ export function useStructuredSessionChildRowContext(
   const parent = useAppStore((state) => state.agentStatusByPaneKey[paneKey])
   // The freshness window is thirty minutes; a coarse shared tick is well inside its precision.
   const now = useNow(30_000, parent !== undefined)
+  const context = parent ? structuredSessionChildRowContext(parent, now) : undefined
+  // Rebuilt from its values, not the row: a status row that changed none of them keeps the strip's
+  // grouped rows memoized.
+  const fresh = context?.parentEvidenceFresh
+  const observation = context?.transportObservation
+  const observedAt = context?.parentObservedAt
+  const offset = context?.hostClockOffsetMs
   return useMemo(
-    () => (parent ? structuredSessionChildRowContext(parent, now) : undefined),
-    [parent, now]
+    () =>
+      fresh === undefined ||
+      observation === undefined ||
+      observedAt === undefined ||
+      offset === undefined
+        ? undefined
+        : {
+            parentEvidenceFresh: fresh,
+            transportObservation: observation,
+            parentObservedAt: observedAt,
+            hostClockOffsetMs: offset
+          },
+    [fresh, observation, observedAt, offset]
   )
 }

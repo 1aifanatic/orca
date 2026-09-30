@@ -25,6 +25,12 @@ describe('structuredSessionBackgroundTasksView', () => {
     expect(finished).toMatchObject({ show: true, isMonitoring: false, children: [view('settled')] })
   })
 
+  it('hands the strip the decoded roster it was given, so its grouped rows stay memoized', () => {
+    const roster = { state: 'monitoring' as const, children: [view('live')] }
+    expect(structuredSessionBackgroundTasksView(roster, null).children).toBe(roster.children)
+    expect(structuredSessionBackgroundTasksView(roster, 'turn-1').children).toBe(roster.children)
+  })
+
   it('reads live work beneath an idle session as monitoring, and a running turn as its own', () => {
     const roster = {
       state: 'monitoring' as const,
