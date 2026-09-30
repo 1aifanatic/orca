@@ -722,12 +722,18 @@ function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
   if (electronPlatformName !== 'darwin') {
     return
   }
-  const helperPaths = [
-    join(resourcesDir, 'serve-sim', 'bin', 'serve-sim-bin'),
-    join(resourcesDir, 'serve-sim', 'dist', 'simcam', 'serve-sim-camera-helper'),
-    join(resourcesDir, 'node_modules', 'serve-sim', 'bin', 'serve-sim-bin'),
-    join(resourcesDir, 'node_modules', 'serve-sim', 'dist', 'simcam', 'serve-sim-camera-helper')
+  // Mirrors SERVE_SIM_EXECUTABLE_RELATIVE_PATHS in src/main/emulator/serve-sim-package-executables.ts.
+  const helperRelativePaths = [
+    ['simax', 'serve-sim-ax-settings'],
+    ['simcam', 'serve-sim-camera-helper'],
+    ['simduo', 'serve-sim-duo-hid'],
+    ['simduo', 'serve-sim-duo-render']
   ]
+  const helperPaths = ['serve-sim', join('node_modules', 'serve-sim')].flatMap((packageDir) =>
+    helperRelativePaths.map((relativePath) =>
+      join(resourcesDir, packageDir, 'dist', ...relativePath)
+    )
+  )
   for (const helperPath of helperPaths) {
     if (existsSync(helperPath)) {
       chmodSync(helperPath, 0o755)

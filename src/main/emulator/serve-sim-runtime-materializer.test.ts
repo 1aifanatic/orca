@@ -1,8 +1,9 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SERVE_SIM_EXECUTABLE_RELATIVE_PATHS } from './serve-sim-package-executables'
 import { materializeServeSimRuntime } from './serve-sim-runtime-materializer'
 
 const DYLIB_CONTENT = Buffer.from('signed-simcam-dylib-mach-o-bytes')
@@ -10,15 +11,14 @@ const DYLIB_CONTENT = Buffer.from('signed-simcam-dylib-mach-o-bytes')
 async function createBundledServeSimPackage(root: string): Promise<string> {
   const packageDir = join(root, 'bundled-serve-sim')
   await mkdir(join(packageDir, 'dist', 'simcam'), { recursive: true })
-  await mkdir(join(packageDir, 'bin'), { recursive: true })
   await writeFile(join(packageDir, 'dist', 'serve-sim.js'), 'console.log("serve-sim")')
   await writeFile(join(packageDir, 'dist', 'simcam', 'libSimCameraInjector.dylib'), DYLIB_CONTENT, {
     mode: 0o644
   })
-  await writeFile(join(packageDir, 'dist', 'simcam', 'serve-sim-camera-helper'), 'helper', {
-    mode: 0o644
-  })
-  await writeFile(join(packageDir, 'bin', 'serve-sim-bin'), 'bin', { mode: 0o644 })
+  for (const relativePath of SERVE_SIM_EXECUTABLE_RELATIVE_PATHS) {
+    await mkdir(join(packageDir, dirname(relativePath)), { recursive: true })
+    await writeFile(join(packageDir, relativePath), 'helper', { mode: 0o644 })
+  }
   return packageDir
 }
 
@@ -56,12 +56,16 @@ describe('materializeServeSimRuntime', () => {
     expect(clearQuarantine).toHaveBeenCalledTimes(1)
     expect(clearQuarantine).toHaveBeenCalledWith(expect.stringContaining('.staging-1.2.3-'))
     if (process.platform !== 'win32') {
-      for (const executable of [
-        join(materialized!, 'bin', 'serve-sim-bin'),
-        join(materialized!, 'dist', 'simcam', 'serve-sim-camera-helper')
-      ]) {
-        expect(((await stat(executable)).mode & 0o111) !== 0).toBe(true)
+      for (const relativePath of SERVE_SIM_EXECUTABLE_RELATIVE_PATHS) {
+        expect(((await stat(join(materialized!, relativePath))).mode & 0o111) !== 0).toBe(true)
       }
+    }
+  })
+
+  it('names executables the installed serve-sim package ships', () => {
+    const installedPackageDir = join(process.cwd(), 'node_modules', 'serve-sim')
+    for (const relativePath of SERVE_SIM_EXECUTABLE_RELATIVE_PATHS) {
+      expect(existsSync(join(installedPackageDir, relativePath)), relativePath).toBe(true)
     }
   })
 

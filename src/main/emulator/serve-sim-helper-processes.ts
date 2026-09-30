@@ -8,6 +8,8 @@ export type ServeSimHelperProcess = {
   command: string
 }
 
+const SERVE_SIM_DETACHED_HELPER_FLAG = '--exit-on-simulator-shutdown'
+
 type ServeSimHelperProcessLookupOptions = {
   helperPid?: number
   includeOrphaned?: boolean
@@ -25,6 +27,18 @@ function execFileText(command: string, args: string[]): Promise<string> {
   })
 }
 
+// Why: serve-sim >= 0.1.47 runs the helper as `<node> …/serve-sim.js <udid> … --exit-on-simulator-shutdown`;
+// the legacy `serve-sim-bin` shape stays so a helper left by a pre-update Orca is still found and killed.
+function isServeSimHelperCommand(command: string): boolean {
+  if (/(^|\/)serve-sim-bin(?:\s|$)/.test(command)) {
+    return true
+  }
+  return (
+    commandContainsToken(command, SERVE_SIM_DETACHED_HELPER_FLAG) &&
+    /(^|\/)serve-sim(?:\.js)?\s/.test(command)
+  )
+}
+
 export function parseServeSimHelperProcesses(psOutput: string): ServeSimHelperProcess[] {
   const helpers: ServeSimHelperProcess[] = []
   for (const line of iterateProcessOutputLines(psOutput)) {
@@ -34,7 +48,7 @@ export function parseServeSimHelperProcesses(psOutput: string): ServeSimHelperPr
     }
     const pid = Number(match[1])
     const command = match[2] ?? ''
-    if (!Number.isInteger(pid) || !/(^|\/)serve-sim-bin(?:\s|$)/.test(command)) {
+    if (!Number.isInteger(pid) || !isServeSimHelperCommand(command)) {
       continue
     }
     helpers.push({ pid, command })

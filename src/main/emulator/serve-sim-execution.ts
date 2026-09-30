@@ -12,6 +12,7 @@ import { app } from 'electron'
 import { platform, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { EmulatorError } from './emulator-errors'
+import { SERVE_SIM_EXECUTABLE_RELATIVE_PATHS } from './serve-sim-package-executables'
 import { materializeServeSimRuntime } from './serve-sim-runtime-materializer'
 
 const EXEC_TIMEOUT_MS = 90_000
@@ -125,8 +126,11 @@ export function resolveServeSimExecutable(): ServeSimExecutable {
   const nodeModulesPackageDir = join(app.getAppPath(), 'node_modules', 'serve-sim')
   const nodeModulesEntry = join(nodeModulesPackageDir, 'dist', 'serve-sim.js')
   if (existsSync(nodeModulesEntry)) {
-    const helperBin = join(nodeModulesPackageDir, 'bin', 'serve-sim-bin')
-    if (existsSync(helperBin) && process.platform !== 'win32') {
+    for (const relativePath of SERVE_SIM_EXECUTABLE_RELATIVE_PATHS) {
+      const helperBin = join(nodeModulesPackageDir, relativePath)
+      if (!existsSync(helperBin) || process.platform === 'win32') {
+        continue
+      }
       try {
         accessSync(helperBin, constants.X_OK)
       } catch {

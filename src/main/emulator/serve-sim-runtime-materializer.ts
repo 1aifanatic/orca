@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { SERVE_SIM_EXECUTABLE_RELATIVE_PATHS } from './serve-sim-package-executables'
 
 export type ServeSimRuntimeMaterializerOptions = {
   bundledPackageDir: string
@@ -8,11 +9,6 @@ export type ServeSimRuntimeMaterializerOptions = {
   version: string
   clearQuarantine?: (dir: string) => void
 }
-
-const EXECUTABLE_RELATIVE_PATHS = [
-  join('bin', 'serve-sim-bin'),
-  join('dist', 'simcam', 'serve-sim-camera-helper')
-]
 
 function defaultClearQuarantine(dir: string): void {
   if (process.platform !== 'darwin') {
@@ -70,7 +66,7 @@ export function materializeServeSimRuntime(
     rmSync(stagingDir, { recursive: true, force: true })
     rmSync(targetDir, { recursive: true, force: true })
     cpSync(bundledPackageDir, stagingDir, { recursive: true })
-    for (const relativePath of EXECUTABLE_RELATIVE_PATHS) {
+    for (const relativePath of SERVE_SIM_EXECUTABLE_RELATIVE_PATHS) {
       const executablePath = join(stagingDir, relativePath)
       if (existsSync(executablePath)) {
         chmodSync(executablePath, 0o755)
