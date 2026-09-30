@@ -116,11 +116,13 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   }): Promise<void> {
     const host = getStructuredAgentSessionHost()
     if (typeof host?.setSessionTabVisibility === 'function') {
-      await host.setSessionTabVisibility(
-        input.sessionId,
-        true,
-        ...(input.tabId ? [input.tabId] : [])
-      )
+      // The restore index is bookkeeping: one that cannot be written (a newer Orca's records, a
+      // failing disk) is reported, and the tab still opens.
+      await host
+        .setSessionTabVisibility(input.sessionId, true, ...(input.tabId ? [input.tabId] : []))
+        .catch((error: unknown) => {
+          console.warn('[structured-agent-session] recording an opened chat tab failed', error)
+        })
     }
     this.projectStructuredAgentSessionTab(input)
   }

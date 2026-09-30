@@ -25,7 +25,10 @@ import {
 } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
-import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
+import {
+  openTestAgentSessionRecordStore,
+  seedTestAgentSessionStoreFromNewerBuild
+} from '../../agent-session-record-store-test-harness'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
 import type { RpcDispatchStreamingOptions } from '../dispatcher-stream-options'
@@ -190,6 +193,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await host?.flushAllStreamedEvents()
   setStructuredAgentSessionHost(null)
   await rm(directory, { recursive: true, force: true })
@@ -382,5 +386,29 @@ describe('a create that reserves its tab', () => {
       ok: true,
       value: { tabId: 'reserved-tab' }
     })
+  })
+})
+
+describe('a chat tab over records a newer Orca wrote', () => {
+  it('opens a closed chat from history for reading', async () => {
+    await createChat(HOST_TEST_SESSION)
+    await host.close(HOST_TEST_SESSION)
+    await host.setSessionTabVisibility(HOST_TEST_SESSION, false)
+    await host.flushAllStreamedEvents()
+    await seedTestAgentSessionStoreFromNewerBuild(directory)
+    await openHost()
+    expect(store.readOnly).toBe(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    expect(await call('agentSession.reveal', { sessionId: HOST_TEST_SESSION })).toMatchObject({
+      ok: true,
+      result: { ok: true, readable: true }
+    })
+
+    expect((await snapshot()).activeTabId).toBe(`agent-session:${HOST_TEST_SESSION}`)
+    expect(warn).toHaveBeenCalledWith(
+      '[structured-agent-session] recording an opened chat tab failed',
+      expect.anything()
+    )
   })
 })
