@@ -22,8 +22,7 @@ export async function resolveCliStatusCaller(
   client: Pick<RuntimeClient, 'call'>
 ): Promise<CliStatusCaller | undefined> {
   const sessionId = readInjectedAgentSessionId()
-  // Why always asked: the host decides "no identity" from the same envelope every verb sends, so a
-  // pane key alone still resolves the caller its verbs would act as.
+  // Why always asked: the host decides "no identity" from the same envelope every verb sends.
   try {
     const response = await client.call<OrchestrationCallerShowResult>(
       'orchestration.callerShow',

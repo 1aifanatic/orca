@@ -3,9 +3,9 @@
  *
  * Two properties are pinned here, because both were false at some point in this lane:
  *
- * - a worker is TAUGHT the same thing whichever mode it runs in, byte for byte once its address
- *   and the per-dispatch ids are normalised. The sub-dispatch section used to be withheld from a
- *   structured worker, which is a two-tier capability model dressed as a preamble tweak;
+ * - a worker is TAUGHT the same thing whichever mode it runs in, byte for byte once the handle and
+ *   dispatch id are normalised. The sub-dispatch section used to be withheld from a structured
+ *   worker, which is a two-tier capability model dressed as a preamble tweak;
  * - a structured worker can actually BE a coordinator. `worker-start` used to resolve `--from`
  *   through `showTerminal`, which needs a PTY, so the capability the preamble withheld was in fact
  *   missing rather than merely unadvertised.
@@ -89,7 +89,7 @@ function installStructuredCoordinator(handle: string, sessionId: string): string
             runtimeFence: 1
           }
         }),
-        // No committed /clear: each session is its own conversation's root.
+        // No committed /clear: each session is its own lineage's root.
         listRecords: () => []
       }
     }
@@ -97,7 +97,7 @@ function installStructuredCoordinator(handle: string, sessionId: string): string
   return paneKey
 }
 
-/** Strips the address and ids that legitimately differ per worker, leaving what it is taught. */
+/** Strips the ids that legitimately differ per dispatch, leaving what the agent is taught. */
 function normalizePreamble(preamble: string, handle: string, dispatchId: string): string {
   return preamble
     .split(handle)
@@ -189,7 +189,7 @@ describe('a worker cannot tell which mode it is running in', () => {
     return result
   }
 
-  it('teaches byte-identical instructions in both modes, but for the address', async () => {
+  it('teaches byte-identical instructions in both modes', async () => {
     vi.spyOn(runtime, 'showTerminal').mockResolvedValue({
       handle: 'term_coord',
       worktreeId: WORKTREE,

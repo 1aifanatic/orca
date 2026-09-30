@@ -1,6 +1,5 @@
 import { defineMethod } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
-import type { OrchestrationDb } from '../../../../orchestration/db'
 import {
   buildDispatchPreamble,
   dispatchPreambleSendOptions
@@ -66,7 +65,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: 'ctx_dryrun',
           canDispatchSubWorkers: previewDepth < maxDepth,
           taskSpec: task.spec,
-          coordinatorHandle: coordinatorAddress(params.from, db),
+          coordinatorHandle: params.from ?? 'coordinator',
           workerHandle: assignee ?? 'worker',
           devMode: params.devMode,
           ...(assignee ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(assignee) } : {})
@@ -154,7 +153,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         dispatchId: ctx.id,
         canDispatchSubWorkers: ctx.depth < runtime.getNestedWorkerMaxDepth(),
         taskSpec: task.spec,
-        coordinatorHandle: coordinatorAddress(params.from, db),
+        coordinatorHandle: params.from ?? 'coordinator',
         workerHandle: to,
         dispatchCapability,
         devMode: params.devMode,
@@ -213,7 +212,10 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: ctx?.id ?? 'ctx_preview',
           canDispatchSubWorkers: (ctx?.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
           taskSpec: task.spec,
-          coordinatorHandle: coordinatorAddress(params.from, db),
+          // Why: `from` is not bound at the entry here; a `/clear`ed chat's live id names its root.
+          coordinatorHandle: params.from
+            ? resolveOrchestrationParty(params.from, db).address
+            : 'coordinator',
           workerHandle,
           devMode: params.devMode,
           ...(ctx ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(workerHandle) } : {})
@@ -225,8 +227,3 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
     }
   })
 ]
-
-/** The coordinator's mailbox address: a `session:` spelling of a `/clear`ed chat names its root. */
-function coordinatorAddress(from: string | undefined, db: OrchestrationDb): string {
-  return from ? resolveOrchestrationParty(from, db).address : 'coordinator'
-}
