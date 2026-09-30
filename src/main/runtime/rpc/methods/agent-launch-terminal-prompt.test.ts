@@ -41,6 +41,7 @@ function runtimeStub(overrides: {
     return COMPOSER_READY
   })
   const isLaunchShellInFront = vi.fn(async () => overrides.shellInFront ?? false)
+  const subscribeToTerminalData = vi.fn(() => () => {})
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
     overrides.send ?? (async () => ({ handle: 'term_1', accepted: true, bytesWritten: 12 }))
   )
@@ -49,12 +50,13 @@ function runtimeStub(overrides: {
     waitForFreshWorkerComposer,
     sendTerminalAgentPrompt,
     isLaunchShellInFront,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these four runtime methods; anything else would throw rather than read a wrong value.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these five runtime methods; anything else would throw rather than read a wrong value.
     runtime: {
       waitForTerminal,
       waitForFreshWorkerComposer,
       sendTerminalAgentPrompt,
-      isLaunchShellInFront
+      isLaunchShellInFront,
+      subscribeToTerminalData
     } as unknown as Parameters<typeof deliverTerminalAgentLaunchPrompt>[0]['runtime']
   }
 }
@@ -250,6 +252,30 @@ describe('writing a launch prompt into a terminal agent', () => {
       })
     ).resolves.toBe(delivered)
     expect(stub.isLaunchShellInFront).toHaveBeenCalledWith('pty-1', 'claude')
+  })
+
+  it('checks the foreground once for the paste, its Enter and the second Enter', async () => {
+    const stub = runtimeStub({ composerSignal: true })
+    stub.sendTerminalAgentPrompt.mockImplementation(async (handle, _text, options) => {
+      const { beforeWrite } = options
+      if (typeof beforeWrite === 'function') {
+        await beforeWrite('pty-1')
+        await beforeWrite('pty-1')
+        await beforeWrite('pty-1')
+      }
+      return { handle, accepted: true, bytesWritten: 12 }
+    })
+
+    await expect(
+      deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'codex',
+        freshLaunch: true,
+        text: 'do the thing'
+      })
+    ).resolves.toBe(true)
+    expect(stub.isLaunchShellInFront).toHaveBeenCalledTimes(1)
   })
 
   it('writes as soon as the composer signal fires, without consulting the idle evidence', async () => {

@@ -30,6 +30,10 @@ import {
   type LaunchedAgentReadinessRuntime
 } from '../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
+import {
+  createLaunchedAgentWriteGuard,
+  type LaunchedAgentWriteGuardRuntime
+} from '../../launched-agent-write-guard'
 
 /** The same budget orchestration gives a worker to reach its composer before dispatching to it. */
 const AGENT_READY_TIMEOUT_MS = 60_000
@@ -37,7 +41,8 @@ const AGENT_READY_TIMEOUT_MS = 60_000
 const BLOCKED_RECHECK_MS = 1_000
 
 type TerminalPromptRuntime = LaunchedAgentReadinessRuntime &
-  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt' | 'isLaunchShellInFront'>
+  LaunchedAgentWriteGuardRuntime &
+  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt'>
 
 type ReadinessClock = { now: () => number; sleep: (ms: number) => Promise<void> }
 
@@ -102,6 +107,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   if (args.text.trim().length === 0) {
     return false
   }
+  // Before the paste and again before Enter: an agent that exited in between leaves its shell in
+  // the foreground, which must never receive the prompt or its Enter.
+  const guard = args.freshLaunch ? createLaunchedAgentWriteGuard(args.runtime, args.agent) : null
   try {
     const wait = await waitThroughBlockingPrompts(
       args.runtime,
@@ -122,18 +130,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       inputKind: 'launch',
       // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
       composerReady: args.freshLaunch,
-      // Before the paste and again before Enter: an agent that exited in between leaves its
-      // shell in the foreground, which must never receive the prompt or its Enter.
-      ...(args.freshLaunch
-        ? {
-            beforeWrite: async (ptyId: string) => {
-              // Only a shell proven in front refuses: an unread foreground is no proof it exited.
-              if (await args.runtime.isLaunchShellInFront(ptyId, args.agent)) {
-                throw new Error('agent_not_in_foreground')
-              }
-            }
-          }
-        : {}),
+      ...(guard ? { beforeWrite: guard.beforeWrite } : {}),
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.
@@ -153,5 +150,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       error
     )
     return false
+  } finally {
+    guard?.dispose()
   }
 }
