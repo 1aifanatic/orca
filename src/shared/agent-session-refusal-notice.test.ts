@@ -14,7 +14,7 @@ import {
 } from './agent-session-refusal-notice'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY,
-  agentSessionNoticeSaysHistoryUnread,
+  agentSessionNoticeSaysThisChatUnread,
   type AgentSessionWriteNoticeSentence
 } from './agent-session-write-notice-copy'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
@@ -581,14 +581,17 @@ describe('a chat whose history the host could not open', () => {
   })
 
   // A pane headed by such words drops its own "didn't load", so each one must count.
-  it('knows which read notices already say the history did not load', () => {
+  it("knows which read notices already say this chat's history did not load", () => {
     for (const failure of [...FAILURES, ...REASONED]) {
       for (const retryControl of [false, true]) {
         const parts = agentSessionWriteNoticeParts(failure, 'read-history', { retryControl })
-        const notAboutTheRead =
-          mayHaveRun(failure) || codeOf(failure) === 'structured_agent_session_unsupported'
-        expect(agentSessionNoticeSaysHistoryUnread(parts), JSON.stringify(parts)).toBe(
-          !notAboutTheRead
+        // "Chats were saved by a newer Orca" is about every chat, not this one.
+        const notAboutThisRead =
+          mayHaveRun(failure) ||
+          codeOf(failure) === 'structured_agent_session_unsupported' ||
+          parts.includes('savedByNewerOrca')
+        expect(agentSessionNoticeSaysThisChatUnread(parts), JSON.stringify(parts)).toBe(
+          !notAboutThisRead
         )
       }
     }

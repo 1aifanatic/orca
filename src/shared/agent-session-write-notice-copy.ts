@@ -85,14 +85,15 @@ export type AgentSessionWriteNoticePart =
 export const AGENT_SESSION_HISTORY_UNREAD_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> =
   new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable', 'savedByNewerOrca'])
 
-/** Whether these words already say the history didn't load, so a pane headed by them need not
- *  say it again. */
-export function agentSessionNoticeSaysHistoryUnread(
+/** Whether these words already say this chat's history didn't load, so a pane headed by them need
+ *  only add that it keeps trying. "Chats were saved by a newer Orca" names no one chat for "it". */
+export function agentSessionNoticeSaysThisChatUnread(
   parts: readonly AgentSessionWriteNoticePart[]
 ): boolean {
   return parts.some(
     (part) =>
       typeof part === 'string' &&
+      part !== 'savedByNewerOrca' &&
       (part === 'notDoneReadHistory' || AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(part))
   )
 }

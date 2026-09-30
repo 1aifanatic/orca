@@ -39,7 +39,9 @@ function renderPane(): void {
   )
 }
 
-function journalRefusal(reason: 'journalCorrupt' | 'journalUnavailable') {
+function journalRefusal(
+  reason: 'journalCorrupt' | 'journalUnavailable' | 'journalWrittenByNewerOrca'
+) {
   return { code: 'agent_session_journal_unreadable', details: { reason } } as const
 }
 
@@ -99,6 +101,19 @@ it("says only that it keeps trying under a code's own words that the history did
   expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
   expect(screen.getByText('Orca keeps trying to load it.')).toBeTruthy()
   expect(screen.queryByText(/could not be read/)).toBeNull()
+})
+
+it('keeps the whole retrying line under a newer Orca\'s words, which name no one chat for "it"', () => {
+  mocks.status = 'error'
+  mocks.readRefusal = journalRefusal('journalWrittenByNewerOrca')
+  mocks.messages = []
+
+  renderPane()
+
+  expect(screen.getByText(/^Chats were saved by a newer Orca\./)).toBeTruthy()
+  expect(
+    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
+  ).toBeTruthy()
 })
 
 it('says only that it is reconnecting, not as an error, when a failure names nothing', () => {

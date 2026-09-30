@@ -62,8 +62,8 @@ export function useStructuredAgentSessionMutate(args: {
   const { enabled = true, sessionId, stateRef, target } = args
   const operationIds = useRef(new Map<string, string>())
   const enabledRef = useRef(enabled)
-  // The conversation command this pane waits on for this chat; only its reply may outlive a fence
-  // move, and closing the pane or showing another chat forgets it.
+  // The conversation command this pane still waits on; only its reply may outlive a fence move. A
+  // newer command replaces it, and disabling the pane forgets it.
   const commandInFlight = useRef<object | null>(null)
   useEffect(() => {
     // Why: update the gate after commit so render stays free of ref mutations.
