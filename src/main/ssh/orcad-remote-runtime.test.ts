@@ -32,9 +32,9 @@ function nodeSlot(options: { marker?: string; runtime?: boolean } = {}): string 
   mkdirSync(slot)
   writeFileSync(join(slot, '.runtime-node'), options.marker ?? `${NODE_SHA}\n`)
   if (options.runtime !== false) {
-    const runtimeDir = join(root, 'runtimes', `node-${NODE_SHA}`)
-    mkdirSync(runtimeDir, { recursive: true })
-    symlinkSync(process.execPath, join(runtimeDir, 'node'))
+    const binDir = join(root, 'runtimes', `node-${NODE_SHA}`, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    symlinkSync(process.execPath, join(binDir, 'node'))
   }
   return slot
 }
