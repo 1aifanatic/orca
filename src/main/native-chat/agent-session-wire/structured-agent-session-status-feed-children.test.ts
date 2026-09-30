@@ -316,10 +316,19 @@ describe('structured status summary child records', () => {
     feed.publish(SESSION)
     expect(retirements()).toHaveLength(2)
 
-    // A rewind replaces the conversation, as the user's own action.
+    // Each carries when the user wrote the send, so a child that finished after it stays.
+    const writtenAt = (clientMessageId: string) =>
+      journal.submissions().find((entry) => entry.clientMessageId === clientMessageId)?.submittedAt
+    expect(retirements().map((edge) => edge.type === 'turn-started' && edge.actedAt)).toEqual([
+      writtenAt('send-1'),
+      writtenAt('send-2')
+    ])
+
+    // A rewind replaces the conversation, as the user's own action: every finished child goes.
     await journal.replaceEpochItems('handle_forked', 1, [])
     feed.publish(SESSION)
     expect(retirements()).toHaveLength(3)
+    expect(retirements().at(-1)).not.toHaveProperty('actedAt')
   })
 
   it("forgets a closed session's children in the projection it keeps", async () => {

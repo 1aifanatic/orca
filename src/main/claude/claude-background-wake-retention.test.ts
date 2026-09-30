@@ -76,7 +76,7 @@ async function wiredSession() {
       feed.publish(parent.sessionId)
     }
   }
-  /** The user sends; the provider takes it once `accepted`. */
+  /** The user writes a message now, on the host clock; the provider takes it once `accepted`. */
   const send = (clientMessageId: string): AgentJournalSubmission => {
     const submission: AgentJournalSubmission = {
       clientMessageId,
@@ -85,7 +85,7 @@ async function wiredSession() {
       dispatchState: 'pending',
       providerItemId: null,
       reason: null,
-      submittedAt: 1,
+      submittedAt: run.now(),
       resolvedAt: null
     }
     submissions.push(submission)
@@ -137,6 +137,32 @@ describe("a finished child stays until the user's next turn", () => {
     session.accept(session.send('steer-uuid'))
     expect(session.strip()).toEqual([])
     session.replay(wake.slice(wakeInit + 1))
+    expect(session.strip()).toEqual([])
+  })
+
+  it('keeps a child that finished after the user wrote the message the provider takes later', async () => {
+    const session = await wiredSession()
+    const { firstTurn, wake } = backgroundWakeCapture({
+      sessionId: PROVIDER_SESSION_ID,
+      first: 'first-uuid',
+      steer: 'steer-uuid'
+    })
+    session.accept(session.send('first-uuid'))
+    session.replay(firstTurn)
+    expect(session.strip()).toEqual(['Sleep then print marker:live:'])
+    // Written while the shell runs: a steer Claude takes at its next boundary, or a queued draft.
+    const steer = session.send('steer-uuid')
+    const wakeInit = wake.findIndex((captured) => captured.frame.subtype === 'init')
+    session.replay(wake.slice(0, wakeInit + 1))
+    expect(session.strip()).toEqual(['Sleep then print marker:settled:succeeded'])
+
+    // The provider takes the message the user wrote before the shell finished: the user has
+    // not acted since it finished, so it stays.
+    session.accept(steer)
+    expect(session.strip()).toEqual(['Sleep then print marker:settled:succeeded'])
+    // Their next message retires it.
+    session.replay(wake.slice(wakeInit + 1))
+    session.accept(session.send('next-uuid'))
     expect(session.strip()).toEqual([])
   })
 })

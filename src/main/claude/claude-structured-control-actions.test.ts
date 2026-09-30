@@ -329,13 +329,15 @@ describe('stopClaudeBackgroundTasks', () => {
         type: 'ended',
         observedAt: 2,
         handle: { idKind: 'task_id', id: 'task-agent' },
-        outcome: 'cancelled'
+        outcome: 'cancelled',
+        basis: 'stop-acknowledged'
       },
       {
         type: 'ended',
         observedAt: 2,
         handle: { idKind: 'task_id', id: 'task-bash' },
-        outcome: 'cancelled'
+        outcome: 'cancelled',
+        basis: 'stop-acknowledged'
       }
     ])
   })
@@ -367,5 +369,24 @@ describe('stopClaudeBackgroundTasks', () => {
       cancelled: false
     })
     expect(stopTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops the remaining tasks after one request fails, then reports the failure', async () => {
+    const childWork = liveChildWork(['task-1', 'task-2'])
+    const lost = new Error('connection reset')
+    const stopTask = vi.fn(async (taskId: string) => {
+      if (taskId === 'task-1') {
+        throw lost
+      }
+    })
+    const session = stoppingSession(childWork, stopTask)
+
+    await expect(
+      stopClaudeBackgroundTasks(session, undefined, () => true, ['task-1', 'task-2'])
+    ).rejects.toBe(lost)
+    expect(stopTask.mock.calls.map(([taskId]) => taskId)).toEqual(['task-1', 'task-2'])
+    expect(childWork.drain(2)).toMatchObject([
+      { type: 'ended', handle: { id: 'task-2' }, outcome: 'cancelled' }
+    ])
   })
 })

@@ -506,4 +506,65 @@ describe('structured child-work reconciliation', () => {
       strip: ['Task top', 'Task nested', 'Task shell']
     })
   })
+
+  it("lets the child's own ending replace an acknowledged Stop's, and nothing else replace its own", () => {
+    const ended = (
+      id: string,
+      outcome: 'succeeded' | 'failed' | 'cancelled',
+      observedAt: number,
+      extra: Partial<Extract<AgentChildWorkEvidence, { type: 'ended' }>> = {}
+    ): AgentChildWorkEvidence => ({
+      type: 'ended',
+      observedAt,
+      handle: { idKind: 'task_id', id },
+      outcome,
+      ...extra
+    })
+    const stopped = { basis: 'stop-acknowledged' as const }
+    const { store, apply } = harness()
+    apply(live(child('replaced')), live(child('kept')), live(child('same')))
+    apply(
+      ended('replaced', 'cancelled', 101, stopped),
+      ended('replaced', 'succeeded', 102, { lastMessage: 'all tests passed' }),
+      ended('kept', 'failed', 101, { lastMessage: 'Exit code 1' }),
+      ended('kept', 'cancelled', 102, stopped),
+      ended('same', 'cancelled', 101, stopped),
+      ended('same', 'cancelled', 102)
+    )
+    expect(
+      records(store).map((record) => [
+        record.description,
+        record.outcome,
+        record.outcomeBasis ?? 'reported',
+        record.lastMessage ?? null
+      ])
+    ).toEqual([
+      ['Task replaced', 'succeeded', 'reported', 'all tests passed'],
+      ['Task kept', 'failed', 'reported', 'Exit code 1'],
+      ['Task same', 'cancelled', 'reported', null]
+    ])
+    // Once the child reported its ending, a later acknowledged Stop changes nothing either.
+    expect(apply(ended('same', 'failed', 103, stopped))).toMatchObject({ settled: 0 })
+  })
+
+  it('at the next turn keeps a child that finished after the user wrote that send', () => {
+    const { store, apply } = harness()
+    const ended = (id: string, observedAt: number): AgentChildWorkEvidence => ({
+      type: 'ended',
+      observedAt,
+      handle: { idKind: 'task_id', id },
+      outcome: 'succeeded'
+    })
+    apply(live(child('before')), live(child('after')))
+    apply(ended('before', 110), ended('after', 130))
+    expect(apply({ type: 'turn-started', observedAt: 140, actedAt: 120 })).toMatchObject({
+      removed: 1
+    })
+    expect(records(store).map((record) => record.description)).toEqual(['Task after'])
+    // The user's next send, written after it finished, retires it.
+    expect(apply({ type: 'turn-started', observedAt: 160, actedAt: 150 })).toMatchObject({
+      removed: 1
+    })
+    expect(records(store)).toEqual([])
+  })
 })

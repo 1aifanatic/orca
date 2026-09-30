@@ -10,6 +10,7 @@ import type {
   AgentChildWorkKind,
   AgentChildWorkOperation,
   AgentChildWorkOutcome,
+  AgentChildWorkOutcomeBasis,
   AgentChildWorkResidency,
   AgentChildWorkState
 } from './agent-status-child-work'
@@ -61,20 +62,29 @@ export type AgentChildWorkOperationEvidence = {
   operation: AgentChildWorkOperation | null
 }
 
-/** The child's own terminal frame. `unknown` is an ending whose status the provider did not say. */
+/** The child's own terminal frame. `unknown` is an ending whose status the provider did not say.
+ *  With `basis`, the ending is the provider acknowledging a Stop, which the child's own terminal
+ *  frame of the same run still replaces. */
 export type AgentChildWorkEndedEvidence = {
   type: 'ended'
   observedAt: number
   handle: AgentChildWorkEvidenceHandle
   outcome: AgentChildWorkOutcome
+  basis?: AgentChildWorkOutcomeBasis
   lastMessage?: string
   totalTokens?: number
 }
 
 /** The user's next turn began: the provider accepted their next send. A turn the provider opens
  *  on its own is not one. Settled children are kept, with their outcome, until then; a settled
- *  child that still owns live work, at any depth, stays so that work keeps its owners. */
-export type AgentChildWorkTurnStartedEvidence = { type: 'turn-started'; observedAt: number }
+ *  child that still owns live work, at any depth, stays so that work keeps its owners, and one
+ *  that settled after `actedAt` (when the user wrote that send, on the host clock) stays until
+ *  the user's next send after it. No `actedAt` retires every settled child (a rewind). */
+export type AgentChildWorkTurnStartedEvidence = {
+  type: 'turn-started'
+  observedAt: number
+  actedAt?: number
+}
 
 /** The provider session is gone: a child still live can no longer end on its own, so it settles
  *  with an outcome nobody reported. Settled children stay until the user's next turn or the

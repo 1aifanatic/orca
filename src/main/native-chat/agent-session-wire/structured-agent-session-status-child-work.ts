@@ -52,14 +52,38 @@ export function structuredStatusChildrenEqual(
   return agentChildWorkViewsEqual(a, b, SUMMARY_CHILD_CLOCK_TOLERANCE_MS)
 }
 
-/** The user's newest send the provider accepted (a message, a steer or a command), keyed by the
- *  journal epoch: its change is the user's next turn. A turn the provider opens itself, such as
- *  Claude waking the agent when a background task ends, carries no send, and a subagent's turn is
- *  never one; a rewind replaces the epoch. */
-export function newestAcceptedSendKey(
+/** The user's newest send the provider accepted (a message, a steer or a command) in one journal
+ *  epoch: a new one is the user's next turn. A turn the provider opens itself, such as Claude
+ *  waking the agent when a background task ends, carries no send, and a subagent's turn is never
+ *  one; a rewind replaces the epoch. */
+export type StructuredAcceptedSend = {
+  epoch: string
+  clientMessageId: string | null
+  /** When the user acted, on the host clock: they wrote the message, or queued the draft it was
+   *  handed over from. A child that finished after it finished after what the user saw. */
+  actedAt?: number
+}
+
+/** `previous` is returned when it is still the newest, so the draft table is read once per send. */
+export function newestAcceptedSend(
   epoch: string,
-  submissions: readonly AgentJournalSubmission[]
-): string {
+  submissions: readonly AgentJournalSubmission[],
+  draftQueuedAt: (queuedMessageId: string) => number | undefined,
+  previous?: StructuredAcceptedSend
+): StructuredAcceptedSend {
   const accepted = submissions.findLast((submission) => submission.dispatchState === 'accepted')
-  return `${epoch}:${accepted?.clientMessageId ?? ''}`
+  const clientMessageId = accepted?.clientMessageId ?? null
+  if (previous?.epoch === epoch && previous.clientMessageId === clientMessageId) {
+    return previous
+  }
+  if (!accepted) {
+    return { epoch, clientMessageId: null }
+  }
+  const queuedAt =
+    accepted.queuedMessageId === undefined ? undefined : draftQueuedAt(accepted.queuedMessageId)
+  return {
+    epoch,
+    clientMessageId: accepted.clientMessageId,
+    actedAt: Math.min(accepted.submittedAt, queuedAt ?? accepted.submittedAt)
+  }
 }

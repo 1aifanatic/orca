@@ -22,7 +22,10 @@ import type { AgentChildWorkView } from '../../../shared/agent-status-child-work
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
-import { structuredStatusChildWork } from './structured-agent-session-status-child-work'
+import {
+  structuredStatusChildWork,
+  type StructuredAcceptedSend
+} from './structured-agent-session-status-child-work'
 import {
   StructuredAgentSessionJournalProjections,
   type StructuredAgentSessionStatusState
@@ -99,7 +102,7 @@ export class StructuredAgentSessionStatusFeed {
   private readonly published = new Map<string, AgentSessionStatusSummary>()
   /** The user's newest accepted send each session was last projected with; a new one retires
    *  settled children. */
-  private readonly acceptedSends = new Map<string, string | null>()
+  private readonly acceptedSends = new Map<string, StructuredAcceptedSend>()
   private readonly projections = new StructuredAgentSessionJournalProjections()
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
@@ -196,7 +199,7 @@ export class StructuredAgentSessionStatusFeed {
     const source = journal ?? session.journal
     const record = this.deps.getRecord(sessionId)
     const projection = this.projections.read(source, record)
-    this.retireSettledChildrenOnNewTurn(sessionId, session, projection.acceptedSendKey)
+    this.retireSettledChildrenOnNewTurn(sessionId, session, projection.acceptedSend)
     const summary = this.summaryFor(sessionId, session, source, record, projection.state)
     const previous = this.published.get(sessionId)
     if (previous && structuredStatusSummariesEqual(previous, summary)) {
@@ -220,7 +223,8 @@ export class StructuredAgentSessionStatusFeed {
   }
 
   /** A finished child's record stays, with its outcome, until the user's next turn: the next send
-   *  the provider accepts (see `newestAcceptedSendKey`), unless it still owns live work. The
+   *  the provider accepts (see `newestAcceptedSend`), if it finished before the user wrote that
+   *  send, and unless it still owns live work. The
    *  provider ending the session removes nothing: children still live settle `unknown`, and
    *  settled ones stay. The one earlier death is the host letting go of the session, whose row
    *  takes every child record with it (see `forget`). Nothing caps how many records a turn keeps,
@@ -230,15 +234,31 @@ export class StructuredAgentSessionStatusFeed {
   private retireSettledChildrenOnNewTurn(
     sessionId: string,
     session: StatusFeedSession,
-    acceptedSendKey: string | null
+    accepted: StructuredAcceptedSend | null
   ): void {
-    const seen = this.acceptedSends.has(sessionId)
-    const previous = this.acceptedSends.get(sessionId)
-    this.acceptedSends.set(sessionId, acceptedSendKey)
-    if (!seen || acceptedSendKey === null || acceptedSendKey === previous) {
+    // An unreadable journal says nothing about the user's turns: the last send read stands.
+    if (accepted === null) {
       return
     }
-    this.admitChildWork(sessionId, session, [{ type: 'turn-started', observedAt: this.deps.now() }])
+    const seen = this.acceptedSends.has(sessionId)
+    const previous = this.acceptedSends.get(sessionId)
+    this.acceptedSends.set(sessionId, accepted)
+    if (
+      !seen ||
+      (previous?.epoch === accepted.epoch && previous.clientMessageId === accepted.clientMessageId)
+    ) {
+      return
+    }
+    // A child that finished after the user acted stays until their next send; a rewind (a new
+    // epoch) retires every finished child.
+    const actedAt = previous?.epoch === accepted.epoch ? accepted.actedAt : undefined
+    this.admitChildWork(sessionId, session, [
+      {
+        type: 'turn-started',
+        observedAt: this.deps.now(),
+        ...(actedAt !== undefined ? { actedAt } : {})
+      }
+    ])
   }
 
   private summaryFor(

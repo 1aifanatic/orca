@@ -67,6 +67,8 @@ export async function stopClaudeBackgroundTasks(
   taskIds: readonly string[]
 ): Promise<{ cancelled: boolean }> {
   let cancelled = false
+  // A failed request for one task still leaves the others to stop; it is reported after them.
+  let failure: { error: unknown } | undefined
   for (const taskId of taskIds) {
     if (!isCurrent()) {
       break
@@ -77,9 +79,12 @@ export async function stopClaudeBackgroundTasks(
       cancelled = true
     } catch (error) {
       if (!(error instanceof ClaudeControlRequestError)) {
-        throw error
+        failure ??= { error }
       }
     }
+  }
+  if (failure) {
+    throw failure.error
   }
   return { cancelled }
 }

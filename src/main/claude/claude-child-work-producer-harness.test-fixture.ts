@@ -185,6 +185,8 @@ export async function producer(host?: AgentHookServer) {
   return {
     adapter,
     claude,
+    /** The host clock the replay has reached. */
+    now: () => clock,
     store,
     send,
     replay,
