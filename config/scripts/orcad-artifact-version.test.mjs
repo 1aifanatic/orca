@@ -7,7 +7,7 @@ import {
   ORCAD_RIPGREP_ARTIFACTS,
   orcadArtifactFilenames
 } from '../../src/shared/orcad-artifacts.ts'
-import { ORCAD_BUN_TARGETS } from '../../src/shared/orcad-bun-runtime.ts'
+import { SERVER_TARGETS } from '../../src/shared/node-runtime-pin.ts'
 import { orcadAgentBrowserNativeName } from '../../src/shared/orcad-agent-browser-name.ts'
 import { readOrcadArtifactIdentity } from '../../src/main/orcad/orcad-artifact-identity.ts'
 import { computeOrcadFullVersion } from './orcad-artifact-version.mjs'
@@ -42,7 +42,7 @@ describe('standalone runtime version', () => {
     expect(() => computeOrcadFullVersion(dir)).toThrow(ORCAD_RIPGREP_ARTIFACTS[0])
   })
 
-  it.each(ORCAD_BUN_TARGETS)(
+  it.each(SERVER_TARGETS)(
     'matches the installed %s identity with and without its optional browser',
     async (target) => {
       const dir = createArtifactDirectory(target)
