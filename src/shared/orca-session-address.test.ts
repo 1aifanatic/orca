@@ -38,6 +38,11 @@ describe('Orca session address', () => {
     expect(parseOrcaSessionAddress(value)).toBeNull()
   })
 
+  it('no longer reads the retired session:<id> spelling as a session, as an address or a bare id', () => {
+    expect(parseOrcaSessionAddress(`session:${SESSION_ID}`)).toBeNull()
+    expect(isOrcaSessionId(`session:${SESSION_ID}`)).toBe(false)
+  })
+
   it.each([
     ['a PTY terminal handle', 'term_4f2c9a1b-7d3e-4a5f-8b6c-9d0e1f2a3b4c'],
     ['a short PTY terminal handle', 'term_4f2c9a'],

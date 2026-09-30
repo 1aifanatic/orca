@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  ORCA_SESSION_ADDRESS_PREFIX,
   formatOrcaSessionAddress,
   parseOrcaSessionAddress
 } from '../../../shared/orca-session-address'
@@ -117,10 +118,15 @@ describe('Run coordinator Orca session address', () => {
       .all()
       .map((row) => String(row.sql))
     expect(triggers).toHaveLength(2)
+    const olderBuild = triggers.map((sql) =>
+      sql.replaceAll(`'${ORCA_SESSION_ADDRESS_PREFIX}'`, "'session:'")
+    )
+    // Otherwise the reopen below would find current triggers and prove nothing.
+    olderBuild.forEach((sql, index) => expect(sql).not.toBe(triggers[index]))
     db.db.exec(`
       DROP TRIGGER trg_runs_remember_coordinator_insert;
       DROP TRIGGER trg_runs_remember_coordinator_update;
-      ${triggers.map((sql) => `${sql.replaceAll("'orca_session_id:'", "'session:'")};`).join('\n')}
+      ${olderBuild.map((sql) => `${sql};`).join('\n')}
     `)
     db.close()
 

@@ -107,6 +107,15 @@ describe('a send addressed to an agent session', () => {
     expect(h.db.getInbox(100)).toEqual([])
   })
 
+  it.each([
+    ['a provider id', () => `orca_session_id:${PROVIDER_ID_X}`],
+    ['a bare provider id', () => PROVIDER_ID_X]
+  ])('hands back the Orca session address to paste instead of %s', async (_label, to) => {
+    expect(errorMessage(await send(to()))).toBe(
+      `${PROVIDER_ID_X} is the provider's own session id, which changes on /clear. This session's Orca session ID is orca_session_id:${SESSION_X}; address it by that instead. No message was sent.`
+    )
+  })
+
   it('refuses a session on another host', async () => {
     h.records.set(SESSION_Y, sessionRecord(SESSION_Y, { location: { executionHostId: 'ssh:box' } }))
     expect(await send(`orca_session_id:${SESSION_Y}`)).toMatchObject({

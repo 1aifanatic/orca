@@ -113,6 +113,6 @@ export function refuseUndeliverableSessionRecipient(
 function providerIdRefusal(id: string, orcaSessionId: string): SessionRecipientRefusal {
   return {
     code: CODES.providerId,
-    message: `${id} is the provider's own session id, which changes on /clear. Address this session by its Orca session ID instead: ${ORCA_SESSION_ADDRESS_PREFIX}${orcaSessionId}. No message was sent.`
+    message: `${id} is the provider's own session id, which changes on /clear. This session's Orca session ID is ${ORCA_SESSION_ADDRESS_PREFIX}${orcaSessionId}; address it by that instead. No message was sent.`
   }
 }
