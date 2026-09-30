@@ -8,7 +8,11 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const hang = vi.hoisted(() => ({ prefix: '', started: 0, held: [] as (() => void)[] }))
+const hang = vi.hoisted((): { prefix: string; started: number; held: (() => void)[] } => ({
+  prefix: '',
+  started: 0,
+  held: []
+}))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromises>()
   const hangUnderPrefix =
