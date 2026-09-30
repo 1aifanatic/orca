@@ -4,10 +4,13 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../shared/agent-status-types'
+import {
+  FOREGROUND_COMMAND_RETRY_DELAYS_MS,
+  FOREGROUND_COMMAND_SETTLE_MS
+} from '../../shared/foreground-command-settle'
 import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
+import { isShellProcess } from '../../shared/shell-process-detection'
 
-// Why: the pane foreground tracker's settle delay; the shell has exec'd the command by then.
-export const OPENCODE_RUN_SETTLE_MS = 350
 const SIGINT_EXIT_CODE = 130
 
 type OpenCodeAgent = 'opencode' | 'opencode2'
@@ -51,11 +54,8 @@ export class OpenCodeRunLifetimeStatus {
       timer: null,
       armed: null
     }
-    state.timer = setTimeout(() => {
-      state.timer = null
-      void this.inspect(ptyId, state)
-    }, OPENCODE_RUN_SETTLE_MS)
     this.commands.set(ptyId, state)
+    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_SETTLE_MS, 0)
   }
 
   onCommandFinished(ptyId: string, exitCode: number | null): void {
@@ -83,19 +83,35 @@ export class OpenCodeRunLifetimeStatus {
     this.commands.delete(ptyId)
   }
 
+  private scheduleInspect(
+    ptyId: string,
+    state: CommandState,
+    delayMs: number,
+    retryIndex: number
+  ): void {
+    state.timer = setTimeout(() => {
+      state.timer = null
+      void this.inspect(ptyId, state, retryIndex)
+    }, delayMs)
+  }
+
   private isCurrent(ptyId: string, state: CommandState): boolean {
     return this.commands.get(ptyId)?.generation === state.generation
   }
 
-  private async inspect(ptyId: string, state: CommandState): Promise<void> {
+  private async inspect(ptyId: string, state: CommandState, retryIndex: number): Promise<void> {
     try {
       const name = await this.deps.readForegroundProcessName(ptyId)
       const agent = recognizeAgentProcess(name)?.agent
-      if (
-        !name ||
-        !this.isCurrent(ptyId, state) ||
-        (agent !== 'opencode' && agent !== 'opencode2')
-      ) {
+      if (!name || !this.isCurrent(ptyId, state)) {
+        return
+      }
+      if (agent !== 'opencode' && agent !== 'opencode2') {
+        // Why: a wrapper, shim or `sleep 1; ...` can exec OpenCode after the first read.
+        const retryDelay = FOREGROUND_COMMAND_RETRY_DELAYS_MS[retryIndex]
+        if (retryDelay !== undefined && !isShellProcess(name)) {
+          this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
+        }
         return
       }
       const tokens = tokenizeCommandLine(

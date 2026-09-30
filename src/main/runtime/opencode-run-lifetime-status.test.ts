@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ParsedAgentStatusPayload } from '../../shared/agent-status-types'
-import { OPENCODE_RUN_SETTLE_MS, OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
+import {
+  FOREGROUND_COMMAND_RETRY_DELAYS_MS,
+  FOREGROUND_COMMAND_SETTLE_MS
+} from '../../shared/foreground-command-settle'
+import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
 
 type Published = { ptyId: string; payload: ParsedAgentStatusPayload; yieldsToHookSince: number }
 
@@ -35,7 +39,7 @@ function setup(
 }
 
 async function settle(): Promise<void> {
-  await vi.advanceTimersByTimeAsync(OPENCODE_RUN_SETTLE_MS)
+  await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
 }
 
 describe('OpenCodeRunLifetimeStatus', () => {
@@ -89,6 +93,31 @@ describe('OpenCodeRunLifetimeStatus', () => {
     lifetime.onCommandFinished('pty-1', 0)
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
+  })
+
+  it('re-reads a wrapper foreground on the shared ladder until OpenCode execs', async () => {
+    const { lifetime, states, readForegroundProcessName } = setup()
+    readForegroundProcessName.mockResolvedValueOnce('sleep')
+    lifetime.onCommandStarted('pty-1')
+    await settle()
+    expect(states()).toEqual([])
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_RETRY_DELAYS_MS[0])
+    expect(states()).toEqual(['working'])
+    expect(readForegroundProcessName).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops re-reading at a shell and after the last rung', async () => {
+    const wrapper = setup({ name: 'node' })
+    wrapper.lifetime.onCommandStarted('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.readForegroundProcessName).toHaveBeenCalledTimes(
+      1 + FOREGROUND_COMMAND_RETRY_DELAYS_MS.length
+    )
+    const shell = setup({ name: 'bash' })
+    shell.lifetime.onCommandStarted('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(shell.readForegroundProcessName).toHaveBeenCalledTimes(1)
+    expect([...wrapper.states(), ...shell.states()]).toEqual([])
   })
 
   it('leaves the OpenCode TUI and its other subcommands to their own reporters', async () => {

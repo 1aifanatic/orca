@@ -7,12 +7,12 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
 import { createPaneForegroundProcessReader } from './pane-foreground-process-reader'
+import {
+  FOREGROUND_COMMAND_RETRY_DELAYS_MS as WRAPPER_RESOLVE_RETRY_DELAYS_MS,
+  FOREGROUND_COMMAND_SETTLE_MS as COMMAND_SETTLE_MS
+} from '../../../../shared/foreground-command-settle'
 
-// Why: settle after exec, then place the final generic retry beyond sequential
-// 3s PowerShell and WMIC enrichment scans.
-const COMMAND_SETTLE_MS = 350
 const VISIBLE_PTY_SETTLE_MS = 350
-const WRAPPER_RESOLVE_RETRY_DELAYS_MS = [1200, 6000] as const
 type ForegroundReadReason = 'command' | 'visible-pty' | 'command-finished'
 
 type PaneForegroundAgentTrackerDeps = {
