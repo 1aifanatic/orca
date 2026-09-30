@@ -106,6 +106,19 @@ function outputText(call: CodexCollabAgentToolCall, helperName?: CodexHelperName
     .join('\n')
 }
 
+/** The prompt is clipped on its own: bounded with the rest, a long one would clip away the
+ *  helper's name and ids the row is read by. */
+function collabRowInput(fields: Record<string, unknown>, prompt: string | null): unknown {
+  const bounded = boundToolInput(fields, DEFAULT_JOURNAL_PAYLOAD_LIMITS)
+  if (bounded !== fields) {
+    return bounded
+  }
+  const input = prompt
+    ? { ...fields, prompt: boundInlineText(prompt, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text }
+    : fields
+  return Object.keys(input).length > 0 ? input : null
+}
+
 /** `started` is the call's started item, when the caller still holds it. */
 export function codexCollabAgentToolCallBody(
   item: CodexThreadItem,
@@ -122,7 +135,6 @@ export function codexCollabAgentToolCallBody(
   const fields = {
     // `description` is the key the row label reads, so the helper's name leads the row.
     ...(description ? { description } : {}),
-    ...(call.prompt ? { prompt: call.prompt } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(call.receiverThreadIds.length > 0
@@ -135,10 +147,7 @@ export function codexCollabAgentToolCallBody(
     kind: 'tool-call',
     name: codexCollabToolName(call),
     callId: call.id,
-    input: boundToolInput(
-      Object.keys(fields).length > 0 ? fields : null,
-      DEFAULT_JOURNAL_PAYLOAD_LIMITS
-    ),
+    input: collabRowInput(fields, call.prompt),
     state: codexItemRunState(item),
     ...(output === null ? {} : { output: output.bounded })
   }
