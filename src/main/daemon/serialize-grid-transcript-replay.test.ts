@@ -68,7 +68,19 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   // (`build-serialize-addon-at-ref.mjs --ref origin/main`): I1 and I3 both hold.
   'dsh-tui-ready-no-key': 10,
   // Hermes banner cells restore with an extra bold bit under the jitter schedule.
-  'hermes-tui-ready': 2
+  'hermes-tui-ready': 2,
+  // STA-8741 agy captures, serializer untouched: the same true-colour background
+  // left on restored cells as DSH.
+  'antigravity-1-2-14-busy-thinking': 2,
+  'antigravity-1-2-14-command-palette': 4,
+  'antigravity-1-2-14-draft': 4,
+  'antigravity-1-2-14-model-picker': 2,
+  'antigravity-1-2-14-picker-dismissed': 2,
+  'antigravity-1-2-14-ready': 12,
+  'antigravity-1-2-14-ready-80x24': 2,
+  'antigravity-1-2-14-ready-accept-edits': 4,
+  'antigravity-1-2-14-ready-plan': 4,
+  'antigravity-1-2-14-trust-dialog': 26
 }
 
 // Exact resize checkpoints and full GridDiff hashes from base 6835b9b4e3ea, not this branch.

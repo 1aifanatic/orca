@@ -16,11 +16,15 @@ export function readRuntimeFixture(name: string): string {
   return readFileSync(join(__dirname, '__fixtures__', `${name}.txt`), 'utf8')
 }
 
+/** Resizes the grid before chunk `atChunk`, as a PTY resize landing mid-paint would. */
+export type TranscriptReplayResize = { atChunk: number; cols: number; rows: number }
+
 /** A string is cut into fixed 64-char chunks; an array replays the recorded PTY chunks as-is. */
 export async function* replayTranscript(
   data: string | readonly string[],
   cols: number,
-  rows: number
+  rows: number,
+  resize?: TranscriptReplayResize
 ): AsyncGenerator<TranscriptReplayFrame> {
   const chunks = typeof data === 'string' ? splitIntoChunks(data) : data
   const emulator = new HeadlessEmulator({ cols, rows })
@@ -29,7 +33,10 @@ export async function* replayTranscript(
   let pendingAnsi = ''
   let redrawCursor: ReturnType<typeof appendNormalizedToTailBuffer>['redrawCursor'] = null
   try {
-    for (const chunk of chunks) {
+    for (const [index, chunk] of chunks.entries()) {
+      if (index === resize?.atChunk) {
+        emulator.resize(resize.cols, resize.rows)
+      }
       await emulator.write(chunk)
       const normalized = normalizeTerminalChunk(chunk, pendingAnsi)
       pendingAnsi = normalized.pendingAnsi
@@ -45,6 +52,22 @@ export async function* replayTranscript(
   } finally {
     emulator.dispose()
   }
+}
+
+export async function finalReplayFrame(
+  name: string,
+  cols: number,
+  rows: number,
+  resize?: TranscriptReplayResize
+): Promise<TranscriptReplayFrame> {
+  let last: TranscriptReplayFrame | null = null
+  for await (const frame of replayTranscript(readRuntimeFixture(name), cols, rows, resize)) {
+    last = frame
+  }
+  if (!last) {
+    throw new Error(`empty fixture ${name}`)
+  }
+  return last
 }
 
 function splitIntoChunks(data: string): string[] {

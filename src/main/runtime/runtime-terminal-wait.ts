@@ -2,7 +2,6 @@ import type {
   RuntimeTerminalWait as RuntimeTerminalWaitResult,
   RuntimeTerminalWaitCondition
 } from '../../shared/runtime-types'
-import { hasAntigravityTerminalHeader } from './antigravity-terminal-readiness'
 import {
   buildPtyTerminalWaitBlockedResult,
   buildPtyTerminalWaitResult,
@@ -10,6 +9,7 @@ import {
   buildTerminalWaitResult,
   getTerminalState
 } from './terminal-wait-results'
+import { getScreenReadyRule } from './screen-ruled-agent-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import {
   evaluateTuiIdle,
@@ -24,6 +24,22 @@ import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-term
 import type { RuntimeTerminalIdlePolls } from './runtime-terminal-idle-polls'
 import type { RuntimeTerminalWaiterRegistry } from './runtime-terminal-waiter-registry'
 
+/**
+ * A pane with no retained bytes and no status has only its provider's screen to read. So does a
+ * clockless screen-ruled pane whatever its status: a re-attached pane's own model can be
+ * untrusted. A clocked one settles through the poll, once quiet.
+ */
+function shouldProbeVisibleScreen(
+  paneAgent: TuiAgent | null,
+  record: Pick<RuntimePtyWorktreeRecord, 'lastAgentStatus' | 'lastOutputAt'>,
+  waitText: string
+): boolean {
+  return (
+    (getScreenReadyRule(paneAgent) !== null && record.lastOutputAt === null) ||
+    (record.lastAgentStatus === null && waitText.length === 0)
+  )
+}
+
 type RuntimeTerminalWaitDependencies = TuiIdleEvidenceSource & {
   defaultTimeoutMs: number
   getLivePty(handle: string): { pty: RuntimePtyWorktreeRecord } | null
@@ -31,7 +47,8 @@ type RuntimeTerminalWaitDependencies = TuiIdleEvidenceSource & {
   startVisibleReadProbe(
     waiter: TerminalWaiter,
     waiterTimeoutMs: number,
-    agent: TuiAgent | null
+    agent: TuiAgent | null,
+    hasOutputClock: boolean
   ): void
 }
 
@@ -130,19 +147,13 @@ export class RuntimeTerminalWait {
           } else {
             this.polls.startPty(waiter, live.pty, verdict)
             const paneAgent = this.deps.getPaneAgent(live.pty.ptyId)
-            if (
-              // AGY can retain a stale working/blocked status after a trust dialog was
-              // dismissed. Its visible composer is authoritative, so probe whenever the
-              // pane is identified as AGY (or its banner is present), regardless of that
-              // stale status.
-              (paneAgent === 'antigravity' ||
-                hasAntigravityTerminalHeader(livePtyWaitText) ||
-                live.pty.lastAgentStatus === null) &&
-              (livePtyWaitText.length === 0 ||
-                paneAgent === 'antigravity' ||
-                hasAntigravityTerminalHeader(livePtyWaitText))
-            ) {
-              this.deps.startVisibleReadProbe(waiter, effectiveTimeoutMs, paneAgent)
+            if (shouldProbeVisibleScreen(paneAgent, live.pty, livePtyWaitText)) {
+              this.deps.startVisibleReadProbe(
+                waiter,
+                effectiveTimeoutMs,
+                paneAgent,
+                live.pty.lastOutputAt !== null
+              )
             }
           }
         }
@@ -232,15 +243,13 @@ export class RuntimeTerminalWait {
             // preview/title until the waiter resolves or hits its timeout.
             this.polls.startLeaf(waiter, live.leaf, verdict)
             const paneAgent = this.deps.getPaneAgent(live.leaf.ptyId)
-            if (
-              (paneAgent === 'antigravity' ||
-                hasAntigravityTerminalHeader(liveLeafWaitText) ||
-                live.leaf.lastAgentStatus === null) &&
-              (liveLeafWaitText.length === 0 ||
-                paneAgent === 'antigravity' ||
-                hasAntigravityTerminalHeader(liveLeafWaitText))
-            ) {
-              this.deps.startVisibleReadProbe(waiter, effectiveTimeoutMs, paneAgent)
+            if (shouldProbeVisibleScreen(paneAgent, live.leaf, liveLeafWaitText)) {
+              this.deps.startVisibleReadProbe(
+                waiter,
+                effectiveTimeoutMs,
+                paneAgent,
+                live.leaf.lastOutputAt !== null
+              )
             }
           }
         }

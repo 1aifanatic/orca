@@ -16,6 +16,7 @@ import {
   isKnownReadyPromptBody,
   isQuietReadyScreenBody
 } from './terminal-wait-detection'
+import { isReadinessDecidedByScreen } from './screen-ruled-agent-readiness'
 
 /**
  * Ranking the evidence that a `tui-idle` wait may settle on.
@@ -29,8 +30,9 @@ import {
  *   0. BLOCKED — the tail shows a prompt waiting on the user.
  *   1. STRONG READY — the agent states it is ready: an explicit idle marker in its own
  *      title, or a known ready-prompt body.
- *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, so their
- *      ready-screen body stands in for the strong evidence, believed only once quiet.
+ *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, and the screen-ruled
+ *      agents (Antigravity) can paint their idle composer mid-turn, so their
+ *      ready-screen body is believed only once quiet.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
  *      inferred.
@@ -196,8 +198,10 @@ export type TuiIdleEvaluationInput = {
    *  (~11us and a multi-KB string on a full tail); the title check below usually answers
    *  first, and then none of that has to happen at all. */
   readPositiveBodyEvidence: () => boolean
-  /** Tier 1b body evidence: a Muse or Codex ready screen. Thunk for the same reason as above. */
+  /** Tier 1b body evidence: a Muse, Codex or screen-ruled ready screen. Thunk, as above. */
   readQuietReadyBodyEvidence: () => boolean
+  /** Whether the agent's live screen already ruled on readiness, which shuts the weak lanes. */
+  readScreenDecidesReadiness: () => boolean
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   quiescenceMs: number
@@ -216,7 +220,7 @@ const READY_STRONG: TuiIdleVerdict = { kind: 'ready-strong' }
 const READY_WEAK: TuiIdleVerdict = { kind: 'ready-weak' }
 const WORKING: TuiIdleVerdict = { kind: 'working' }
 
-const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex'])
+const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex', 'antigravity'])
 
 /**
  * Tier 1b: a ready screen in the body, believed only once the stream has gone quiet.
@@ -225,8 +229,9 @@ const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex
  * the cwd (plus a thread name) and no agent name, so neither the explicit-idle nor the
  * sustained-title lane can fire. The ready screen proves the TUI is up; the quiescence
  * demand keeps a mid-turn streaming pane from satisfying, mirroring the tier-3 lane's
- * positive-evidence-plus-quiet shape. Scoped to those agents and agent-unknown panes (which
- * read only Muse's screen): another agent's scrollback quoting them must not settle its wait.
+ * positive-evidence-plus-quiet shape. Scoped to those agents, the screen-ruled ones, and
+ * agent-unknown panes (which read only Muse's screen): another agent's scrollback quoting them
+ * must not settle its wait.
  */
 export function hasQuietReadyScreen(
   record: TuiIdleEvidenceRecord,
@@ -297,6 +302,10 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (input.record.lastAgentStatus === 'working') {
     return WORKING
   }
+  // Why: a name-only title and a quiet process cannot see the picker or prompt the screen refused.
+  if (input.readScreenDecidesReadiness()) {
+    return { kind: 'pending', quietForeground: 'closed' }
+  }
   if (hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)) {
     return READY_WEAK
   }
@@ -346,6 +355,8 @@ export function leafTuiIdleEvidence(
       ),
     readQuietReadyBodyEvidence: () =>
       isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(leaf.ptyId)),
+    readScreenDecidesReadiness: () =>
+      isReadinessDecidedByScreen(agent, () => source.readScreenLines(leaf.ptyId)),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
     quiescenceMs: source.quiescenceMs
@@ -372,6 +383,8 @@ export function ptyTuiIdleEvidence(
       ),
     readQuietReadyBodyEvidence: () =>
       isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(pty.ptyId)),
+    readScreenDecidesReadiness: () =>
+      isReadinessDecidedByScreen(agent, () => source.readScreenLines(pty.ptyId)),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
     quiescenceMs: source.quiescenceMs
