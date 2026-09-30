@@ -253,7 +253,7 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
     turnRow: 'none' | 'running' | 'lands-on-flush' = 'none'
   ) {
     root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-report-'))
-    const journal = await journals.open({ identity: IDENTITY, journalDir: root })
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
     const openTurn = () =>
       journal.appendItem(
         {
