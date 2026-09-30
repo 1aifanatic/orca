@@ -296,6 +296,17 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBeNull()
   })
 
+  it("a later Stop by the host, an eviction or a close never lifts a person's Stop", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'held')
+    await journal.appendStopEvent({ reason: 'user-stop' }, 0)
+    for (const reason of ['host-stop', 'evict', 'user-close'] as const) {
+      await journal.appendStopEvent({ reason }, 0)
+    }
+    expect(reason(journal)).toBe('stopped')
+    expect(held(journal)).toEqual([['held', true]])
+  })
+
   it('the restated Stop is the same event: its reason, turn, caller and time', async () => {
     const journal = await open()
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-7', caller: 'phone' }, 0)
