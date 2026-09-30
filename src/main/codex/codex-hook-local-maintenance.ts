@@ -14,6 +14,7 @@ import {
   removeRuntimeManagedHookTrustEntries,
   removeStaleRuntimeHookTrustEntries
 } from './codex-hook-trust-cleanup'
+import { reportCodexHookTrustWriteFailure } from './codex-hook-trust-write-failure'
 import {
   applyMirroredRuntimeUserHookTrustStates,
   getRuntimeHooksWithSystemUserHooks
@@ -74,13 +75,13 @@ export async function refreshCodexRuntimeUserHooksExclusively(
     removeStaleRuntimeHookTrustEntries(tomlPath, configPath, trustEntries)
     applyMirroredRuntimeUserHookTrustStates(tomlPath, hookPlan.trustEntries)
   } catch (error) {
-    return {
+    return reportCodexHookTrustWriteFailure(error, {
       agent: 'codex',
       state: 'error',
       configPath,
       managedHooksPresent: false,
       detail: `User hooks refreshed but trust entries could not be written: ${error instanceof Error ? error.message : String(error)}. Run /hooks in Codex to approve.`
-    }
+    })
   }
   snapshotCodexRuntimeHookTrustProvenance(runtimeHomePath)
 

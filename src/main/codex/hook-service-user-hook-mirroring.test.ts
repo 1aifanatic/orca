@@ -29,6 +29,7 @@ vi.mock('os', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
+import { isReportedCodexHookTrustWriteRefusal } from './codex-hook-trust-write-failure'
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
 
@@ -577,5 +578,43 @@ describe('CodexHookService', () => {
       `${hookTrustHeader(`${managedHooksPath}:stop:0:0`)}\nenabled = false`
     )
     expect(runtimeToml).not.toContain(':permission_request:0:0')
+  })
+})
+
+describe('hook trust against a ~/.codex config the user broke by hand', () => {
+  function seedHandBrokenSystemConfig(): void {
+    const systemCodexHome = join(homes.tmpHome, '.codex')
+    mkdirSync(systemCodexHome, { recursive: true })
+    writeFileSync(
+      join(systemCodexHome, 'hooks.json'),
+      `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'user-hook' }] }] } })}\n`,
+      'utf-8'
+    )
+    writeFileSync(join(systemCodexHome, 'config.toml'), 'model = "a"\nbroken = \n', 'utf-8')
+  }
+
+  it('refreshes user hooks with no trust to write without reporting an error', async () => {
+    seedHandBrokenSystemConfig()
+    const status = await new CodexHookService().refreshRuntimeUserHooks()
+    expect(status.state).not.toBe('error')
+  })
+
+  it('logs a refused managed trust write once, not on every launch', async () => {
+    seedHandBrokenSystemConfig()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const service = new CodexHookService()
+      for (let launch = 0; launch < 3; launch++) {
+        const status = await service.install()
+        expect(status.state).toBe('error')
+        expect(isReportedCodexHookTrustWriteRefusal(status)).toBe(true)
+      }
+      const hookTrustReports = warn.mock.calls.filter(([message]) =>
+        String(message).includes('Skipped writing Codex hook trust')
+      )
+      expect(hookTrustReports).toHaveLength(1)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

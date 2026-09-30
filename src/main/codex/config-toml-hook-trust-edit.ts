@@ -25,6 +25,10 @@ export function upsertHookTrustContent(
   existingContent: string,
   entries: readonly CodexTrustEntry[]
 ): string {
+  // Why: nothing to write, so a config Codex cannot parse must not turn into a refusal.
+  if (entries.length === 0) {
+    return existingContent
+  }
   const existing = stripLeadingBom(existingContent)
   const writes = entries.map((entry) => ({
     keys: getTrustKeyWriteVariants(computeCodexTrustKey(entry)),
@@ -97,6 +101,10 @@ export function setHookTrustEnabledContent(
   states: readonly { key: string; enabled: boolean }[]
 ): string {
   const existing = stripLeadingBom(existingContent)
+  const keys = new Set(states.map((state) => normalizeCodexHookTrustLookupKey(state.key)))
+  if (findHookTrustBlockRanges(existing, keys).length === 0) {
+    return existingContent
+  }
   const updated = applyCheckedCodexConfigTomlEdit(existing, (content) => {
     let next = content
     for (const { key, enabled } of states) {

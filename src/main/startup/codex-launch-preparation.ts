@@ -5,6 +5,7 @@ import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
 import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import { codexHookService } from '../codex/hook-service'
+import { isReportedCodexHookTrustWriteRefusal } from '../codex/codex-hook-trust-write-failure'
 import { getDefaultWslDistro } from '../wsl'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
@@ -89,7 +90,7 @@ export async function prepareCodexRuntimeHomeForLaunch(
       hookTarget,
       hooksEnabled
     )
-    if (status.state === 'error') {
+    if (status.state === 'error' && !isReportedCodexHookTrustWriteRefusal(status)) {
       console.warn(
         `[codex-hook-service] failed to ${hooksEnabled ? 'refresh' : 'refresh user'} runtime hooks before launch`,
         status.detail

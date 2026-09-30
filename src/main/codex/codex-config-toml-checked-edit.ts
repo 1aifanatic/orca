@@ -205,6 +205,11 @@ export function refuseUnreadableCodexConfigResult(args: {
 // Keyed by file, then by what Orca was doing, so interleaved reports about one file each log once.
 const reportedMessages = new Map<string, Map<string, string>>()
 const TRUST_WRITE_CONTEXT = 'Skipped marking a workspace trusted for Codex'
+const HOOK_TRUST_WRITE_CONTEXT = 'Skipped writing Codex hook trust'
+const TRUST_WRITE_KINDS: ReadonlySet<string> = new Set([
+  TRUST_WRITE_CONTEXT,
+  HOOK_TRUST_WRITE_CONTEXT
+])
 
 /** Logs once per file, kind, and message, so a launch-time retry does not flood the log. */
 function reportCodexConfigOnce(key: string, message: string, kind = ''): void {
@@ -232,12 +237,20 @@ export function reportCodexConfigTomlEditRefusal(
  * file, so it is reported once per file; returns the other failures for the caller.
  */
 export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
+  return reportTrustWriteRefusals(error, TRUST_WRITE_CONTEXT)
+}
+
+export function reportCodexHookTrustWriteRefusals(error: unknown): unknown[] {
+  return reportTrustWriteRefusals(error, HOOK_TRUST_WRITE_CONTEXT)
+}
+
+function reportTrustWriteRefusals(error: unknown, context: string): unknown[] {
   const failures = error instanceof AggregateError ? error.errors : [error]
   return failures.filter((failure) => {
     if (!(failure instanceof CodexConfigTomlEditRefusedError)) {
       return true
     }
-    reportCodexConfigTomlEditRefusal(failure, TRUST_WRITE_CONTEXT)
+    reportCodexConfigTomlEditRefusal(failure, context)
     return false
   })
 }
@@ -245,14 +258,15 @@ export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
 /** Forgets mirror/write reports for a file; a trust refusal is only forgotten by a trust write that succeeds. */
 export function clearCodexConfigTomlEditRefusalReport(configPath: string): void {
   const byKind = reportedMessages.get(configPath)
-  const trust = byKind?.get(TRUST_WRITE_CONTEXT)
-  if (trust === undefined) {
-    reportedMessages.delete(configPath)
-  } else {
-    reportedMessages.set(configPath, new Map([[TRUST_WRITE_CONTEXT, trust]]))
+  for (const kind of byKind?.keys() ?? []) {
+    if (!TRUST_WRITE_KINDS.has(kind)) {
+      byKind?.delete(kind)
+    }
   }
 }
 
 export function clearCodexTrustWriteRefusalReport(configPath: string): void {
-  reportedMessages.get(configPath)?.delete(TRUST_WRITE_CONTEXT)
+  for (const kind of TRUST_WRITE_KINDS) {
+    reportedMessages.get(configPath)?.delete(kind)
+  }
 }

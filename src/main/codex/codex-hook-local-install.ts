@@ -28,6 +28,7 @@ import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cle
 import { getManagedScript } from './codex-hook-script'
 import { grantManagedCodexHookTrust } from './codex-hook-trust-grant'
 import { removeStaleRuntimeHookTrustEntries } from './codex-hook-trust-cleanup'
+import { reportCodexHookTrustWriteFailure } from './codex-hook-trust-write-failure'
 import {
   promoteCodexRuntimeHookApprovalsToSystem,
   snapshotCodexRuntimeHookTrustProvenance
@@ -171,13 +172,13 @@ export async function installCodexHooksExclusively(
     }
     applyMirroredRuntimeUserHookTrustStates(tomlPath, mirroredUserTrustEntries)
   } catch (error) {
-    return {
+    return reportCodexHookTrustWriteFailure(error, {
       agent: 'codex',
       state: 'error',
       configPath,
       managedHooksPresent: true,
       detail: `Hooks installed but trust entries could not be written: ${error instanceof Error ? error.message : String(error)}. Run /hooks in Codex to approve.`
-    }
+    })
   }
   snapshotCodexRuntimeHookTrustProvenance(runtimeHomePath)
   await cleanupLegacyManagedHookRepresentations()

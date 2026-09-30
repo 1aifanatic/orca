@@ -6,6 +6,7 @@ import { parse } from 'smol-toml'
 import {
   readHookTrustEntriesFromContent,
   removeHookTrustEntriesFromContent,
+  upsertHookTrustEntries,
   upsertHookTrustEntriesInContent,
   upsertProjectTrustLevel,
   upsertProjectTrustLevelInContent,
@@ -16,6 +17,7 @@ import {
   CodexConfigTomlEditRefusedError,
   refuseUnreadableCodexConfigResult,
   reportCodexConfigTomlEditRefusal,
+  reportCodexHookTrustWriteRefusals,
   reportCodexTrustWriteRefusals
 } from './codex-config-toml-checked-edit'
 import { getTomlTable, readTomlValueAtPath } from './codex-config-toml-document'
@@ -385,6 +387,41 @@ describe('Codex config reports about one file log once per kind', () => {
       upsertProjectTrustLevel(systemPath, '/work/repo', 'trusted')
       reportCodexTrustWriteRefusals(refusal(systemPath))
       expect(trustReports()).toHaveLength(3)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('a hook trust edit with nothing to write', () => {
+  const handBroken = 'model = "a"\nbroken = \n'
+
+  it('leaves a config Codex cannot parse as it is instead of refusing', () => {
+    expect(upsertHookTrustEntriesInContent(handBroken, [])).toBe(handBroken)
+    expect(
+      setHookTrustEnabledContent(handBroken, [{ key: '/rt/hooks.json:stop:0:0', enabled: false }])
+    ).toBe(handBroken)
+  })
+
+  it('does not end a trust refusal it never proved resolved', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const dir = mkdtempSync(join(tmpdir(), 'codex-noop-trust-'))
+    try {
+      const configPath = join(dir, 'config.toml')
+      writeFileSync(configPath, handBroken)
+      const refusal = new CodexConfigTomlEditRefusedError({
+        reason: 'input-invalid',
+        detail: 'the file is not valid TOML',
+        configPath
+      })
+      for (let launch = 0; launch < 3; launch++) {
+        reportCodexTrustWriteRefusals(refusal)
+        reportCodexHookTrustWriteRefusals(refusal)
+        upsertHookTrustEntries(configPath, [])
+        clearCodexConfigTomlEditRefusalReport(configPath)
+      }
+      expect(warn).toHaveBeenCalledTimes(2)
     } finally {
       rmSync(dir, { recursive: true, force: true })
       warn.mockRestore()
