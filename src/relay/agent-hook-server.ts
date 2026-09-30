@@ -245,6 +245,10 @@ export class RelayAgentHookServer {
     return { port: this.port, token: this.token, endpointFilePath: this.endpointFilePath }
   }
 
+  _getStateForTests(): HookListenerState {
+    return this.state
+  }
+
   // ─── Private ──────────────────────────────────────────────────────
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {

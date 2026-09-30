@@ -62,10 +62,10 @@ function transcriptFile(content = ''): string {
   return path
 }
 
-async function startServer(): Promise<AgentHookServer> {
+async function startServer(options: { userDataPath?: string } = {}): Promise<AgentHookServer> {
   const server = new AgentHookServer()
   running.push(server)
-  await server.start({ env: 'production' })
+  await server.start({ env: 'production', ...options })
   return server
 }
 
@@ -291,6 +291,24 @@ describe('a pane moved to another key', () => {
       state: 'working',
       workingMode: 'monitoring'
     })
+  })
+
+  it('arms nothing for a pane moved before any hook armed it', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-claude-transcript-watch-restart-'))
+    temporaryPaths.push(userDataPath)
+    const transcript = transcriptFile()
+    const first = new AgentHookServer()
+    running.push(first)
+    await first.start({ env: 'production', userDataPath })
+    await replay(first, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    first.flushStatusPersistSync()
+    first.stop()
+    // After a restart the row and its working child come back from disk, with no hook yet.
+    const server = await startServer({ userDataPath })
+    expect(server._getStateForTests().claudeSubagentRosterByPaneKey.has(PANE)).toBe(true)
+    expect(cursor(server)).toBeUndefined()
+    server.transferPaneAuthority(PANE, GOOD_PANE)
+    expect(server._getStateForTests().claudeTranscriptCursorByPaneKey.has(GOOD_PANE)).toBe(false)
   })
 })
 

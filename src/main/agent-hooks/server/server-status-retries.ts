@@ -58,7 +58,10 @@ export abstract class AgentHookServerStatusRetries extends AgentHookServerStatus
 
   /** Resumes a moved pane's Claude transcript watch under the key its row and cursor moved to. */
   protected resumeClaudeTranscriptWatch(moved: EnrichedAgentHookEventPayload): void {
-    this.claudeTranscriptWatch.sync(moved)
+    // Why: a move is no accepted row; only a cursor one armed may keep ticking.
+    if (this.state.claudeTranscriptCursorByPaneKey.has(moved.paneKey)) {
+      this.claudeTranscriptWatch.sync(moved)
+    }
   }
 
   protected scheduleTranscriptPoll(

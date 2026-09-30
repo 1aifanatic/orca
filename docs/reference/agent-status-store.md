@@ -291,7 +291,8 @@ cancel latch and the permission hold; on a relay, its own cache). It disarms onl
 after a read that applied nothing with no reason left, or when the pane closes.
 A new line retires the children that started by its timestamp with
 SubagentStop semantics and publishes a `SubagentStop` row attributed to one of
-them, with no verdict stamped; the row keeps monitoring a surviving shell and
+them (a row still waiting on a prompt keeps the hook that raised it), with no
+verdict stamped; the row keeps monitoring a surviving shell and
 settles to done only when nothing is left (`claude-idle-ctrl-c-*` fixtures pin
 this). A tick row that carries no fact only restates hooks the store already
 judged, so the desktop's cancel latch holds it: after a late main-agent hook the

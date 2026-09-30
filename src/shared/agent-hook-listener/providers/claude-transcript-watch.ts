@@ -284,11 +284,9 @@ export function observeClaudeTranscript(
       (current.providerSessionOnly === true ||
         claudeRowShowsRecords(current, payload, runningNonAgentTask)))
   // Why: a row still waiting keeps the hook that raised the wait, which the store's permission
-  // rules key on, unless the fact retired that wait's own child; any other row is an observation.
-  const keepsWait =
-    payload?.state === 'waiting' &&
-    current.hookEventName !== undefined &&
-    (!attribution || attribution.toolAgentId !== current.toolAgentId)
+  // rules key on; a fact that retired the wait's owner already ended the wait. Any other row is
+  // an observation.
+  const keepsWait = payload?.state === 'waiting' && current.hookEventName !== undefined
   const hook = keepsWait
     ? {
         hookEventName: current.hookEventName,
