@@ -10,9 +10,13 @@ export async function callOrchestrationMutation<TResult>(
   flags: Map<string, string | boolean>,
   method: string,
   params: unknown,
-  options?: { timeoutMs?: number; orchestrationCapability?: string },
-  unavailableRetryMs = 0
+  options: {
+    timeoutMs?: number
+    orchestrationCapability?: string
+    unavailableRetryMs?: number
+  } = {}
 ) {
+  const { unavailableRetryMs = 0, ...callOptions } = options
   // Why: every retry reuses one request id, so the host replays instead of applying the mutation twice.
   const requestId =
     readRetryRequestFlag(flags) ?? (unavailableRetryMs > 0 ? randomUUID() : undefined)
@@ -21,11 +25,12 @@ export async function callOrchestrationMutation<TResult>(
     try {
       return requestId
         ? await client.call<TResult>(method, params, {
-            ...options,
+            ...callOptions,
             orchestrationRequestId: requestId
           })
-        : options
-          ? await client.call<TResult>(method, params, options)
+        : // Why: an empty bag keeps the two-argument call shape callers have always made.
+          Object.values(callOptions).some((value) => value !== undefined)
+          ? await client.call<TResult>(method, params, callOptions)
           : await client.call<TResult>(method, params)
     } catch (error) {
       const unavailable =
