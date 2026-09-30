@@ -20,7 +20,9 @@ const fishLookup = resolveFishBinary()
 const canRun = (command: string): boolean =>
   spawnSync(command, ['-NoLogo', '-NoProfile', '-Command', 'exit 0']).status === 0
 const pwshAvailable = canRun('pwsh')
-const FLAG = "hooks={ Stop = [{ hooks = [{ type = 'command', command = 'x' }] }] }"
+// Why the synthetic key: its `<` and `>` must reach codex intact through npm's codex.cmd on Windows.
+const FLAG =
+  "hooks={ Stop = [{ hooks = [{ type = 'command', command = 'x' }] }], state = { 'C:\\<session-flags>\\config.toml:stop:0:0' = { trusted_hash = 'sha256:a' } } }"
 const VERSION = 'codex-cli 9.9.9'
 
 type Shell = 'bash' | 'zsh' | 'fish' | 'pwsh' | 'powershell'
