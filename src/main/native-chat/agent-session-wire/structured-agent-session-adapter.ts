@@ -38,6 +38,11 @@ import type {
   ProviderDiagnostic,
   SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
+import type { StructuredAgentSessionStopCause } from './structured-agent-session-stop-cause'
+export type {
+  StructuredAgentSessionChildEndCause,
+  StructuredAgentSessionStopCause
+} from './structured-agent-session-stop-cause'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
@@ -177,22 +182,6 @@ export type AgentSessionDispatchOutcome =
   /** The call did not settle. Never re-send on the user's behalf. */
   | { state: 'unknown'; reason: string }
 
-/** Why a provider child ended. In memory only: never journaled, persisted or sent. */
-export type StructuredAgentSessionChildEndCause =
-  | 'user-stop'
-  /** The user closed this chat: its tab, its launch, or a `/clear` that replaces it. */
-  | 'user-close'
-  | 'host-stop'
-  | 'exit'
-  | 'attach-failed'
-  | 'evict'
-
-/** Why the host asked a child to stop. The adapter carries it onto the `ended` it settles with. */
-export type StructuredAgentSessionStopCause = Extract<
-  StructuredAgentSessionChildEndCause,
-  'user-stop' | 'user-close' | 'host-stop' | 'evict'
->
-
 export type StructuredAgentSessionEndedEvent = {
   type: 'ended'
   sessionId: string
@@ -254,12 +243,10 @@ export type StructuredAgentSessionSetOptionInput = {
   fence: number
 }
 
-/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any.
- *  `unconfirmed`: the provider took the Stop, but Orca could not confirm the turn's work ended. */
+/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any. */
 export type AgentSessionCancelOutcome = {
   cancelled: boolean
   refusal?: { detail?: ProviderDiagnostic }
-  unconfirmed?: true
 }
 
 export type StructuredAgentSessionAdapter = {
@@ -327,8 +314,8 @@ export type StructuredAgentSessionAdapter = {
     /** Latest journal submission for this fence, when the host has one. */
     dispatchStatus?: { state: AgentJournalDispatchState; recovered: boolean } | null
     /** Re-reads the turn the published journal says is running — the only turn a client
-     *  could have named. A function, not a value, because the guard re-checks after the
-     *  delivery fence may have waited. Absent for direct callers with no journal. */
+     *  could have named. A function, not a value, because the guard reads it when the
+     *  interrupt is issued. Absent for direct callers with no journal. */
     resolveLiveTurnId?: () => string | null
   }): Promise<AgentSessionCancelOutcome>
   /** Changes the provider thread's goal. `rejected` is the provider refusing the
