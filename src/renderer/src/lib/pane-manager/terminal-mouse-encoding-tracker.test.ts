@@ -11,11 +11,12 @@ function write(terminal: Terminal, data: string): Promise<void> {
   return new Promise((resolve) => terminal.write(data, resolve))
 }
 
+type XtermMouseStateAccess = { _core?: { mouseStateService?: { activeEncoding?: string } } }
+
 // xterm's own (private) encoding, so each case also proves the mirror agrees with xterm.
-function xtermEncoding(terminal: Terminal): unknown {
-  const core: unknown = Reflect.get(terminal, '_core')
-  const mouse: unknown = core ? Reflect.get(core, 'mouseStateService') : undefined
-  return mouse ? Reflect.get(mouse, 'activeEncoding') : undefined
+function xtermEncoding(terminal: Terminal): string | undefined {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test-only read of xterm's private mouse state; every level is optional.
+  return (terminal as unknown as XtermMouseStateAccess)._core?.mouseStateService?.activeEncoding
 }
 
 async function trackedAfter(...chunks: string[]) {

@@ -28,7 +28,11 @@ const encodingByTerminal = new WeakMap<object, TerminalMouseEncoding>()
 
 // Mirrors xterm's InputHandler.setModePrivate / resetModePrivate: params apply
 // in order, and a reset of either mode returns to the default encoding.
-function applyPrivateModes(terminal: object, params: PrivateModeParams, set: boolean): boolean {
+function applyPrivateModes(
+  terminal: TerminalMouseEncodingTrackerTarget,
+  params: PrivateModeParams,
+  set: boolean
+): boolean {
   let encoding = encodingByTerminal.get(terminal) ?? 'default'
   for (const param of params) {
     if (param === SGR_MOUSE_MODE) {

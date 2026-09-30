@@ -2,7 +2,15 @@
 import { describe, expect, it } from 'vitest'
 import { ESC, useTerminalMouseWebViewHarness } from './terminal-webview-mouse-test-harness'
 
-function message(data: object) {
+type DocumentMessage = {
+  type: string
+  data?: string
+  cols?: number
+  rows?: number
+  initialData?: string
+}
+
+function message(data: DocumentMessage) {
   window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) }))
 }
 
