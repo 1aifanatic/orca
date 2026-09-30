@@ -65,9 +65,14 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
       }
       return { ok: true, result: 'sent' }
     })
-    const call = callOrchestrationMutation(client, new Map(), 'orchestration.send', WORKER_DONE, {
-      unavailableRetryMs: RETRY_MS
-    })
+    const call = callOrchestrationMutation(
+      client,
+      new Map(),
+      'orchestration.send',
+      WORKER_DONE,
+      undefined,
+      RETRY_MS
+    )
     await vi.advanceTimersByTimeAsync(3_000)
     await expect(call).resolves.toEqual({ ok: true, result: 'sent' })
     expect(requestIds).toHaveLength(3)
@@ -89,7 +94,8 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
       new Map([['retry-request', retryRequest]]),
       'orchestration.send',
       WORKER_DONE,
-      { unavailableRetryMs: RETRY_MS }
+      undefined,
+      RETRY_MS
     )
     await vi.advanceTimersByTimeAsync(1_000)
     await call
@@ -101,9 +107,14 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
       throw new RuntimeClientError('runtime_timeout', 'Timed out.')
     })
     await expect(
-      callOrchestrationMutation(client, new Map(), 'orchestration.send', WORKER_DONE, {
-        unavailableRetryMs: RETRY_MS
-      })
+      callOrchestrationMutation(
+        client,
+        new Map(),
+        'orchestration.send',
+        WORKER_DONE,
+        undefined,
+        RETRY_MS
+      )
     ).rejects.toMatchObject({ code: 'runtime_timeout' })
     expect(requestIds).toHaveLength(1)
   })
@@ -127,9 +138,14 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
     const { client, requestIds } = fakeClient((_attempt, options) => {
       throw unavailable(options)
     })
-    const call = callOrchestrationMutation(client, new Map(), 'orchestration.send', WORKER_DONE, {
-      unavailableRetryMs: RETRY_MS
-    })
+    const call = callOrchestrationMutation(
+      client,
+      new Map(),
+      'orchestration.send',
+      WORKER_DONE,
+      undefined,
+      RETRY_MS
+    )
     const settled = call.catch((error: unknown) => error)
     await vi.advanceTimersByTimeAsync(RETRY_MS + 30_000)
     const error = await settled
@@ -185,9 +201,14 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
     })
     servers.add(server)
     const client = new RuntimeClient(userDataPath, 5_000, null, null, 'orca')
-    const call = callOrchestrationMutation(client, new Map(), 'orchestration.send', WORKER_DONE, {
-      unavailableRetryMs: RETRY_MS
-    })
+    const call = callOrchestrationMutation(
+      client,
+      new Map(),
+      'orchestration.send',
+      WORKER_DONE,
+      undefined,
+      RETRY_MS
+    )
     // The runtime is down for the first attempt: no metadata, so even the contract probe fails.
     await new Promise<void>((resolve) => server.listen(endpoint, resolve))
     writeFileSync(
