@@ -1,4 +1,5 @@
 import type { GitPushTarget, GitWorktreeInfo } from '../../shared/worktree/types'
+import { markWorktreeMembershipDirty } from '../git/worktree-membership/worktree-membership-store'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { ArchiveHookOverride } from '../../shared/worktree/archive-hook-removal-gate'
 import { gateWorktreeRemovalOnArchiveHook } from '../worktree-archive-hook-gate'
@@ -162,6 +163,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
         await gitExecFileAsync(['worktree', 'prune'], { cwd: repo.path, ...localOptions }).catch(
           () => {}
         )
+        markWorktreeMembershipDirty(repo.path)
         await cleanupPushTarget(args)
         args.finishRemoval(undefined, false, refreshed.head)
         completed = true

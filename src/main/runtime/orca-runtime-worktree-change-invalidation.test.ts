@@ -30,12 +30,10 @@ vi.mock('../providers/ssh-git-dispatch', () => ({
 const listWorktreesStrictMock = vi.hoisted(() => vi.fn())
 vi.mock('../git/worktree', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  listWorktreesStrict: listWorktreesStrictMock
+  listWorktreesStrict: listWorktreesStrictMock,
+  listWorktreesFromMembershipStrict: listWorktreesStrictMock
 }))
 
-vi.mock('./repo-worktree-admin-fingerprint', () => ({
-  readRepoWorktreeAdminFingerprint: vi.fn(async () => null)
-}))
 
 import { OrcaRuntimeService } from './orca-runtime'
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'

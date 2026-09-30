@@ -1,5 +1,5 @@
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
-import { listWorktreesStrict } from '../git/worktree'
+import { listWorktreesFromMembershipStrict } from '../git/worktree'
 import type { LocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 
 export type RuntimeWorktreeScanResult =
@@ -12,8 +12,8 @@ export async function scanLocalRepoWorktreesForResolution(
 ): Promise<RuntimeWorktreeScanResult> {
   try {
     const worktrees = options.wslDistro
-      ? await listWorktreesStrict(repoPath, options)
-      : await listWorktreesStrict(repoPath)
+      ? await listWorktreesFromMembershipStrict(repoPath, options)
+      : await listWorktreesFromMembershipStrict(repoPath)
     return { ok: true, worktrees }
   } catch {
     return { ok: false, worktrees: [] }

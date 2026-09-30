@@ -7,6 +7,7 @@ import type { ResolvedWorktreeSnapshot } from './runtime-resolved-worktree-cache
 import { RESOLVED_WORKTREE_CACHE_TTL_MS } from './orca-runtime-postlude'
 import { getWorktreeScanMutationRevision } from '../local-worktree-scan-generation'
 import {
+  getLocalProjectWorktreeGitOptionsForRuntime,
   resolveLocalProjectRuntimeForRepo,
   resolveLocalProjectRuntimesForRepos
 } from '../project-runtime-git-options'
@@ -21,8 +22,11 @@ import type { ProjectExecutionRuntimeResolution } from '../../shared/project-exe
 import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 import { getSshGitProviderGeneration } from '../providers/ssh-git-dispatch'
 import { getRepoExecutionHostId, getRepoSshConnectionId } from '../../shared/execution-host'
-import type { RuntimeWorktreeScanCache } from './orca-runtime-core'
 import { resolveWorktreeScanCacheTtlMs } from './runtime-worktree-scan-cache'
+import { mapWithConcurrency } from '../../shared/map-with-concurrency'
+import { isWorktreeMembershipModelBacked } from '../git/worktree-membership/worktree-membership-store'
+
+const RESOLVED_WORKTREE_FLEET_CONCURRENCY = 8
 
 export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends OrcaRuntimeWithResolveWorktreeSelector {
   protected listKnownResolvedWorktreesForExplicitTarget(
@@ -98,10 +102,11 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       ])
     )
     const deps = this.repoWorktreeRowDeps()
-    const perRepoWorktrees = await Promise.all(
-      repos.map(
-        async (repo) => await resolveRepoWorktreeRows(deps, repo, metaById, projectRuntimeByRepoId)
-      )
+    // Why capped: one fleet snapshot must not start a read for every registered repo at once.
+    const perRepoWorktrees = await mapWithConcurrency(
+      repos,
+      RESOLVED_WORKTREE_FLEET_CONCURRENCY,
+      async (repo) => await resolveRepoWorktreeRows(deps, repo, metaById, projectRuntimeByRepoId)
     )
     const lineageById = this.store?.getAllWorktreeLineage?.() ?? {}
     const worktrees = perRepoWorktrees.flatMap((rows) =>
@@ -155,7 +160,14 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
     const now = Date.now()
     const scanScopeKey = `${repo.id}\0${getRepoExecutionHostId(repo)}`
     const generation = this.worktreeScanGenerations.get(scanScopeKey) ?? 0
-    const cached = this.worktreeScanCache.get(scanScopeKey)
+    // A local repo with a membership model keeps no rows here: the model owns their freshness.
+    const modelBacked = (): boolean =>
+      !sshConnectionId &&
+      isWorktreeMembershipModelBacked(
+        repo.path,
+        getLocalProjectWorktreeGitOptionsForRuntime(repo, projectRuntime).wslDistro
+      )
+    const cached = modelBacked() ? undefined : this.worktreeScanCache.get(scanScopeKey)
     if (
       cached?.generation === generation &&
       cached.runtimeKey === runtimeKey &&
@@ -171,9 +183,7 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       }
       return refresh.result
     }
-    const reusableCached =
-      cached?.generation === generation && cached.runtimeKey === runtimeKey ? cached : null
-    const promise = this.refreshRepoWorktreeScan(repo, projectRuntime, reusableCached)
+    const promise = this.refreshRepoWorktreeScan(repo, projectRuntime)
     this.worktreeScanInFlight.set(scanScopeKey, { generation, runtimeKey, promise })
     try {
       const refresh = await promise
@@ -182,21 +192,14 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       }
       if (
         (refresh.result.ok || !sshConnectionId) &&
+        !modelBacked() &&
         this.worktreeScanInFlight.get(scanScopeKey)?.promise === promise
       ) {
-        const entry: RuntimeWorktreeScanCache = {
+        this.worktreeScanCache.set(scanScopeKey, {
           generation,
           runtimeKey,
           result: refresh.result,
-          expiresAt: Date.now() + resolveWorktreeScanCacheTtlMs(repo),
-          adminFingerprint: refresh.adminFingerprint,
-          scannedAt: refresh.scannedAt
-        }
-        this.worktreeScanCache.set(scanScopeKey, entry)
-        void refresh.adminFingerprintProbe?.then((fingerprint) => {
-          if (this.worktreeScanCache.get(scanScopeKey) === entry) {
-            entry.adminFingerprint = fingerprint
-          }
+          expiresAt: Date.now() + resolveWorktreeScanCacheTtlMs(repo)
         })
       }
       return refresh.result

@@ -32,9 +32,6 @@ vi.mock('../git/worktree', async (importOriginal) => ({
   listWorktreesStrict: listWorktreesStrictMock
 }))
 
-vi.mock('./repo-worktree-admin-fingerprint', () => ({
-  readRepoWorktreeAdminFingerprint: vi.fn(async () => null)
-}))
 
 import { OrcaRuntimeService } from './orca-runtime'
 

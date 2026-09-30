@@ -148,6 +148,7 @@ export class OrcaRuntimeWithNotifySshStateChanged extends OrcaRuntimeWithGetStat
   // clients need an explicit catalog invalidation; the local renderer already
   // got its own repos:changed and must not be re-notified (#11994).
   notifyReposChangedForRemoteClients(): void {
+    this.retainWorktreeMembershipModelsForRegisteredRepos()
     this.emitClientEvent({ type: 'reposChanged' })
   }
 
