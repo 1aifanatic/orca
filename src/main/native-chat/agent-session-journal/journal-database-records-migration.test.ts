@@ -1,6 +1,7 @@
 // Version 4: the chat records join the journal database, copied in by the migration's own
 // transaction, so "copied" is exactly `user_version >= 4`.
 
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +11,7 @@ import {
   journalPragmaNumber,
   NO_LEGACY_JOURNAL_RECORDS,
   openJournalDatabase,
+  readJournalDatabaseVersion,
   type JournalLegacyRecordImport
 } from './journal-database'
 import { createJournalTablesSql } from './journal-database-schema'
@@ -162,6 +164,12 @@ describe('the version-4 migration', () => {
       expect(hasTable(db, 'journal_rows')).toBe(true)
       expect(hasTable(db, 'agent_session_records')).toBe(true)
     })
+  })
+
+  // An install's first probe must not leave an empty database that reads as a profile with chats.
+  it('reads a missing database as version 0 without creating it', () => {
+    expect(readJournalDatabaseVersion(dbPath)).toBe(0)
+    expect(existsSync(dbPath)).toBe(false)
   })
 
   it('creates every table on a fresh file at version 4', () => {

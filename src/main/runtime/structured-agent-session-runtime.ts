@@ -43,6 +43,7 @@ import type { JournalHostDatabase } from '../native-chat/agent-session-journal/j
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
+import { journalDatabaseHoldsAgentSessions } from '../native-chat/agent-session-journal/journal-database'
 import {
   createStructuredAgentSessionOwnerProbe,
   createStructuredAgentSessionOwnerProbes
@@ -58,18 +59,26 @@ import {
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
 
-/** Whether this profile ever held a structured chat: the journal database, or the records file a
- *  profile from before it still carries. */
+/** Whether this profile holds a structured chat: a record or tab in the journal database, or the
+ *  records file a profile from before it carries while the database still owes its copy. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
+  const databasePath = journalDatabasePath(stateDirectory)
+  if (fileExists(databasePath)) {
+    try {
+      const holds = journalDatabaseHoldsAgentSessions(databasePath)
+      if (holds !== undefined) {
+        return holds
+      }
+    } catch {
+      // A database that cannot be read cannot say it is empty.
+      return true
+    }
+  }
   const filePath = legacyAgentSessionStorePath(stateDirectory)
-  return (
-    fileExists(journalDatabasePath(stateDirectory)) ||
-    fileExists(filePath) ||
-    fileExists(`${filePath}.bak`)
-  )
+  return fileExists(filePath) || fileExists(`${filePath}.bak`)
 }
 
 export type StructuredAgentSessionRuntimeDeps = {

@@ -4,6 +4,7 @@
 // no DDL: a database written by a newer schema must be left byte-identical, and
 // `journal_mode = WAL` writes the file header.
 
+import { existsSync } from 'node:fs'
 import Database from '../../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../../sqlite/harden-database-files'
 import {
@@ -56,12 +57,42 @@ export function journalDatabaseMigratesRecords(stored: number): boolean {
   )
 }
 
+/** 0 for a database not created yet: the probe never creates the file. */
 export function readJournalDatabaseVersion(dbPath: string): number {
+  if (!existsSync(dbPath)) {
+    return 0
+  }
   const probe = new Database(dbPath)
   try {
     return journalPragmaNumber(probe, 'user_version')
   } finally {
     probe.close()
+  }
+}
+
+/**
+ * Whether the database holds any chat record or tab, read-only. `undefined` while version 4's copy
+ * of the records file is still owed, so the file answers for the chats it holds.
+ */
+export function journalDatabaseHoldsAgentSessions(dbPath: string): boolean | undefined {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    const tables = new Set(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all()
+        .map(({ name }) => name)
+    )
+    const holds = ['agent_session_records', 'agent_session_tabs'].some(
+      (table) =>
+        tables.has(table) && db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get() !== undefined
+    )
+    if (holds || journalPragmaNumber(db, 'user_version') >= JOURNAL_DB_SCHEMA_VERSION) {
+      return holds
+    }
+    return undefined
+  } finally {
+    db.close()
   }
 }
 
