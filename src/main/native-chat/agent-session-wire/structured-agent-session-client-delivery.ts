@@ -2,7 +2,6 @@ import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-ref
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
-import { StructuredAgentSessionCommandMemory } from './structured-agent-session-command-memory'
 import { tryReadQueuePublication } from './structured-agent-session-queued-publication'
 import type {
   StructuredAgentSessionHostDeps,
@@ -23,7 +22,7 @@ import {
 export class StructuredAgentSessionClientDelivery {
   readonly subscribers: AgentSessionSubscribers
   readonly waitForSendSettlement: StructuredAgentSessionSendSettlement['wait']
-  readonly readCommands: StructuredAgentSessionCommandMemory['read']
+  private stopAtRestCommandUpdates: () => void = () => undefined
   private readonly statusFeed
   private readonly turnCompletionFeed
   private readonly sendSettlement
@@ -31,7 +30,7 @@ export class StructuredAgentSessionClientDelivery {
   constructor(
     private readonly sessions: Map<string, StructuredAgentSessionHostSession>,
     now: () => number,
-    deps: () => StructuredAgentSessionHostDeps,
+    private readonly deps: () => StructuredAgentSessionHostDeps,
     private readonly onJournalActivity?: (sessionId: string) => void,
     onAgentStarted?: (sessionId: string) => void
   ) {
@@ -50,13 +49,30 @@ export class StructuredAgentSessionClientDelivery {
       this.requireJournal(sessionId)
     )
     this.waitForSendSettlement = this.sendSettlement.wait
-    this.readCommands = new StructuredAgentSessionCommandMemory(deps).read
     this.subscribers = new AgentSessionSubscribers({
-      readCommands: this.readCommands,
+      readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(sessions.get(sessionId)?.journal),
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
+  }
+
+  /** Re-sends the `/` surface whenever the provider's at-rest one changes. */
+  watchAtRestCommands(adapter: StructuredAgentSessionHostDeps['adapter']): void {
+    this.stopAtRestCommandUpdates =
+      adapter.onAtRestCommandsChanged?.(() => this.subscribers.republishCommands()) ??
+      (() => undefined)
+  }
+
+  /** What the running agent reports; with none running, what the provider would read at rest. */
+  readCommands(sessionId: string) {
+    const { adapter, store } = this.deps()
+    const live = adapter.readCommands?.(sessionId)
+    if (live !== undefined) {
+      return live
+    }
+    const record = store.getRecord(sessionId)
+    return record ? adapter.readAtRestCommands?.(record) : undefined
   }
 
   publishStatus = (sessionId: string): void => this.statusFeed.publish(sessionId)
@@ -97,6 +113,7 @@ export class StructuredAgentSessionClientDelivery {
   }
 
   closeAll(): void {
+    this.stopAtRestCommandUpdates()
     this.sendSettlement.closeAll()
   }
 

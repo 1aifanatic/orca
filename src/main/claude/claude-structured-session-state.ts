@@ -27,6 +27,7 @@ import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-wor
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
+import type { ClaudeAtRestCommandCatalog } from './claude-at-rest-commands'
 import type { ClaudeSessionStartup } from './claude-structured-session-startup-state'
 
 export type ClaudeAuthDiagnostic = {
@@ -89,6 +90,8 @@ export type ClaudeLateDispatchOutcome =
   | ({ clientMessageId: string; state: 'rejected' } & AgentJournalDispatchRejection)
 
 export type ClaudeStructuredSessionAdapterDeps = {
+  /** The `/` surface of a chat whose Claude is not running. */
+  atRestCommands?: ClaudeAtRestCommandCatalog
   resolveLaunch: (input: {
     identity: AgentSessionJournalIdentity
   }) => Promise<ClaudeStructuredLaunch>
