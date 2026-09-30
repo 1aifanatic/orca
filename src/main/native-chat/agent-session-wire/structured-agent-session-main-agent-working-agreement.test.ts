@@ -22,7 +22,8 @@ import {
   reduceStructuredAgentSession,
   type StructuredAgentSessionState
 } from '../../../shared/structured-agent-session-reducer'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -35,6 +36,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const PROVIDER_ROW = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-1' }
@@ -57,7 +59,7 @@ beforeEach(async () => {
   listed = undefined
   // Written, and the provider has neither opened a turn for it nor answered it.
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: {
@@ -89,7 +91,7 @@ beforeEach(async () => {
       setOption: vi.fn(async () => undefined),
       backgroundTaskState: () => backgroundTasks
     },
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-1',
     now: () => NOW

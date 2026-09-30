@@ -6,7 +6,7 @@
 // that ship. The fake app-server answers the same JSON-RPC calls the real one
 // does and pushes the same notifications and blocking requests back.
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,11 +30,11 @@ import type {
 } from '../../shared/agent-session-wire'
 import { attachFingerprintFields } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { journalDirectoryFor } from '../native-chat/agent-session-journal/journal-paths'
 import { importLegacyTranscriptIntoJournal } from '../native-chat/agent-session-journal/journal-legacy-import'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
-import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import type { OrcaRuntimeService } from './orca-runtime'
+import { readPersistedTestAgentSessionStoreText } from './agent-session-record-store-test-harness'
 import type { RpcRequest, RpcResponse } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
 import type { NativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
@@ -410,7 +410,7 @@ describe('a structured codex session over agentSession.*', () => {
     }
     const journal = await journals.open({
       identity,
-      journalDir: journalDirectoryFor(root, identity)
+      stateDirectory: root
     })
     const rollout = join(root, 'legacy-rollout.jsonl')
     await writeFile(
@@ -428,6 +428,8 @@ describe('a structured codex session over agentSession.*', () => {
       fence: 0,
       options: { filePath: rollout }
     })
+    // The previous process exits, closing its database.
+    await journals.closeAll()
 
     const created = await ok<{ page: { items: AgentJournalRenderItem[] } }>(
       'agentSession.create',
@@ -454,7 +456,7 @@ describe('a structured codex session over agentSession.*', () => {
       EXAMPLE_GATEWAY_TOKEN: 'shell-exported',
       CODEX_HOME: '/home/dev/.codex'
     })
-    const store = await readFile(join(root, 'agent-sessions', 'agent-sessions.json'), 'utf-8')
+    const store = await readPersistedTestAgentSessionStoreText(root)
     expect(store).not.toContain('EXAMPLE_GATEWAY_TOKEN')
     expect(store).not.toContain('"launchEnv"')
     const stream = await subscribe('sub-first-send')
@@ -827,7 +829,7 @@ describe('a structured codex session over agentSession.*', () => {
     }
     const reopened = await journals.open({
       identity,
-      journalDir: journalDirectoryFor(root, identity)
+      stateDirectory: root
     })
     expect(reopened.snapshot().items.map(textOf)).toContain('Final text before shutdown.')
     expect(

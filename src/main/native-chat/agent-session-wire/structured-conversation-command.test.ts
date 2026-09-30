@@ -6,7 +6,8 @@ import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-se
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   AgentSessionAcquisitionRefusal,
@@ -21,6 +22,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -60,14 +62,11 @@ const generationRoot = () => join(directory, `generation-${generation}`)
 let ownerProbe: AgentSessionOwnerProbe = { outcome: 'pid-absent' }
 
 async function openHost(): Promise<void> {
-  store = await AgentSessionRecordStore.open({
-    directory: join(generationRoot(), 'store'),
-    hostId: 'local'
-  })
+  store = await openTestAgentSessionRecordStore(generationRoot())
   host = new StructuredAgentSessionHost({
     store,
     adapter,
-    journalRoot: generationRoot(),
+    journalDatabase: openTestJournalHostDatabase(generationRoot()),
     claimKeyId: 'key',
     now: () => clock,
     mintSpawnToken: () => `spawn-${acquisitions}`,
