@@ -7,7 +7,12 @@ import {
   type AgentJournalItemIdentity,
   type AgentSessionJournalIdentity
 } from '../../../src/shared/agent-session-journal-types'
-import { createTrackedJournalOpener } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
+import Database from '../../../src/main/sqlite/sync-database'
+import { journalDatabasePath } from '../../../src/main/native-chat/agent-session-journal/journal-host-database'
+import {
+  createTrackedJournalOpener,
+  liveTestJournalRows
+} from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import type { JournalRow } from '../../../src/main/native-chat/agent-session-journal/journal-row-schema'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
@@ -15,6 +20,9 @@ import { importReleaseCheckoutModule, materializeReleaseCheckout } from './relea
 // make it delete the journal from that row on, so both ride a tombstone it already reads.
 const BASELINE_REF = 'v1.4.218'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
+// A main build that shares this one's host database and schema version, so a downgrade to it opens
+// the journal writable. No release tag has that database yet; move to the first one that does.
+const WRITABLE_BASELINE_REF = '3727100cc9dbcea6201f8a3e506676a3c4b53b18'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-downgrade',
@@ -139,3 +147,78 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+type OlderJournal = {
+  isReadOnly: boolean
+  cursor: () => { epoch: string; sequence: number }
+  snapshot: () => { items: { itemId: string }[] }
+  appendItem: (...args: [AgentJournalItemIdentity, unknown, unknown]) => Promise<unknown>
+}
+
+type OlderOpener = {
+  open: (options: {
+    identity: AgentSessionJournalIdentity
+    stateDirectory: string
+  }) => Promise<OlderJournal>
+  closeAll: () => Promise<void>
+}
+
+function storedRows(directory: string): string[] {
+  const db = new Database(journalDatabasePath(directory), { readonly: true })
+  try {
+    return liveTestJournalRows(db, IDENTITY.sessionId).map((row) => row.rowJson)
+  } finally {
+    db.close()
+  }
+}
+
+test("an older build opens this build's journal writable and appends to it; the pause survives the round trip", async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'orca-stop-event-writable-downgrade-'))
+  const journals = createTrackedJournalOpener()
+  const itemIds = (journal: Pick<OlderJournal, 'snapshot'>) =>
+    journal.snapshot().items.map((entry) => entry.itemId)
+  try {
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    await journal.appendItem(item(0), { kind: 'status', text: 'before the Stop' }, scope)
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
+    await journal.appendItem(item(1), { kind: 'status', text: 'after the Stop' }, scope)
+    const wrote = { cursor: journal.cursor(), items: itemIds(journal) }
+    expect(journal.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
+      'stopped'
+    ])
+    await journals.closeAll()
+    const rowsBefore = storedRows(directory)
+
+    const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
+    const support = await importReleaseCheckoutModule(
+      checkout,
+      `${JOURNAL}/journal-host-database-test-support.ts`
+    )
+    const older = releaseExport<() => OlderOpener>(support, 'createTrackedJournalOpener')()
+    try {
+      const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
+      expect(downgraded.isReadOnly).toBe(false)
+      expect(downgraded.cursor()).toEqual(wrote.cursor)
+      expect(itemIds(downgraded)).toEqual(wrote.items)
+      await downgraded.appendItem(item(2), { kind: 'status', text: 'the older build' }, scope)
+    } finally {
+      await older.closeAll()
+    }
+    const rowsAfter = storedRows(directory)
+    expect(rowsAfter.slice(0, rowsBefore.length)).toEqual(rowsBefore)
+    expect(rowsAfter).toHaveLength(rowsBefore.length + 1)
+
+    // Upgraded again: the older build's row folds, and the person's Stop still pauses the queue.
+    const upgraded = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+    expect(upgraded.isReadOnly).toBe(false)
+    expect(upgraded.cursor().sequence).toBe(wrote.cursor.sequence + 1)
+    expect(itemIds(upgraded)).toEqual([...wrote.items, 'codex:thread-1:turn-1:2'])
+    expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
+      'stopped'
+    ])
+  } finally {
+    await journals.closeAll()
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
