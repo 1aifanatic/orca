@@ -243,6 +243,22 @@ divergences, pinned by name in the parity table
 (`src/shared/main-agent-status-parity.test.ts`) where they are reachable, so a
 reader does not mistake them for drift:
 
+- The Claude hook lane knows a background shell (or monitor, or workflow) by
+  Claude's task id, in one per-pane record (`claude-non-agent-work.ts`) on the
+  host that runs the session. A task enters it from the main agent's launching
+  `PostToolUse` (`tool_response.backgroundTaskId`, with that call's
+  `tool_use_id`) or from the `background_tasks` inventory Claude attaches to
+  `Stop`, which replaces the record. It leaves on the next inventory that omits
+  it, on a `TaskStop` result naming it, or on the `queue-operation` `enqueue`
+  line Claude writes to its transcript the moment the task ends (finished,
+  killed with its turn's Ctrl+C, or from `/tasks` while Claude idles), read by
+  the transcript watch below and trusted only when both its task id and its
+  tool-use id match the launch Orca recorded, since a prompt typed while Claude
+  is busy writes the same kind of line. A session change is not an end: a shell
+  survives `/clear` and reports its end in the new session's transcript. The
+  pane's process ending, its PTY exiting and the relay stopping clear it with
+  the rest of the pane. The desktop keeps no copy for a relayed pane; it reads
+  the row's `claudeRunningNonAgentTask`, which the relay restates on every row.
 - The Claude hook lane holds a child's permission wait in one slot on the
   displaced main agent record (`waitingAgentId`, `stateBeforeWait`), not on
   the child. It publishes the displaced state as `mainAgent`, but the next
@@ -259,8 +275,8 @@ How the main agent's turn ended is not a fold input. A cancel is a verdict on
 the main agent, carried as `mainAgent.outcome: 'cancellation'` (and, for
 readers that predate `mainAgent`, as the row's `interrupted` flag on a `done`
 row); it never retires a shell, scheduled check or subagent the turn left
-running. That work leaves the row only when its own inventory omits it or the
-session ends, so a cancelled turn with a still-running shell reads
+running. That work leaves the row only on Claude's own record of its end, so a
+cancelled turn with a still-running shell reads
 `monitoring` in every lane, and the parity table in
 `src/shared/main-agent-status-parity.test.ts` drives that story through all of
 them. The same rule governs the cancel Orca infers from Ctrl+C: for any row
@@ -278,7 +294,8 @@ really killed every running background agent. The listener on the host that
 runs the session (the desktop for a local pane, the SSH or WSL relay for a
 remote one) reads it through the pane's Claude transcript watch
 (`claude-transcript-watch.ts`). The watch keeps one cursor per pane while any
-reason to watch holds (today one: a working agent child) and the pane has a
+reason to watch holds (a working agent child, or a background task whose
+launch the record holds) and the pane has a
 transcript path that host can read locally. The cursor is armed at the file's
 end, so a resumed, forked or cleared session's older lines never count, and it
 is created or repointed only from a row the host accepted, at the new file's end
@@ -298,7 +315,12 @@ this). A tick row that carries no fact only restates hooks the store already
 judged, so the desktop's cancel latch holds it: after a late main-agent hook the
 latch refused, the listener's record keeps that hook's evidence (a turn the
 Ctrl+C did not stop still ends as a plain done) and the tick cannot reopen the
-cancel. A relay too old to watch leaves the child on the row until the next
+cancel. A tick row that carries a fact is marked `transcriptFact` (on the relay
+envelope too) and the latch re-folds it under the cancel like a child's or a
+replayed row, because a relay that never learned the cancel restates its stale
+working main agent on it. A cleared session's file appears just after its
+SessionStart hook, so the cursor is armed at that file's start while its
+directory exists and the file does not. A relay too old to watch leaves the child on the row until the next
 Stop's inventory, as before. The synthesized row is the fold
 of the cancelled main agent with the child work the pane's owner can see: the
 local listener's roster for a local pane, the row's own subagents and shell fact

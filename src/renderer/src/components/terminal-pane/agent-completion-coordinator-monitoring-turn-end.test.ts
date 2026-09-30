@@ -1,8 +1,18 @@
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createAgentCompletionCoordinator } from './agent-completion-coordinator'
 import { useAgentCompletionCoordinatorLifecycle } from './agent-completion-coordinator-test-harness'
 import { normalizeHookPayload } from '../../../../shared/agent-hook-listener'
-import { createHookListenerState } from '../../../../shared/agent-hook-listener/listener-state'
+import {
+  createHookListenerState,
+  seedLegacyAgentStatusForTests
+} from '../../../../shared/agent-hook-listener/listener-state'
+import {
+  observeClaudeTranscript,
+  syncClaudeTranscriptCursor
+} from '../../../../shared/agent-hook-listener/providers/claude-transcript-watch'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 
 // Why: STA-4119's second complaint is the missing completion notification. This drives the REAL
@@ -111,6 +121,80 @@ describe('completion notification when a lead turn ends into monitoring', () => 
     )
 
     expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not announce again when Claude records a /tasks kill with no hook', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-completion-tasks-kill-'))
+    try {
+      const transcript = join(dir, 'session.jsonl')
+      writeFileSync(transcript, '')
+      const listener = createHookListenerState()
+      const { coordinator, dispatchCompletion } = createCoordinator()
+      // Shapes from the r1-s9 capture (claude-background-shell-tasks-kill-idle-hooks.jsonl).
+      const hook = (payload: Record<string, unknown>) => {
+        const event = normalizeHookPayload(
+          listener,
+          'claude',
+          {
+            paneKey: PANE,
+            payload: {
+              session_id: '00000000-0000-4000-8000-0000b2000000',
+              transcript_path: transcript,
+              ...payload
+            }
+          },
+          'production'
+        )
+        if (!event) {
+          throw new Error('listener produced no event')
+        }
+        return event
+      }
+      const observe = (payload: ReturnType<typeof hook>['payload']) =>
+        coordinator.observeHookStatus({ ...payload, stateStartedAt: 1_700_000_000_000 })
+      observe(hook({ hook_event_name: 'UserPromptSubmit', prompt: 'start it' }).payload)
+      observe(
+        hook({
+          hook_event_name: 'PostToolUse',
+          tool_name: 'Bash',
+          tool_response: { backgroundTaskId: 'bmkj8eeoi' },
+          tool_use_id: 'toolu_012Evdwg71Lm1f4XM5vSqWvf'
+        }).payload
+      )
+      const stop = hook({
+        hook_event_name: 'Stop',
+        background_tasks: [{ id: 'bmkj8eeoi', type: 'shell', status: 'running' }]
+      })
+      observe(stop.payload)
+      expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+
+      // The host stores the Stop's row and watches for the shell's end line.
+      seedLegacyAgentStatusForTests(listener, stop)
+      expect(syncClaudeTranscriptCursor(listener, stop)).toBe(true)
+      appendFileSync(
+        transcript,
+        `${JSON.stringify({
+          type: 'queue-operation',
+          operation: 'enqueue',
+          timestamp: '2026-09-29T05:24:58.227Z',
+          content:
+            '<task-notification>\n<task-id>bmkj8eeoi</task-id>\n<tool-use-id>toolu_012Evdwg71Lm1f4XM5vSqWvf</tool-use-id>\n<status>killed</status>\n<summary>Task "Sleep for 604 seconds" was stopped by the user</summary>\n</task-notification>'
+        })}\n`
+      )
+      const observed = observeClaudeTranscript(listener, PANE)
+      if (observed.kind !== 'read' || !observed.row) {
+        throw new Error('the watch published no row')
+      }
+      expect(observed.row.payload).toMatchObject({
+        state: 'done',
+        turnCompletedAt: stop.payload.turnCompletedAt
+      })
+      observe(observed.row.payload)
+
+      expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('does not announce mid-turn while the agent is still working in the foreground', () => {
