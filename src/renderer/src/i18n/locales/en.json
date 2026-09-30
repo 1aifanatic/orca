@@ -3984,7 +3984,9 @@
             }
           },
           "tooltip": {
-            "zcode": { "mcp": "MCP" },
+            "zcode": {
+              "mcp": "MCP"
+            },
             "cedb7b99e3": "% used",
             "6d6df77f41": "No data available",
             "7f7f208060": "Monthly",
@@ -8992,7 +8994,8 @@
           "ad5d036ecc": "Could not request microphone permission. Voice dictation was not enabled.",
           "f9a9cf6928": "Microphone permission is required before enabling voice dictation.",
           "1eac933202": "Opened macOS Privacy & Security. Enable dictation again after granting access.",
-          "cd9fe37556": "Microphone permission granted"
+          "cd9fe37556": "Microphone permission granted",
+          "openAiKeyName": "Your OpenAI transcription key"
         },
         "WorktreeSymlinksSection": {
           "1c1e35b219": "Remove {{value0}}",
@@ -10075,7 +10078,8 @@
               "9a9f8d4910": "Connect Jira Cloud to browse, create, and link issues.",
               "74f3063026": "{{value0}} site{{value1}} connected",
               "statusConnected": "Connected",
-              "statusNotConnected": "Not connected"
+              "statusNotConnected": "Not connected",
+              "jiraTokenName": "Your Jira API token"
             }
           }
         },
@@ -10983,7 +10987,8 @@
                 "2d60ec7921": "Connect a Jira Cloud site with an API token, or a self-hosted Jira with a personal access token or username and password. Credentials are sent to the selected remote runtime and stored there with runtime-supported encryption.",
                 "977e360b71": "Connect a Jira Cloud site with an API token, or a self-hosted Jira with a personal access token or username and password. Credentials are stored locally and encrypted when local runtime storage supports it.",
                 "statusConnected": "Connected",
-                "statusNotConnected": "Not connected"
+                "statusNotConnected": "Not connected",
+                "linearTokenName": "Your Linear API token"
               }
             }
           }
@@ -12151,7 +12156,8 @@
               "notConfigured": "Connect a Bitbucket Cloud account with an Atlassian API token or an access token. ORCA_BITBUCKET_* environment variables work too and take precedence.",
               "disconnectFailed": "Could not remove the saved Bitbucket credential.",
               "statusLoadFailed": "Could not check for a saved Bitbucket credential.",
-              "replaceCredentials": "Add or replace credentials"
+              "replaceCredentials": "Add or replace credentials",
+              "credentialName": "Your Bitbucket credential"
             }
           }
         },
@@ -12215,6 +12221,9 @@
           "usageLabel": "Usage",
           "noAllowance": "Cursor reported no usage allowance for this account.",
           "staleUsage": "Last known usage — the latest refresh failed: {{reason}}"
+        },
+        "UnsealedCredentialNotice": {
+          "body": "{{credential}} is stored unencrypted — this system has no OS keyring Orca can use. Anyone who can read your disk or a backup of it can read the credential. Install and unlock gnome-keyring or kwallet, then save it again to seal it."
         }
       },
       "right": {
@@ -17575,6 +17584,7 @@
         "imagePasteFailed": "Image paste failed.",
         "imageSaving": "Saving pasted image…",
         "worktreeNotReady": "Worktree not ready — try again in a moment.",
+        "pasteUnavailable": "Can't paste — this chat isn't accepting input right now.",
         "uploadingAttachments": "Uploading {{value0}} file(s) to remote…",
         "model": "Model",
         "effort": "Effort",
@@ -17818,8 +17828,7 @@
         "ranOne": "Ran 1 subagent",
         "ranN": "Ran {{value0}} subagents",
         "tokens": "{{value0}} tokens",
-        "unnamed": "Subagent",
-        "writtenBy": "Written by subagent {{value0}}"
+        "unnamed": "Subagent"
       },
       "conversationCommand": {
         "pendingWork": "Wait for pending work and messages to finish before using this command.",
@@ -17856,6 +17865,9 @@
         "title": "Context",
         "estimated": "Estimated from the last response."
       },
+      "dismissDeliveryNotice": "Dismiss",
+      "messageNotSent": "Message not sent",
+      "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",
         "awaitingAnswerHold": "Waiting for your answer",

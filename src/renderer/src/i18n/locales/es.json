@@ -14972,6 +14972,7 @@
         "pastedImageLabel": "Imagen pegada",
         "imagePasteFailed": "Error al pegar imagen.",
         "worktreeNotReady": "Worktree no está listo — intenta de nuevo en un momento.",
+        "pasteUnavailable": "No se puede pegar — este chat no acepta entradas en este momento.",
         "uploadingAttachments": "Subiendo {{value0}} archivo(s) al remoto…",
         "model": "Modelo",
         "effort": "Esfuerzo",
@@ -15082,9 +15083,11 @@
         "title": "Contexto",
         "estimated": "Estimado a partir de la última respuesta."
       },
+      "dismissDeliveryNotice": "Descartar",
+      "messageNotSent": "Mensaje no enviado",
+      "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "subagents": {
-        "unnamed": "Subagente",
-        "writtenBy": "Escrito por el subagente {{value0}}"
+        "unnamed": "Subagente"
       },
       "queuedMessages": {
         "alreadySent": "Este mensaje ya se envió.",
