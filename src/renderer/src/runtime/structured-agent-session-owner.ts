@@ -55,9 +55,15 @@ export function structuredAgentSessionTargetForTab(
   state: WorktreeRuntimeOwnerState,
   tab: Pick<Tab, 'worktreeId' | 'executionHostId'>
 ): RuntimeClientTarget | null {
-  return structuredAgentSessionTargetForHost(
-    tab.executionHostId ?? resolveStructuredAgentSessionOwner(state, tab.worktreeId)
-  )
+  return structuredAgentSessionTargetForHost(structuredAgentSessionOwnerForTab(state, tab))
+}
+
+/** The host recorded for an existing chat, as a string a store selector can compare. */
+export function structuredAgentSessionOwnerForTab(
+  state: WorktreeRuntimeOwnerState,
+  tab: Pick<Tab, 'worktreeId' | 'executionHostId'>
+): ExecutionHostId | null {
+  return tab.executionHostId ?? resolveStructuredAgentSessionOwner(state, tab.worktreeId)
 }
 
 /** The host a runtime target serves, for bookkeeping keyed by host. */
