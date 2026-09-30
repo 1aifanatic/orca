@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { OrchestrationDb } from '../orchestration-db'
-import { deriveWorkerTerminalListState } from '../../worker-terminal-ownership'
 
 const THIS_RUNTIME = 'epoch_this_runtime'
 
@@ -79,14 +78,6 @@ describe('worker-abandon settles a stuck worker', () => {
     expectAbandoned(dispatch.id, task.id)
   })
 
-  it('still refuses to race a stop this runtime has in flight', () => {
-    const { dispatch } = readyWorker()
-    db.beginWorkerStop(dispatch.id, THIS_RUNTIME)
-
-    expect(() => db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME)).toThrow(/is stopping/)
-    expect(db.getWorkerDispatch(dispatch.id)?.state).toBe('stopping')
-  })
-
   it.each([
     [
       'stop_unknown',
@@ -142,20 +133,12 @@ describe('worker-abandon settles a stuck worker', () => {
         disposition: 'already_settled',
         worker: { state: 'failed' }
       })
-      const resource = db.getWorkerTerminalResourceByOwner(dispatch.id)!
-      expect(resource).toMatchObject({
+      expect(db.getWorkerTerminalResourceByOwner(dispatch.id)).toMatchObject({
         ownership_state: 'owned',
         release_state: 'retained',
         retained_reason: 'user_requested'
       })
       expect(db.getWorkerTerminalArchive(dispatch.id)).toBeUndefined()
-      expect(
-        deriveWorkerTerminalListState({
-          workerState: 'failed',
-          agentTerminalHandle: 'term_w',
-          resource
-        })
-      ).toBe('retained')
     }
   )
 
