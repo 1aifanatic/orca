@@ -176,12 +176,12 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
   /** The locally verified pinned archive (pinned-runtime-materializer). */
   archivePath: () => Promise<string>
   signal?: AbortSignal
-}): Promise<void> {
+}): Promise<'cached' | 'uploaded'> {
   const { conn, host, target, signal } = options
   const runtimeDir = remoteNodeRuntimeDir(host, options.slotDir, target)
   const probe = await exec(conn, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), signal)
   if (probe.trim() === REMOTE_NODE_RUNTIME_READY) {
-    return
+    return 'cached'
   }
   const archivePath = await options.archivePath()
   const token = randomBytes(8).toString('hex')
@@ -211,6 +211,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     if (promoted.trim().split('\n').at(-1) !== REMOTE_NODE_RUNTIME_READY) {
       throw new Error(`The host did not verify the pinned Node runtime: ${promoted.trim()}`)
     }
+    return 'uploaded'
   } finally {
     await rm(localStage, { recursive: true, force: true }).catch(() => {})
     await exec(conn, `rm -rf ${shellEscape(stageDir)}`).catch(() => {})
