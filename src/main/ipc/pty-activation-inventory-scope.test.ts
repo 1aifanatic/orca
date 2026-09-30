@@ -182,4 +182,26 @@ describe('scoped activation PTY inventory', () => {
     // The cap bounds only other versions; the current one keeps the caller's (unbounded) wait.
     expect(listBySource).toHaveBeenCalledWith({ nonCurrentDeadlineMs: expect.any(Number) })
   })
+
+  it('fails as before when the current version itself does not answer', async () => {
+    installDaemonTestProvider({
+      listProcessesBySource: vi.fn(async () => [
+        {
+          protocolVersion: 36,
+          isCurrent: true,
+          contact: 'unverifiable' as const,
+          error: new Error('daemon not responding'),
+          lastKnownIds: []
+        }
+      ])
+    })
+    installPtyInspectIpcHandlers({ getLocalPtyProviderStartupPromise: async () => {} })
+
+    // Resource Manager keeps its "not responding" state; the activation gate blocks as before.
+    for (const scope of [undefined, { connectionId: null }]) {
+      await expect(handlers.get('pty:listSessions')!(null, scope)).rejects.toThrow(
+        'daemon not responding'
+      )
+    }
+  })
 })

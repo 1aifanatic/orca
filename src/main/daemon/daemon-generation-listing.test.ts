@@ -155,4 +155,15 @@ describe('a slow current version is never read as silent', () => {
     expect(answered.map((entry) => entry.id)).toEqual(['wt@@current'])
     expect(unverifiable).toEqual([35])
   }, 10_000)
+
+  it('fails the listing as before when the current version itself does not answer', async () => {
+    const hung = adapter(36, async () => {
+      throw new Error('Request listSessions timed out')
+    })
+    const previous = adapter(35, async () => ({ contact: 'live', items: [process('wt@@old')] }))
+
+    await expect(
+      listAnsweredProcesses(providerOf(hung, previous), () => {}, Date.now() + 3_000)
+    ).rejects.toThrow('Request listSessions timed out')
+  })
 })

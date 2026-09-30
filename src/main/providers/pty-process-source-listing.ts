@@ -47,7 +47,10 @@ export function describeListingError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Lists what answered, reporting each silent source; a single-source provider lists as before. */
+/**
+ * Lists what answered, reporting each silent previous version. A silent current version fails the
+ * listing as before, so callers keep their "not responding" state; single-source providers list as before.
+ */
 export async function listAnsweredProcesses(
   provider: IPtyProvider,
   onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void,
@@ -58,6 +61,12 @@ export async function listAnsweredProcesses(
   }
   // Why no deadline for the current version: a slow one must not read as silent to the activation gate.
   const listings = await provider.listProcessesBySource({ nonCurrentDeadlineMs })
+  const silentCurrent = listings.find(
+    (listing) => listing.isCurrent && listing.contact === 'unverifiable'
+  )
+  if (silentCurrent?.contact === 'unverifiable') {
+    throw silentCurrent.error
+  }
   for (const listing of listings) {
     if (listing.contact === 'unverifiable') {
       onUnverifiable({
