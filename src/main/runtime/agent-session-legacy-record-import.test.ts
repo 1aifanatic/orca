@@ -299,6 +299,18 @@ describe('a primary the backup stands in for', () => {
     expect(reports).toMatchObject([{ kind: 'unusable' }])
     expect(store.listRecords()).toEqual([])
   })
+
+  // A read that can clear says nothing about the backup's contents, so the copy stays owed.
+  it('keeps the copy owed when the backup cannot be read behind a torn primary', async () => {
+    await writeLegacy('{ truncated')
+    await mkdir(`${legacyPath()}.bak`)
+
+    const { database, store, reports } = await install()
+
+    expect(reports).toMatchObject([{ kind: 'unavailable' }])
+    expect(journalPragmaNumber(database.db, 'user_version')).toBe(3)
+    expect(store.listRecords()).toEqual([])
+  })
 })
 
 describe('the tab index from before the table', () => {

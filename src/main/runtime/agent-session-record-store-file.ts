@@ -259,12 +259,9 @@ export async function loadAgentSessionStore(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         // Only a missing or unparseable primary means "fall back". A transient read failure
-        // (EACCES, EIO, EMFILE) says nothing about the primary's contents, and treating it as
-        // recovery would replace newer state with a stale backup and latch the recovery path.
-        if (!recoveredFromBackup) {
-          throw new Error('agent_session_store_corrupt', { cause: error })
-        }
-        unusableStoreFound = true
+        // (EACCES, EIO, EMFILE) says nothing about either copy's contents: the primary is not
+        // replaced by a stale backup, and a backup that could not be read is not unusable.
+        throw new Error('agent_session_store_corrupt', { cause: error })
       }
       continue
     }

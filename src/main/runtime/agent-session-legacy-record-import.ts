@@ -32,7 +32,7 @@ export type LegacyAgentSessionRecords =
   | { kind: 'loaded'; state: AgentSessionStoreState; fromBackup: boolean }
   /** Present, and neither the primary nor `.bak` parses: no read will change that. */
   | { kind: 'unusable'; error: unknown }
-  /** Reading the primary failed in a way that can clear (EACCES, EIO, EMFILE). */
+  /** Reading the primary or `.bak` failed in a way that can clear (EACCES, EIO, EMFILE). */
   | { kind: 'unavailable'; error: unknown }
 
 /** Why the copy found nothing to take, or took less than the file holds. */
