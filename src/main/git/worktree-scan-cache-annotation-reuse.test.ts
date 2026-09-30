@@ -23,19 +23,11 @@ vi.mock('./worktree-list-reader', () => ({
   readWorktreeList: readWorktreeListMock
 }))
 
-// These cases pin the listing layer over a mocked Git with made-up paths, so reads take the
-// Git-answered path the membership model keeps for layouts it cannot read from files.
-vi.mock('./worktree-membership/worktree-membership-store', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>()
-  const reader = await import('./worktree-list-reader')
-  return {
-    ...actual,
-    readWorktreeMembership: async (repoPath: string, options: Record<string, unknown> = {}) => ({
-      rows: await reader.readTranslatedWorktreeGraph(repoPath, options),
-      fromModel: false
-    })
-  }
-})
+vi.mock('./worktree-membership/worktree-membership-store', async (importOriginal) =>
+  (await import('./worktree-membership-store-git-answered-mock')).gitAnsweredMembershipStoreMock(
+    await importOriginal()
+  )
+)
 
 import { _resetWorktreeScanCacheForTests, listWorktreeGraph, listWorktrees } from './worktree'
 import { __resetSparseCheckoutStateCacheForTests } from './worktree-sparse-checkout-cache'

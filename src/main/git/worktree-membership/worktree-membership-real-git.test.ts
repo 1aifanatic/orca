@@ -7,8 +7,10 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
+import { removeTree } from '../../../shared/windows-transient-lock-removal'
 import { clearGitCapabilityStateForTests } from '../git-capability-state'
 import { listWorktreesStrict } from '../worktree-listing'
+import { areWorktreePathsEqual } from '../worktree-path-comparison'
 import {
   _getWorktreeMembershipModelForTests,
   _resetWorktreeMembershipModelsForTests,
@@ -61,7 +63,7 @@ beforeEach(async () => {
 afterEach(async () => {
   _resetWorktreeMembershipModelsForTests()
   clearGitCapabilityStateForTests()
-  await rm(scratchDir, { recursive: true, force: true })
+  await removeTree(scratchDir)
 })
 
 describe('worktree membership model against the real Git binary', () => {
@@ -79,13 +81,15 @@ describe('worktree membership model against the real Git binary', () => {
     await git(['worktree', 'add', '-q', wt('sparse'), '-b', 'sparse-branch'])
     await git(['sparse-checkout', 'set', 'nothing-here'], wt('sparse'))
     await git(['worktree', 'add', '-q', wt('gone'), '-b', 'gone-branch'])
-    await rm(wt('gone'), { recursive: true, force: true })
+    await removeTree(wt('gone'))
     await git(['pack-refs', '--all'])
 
     const rows = await expectFileRowsMatchGit()
-    expect(rows.find((row) => row.path === wt('sparse'))?.isSparse).toBe(true)
-    expect(rows.find((row) => row.path === wt('gone'))?.prunable).toBe(true)
-    expect(rows.find((row) => row.path === wt('unborn'))?.branch).toBe('refs/heads/never-committed')
+    // Git for Windows spells rows with `/`; `join` spells the expectation with `\`.
+    const row = (name: string) => rows.find((entry) => areWorktreePathsEqual(entry.path, wt(name)))
+    expect(row('sparse')?.isSparse).toBe(true)
+    expect(row('gone')?.prunable).toBe(true)
+    expect(row('unborn')?.branch).toBe('refs/heads/never-committed')
   })
 
   it('reports a missing linked HEAD the way Git does', async () => {
