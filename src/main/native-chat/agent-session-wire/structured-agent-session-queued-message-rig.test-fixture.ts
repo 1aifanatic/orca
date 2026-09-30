@@ -242,6 +242,14 @@ export async function createQueuedMessageTestRig() {
     )
   }
 
+  /** The event sink the provider writes through. */
+  function providerEvents(): StructuredAgentSessionEventSink {
+    if (!events) {
+      throw new Error('no provider bound')
+    }
+    return events
+  }
+
   /** A host-process restart, as the queue sees it: the conversation closes, and
    *  opens afresh under a new instance id while its rows survive. */
   async function restartHostProcess(): Promise<void> {
@@ -277,6 +285,7 @@ export async function createQueuedMessageTestRig() {
     awaitStarted,
     compact,
     finishCompact,
+    providerEvents,
     envelope,
     send,
     stop,

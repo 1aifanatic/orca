@@ -28,7 +28,7 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  * the pause, since the interrupt may have landed. A draft whose hand-off the
  * Stop withdrew is back to waiting in its own place, under this same pause. The
  * drain cannot slip a draft in between: it runs on the same serialized lane as
- * the Stop.
+ * the Stop, which holds it until the pause lands, even when the Stop fails.
  */
 export async function runStopWithQueuePause<TValue>(
   ctx: AgentSessionTurnContext,

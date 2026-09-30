@@ -193,8 +193,12 @@ export function cancelStructuredAgentSessionTurn(
           if (child?.phase === 'starting') {
             // A start that may never land is the one thing here Stop has to end; the chat stays.
             const effect = tookEffectOnceWithdrawn()
-            await context.stopAgent(ctx.sessionId)
-            await effect
+            try {
+              await context.stopAgent(ctx.sessionId)
+            } finally {
+              // Even a failed Stop holds the lane until its pause lands: the drain shares the lane.
+              await effect
+            }
             return { ok: true, value: { ...named, cancelled: true } }
           }
           // A Stop naming no turn ends nothing more unless the session reads working, by the rule
@@ -210,17 +214,20 @@ export function cancelStructuredAgentSessionTurn(
             return { ok: true, value: { ...named, cancelled: withdrewAny } }
           }
           const effect = tookEffectOnceWithdrawn()
-          const outcome = await performCancel(
-            { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
-            {
-              clientOperationId: params.envelope.clientOperationId,
-              ...named,
-              stopChild: () => context.stopAgent(params.envelope.sessionId),
-              withdrewQueued: withdrew
-            }
-          )
-          await effect
-          return outcome
+          try {
+            return await performCancel(
+              { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
+              {
+                clientOperationId: params.envelope.clientOperationId,
+                ...named,
+                stopChild: () => context.stopAgent(params.envelope.sessionId),
+                withdrewQueued: withdrew
+              }
+            )
+          } finally {
+            // As above; `effect` never rejects, so the Stop's own error survives.
+            await effect
+          }
         })
     },
     openForWrite(context, params.envelope)
