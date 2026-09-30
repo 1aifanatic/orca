@@ -96,9 +96,7 @@ export type JournalStopEvent = {
 
 /** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
 export function isJournalStopOrResumeRow(row: JournalRow): row is JournalTombstoneRow {
-  return (
-    row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
-  )
+  return row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it

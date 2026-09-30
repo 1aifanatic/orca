@@ -312,10 +312,7 @@ export class AgentSessionJournal {
   }
 
   /** A Stop that took effect, timed by its row (`JournalStopEvent`). */
-  appendStopEvent(
-    event: Omit<JournalStopEvent, 'at'>,
-    fence: number
-  ): Promise<AgentJournalCursor> {
+  appendStopEvent(event: Omit<JournalStopEvent, 'at'>, fence: number): Promise<AgentJournalCursor> {
     return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
   }
 

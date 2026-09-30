@@ -19,7 +19,10 @@ import {
   type AgentJournalEpochReason,
   type JournalRow
 } from './journal-row-schema'
-import { buildJournalQueueResumeRow, buildJournalStopEventRow } from './journal-stop-and-resume-rows'
+import {
+  buildJournalQueueResumeRow,
+  buildJournalStopEventRow
+} from './journal-stop-and-resume-rows'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-s',
@@ -58,7 +61,12 @@ function epochWith(
 ): JournalRow[] {
   const state = createJournalReducerState(IDENTITY.sessionId, EPOCH)
   const rows: JournalRow[] = [
-    { kind: 'epoch', reason, providerHandle: IDENTITY.providerHandle, ...journalRowBase(EPOCH, 1, 1, 1) }
+    {
+      kind: 'epoch',
+      reason,
+      providerHandle: IDENTITY.providerHandle,
+      ...journalRowBase(EPOCH, 1, 1, 1)
+    }
   ]
   for (const kind of after) {
     const place = { state, seq: rows.length + 1, fence: 1, ts: rows.length + 1 }

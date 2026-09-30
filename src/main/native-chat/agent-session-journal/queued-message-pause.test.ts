@@ -310,7 +310,7 @@ describe("the queue's pause, derived from the journal", () => {
   it.each([
     ["a person's turn", (journal: AgentSessionJournal) => turn(journal, 'typed', 'client')],
     ['a Resume', (journal: AgentSessionJournal) => journal.appendQueueResume(0)]
-  ])("a /clear pause %s already lifted stays lifted across a rewind", async (_name, lift) => {
+  ])('a /clear pause %s already lifted stays lifted across a rewind', async (_name, lift) => {
     const journal = await open()
     await queueDraft(journal, 'carried', 'source-session')
     await lift(journal)

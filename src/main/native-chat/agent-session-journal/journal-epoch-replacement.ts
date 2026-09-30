@@ -16,7 +16,10 @@ import type { JournalLoad } from './journal-open'
 import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
-import { buildJournalQueueResumeRow, buildJournalStopEventRow } from './journal-stop-and-resume-rows'
+import {
+  buildJournalQueueResumeRow,
+  buildJournalStopEventRow
+} from './journal-stop-and-resume-rows'
 import type { JournalQueuePauseRestatement } from './queued-message-pause'
 import {
   deleteJournalEpochRows,

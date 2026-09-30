@@ -78,7 +78,9 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     const upsertJournalSessionRow = table.upsertJournalSessionRow as (
       ...args: [unknown, string, string, number]
     ) => void
-    const insertJournalRow = table.insertJournalRow as (...args: [unknown, string, JournalRow]) => void
+    const insertJournalRow = table.insertJournalRow as (
+      ...args: [unknown, string, JournalRow]
+    ) => void
     const replayJournal = open.replayJournal as (
       ...args: [unknown, boolean, string]
     ) => OldReplay | null
