@@ -2,7 +2,8 @@
 import { randomUUID } from 'node:crypto'
 import { preserveTerminalRetirementProofs } from './mobile-session-terminal-retirement-proof'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
-import { currentConversationReplacements } from './structured-conversation-replacements-scope'
+import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeClientSettingsController } from './runtime-client-settings'
@@ -103,9 +104,12 @@ export class OrcaRuntimeWithRuntimeId {
   /** Single host writer for mobile session snapshots; versions are total-order stamps. */
   protected storeMobileSessionSnapshot(
     worktreeId: string,
-    snapshot: RuntimeMobileSessionTabsSnapshot
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    // A caller storing many snapshots in one synchronous loop derives these once for it.
+    replacements: readonly ConversationReplacement[] = getStructuredAgentSessionHost()?.conversationReplacements?.() ??
+      []
   ): RuntimeMobileSessionTabsSnapshot {
-    for (const replacement of currentConversationReplacements()) {
+    for (const replacement of replacements) {
       snapshot = replaceConversationInSnapshot(snapshot, replacement)
     }
     const existing = this.mobileSessionTabsByWorktree.get(worktreeId)

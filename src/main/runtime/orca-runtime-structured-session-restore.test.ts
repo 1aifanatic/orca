@@ -367,7 +367,9 @@ describe('structured session cold restoration', () => {
       sessionId: 'restored-claude',
       agent: 'claude',
       activate: false,
-      notify: false
+      notify: false,
+      // Derived once by the restore for every tab it projects.
+      replacements: []
     })
 
     const restored = await runtime.listMobileSessionTabs('id:workspace-1')

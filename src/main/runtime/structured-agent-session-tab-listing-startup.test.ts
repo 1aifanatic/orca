@@ -174,7 +174,7 @@ describe('listing chat tabs at startup', () => {
   )
 
   it.each(['listAll', 'subscribeAll'] as const)(
-    'derives the /clear replacements once per %s, whatever the tab and worktree count',
+    'derives the /clear replacements once per loop of %s, whatever the tab and worktree count',
     async (method) => {
       const ids = Array.from({ length: 9 }, (_, index) => `session-${index + 1}`)
       for (const [index, sessionId] of ids.entries()) {
@@ -187,11 +187,12 @@ describe('listing chat tabs at startup', () => {
       const answer = async () =>
         method === 'listAll' ? listAll() : (await subscribeAll(() => undefined)).ids
 
-      // The first answer also restores the tabs; the second only lists them.
-      for (const _listing of [1, 2]) {
+      // The first answer also restores the tabs (one loop over every tab, one over every worktree);
+      // the second only lists them.
+      for (const loops of [2, 1]) {
         derived.mockClear()
         expect((await answer()).toSorted()).toEqual(ids.toSorted())
-        expect(derived).toHaveBeenCalledOnce()
+        expect(derived).toHaveBeenCalledTimes(loops)
         runtime.cleanupSubscriptionsForConnection('connection-1')
       }
     }
@@ -216,6 +217,56 @@ describe('listing chat tabs at startup', () => {
     })
 
     expect(await listAll()).toEqual(['session-fresh'])
+  })
+
+  it('answers with a cleared chat revealed while the listing waits on its census', async () => {
+    await restTestChat(rig, 'session-cleared')
+    await restTestChat(rig, 'session-fresh', { listed: false })
+    await rig.crash()
+    await rig.boot()
+    const { runtime, listAll } = restartedRuntime()
+    expect(await listAll()).toEqual(['session-cleared'])
+    const record = rig.store.getRecord('session-cleared')!
+    await rig.store.setConversationCommand('session-cleared', record.lease.runtimeFence, {
+      command: 'clear',
+      state: 'completed',
+      phase: 'committed',
+      operationId: 'clear-1',
+      callerKey: 'client-1',
+      replacementSessionId: 'session-fresh'
+    })
+    expect(await listAll()).toEqual(['session-fresh'])
+    // An authoritative census that could not reach every host collects a second time; hold that one.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these runtime members exist; they are protected.
+    const internal = runtime as unknown as {
+      supportsAuthoritativeSessionTabsInventory(): boolean
+      getAuthoritativeSessionTabsInventoryEpoch(): string
+      refreshMobileSessionPtyInventory(): Promise<null>
+    }
+    internal.supportsAuthoritativeSessionTabsInventory = () => true
+    internal.getAuthoritativeSessionTabsInventoryEpoch = () => 'epoch-1'
+    let collections = 0
+    const inSecond = Promise.withResolvers<void>()
+    const held = Promise.withResolvers<void>()
+    releaseHeld = held.resolve
+    internal.refreshMobileSessionPtyInventory = async () => {
+      collections += 1
+      if (collections === 2) {
+        inSecond.resolve()
+        await held.promise
+      }
+      return null
+    }
+    const listing = listAll()
+    await inSecond.promise
+
+    // agentSession.reveal from another client: the cleared chat opened from its history.
+    const revealed = await rig.host.revealSession('session-cleared')
+    await runtime.publishStructuredAgentSessionTab({ ...revealed, activate: true })
+    held.resolve()
+
+    expect(await listing).toEqual(['session-cleared'])
+    expect(await listAll()).toEqual(['session-cleared'])
   })
 
   it('writes nothing to the record store while it lists', async () => {
