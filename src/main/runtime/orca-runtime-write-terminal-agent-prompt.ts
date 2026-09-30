@@ -228,6 +228,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     try {
       await waitForAgentPromptDelay(retryDelayMs, options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
+      await options.beforeWrite?.(ptyId)
       return this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT, options.inputKind) ? 1 : 0
     } catch {
       return 0

@@ -80,3 +80,27 @@ describe('launch readiness for a freshly launched Claude', () => {
     })
   })
 })
+
+describe('whether a launched Claude, not its shell, owns the terminal', () => {
+  it.each([
+    ['claude', true],
+    // macOS reports the native Claude by its version.
+    ['2.1.285', true],
+    ['node', true],
+    ['zsh', false],
+    ['-zsh', false],
+    ['bash', false],
+    [null, false]
+  ])('foreground %s: %s', async (foregroundProcess, owns) => {
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'Claude Code',
+      foregroundProcess,
+      launchAgent: 'claude',
+      data: ''
+    })
+
+    await expect(runtime.launchedAgentOwnsTerminal(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+      owns
+    )
+  })
+})

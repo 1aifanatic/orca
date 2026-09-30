@@ -26,6 +26,8 @@ function runtimeStub(overrides: {
   send?: SendFn
   /** Whether the agent's composer signal fires within its budget; else the idle evidence decides. */
   composerSignal?: boolean
+  /** Whether the launched agent, not the shell, is in the terminal's foreground. */
+  agentOwnsTerminal?: boolean
 }) {
   const queued = [...(overrides.waits ?? [])]
   const waitForTerminal = vi.fn(
@@ -38,6 +40,7 @@ function runtimeStub(overrides: {
     }
     return COMPOSER_READY
   })
+  const launchedAgentOwnsTerminal = vi.fn(async () => overrides.agentOwnsTerminal ?? true)
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
     overrides.send ?? (async () => ({ handle: 'term_1', accepted: true, bytesWritten: 12 }))
   )
@@ -45,11 +48,13 @@ function runtimeStub(overrides: {
     waitForTerminal,
     waitForFreshWorkerComposer,
     sendTerminalAgentPrompt,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these three runtime methods; anything else would throw rather than read a wrong value.
+    launchedAgentOwnsTerminal,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these four runtime methods; anything else would throw rather than read a wrong value.
     runtime: {
       waitForTerminal,
       waitForFreshWorkerComposer,
-      sendTerminalAgentPrompt
+      sendTerminalAgentPrompt,
+      launchedAgentOwnsTerminal
     } as unknown as Parameters<typeof deliverTerminalAgentLaunchPrompt>[0]['runtime']
   }
 }
@@ -218,6 +223,29 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
     // One check per second of a 60 s budget, then it stops rather than spinning.
     expect(stub.waitForTerminal.mock.calls.length).toBeLessThanOrEqual(60)
+  })
+
+  it('refuses the paste and its Enter unless the launched agent, not the shell, is in the foreground', async () => {
+    // An agent that exits at startup hands its shell back, which must never run the prompt.
+    const stub = runtimeStub({ composerSignal: true, agentOwnsTerminal: false })
+    stub.sendTerminalAgentPrompt.mockImplementation(async (handle, _text, options) => {
+      const { beforeWrite } = options
+      if (typeof beforeWrite === 'function') {
+        await beforeWrite('pty-1')
+      }
+      return { handle, accepted: true, bytesWritten: 12 }
+    })
+
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'do the thing'
+    })
+
+    expect(delivered).toBe(false)
+    expect(stub.launchedAgentOwnsTerminal).toHaveBeenCalledWith('pty-1', 'claude')
   })
 
   it('writes as soon as the composer signal fires, without consulting the idle evidence', async () => {

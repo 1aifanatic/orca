@@ -37,7 +37,7 @@ const AGENT_READY_TIMEOUT_MS = 60_000
 const BLOCKED_RECHECK_MS = 1_000
 
 type TerminalPromptRuntime = LaunchedAgentReadinessRuntime &
-  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt'>
+  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt' | 'launchedAgentOwnsTerminal'>
 
 type ReadinessClock = { now: () => number; sleep: (ms: number) => Promise<void> }
 
@@ -122,6 +122,17 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       inputKind: 'launch',
       // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
       composerReady: args.freshLaunch,
+      // Before the paste and again before Enter: an agent that exited in between leaves its
+      // shell in the foreground, which must never receive the prompt or its Enter.
+      ...(args.freshLaunch
+        ? {
+            beforeWrite: async (ptyId: string) => {
+              if (!(await args.runtime.launchedAgentOwnsTerminal(ptyId, args.agent))) {
+                throw new Error('agent_not_in_foreground')
+              }
+            }
+          }
+        : {}),
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.

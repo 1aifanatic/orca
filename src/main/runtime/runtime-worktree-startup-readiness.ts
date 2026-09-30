@@ -13,6 +13,12 @@ import type {
 const BRACKETED_PASTE_BEGIN = '\x1b[200~'
 const BRACKETED_PASTE_END = '\x1b[201~'
 const BRACKETED_PASTE_QUIET_MS = 1500
+// Why: an interactive shell turns bracketed paste on at its prompt and off when it runs the typed
+// command (`zsh-prompt-runs-command.txt`), so a 2004 before the last `?2004l` is the shell's.
+const DECRST_BRACKETED_PASTE = '\x1b[?2004l'
+const AGENT_OWNERSHIP_POLL_MS = 150
+/** Output held until the agent owns the terminal; the ready signal reads only its recent tail. */
+const PRE_OWNERSHIP_OUTPUT_CHARS = 64 * 1024
 
 export type WorktreeStartupReadinessHost = {
   getPtyId: (handle: string) => string | null
@@ -93,7 +99,20 @@ export type StartupDraftReadinessOptions = {
   signal?: AbortSignal
   /** Vetoes a ready signal whose screen still holds something the input must not answer; the
    *  scan continues, so the agent's next marker or quiet window asks again. */
-  accept?: (ptyId: string) => boolean
+  accept?: (ptyId: string) => boolean | Promise<boolean>
+  /**
+   * Whether the launched agent, not the shell, owns the terminal. Until it does, output is held
+   * rather than scanned, and once it does only what followed the shell's hand-off counts: the
+   * shell's own prompt enables bracketed paste too, and read as the agent's it pasted into an
+   * agent still starting, or into the shell after the agent exited.
+   */
+  agentOwnsTerminal?: (ptyId: string) => Promise<boolean>
+}
+
+/** The output after the shell last turned bracketed paste off to run a command. */
+function outputSinceShellHandoff(held: string): string {
+  const handoff = held.lastIndexOf(DECRST_BRACKETED_PASTE)
+  return handoff === -1 ? held : held.slice(handoff + DECRST_BRACKETED_PASTE.length)
 }
 
 export function waitForWorktreeStartupDraft(
@@ -113,7 +132,9 @@ export function waitForWorktreeStartupDraft(
     const scanner = createDraftPasteReadyScanner(signal)
     let quietTimer: NodeJS.Timeout | null = null
     let hardTimer: NodeJS.Timeout | null = null
+    let ownershipTimer: NodeJS.Timeout | null = null
     let unsubscribe: (() => void) | null = null
+    let heldOutput: string | null = options.agentOwnsTerminal ? '' : null
     const onAbort = (): void => finish(null)
     const finish = (value: string | null): void => {
       if (settled) {
@@ -126,17 +147,32 @@ export function waitForWorktreeStartupDraft(
       if (hardTimer) {
         clearTimeout(hardTimer)
       }
+      if (ownershipTimer) {
+        clearTimeout(ownershipTimer)
+      }
       unsubscribe?.()
       options.signal?.removeEventListener('abort', onAbort)
       resolve(value)
     }
     const finishIfAccepted = (): void => {
-      if (!options.accept || options.accept(ptyId)) {
-        finish(ptyId)
+      if (!options.accept) {
+        return finish(ptyId)
       }
+      void Promise.resolve(options.accept(ptyId)).then(
+        (accepted) => {
+          if (accepted) {
+            finish(ptyId)
+          }
+        },
+        () => {}
+      )
     }
     const observe = (data: string): void => {
       if (settled) {
+        return
+      }
+      if (heldOutput !== null) {
+        heldOutput = (heldOutput + data).slice(-PRE_OWNERSHIP_OUTPUT_CHARS)
         return
       }
       const result = scanner.observe(data)
@@ -159,6 +195,29 @@ export function waitForWorktreeStartupDraft(
     const replay = host.readRecentOutput(ptyId)
     if (replay) {
       observe(replay)
+    }
+    const agentOwnsTerminal = options.agentOwnsTerminal
+    if (agentOwnsTerminal) {
+      const checkOwnership = (): void => {
+        void agentOwnsTerminal(ptyId)
+          .catch(() => false)
+          .then((owns) => {
+            if (settled) {
+              return
+            }
+            if (!owns) {
+              ownershipTimer = setTimeout(checkOwnership, AGENT_OWNERSHIP_POLL_MS)
+              return
+            }
+            const held = heldOutput ?? ''
+            heldOutput = null
+            const fromAgent = outputSinceShellHandoff(held)
+            if (fromAgent) {
+              observe(fromAgent)
+            }
+          })
+      }
+      checkOwnership()
     }
   })
 }

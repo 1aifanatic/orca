@@ -36,6 +36,9 @@ import {
   readFreshComposerHold
 } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
+import { isShellProcess } from '../../shared/shell-process-detection'
+import { isExpectedAgentProcess } from '../../shared/agent-process-recognition'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -211,7 +214,8 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         timeoutMs,
         requireComposerMarker,
         signal: stop.signal,
-        accept: (readyPtyId) => {
+        agentOwnsTerminal: (ownerPtyId) => this.launchedAgentOwnsTerminal(ownerPtyId, agent),
+        accept: async (readyPtyId) => {
           const pty = this.ptysById.get(readyPtyId)
           const hold = pty
             ? readFreshComposerHold(
@@ -223,7 +227,8 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
             sawDialog = true
             stop.abort()
           }
-          return hold === null
+          // Asked again here: an agent that exited hands the terminal, and its prompt, back.
+          return hold === null && (await this.launchedAgentOwnsTerminal(readyPtyId, agent))
         }
       }
     )
@@ -235,6 +240,23 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       throw new Error('terminal_handle_stale')
     }
     return this.buildTuiIdleProbeResult(handle, null)
+  }
+
+  /**
+   * Whether the agent a launch started, rather than the shell that ran its launch line, is in the
+   * terminal's foreground. Not only the expected name: macOS reports the native Claude by its
+   * version (`2.1.258`), and a runtime such as node can front an agent.
+   */
+  async launchedAgentOwnsTerminal(ptyId: string, agent: TuiAgent): Promise<boolean> {
+    const foreground = (await this.ptyController?.getForegroundProcess(ptyId)) ?? null
+    if (!foreground) {
+      return false
+    }
+    return (
+      isExpectedAgentProcess(foreground, TUI_AGENT_CONFIG[agent].expectedProcess) ||
+      // A login shell is reported as `-zsh`.
+      !isShellProcess(foreground.replace(/^-/, ''))
+    )
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {
