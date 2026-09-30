@@ -19,7 +19,7 @@ import {
   GIT_OBJECT_QUARANTINE_OWNER_FILE,
   gitObjectQuarantineOwner,
   STALE_GIT_OBJECT_QUARANTINE_AGE_MS,
-  UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS,
+  MAX_GIT_OBJECT_QUARANTINE_AGE_MS,
   type GitObjectQuarantineEnv,
   type GitObjectQuarantineOwner
 } from './git-object-quarantine'
@@ -273,11 +273,12 @@ describe('createGitObjectQuarantine', () => {
       ...exited(),
       platform: process.platform === 'win32' ? 'linux' : 'win32'
     })
-    const pastGitExpiry = UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS + HOUR
+    const pastGitExpiry = MAX_GIT_OBJECT_QUARANTINE_AGE_MS + HOUR
 
     it.each<[string, boolean, number, () => GitObjectQuarantineOwner | string | undefined]>([
       ['its owner on this host has exited', true, 2 * HOUR, exited],
       ['its owner is this process', false, 2 * HOUR, self],
+      ['its owner on this host looks alive but it is 15 days old', true, 15 * 24 * HOUR, self],
       [
         'its owner runs as another user',
         false,
@@ -307,7 +308,7 @@ describe('createGitObjectQuarantine', () => {
     it('sweeps once per objects dir and never touches Git’s own quarantine dirs', async () => {
       const gitOwn = join(objects, 'tmp_objdir-incoming-old')
       mkdirSync(gitOwn)
-      const old = (Date.now() - UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS - HOUR) / 1000
+      const old = (Date.now() - MAX_GIT_OBJECT_QUARANTINE_AGE_MS - HOUR) / 1000
       utimesSync(gitOwn, old, old)
       const stranded = makeScratch('stranded', 2 * HOUR, exited())
 

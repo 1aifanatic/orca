@@ -36,9 +36,10 @@ export const GIT_OBJECT_QUARANTINE_DIR_PREFIX = 'tmp_objdir-orca-merge-tree-'
 // Why a floor even for a dead owner: it covers pid spaces the owner record cannot tell apart.
 export const STALE_GIT_OBJECT_QUARANTINE_AGE_MS = 60 * 60 * 1000
 
-// Why two weeks: `git gc` expires `objects/tmp_*` dirs at that age (gc.pruneExpire); with no
-// owner this process can check, only Git's own abandonment rule is safe.
-export const UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS = 14 * 24 * 60 * 60 * 1000
+// Why a hard cap for every dir, live-looking owner included: a reused pid (a daemon, a shell)
+// would otherwise keep a leftover forever in a gc-off repo. Two weeks is `git gc`'s own expiry
+// for `objects/tmp_*` (gc.pruneExpire), and no merge-tree runs that long.
+export const MAX_GIT_OBJECT_QUARANTINE_AGE_MS = 14 * 24 * 60 * 60 * 1000
 
 // Why: Orca processes sharing a repo (a second instance, dev and release builds) sweep each
 // other's scratch dirs; only a provably dead owner makes one stale, as Git decides for gc.pid.
@@ -148,11 +149,11 @@ async function isStaleScratchDirectory(scratch: string, now: number): Promise<bo
   if (modified === undefined || now - modified < STALE_GIT_OBJECT_QUARANTINE_AGE_MS) {
     return false
   }
-  const owner = await readScratchOwner(scratch)
-  if (owner && sharesThisPidSpace(owner)) {
-    return !isProcessAlive(owner.pid)
+  if (now - modified >= MAX_GIT_OBJECT_QUARANTINE_AGE_MS) {
+    return true
   }
-  return now - modified >= UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS
+  const owner = await readScratchOwner(scratch)
+  return owner !== undefined && sharesThisPidSpace(owner) && !isProcessAlive(owner.pid)
 }
 
 async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
@@ -239,7 +240,7 @@ export function createGitObjectQuarantine(
           path.join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
         ).catch(() => undefined)
         if (scratchHostPath) {
-          // Why no fallback on failure: an ownerless dir is kept until Git's own two-week expiry.
+          // Why no fallback on failure: an ownerless dir is kept until the two-week cap.
           await writeFile(
             path.join(scratchHostPath, GIT_OBJECT_QUARANTINE_OWNER_FILE),
             JSON.stringify(gitObjectQuarantineOwner())
