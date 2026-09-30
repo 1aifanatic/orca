@@ -6,6 +6,14 @@ import type { SshConnection } from './ssh-connection'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 
+/** The host answered the libc probe, but with nothing this client recognises. */
+export class UnidentifiedHostLibcError extends Error {
+  constructor() {
+    super('Could not identify the host C library for the bundled Orca runtime')
+    this.name = 'UnidentifiedHostLibcError'
+  }
+}
+
 export function parseOrcadLinuxLibc(output: string): 'glibc' | 'musl' {
   if (/\bmusl\b/i.test(output)) {
     return 'musl'
@@ -13,7 +21,7 @@ export function parseOrcadLinuxLibc(output: string): 'glibc' | 'musl' {
   if (/\b(?:glibc|GNU libc|GNU C Library)\b/i.test(output)) {
     return 'glibc'
   }
-  throw new Error('Could not identify the host C library for the bundled Orca runtime')
+  throw new UnidentifiedHostLibcError()
 }
 
 export type GlibcVersion = { major: number; minor: number }

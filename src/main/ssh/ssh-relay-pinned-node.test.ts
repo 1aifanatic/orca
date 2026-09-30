@@ -184,6 +184,18 @@ describe('planPinnedNodeRelay', () => {
     ).resolves.toEqual({ kind: 'host-node', fallbackReason: 'target_unresolved' })
   })
 
+  it('does not descend when the libc probe itself is lost', async () => {
+    vi.mocked(execCommand).mockRejectedValue(new Error('channel closed'))
+    await expect(
+      planPinnedNodeRelay({
+        conn,
+        host: getRemoteHostPlatform('linux-x64'),
+        baseVersion: base,
+        targetId: 't'
+      })
+    ).rejects.toThrow('channel closed')
+  })
+
   it('falls back when this client has no orcad slot for the target', async () => {
     vi.mocked(execCommand).mockResolvedValueOnce('ldd (GNU libc) 2.31')
     await expect(
