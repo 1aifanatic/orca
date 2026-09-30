@@ -62,7 +62,15 @@ export function reportEachFailureOnce(
       const key = failureKey(failure)
       if (key !== reported) {
         reported = key
-        onFailure?.(failure)
+        try {
+          onFailure?.(failure)
+        } catch (sinkError) {
+          // A throwing sink must not turn the reported failure back into a failed read.
+          console.warn('[structured-agent-session] reporting a lease bookkeeping failure failed', {
+            failure,
+            sinkError
+          })
+        }
       }
     },
     clear: () => {

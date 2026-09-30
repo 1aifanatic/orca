@@ -210,3 +210,27 @@ it('restores a chat for reading when resolving its recovery cannot write the sto
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
   expect(onLeaseReconcileFailure).toHaveBeenCalledWith(IO_ERROR)
 })
+
+it.each([
+  ['startup reconcile', (host: StructuredAgentSessionHost) => host.reconcileRestartLeases()],
+  ['read restore', (host: StructuredAgentSessionHost) => host.restoreReadableSessions([SESSION])]
+])('keeps the %s resolving when the failure sink throws', async (_step, read) => {
+  const { host, onLeaseReconcileFailure } = await relaunch()
+  const sinkError = new Error('error sink failed')
+  onLeaseReconcileFailure.mockImplementation(() => {
+    throw sinkError
+  })
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  writes.failing = true
+  try {
+    await expect(read(host)).resolves.toBeUndefined()
+
+    expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('reporting a lease bookkeeping failure failed'),
+      expect.objectContaining({ failure: IO_ERROR, sinkError })
+    )
+  } finally {
+    warn.mockRestore()
+  }
+})
