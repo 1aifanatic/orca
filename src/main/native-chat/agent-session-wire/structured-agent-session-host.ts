@@ -34,9 +34,9 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import * as sessionTabs from './structured-agent-session-host-tabs'
 import {
   structuredAgentSessionMutationDelegates,
-  settleStructuredAgentSessionLateDispatch,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-host-mutations'
+import { settleStructuredAgentSessionLateDispatch } from './structured-agent-session-late-dispatch'
 import { releaseStructuredAgentSessionUnansweredDispatches } from './structured-agent-session-unanswered-dispatch-release'
 import { flushStructuredAgentSessionHost } from './structured-agent-session-host-teardown'
 import type {
@@ -136,7 +136,7 @@ export class StructuredAgentSessionHost {
       flushStreamedEvents: (sessionId) => this.flushStreamedEvents(sessionId)
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, {
-      reconcile: this.reconcileLeases,
+      reconcileLeases: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       hasSession: this.hasSession,
@@ -216,6 +216,7 @@ export class StructuredAgentSessionHost {
   listSessionTabs = () => sessionTabs.listStructuredAgentSessionTabs(this.sessions)
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
   getSessionTabId = (sessionId: string): string | null => this.deps.store.getSessionTabId(sessionId)
+  showSessionTabs = (sessionIds: readonly string[]) => this.deps.store.showSessionTabs(sessionIds)
 
   setSessionTabVisibility = async (
     sessionId: string,
@@ -229,12 +230,7 @@ export class StructuredAgentSessionHost {
     }
   }
 
-  reconcileRestartLeases = async (): Promise<void> => {
-    const refusal = await this.reconcileLeases('startup')
-    if (refusal) {
-      throw new Error(refusal.code)
-    }
-  }
+  reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
 
   restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
     this.restore.restoreReadableSessions(sessionIds)
