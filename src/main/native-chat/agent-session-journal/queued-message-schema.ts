@@ -67,14 +67,5 @@ CREATE TABLE IF NOT EXISTS queued_messages (
   db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
   ON queued_messages (session_id, consumed_as) WHERE consumed_as IS NOT NULL;
--- Unread and unwritten: the queue's pause is derived from the journal. Kept for downgrade
--- safety; dropped in a later migration.
-CREATE TABLE IF NOT EXISTS queued_message_pauses (
-  session_id  TEXT    PRIMARY KEY,
-  reason      TEXT    NOT NULL,
-  epoch       TEXT    NOT NULL,
-  sequence    INTEGER NOT NULL,
-  recorded_at INTEGER NOT NULL
-);
 `)
 }

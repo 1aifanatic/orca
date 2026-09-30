@@ -102,11 +102,13 @@ function held(journal: AgentSessionJournal): [string, boolean][] {
     .map((card) => [card.messageId, pause !== null && queuePauseHolds(pause, card)])
 }
 
-function storedPauses(): number {
+/** Tables that could store a pause: none, the journal rows are the only record. */
+function pauseTables(): number {
   const db = new Database(journalDatabasePath(root), { readonly: true })
   try {
-    const row: unknown = db.prepare('SELECT COUNT(*) AS n FROM queued_message_pauses').get()
-    return typeof row === 'object' && row !== null && 'n' in row ? Number(row.n) : -1
+    return db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%pause%'")
+      .all().length
   } finally {
     db.close()
   }
@@ -131,7 +133,7 @@ describe("the queue's pause, derived from the journal", () => {
     await journal.close()
     journal = await open()
     expect(reason(journal)).toBe('stopped')
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
   })
 
   it("only a person's turn sent after the Stop and accepted lifts it; host turns never do", async () => {
@@ -159,7 +161,7 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBeNull()
     await journal.appendQueuePauseMark('stopped', 0)
     expect(reason(journal)).toBe('stopped')
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
   })
 
   it("a card /clear carried in pauses the replacement 'cleared' until a Resume there", async () => {
@@ -171,7 +173,7 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBe('cleared')
     await journal.appendQueuePauseMark('resumed', 0)
     expect(reason(journal)).toBeNull()
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
   })
 
   it("a person's accepted turn on the replacement lifts 'cleared'; a host turn does not", async () => {

@@ -70,11 +70,13 @@ function withdraw(clientMessageId: string) {
   })
 }
 
-function storedPauses(): number {
+/** Tables that could store a pause: none, the journal rows are the only record. */
+function pauseTables(): number {
   const db = new Database(journalDatabasePath(rig.root), { readonly: true })
   try {
-    const row: unknown = db.prepare('SELECT COUNT(*) AS n FROM queued_message_pauses').get()
-    return typeof row === 'object' && row !== null && 'n' in row ? Number(row.n) : -1
+    return db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%pause%'")
+      .all().length
   } finally {
     db.close()
   }
@@ -243,9 +245,9 @@ describe('no stored pause', () => {
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
     await expectHeld('stopped', draftId)
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
     await eventually(async () => expect((await rig.handoff(draftId))?.handedOverAt).toBeDefined())
     await queuedDraft('carried')
     await rig.stop()
@@ -257,6 +259,6 @@ describe('no stored pause', () => {
     })
     const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
     expect(replacementId && (await rig.queuePause(replacementId))).toEqual({ reason: 'cleared' })
-    expect(storedPauses()).toBe(0)
+    expect(pauseTables()).toBe(0)
   })
 })
