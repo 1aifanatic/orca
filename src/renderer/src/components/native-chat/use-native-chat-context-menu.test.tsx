@@ -77,14 +77,12 @@ function Harness({
   onSwitchToTerminal,
   structured = false,
   enabled = true,
-  orchestrationAddress,
-  canCopyAgentSessionId = false
+  orchestrationAddress
 }: {
   onSwitchToTerminal?: () => void
   structured?: boolean
   enabled?: boolean
   orchestrationAddress?: string
-  canCopyAgentSessionId?: boolean
 }) {
   const rootRef = createRef<HTMLDivElement>()
   const { menu } = useNativeChatContextMenu({
@@ -97,7 +95,6 @@ function Harness({
       orchestrationAddress === undefined ? undefined : async () => orchestrationAddress,
     actions: {
       ...emptyNativeChatContextMenuActions,
-      canCopyAgentSessionId,
       onPaste: vi.fn()
     } satisfies NativeChatContextMenuActions
   })
@@ -187,11 +184,8 @@ describe('useNativeChatContextMenu', () => {
       )
     }
 
-    it.each([
-      ['a chat tab', true],
-      ['a chat in a terminal pane', false]
-    ])('copies session:<id> in %s', async (_where, structured) => {
-      renderToStaticMarkup(<Harness structured={structured} orchestrationAddress={address} />)
+    it('copies the address in a chat tab', async () => {
+      renderToStaticMarkup(<Harness structured orchestrationAddress={address} />)
 
       addressItem()?.onSelect?.()
 
@@ -199,17 +193,8 @@ describe('useNativeChatContextMenu', () => {
       expect(writeClipboardText).toHaveBeenCalledWith(address)
     })
 
-    it('keeps the provider-id action beside it, under its own label', () => {
-      renderToStaticMarkup(<Harness orchestrationAddress={address} canCopyAgentSessionId />)
-
-      expect(labels()).toEqual(
-        expect.arrayContaining(['Copy Orchestration Address', 'Copy Session ID'])
-      )
-    })
-
     it('is absent for a chat with no orchestration address', () => {
       renderToStaticMarkup(<Harness structured />)
-      renderToStaticMarkup(<Harness />)
 
       expect(labels()).not.toContain('Copy Orchestration Address')
     })

@@ -53,7 +53,7 @@ type UseNativeChatContextMenuArgs = {
     groupId: string
     shortcutLabels?: Partial<Record<TabSplitDirection, string>>
   }
-  /** Resolves a structured session's `session:<id>`; terminal-backed chats are addressed by their handle. */
+  /** A structured chat tab's address; a chat in a terminal pane is that terminal's agent. */
   resolveOrchestrationAddress?: () => Promise<string | null>
 }
 
@@ -288,9 +288,6 @@ export function useNativeChatContextMenu({
                   'Set Title…'
                 )}
               </DropdownMenuItem>
-              {resolveOrchestrationAddress ? (
-                <NativeChatCopyAddressMenuItem resolveAddress={resolveOrchestrationAddress} />
-              ) : null}
               {actions.canCopyAgentSessionId ? (
                 <DropdownMenuItem onSelect={actions.onCopyAgentSessionId}>
                   <Copy />
