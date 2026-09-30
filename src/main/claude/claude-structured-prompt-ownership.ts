@@ -75,13 +75,15 @@ function cancelClaudeConversation(
     session.fence === request.fence &&
     session.acquisitionGeneration === acquisitionGeneration &&
     (claudeLiveTurnId(session, request) !== null || session.dispatchWaiters.length > 0)
-  // A turn is cancelled only at a client's request, so the stop is the user's.
+  // A turn is cancelled only at a client's request, so the stop is the user's: on the named turn,
+  // else on whatever turn is open.
+  const stoppedTurnId = request.turnId ?? session.translator?.currentTurnId ?? null
   return cancelClaudeTurn(
     session,
     timeoutMs,
     isCurrent,
     onDispatchSettledLate,
-    request.turnId === undefined ? undefined : { turnId: request.turnId, cause: 'user-stop' }
+    stoppedTurnId === null ? undefined : { turnId: stoppedTurnId, cause: 'user-stop' }
   )
 }
 

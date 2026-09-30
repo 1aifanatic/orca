@@ -93,22 +93,90 @@ describe("a user's Stop inside a live Claude chat", () => {
     expect(providerRows(bodies)).toEqual([])
   })
 
-  it('keeps a failure the turn reaches after the CLI refused the interrupt', async () => {
+  // The chat's Stop button names no turn: it stops whatever the conversation has open.
+  it('records the open turn a Stop naming no turn cut as their cancellation', async () => {
     const claude = fakeClaude({
       routes: {
         interrupt: () => {
-          throw new ClaudeControlRequestError('interrupt', 'not running')
+          claude.connections[0]!.handlers.onMessage?.(CUT_SHORT)
+          return undefined
         }
       }
     })
-    const { adapter, bodies, connection, turnId } = await runningChat(claude)
+    const { adapter, bodies, turnId } = await runningChat(claude)
 
-    await expect(adapter.cancelTurn({ sessionId: 'session-1', turnId, fence: 7 })).resolves.toEqual(
-      { cancelled: false }
-    )
+    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).resolves.toEqual({
+      cancelled: true
+    })
+
+    expect(settled(bodies, turnId)).toMatchObject({
+      state: 'interrupted',
+      outcome: 'cancellation'
+    })
+    expect(providerRows(bodies)).toEqual([])
+  })
+
+  it('reads the same result with no Stop as a failure', async () => {
+    const { bodies, connection, turnId } = await runningChat(fakeClaude())
+
     connection.handlers.onMessage?.(CUT_SHORT)
 
     expect(settled(bodies, turnId)).toMatchObject({ state: 'completed', outcome: 'failure' })
     expect(providerRows(bodies)).toHaveLength(1)
   })
+
+  it('keeps a Stop naming no turn off the turn after it', async () => {
+    const claude = fakeClaude({
+      routes: {
+        interrupt: () => {
+          claude.connections[0]!.handlers.onMessage?.(CUT_SHORT)
+          return undefined
+        }
+      }
+    })
+    const { adapter, bodies, connection } = await runningChat(claude)
+    await adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })
+
+    await adapter.dispatch({
+      sessionId: 'session-1',
+      clientMessageId: 'client-b',
+      body: USER_MESSAGE,
+      fence: 7
+    })
+    connection.handlers.onMessage?.({ ...connection.sent.at(-1)! })
+    const nextTurnId = [...bodies.values()]
+      .map((body) => readAgentJournalTurn(body))
+      .find((turn) => turn?.state === 'running')?.turnId
+    if (!nextTurnId) {
+      throw new Error('expected the next turn running')
+    }
+    connection.handlers.onMessage?.(CUT_SHORT)
+
+    expect(settled(bodies, nextTurnId)).toMatchObject({ state: 'completed', outcome: 'failure' })
+  })
+
+  it.each([
+    ['naming the turn', true],
+    ['naming no turn', false]
+  ] as const)(
+    'keeps a failure the turn reaches after the CLI refused the interrupt, %s',
+    async (_label, named) => {
+      const claude = fakeClaude({
+        routes: {
+          interrupt: () => {
+            throw new ClaudeControlRequestError('interrupt', 'not running')
+          }
+        }
+      })
+      const { adapter, bodies, connection, turnId } = await runningChat(claude)
+
+      await expect(
+        adapter.cancelTurn({ sessionId: 'session-1', ...(named ? { turnId } : {}), fence: 7 })
+      ).resolves.toEqual({ cancelled: false })
+      connection.handlers.onMessage?.(CUT_SHORT)
+
+      expect(settled(bodies, turnId)).toMatchObject({ state: 'completed', outcome: 'failure' })
+      expect(providerRows(bodies)).toHaveLength(1)
+    }
+  )
 })
