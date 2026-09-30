@@ -13,6 +13,7 @@
 
 import {
   readAgentSessionFailureFact,
+  readWholeAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
@@ -84,6 +85,7 @@ function deliveryNoticeText(
       'Message was not sent.'
     )
   }
+  // Matching the start's row is identity, not wording: what this build can read is enough.
   const fact = readAgentSessionFailureFact(recorded?.rejection)
   if (
     entry.state === 'rejected' &&
@@ -93,7 +95,11 @@ function deliveryNoticeText(
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
   return agentSessionWriteNoticeText(
-    structuredAgentSessionAttemptFailureParts(entry.lastFailure, context, fact)
+    structuredAgentSessionAttemptFailureParts(
+      entry.lastFailure,
+      context,
+      readWholeAgentSessionFailureFact(recorded?.rejection)
+    )
   )
 }
 

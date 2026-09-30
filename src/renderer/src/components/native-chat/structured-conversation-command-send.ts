@@ -2,7 +2,7 @@ import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
 } from '../../../../shared/agent-session-conversation-command'
-import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { translate } from '@/i18n/i18n'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
@@ -46,15 +46,14 @@ export async function sendStructuredConversationCommand(input: {
   }
 }
 
-/** The host's sentence in the reader's language, from the fact beside it; an older host sends
- *  only the sentence. */
+/** The host's sentence in the reader's language, from the fact beside it; with no fact (an older
+ *  host) or one this build can't read whole, the sentence as written. */
 function conversationCommandFailureText(
   result: AgentSessionConversationCommandResult,
   agentName: string
 ): string | null {
-  const fact = readAgentSessionFailureFact(result.failure)
-  // A part this build cannot read, such as a newer refusal code, may change the host's advice.
-  if (!fact || Object.keys(result.failure ?? {}).some((part) => !(part in fact))) {
+  const fact = readWholeAgentSessionFailureFact(result.failure)
+  if (!fact) {
     return result.error ?? null
   }
   // As the host words it: only a /clear whose new conversation failed to start names the agent.

@@ -104,9 +104,12 @@ describe('the line under the composer after a conversation command failed', () =
   it("shows the host's sentence as written when this build cannot read all of its fact", async () => {
     await i18n.changeLanguage('fr')
     const error = "Claude couldn't start. Start a new chat to continue."
-    // As a newer host sends them: a refusal code, and a part, this build does not know.
+    // As a newer host sends them: a refusal code, a refusal reason, and a part this build doesn't know.
     for (const failure of [
       JSON.parse('{ "kind": "startFailed", "refusal": { "code": "agent_session_newer_refusal" } }'),
+      JSON.parse(
+        '{ "kind": "startFailed", "refusal": { "code": "agent_session_conflict", "details": { "reason": "newerReason" } } }'
+      ),
       JSON.parse('{ "kind": "startFailed", "newerPart": { "reason": "unresumable" } }')
     ]) {
       expect(await sent({ command: 'clear', state: 'completed', error, failure })).toEqual({
