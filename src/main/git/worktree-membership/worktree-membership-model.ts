@@ -92,6 +92,8 @@ export type WorktreeMembershipModel = {
   repoPath: string
   wslDistro: string | undefined
   commonDir: string
+  /** The common dir's realpath, compared form: how watchers and sibling repos name it. */
+  commonDirKey: string
   /** Git's own main row path and bareness, from the model's one baseline listing. */
   main: { path: string; isBare: boolean }
   source: MembershipSource
@@ -100,6 +102,8 @@ export type WorktreeMembershipModel = {
   /** Every row, main first, create preparations included; callers filter. */
   rows: GitWorktreeInfo[]
   validatedAt: number
+  /** The generation the committed rows' derivation started at; the memo needs it to be current. */
+  validatedGeneration: number
   fullDerivedAt: number
   lastReadAt: number
   generation: number
@@ -107,4 +111,6 @@ export type WorktreeMembershipModel = {
   inFlight: Map<string, { generation: number; promise: Promise<GitWorktreeInfo[]> }>
   startedDerivations: number
   committedDerivation: number
+  /** Derivations that outlived their deadline and have not settled; no new one starts meanwhile. */
+  stalledDerivations: number
 }

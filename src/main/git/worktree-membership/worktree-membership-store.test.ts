@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -26,25 +26,54 @@ vi.mock('../runner', async (importOriginal) => {
   }
 })
 
+type HeldRead = { entered: () => void; release: Promise<void> }
 const validationGate = vi.hoisted(() => {
-  const gate: { entered: (() => void) | null; release: Promise<void> | null } = {
-    entered: null,
-    release: null
-  }
+  const gate: {
+    entered: (() => void) | null
+    release: Promise<void> | null
+    /** Each validation takes the next hold after reading, so it commits what it read before. */
+    afterRead: HeldRead[]
+    transientFailures: number
+  } = { entered: null, release: null, afterRead: [], transientFailures: 0 }
   return gate
 })
 vi.mock('./worktree-membership-file-validation', async (importOriginal) => {
   const actual = await importOriginal<typeof FileValidation>()
+  const { WorktreeRowsNeedGit } = await import('./worktree-membership-file-rows')
   return {
     validateMembershipFromFiles: async (
       input: Parameters<typeof actual.validateMembershipFromFiles>[0]
     ) => {
       validationGate.entered?.()
       await validationGate.release
-      return actual.validateMembershipFromFiles(input)
+      if (validationGate.transientFailures > 0) {
+        validationGate.transientFailures -= 1
+        throw new WorktreeRowsNeedGit('unreadable worktrees dir', true)
+      }
+      const result = await actual.validateMembershipFromFiles(input)
+      const hold = validationGate.afterRead.shift()
+      if (hold) {
+        hold.entered()
+        await hold.release
+      }
+      return result
     }
   }
 })
+
+/** Holds the next validation after it read the admin files, until `release`. */
+function holdNextValidation(): { entered: Promise<void>; release: () => void } {
+  let entered = (): void => {}
+  let release = (): void => {}
+  const enteredPromise = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const releasePromise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  validationGate.afterRead.push({ entered, release: releasePromise })
+  return { entered: enteredPromise, release }
+}
 
 const wslPaths = vi.hoisted(() => new Set<string>())
 vi.mock('../../wsl', async (importOriginal) => {
@@ -66,8 +95,10 @@ import {
 } from '../worktree-scan-cache'
 import { adminEntryKey } from './worktree-admin-file-reads'
 import {
+  LISTING_MEMBERSHIP_SCOPE,
   MEMBERSHIP_FULL_DERIVE_FLOOR_MS,
-  MEMBERSHIP_IDLE_DROP_MS
+  MEMBERSHIP_IDLE_DROP_MS,
+  MEMBERSHIP_READ_MEMO_MS
 } from './worktree-membership-model'
 import {
   _getWorktreeMembershipModelForTests,
@@ -115,6 +146,8 @@ beforeEach(async () => {
   runnerSpy.failWorktreeList = false
   validationGate.entered = null
   validationGate.release = null
+  validationGate.afterRead.length = 0
+  validationGate.transientFailures = 0
   wslPaths.clear()
 })
 
@@ -264,6 +297,91 @@ describe('worktree membership model: freshness', () => {
     await git(['worktree', 'add', '-q', linked, '-b', 'late'])
     const { rows } = await readWorktreeMembership(repoPath)
     expect(rows.map((row) => row.path)).toContain(linked)
+  })
+
+  it('never lets a derivation that predates a mark re-open the memo', async () => {
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    await readWorktreeMembership(repoPath)
+    now += MEMBERSHIP_READ_MEMO_MS
+    // A background read has read the admin files; then a create lands and Orca marks it.
+    const olderHold = holdNextValidation()
+    const older = readWorktreeMembership(repoPath)
+    await olderHold.entered
+    const created = join(scratchDir, 'created')
+    await git(['worktree', 'add', '-q', created, '-b', 'created'])
+    markWorktreeMembershipDirty(repoPath)
+    const newerHold = holdNextValidation()
+    const newer = readWorktreeMembership(repoPath)
+    await newerHold.entered
+
+    // The older derivation commits first; a reader after the mark must still see the create.
+    olderHold.release()
+    expect((await older).rows.map((row) => row.path)).not.toContain(created)
+    const afterMark = readWorktreeMembership(repoPath)
+    newerHold.release()
+    expect((await newer).rows.map((row) => row.path)).toContain(created)
+    expect((await afterMark).rows.map((row) => row.path)).toContain(created)
+  })
+
+  it('keeps a mark that lands while the model is first built', async () => {
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const coldHold = holdNextValidation()
+    const cold = readWorktreeMembership(repoPath)
+    await coldHold.entered
+    const created = join(scratchDir, 'created')
+    await git(['worktree', 'add', '-q', created, '-b', 'created'])
+    markWorktreeMembershipDirty(repoPath)
+    coldHold.release()
+    await cold
+    now += 100
+    const { rows } = await readWorktreeMembership(repoPath)
+    expect(rows.map((row) => row.path)).toContain(created)
+  })
+
+  it('compares file rows with Git once a cold build fell back on a transient read failure', async () => {
+    const linked = join(scratchDir, 'linked')
+    await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    validationGate.transientFailures = 1
+    await readWorktreeMembership(repoPath)
+    const model = _getWorktreeMembershipModelForTests(repoPath)!
+    expect(model.files).toBeNull()
+    const coldListings = worktreeListSpawns()
+
+    now += MEMBERSHIP_READ_MEMO_MS
+    const { rows } = await readWorktreeMembership(repoPath)
+    // The parity baseline: file rows are adopted only once Git agreed with them.
+    expect(worktreeListSpawns()).toBe(coldListings + 1)
+    expect(model.files).not.toBeNull()
+    expect(rows.map((row) => row.path)).toContain(linked)
+  })
+
+  it('lets a watcher mark reach a repo registered through a symlink', async () => {
+    const registered = join(scratchDir, 'repo-link')
+    await symlink(repoPath, registered, 'dir')
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now())
+    await readWorktreeMembership(registered)
+    const created = join(scratchDir, 'created')
+    await git(['worktree', 'add', '-q', created, '-b', 'created'])
+    // What the watcher passes: the common dir's realpath.
+    markWorktreeMembershipCommonDirDirty(join(repoPath, '.git'), LISTING_MEMBERSHIP_SCOPE)
+    const { rows } = await readWorktreeMembership(registered)
+    expect(rows.map((row) => row.path)).toContain(created)
+  })
+
+  it("marks every registered repo that shares the changed repo's common dir", async () => {
+    const linked = join(scratchDir, 'linked')
+    await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now())
+    await Promise.all([readWorktreeMembership(repoPath), readWorktreeMembership(linked)])
+    const created = join(scratchDir, 'created')
+    await git(['worktree', 'add', '-q', created, '-b', 'created'])
+    markWorktreeMembershipDirty(repoPath)
+    const { rows } = await readWorktreeMembership(linked)
+    expect(rows.map((row) => row.path)).toContain(created)
   })
 
   it('re-reads every entry once the floor is due', async () => {
