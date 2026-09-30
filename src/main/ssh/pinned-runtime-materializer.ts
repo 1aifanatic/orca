@@ -18,7 +18,6 @@ import {
 } from '../../shared/orcad-bun-runtime'
 import {
   NODE_RUNTIME_ASSETS,
-  nodeRuntimeExecutablePath,
   nodeRuntimeReleaseUrl,
   type ServerTarget
 } from '../../shared/node-runtime-pin'
@@ -202,33 +201,6 @@ export function materializeNodeRuntimeArchive(
   return materializeVerifiedRuntimeArchive(
     nodeRuntimeArchive(target),
     join(cacheRoot, 'node', 'archives'),
-    options
-  )
-}
-
-/** Client cache keyed by content (design D2): `node/<executableSha256>/node[.exe]`. */
-export function materializeCachedNodeRuntime(
-  target: ServerTarget,
-  cacheRoot: string,
-  options: PinnedRuntimeMaterializeOptions
-): Promise<string> {
-  const asset = NODE_RUNTIME_ASSETS[target]
-  const isWindows = target.startsWith('win32-')
-  const executableName = isWindows ? 'node.exe' : 'node'
-  return materializeCachedRuntimeExecutable(
-    {
-      ...nodeRuntimeArchive(target),
-      executableSha256: asset.executableSha256,
-      member: nodeRuntimeExecutablePath(target, asset.archive),
-      isWindows,
-      cachePath: (attempt) =>
-        join(
-          cacheRoot,
-          'node',
-          asset.executableSha256,
-          `${attempt ? `repair-${attempt}-` : ''}${executableName}`
-        )
-    },
     options
   )
 }

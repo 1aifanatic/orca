@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,10 +9,7 @@ import {
   NODE_RUNTIME_PIN,
   nodeRuntimeExecutablePath
 } from '../../shared/node-runtime-pin'
-import {
-  materializeCachedNodeRuntime,
-  materializeNodeRuntimeArchive
-} from './pinned-runtime-materializer'
+import { materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 
 const TARGET = 'linux-x64-glibc' as const
 const originalAsset = { ...NODE_RUNTIME_ASSETS[TARGET] }
@@ -52,31 +49,6 @@ afterEach(async () => {
 })
 
 describe.skipIf(process.platform === 'win32')('pinned Node runtime materializer', () => {
-  it('caches the executable by its digest from a verified official-shaped archive', async () => {
-    const executable = new TextEncoder().encode('pinned node executable')
-    const archive = await officialShapedArchive(executable)
-    Object.assign(NODE_RUNTIME_ASSETS[TARGET], {
-      archiveSha256: sha256(archive),
-      executableSha256: sha256(executable)
-    })
-    const cacheRoot = join(root, 'cache')
-    const fetcher = fetcherFor(archive)
-
-    const runtime = await materializeCachedNodeRuntime(TARGET, cacheRoot, { fetcher })
-
-    expect(runtime).toBe(join(cacheRoot, 'node', sha256(executable), 'node'))
-    expect(await readFile(runtime)).toEqual(Buffer.from(executable))
-    expect((await stat(runtime)).mode & 0o111).toBe(0o111)
-    expect(fetcher).toHaveBeenCalledWith(
-      expect.stringContaining(`/v${NODE_RUNTIME_PIN.version}/${originalAsset.archive}`),
-      expect.objectContaining({ redirect: 'follow' })
-    )
-    await expect(materializeCachedNodeRuntime(TARGET, cacheRoot, { fetcher })).resolves.toBe(
-      runtime
-    )
-    expect(fetcher).toHaveBeenCalledOnce()
-  })
-
   it('keeps the verified archive for upload and refetches only when it is corrupted', async () => {
     const archive = await officialShapedArchive(new TextEncoder().encode('node'))
     Object.assign(NODE_RUNTIME_ASSETS[TARGET], { archiveSha256: sha256(archive) })
@@ -85,6 +57,10 @@ describe.skipIf(process.platform === 'win32')('pinned Node runtime materializer'
 
     const cached = await materializeNodeRuntimeArchive(TARGET, cacheRoot, { fetcher })
     expect(cached.endsWith(originalAsset.archive)).toBe(true)
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringContaining(`/v${NODE_RUNTIME_PIN.version}/${originalAsset.archive}`),
+      expect.objectContaining({ redirect: 'follow' })
+    )
     expect(await materializeNodeRuntimeArchive(TARGET, cacheRoot, { fetcher })).toBe(cached)
     expect(fetcher).toHaveBeenCalledOnce()
 
@@ -94,10 +70,10 @@ describe.skipIf(process.platform === 'win32')('pinned Node runtime materializer'
     expect(sha256(new Uint8Array(await readFile(repaired)))).toBe(sha256(archive))
   })
 
-  it('refuses an archive that does not match the pin before extracting it', async () => {
+  it('refuses an archive that does not match the pin before caching it', async () => {
     const archive = await officialShapedArchive(new TextEncoder().encode('node'))
     await expect(
-      materializeCachedNodeRuntime(TARGET, join(root, 'cache'), { fetcher: fetcherFor(archive) })
+      materializeNodeRuntimeArchive(TARGET, join(root, 'cache'), { fetcher: fetcherFor(archive) })
     ).rejects.toThrow('Node archive checksum mismatch')
   })
 })
