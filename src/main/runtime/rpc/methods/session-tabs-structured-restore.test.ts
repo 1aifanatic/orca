@@ -13,6 +13,7 @@ function makeRequest(method: string, params?: unknown): RpcRequest {
 // The host's own structured-chat setting is off throughout: it is a launch preference, so it must
 // not decide whether chats a paired client opened come back after a restart.
 function makeRuntime(): OrcaRuntimeService {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the runtime members these RPCs read are staged.
   return {
     getRuntimeId: () => 'test-runtime',
     getClientSettings: vi.fn(() => ({ experimentalStructuredNativeChat: false })),

@@ -110,6 +110,7 @@ export async function subscribeSessionTabsInventory(
   let censusInvalidated = false
   const withProofDelta = createSessionTabsRetirementProofDelta(context.clientCapabilities)
   const projectChange = (snapshot: SessionTabsChange): SessionTabsChange =>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: projection rewrites only tabs and groups; the change fields it was handed pass through.
     projectSessionTabsForClient(
       snapshot,
       context.clientKind,
