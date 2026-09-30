@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { findDuplicateTomlDeclarations } from './config-toml-duplicate-declarations-test-fixture'
-import { repairOrcaDuplicateProjectTrust } from './config-toml-project-duplicate-repair'
+import { repairOrcaDuplicateTrustTables } from './config-toml-project-duplicate-repair'
 import { upsertProjectTrustLevel, upsertProjectTrustLevelInContent } from './config-toml-trust'
 import {
   createTrustConfigFixture,
@@ -95,7 +95,7 @@ describe('repairing configs broken by #22592', () => {
       ''
     ].join('\r\n')
 
-    const repaired = repairOrcaDuplicateProjectTrust(broken)
+    const repaired = repairOrcaDuplicateTrustTables(broken)
 
     expect(repaired).toBe(['["projects"."/repo-c"]', '"trust_level" = "trusted"', ''].join('\r\n'))
   })
@@ -110,7 +110,7 @@ describe('repairing configs broken by #22592', () => {
       ''
     ].join('\n')
 
-    const repaired = repairOrcaDuplicateProjectTrust(broken)
+    const repaired = repairOrcaDuplicateTrustTables(broken)
 
     expect(repaired).toBe(
       ["['projects'.'C:\\Users\\me\\repo']", "trust_level = 'trusted'", ''].join('\n')
@@ -127,7 +127,7 @@ describe('repairing configs broken by #22592', () => {
       ''
     ].join('\n')
 
-    expect(repairOrcaDuplicateProjectTrust(config)).toBe(config)
+    expect(repairOrcaDuplicateTrustTables(config)).toBe(config)
     expect(warn).not.toHaveBeenCalled()
   })
 
@@ -170,14 +170,14 @@ describe('repairing configs broken by #22592', () => {
       ''
     ].join('\n')
 
-    expect(repairOrcaDuplicateProjectTrust(broken)).toBe(broken)
+    expect(repairOrcaDuplicateTrustTables(broken)).toBe(broken)
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
   it('does not touch a valid config', () => {
     const config = ['["projects"."/repo-f"]', '"trust_level" = "trusted"', ''].join('\n')
 
-    expect(repairOrcaDuplicateProjectTrust(config)).toBe(config)
+    expect(repairOrcaDuplicateTrustTables(config)).toBe(config)
     expect(warn).not.toHaveBeenCalled()
   })
 })

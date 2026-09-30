@@ -83,10 +83,11 @@ export function isRuntimePreservedTomlSection(header: string): boolean {
 }
 
 export function isRuntimeHookTrustTomlSection(header: string): boolean {
-  const trimmed = header.trim()
+  const table = parseTomlTableHeaderPath(header)
   // Why: Codex's config writer materializes the parent table on Windows. It is
   // part of runtime-owned trust and must survive the next config mirror too.
-  return trimmed === '[hooks.state]' || trimmed.startsWith('[hooks.state.')
+  // Its `["hooks"."state"]` spelling is the same table (#22592).
+  return !!table && !table.isArray && table.segments[0] === 'hooks' && table.segments[1] === 'state'
 }
 
 export function isRuntimeProjectTomlSection(header: string): boolean {

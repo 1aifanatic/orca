@@ -12,7 +12,7 @@ import {
   parseProjectTomlHeaderPath
 } from './config-toml-syntax'
 import { findProjectTrustLevelEntries } from './config-toml-project-trust-level'
-import { repairOrcaDuplicateProjectTrust } from './config-toml-project-duplicate-repair'
+import { repairOrcaDuplicateTrustTables } from './config-toml-project-duplicate-repair'
 
 export function upsertProjectTrustContent(
   existingContent: string,
@@ -20,7 +20,7 @@ export function upsertProjectTrustContent(
   trustLevel: CodexProjectTrustLevel,
   options?: { alreadyCanonical?: boolean }
 ): string {
-  const existing = repairOrcaDuplicateProjectTrust(stripLeadingBom(existingContent))
+  const existing = repairOrcaDuplicateTrustTables(stripLeadingBom(existingContent))
   const trustedProjectPath = options?.alreadyCanonical
     ? projectPath
     : canonicalizeLocalProjectPath(projectPath)

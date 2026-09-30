@@ -6,11 +6,6 @@ import {
 } from './config-toml-line-scan'
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
 
-type ParsedTomlString = {
-  value: string
-  endIndex: number
-}
-
 export function escapeTomlBasicString(value: string): string {
   return value
     .replaceAll('\\', '\\\\')
@@ -23,79 +18,26 @@ export function escapeTomlBasicString(value: string): string {
 }
 
 export function parseHookStateTomlHeaderKey(line: string): string | null {
-  const trimmed = line.trimStart()
-  const prefixMatch = /^\[[ \t]*hooks[ \t]*\.[ \t]*state[ \t]*\.[ \t]*/.exec(trimmed)
-  return prefixMatch ? parseTomlTableStringKey(trimmed, prefixMatch[0].length) : null
+  return parseTomlTableHeaderLeafKey(line, ['hooks', 'state'])
+}
+
+export function parseProjectTomlHeaderPath(line: string): string | null {
+  return parseTomlTableHeaderLeafKey(line, ['projects'])
 }
 
 // Why (#22592): Codex writes `["projects"."/p"]`; every spelling of the key path must match.
-export function parseProjectTomlHeaderPath(line: string): string | null {
+function parseTomlTableHeaderLeafKey(line: string, parent: readonly string[]): string | null {
   const header = getTomlTableHeader(line.replace(/\r$/, ''))
   const table = header === null ? null : parseTomlTableHeaderPath(header)
-  if (!table || table.isArray || table.segments.length !== 2 || table.segments[0] !== 'projects') {
+  if (
+    !table ||
+    table.isArray ||
+    table.segments.length !== parent.length + 1 ||
+    parent.some((segment, index) => table.segments[index] !== segment)
+  ) {
     return null
   }
-  return table.segments[1] ?? null
-}
-
-function parseTomlTableStringKey(line: string, startIndex: number): string | null {
-  const parsedKey = parseTomlSingleLineString(line, startIndex)
-  if (!parsedKey) {
-    return null
-  }
-  let index = skipTomlInlineWhitespace(line, parsedKey.endIndex)
-  if (line[index] !== ']') {
-    return null
-  }
-  index = skipTomlInlineWhitespace(line, index + 1)
-  return index === line.length || line[index] === '#' ? parsedKey.value : null
-}
-
-function parseTomlSingleLineString(line: string, startIndex: number): ParsedTomlString | null {
-  if (line[startIndex] === '"') {
-    return parseTomlBasicSingleLineString(line, startIndex + 1)
-  }
-  if (line[startIndex] === "'") {
-    return parseTomlLiteralSingleLineString(line, startIndex + 1)
-  }
-  return null
-}
-
-function parseTomlBasicSingleLineString(line: string, startIndex: number): ParsedTomlString | null {
-  let value = ''
-  let index = startIndex
-  while (index < line.length) {
-    const char = line[index]
-    if (char === '"') {
-      return { value, endIndex: index + 1 }
-    }
-    if (char === '\\' && index + 1 < line.length) {
-      value += unescapeTomlBasicStringEscape(line[index + 1]!)
-      index += 2
-      continue
-    }
-    value += char
-    index += 1
-  }
-  return null
-}
-
-function parseTomlLiteralSingleLineString(
-  line: string,
-  startIndex: number
-): ParsedTomlString | null {
-  const endIndex = line.indexOf("'", startIndex)
-  return endIndex === -1
-    ? null
-    : { value: line.slice(startIndex, endIndex), endIndex: endIndex + 1 }
-}
-
-function skipTomlInlineWhitespace(line: string, startIndex: number): number {
-  let index = startIndex
-  while (line[index] === ' ' || line[index] === '\t') {
-    index += 1
-  }
-  return index
+  return table.segments.at(-1) ?? null
 }
 
 export function findNextTomlTableHeader(text: string): number {
