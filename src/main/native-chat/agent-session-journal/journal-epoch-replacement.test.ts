@@ -67,6 +67,7 @@ function replace(input: {
     reason: 'legacy_import',
     fence: 1,
     items: input.items,
+    queueStopped: false,
     now,
     mintEpoch: () => `epoch-${clock}`,
     onPublished: input.onPublished ?? (() => undefined)

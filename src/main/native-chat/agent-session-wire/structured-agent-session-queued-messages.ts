@@ -30,6 +30,7 @@ import {
   structuredAgentSessionHostInstance,
   structuredQueuePause
 } from './structured-agent-session-queued-pause'
+import { queuePauseHolds } from '../agent-session-journal/queued-message-pause'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -57,23 +58,28 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
   return pending
 }
 
-/** Waiting, not held on its own, not positioned behind a returned card, and the
- *  queue not paused. The admission rule (§accept) and the drain's selection
- *  both read it. */
+/** Waiting, not held on its own, not positioned behind a returned card, and not
+ *  held by the queue's pause. The admission rule (§accept) and the drain's
+ *  selection both read it. */
 function oldestActionableQueuedMessage(
-  journal: Pick<AgentSessionJournal, 'queuedMessages' | 'cursor' | 'wroteBeforeOpen'>
+  journal: Pick<AgentSessionJournal, 'queuedMessages'>
 ): QueuedMessageRow | null {
   const rows = journal.queuedMessages.list()
   // Nothing waiting costs no pause derivation: this runs on every journal publish.
-  if (!rows.some((row) => row.state === 'waiting') || structuredQueuePause(journal) !== null) {
+  if (!rows.some((row) => row.state === 'waiting')) {
     return null
   }
+  const pause = structuredQueuePause(journal)
   for (const row of rows) {
     if (row.state === 'returned') {
       // A returned card blocks everything after it until the user acts.
       return null
     }
-    if (row.state === 'waiting' && row.holdReason === null) {
+    if (
+      row.state === 'waiting' &&
+      row.holdReason === null &&
+      !(pause && queuePauseHolds(pause, row))
+    ) {
       return row
     }
   }
@@ -358,12 +364,13 @@ export class StructuredAgentSessionQueuedMessageDrain {
           messageId: next.messageId,
           expect: 'waiting',
           settledByOp: null,
-          hostInstance: structuredAgentSessionHostInstance()
+          hostInstance: structuredAgentSessionHostInstance(),
+          yieldsToPause: { hostInstance: structuredAgentSessionHostInstance() }
         }
       )
     } catch (error) {
       if (error instanceof QueuedMessageNotConsumableError) {
-        // Lost a race with a Send-now or Delete; their transition stands.
+        // Lost a race with a Send-now, a Delete or a Stop; their transition stands.
         return
       }
       // Pre-consume failure: the draft stays waiting, held with the marker on

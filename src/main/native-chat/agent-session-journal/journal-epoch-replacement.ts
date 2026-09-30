@@ -16,6 +16,7 @@ import type { JournalLoad } from './journal-open'
 import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
+import { buildJournalQueuePauseRow } from './journal-queue-pause-row'
 import {
   deleteJournalEpochRows,
   insertJournalRow,
@@ -40,6 +41,9 @@ export function replaceJournalEpoch(input: {
   reason: AgentJournalEpochReason
   fence: number
   items: readonly JournalReplacementItem[]
+  /** The superseded epoch's latest Stop still paused the queue: the new epoch restates it, or
+   *  the rewind would release cards the person stopped. */
+  queueStopped: boolean
   now: () => number
   mintEpoch: () => string
   /** Called the instant the transaction commits, before any fallible follow-up. */
@@ -67,6 +71,17 @@ export function replaceJournalEpoch(input: {
       turnScope: item.turnScope ?? state.derivedTurnScope.scopeFor(item.body)
     })
     assertJournalFence(row.fence, state.highestFence)
+    applyJournalRow(state, row)
+    rows.push(row)
+  }
+  if (input.queueStopped) {
+    const row = buildJournalQueuePauseRow({
+      state,
+      mark: 'stopped',
+      seq: state.lastSequence + 1,
+      fence: input.fence,
+      ts: input.now()
+    })
     applyJournalRow(state, row)
     rows.push(row)
   }

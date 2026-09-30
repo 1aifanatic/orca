@@ -80,9 +80,9 @@ export async function withdrawQueuedMessagesForOperation(
  * cards stay visible where the user now is. The replacement's queue starts
  * paused ('cleared'), lifted exactly like a Stop's: the cards were written for the context /clear just
  * discarded, so they wait for the user's next turn there, or Resume, rather than
- * sending into the fresh context unasked. Each card lands with the pause in one
- * transaction, so the drain never sees a carried card unpaused and no pause is
- * left over an empty queue if an insert fails. Runs after the
+ * sending into the fresh context unasked. Each card records the conversation it
+ * came from, which IS that pause, so the drain never sees a carried card unpaused
+ * and no pause outlives the cards. Runs after the
  * replacement's attach succeeded and before the clear commits. Each insert is
  * idempotent on (session, message), so a retried clear replays it safely; the source rows are then tombstoned. Bookkeeping around the clear:
  * a failure leaves the cards on the superseded source — whose supersession
@@ -117,7 +117,7 @@ export async function carryQueuedMessagesToClearReplacement(
         body: row.body,
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
         hostInstance: structuredAgentSessionHostInstance(),
-        pausedBy: 'cleared'
+        carriedFrom: ctx.sessionId
       })
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {
@@ -321,11 +321,11 @@ export function resumeStructuredAgentQueue(
     method: 'agentSession.queuedMessagesResume',
     fields: {},
     conversationWrite: true,
-    // The lift notifies through the journal's commit listener, which publishes the
-    // cleared pause and wakes the drain.
+    // The Resume row notifies through the journal's commit listener, which publishes the
+    // lifted pause and wakes the drain.
     run: async (ctx) => ({
       ok: true,
-      value: { resumed: await resumeStructuredQueue(ctx.journal) }
+      value: { resumed: await resumeStructuredQueue(ctx.journal, ctx.fence) }
     }),
     // Like Stop's replay: the Resume already ran, so this one lifts nothing.
     replay: () => ({ resumed: false })

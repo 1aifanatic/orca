@@ -53,47 +53,52 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
     state: 'accepted' as const,
     providerIdentity: null
   }))
+  const cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']> = vi.fn(async () => ({
+    cancelled: true
+  }))
   let events: StructuredAgentSessionEventSink | undefined
   const store = await openTestAgentSessionRecordStore(root)
-  const host = new StructuredAgentSessionHost({
-    store,
-    adapter: {
-      acquire: async ({ identity, fence, spawnToken, events: sink }) => {
-        events = sink
-        const resumes =
-          options.restartable === true &&
-          (store.getRecord(identity.sessionId)?.providerHandleChain.length ?? 0) > 0
-        return {
-          process: {
-            hostId: 'local',
-            pid: 4242,
-            processStartTimeMs: 1_700_000_000_000,
-            spawnToken
-          },
-          acquisitionGeneration: 'generation-1',
-          link: {
-            linkId: `link-${fence}`,
-            handle: { provider: 'codex' as const, threadId: THREAD },
-            origin: resumes ? ('resumed' as const) : ('created' as const),
-            mintedAtFence: fence,
-            observedAt: NOW
+  const makeHost = () =>
+    new StructuredAgentSessionHost({
+      store,
+      adapter: {
+        acquire: async ({ identity, fence, spawnToken, events: sink }) => {
+          events = sink
+          const resumes =
+            options.restartable === true &&
+            (store.getRecord(identity.sessionId)?.providerHandleChain.length ?? 0) > 0
+          return {
+            process: {
+              hostId: 'local',
+              pid: 4242,
+              processStartTimeMs: 1_700_000_000_000,
+              spawnToken
+            },
+            acquisitionGeneration: 'generation-1',
+            link: {
+              linkId: `link-${fence}`,
+              handle: { provider: 'codex' as const, threadId: THREAD },
+              origin: resumes ? ('resumed' as const) : ('created' as const),
+              mintedAtFence: fence,
+              observedAt: NOW
+            }
           }
-        }
+        },
+        dispatch,
+        awaitStarted,
+        closeSession: vi.fn(async () => true),
+        releaseAcquisition: vi.fn(async () => true),
+        compact,
+        cancelTurn,
+        answerPrompt: vi.fn(async () => undefined),
+        setOption: vi.fn(async () => undefined)
       },
-      dispatch,
-      awaitStarted,
-      closeSession: vi.fn(async () => true),
-      releaseAcquisition: vi.fn(async () => true),
-      compact,
-      cancelTurn: vi.fn(async () => ({ cancelled: true })),
-      answerPrompt: vi.fn(async () => undefined),
-      setOption: vi.fn(async () => undefined)
-    },
-    journalDatabase: openTestJournalHostDatabase(root),
-    claimKeyId: 'key-1',
-    mintSpawnToken: () => 'spawn-1',
-    now: () => NOW
-  })
+      journalDatabase: openTestJournalHostDatabase(root),
+      claimKeyId: 'key-1',
+      mintSpawnToken: () => 'spawn-1',
+      now: () => NOW
+    })
+  let host = makeHost()
   expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
     ok: true
   })
@@ -254,6 +259,12 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
     rotateStructuredAgentSessionHostInstanceForTests()
   }
 
+  /** A host process that dies with no close: a new host opens the same state directory. */
+  function crashRestartHostProcess(): void {
+    rotateStructuredAgentSessionHostInstanceForTests()
+    host = makeHost()
+  }
+
   /** The queue's published pause: null when it sends on its own. */
   async function queuePause(sessionId = SESSION): Promise<AgentSessionQueuePause | null> {
     const page = await host.history({ sessionId, direction: 'tail' })
@@ -277,8 +288,11 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
   return {
     root,
     store,
-    host,
+    get host() {
+      return host
+    },
     dispatch,
+    cancelTurn,
     awaitStarted,
     compact,
     finishCompact,
@@ -295,6 +309,7 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
     settleAccepted,
     settleRejected,
     restartHostProcess,
+    crashRestartHostProcess,
     queuePause,
     resume,
     dispose

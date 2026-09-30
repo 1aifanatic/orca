@@ -72,6 +72,19 @@ export type JournalTombstoneRow = JournalRowBase & {
   kind: 'tombstone'
   itemId: string
   revision: number
+  /** Present: not a removal but the queue's Stop or Resume (`queued-message-pause.ts`), on an id
+   *  no item ever takes. A new row kind would make a released host truncate the journal from
+   *  that row; this one it reads as removing nothing. */
+  queuePause?: JournalQueuePauseMark
+}
+
+export type JournalQueuePauseMark = 'stopped' | 'resumed'
+
+/** A Stop or Resume row. Any value counts, so a newer build's mark never removes an item. */
+export function isJournalQueuePauseRow(
+  row: JournalRow
+): row is JournalTombstoneRow & { queuePause: JournalQueuePauseMark } {
+  return row.kind === 'tombstone' && row.queuePause !== undefined
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it

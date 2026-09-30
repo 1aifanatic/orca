@@ -13,6 +13,7 @@ import { JournalItemAppender } from './journal-item-appender'
 import { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 import type { JournalLoad } from './journal-open'
 import { JournalQueuedMessages } from './journal-queued-messages'
+import { journalQueueStopHolds } from './queued-message-pause'
 import type { JournalReducerState } from './journal-reducer'
 import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
@@ -70,6 +71,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     readOnly: host.readOnly,
     setReadOnly: host.setReadOnly,
     highestFence: () => host.state().highestFence,
+    queueStopped: () =>
+      journalQueueStopHolds(host.state().queuePauseMarks, host.state().latestPersonTurnSequence),
     cursor: host.cursor,
     adopt: host.adopt
   })
@@ -80,6 +83,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     database: host.database,
     readOnly: host.readOnly,
     state: host.state,
+    wroteBeforeOpen: (sequence) => host.journal().wroteBeforeOpen(sequence),
     committed: host.notifyCommitted
   })
   return {

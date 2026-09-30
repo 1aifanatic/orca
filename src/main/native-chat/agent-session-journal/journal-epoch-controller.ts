@@ -20,6 +20,8 @@ export class JournalEpochController {
       readOnly: () => boolean
       setReadOnly: (readOnly: boolean) => void
       highestFence: () => number
+      /** Whether the live epoch's latest Stop still pauses the queue. */
+      queueStopped: () => boolean
       cursor: () => AgentJournalCursor
       adopt: (loaded: JournalLoad) => void
     }
@@ -67,6 +69,7 @@ export class JournalEpochController {
         reason,
         fence,
         items,
+        queueStopped: this.deps.queueStopped(),
         now: this.deps.now,
         mintEpoch: this.deps.mintEpoch,
         onPublished: this.deps.adopt
