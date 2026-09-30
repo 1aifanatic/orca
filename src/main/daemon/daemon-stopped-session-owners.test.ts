@@ -28,10 +28,11 @@ function version(protocolVersion: number, sessions: Set<string>, frozen = false)
       if (!frozen) {
         return [...sessions].map((id) => ({ id }))
       }
-      if (opts?.deadlineMs === undefined) {
+      const deadlineMs = opts?.deadlineMs
+      if (deadlineMs === undefined) {
         return await hang()
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.max(0, opts.deadlineMs - Date.now())))
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, deadlineMs - Date.now())))
       throw new Error('timed out')
     }),
     readProcesses: vi.fn(),

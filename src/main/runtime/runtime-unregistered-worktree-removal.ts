@@ -52,7 +52,7 @@ export async function removeRuntimeUnregisteredWorktree(args: {
     worktreeId: string,
     connectionId: string | undefined,
     allow: boolean
-  ) => Promise<Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'>>
+  ) => Promise<Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'> | void>
   deleteHistory: () => Promise<void>
   finishRemoval: () => void
 }): Promise<Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'>> {
@@ -143,7 +143,8 @@ async function deleteUnregisteredDirectory(
   const gate = await args.acquireWatcherRemoval(args.target.path, connectionId)
   let completed = false
   try {
-    unchecked = await args.stopPtys(args.target.id, connectionId, args.allowUnverifiedPtyStop)
+    unchecked =
+      (await args.stopPtys(args.target.id, connectionId, args.allowUnverifiedPtyStop)) ?? {}
     if (route.kind === 'local') {
       await removeLocalWorktreePath(args.target.path, args.localOptions)
     } else if (route.fsProvider) {

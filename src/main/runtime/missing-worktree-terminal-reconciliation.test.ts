@@ -150,7 +150,7 @@ describe('stopMissingWorktreeTerminals', () => {
     const result = await stopMissingWorktreeTerminals(localRepo, ids, [], {
       runtime: createRuntime(),
       getLocalProvider: () => provider,
-      getSshProvider: () => null
+      getSshProvider: () => undefined
     })
 
     expect(result.stoppedWorktreeIds).toHaveLength(ids.length)
