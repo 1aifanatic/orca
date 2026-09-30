@@ -2,9 +2,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { canShowRightSidebarForView } from '@/lib/right-sidebar-visibility'
 import { isFloatingWorkspacePanelFocused } from '@/lib/floating-workspace-terminal-actions'
 import { requestScrollToCurrentWorkspaceRevealAndRename } from '@/lib/scroll-to-current-workspace-status'
+import { requestVirtualizedScrollAnchorRecord } from '@/hooks/requestVirtualizedScrollAnchorRecord'
 import { showTerminalShortcutCaptureNotification } from '@/lib/terminal-shortcut-capture-notification'
 import { shouldShowWorktreeHistoryControls } from '../lib/titlebar-worktree-history-controls'
 import { TOGGLE_WORKSPACE_BOARD_EVENT } from '../components/sidebar/useWorkspaceBoardPanel'
+import { resolveChildWorkspacesToggleGroupKey } from '../components/sidebar/child-workspaces-toggle-target'
 import { requestTerminalTabRename } from '../components/tab-bar/terminal-tab-rename-request'
 import {
   deleteHoveredWorkspaceImmediately,
@@ -177,6 +179,25 @@ export function createAppCommandHandlers(
             store.setSidebarOpen(true)
           }
         })
+    ],
+    [
+      'sidebar.childWorkspaces.toggle',
+      () => {
+        const store = useAppStore.getState()
+        const groupKey = resolveChildWorkspacesToggleGroupKey(store)
+        if (!groupKey) {
+          return false
+        }
+        return claim('sidebar.childWorkspaces.toggle', () => {
+          const expanding = store.collapsedGroups.has(groupKey)
+          // Why: same scroll anchoring as the chip click, so the viewport does not jump.
+          requestVirtualizedScrollAnchorRecord('[data-worktree-sidebar]')
+          store.toggleCollapsedGroup(groupKey)
+          if (expanding) {
+            store.setSidebarOpen(true)
+          }
+        })
+      }
     ],
     [
       'floatingWorkspace.maximize',
