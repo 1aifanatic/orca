@@ -258,6 +258,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     : `rm -rf ${shellEscape(stageDir)}`
   let localStage: string | undefined
   let stageUnconfirmed = false
+  let hostRemovedStage = false
   try {
     const archivePath = await options.archivePath()
     const uploadDir = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
@@ -270,14 +271,15 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
       await exec(`mkdir -p ${shellEscape(stageDir)}`, { signal })
     }
     await remoteStep(() => uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal }))
-    assertRemoteNodeRuntimePromoted(
-      await exec(
-        windows
-          ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
-          : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
-        { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
-      )
+    const promoted = await exec(
+      windows
+        ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
+        : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
+      { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
     )
+    // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
+    hostRemovedStage = windows
+    assertRemoteNodeRuntimePromoted(promoted)
     return { executable, transfer: 'uploaded' }
   } catch (error) {
     stageUnconfirmed = isUnconfirmedSshCommandTermination(error)
@@ -287,7 +289,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
       await rm(localStage, { recursive: true, force: true }).catch(() => {})
     }
     // A transfer that may still be writing keeps its stage; loss of contact is not an exit.
-    if (!stageUnconfirmed) {
+    if (!stageUnconfirmed && !hostRemovedStage) {
       await exec(cleanupStage).catch(() => {})
     }
   }
