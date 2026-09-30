@@ -318,6 +318,9 @@ export type StructuredAgentSessionAdapter = {
      *  interrupt is issued. Absent for direct callers with no journal. */
     resolveLiveTurnId?: () => string | null
   }): Promise<AgentSessionCancelOutcome>
+  /** A Stop ends this provider's child once `cancelTurn` answers, whatever it answered; the next
+   *  send resumes the conversation. Absent or false keeps the child after a Stop. */
+  stopEndsSession?(sessionId: string): boolean
   /** Changes the provider thread's goal. `rejected` is the provider refusing the
    *  change; a throw leaves its effect unknown. Absent where no goal exists. */
   changeThreadGoal?(input: {

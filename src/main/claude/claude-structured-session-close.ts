@@ -19,6 +19,7 @@ import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session
 import { closeProcessRegistry } from '../../shared/child-process/close-process-registry'
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
+import { awaitClaudeStopGrace, settleClaudeStopGrace } from './claude-stop-grace'
 
 /** The root's own exit was seen first-hand. The lease follows the root, so a descendant
  *  left unverified or seen alive does not hold it. */
@@ -69,6 +70,7 @@ export function settleClaudeExitedSession(session: ClaudeSession): void {
   // The child is gone, so no replay can start these turns. Nothing else ends a
   // waiter's life now that no deadline does.
   retireClaudeDispatchWaiters(session)
+  settleClaudeStopGrace(session)
   for (const prompt of session.prompts.clear()) {
     prompt.settle(null)
   }
@@ -98,6 +100,7 @@ async function finalizeClaudePublishedSession(
   session: ClaudeSession
 ): Promise<boolean> {
   retireClaudeDispatchWaiters(session)
+  settleClaudeStopGrace(session)
   // Settle every in-flight permission callback so closing leaves no dangling promise; `null`
   // writes no response, and the SDK ignores any post-cleanup answer regardless.
   for (const prompt of session.prompts.clear()) {
@@ -212,6 +215,16 @@ export async function closeClaudePublishedSession(
   }
   if (session.closeFinalization) {
     return session.closeFinalization
+  }
+  if (input.stopCause === 'user-stop') {
+    // Before finalization starts: the interrupted turn's result still records its resume point.
+    await awaitClaudeStopGrace(session)
+    if (session.closeFinalized) {
+      return true
+    }
+    if (session.closeFinalization) {
+      return session.closeFinalization
+    }
   }
   const finalization = finalizeClaudePublishedSession(input, session)
   session.closeFinalization = finalization

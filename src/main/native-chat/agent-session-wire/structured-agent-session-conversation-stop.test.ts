@@ -36,6 +36,9 @@ let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
 let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
+let closeSession: Mock<StructuredAgentSessionAdapter['closeSession']>
+/** Codex's answer by default: its Stop keeps the child. */
+let stopEndsSession: boolean
 let events: StructuredAgentSessionEventSink | undefined
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
@@ -49,6 +52,8 @@ beforeEach(async () => {
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
   awaitStarted = vi.fn(async () => undefined)
+  closeSession = vi.fn(async () => true)
+  stopEndsSession = false
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
@@ -74,9 +79,10 @@ beforeEach(async () => {
       },
       dispatch,
       awaitStarted,
-      closeSession: vi.fn(async () => true),
+      closeSession,
       releaseAcquisition: vi.fn(async () => true),
       cancelTurn,
+      stopEndsSession: () => stopEndsSession,
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
     },
@@ -363,5 +369,46 @@ describe('a Stop that names its turn, as an older client sends it', () => {
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
     expect(await statusRows()).toEqual([])
+  })
+})
+
+describe('a Stop on a provider whose Stop ends its session', () => {
+  async function handedOver(): Promise<void> {
+    const { id, result } = send('hello')
+    await result
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+  }
+
+  it('ends the child after the cancel even when the provider refused it, and says only that it was asked', async () => {
+    stopEndsSession = true
+    await handedOver()
+    cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: { detail: { text: 'no active turn to interrupt', audience: 'person' } }
+    })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
+  it('keeps the child of a provider whose Stop is not a session boundary', async () => {
+    await handedOver()
+    cancelTurn.mockResolvedValueOnce({ cancelled: true })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+
+    expect(closeSession).not.toHaveBeenCalled()
+  })
+
+  it('leaves the child alone when the Stop named a turn that is no longer live', async () => {
+    stopEndsSession = true
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: false } })
+
+    expect(closeSession).not.toHaveBeenCalled()
+    expect(await statusRows()).toEqual([ALREADY_FINISHED])
   })
 })

@@ -2,6 +2,7 @@ import type {
   ClaudeSession,
   ClaudeStructuredSessionAdapterDeps
 } from './claude-structured-session-state'
+import { settleClaudeStopGrace } from './claude-stop-grace'
 
 /**
  * Record a completed turn: its leaf becomes the one close and exit persist, and the durable point
@@ -17,6 +18,8 @@ export function persistClaudeTurnResumePoint(
     return
   }
   session.turnEndLeafUuid = session.leafUuid
+  // The resume point is past the turn, which is all a Stop's close waits for.
+  settleClaudeStopGrace(session)
   const leafUuid = session.turnEndLeafUuid
   const persist = deps.persistResumePoint
   if (!persist || leafUuid === null || session.resumePointWrite?.leafUuid === leafUuid) {

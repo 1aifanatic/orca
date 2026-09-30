@@ -66,6 +66,12 @@ export async function performCancel(
     (input.turnId === undefined || input.turnId === liveTurnId)
   const stoppedBefore =
     runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, liveTurnId)
+  // A provider whose Stop is a session boundary ends its child after the cancel, whatever the cancel
+  // answered. A Stop naming a turn that is no longer live leaves the later turn alone.
+  const stopEndsSession =
+    input.stopChild !== undefined &&
+    (input.turnId === undefined || input.turnId === liveTurnId) &&
+    ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     const outcome: AgentSessionCancelOutcome = stoppedBefore
@@ -121,10 +127,13 @@ export async function performCancel(
       ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
     }
   }
-  if (runningCommand && !cancelled) {
+  if ((runningCommand && !cancelled) || stopEndsSession) {
     await input.stopChild?.()
     cancelled = true
-    note = { kind: 'status', text: 'Cancellation requested.' }
+    // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
+    if (note !== null) {
+      note = { kind: 'status', text: 'Cancellation requested.' }
+    }
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()
