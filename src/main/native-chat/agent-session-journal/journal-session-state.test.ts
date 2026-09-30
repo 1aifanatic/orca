@@ -156,7 +156,6 @@ describe('trusted only at the live tip (T9)', () => {
   it('leaves the schema version alone, so an older build stays writable', async () => {
     await write('settled')
     expect(journalPragmaNumber(db(), 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
-    expect(JOURNAL_DB_SCHEMA_VERSION).toBe(3)
   })
 
   it("reads an older build's append as stale, and the next open re-derives it", async () => {

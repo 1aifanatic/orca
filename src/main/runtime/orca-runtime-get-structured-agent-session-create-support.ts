@@ -258,6 +258,16 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     return this.structuredAgentSessionTabRestorePromise
   }
 
+  /** Starts the history restore the tab restore owes, once. On the next macrotask, so a caller that
+   *  starts it as it answers has sent that answer first. */
+  startStructuredAgentSessionHistoryRestore(): void {
+    const owed = this.owedStructuredAgentSessionHistoryRestore
+    this.owedStructuredAgentSessionHistoryRestore = null
+    if (owed) {
+      setImmediate(owed)
+    }
+  }
+
   prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
     this.structuredAgentSessionStartupRestorePromise ??=
       this.prepareStructuredAgentSessionStartupRestorationOnce().catch((error) => {
@@ -297,18 +307,22 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     }
   }
 
-  /** The chats with a tab: the host's persisted tab index, or before it existed, the saved
-   *  workspace session's. */
+  /** The chats with a tab, for the startup step and the tab restore alike: the host's persisted
+   *  tab index, or before it is recorded, the saved workspace session's. */
   protected listedStructuredAgentSessionIds(host): string[] {
     const persistedVisibleIndex =
       typeof host?.getPersistedVisibleSessionTabIndex === 'function'
         ? host.getPersistedVisibleSessionTabIndex()
         : { present: false, sessionIds: [] }
-    return persistedVisibleIndex.present
-      ? persistedVisibleIndex.sessionIds
-      : collectSavedStructuredAgentSessionIds(
-          this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
-        )
+    if (persistedVisibleIndex.present) {
+      return persistedVisibleIndex.sessionIds
+    }
+    const profileIds = collectSavedStructuredAgentSessionIds(
+      this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+    )
+    // Unrecorded, the profile's chats join the tabs chats opened while the import was owed left.
+    // First: after a /clear the profile's chat would take their tab id, so seeds hit tabIdTaken.
+    return [...new Set([...persistedVisibleIndex.sessionIds, ...profileIds])]
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {

@@ -84,7 +84,12 @@ function seedStoredStatuses(
   const background: string[] = []
   for (const sessionId of listedIds) {
     const record = deps.openDeps.store.getRecord(sessionId)
-    if (!record || !deps.supportsRecord(record)) {
+    if (!record) {
+      // Its record may still be owed by the records import: the restore reads records when it runs.
+      background.push(sessionId)
+      continue
+    }
+    if (!deps.supportsRecord(record)) {
       continue
     }
     if (!byId.has(sessionId)) {

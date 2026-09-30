@@ -50,6 +50,7 @@ export type RestTestAdapter = {
     NonNullable<StructuredAgentSessionAdapter['acknowledgeSessionRelease']>
   >
   backgroundTaskState: Mock<NonNullable<StructuredAgentSessionAdapter['backgroundTaskState']>>
+  holdsDispatch: Mock<NonNullable<StructuredAgentSessionAdapter['holdsDispatch']>>
   readOptions: Mock<NonNullable<StructuredAgentSessionAdapter['readOptions']>>
   /** Called once per journal open, with the session id; replace its implementation to hold one. */
   historyFilePath: Mock<(sessionId: string) => Promise<string | null>>
@@ -178,6 +179,7 @@ export async function createRestTestRig(
     dispatch: vi.fn(async (input) => acceptedDispatch(input.sessionId)),
     acknowledgeSessionRelease: vi.fn(),
     backgroundTaskState: vi.fn(() => undefined),
+    holdsDispatch: vi.fn(() => false),
     readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } })),
     historyFilePath: vi.fn(async (_sessionId: string): Promise<string | null> => null)
   }
@@ -285,10 +287,8 @@ export async function restTestChat(
   }
   const { dispatch } = rig.adapter
   const dispatched = dispatch.mock.calls.length
-  const sent = await rig.host.send(
-    REST_TEST_CALLER,
-    restTestSend(options.message, attached.fence, sessionId)
-  )
+  const params = restTestSend(options.message, attached.fence, sessionId)
+  const sent = await rig.host.send(REST_TEST_CALLER, params)
   if (!sent.ok) {
     throw new Error(`send refused: ${sent.refusal.code}`)
   }

@@ -15,7 +15,7 @@ import {
   restTestChat,
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
-import { AgentSessionStoreTransactionQueue } from './agent-session-store-transaction-queue'
+import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -288,7 +288,7 @@ describe('listing chat tabs at startup', () => {
     await rig.boot()
     // Settled first, so a write here could only be the listing's own.
     await rig.host.reconcileRestartLeases()
-    const writes = vi.spyOn(AgentSessionStoreTransactionQueue.prototype, 'transact')
+    const writes = vi.spyOn(AgentSessionStoreTransactions.prototype, 'transact')
     const { listAll } = restartedRuntime()
 
     expect(await listAll()).toEqual(ids)
