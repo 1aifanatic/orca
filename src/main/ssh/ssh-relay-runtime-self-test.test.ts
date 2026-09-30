@@ -19,6 +19,7 @@ import {
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand: vi.fn() }))
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: All connection operations are mocked.
 const conn = {} as SshConnection
 const directories: string[] = []
 afterEach(() => {

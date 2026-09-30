@@ -31,6 +31,7 @@ vi.mock('./ssh-relay-runtime-self-test', async (importOriginal) => ({
   runPinnedRuntimeSelfTest: vi.fn()
 }))
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: All connection operations are mocked.
 const conn = {} as SshConnection
 const host = getRemoteHostPlatform('linux-x64')
 const plan: PinnedRelayPlan = {
