@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { deleteStructuredAgentLaunchRecord } from './structured-agent-session-launch-persistence'
 import {
   getPersistedStructuredAgentLaunchRecord,
@@ -54,4 +55,17 @@ export function markStructuredAgentSessionLaunchesPublished(
       markStructuredAgentSessionLaunchPublished(worktreeId, sessionId, executionHostId)
     }
   }
+}
+
+/** The structured chats a host's snapshots show, keyed as launch bookkeeping reads them. */
+export function publishedStructuredSessions(
+  snapshots: readonly RuntimeMobileSessionTabsResult[]
+): { worktreeId: string; sessionId: string }[] {
+  return snapshots.flatMap((snapshot) =>
+    snapshot.tabs.flatMap((tab) =>
+      tab.type === 'agent-session'
+        ? [{ worktreeId: snapshot.worktree, sessionId: tab.sessionId }]
+        : []
+    )
+  )
 }

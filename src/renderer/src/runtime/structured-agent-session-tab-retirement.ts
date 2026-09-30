@@ -1,11 +1,13 @@
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
-import { markStructuredAgentSessionLaunchesPublished } from '@/lib/structured-agent-session-launch-publication'
+import {
+  markStructuredAgentSessionLaunchesPublished,
+  publishedStructuredSessions
+} from '@/lib/structured-agent-session-launch-publication'
 import {
   hasStructuredAgentSessionLaunchCancellationTombstone,
   markStructuredAgentSessionLaunchCancelled
 } from '@/lib/structured-agent-session-launch-registry'
 import { toRuntimeExecutionHostId } from '../../../shared/execution-host'
-import { publishedStructuredSessions } from './paired-host-structured-session-census'
 import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { closeStructuredAgentSession } from './structured-agent-session-close'
 import { withLocalSessionTabCloseOwner } from './local-session-tab-close-owner'

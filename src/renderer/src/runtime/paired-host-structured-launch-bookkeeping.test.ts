@@ -43,7 +43,6 @@ import {
   writeStructuredAgentLaunchRecord
 } from '@/lib/structured-agent-session-launch-persistence'
 import { acceptPairedHostStructuredSessions } from './structured-agent-session-tab-retirement'
-import { readPairedHostStructuredSessionTabs } from './paired-host-structured-session-census'
 
 const SERVER: RuntimeClientTarget = { kind: 'environment', environmentId: 'server-1' }
 const SERVER_HOST = 'runtime:server-1'
@@ -76,12 +75,6 @@ function reload(): void {
   resetStructuredAgentLaunchCancellationForTests()
 }
 
-async function flush(): Promise<void> {
-  for (let i = 0; i < 5; i += 1) {
-    await Promise.resolve()
-  }
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
@@ -107,7 +100,8 @@ describe('a chat closed before its create landed on a paired server', () => {
     expect(mocks.closeSession).toHaveBeenCalledWith(SERVER, 'remote-chat')
   })
 
-  it('is cleaned up on the server after a reload, never on this machine', async () => {
+  // A tombstone guards a random session id, so it is inert once stale; its 30-day TTL ends it.
+  it('after a reload is closed on the server when the chat appears, never on this machine', () => {
     markStructuredAgentSessionLaunchCancelled(WORKTREE, 'remote-chat', SERVER_HOST)
     reload()
 
@@ -115,25 +109,11 @@ describe('a chat closed before its create landed on a paired server', () => {
     startStructuredAgentLaunchCancellationCleanup('local', localCleanup)
     expect(localCleanup).not.toHaveBeenCalled()
 
-    mocks.callRuntime.mockResolvedValue({ snapshots: [serverFrame([])], authoritative: true })
-    await readPairedHostStructuredSessionTabs('server-1')
+    const applied = acceptPairedHostStructuredSessions(serverFrame(), 'server-1')
+
+    expect(applied.tabs).toEqual([])
     expect(mocks.closeSession).toHaveBeenCalledWith(SERVER, 'remote-chat')
-    await flush()
-    // The census that ran beside the cleanup may predate it; the next one proves it gone.
-    expect(hasStructuredAgentSessionLaunchCancellationTombstone(WORKTREE, 'remote-chat')).toBe(true)
-    await readPairedHostStructuredSessionTabs('server-1')
-    expect(hasStructuredAgentSessionLaunchCancellationTombstone(WORKTREE, 'remote-chat')).toBe(
-      false
-    )
-  })
-
-  it('stays while the server cannot vouch for its whole inventory', async () => {
-    markStructuredAgentSessionLaunchCancelled(WORKTREE, 'remote-chat', SERVER_HOST)
-    mocks.callRuntime.mockResolvedValue({ snapshots: [serverFrame([])] })
-
-    await readPairedHostStructuredSessionTabs('server-1')
-    await readPairedHostStructuredSessionTabs('server-1')
-
+    expect(mocks.closeSession).not.toHaveBeenCalledWith({ kind: 'local' }, 'remote-chat')
     expect(hasStructuredAgentSessionLaunchCancellationTombstone(WORKTREE, 'remote-chat')).toBe(true)
   })
 })

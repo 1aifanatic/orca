@@ -19,7 +19,6 @@ import {
 } from './state'
 import { applyWebSessionTabsStorePatch } from './store-patch'
 import { isHostMirroredWorktree } from './visibility-types'
-import { settlePairedHostStructuredLaunchCancellations } from '../paired-host-structured-session-census'
 import type { VisibilityResumeCoordinator } from './visibility-resume-coordinator'
 
 export type GlobalSessionInventoryEventArgs = {
@@ -50,9 +49,6 @@ export function handleGlobalSessionInventoryEvent({
   awaitingVisibilityResumeInventory,
   coordinator
 }: GlobalSessionInventoryEventArgs): void {
-  if (event.authoritative === true) {
-    settlePairedHostStructuredLaunchCancellations(environmentId)
-  }
   const skipUnchangedResumeWork = awaitingVisibilityResumeInventory.value && !replayed
   awaitingVisibilityResumeInventory.value = false
   const unchanged = event.snapshots.map((snapshot) => {
