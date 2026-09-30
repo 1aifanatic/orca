@@ -54,10 +54,13 @@ const EMPTY_TAB_STRIP_OVERFLOW_STATE: TabStripScrollMetrics = {
 
 export function useTabStripOverflowNavigation({
   activeVisibleTabId,
+  activeDockSlotId,
   layoutKey,
   worktreeId
 }: {
   activeVisibleTabId: string | null
+  /** The slot drawn active; a client-hosted row can take it without `activeVisibleTabId` changing. */
+  activeDockSlotId: string | null
   layoutKey: string
   worktreeId: string
 }): {
@@ -71,6 +74,7 @@ export function useTabStripOverflowNavigation({
   const stickToEndRef = useRef(false)
   const tabClosedThisCommitRef = useRef(false)
   const activeTabIdRef = useRef<string | null>(null)
+  const hoverDeferredRevealIdsRef = useRef<Set<string>>(new Set())
   const scrollAnchorRef = useRef<{
     activeTabId: string | null
     anchor: TabStripScrollAnchor | null
@@ -157,6 +161,34 @@ export function useTabStripOverflowNavigation({
     }
   }, [recordScrollAnchor, updateTabStripOverflowState])
 
+  useEffect(() => {
+    const el = tabStripRef.current
+    if (!el) {
+      return
+    }
+    const onPointerLeave = (): void => {
+      const deferred = hoverDeferredRevealIdsRef.current
+      if (deferred.size === 0) {
+        return
+      }
+      hoverDeferredRevealIdsRef.current = new Set()
+      if (isTabStripPointerGestureActive()) {
+        return
+      }
+      const knownIds = new Set([...readTabStripSlotIds(el)].filter((id) => !deferred.has(id)))
+      const offscreenOpened = findOffscreenOpenedTabStripSlot(el, knownIds)
+      if (!offscreenOpened) {
+        return
+      }
+      revealTabStripSlot(el, offscreenOpened)
+      stickToEndRef.current = isTabStripScrolledToEnd(el)
+      updateTabStripOverflowState()
+      recordScrollAnchor()
+    }
+    el.addEventListener('pointerleave', onPointerLeave)
+    return () => el.removeEventListener('pointerleave', onPointerLeave)
+  }, [recordScrollAnchor, updateTabStripOverflowState])
+
   // Why a ref set first: the growth effect below must see this commit's active tab without re-running on every tab switch.
   useLayoutEffect(() => {
     activeTabIdRef.current = activeVisibleTabId
@@ -172,6 +204,7 @@ export function useTabStripOverflowNavigation({
     const tabIds = readTabStripSlotIds(strip)
     prevStripRef.current = { worktreeId, tabIds }
     if (!prev || prev.worktreeId !== worktreeId) {
+      hoverDeferredRevealIdsRef.current = new Set()
       updateTabStripOverflowState()
       return
     }
@@ -198,12 +231,18 @@ export function useTabStripOverflowNavigation({
         if (recorded.anchor) {
           restoreTabStripScrollAnchor(strip, recorded.anchor)
         }
-        // Why not under the pointer: the tab it is over would slide away before the click lands.
-        const offscreenOpened = strip.matches(':hover')
-          ? undefined
-          : findOffscreenOpenedTabStripSlot(strip, prev.tabIds)
-        if (offscreenOpened) {
-          revealTabStripSlot(strip, offscreenOpened)
+        // Why wait for the pointer to leave: the tab it is over would slide away before the click lands.
+        if (strip.matches(':hover')) {
+          for (const id of tabIds) {
+            if (!prev.tabIds.has(id)) {
+              hoverDeferredRevealIdsRef.current.add(id)
+            }
+          }
+        } else {
+          const offscreenOpened = findOffscreenOpenedTabStripSlot(strip, prev.tabIds)
+          if (offscreenOpened) {
+            revealTabStripSlot(strip, offscreenOpened)
+          }
         }
         stickToEndRef.current = isTabStripScrolledToEnd(strip)
       } else if (isLastTabStripTab(strip, activeTabIdRef.current)) {
@@ -250,6 +289,11 @@ export function useTabStripOverflowNavigation({
     requestAnimationFrame(updateTabStripOverflowState)
     recordScrollAnchor()
   }, [activeVisibleTabId, recordScrollAnchor, updateTabStripOverflowState])
+
+  // Why: moving the dock between slots shifts which edge it is drawn at with no scroll or resize.
+  useLayoutEffect(() => {
+    updateTabStripOverflowState()
+  }, [activeDockSlotId, updateTabStripOverflowState])
 
   // Why every render: the close flag belongs to the commit that set it, not a later tab switch.
   useLayoutEffect(() => {

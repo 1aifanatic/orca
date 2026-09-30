@@ -64,8 +64,15 @@ function TabBarInner(props: TabBarProps): React.JSX.Element {
     }
     runtime.pinTab(item.unifiedTabId)
   }
+  // Read here, not just where the rows render: the real tabs have to know when a row took over.
+  const activeClientHostedBrowserRowId = useActiveClientHostedBrowserRowId({
+    worktreeId,
+    groupId: runtime.resolvedGroupId,
+    groupActiveTabId: props.groupActiveTabId ?? null
+  })
   const tabStripNavigation = useTabStripOverflowNavigation({
     activeVisibleTabId: itemProjection.activeVisibleTabId,
+    activeDockSlotId: activeClientHostedBrowserRowId ?? itemProjection.activeVisibleTabId,
     layoutKey: [
       itemProjection.tabStripLayoutKey,
       ...(props.clientHostedBrowserRows ?? []).map((row) => row.browserPageId)
@@ -75,12 +82,6 @@ function TabBarInner(props: TabBarProps): React.JSX.Element {
   const tabStripDragScroll = useTabStripDragScrollHandlers(tabStripNavigation.scrollTabStrip, {
     start: tabStripNavigation.tabStripOverflowState.canScrollStart,
     end: tabStripNavigation.tabStripOverflowState.canScrollEnd
-  })
-  // Read here, not just where the rows render: the real tabs have to know when a row took over.
-  const activeClientHostedBrowserRowId = useActiveClientHostedBrowserRowId({
-    worktreeId,
-    groupId: runtime.resolvedGroupId,
-    groupActiveTabId: props.groupActiveTabId ?? null
   })
 
   return renderTabBarSurface({

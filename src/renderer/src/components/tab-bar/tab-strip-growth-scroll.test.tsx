@@ -85,14 +85,17 @@ const NO_HOSTED_ROWS: string[] = []
 function Strip({
   tabs,
   active,
-  hostedRows = NO_HOSTED_ROWS
+  hostedRows = NO_HOSTED_ROWS,
+  activeHostedRow = null
 }: {
   tabs: string[]
   active: string
   hostedRows?: string[]
+  activeHostedRow?: string | null
 }): React.JSX.Element {
   const navigation = useTabStripOverflowNavigation({
     activeVisibleTabId: active,
+    activeDockSlotId: activeHostedRow ?? active,
     layoutKey: [...tabs, ...hostedRows].join(','),
     worktreeId: 'wt-1'
   })
@@ -107,11 +110,15 @@ function Strip({
           key={id}
           data-tab-id={id}
           data-tab-strip-slot={id}
-          data-active-tab-dock={id === active ? '' : undefined}
+          data-active-tab-dock={id === active && !activeHostedRow ? '' : undefined}
         />
       ))}
       {hostedRows.map((id) => (
-        <div key={id} data-tab-strip-slot={id} />
+        <div
+          key={id}
+          data-tab-strip-slot={id}
+          data-active-tab-dock={id === activeHostedRow ? '' : undefined}
+        />
       ))}
     </div>
   )
@@ -119,8 +126,8 @@ function Strip({
 
 const TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
 
-function mountScrolled(active: string, scrollLeft: number) {
-  const view = render(<Strip tabs={TABS} active={active} />)
+function mountScrolled(active: string, scrollLeft: number, hostedRows?: string[]) {
+  const view = render(<Strip tabs={TABS} active={active} hostedRows={hostedRows} />)
   const strip = view.container.querySelector<HTMLElement>('[data-strip]')!
   act(() => {
     strip.scrollLeft = scrollLeft
@@ -195,6 +202,20 @@ describe('tab strip scroll when tabs are added', () => {
     expect(tabX(strip, 'J')).toBe(200)
   })
 
+  it('reveals a background tab that opened under the pointer once the pointer leaves', () => {
+    const { strip, rerender } = mountScrolled('J', 700)
+    const matches = Element.prototype.matches.bind(strip)
+    Object.defineProperty(strip, 'matches', {
+      value: (selector: string) => selector === ':hover' || matches(selector)
+    })
+    rerender(<Strip tabs={[...TABS, 'N']} active="J" />)
+    act(() => {
+      strip.dispatchEvent(new Event('pointerleave'))
+    })
+    expect(tabX(strip, 'J')).toBe(100)
+    expect(tabX(strip, 'N')).toBe(200)
+  })
+
   it('reveals a background tab that lands far from the active tab, which docks', () => {
     const { strip, rerender } = mountScrolled('B', 0)
     rerender(<Strip tabs={[...TABS, 'N']} active="B" />)
@@ -246,6 +267,15 @@ describe('tab strip with a docked active tab', () => {
     expect(mountScrolled('H', 0).strip.dataset.dock).toBe('end')
     cleanup()
     expect(mountScrolled('E', 300).strip.dataset.dock).toBeUndefined()
+  })
+
+  it('reports the dock edge when a client-hosted row takes and gives back the active state', () => {
+    const { strip, rerender } = mountScrolled('E', 300, ['remote'])
+    expect(strip.dataset.dock).toBeUndefined()
+    rerender(<Strip tabs={TABS} hostedRows={['remote']} activeHostedRow="remote" active="E" />)
+    expect(strip.dataset.dock).toBe('end')
+    rerender(<Strip tabs={TABS} hostedRows={['remote']} active="E" />)
+    expect(strip.dataset.dock).toBeUndefined()
   })
 
   it('reveals a foreground tab opened next to a docked active tab', () => {
