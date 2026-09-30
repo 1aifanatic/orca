@@ -1,5 +1,4 @@
 import type { CodexRateLimitResetOutcome, ProviderRateLimits } from '../../shared/rate-limit-types'
-import { spawn } from 'node:child_process'
 import { isCodexAuthError } from '../../shared/codex-auth-errors'
 import { buildWslExecArgs, buildWslLoginShellCommand } from '../../shared/wsl-login-shell-command'
 import { parseWslUncPath } from '../../shared/wsl-paths'
@@ -14,7 +13,7 @@ import {
 } from '../codex-cli/codex-home-process-lock'
 import { isCodexStateDbBackfillPending } from '../codex/codex-state-db'
 import { startCodexStateDbBackfillRecoveryInBackground } from '../codex/codex-state-db-backfill-recovery'
-import { getSpawnArgsForWindows } from '../win32-utils'
+import { spawnProcess } from '../../shared/child-process/run-process'
 import { probeCodexAuthPresence } from './codex-auth-presence'
 import {
   fetchCodexRateLimitsViaBackend,
@@ -100,19 +99,17 @@ async function fetchViaRpc(options?: CodexRateLimitFetchOptions): Promise<Provid
     ? buildWslCodexCommand(options.codexHomePath, codexArgs)
     : null
   const codexCommand = wslCodex ? 'codex' : resolveCodexCommand()
-  const { spawnCmd, spawnArgs } = wslCodex
-    ? { spawnCmd: wslCodex.command, spawnArgs: wslCodex.args }
-    : getSpawnArgsForWindows(codexCommand, codexArgs)
-  const spawnOptions = {
-    stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'],
+  // Why the bare CLI: spawnProcess resolves an npm `codex.cmd` shim past cmd.exe itself.
+  const child = spawnProcess({
+    program: wslCodex ? wslCodex.command : codexCommand,
+    args: wslCodex ? wslCodex.args : codexArgs,
+    stdio: ['pipe', 'pipe', 'pipe'],
     cwd: resolveHiddenRateLimitPtyCwd(),
-    windowsHide: true,
     env: withCliRuntimeOnPath(codexCommand, {
       ...(wslCodex ? processEnvWithoutCodexHome() : process.env),
       ...(options?.codexHomePath && !wslCodex ? { CODEX_HOME: options.codexHomePath } : {})
     })
-  }
-  const child = spawn(spawnCmd, spawnArgs, spawnOptions)
+  })
   return readCodexRateLimitsViaRpc({
     child: child as CodexRpcRateLimitChild,
     codexCommand,
