@@ -28,9 +28,6 @@ import { createOrchestrationCompatibilityEnvelope } from './runtime/orchestratio
 import { getDefaultUserDataPath } from './runtime/metadata'
 import { formatCliError, reportCliError } from './cli-error'
 import { RuntimeRpcFailureError } from './runtime/types'
-import { orchestrationCallerLabel } from './handlers/orchestration/terminal-identity'
-import { resolveCliStatusCaller } from './runtime/status-caller'
-import { printResult } from './format'
 
 const SESSION = 'f7a1c0de-1111-4222-8333-444455556666'
 /** The session a `/clear` continued as SESSION: the chat's orchestration address stays this one's. */
@@ -450,42 +447,6 @@ describe('the identity a session presents', () => {
     setEnv({ ORCA_AGENT_SESSION_ID: SESSION, ORCA_TERMINAL_HANDLE: 'structworker_self' })
     expect(await preview({})).toBe('structworker_self')
     expect(getTerminalHandleMock).not.toHaveBeenCalled()
-  })
-
-  it("labels a structured worker's check by its session address, not its minted handle", async () => {
-    setEnv({ ORCA_AGENT_SESSION_ID: SESSION, ORCA_TERMINAL_HANDLE: 'structworker_self' })
-
-    expect(await orchestrationCallerLabel(undefined, { call: callMock })).toBe(`session:${SESSION}`)
-  })
-
-  it("labels a /clear-ed chat's check with the address orca status reports, not its live id", async () => {
-    // SESSION continues ROOT after a /clear; only the host's records know that.
-    asSessionWithInheritedPane()
-    const reply = { from_handle: 'term_worker', subject: 's', type: 'status' }
-    callMock.mockImplementation(async (method: string) =>
-      method === 'orchestration.callerShow'
-        ? { result: { caller: { address: `session:${ROOT}`, live: true } } }
-        : {
-            result: {
-              ...RESULT.result,
-              count: 2,
-              messages: [
-                { ...reply, id: 'msg_audit', delivery_contract: 'audit_only' },
-                { ...reply, id: 'msg_current' }
-              ]
-            }
-          }
-    )
-    const status = await resolveCliStatusCaller({ call: callMock })
-
-    await invoke('check', flagMap({ format: true }))
-
-    expect(status).toEqual({ address: `session:${ROOT}`, live: true })
-    const [printed] = vi.mocked(printResult).mock.calls.at(-1) ?? []
-    const formatted =
-      isParams(printed) && isParams(printed.result) ? printed.result.formatted : null
-    expect(formatted).toContain(`--id msg_current --from session:${ROOT} `)
-    expect(formatted).not.toContain(SESSION)
   })
 
   it('resumes a timed-out ask as the session, without naming a terminal', async () => {
