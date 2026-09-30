@@ -5,6 +5,26 @@ import type {
 } from '../../shared/runtime-types'
 import { isTerminalLeafId } from '../../shared/stable-pane-id'
 
+/** The surface a retention decision is about; all three must match for the host to keep its PTY. */
+export type RuntimePaneIdentity = {
+  paneKey: string
+  worktreeId: string
+  tabId: string
+}
+
+export function makeRuntimePaneIdentity(
+  leaf: { worktreeId: string; tabId: string },
+  paneKey: string
+): RuntimePaneIdentity {
+  return { paneKey, worktreeId: leaf.worktreeId, tabId: leaf.tabId }
+}
+
+/** Resolves the host-owned PTY a pane may keep, or null when nothing may be retained. */
+export type RuntimeOwnedPtyResolver = (
+  pane: RuntimePaneIdentity,
+  currentPtyId: string | null
+) => string | null
+
 export function collectRendererPublishedEmptyTerminalPanes(
   graph: Pick<RuntimeSyncWindowGraph, 'mobileSessionTabs' | 'unchangedMobileSessionWorktrees'>,
   snapshots: ReadonlyMap<string, RuntimeMobileSessionTabsSnapshot>,
@@ -28,17 +48,15 @@ export function collectRendererPublishedEmptyTerminalPanes(
       }
       if (tab.ptyId) {
         boundPtyIds.add(tab.ptyId)
-      } else {
-        if (isTerminalLeafId(tab.leafId)) {
-          emptyPaneWorktrees.set(`${tab.parentTabId}::${tab.leafId}`, worktreeId)
-        }
+      } else if (isTerminalLeafId(tab.leafId)) {
+        emptyPaneWorktrees.set(`${tab.parentTabId}::${tab.leafId}`, worktreeId)
       }
     }
   }
   return { emptyPaneWorktrees, boundPtyIds }
 }
 
-export function indexRuntimeOwnedPanePtys(
+function indexRuntimeOwnedPanePtys(
   ptys: Iterable<RuntimePtyWorktreeRecord>,
   isExited: (ptyId: string) => boolean
 ): Map<string, RuntimePtyWorktreeRecord | null> {
@@ -53,77 +71,51 @@ export function indexRuntimeOwnedPanePtys(
   return owners
 }
 
-export function resolveRetainedRuntimePtyId(
-  paneKey: string,
-  worktreeId: string,
-  tabId: string,
-  currentPtyId: string | null,
-  incomingPtyIds: ReadonlySet<string>,
-  hostOwnedPtys: ReadonlyMap<string, RuntimePtyWorktreeRecord | null>
-): string | null {
-  const pty = hostOwnedPtys.get(paneKey)
-  return pty?.worktreeId === worktreeId &&
-    pty.tabId === tabId &&
-    (!currentPtyId || currentPtyId === pty.ptyId) &&
-    !incomingPtyIds.has(pty.ptyId)
-    ? pty.ptyId
-    : null
-}
-
 export function createRuntimeOwnedPtyResolver(
   ptys: Iterable<RuntimePtyWorktreeRecord>,
   isExited: (ptyId: string) => boolean,
   incomingPtyIds: ReadonlySet<string>
-): (
-  paneKey: string,
-  worktreeId: string,
-  tabId: string,
-  currentPtyId: string | null
-) => string | null {
+): RuntimeOwnedPtyResolver {
   const hostOwnedPtys = indexRuntimeOwnedPanePtys(ptys, isExited)
-  return (paneKey, worktreeId, tabId, currentPtyId) =>
-    resolveRetainedRuntimePtyId(
-      paneKey,
-      worktreeId,
-      tabId,
-      currentPtyId,
-      incomingPtyIds,
-      hostOwnedPtys
-    )
+  return (pane, currentPtyId) => {
+    const pty = hostOwnedPtys.get(pane.paneKey)
+    // A pane claimed elsewhere in this graph, or already bound to a different PTY, is not retainable.
+    return pty?.worktreeId === pane.worktreeId &&
+      pty.tabId === pane.tabId &&
+      (!currentPtyId || currentPtyId === pty.ptyId) &&
+      !incomingPtyIds.has(pty.ptyId)
+      ? pty.ptyId
+      : null
+  }
 }
 
 export function chooseProjectedPtyId(
   incomingPtyId: string | null,
   existingPtyId: string | null | undefined,
   preserveReload: boolean,
-  paneKey: string,
-  worktreeId: string,
-  tabId: string,
-  resolver: ReturnType<typeof createRuntimeOwnedPtyResolver>
+  pane: RuntimePaneIdentity,
+  resolver: RuntimeOwnedPtyResolver
 ): string | null {
-  const owned = resolver(paneKey, worktreeId, tabId, incomingPtyId)
-  return (
-    incomingPtyId ??
-    (owned && (!existingPtyId || existingPtyId === owned)
-      ? owned
-      : preserveReload
-        ? (existingPtyId ?? null)
-        : null)
-  )
+  if (incomingPtyId) {
+    return incomingPtyId
+  }
+  const owned = resolver(pane, null)
+  if (owned && (!existingPtyId || existingPtyId === owned)) {
+    return owned
+  }
+  return preserveReload ? (existingPtyId ?? null) : null
 }
 
 export function shouldPreservePublishedRuntimePane(
-  paneKey: string,
-  worktreeId: string,
-  tabId: string,
+  pane: RuntimePaneIdentity,
   ptyId: string,
   publishedWorktree: string | undefined,
   publishedPtyIds: ReadonlySet<string>,
-  resolver: ReturnType<typeof createRuntimeOwnedPtyResolver>
+  resolver: RuntimeOwnedPtyResolver
 ): boolean {
   return (
-    publishedWorktree === worktreeId &&
+    publishedWorktree === pane.worktreeId &&
     !publishedPtyIds.has(ptyId) &&
-    resolver(paneKey, worktreeId, tabId, ptyId) !== null
+    resolver(pane, ptyId) !== null
   )
 }
