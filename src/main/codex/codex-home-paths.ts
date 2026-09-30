@@ -49,8 +49,11 @@ export function getOrcaManagedCodexHomePath(): string {
 }
 
 /** Config files an Orca-launched local Codex reads trust from, in the hook installer's lock order. */
-export function getLocalCodexTrustConfigFiles(launchCodexHome?: string): string[] {
-  const homes = [getOrcaManagedCodexHomePath(), launchCodexHome, getSystemCodexHomePath()]
+export function getLocalCodexTrustConfigFiles(
+  agentHome: string,
+  launchCodexHome?: string
+): string[] {
+  const homes = [getOrcaManagedCodexHomePath(), launchCodexHome, join(agentHome, '.codex')]
   const seen = new Set<string>()
   const files: string[] = []
   for (const home of homes) {

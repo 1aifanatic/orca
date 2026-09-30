@@ -230,6 +230,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     mergeSystemCodexConfigIntoRuntime(
       runtimeConfig,
       systemConfig,
+      sourceConfigDir,
       promotionPlan.mirroredMcpServers,
       promotionPlan.mirroredMcpServerRoot
     ),

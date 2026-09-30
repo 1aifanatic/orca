@@ -52,6 +52,7 @@ export function syncSystemConfigIntoLegacySharedCodexHome(
         ? mergeSystemCodexConfigIntoRuntime(
             runtimeConfigBeforeMirror,
             prepareSystemConfigForRuntimeMirror(rawSystemConfig, sourceConfigDir),
+            sourceConfigDir,
             new Set(),
             true
           )

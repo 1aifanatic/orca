@@ -44,9 +44,9 @@ describe('project trust edits find the existing table in any spelling (#22592)',
     })
   })
 
-  it('edits a quoted "trust_level" key in place instead of adding a second one', () => {
+  it('rewrites a quoted "trust_level" key in place instead of adding a second one', () => {
     const existing = '[projects."/work/repo"]\n"trust_level" = "untrusted" # mine\n'
-    expect(trust(existing)).toBe('[projects."/work/repo"]\n"trust_level" = "trusted" # mine\n')
+    expect(trust(existing)).toBe('[projects."/work/repo"]\ntrust_level = "trusted" # mine\n')
   })
 
   it('finds an escaped-quote path', () => {
@@ -120,9 +120,9 @@ describe('repair of duplicates earlier Orca builds wrote (#22592)', () => {
       ''
     ].join('\n')
     expect(repairOrcaCodexConfigDuplicates(broken)).toBe(
-      '["projects"."/work/repo"]\ntrust_level = "trusted"\n\n'
+      '["projects"."/work/repo"]\ntrust_level = "trusted"\n'
     )
-    expect(trust(broken)).toBe('["projects"."/work/repo"]\ntrust_level = "trusted"\n\n')
+    expect(trust(broken)).toBe('["projects"."/work/repo"]\ntrust_level = "trusted"\n')
   })
 
   it('keeps the user’s first answer when Orca appended a different one', () => {
@@ -133,9 +133,10 @@ describe('repair of duplicates earlier Orca builds wrote (#22592)', () => {
     })
   })
 
-  it('moves Orca’s trust line into the user’s table when that table had none', () => {
+  it('keeps the user’s table even when Orca’s copy held a trust line it lacks', () => {
     const broken = '["projects"."/w"]\nmodel = "o3"\n\n[projects."/w"]\ntrust_level = "trusted"\n'
-    expect(projectsOf(repairOrcaCodexConfigDuplicates(broken))).toEqual({
+    expect(projectsOf(repairOrcaCodexConfigDuplicates(broken))).toEqual({ '/w': { model: 'o3' } })
+    expect(projectsOf(trust(broken, '/w'))).toEqual({
       '/w': { trust_level: 'trusted', model: 'o3' }
     })
   })
@@ -252,11 +253,10 @@ describe('review follow-ups for the checked writer', () => {
     })
   })
 
-  it('keeps Orca’s trust line when the user’s empty table sits directly above Orca’s', () => {
+  it('keeps the user’s empty table over Orca’s copy directly below it', () => {
     const broken = '["projects"."/w"]\n[projects."/w"]\ntrust_level = "trusted"\n'
-    expect(repairOrcaCodexConfigDuplicates(broken)).toBe(
-      '["projects"."/w"]\ntrust_level = "trusted"\n'
-    )
+    expect(repairOrcaCodexConfigDuplicates(broken)).toBe('["projects"."/w"]\n')
+    expect(trust(broken, '/w')).toBe('["projects"."/w"]\ntrust_level = "trusted"\n')
   })
 
   it('edits a file holding integers past 2^53, which Codex reads as 64-bit', () => {

@@ -32,15 +32,6 @@ vi.mock('electron', () => ({
   }
 }))
 
-vi.mock('node:os', async () => {
-  // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()
-  const actual = await vi.importActual<typeof import('node:os')>('node:os')
-  return {
-    ...actual,
-    homedir: () => testState.fakeHomeDir
-  }
-})
-
 const {
   markAntigravityWorkspaceTrusted,
   markCodexProjectTrusted,
@@ -85,7 +76,7 @@ describe('markCursorWorkspaceTrusted', () => {
   it('writes ~/.cursor/projects/<slug>/.workspace-trusted with the cwd payload', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-cursor-ws-'))
     try {
-      markCursorWorkspaceTrusted(workspace)
+      markCursorWorkspaceTrusted(workspace, testState.fakeHomeDir)
       const projectsDir = join(testState.fakeHomeDir, '.cursor', 'projects')
       const slugDirs = readdirSync(projectsDir)
       expect(slugDirs.length).toBe(1)
@@ -102,12 +93,12 @@ describe('markCursorWorkspaceTrusted', () => {
   it('is idempotent — re-marking the same workspace does not overwrite trustedAt', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-cursor-ws-'))
     try {
-      markCursorWorkspaceTrusted(workspace)
+      markCursorWorkspaceTrusted(workspace, testState.fakeHomeDir)
       const projectsDir = join(testState.fakeHomeDir, '.cursor', 'projects')
       const slugDirs = readdirSync(projectsDir)
       const trustFile = join(projectsDir, slugDirs[0], '.workspace-trusted')
       const firstPayload = readFileSync(trustFile, 'utf-8')
-      markCursorWorkspaceTrusted(workspace)
+      markCursorWorkspaceTrusted(workspace, testState.fakeHomeDir)
       const secondPayload = readFileSync(trustFile, 'utf-8')
       expect(secondPayload).toBe(firstPayload)
     } finally {
@@ -120,7 +111,7 @@ describe('markCopilotFolderTrusted', () => {
   it('appends the workspace to trustedFolders in ~/.copilot/config.json', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-copilot-ws-'))
     try {
-      markCopilotFolderTrusted(workspace)
+      markCopilotFolderTrusted(workspace, testState.fakeHomeDir)
       const configPath = join(testState.fakeHomeDir, '.copilot', 'config.json')
       expect(existsSync(configPath)).toBe(true)
       const parsed = JSON.parse(readFileSync(configPath, 'utf-8'))
@@ -144,7 +135,7 @@ describe('markCopilotFolderTrusted', () => {
           trustedFolders: [realpath]
         })
       )
-      markCopilotFolderTrusted(workspace)
+      markCopilotFolderTrusted(workspace, testState.fakeHomeDir)
       const parsed = JSON.parse(
         readFileSync(join(testState.fakeHomeDir, '.copilot', 'config.json'), 'utf-8')
       )
@@ -160,7 +151,7 @@ describe('markAntigravityWorkspaceTrusted', () => {
   it('appends the workspace to trustedWorkspaces in ~/.gemini/antigravity-cli/settings.json', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-agy-ws-'))
     try {
-      markAntigravityWorkspaceTrusted(workspace)
+      markAntigravityWorkspaceTrusted(workspace, testState.fakeHomeDir)
       const configPath = join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json')
       expect(existsSync(configPath)).toBe(true)
       const parsed = JSON.parse(readFileSync(configPath, 'utf-8'))
@@ -187,7 +178,7 @@ describe('markAntigravityWorkspaceTrusted', () => {
           trustedWorkspaces: [realpath]
         })
       )
-      markAntigravityWorkspaceTrusted(workspace)
+      markAntigravityWorkspaceTrusted(workspace, testState.fakeHomeDir)
       const parsed = JSON.parse(
         readFileSync(
           join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json'),
@@ -209,8 +200,8 @@ describe('markAntigravityWorkspaceTrusted', () => {
     const child = join(parent, 'child-worktree')
     try {
       mkdirSync(child, { recursive: true })
-      markAntigravityWorkspaceTrusted(parent)
-      markAntigravityWorkspaceTrusted(child)
+      markAntigravityWorkspaceTrusted(parent, testState.fakeHomeDir)
+      markAntigravityWorkspaceTrusted(child, testState.fakeHomeDir)
       const parsed = JSON.parse(
         readFileSync(
           join(testState.fakeHomeDir, '.gemini', 'antigravity-cli', 'settings.json'),
@@ -238,7 +229,10 @@ describe('markCodexProjectTrusted', () => {
     })
     try {
       const held = runExclusivelyForCodexTrustConfig(configPath, () => grantHoldingTheFile)
-      const marked = markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
+      const marked = markCodexProjectTrusted(
+        workspace,
+        getLocalCodexTrustConfigFiles(testState.fakeHomeDir)
+      )
       await Promise.resolve()
       expect(existsSync(configPath)).toBe(false)
 
@@ -305,7 +299,7 @@ describe('markCodexProjectTrusted', () => {
     }
 
     async function expectWorkspaceTrusted(workspace: string): Promise<void> {
-      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles(testState.fakeHomeDir))
       const runtimeHome = join(testState.userDataDir, 'codex-runtime-home', 'home')
       const [system, runtime] = [
         join(testState.fakeHomeDir, '.codex', 'config.toml'),
@@ -399,7 +393,7 @@ describe('markCodexProjectTrusted', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
     try {
       const realpath = realpathSync.native(workspace)
-      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles(testState.fakeHomeDir))
       const configPath = join(testState.fakeHomeDir, '.codex', 'config.toml')
       const runtimeConfigPath = join(
         testState.userDataDir,
@@ -437,7 +431,7 @@ describe('markCodexProjectTrusted', () => {
       writeFileSync(join(homes[brokenHome], 'config.toml'), brokenConfig, 'utf-8')
 
       await expect(
-        markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
+        markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles(testState.fakeHomeDir))
       ).rejects.toMatchObject({
         name: 'CodexConfigTomlEditRefusedError',
         reason: 'input-invalid'
@@ -485,7 +479,7 @@ describe('markCodexProjectTrusted', () => {
         'utf-8'
       )
 
-      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles())
+      await markCodexProjectTrusted(workspace, getLocalCodexTrustConfigFiles(testState.fakeHomeDir))
 
       const written = readFileSync(join(codexDir, 'config.toml'), 'utf-8')
       const runtimeWritten = readFileSync(join(runtimeCodexDir, 'config.toml'), 'utf-8')

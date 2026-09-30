@@ -28,13 +28,16 @@ export function prepareSystemConfigForRuntimeMirror(
   )
 }
 
-// Why: trust blocks reference a hooks.json path, so system-home hook trust
-// entries are not valid in a fresh runtime CODEX_HOME until install remaps
-// them. Also seeds WSL runtime homes, where systemConfigDir must be the
-// Linux-side ~/.codex the config resolves against inside the distro.
+// Why: install re-keys ~/.codex user-hook trust; plugin and project hook trust carries as-is.
+// Also seeds WSL runtime homes, where systemConfigDir must be the Linux-side
+// ~/.codex the config resolves against inside the distro.
 export function prepareSystemConfigForFreshRuntimeMirror(
   config: string,
   systemConfigDir: string
 ): string {
-  return stripRuntimeOwnedTomlSections(prepareSystemConfigForRuntimeMirror(config, systemConfigDir))
+  return stripRuntimeOwnedTomlSections(
+    prepareSystemConfigForRuntimeMirror(config, systemConfigDir),
+    new Set(),
+    { systemHomeDir: systemConfigDir, runtimeHookTrustKeys: new Set() }
+  )
 }

@@ -14,12 +14,13 @@ import {
   tomlValuesEqual,
   type TomlTable
 } from './codex-config-toml-document'
+import { repairOrcaDuplicateTrustTables } from './config-toml-project-duplicate-repair'
 
 // Why (#22592): earlier Orca builds appended `[projects."<p>"]` beside Codex's
 // `["projects"."<p>"]`, inserted a bare `trust_level` beside `"trust_level"`,
 // and mirrored a second `[hooks.state]`. TOML rejects each, so every `codex`
-// run failed. Only those exact shapes, or duplicates that carry no value of
-// their own, are removed; the user's first definition always wins.
+// run failed. Orca's exact trust copies go (the user's table wins), then any
+// duplicate that carries no value of its own; nothing else is removed.
 
 type TextEdit = {
   start: number
@@ -28,8 +29,6 @@ type TextEdit = {
   /** Assignments this edit deletes whose value must survive elsewhere at the same path. */
   removes?: readonly TomlAssignmentLine[]
 }
-
-const ORCA_TRUST_LINE = /^trust_level = "(?:trusted|untrusted)"$/
 
 export function repairOrcaCodexConfigDuplicates(content: string): string {
   return repairOrcaCodexConfigDuplicatesWithRemovals(content).content
@@ -48,14 +47,11 @@ export type CodexConfigRepair = {
 }
 
 export function repairOrcaCodexConfigDuplicatesWithRemovals(content: string): CodexConfigRepair {
-  const lines = scanTomlStructure(content)
-  const blocks = getTomlTableBlocks(lines)
+  // Why: returns the content unchanged unless every Orca-shaped trust duplicate could go.
+  const trustRepaired = repairOrcaDuplicateTrustTables(content)
   const edits: TextEdit[] = []
-  for (const block of blocks) {
-    collectDuplicateTrustLevelEdits(block, edits)
-  }
-  collectDuplicateTableEdits(blocks, edits)
-  const repaired = applyTextEdits(content, edits)
+  collectDuplicateTableEdits(getTomlTableBlocks(scanTomlStructure(trustRepaired)), edits)
+  const repaired = applyTextEdits(trustRepaired, edits)
   const removed = edits.flatMap((edit) => edit.removes ?? [])
   const parsed = parseCodexConfigToml(repaired)
   if (!parsed.ok) {
@@ -63,7 +59,7 @@ export function repairOrcaCodexConfigDuplicatesWithRemovals(content: string): Co
   }
   return removedValuesSurviveIn(parsed.table, removed)
     ? { content: repaired, unverifiedRemovals: [] }
-    : { content, unverifiedRemovals: [] }
+    : { content: trustRepaired, unverifiedRemovals: [] }
 }
 
 /** A repair may not lose a value: each removed assignment must still read the same at its path. */
@@ -84,44 +80,8 @@ export function removedValuesSurviveIn(
   })
 }
 
-function isProjectTable(block: TomlTableBlock): boolean {
-  return (
-    !block.header.isArray &&
-    block.header.segments.length === 2 &&
-    block.header.segments[0] === 'projects'
-  )
-}
-
 function assignments(block: TomlTableBlock): TomlAssignmentLine[] {
   return block.body.filter((line): line is TomlAssignmentLine => line.kind === 'assignment')
-}
-
-function isOrcaTrustLine(line: TomlAssignmentLine): boolean {
-  return ORCA_TRUST_LINE.test(line.text.trim())
-}
-
-function trustLevelLines(block: TomlTableBlock): TomlAssignmentLine[] {
-  return assignments(block).filter((line) => tomlKeyPathsEqual(line.keySegments, ['trust_level']))
-}
-
-function collectDuplicateTrustLevelEdits(block: TomlTableBlock, edits: TextEdit[]): void {
-  if (!isProjectTable(block)) {
-    return
-  }
-  const trustLines = trustLevelLines(block)
-  if (trustLines.length < 2) {
-    return
-  }
-  const userLines = trustLines.filter((line) => !isOrcaTrustLine(line))
-  if (userLines.length > 1) {
-    return
-  }
-  const kept = userLines[0] ?? trustLines[0]
-  for (const line of trustLines) {
-    if (line !== kept) {
-      edits.push({ start: line.lineStart, end: line.nextLineStart, replacement: '' })
-    }
-  }
 }
 
 function collectDuplicateTableEdits(blocks: readonly TomlTableBlock[], edits: TextEdit[]): void {
@@ -149,13 +109,6 @@ function collectDuplicateTableEdits(blocks: readonly TomlTableBlock[], edits: Te
       edits.push(removeLine(block.header))
       continue
     }
-    if (isProjectTable(block) && isOrcaAppendedTrustBlock(block)) {
-      edits.push({ start: block.header.lineStart, end: block.end, replacement: '' })
-      if (trustLevelLines(first).length === 0) {
-        edits.push(insertAfterHeader(first, duplicateAssignments[0]!.text.trim()))
-      }
-      continue
-    }
     if (duplicateAssignments.every((line) => isValueAlreadyDefined(first, line))) {
       edits.push(removeLine(block.header))
       for (const line of duplicateAssignments) {
@@ -163,16 +116,6 @@ function collectDuplicateTableEdits(blocks: readonly TomlTableBlock[], edits: Te
       }
     }
   }
-}
-
-/** The exact block `upsertProjectTrustContent` used to append: the header and one trust line. */
-function isOrcaAppendedTrustBlock(block: TomlTableBlock): boolean {
-  const meaningful = block.body.filter((line) => line.text.trim() !== '')
-  return (
-    meaningful.length === 1 &&
-    meaningful[0]!.kind === 'assignment' &&
-    isOrcaTrustLine(meaningful[0]!)
-  )
 }
 
 function isValueAlreadyDefined(first: TomlTableBlock, line: TomlAssignmentLine): boolean {
@@ -189,15 +132,6 @@ function isValueAlreadyDefined(first: TomlTableBlock, line: TomlAssignmentLine):
 
 function removeLine(line: { lineStart: number; nextLineStart: number }): TextEdit {
   return { start: line.lineStart, end: line.nextLineStart, replacement: '' }
-}
-
-function insertAfterHeader(block: TomlTableBlock, text: string): TextEdit {
-  const eol = block.header.nextLineStart > block.header.contentEnd + 1 ? '\r\n' : '\n'
-  return {
-    start: block.header.nextLineStart,
-    end: block.header.nextLineStart,
-    replacement: `${text}${eol}`
-  }
 }
 
 function applyTextEdits(content: string, edits: readonly TextEdit[]): string {

@@ -142,7 +142,7 @@ describe('getLocalCodexTrustConfigFiles', () => {
 
   it('adds the per-account home a launch reads between the managed and system homes', () => {
     const accountHome = join(userDataDir, 'codex-accounts', 'a1', 'home')
-    expect(getLocalCodexTrustConfigFiles(accountHome)).toEqual([
+    expect(getLocalCodexTrustConfigFiles(fakeHomeDir, accountHome)).toEqual([
       managed(),
       join(accountHome, 'config.toml'),
       system()
@@ -150,9 +150,12 @@ describe('getLocalCodexTrustConfigFiles', () => {
   })
 
   it('writes each home once when the launch reads the managed or system home', () => {
-    expect(getLocalCodexTrustConfigFiles()).toEqual([managed(), system()])
-    expect(getLocalCodexTrustConfigFiles(getRuntimeCodexHomePath())).toEqual([managed(), system()])
-    expect(getLocalCodexTrustConfigFiles(`${getSystemCodexHomePath()}/`)).toEqual([
+    expect(getLocalCodexTrustConfigFiles(fakeHomeDir)).toEqual([managed(), system()])
+    expect(getLocalCodexTrustConfigFiles(fakeHomeDir, getRuntimeCodexHomePath())).toEqual([
+      managed(),
+      system()
+    ])
+    expect(getLocalCodexTrustConfigFiles(fakeHomeDir, `${getSystemCodexHomePath()}/`)).toEqual([
       managed(),
       system()
     ])
