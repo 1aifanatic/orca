@@ -22,10 +22,10 @@ const ACTIVITY_STATUS_GROUP_RANK: Record<ActivityThreadStatusId, number> = {
   permission: 2,
   failed: 3,
   unconfirmed: 4,
-  // A user's Stop is not news, but it is not a finish either.
-  interrupted: 5,
-  working: 6,
-  monitoring: 7,
+  working: 5,
+  monitoring: 6,
+  // A user's Stop is not news, so it follows live work, but it is not a finish either.
+  interrupted: 7,
   unverifiable: 8,
   done: 9,
   idle: 10
