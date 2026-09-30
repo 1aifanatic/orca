@@ -121,7 +121,7 @@ describe('worker report authority without a Dispatch capability', () => {
       expect(db.getTask(worker.taskId)?.status).toBe('completed')
     })
 
-    it("does not fence the worker's own terminal when its --from handle went stale", async () => {
+    it('passes the fence for a stale --from handle and leaves refusal to the process check', async () => {
       setup()
       const worker = startWorker('worker', WORKER_PANE)
       panes = { ...panes, term_worker_reminted: WORKER_PANE }

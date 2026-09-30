@@ -269,6 +269,36 @@ describe('orchestration RPC methods', () => {
       expect(accepted.lifecycle.action).toBe('completed')
     })
 
+    it('rejects a current process whose terminal now resolves to another pane', async () => {
+      setup()
+      const task = db.createTask({ spec: 'pane-bound manual work' })
+      const dispatch = createRootDispatch(
+        db,
+        task.id,
+        'term_worker',
+        'tab_worker:leaf_worker',
+        undefined,
+        'runtime_test:term_worker:1'
+      )
+      vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
+        handle === 'term_worker' ? 'tab_foreign:leaf_foreign' : coordinatorPaneKey
+      )
+
+      expect(
+        await call('orchestration.send', {
+          from: 'term_worker',
+          subject: 'Done',
+          type: 'worker_done',
+          payload: JSON.stringify({
+            taskId: task.id,
+            dispatchId: dispatch.id,
+            outcome: 'succeeded'
+          })
+        })
+      ).toMatchObject({ lifecycle: { action: 'rejected', code: 'worker_identity_changed' } })
+      expect(db.getTask(task.id)?.status).toBe('dispatched')
+    })
+
     it.each(['escalation', 'decision_gate'] as const)(
       'fences a replacement process from a %s mutation',
       async (type) => {
