@@ -162,7 +162,8 @@ export const PROVIDER_FRAME_CLASSIFICATIONS = {
  *
  * Listing a kind before its translator exists deletes the only report of a
  * failure, so nothing may be added here except together with the code that
- * renders it.
+ * renders it, or that reads it for state while another frame carries its
+ * failure (the Codex thread status, whose fault arrives on `error`).
  *
  * A Claude frame of a listed kind that names no task writes nothing. The row it
  * replaces named no task either — it printed the opcode and a raw payload —

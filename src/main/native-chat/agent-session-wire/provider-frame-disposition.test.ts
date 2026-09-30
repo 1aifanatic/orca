@@ -229,7 +229,7 @@ describe('typed translator coverage', () => {
     })
   })
 
-  it('covers Claude only — the same method name on another provider still falls back', () => {
+  it('covers a kind only for its own provider — a Claude kind from Codex still falls back', () => {
     expect(
       unhandledProviderFrameJournalItem('codex', 'message:system:task_notification', {
         status: 'failed'

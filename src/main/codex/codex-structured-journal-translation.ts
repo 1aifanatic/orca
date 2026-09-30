@@ -259,13 +259,13 @@ export function createCodexJournalTranslator(
         reportPrimaryThreadStoppedRunning()
       }
       // A turn-ending `error` is a row inside the turn it names; the failed
-      // `turn/completed` Codex sends after it is that turn's end. Covered kinds
-      // (the thread status) were read for state above and print nothing.
+      // `turn/completed` Codex sends after it is that turn's end. The thread
+      // status was read for state above and prints nothing.
       const unhandled = genericFrames.appendUnhandled(
         `notification:${event.method}`,
         event.params,
         event.threadId,
-        { coveredByTypedTranslator: true }
+        { coveredByTypedTranslator: event.method === 'thread/status/changed' }
       )
       if (unhandled.accepted && event.method === 'error') {
         commands.errorShown(event.params)
