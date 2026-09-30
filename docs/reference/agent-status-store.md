@@ -223,7 +223,7 @@ a newer request replaced a structured Claude turn before it ended (it names no
 sender, and sets no legacy flag), or, on a structured row whose turn the
 provider gave no verdict, is what the host observed of its end: `interruption`
 (a proven death nobody asked for) or `unconfirmed` (an end it cannot prove,
-never success). The journal's turn outcome, by contrast, is never inferred. A plain end of turn carries none, because absent
+never success). The journal's turn outcome, by contrast, stores only recorded verdicts: the provider's, a `cancellation`, or the host's `superseded`; `interruption` and `unconfirmed` are derived from the turn's lifecycle state and never stored. A plain end of turn carries none, because absent
 means unknown and a provider that omits its interrupt flag must not turn a
 cancel into a success.
 In the Claude hook lane the cancellation comes primarily from Orca's own
@@ -245,9 +245,11 @@ with the row and can date a failure by `mainAgent.stateStartedAt`.
 Display reads the verdict through `agentVerdictDisplayMark`. A fault marks the
 agent failed whatever the combined state, because it is news the user must see
 even while subagents run: a `failure`, and an `interruption`, a turn cut short
-by anything other than the user. A user's stop (`cancellation`) marks it
-interrupted, drawn in the muted tone with the row text "Interrupted by user",
-and `unconfirmed` marks it unconfirmed, both only on a `done` row, so a stopped
+by anything other than the user or a newer request. A user's stop (`cancellation`)
+marks it interrupted, drawn in the muted tone with the row text "Interrupted by user";
+a turn a newer request replaced (`superseded`) marks it interrupted in the same muted
+tone with the row text "Interrupted"; and `unconfirmed` marks it unconfirmed, all only
+on a `done` row, so a stopped
 or finished main agent with live child work still reads working. The folded
 turn header follows the same mark: "Failed after N", "Interrupted after N", or
 "Worked for N".

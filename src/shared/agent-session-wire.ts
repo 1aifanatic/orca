@@ -276,8 +276,9 @@ export type AgentSessionStatusEvent =
  * per finish, subscribes here. Re-broadcasting the summary on every status change therefore
  * repeats a state, not a completion.
  *
- * `outcome` is A0's provider verdict and is never inferred — a turn the host only observed ending
- * carries no outcome and produces no event at all, because absent means UNKNOWN, not success.
+ * `outcome` is the journal's recorded verdict (the provider's, a stop, or the host's supersede) and
+ * is never inferred — a turn the host only observed ending carries no outcome and produces no event
+ * at all, because absent means UNKNOWN, not success.
  */
 export type AgentSessionTurnCompletion = {
   /** Host-and-workspace scope; a bare provider turn id is not globally unique. */

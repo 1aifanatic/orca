@@ -5,9 +5,10 @@ import type { AgentJournalTurnLifecycleState } from './agent-session-journal-typ
  *  somebody asked for, `failure` is the provider's own error, and the two are
  *  never interchangeable: only `failure` is a fault. `superseded` is a turn a newer
  *  request replaced before it ended, which the host records at the replacement; it
- *  names no sender. The journal's turn record holds only these recorded verdicts and
- *  never infers one. Absent always means UNKNOWN, never success. Older builds read an
- *  arm they do not know as absent. */
+ *  names no sender. The journal's turn record stores only these recorded verdicts
+ *  (the provider's, a stop, or the host's supersede); `interruption` and `unconfirmed`
+ *  are derived from lifecycle state on read and never stored. Absent always means
+ *  UNKNOWN, never success. Older builds read an arm they do not know as absent. */
 export const AGENT_JOURNAL_TURN_OUTCOMES = [
   'success',
   'failure',
