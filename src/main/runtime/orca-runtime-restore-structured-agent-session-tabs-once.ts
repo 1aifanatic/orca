@@ -61,6 +61,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
     )
     // Unrecorded, the profile's chats join the tabs chats opened while the import was owed left.
+    // First: after a /clear the profile's chat would take their tab id, so seeds hit tabIdTaken.
     const targets = persistedVisibleIndex.present
       ? persistedVisibleIndex.sessionIds
       : [...new Set([...persistedVisibleIndex.sessionIds, ...profileIds])]
