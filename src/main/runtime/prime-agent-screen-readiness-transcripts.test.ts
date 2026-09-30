@@ -44,8 +44,7 @@ describe('Prime Agent readiness from captured bytes', () => {
     foregroundProcess: 'prime-agent',
     rule: isPrimeAgentComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY,
-    clocklessScreenSettles: true
+    notReady: NOT_READY
   })
 
   // Why the footer is no ready signal (#22153): it and the bare caret stay painted mid-turn.

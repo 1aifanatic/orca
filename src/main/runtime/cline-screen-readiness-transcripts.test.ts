@@ -39,8 +39,7 @@ describe('Cline readiness from captured bytes', () => {
     foregroundProcess: 'cline',
     rule: isClineComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY,
-    clocklessScreenSettles: false
+    notReady: NOT_READY
   })
 
   // Why only quiescence can refuse it: the streaming reply has scrolled its spinner away.

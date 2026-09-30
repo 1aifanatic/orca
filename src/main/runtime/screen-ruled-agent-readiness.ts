@@ -17,9 +17,6 @@ const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
   'prime-agent': isPrimeAgentComposerReadyScreen
 }
 
-// Why no clockless tier 1: Cline repaints the same composer box while a reply streams.
-const MID_TURN_COMPOSER_AGENTS: ReadonlySet<TuiAgent> = new Set(['cline'])
-
 export function getScreenReadyRule(agent: TuiAgent | null): ScreenReadyRule | null {
   return agent === null ? null : (SCREEN_READY_RULES[agent] ?? null)
 }
@@ -47,13 +44,13 @@ export function readScreenRuledReady(
 ): boolean | null {
   const rule = getScreenReadyRule(agent)
   const screenLines = rule ? readScreenLines() : null
-  if (agent === null || rule === null || screenLines === null) {
+  if (rule === null || screenLines === null) {
     return null
   }
   if (hasOutputClock) {
     return false
   }
-  return !MID_TURN_COMPOSER_AGENTS.has(agent) && rule(screenLines) ? true : null
+  return rule(screenLines) ? true : null
 }
 
 /**

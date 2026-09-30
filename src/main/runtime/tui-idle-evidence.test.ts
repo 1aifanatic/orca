@@ -4,6 +4,7 @@ import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-tit
 import { isTuiAgent, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import { getTuiAgentRestSignal } from '../../shared/tui-agent-rest-signal'
 import { isKnownReadyPromptBody } from './terminal-wait-detection'
+import { getScreenReadyRule, isReadinessDecidedByScreen } from './screen-ruled-agent-readiness'
 import {
   evaluateTuiIdle,
   hasFreshDoneFirstPartyStatus,
@@ -207,6 +208,12 @@ describe('rest signal agrees with the lanes that can settle a wait', () => {
       false
     )
     const quietScreenBody = hasQuietReadyScreen(record(), agent, () => true, QUIESCENCE_MS)
+    // Why a screen-ruled `none` is sound: its screen shuts the quiet lane whenever one is readable.
+    if (getScreenReadyRule(agent) !== null) {
+      expect(isReadinessDecidedByScreen(agent, () => [])).toBe(true)
+      expect(isReadinessDecidedByScreen(agent, () => null)).toBe(false)
+      return
+    }
     // Why not only ready-body: Codex keeps its stronger hook-driven title beside this lane.
     if (quietScreenBody) {
       expect(signal).not.toBe('none')
@@ -223,6 +230,27 @@ describe('rest signal agrees with the lanes that can settle a wait', () => {
       syntheticTitle: getSyntheticAgentTerminalTitle(agent, 'done'),
       processTitle: detectAgentStatusFromTitle(TUI_AGENT_CONFIG[agent].expectedProcess)
     }).toEqual({ screenRead: false, syntheticTitle: null, processTitle: null })
+  })
+})
+
+// Why: a re-attached pane's grid can be untrusted; the lane it had before must stay open there.
+describe('a screen-ruled agent keeps the quiet-process lane only while it has no screen', () => {
+  const pending = (screenDecides: boolean) =>
+    evaluateTuiIdle(
+      input({
+        agent: 'cline',
+        record: record({ lastOscTitle: null }),
+        readQuietReadyBodyEvidence: () => false,
+        readScreenDecidesReadiness: () => screenDecides
+      })
+    )
+
+  it('shuts it when a readable screen refused', () => {
+    expect(pending(true)).toEqual({ kind: 'pending', quietForeground: 'closed' })
+  })
+
+  it('keeps it when there is no screen', () => {
+    expect(pending(false)).toEqual({ kind: 'pending', quietForeground: 'after-paint' })
   })
 })
 

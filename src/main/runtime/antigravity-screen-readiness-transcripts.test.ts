@@ -41,8 +41,7 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
     foregroundProcess: 'agy',
     rule: isAntigravityComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY,
-    clocklessScreenSettles: true
+    notReady: NOT_READY
   })
 
   it.each([

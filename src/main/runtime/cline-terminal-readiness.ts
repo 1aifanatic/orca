@@ -6,7 +6,6 @@ const CLINE_EMPTY_COMPOSERS: ReadonlySet<string> = new Set([
   '❯ plan something...'
 ])
 const CLINE_MODE_ROW_RE = /[○●] plan [○●] act \(tab\)$/
-const CLINE_AUTO_APPROVE_ROW_RE = /auto-approve all (?:enabled|disabled) \(shift\+tab\)$/
 const BRAILLE_SPINNER_RE = /[⠀-⣿]/
 
 /**
@@ -22,7 +21,6 @@ export function isClineComposerReadyScreen(screenLines: readonly string[]): bool
     return false
   }
   return (
-    CLINE_AUTO_APPROVE_ROW_RE.test(lines.at(-1) ?? '') &&
     CLINE_RULE_RE.test(lines[modeRow - 1]) &&
     CLINE_EMPTY_COMPOSERS.has(lines[modeRow - 2]) &&
     CLINE_RULE_RE.test(lines[modeRow - 3]) &&

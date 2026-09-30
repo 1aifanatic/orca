@@ -17,8 +17,6 @@ export type ScreenRuledAgentSuite = {
   rule: (screenLines: readonly string[]) => boolean
   ready: readonly ScreenRuledFixture[]
   notReady: readonly ScreenRuledFixture[]
-  /** Whether a clockless (restored) pane may settle from one screen read, as tier 1 allows. */
-  clocklessScreenSettles: boolean
 }
 
 // Why these: grids out of step with the recording garble cursor-addressed chrome (#23475 review).
@@ -138,8 +136,8 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
       return result.satisfied === true
     }
 
-    it(`a restored pane ${suite.clocklessScreenSettles ? 'settles' : 'does not settle'} from a visible-screen read of a ready screen`, async () => {
-      expect(await probedVerdict(firstReady)).toBe(suite.clocklessScreenSettles)
+    it('a restored pane settles from a visible-screen read of a ready screen', async () => {
+      expect(await probedVerdict(firstReady)).toBe(true)
     }, 15_000)
 
     it.each(suite.notReady)(
