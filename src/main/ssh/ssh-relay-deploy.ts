@@ -450,7 +450,7 @@ async function deployAndLaunchRelayInner(
         console.warn(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${err.reason}): ${err.detail}`
         )
-        run.refused(step, err.reason)
+        run.refused(step, err.reason, err.remembered)
         step = nextRelayRuntimeStep(ladder, step, err.reason, err.remembered)
         run.enter(step)
         continue
