@@ -200,14 +200,11 @@ export function resolveClaudePaneStatus(
  *  and leave only when their inventory says so. */
 export function markClaudeLeadTurnInterrupted(
   state: HookListenerState,
-  paneKey: string,
-  /** The published verdict's own clock, when restoring a verdict the store kept. */
-  verdict: { stateStartedAt?: number } = {}
+  paneKey: string
 ): { state: AgentStatusState; workingMode?: AgentWorkingMode; mainAgent?: AgentMainAgentStatus } {
   const record = setClaudeMainAgentTurnState(state, paneKey, {
     state: 'done',
-    outcome: 'cancellation',
-    ...(verdict.stateStartedAt !== undefined ? { stateStartedAt: verdict.stateStartedAt } : {})
+    outcome: 'cancellation'
   })
   const resolved = resolveClaudePaneStatus(state, paneKey, record)
   const mainAgent = claudeMainAgentStatusForPayload(record)

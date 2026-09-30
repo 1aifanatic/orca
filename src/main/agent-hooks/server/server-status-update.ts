@@ -2,7 +2,6 @@ import {
   reconcileRemoteCodexState,
   markCodexLeadTurnInterrupted
 } from '../../../shared/agent-hook-listener/providers/codex-state'
-import { markClaudeLeadTurnInterrupted } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
 import {
   resolveAgentStatusIdentity,
   shouldSuppressInheritedTerminalStatus
@@ -22,13 +21,13 @@ import { AgentHookServerStatusApplication } from './server-status-application'
 
 export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusApplication {
   protected applyNormalizedStatus(
-    incoming: AgentHookEventPayload & { authorityRestartId?: string },
+    incoming: AgentHookEventPayload & { authorityRestartId?: string; restatesRecords?: true },
     onAccepted?: () => void,
     origin: AgentStatusObservationOrigin = 'hook',
     observedAt?: number,
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
-    const { authorityRestartId, ...payload } = incoming
+    const { authorityRestartId, restatesRecords, ...payload } = incoming
     if (!this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }
@@ -155,25 +154,18 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     const attachedPayload = attachClaudePermissionToolUseId(previous, identityResolvedPayload)
     // Why before the permission hold: that hold adopts the event's `mainAgent`, and a relay's
     // restatement of a main agent the desktop cancelled must not replace the cancel.
-    const latch = resolveCancelVerdictLatch(previous, attachedPayload, Date.now())
+    const latch = resolveCancelVerdictLatch(
+      previous,
+      attachedPayload,
+      Date.now(),
+      restatesRecords === true
+    )
     if (latch.hold) {
       if (
         attachedPayload.payload.agentType === 'codex' &&
         attachedPayload.payload.state === 'working'
       ) {
         markCodexLeadTurnInterrupted(this.state, attachedPayload.paneKey)
-      }
-      // Why: a local pane's listener already folded the held event into its record; restore the
-      // verdict the row keeps, or the Claude transcript watch restates the stale record once the
-      // latch window ends. A relayed pane's record lives on the relay.
-      if (
-        attachedPayload.payload.agentType === 'claude' &&
-        attachedPayload.payload.state === 'working' &&
-        attachedPayload.connectionId === null
-      ) {
-        markClaudeLeadTurnInterrupted(this.state, attachedPayload.paneKey, {
-          stateStartedAt: previous?.payload.mainAgent?.stateStartedAt
-        })
       }
       this.commitStatusRowMutation(rowBefore, previous)
       return previous

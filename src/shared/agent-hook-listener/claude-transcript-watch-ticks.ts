@@ -7,7 +7,8 @@ import type { HookListenerState } from './listener-state'
 import {
   observeClaudeTranscript,
   settleClaudeTranscriptWatch,
-  syncClaudeTranscriptCursor
+  syncClaudeTranscriptCursor,
+  type ClaudeTranscriptRow
 } from './providers/claude-transcript-watch'
 
 const CLAUDE_TRANSCRIPT_WATCH_MS = 1_000
@@ -17,7 +18,7 @@ export type ClaudeTranscriptWatchHost<Context> = {
   /** Read live, so a tick armed before stop() cannot publish on a downed server. */
   isListening: () => boolean
   /** `context` is what the host last handed `sync` for the pane (the relay's hook envelope). */
-  publish: (row: AgentHookEventPayload, context: Context | undefined) => void
+  publish: (row: ClaudeTranscriptRow, context: Context | undefined) => void
 }
 
 export class ClaudeTranscriptWatch<Context = never> {

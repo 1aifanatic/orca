@@ -3,12 +3,12 @@
 // (src/shared/__fixtures__/claude-idle-ctrl-c-bg-agent-hooks.jsonl): its hook bodies and its one
 // captured `agents_killed` transcript line. Bodies marked "hand-built" are captured bodies with
 // fields changed, or events placed at times the capture did not record; each test says which.
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, _internals } from './server'
-import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
+import { buildBody, GOOD_PANE, PANE, postHookEvent } from './server.test-fixtures'
 import { cancelLabelled, hookAt, loadCapture } from './claude-cancel-capture.test-fixture'
 
 const { getCohortAtEmitMock, trackMock } = vi.hoisted(() => ({
@@ -30,8 +30,6 @@ const KILL_ROW: Record<string, unknown> = JSON.parse(KILL_LINE)
 const KILLED_AT = Date.parse(String(KILL_ROW.timestamp))
 const T0 = KILLED_AT - cancelLabelled(records, 'CTRL-C-idle-with-bg-shell-and-bg-agent').t * 1000
 const CHILD = 'a2303994f3dfae83c'
-/** Enough real time for the watch to have ticked at least twice. */
-const TWO_TICKS_MS = 2_300
 
 const temporaryPaths: string[] = []
 const running: AgentHookServer[] = []
@@ -108,9 +106,12 @@ function pressCtrlC(server: AgentHookServer): boolean {
   })
 }
 
-/** Only Date is faked, so this waits on the same real timers the watch ticks on. */
-function realDelay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/** Hand-built: a line no reason admits, then waits for the tick that reads past it (only Date is
+ *  faked, so ticks run on real timers). Proves a tick ran before a "nothing changed" assertion. */
+async function afterTick(server: AgentHookServer, transcript: string): Promise<void> {
+  appendFileSync(transcript, '{"type":"user"}\n')
+  const end = statSync(transcript).size
+  await vi.waitFor(() => expect(cursor(server)?.offset).toBe(end), { timeout: 3_000 })
 }
 
 /** Ctrl+C while the captured second turn runs, with its background agent working. */
@@ -180,21 +181,52 @@ describe('the tick against the cancel latch (W1)', () => {
     const cancelled = await cancelledWithWorkingChild(server, transcript)
     vi.setSystemTime(Date.now() + 100)
     await post(server, lateMainAgentPostToolUse(transcript))
-    // The latch holds tool progress after the cancel.
+    // The latch holds tool progress after the cancel; the listener's record keeps the hook.
     expect(row(server)).toEqual(cancelled)
-    // Past the 15 s window, the watch keeps ticking while the child works.
+    expect(server._getStateForTests().claudeLeadStateByPaneKey.get(PANE)?.state).toBe('working')
+    // Past the 15 s window, a tick restates that record while the child works.
     vi.setSystemTime(Date.now() + 20_000)
-    await realDelay(TWO_TICKS_MS)
+    await afterTick(server, transcript)
+    expect(row(server)).toEqual(cancelled)
+  })
+
+  it('ends a turn the Ctrl+C did not stop as the plain done its own Stop reports', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    await cancelledWithWorkingChild(server, transcript)
+    // Hand-built: Claude did not act on the keystroke (one that only cleared a typed draft), so
+    // the turn goes on; the latch holds its tool hook, and ticks pass the window.
+    vi.setSystemTime(Date.now() + 100)
+    await post(server, lateMainAgentPostToolUse(transcript))
+    vi.setSystemTime(Date.now() + 20_000)
+    await afterTick(server, transcript)
+    await post(server, { ...hookAt(records, 9).payload, transcript_path: transcript })
     expect(row(server)).toMatchObject({
       state: 'working',
-      mainAgent: { state: 'done', outcome: 'cancellation' },
+      mainAgent: { state: 'done' },
       subagents: [expect.objectContaining({ id: CHILD, state: 'working' })]
     })
-    expect(server._getStateForTests().claudeLeadStateByPaneKey.get(PANE)).toMatchObject({
-      state: 'done',
-      outcome: 'cancellation',
-      stateStartedAt: cancelled.mainAgent?.stateStartedAt
+    expect(row(server).mainAgent).not.toHaveProperty('outcome')
+  })
+
+  it('ends it as a plain done on a pane the watch never armed', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    await replay(server, transcript, [0, 1, 2])
+    expect(cursor(server)).toBeUndefined()
+    expect(pressCtrlC(server)).toBe(true)
+    // Hand-built timing: the turn's captured PostToolUse and Stop, after the ignored Ctrl+C.
+    vi.setSystemTime(Date.now() + 2_000)
+    await post(server, { ...hookAt(records, 3).payload, transcript_path: transcript })
+    vi.setSystemTime(Date.now() + 20_000)
+    await post(server, {
+      ...hookAt(records, 4).payload,
+      transcript_path: transcript,
+      background_tasks: []
     })
+    expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+    expect(row(server).interrupted).toBeUndefined()
+    expect(row(server).mainAgent).not.toHaveProperty('outcome')
   })
 })
 
@@ -230,14 +262,35 @@ describe('who may move the cursor', () => {
     expect(cursor(server)?.filePath).toBe(nested)
     vi.setSystemTime(KILLED_AT + 120)
     appendFileSync(transcript, `${KILL_LINE}\n`)
-    await realDelay(TWO_TICKS_MS)
+    await afterTick(server, nested)
     // The outer session's own next event repoints at the outer file's end, past the kill line.
     await replay(server, transcript, [11])
-    await realDelay(TWO_TICKS_MS)
+    await afterTick(server, transcript)
     // Lingers, the safe direction: the killed child still reads working until an inventory.
     expect(row(server).subagents).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: CHILD, state: 'working' })])
     )
+  })
+})
+
+describe('a pane moved to another key', () => {
+  it('keeps ticking under the new key', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    await replay(server, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    // Hand-built: the pane is detached to a new tab, then the idle Ctrl+C kills the agent.
+    server.transferPaneAuthority(PANE, GOOD_PANE)
+    expect(server._getStateForTests().claudeTranscriptCursorByPaneKey.has(GOOD_PANE)).toBe(true)
+    vi.setSystemTime(KILLED_AT + 120)
+    appendFileSync(transcript, `${KILL_LINE}\n`)
+    await vi.waitFor(
+      () => expect(server.getStatusSnapshotForPane(GOOD_PANE)[0]?.subagents).toBeUndefined(),
+      { timeout: 3_000 }
+    )
+    expect(server.getStatusSnapshotForPane(GOOD_PANE)[0]).toMatchObject({
+      state: 'working',
+      workingMode: 'monitoring'
+    })
   })
 })
 
@@ -302,9 +355,53 @@ describe('the tick against the permission hold (W3, main without #22042)', () =>
     // The listener's record says the main agent works; the store keeps the card.
     expect(server._getStateForTests().claudeLeadStateByPaneKey.get(PANE)?.state).toBe('working')
     vi.setSystemTime(Date.now() + 20_000)
-    await realDelay(TWO_TICKS_MS)
-    expect(cursor(server)).toBeDefined()
+    await afterTick(server, transcript)
     expect(row(server)).toEqual(held)
+  })
+})
+
+describe('a fact read while the main agent waits on a permission prompt', () => {
+  it('keeps the prompt its hook raised, so a sibling call finishing does not clear the card', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    await replay(server, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    // Hand-built: the kill line, then a third turn whose prompt reads it during catch-up and
+    // whose first call asks permission before any tick.
+    vi.setSystemTime(KILLED_AT + 120)
+    appendFileSync(transcript, `${KILL_LINE}\n`)
+    const base = { ...hookAt(records, 6).payload, transcript_path: transcript }
+    const turn = { prompt_id: '00000000-0000-4000-8000-0000000000b1' }
+    const gated = { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }
+    await post(server, { ...base, ...turn, hook_event_name: 'UserPromptSubmit', prompt: 'clean' })
+    await post(server, {
+      ...base,
+      ...turn,
+      ...gated,
+      hook_event_name: 'PreToolUse',
+      tool_use_id: 'toolu_gated'
+    })
+    await post(server, {
+      ...base,
+      ...turn,
+      ...gated,
+      hook_event_name: 'PermissionRequest',
+      tool_use_id: undefined
+    })
+    // The tick that restates the fact is the last read: nothing is left to watch.
+    await vi.waitFor(() => expect(cursor(server)).toBeUndefined(), { timeout: 3_000 })
+    expect(server._getStateForTests().lastStatusByPaneKey.get(PANE)).toMatchObject({
+      hookEventName: 'PermissionRequest',
+      toolUseId: 'toolu_gated'
+    })
+    await post(server, {
+      ...base,
+      ...turn,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Read',
+      tool_input: { file_path: 'README.md' },
+      tool_use_id: 'toolu_sibling'
+    })
+    expect(row(server)).toMatchObject({ state: 'waiting', toolName: 'Bash' })
   })
 })
 
@@ -341,7 +438,7 @@ describe('other writers of the stored row, on an armed pane', () => {
       })
     ).toBe(true)
     const answered = row(server)
-    await realDelay(TWO_TICKS_MS)
+    await afterTick(server, transcript)
     expect(row(server)).toEqual(answered)
   })
 

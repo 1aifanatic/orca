@@ -60,7 +60,9 @@ export class AgentHookResultRetryScheduler {
     this.claudeTranscriptWatch = new ClaudeTranscriptWatch<HookEnvelopeMeta>({
       state: host.state,
       isListening: host.isListening,
-      publish: (row, meta) => host.applyEvent(row, 'claude', meta?.env, meta?.version)
+      // Why dropped: only the desktop's cancel latch reads it, and a relay envelope names its fields.
+      publish: ({ restatesRecords: _local, ...row }, meta) =>
+        host.applyEvent(row, 'claude', meta?.env, meta?.version)
     })
   }
 

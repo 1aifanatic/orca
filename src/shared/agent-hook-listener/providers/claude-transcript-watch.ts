@@ -242,9 +242,13 @@ function claudeRowShowsRecords(
   )
 }
 
+/** A row the tick rebuilt from the records. `restatesRecords` marks one that carries no fact: it
+ *  only repeats what hooks already offered, so a store that refused those may refuse it too. */
+export type ClaudeTranscriptRow = AgentHookEventPayload & { restatesRecords?: true }
+
 export type ClaudeTranscriptObservation =
   | { kind: 'stop' }
-  | { kind: 'read'; factApplied: boolean; row?: AgentHookEventPayload }
+  | { kind: 'read'; factApplied: boolean; row?: ClaudeTranscriptRow }
 
 /** One tick: reads the cursor, then rebuilds the row from the records with the hooks' own builder
  *  and returns it when the stored row does not show it yet, or when a fact named how it is
@@ -280,17 +284,19 @@ export function observeClaudeTranscript(
       (current.providerSessionOnly === true ||
         claudeRowShowsRecords(current, payload, runningNonAgentTask)))
   // Why: a row still waiting keeps the hook that raised the wait, which the store's permission
-  // rules key on; any other row is an observation, not a new turn.
-  const hook =
-    attribution ??
-    (payload?.state === 'waiting' && current.hookEventName
-      ? {
-          hookEventName: current.hookEventName,
-          toolAgentId: current.toolAgentId,
-          toolUseId: current.toolUseId,
-          toolAgentType: current.toolAgentType
-        }
-      : {})
+  // rules key on, unless the fact retired that wait's own child; any other row is an observation.
+  const keepsWait =
+    payload?.state === 'waiting' &&
+    current.hookEventName !== undefined &&
+    (!attribution || attribution.toolAgentId !== current.toolAgentId)
+  const hook = keepsWait
+    ? {
+        hookEventName: current.hookEventName,
+        toolAgentId: current.toolAgentId,
+        toolUseId: current.toolUseId,
+        toolAgentType: current.toolAgentType
+      }
+    : (attribution ?? {})
   return {
     kind: 'read',
     factApplied: read !== undefined,
@@ -305,6 +311,7 @@ export function observeClaudeTranscript(
             worktreeId: current.worktreeId,
             connectionId: null,
             ...hook,
+            ...(attribution ? {} : { restatesRecords: true }),
             claudeRunningNonAgentTask: runningNonAgentTask,
             ...(current.providerSession ? { providerSession: current.providerSession } : {}),
             payload

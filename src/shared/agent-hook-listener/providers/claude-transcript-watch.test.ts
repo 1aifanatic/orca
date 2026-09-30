@@ -274,6 +274,8 @@ describe('observeClaudeTranscript', () => {
         payload: { state: 'done', mainAgent: { state: 'done' } }
       }
     })
+    // A fact is the hook Claude did not send, not a restatement.
+    expect(observed).not.toHaveProperty('row.restatesRecords')
     expect(state.claudeSubagentRosterByPaneKey.has(PANE)).toBe(false)
     expect(state.claudeLeadStateByPaneKey.get(PANE)).toMatchObject({ state: 'done' })
     if (observed.kind === 'read' && observed.row) {
@@ -314,7 +316,10 @@ describe('observeClaudeTranscript', () => {
     // A change of the records no row carried (an event that produced no row).
     stopClaudeSubagent(getOrCreateClaudeSubagentRoster(state, PANE), 'a1')
     const observed = observeClaudeTranscript(state, PANE)
-    expect(observed).toMatchObject({ kind: 'read', row: { payload: { state: 'done' } } })
+    expect(observed).toMatchObject({
+      kind: 'read',
+      row: { restatesRecords: true, payload: { state: 'done' } }
+    })
     expect(observed.kind === 'read' && observed.row?.hookEventName).toBeUndefined()
   })
 
@@ -343,6 +348,38 @@ describe('observeClaudeTranscript', () => {
         payload: { state: 'waiting' }
       }
     })
+  })
+
+  it("keeps a main agent's waiting hook when the fact retired another child", () => {
+    const transcript = transcriptFile()
+    const state = paneWithWorkingChild()
+    setClaudeMainAgentTurnState(state, PANE, { state: 'waiting' })
+    const payload = buildClaudeCachedLeadStatusPayload(state, 'PermissionRequest', PANE, {})
+    if (!payload) {
+      throw new Error('no row')
+    }
+    seedLegacyAgentStatusForTests(
+      state,
+      accepted(transcript, {
+        hookEventName: 'PermissionRequest',
+        toolUseId: 'toolu_1',
+        claudeRunningNonAgentTask: false,
+        payload
+      })
+    )
+    syncClaudeTranscriptCursor(state, accepted(transcript))
+    appendFileSync(transcript, `${KILLED}\n`)
+    const observed = observeClaudeTranscript(state, PANE)
+    expect(observed).toMatchObject({
+      factApplied: true,
+      row: {
+        hookEventName: 'PermissionRequest',
+        toolUseId: 'toolu_1',
+        toolAgentId: undefined,
+        payload: { state: 'waiting' }
+      }
+    })
+    expect(observed.kind === 'read' && observed.row?.payload.subagents).toBeUndefined()
   })
 
   it('never restates a dismissed row, but a fact still does what its missing hook would', () => {

@@ -293,9 +293,11 @@ A new line retires the children that started by its timestamp with
 SubagentStop semantics and publishes a `SubagentStop` row attributed to one of
 them, with no verdict stamped; the row keeps monitoring a surviving shell and
 settles to done only when nothing is left (`claude-idle-ctrl-c-*` fixtures pin
-this). When the cancel latch holds a late main-agent hook of a local pane, the
-listener's record is re-marked cancelled, as for Codex, so the tick has nothing
-stale to restate. A relay too old to watch leaves the child on the row until the next
+this). A tick row that carries no fact only restates hooks the store already
+judged, so the desktop's cancel latch holds it: after a late main-agent hook the
+latch refused, the listener's record keeps that hook's evidence (a turn the
+Ctrl+C did not stop still ends as a plain done) and the tick cannot reopen the
+cancel. A relay too old to watch leaves the child on the row until the next
 Stop's inventory, as before. The synthesized row is the fold
 of the cancelled main agent with the child work the pane's owner can see: the
 local listener's roster for a local pane, the row's own subagents and shell fact
@@ -452,8 +454,10 @@ call it.
   same store and admission code but has no live run here; Linux and Windows
   runtime execution, native mobile clients, and mixed-version paired clients
   remain validation gaps.
-- **Performance budget:** publication stays event-driven with no new polling or
-  subprocesses (the Claude transcript watch above costs one `stat` per event and per second, plus the appended bytes, only while a pane has a reason to watch). One mobile projection clones the status snapshot once, builds
+- **Performance budget:** publication stays event-driven with no new
+  subprocesses. The one poll is the Claude transcript watch above: a one-second
+  tick per pane, only while that pane has a reason to watch, costing one `stat`
+  per event and per tick plus the appended bytes. One mobile projection clones the status snapshot once, builds
   pane/handle indexes once, and has a deterministic call-count test; lifecycle
   cleanup is bounded by the existing status and handle inventories, and orcad
   tests prove listeners clean up once on failed startup and repeated stop.
