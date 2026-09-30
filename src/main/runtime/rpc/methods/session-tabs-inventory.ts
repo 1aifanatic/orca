@@ -5,7 +5,6 @@ import type { RpcContext } from '../core'
 import { projectSessionTabAgentStatus } from './session-tab-agent-status-projection'
 import { projectSessionTabBrowserPlacements } from './session-tab-browser-placement-projection'
 import { createSessionTabsRetirementProofDelta } from './session-tabs-retirement-proof-delta'
-import { isStructuredNativeChatEnabled } from './structured-agent-session-policy'
 import { restoreStructuredTabsIfSupported } from './structured-session-tab-restore'
 
 type SessionTabsInventory = {
@@ -29,16 +28,10 @@ function clientUnderstandsAuthoritativeInventory(context: RpcContext): boolean {
 export function projectSessionTabsForClient(
   snapshot: RuntimeMobileSessionTabsResult,
   clientKind: 'mobile' | 'runtime' | undefined,
-  clientCapabilities: Parameters<typeof projectSessionTabAgentStatus>[2],
-  structuredNativeChatEnabled: boolean
+  clientCapabilities: Parameters<typeof projectSessionTabAgentStatus>[2]
 ): RuntimeMobileSessionTabsResult {
   return projectSessionTabBrowserPlacements(
-    projectSessionTabAgentStatus(
-      snapshot,
-      clientKind,
-      clientCapabilities,
-      structuredNativeChatEnabled
-    ),
+    projectSessionTabAgentStatus(snapshot, clientKind, clientCapabilities),
     clientCapabilities
   )
 }
@@ -49,12 +42,7 @@ function projectInventory(
 ): SessionTabsInventory {
   return {
     snapshots: inventory.snapshots.map((snapshot) =>
-      projectSessionTabsForClient(
-        snapshot,
-        context.clientKind,
-        context.clientCapabilities,
-        isStructuredNativeChatEnabled(context.runtime)
-      )
+      projectSessionTabsForClient(snapshot, context.clientKind, context.clientCapabilities)
     ),
     ...(inventory.authoritative && clientUnderstandsAuthoritativeInventory(context)
       ? { authoritative: true as const }
@@ -125,8 +113,7 @@ export async function subscribeSessionTabsInventory(
     projectSessionTabsForClient(
       snapshot,
       context.clientKind,
-      context.clientCapabilities,
-      isStructuredNativeChatEnabled(context.runtime)
+      context.clientCapabilities
     ) as SessionTabsChange
   const withoutNavigationIntent = (snapshot: SessionTabsChange): SessionTabsChange => {
     if (snapshot.navigationIntent === undefined) {
