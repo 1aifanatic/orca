@@ -3,8 +3,8 @@
 
 import { readdir } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest'
-import type Database from '../../sqlite/sync-database'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -16,44 +16,43 @@ import {
 import { hostTestMessage } from './structured-agent-session-host-test-data'
 
 let root: string
+let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
 
 beforeEach(() => {
-  ;({ root, host, cancelTurn } = hostTestState())
+  ;({ root, store, host, cancelTurn } = hostTestState())
 })
 
 afterEach(() => vi.restoreAllMocks())
+
+const sqliteError = (message: string, errcode: number): Error =>
+  Object.assign(new Error(message), { code: 'ERR_SQLITE_ERROR', errcode })
+
+/** Every statement on the chat records' tables fails; the history beside them still works. */
+function failRecordStatements(error: Error): void {
+  const connection = openTestJournalHostDatabase(root).db
+  const prepare = connection.prepare.bind(connection)
+  vi.spyOn(connection, 'prepare').mockImplementation((sql: string) => {
+    if (sql.includes('agent_session_')) {
+      throw error
+    }
+    return prepare(sql)
+  })
+}
+
+const stop = (turnEnvelope = envelope('agentSession.cancel', { turnId: 'turn-1' })) =>
+  host.cancel(CALLER, { envelope: turnEnvelope, turnId: 'turn-1' })
 
 // T-corrupt-midsession.
 it('refuses a send as corrupt when SQLite reports damage, and still stops the agent', async () => {
   await attach()
   const files = await readdir(root, { recursive: true })
-  const damaged = Object.assign(new Error('database disk image is malformed'), {
-    code: 'ERR_SQLITE_ERROR',
-    errcode: 11
+  const damaged = sqliteError('database disk image is malformed', 11)
+  vi.spyOn(openTestJournalHostDatabase(root), 'transaction').mockImplementation(() => {
+    throw damaged
   })
-  // The damage is in the history's pages; the ownership rows beside it still read and write.
-  const database = openTestJournalHostDatabase(root)
-  const transaction = database.transaction.bind(database)
-  vi.spyOn(database, 'transaction').mockImplementation(<T>(run: (db: Database.Database) => T) =>
-    transaction((db) =>
-      run(
-        new Proxy(db, {
-          get: (target, property) =>
-            property === 'prepare'
-              ? (sql: string) => {
-                  if (!sql.includes('agent_session_')) {
-                    throw damaged
-                  }
-                  return target.prepare(sql)
-                }
-              : Reflect.get(target, property, target)
-        })
-      )
-    )
-  )
-  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
   const body = hostTestMessage('after the damage')
   const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
@@ -66,15 +65,54 @@ it('refuses a send as corrupt when SQLite reports damage, and still stops the ag
       details: { reason: 'journalCorrupt' }
     }
   })
-  // Stop reaches the agent before it writes anything; the note it then cannot record is the
-  // error the caller sees, after the fact.
-  await expect(
-    host.cancel(CALLER, {
-      envelope: envelope('agentSession.cancel', { turnId: 'turn-1' }),
-      turnId: 'turn-1'
-    })
-  ).rejects.toBe(damaged)
+  // Stop reaches the agent without its ledger row; the note it then cannot record is the error
+  // the caller sees, after the fact.
+  await expect(stop()).rejects.toBe(damaged)
   expect(cancelTurn).toHaveBeenCalledTimes(1)
+  expect(warn).toHaveBeenCalledWith("[agent-session] Stop's ledger row skipped:", {
+    sessionId: expect.any(String),
+    error: 'database disk image is malformed'
+  })
   // A recovery-offer read still in flight holds its lock for a moment; nothing else may appear.
   await vi.waitFor(async () => expect(await readdir(root, { recursive: true })).toEqual(files))
+})
+
+it.each([
+  ['damaged', sqliteError('database disk image is malformed', 11)],
+  ['full', sqliteError('database or disk is full', 13)]
+])('stops the agent when the records are %s and the history is not', async (_, error) => {
+  await attach()
+  failRecordStatements(error)
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+  await expect(stop()).resolves.toMatchObject({
+    ok: true,
+    replayed: false,
+    value: { turnId: 'turn-1', cancelled: true }
+  })
+  expect(cancelTurn).toHaveBeenCalledTimes(1)
+  expect(warn).toHaveBeenCalledWith("[agent-session] Stop's ledger row skipped:", {
+    sessionId: expect.any(String),
+    error: error.message
+  })
+})
+
+it('replays a recorded Stop from memory when its ledger cannot be written', async () => {
+  await attach()
+  const stopEnvelope = envelope('agentSession.cancel', { turnId: 'turn-1' })
+  await expect(stop(stopEnvelope)).resolves.toMatchObject({ ok: true, replayed: false })
+  expect(cancelTurn).toHaveBeenCalledTimes(1)
+  // A replay writes nothing on a healthy store; one that refuses every transaction still throws.
+  vi.spyOn(store, 'admitMutationOperation').mockRejectedValue(
+    sqliteError('database disk image is malformed', 11)
+  )
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+  // Interrupting twice would stop a turn the client never asked to stop.
+  await expect(stop(stopEnvelope)).resolves.toMatchObject({
+    ok: true,
+    replayed: true,
+    value: { turnId: 'turn-1', cancelled: false }
+  })
+  expect(cancelTurn).toHaveBeenCalledTimes(1)
 })
