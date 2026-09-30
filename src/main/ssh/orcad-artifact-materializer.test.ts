@@ -13,12 +13,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import {
-  getAppEnvironment,
-  hasAppEnvironment,
-  setAppEnvironment,
-  type AppEnvironment
-} from '../../shared/app-environment'
 import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
 import {
   ORCAD_BUILD_TARGET_FILENAME,
@@ -33,6 +27,12 @@ import {
   orcadTemplateTargetFilenames
 } from '../../shared/orcad-artifacts'
 import { readOrcadArtifactIdentity } from '../orcad/orcad-artifact-identity'
+import {
+  getAppEnvironment,
+  hasAppEnvironment,
+  setAppEnvironment,
+  type AppEnvironment
+} from '../../shared/app-environment'
 import {
   assembleOrcadArtifact,
   getOrcadTemplateCandidates,
