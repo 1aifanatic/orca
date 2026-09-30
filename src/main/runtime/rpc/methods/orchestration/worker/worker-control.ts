@@ -199,8 +199,14 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
   defineMethod({
     name: 'orchestration.workerAbandon',
     params: WorkerDispatchParams,
-    handler: (params, { runtime }) => {
-      const abandoned = runtime.getOrchestrationDb().abandonWorkerDispatch(params.dispatch)
+    handler: (params, { runtime, orchestrationCaller, orchestrationCompatibilityEvidence }) => {
+      const abandoned = runtime
+        .getOrchestrationDb()
+        .abandonWorkerDispatch(
+          params.dispatch,
+          runtime.getRuntimeId(),
+          orchestrationCaller?.address ?? orchestrationCompatibilityEvidence?.terminalHandle
+        )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {
           // Abandon settles the Dispatch, so it owes the same binding release stop and release do:
@@ -227,12 +233,11 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
         dispatchId: params.dispatch,
         state: worker.state,
         alreadySettled: abandoned.disposition !== 'abandoned',
-        stale: abandoned.disposition === 'stale',
         processAction: 'none',
         warning:
-          abandoned.disposition === 'stale'
-            ? 'The Dispatch is no longer current; no state or process changed.'
-            : 'Possibly-live resources were retained; no process was stopped or deleted.',
+          abandoned.disposition === 'abandoned'
+            ? 'Possibly-live resources were retained; no process was stopped or deleted.'
+            : `The worker was already ${worker.state}; its terminal was left open and no process changed.`,
         residualResources: JSON.parse(worker.residual_resources) as unknown[]
       }
     }
