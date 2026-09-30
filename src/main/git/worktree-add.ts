@@ -21,6 +21,7 @@ import type {
 } from './worktree-operation-options'
 import { gitExecOptions, resolveWorktreeAddTimeoutMs } from './worktree-operation-options'
 import { bumpWorktreeScanGeneration } from './worktree-scan-cache'
+import { assertNoPendingWorktreeRemovalConflict } from '../worktree-background-removal'
 
 export type WorktreeAddBaseContext = Pick<AddWorktreeResult, 'localBaseRefUpdateSuggestion'> & {
   effectiveBase: string
@@ -197,6 +198,9 @@ async function performAddWorktree(
   noCheckout = false,
   options: AddWorktreeOptions = {}
 ): Promise<AddWorktreeResult> {
+  // Why: Git still owns that path and branch until the background delete finishes; a create now
+  // would race it, and the branch cleanup that follows would find the branch checked out again.
+  assertNoPendingWorktreeRemovalConflict(repoPath, { worktreePath, branch })
   let pendingLocalBaseRefRefresh: Promise<LocalBaseRefRefreshResult | undefined> | undefined
   let localBaseRefUpdateSuggestion: LocalBaseRefUpdateSuggestion | undefined
   // Why: enable long paths for this Windows checkout without changing user Git config.
