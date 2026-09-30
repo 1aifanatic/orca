@@ -2,7 +2,7 @@
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { ORCAD_NODE_PTY_DIR, ORCAD_VERSION_FILENAME } from '../../src/shared/orcad-artifacts.ts'
+import { ORCAD_VERSION_FILENAME } from '../../src/shared/orcad-artifacts.ts'
 import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
 import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
@@ -36,8 +36,6 @@ const env = {
   ...process.env,
   ORCA_BACKGROUND_LAUNCH: '1',
   ORCA_PINNED_NODE: runtimePath,
-  // Real-PTY tests load the shipped addon (config/vitest.node-server.config.ts).
-  ...(artifact ? { ORCA_NODE_SERVER_NODE_PTY: join(packageDir, ORCAD_NODE_PTY_DIR) } : {}),
   [REQUIRED_TEST_INPUTS_ENV]: [artifact && 'artifact', crossRuntime && 'cross-runtime']
     .filter(Boolean)
     .join(',')
@@ -81,7 +79,7 @@ run(runtimePath, [
   join(root, 'node_modules/vitest/vitest.mjs'),
   'run',
   '--config',
-  'config/vitest.node-server.config.ts',
+  'config/vitest.config.ts',
   ...(testArgs.length > 0 ? testArgs : defaultTestArgs())
 ])
 
