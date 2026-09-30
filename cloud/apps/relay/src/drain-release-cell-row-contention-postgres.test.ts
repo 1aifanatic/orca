@@ -64,7 +64,14 @@ const TARGETS: RelayCellConfig[] = ['b', 'c', 'd'].map((suffix) => ({
   region: 'asia-east2',
   ...CAPPED
 }))
-const CELLS = [SOURCE, ...TARGETS]
+// Next to the database. Taken only once every Asia neighbour is at its cap.
+const US_CELL: RelayCellConfig = {
+  id: 'drain-release-contention-e-us',
+  url: 'https://drain-release-contention-us.example.test',
+  region: 'us-central1',
+  ...CAPPED
+}
+const CELLS = [SOURCE, ...TARGETS, US_CELL]
 const RELEASED_ACTIVITY = `control:${SOURCE.id}:1`
 
 type Identity = { userId: string; relayHostId: string }
@@ -74,11 +81,13 @@ type Instance = { database: RelayDatabase; store: RelayAssignmentStore }
 type RunReport = {
   roundTripMs: number
   releaseRate: number
+  neighboursCapped: boolean
   releases: { attempted: number; ok: number; failed: Tally; p50Ms: number; p95Ms: number }
   dials: {
     attempted: number
     placed: number
     placedInWindow: number
+    placedCrossRegion: number
     admissionRejected: Tally
     failed: Tally
   }
@@ -116,6 +125,10 @@ function count(tally: Tally, key: string): void {
   tally[key] = (tally[key] ?? 0) + 1
 }
 
+function total(tally: Tally): number {
+  return Object.values(tally).reduce((sum, value) => sum + value, 0)
+}
+
 function percentile(values: number[], fraction: number): number {
   if (values.length === 0) return 0
   const sorted = [...values].sort((left, right) => left - right)
@@ -148,7 +161,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
   // One switch for every Asia pool: the source cell and each target cell.
   const delay: StatementDelay = { enabled: false, delayMs: LOCAL_ROUND_TRIP_MS }
   const directors: Instance[] = []
-  const asiaCells = new Map<string, Instance>()
+  const servingCells = new Map<string, Instance>()
   let observer: RelayDatabase
   const reports: RunReport[] = []
 
@@ -156,9 +169,9 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     return directors[0]!
   }
 
-  function asiaCell(cellId: string): Instance {
-    const instance = asiaCells.get(cellId)
-    if (!instance) throw new Error(`no Asia pool for ${cellId}`)
+  function servingCell(cellId: string): Instance {
+    const instance = servingCells.get(cellId)
+    if (!instance) throw new Error(`no cell pool for ${cellId}`)
     return instance
   }
 
@@ -230,7 +243,8 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     }
   }
 
-  async function heartbeatAll(): Promise<void> {
+  // `atCap` reports those cells at their connection cap: no headroom left.
+  async function heartbeatAll(atCap: RelayCellConfig[] = []): Promise<void> {
     for (const [index, config] of CELLS.entries()) {
       await admin().store.recordCellHeartbeat({
         cellId: config.id,
@@ -240,10 +254,11 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
         ready: true,
         observedRequests: 0,
         region: config.region,
-        totalConnections: 0,
+        // The cell checks enforced = total + in-flight + reserved.
+        totalConnections: atCap.includes(config) ? CAPPED.connectionHardCap : 0,
         inFlightConnections: 0,
         reservedConnectionUnits: 0,
-        enforcedConnectionUnits: 0,
+        enforcedConnectionUnits: atCap.includes(config) ? CAPPED.connectionHardCap : 0,
         connectionHardCap: CAPPED.connectionHardCap,
         connectionUnobservedBound: CAPPED.connectionUnobservedBound
       })
@@ -306,7 +321,11 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     }
   }
 
-  async function run(roundTripMs: number, releaseRate: number): Promise<RunReport> {
+  async function run(
+    roundTripMs: number,
+    releaseRate: number,
+    neighboursCapped = false
+  ): Promise<RunReport> {
     const releaseCount = Math.round((releaseRate * WINDOW_MS) / 1_000)
     const dialCount = Math.round((DIAL_RATE_PER_SECOND * WINDOW_MS) / 1_000)
     const releasing = Array.from({ length: releaseCount }, (_, index) => hostIdentity(index))
@@ -314,6 +333,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       hostIdentity(releaseCount + index)
     )
     await seed([...releasing, ...dialling])
+    if (neighboursCapped) await heartbeatAll(TARGETS)
 
     const releaseLatencies: number[] = []
     const releaseFailed: Tally = {}
@@ -324,6 +344,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       attempted: 0,
       placed: 0,
       placedInWindow: 0,
+      placedCrossRegion: 0,
       admissionRejected,
       failed: dialFailed
     }
@@ -332,7 +353,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     const activationWork: Promise<void>[] = []
     const stickyLanes = directors.map(() => new RelayPublicAssignmentAdmission(STICKY_LANE))
     for (const instance of directors) consumeRelayCellInventoryHold(instance.database)
-    consumeRelayDatabasePoolPressure(asiaCell(SOURCE.id).database)
+    consumeRelayDatabasePoolPressure(servingCell(SOURCE.id).database)
     delay.delayMs = roundTripMs
     delay.enabled = true
     const sampler = sampleDirectorWaits()
@@ -342,7 +363,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       releases.attempted += 1
       const began = performance.now()
       try {
-        const released = await asiaCell(SOURCE.id).store.releaseActivity(
+        const released = await servingCell(SOURCE.id).store.releaseActivity(
           releasing[index]!,
           RELEASED_ACTIVITY
         )
@@ -382,9 +403,10 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
           return
         }
         dials.placed += 1
+        if (grant.region !== SOURCE.region) dials.placedCrossRegion += 1
         if (performance.now() - startedAt <= WINDOW_MS) dials.placedInWindow += 1
         activationWork.push(
-          asiaCell(grant.cellId)
+          servingCell(grant.cellId)
             .store.activateControl(identity, {
               cellId: grant.cellId,
               assignmentEpoch: grant.assignmentEpoch,
@@ -407,11 +429,13 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     await Promise.allSettled(activationWork)
     const waits = await sampler.stop()
     delay.enabled = false
+    if (neighboursCapped) await heartbeatAll()
 
     const holds = directors.map((instance) => consumeRelayCellInventoryHold(instance.database))
     const report: RunReport = {
       roundTripMs,
       releaseRate,
+      neighboursCapped,
       releases: {
         ...releases,
         p50Ms: percentile(releaseLatencies, 0.5),
@@ -428,7 +452,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
         lockWaitingMean: waits.waiting,
         activeMean: waits.active
       },
-      sourcePoolWaitersMax: consumeRelayDatabasePoolPressure(asiaCell(SOURCE.id).database)
+      sourcePoolWaitersMax: consumeRelayDatabasePoolPressure(servingCell(SOURCE.id).database)
         .databasePoolWaitersMax
     }
     reports.push(report)
@@ -450,8 +474,12 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       })
     }
     for (const config of CELLS) {
-      const database = openDelayedPostgresDatabase(databaseUrl!, delay, CELL_POOL_MAX)
-      asiaCells.set(config.id, {
+      const database = openDelayedPostgresDatabase(
+        databaseUrl!,
+        config === US_CELL ? { enabled: false, delayMs: 0 } : delay,
+        CELL_POOL_MAX
+      )
+      servingCells.set(config.id, {
         database,
         store: new RelayAssignmentStore(database, () => NOW, storeOptions)
       })
@@ -484,7 +512,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       }
       await resetSelectorBoundary()
     }
-    for (const instance of [...directors, ...asiaCells.values()]) await instance.database.close()
+    for (const instance of [...directors, ...servingCells.values()]) await instance.database.close()
     await observer?.close()
   })
 
@@ -499,19 +527,26 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
   }, 120_000)
 
   it('keeps placing while an Asia drain holds the source row', async () => {
-    for (const rate of [6, 18]) {
-      const report = await run(ASIA_ROUND_TRIP_MS, rate)
+    // Before the fix: 90 and 140 of 200 dials rejected by the sticky lane and
+    // about 3.5 of 3.5 active director backends lock-waiting. Pass bars are on
+    // those, not on placements/s, which a slow runner's pacing alone can move.
+    for (const [rate, neighboursCapped] of [
+      [6, false],
+      [18, false],
+      [18, true]
+    ] as const) {
+      const report = await run(ASIA_ROUND_TRIP_MS, rate, neighboursCapped)
       expect(report.dials.failed).toEqual({})
-      expect(report.dials.admissionRejected).toEqual({})
-      expect(report.placementsPerSecond).toBeGreaterThanOrEqual(0.9 * DIAL_RATE_PER_SECOND)
+      expect(total(report.dials.admissionRejected)).toBeLessThan(0.1 * report.dials.attempted)
       expect(report.director.lockWaitingMean).toBeLessThan(0.5)
+      expect(report.dials.placedCrossRegion).toBe(neighboursCapped ? report.dials.placed : 0)
       if (rate === 18) {
         // Still cell-side: releases on one row serialise at ~1/RTT (~5.8/s)
         // and the excess sheds to lease expiry. The director no longer waits.
         expect(report.releases.ok).toBeLessThan(0.6 * report.releases.attempted)
       }
     }
-  }, 180_000)
+  }, 240_000)
 })
 
 function flattenReport(report: RunReport): Record<string, string | number> {
@@ -521,6 +556,8 @@ function flattenReport(report: RunReport): Record<string, string | number> {
       .join(' ') || '-'
   return {
     rttMs: report.roundTripMs,
+    capped: report.neighboursCapped ? 'yes' : 'no',
+    crossRegion: report.dials.placedCrossRegion,
     releasesPerSec: report.releaseRate,
     releasesOk: report.releases.ok,
     releasesFailed: failed(report.releases.failed),

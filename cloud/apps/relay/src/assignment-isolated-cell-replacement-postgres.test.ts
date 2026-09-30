@@ -40,7 +40,14 @@ const TARGETS: RelayCellConfig[] = [
     ...CAPPED
   }
 ]
-const CELLS = [ISOLATED, ...TARGETS]
+// The next tier: taken only when the source's region has no general room.
+const OTHER_REGION: RelayCellConfig = {
+  id: 'isolated-replacement-other-region',
+  url: 'https://isolated-replacement-other-region.example.com',
+  region: 'asia-east2',
+  ...CAPPED
+}
+const CELLS = [ISOLATED, ...TARGETS, OTHER_REGION]
 const HOST_COUNT = 50
 
 function hostIdentity(index: number): { userId: string; relayHostId: string } {
@@ -142,7 +149,8 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
     return { identity, first }
   }
 
-  async function heartbeatAll(): Promise<void> {
+  // `enforced` puts a cell at its connection cap, which leaves it no headroom.
+  async function heartbeatAll(enforced: Record<string, number> = {}): Promise<void> {
     for (const [index, cell] of CELLS.entries()) {
       await stores[0]!.recordCellHeartbeat({
         cellId: cell.id,
@@ -152,10 +160,11 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
         ready: true,
         observedRequests: 0,
         region: cell.region,
-        totalConnections: 0,
+        // The cell checks enforced = total + in-flight + reserved.
+        totalConnections: enforced[cell.id] ?? 0,
         inFlightConnections: 0,
         reservedConnectionUnits: 0,
-        enforcedConnectionUnits: 0,
+        enforcedConnectionUnits: enforced[cell.id] ?? 0,
         connectionHardCap: 600,
         connectionUnobservedBound: 50
       })
@@ -193,7 +202,11 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
       else membership.general.push(cellId)
     }
     await stores[0]!.applyCellAdmissionSelector({
-      attemptId: `isolated-${current.selector.generation}-${Object.keys(states).join('-')}`,
+      // The id is capped at 128 characters; the generation already makes it unique.
+      attemptId: `isolated-${current.selector.generation}-${createHash('sha256')
+        .update(Object.keys(states).join('-'))
+        .digest('hex')
+        .slice(0, 16)}`,
       expectedGeneration: current.selector.generation,
       ...(current.selector.generation === 0
         ? {
@@ -222,7 +235,8 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
     await deleteHostRows()
     // Only this file's hosts hold leases on these cells, so zero is exact.
     await databases[0]!.query(
-      `UPDATE relay_cells SET reserved_requests = 0 WHERE cell_id IN (?, ?, ?)`,
+      `UPDATE relay_cells SET reserved_requests = 0
+       WHERE cell_id IN (${CELLS.map(() => '?').join(', ')})`,
       CELLS.map((cell) => cell.id)
     )
     await applySelector(Object.fromEntries(CELLS.map((cell) => [cell.id, 'general'])))
@@ -531,13 +545,13 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
     await expectReservationAccounting()
   }, 30_000)
 
-  it('keeps the pin when no same-region cell has headroom', async () => {
+  it('keeps the pin when no general cell in any region has headroom', async () => {
     await resetFleet()
     const { identity, first } = await seedActiveHostOnIsolatedSource(913)
     const sourceBefore = await reservedRequests(ISOLATED.id)
     await databases[0]!.query(
-      `UPDATE relay_cells SET reserved_requests = capacity_requests WHERE cell_id IN (?, ?)`,
-      TARGETS.map(({ id }) => id)
+      `UPDATE relay_cells SET reserved_requests = capacity_requests WHERE cell_id IN (?, ?, ?)`,
+      [...TARGETS, OTHER_REGION].map(({ id }) => id)
     )
     try {
       expect(await stores[1]!.assign(identity, 'us-central1')).toMatchObject({
@@ -548,10 +562,35 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
       expect(await counters(identity)).toEqual({ controls: 1, splices: 1 })
     } finally {
       await databases[0]!.query(
-        `UPDATE relay_cells SET reserved_requests = 0 WHERE cell_id IN (?, ?)`,
-        TARGETS.map(({ id }) => id)
+        `UPDATE relay_cells SET reserved_requests = 0 WHERE cell_id IN (?, ?, ?)`,
+        [...TARGETS, OTHER_REGION].map(({ id }) => id)
       )
     }
+  }, 30_000)
+
+  it('moves to another region when its own is at the connection cap, without the source row', async () => {
+    await resetFleet()
+    const { identity, first } = await seedActiveHostOnIsolatedSource(917)
+    const sourceBefore = await reservedRequests(ISOLATED.id)
+    await heartbeatAll(Object.fromEntries(TARGETS.map(({ id }) => [id, 600])))
+    const release = await holdCellRows([ISOLATED.id])
+    try {
+      const moved = await Promise.race([
+        stores[1]!.assign(identity, 'us-central1'),
+        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 3_000))
+      ])
+      expect(moved).toMatchObject({
+        cellId: OTHER_REGION.id,
+        region: 'asia-east2',
+        assignmentEpoch: first.assignmentEpoch + 1
+      })
+    } finally {
+      await release()
+      await heartbeatAll()
+    }
+    expect(await reservedRequests(ISOLATED.id)).toBe(sourceBefore)
+    expect(await reservedRequests(OTHER_REGION.id)).toBe(1)
+    await expectReservationAccounting()
   }, 30_000)
   it('places a dormant host without asking for its old cell row', async () => {
     await resetFleet()

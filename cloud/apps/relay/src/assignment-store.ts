@@ -426,14 +426,28 @@ const REGIONAL_REHOME_QUARANTINE_MEMORY_LIMIT = 1_000
 const REGIONAL_REHOME_FAILURE_BUDGET = 3
 const REGIONAL_REHOME_OBSERVATION_MS = 24 * 60 * 60_000
 const ASSIGNMENT_LOCK_RETRY_MAX_DELAY_MS = 50
-// 'isolated': the same-region general rows a roll-isolated incumbent can move
-// to, never its own. The source row is the one a drain's releases keep busy.
-type AssignmentInventoryScope = 'none' | 'general' | 'isolated' | 'all'
+// 'isolated' and 'isolated-other-regions': the general rows a roll-isolated
+// incumbent can move to, its own region first, never its own row. The source
+// row is the one a drain's releases keep busy.
+type AssignmentInventoryScope =
+  | 'none'
+  | 'general'
+  | 'isolated'
+  | 'isolated-other-regions'
+  | 'all'
+type IsolatedReplacementTier = 'same-region' | 'other-regions'
 type RetriedAssignmentInventoryScope = Exclude<AssignmentInventoryScope, 'none'>
 
 class AssignmentInventoryLockUnavailable extends Error {
   constructor(readonly inventoryScope: RetriedAssignmentInventoryScope) {
     super('database_lock_unavailable')
+  }
+}
+
+// Postgres holds row locks to COMMIT, so the next tier needs a new transaction.
+class AssignmentIsolatedTierExhausted extends Error {
+  constructor() {
+    super('assignment_isolated_tier_exhausted')
   }
 }
 
@@ -704,6 +718,10 @@ export class RelayAssignmentStore {
           inventoryScope = 'all'
           continue
         }
+        if (error instanceof AssignmentIsolatedTierExhausted) {
+          inventoryScope = 'isolated-other-regions'
+          continue
+        }
         if (
           !(error instanceof AssignmentInventoryLockUnavailable) ||
           Date.now() >= deadline
@@ -940,15 +958,24 @@ export class RelayAssignmentStore {
       // The retry paths below open with the inventory, so this path takes its
       // host rows before any of them rather than where the others do.
       await this.lockControlConnectionReservations(transaction, identity, lockMode)
-      const isolatedRetrySource =
-        inventoryScope === 'isolated' ? await this.pinnedCellId(transaction, identity) : undefined
+      const isolatedTier: IsolatedReplacementTier =
+        inventoryScope === 'isolated-other-regions' ? 'other-regions' : 'same-region'
+      const isolatedScope = inventoryScope === 'isolated' || inventoryScope === 'isolated-other-regions'
+      const isolatedRetrySource = isolatedScope
+        ? await this.pinnedCellId(transaction, identity)
+        : undefined
       let lockedCells =
         inventoryScope === 'all'
           ? await this.lockCellInventory(transaction, lockMode)
           : inventoryScope === 'general'
             ? await this.lockGeneralCellInventory(transaction, lockMode)
-            : inventoryScope === 'isolated'
-              ? await this.lockIsolatedReplacementCells(transaction, isolatedRetrySource, lockMode)
+            : isolatedScope
+              ? await this.lockIsolatedReplacementCells(
+                  transaction,
+                  isolatedRetrySource,
+                  isolatedTier,
+                  lockMode
+                )
               : undefined
       const existing = await this.assignmentRow(
         transaction,
@@ -961,7 +988,7 @@ export class RelayAssignmentStore {
       retryScope = dormant ? 'general' : 'all'
       if (
         (inventoryScope === 'general' && !dormant) ||
-        (inventoryScope === 'isolated' &&
+        (isolatedScope &&
           (!existing || dormant || text(existing, 'cell_id') !== isolatedRetrySource))
       ) {
         throw new AssignmentInventoryScopeChanged()
@@ -984,20 +1011,29 @@ export class RelayAssignmentStore {
           (await this.isolatedIncumbentMayMove(transaction, identity, existing, now))
         ) {
           const source = await this.unlockedCell(transaction, text(existing, 'cell_id'))
-          retryScope = 'isolated'
+          retryScope = isolatedTier === 'same-region' ? 'isolated' : 'isolated-other-regions'
           lockedCells ??= await this.lockIsolatedReplacementCells(
             transaction,
             source.cellId,
+            isolatedTier,
             'nowait'
           )
           isolatedTarget =
-            (await this.leastLoadedCell(transaction, lockedCells, source.region, 'require')) ??
-            undefined
-          // No same-region headroom: decide under the all-rows lock, as before.
-          if (!isolatedTarget) throw new AssignmentInventoryScopeChanged()
+            (await this.leastLoadedCell(
+              transaction,
+              lockedCells,
+              source.region,
+              isolatedTier === 'same-region' ? 'require' : 'prefer'
+            )) ?? undefined
+          // Same region full: try the other regions. All full: decide under the
+          // all-rows lock, which keeps the pin as before.
+          if (!isolatedTarget) {
+            if (isolatedTier === 'same-region') throw new AssignmentIsolatedTierExhausted()
+            throw new AssignmentInventoryScopeChanged()
+          }
           isolatedIncumbent = source
           sourceRowSkipped = true
-        } else if (inventoryScope === 'isolated') {
+        } else if (isolatedScope) {
           throw new AssignmentInventoryScopeChanged()
         }
       }
@@ -1047,9 +1083,9 @@ export class RelayAssignmentStore {
           if (isolatedTarget) {
             isolatedIncumbent = current
           } else {
-            // Keeping the pin is today's behaviour: the host keeps retrying its
-            // own cell. Scattering a region across the fleet is worse, and it
-            // cannot be undone without the rehome worker.
+            // Keep the pin: the host retries its own cell. The narrowed path
+            // has already tried every region, or declined because the counters
+            // disagree with the leases; the reason string is a log contract.
             events.push(
               JSON.stringify({
                 event: 'orca_relay_sticky_replacement_deferred',
@@ -7409,11 +7445,13 @@ export class RelayAssignmentStore {
     return rows
   }
 
-  // The rows a roll-isolated incumbent may move to: general, in its own region,
-  // never its own. Placement re-reads admission and headroom under the lock.
+  // The rows a roll-isolated incumbent may move to in one tier: general cells
+  // in its own region, or in every other region, never its own. Placement
+  // re-reads admission and headroom under the lock.
   private async lockIsolatedReplacementCells(
     database: RelayDatabase,
     sourceCellId: string | undefined,
+    tier: IsolatedReplacementTier,
     mode: CellInventoryLockMode
   ): Promise<SqlRow[]> {
     if (sourceCellId === undefined) throw new AssignmentInventoryScopeChanged()
@@ -7421,10 +7459,13 @@ export class RelayAssignmentStore {
       `SELECT admission.cell_id FROM relay_cell_admission admission
        LEFT JOIN relay_cell_regions region ON region.cell_id = admission.cell_id
        WHERE admission.admission_state = 'general' AND admission.cell_id <> ?
-         AND COALESCE(region.region, ?) = ?`,
+         AND COALESCE(region.region, ?) ${tier === 'same-region' ? '=' : '<>'} ?`,
       [sourceCellId, RELAY_DEFAULT_REGION, await this.cellRegion(database, sourceCellId)]
     )
-    if (candidates.length === 0) throw new AssignmentInventoryScopeChanged()
+    if (candidates.length === 0) {
+      if (tier === 'same-region') throw new AssignmentIsolatedTierExhausted()
+      throw new AssignmentInventoryScopeChanged()
+    }
     return await this.lockCellRows(
       database,
       candidates.map((row) => text(row, 'cell_id')),
@@ -7471,9 +7512,8 @@ export class RelayAssignmentStore {
     rows: SqlRow[],
     preferredRegion: RelayRegion,
     // Ordinary placement treats region as a preference and spills globally
-    // rather than refuse a host a cell. Re-placing off an isolated cell is the
-    // one caller that must not: a whole region parked migration-only would send
-    // every one of its hosts to the fallback region, permanently.
+    // rather than refuse a host a cell. Re-placing off an isolated cell asks for
+    // its own region first, and leaves it only in a separate second tier.
     regionMode: 'prefer' | 'require' = 'prefer'
   ): Promise<CellRow | null> {
     const regions = new Map(

@@ -463,14 +463,38 @@ describe('re-placing a host off a cell isolated for a roll', () => {
     })
   })
 
-  it('never re-places across a region boundary, and says so', async () => {
-    // Both US cells parked and only Asia general: ordinary placement would spill
-    // to asia-east2 through `preferred[0] ?? candidates[0]`. This path refuses.
+  it('crosses a region boundary only when its own region has no room', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { store, isolateForRoll, park } = await setup()
     const first = await store.assign(IDENTITY, 'us-central1')
     const other = CELLS.find((cell) => cell.region === 'us-central1' && cell.id !== first.cellId)!
     await park(other.id, 'migration-only')
+    await isolateForRoll(first.cellId)
+
+    warn.mockClear()
+    expect(await store.assign(IDENTITY, 'us-central1')).toMatchObject({
+      cellId: 'asia-c1',
+      assignmentEpoch: first.assignmentEpoch + 1
+    })
+    expect(jsonEvents(warn, 'orca_relay_sticky_replaced_off_isolated_cell')).toEqual([
+      {
+        event: 'orca_relay_sticky_replaced_off_isolated_cell',
+        fromCellId: first.cellId,
+        fromRegion: 'us-central1',
+        admissionState: 'migration-only',
+        toCellId: 'asia-c1',
+        region: 'asia-east2'
+      }
+    ])
+  })
+
+  it('keeps the pin, and says so, when no region has a general cell with room', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { store, isolateForRoll, park } = await setup()
+    const first = await store.assign(IDENTITY, 'us-central1')
+    for (const cell of CELLS) {
+      if (cell.id !== first.cellId) await park(cell.id, 'migration-only')
+    }
     await isolateForRoll(first.cellId)
 
     warn.mockClear()
@@ -489,17 +513,25 @@ describe('re-placing a host off a cell isolated for a roll', () => {
     expect(jsonEvents(warn, 'orca_relay_sticky_replaced_off_isolated_cell')).toEqual([])
   })
 
-  it('keeps a re-placed host in its own region', async () => {
+  it('prefers its own region over a less loaded cell elsewhere', async () => {
+    const { store, isolateForRoll } = await setup()
+    const first = await store.assign(IDENTITY, 'us-central1')
+    await isolateForRoll(first.cellId)
+    const moved = await store.assign(IDENTITY, 'us-central1')
+    expect(moved.region).toBe('us-central1')
+    expect(moved.cellId).not.toBe(first.cellId)
+  })
+
+  it('moves the only cell of a region to another region', async () => {
     const { store, isolateForRoll } = await setup()
     const first = await store.assign(IDENTITY, 'asia-east2')
     expect(first.region).toBe('asia-east2')
     await isolateForRoll(first.cellId)
 
     // asia-c1 is the only Asia cell, so the only in-region candidate is gone.
-    expect(await store.assign(IDENTITY, 'asia-east2')).toMatchObject({
-      cellId: first.cellId,
-      assignmentEpoch: first.assignmentEpoch
-    })
+    const moved = await store.assign(IDENTITY, 'asia-east2')
+    expect(moved.region).toBe('us-central1')
+    expect(moved.assignmentEpoch).toBe(first.assignmentEpoch + 1)
   })
 
   it('takes the dead-cell path when a stamped cell stops heartbeating', async () => {
