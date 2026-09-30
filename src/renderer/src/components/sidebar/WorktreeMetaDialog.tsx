@@ -34,6 +34,10 @@ import {
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import { WorktreeDisplayNameField } from './WorktreeDisplayNameField'
 import { WorktreeReviewLinkField } from './WorktreeReviewLinkField'
+import {
+  isImeOwnedKeyboardEvent,
+  useImeEnterGestureOwnership
+} from '@/lib/ime-composition-keyboard-event'
 
 function resizeCommentTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = 'auto'
@@ -55,6 +59,7 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
   const closeModal = useAppStore((s) => s.closeModal)
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const submitShortcutLabel = getScreenSubmitShortcutLabel()
+  const commentIme = useImeEnterGestureOwnership()
 
   const isEditMeta = activeModal === 'edit-meta'
   const isOpen = isEditMeta
@@ -290,6 +295,9 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
 
   const handleCommentKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (commentIme.ownsKeyDown(e) || commentIme.isComposing() || isImeOwnedKeyboardEvent(e)) {
+        return
+      }
       const isPlainEnter = e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey
       if (isPlainEnter || isScreenSubmitShortcut(e)) {
         e.preventDefault()
@@ -297,18 +305,15 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
         handleSave()
       }
     },
-    [handleSave]
+    [commentIme, handleSave]
   )
 
-  const handleIssueKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        handleSave()
-      }
-    },
-    [handleSave]
-  )
+  const handleIssueKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleSave()
+    }
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -390,6 +395,10 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
               ref={setCommentTextareaRef}
               value={commentInput}
               onChange={handleCommentChange}
+              onCompositionStart={() => commentIme.setComposing(true)}
+              onCompositionEnd={() => commentIme.setComposing(false)}
+              onKeyUp={commentIme.onKeyUp}
+              onBlur={commentIme.reset}
               onKeyDown={handleCommentKeyDown}
               placeholder={translate(
                 'auto.components.sidebar.WorktreeMetaDialog.030d484fc0',
