@@ -85,6 +85,11 @@ describe('federated worker first dispatch readiness', () => {
       )
       expect(runtime.waitForTerminal).not.toHaveBeenCalled()
       expect(runtime.sendTerminalAgentPrompt).toHaveBeenCalledOnce()
+      expect(runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
+        HANDLE,
+        expect.any(String),
+        expect.objectContaining({ retrySubmitAfterLaunch: true })
+      )
     }
   )
 
@@ -102,6 +107,11 @@ describe('federated worker first dispatch readiness', () => {
     expect(runtime.waitForTerminal).toHaveBeenCalledWith(
       HANDLE,
       expect.objectContaining({ condition: 'tui-idle' })
+    )
+    expect(runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
+      HANDLE,
+      expect.any(String),
+      expect.objectContaining({ retrySubmitAfterLaunch: false })
     )
   })
 

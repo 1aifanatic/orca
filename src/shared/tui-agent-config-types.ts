@@ -48,7 +48,7 @@ export type TuiAgentConfig = {
    * the input box. Present = a freshly launched worker waits for that marker alone before its task.
    */
   composerReadyCaptures?: readonly string[]
-  /** Delay before one extra blind submit Enter, for agents that render their composer before Enter is live (codex); a no-op if the first Enter landed. */
+  /** Delay before one extra blind submit Enter, for agents that render their composer before Enter is live (codex, opencode); a no-op if the first Enter landed. */
   submitRetryDelayMs?: number
   /** Extra ms per logical prompt line before Enter, for TUIs that expand multiline paste slowly (antigravity). */
   submitLineSettleMsPerLine?: number

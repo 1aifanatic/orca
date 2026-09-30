@@ -33,6 +33,11 @@ describe('first dispatch readiness of a freshly launched worker', () => {
       gate.resolve(COMPOSER_READY)
       await pending
       expect(h.runtime.sendTerminalAgentPrompt).toHaveBeenCalledOnce()
+      expect(h.runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
+        'term_worker',
+        expect.any(String),
+        expect.objectContaining({ retrySubmitAfterLaunch: true })
+      )
     }
   )
 
@@ -55,6 +60,11 @@ describe('first dispatch readiness of a freshly launched worker', () => {
     vi.spyOn(h.runtime, 'waitForFreshWorkerComposer')
     await h.startWorker({ terminal: 'term_worker' })
     expect(h.runtime.waitForFreshWorkerComposer).not.toHaveBeenCalled()
+    expect(h.runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
+      'term_worker',
+      expect.any(String),
+      expect.objectContaining({ retrySubmitAfterLaunch: false })
+    )
     expect(h.runtime.waitForTerminal).toHaveBeenCalledWith(
       'term_worker',
       expect.objectContaining({ condition: 'tui-idle' })

@@ -3,6 +3,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { TerminalInputKind } from '../../../shared/terminal-input-kind'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { resolveDraftPasteReadyTimeoutMs } from '../../../shared/draft-paste-ready-timeout'
+import { getAgentSubmitRetryDelayMs } from '../../../shared/agent-prompt-injection'
 import { useAppStore } from '@/store'
 import {
   inspectRuntimeTerminalProcess,
@@ -227,7 +228,7 @@ async function sendBracketedPasteToAgent(args: {
 }): Promise<boolean> {
   const { settings = useAppStore.getState().settings, ptyId, content, submit, agent } = args
   const { inputKind } = args
-  const submitRetryDelayMs = agent ? TUI_AGENT_CONFIG[agent]?.submitRetryDelayMs : undefined
+  const submitRetryDelayMs = getAgentSubmitRetryDelayMs(agent)
   try {
     // Why: paste + Enter (+ retry Enter) must be one transaction, or a concurrent
     // paste on this PTY can slip between them and submit a half-written prompt.

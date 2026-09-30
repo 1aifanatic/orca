@@ -103,7 +103,10 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
       'opencode-1-18-32-timed-boot-slow',
       'opencode-1-18-32-timed-boot-hidden-pane',
       'opencode-1-18-32-timed-first-launch'
-    ]
+    ],
+    // Why: OpenCode 2 drops an Enter sent before its mode row is drawn, which can trail the box
+    // by over a second under load; a second Enter 2 s later submitted every stuck brief measured.
+    submitRetryDelayMs: 2000
   },
   // Why: opencode2 installs as a separate binary and uses the same prompt flags.
   // Its @opentui composer keeps the same cursor-gated paste signal.
@@ -114,7 +117,9 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     promptInjectionMode: 'flag-prompt',
     draftPasteReadySignal: 'render-cursor-after-bracketed-paste',
     draftPasteReadyTimeoutMs: 20_000,
-    composerReadyCaptures: ['opencode-2-0-18-timed-boot-hidden-pane']
+    composerReadyCaptures: ['opencode-2-0-18-timed-boot-hidden-pane'],
+    // Why: see opencode's row; the Enter drop was measured on 2.0.18.
+    submitRetryDelayMs: 2000
   },
   'mimo-code': {
     detectCmd: 'mimo',

@@ -114,6 +114,29 @@ describe('post-paste submit retry Enter', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it.each(['opencode', 'opencode2'] as const)(
+    '%s gets the retry Enter from its row, for the box that appears before Enter works',
+    async (agent) => {
+      const retryDelayMs = TUI_AGENT_CONFIG[agent].submitRetryDelayMs ?? 0
+      const promise = pasteDraftWhenAgentReady({
+        tabId: 'tab-1',
+        content: ISSUE_URL,
+        agent,
+        submit: true,
+        forcePaste: true
+      })
+      await flushMicrotasks()
+      testState.ptyObserver?.(`${DECSET_BRACKETED_PASTE}\x1b[?25h`)
+      await flushMicrotasks()
+      await vi.advanceTimersByTimeAsync(POST_PASTE_SUBMIT_DELAY_MS)
+
+      expect(enterWrites()).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(retryDelayMs)
+      await expect(promise).resolves.toBe(true)
+      expect(enterWrites()).toHaveLength(2)
+    }
+  )
+
   it('sends exactly one Enter for agents without a submit retry delay', async () => {
     const promise = pasteDraftWhenAgentReady({
       tabId: 'tab-1',

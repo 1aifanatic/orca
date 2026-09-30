@@ -1,9 +1,6 @@
 import type { TuiAgent } from '../../../../../../shared/tui-agent'
 import { describeTerminalWaitBlockedReason } from '../../../../../../shared/terminal-wait-blocked-reason-legacy-alias'
-import {
-  buildDispatchPreamble,
-  dispatchPreambleSendOptions
-} from '../../../../orchestration/preamble'
+import { deliverWorkerDispatchPreamble } from '../worker/deliver-worker-dispatch-preamble'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { defineMethod } from '../../../core'
 import { assertOrchestrationWorktreeCreationSupported } from '../worker/folder-worktree-placement'
@@ -253,23 +250,21 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
           terminalOwnership: params.terminal ? 'external' : 'created'
         })
         failedStage = 'dispatch_input'
-        const prompt = await runtime.sendTerminalAgentPrompt(
+        // Nesting is checked against this worker host's own cap: enforcement runs here.
+        const delivery = await deliverWorkerDispatchPreamble({
+          runtime,
+          structuredSession: null,
           terminalHandle,
-          buildDispatchPreamble({
-            taskId: params.taskId,
-            dispatchId: params.dispatchId,
-            taskSpec: params.taskSpec,
-            coordinatorHandle: 'Run home (relayed by Orca)',
-            workerHandle: terminalHandle,
-            dispatchCapability: capability,
-            devMode: params.devMode,
-            // Why the worker host's own setting: enforcement runs here, with this
-            // host's code, against this host's cap.
-            canDispatchSubWorkers: (params.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
-            cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
-          }),
-          dispatchPreambleSendOptions(orchestrationMutation.requestId)
-        )
+          dispatchId: params.dispatchId,
+          dispatchDepth: params.depth ?? 1,
+          taskId: params.taskId,
+          taskSpec: params.taskSpec,
+          coordinatorHandle: 'Run home (relayed by Orca)',
+          dispatchCapability: capability,
+          devMode: params.devMode,
+          requestId: orchestrationMutation.requestId,
+          launchedTerminal: !params.terminal
+        })
         effects.push({
           kind: 'dispatch_input',
           role: 'agent',
@@ -288,7 +283,7 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
           setup,
           launch: launch.receipt,
           effects,
-          ...(prompt.prompt ? { prompt: prompt.prompt } : {}),
+          ...(delivery.prompt ? { prompt: delivery.prompt } : {}),
           residualResources: []
         }
       } catch (error) {
