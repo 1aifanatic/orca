@@ -18,10 +18,10 @@ const fixture = vi.hoisted(() => ({
 }))
 vi.mock('./orcad-bundled-runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof BundledRuntime>()),
-  isRunningAsBundledOrcadRuntime: fixture.bundled
+  isRunningAsBundledOrcadRuntime: fixture.bundled,
+  resolveBundledOrcadSlot: () => '/slot'
 }))
 vi.mock('./orcad-artifact-identity', () => ({ readOrcadArtifactIdentity: fixture.identity }))
-vi.mock('./orcad-app-paths', () => ({ resolveOrcadInstallRoot: () => '/slot' }))
 vi.mock('node:fs/promises', () => ({ readFile: fixture.readVersion }))
 vi.mock('../persistence/profile-state/profile-state-runtime-preflight', () => ({
   preflightProfileStateRuntime: fixture.sql

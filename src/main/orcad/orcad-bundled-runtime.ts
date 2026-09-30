@@ -2,6 +2,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { constants } from 'node:os'
 import { spawnProcess } from '../../shared/child-process/run-process'
+import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import {
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_SERVER_TARGET_FILENAME,
@@ -57,6 +58,11 @@ export function resolveBundledOrcadRuntime(directory: string): string | null {
     throw new OrcadBundledRuntimeError('The bundled Orca runtime is missing')
   }
   return runtime
+}
+
+/** The running entry's real slot, resolved as the handoff does, so a symlinked orcad.js is checked. */
+export function resolveBundledOrcadSlot(script = process.argv[1]): string {
+  return resolveOrcadInstallRoot(script && realpathSync(script))
 }
 
 /** True only inside the pinned runtime a packaged slot names. */

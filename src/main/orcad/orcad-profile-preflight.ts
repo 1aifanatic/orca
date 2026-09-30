@@ -11,16 +11,19 @@ import {
   type OrcadProfilePreflightResponse
 } from '../../shared/orcad-profile-preflight'
 import { readOrcadArtifactIdentity } from './orcad-artifact-identity'
-import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import { ORCAD_VERSION_FILENAME } from '../../shared/orcad-artifacts'
 import { ORCAD_NODE_RUNTIME_IDENTITY } from '../../shared/orcad-node-runtime-identity'
 import { runProcess } from '../../shared/child-process/run-process'
 import { preflightOrcadNativeRuntime } from './orcad-runtime-native-preflight'
-import { isRunningAsBundledOrcadRuntime, OrcadBundledRuntimeError } from './orcad-bundled-runtime'
+import {
+  isRunningAsBundledOrcadRuntime,
+  OrcadBundledRuntimeError,
+  resolveBundledOrcadSlot
+} from './orcad-bundled-runtime'
 
 /** Check every packaged start before a profile index, data-root lock or import is touched. */
 export async function preflightBundledOrcadStartup(): Promise<void> {
-  const directory = resolveOrcadInstallRoot()
+  const directory = resolveBundledOrcadSlot()
   if (!isRunningAsBundledOrcadRuntime(directory)) {
     return
   }
@@ -54,9 +57,10 @@ export async function runOrcadProfilePreflight(
   options: { nativeFeatures?: boolean } = {}
 ): Promise<void> {
   const checkedNonce = z.string().uuid().parse(nonce)
+  const directory = resolveBundledOrcadSlot()
   let artifactVersion: string
   try {
-    artifactVersion = await readOrcadArtifactIdentity(resolveOrcadInstallRoot())
+    artifactVersion = await readOrcadArtifactIdentity(directory)
   } catch (cause) {
     throw new OrcadBundledRuntimeError('The bundled Orca artifacts are incomplete or altered', {
       cause
@@ -64,7 +68,7 @@ export async function runOrcadProfilePreflight(
   }
   const result = await preflightProfileStateRuntime()
   // Why only inside the pinned runtime: a host Node rollback launcher never serves this slot.
-  if (isRunningAsBundledOrcadRuntime(resolveOrcadInstallRoot())) {
+  if (isRunningAsBundledOrcadRuntime(directory)) {
     await preflightOrcadNativeRuntime(options)
   }
   const response: OrcadProfilePreflightResponse = {

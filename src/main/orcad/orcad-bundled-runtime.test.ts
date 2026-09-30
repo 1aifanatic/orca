@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { handoffToBundledOrcad } from './orcad-bundled-runtime'
+import { handoffToBundledOrcad, resolveBundledOrcadSlot } from './orcad-bundled-runtime'
 import { NODE_RUNTIME_ASSETS, NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import {
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
@@ -180,6 +180,13 @@ describe('bundled Orca runtime handoff', () => {
         args: ['/real/slot/orcad.js', '--port', '0']
       })
     )
+  })
+
+  it('resolves the slot a symlinked entry lives in, as the handoff does', () => {
+    fixture.realpath.mockImplementation((path) =>
+      path === '/bin/orcad.js' ? '/real/slot/orcad.js' : path
+    )
+    expect(resolveBundledOrcadSlot('/bin/orcad.js')).toBe(resolve('/real/slot'))
   })
 
   it('reports failed spawn as a configuration failure and removes listeners', () => {
