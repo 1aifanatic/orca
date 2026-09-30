@@ -476,6 +476,8 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
       expect(socket.listenerCount('error')).toBe(1)
 
       await vi.advanceTimersByTimeAsync(1000)
+      // The probe reports its timeout one event-loop turn after the timer fires.
+      await vi.advanceTimersByTimeAsync(1)
 
       // Why cleaned: a probe that lost to its timer proves nothing, so cleanup asks the daemon to stop.
       await expect(cleanup).resolves.toEqual({
