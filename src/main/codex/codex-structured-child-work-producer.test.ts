@@ -390,12 +390,19 @@ describe('Codex structured child-work producer', () => {
         live: 'working',
         parent: { stateName: 'working' }
       },
-      // Codex ends this child's turn with an error it will not retry, and no turn/completed.
+      // Codex ends this child's turn with an error it will not retry, then a failed completion.
       {
         frame: {
           method: 'error',
           params: { threadId: LINTER, turnId: 'l1', willRetry: false, error: { message: 'boom' } }
         },
+        lead: 'working',
+        live: 'working',
+        parent: { stateName: 'working' },
+        check: () => expect(byDescription('lint')).toMatchObject({ membership: 'live' })
+      },
+      {
+        frame: turn('turn/completed', LINTER, 'l1', 'failed'),
         lead: 'working',
         live: 'working',
         parent: { stateName: 'working' },

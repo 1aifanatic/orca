@@ -7,6 +7,8 @@ import type { AgentChildWorkView } from '../../../shared/agent-status-child-work
 import { structuredChildWorkLegacyTasks } from '../../../shared/structured-agent-session-child-work-legacy'
 import { structuredStripChildWork } from '../../../shared/agent-child-work-listing'
 import { readStructuredAgentSessionHistoryResult } from './structured-agent-session-history-result'
+import { tryReadQueuePublication } from './structured-agent-session-queued-publication'
+import type { AgentSessionHistoryScope } from './agent-session-history-page'
 import type {
   AgentSessionSubscribers,
   AgentSessionSubscribeInput
@@ -34,19 +36,31 @@ export class StructuredAgentSessionBackgroundTaskChannel {
     private readonly readChildWork: (sessionId: string) => AgentChildWorkView[] | undefined
   ) {}
 
-  async history(request: AgentSessionHistoryRequest): Promise<AgentSessionHistoryResult> {
+  /** `scope` is for in-process readers; a wire request reads every agent's rows. */
+  async history(
+    request: AgentSessionHistoryRequest,
+    scope?: AgentSessionHistoryScope
+  ): Promise<AgentSessionHistoryResult> {
+    const journal = (await this.conversation(request.sessionId)).journal
     const result = readStructuredAgentSessionHistoryResult({
-      journal: (await this.conversation(request.sessionId)).journal,
+      journal,
       record: this.deps.store.getRecord(request.sessionId),
-      request
+      request,
+      scope
     })
     const backgroundTasks = this.state(request.sessionId)
+    const queue = tryReadQueuePublication(journal)
     const hostNow = this.deps.now?.() ?? Date.now()
     return {
       ...result,
       page: {
         ...result.page,
         hostNow,
+        // A stale history answer never replaces newer live subscription state;
+        // the client's reducer keeps live-over-history precedence.
+        ...(queue !== undefined
+          ? { queuedMessages: queue.queuedMessages, queuePause: queue.queuePause }
+          : {}),
         ...(backgroundTasks !== undefined ? { backgroundTasks } : {})
       }
     }

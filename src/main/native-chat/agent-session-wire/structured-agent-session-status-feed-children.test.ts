@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import type {
   AgentSessionStatusEvent,
@@ -12,7 +13,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import {
   StructuredAgentSessionStatusFeed,
   type StructuredAgentSessionStatusSink
@@ -61,7 +62,7 @@ async function feedWithChildren(provider: AgentSessionHandleProvider = 'codex') 
       agent: 'codex',
       providerHandle: { kind: 'codex', threadId: 'thread-1' }
     },
-    journalDir: join(root, SESSION)
+    stateDirectory: join(root, SESSION)
   })
   const views: { current: () => AgentChildWorkView[] } = { current: () => [] }
   const admitted: AgentChildWorkEvidence[][] = []
@@ -85,7 +86,7 @@ async function feedWithChildren(provider: AgentSessionHandleProvider = 'codex') 
   await journal.appendItem(
     USER_IDENTITY,
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
-    { fence: 1 }
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   return { journal, feed, events, views, admitted, changed }
 }
@@ -103,7 +104,7 @@ describe('structured status summary child records', () => {
     await journal.appendItem(
       USER_IDENTITY,
       { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     feed.publish(SESSION, journal)
     expect(events.at(-1)).toEqual({
@@ -136,7 +137,7 @@ describe('structured status summary child records', () => {
     await journal.appendItem(
       USER_IDENTITY,
       { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     feed.publish(SESSION, journal)
     const before = events.length
@@ -272,7 +273,7 @@ describe('structured status summary child records', () => {
       journal.appendItem(
         { provider: 'codex', threadId: 'thread-1', turnId, ordinal: 0 },
         { kind: 'turn', turnId, state },
-        { fence: 1, ...(agentId ? { agentId } : {}) }
+        { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE, ...(agentId ? { agentId } : {}) }
       )
     const retirements = () => admitted.flat().filter((edge) => edge.type === 'turn-started')
     // The session was first projected before it had a turn, so its first turn is a new one.

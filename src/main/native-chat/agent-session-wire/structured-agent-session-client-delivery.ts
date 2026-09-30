@@ -3,6 +3,7 @@ import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
+import { tryReadQueuePublication } from './structured-agent-session-queued-publication'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -53,6 +54,8 @@ export class StructuredAgentSessionClientDelivery {
     this.waitForSendSettlement = this.sendSettlement.wait
     this.subscribers = new AgentSessionSubscribers({
       readCommands: (sessionId) => deps().adapter.readCommands?.(sessionId),
+      readQueuePublication: (sessionId) =>
+        tryReadQueuePublication(sessions.get(sessionId)?.journal),
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }

@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // A subagent's work must not re-date the session that spawned it.
 //
 // The status row takes its completion stamp and acknowledgement clock from the summary's
@@ -15,7 +16,7 @@ import { projectStructuredAgentSessionStatusSummary } from '../../../shared/stru
 import { AgentHookServer, _internals } from '../../agent-hooks/server'
 import { createClaudeJournalTranslator } from '../../claude/claude-structured-journal-translation'
 import { createCodexJournalTranslator } from '../../codex/codex-structured-journal-translation'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import { createDeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
@@ -54,7 +55,7 @@ async function openSession() {
       providerHandle: { kind: 'codex', threadId: CODEX_THREAD }
     },
     now: tick,
-    journalDir: join(root, SESSION)
+    stateDirectory: join(root, SESSION)
   })
   // The host's status row and child records, which the feed writes into and reads back.
   const server = new AgentHookServer()
@@ -90,7 +91,7 @@ async function openSession() {
     journal.appendItem(
       { provider: 'orca', clientMessageId },
       { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   const latestStatus = () => {
     const event = events.findLast((candidate) => candidate.type === 'status')

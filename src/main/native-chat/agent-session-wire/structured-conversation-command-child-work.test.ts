@@ -2,46 +2,30 @@
 // both read the host's child records through the one sink read. The provider tracker's own roster
 // is present and claims live work throughout; nothing here may be decided by it.
 
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTaskState } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
+import { structuredAgentSessionCommandTurn } from './structured-agent-session-command-turn'
 import {
-  HOST_TEST_NOW,
-  HOST_TEST_SESSION,
-  hostTestAttachParams,
-  hostTestOperationId,
-  resetHostTestOperationIds
-} from './structured-agent-session-host-test-data'
+  attach,
+  CALLER,
+  envelope,
+  hostTestState,
+  serveHostTestChildWork
+} from './structured-agent-session-host-test-harness'
+import { HOST_TEST_NOW, HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
 
-const caller = { callerKey: 'desktop' }
-let directory: string
-let store: AgentSessionRecordStore
-let host: StructuredAgentSessionHost
-const compact = vi.fn<NonNullable<StructuredAgentSessionAdapter['compact']>>()
+let state: ReturnType<typeof hostTestState>
+let compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>>
 /** What the store holds for the session; the sink serves it to every reader. */
 let records: AgentChildWorkView[] = []
 
 function compactParams() {
   return {
     command: 'compact' as const,
-    envelope: {
-      sessionId: HOST_TEST_SESSION,
-      clientOperationId: hostTestOperationId(),
-      expectedRuntimeFence: store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence,
-      payloadFingerprint: computeAgentSessionPayloadFingerprint({
-        method: 'agentSession.conversationCommand',
-        sessionId: HOST_TEST_SESSION,
-        fields: { command: 'compact' }
-      })
-    }
+    envelope: envelope('agentSession.conversationCommand', { command: 'compact' })
   }
 }
 
@@ -61,75 +45,54 @@ function devServer(overrides: Partial<AgentChildWorkView> = {}): AgentChildWorkV
   }
 }
 
-beforeEach(async () => {
+/** The provider ends the command's turn, as the child's journal translator does. */
+function finish(): void {
+  const { command } = compact.mock.calls.at(-1)![0]
+  const events = state.acquire.mock.calls.at(-1)![0].events!
+  events.appendLifecycleBatch!(
+    `turn-completed:${command.clientMessageId}`,
+    [
+      {
+        kind: 'item',
+        identity: command.identity,
+        body: { ...command.running, state: 'completed', outcome: 'success' },
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      }
+    ],
+    { lifecycle: true }
+  )
+}
+
+async function commandTurnState(clientMessageId: string): Promise<string | undefined> {
+  const { itemId } = structuredAgentSessionCommandTurn(clientMessageId)
+  const item = (await state.host.journalSnapshot(HOST_TEST_SESSION)).items.find(
+    (entry) => entry.itemId === itemId
+  )
+  return item?.body.kind === 'turn' ? item.body.state : undefined
+}
+
+beforeEach(() => {
   records = []
-  resetHostTestOperationIds()
-  compact.mockReset().mockResolvedValue({ outcome: 'compacted' })
-  directory = await mkdtemp(join(tmpdir(), 'orca-command-child-work-'))
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
-  const statusSink: StructuredAgentSessionStatusSink = {
-    publish: () => {},
-    forget: () => {},
-    publishChildWork: () => {},
-    readChildWork: () => records
-  }
+  state = hostTestState()
+  compact = vi.fn(async () => ({ state: 'accepted' as const, providerIdentity: null }))
   const trackerRoster: AgentSessionBackgroundTaskState = {
     state: 'monitoring',
     tasks: [{ id: 'tracker-only', kind: 'command', description: 'not on the strip' }]
   }
-  const adapter = {
-    supportsLocation: () => true,
-    acquire: vi.fn(async (input: Parameters<StructuredAgentSessionAdapter['acquire']>[0]) => ({
-      process: {
-        hostId: 'local',
-        pid: 4001,
-        processStartTimeMs: HOST_TEST_NOW,
-        spawnToken: input.spawnToken
-      },
-      link: {
-        linkId: 'link-1',
-        mintedAtFence: input.fence,
-        observedAt: HOST_TEST_NOW,
-        origin: 'created' as const,
-        handle: { provider: 'codex' as const, threadId: '00000000-0000-4000-8000-000000000001' }
-      }
-    })),
-    dispatch: vi.fn(async () => ({ state: 'unknown' as const, reason: 'test' })),
-    cancelTurn: vi.fn(async () => ({ cancelled: true })),
-    answerPrompt: async () => {},
-    setOption: async () => {},
+  Object.assign(state.host.deps.adapter, {
     compact,
-    releaseAcquisition: async () => true,
-    closeSession: async () => true,
-    readOptions: async () => ({ models: [], current: { model: 'test-model', effort: 'high' } }),
     backgroundTaskStops: () => ({ supportsTaskStop: true, supportsStopAll: true }),
     // A tracker that drifted from the records: it still claims work the strip does not list.
     backgroundTaskState: () => trackerRoster
-  }
-  host = new StructuredAgentSessionHost({
-    store,
-    adapter,
-    journalRoot: directory,
-    claimKeyId: 'key',
-    now: () => HOST_TEST_NOW,
-    mintSpawnToken: () => 'spawn-1',
-    statusSink
   })
-  expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
-})
-
-afterEach(async () => {
-  await host.flushAllStreamedEvents()
-  await rm(directory, { recursive: true, force: true })
+  serveHostTestChildWork(() => records)
 })
 
 describe('conversation command admission reads the strip’s child records', () => {
   it('refuses only while the strip lists live work, and names the stop the strip offers', async () => {
+    await attach()
     const strip: (AgentSessionBackgroundTaskState | null)[] = []
-    host.subscribe({
+    await state.host.subscribe({
       id: 'strip',
       sessionId: HOST_TEST_SESSION,
       emit: (event) => {
@@ -148,26 +111,71 @@ describe('conversation command admission reads the strip’s child records', () 
 
     // Nothing on the strip: the drifted tracker's roster refuses nothing.
     expect(stripRows()).toEqual([])
-    expect(await host.conversationCommand(caller, compactParams())).toMatchObject({ ok: true })
-    expect(compact).toHaveBeenCalledTimes(1)
+    const first = compactParams()
+    expect(await state.host.conversationCommand(CALLER, first)).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(compact).toHaveBeenCalledTimes(1))
+    finish()
+    await vi.waitFor(async () =>
+      expect(await commandTurnState(first.envelope.clientOperationId)).toBe('completed')
+    )
 
     records = [devServer()]
-    host.publishChildWorkEvidence(HOST_TEST_SESSION, [])
+    state.host.publishChildWorkEvidence(HOST_TEST_SESSION, [])
     expect(stripRows()).toEqual([
       { description: 'npm run dev', membership: 'live', stoppable: true, providerId: 'task-dev' }
     ])
-    expect(await host.conversationCommand(caller, compactParams())).toMatchObject({
+    expect(await state.host.conversationCommand(CALLER, compactParams())).toMatchObject({
       ok: false,
       refusal: { message: 'Stop background tasks before using this command.' }
     })
 
     records = [devServer({ state: 'done', membership: 'settled', outcome: 'succeeded' })]
-    host.publishChildWorkEvidence(HOST_TEST_SESSION, [])
+    state.host.publishChildWorkEvidence(HOST_TEST_SESSION, [])
     // Still listed, as finished: a finished row blocks nothing.
     expect(stripRows()).toEqual([
       { description: 'npm run dev', membership: 'settled', stoppable: true, providerId: 'task-dev' }
     ])
-    expect(await host.conversationCommand(caller, compactParams())).toMatchObject({ ok: true })
-    expect(compact).toHaveBeenCalledTimes(2)
+    expect(await state.host.conversationCommand(CALLER, compactParams())).toMatchObject({
+      ok: true
+    })
+    await vi.waitFor(() => expect(compact).toHaveBeenCalledTimes(2))
+  })
+
+  it('refuses a queued command at handover once the strip lists live work', async () => {
+    const acquireChild = state.acquire.getMockImplementation()!
+    // Each child names its generation, so the exit below ends exactly the one it names.
+    state.acquire.mockImplementation(async (input) => ({
+      ...(await acquireChild(input)),
+      acquisitionGeneration: `generation-${input.fence}`
+    }))
+    await attach()
+    // The provider exits, so the next command is accepted at rest and waits for a new start.
+    const fence = state.store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence
+    await state.host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: HOST_TEST_SESSION,
+      fence,
+      acquisitionGeneration: `generation-${fence}`,
+      reason: 'provider exited',
+      cause: 'unexpected-exit'
+    })
+    await vi.waitFor(() => expect(state.host['sessions'].get(HOST_TEST_SESSION)?.child).toBeNull())
+    // The records gain live work while that start runs, after the command was accepted.
+    const start = state.acquire.getMockImplementation()!
+    state.acquire.mockImplementationOnce(async (input) => {
+      records = [devServer()]
+      return start(input)
+    })
+    const params = compactParams()
+    expect(await state.host.conversationCommand(CALLER, params)).toMatchObject({ ok: true })
+
+    await vi.waitFor(async () => {
+      const submission = (await state.host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
+        (entry) => entry.clientMessageId === params.envelope.clientOperationId
+      )
+      expect(submission?.dispatchState).toBe('rejected')
+    })
+    expect(state.acquire).toHaveBeenCalledTimes(2)
+    expect(compact).not.toHaveBeenCalled()
   })
 })
