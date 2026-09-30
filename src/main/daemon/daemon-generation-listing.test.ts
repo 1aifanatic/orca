@@ -62,6 +62,17 @@ describe('listPerGeneration', () => {
     expect(listing.map((entry) => entry.contact)).toEqual(['exited', 'live'])
   })
 
+  it('keeps a read that throws before returning a promise to its own source', async () => {
+    const listing = await listPerGeneration<string, string>(['broken', 'fine'], (source) => {
+      if (source === 'broken') {
+        throw new Error('not a daemon')
+      }
+      return Promise.resolve({ contact: 'live', items: ['a'] })
+    })
+
+    expect(listing.map((entry) => entry.contact)).toEqual(['unverifiable', 'live'])
+  })
+
   it('reports a source whose read rejected as unverifiable, carrying its error', async () => {
     const failure = new Error('socket dead')
     const [entry] = await listPerGeneration<string, string>(['old'], async () => {

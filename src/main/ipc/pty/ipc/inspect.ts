@@ -12,6 +12,7 @@ import type {
   PtySessionListScope
 } from '../../../../shared/pty-listed-session'
 import { listAnsweredProcesses } from '../../../providers/pty-process-source-listing'
+import { USER_FACING_DAEMON_LISTING_TIMEOUT_MS } from '../../../daemon/daemon-generation-listing'
 import { ptyOwnership } from '../provider/ownership-state'
 import {
   getProviderForPty,
@@ -72,7 +73,11 @@ export function installPtyInspectIpcHandlers(deps: {
         ({ provider, connectionId }) =>
           // Why per source for the local provider: one silent daemon version must not hide the rest.
           connectionId === null
-            ? listAnsweredProcesses(provider, (source) => unverifiable.push(source))
+            ? listAnsweredProcesses(
+                provider,
+                (source) => unverifiable.push(source),
+                Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+              )
             : scope !== undefined
               ? provider.listProcesses()
               : provider.listProcesses().catch(() => []),

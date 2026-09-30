@@ -50,12 +50,13 @@ export function describeListingError(error: unknown): string {
 /** Lists what answered, reporting each silent source; a single-source provider lists as before. */
 export async function listAnsweredProcesses(
   provider: IPtyProvider,
-  onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void
+  onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void,
+  deadlineMs: number
 ): Promise<PtyProcessInfo[]> {
   if (!provider.listProcessesBySource) {
     return await provider.listProcesses()
   }
-  const listings = await provider.listProcessesBySource()
+  const listings = await provider.listProcessesBySource({ deadlineMs })
   for (const listing of listings) {
     if (listing.contact === 'unverifiable') {
       onUnverifiable({

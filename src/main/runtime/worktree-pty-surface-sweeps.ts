@@ -16,6 +16,7 @@ import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import { splitWorktreeId, splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { mapWithConcurrency } from '../../shared/map-with-concurrency'
 import { teardownRpcDeadline } from './worktree-teardown-deadline'
+import { USER_FACING_DAEMON_LISTING_TIMEOUT_MS } from '../daemon/daemon-generation-listing'
 
 // Why: normal inventories still coalesce into one process scan, while a stale
 // or pathological inventory cannot fan out unbounded provider/RPC shutdowns.
@@ -56,7 +57,10 @@ export async function sweepProviderByPrefix(
   const rpcDeadline = teardownRpcDeadline(deadline)
   const sessions = provider.listProcessesBySource
     ? answeredAndLastKnown(
-        await provider.listProcessesBySource({ deadlineMs: rpcDeadline }),
+        // Why capped: a silent version would otherwise spend the whole budget the stops need.
+        await provider.listProcessesBySource({
+          deadlineMs: Math.min(rpcDeadline, Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS)
+        }),
         worktreeId,
         opts
       )

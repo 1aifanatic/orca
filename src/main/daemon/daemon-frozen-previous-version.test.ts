@@ -10,6 +10,8 @@ import { shutdownProviderAndDetectExit } from '../ipc/pty/provider/shutdown-dete
 import type { PtyRuntimeControllerDeps } from '../ipc/pty/runtime/controller-deps'
 import { stopAndWaitPtyFromRuntimeController } from '../ipc/pty/runtime/kill'
 import { collectGenerations } from '../ipc/pty-management-generations'
+import { listAnsweredProcesses } from '../providers/pty-process-source-listing'
+import { USER_FACING_DAEMON_LISTING_TIMEOUT_MS } from './daemon-generation-listing'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { killAllProcessesForWorktree, teardownRpcDeadline } from '../runtime/worktree-teardown'
 import { persistedPaneSessionIdsForWorktree } from '../runtime/worktree-persisted-pane-sessions'
@@ -195,6 +197,20 @@ describe.skipIf(process.platform === 'win32')(
         'wt-new@@bbbb0003',
         'wt-stop@@cccc0005'
       ])
+    }, 20_000)
+
+    it('answers the Resource Manager listing within the deadline, naming the frozen version', async () => {
+      const unverifiable: { protocolVersion: number | null }[] = []
+      const started = Date.now()
+      const answered = await listAnsweredProcesses(
+        router,
+        (source) => unverifiable.push(source),
+        Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+      )
+
+      expect(Date.now() - started).toBeLessThan(4_500)
+      expect(answered.map((process) => process.id)).toContain('wt-stop@@cccc0005')
+      expect(unverifiable.map((source) => source.protocolVersion)).toEqual([LEGACY])
     }, 20_000)
 
     it('confirms a stop of a current-version terminal without waiting on the frozen version', async () => {

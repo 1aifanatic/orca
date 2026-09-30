@@ -44,11 +44,12 @@ export async function listPerGeneration<S, T>(
 ): Promise<GenerationListing<S, T>[]> {
   return await Promise.all(
     sources.map(async (source): Promise<GenerationListing<S, T>> => {
-      const work = read(source)
+      let work: Promise<DaemonInventoryRead<T>> | undefined
       try {
+        work = read(source)
         return { source, ...(await withinDeadline(work, deadlineMs)) }
       } catch (error) {
-        void work.catch(() => {})
+        void work?.catch(() => {})
         return { source, contact: 'unverifiable', error }
       }
     })
