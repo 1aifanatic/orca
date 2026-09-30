@@ -374,6 +374,21 @@ describe('per-job path classification', () => {
     )
   })
 
+  it('runs the daemon protocol crossing gate when the protocol or its checker changes', () => {
+    expectClassification(['src/main/daemon/daemon-protocol-version.ts'], {
+      'cross-version-wire': true,
+      package: true,
+      package_windows: true
+    })
+    for (const file of [
+      'config/scripts/daemon-protocol-facts.mjs',
+      'config/scripts/check-daemon-protocol-crossing.mjs',
+      'config/scripts/stable-release-tags.mjs'
+    ]) {
+      expectClassification([file], { 'cross-version-wire': true })
+    }
+  })
+
   it('runs workflow-self-change and lockfile diffs as force-all', () => {
     const result = classifyPrJobs(['.github/workflows/pr.yml'])
     expect(result.should_run).toBe(true)
