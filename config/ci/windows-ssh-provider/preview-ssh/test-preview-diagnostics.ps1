@@ -20,9 +20,9 @@ try {
   $nodeDir=Join-Path $pathRoot 'nodejs';$gccDir=Join-Path $pathRoot 'mingw';$plainDir=Join-Path $pathRoot 'tools'
   New-Item -ItemType Directory -Path $nodeDir,$gccDir,$plainDir | Out-Null
   New-Item -ItemType File -Path (Join-Path $nodeDir 'node.exe'),(Join-Path $nodeDir 'npm.cmd'),(Join-Path $gccDir 'gcc.exe'),(Join-Path $plainDir 'git.exe') | Out-Null
-  $result=Split-HostToolchainPath "$nodeDir;;$plainDir;$gccDir;$(Join-Path $pathRoot 'missing')" @('npm','gcc','node')
+  $result=Split-HostToolchainPath "$nodeDir;;$plainDir;$gccDir;$(Join-Path $pathRoot 'missing');Q:\no-such-drive" @('npm','gcc','node')
   if(($result.hidden -join '|') -ne "$nodeDir|$gccDir"){throw 'Toolchain PATH entries not hidden'}
-  if(($result.kept -join '|') -ne "$plainDir|$(Join-Path $pathRoot 'missing')"){throw 'Plain PATH entries not kept in order'}
+  if(($result.kept -join '|') -ne "$plainDir|$(Join-Path $pathRoot 'missing')|Q:\no-such-drive"){throw 'Plain PATH entries not kept in order'}
 } finally {Remove-Item -LiteralPath $pathRoot -Recurse -Force -ErrorAction SilentlyContinue}
 # Extract functions through the AST: never provision the fixture while testing diagnostics.
 'PASS: fixture parse, five numeric-diagnostic cases and the toolchain PATH split'
