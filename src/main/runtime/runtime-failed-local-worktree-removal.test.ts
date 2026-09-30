@@ -279,4 +279,25 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
     expect(await listedRows()).toEqual([])
   })
+
+  it('never deletes a worktree Git registers at the path since, even on the same branch', async () => {
+    await failStartupFinish()
+    await setImmutable(false)
+    await rm(worktreePath, { recursive: true })
+    await git(['worktree', 'add', '-q', worktreePath, 'feature'])
+    await writeFile(join(worktreePath, 'unsaved.txt'), 'work\n')
+    const purged: string[] = []
+
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
+      interruptedLocalWorktreeRemovalJob(record, jobHost(purged))
+    )
+    await expect(retried).rejects.toThrow(/A different checkout is now at/)
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
+    expect(await isRegistered(worktreePath)).toBe(true)
+    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    expect(purged).toEqual([])
+    expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
+  })
 })

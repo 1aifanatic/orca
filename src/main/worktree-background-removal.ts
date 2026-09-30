@@ -172,7 +172,20 @@ export function retryFailedWorktreeRemoval(
   const { failure: _failure, ...record } = failed
   const settlement = addPendingRemoval(record)
   const job = jobFor(record)
-  runBackgroundWorktreeRemoval(record, job, persistWorktreeRemovalRecords())
+  const leftoverOnly: BackgroundWorktreeRemovalJob = {
+    ...job,
+    run: async (stopSignal) => {
+      // Why: the recorded choices (force, branch) were for the leftover; a checkout Git registers
+      // at the path since is a new one, which only the normal delete's checks may remove.
+      if (await isCheckoutRegistered(record)) {
+        throw new Error(
+          `A different checkout is now at ${record.worktreePath}; Orca left it in place. Delete it again to remove it.`
+        )
+      }
+      return job.run(stopSignal)
+    }
+  }
+  runBackgroundWorktreeRemoval(record, leftoverOnly, persistWorktreeRemovalRecords())
   publishSafely(job.publish)
   return settlement.result
 }
@@ -283,9 +296,8 @@ async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promis
     return false
   }
   try {
-    const registered = await listWorktreesStrict(record.repoPath)
     return (
-      !registered.some((worktree) => areWorktreePathsEqual(worktree.path, record.worktreePath)) &&
+      !(await isCheckoutRegistered(record)) &&
       (await isUnregisteredRemovalLeftover(record.repoPath, record.worktreePath))
     )
   } catch (error) {
@@ -293,6 +305,12 @@ async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promis
     console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
     return false
   }
+}
+
+async function isCheckoutRegistered(record: WorktreeRemovalRecord): Promise<boolean> {
+  return (await listWorktreesStrict(record.repoPath)).some((worktree) =>
+    areWorktreePathsEqual(worktree.path, record.worktreePath)
+  )
 }
 
 // Why: the record should be on disk before Git deletes, so a quit resumes the delete, but a disk or

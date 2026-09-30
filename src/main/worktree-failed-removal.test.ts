@@ -204,6 +204,25 @@ describe('a delete that fails after Git dropped the registration', () => {
     ])
   })
 
+  it('does not run the recorded removal once Git registers a checkout at the path again', async () => {
+    await failRemoval()
+    vi.mocked(listWorktreesStrict).mockResolvedValue([
+      mainWorktree,
+      { ...leftoverRow(), removalError: undefined }
+    ])
+    const run = vi.fn(async () => ({}))
+
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', () => ({
+      run,
+      publish: () => {}
+    }))
+
+    await expect(retried).rejects.toThrow(/A different checkout is now at/)
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(run).not.toHaveBeenCalled()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+  })
+
   it('is not retried for another host', async () => {
     await failRemoval()
 
