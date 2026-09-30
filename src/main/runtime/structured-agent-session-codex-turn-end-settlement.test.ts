@@ -222,6 +222,80 @@ describe('a Codex send its turn ended without taking it', () => {
   })
 })
 
+describe('a queued card sent now into the turn a Stop ends', () => {
+  async function queueCard(text: string): Promise<string> {
+    const body = hostTestMessage(text)
+    const delivery = 'queue-if-active' as const
+    const queued = await host.send(CALLER, {
+      envelope: envelope('agentSession.send', { body, delivery }),
+      body,
+      delivery,
+      userSend: true
+    })
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error(`not queued: ${JSON.stringify(queued)}`)
+    }
+    return queued.value.queued.messageId
+  }
+
+  async function handoffs(messageId: string): Promise<AgentJournalSubmission[]> {
+    return (await settled()).submissions.filter((entry) => entry.queuedMessageId === messageId)
+  }
+
+  /** Each hand-off of the card, as who sent it and how it settled. */
+  async function sends(messageId: string) {
+    return (await handoffs(messageId)).map((entry) => ({
+      origin: entry.origin,
+      verdict: verdictOf([entry], entry.clientMessageId)
+    }))
+  }
+
+  async function queue() {
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    if (!page.ok) {
+      throw new Error('history refused')
+    }
+    return {
+      pause: page.page.queuePause ?? null,
+      cards: (page.page.queuedMessages ?? []).map(({ messageId, state }) => ({ messageId, state }))
+    }
+  }
+
+  it('comes back as a paused waiting card, and nothing sends it again', async () => {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    const cardId = await queueCard('and check the tests')
+    const sentNow = await host.queuedMessageSend(CALLER, {
+      envelope: envelope('agentSession.queuedMessageSend', { messageId: cardId }),
+      messageId: cardId
+    })
+    expect(sentNow).toMatchObject({ ok: true })
+    // Steered into the running turn, with no echo yet.
+    await vi.waitFor(() => expect(answers).toBe(2))
+    const [steered] = await handoffs(cardId)
+    expect(steered?.dispatchState).toBe('pending')
+
+    await stop('turn-1')
+
+    await vi.waitFor(async () => {
+      const [withdrawn] = await handoffs(cardId)
+      expect(verdictOf([withdrawn!], withdrawn!.clientMessageId)).toBe('withdrawn')
+    })
+    await vi.waitFor(
+      async () =>
+        expect({ ...(await queue()), sends: await sends(cardId) }).toEqual({
+          pause: { reason: 'stopped' },
+          cards: [{ messageId: cardId, state: 'waiting' }],
+          sends: [{ origin: 'client', verdict: 'withdrawn' }]
+        }),
+      { timeout: 5_000 }
+    )
+    expect(answers).toBe(2)
+  })
+})
+
 describe('a Stop sent after Codex answered a cold send, before it opened the turn', () => {
   it('waits for the turn to open, then stops it and withdraws the send', async () => {
     const sent = await send('look around')
