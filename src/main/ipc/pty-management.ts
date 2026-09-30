@@ -21,6 +21,7 @@ import type { DaemonEndpointIdentity } from '../daemon/daemon-hello-protocol'
 import { USER_FACING_DAEMON_LISTING_TIMEOUT_MS } from '../daemon/daemon-generation-listing'
 import {
   collectGenerations,
+  generationDeadline,
   type DaemonAdapterSet,
   type DaemonGenerationInventory
 } from './pty-management-generations'
@@ -136,16 +137,19 @@ export function registerDaemonManagementHandlers(
       }
       // Why the clicked row's exact identity: after a fresh start over an unreachable version the
       // same id is live in two versions, and killing the first match ended the tab's own agent.
-      const { adapters } = getDaemonAdapters()
+      const { adapters, current } = getDaemonAdapters()
       const owner = adapters.find((a) => a.protocolVersion === args.protocolVersion)
       if (!owner) {
         return { success: false }
       }
       let listed
       try {
-        listed = await owner.readSessions({
-          deadlineMs: Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
-        })
+        const deadlineMs = generationDeadline(
+          owner,
+          current,
+          Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+        )
+        listed = await owner.readSessions(deadlineMs === undefined ? undefined : { deadlineMs })
       } catch {
         // Why not "already gone": losing contact with the version is not evidence the session ended.
         return { success: false, reason: 'unverifiable' }

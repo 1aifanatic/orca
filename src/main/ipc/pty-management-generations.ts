@@ -22,16 +22,30 @@ export type DaemonGenerationInventory = { protocolVersion: number; isCurrent: bo
   | { contact: 'unverifiable'; reason: 'listing-failed'; detail: string | null }
 )
 
-/** Lists each generation under one user-facing deadline; a silent one never withholds the rest. */
+/** The user-facing cap applies to versions other than the current one; that one is never capped. */
+export function generationDeadline(
+  adapter: DaemonPtyAdapter,
+  current: DaemonPtyAdapter | null,
+  nonCurrentDeadlineMs: number
+): number | undefined {
+  return adapter === current ? undefined : nonCurrentDeadlineMs
+}
+
+/** Lists each generation at once; a silent previous one never withholds the rest past its cap. */
 export async function collectGenerations(
   { adapters, current }: DaemonAdapterSet,
-  deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
+  nonCurrentDeadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
   savedIncarnationBySessionId: ReadonlyMap<string, string> = new Map()
 ): Promise<DaemonGenerationInventory[]> {
+  const deadlineFor = (adapter: DaemonPtyAdapter): number | undefined =>
+    generationDeadline(adapter, current, nonCurrentDeadlineMs)
   const listings = await listPerGeneration(
     adapters,
-    (adapter) => adapter.readSessions({ deadlineMs }),
-    deadlineMs
+    (adapter) => {
+      const deadlineMs = deadlineFor(adapter)
+      return adapter.readSessions(deadlineMs === undefined ? undefined : { deadlineMs })
+    },
+    deadlineFor
   )
   const generations = listings.map(({ source: adapter, ...listing }): DaemonGenerationInventory => {
     const generation = { protocolVersion: adapter.protocolVersion, isCurrent: adapter === current }

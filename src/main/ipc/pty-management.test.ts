@@ -348,7 +348,9 @@ describe('pty:management IPC handlers', () => {
           [5, 'live'],
           [3, 'unverifiable']
         ])
-        expect(current.readSessions).toHaveBeenCalledWith({ deadlineMs: expect.any(Number) })
+        // The cap bounds only the previous version; the current one is never capped.
+        expect(current.readSessions).toHaveBeenCalledWith(undefined)
+        expect(legacy.readSessions).toHaveBeenCalledWith({ deadlineMs: expect.any(Number) })
       } finally {
         vi.useRealTimers()
       }

@@ -107,6 +107,26 @@ describe('Manage Sessions Kill all across versions', () => {
 })
 
 describe('Manage Sessions listing', () => {
+  it('never shows a slow current version as unreachable because of the cap', async () => {
+    vi.useRealTimers()
+    const current = version(36, [session('wt@@a', 'a1')])
+    const answer = current.readSessions.bind(current)
+    // Why slower than the cap below: the current version must still be waited for.
+    current.readSessions = async (opts) => {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      return await answer(opts)
+    }
+    const previous = version(35, [session('wt@@b', 'b1')])
+    previous.silentAfterReads = 0
+
+    const generations = await collectGenerations(
+      { adapters: [current, previous], current },
+      Date.now() + 50
+    )
+
+    expect(generations.map((g) => g.contact)).toEqual(['live', 'unverifiable'])
+  })
+
   it('opens no row when the tab’s own copy sits in a version that did not answer', async () => {
     vi.useRealTimers()
     const current = version(36, [session('wt@@dup', 'other-copy')])

@@ -4,7 +4,11 @@ import {
   USER_FACING_DAEMON_LISTING_TIMEOUT_MS
 } from '../daemon/daemon-generation-listing'
 import type { SessionInfo } from '../daemon/types'
-import { collectGenerations, type DaemonAdapterSet } from './pty-management-generations'
+import {
+  collectGenerations,
+  generationDeadline,
+  type DaemonAdapterSet
+} from './pty-management-generations'
 
 // Why: poll past the daemon's 5s SIGTERM→SIGKILL ladder (KILL_TIMEOUT_MS in session.ts), else slow-exiting shells falsely look "refused".
 const MAX_POLL_ATTEMPTS = 65
@@ -78,11 +82,16 @@ export async function killAllDaemonSessions(
   let polled = [...new Set([...initial.values()].map(({ adapter }) => adapter))]
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS && remaining.size > 0; attempt += 1) {
     await sleep(POLL_INTERVAL_MS)
-    const deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+    const cap = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+    const deadlineFor = (a: DaemonPtyAdapter): number | undefined =>
+      generationDeadline(a, adapterSet.current, cap)
     const listings = await listPerGeneration(
       polled,
-      (a) => a.readSessions({ deadlineMs }),
-      deadlineMs
+      (a) => {
+        const deadlineMs = deadlineFor(a)
+        return a.readSessions(deadlineMs === undefined ? undefined : { deadlineMs })
+      },
+      deadlineFor
     )
     for (const listing of listings) {
       const owned = [...remaining].filter(([, target]) => target.adapter === listing.source)
