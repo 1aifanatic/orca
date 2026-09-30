@@ -40,7 +40,8 @@ export type HookListenerState = {
   /** One-normalization provenance marker for a status backed only by restored child state. */
   claudeUnconfirmedRestoredStatusPaneKeys: Set<string>
   /** Claude's running background work that is not an agent (shells, monitors, workflows), by task
-   *  id (claude-non-agent-work.ts). A task leaves on Claude's own end record, never a session change. */
+   *  id (claude-non-agent-work.ts). A task leaves on Claude's own end record or a new process's
+   *  session start, never /clear. */
   claudeNonAgentWorkByPaneKey: Map<string, ClaudeNonAgentWork>
   /** Panes whose latest authoritative Claude cron inventory still has a scheduled job. */
   claudeActiveSessionCronPaneKeys: Set<string>

@@ -89,7 +89,8 @@ const CLAUDE_TRANSCRIPT_WATCH_REASONS = {
   },
   /** A background task whose launch Orca recorded, which Claude can end with no hook (a /tasks
    *  kill, or an end the Ctrl+C that cancelled its turn never reports). Dies when the record holds
-   *  no launch-recorded task: its end row, TaskStop, the next inventory, pane teardown. */
+   *  no launch-recorded task: its end row, TaskStop, the next inventory, a new process's
+   *  SessionStart, pane teardown. */
   'recorded-task': {
     holds: claudePaneHasLaunchRecordedTask,
     // Why both: a `prompt_snapshot` attachment quotes the notification tag on every tool call.
@@ -145,7 +146,7 @@ export function claudeTranscriptWatchPath(
 /** Arms or repoints the pane's cursor from a row the host ACCEPTED, never from an event being
  *  normalized: a nested CLI's refused event must not move the pane's cursor. Returns whether the
  *  pane has a cursor. A change of reasons never resets it; only a new transcript path repoints it,
- *  at that file's end, keeping its reasons (a session change is not the end of what they track). */
+ *  keeping its reasons: the records, not the session change, decide what they still track. */
 export function syncClaudeTranscriptCursor(
   state: HookListenerState,
   accepted: AgentHookEventPayload
@@ -169,8 +170,7 @@ export function syncClaudeTranscriptCursor(
   if (!current && holding.length === 0) {
     return false
   }
-  // Why at the end: a resumed session keeps its old rows, and a forked or cleared one starts a
-  // file whose copied rows were written before arming.
+  // Why at the end: a resumed or forked session's file already holds rows written before arming.
   const armed = filePath ? armClaudeTranscriptCursor(filePath) : undefined
   if (!filePath || !armed) {
     cursors.delete(paneKey)

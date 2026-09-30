@@ -2,7 +2,7 @@
 // Claude's own task id. It starts at the tool call that launches the task or at the inventory Claude
 // attaches to Stop, and ends at Claude's own record of the task's end: the next inventory, a
 // TaskStop result, or the task-notification row Claude writes to its transcript when the task
-// ends. A session change is not an end: a shell outlives /clear.
+// ends. A new process's session start ends them too; /clear does not, since a shell outlives it.
 import type { AgentChildWorkKind } from '../../agent-status-child-work'
 import type { ClaudeBackgroundNonAgentTask } from '../../claude-background-task-inventory'
 import { isClaudeBackgroundTaskStatusTerminal } from '../../claude-background-task-kind'

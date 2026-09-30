@@ -342,7 +342,9 @@ describe('/clear while a background shell runs (captured, 2.1.285)', () => {
     expect(files.size).toBe(2)
     const replay = replayer(server, records, files)
     await replay([0, 1, 2, 3, 4, 5, 6])
-    expect(row(server)).toMatchObject({ state: 'working', workingMode: 'monitoring' })
+    const monitoring = row(server)
+    expect(monitoring).toMatchObject({ state: 'working', workingMode: 'monitoring' })
+    expect(typeof monitoring.turnCompletedAt).toBe('number')
 
     // SessionEnd (clear), then SessionStart (clear) for a new session whose file Claude creates
     // 0.09 s after the hook. The capture: the shell was still running 28 s later.
@@ -357,6 +359,8 @@ describe('/clear while a background shell runs (captured, 2.1.285)', () => {
       workingMode: 'monitoring',
       mainAgent: { state: 'done' }
     })
+    // Still the tail of the turn that launched the shell, so its end is not a new turn.
+    expect(row(server).turnCompletedAt).toBe(monitoring.turnCompletedAt)
     expect(watch(server)).toMatchObject({ filePath: cleared, awaitingFile: true })
 
     // Hand-built: stands for the new file's first rows, which the fixture does not keep.

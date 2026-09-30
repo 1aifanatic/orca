@@ -105,17 +105,24 @@ export function normalizeClaudeEvent(
       // live turn to an idle row.
       return null
     }
-    // Why: a new process owns the pane; stale children/crons must not gate the fresh session's
-    // idle row back up to 'working' (same reset Codex does on SessionStart). Background tasks are
-    // kept: a shell survives /clear and reports its end in the new session's transcript
-    // (r3-clear-run1), so a session change is not evidence it ended.
+    // Why: a new process owns the pane; stale children/tasks/crons must not gate the fresh
+    // session's idle row back up to 'working' (same reset Codex does on SessionStart). Only /clear
+    // keeps the process, whose shells report their end in the new session's transcript
+    // (r3-clear-run1); a new process can never end its predecessor's tasks.
+    const keepsTasks = sessionStartSource === 'clear'
     state.claudeSubagentRosterByPaneKey.delete(paneKey)
     state.claudeActiveSessionCronPaneKeys.delete(paneKey)
-    // Why: a new session's main agent starts its own clock, not the old session's last Stop.
-    const record = setClaudeMainAgentTurnState(state, paneKey, {
-      state: 'done',
-      stateStartedAt: Date.now()
-    })
+    if (!keepsTasks) {
+      state.claudeNonAgentWorkByPaneKey.delete(paneKey)
+    }
+    const previousLead = state.claudeLeadStateByPaneKey.get(paneKey)
+    // Why: a shell that outlives /clear keeps the pane on the tail of the turn that launched it, so
+    // that turn's verdict and stamp stay and its end is not announced as a new turn. Otherwise a new
+    // session's main agent starts its own clock, not the old session's last Stop.
+    const record =
+      keepsTasks && previousLead?.state === 'done' && claudePaneHasNonAgentWork(state, paneKey)
+        ? previousLead
+        : setClaudeMainAgentTurnState(state, paneKey, { state: 'done', stateStartedAt: Date.now() })
     return buildClaudeStatusPayload(state, eventName, promptText, paneKey, hookPayload, {
       ...resolveClaudePaneStatus(state, paneKey, record),
       updateToolSnapshot: true,

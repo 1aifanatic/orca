@@ -254,8 +254,12 @@ reader does not mistake them for drift:
   killed with its turn's Ctrl+C, or from `/tasks` while Claude idles), read by
   the transcript watch below and trusted only when both its task id and its
   tool-use id match the launch Orca recorded, since a prompt typed while Claude
-  is busy writes the same kind of line. A session change is not an end: a shell
-  survives `/clear` and reports its end in the new session's transcript. The
+  is busy writes the same kind of line. A `startup` or `resume`
+  `SessionStart` clears the record with the pane's children and crons, since a
+  new process can never end its predecessor's tasks. `/clear` keeps it: the
+  shell survives and reports its end in the new session's transcript, and the
+  pane stays on the tail of the turn that launched it, keeping that turn's
+  verdict and turn stamp so the shell's end is not announced as a new turn. The
   pane's process ending, its PTY exiting and the relay stopping clear it with
   the rest of the pane. The desktop keeps no copy for a relayed pane; it reads
   the row's `claudeRunningNonAgentTask`, which the relay restates on every row.
@@ -297,9 +301,10 @@ remote one) reads it through the pane's Claude transcript watch
 reason to watch holds (a working agent child, or a background task whose
 launch the record holds) and the pane has a
 transcript path that host can read locally. The cursor is armed at the file's
-end, so a resumed, forked or cleared session's older lines never count, and it
-is created or repointed only from a row the host accepted, at the new file's end
-when the session's transcript changes; a change of reasons never resets it. Every
+end, so a resumed or forked session's older lines never count (a cleared
+session's file does not exist yet; see below), and it is created or repointed
+only from a row the host accepted, at the new file's end when the session's
+transcript changes; a change of reasons never resets it. Every
 Claude event first catches up on the existing cursor, before the desktop's
 accept-or-roll-back snapshot (the relay has no such step), and a one-second tick
 reads it too and republishes the row rebuilt from the listener's records when

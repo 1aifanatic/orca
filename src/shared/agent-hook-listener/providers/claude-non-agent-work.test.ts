@@ -142,6 +142,20 @@ describe('the Claude background task record', () => {
     })
     expect(claudePaneHasLaunchRecordedTask(state, PANE)).toBe(true)
   })
+
+  it("clears the record when a new process starts: it can never end its predecessor's tasks", () => {
+    for (const source of ['startup', 'resume']) {
+      const state = launched()
+      const started = claudeEvent(state, {
+        hook_event_name: 'SessionStart',
+        source,
+        session_id: '00000000-0000-4000-8000-0000000000c2'
+      })
+      expect(started?.payload).toMatchObject({ state: 'done', sessionBoundary: true })
+      expect(started?.payload.workingMode).toBeUndefined()
+      expect(claudePaneHasNonAgentWork(state, PANE)).toBe(false)
+    }
+  })
 })
 
 describe('the task end line in the transcript', () => {

@@ -13,6 +13,7 @@ import {
   observeClaudeTranscript,
   syncClaudeTranscriptCursor
 } from '../../../../shared/agent-hook-listener/providers/claude-transcript-watch'
+import type { AgentHookEventPayload } from '../../../../shared/agent-hook-listener/listener-event'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 
 // Why: STA-4119's second complaint is the missing completion notification. This drives the REAL
@@ -57,6 +58,54 @@ function createCoordinator() {
     isLive: () => true
   })
   return { coordinator, dispatchCompletion, dispatchHookLifecycle }
+}
+
+/** Claude's hooks for one transcript, through the real listener, as the host would accept them. */
+function transcriptHooks(
+  listener: ReturnType<typeof createHookListenerState>,
+  sessionId: string,
+  transcript: string
+) {
+  return (payload: Record<string, unknown>) => {
+    const event = normalizeHookPayload(
+      listener,
+      'claude',
+      {
+        paneKey: PANE,
+        payload: { session_id: sessionId, transcript_path: transcript, ...payload }
+      },
+      'production'
+    )
+    if (!event) {
+      throw new Error('listener produced no event')
+    }
+    return event
+  }
+}
+
+function taskNotification(taskId: string, toolUseId: string, status: string): string {
+  return `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<status>${status}</status>\n<summary>Task "Sleep" ${status}</summary>\n</task-notification>`
+}
+
+/** The line Claude appends to its transcript when a background task ends. */
+function taskEndLine(taskId: string, toolUseId: string, status: string): string {
+  return `${JSON.stringify({
+    type: 'queue-operation',
+    operation: 'enqueue',
+    timestamp: '2026-09-29T05:24:58.227Z',
+    content: taskNotification(taskId, toolUseId, status)
+  })}\n`
+}
+
+/** One watch tick after the host stored `accepted`: the row it publishes. */
+function watchRow(
+  listener: ReturnType<typeof createHookListenerState>,
+  accepted: AgentHookEventPayload
+) {
+  seedLegacyAgentStatusForTests(listener, accepted)
+  syncClaudeTranscriptCursor(listener, accepted)
+  const observed = observeClaudeTranscript(listener, PANE)
+  return observed.kind === 'read' ? observed.row : undefined
 }
 
 /** Meta the coordinator hands the notification dispatcher. */
@@ -131,26 +180,8 @@ describe('completion notification when a lead turn ends into monitoring', () => 
       const listener = createHookListenerState()
       const { coordinator, dispatchCompletion } = createCoordinator()
       // Shapes from the r1-s9 capture (claude-background-shell-tasks-kill-idle-hooks.jsonl).
-      const hook = (payload: Record<string, unknown>) => {
-        const event = normalizeHookPayload(
-          listener,
-          'claude',
-          {
-            paneKey: PANE,
-            payload: {
-              session_id: '00000000-0000-4000-8000-0000b2000000',
-              transcript_path: transcript,
-              ...payload
-            }
-          },
-          'production'
-        )
-        if (!event) {
-          throw new Error('listener produced no event')
-        }
-        return event
-      }
-      const observe = (payload: ReturnType<typeof hook>['payload']) =>
+      const hook = transcriptHooks(listener, '00000000-0000-4000-8000-0000b2000000', transcript)
+      const observe = (payload: AgentHookEventPayload['payload']) =>
         coordinator.observeHookStatus({ ...payload, stateStartedAt: 1_700_000_000_000 })
       observe(hook({ hook_event_name: 'UserPromptSubmit', prompt: 'start it' }).payload)
       observe(
@@ -173,13 +204,7 @@ describe('completion notification when a lead turn ends into monitoring', () => 
       expect(syncClaudeTranscriptCursor(listener, stop)).toBe(true)
       appendFileSync(
         transcript,
-        `${JSON.stringify({
-          type: 'queue-operation',
-          operation: 'enqueue',
-          timestamp: '2026-09-29T05:24:58.227Z',
-          content:
-            '<task-notification>\n<task-id>bmkj8eeoi</task-id>\n<tool-use-id>toolu_012Evdwg71Lm1f4XM5vSqWvf</tool-use-id>\n<status>killed</status>\n<summary>Task "Sleep for 604 seconds" was stopped by the user</summary>\n</task-notification>'
-        })}\n`
+        taskEndLine('bmkj8eeoi', 'toolu_012Evdwg71Lm1f4XM5vSqWvf', 'killed')
       )
       const observed = observeClaudeTranscript(listener, PANE)
       if (observed.kind !== 'read' || !observed.row) {
@@ -195,6 +220,94 @@ describe('completion notification when a lead turn ends into monitoring', () => 
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  describe('a shell that outlives /clear', () => {
+    // Shapes from the r3-clear-run1 capture (claude-background-shell-clear-hooks.jsonl).
+    const TASK = 'bw6tpm92k'
+    const LAUNCH_ID = 'toolu_01WS3SC8DmyVLGRwffFfzh9f'
+
+    function clearedWithShell(dir: string) {
+      const first = join(dir, 'first.jsonl')
+      const cleared = join(dir, 'cleared.jsonl')
+      writeFileSync(first, '')
+      const listener = createHookListenerState()
+      const { coordinator, dispatchCompletion } = createCoordinator()
+      const observe = (payload: AgentHookEventPayload['payload']) => {
+        coordinator.observeHookStatus({ ...payload, stateStartedAt: 1_700_000_000_000 })
+        vi.advanceTimersByTime(10_000)
+      }
+      const hook = transcriptHooks(listener, '00000000-0000-4000-8000-0000b4000000', first)
+      observe(hook({ hook_event_name: 'UserPromptSubmit', prompt: 'start it' }).payload)
+      observe(
+        hook({
+          hook_event_name: 'PostToolUse',
+          tool_name: 'Bash',
+          tool_response: { backgroundTaskId: TASK },
+          tool_use_id: LAUNCH_ID
+        }).payload
+      )
+      observe(
+        hook({
+          hook_event_name: 'Stop',
+          background_tasks: [{ id: TASK, type: 'shell', status: 'running' }]
+        }).payload
+      )
+      expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+      const afterClear = transcriptHooks(listener, '00000000-0000-4000-8000-0000b4000005', cleared)
+      const start = afterClear({ hook_event_name: 'SessionStart', source: 'clear' })
+      observe(start.payload)
+      expect(start.payload).toMatchObject({ state: 'working', workingMode: 'monitoring' })
+      // The host stores the SessionStart's row and waits for the new session's file.
+      expect(watchRow(listener, start)).toBeUndefined()
+      writeFileSync(cleared, '')
+      return { listener, cleared, start, afterClear, observe, dispatchCompletion }
+    }
+
+    it('does not announce again when it is killed from /tasks before any prompt', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'orca-completion-clear-'))
+      try {
+        const { listener, cleared, start, observe, dispatchCompletion } = clearedWithShell(dir)
+        appendFileSync(cleared, taskEndLine(TASK, LAUNCH_ID, 'killed'))
+        const settled = watchRow(listener, start)
+        if (!settled) {
+          throw new Error('the watch published no row')
+        }
+        expect(settled.payload.state).toBe('done')
+        observe(settled.payload)
+
+        expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it("announces Claude's own notification turn once when it ends by itself", () => {
+      const dir = mkdtempSync(join(tmpdir(), 'orca-completion-clear-'))
+      try {
+        const { listener, cleared, afterClear, observe, dispatchCompletion } = clearedWithShell(dir)
+        // The capture: the notification turn opens just before the end line.
+        const opened = afterClear({
+          hook_event_name: 'UserPromptSubmit',
+          prompt: taskNotification(TASK, LAUNCH_ID, 'completed')
+        })
+        observe(opened.payload)
+        appendFileSync(cleared, taskEndLine(TASK, LAUNCH_ID, 'completed'))
+        const retired = watchRow(listener, opened)
+        if (!retired) {
+          throw new Error('the watch published no row')
+        }
+        expect(retired.payload).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+        expect(retired.claudeRunningNonAgentTask).toBe(false)
+        observe(retired.payload)
+        expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+        observe(afterClear({ hook_event_name: 'Stop', background_tasks: [] }).payload)
+
+        expect(dispatchCompletion).toHaveBeenCalledTimes(2)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
   })
 
   it('does not announce mid-turn while the agent is still working in the foreground', () => {
