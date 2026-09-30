@@ -26,7 +26,7 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import { isJournalQueuePauseRow, type JournalRow } from './journal-row-schema'
+import { isJournalStopOrResumeRow, type JournalRow } from './journal-row-schema'
 import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
 import { applyJournalDispatchRow } from './journal-dispatch-reducer'
 import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
@@ -62,7 +62,7 @@ export type JournalReducerState = {
   /** The submission row of the latest turn a person asked for (`origin: 'client'`) that the
    *  provider accepted; 0 when none. Kept as it folds so the queue's pause reads it in O(1). */
   latestPersonTurnSequence: number
-  /** The queue's latest Stop and Resume rows, what its pause is derived from. */
+  /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
   queuePauseMarks: JournalQueuePauseMarks
 }
 
@@ -109,7 +109,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     )
     return
   }
-  if (isJournalQueuePauseRow(row)) {
+  if (isJournalStopOrResumeRow(row)) {
     foldJournalQueuePauseMark(state.queuePauseMarks, row)
     return
   }

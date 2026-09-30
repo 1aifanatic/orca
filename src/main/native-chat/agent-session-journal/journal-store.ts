@@ -58,8 +58,11 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
-import { journalQueuePauseRowBuilder } from './journal-queue-pause-row'
-import type { AgentJournalEpochReason, JournalQueuePauseMark } from './journal-row-schema'
+import {
+  journalQueueResumeRowBuilder,
+  journalStopEventRowBuilder
+} from './journal-stop-and-resume-rows'
+import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
 import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
@@ -308,11 +311,17 @@ export class AgentSessionJournal {
     )
   }
 
-  /** A person's Stop or Resume: the rows the queue's pause is derived from. Carried by a
-   *  tombstone because a released host deletes the journal from the first row kind it does not
-   *  know (`journal-open.ts`, `journal-store-open.ts`); an unknown key it ignores. */
-  appendQueuePauseMark(mark: JournalQueuePauseMark, fence: number): Promise<AgentJournalCursor> {
-    return this.rowWriter.append(journalQueuePauseRowBuilder(() => this.state, mark, fence))
+  /** A Stop that took effect, timed by its row (`JournalStopEvent`). */
+  appendStopEvent(
+    event: Omit<JournalStopEvent, 'at'>,
+    fence: number
+  ): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
+  }
+
+  /** A person's Resume of the queue. */
+  appendQueueResume(fence: number): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalQueueResumeRowBuilder(() => this.state, fence))
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {

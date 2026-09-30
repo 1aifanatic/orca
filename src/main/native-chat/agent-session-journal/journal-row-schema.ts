@@ -20,6 +20,7 @@ import {
   isAdmissibleAgentJournalMessageBody
 } from '../../../shared/agent-session-journal-schemas'
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
+import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
 
 /** Producer linkage rides the row BASE rather than the body: the two nested
  *  prompt shapes are `.strict()`, so an unknown key on a body would make the
@@ -72,19 +73,32 @@ export type JournalTombstoneRow = JournalRowBase & {
   kind: 'tombstone'
   itemId: string
   revision: number
-  /** Present: not a removal but the queue's Stop or Resume (`queued-message-pause.ts`), on an id
-   *  no item ever takes. A new row kind would make a released host truncate the journal from
-   *  that row; this one it reads as removing nothing. */
-  queuePause?: JournalQueuePauseMark
+  /** Present: not a removal but a Stop's event, on an id no item ever takes. */
+  stopEvent?: JournalStopEvent
+  /** Present: not a removal but a person's Resume of the queue, on an id no item ever takes. */
+  queueResume?: true
 }
 
-export type JournalQueuePauseMark = 'stopped' | 'resumed'
+/** One Stop that took effect. Temporary carrier: a tombstone's extra key, because a released host
+ *  deletes the journal from the first row kind it does not know (`journal-open.ts` then
+ *  `journal-store-open.ts`) but ignores an unknown key; a row kind of its own once released hosts
+ *  skip unknown kinds instead. */
+export type JournalStopEvent = {
+  /** Persisted: never rename an arm. Only `user-stop` pauses the queue. */
+  reason: StructuredAgentSessionStopCause
+  /** The turn the Stop named, else the one running when it took effect. */
+  turnId?: string
+  /** When it took effect; a rewind's restatement keeps it. */
+  at: number
+  /** Who asked (`StructuredAgentSessionCaller.callerKey`). */
+  caller?: string
+}
 
-/** A Stop or Resume row. Any value counts, so a newer build's mark never removes an item. */
-export function isJournalQueuePauseRow(
-  row: JournalRow
-): row is JournalTombstoneRow & { queuePause: JournalQueuePauseMark } {
-  return row.kind === 'tombstone' && row.queuePause !== undefined
+/** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
+export function isJournalStopOrResumeRow(row: JournalRow): row is JournalTombstoneRow {
+  return (
+    row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
+  )
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it

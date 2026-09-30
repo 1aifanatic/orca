@@ -1,6 +1,6 @@
 // Whether the queue is paused, and why — derived from the journal and the cards
-// (`queued-message-pause.ts`), never stored. Stop and Resume are journal rows; an
-// explicit Resume lifts any pause.
+// (`queued-message-pause.ts`), never stored. A Stop's event and a Resume are journal
+// rows; an explicit Resume lifts any pause.
 
 import { randomUUID } from 'node:crypto'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -56,13 +56,13 @@ export async function adoptEndedRestartPause(
 /** Resume: a journal row that ends a Stop's or a /clear's pause, and adoption of a restart's
  *  rows. Returns whether the queue was paused. */
 export async function resumeStructuredQueue(
-  journal: Pick<AgentSessionJournal, 'queuedMessages' | 'appendQueuePauseMark'>,
+  journal: Pick<AgentSessionJournal, 'queuedMessages' | 'appendQueueResume'>,
   fence: number
 ): Promise<boolean> {
   if (structuredQueuePauses(journal).length === 0) {
     return false
   }
-  await journal.appendQueuePauseMark('resumed', fence)
+  await journal.appendQueueResume(fence)
   await journal.queuedMessages.adopt(hostInstance)
   return true
 }

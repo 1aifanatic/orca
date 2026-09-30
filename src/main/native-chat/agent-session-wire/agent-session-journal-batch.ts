@@ -15,7 +15,7 @@ import type {
 import type { AgentSessionJournalBatch } from '../../../shared/agent-session-wire'
 import { findSequenceGap } from '../agent-session-journal/journal-cursor'
 import {
-  isJournalQueuePauseRow,
+  isJournalStopOrResumeRow,
   type JournalRow
 } from '../agent-session-journal/journal-row-schema'
 
@@ -53,8 +53,8 @@ export function projectJournalBatch(input: {
       }
       continue
     }
-    if (isJournalQueuePauseRow(row)) {
-      // Host-only: the queue pause it feeds is published beside the list, not as an item.
+    if (isJournalStopOrResumeRow(row)) {
+      // Host-only: no item; the queue pause it feeds is published beside the list.
       continue
     }
     if (row.kind === 'item' || row.kind === 'tombstone') {

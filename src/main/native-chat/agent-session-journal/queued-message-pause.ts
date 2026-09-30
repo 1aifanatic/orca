@@ -1,7 +1,7 @@
 // The queue's pauses: a pure function of the journal fold and the cards, never a stored flag, so
 // nothing has to retire them. Each holds its own cards (`queuePauseHolding`). In force when:
-//   - 'stopped': the latest Stop row has no later Resume row, and no turn a person asked for was
-//     sent after it and accepted. A later Stop is simply the latest.
+//   - 'stopped': the latest person's Stop event (reason `user-stop`) has no later Resume row, and
+//     no turn a person asked for was sent after it and accepted. A later Stop is simply the latest.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
@@ -10,13 +10,14 @@
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
-import type { JournalQueuePauseMark, JournalTombstoneRow } from './journal-row-schema'
+import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
-/** The latest Stop and Resume rows, folded by the reducer; 0 when none. */
+/** The latest person's Stop event and Resume row, folded by the reducer. */
 export type JournalQueuePauseMarks = {
-  stoppedSequence: number
+  userStop: { sequence: number; event: JournalStopEvent } | null
+  /** 0 when none. */
   resumedSequence: number
 }
 
@@ -35,26 +36,50 @@ type QueueCard = {
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
-  return { stoppedSequence: 0, resumedSequence: 0 }
+  return { userStop: null, resumedSequence: 0 }
 }
 
 export function foldJournalQueuePauseMark(
   marks: JournalQueuePauseMarks,
-  row: JournalTombstoneRow & { queuePause: JournalQueuePauseMark }
+  row: JournalTombstoneRow
 ): void {
-  if (row.queuePause === 'stopped') {
-    marks.stoppedSequence = row.seq
-  } else if (row.queuePause === 'resumed') {
+  // Only a person's Stop pauses; any other reason, or a newer build's shape, is left alone.
+  if (row.stopEvent?.reason === 'user-stop') {
+    marks.userStop = { sequence: row.seq, event: row.stopEvent }
+  } else if (row.queueResume !== undefined) {
     marks.resumedSequence = row.seq
   }
 }
 
-/** The latest Stop still pauses: nothing a person did since, and no Resume, ended it. */
+/** The latest person's Stop still pauses: nothing a person did since, and no Resume, ended it. */
 export function journalQueueStopHolds(
   marks: JournalQueuePauseMarks,
   latestPersonTurnSequence: number
 ): boolean {
-  return marks.stoppedSequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
+  return (
+    marks.userStop !== null &&
+    marks.userStop.sequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
+  )
+}
+
+/** What a rewind's new epoch restates so its pauses read as they did: a lift of /clear's pause (a
+ *  person's turn or a Resume happened), then the Stop still in force, in that order so the lift
+ *  never ends the Stop. */
+export type JournalQueuePauseRestatement = {
+  lifted: boolean
+  liveStop: JournalStopEvent | null
+}
+
+export function journalQueuePauseRestatement(
+  marks: JournalQueuePauseMarks,
+  latestPersonTurnSequence: number
+): JournalQueuePauseRestatement {
+  return {
+    lifted: latestPersonTurnSequence > 0 || marks.resumedSequence > 0,
+    liveStop: journalQueueStopHolds(marks, latestPersonTurnSequence)
+      ? (marks.userStop?.event ?? null)
+      : null
+  }
 }
 
 /** Every pause in force, in the order a card held by several names its reason. */
@@ -70,8 +95,8 @@ export function deriveQueuePauses(input: {
 }): DerivedQueuePause[] {
   const { epoch, marks, latestPersonTurnSequence } = input
   const pauses: DerivedQueuePause[] = []
-  if (journalQueueStopHolds(marks, latestPersonTurnSequence)) {
-    pauses.push({ reason: 'stopped', since: { epoch, sequence: marks.stoppedSequence } })
+  if (marks.userStop && journalQueueStopHolds(marks, latestPersonTurnSequence)) {
+    pauses.push({ reason: 'stopped', since: { epoch, sequence: marks.userStop.sequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
   const carried = waiting.filter((card) => card.carriedFrom !== null)

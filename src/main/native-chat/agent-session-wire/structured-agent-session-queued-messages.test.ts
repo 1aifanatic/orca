@@ -515,21 +515,21 @@ describe('Stop and Delete', () => {
     })
   })
 
-  it('a Stop whose row fails to write still interrupts; only the pause is lost, and it is reported', async () => {
+  it('a Stop whose event fails to write still interrupts; only the pause is lost, and it is reported', async () => {
     await workingSend()
     const queued = await send('kept by the stop', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
     }
     const record = vi
-      .spyOn(AgentSessionJournal.prototype, 'appendQueuePauseMark')
+      .spyOn(AgentSessionJournal.prototype, 'appendStopEvent')
       .mockRejectedValueOnce(new Error('disk full'))
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
       expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
       expect(warned).toHaveBeenCalledWith(
-        expect.stringContaining("Stop's queue row"),
+        expect.stringContaining("Stop's event row"),
         expect.anything()
       )
     } finally {

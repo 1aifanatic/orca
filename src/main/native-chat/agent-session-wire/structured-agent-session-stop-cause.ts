@@ -1,4 +1,4 @@
-/** Why a provider child ended. In memory only: never journaled, persisted or sent. */
+/** Why a provider child ended. In memory only, except the stop arms a Stop event journals. */
 export type StructuredAgentSessionChildEndCause =
   | 'user-stop'
   /** The user closed this chat: its tab, its launch, or a `/clear` that replaces it. */
@@ -8,7 +8,8 @@ export type StructuredAgentSessionChildEndCause =
   | 'attach-failed'
   | 'evict'
 
-/** Why the host asked a child to stop. The adapter carries it onto the `ended` it settles with. */
+/** Why the host asked a child to stop. The adapter carries it onto the `ended` it settles with,
+ *  and a Stop event persists it (`JournalStopEvent.reason`), so never rename an arm. */
 export type StructuredAgentSessionStopCause = Extract<
   StructuredAgentSessionChildEndCause,
   'user-stop' | 'user-close' | 'host-stop' | 'evict'

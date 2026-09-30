@@ -94,6 +94,11 @@ function acceptTurn(journal: AgentSessionJournal, id: string) {
   })
 }
 
+/** A person's Stop taking effect. */
+function userStop(journal: AgentSessionJournal) {
+  return journal.appendStopEvent({ reason: 'user-stop' }, 0)
+}
+
 function reason(journal: AgentSessionJournal): string | null {
   return journal.queuedMessages.pauses(HOST)[0]?.reason ?? null
 }
@@ -130,9 +135,9 @@ afterEach(async () => {
 })
 
 describe("the queue's pause, derived from the journal", () => {
-  it('a Stop row pauses the queue, even with no card yet, survives reopen, and stores nothing', async () => {
+  it("a person's Stop event pauses the queue, even with no card yet, survives reopen, and stores nothing", async () => {
     let journal = await open()
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     expect(reason(journal)).toBe('stopped')
     await queueDraft(journal, 'draft-1')
     await journal.close()
@@ -144,7 +149,7 @@ describe("the queue's pause, derived from the journal", () => {
   it("only a person's turn sent after the Stop and accepted lifts it; host turns never do", async () => {
     const journal = await open()
     await turn(journal, 'before-stop', 'client', false)
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     // Sent before the Stop: its acceptance now does not end a Stop that came after it.
     await acceptTurn(journal, 'before-stop')
     await turn(journal, 'mail', 'host')
@@ -157,14 +162,14 @@ describe("the queue's pause, derived from the journal", () => {
 
   it('a later Stop is the latest, and a Resume row lifts it', async () => {
     const journal = await open()
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     await turn(journal, 'typed', 'client')
     expect(reason(journal)).toBeNull()
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     expect(reason(journal)).toBe('stopped')
-    await journal.appendQueuePauseMark('resumed', 0)
+    await journal.appendQueueResume(0)
     expect(reason(journal)).toBeNull()
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     expect(reason(journal)).toBe('stopped')
     expect(pauseTables()).toBe(0)
   })
@@ -176,7 +181,7 @@ describe("the queue's pause, derived from the journal", () => {
     await journal.close()
     journal = await open()
     expect(reason(journal)).toBe('cleared')
-    await journal.appendQueuePauseMark('resumed', 0)
+    await journal.appendQueueResume(0)
     expect(reason(journal)).toBeNull()
     expect(pauseTables()).toBe(0)
   })
@@ -193,17 +198,24 @@ describe("the queue's pause, derived from the journal", () => {
   it('rides a tombstone of an id no item takes, so an older build reads it and changes nothing', async () => {
     const journal = await open()
     await turn(journal, 'typed', 'client')
-    await journal.appendQueuePauseMark('stopped', 0)
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 0)
     const db = new Database(journalDatabasePath(root), { readonly: true })
     const stored = liveTestJournalRows(db, IDENTITY.sessionId)
     db.close()
     const parsed = parseJournalRow(stored.at(-1)?.rowJson ?? '')
-    expect(parsed).toMatchObject({ ok: true, row: { kind: 'tombstone', queuePause: 'stopped' } })
+    expect(parsed).toMatchObject({
+      ok: true,
+      row: {
+        kind: 'tombstone',
+        stopEvent: { reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }
+      }
+    })
     if (!parsed.ok || parsed.row.kind !== 'tombstone') {
       throw new Error('expected a tombstone row')
     }
+    expect(parsed.row.stopEvent?.at).toBe(parsed.row.ts)
     // An older build ignores the unknown key: the row is an ordinary removal of nothing.
-    const { queuePause: _ignored, ...asOlderBuildReadsIt } = parsed.row
+    const { stopEvent: _ignored, ...asOlderBuildReadsIt } = parsed.row
     const state = createJournalReducerState(IDENTITY.sessionId, parsed.row.epoch)
     for (const row of stored.slice(0, -1)) {
       const earlier = parseJournalRow(row.rowJson)
@@ -221,7 +233,7 @@ describe("the queue's pause, derived from the journal", () => {
   it("the queue's own consume is refused in its transaction while the pause holds the card; Send-now is not", async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     const consume = (id: string, automatic: boolean) =>
       journal.appendSubmission(
         {
@@ -249,7 +261,7 @@ describe("the queue's pause, derived from the journal", () => {
 
   it("a rewind's epoch replacement restates a Stop still pausing, and not one a person ended", async () => {
     const journal = await open()
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     await journal.replaceEpochItems('handle_forked', 0, [])
     expect(reason(journal)).toBe('stopped')
     await turn(journal, 'typed', 'client')
@@ -259,10 +271,10 @@ describe("the queue's pause, derived from the journal", () => {
 })
 
 describe('which cards a pause holds', () => {
-  it('only cards queued before the Stop row: one queued after it is a new instruction', async () => {
+  it('only cards queued before the Stop event: one queued after it is a new instruction', async () => {
     let journal = await open()
     await queueDraft(journal, 'before')
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     await queueDraft(journal, 'after')
     expect(held(journal)).toEqual([
       ['before', true],
@@ -290,7 +302,7 @@ describe('which cards a pause holds', () => {
       },
       { messageId: 'steered', expect: 'waiting', settledByOp: null, hostInstance: HOST }
     )
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     await queueDraft(journal, 'after')
     await journal.resolveDispatch({
       clientMessageId: 'send-now-1',
@@ -307,7 +319,7 @@ describe('which cards a pause holds', () => {
   it("the queue's own consume refuses a newer card while an older one is held: nothing overtakes", async () => {
     const journal = await open()
     await queueDraft(journal, 'held')
-    await journal.appendQueuePauseMark('stopped', 0)
+    await userStop(journal)
     await queueDraft(journal, 'newer')
     await expect(
       journal.appendSubmission(
@@ -397,7 +409,10 @@ describe('which cards the pauses in force hold', () => {
   function pausesOver(cards: readonly Card[], stopped = 5) {
     return deriveQueuePauses({
       epoch: 'epoch-1',
-      marks: { stoppedSequence: stopped, resumedSequence: 0 },
+      marks: {
+        userStop: stopped ? { sequence: stopped, event: { reason: 'user-stop', at: 0 } } : null,
+        resumedSequence: 0
+      },
       latestPersonTurnSequence: 0,
       cards,
       hostInstance: HOST,

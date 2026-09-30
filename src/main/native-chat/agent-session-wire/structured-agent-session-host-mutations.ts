@@ -46,7 +46,7 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
+import { runRecordedStop } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -167,17 +167,21 @@ export function cancelStructuredAgentSessionTurn(
     ...params,
     stopChild: () => context.stopAgent(params.envelope.sessionId)
   })
+  const stopEvent = {
+    reason: 'user-stop' as const,
+    caller: caller.callerKey,
+    ...(params.turnId !== undefined ? { turnId: params.turnId } : {})
+  }
   return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
     {
       ...plan,
-      // Stop's queue step, the same for every client: once the Stop takes effect
-      // the queue is paused. The cards stay published; nothing is withdrawn and no
-      // text ever rides the answer.
+      // The same for every client: once the Stop takes effect its event is written, and the
+      // queue's pause follows from it. The cards stay published; no text rides the answer.
       run: (ctx) =>
-        runStopWithQueuePause(ctx, async (tookEffect) => {
+        runRecordedStop(ctx, stopEvent, async (tookEffect) => {
           // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
           const withdrawn = await ctx.journal.rejectQueuedSubmissions(
             ctx.fence,
@@ -201,6 +205,7 @@ export function cancelStructuredAgentSessionTurn(
             }
             return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
           }
+          // Before the interrupt, and before anything after it that ends the child.
           await tookEffect()
           return performCancel(
             { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },

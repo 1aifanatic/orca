@@ -389,8 +389,7 @@ describe('a card handed off after a restart', () => {
       structuredAgentSessionHostInstance()
     )
     // With the Stop's pause gone, nothing else holds it: no restart happened since it was sent.
-    await journal.appendQueuePauseMark(
-      'resumed',
+    await journal.appendQueueResume(
       structuredAgentSessionConversationFence(rig.store, HOST_TEST_SESSION)
     )
     expect(structuredQueuePauses(journal)).toEqual([])

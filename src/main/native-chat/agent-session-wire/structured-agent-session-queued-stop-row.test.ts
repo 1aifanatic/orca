@@ -1,4 +1,4 @@
-// Stop writes one journal row before it interrupts, and the queue's pause is derived from it:
+// Stop writes one event row before it interrupts, and the queue's pause is derived from it:
 // through the real host, the cards queued before a Stop wait, a card queued after it sends
 // normally but never ahead of them, a withdrawn card comes back under it, a crash keeps it, it
 // never hides a restart's pause, and no stored pause is ever written.
@@ -82,7 +82,7 @@ function pauseTables(): number {
   }
 }
 
-describe("Stop's row", () => {
+describe("Stop's event", () => {
   it('is written before the interrupt reaches the agent', async () => {
     await rig.workingSend()
     let pausedAtInterrupt: unknown = 'not interrupted'
