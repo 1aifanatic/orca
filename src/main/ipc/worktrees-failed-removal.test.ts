@@ -14,6 +14,7 @@ import type { Worktree } from '../../shared/worktree/types'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
 import type * as WorktreeRemovalModule from '../git/worktree-removal'
 import type * as WorktreeRemovalTable from '../worktree-removal-table'
+import type * as WorktreeRemovalLeftover from '../worktree-removal-leftover'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
@@ -111,7 +112,8 @@ vi.mock('../worktree-removal-table', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeRemovalTable>()),
   worktreeCheckoutExists: vi.fn(async () => true)
 }))
-vi.mock('../worktree-removal-leftover', () => ({
+vi.mock('../worktree-removal-leftover', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorktreeRemovalLeftover>()),
   isUnregisteredRemovalLeftover: vi.fn(async () => true)
 }))
 
@@ -182,6 +184,7 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
       '/workspace/repo',
       '/workspace/feature-wt',
       { name: 'feature', head: 'feature' },
+      expect.any(Function),
       {}
     )
     expect(killAllProcessesForWorktreeMock).toHaveBeenCalledWith(

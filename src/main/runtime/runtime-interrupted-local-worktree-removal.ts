@@ -18,7 +18,11 @@ import { restoreMissingWorktreeGitFile } from '../git/worktree-git-file-restore'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
-import { isUnregisteredRemovalLeftover } from '../worktree-removal-leftover'
+import {
+  assertUnregisteredRemovalLeftover,
+  differentCheckoutAtPathError,
+  isUnregisteredRemovalLeftover
+} from '../worktree-removal-leftover'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { WorktreeRemovalRecord } from '../worktree-removal-records'
 import {
@@ -150,9 +154,7 @@ async function finishInterruptedLocalWorktreeRemoval(
       ? !isRecordedCheckout(deletable, record)
       : !(await isUnregisteredRemovalLeftover(repo.path, record.worktreePath))
   ) {
-    throw new Error(
-      `A different checkout is now at ${record.worktreePath}; Orca left it in place. Delete it again to remove it.`
-    )
+    throw differentCheckoutAtPathError(record.worktreePath)
   }
   // Why: Git deletes `.git` wherever it falls in directory order (early on NTFS) and refuses to
   // remove a checkout left without it; restoring the link from Git's admin entry lets Git finish.
@@ -182,6 +184,7 @@ async function finishInterruptedLocalWorktreeRemoval(
       repo.path,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null,
+      () => assertUnregisteredRemovalLeftover(repo.path, record.worktreePath, localOptions),
       localOptions
     )
     removed = true

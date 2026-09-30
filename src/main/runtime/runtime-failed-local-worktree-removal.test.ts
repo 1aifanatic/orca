@@ -16,6 +16,10 @@ import type * as HostTreeRemoval from '../host-tree-removal'
 import { removeHostTree } from '../host-tree-removal'
 import { listWorktreesStrict, removeWorktree } from '../git/worktree'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
+import {
+  _worktreeDeleteLimitSnapshotForTests,
+  runUnderWorktreeDeleteLimit
+} from '../git/worktree-delete-limit'
 import { acquireWatcherRemovalGate, beginTerminalInstall } from '../ipc/watcher-removal-gate'
 import {
   _resetPendingWorktreeRemovalsForTests,
@@ -299,5 +303,64 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await git(['branch', '--list', 'feature'])).not.toBe('')
     expect(purged).toEqual([])
     expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
+  })
+
+  it('never deletes a worktree Git registers inside the leftover', async () => {
+    await failInSession()
+    await setImmutable(false)
+    const nested = join(worktreePath, 'sub')
+    await git(['worktree', 'add', '-q', nested, '-b', 'nested'])
+    await writeFile(join(nested, 'unsaved.txt'), 'work\n')
+    const purged: string[] = []
+
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
+      interruptedLocalWorktreeRemovalJob(record, jobHost(purged))
+    )
+    await expect(retried).rejects.toThrow(/contains another registered worktree/)
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(existsSync(join(nested, 'unsaved.txt'))).toBe(true)
+    expect(await isRegistered(nested)).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(purged).toEqual([])
+    // The row keeps the refusal, so the user can move the nested worktree or forget this one.
+    expect(await listedRows()).toContainEqual({
+      path: worktreePath,
+      removalError: expect.stringMatching(/contains another registered worktree/)
+    })
+  })
+
+  it('checks the leftover again inside the delete slot, right before deleting', async () => {
+    await failInSession()
+    await setImmutable(false)
+    // Both delete slots busy, as behind two large deletes.
+    let releaseSlots = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      releaseSlots = resolve
+    })
+    const holders = [
+      runUnderWorktreeDeleteLimit(() => held),
+      runUnderWorktreeDeleteLimit(() => held)
+    ]
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
+      interruptedLocalWorktreeRemovalJob(record, jobHost([]))
+    )
+    const settled = retried!.then(
+      () => undefined,
+      (reason: unknown) => reason
+    )
+    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
+    // While it waits, the leftover is replaced by a different checkout.
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
+    await git(['init', '-q'], worktreePath)
+    await writeFile(join(worktreePath, 'unsaved.txt'), 'work\n')
+    releaseSlots()
+    await Promise.all(holders)
+
+    expect(String(await settled)).toMatch(/A different checkout is now at/)
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
   })
 })

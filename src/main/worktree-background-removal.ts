@@ -1,14 +1,16 @@
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../shared/execution-host'
 import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
-import { listWorktreesStrict } from './git/worktree'
 import { normalizeLocalBranchRef } from './git/worktree-operation-options'
-import { areWorktreePathsEqual } from './git/worktree-path-comparison'
 import { acquireWatcherRemovalGate, type WatcherRemovalGate } from './ipc/watcher-removal-gate'
 import { runWorktreeChangeInvalidators } from './ipc/worktree-change-invalidators'
 import { parseWslPath } from './wsl'
 import { readWorktreeRemovalRecords, type WorktreeRemovalRecord } from './worktree-removal-records'
-import { isUnregisteredRemovalLeftover } from './worktree-removal-leftover'
+import {
+  differentCheckoutAtPathError,
+  isCheckoutRegistered,
+  isUnregisteredRemovalLeftover
+} from './worktree-removal-leftover'
 import {
   failedWorktreeRemovals,
   finishedWorktreeRemovals,
@@ -158,9 +160,8 @@ export function startBackgroundWorktreeRemoval(
 }
 
 /**
- * Delete on a row whose earlier delete failed after Git dropped its registration, once Git's current
- * listing still does not register the path: runs the recorded removal again, with the choices the
- * user made the first time. Undefined when there is none.
+ * Delete on a failed delete's leftover that Git's current listing still does not register: runs the
+ * recorded removal again, with the choices the user made the first time. Undefined when none.
  */
 export function retryFailedWorktreeRemoval(
   worktreeId: string,
@@ -183,9 +184,7 @@ export function retryFailedWorktreeRemoval(
       // Why: the recorded choices (force, branch) were for the leftover; a checkout Git registered
       // at the path after the caller listed is a new one, which only the normal delete may remove.
       if (await isCheckoutRegistered(record)) {
-        throw new Error(
-          `A different checkout is now at ${record.worktreePath}; Orca left it in place. Delete it again to remove it.`
-        )
+        throw differentCheckoutAtPathError(record.worktreePath)
       }
       return job.run(stopSignal)
     }
@@ -310,12 +309,6 @@ async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promis
     console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
     return false
   }
-}
-
-async function isCheckoutRegistered(record: WorktreeRemovalRecord): Promise<boolean> {
-  return (await listWorktreesStrict(record.repoPath)).some((worktree) =>
-    areWorktreePathsEqual(worktree.path, record.worktreePath)
-  )
 }
 
 // Why: the record should be on disk before Git deletes, so a quit resumes the delete, but a disk or
