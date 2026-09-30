@@ -144,7 +144,7 @@ export class PtyStartupIngress {
           // split across the boundary and orphan the second.
           this.releaseQueryPending()
         }
-        // Why: ConPTY cannot safely transfer color-query authority to a downstream view.
+        // Why: keep a torn ConPTY candidate whole so it reaches downstream as one query.
         return
       case 'expire':
         this.queryOpen = false
@@ -218,8 +218,8 @@ export class PtyStartupIngress {
             }
             // Unconditional, unlike `releasePendingInSourceOrder`, which withholds a
             // ConPTY candidate: that one releases candidates still *undetermined*,
-            // and on ConPTY an undetermined candidate may be a query it is meant to
-            // suppress. Here the candidate and the tail together parse as `none`, so
+            // and on ConPTY an undetermined candidate may be a query to keep whole.
+            // Here the candidate and the tail together parse as `none`, so
             // whatever the candidate is, the bytes behind it are not its body — which
             // is what makes it safe to stop holding the echo hostage to it.
             this.releaseQueryPending()
