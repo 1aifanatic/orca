@@ -28,8 +28,13 @@ function Transcript(): ReturnType<typeof createElement> {
   })
 }
 
+// Host element names are plain strings at runtime; React Native's types don't list them.
+function hostNamed(name: string): ReactTestInstance {
+  return renderer!.root.find((node) => node.type === name)
+}
+
 function list(): ReactTestInstance {
-  return renderer!.root.findByType('FlatList')
+  return hostNamed('FlatList')
 }
 
 /** A scroll event in a 500pt viewport; 80pt from the bottom still counts as the tail. */
@@ -93,7 +98,9 @@ describe('useMobileNativeChatTailFollow gesture settling', () => {
       list().props.onScrollEndDrag(at(200))
       list().props.onMomentumScrollEnd(at(700))
     })
-    act(() => vi.runOnlyPendingTimers())
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
     act(() => list().props.onContentSizeChange(320, 1_250))
 
     expect(scrollToEnd).not.toHaveBeenCalled()
@@ -122,7 +129,9 @@ describe('useMobileNativeChatTailFollow gesture settling', () => {
       list().props.onScroll(at(200))
       list().props.onScrollEndDrag(at(620))
     })
-    act(() => vi.advanceTimersByTime(200))
+    act(() => {
+      vi.advanceTimersByTime(200)
+    })
     act(() => list().props.onContentSizeChange(320, 1_250))
 
     expect(scrollToEnd).toHaveBeenCalledOnce()
@@ -139,7 +148,9 @@ describe('useMobileNativeChatTailFollow gesture settling', () => {
     expect(scrollToEnd).not.toHaveBeenCalled()
     expect(scrollToOffset).not.toHaveBeenCalled()
 
-    act(() => vi.runOnlyPendingTimers())
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
 
     expect(scrollToEnd).toHaveBeenCalledOnce()
     expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: false })
