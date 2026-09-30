@@ -32,7 +32,7 @@ import {
 import { initializeMainProcessAutomations } from './main-process-automations'
 import { initializeMainProcessPlugins } from './main-process-plugins'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
-import { loadWorktreeRemovalRecords } from '../worktree-background-removal'
+import { loadWorktreeRemovalRecordsForStore } from './worktree-removal-records-load'
 import { runAfterFirstWindowShown } from './first-window-deferral'
 import { logStartupMilestone } from './startup-diagnostics'
 
@@ -45,9 +45,7 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
     throw new Error('Store must be initialized before ready services')
   }
   // Why before any listing: a delete a quit or crash interrupted must show as Deleting from first paint.
-  await loadWorktreeRemovalRecords(store.getProfileStorageDirectory(), (repoId) =>
-    Boolean(store.getRepo(repoId))
-  )
+  await loadWorktreeRemovalRecordsForStore(store)
   initializeMainProcessObservers()
   initializeMainProcessAccountServices()
   const runtime = initializeMainProcessRuntime()

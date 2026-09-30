@@ -8,6 +8,7 @@ import {
   removeWorktreeMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
+import type { WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { Worktree } from '../../shared/worktree/types'
@@ -154,9 +155,11 @@ async function failAfterGitDroppedIt(): Promise<void> {
 }
 
 describe('a failed delete Git no longer registers, over desktop IPC', () => {
+  let runtime: WorktreeRuntimeStub
+
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    setupWorktreeHandlers()
+    runtime = setupWorktreeHandlers()
   })
 
   afterEach(() => {
@@ -234,6 +237,8 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
 
     expect(await listFeature()).toBeUndefined()
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(featureId, 'local')
+    // Paired clients list the failed row too, so they must hear it is gone.
+    expect(runtime.notifyWorktreesChangedForRemoteClients).toHaveBeenCalledWith('repo-1')
     expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
     expect(removeWorktreeMock).not.toHaveBeenCalled()
   })

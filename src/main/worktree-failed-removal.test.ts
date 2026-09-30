@@ -26,6 +26,7 @@ import {
 } from './worktree-removal-listing'
 import { readWorktreeRemovalRecords } from './worktree-removal-records'
 import { forgetFailedWorktreeRemoval } from './worktree-removal-table'
+import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
 
@@ -266,11 +267,31 @@ describe('a delete that fails after Git dropped the registration', () => {
     await failRemoval()
     _resetPendingWorktreeRemovalsForTests()
 
-    await loadWorktreeRemovalRecords(join(directory, 'profile'), (repoId) => repoId !== 'repo-1')
+    // Only an SSH copy of the project is left under the same repo id.
+    await loadWorktreeRemovalRecordsForStore({
+      getProfileStorageDirectory: () => join(directory, 'profile'),
+      getRepos: () => [{ id: 'repo-1', connectionId: 'box', executionHostId: null }]
+    })
 
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
     expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
     expect(await readdir(checkout)).toEqual(['node_modules'])
+  })
+
+  it('is kept at startup while the repo’s local copy is still in Orca', async () => {
+    await failRemoval()
+    _resetPendingWorktreeRemovalsForTests()
+
+    await loadWorktreeRemovalRecordsForStore({
+      getProfileStorageDirectory: () => join(directory, 'profile'),
+      getRepos: () => [
+        { id: 'repo-1', connectionId: 'box', executionHostId: null },
+        { id: 'repo-1', connectionId: null, executionHostId: null }
+      ]
+    })
+
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
+    expect(await listRows()).toHaveLength(2)
   })
 
   it('ends at the next listing once a different checkout takes the path', async () => {

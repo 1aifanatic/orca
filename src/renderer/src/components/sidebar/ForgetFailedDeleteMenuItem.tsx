@@ -22,9 +22,11 @@ export function canForgetFailedLocalDelete(
 ): boolean {
   return (
     Boolean(worktree.removalError) &&
-    (!worktree.hostId || parseExecutionHostId(worktree.hostId)?.kind === 'local') &&
+    // Why the repo only without a hostId: a repo looked up by id may be another host's copy.
+    (worktree.hostId
+      ? parseExecutionHostId(worktree.hostId)?.kind === 'local'
+      : !repo?.connectionId) &&
     !worktree.runtimeOwnerEnvironmentId &&
-    !repo?.connectionId &&
     !isPairedWebClientWindow()
   )
 }

@@ -27,6 +27,15 @@ describe('canForgetFailedLocalDelete', () => {
     ).toBe(true)
   })
 
+  it('trusts a local row’s own host over a same-id SSH copy of its repo', () => {
+    expect(
+      canForgetFailedLocalDelete(
+        { ...failedRow, hostId: LOCAL_EXECUTION_HOST_ID },
+        { connectionId: 'box' }
+      )
+    ).toBe(true)
+  })
+
   it('is not offered on a row without a failed delete', () => {
     expect(canForgetFailedLocalDelete({ ...failedRow, removalError: undefined }, localRepo)).toBe(
       false

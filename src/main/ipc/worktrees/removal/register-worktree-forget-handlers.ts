@@ -142,6 +142,8 @@ export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): voi
           }
         }
         notifyWorktreesChanged(mainWindow, repoId)
+        // Why: paired clients list this host's failed rows too, and refetch only on this event.
+        runtime.notifyWorktreesChangedForRemoteClients(repoId)
         return {}
       })()
       worktreeRemovalsInFlight.set(inFlightKey, { optionsKey, promise: forget })
