@@ -256,11 +256,11 @@ reader does not mistake them for drift:
   tool-use id match the launch Orca recorded, since a prompt typed while Claude
   is busy writes the same kind of line. A task can end before Orca handles its
   launching hook, so its line can precede where the watch reads from; accepting
-  the launch reads back a bounded tail once for that exact pair. A `startup` or `resume`
-  `SessionStart` clears the record with the pane's children and crons, since a
-  new process can never end its predecessor's tasks. `/clear` keeps it: the
-  shell survives and reports its end in the new session's transcript, and the
-  pane stays on the tail of the turn that launched it, keeping that turn's
+  the launch reads back a bounded tail once for that exact pair. A `startup` or
+  `resume` `SessionStart` clears the record with the pane's children and crons,
+  since a new process can never end its predecessor's tasks. `/clear` keeps it:
+  the shell survives and reports its end in the new session's transcript, and
+  the pane stays on the tail of the turn that launched it, keeping that turn's
   verdict and turn stamp so the shell's end is not announced as a new turn. The
   pane's process ending, its PTY exiting and the relay stopping clear it with
   the rest of the pane. The desktop keeps no copy for a relayed pane; it reads

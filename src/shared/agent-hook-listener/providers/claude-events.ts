@@ -105,10 +105,10 @@ export function normalizeClaudeEvent(
       // live turn to an idle row.
       return null
     }
-    // Why: a new process owns the pane; stale children/tasks/crons must not gate the fresh
-    // session's idle row back up to 'working' (same reset Codex does on SessionStart). Only /clear
-    // keeps the process, whose shells report their end in the new session's transcript
-    // (r3-clear-run1); a new process can never end its predecessor's tasks.
+    // Why: a new session owns the pane; stale children/crons must not gate its idle row back up to
+    // 'working' (same reset Codex does on SessionStart). A new process can never end its
+    // predecessor's background tasks either, but /clear keeps the process, whose shells report
+    // their end in the new session's transcript (r3-clear-run1).
     const keepsTasks = sessionStartSource === 'clear'
     state.claudeSubagentRosterByPaneKey.delete(paneKey)
     state.claudeActiveSessionCronPaneKeys.delete(paneKey)
