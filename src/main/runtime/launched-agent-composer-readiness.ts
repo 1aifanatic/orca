@@ -47,3 +47,15 @@ export function waitForLaunchedAgentComposer(
     ? runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
     : runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
 }
+
+/** Worker start's wait before its first dispatch, on the local host and on a paired worker host. */
+export function waitForWorkerAgentReady(
+  runtime: LaunchedAgentReadinessRuntime,
+  handle: string,
+  args: { agent: TuiAgent | undefined; reusesTerminal: boolean; timeoutMs: number }
+): Promise<RuntimeTerminalWait> {
+  // A caller-supplied terminal was not freshly launched, so its composer marker may be long gone.
+  return args.agent && !args.reusesTerminal
+    ? waitForLaunchedAgentComposer(runtime, handle, args.agent, args.timeoutMs)
+    : runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: args.timeoutMs })
+}

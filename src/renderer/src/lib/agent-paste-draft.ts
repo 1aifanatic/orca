@@ -126,9 +126,8 @@ export async function pasteDraftWhenAgentReady(args: {
       onTimeout?.()
       return false
     }
-    // Why: the process merely exists -- its composer was never observed. On Windows this is
-    // the ONLY path: ConPTY does not forward DECSET 2004, so no 2004-anchored ready signal
-    // can ever fire. Callers must be able to tell this blind write apart from a real delivery.
+    // Why: the process merely exists -- its composer signal never fired within the budget.
+    // Callers must be able to tell this blind write apart from a real delivery.
     onUnconfirmedDelivery?.()
   }
 

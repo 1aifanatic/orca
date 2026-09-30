@@ -29,7 +29,7 @@ import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
-import { waitForLaunchedAgentComposer } from '../../../../launched-agent-composer-readiness'
+import { waitForWorkerAgentReady } from '../../../../launched-agent-composer-readiness'
 
 type WorkerStartMutation = {
   callerFingerprint: string
@@ -189,18 +189,11 @@ export async function startLocalWorker(args: {
           effects,
           timeoutMs: params.timeoutMs ?? 60_000
         })
-      : // A caller-supplied terminal was not freshly launched, so its composer marker may be long gone.
-        params.terminal || !agent
-        ? await runtime.waitForTerminal(terminalHandle, {
-            condition: 'tui-idle',
-            timeoutMs: params.timeoutMs ?? 60_000
-          })
-        : await waitForLaunchedAgentComposer(
-            runtime,
-            terminalHandle,
-            agent,
-            params.timeoutMs ?? 60_000
-          )
+      : await waitForWorkerAgentReady(runtime, terminalHandle, {
+          agent,
+          reusesTerminal: Boolean(params.terminal),
+          timeoutMs: params.timeoutMs ?? 60_000
+        })
     if (wait) {
       persistWorkerSetupWaitOutcome({ ...setupStage, wait })
       if (!wait.satisfied) {
