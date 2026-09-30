@@ -53,19 +53,17 @@ it('ends every chat where a direct read of it lands, and shows no pre-crash work
   const readRig = await createRestTestRig({}, { root: readRoot })
   rigs.push(readRig)
 
-  // Startup's shape: the lease check started, the list answered, then the pass.
+  // Startup's shape: the lease check, the list, then the pass.
   const passHost = await passRig.boot()
-  const passCheck = passHost.reconcileRestartLeases()
+  await passHost.reconcileRestartLeases()
   await passHost.restoreReadableSessions(CORPUS)
-  await passCheck
 
   // The same run, where the window reads each chat instead.
   const readHost = readRig.host
-  const readCheck = readHost.reconcileRestartLeases()
+  await readHost.reconcileRestartLeases()
   for (const sessionId of CORPUS) {
     await readHost.history({ sessionId, direction: 'tail' })
   }
-  await readCheck
 
   // `updatedAt` is when the row was projected, a wall-clock read that differs between two boots.
   const rows = (rig: RestTestRig): Record<string, Omit<AgentSessionStatusSummary, 'updatedAt'>> =>

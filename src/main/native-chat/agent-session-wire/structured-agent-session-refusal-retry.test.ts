@@ -335,14 +335,9 @@ describe('agentSessionRefusalOperationState host oracle', () => {
         ...current,
         lease: { ...current.lease, unreconciled: true }
       }))
-      // A write runs the lease check first; only one that cannot settle leaves this refusal.
-      const stuck = vi
-        .spyOn(reconciling.store, 'reconcileOnRestart')
-        .mockRejectedValue(new Error('execution_owner_reconciling'))
       const spec = { method, operationId: operationId() }
       record(
         await assertHostAgreement(reconciling, spec, 'execution_owner_reconciling', async () => {
-          stuck.mockRestore()
           await setLease(reconciling, (current) => ({
             ...current,
             lease: { ...current.lease, unreconciled: false }

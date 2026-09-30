@@ -83,8 +83,7 @@ it('finishes startup over records a newer Orca wrote, reports it, and writes not
   // What the renderer's startup awaits through `app:prepareTerminalStartupRestoration`.
   await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).resolves.toBeUndefined()
 
-  // Startup does not wait for the check; its failure is reported when it lands.
-  await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce())
+  expect(onError).toHaveBeenCalledOnce()
   expect(onError).toHaveBeenCalledWith({
     scope: 'structured-agent-session-lease-reconcile',
     error: expect.objectContaining({ message: 'agent_session_legacy_required' })
@@ -104,10 +103,8 @@ it('logs the failure when the host has no error sink', async () => {
     startupRuntime().prepareStructuredAgentSessionStartupRestoration()
   ).resolves.toBeUndefined()
 
-  await vi.waitFor(() =>
-    expect(warn).toHaveBeenCalledWith(
-      '[structured-agent-session] reconciling chat leases failed',
-      expect.objectContaining({ message: 'agent_session_legacy_required' })
-    )
+  expect(warn).toHaveBeenCalledWith(
+    '[structured-agent-session] reconciling chat leases failed',
+    expect.objectContaining({ message: 'agent_session_legacy_required' })
   )
 })

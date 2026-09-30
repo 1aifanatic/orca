@@ -107,26 +107,6 @@ function failureKey(failure: unknown): string {
   return String(failure)
 }
 
-/** The chat's queue, entered by a write to a chat whose lease is still the previous run's only
- *  after the lease check, which startup does not wait for. The write waits for that check (one pass
- *  over every unreconciled lease, not only this chat's), or runs it. With none owed it enqueues at
- *  once, keeping its place. A check that fails gates nothing: a conversation write (a send, a Stop)
- *  is still admitted, a provider-child write is refused while the lease stays unreconciled, and an
- *  agent start reconciles again and refuses. */
-export function serializeAfterLeaseCheck(
-  store: Pick<AgentSessionRecordStore, 'getRecord'>,
-  reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-): <T>(sessionId: string, task: () => Promise<T>) => Promise<T> {
-  return (sessionId, task) =>
-    store.getRecord(sessionId)?.lease.unreconciled
-      ? reconcile(sessionId).then(
-          () => serialize(sessionId, task),
-          () => serialize(sessionId, task)
-        )
-      : serialize(sessionId, task)
-}
-
 async function reconcileCurrentLeases(deps: {
   store: AgentSessionRecordStore
   probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>

@@ -51,7 +51,7 @@ describe('structured session cold restoration', () => {
     expect(restoreReadableSessions).not.toHaveBeenCalled()
   })
 
-  it('loads records, inventories PTYs, starts the lease check, projects tabs, then restores history, once', async () => {
+  it('loads records, inventories PTYs, restores ownership, projects tabs, then restores history, once', async () => {
     const runtime = new OrcaRuntimeService()
     const hydrate = vi.fn()
     const refresh = vi.fn(async () => new Set<string>())

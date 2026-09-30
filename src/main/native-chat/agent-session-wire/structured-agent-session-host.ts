@@ -10,10 +10,7 @@ import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import {
-  createRestartReconciler,
-  serializeAfterLeaseCheck
-} from './structured-agent-session-restart-reconcile'
+import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
@@ -276,8 +273,7 @@ export class StructuredAgentSessionHost {
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
       flushStreamedEvents: this.flushStreamedEvents,
       conversation: this.lifetime.conversation,
-      // Every write funnels through here: one to a chat with an unchecked lease waits for the check.
-      serialize: serializeAfterLeaseCheck(this.deps.store, this.reconcileLeases, this.serialize),
+      serialize: (sessionId, task) => this.serialize(sessionId, task),
       openConversation: this.conversationDelivery.open,
       ensureAgent: (sessionId) =>
         ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),

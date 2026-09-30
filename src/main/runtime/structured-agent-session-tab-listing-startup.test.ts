@@ -1,5 +1,5 @@
 // The chat tab list a client asks for at startup answers from records and the tab table. It waits
-// for no chat's history and for no lease check; each chat's history opens after the answer.
+// for no chat's history; each chat's history opens after the answer.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
@@ -43,9 +43,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   releaseHeld()
-  // The listing starts the lease check and the restore without awaiting either; both finish before
-  // the rig removes their files.
-  await rig.host.reconcileRestartLeases()
+  // The listing starts the history restore after its answer, without awaiting it; it finishes
+  // before the rig removes its files.
   await new Promise((resolve) => setImmediate(resolve))
   await rig.host.restoreReadableSessions()
   setStructuredAgentSessionHost(null)
@@ -154,45 +153,6 @@ describe('listing chat tabs at startup', () => {
     expect(await listAll()).toEqual(ids)
     // Every write, a tab's visibility included, is one store transaction.
     expect(writes).not.toHaveBeenCalled()
-  })
-
-  it('answers while the startup lease check never finishes (T2)', async () => {
-    await restTestChat(rig, 'session-1', { message: 'one' })
-    await restTestChat(rig, 'session-2', { message: 'two' })
-    await rig.crash()
-    const probe = Promise.withResolvers<void>()
-    releaseHeld = probe.resolve
-    rig.probeOwner.mockImplementation(async () => {
-      await probe.promise
-      return { outcome: 'pid-absent' }
-    })
-    await rig.boot()
-    const { runtime, listAll } = restartedRuntime()
-
-    // What the renderer's startup awaits through `app:prepareTerminalStartupRestoration`.
-    expect(await within(runtime.prepareStructuredAgentSessionStartupRestoration())).toBe(undefined)
-    expect(await within(listAll())).toEqual(['session-1', 'session-2'])
-    expect(rig.probeOwner).toHaveBeenCalled()
-    probe.resolve()
-    await rig.host.reconcileRestartLeases()
-  })
-
-  it('answers when the startup lease check fails (T2)', async () => {
-    await restTestChat(rig, 'session-1', { message: 'one' })
-    await rig.crash()
-    rig.probeOwner.mockRejectedValue(new Error('probe unavailable'))
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const onLeaseReconcileFailure = vi.fn()
-    await rig.boot({ onLeaseReconcileFailure })
-    const { runtime, listAll } = restartedRuntime()
-
-    await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).resolves.toBe(undefined)
-    expect(await within(listAll())).toEqual(['session-1'])
-    await vi.waitFor(() =>
-      expect(onLeaseReconcileFailure).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'probe unavailable' })
-      )
-    )
   })
 
   it('lists every chat when four fail to open, and the others still get status rows (T5)', async () => {

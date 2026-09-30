@@ -297,15 +297,13 @@ describe('restoring the chat tabs open at quit', () => {
       await seedStore(records, { visible: chats })
       await seedHistory(records)
       vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      const { runtime, onError, published } = startupRuntime({
+      const { runtime, published } = startupRuntime({
         afterInstall: () => {
           lock.failing = true
         }
       })
 
       await runtime.prepareStructuredAgentSessionStartupRestoration()
-      // Startup starts the lease check without awaiting it; its report is where it lands.
-      await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce())
       const prepared = lock.refused
       await runtime.restoreStructuredAgentSessionTabs()
       await historyRestored()
@@ -329,8 +327,6 @@ describe('restoring the chat tabs open at quit', () => {
       const writes = spyOnTabWrites()
       const { runtime, published } = startupRuntime({ profileChats: [CHAT_A, CHAT_B] })
       await runtime.prepareStructuredAgentSessionStartupRestoration()
-      // Joins startup's un-awaited lease check, so it takes no lock grant meant for the seed.
-      await getStructuredAgentSessionHost()!.reconcileRestartLeases()
       // One more take, then held: a seed written chat by chat would stop part way.
       lock.grants = 1
 
@@ -350,7 +346,7 @@ describe('restoring the chat tabs open at quit', () => {
       await seedStore(records)
       await seedHistory(records)
       vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      const { runtime, onError, published } = startupRuntime({
+      const { runtime, published } = startupRuntime({
         profileChats: [CHAT_A, CHAT_B],
         afterInstall: () => {
           lock.failing = true
@@ -358,7 +354,6 @@ describe('restoring the chat tabs open at quit', () => {
       })
 
       await runtime.prepareStructuredAgentSessionStartupRestoration()
-      await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce())
       const prepared = lock.refused
       await runtime.restoreStructuredAgentSessionTabs()
       await historyRestored()
@@ -376,7 +371,6 @@ describe('restoring the chat tabs open at quit', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const { runtime, published } = startupRuntime({ profileChats: [CHAT_A, CHAT_B] })
       await runtime.prepareStructuredAgentSessionStartupRestoration()
-      await getStructuredAgentSessionHost()!.reconcileRestartLeases()
       lock.failing = true
 
       await expect(runtime.restoreStructuredAgentSessionTabs()).resolves.toBeUndefined()
