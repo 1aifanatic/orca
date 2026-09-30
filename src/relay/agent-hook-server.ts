@@ -320,7 +320,7 @@ export class RelayAgentHookServer {
     if (
       options.checkPresence !== false &&
       sender &&
-      owner &&
+      owner?.process &&
       !owner.ended &&
       !isSameAgentProcess(sender, owner.process)
     ) {

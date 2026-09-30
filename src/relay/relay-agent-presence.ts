@@ -9,7 +9,7 @@ export class RelayAgentPresence {
     current: () => AgentHookEventPayload | undefined,
     publish: (event: AgentHookEventPayload) => void
   ): Promise<void> {
-    if (!row?.agentPresence || row.agentPresence.ended) {
+    if (!row?.agentPresence?.process || row.agentPresence.ended) {
       return Promise.resolve()
     }
     const existing = this.pending.get(row)

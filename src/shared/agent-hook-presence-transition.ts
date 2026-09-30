@@ -1,54 +1,44 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
 import { isSameAgentProcess } from './agent-process-presence'
 
-function claimsAgent(event: AgentHookEventPayload): boolean {
-  const agentType = event.payload.agentType
-  return agentType !== undefined && agentType !== 'unknown'
-}
-
-/** The pane's presence belongs to one agent process; only that process's evidence changes it. */
+/** A pane has one owning agent; only the owner's own proven process can end it. */
 export function transitionHookPresence(
   incoming: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload | undefined {
-  if (
-    previous &&
-    claimsAgent(previous) &&
-    claimsAgent(incoming) &&
-    previous.payload.agentType !== incoming.payload.agentType
-  ) {
-    // Why: an agent of another type started mid-turn is nested; it may report status, not own the pane.
-    if (
-      previous.payload.state === 'done' ||
-      previous.providerSessionOnly ||
-      !incoming.agentPresence
-    ) {
-      return incoming
-    }
-    return incoming.hookEventName === 'SessionEnd' || incoming.agentPresence.ended
-      ? undefined
-      : { ...incoming, agentPresence: undefined }
-  }
-  const owner = previous?.agentPresence
-  const next = incoming.agentPresence
-  if (!next) {
-    // Why: evidence without an identity can neither extend nor revive the owner's presence.
-    return owner && !owner.ended ? { ...incoming, agentPresence: owner } : incoming
-  }
-  const fromOwner = owner !== undefined && isSameAgentProcess(owner.process, next.process)
+  const recorded = previous?.agentPresence
+  const owner = recorded && !recorded.ended && !previous?.providerSessionOnly ? recorded : undefined
+  const sender = incoming.agentPresence?.process
   // Why: SessionEnd, or an exit the execution host already proved (relay-forwarded).
-  if (incoming.hookEventName === 'SessionEnd' || next.ended) {
-    if (!owner || !fromOwner || owner.ended) {
-      return undefined
+  const exit = incoming.hookEventName === 'SessionEnd' || incoming.agentPresence?.ended === true
+  if (owner) {
+    if (exit) {
+      const fromOwner = owner.process && sender && isSameAgentProcess(owner.process, sender)
+      return fromOwner
+        ? {
+            ...incoming,
+            payload: previous?.payload ?? incoming.payload,
+            agentPresence: { ...owner, ended: true }
+          }
+        : undefined
     }
-    return { ...incoming, payload: previous.payload, agentPresence: { ...owner, ended: true } }
+    // Why: nested agents inherit ORCA_PANE_KEY; their hooks update status, never ownership.
+    return incoming.agentPresence === owner ? incoming : { ...incoming, agentPresence: owner }
   }
-  if (fromOwner) {
-    return owner.ended ? undefined : { ...incoming, agentPresence: owner }
+  if (exit) {
+    return undefined
   }
-  if (owner && !owner.ended) {
-    // Why: nested agents inherit ORCA_PANE_KEY; another process's hooks update status, not ownership.
-    return { ...incoming, agentPresence: owner }
+  if (
+    recorded?.ended &&
+    recorded.process &&
+    sender &&
+    isSameAgentProcess(recorded.process, sender)
+  ) {
+    return undefined
   }
-  return incoming
+  const agent = incoming.payload.agentType
+  if (!agent || agent === 'unknown') {
+    return incoming.agentPresence ? { ...incoming, agentPresence: undefined } : incoming
+  }
+  return { ...incoming, agentPresence: { agent, ...(sender ? { process: sender } : {}) } }
 }

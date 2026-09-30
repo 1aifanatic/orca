@@ -16,7 +16,7 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
   checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {
     const sender = event.agentPresence?.process
     const owner = row.agentPresence
-    if (sender && owner && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
+    if (sender && owner?.process && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
       void this.checkAgentPresence(row.paneKey)
     }
   }
@@ -24,8 +24,8 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
   checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
-    // Why: an ended owner already published its exit; whatever runs in the pane now is not it.
-    if (!row?.agentPresence || row.agentPresence.ended) {
+    // Why: an ended owner already published its exit, and an owner no hook identified cannot be checked.
+    if (!row?.agentPresence?.process || row.agentPresence.ended) {
       return Promise.resolve(null)
     }
     if (row.connectionId !== null) {

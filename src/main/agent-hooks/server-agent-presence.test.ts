@@ -134,6 +134,7 @@ describe('host-owned hook presence', () => {
     await hook(server, 'UserPromptSubmit', 'outer', undefined, null)
     await hook(server, 'SessionStart', 'nested', undefined, 4002)
     await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    expect(visible(server)).toBe(true)
     await hook(server, 'PostToolUse', 'outer', undefined, null)
     expect(state(server)).toBe('working')
     expect(await server.checkAgentPresence(PANE)).toBeNull()
@@ -159,6 +160,7 @@ describe('host-owned hook presence', () => {
         hookEventName: 'SessionEnd',
         providerSessionOnly: true,
         agentPresence: {
+          agent: 'claude',
           process: { pid: 4002, platform: 'linux', startTime: 'boot:1' },
           ended: true
         },
@@ -167,6 +169,32 @@ describe('host-owned hook presence', () => {
       'ssh-1'
     )
     expect(state(server)).toBe('working')
+  })
+
+  it.each([
+    ['working', []],
+    ['idle', ['Stop']]
+  ])('keeps a %s Codex pane when a Claude run inside it ends', async (_label, codexTail) => {
+    const server = await createServer()
+    const codex = async (event: string) => {
+      const response = await postHookEvent(
+        server,
+        buildBody({ hook_event_name: event, session_id: 'codex-a', prompt: 'task' }),
+        '/hook/codex'
+      )
+      expect(response.status).toBe(204)
+    }
+    await codex('UserPromptSubmit')
+    for (const event of codexTail) {
+      await codex(event)
+    }
+    const before = state(server)
+    await hook(server, 'SessionStart', 'nested', undefined, 4002)
+    await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
+    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    expect(visible(server)).toBe(true)
+    expect(before).not.toBeNull()
+    expect(await server.checkAgentPresence(PANE)).toBeNull()
   })
 
   it('checks each pane once after replaying its spooled hooks', async () => {
@@ -245,6 +273,7 @@ describe('host-owned hook presence', () => {
       hookEventName: 'SessionStart',
       providerSession: { provider: 'claude', id: 'remote-session' },
       agentPresence: {
+        agent: 'claude',
         process: { pid: process.pid, platform: process.platform, startTime: 'remote-birth' }
       },
       payload: { state: 'working', prompt: 'remote task', agentType: 'claude' }

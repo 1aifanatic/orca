@@ -1,12 +1,16 @@
+import { AGENT_TYPE_MAX_LENGTH } from './agent-status-field-normalization'
+import type { AgentType } from './agent-status-types'
+
 export type AgentProcessIdentity = {
   pid: number
   platform: 'darwin' | 'linux' | 'win32'
   startTime: string
 }
 
-/** The pane's agent process, owned from its first identified hook until it ends. */
+/** The agent that owns a pane, from its first hook until it ends; the process when a hook proved it. */
 export type AgentProcessPresence = {
-  process: AgentProcessIdentity
+  agent: AgentType
+  process?: AgentProcessIdentity
   ended?: true
 }
 
@@ -43,15 +47,20 @@ export function readAgentProcessIdentity(value: unknown): AgentProcessIdentity |
 }
 
 export function readAgentProcessPresence(value: unknown): AgentProcessPresence | undefined {
-  if (!value || typeof value !== 'object' || !('process' in value)) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('agent' in value) ||
+    typeof value.agent !== 'string' ||
+    !value.agent ||
+    value.agent.length > AGENT_TYPE_MAX_LENGTH
+  ) {
     return undefined
   }
-  const process = readAgentProcessIdentity(value.process)
-  if (!process) {
-    return undefined
-  }
+  const process = 'process' in value ? readAgentProcessIdentity(value.process) : undefined
   return {
-    process,
+    agent: value.agent,
+    ...(process ? { process } : {}),
     ...('ended' in value && value.ended === true ? { ended: true as const } : {})
   }
 }
