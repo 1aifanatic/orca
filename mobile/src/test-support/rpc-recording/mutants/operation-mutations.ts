@@ -73,6 +73,14 @@ export const OPERATION_MUTATIONS = {
     before: 'const snapshot = decodeAccountsSnapshot(accounts.value)',
     after: 'const snapshot = decodeAccountsSnapshot(reply)'
   },
+  // Writes every chunk of an asset at offset 0, so a multi-chunk asset reassembles as its last
+  // chunk over a zero-filled buffer. The length still matches the manifest; only the sha256 check
+  // and the decoded bytes in the projection say the bundle is wrong.
+  'mobile-web-bundle-chunk-placement': {
+    file: 'mobile-web-bundle-fetch.ts',
+    before: 'whole.set(bytes, offset)',
+    after: 'whole.set(bytes, 0)'
+  },
   // Puts the workspace catalog's reply back behind an unchecked reader, so a reply carrying neither
   // rows nor an `unchanged` token reaches `admitWorktreeCatalogResponse` as an invalid admission
   // instead of being named at the boundary — main's answer, and the one the host screen showed as
@@ -127,11 +135,19 @@ export const OPERATION_MUTATIONS = {
     before: 'linearConnected: linear?.connected === true',
     after: 'linearConnected: linear !== null'
   },
-  // Reads the host platform from the wrong field of the host.platform result.
+  // Reads the host platform from the wrong field of the host.platform result. Re-anchored where
+  // step 7 moved the read: the hand-rolled `readHostPlatform` became the reply schema's own
+  // projection, so the anchor is that projection. The defect it injects — rows labelled with a
+  // platform the host never reported — is unchanged.
   'repo-metadata-platform': {
-    file: 'use-host-repo-metadata.ts',
-    before: 'const platform = (result as { platform?: unknown } | null)?.platform',
-    after: 'const platform = (result as { hostPlatform?: unknown } | null)?.hostPlatform'
+    file: 'host-screen-reply-schema.ts',
+    before: `  .looseObject({ platform: salvagedOptional('platform', z.enum(NODE_PLATFORM_NAMES)) })
+  .transform((reply) => reply.platform ?? null)`,
+    after: `  .looseObject({
+    platform: salvagedOptional('platform', z.enum(NODE_PLATFORM_NAMES)),
+    hostPlatform: salvagedOptional('hostPlatform', z.enum(NODE_PLATFORM_NAMES))
+  })
+  .transform((reply) => reply.hostPlatform ?? null)`
   },
   // Hydrates the runtime task settings from the envelope rather than the accepted value.
   'task-hydration-envelope': {

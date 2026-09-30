@@ -1,3 +1,4 @@
+import { expect, vi } from 'vitest'
 import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
@@ -10,13 +11,8 @@ import type {
 } from './codex-app-server-connection'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { CodexStructuredSessionAdapter } from './codex-structured-session-adapter'
+import { codexTurnLifecycleFake } from './codex-turn-lifecycle-fake'
 import type { CodexStructuredSessionAdapterDeps } from './codex-structured-session-state'
-import type { CodexStructuredSessionEvent } from './codex-structured-session-state'
-import { readCodexTurnId } from './codex-structured-thread-facts'
-import type {
-  StructuredAgentSessionLateSettlement,
-  StructuredAgentSessionLateSettlementResult
-} from '../native-chat/agent-session-wire/structured-agent-session-late-settlement'
 
 export const CODEX_TEST_THREAD_ID = 'thread-abc'
 
@@ -35,7 +31,9 @@ type FakeConnection = Omit<CodexAppServerConnection, 'closed'> & {
   calls: { method: string; params?: Record<string, unknown> }[]
 }
 
-export type LateSettlement = StructuredAgentSessionLateSettlement
+export type LateSettlement = Parameters<
+  NonNullable<CodexStructuredSessionAdapterDeps['onDispatchSettledLate']>
+>[0]
 
 /** A `codex app-server` whose turn traffic the test drives by hand. */
 export function fakeCodexAppServer(routes: Record<string, CodexTestRoute> = {}): {
@@ -44,18 +42,16 @@ export function fakeCodexAppServer(routes: Record<string, CodexTestRoute> = {}):
   routes: Record<string, CodexTestRoute>
 } {
   const connections: FakeConnection[] = []
-  const openConnection: typeof openCodexAppServerConnection = async (launch, handlers = {}) => {
+  const openConnection = (async (launch, handlers = {}) => {
     const connection: FakeConnection = {
       launch,
       handlers,
       calls: [],
       pid: 4321,
       closed: false,
-      request: async (method, params, options) => {
+      request: async (method, params) => {
         connection.calls.push({ method, params })
-        const result = routes[method]?.(params) ?? {}
-        options?.onResult?.(result)
-        return result
+        return routes[method]?.(params) ?? {}
       },
       notify: () => {},
       respond: () => {},
@@ -67,7 +63,7 @@ export function fakeCodexAppServer(routes: Record<string, CodexTestRoute> = {}):
     }
     connections.push(connection)
     return connection
-  }
+  }) as typeof openCodexAppServerConnection
   routes['thread/start'] ??= () => ({
     thread: { id: CODEX_TEST_THREAD_ID, path: '/rollouts/abc.jsonl' }
   })
@@ -88,14 +84,8 @@ export async function acquiredCodexAdapter(input: {
   codex: ReturnType<typeof fakeCodexAppServer>
   settlements: LateSettlement[]
   sink?: StructuredAgentSessionEventSink
-  events?: CodexStructuredSessionEvent[]
-  settleLateDispatch?: (
-    settlement: LateSettlement
-  ) => Promise<StructuredAgentSessionLateSettlementResult>
-  captureTurnProcesses?: CodexStructuredSessionAdapterDeps['captureTurnProcesses']
+  requestTimeoutMs?: number
 }): Promise<CodexStructuredSessionAdapter> {
-  const events = input.events
-  const terminalTurnIds = new Set<string>()
   const adapter = new CodexStructuredSessionAdapter({
     resolveLaunch: async () => ({
       command: 'codex',
@@ -106,27 +96,9 @@ export async function acquiredCodexAdapter(input: {
     }),
     openConnection: input.codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
-    captureTurnProcesses: input.captureTurnProcesses ?? (async () => null),
     now: () => 1_700_000_000_500,
-    onDispatchSettledLate: async (settlement) => {
-      if (input.settleLateDispatch) {
-        return input.settleLateDispatch(settlement)
-      }
-      if ('turnId' in settlement && !terminalTurnIds.has(settlement.turnId)) {
-        return 'evidence-not-durable'
-      }
-      input.settlements.push(settlement)
-      return 'settled'
-    },
-    onEvent: (event) => {
-      if (event.type === 'notification' && event.method === 'turn/completed') {
-        const turnId = readCodexTurnId(event.params)
-        if (turnId) {
-          terminalTurnIds.add(turnId)
-        }
-      }
-      events?.push(event)
-    }
+    onDispatchSettledLate: (settlement) => input.settlements.push(settlement),
+    ...(input.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: input.requestTimeoutMs })
   })
   const identity: AgentSessionJournalIdentity = {
     sessionId: 'session-1',
@@ -160,9 +132,50 @@ export function echoUserMessage(
   })
 }
 
-export function startTurn(connection: FakeConnection, turnId: string): void {
+export function startTurn(connection: Pick<FakeConnection, 'handlers'>, turnId: string): void {
   connection.handlers.onNotification?.('turn/started', {
     threadId: CODEX_TEST_THREAD_ID,
     turn: { id: turnId }
   })
+}
+
+/** Runs `open` once `count` sends reached Codex, which opens a turn only after it answers. */
+export async function openAfterTurnStarts(
+  connection: Pick<FakeConnection, 'calls'>,
+  count: number,
+  open: () => void
+): Promise<void> {
+  await vi.waitFor(() =>
+    expect(connection.calls.filter((call) => call.method === 'turn/start')).toHaveLength(count)
+  )
+  open()
+}
+
+/** An acquired adapter over a fake Codex that keeps Codex's own turn bookkeeping. */
+export async function codexTurnLifecycleRig(options: { requestTimeoutMs?: number } = {}) {
+  const codex = fakeCodexAppServer()
+  const notify = (method: string, params: unknown): void =>
+    codex.connections.at(-1)?.handlers.onNotification?.(method, params)
+  const turns = codexTurnLifecycleFake(CODEX_TEST_THREAD_ID, () => notify)
+  Object.assign(codex.routes, turns.routes)
+  const settlements: LateSettlement[] = []
+  const adapter = await acquiredCodexAdapter({ codex, settlements, ...options })
+  const send = (clientMessageId: string) =>
+    adapter.dispatch({
+      sessionId: 'session-1',
+      clientMessageId,
+      body: CODEX_TEST_USER_MESSAGE,
+      fence: 7
+    })
+  const interrupts = () =>
+    codex.connections[0]!.calls.filter((call) => call.method === 'turn/interrupt')
+  return { codex, turns, adapter, send, settlements, notify, interrupts }
+}
+
+/** The promise's value, or `held` when it has not settled `withinMs` after every earlier task. */
+export function settledWithin<T>(promise: Promise<T>, withinMs = 50): Promise<T | 'held'> {
+  return Promise.race([
+    promise,
+    new Promise<'held'>((resolve) => setTimeout(() => resolve('held'), withinMs))
+  ])
 }

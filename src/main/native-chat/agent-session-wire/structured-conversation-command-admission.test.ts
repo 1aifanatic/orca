@@ -1,54 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type {
-  AgentJournalSnapshot,
-  AgentJournalSubmission
-} from '../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTaskState } from '../../../shared/agent-session-wire'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
-
-function snapshot(items: AgentJournalSnapshot['items'] = []): AgentJournalSnapshot {
-  return {
-    sessionId: 'session-1',
-    cursor: { epoch: 'epoch-1', sequence: 0 },
-    items,
-    submissions: []
-  }
-}
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 
 function contextWith(
-  backgroundTasks: AgentSessionBackgroundTaskState | null,
-  submissions: AgentJournalSubmission[] = []
-): Parameters<typeof conversationCommandBlocked>[0] {
+  backgroundTasks: AgentSessionBackgroundTaskState | null
+): AgentSessionTurnContext {
   return {
     sessionId: 'session-1',
-    fence: 1,
     journal: {
-      snapshot: () => snapshot(),
-      submissions: () => submissions
+      snapshot: () => ({ items: [] }),
+      submissions: () => []
     },
     adapter: { backgroundTaskState: () => backgroundTasks }
-  }
+  } as unknown as AgentSessionTurnContext
 }
 
 const RECORD = { lease: {} } as unknown as AgentSessionRecord
-
-function submission(
-  dispatchState: AgentJournalSubmission['dispatchState'],
-  overrides: Partial<AgentJournalSubmission> = {}
-): AgentJournalSubmission {
-  return {
-    clientMessageId: 'message-1',
-    fence: 1,
-    payloadFingerprint: 'fingerprint',
-    dispatchState,
-    providerItemId: null,
-    reason: null,
-    submittedAt: 1,
-    resolvedAt: dispatchState === 'pending' ? null : 2,
-    ...overrides
-  }
-}
 
 describe('conversationCommandBlocked background tasks', () => {
   it('admits the command when nothing is being monitored', () => {
@@ -60,12 +29,12 @@ describe('conversationCommandBlocked background tasks', () => {
       contextWith({ state: 'monitoring', supportsTaskStop: true }),
       RECORD
     )
-    expect(blocked).toBe('Stop background tasks before using this command.')
+    expect(blocked?.message).toBe('Stop background tasks before using this command.')
   })
 
   it('asks for a stop on a host that predates the stop-capability field', () => {
     const blocked = conversationCommandBlocked(contextWith({ state: 'monitoring' }), RECORD)
-    expect(blocked).toBe('Stop background tasks before using this command.')
+    expect(blocked?.message).toBe('Stop background tasks before using this command.')
   })
 
   it('asks the user to wait when the provider exposes no stop at all', () => {
@@ -74,7 +43,7 @@ describe('conversationCommandBlocked background tasks', () => {
       contextWith({ state: 'monitoring', supportsStopAll: false }),
       RECORD
     )
-    expect(blocked).toBe('Wait for background tasks to finish before using this command.')
+    expect(blocked?.message).toBe('Wait for background tasks to finish before using this command.')
   })
 
   it('still refuses on the open turn, not on the work the strip now shows', () => {
@@ -83,44 +52,88 @@ describe('conversationCommandBlocked background tasks', () => {
     // so a live fan-out never re-labels the reason or blocks anything new.
     const ctx = contextWith({ state: 'monitoring', supportsTaskStop: true })
     ctx.journal.snapshot = () =>
-      snapshot([
-        {
-          itemId: 'turn-1',
-          revision: 1,
-          sequence: 1,
-          observedAt: 1,
-          body: {
-            kind: 'status',
-            text: 'Working',
-            turnLifecycle: { turnId: 'turn-1', state: 'running' }
+      ({
+        items: [
+          {
+            id: 'turn-1',
+            body: {
+              kind: 'status',
+              turnLifecycle: { turnId: 'turn-1', state: 'running' }
+            }
           }
-        }
-      ])
-    expect(conversationCommandBlocked(ctx, RECORD)).toBe(
+        ]
+      }) as unknown as ReturnType<typeof ctx.journal.snapshot>
+    expect(conversationCommandBlocked(ctx, RECORD)?.message).toBe(
       'Wait for the current turn to finish before using this command.'
     )
   })
 })
 
-describe('conversationCommandBlocked dispatch ownership', () => {
-  it.each(['pending', 'unknown'] as const)('blocks a live %s dispatch', (dispatchState) => {
-    expect(conversationCommandBlocked(contextWith(null, [submission(dispatchState)]), RECORD)).toBe(
-      'Resolve pending or unconfirmed messages before using this command.'
-    )
-  })
+describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () => {
+  const staleTurn = {
+    items: [{ itemId: 'turn-1', body: { kind: 'turn', turnId: 'turn-1', state: 'running' } }]
+  }
 
-  it('admits a command after turn settlement retires an unconfirmed dispatch', () => {
-    const retired = submission('unknown', {
-      reason: 'turn_settled_before_acknowledgement',
-      recovered: true
+  it("does not refuse over a dead generation's running turn, which the start sweeps", () => {
+    const ctx = contextWith(null)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only each item's body.
+    ctx.journal.snapshot = () => staleTurn as never
+    expect(conversationCommandBlocked(ctx, RECORD, 'at-rest')).toBeNull()
+    expect(conversationCommandBlocked(ctx, RECORD)).toMatchObject({
+      details: { reason: 'turnActive' },
+      message: 'Wait for the current turn to finish before using this command.'
     })
-
-    expect(conversationCommandBlocked(contextWith(null, [retired]), RECORD)).toBeNull()
   })
 
-  it('does not let an unanswered dispatch from an older owner block the current fence', () => {
-    expect(
-      conversationCommandBlocked(contextWith(null, [submission('pending', { fence: 0 })]), RECORD)
-    ).toBeNull()
+  it("ignores an older build's compaction record", () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the lease and the command record.
+    const record = {
+      lease: {},
+      conversationCommand: { command: 'compact', phase: 'prepared', state: 'unknown' }
+    } as unknown as AgentSessionRecord
+    expect(conversationCommandBlocked(contextWith(null), record)).toBeNull()
+  })
+
+  // A clear's commit is its only durable write, so a record short of it never changed the chat.
+  it("ignores a clear that never committed, as an older build's record leaves one", () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the lease and the command record.
+    const record = {
+      lease: {},
+      conversationCommand: {
+        command: 'clear',
+        phase: 'prepared',
+        state: 'unknown',
+        replacementSessionId: 'clear-replacement'
+      }
+    } as unknown as AgentSessionRecord
+    expect(conversationCommandBlocked(contextWith(null), record)).toBeNull()
+  })
+
+  it('refuses on a committed clear', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the lease and the command record.
+    const record = {
+      lease: {},
+      conversationCommand: {
+        command: 'clear',
+        phase: 'committed',
+        state: 'completed',
+        replacementSessionId: 'clear-replacement'
+      }
+    } as unknown as AgentSessionRecord
+    expect(conversationCommandBlocked(contextWith(null), record)).toMatchObject({
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'conversationCleared' }
+    })
+  })
+
+  it('at handover, lets the command itself and messages queued behind it wait', () => {
+    const ctx = contextWith(null)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the dispatch fields.
+    const queued = [
+      { clientMessageId: 'command', dispatchState: 'pending', handoverRecorded: true },
+      { clientMessageId: 'behind', dispatchState: 'pending', handoverRecorded: true }
+    ] as never
+    ctx.journal.submissions = () => queued
+    expect(conversationCommandBlocked(ctx, RECORD, 'handover')).toBeNull()
   })
 })

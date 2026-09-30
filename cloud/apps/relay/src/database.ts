@@ -16,7 +16,8 @@ import { reportPostgresQueryFailure } from './postgres-query-failure.js'
 import {
   CellInventoryHoldSamples,
   emptyCellInventoryHoldCounts,
-  type CellInventoryHoldCounts
+  type CellInventoryHoldCounts,
+  type CellLockHoldSite
 } from './cell-inventory-hold-samples.js'
 
 export const POSTGRES_LOCK_TIMEOUT_MS = 1_000
@@ -44,13 +45,26 @@ export type RelayLockOptions = {
   // Report how long this lock is held to COMMIT. The hold, not the wait, is what
   // forms the queue, and nothing measured it before.
   measureHoldMs?: boolean
+  // Labels the measured hold; unset reads as the full-inventory lock.
+  holdSite?: CellLockHoldSite
+  // The statement carries its own row-lock clause (a CTE locks inside the
+  // statement), so none is appended. failIfUnavailable must match that clause.
+  lockClauseInStatement?: boolean
 }
 
-// A transaction that can report how long it held a measured lock before COMMIT.
-type HoldMeasuringTransaction = { consumeHoldMs(): number | undefined }
+type MeasuredHold = { holdMs: number; site: CellLockHoldSite }
 
-function measuredHoldMs(transaction: unknown): number | undefined {
-  return (transaction as HoldMeasuringTransaction).consumeHoldMs?.()
+// A transaction that can report how long it held a measured lock before COMMIT.
+type HoldMeasuringTransaction = { consumeHold(): MeasuredHold | undefined }
+
+function recordMeasuredHold(holds: CellInventoryHoldSamples, transaction: unknown): void {
+  const hold = (transaction as HoldMeasuringTransaction).consumeHold?.()
+  if (hold) holds.record(hold.holdMs, hold.site)
+}
+
+function lockedStatement(sql: string, options: RelayLockOptions): string {
+  if (options.lockClauseInStatement) return sql
+  return `${sql} FOR UPDATE${options.failIfUnavailable ? ' NOWAIT' : ''}`
 }
 export type RelayTransactionOptions = { reportRetries?: boolean }
 
@@ -99,6 +113,18 @@ CREATE TABLE IF NOT EXISTS relay_invites (
 );
 CREATE INDEX IF NOT EXISTS relay_invites_device
   ON relay_invites(user_id, relay_host_id, relay_device_id);
+
+-- schema-deferrable: created out of band, so a boot that cannot take the lock must retry
+-- Why: the credential sweep matches (state, expires_at) every cycle while invites in a terminal
+-- state accumulate for the life of the database. Unindexed it seq-scans the whole table inside the
+-- maintenance transaction. Partial, so the index holds only the states the sweep can act on.
+CREATE INDEX IF NOT EXISTS relay_invites_sweep_expiry
+  ON relay_invites(expires_at) WHERE state IN ('available', 'reserved', 'cooldown');
+
+-- schema-deferrable: created out of band, so a boot that cannot take the lock must retry
+-- Why: the second sweep pass matches (state, reservation_expires_at) over the same table.
+CREATE INDEX IF NOT EXISTS relay_invites_sweep_reservation
+  ON relay_invites(reservation_expires_at) WHERE state = 'reserved';
 
 CREATE TABLE IF NOT EXISTS relay_devices (
   user_id TEXT NOT NULL,
@@ -160,6 +186,11 @@ CREATE TABLE IF NOT EXISTS relay_connection_bases (
 -- accumulate unboundedly. Unindexed it seq-scans millions of rows every cycle
 -- and holds the maintenance transaction open long enough to time out
 -- assignment lock waits.
+-- Why not a partial index on active = 1: a basis is inserted active and flipped to 0, so each
+-- deactivation leaves a dead entry in that index too. Measured on production-shaped history it
+-- carries the same dead entries as this one, the planner picks this one in every state, and it
+-- costs ~65 bytes of WAL per insert. Bloat here is cured by reaping and vacuum, not by a narrower
+-- index.
 CREATE INDEX IF NOT EXISTS relay_connection_bases_active_deadline
   ON relay_connection_bases(active, deadline);
 
@@ -172,6 +203,12 @@ CREATE TABLE IF NOT EXISTS relay_direct_authorizations (
   deadline BIGINT NOT NULL,
   consumed_at BIGINT
 );
+
+-- schema-deferrable: created out of band, so a boot that cannot take the lock must retry
+-- Why: the sweep expires pending authorizations by (consumed_at IS NULL, deadline), and consumed
+-- rows are never deleted. Partial, so the index stays the size of the pending set.
+CREATE INDEX IF NOT EXISTS relay_direct_authorizations_pending_deadline
+  ON relay_direct_authorizations(deadline) WHERE consumed_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS relay_confirm_results (
   user_id TEXT NOT NULL,
@@ -274,6 +311,7 @@ CREATE TABLE IF NOT EXISTS relay_region_rehome_attempts (
   ),
   completed_at BIGINT,
   aborted_at BIGINT,
+  abort_reason TEXT,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
   UNIQUE (user_id, relay_host_id, assignment_epoch)
@@ -303,7 +341,8 @@ CREATE TABLE IF NOT EXISTS relay_cell_admission (
   cell_id TEXT PRIMARY KEY,
   admission_state TEXT NOT NULL
     CHECK (admission_state IN ('existing-only', 'migration-only', 'general')),
-  updated_at BIGINT NOT NULL
+  updated_at BIGINT NOT NULL,
+  roll_isolated_at BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS relay_admission_selectors (
@@ -524,8 +563,9 @@ CREATE TABLE IF NOT EXISTS relay_assignment_activity_leases (
   updated_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, relay_host_id, activity_id)
 );
-CREATE INDEX IF NOT EXISTS relay_assignment_activity_expiry
-  ON relay_assignment_activity_leases(expires_at);
+-- expires_at is deliberately unindexed: every control renewal writes it (~471/s), so an index on
+-- it makes each renewal a non-HOT update that rewrites index entries. Its only reader is the 30s
+-- expiry sweep, which seq-scans 14.8k rows / 7MB in a few milliseconds.
 
 CREATE TABLE IF NOT EXISTS relay_control_connection_reservations (
   reservation_id TEXT PRIMARY KEY,
@@ -558,6 +598,12 @@ CREATE TABLE IF NOT EXISTS relay_rate_windows (
   count BIGINT NOT NULL,
   PRIMARY KEY (scope_key, window_kind, window_started_at)
 );
+
+-- schema-deferrable: created out of band, so a boot that cannot take the lock must retry
+-- Why: window_started_at is the PRIMARY KEY's last column, so the sweep's 24h retention delete
+-- cannot use it and seq-scans instead.
+CREATE INDEX IF NOT EXISTS relay_rate_windows_started
+  ON relay_rate_windows(window_started_at);
 
 CREATE TABLE IF NOT EXISTS relay_migration_leases (
   user_id TEXT NOT NULL,
@@ -645,7 +691,33 @@ export const POSTGRES_SCHEMA_MIGRATIONS = [
      ADD COLUMN IF NOT EXISTS host_cooldown_ms BIGINT NOT NULL
      DEFAULT ${REGIONAL_REHOME_DEFAULT_HOST_COOLDOWN_MS}`,
   `ALTER TABLE relay_control_capabilities ADD COLUMN IF NOT EXISTS idle_regional_rehome BIGINT NOT NULL DEFAULT 0`,
-  `ALTER TABLE relay_region_rehome_attempts ADD COLUMN IF NOT EXISTS source_generation BIGINT NOT NULL DEFAULT 0`
+  `ALTER TABLE relay_region_rehome_attempts ADD COLUMN IF NOT EXISTS source_generation BIGINT NOT NULL DEFAULT 0`,
+  // Nullable with no default, so the rewrite is catalog-only; every row
+  // aborted before this column existed reads as an unattributed abort.
+  `ALTER TABLE relay_region_rehome_attempts ADD COLUMN IF NOT EXISTS abort_reason TEXT`,
+  // migration-only alone cannot say why a cell is parked there: five flows park loaded cells in
+  // that state durably. This stamps only the same-cap roll's isolate step, so placement can tell a
+  // cell being rolled from an evacuation target or an Asia rollback. Nullable with no default, so
+  // the rewrite is catalog-only; a cell isolated before this column existed reads as unmarked and
+  // keeps its hosts pinned, which is the pre-existing behaviour.
+  `ALTER TABLE relay_cell_admission ADD COLUMN IF NOT EXISTS roll_isolated_at BIGINT`,
+  // Dropped, not created: see the comment on relay_assignment_activity_leases. Deferrable because
+  // this is the one boot where it has to take ACCESS EXCLUSIVE on a table under continuous write,
+  // and all 28 directors reach it at once; a lock timeout here must not restart the instance, which
+  // would only re-queue the same DDL behind the same writers. Once it wins, the pre-check answers
+  // absent and no later boot sends it at all.
+  `-- schema-deferrable: one boot has to win ACCESS EXCLUSIVE on a table written ~475/s
+   DROP INDEX IF EXISTS relay_assignment_activity_expiry`,
+  // The drop is what makes HOT legal; this is what makes it possible. A renewal can only reuse the
+  // row's own page when that page has room for a second version, and at the default fillfactor of
+  // 100 a freshly filled page has none - measured at 0.5% HOT with the index gone and the default,
+  // against 100% at 70. Takes SHARE UPDATE EXCLUSIVE, which blocks vacuum and DDL but no reader or
+  // writer, and only for the catalog write. Applies to pages as they refill, so the table converges
+  // over its own renewal cycle rather than at boot.
+  // Deferrable for the same reason, though SHARE UPDATE EXCLUSIVE blocks only vacuum and DDL: it
+  // buys nothing until the drop lands, so a boot that deferred the drop should defer this too.
+  `-- schema-deferrable: buys nothing until the drop above lands
+   ALTER TABLE relay_assignment_activity_leases SET (fillfactor = 70)`
 ]
 
 // The exact statement list a Postgres boot applies, in order, so the lock-target census can read
@@ -717,20 +789,20 @@ function postgresTransactionErrorPhase(error: unknown): string {
 
 class SqliteTransaction implements RelayDatabase {
   readonly dialect = 'sqlite' as const
-  private heldFromMs: number | undefined
+  private held: { fromMs: number; site: CellLockHoldSite } | undefined
 
   constructor(protected readonly database: DatabaseSync) {}
 
-  consumeHoldMs(): number | undefined {
-    if (this.heldFromMs === undefined) return undefined
-    const holdMs = performance.now() - this.heldFromMs
-    this.heldFromMs = undefined
-    return holdMs
+  consumeHold(): MeasuredHold | undefined {
+    if (this.held === undefined) return undefined
+    const hold = { holdMs: performance.now() - this.held.fromMs, site: this.held.site }
+    this.held = undefined
+    return hold
   }
 
   protected noteHeld(options: RelayLockOptions): void {
-    if (options.measureHoldMs && this.heldFromMs === undefined) {
-      this.heldFromMs = performance.now()
+    if (options.measureHoldMs && this.held === undefined) {
+      this.held = { fromMs: performance.now(), site: options.holdSite ?? 'inventory' }
     }
   }
 
@@ -780,16 +852,18 @@ class SqliteDatabase extends SqliteTransaction {
     let release!: () => void
     this.tail = new Promise((resolve) => (release = resolve))
     await previous
-    this.database.exec('BEGIN IMMEDIATE')
-    const transaction = new SqliteTransaction(this.database)
     try {
-      const result = await operation(transaction)
-      this.database.exec('COMMIT')
-      this.holds.record(measuredHoldMs(transaction) ?? Number.NaN)
-      return result
-    } catch (error) {
-      this.database.exec('ROLLBACK')
-      throw error
+      this.database.exec('BEGIN IMMEDIATE')
+      const transaction = new SqliteTransaction(this.database)
+      try {
+        const result = await operation(transaction)
+        this.database.exec('COMMIT')
+        recordMeasuredHold(this.holds, transaction)
+        return result
+      } catch (error) {
+        this.database.exec('ROLLBACK')
+        throw error
+      }
     } finally {
       release()
     }
@@ -803,17 +877,17 @@ class SqliteDatabase extends SqliteTransaction {
 
 class PostgresTransaction implements RelayDatabase {
   readonly dialect = 'postgres' as const
-  private heldFromMs: number | undefined
+  private held: { fromMs: number; site: CellLockHoldSite } | undefined
   private lockUnavailable = 0
   private lockTimeouts = 0
 
   constructor(protected readonly client: pg.PoolClient) {}
 
-  consumeHoldMs(): number | undefined {
-    if (this.heldFromMs === undefined) return undefined
-    const holdMs = performance.now() - this.heldFromMs
-    this.heldFromMs = undefined
-    return holdMs
+  consumeHold(): MeasuredHold | undefined {
+    if (this.held === undefined) return undefined
+    const hold = { holdMs: performance.now() - this.held.fromMs, site: this.held.site }
+    this.held = undefined
+    return hold
   }
 
   // Drained by the owning database on both the commit and the rollback path: a
@@ -852,12 +926,9 @@ class PostgresTransaction implements RelayDatabase {
       // A blocked waiter holds its pooled client for the whole lock_timeout, so
       // hot tiny-table locks bound their own wait well under the pool default.
       if (bounded) await this.query(setLocalLockTimeout(options.lockTimeoutMs!))
-      const rows = await this.query(
-        `${sql} FOR UPDATE${options.failIfUnavailable ? ' NOWAIT' : ''}`,
-        params
-      )
-      if (options.measureHoldMs && this.heldFromMs === undefined) {
-        this.heldFromMs = performance.now()
+      const rows = await this.query(lockedStatement(sql, options), params)
+      if (options.measureHoldMs && this.held === undefined) {
+        this.held = { fromMs: performance.now(), site: options.holdSite ?? 'inventory' }
       }
       return rows
     } catch (error) {
@@ -941,7 +1012,7 @@ async function waitForPostgresRetry(random: () => number = Math.random): Promise
   await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
-class PostgresDatabase implements RelayDatabase {
+export class PostgresDatabase implements RelayDatabase {
   readonly dialect = 'postgres' as const
   private readonly pressure: PostgresPoolPressure
   private readonly holds = new CellInventoryHoldSamples()
@@ -988,10 +1059,7 @@ class PostgresDatabase implements RelayDatabase {
     try {
       // No transaction here, so options.lockTimeoutMs cannot apply: SET LOCAL
       // would be discarded at the autocommit boundary before the lock is taken.
-      return await this.query(
-        `${sql} FOR UPDATE${options.failIfUnavailable ? ' NOWAIT' : ''}`,
-        params
-      )
+      return await this.query(lockedStatement(sql, options), params)
     } catch (error) {
       if (
         options.failIfUnavailable &&
@@ -1015,7 +1083,7 @@ class PostgresDatabase implements RelayDatabase {
         await client.query('BEGIN')
         const result = await operation(transaction)
         await client.query('COMMIT')
-        this.holds.record(measuredHoldMs(transaction) ?? Number.NaN)
+        recordMeasuredHold(this.holds, transaction)
         this.holds.recordUnavailable(transaction.consumeLockUnavailable())
         this.holds.recordLockTimeout(transaction.consumeLockTimeouts())
         return result
@@ -1161,13 +1229,15 @@ async function backfillRelayCellRegions(database: RelayDatabase): Promise<void> 
   )
 }
 
-export async function openRelayDatabase(input: {
+export type RelayDatabaseOpenInput = {
   databaseUrl?: string
   dataDir: string
   poolMax?: number
   applicationName?: string
   statementTimeoutMs?: number
-}): Promise<RelayDatabase> {
+}
+
+export async function openRelayDatabase(input: RelayDatabaseOpenInput): Promise<RelayDatabase> {
   let database: RelayDatabase
   if (input.databaseUrl) {
     await applySchemaOnUntimedPool(input.databaseUrl, input.applicationName)

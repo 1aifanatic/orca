@@ -183,17 +183,15 @@ off the context `client-context.tsx` keeps module-private, and each used to carr
 `exports.recorderHostClientContext = Ctx;`. That string names a local no type checker follows, so
 five spellings were five independent ways to reach a `ReferenceError` seconds into a recording.
 `hostClientContextExposure` is the one copy; the trade is that it sits inside `recorderSha256`, so
-editing it re-records all 727 goldens rather than the five families. A rename of the local is still
+editing it re-records all 787 goldens rather than the five families. A rename of the local is still
 invisible to `tsc` — nothing short of editing the product module makes a private local checkable —
-so `adapter-seam.test.ts` asserts the declaration it names exists exactly once, and refuses a sixth
-inline copy.
+so a rename lands as a `ReferenceError` in every recording that mounts through it.
 
-The adapter seam is the directory, not a filename convention, because a convention is a rule nobody
-enforces. `adapter-seam.test.ts` enforces this one: every file under `adapters/` is a registered
-module, every registered module is declared in the file it is registered under, no adapter module
-imports a sibling (which would leave a golden pinned to one module and driven by two), and
-`pilotMountAdapters` mounts nothing of its own — an adapter defined in an engine file would be
-pinned by `recorderSha256` on all 153 goldens instead of by `adapterSha256` on its own.
+The adapter seam is the directory, not a filename convention: every file under `adapters/` is a
+registered module, every registered module is declared in the file it is registered under, no
+adapter module imports a sibling (which would leave a golden pinned to one module and driven by
+two), and `pilotMountAdapters` mounts nothing of its own — an adapter defined in an engine file
+would be pinned by `recorderSha256` on all 153 goldens instead of by `adapterSha256` on its own.
 
 `scenarioSha256` covers the scenario input _that golden_ was recorded from — one manifest scenario
 for a pilot golden, the generated variants and any hoisted prelude for a matrix or schedule golden,
@@ -378,8 +376,11 @@ families because no reference states are defined for them.
 
 ## What this oracle does and does not see
 
-It replays 368 manifest scenarios against frozen goldens and fails on any divergence: 727 goldens
-over 888 tests, all inside `pnpm --dir mobile test`. Counts quoted further down are measurements of
+It replays 397 manifest scenarios against frozen goldens and fails on any divergence: 787 goldens
+over 790 tests, all inside `pnpm --dir mobile test`. Counted with
+`python3 -c "import json;print(len(json.load(open('mobile/rpc-foundation/pilot-scenarios.json'))['scenarios']))"`,
+`find mobile/rpc-foundation/goldens -type f | wc -l`, and the reported total of
+`vitest run src/test-support/rpc-recording/{pilot,family}-recordings.test.ts src/test-support/rpc-recording/derived-goldens.test.ts`. Counts quoted further down are measurements of
 the change they describe and are not restatements of this one. For a migration it answers one
 question — does the rewritten call site produce the same sender calls, settlements, state and
 effects as main did?
@@ -526,9 +527,15 @@ a tree that does not produce them, which is the one claim this header exists to 
    derived scenarios rather than the manifest, so a repin alone never moves it.
 5. Commit the repin and the refresh together, and state the cause.
 
-After a squash-merge the pinned sha is unreachable from main, so the next recording on main repins
-to main's tip in a follow-up — the same two-step #20563 and #20895 used. A reviewer checking an
-in-flight branch resolves the pin against the branch, where it is a real commit.
+A squash-merge leaves the pinned sha out of main's history, and no follow-up repin is needed: the
+pin guard asks GitHub which pull requests contain the pinned commit
+(`GET /repos/{owner}/{repo}/commits/{sha}/pulls`), fetches each one's `refs/pull/<n>/head`, which
+GitHub keeps after the branch is deleted, and passes only when git finds the pin in one of those
+heads. The squash title plays no part, so editing it at merge time is safe. Run `pnpm --dir mobile
+exec tsx scripts/rpc-recording-pin-guard.mts reachable` to fetch a pin your clone does not have
+before checking it out. It works without a token, and sends `GITHUB_TOKEN` or `GH_TOKEN` when one
+is set, which lifts GitHub's unauthenticated rate limit. A reviewer checking an in-flight branch
+resolves the pin against the branch, where it is a real commit.
 
 Editing the recorder engine on a migration branch is the awkward case: `recorderSha256` moves, so
 every golden needs rewriting, but the product tree no longer matches `baseline`, and bumping
@@ -610,10 +617,10 @@ the drop happened under, and records a non-empty report as a `reply-salvage` eff
 operation, the method, the decoded variant, the dropped paths and the count. Nothing in the product
 tree changes: the report was already being built and thrown away.
 
-No golden carries one. All 19,384 checked reads in the corpus decode their reply whole, on every
-reply partition — the matrix varies the envelope a host sends, not the shape of a row inside a
-result — so this observation pins the absence rather than a recorded drop. What it buys is the
-next tightening: an element or member schema narrowed so a recorded row stops parsing moves the
+44 of the 787 goldens carry one, and every other checked read in the corpus decodes its reply
+whole (`grep -l reply-salvage mobile/rpc-foundation/goldens/*.json | wc -l`). The matrix varies the
+envelope a host sends rather than the shape of a row inside a result, so on most families this
+observation pins an absence rather than a recorded drop. What it buys is the next tightening: an element or member schema narrowed so a recorded row stops parsing moves the
 golden even where nothing downstream reads the row. `salvage-observation.test.ts` is what keeps the
 observation itself honest, driving a malformed row and a malformed optional through the real
 `git.status` reply schema, because a refactor that stopped reporting would otherwise leave every

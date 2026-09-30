@@ -22,6 +22,7 @@ import {
   PairingGetEndpointsParamsSchema,
   PairingProvisionRelayParamsSchema
 } from '../mobile-relay-credential-contract'
+import { MobileWebBundleChunkParamsSchema } from '../mobile-web-bundle/bundle-rpc-contract'
 import { pluginConsentRequestSchema } from '../plugins/plugin-consent-request'
 import {
   AccountsUnsubscribeParams,
@@ -212,6 +213,7 @@ import {
   GitTargetedRemote,
   WorktreeSelector as WorktreeSelectorOfGitParams
 } from './git-params'
+import { BindableAccounts, ValidateAccountBinding } from './github-account-binding-params'
 import { CreateIssue, Issue, IssueComment, UpdateIssue } from './github-issue-params'
 import {
   ClearProjectItemField,
@@ -466,18 +468,22 @@ import {
   ConversationCommandParams,
   CreateParams,
   CreateSupportParams,
-  HandoffParams,
   HandoffStatusParams,
   HistoryParams,
   HoldParams,
+  ModelCatalogParams,
   OptionsParams,
+  QueuedMessageActionParams,
+  QueuedMessagesResumeParams,
   RespondParams,
+  RespondToQuestionParams,
   RestartResumableParams,
   RestartResumeParams,
   RewindParams,
   SendParams,
   SetOptionParams,
   SubscribeParams,
+  ThreadGoalParams,
   UnsubscribeParams
 } from './structured-agent-session-params'
 import { TerminalAdoptOrphans } from './terminal-orphan-params'
@@ -502,6 +508,7 @@ import {
   TerminalResolveActive,
   TerminalResolvePane,
   TerminalSend,
+  TerminalSetViewerColors,
   TerminalSplit,
   TerminalStopExact,
   TerminalWait
@@ -565,17 +572,21 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.close': OptionsParams,
   'agentSession.commands': OptionsParams,
   'agentSession.conversationCommand': ConversationCommandParams,
+  'agentSession.conversationOutline': OptionsParams,
   'agentSession.create': CreateParams,
   'agentSession.createSupport': CreateSupportParams,
   'agentSession.ensure': AttachParams,
   'agentSession.handoffStatus': HandoffStatusParams,
   'agentSession.history': HistoryParams,
   'agentSession.hold': HoldParams,
+  'agentSession.modelCatalog': ModelCatalogParams,
   'agentSession.options': OptionsParams,
+  'agentSession.queuedMessageDelete': QueuedMessageActionParams,
+  'agentSession.queuedMessageSend': QueuedMessageActionParams,
+  'agentSession.queuedMessagesResume': QueuedMessagesResumeParams,
   'agentSession.release': HoldParams,
-  'agentSession.requestHandoff': HandoffParams,
   'agentSession.respondToApproval': RespondParams,
-  'agentSession.respondToQuestion': RespondParams,
+  'agentSession.respondToQuestion': RespondToQuestionParams,
   'agentSession.restartContinue': RestartResumeParams,
   'agentSession.restartResumable': RestartResumableParams,
   'agentSession.restartResumableDismiss': RestartResumableParams,
@@ -586,6 +597,8 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.setOption': SetOptionParams,
   'agentSession.subscribe': SubscribeParams,
   'agentSession.subscribeStatus': null,
+  'agentSession.subscribeTurnCompletions': null,
+  'agentSession.threadGoal': ThreadGoalParams,
   'agentSession.unsubscribe': UnsubscribeParams,
   'agentTeams.prepareLaunch': AgentTeamsPrepareLaunch,
   'agentTeams.tmuxCompat': AgentTeamsTmuxCompat,
@@ -817,6 +830,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'github.createIssue': CreateIssue,
   'github.issue': Issue,
   'github.listAssignableUsers': RepoSelector,
+  'github.listBindableAccounts': BindableAccounts,
   'github.listIssues': IssuesList,
   'github.listLabels': RepoSelector,
   'github.listWorkItems': WorkItemsList,
@@ -857,6 +871,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'github.updatePR': UpdatePr,
   'github.updatePRState': UpdatePrState,
   'github.updatePRTitle': UpdatePrTitle,
+  'github.validateAccountBinding': ValidateAccountBinding,
   'github.workItem': WorkItem,
   'github.workItemByOwnerRepo': WorkItemByOwnerRepo,
   'github.workItemDetails': WorkItem,
@@ -957,6 +972,9 @@ export const RPC_PARAMS_BY_METHOD = {
   'linear.updateIssue': IssueUpdateOfLinearParams,
   'markdown.readTab': ActivateTab,
   'markdown.saveTab': SaveMarkdownTab,
+  'mobileWeb.bundle.chunk': MobileWebBundleChunkParamsSchema,
+  'mobileWeb.bundle.manifest': null,
+  'mobileWeb.bundle.range': MobileWebBundleChunkParamsSchema,
   'nativeChat.readSession': NativeChatSession,
   'nativeChat.subscribe': NativeChatSession,
   'nativeChat.unsubscribe': NativeChatUnsubscribe,
@@ -1125,6 +1143,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'terminal.read': TerminalRead,
   'terminal.recoverPane': TerminalRecoverPane,
   'terminal.rename': TerminalRename,
+  'terminal.resetInputModes': TerminalHandle,
   'terminal.resizeForClient': TerminalResizeForClient,
   'terminal.resolveActive': TerminalResolveActive,
   'terminal.resolveIdentity': TerminalHandle,
@@ -1133,6 +1152,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'terminal.send': TerminalSend,
   'terminal.setAutoRestoreFit': TerminalSetAutoRestoreFit,
   'terminal.setDisplayMode': TerminalSetDisplayMode,
+  'terminal.setViewerColors': TerminalSetViewerColors,
   'terminal.show': TerminalHandle,
   'terminal.sleep': TerminalCloseAll,
   'terminal.split': TerminalSplit,

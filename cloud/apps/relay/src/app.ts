@@ -2,7 +2,7 @@ import {
   AssignmentRequestSchema,
   IdleRegionalRehomeRequestSchema,
   type IdleRegionalRehomeRequest,
-  type IdleRegionalRehomeOutcome,
+  type IdleRegionalRehomeResult,
   type RegionCorrectionResponse,
   isRelayCellConnectionHardCap,
   RELAY_ADMISSION_BUDGETS,
@@ -27,10 +27,11 @@ import {
   createRegionalRehomeTokenVerifier,
   createRuntimeTokenVerifier
 } from './admin-token-verifier.js'
-import type {
-  CellFenceAttemptEvidence,
-  RelayAssignment,
-  RelayAssignmentStore
+import {
+  RelayHomeCellUnavailableError,
+  type CellFenceAttemptEvidence,
+  type RelayAssignment,
+  type RelayAssignmentStore
 } from './assignment-store.js'
 import { AssignmentRejectionLogWindow } from './assignment-rejection-log-window.js'
 import { CELL_ADMISSION_STATES } from './cell-admission-selector.js'
@@ -58,6 +59,8 @@ const RelayCellConnectionHardCapSchema = z.custom<RelayCellConnectionHardCap>(
 
 const ASSIGNMENT_REJECTION_LOG_WINDOW_MS = 10_000
 const REGION_CATALOG_CACHE_MS = 30_000
+// A drain that outlives the roll step it belongs to is an outage, not a pacing win.
+const DRAIN_PACE_WINDOW_MAX_MS = 5 * 60 * 1_000
 
 type AdmissionRejectionLogEntry = {
   route: 'assign' | 'resolve'
@@ -72,11 +75,11 @@ export function createRelayApp(
   operations: {
     store: RelayCredentialStore
     assignments: RelayAssignmentStore
-    drain: (graceMs: number) => void
+    drain: (graceMs: number, options?: { paceWindowMs?: number }) => void
     idleRehome?: (input: IdleRegionalRehomeRequest & {
       cohortPercent: number
       directorSafety: RegionalRehomeSafetySnapshot
-    }) => Promise<{ outcome: IdleRegionalRehomeOutcome }>
+    }) => Promise<IdleRegionalRehomeResult>
     drainHost?: (input: {
       attemptId: string
       userId: string
@@ -359,16 +362,17 @@ export function createRelayApp(
         }
       }
     } catch (error) {
-      if (isRelayAssignmentCapacityError(error) || isRelayDatabaseTransientError(error)) {
+      if (isRelayAssignmentUnavailableError(error) || isRelayDatabaseTransientError(error)) {
         logAssignmentRejection({
           route: 'assign',
           lane,
           hinted: Boolean(body.data.reconnect),
           relayHostId: claims.relayHostId,
-          reason: operationError(error)
+          reason: operationError(error),
+          ...homeCellRejectionDetail(error)
         })
       }
-      if (isRelayAssignmentCapacityError(error)) {
+      if (isRelayAssignmentUnavailableError(error)) {
         if (lane === 'placement') {
           operations.recordRegionSelection?.({ targetRegion, fallback: false })
         }
@@ -387,11 +391,13 @@ export function createRelayApp(
       fallback: lane === 'placement' && assignment.region !== targetRegion
     })
     // Grant-side counterpart of the rejection log: reconnect grants are rare
-    // enough to log and make "which cell is this host on" answerable.
-    if (lane === 'sticky') {
+    // enough to log and make "which cell is this host on" answerable. The
+    // placement-lane ones matter most — they are the only record that a host
+    // whose sticky lane failed verification landed anywhere at all.
+    if (body.data.reconnect) {
       console.warn(
-        `[orca-relay] assignment granted lane=sticky host=${relayHostLogDigest(claims.relayHostId)}` +
-          ` cell=${assignment.cellId}`
+        `[orca-relay] assignment granted lane=${lane} hinted=true` +
+          ` host=${relayHostLogDigest(claims.relayHostId)} cell=${assignment.cellId}`
       )
     }
     const lease = await new SignJWT({
@@ -464,16 +470,17 @@ export function createRelayApp(
         leaseExpiresAt: assignment.leaseExpiresAt
       })
     } catch (error) {
-      if (isRelayAssignmentCapacityError(error) || isRelayDatabaseTransientError(error)) {
+      if (isRelayAssignmentUnavailableError(error) || isRelayDatabaseTransientError(error)) {
         logAssignmentRejection({
           route: 'resolve',
           lane: 'none',
           hinted: false,
           relayHostId: body.data.relayHostId,
-          reason: operationError(error)
+          reason: operationError(error),
+          ...homeCellRejectionDetail(error)
         })
       }
-      if (isRelayAssignmentCapacityError(error)) {
+      if (isRelayAssignmentUnavailableError(error)) {
         return context.json({ error: operationError(error) }, 503)
       }
       if (isRelayDatabaseTransientError(error)) return rejectPublicAssignment(context)
@@ -488,12 +495,18 @@ export function createRelayApp(
       return context.json({ error: 'invalid_token' }, 401)
     }
     const body = z
-      .object({ v: z.literal(1), graceMs: z.number().int().nonnegative().max(60 * 60 * 1000) })
+      .object({
+        v: z.literal(1),
+        graceMs: z.number().int().nonnegative().max(60 * 60 * 1000),
+        // Spreads the drain sends, and so the re-dials, over this window.
+        paceWindowMs: z.number().int().nonnegative().max(DRAIN_PACE_WINDOW_MAX_MS).optional()
+      })
       .strict()
       .safeParse(await context.req.json().catch(() => null))
     if (!body.success) return context.json({ error: 'invalid_request' }, 400)
-    operations.drain(body.data.graceMs)
-    return context.json({ ok: true })
+    const paceWindowMs = body.data.paceWindowMs ?? 0
+    operations.drain(body.data.graceMs, { paceWindowMs })
+    return context.json({ ok: true, paceWindowMs })
   })
   app.post('/v1/admin/host-idle-rehome', async (context) => {
     if (config.role !== 'cell' || !operations.idleRehome) {
@@ -1601,7 +1614,15 @@ const AdminAdmissionSelectorApplySchema = z
     attemptId: AdmissionSelectorAttemptIdSchema,
     expectedGeneration: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     expectedMembershipSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-    membership: AdmissionSelectorMembershipSchema
+    membership: AdmissionSelectorMembershipSchema,
+    // Optional, so an older caller reaching an updated director is unchanged:
+    // the cell goes unmarked and its hosts stay pinned, today's behaviour. The
+    // other direction is NOT ignored — the schema below is .strict(), so an
+    // updated caller reaching an older director is a 400. That fails closed,
+    // before the isolate step sets MUTATION_STARTED and before anything is
+    // written, but it is a deploy ordering constraint: the director ships
+    // first, then any workflow run that uses the updated script.
+    rollIsolatedCells: z.array(CellIdSchema).max(256).optional()
   })
   .strict()
   .refine(
@@ -1940,23 +1961,39 @@ function logAssignmentRejection(input: {
   hinted: boolean
   relayHostId: string
   reason: string
+  cause?: string
+  cell?: string
   suppressed?: number
 }): void {
   console.warn(
     `[orca-relay] assignment rejected route=${input.route} lane=${input.lane}` +
       ` hinted=${input.hinted} reason=${input.reason}` +
       ` host=${relayHostLogDigest(input.relayHostId)}` +
+      (input.cause === undefined ? '' : ` cause=${input.cause}`) +
+      (input.cell === undefined ? '' : ` cell=${input.cell}`) +
       (input.suppressed === undefined ? '' : ` suppressed=${input.suppressed}`)
   )
 }
 
-function isRelayAssignmentCapacityError(error: unknown): boolean {
+// The home-cell reason is not capacity, but it is the same answer to the client:
+// retry, the director cannot place you right now.
+function isRelayAssignmentUnavailableError(error: unknown): boolean {
   return (
     error instanceof Error &&
-    ['relay_capacity_exhausted', 'relay_connection_headroom_exhausted'].includes(
-      error.message
-    )
+    [
+      'relay_capacity_exhausted',
+      'relay_connection_headroom_exhausted',
+      'relay_home_cell_unavailable'
+    ].includes(error.message)
   )
+}
+
+function homeCellRejectionDetail(
+  error: unknown
+): { cause: string; cell: string } | Record<string, never> {
+  return error instanceof RelayHomeCellUnavailableError
+    ? { cause: error.unavailableCause, cell: error.cellId }
+    : {}
 }
 
 function isCanonicalRelayOrigin(value: string): boolean {

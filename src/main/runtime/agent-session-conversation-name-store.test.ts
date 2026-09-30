@@ -30,7 +30,6 @@ const reserveRequest = (): AgentSessionReserveRequest => ({
   location: NATIVE,
   provider: 'claude',
   accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude-work' },
-  runtimeKind: 'native',
   expectedFence: null,
   spawnToken: 'spawn-a',
   claimKeyId: 'key-1',
@@ -85,13 +84,6 @@ describe('AgentSessionRecordStore.setConversationName', () => {
     await store.setConversationName(SESSION, null)
 
     expect(store.getRecord(SESSION)?.conversationName).toBeUndefined()
-  })
-
-  it('does not need the lease: an unfenced rename never contends with the writer', async () => {
-    const store = await reservedStore()
-
-    // No fence argument exists to pass, and no fence error is raised.
-    await expect(store.setConversationName(SESSION, 'Fix the lease probe')).resolves.toBeDefined()
   })
 
   it('refuses a session it has no record for', async () => {

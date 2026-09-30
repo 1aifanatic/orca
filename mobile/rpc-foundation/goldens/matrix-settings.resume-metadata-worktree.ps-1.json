@@ -3,9 +3,9 @@
   "family": "settings.resume-metadata",
   "namedDeltas": [],
   "runnerVersion": 1,
-  "baseline": "6142657d7ad4af81cb4449176048edadef10db45",
-  "lockfileSha256": "4568633356187895ccda8e2ff83245c37d5621832c69e268733733b6947971e3",
-  "recorderSha256": "1d8cf6624653d15b5b32bd2871d4d93739d4092a06f10dab24a795702422bb31",
+  "baseline": "1cae30b028e6b967575d65f18e8a0e868583e993",
+  "lockfileSha256": "9317f3a98ab047f9f96fe26fd8531b8a632ac5954064b322f41a904148cbf6bb",
+  "recorderSha256": "0317fe2aebe4743ce5e7ae194531aa91b4fe0a84df457640851fe6dfdb9362af",
   "adapterSha256": "fc73116d95985606fe32f22d3f14f434a6d5cd49219416c9fa0f47f971fa6ff0",
   "scenarioSha256": "5988fa5ce0bf6b8585f7ec66918123ee086d5cdf1185a4eeff2e88904985064c",
   "platform": "darwin",
@@ -399,6 +399,17 @@
         }
       }
     },
+    "7fb1c6f9f3ae": {
+      "status": "rejected",
+      "startedAt": 0,
+      "settledAt": 0,
+      "error": {
+        "category": "RpcIncompatibleReplyError",
+        "message": "The host sent a reply this app could not read (worktree.ps)",
+        "isRpcDeliveryUnknown": false,
+        "code": "incompatible_reply"
+      }
+    },
     "82132b79b8f7": {
       "name": "settings.get#1",
       "ordinal": 9,
@@ -719,7 +730,7 @@
             "1bfeba989b20"
           ],
           "settlements": {
-            "load": "0620c0819077"
+            "load": "7fb1c6f9f3ae"
           },
           "state": "44136fa355b3",
           "effects": []
@@ -743,7 +754,7 @@
             "1bfeba989b20"
           ],
           "settlements": {
-            "load": "0620c0819077"
+            "load": "7fb1c6f9f3ae"
           },
           "state": "44136fa355b3",
           "effects": []

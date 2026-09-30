@@ -9,12 +9,8 @@ export type CodexAppServerConnectionHandlers = {
   onServerRequest?: (request: CodexAppServerServerRequest) => void
   onUnhandledFrame?: (kind: string, payload: unknown) => void
   onExit?: (error: Error) => void
-}
-
-export type CodexAppServerRequestOptions = {
-  timeoutMs?: number
-  /** Observes a successful response before the reader can dispatch its next record. */
-  onResult?: (result: unknown) => void
+  /** Awaited once the child has a pid and before the handshake; a rejection reaps the child. */
+  onSpawned?: (pid: number) => Promise<void>
 }
 
 export type CodexAppServerConnection = {
@@ -23,7 +19,7 @@ export type CodexAppServerConnection = {
   request: (
     method: string,
     params?: Record<string, unknown>,
-    options?: CodexAppServerRequestOptions
+    options?: { timeoutMs?: number }
   ) => Promise<unknown>
   notify: (method: string, params?: Record<string, unknown>) => void
   respond: (id: number | string, result: unknown) => void

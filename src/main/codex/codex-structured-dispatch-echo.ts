@@ -1,152 +1,69 @@
+import type { ProviderDiagnostic } from '../../shared/agent-session-failure'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionLateSettlementResult } from '../native-chat/agent-session-wire/structured-agent-session-late-settlement'
 
-/** Maximum sends awaiting an echo or exact owner-turn settlement. */
+/** Sends awaiting their echo. One bound to a turn that ended without taking it settles from that
+ *  end; any other whose echo never arrives is retired by the journal's recovery on exit. */
 export const MAX_CODEX_PENDING_DISPATCH_ECHOES = 256
+/** Turn ends kept for an answer read after the turn it names had already ended. */
+export const MAX_CODEX_RECORDED_TURN_ENDS = 64
+
+/** How a primary-thread turn ended, as Codex reported it. */
+export type CodexTurnEnd =
+  | { status: 'completed' }
+  | { status: 'interrupted' }
+  | { status: 'failed'; detail?: ProviderDiagnostic }
 
 export type CodexDispatchRequestOrigin = {
   requestedAt: number
   sequence: number
 }
 
-type PendingDispatch = {
-  requestedAt: number | null
-  sequence: number
-  /** A `turn/start` response is ownership evidence only after this turn starts. */
-  startCandidateTurnId: string | null
-  ownerTurnId: string | null
-  echoSettled: boolean
-}
-
 /**
  * Which sends this session is still waiting to hear back about, keyed by the
  * client message id Codex echoes on the user message.
  *
- * A successful `turn/steer` binds ownership atomically through expectedTurnId.
- * A fresh `turn/start` needs its response id plus a matching started or terminal
- * event; either response or started evidence alone can describe a phantom turn.
+ * Keyed rather than ordered on purpose: Codex coalesces a `turn/start` issued
+ * while a turn is running into that turn, so two sends can share one turn id and
+ * their echoes arrive far apart. Queue position identifies neither.
  */
 export type CodexDispatchEchoes = {
-  /** Tracks a send when capacity permits; false leaves it to echo/exit recovery. */
+  /** Arms settlement for a send about to be written; false preserves older waits at capacity. */
   arm: (clientMessageId: string, requestedAt?: number) => boolean
-  /** Records one successful steer response, binding only the expected active turn. */
-  bindSteerResponse: (
-    clientMessageId: string,
-    expectedTurnId: string,
-    responseTurnId: string
-  ) => boolean
-  /** Records the proposed owner returned by `turn/start`. */
-  recordStartResponse: (clientMessageId: string, responseTurnId: string) => void
-  /** Supplies the second half of fresh-turn ownership evidence. */
-  observeTurnStarted: (turnId: string) => void
   /** True once, for a send this session armed and has not yet settled. */
   settle: (clientMessageId: string) => boolean
-  /** Snapshots exact owners before a terminal lifecycle append. */
-  terminalOwnerIds: (turnId: string) => string[]
-  /** Retires the snapshot after the lifecycle append commits. */
-  commitTerminal: (turnId: string) => void
-  /** Releases a snapshot whose lifecycle append was discarded. */
-  abandonTerminal: (turnId: string) => void
   /** Drops an armed send whose write never reached the provider. */
   disarm: (clientMessageId: string) => void
+  /**
+   * Binds a send to the turn Codex answered it into. Returns that turn's end when the answer is
+   * read after it; a send that end settles is no longer armed.
+   */
+  bindTurn: (clientMessageId: string, threadId: string, turnId: string) => CodexTurnEnd | null
+  /** The turn the latest armed send was answered into that is neither in `openTurnIds` nor ended:
+   *  one Codex has picked for the send but not opened. */
+  answeredUnopenedTurn: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
+  /**
+   * Records a turn's end and returns the sends bound to it that it settles: all of them unless it
+   * completed, which echoes its pending input first, so one it never echoed waits for recovery. An
+   * interrupt withdraws an un-echoed send, steered or the turn's own input: neither reached history.
+   */
+  endTurn: (threadId: string, turnId: string, end: CodexTurnEnd) => string[]
   /** Submission origin for this exact send, retained until its echo settles it. */
   requestOrigin: (clientMessageId: string) => CodexDispatchRequestOrigin | null
-  /** Highest causal sequence assigned to a tracked dispatch in this session. */
+  /** Highest causal sequence assigned to a dispatch in this session. */
   latestSequence: () => number
   clear: () => void
   readonly size: number
 }
 
-function rememberBounded(values: Set<string>, value: string): void {
-  values.delete(value)
-  values.add(value)
-  while (values.size > MAX_CODEX_PENDING_DISPATCH_ECHOES) {
-    const oldest = values.values().next().value
-    if (oldest === undefined) {
-      return
-    }
-    values.delete(oldest)
-  }
-}
-
-export function createCodexDispatchEchoes(
-  onOwnerEndedLate?: (
-    clientMessageId: string,
-    turnId: string
-  ) => void | Promise<StructuredAgentSessionLateSettlementResult>
-): CodexDispatchEchoes {
-  const armed = new Map<string, PendingDispatch>()
-  const retired = new Map<string, PendingDispatch>()
-  const startedTurns = new Set<string>()
-  const terminalSnapshots = new Map<string, string[]>()
+export function createCodexDispatchEchoes(): CodexDispatchEchoes {
+  const armed = new Map<
+    string,
+    { requestedAt: number | null; sequence: number; turn?: { threadId: string; turnId: string } }
+  >()
+  const endedTurns = new Map<string, CodexTurnEnd>()
   let nextSequence = 0
-  const rememberTerminalSnapshot = (turnId: string, snapshot: string[]): void => {
-    terminalSnapshots.delete(turnId)
-    terminalSnapshots.set(turnId, snapshot)
-    while (terminalSnapshots.size > MAX_CODEX_PENDING_DISPATCH_ECHOES) {
-      const oldest = terminalSnapshots.keys().next().value
-      if (oldest === undefined) {
-        return
-      }
-      terminalSnapshots.delete(oldest)
-    }
-  }
-  const hasUnbound = (): boolean => {
-    for (const pending of armed.values()) {
-      if (pending.ownerTurnId === null) {
-        return true
-      }
-    }
-    return false
-  }
-  const pruneObservedTurns = (): void => {
-    if (!hasUnbound()) {
-      startedTurns.clear()
-    }
-  }
-  const rememberRetired = (clientMessageId: string, pending: PendingDispatch): void => {
-    retired.delete(clientMessageId)
-    retired.set(clientMessageId, pending)
-    while (retired.size > MAX_CODEX_PENDING_DISPATCH_ECHOES) {
-      const oldest = retired.keys().next().value
-      if (oldest === undefined) {
-        return
-      }
-      retired.delete(oldest)
-    }
-  }
-  const settleOwnerEndedLate = (
-    clientMessageId: string,
-    turnId: string,
-    pending: PendingDispatch
-  ): void => {
-    const settlement = onOwnerEndedLate?.(clientMessageId, turnId)
-    if (!settlement) {
-      return
-    }
-    void settlement.then(
-      (outcome) => {
-        if (
-          outcome !== 'evidence-not-durable' &&
-          armed.get(clientMessageId) === pending &&
-          (pending.ownerTurnId === turnId || pending.startCandidateTurnId === turnId)
-        ) {
-          armed.delete(clientMessageId)
-          rememberRetired(clientMessageId, pending)
-          pruneObservedTurns()
-        }
-      },
-      () => undefined
-    )
-  }
-  const bindStartedCandidates = (turnId: string): void => {
-    for (const pending of armed.values()) {
-      if (pending.startCandidateTurnId === turnId) {
-        pending.ownerTurnId = turnId
-      }
-    }
-  }
-
+  const turnKey = (threadId: string, turnId: string): string => JSON.stringify([threadId, turnId])
+  const settles = (end: CodexTurnEnd): boolean => end.status !== 'completed'
   return {
     arm(clientMessageId, requestedAt) {
       const existing = armed.get(clientMessageId)
@@ -159,100 +76,58 @@ export function createCodexDispatchEchoes(
       if (armed.size >= MAX_CODEX_PENDING_DISPATCH_ECHOES) {
         return false
       }
-      retired.delete(clientMessageId)
-      armed.set(clientMessageId, {
-        requestedAt: requestedAt ?? null,
-        sequence: nextSequence++,
-        startCandidateTurnId: null,
-        ownerTurnId: null,
-        echoSettled: false
-      })
+      armed.set(clientMessageId, { requestedAt: requestedAt ?? null, sequence: nextSequence++ })
       return true
     },
-    bindSteerResponse(clientMessageId, expectedTurnId, responseTurnId) {
-      const pending = armed.get(clientMessageId)
-      if (!pending || responseTurnId !== expectedTurnId) {
-        return false
+    settle: (clientMessageId) => armed.delete(clientMessageId),
+    disarm: (clientMessageId) => void armed.delete(clientMessageId),
+    bindTurn: (clientMessageId, threadId, turnId) => {
+      const entry = armed.get(clientMessageId)
+      if (!entry) {
+        return null
       }
-      if (pending.ownerTurnId === expectedTurnId && pending.startCandidateTurnId === null) {
-        return true
+      entry.turn = { threadId, turnId }
+      const end = endedTurns.get(turnKey(threadId, turnId)) ?? null
+      if (end && settles(end)) {
+        armed.delete(clientMessageId)
       }
-      pending.ownerTurnId = expectedTurnId
-      pending.startCandidateTurnId = null
-      // The host derives whether this response raced a durable terminal row.
-      settleOwnerEndedLate(clientMessageId, expectedTurnId, pending)
-      pruneObservedTurns()
-      return true
+      return end
     },
-    recordStartResponse(clientMessageId, responseTurnId) {
-      const pending = armed.get(clientMessageId)
-      if (!pending) {
-        return
-      }
-      if (pending.startCandidateTurnId === responseTurnId) {
-        return
-      }
-      pending.startCandidateTurnId = responseTurnId
-      pending.ownerTurnId = startedTurns.has(responseTurnId) ? responseTurnId : null
-      // Terminal-before-response is proven by the durable host index, not a
-      // bounded in-memory observation that can forget an older turn.
-      settleOwnerEndedLate(clientMessageId, responseTurnId, pending)
-      pruneObservedTurns()
+    answeredUnopenedTurn: (threadId, openTurnIds) => {
+      const answered = [...armed.values()].flatMap(({ turn }) =>
+        turn?.threadId === threadId &&
+        !openTurnIds.has(turn.turnId) &&
+        !endedTurns.has(turnKey(threadId, turn.turnId))
+          ? [turn.turnId]
+          : []
+      )
+      return answered.at(-1) ?? null
     },
-    observeTurnStarted(turnId) {
-      rememberBounded(startedTurns, turnId)
-      bindStartedCandidates(turnId)
-      pruneObservedTurns()
-    },
-    settle(clientMessageId) {
-      const pending = armed.get(clientMessageId) ?? retired.get(clientMessageId)
-      if (!pending || pending.echoSettled) {
-        return false
+    endTurn: (threadId, turnId, end) => {
+      const turn = turnKey(threadId, turnId)
+      endedTurns.delete(turn)
+      endedTurns.set(turn, end)
+      for (const oldest of endedTurns.keys()) {
+        if (endedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
+          break
+        }
+        endedTurns.delete(oldest)
       }
-      armed.delete(clientMessageId)
-      pending.echoSettled = true
-      rememberRetired(clientMessageId, pending)
-      pruneObservedTurns()
-      return true
-    },
-    terminalOwnerIds(turnId) {
-      const priorSnapshot = terminalSnapshots.get(turnId)
-      if (priorSnapshot) {
-        return [...priorSnapshot]
+      if (!settles(end)) {
+        return []
       }
-      const snapshot = [...armed].flatMap(([clientMessageId, pending]) =>
-        pending.ownerTurnId === turnId || pending.startCandidateTurnId === turnId
+      const settled = [...armed].flatMap(([clientMessageId, entry]) =>
+        entry.turn && turnKey(entry.turn.threadId, entry.turn.turnId) === turn
           ? [clientMessageId]
           : []
       )
-      startedTurns.delete(turnId)
-      if (snapshot.length > 0) {
-        rememberTerminalSnapshot(turnId, snapshot)
+      for (const clientMessageId of settled) {
+        armed.delete(clientMessageId)
       }
-      return [...snapshot]
+      return settled
     },
-    commitTerminal(turnId) {
-      for (const clientMessageId of terminalSnapshots.get(turnId) ?? []) {
-        const pending = armed.get(clientMessageId)
-        if (pending?.ownerTurnId === turnId || pending?.startCandidateTurnId === turnId) {
-          armed.delete(clientMessageId)
-          rememberRetired(clientMessageId, pending)
-        }
-      }
-      terminalSnapshots.delete(turnId)
-      pruneObservedTurns()
-    },
-    abandonTerminal(turnId) {
-      terminalSnapshots.delete(turnId)
-      pruneObservedTurns()
-    },
-    disarm(clientMessageId) {
-      armed.delete(clientMessageId)
-      retired.delete(clientMessageId)
-      pruneObservedTurns()
-    },
-    requestOrigin(clientMessageId) {
-      const origin = armed.get(clientMessageId) ?? retired.get(clientMessageId)
+    requestOrigin: (clientMessageId) => {
+      const origin = armed.get(clientMessageId)
       return origin?.requestedAt === null || origin === undefined
         ? null
         : { requestedAt: origin.requestedAt, sequence: origin.sequence }
@@ -260,9 +135,7 @@ export function createCodexDispatchEchoes(
     latestSequence: () => nextSequence - 1,
     clear: () => {
       armed.clear()
-      retired.clear()
-      startedTurns.clear()
-      terminalSnapshots.clear()
+      endedTurns.clear()
       nextSequence = 0
     },
     get size() {

@@ -17,14 +17,15 @@ export const DISPATCH_DOUBT_HOST_RESTARTED = 'host_restarted_before_acknowledgem
 /** The child that would have acknowledged the message exited first. */
 export const DISPATCH_DOUBT_PROVIDER_EXITED = 'provider_exited_before_acknowledgement'
 
-/** The turn carrying the message ended before its acknowledgement arrived. */
-export const DISPATCH_DOUBT_TURN_SETTLED = 'turn_settled_before_acknowledgement'
-
 /** The adapter took the message and only the journal write failed after it. */
 export const DISPATCH_DOUBT_PERSISTENCE_FAILED = 'dispatch_result_persistence_failed'
 
 /** The operation tombstone survived recovery but its journal submission did not. */
 export const DISPATCH_DOUBT_SUBMISSION_MISSING = 'durable_send_submission_missing'
+
+/** The provider reported its thread not running with no turn open, so nothing is
+ *  left that could still acknowledge the message. */
+export const DISPATCH_DOUBT_PROVIDER_IDLE = 'provider_idle_before_acknowledgement'
 
 /** The SDK took the frame, but its input pump did not prove whether the write completed. */
 export const DISPATCH_DOUBT_WRITE_OUTCOME_UNKNOWN = 'provider_write_outcome_unknown'
