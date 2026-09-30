@@ -1,3 +1,4 @@
+import type * as ReactModule from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusClearIpcPayload } from '../../../shared/agent-status-types'
 import {
@@ -382,6 +383,100 @@ describe('useIpcEvents agent status snapshot integration', () => {
 
     expect(removeAgentStatus).toHaveBeenCalledTimes(1)
     expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY)
+  })
+
+  it('ignores the late snapshot of a disposed bridge and applies the remounted one', async () => {
+    let resolveOldSnapshot!: (entries: AgentStatusSetData[]) => void
+    let resolveCurrentSnapshot!: (entries: AgentStatusSetData[]) => void
+    const oldSnapshot = new Promise<AgentStatusSetData[]>((resolve) => {
+      resolveOldSnapshot = resolve
+    })
+    const currentSnapshot = new Promise<AgentStatusSetData[]>((resolve) => {
+      resolveCurrentSnapshot = resolve
+    })
+    const effectCleanups: (() => void)[] = []
+    const setAgentStatus = vi.fn()
+    const onClearListenerRef: {
+      current: ((data: AgentStatusClearIpcPayload) => void) | null
+    } = { current: null }
+    const storeState: StoreLike = buildStoreState({
+      setAgentStatus,
+      workspaceSessionReady: true,
+      settings: { terminalFontSize: 13, notifications: { enabled: false } },
+      repos: [{ id: 'repo-1', connectionId: 'ssh-a' }],
+      worktreesByRepo: { 'repo-1': [{ id: 'wt-1', repoId: 'repo-1' }] },
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-future', ptyId: 'pty-1', worktreeId: 'wt-1', title: 'Remote agent' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-future': { root: { type: 'leaf', leafId: FUTURE_LEAF_ID } }
+      }
+    })
+
+    vi.doMock('react', async () => {
+      const actual = await vi.importActual<typeof ReactModule>('react')
+      return {
+        ...actual,
+        useEffect: (effect: () => void | (() => void)) => {
+          const cleanup = effect()
+          effectCleanups.push(typeof cleanup === 'function' ? cleanup : () => {})
+        }
+      }
+    })
+    vi.doMock('../store', () => ({
+      useAppStore: {
+        subscribe: vi.fn(() => () => {}),
+        getState: () => storeState
+      }
+    }))
+    stubAuxiliaryModules()
+    vi.stubGlobal(
+      'window',
+      buildWindowApi({
+        onSet: () => () => {},
+        onClear: (callback) => {
+          onClearListenerRef.current = callback
+          return () => {}
+        },
+        getSnapshot: vi.fn().mockReturnValueOnce(oldSnapshot).mockReturnValueOnce(currentSnapshot)
+      })
+    )
+
+    const { useIpcEvents } = await import('./useIpcEvents')
+    useIpcEvents()
+    await Promise.resolve()
+    effectCleanups[0]?.()
+    useIpcEvents()
+    await Promise.resolve()
+
+    expect(() =>
+      onClearListenerRef.current?.(null as unknown as AgentStatusClearIpcPayload)
+    ).not.toThrow()
+
+    const entry = (prompt: string, receivedAt: number): AgentStatusSetData => ({
+      paneKey: FUTURE_PANE_KEY,
+      state: 'working',
+      prompt,
+      agentType: 'codex',
+      worktreeId: 'wt-1',
+      connectionId: 'ssh-a',
+      receivedAt,
+      stateStartedAt: 90
+    })
+    resolveOldSnapshot([entry('disposed snapshot', 100)])
+    resolveCurrentSnapshot([entry('current snapshot', 101)])
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(setAgentStatus).toHaveBeenCalledOnce()
+    expect(setAgentStatus).toHaveBeenCalledWith(
+      FUTURE_PANE_KEY,
+      expect.objectContaining({ prompt: 'current snapshot' }),
+      'Remote agent',
+      { updatedAt: 101, stateStartedAt: 90 },
+      expect.objectContaining({ worktreeId: 'wt-1', connectionId: 'ssh-a' }),
+      undefined
+    )
   })
 
   it('keeps a completed worktree-attributed row when main reports pane teardown', async () => {
