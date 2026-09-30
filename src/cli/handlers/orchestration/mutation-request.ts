@@ -17,6 +17,7 @@ export async function callOrchestrationMutation<TResult>(
   const requestId =
     readRetryRequestFlag(flags) ?? (unavailableRetryMs > 0 ? randomUUID() : undefined)
   const deadline = Date.now() + unavailableRetryMs
+  let sentError: RuntimeClientError | undefined
   for (let delayMs = 1_000; ; delayMs = Math.min(delayMs * 2, MAX_UNAVAILABLE_RETRY_DELAY_MS)) {
     try {
       return requestId
@@ -30,10 +31,26 @@ export async function callOrchestrationMutation<TResult>(
     } catch (error) {
       const unavailable =
         error instanceof RuntimeClientError && error.code === 'runtime_unavailable'
+      if (carriesRequestId(error)) {
+        sentError = error
+      }
       if (!unavailable || Date.now() + delayMs > deadline) {
-        throw orchestrationMutationRecoveryError(error)
+        // Why: a later attempt can fail before its request id is attached, though an earlier one may have landed.
+        throw orchestrationMutationRecoveryError(
+          carriesRequestId(error) ? error : (sentError ?? error)
+        )
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   }
+}
+
+function carriesRequestId(error: unknown): error is RuntimeClientError {
+  const data: unknown = error instanceof RuntimeClientError ? error.data : undefined
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'orchestrationRequestId' in data &&
+    typeof data.orchestrationRequestId === 'string'
+  )
 }
