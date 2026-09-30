@@ -1,4 +1,5 @@
 import { FreebuffStatusProjection } from './freebuff-status-projection'
+import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 /* oxlint-disable max-lines */
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
@@ -845,6 +846,8 @@ export class PtyHandler {
     // pane to another worktree's history file — and wrapping a zsh pane that
     // nothing asked to wrap, since `history` is selected on its presence.
     delete result.ORCA_HISTFILE
+    // Why: the codex wrapper runs this path as hook prep, and a relay pane never gets one of its own.
+    delete result.ORCA_CODEX_LAUNCH_PREFLIGHT
     // Why: match local/daemon precedence so defaults/augmenters can't resurrect explicitly-removed values.
     for (const key of envToDelete) {
       delete result[key]
@@ -1118,6 +1121,7 @@ export class PtyHandler {
     this.dispatcher.onRequest('pty.getInitialCwd', (p) => this.getInitialCwd(p))
     this.dispatcher.onRequest('pty.getSize', (p) => this.getSize(p))
     this.dispatcher.onRequest('pty.clearBuffer', (p) => this.clearBuffer(p))
+    this.dispatcher.onRequest('pty.resetInputModes', (p) => this.resetInputModes(p))
     this.dispatcher.onRequest('pty.hasChildProcesses', (p) => this.hasChildProcesses(p))
     this.dispatcher.onRequest('pty.getForegroundProcess', (p) => this.getForegroundProcess(p))
     this.dispatcher.onRequest('pty.inspectProcess', (p) => this.inspectProcess(p))
@@ -1919,6 +1923,9 @@ export class PtyHandler {
       { id, paneKey, shell, command, launchAgent },
       envToDelete
     )
+    await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
+      wslShell: isRelayWslShell(shell)
+    })
     const worktreeId =
       typeof params.worktreeId === 'string' ? params.worktreeId : env?.ORCA_WORKTREE_ID
     const historyIsolationEnabled = params.historyIsolationEnabled === true
@@ -2683,6 +2690,15 @@ export class PtyHandler {
     if (managed && !managed.disposed) {
       managed.startupIngress?.snapshotBarrier()
       managed.pty.clear()
+    }
+  }
+
+  // Why the replay buffer and not the stream: a zero-raw span never crosses the
+  // credit window, and the client grounds its own view; reattach replays this.
+  private async resetInputModes(params: Record<string, unknown>): Promise<void> {
+    const managed = this.ptys.get(params.id as string)
+    if (managed?.recoveryBarrier && !managed.disposed) {
+      this.appendReplayBuffer(managed, managed.recoveryBarrier.groundInputModes())
     }
   }
 

@@ -17,9 +17,11 @@ import {
   type SubmissionRejectionFact,
   type SubmissionRejectionKind
 } from './agent-session-failure'
+import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import {
   sayAgentSessionFailureEnglish,
   type AgentSessionFailureCopyId,
+  type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
@@ -59,7 +61,7 @@ export type AgentSessionFailureWordsContext = {
   provider?: 'claude' | 'codex'
   /** The conversation command a failed start was for, so the next step is to run it again
    *  rather than to send a message. */
-  command?: 'clear'
+  command?: AgentSessionConversationCommand
   /** The surface retries for the person — its own Retry beside the words, or a read that reconnects
    *  on its own — so they leave out sending or trying again. */
   retryControl?: boolean
@@ -107,7 +109,8 @@ function quotingPersonDetail(
   say: AgentSessionFailureSay,
   lead: AgentSessionFailureCopyId,
   quotedLead: AgentSessionFailureCopyId,
-  detail: ProviderDiagnostic | undefined
+  detail: ProviderDiagnostic | undefined,
+  values: AgentSessionFailureCopyValues = {}
 ): string {
   const quoted =
     detail?.audience === 'person'
@@ -116,7 +119,7 @@ function quotingPersonDetail(
           .trim()
           .replace(/[.\s]+$/, '')
       : ''
-  return quoted ? say(quotedLead, { detail: quoted }) : say(lead)
+  return quoted ? say(quotedLead, { ...values, detail: quoted }) : say(lead, values)
 }
 
 /** The next step after a start or restart that failed: the command, or the message, again. */
@@ -124,7 +127,10 @@ function startRetry(
   say: AgentSessionFailureSay,
   { command, retryControl }: AgentSessionFailureWordsContext
 ): string[] {
-  return retryControl ? [] : [say(command === 'clear' ? 'runClearAgain' : 'sendToTryAgain')]
+  if (retryControl) {
+    return []
+  }
+  return [command ? say('runCommandAgain', { command }) : say('sendToTryAgain')]
 }
 
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
@@ -180,13 +186,11 @@ const FAILURE_SENTENCES = {
   notSignedIn: (context, _fact, _surface, say) =>
     joinSentences([
       say('notSignedIn', agent(say, context)),
-      say(
-        context.retryControl
-          ? 'signInFirst'
-          : context.command === 'clear'
-            ? 'signInThenRunClear'
-            : 'signInThenSend'
-      )
+      context.retryControl
+        ? say('signInFirst')
+        : context.command
+          ? say('signInThenRunCommand', { command: context.command })
+          : say('signInThenSend')
     ]),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
@@ -195,13 +199,11 @@ const FAILURE_SENTENCES = {
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),
-      say(
-        context.retryControl
-          ? 'chooseClaudeAccount'
-          : context.command === 'clear'
-            ? 'chooseClaudeAccountThenRunClear'
-            : 'chooseClaudeAccountThenSend'
-      )
+      context.retryControl
+        ? say('chooseClaudeAccount')
+        : context.command
+          ? say('chooseClaudeAccountThenRunCommand', { command: context.command })
+          : say('chooseClaudeAccountThenSend')
     ]),
   providerExited: (context, _fact, surface, say) =>
     say(surface === 'row' ? 'providerExitedRow' : 'providerExitedRejection', agent(say, context)),
@@ -221,10 +223,23 @@ const FAILURE_SENTENCES = {
   hostRestarted: (_context, _fact, _surface, say) => say('hostRestarted'),
   notDelivered: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'notDelivered' : 'notDeliveredSendAgain'),
+  commandRefused: ({ retryControl }, _fact, _surface, say) =>
+    say(retryControl ? 'commandRefused' : 'commandRefusedTryAgain'),
   compactionFailed: (_context, fact, _surface, say) =>
     quotingPersonDetail(say, 'compactionFailed', 'compactionFailedQuoted', fact.detail),
   compactionUnconfirmed: (_context, _fact, _surface, say) => say('compactionUnconfirmed'),
   cancelUnconfirmed: (_context, _fact, _surface, say) => say('cancelUnconfirmed'),
+  // The agent was reached and declined, so the sentence says that, not that the Stop was lost.
+  stopRefused: (context, fact, _surface, say) =>
+    fact.detail?.audience === 'person'
+      ? quotingPersonDetail(
+          say,
+          'stopRefused',
+          'stopRefusedQuoted',
+          fact.detail,
+          agent(say, context)
+        )
+      : say('noTurnToStop', agent(say, context)),
   answerUnconfirmed: (_context, _fact, _surface, say) => say('answerUnconfirmed'),
   hostFault: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'hostFault' : 'hostFaultTryAgain'),

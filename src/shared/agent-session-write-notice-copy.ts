@@ -31,6 +31,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   historyUnreadable: "Orca couldn't read this chat's saved history.",
   historyUnusable: 'Unable to load this chat.',
   historyUnavailable: "Orca couldn't open this chat's history right now.",
+  savedByNewerOrca: 'Chats were saved by a newer Orca.',
+  updateOrcaToKeepUsing: 'Update Orca to keep using them.',
   unsupported: "The Orca running this chat doesn't support this. Update Orca, then try again.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't record it in this chat's history.",
@@ -78,9 +80,10 @@ export type AgentSessionWriteNoticePart =
   | { text: string }
   | AgentSessionWriteNoticeFailurePart
 
-/** Causes that already say the history didn't load, so no sentence after them says it again. */
+/** Causes that already say the history can't be read here, so no sentence after them says it
+ *  again. */
 export const AGENT_SESSION_HISTORY_UNREAD_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> =
-  new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable'])
+  new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable', 'savedByNewerOrca'])
 
 /** Whether these words already say the history didn't load, so a pane headed by them need not
  *  say it again. */

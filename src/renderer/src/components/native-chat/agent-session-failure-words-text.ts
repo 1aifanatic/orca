@@ -19,8 +19,12 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.providerStartFailed,
         values
       ),
-    runClearAgain: () =>
-      translate('components.native-chat.failureWords.runClearAgain', COPY.runClearAgain),
+    runCommandAgain: (values) =>
+      translate(
+        'components.native-chat.failureWords.runCommandAgain',
+        COPY.runCommandAgain,
+        values
+      ),
     sendToTryAgain: () =>
       translate('components.native-chat.failureWords.sendToTryAgain', COPY.sendToTryAgain),
     couldNotStart: (values) =>
@@ -44,8 +48,12 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       translate('components.native-chat.failureWords.notSignedIn', COPY.notSignedIn, values),
     signInFirst: () =>
       translate('components.native-chat.failureWords.signInFirst', COPY.signInFirst),
-    signInThenRunClear: () =>
-      translate('components.native-chat.failureWords.signInThenRunClear', COPY.signInThenRunClear),
+    signInThenRunCommand: (values) =>
+      translate(
+        'components.native-chat.failureWords.signInThenRunCommand',
+        COPY.signInThenRunCommand,
+        values
+      ),
     signInThenSend: () =>
       translate('components.native-chat.failureWords.signInThenSend', COPY.signInThenSend),
     historyTooLarge: () =>
@@ -70,10 +78,11 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.chooseClaudeAccount',
         COPY.chooseClaudeAccount
       ),
-    chooseClaudeAccountThenRunClear: () =>
+    chooseClaudeAccountThenRunCommand: (values) =>
       translate(
-        'components.native-chat.failureWords.chooseClaudeAccountThenRunClear',
-        COPY.chooseClaudeAccountThenRunClear
+        'components.native-chat.failureWords.chooseClaudeAccountThenRunCommand',
+        COPY.chooseClaudeAccountThenRunCommand,
+        values
       ),
     chooseClaudeAccountThenSend: () =>
       translate(
@@ -162,6 +171,13 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.notDeliveredSendAgain',
         COPY.notDeliveredSendAgain
       ),
+    commandRefused: () =>
+      translate('components.native-chat.failureWords.commandRefused', COPY.commandRefused),
+    commandRefusedTryAgain: () =>
+      translate(
+        'components.native-chat.failureWords.commandRefusedTryAgain',
+        COPY.commandRefusedTryAgain
+      ),
     compactionFailed: () =>
       translate('components.native-chat.failureWords.compactionFailed', COPY.compactionFailed),
     compactionFailedQuoted: (values) =>
@@ -177,6 +193,16 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       ),
     cancelUnconfirmed: () =>
       translate('components.native-chat.failureWords.cancelUnconfirmed', COPY.cancelUnconfirmed),
+    stopRefused: (values) =>
+      translate('components.native-chat.failureWords.stopRefused', COPY.stopRefused, values),
+    stopRefusedQuoted: (values) =>
+      translate(
+        'components.native-chat.failureWords.stopRefusedQuoted',
+        COPY.stopRefusedQuoted,
+        values
+      ),
+    noTurnToStop: (values) =>
+      translate('components.native-chat.failureWords.noTurnToStop', COPY.noTurnToStop, values),
     answerUnconfirmed: () =>
       translate('components.native-chat.failureWords.answerUnconfirmed', COPY.answerUnconfirmed),
     hostFault: () => translate('components.native-chat.failureWords.hostFault', COPY.hostFault),

@@ -496,6 +496,7 @@
           "mimo_code_label": "MiMo Code",
           "muse_label": "Muse",
           "opencode2_label": "OpenCode 2",
+          "codebuddy_label": "CodeBuddy",
           "zcode_label": "ZCode"
         },
         "skill": {
@@ -1602,7 +1603,6 @@
         "reuseExistingBranchHint": "기존 브랜치에서 새 브랜치를 만들지 않고 해당 브랜치를 체크아웃합니다.",
         "createMultiple": "더 만들기",
         "waitForSetupBeforeAgent": "agent를 시작하기 전에 설정이 완료될 때까지 기다리세요.",
-        "waitForSetupBeforeAgentHelp": "설치 프로그램이 시작 중에 agent에 필요한 종속성, MCP 서버 또는 구성 파일을 설치할 때 이 기능을 켜십시오.",
         "destroyDisabled": "비활성화된 파괴",
         "destroyConfigured": "구성된 파괴",
         "noDestroyConfigured": "파괴하지 마세요",
@@ -3033,6 +3033,7 @@
           },
           "TerminalContextMenu": {
             "b4cdd9314e": "화면 지우기",
+            "resetTerminal": "터미널 초기화",
             "8c17d6786d": "창 닫기",
             "copyTerminalId": "터미널 ID 복사",
             "2cf85a6a55": "창 ID 복사",
@@ -3965,7 +3966,12 @@
             "checkLabel": "확인할 채팅 {{value0}}개",
             "checkAriaOne": "재개한 후 확인할 채팅 1개. 자세히 보려면 클릭하세요.",
             "checkAria": "재개한 후 확인할 채팅 {{value0}}개. 자세히 보려면 클릭하세요.",
-            "checkTooltip": "다시 시작한 후 Orca가 재개하지 못했거나 재개했는지 확인하지 못한 채팅. 자세히 보려면 클릭하세요."
+            "checkTooltip": "다시 시작한 후 Orca가 재개하지 못했거나 재개했는지 확인하지 못한 채팅. 자세히 보려면 클릭하세요.",
+            "resumingLabelOne": "채팅 1개 재개 중",
+            "resumingLabel": "채팅 {{value0}}개 재개 중",
+            "resumingAriaOne": "채팅 1개 재개 중. 자세히 보려면 클릭하세요.",
+            "resumingAria": "채팅 {{value0}}개 재개 중. 자세히 보려면 클릭하세요.",
+            "resumingTooltip": "중단된 채팅을 복원하고 계속하도록 요청하는 중…"
           }
         }
       },
@@ -7833,8 +7839,7 @@
           "81057d5f71": "저장 중...",
           "da37d6f10e": "복사",
           "3149964b66": "복사됨",
-          "waitForSetupBeforeAgent": "agent를 시작하기 전에 설정이 완료될 때까지 기다리세요.",
-          "waitForSetupBeforeAgentHelp": "설치 프로그램이 시작 중에 agent에 필요한 종속성, MCP 서버 또는 구성 파일을 설치할 때 이 기능을 켜십시오."
+          "waitForSetupBeforeAgent": "agent를 시작하기 전에 설정이 완료될 때까지 기다리세요."
         },
         "RepositoryIconPicker": {
           "2b7d27b93c": "{{value0}} repo 색상 사용",
@@ -8949,6 +8954,9 @@
             "0d1c334987": "뚜껑",
             "ff8de8a2ad": "표시",
             "0d752916f8": "훅",
+            "agent-trust-trust": "신뢰",
+            "agent-trust-folder": "폴더",
+            "agent-trust-worktree": "워크트리",
             "6984d4291a": "상태",
             "13b20636a6": "대기",
             "8599603496": "완료",
@@ -10714,6 +10722,10 @@
         "agent-status-hooks-copy": {
           "7707c15abb": "Agent 상태 훅",
           "a68a642835": "Orca에서 작업 중, 대기 중, 완료 상태를 표시합니다. 끄면 Orca가 관리하는 훅을 제거하고 재설치를 중단합니다."
+        },
+        "agent-workspace-trust-copy": {
+          "title": "Orca가 에이전트를 시작할 때 폴더 신뢰",
+          "description": "Orca가 시작한 에이전트는 \"Do you trust this folder?\" 확인을 건너뛰므로, 프로젝트의 에이전트 훅과 설정이 바로 실행됩니다. 이 설정이 없으면 각 에이전트가 폴더에서 처음 실행될 때 확인을 요청합니다. 오케스트레이션 워커, 자동화, 휴대폰에서 시작한 에이전트처럼 사용자가 지켜보지 않는 동안 실행되는 에이전트는 해당 터미널에서 응답할 때까지 그 확인에서 기다립니다. 이미 신뢰한 폴더는 계속 신뢰됩니다."
         },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "탭 제목 자동 생성",
@@ -17350,20 +17362,20 @@
       "failureWords": {
         "theAgent": "에이전트",
         "providerStartFailed": "{{agent}}이(가) 시작을 마치기 전에 중지되었습니다.",
-        "runClearAgain": "/clear를 다시 실행하세요.",
+        "runCommandAgain": "/{{command}}을(를) 다시 실행하세요.",
         "sendToTryAgain": "다시 시도하려면 메시지를 보내세요.",
         "couldNotStart": "{{agent}}을(를) 시작하지 못했습니다.",
         "couldNotRestart": "{{agent}}을(를) 다시 시작하지 못했습니다.",
         "notSignedIn": "{{agent}}이(가) 선택한 계정으로 로그인되어 있지 않습니다.",
         "signInFirst": "먼저 로그인하세요.",
-        "signInThenRunClear": "로그인한 다음 /clear를 다시 실행하세요.",
+        "signInThenRunCommand": "로그인한 다음 /{{command}}을(를) 다시 실행하세요.",
         "signInThenSend": "로그인한 다음 메시지를 다시 보내세요.",
         "historyTooLarge": "이 대화의 기록이 너무 커서 여기에서 복원할 수 없습니다.",
         "managedAccountEnvOverride": "이 Claude 실행은 자체 Anthropic 로그인 변수를 설정합니다. 관리되는 Claude 계정을 사용하려면 해당 변수를 제거하세요.",
         "accountSwitchInProgress": "Claude 계정 전환이 진행 중입니다. 완료된 후 다시 시도하세요.",
         "managedAccountUnsupported": "WSL에 Claude 계정이 추가되어 있는 동안에는 Claude 채팅에 Windows Claude 계정이 필요합니다.",
         "chooseClaudeAccount": "Claude 계정 설정에서 선택하거나 추가하세요.",
-        "chooseClaudeAccountThenRunClear": "Claude 계정 설정에서 선택하거나 추가한 다음 /clear를 다시 실행하세요.",
+        "chooseClaudeAccountThenRunCommand": "Claude 계정 설정에서 선택하거나 추가한 다음 /{{command}}을(를) 다시 실행하세요.",
         "chooseClaudeAccountThenSend": "Claude 계정 설정에서 선택하거나 추가한 다음 메시지를 다시 보내세요.",
         "providerExitedRow": "이 응답이 진행되는 동안 {{agent}}이(가) 중지되었습니다. 이 대화에서 계속할 수 있습니다.",
         "providerExitedRejection": "이 메시지가 전송되기 전에 {{agent}}이(가) 중지되었습니다.",
@@ -17389,10 +17401,15 @@
         "hostRestarted": "이 메시지가 전송되기 전에 Orca가 다시 시작되었습니다.",
         "notDelivered": "이 메시지는 전달되지 않았습니다.",
         "notDeliveredSendAgain": "이 메시지는 전달되지 않았습니다. 계속하려면 다시 보내세요.",
+        "commandRefused": "이 명령이 실행되지 않았습니다.",
+        "commandRefusedTryAgain": "이 명령이 실행되지 않았습니다. 다시 시도하세요.",
         "compactionFailed": "압축에 실패했습니다.",
         "compactionFailedQuoted": "압축에 실패했습니다: {{detail}}.",
         "compactionUnconfirmed": "압축 완료가 확인되지 않았습니다.",
         "cancelUnconfirmed": "취소가 확인되지 않았습니다.",
+        "stopRefused": "{{agent}}이(가) 중지되지 않았습니다.",
+        "stopRefusedQuoted": "{{agent}}이(가) 중지되지 않았습니다: {{detail}}.",
+        "noTurnToStop": "{{agent}}에 중지할 실행 중인 턴이 없었습니다.",
         "answerUnconfirmed": "응답이 기록되었지만 에이전트가 확인하지 않았습니다.",
         "hostFault": "Orca에 문제가 발생하여 이 작업이 완료되지 않았습니다.",
         "hostFaultTryAgain": "Orca에 문제가 발생하여 이 작업이 완료되지 않았습니다. 다시 시도하세요.",
@@ -17418,6 +17435,8 @@
         "historyUnreadable": "Orca가 이 채팅의 저장된 기록을 읽지 못했습니다.",
         "historyUnusable": "이 채팅을 불러올 수 없습니다.",
         "historyUnavailable": "Orca가 지금 이 채팅의 기록을 열지 못했습니다.",
+        "savedByNewerOrca": "채팅이 최신 버전의 Orca에서 저장되었습니다.",
+        "updateOrcaToKeepUsing": "계속 사용하려면 Orca를 업데이트하세요.",
         "unsupported": "이 채팅을 실행 중인 Orca가 이 기능을 지원하지 않습니다. Orca를 업데이트한 후 다시 시도하세요.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
         "recordFailed": "Orca가 이 채팅의 기록에 저장하지 못했습니다.",
@@ -17735,6 +17754,7 @@
       "railEmptyMessage": "메시지",
       "ask": {
         "awaiting": "사용자 입력을 기다리는 중:",
+        "awaitingUnnamed": "사용자 입력을 기다리는 중",
         "asked": "질문:",
         "questionCount": "{{value0}} 질문"
       },
@@ -17758,7 +17778,9 @@
         "startedN": "{{value0}} 하위 에이전트가 시작되었습니다.",
         "ranOne": "하위 에이전트 1개 실행",
         "ranN": "{{value0}} 하위 에이전트를 실행했습니다.",
-        "tokens": "{{value0}} 토큰"
+        "tokens": "{{value0}} 토큰",
+        "unnamed": "하위 에이전트",
+        "writtenBy": "하위 에이전트 {{value0}}의 출력"
       },
       "conversationCommand": {
         "pendingWork": "이 명령을 사용하기 전에 보류 중인 작업과 메시지가 완료될 때까지 기다리십시오.",
@@ -18122,6 +18144,9 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "종료됨"
     }
   },
   "dashboardPopout": {
@@ -18540,5 +18565,63 @@
   },
   "common": {
     "retry": "다시 시도"
+  },
+  "fileExplorer": {
+    "root": {
+      "label": "탐색기 루트",
+      "full": "저장소 루트",
+      "viewing": "보기: {{path}}",
+      "back": "{{path}}(으)로 돌아가기",
+      "searchScope": "검색 범위: 작업 공간 파일",
+      "retry": "다시 시도",
+      "omittedFiles": "희소 체크아웃에서 제외된 파일은 검색되지 않습니다.",
+      "viewOnly": "희소 체크아웃 · 보기를 바꿔도 체크아웃된 파일은 변경되지 않습니다.",
+      "sparseStatus": "스파스 체크아웃",
+      "scopeDetails": "스파스 체크아웃 범위 안내",
+      "scopeExplanation": "폴더 선택은 표시 범위만 바꾸며 체크아웃된 파일은 바꾸지 않습니다. 저장소 루트에는 루트와 상위 폴더에 체크아웃된 파일도 표시됩니다.",
+      "searchExplanation": "이름 검색은 현재 보고 있는 폴더를 필터링합니다. 내용 검색은 전체 워크스페이스를 검색합니다. 스파스 체크아웃에서 제외된 파일은 검색하지 않습니다.",
+      "findInFolder": "{{path}}에서 찾기",
+      "folderLoadError": "이 폴더를 불러오지 못했습니다:",
+      "emptyFolder": "이 폴더에 파일이 없습니다"
+    }
+  },
+  "sparsePreset": {
+    "nameRequired": "이름을 입력하세요.",
+    "nameTooLong": "이름은 80자 이하여야 합니다.",
+    "nameExists": "같은 이름의 프리셋이 이미 있습니다: {{name}}",
+    "name": "이름",
+    "namePlaceholder": "웹 앱 및 공용 UI",
+    "directories": "디렉터리",
+    "pathHelp": "한 줄에 저장소 기준 상대 경로를 하나씩 입력하세요. 경로 내 공백은 유지됩니다.",
+    "coneHelp": "Git은 저장소 루트와 선택한 디렉터리의 상위 폴더에 있는 파일도 유지합니다.",
+    "cancel": "취소",
+    "save": "프리셋 저장",
+    "new": "새 희소 체크아웃 프리셋",
+    "edit": "희소 체크아웃 프리셋 편집",
+    "description": "새 워크스페이스에서 체크아웃할 폴더를 선택하세요.",
+    "saveFailed": "프리셋을 저장하지 못했습니다. 다시 시도하세요.",
+    "loading": "프리셋을 불러오는 중...",
+    "details": "어떤 파일이 체크아웃되나요?",
+    "finishEditing": "워크스페이스 만들기를 계속하려면 프리셋을 저장하거나 취소하세요.",
+    "pathInstructions": "저장소 루트 기준 상대 경로로 한 줄에 폴더 하나씩 입력하세요.",
+    "retryLoad": "프리셋 불러오기 다시 시도",
+    "fullCheckout": "전체 체크아웃",
+    "checkoutPreset": "체크아웃 프리셋",
+    "search": "프리셋 찾기…",
+    "noMatches": "일치하는 프리셋이 없습니다.",
+    "allFiles": "저장소의 모든 파일",
+    "editNamed": "프리셋 편집: {{name}}",
+    "addPath": "Add a folder",
+    "findPath": "Find a folder…",
+    "noPathMatches": "No folders found.",
+    "repositoryRoot": "Repository root",
+    "loadingPaths": "Reading folders…",
+    "pathsUnavailable": "Could not read this folder. Type the path instead.",
+    "pathAdded": "Added",
+    "openFolder": "Open {{name}}",
+    "findOrTypePath": "Find a folder, or type any path…",
+    "addTypedPath": "Add",
+    "noDirectories": "No folders added yet.",
+    "removePath": "Remove {{name}}"
   }
 }

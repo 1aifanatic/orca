@@ -7,11 +7,12 @@ export const QUIT_TERMINAL_AGENT = 'Quit that agent to continue the chat here.'
 export const START_NEW_CHAT = 'Start a new chat to continue.'
 
 /** Every piece a failure sentence is made of, whole so desktop can translate each on its own.
- *  `{{agent}}` is the agent's name or `theAgent`; the host fills them in English. */
+ *  `{{agent}}` is the agent's name or `theAgent`, `{{command}}` a conversation command's name; the
+ *  host fills them in English. */
 export const AGENT_SESSION_FAILURE_COPY = {
   theAgent: 'The agent',
   providerStartFailed: '{{agent}} stopped before it finished starting.',
-  runClearAgain: 'Run /clear again.',
+  runCommandAgain: 'Run /{{command}} again.',
   sendToTryAgain: 'Send your message to try again.',
   couldNotStart: "{{agent}} couldn't start.",
   couldNotRestart: "{{agent}} couldn't restart.",
@@ -20,7 +21,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
   startNewChat: START_NEW_CHAT,
   notSignedIn: '{{agent}} is not signed in for the selected account.',
   signInFirst: 'Sign in first.',
-  signInThenRunClear: 'Sign in, then run /clear again.',
+  signInThenRunCommand: 'Sign in, then run /{{command}} again.',
   signInThenSend: 'Sign in, then send your message again.',
   historyTooLarge: "This conversation's history is too large to restore here.",
   managedAccountEnvOverride:
@@ -29,8 +30,8 @@ export const AGENT_SESSION_FAILURE_COPY = {
   managedAccountUnsupported:
     'While a Claude account is added in WSL, Claude chats need a Windows Claude account.',
   chooseClaudeAccount: 'Choose or add one in Claude Accounts settings.',
-  chooseClaudeAccountThenRunClear:
-    'Choose or add one in Claude Accounts settings, then run /clear again.',
+  chooseClaudeAccountThenRunCommand:
+    'Choose or add one in Claude Accounts settings, then run /{{command}} again.',
   chooseClaudeAccountThenSend:
     'Choose or add one in Claude Accounts settings, then send your message again.',
   providerExitedRow:
@@ -64,10 +65,15 @@ export const AGENT_SESSION_FAILURE_COPY = {
   hostRestarted: 'Orca restarted before this message was sent.',
   notDelivered: 'This message was not delivered.',
   notDeliveredSendAgain: 'This message was not delivered. Send it again to continue.',
+  commandRefused: "This command didn't run.",
+  commandRefusedTryAgain: "This command didn't run. Try it again.",
   compactionFailed: 'Compaction failed.',
   compactionFailedQuoted: 'Compaction failed: {{detail}}.',
   compactionUnconfirmed: 'Compaction completion is unconfirmed.',
   cancelUnconfirmed: 'Cancellation was not confirmed.',
+  stopRefused: "{{agent}} didn't stop.",
+  stopRefusedQuoted: "{{agent}} didn't stop: {{detail}}.",
+  noTurnToStop: '{{agent}} had no turn running to stop.',
   answerUnconfirmed: 'Your answer was recorded but the agent did not confirm it.',
   hostFault: "Orca ran into a problem, so this didn't go through.",
   hostFaultTryAgain: "Orca ran into a problem, so this didn't go through. Try again.",
@@ -81,6 +87,7 @@ export type AgentSessionFailureCopyId = keyof typeof AGENT_SESSION_FAILURE_COPY
 /** What a piece's `{{name}}` placeholders stand for. */
 export type AgentSessionFailureCopyValues = {
   agent?: string
+  command?: string
   detail?: string
   limit?: string
   size?: string

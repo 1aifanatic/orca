@@ -118,9 +118,9 @@ const REASON_WORDS = {
       'goElsewhere',
       'openCurrentConversation'
     ),
-    // Nothing settles an unfinished /clear yet, so only a new chat continues.
+    // Only an older host sends this, and it keeps refusing the chat, so only a new chat continues.
     clearUnconfirmed: causeWords('clearUnfinished', 'goElsewhere', 'startNewChat'),
-    // A /clear or /compact whose outcome the host never settled; only the host resolves it.
+    // Only an older host sends this, for a /clear it never settled; only that host resolves it.
     conversationCommandUnconfirmed: codeWords('hostFinding'),
     conversationCommandInFlight: causeWords('commandRunning', 'wait', 'waitForCommand'),
     // The chat's agent process is being replaced, which a start or restart does.
@@ -201,7 +201,8 @@ const REASON_WORDS = {
     // No retry reads past damage, and the words name no step: it only can't load.
     journalCorrupt: causeWords('historyUnusable', 'hostFinding'),
     // Says its step despite 'retry' unless a Retry stands beside it: the phone often has none.
-    journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain')
+    journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain'),
+    journalWrittenByNewerOrca: causeWords('savedByNewerOrca', 'updateOrca', 'updateOrcaToKeepUsing')
   },
   // Thrown, so a client meets these only as an RPC error; the code's words stand.
   structured_agent_session_unsupported: {

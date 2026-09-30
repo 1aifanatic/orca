@@ -616,7 +616,8 @@
           "zcode_label": "ZCode",
           "d443a47995": "Prime Agent",
           "mimo_code_label": "MiMo Code",
-          "opencode2_label": "OpenCode 2"
+          "opencode2_label": "OpenCode 2",
+          "codebuddy_label": "CodeBuddy"
         },
         "skill": {
           "cli": {
@@ -1727,7 +1728,6 @@
         "notConnected": "Not connected",
         "notePasteTooLarge": "Paste is too large for the note field.",
         "waitForSetupBeforeAgent": "Wait for setup to complete before starting agent",
-        "waitForSetupBeforeAgentHelp": "Turn this on when setup installs dependencies, MCP servers, or config files the agent needs during startup.",
         "destroyDisabled": "destroy disabled",
         "destroyConfigured": "destroy configured",
         "noDestroyConfigured": "no destroy",
@@ -3193,6 +3193,7 @@
           },
           "TerminalContextMenu": {
             "b4cdd9314e": "Clear Screen",
+            "resetTerminal": "Reset Terminal",
             "8c17d6786d": "Close Pane",
             "copyTerminalId": "Copy Terminal ID",
             "2cf85a6a55": "Copy Pane ID",
@@ -3276,7 +3277,7 @@
             "missing": {
               "tui": {
                 "title": "This ZCode build has no terminal UI",
-                "description": "Orca's hooks installed correctly \u2014 the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
+                "description": "Orca's hooks installed correctly — the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
               }
             }
           },
@@ -4127,7 +4128,12 @@
             "checkLabel": "{{value0}} chats to check",
             "checkAriaOne": "1 chat to check after resuming. Click for details.",
             "checkAria": "{{value0}} chats to check after resuming. Click for details.",
-            "checkTooltip": "Chats Orca couldn’t resume, or couldn’t confirm it resumed, after the restart. Click for details."
+            "checkTooltip": "Chats Orca couldn’t resume, or couldn’t confirm it resumed, after the restart. Click for details.",
+            "resumingLabelOne": "Resuming 1 chat",
+            "resumingLabel": "Resuming {{value0}} chats",
+            "resumingAriaOne": "Resuming 1 chat. Click to open details.",
+            "resumingAria": "Resuming {{value0}} chats. Click to open details.",
+            "resumingTooltip": "Restoring interrupted chats and asking them to carry on…"
           }
         }
       },
@@ -8053,8 +8059,7 @@
           "81057d5f71": "Saving...",
           "da37d6f10e": "Copy",
           "3149964b66": "Copied",
-          "waitForSetupBeforeAgent": "Wait for setup to complete before starting agent",
-          "waitForSetupBeforeAgentHelp": "Turn this on when setup installs dependencies, MCP servers, or config files the agent needs during startup."
+          "waitForSetupBeforeAgent": "Wait for setup to complete before starting agent"
         },
         "RepositoryIconPicker": {
           "2b7d27b93c": "Use {{value0}} repo color",
@@ -9173,6 +9178,9 @@
             "0d1c334987": "lid",
             "ff8de8a2ad": "display",
             "0d752916f8": "hooks",
+            "agent-trust-trust": "trust",
+            "agent-trust-folder": "folder",
+            "agent-trust-worktree": "worktree",
             "6984d4291a": "status",
             "13b20636a6": "waiting",
             "8599603496": "done",
@@ -10924,6 +10932,10 @@
         "agent-status-hooks-copy": {
           "7707c15abb": "Agent status hooks",
           "a68a642835": "Shows working, waiting, and done states in Orca. Turn off to remove Orca-managed hooks and stop reinstalling them."
+        },
+        "agent-workspace-trust-copy": {
+          "title": "Trust the folder when Orca starts an agent",
+          "description": "Agents Orca starts skip their \"Do you trust this folder?\" prompt, so the project's agent hooks and settings run right away. Without this, each agent asks the first time it runs in a folder. Agents running without you watching, such as orchestration workers, automations and agents started from your phone, will wait at that question until you answer it in their terminal. Folders already trusted stay trusted."
         },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Auto-generate tab titles",
@@ -17482,20 +17494,20 @@
       "failureWords": {
         "theAgent": "The agent",
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
-        "runClearAgain": "Run /clear again.",
+        "runCommandAgain": "Run /{{command}} again.",
         "sendToTryAgain": "Send your message to try again.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
         "signInFirst": "Sign in first.",
-        "signInThenRunClear": "Sign in, then run /clear again.",
+        "signInThenRunCommand": "Sign in, then run /{{command}} again.",
         "signInThenSend": "Sign in, then send your message again.",
         "historyTooLarge": "This conversation's history is too large to restore here.",
         "managedAccountEnvOverride": "This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.",
         "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
         "managedAccountUnsupported": "While a Claude account is added in WSL, Claude chats need a Windows Claude account.",
         "chooseClaudeAccount": "Choose or add one in Claude Accounts settings.",
-        "chooseClaudeAccountThenRunClear": "Choose or add one in Claude Accounts settings, then run /clear again.",
+        "chooseClaudeAccountThenRunCommand": "Choose or add one in Claude Accounts settings, then run /{{command}} again.",
         "chooseClaudeAccountThenSend": "Choose or add one in Claude Accounts settings, then send your message again.",
         "providerExitedRow": "{{agent}} stopped while this response was in progress. You can continue in this conversation.",
         "providerExitedRejection": "{{agent}} stopped before this message was sent.",
@@ -17521,10 +17533,15 @@
         "hostRestarted": "Orca restarted before this message was sent.",
         "notDelivered": "This message was not delivered.",
         "notDeliveredSendAgain": "This message was not delivered. Send it again to continue.",
+        "commandRefused": "This command didn't run.",
+        "commandRefusedTryAgain": "This command didn't run. Try it again.",
         "compactionFailed": "Compaction failed.",
         "compactionFailedQuoted": "Compaction failed: {{detail}}.",
         "compactionUnconfirmed": "Compaction completion is unconfirmed.",
         "cancelUnconfirmed": "Cancellation was not confirmed.",
+        "stopRefused": "{{agent}} didn't stop.",
+        "stopRefusedQuoted": "{{agent}} didn't stop: {{detail}}.",
+        "noTurnToStop": "{{agent}} had no turn running to stop.",
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "hostFault": "Orca ran into a problem, so this didn't go through.",
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
@@ -17550,6 +17567,8 @@
         "historyUnreadable": "Orca couldn't read this chat's saved history.",
         "historyUnusable": "Unable to load this chat.",
         "historyUnavailable": "Orca couldn't open this chat's history right now.",
+        "savedByNewerOrca": "Chats were saved by a newer Orca.",
+        "updateOrcaToKeepUsing": "Update Orca to keep using them.",
         "unsupported": "The Orca running this chat doesn't support this. Update Orca, then try again.",
         "unreachable": "Orca couldn't reach the agent.",
         "recordFailed": "Orca couldn't record it in this chat's history.",
@@ -17854,6 +17873,7 @@
       },
       "ask": {
         "awaiting": "Awaiting user input:",
+        "awaitingUnnamed": "Awaiting user input",
         "asked": "Asked:",
         "questionCount": "{{value0}} questions"
       },
@@ -17890,7 +17910,9 @@
         "startedN": "Kicked off {{value0}} subagents",
         "ranOne": "Ran 1 subagent",
         "ranN": "Ran {{value0}} subagents",
-        "tokens": "{{value0}} tokens"
+        "tokens": "{{value0}} tokens",
+        "unnamed": "Subagent",
+        "writtenBy": "Written by subagent {{value0}}"
       },
       "conversationCommand": {
         "pendingWork": "Wait for pending work and messages to finish before using this command.",
@@ -18249,6 +18271,9 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "Ended"
     }
   },
   "dashboardPopout": {
@@ -18551,5 +18576,70 @@
   },
   "common": {
     "retry": "Retry"
+  },
+  "terminal": {
+    "sessionSaveFailure": {
+      "title": "Could not save terminal session",
+      "capacity": "The device saving this terminal reported full storage or an exceeded storage quota. Free space on that device, then try again.",
+      "unknown": "Orca could not save the terminal state. Try again. If this continues, share the Orca logs with support so we can identify the cause."
+    }
+  },
+  "fileExplorer": {
+    "root": {
+      "label": "Explorer root",
+      "full": "Repository root",
+      "viewing": "Viewing: {{path}}",
+      "back": "Back to {{path}}",
+      "searchScope": "Search scope: workspace files",
+      "retry": "Retry",
+      "omittedFiles": "Files omitted by sparse checkout are not searched.",
+      "viewOnly": "Sparse checkout · View changes do not change checked-out files.",
+      "sparseStatus": "Sparse checkout",
+      "scopeDetails": "About sparse checkout scope",
+      "scopeExplanation": "The folder picker changes what you see, not which files are checked out. Repository root includes the checked-out root and ancestor files.",
+      "searchExplanation": "Names filters the folder you are viewing. Contents searches across the workspace. Files omitted by sparse checkout are not searched.",
+      "findInFolder": "Find in {{path}}",
+      "folderLoadError": "Could not load this folder:",
+      "emptyFolder": "No files in this folder"
+    }
+  },
+  "sparsePreset": {
+    "name": "Name",
+    "namePlaceholder": "Web app and shared UI",
+    "directories": "Directories",
+    "pathHelp": "One repository-relative directory per line. Spaces within a path are preserved.",
+    "coneHelp": "Git also keeps files at the repository root and along the parent folders of these directories.",
+    "cancel": "Cancel",
+    "save": "Save preset",
+    "new": "New sparse preset",
+    "edit": "Edit sparse preset",
+    "description": "Choose the folders a new workspace checks out.",
+    "saveFailed": "Could not save the preset. Try again.",
+    "nameRequired": "Name is required.",
+    "nameTooLong": "Name must be 80 characters or fewer.",
+    "nameExists": "A preset named “{{name}}” already exists.",
+    "loading": "Loading presets...",
+    "details": "What gets checked out?",
+    "finishEditing": "Save or cancel the preset to continue creating your workspace.",
+    "pathInstructions": "Pick folders from the repository, or type any repo-relative path.",
+    "retryLoad": "Retry loading presets",
+    "fullCheckout": "Full checkout",
+    "checkoutPreset": "Checkout preset",
+    "search": "Find a preset…",
+    "noMatches": "No matching presets.",
+    "allFiles": "All repository files",
+    "editNamed": "Edit {{name}}",
+    "addPath": "Add a folder",
+    "findPath": "Find a folder…",
+    "noPathMatches": "No folders found.",
+    "repositoryRoot": "Repository root",
+    "loadingPaths": "Reading folders…",
+    "pathsUnavailable": "Could not read this folder. Type the path instead.",
+    "pathAdded": "Added",
+    "openFolder": "Open {{name}}",
+    "findOrTypePath": "Find a folder, or type any path…",
+    "addTypedPath": "Add",
+    "noDirectories": "No folders added yet.",
+    "removePath": "Remove {{name}}"
   }
 }
