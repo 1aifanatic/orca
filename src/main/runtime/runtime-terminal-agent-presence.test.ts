@@ -2,12 +2,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
-import { RuntimeTerminalAgentPresence } from './runtime-terminal-agent-presence'
+import {
+  RuntimeTerminalAgentPresence,
+  selectKeyboardAgentPresence
+} from './runtime-terminal-agent-presence'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { OrcaRuntimeService } from './orca-runtime'
 import { assertTerminalAgentSendable } from './rpc/terminal-agent-send-guard'
 import type { AgentProcessPresence } from '../../shared/agent-process-presence'
+import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 
 const CURSOR_APPROVAL = readFileSync(
   join(__dirname, '__fixtures__', 'cursor-agent-approval-prompt.txt'),
@@ -214,5 +218,40 @@ describe('headless terminal presence', () => {
     // The same evidence without presence reads as a running Claude.
     const legacy = terminal({ presence: undefined, ...evidence })
     expect(await legacy.presence.isRunning('terminal')).toBe(true)
+  })
+
+  it('keeps main rules for a live owner recorded on another host (WSL guest, SSH)', async () => {
+    const row = (connectionId: string | null): AgentStatusIpcPayload => ({
+      paneKey: 'tab-1:leaf-1',
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId,
+      state: 'done',
+      prompt: '',
+      receivedAt: 10,
+      stateStartedAt: 10,
+      agentType: 'claude',
+      agentPresence: owner('claude')
+    })
+    const remoteOwner = selectKeyboardAgentPresence([row('wsl:Ubuntu')])
+    for (const [title, running] of [
+      ['user@host: ~/repo', false],
+      ['✳ Claude Code', true]
+    ] as const) {
+      const remote = terminal({ presence: remoteOwner, title, foreground: 'wsl.exe' })
+      const main = terminal({ presence: undefined, title, foreground: 'wsl.exe' })
+      expect(await remote.presence.isRunning('terminal')).toBe(running)
+      expect(await main.presence.isRunning('terminal')).toBe(running)
+      expect(await remote.query.getStatus('terminal')).toEqual(
+        await main.query.getStatus('terminal')
+      )
+    }
+    // A local owner this host can check still answers for an unrecognised foreground.
+    const local = terminal({
+      presence: selectKeyboardAgentPresence([row(null)]),
+      title: 'user@host: ~/repo',
+      foreground: 'wsl.exe'
+    })
+    expect(await local.presence.isRunning('terminal')).toBe(true)
   })
 })

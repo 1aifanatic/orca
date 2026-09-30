@@ -5,7 +5,10 @@ import { localOrchestrationCliCommand } from './orchestration/cli-command'
 import { isStructuredWorkerHandle } from './structured-worker-identity'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { OrcaRuntimeWithRuntimeId } from './orca-runtime-runtime-id'
-import { RuntimeTerminalAgentPresence } from './runtime-terminal-agent-presence'
+import {
+  RuntimeTerminalAgentPresence,
+  selectKeyboardAgentPresence
+} from './runtime-terminal-agent-presence'
 import type { RuntimeNotifier } from './runtime-notifier-contract'
 import { RuntimeClientEventBus } from './runtime-client-event-bus'
 import { RuntimeNativeChatDraftResolutions } from './runtime-native-chat-draft-resolutions'
@@ -173,7 +176,7 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       const rows = Array.from(this.collectAgentStatusPaneKeysForPty(ptyId)).flatMap(
         (paneKey) => this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []
       )
-      return rows.sort((a, b) => b.receivedAt - a.receivedAt)[0]?.agentPresence
+      return selectKeyboardAgentPresence(rows)
     } catch {
       return undefined
     }

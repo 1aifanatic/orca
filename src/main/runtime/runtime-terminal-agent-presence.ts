@@ -1,4 +1,5 @@
 import type { AgentProcessPresence } from '../../shared/agent-process-presence'
+import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import {
   paneEvidenceAgent,
   paneEvidenceCounts,
@@ -43,6 +44,23 @@ export type RuntimeTerminalAgentPresenceOptions = {
   retryForegroundWrappers?: boolean
   /** Foreground identity the caller already confirmed; skips the provider's cached read. */
   foregroundProcess?: string | null
+}
+
+/** The pane's newest recorded owner, as far as this host can vouch for it at the keyboard. */
+export function selectKeyboardAgentPresence(
+  rows: readonly AgentStatusIpcPayload[]
+): AgentProcessPresence | undefined {
+  const row = rows.reduce<AgentStatusIpcPayload | undefined>(
+    (newest, candidate) =>
+      !newest || candidate.receivedAt > newest.receivedAt ? candidate : newest,
+    undefined
+  )
+  const presence = row?.agentPresence
+  // Why: this host cannot check a live owner recorded on another host (SSH, a WSL guest), so it
+  // must not outrank the pane's own evidence here; that pane keeps main's rules.
+  return presence?.process && !presence.ended && row?.connectionId
+    ? { agent: presence.agent }
+    : presence
 }
 
 /** Once the identified owner exited, its own launch intent no longer describes the pane. */
