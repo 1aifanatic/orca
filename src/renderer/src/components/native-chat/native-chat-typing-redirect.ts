@@ -1,4 +1,4 @@
-type KeyboardRedirectEvent = {
+export type KeyboardRedirectEvent = {
   key: string
   ctrlKey: boolean
   metaKey: boolean
