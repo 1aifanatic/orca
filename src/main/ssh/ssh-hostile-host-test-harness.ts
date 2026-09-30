@@ -4,12 +4,13 @@
  * The Docker matrix and the Windows SSH-host lanes both run cells through it.
  */
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import { expect, vi } from 'vitest'
 import { setAppEnvironment } from '../../shared/app-environment'
 import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import { orcadNodeRuntimeExecutable } from '../../shared/orcad-artifacts'
 import type { SshRemoteRuntimeRung, SshTarget } from '../../shared/ssh-types'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
@@ -63,7 +64,7 @@ export function installHostileHostAppEnvironment(): () => void {
     exit: () => {},
     getAppMetrics: () => []
   })
-  return () => rmSync(userData, { recursive: true, force: true })
+  return () => removeTreeSync(userData)
 }
 
 export async function connectHostileHost(sshTarget: SshTarget): Promise<SshConnection> {

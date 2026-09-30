@@ -130,11 +130,12 @@ function Record-PrivateServiceDiagnostics([switch]$AfterStop) {
 }
 
 # Drops every PATH entry holding one of the tools; entries are expanded, as a session sees them.
+# Why .NET and not Join-Path: Join-Path throws on an entry naming a drive this runner lacks.
 function Split-HostToolchainPath([string]$PathValue,[string[]]$Tools) {
   $kept=[Collections.Generic.List[string]]::new();$hidden=[Collections.Generic.List[string]]::new()
   foreach($entry in @($PathValue -split ';' | Where-Object {$_})){
     $expanded=[Environment]::ExpandEnvironmentVariables($entry)
-    $holds=@(foreach($tool in $Tools){foreach($extension in @('.exe','.cmd','.bat')){if(Test-Path -LiteralPath (Join-Path $expanded "$tool$extension") -PathType Leaf){"$tool$extension"}}})
+    $holds=@(foreach($tool in $Tools){foreach($extension in @('.exe','.cmd','.bat')){if([IO.File]::Exists([IO.Path]::Combine($expanded,"$tool$extension"))){"$tool$extension"}}})
     if($holds.Count){$hidden.Add($expanded)}else{$kept.Add($expanded)}
   }
   return @{kept=@($kept);hidden=@($hidden)}
