@@ -196,7 +196,7 @@ describe('command-finished drop and a Done that lands after it', () => {
     await vi.advanceTimersByTimeAsync(350 + 1200 + 6000)
 
     expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
-    expect(mockStoreState.agentStatusByPaneKey[pane.paneKey]?.state).toBe('done')
+    expect(mockStoreState.agentStatusByPaneKey[pane.paneKey]).toMatchObject({ state: 'done' })
   })
 
   it('drops a Done that landed before the command-finished fact', async () => {
