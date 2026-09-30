@@ -124,7 +124,9 @@ export function setHookTrustEnabledContent(
 function setEnabledInTrustBlocks(content: string, key: string, enabled: boolean): string {
   const ranges = findHookTrustBlockRanges(content, new Set([normalizeCodexHookTrustLookupKey(key)]))
   let next = content
-  for (const range of ranges.toReversed()) {
+  // Why: no toReversed(); the SSH relay runs this on Node 18.
+  for (let index = ranges.length - 1; index >= 0; index -= 1) {
+    const range = ranges[index]
     const enabledLine = scanTomlStructure(next.slice(range.contentStart, range.end)).find(
       (line) => line.kind === 'assignment' && tomlKeyPathsEqual(line.keySegments, ['enabled'])
     )
