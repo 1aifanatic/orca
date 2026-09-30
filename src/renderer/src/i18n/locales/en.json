@@ -16687,6 +16687,7 @@
             "done": "Done",
             "idle": "Idle",
             "unverifiable": "No recent update",
+            "unconfirmed": "Couldn’t confirm",
             "permission": "Needs attention"
           },
           "filtersSection": "Filters",
@@ -17522,7 +17523,8 @@
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
         "hostStopped": "{{agent}} never finished starting, so Orca stopped it.",
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
-        "providerRetrying": "{{agent}} hit a temporary problem and is retrying."
+        "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
+        "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17757,6 +17759,8 @@
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",
+        "interruptedAfter": "Interrupted after {{value0}}",
+        "failedAfter": "Failed after {{value0}}",
         "toggleDetails": "Toggle turn details"
       },
       "backgroundTasks": {
@@ -18203,6 +18207,12 @@
           "unknown": "Unknown host",
           "candidateName": "{{value0}} on {{value1}}"
         }
+      },
+      "creation": {
+        "worktreeReadyToast": "Worktree {{name}} is ready",
+        "workspaceReadyToast": "Workspace {{name}} is ready",
+        "goToWorktree": "Go to worktree",
+        "goToWorkspace": "Go to workspace"
       }
     },
     "agentSessionContinuation": {

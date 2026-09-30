@@ -16605,6 +16605,7 @@
             "done": "Fait",
             "idle": "Inactif",
             "unverifiable": "Aucune mise à jour récente",
+            "unconfirmed": "Impossible de confirmer",
             "permission": "A besoin d'attention"
           }
         },
@@ -17434,7 +17435,8 @@
         "hostFaultTryAgain": "Orca a rencontré un problème, l'opération n'a donc pas abouti. Réessayez.",
         "hostStopped": "{{agent}} n'a jamais fini de démarrer, Orca l'a donc arrêté.",
         "providerRateLimited": "{{agent}} est limité en débit et réessaie.",
-        "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie."
+        "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
+        "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "L'historique de ce chat n'a pas pu être chargé.",
@@ -17632,6 +17634,8 @@
         "thinking": "Réflexion",
         "workingFor": "En cours depuis {{value0}}",
         "workedFor": "A travaillé pendant {{value0}}",
+        "interruptedAfter": "Interrompu après {{value0}}",
+        "failedAfter": "Échoué après {{value0}}",
         "toggleDetails": "Basculer les détails du tour"
       },
       "jumpToLatest": "Aller au dernier message",
@@ -18115,6 +18119,12 @@
           "unknown": "Hôte inconnu",
           "candidateName": "{{value0}} sur {{value1}}"
         }
+      },
+      "creation": {
+        "worktreeReadyToast": "Le worktree {{name}} est prêt",
+        "workspaceReadyToast": "L'espace de travail {{name}} est prêt",
+        "goToWorktree": "Aller au worktree",
+        "goToWorkspace": "Aller à l'espace de travail"
       }
     },
     "agentSessionContinuation": {
