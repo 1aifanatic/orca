@@ -4,7 +4,15 @@
 import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { join, mkdir, mkdtemp, removeWorktree, rm, tmpdir } from '../orca-runtime-test-mocks.spec'
+import {
+  join,
+  listWorktreesStrict,
+  mkdir,
+  mkdtemp,
+  removeWorktree,
+  rm,
+  tmpdir
+} from '../orca-runtime-test-mocks.spec'
 import { TEST_REPO_ID, TEST_REPO_PATH } from '../orca-runtime-test-fixtures.spec'
 import { createWorktreeRemovalRuntime } from '../orca-runtime-test-scenario-builders.spec'
 import {
@@ -75,6 +83,29 @@ describe('runtime Delete on a failed delete’s leftover', () => {
     // Git has no registration left for it, so Orca deletes the leftover itself.
     expect(removeWorktree).not.toHaveBeenCalled()
     expect(existsSync(leftover)).toBe(false)
+    expect(await readWorktreeRemovalRecords(directory)).toEqual([])
+  })
+
+  it('takes the normal delete once Git registers a checkout at the path again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // A new checkout at the same path: the recorded choices were for the leftover, not for it.
+    vi.mocked(listWorktreesStrict).mockResolvedValue([
+      {
+        path: leftover,
+        head: 'def',
+        branch: 'refs/heads/other',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ])
+    vi.mocked(removeWorktree).mockResolvedValue({})
+    const runtime = createWorktreeRemovalRuntime()
+
+    await runtime.removeManagedWorktree(`id:${leftoverId}`, { waitForBackgroundRemoval: true })
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(removeWorktree).toHaveBeenCalledWith(TEST_REPO_PATH, leftover, false, expect.anything())
+    expect(existsSync(join(leftover, 'node_modules'))).toBe(true)
     expect(await readWorktreeRemovalRecords(directory)).toEqual([])
   })
 

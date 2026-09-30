@@ -158,8 +158,9 @@ export function startBackgroundWorktreeRemoval(
 }
 
 /**
- * Delete on a row whose earlier delete failed after Git dropped its registration: runs the recorded
- * removal again, with the choices the user made the first time. Undefined when there is none.
+ * Delete on a row whose earlier delete failed after Git dropped its registration, once Git's current
+ * listing still does not register the path: runs the recorded removal again, with the choices the
+ * user made the first time. Undefined when there is none.
  */
 export function retryFailedWorktreeRemoval(
   worktreeId: string,
@@ -179,8 +180,8 @@ export function retryFailedWorktreeRemoval(
   const leftoverOnly: BackgroundWorktreeRemovalJob = {
     ...job,
     run: async (stopSignal) => {
-      // Why: the recorded choices (force, branch) were for the leftover; a checkout Git registers
-      // at the path since is a new one, which only the normal delete's checks may remove.
+      // Why: the recorded choices (force, branch) were for the leftover; a checkout Git registered
+      // at the path after the caller listed is a new one, which only the normal delete may remove.
       if (await isCheckoutRegistered(record)) {
         throw new Error(
           `A different checkout is now at ${record.worktreePath}; Orca left it in place. Delete it again to remove it.`

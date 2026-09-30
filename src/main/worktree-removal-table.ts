@@ -2,11 +2,14 @@ import { lstat } from 'node:fs/promises'
 import { getErrorCode } from './git/worktree-operation-options'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
 import { writeWorktreeRemovalRecords, type WorktreeRemovalRecord } from './worktree-removal-records'
+import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
+import type { GitWorktreeInfo } from '../shared/worktree/types'
 
 // The accepted removals, mirrored to disk on every change; listings and joins read only this.
 export const pendingWorktreeRemovals = new Map<string, WorktreeRemovalRecord>()
 // Deletes that failed after Git dropped the registration: listed with their error until Delete
-// retries them, the checkout disappears, or the user forgets the workspace. Never retried unasked.
+// retries them, the checkout disappears or is replaced, or the user forgets the workspace. Never
+// retried unasked.
 export const failedWorktreeRemovals = new Map<string, WorktreeRemovalRecord>()
 // Why weak: a listing that read Git before a delete finished holds the record until it replies.
 export const finishedWorktreeRemovals = new WeakSet<WorktreeRemovalRecord>()
@@ -40,11 +43,32 @@ export async function worktreeCheckoutExists(worktreePath: string): Promise<bool
   }
 }
 
-/** The user dropped the workspace from Orca: its failed delete is no longer owed. Files stay. */
+/**
+ * Its failed delete is no longer owed: the user forgot the workspace, or Git registers a new
+ * checkout at its path. Files stay.
+ */
 export function forgetFailedWorktreeRemoval(worktreeId: string): void {
   if (failedWorktreeRemovals.delete(worktreeId)) {
     void persistWorktreeRemovalRecords()
   }
+}
+
+/**
+ * Delete's choice for a workspace whose earlier delete failed, from Git's listing taken now: a
+ * checkout Git registers at the path again is a new one, so the failed record is dropped and the
+ * normal delete runs; while Git does not, `retry` runs the recorded removal. True when it did.
+ */
+export function retryFailedRemovalUnlessRegistered(
+  worktreeId: string,
+  worktreePath: string,
+  registeredWorktrees: readonly Pick<GitWorktreeInfo, 'path'>[],
+  retry: () => Promise<RemoveWorktreeResult> | undefined
+): boolean {
+  if (registeredWorktrees.some((worktree) => areWorktreePathsEqual(worktree.path, worktreePath))) {
+    forgetFailedWorktreeRemoval(worktreeId)
+    return false
+  }
+  return retry() !== undefined
 }
 
 export function hasPendingWorktreeRemovals(): boolean {

@@ -203,6 +203,26 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
   })
 
+  it('Delete takes the normal delete once Git registers a checkout at the path again', async () => {
+    await failAfterGitDroppedIt()
+    // A new checkout at the same path: the recorded choices were for the leftover, not for it.
+    mockKnownFeatureWorktree()
+    removeWorktreeMock.mockResolvedValue({})
+
+    await remove({ worktreeId: featureId, force: false })
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
+    expect(removeWorktreeMock).toHaveBeenCalledWith(
+      '/workspace/repo',
+      '/workspace/feature-wt',
+      false,
+      expect.anything()
+    )
+    listWorktreesMock.mockResolvedValue([mockKnownFeatureWorktree()[0]])
+    expect(await listFeature()).toBeUndefined()
+  })
+
   it('forget drops it from Orca without deleting anything', async () => {
     await failAfterGitDroppedIt()
 

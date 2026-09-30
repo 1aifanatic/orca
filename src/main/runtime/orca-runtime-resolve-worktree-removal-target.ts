@@ -34,6 +34,8 @@ import {
   waitForPendingWorktreeRemoval
 } from '../worktree-background-removal'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
+import { retryFailedRemovalUnlessRegistered } from '../worktree-removal-table'
+import type { GitWorktreeInfo } from '../../shared/worktree/types'
 
 export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWithRemoveManagedWorktree {
   protected async resolveWorktreeRemovalTarget(
@@ -61,28 +63,39 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     )
   }
 
-  /**
-   * The removal a request for this worktree waits on: the one still running, or the leftover of one
-   * that failed after Git dropped the registration, run again.
-   */
-  protected joinOrRetryWorktreeRemoval(
+  /** The removal a request for this worktree waits on: the one still running. */
+  protected joinPendingWorktreeRemoval(
     worktreeId: string,
     options: RemoveManagedWorktreeOptions
   ): Promise<RemoveWorktreeResult> | undefined {
-    const hostId = parseExecutionHostId(options.hostId)?.id
+    return waitForPendingWorktreeRemoval(worktreeId, parseExecutionHostId(options.hostId)?.id)
+  }
+
+  /**
+   * Delete on the leftover of a local delete that failed after Git dropped the registration, while
+   * Git's listing still does not register the path: runs that removal again. True when it did.
+   */
+  protected retryFailedLocalRemoval(
+    route: { kind: string },
+    target: { id: string; path: string },
+    registeredWorktrees: readonly GitWorktreeInfo[],
+    options: RemoveManagedWorktreeOptions
+  ): boolean {
     const store = this.store
-    const pending = waitForPendingWorktreeRemoval(worktreeId, hostId)
-    if (pending || !store) {
-      return pending
+    if (route.kind !== 'local' || !store) {
+      return false
     }
-    return retryFailedWorktreeRemoval(worktreeId, hostId, (record) =>
-      interruptedLocalWorktreeRemovalJob(record, {
-        ...this.localRemovalJobHost(store),
-        stopPtys: () =>
-          this.stopPtysForDestructiveWorktreeRemoval(record.worktreeId, {
-            allowUnverifiedStop: options.allowUnverifiedPtyStop === true
-          })
-      })
+    const hostId = parseExecutionHostId(options.hostId)?.id
+    return retryFailedRemovalUnlessRegistered(target.id, target.path, registeredWorktrees, () =>
+      retryFailedWorktreeRemoval(target.id, hostId, (record) =>
+        interruptedLocalWorktreeRemovalJob(record, {
+          ...this.localRemovalJobHost(store),
+          stopPtys: () =>
+            this.stopPtysForDestructiveWorktreeRemoval(record.worktreeId, {
+              allowUnverifiedStop: options.allowUnverifiedPtyStop === true
+            })
+        })
+      )
     )
   }
 

@@ -51,7 +51,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
     const cleanupHostId = parseExecutionHostId(hostId)?.id
     const removalTarget = await this.resolveWorktreeRemovalTarget(worktreeSelector, cleanupHostId)
     // Why: a retry or a second client asking while Git still deletes joins that removal.
-    const pending = this.joinOrRetryWorktreeRemoval(removalTarget.id, options)
+    const pending = this.joinPendingWorktreeRemoval(removalTarget.id, options)
     if (pending) {
       return options.waitForBackgroundRemoval ? await pending : { removing: true }
     }
@@ -131,6 +131,9 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
           registeredWorktrees,
           removalHome
         )
+        if (this.retryFailedLocalRemoval(route, removalTarget, registeredWorktrees, options)) {
+          return { removing: true }
+        }
         if (!registeredWorktree) {
           return removeRuntimeUnregisteredWorktree({
             repo,

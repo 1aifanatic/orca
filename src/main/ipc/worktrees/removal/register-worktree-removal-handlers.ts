@@ -17,7 +17,6 @@ import {
   waitForPendingWorktreeRemoval
 } from '../../../worktree-background-removal'
 import { runSerializedWorktreeRemovalAcceptance } from '../../../worktree-removal-acceptance-queue'
-import { retryFailedLocalWorktreeRemoval } from './retry-failed-local-worktree-removal'
 
 export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): void {
   const { store, options, worktreeRemovalsInFlight } = context
@@ -32,11 +31,8 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
       }
       // The resolved repo supplies host ownership when legacy callers omit args.hostId.
       const removalHostId = getRepoExecutionHostId(repo)
-      // Why: a retry or a second window asking while Git still deletes joins that removal, and
-      // Delete on the leftover of one that failed after Git dropped it runs that removal again.
-      const pending =
-        waitForPendingWorktreeRemoval(args.worktreeId, removalHostId) ??
-        retryFailedLocalWorktreeRemoval(context, args, removalHostId)
+      // Why: a retry or a second window asking while Git still deletes joins that removal.
+      const pending = waitForPendingWorktreeRemoval(args.worktreeId, removalHostId)
       if (pending) {
         return { ...(await pending), catalogVersion: getLocalWorktreeCatalogVersion(repoId) }
       }
