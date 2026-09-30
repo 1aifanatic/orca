@@ -13,9 +13,11 @@ const COMPACTION_FAILED: AgentSessionFailureFact = {
   detail: { text: 'Context is too short', audience: 'person' }
 }
 
-// The facts a /clear whose new conversation did not start, and a /compact, can carry.
-const CLEAR_FACTS: AgentSessionFailureFact[] = [
+// The facts a command whose conversation did not start can carry: a /clear's new one, or the
+// start a /compact waited on.
+const START_FACTS: AgentSessionFailureFact[] = [
   START_FAILED,
+  { kind: 'restartFailed' },
   { kind: 'startFailed', refusal: { code: 'structured_agent_session_unsupported' } },
   {
     kind: 'startFailed',
@@ -30,6 +32,7 @@ const CLEAR_FACTS: AgentSessionFailureFact[] = [
 ]
 const COMPACT_FACTS: AgentSessionFailureFact[] = [
   COMPACTION_FAILED,
+  { kind: 'commandRefused' },
   { kind: 'compactionFailed' },
   { kind: 'compactionUnconfirmed' }
 ]
@@ -40,11 +43,11 @@ function hostResult(
   failure: AgentSessionFailureFact,
   provider: 'claude' | 'codex' = 'claude'
 ): AgentSessionConversationCommandResult {
-  const context =
-    command === 'clear'
-      ? { agentName: TUI_AGENT_DISPLAY_NAMES[provider], command: 'clear' as const }
-      : {}
-  const words = agentSessionFailureWords(failure, { ...context, surface: 'row' })
+  const words = agentSessionFailureWords(failure, {
+    agentName: TUI_AGENT_DISPLAY_NAMES[provider],
+    command,
+    surface: 'row'
+  })
   return { command, state: 'completed', error: words.text, failure: words.failure }
 }
 
@@ -69,7 +72,8 @@ describe('the line under the composer after a conversation command failed', () =
   it('says in English exactly what the host wrote, for every failure a command reports', async () => {
     for (const provider of ['claude', 'codex'] as const) {
       for (const result of [
-        ...CLEAR_FACTS.map((fact) => hostResult('clear', fact, provider)),
+        ...START_FACTS.map((fact) => hostResult('clear', fact, provider)),
+        ...START_FACTS.map((fact) => hostResult('compact', fact, provider)),
         ...COMPACT_FACTS.map((fact) => hostResult('compact', fact, provider))
       ]) {
         expect(await sent(result, provider)).toEqual({ accepted: false, error: result.error })
@@ -79,7 +83,13 @@ describe('the line under the composer after a conversation command failed', () =
     expect((await sent(hostResult('clear', START_FAILED, 'codex'), 'codex')).error).toBe(
       "Codex couldn't start. Run /clear again."
     )
-    expect((await sent(hostResult('clear', CLEAR_FACTS[1], 'codex'), 'codex')).error).toBe(
+    expect(
+      (await sent(hostResult('compact', { kind: 'restartFailed' }, 'codex'), 'codex')).error
+    ).toBe("Codex couldn't restart. Run /compact again.")
+    expect((await sent(hostResult('compact', { kind: 'notSignedIn' }), 'claude')).error).toBe(
+      'Claude is not signed in for the selected account. Sign in, then run /compact again.'
+    )
+    expect((await sent(hostResult('clear', START_FACTS[2], 'codex'), 'codex')).error).toBe(
       "Codex couldn't start. Start a new chat to continue."
     )
     expect((await sent(hostResult('clear', { kind: 'notSignedIn' }, 'codex'), 'codex')).error).toBe(
@@ -95,9 +105,18 @@ describe('the line under the composer after a conversation command failed', () =
     expect((await sent(hostResult('compact', COMPACTION_FAILED))).error).toBe(
       'La compaction a échoué : Context is too short.'
     )
+    expect((await sent(hostResult('compact', { kind: 'restartFailed' }))).error).toBe(
+      "Claude n'a pas pu redémarrer. Relancez /compact."
+    )
+    expect((await sent(hostResult('compact', { kind: 'managedAccountUnsupported' }))).error).toBe(
+      "Tant qu'un compte Claude est ajouté dans WSL, les chats Claude nécessitent un compte Claude Windows. Choisissez-en un ou ajoutez-en un dans les paramètres Comptes Claude, puis relancez /compact."
+    )
     await i18n.changeLanguage('ja')
     expect((await sent(hostResult('clear', START_FAILED))).error).toBe(
       'Claude を起動できませんでした。/clear をもう一度実行してください。'
+    )
+    expect((await sent(hostResult('compact', { kind: 'notSignedIn' }))).error).toBe(
+      'Claude は選択したアカウントでサインインしていません。サインインしてから、/compact をもう一度実行してください。'
     )
   })
 
@@ -117,7 +136,7 @@ describe('the line under the composer after a conversation command failed', () =
         error
       })
     }
-    expect((await sent(hostResult('clear', CLEAR_FACTS[1]))).error).toBe(
+    expect((await sent(hostResult('clear', START_FACTS[2]))).error).toBe(
       "Claude n'a pas pu démarrer. Démarrez un nouveau chat pour continuer."
     )
   })

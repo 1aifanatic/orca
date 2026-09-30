@@ -10,7 +10,7 @@ import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-
 
 export async function sendStructuredConversationCommand(input: {
   command: AgentSessionConversationCommand
-  /** The chat's agent, as a failed /clear names it. */
+  /** The chat's agent, as a failed command names it. */
   agentName: string
   pending: { current: boolean }
   blocked: boolean
@@ -56,9 +56,13 @@ function conversationCommandFailureText(
   if (!fact) {
     return result.error ?? null
   }
-  // As the host words it: only a /clear whose new conversation failed to start names the agent.
-  const context = result.command === 'clear' ? { agentName, command: 'clear' as const } : {}
-  return agentSessionFailureSentence(fact, 'row', context, sayAgentSessionFailureTranslated)
+  // As the host words it: naming the chat's agent and the command a failed start was for.
+  return agentSessionFailureSentence(
+    fact,
+    'row',
+    { agentName, command: result.command },
+    sayAgentSessionFailureTranslated
+  )
 }
 
 export function isUnconfirmedConversationCommand(method: string, value: unknown): boolean {

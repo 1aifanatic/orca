@@ -40,13 +40,21 @@ const NOTICE_PIECES: readonly AgentSessionFailureCopyId[] = [
 ]
 // Kana, and kanji whose simplified Chinese form differs (続 is 续, 読 is 读, ...).
 const JAPANESE_ONLY = /[\u3040-\u30ff続読変済図気帰戻検択転権単圧応対発処実証覧関専]/u
-const VALUES = { agent: 'Claude', detail: 'Image type .bmp', limit: '20', size: '5' }
+const VALUES = {
+  agent: 'Claude',
+  command: 'compact',
+  detail: 'Image type .bmp',
+  limit: '20',
+  size: '5'
+}
 
 function factsFor(kind: AgentSessionFailureFact['kind']): AgentSessionFailureFact[] {
   const facts: AgentSessionFailureFact[] = [
     { kind },
     { kind, detail: { text: 'Context window exceeded.', audience: 'person' } },
     { kind, detail: { text: 'exit 1', audience: 'log' } },
+    // Person words with nothing left once trimmed: the sentence says the lead alone.
+    { kind, detail: { text: ' ... ', audience: 'person' } },
     { kind, refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } } },
     { kind, refusal: { code: 'structured_agent_session_unsupported' } },
     { kind, retry: { error: 'rate_limit', status: 429 } }
@@ -62,7 +70,9 @@ const CONTEXTS: AgentSessionFailureWordsContext[] = [
   { agentName: 'Codex' },
   { agentName: 'Claude', command: 'clear' },
   { retryControl: true },
-  { agentName: 'Claude', command: 'clear', retryControl: true }
+  { agentName: 'Claude', command: 'clear', retryControl: true },
+  { agentName: 'Codex', command: 'compact' },
+  { command: 'compact', retryControl: true }
 ]
 
 afterEach(async () => {
@@ -147,6 +157,51 @@ describe('desktop words for a failure fact', () => {
         structuredAgentSessionRejectionParts(null, 'send', { kind: 'providerExited' }, {})
       )
     ).toBe("L'agent s'est arrêté avant l'envoi de ce message.")
+  })
+
+  it('names the command a failed start was for inside the translated sentence', async () => {
+    const sentence = (kind: AgentSessionFailureFact['kind'], command: 'clear' | 'compact') =>
+      agentSessionFailureSentence(
+        { kind },
+        'row',
+        { agentName: 'Codex', command },
+        sayAgentSessionFailureTranslated
+      )
+    await i18n.changeLanguage('fr')
+    expect(sentence('restartFailed', 'compact')).toBe(
+      "Codex n'a pas pu redémarrer. Relancez /compact."
+    )
+    expect(sentence('notSignedIn', 'clear')).toBe(
+      "Codex n'est pas connecté avec le compte sélectionné. Connectez-vous, puis relancez /clear."
+    )
+    await i18n.changeLanguage('ja')
+    expect(sentence('providerStartFailed', 'compact')).toBe(
+      'Codex は起動が完了する前に停止しました。/compact をもう一度実行してください。'
+    )
+    expect(sentence('managedAccountUnsupported', 'compact')).toBe(
+      'WSL に Claude アカウントが追加されている間、Claude チャットには Windows の Claude アカウントが必要です。Claude アカウントの設定で選択または追加してから、/compact をもう一度実行してください。'
+    )
+  })
+
+  it("says a refused command and a refused Stop in the reader's language", async () => {
+    await i18n.changeLanguage('fr')
+    const sentence = (fact: AgentSessionFailureFact) =>
+      agentSessionFailureSentence(
+        fact,
+        'row',
+        { agentName: 'Codex' },
+        sayAgentSessionFailureTranslated
+      )
+    expect(sentence({ kind: 'commandRefused' })).toBe(
+      "Cette commande n'a pas été exécutée. Réessayez."
+    )
+    expect(sentence({ kind: 'stopRefused' })).toBe("Codex n'avait aucun tour en cours à arrêter.")
+    expect(
+      sentence({
+        kind: 'stopRefused',
+        detail: { text: 'no active turn to interrupt.', audience: 'person' }
+      })
+    ).toBe("Codex ne s'est pas arrêté : no active turn to interrupt.")
   })
 
   it("says an image's size limit in the reader's unit", async () => {
