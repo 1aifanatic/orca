@@ -184,6 +184,49 @@ describe('exactly one execution per launch operation', () => {
   })
 })
 
+describe('a fresh launch writes the ledger once before its effect', () => {
+  it('admits and claims in one durable transaction, claimed on disk when the effect starts', async () => {
+    const admitAndClaim = vi.spyOn(store, 'admitAndClaimOperation')
+    const admit = vi.spyOn(store, 'admitOperation')
+    const claimOnly = vi.spyOn(store, 'claimOperation')
+    const runtime = runtimeStub()
+    let statusAtEffect: string | undefined
+    runtime.createManagedWorktree.mockImplementationOnce(async () => {
+      const persisted = await readPersistedTestAgentSessionStore(directory)
+      statusAtEffect =
+        persisted.operations[agentSessionOperationKey('device-1', OPERATION_ID)]?.outcome.status
+      return { worktree: { id: 'wt-new' }, startupTerminal: undefined }
+    })
+
+    await launch(createLaunch({ operationId: OPERATION_ID }), runtime)
+
+    expect(admitAndClaim).toHaveBeenCalledTimes(1)
+    expect(admit).not.toHaveBeenCalled()
+    expect(claimOnly).not.toHaveBeenCalled()
+    // A claim moves the row from `pending` to `unknown`: taken, not yet settled.
+    expect(statusAtEffect).toBe('unknown')
+  })
+
+  it('still lets exactly one of two concurrent admissions run the effect', async () => {
+    const admission = {
+      callerKey: 'device-1',
+      operationId: OPERATION_ID,
+      fingerprint: 'fp-1',
+      now: NOW
+    }
+    const claimAfter = (decision: { decision: string; row?: AgentSessionOperationRow }) =>
+      decision.decision === 'admit' ||
+      (decision.decision === 'replay' && decision.row?.outcome.status === 'pending')
+
+    const results = await Promise.all([
+      store.admitAndClaimOperation(admission, claimAfter),
+      store.admitAndClaimOperation(admission, claimAfter)
+    ])
+
+    expect(results.filter((result) => result.claim?.claim === 'won')).toHaveLength(1)
+  })
+})
+
 describe('stable replay identity', () => {
   it('replays across a bearer-credential change under the paired device subject', async () => {
     const params = createLaunch({ operationId: OPERATION_ID })

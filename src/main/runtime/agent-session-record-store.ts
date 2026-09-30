@@ -16,6 +16,8 @@ import {
   evaluateAgentSessionMutationOperation,
   admitAgentSessionOperationInto,
   claimAgentSessionOperationInto,
+  admitAndClaimAgentSessionOperationInto,
+  type ClaimAfterAdmission,
   settleAgentSessionOperationInto,
   type AgentSessionMutationOperationAdmission,
   type AgentSessionOperationAdmission
@@ -297,6 +299,12 @@ export class AgentSessionRecordStore {
     operationId: string
   }): Promise<AgentSessionOperationClaim> =>
     this.transact(() => claimAgentSessionOperationInto(this.state, args))
+
+  /** Admission and, when `claimAfter` allows, the claim: one durable write before the effect. */
+  admitAndClaimOperation = (
+    args: AgentSessionOperationAdmission,
+    claimAfter: ClaimAfterAdmission
+  ) => this.transact(() => admitAndClaimAgentSessionOperationInto(this.state, args, claimAfter))
 
   async recordOperationOutcome(args: {
     callerKey?: string
