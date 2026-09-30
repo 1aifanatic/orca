@@ -116,7 +116,7 @@ export async function interruptedRestart(
   }
   await previous.host.flushStreamedEvents(SESSION)
   await previous.host.flushAllStreamedEvents()
-  const store = await openTestAgentSessionRecordStore(join(previous.root, 'store'))
+  const store = await openTestAgentSessionRecordStore(previous.root)
   const closeSession = vi.fn(async () => true)
   // The relaunch comes after the quit that recorded the offer.
   const clock = { now: NOW + 1 }

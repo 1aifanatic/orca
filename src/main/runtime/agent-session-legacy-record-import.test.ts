@@ -3,7 +3,7 @@
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
 import {
@@ -19,7 +19,7 @@ import { journalPragmaNumber } from '../native-chat/agent-session-journal/journa
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import type { LegacyAgentSessionRecordImportReport } from './agent-session-legacy-record-import'
 import { AgentSessionRecordStore } from './agent-session-record-store'
-import { agentSessionStorePath } from './agent-session-record-store-file'
+import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 
 const NOW = 1_800_000_000_000
@@ -40,7 +40,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const legacyPath = (): string => agentSessionStorePath(join(root, 'agent-sessions'))
+const legacyPath = (): string => legacyAgentSessionStorePath(root)
 
 /** A released chat: no owner a restart probe must look for. */
 function record(sessionId: string, lease: Partial<AgentSessionLease> = {}): AgentSessionRecord {
@@ -84,7 +84,7 @@ function legacyFile(
 }
 
 async function writeLegacy(file: unknown, backup?: unknown): Promise<void> {
-  await mkdir(join(root, 'agent-sessions'), { recursive: true })
+  await mkdir(dirname(legacyPath()), { recursive: true })
   await writeFile(legacyPath(), typeof file === 'string' ? file : JSON.stringify(file))
   if (backup !== undefined) {
     await writeFile(
@@ -103,12 +103,15 @@ async function install(): Promise<{
   const reports: LegacyAgentSessionRecordImportReport[] = []
   const database = await openStructuredAgentSessionJournalDatabase({
     stateDirectory: root,
-    legacyRecordsDirectory: join(root, 'agent-sessions'),
     hostId: 'local',
     onLegacyRecordImportReport: (report) => reports.push(report)
   })
   opened.push(database)
-  return { database, store: AgentSessionRecordStore.open({ journalDatabase: database, hostId: 'local' }), reports }
+  return {
+    database,
+    store: AgentSessionRecordStore.open({ journalDatabase: database, hostId: 'local' }),
+    reports
+  }
 }
 
 function unreconciled(value: AgentSessionRecord): AgentSessionRecord {
@@ -165,7 +168,10 @@ describe('copying the records file into the chat database', () => {
     const { database, store, reports } = await install()
 
     expect(reports).toEqual([
-      { kind: 'unusable', error: expect.objectContaining({ message: 'agent_session_store_corrupt' }) }
+      {
+        kind: 'unusable',
+        error: expect.objectContaining({ message: 'agent_session_store_corrupt' })
+      }
     ])
     expect(journalPragmaNumber(database.db, 'user_version')).toBe(4)
     expect(store.listRecords()).toEqual([])
@@ -177,14 +183,18 @@ describe('copying the records file into the chat database', () => {
 
     const { store, reports } = await install()
 
-    expect(reports).toEqual([{ kind: 'host-mismatch', fileHostId: 'ssh:elsewhere', hostId: 'local' }])
+    expect(reports).toEqual([
+      { kind: 'host-mismatch', fileHostId: 'ssh:elsewhere', hostId: 'local' }
+    ])
     expect(store.hostId).toBe('local')
     expect(store.getRecord(ALPHA)).not.toBeNull()
   })
 
   it('maps a lease the removed terminal handoff wrote, and stores it mapped', async () => {
     const legacy = {
-      ...record(ALPHA, { ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: 1, spawnToken: 'spawn-a' } }),
+      ...record(ALPHA, {
+        ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: 1, spawnToken: 'spawn-a' }
+      }),
       lease: {
         ...record(ALPHA).lease,
         ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: 1, spawnToken: 'spawn-a' },

@@ -4,7 +4,6 @@
 // adjudicates in memory and writes nothing.
 
 import { cp, readdir, readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type * as AgentSessionRecordRows from '../../runtime/agent-session-record-rows'
 import {
@@ -77,11 +76,10 @@ async function relaunch(
     recursive: true,
     filter: (source) => !source.includes('.lock')
   })
-  const storeDirectory = join(relaunched, 'store')
   if (newer) {
-    await seedTestAgentSessionStoreFromNewerBuild(storeDirectory)
+    await seedTestAgentSessionStoreFromNewerBuild(relaunched)
   }
-  const store = await openTestAgentSessionRecordStore(storeDirectory)
+  const store = await openTestAgentSessionRecordStore(relaunched)
   const onLeaseReconcileFailure = vi.fn()
   const host = new StructuredAgentSessionHost({
     store,
@@ -97,7 +95,7 @@ async function relaunch(
     onLeaseReconcileFailure
   })
   replaceHostTestState({ store, host })
-  return { host, store, storeDirectory, onLeaseReconcileFailure }
+  return { host, store, stateDirectory: relaunched, onLeaseReconcileFailure }
 }
 
 it('reports a startup reconcile whose store write fails, and does not reject', async () => {
@@ -135,11 +133,11 @@ it('reconciles the chat on its next send once the store can be written again', a
 })
 
 it('adjudicates records a newer Orca wrote in memory only, and writes nothing', async () => {
-  const { host, store, storeDirectory, onLeaseReconcileFailure } = await relaunch(true)
+  const { host, store, stateDirectory, onLeaseReconcileFailure } = await relaunch(true)
   expect(store.readOnly).toBe(true)
-  const path = journalDatabasePath(storeDirectory)
+  const path = journalDatabasePath(stateDirectory)
   const bytes = await readFile(path)
-  const files = await readdir(storeDirectory)
+  const files = await readdir(stateDirectory)
 
   await expect(host.reconcileRestartLeases()).resolves.toBeUndefined()
 
@@ -149,7 +147,7 @@ it('adjudicates records a newer Orca wrote in memory only, and writes nothing', 
     claimStatus: 'released'
   })
   expect(await readFile(path)).toEqual(bytes)
-  expect(await readdir(storeDirectory)).toEqual(files)
+  expect(await readdir(stateDirectory)).toEqual(files)
 })
 
 it('restores a chat for reading while the reconcile keeps failing, and reports it once', async () => {
@@ -166,8 +164,8 @@ it('restores a chat for reading while the reconcile keeps failing, and reports i
 })
 
 it('restores a chat for reading from records a newer Orca wrote', async () => {
-  const { host, storeDirectory, onLeaseReconcileFailure } = await relaunch(true)
-  const path = journalDatabasePath(storeDirectory)
+  const { host, stateDirectory, onLeaseReconcileFailure } = await relaunch(true)
+  const path = journalDatabasePath(stateDirectory)
   const bytes = await readFile(path)
 
   await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()

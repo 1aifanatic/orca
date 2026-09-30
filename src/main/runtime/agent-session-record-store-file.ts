@@ -21,6 +21,9 @@ import { parseAgentSessionTabTable, type AgentSessionTabTable } from './agent-se
 
 export const AGENT_SESSION_STORE_SCHEMA_VERSION = 2 as const
 
+/** In a host's state directory, beside the journal database, where the records file lived. */
+export const AGENT_SESSION_STORE_DIR_NAME = 'agent-sessions'
+
 export const AGENT_SESSION_STORE_FILE_NAME = 'agent-sessions.json'
 
 export type RetiredAgentSessionClaimKey = { keyId: string; retiredAt: number }
@@ -48,6 +51,11 @@ export type LoadedAgentSessionStore = {
 
 export function agentSessionStorePath(directory: string): string {
   return join(directory, AGENT_SESSION_STORE_FILE_NAME)
+}
+
+/** The records file of the host whose state directory this is. */
+export function legacyAgentSessionStorePath(stateDirectory: string): string {
+  return agentSessionStorePath(join(stateDirectory, AGENT_SESSION_STORE_DIR_NAME))
 }
 
 const backupPath = (filePath: string): string => `${filePath}.bak`

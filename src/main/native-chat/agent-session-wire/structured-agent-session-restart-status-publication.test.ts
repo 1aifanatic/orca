@@ -92,8 +92,7 @@ function sendEnvelope(
 async function restartWithPersistedTurn(): Promise<StructuredAgentSessionHost> {
   root = await mkdtemp(join(tmpdir(), 'orca-restart-status-'))
   resetHostTestOperationIds()
-  const directory = join(root, 'store')
-  const store = await openTestAgentSessionRecordStore(directory)
+  const store = await openTestAgentSessionRecordStore(root)
   const host = createHost(store)
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
   const body = hostTestMessage('persisted conversation')
@@ -104,7 +103,7 @@ async function restartWithPersistedTurn(): Promise<StructuredAgentSessionHost> {
   // Delivered, not just accepted: a message still queued at the restart was never a request.
   await host.waitForSendSettlement(SESSION, sent.value.clientMessageId)
   await host.flushAllStreamedEvents()
-  return createHost(await openTestAgentSessionRecordStore(directory))
+  return createHost(await openTestAgentSessionRecordStore(root))
 }
 
 afterEach(async () => {

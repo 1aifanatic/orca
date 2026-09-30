@@ -92,7 +92,7 @@ function openHost(
 /** A fresh app generation over the same durable store, with its owner proven gone. */
 async function reboot(): Promise<void> {
   await host.flushAllStreamedEvents()
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   openHost(async () => ({ outcome: 'pid-absent' }))
   acquire.mockClear()
   closeSession.mockClear()
@@ -232,7 +232,7 @@ beforeEach(async () => {
       surface: 'rejection'
     })
   }))
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   openHost()
 })
 
@@ -401,7 +401,7 @@ describe('startup', () => {
     const beforeRestart = store.getRecord(SESSION)
     await abandonStructuredAgentSessionHost(host)
 
-    store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    store = await openTestAgentSessionRecordStore(root)
     openHost(async () => ({ outcome: 'pid-absent' }))
     await host.restoreReadableSessions()
 

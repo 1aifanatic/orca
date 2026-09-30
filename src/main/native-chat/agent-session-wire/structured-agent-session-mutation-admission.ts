@@ -21,6 +21,7 @@ import {
   type AgentSessionMutationResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
+import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { AGENT_SESSION_UNATTACHED_REFUSAL_CODE } from '../../../shared/structured-agent-session-read-refusal'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -104,14 +105,23 @@ export async function admitAndRunAgentSessionMutation<TValue>(
   if (!journal) {
     return refuseAgentSessionMutation(AGENT_SESSION_NOT_ATTACHED)
   }
-  const admitted = await request.store.admitMutationOperation({
-    callerKey: request.callerKey,
-    envelope,
-    hostFingerprint,
-    now: request.now(),
-    ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {}),
-    ...(plan.conversationWrite ? { conversationWrite: true } : {})
-  })
+  let admitted: Awaited<ReturnType<AgentSessionRecordStore['admitMutationOperation']>>
+  try {
+    admitted = await request.store.admitMutationOperation({
+      callerKey: request.callerKey,
+      envelope,
+      hostFingerprint,
+      now: request.now(),
+      ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {}),
+      ...(plan.conversationWrite ? { conversationWrite: true } : {})
+    })
+  } catch (error) {
+    // A store that refuses the ledger row (records a newer Orca wrote) answers as that refusal.
+    if (isAgentSessionRefusalError(error)) {
+      return refuseAgentSessionMutation(error.refusal)
+    }
+    throw error
+  }
   if (!admitted) {
     return refuseAgentSessionMutation(AGENT_SESSION_NOT_ATTACHED)
   }

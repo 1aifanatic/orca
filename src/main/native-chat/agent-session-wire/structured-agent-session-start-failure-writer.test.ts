@@ -118,7 +118,7 @@ beforeEach(async () => {
   awaitStarted = vi.fn(
     () => new Promise<SubmissionRejectionFact | undefined>((resolve) => (settleStart = resolve))
   )
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: {

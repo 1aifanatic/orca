@@ -15,7 +15,7 @@ import {
 } from '../native-chat/agent-session-journal/journal-database'
 import { raiseAgentSessionFencesAfterBackupRecovery } from './agent-session-backup-recovery-fence'
 import {
-  agentSessionStorePath,
+  legacyAgentSessionStorePath,
   loadAgentSessionStore,
   type AgentSessionStoreState
 } from './agent-session-record-store-file'
@@ -48,13 +48,13 @@ function readFailedTransiently(error: unknown): boolean {
   )
 }
 
-/** Never throws. `directory` is where the records file lived, beside the journal database. */
+/** Never throws. */
 export async function readLegacyAgentSessionRecords(
-  directory: string,
+  stateDirectory: string,
   hostId: string
 ): Promise<LegacyAgentSessionRecords> {
   try {
-    const loaded = await loadAgentSessionStore(agentSessionStorePath(directory), hostId)
+    const loaded = await loadAgentSessionStore(legacyAgentSessionStorePath(stateDirectory), hostId)
     return loaded.storeFound
       ? { kind: 'loaded', state: loaded.state, fromBackup: loaded.recoveredFromBackup }
       : { kind: 'absent' }

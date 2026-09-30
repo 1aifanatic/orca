@@ -105,7 +105,7 @@ beforeEach(async () => {
   }))
   releaseAcquisition = vi.fn(async () => true)
   dispatch = vi.fn(async () => accepted())
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),
@@ -263,7 +263,7 @@ describe('settled attach retry', () => {
     })
 
     await host.flushAllStreamedEvents()
-    store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),
@@ -320,7 +320,7 @@ describe('settled attach retry', () => {
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
 
     await host.flushAllStreamedEvents()
-    store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),

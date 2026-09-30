@@ -25,7 +25,7 @@ const CALLER = { callerKey: 'client-1' }
 describe('abandoning a structured agent-session host', () => {
   it('waits for the restart the delivery loop woke for an accepted send', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-abandon-'))
-    const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    const store = await openTestAgentSessionRecordStore(root)
     // Holds the restart inside its provider acquisition, so the point teardown must not run past
     // is exact rather than a timing window.
     let gate: Promise<void> | null = null

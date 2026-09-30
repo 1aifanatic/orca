@@ -81,7 +81,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   activeModel = DEFAULT_MODEL
   optionWritable = Promise.resolve()
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),

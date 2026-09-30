@@ -87,7 +87,7 @@ function providerAdapter(): StructuredAgentSessionAdapter {
 }
 
 async function openHost(): Promise<void> {
-  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+  store = await openTestAgentSessionRecordStore(directory)
   host = new StructuredAgentSessionHost({
     store,
     adapter: providerAdapter(),

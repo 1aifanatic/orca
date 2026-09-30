@@ -54,7 +54,7 @@ beforeEach(async () => {
   })
   acquires = []
   directory = await mkdtemp(join(tmpdir(), 'orca-rewind-'))
-  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+  store = await openTestAgentSessionRecordStore(directory)
   adapter = {
     supportsCreate: (_location, agent) => agent === 'codex',
     supportsLocation: () => true,

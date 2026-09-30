@@ -473,7 +473,7 @@ describe('cross-version structured agent sessions', () => {
 
     beforeEach(async () => {
       root = await mkdtemp(join(tmpdir(), 'orca-cross-version-ai-vault-'))
-      store = await openTestAgentSessionRecordStore(join(root, 'store'))
+      store = await openTestAgentSessionRecordStore(root)
       const host = new StructuredAgentSessionHost({
         store,
         adapter: {
@@ -699,7 +699,7 @@ describe('cross-version structured agent sessions', () => {
     /** Reopens the store from disk and installs a fresh host over the same journal
      *  root — what a process restart actually leaves behind. */
     async function bootHost(generation: string): Promise<StructuredAgentSessionHost> {
-      store = await openTestAgentSessionRecordStore(join(root, 'store'))
+      store = await openTestAgentSessionRecordStore(root)
       const host = new StructuredAgentSessionHost({
         store,
         adapter: adapter(),

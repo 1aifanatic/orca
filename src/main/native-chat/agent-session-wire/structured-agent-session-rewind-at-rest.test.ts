@@ -107,7 +107,7 @@ beforeEach(async () => {
     }
   }))
   directory = await mkdtemp(join(tmpdir(), 'orca-rewind-rest-'))
-  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+  store = await openTestAgentSessionRecordStore(directory)
   host = openHost()
 })
 
@@ -172,7 +172,7 @@ async function interruptedRewindAtRest(): Promise<void> {
   )
   expect(store.getRecord(SESSION)?.rewind).toMatchObject({ phase: 'prepared' })
   await host.flushAllStreamedEvents()
-  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+  store = await openTestAgentSessionRecordStore(directory)
   host = openHost()
 }
 
@@ -207,7 +207,7 @@ describe('a rewind asked of a chat at rest (P2-23)', () => {
     await host.flushStreamedEvents(SESSION)
     const epoch = (await host.journalSnapshot(SESSION)).cursor.epoch
     await host.flushAllStreamedEvents()
-    store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+    store = await openTestAgentSessionRecordStore(directory)
     host = openHost()
     const before = acquires
     rewindSupport.mockReturnValue({ supported: false, reason: 'history-not-paginated' })

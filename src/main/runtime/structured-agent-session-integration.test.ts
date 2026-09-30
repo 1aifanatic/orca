@@ -456,7 +456,9 @@ describe('a structured codex session over agentSession.*', () => {
       EXAMPLE_GATEWAY_TOKEN: 'shell-exported',
       CODEX_HOME: '/home/dev/.codex'
     })
-    const store = await readPersistedTestAgentSessionStoreText(join(root, 'agent-sessions'))
+    const store = await readPersistedTestAgentSessionStoreText(root)
+    // The record this create wrote, so the checks below read the runtime's own rows.
+    expect(store).toContain('/home/dev/.codex')
     expect(store).not.toContain('EXAMPLE_GATEWAY_TOKEN')
     expect(store).not.toContain('"launchEnv"')
     const stream = await subscribe('sub-first-send')

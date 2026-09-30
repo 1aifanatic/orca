@@ -52,7 +52,7 @@ export async function createQueuedMessageTestRig() {
     providerIdentity: null
   }))
   let events: StructuredAgentSessionEventSink | undefined
-  const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  const store = await openTestAgentSessionRecordStore(root)
   const host = new StructuredAgentSessionHost({
     store,
     adapter: {

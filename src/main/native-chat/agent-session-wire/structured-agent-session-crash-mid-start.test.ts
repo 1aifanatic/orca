@@ -59,7 +59,7 @@ async function crash(dying: AgentSessionRecordStore): Promise<void> {
 }
 
 function openStore(generation: HostGeneration): Promise<AgentSessionRecordStore> {
-  return openTestAgentSessionRecordStore(join(generationRoot(generation), 'store'))
+  return openTestAgentSessionRecordStore(generationRoot(generation))
 }
 
 /** A Codex adapter whose child spawns, reports its pid the way the real connection does, and then

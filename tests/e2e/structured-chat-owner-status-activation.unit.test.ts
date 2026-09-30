@@ -115,7 +115,7 @@ beforeEach(async () => {
   clock = NOW
   resetHostTestOperationIds()
   closeSession = vi.fn(async () => true)
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   openHost()
   expect(await host.attach({ callerKey: 'client-1' }, hostTestAttachParams(null))).toMatchObject({
     ok: true
@@ -141,7 +141,7 @@ describe('a chat at rest keeps its worktree activatable', () => {
 
   it('after an app restart restored it for reading', async () => {
     await host.flushAllStreamedEvents()
-    store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    store = await openTestAgentSessionRecordStore(root)
     openHost()
     await host.restoreReadableSessions()
     expect(host.hasSession(SESSION)).toBe(true)

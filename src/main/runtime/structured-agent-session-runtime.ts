@@ -12,7 +12,6 @@
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionResumeTrigger } from '../../shared/agent-session-resume-marker'
@@ -42,7 +41,7 @@ import {
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
-import { agentSessionStorePath } from './agent-session-record-store-file'
+import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
 import {
   createStructuredAgentSessionOwnerProbe,
@@ -59,17 +58,13 @@ import {
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
 
-/** Where the records file lived before the records moved into the journal database; read once,
- *  by that database's version-4 migration, and never written. */
-const LEGACY_RECORD_STORE_DIR_NAME = 'agent-sessions'
-
 /** Whether this profile ever held a structured chat: the journal database, or the records file a
  *  profile from before it still carries. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
-  const filePath = agentSessionStorePath(join(stateDirectory, LEGACY_RECORD_STORE_DIR_NAME))
+  const filePath = legacyAgentSessionStorePath(stateDirectory)
   return (
     fileExists(journalDatabasePath(stateDirectory)) ||
     fileExists(filePath) ||
@@ -204,7 +199,6 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   }
   const journalDatabase = await openStructuredAgentSessionJournalDatabase({
     stateDirectory: deps.stateDirectory,
-    legacyRecordsDirectory: join(deps.stateDirectory, LEGACY_RECORD_STORE_DIR_NAME),
     hostId: deps.hostId,
     onLegacyRecordImportReport: (report) =>
       deps.onError

@@ -62,7 +62,7 @@ const generationRoot = () => join(directory, `generation-${generation}`)
 let ownerProbe: AgentSessionOwnerProbe = { outcome: 'pid-absent' }
 
 async function openHost(): Promise<void> {
-  store = await openTestAgentSessionRecordStore(join(generationRoot(), 'store'))
+  store = await openTestAgentSessionRecordStore(generationRoot())
   host = new StructuredAgentSessionHost({
     store,
     adapter,

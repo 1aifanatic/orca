@@ -5,7 +5,7 @@
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
@@ -23,7 +23,7 @@ import { AgentSessionRecordStore } from './agent-session-record-store'
 import type * as AgentSessionRecordRows from './agent-session-record-rows'
 import {
   AGENT_SESSION_STORE_SCHEMA_VERSION,
-  agentSessionStorePath
+  legacyAgentSessionStorePath
 } from './agent-session-record-store-file'
 import {
   readPersistedTestAgentSessionStore,
@@ -119,10 +119,9 @@ async function seedProfile(
   records: AgentSessionRecord[],
   options: { newer?: boolean; visible?: string[]; history?: AgentSessionRecord[] } = {}
 ) {
-  const storeDirectory = join(root, 'agent-sessions')
-  await mkdir(storeDirectory, { recursive: true })
+  await mkdir(dirname(legacyAgentSessionStorePath(root)), { recursive: true })
   await writeFile(
-    agentSessionStorePath(storeDirectory),
+    legacyAgentSessionStorePath(root),
     JSON.stringify({
       schemaVersion: AGENT_SESSION_STORE_SCHEMA_VERSION,
       hostId: 'local',
@@ -135,7 +134,6 @@ async function seedProfile(
   )
   const database = await openStructuredAgentSessionJournalDatabase({
     stateDirectory: root,
-    legacyRecordsDirectory: storeDirectory,
     hostId: 'local',
     onLegacyRecordImportReport: () => undefined
   })

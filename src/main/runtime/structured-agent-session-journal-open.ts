@@ -26,17 +26,16 @@ function logOpenFailureOnce(error: unknown): void {
 }
 
 /** The journal database. A refusal is recorded for the gate and thrown to the caller; the next
- *  install tries again. `legacyRecordsDirectory` is where the records file lived. */
+ *  install tries again. */
 export async function openStructuredAgentSessionJournalDatabase(args: {
   stateDirectory: string
-  legacyRecordsDirectory: string
   hostId: string
   onLegacyRecordImportReport: (report: LegacyAgentSessionRecordImportReport) => void
 }): Promise<JournalHostDatabase> {
   try {
     const opened = await JournalHostDatabase.open(args.stateDirectory, async () =>
       legacyAgentSessionRecordImport(
-        await readLegacyAgentSessionRecords(args.legacyRecordsDirectory, args.hostId),
+        await readLegacyAgentSessionRecords(args.stateDirectory, args.hostId),
         args.hostId,
         args.onLegacyRecordImportReport
       )

@@ -59,7 +59,7 @@ beforeEach(async () => {
   listed = undefined
   // Written, and the provider has neither opened a turn for it nor answered it.
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: {

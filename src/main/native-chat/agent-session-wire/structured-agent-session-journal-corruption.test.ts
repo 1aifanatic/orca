@@ -3,6 +3,7 @@
 
 import { readdir } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest'
+import type Database from '../../sqlite/sync-database'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -32,10 +33,26 @@ it('refuses a send as corrupt when SQLite reports damage, and still stops the ag
     code: 'ERR_SQLITE_ERROR',
     errcode: 11
   })
-  // The chat's history database; this harness keeps the ownership rows in a database of their own.
-  vi.spyOn(openTestJournalHostDatabase(root), 'transaction').mockImplementation(() => {
-    throw damaged
-  })
+  // The damage is in the history's pages; the ownership rows beside it still read and write.
+  const database = openTestJournalHostDatabase(root)
+  const transaction = database.transaction.bind(database)
+  vi.spyOn(database, 'transaction').mockImplementation(<T>(run: (db: Database.Database) => T) =>
+    transaction((db) =>
+      run(
+        new Proxy(db, {
+          get: (target, property) =>
+            property === 'prepare'
+              ? (sql: string) => {
+                  if (!sql.includes('agent_session_')) {
+                    throw damaged
+                  }
+                  return target.prepare(sql)
+                }
+              : Reflect.get(target, property, target)
+        })
+      )
+    )
+  )
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
   const body = hostTestMessage('after the damage')
