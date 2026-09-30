@@ -15,6 +15,8 @@ export type TranscriptPaneOptions = {
   launchAgent?: TuiAgent
   /** Set for a pane whose PTY lives on an SSH host or WSL distro rather than locally. */
   connectionId?: string
+  /** The remote host of a `connectionId` pane is Windows. */
+  remoteWindowsHost?: boolean
   /** Simulates a PTY controller whose foreground probe never settles. */
   foregroundProbeHangs?: boolean
   onForegroundProbe?: () => void
@@ -35,6 +37,12 @@ export async function createTranscriptPane(
   const runtime = new OrcaRuntimeService(null, undefined, runtimeDeps)
   const internals = runtime as unknown as {
     resolveTerminalWorkspaceLaunchScope: (selector: string) => Promise<unknown>
+  }
+  if (options.remoteWindowsHost) {
+    vi.spyOn(
+      runtime as unknown as { pathFlavorForPty: () => 'posix' | 'win32' },
+      'pathFlavorForPty'
+    ).mockReturnValue('win32')
   }
   vi.spyOn(internals, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
     id: TRANSCRIPT_PANE_WORKTREE_ID,

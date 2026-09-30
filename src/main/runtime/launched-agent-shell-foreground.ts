@@ -6,7 +6,6 @@ import { isShellProcess } from '../../shared/shell-process-detection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
-import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 
 /** A login shell is reported as `-zsh`. */
 function isLaunchShell(processName: string): boolean {
@@ -35,7 +34,7 @@ export async function isShellInFrontOfLaunchedAgent(
     RuntimePtyController,
     'getForegroundProcess' | 'confirmForegroundProcess' | 'confirmShellForeground'
   > | null,
-  pty: Pick<RuntimePtyWorktreeRecord, 'connectionId'> | undefined,
+  host: { remote: boolean; windows: boolean },
   ptyId: string,
   agent: TuiAgent
 ): Promise<boolean> {
@@ -48,11 +47,12 @@ export async function isShellInFrontOfLaunchedAgent(
       return false
     }
     // Why the cached name for SSH: the relay reads its foreground live, with no startup bootstrap
-    // to see past, and offers neither a scan nor a shell-foreground check.
-    if (pty?.connectionId) {
-      return isShellName(cached, agent)
+    // to see past, and offers neither a scan nor a shell-foreground check. A Windows relay names the
+    // pane's shell for an agent it cannot recognize, so there the name proves nothing.
+    if (host.remote) {
+      return !host.windows && isShellName(cached, agent)
     }
-    if (process.platform === 'win32') {
+    if (host.windows) {
       return (await controller.confirmShellForeground?.(ptyId)) ?? false
     }
     const foreground = controller.confirmForegroundProcess

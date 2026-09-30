@@ -236,7 +236,13 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
 
   /** Whether a shell, not the agent a launch started, is proven to be in the terminal's foreground. */
   isLaunchShellInFront(ptyId: string, agent: TuiAgent): Promise<boolean> {
-    return isShellInFrontOfLaunchedAgent(this.ptyController, this.ptysById.get(ptyId), ptyId, agent)
+    const pty = this.ptysById.get(ptyId)
+    return isShellInFrontOfLaunchedAgent(
+      this.ptyController,
+      { remote: !!pty?.connectionId, windows: this.pathFlavorForPty(pty) === 'win32' },
+      ptyId,
+      agent
+    )
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

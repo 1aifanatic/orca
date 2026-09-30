@@ -243,6 +243,22 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
     }
   )
 
+  // Why: a Windows relay names the pane's shell for an agent its scan cannot recognize (node.exe).
+  it('SSH to a Windows host: the relay’s shell name proves nothing', async () => {
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'Copilot',
+      foregroundProcess: 'powershell.exe',
+      connectionId: 'ssh-1',
+      remoteWindowsHost: true,
+      launchAgent: 'copilot',
+      data: ''
+    })
+
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
+      false
+    )
+  })
+
   // Why no read: a native Claude names itself by its version, which the cached read gives at once.
   it.each([
     ['darwin', '2.1.285'],
