@@ -160,7 +160,7 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     ['root dotted keys', 'projects."/repo".trust_level = "untrusted"\n']
   ])(
     'drops managed trust for a project ~/.codex defines through a sub-table and %s',
-    (_shape, dotted) => {
+    (_placement, dotted) => {
       const systemConfig = `model = "m"\n${dotted}\n[projects."/repo".extra]\nx = 1\n`
       writeFileSync(getSystemConfigPath(), systemConfig, 'utf-8')
       mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
@@ -184,7 +184,7 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     ['the root', 'projects."/repo".extra.q = 1\n']
   ])(
     'drops managed trust when a dotted key under %s creates the parent of a deeper sub-table',
-    (_shape, dotted) => {
+    (_placement, dotted) => {
       writeFileSync(
         getSystemConfigPath(),
         `model = "m"\n${dotted}\n[projects."/repo".extra.deep]\nz = 1\n`,

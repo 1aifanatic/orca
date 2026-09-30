@@ -217,7 +217,9 @@ function applyTextEdits(content: string, edits: readonly TextEdit[]): string {
     }
   }
   let result = content
-  for (const edit of disjoint.toReversed()) {
+  // Why: no toReversed(); the SSH relay runs this on Node 18.
+  for (let index = disjoint.length - 1; index >= 0; index -= 1) {
+    const edit = disjoint[index]
     result = result.slice(0, edit.start) + edit.replacement + result.slice(edit.end)
   }
   return result
