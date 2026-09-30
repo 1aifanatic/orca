@@ -28,6 +28,7 @@ import {
   type ClaudeStructuredSessionEvent
 } from './claude-structured-session-state'
 import { closeAllClaudeSessions, closeClaudeSession } from './claude-structured-session-close'
+import { claudeStoppedTurnEndWait } from './claude-turn-end-wait'
 import {
   drainClaudeObservedExits,
   observeClaudeSessionExit,
@@ -199,8 +200,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     cancelClaudeStructuredTurn({
       request,
       sessions: this.sessions,
-      admitPromptCancellation: (session, promptKey) =>
-        admitClaudePromptCancellation(session, promptKey),
+      admitPromptCancellation: admitClaudePromptCancellation,
       onDispatchSettledLate: (settlement) =>
         this.deps.onDispatchSettledLate?.({ sessionId: request.sessionId, ...settlement }),
       ...(this.deps.requestTimeoutMs === undefined ? {} : { timeoutMs: this.deps.requestTimeoutMs })
@@ -208,6 +208,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   // Stop is a session boundary for Claude: an interrupt can answer while background work keeps the
   // CLI running, and a refused one leaves the turn running.
   stopEndsSession = (): boolean => true
+  awaitStoppedTurnEnd = claudeStoppedTurnEndWait(this.sessions)
   stopBackgroundTasks: StructuredAgentSessionAdapter['stopBackgroundTasks'] = (input) => {
     const session = this.session(input.sessionId)
     const acquisitionGeneration = session.acquisitionGeneration

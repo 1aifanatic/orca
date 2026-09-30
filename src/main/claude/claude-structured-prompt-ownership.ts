@@ -13,7 +13,7 @@ import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resoluti
 import { buildClaudePromptReply } from './claude-structured-prompt-replies'
 import type { ClaudeSession } from './claude-structured-session-state'
 import type { ClaudePendingPrompt } from './claude-prompt-registry'
-import { armClaudeStopGrace } from './claude-stop-grace'
+import { CLAUDE_STOP_GRACE_MS } from './claude-turn-end-wait'
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 
 type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
@@ -88,37 +88,18 @@ function cancelClaudeConversation(
   )
 }
 
-type CancelClaudeStructuredTurnInput = {
+export async function cancelClaudeStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, ClaudeSession>
   timeoutMs?: number
   admitPromptCancellation: (session: ClaudeSession, promptKey: string) => boolean
   onDispatchSettledLate?: ClaudeLateDispatchSettlement
-}
-
-/** A Stop ends the child next (`stopEndsSession`), and its close waits out the grace armed here for
- *  an interrupt Claude took. A prompt's cancel leaves the child running and arms none. */
-export async function cancelClaudeStructuredTurn(
-  input: CancelClaudeStructuredTurnInput
-): Promise<{ cancelled: boolean }> {
-  const session = input.request.prompt ? undefined : input.sessions.get(input.request.sessionId)
-  const disarm = session?.translator?.currentTurnId ? armClaudeStopGrace(session) : null
-  let cancelled = false
-  try {
-    const result = await interruptClaudeStructuredTurn(input)
-    cancelled = result.cancelled
-    return result
-  } finally {
-    if (!cancelled) {
-      disarm?.()
-    }
-  }
-}
-
-async function interruptClaudeStructuredTurn(
-  input: CancelClaudeStructuredTurnInput
-): Promise<{ cancelled: boolean }> {
-  const { request, sessions, timeoutMs } = input
+}): Promise<{ cancelled: boolean }> {
+  const { request, sessions } = input
+  // A Stop ends the child next, so its interrupt shares the grace with the stopped turn's end.
+  const timeoutMs = request.prompt
+    ? input.timeoutMs
+    : Math.min(input.timeoutMs ?? CLAUDE_STOP_GRACE_MS, CLAUDE_STOP_GRACE_MS)
   const session = requireSession(sessions, request.sessionId)
   const acquisitionGeneration = session.acquisitionGeneration
   const prompt = request.prompt

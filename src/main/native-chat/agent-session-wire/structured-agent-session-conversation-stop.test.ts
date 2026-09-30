@@ -379,6 +379,11 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
   }
 
+  /** The Stop's second step, which ends the child, runs next on the session's lane. */
+  function laneDrained(): Promise<void> {
+    return host['tasks'].serialize(SESSION, async () => {})
+  }
+
   it('ends the child after the cancel even when the provider refused it, and says only that it was asked', async () => {
     stopEndsSession = true
     await handedOver()
@@ -388,6 +393,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     })
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
 
     expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
     expect(await statusRows()).toEqual(['Cancellation requested.'])
@@ -398,6 +404,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     cancelTurn.mockResolvedValueOnce({ cancelled: true })
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
 
     expect(closeSession).not.toHaveBeenCalled()
   })
@@ -407,8 +414,22 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
     expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: false } })
+    await laneDrained()
 
     expect(closeSession).not.toHaveBeenCalled()
     expect(await statusRows()).toEqual([ALREADY_FINISHED])
+  })
+
+  it('ends the child when the provider took a Stop naming a turn that is no longer live', async () => {
+    stopEndsSession = true
+    await handedOver()
+    // The interrupt stopped the follow-up in flight, which has no turn a client could name.
+    cancelTurn.mockResolvedValueOnce({ cancelled: true })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 })

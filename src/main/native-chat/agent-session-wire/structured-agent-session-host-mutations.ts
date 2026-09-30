@@ -23,8 +23,10 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import {
+  endStoppedStructuredAgentSession,
   isMainAgentWorkingOnceFlushed,
-  performCancel
+  performCancel,
+  type StructuredAgentSessionStopWindDown
 } from './structured-agent-session-turns-cancel'
 import {
   admitAndRunAgentSessionMutation,
@@ -167,7 +169,9 @@ export function cancelStructuredAgentSessionTurn(
     ...params,
     stopChild: () => context.stopAgent(params.envelope.sessionId)
   })
-  return mutateStructuredAgentSession(
+  // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
+  let windDown: StructuredAgentSessionStopWindDown | undefined
+  const stopped = mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -208,6 +212,9 @@ export function cancelStructuredAgentSessionTurn(
               clientOperationId: params.envelope.clientOperationId,
               ...named,
               stopChild: () => context.stopAgent(params.envelope.sessionId),
+              endSession: (owed) => {
+                windDown = owed
+              },
               withdrewQueued: withdrawn.length > 0
             }
           )
@@ -215,6 +222,19 @@ export function cancelStructuredAgentSessionTurn(
     },
     openForWrite(context, params.envelope)
   )
+  const { sessionId } = params.envelope
+  // Queued in the Stop's own tick, so a send made meanwhile lands behind the child's end.
+  void context.serialize(sessionId, async () => {
+    if (windDown) {
+      await endStoppedStructuredAgentSession(
+        { sessionId, adapter: context.deps.adapter },
+        windDown,
+        () => context.stopAgent(sessionId),
+        (error) => context.deps.onEventSinkError?.({ sessionId, error })
+      )
+    }
+  })
+  return stopped
 }
 
 export function respondToStructuredAgentSessionPrompt(

@@ -178,6 +178,19 @@ describe('StructuredAgentSessionAdapterRouter.stopEndsSession', () => {
     await router.acquire({ identity: claudeIdentity('session-1'), fence: 1, spawnToken: 'spawn-1' })
     expect(router.stopEndsSession('session-1')).toBe(true)
   })
+
+  it("waits on the session's live owner for the stopped turn, and on nothing with none", async () => {
+    const claude = adapterOf(vi.fn(async () => true))
+    claude.awaitStoppedTurnEnd = vi.fn(async () => undefined)
+    const codex = adapterOf(vi.fn(async () => false))
+    const router = new StructuredAgentSessionAdapterRouter({ claude, codex }, async () => {})
+
+    await router.awaitStoppedTurnEnd('session-1', 'turn-1', 5)
+    expect(claude.awaitStoppedTurnEnd).not.toHaveBeenCalled()
+    await router.acquire({ identity: claudeIdentity('session-1'), fence: 1, spawnToken: 'spawn-1' })
+    await router.awaitStoppedTurnEnd('session-1', 'turn-1', 5)
+    expect(claude.awaitStoppedTurnEnd).toHaveBeenCalledWith('session-1', 'turn-1', 5)
+  })
 })
 
 describe('StructuredAgentSessionAdapterRouter.closeAll', () => {

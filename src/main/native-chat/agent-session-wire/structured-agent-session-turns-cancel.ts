@@ -30,6 +30,31 @@ export async function isMainAgentWorkingOnceFlushed(
   )
 }
 
+/** What a Stop that ends the provider's session leaves its next serialized step: the turn the
+ *  provider took the Stop on, and when the interrupt went out. */
+export type StructuredAgentSessionStopWindDown = { turnId: string | null; stoppedAt: number }
+
+/**
+ * A session-ending Stop's second step, queued behind its first in the same tick so nothing sent
+ * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported, and the
+ * wind-down it leaves owed is retried by the next stop or the idle sweep.
+ */
+export async function endStoppedStructuredAgentSession(
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'adapter'>,
+  windDown: StructuredAgentSessionStopWindDown,
+  stopChild: () => Promise<void>,
+  onError: (error: unknown) => void
+): Promise<void> {
+  try {
+    if (windDown.turnId !== null) {
+      await ctx.adapter.awaitStoppedTurnEnd?.(ctx.sessionId, windDown.turnId, windDown.stoppedAt)
+    }
+    await stopChild()
+  } catch (error) {
+    onError(error)
+  }
+}
+
 export async function performCancel(
   ctx: AgentSessionTurnContext,
   input: {
@@ -41,6 +66,9 @@ export async function performCancel(
     prompt?: { itemId: string; expectedRevision: number }
     /** Ends the provider child, for a running command the provider did not take the Stop on. */
     stopChild?: () => Promise<void>
+    /** Hands the child's end to the Stop's next serialized step, for a provider whose Stop ends
+     *  its session. */
+    endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
     /** The host already withdrew queued messages for this Stop. */
     withdrewQueued?: boolean
   }
@@ -66,12 +94,11 @@ export async function performCancel(
     (input.turnId === undefined || input.turnId === liveTurnId)
   const stoppedBefore =
     runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, liveTurnId)
-  // A provider whose Stop is a session boundary ends its child after the cancel, whatever the cancel
-  // answered. A Stop naming a turn that is no longer live leaves the later turn alone.
-  const stopEndsSession =
-    input.stopChild !== undefined &&
-    (input.turnId === undefined || input.turnId === liveTurnId) &&
-    ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
+  // Read while the child is live: a provider whose Stop is a session boundary loses it next.
+  const endsSession =
+    input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
+  const stoppedAt = Date.now()
+  let taken = false
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     const outcome: AgentSessionCancelOutcome = stoppedBefore
@@ -96,6 +123,7 @@ export async function performCancel(
             ...(dispatchStatus ? { dispatchStatus } : {}),
             ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
           })
+    taken = outcome.cancelled
     cancelled = outcome.cancelled
     if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
@@ -127,13 +155,19 @@ export async function performCancel(
       ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
     }
   }
-  if ((runningCommand && !cancelled) || stopEndsSession) {
-    await input.stopChild?.()
+  // A Stop naming a turn that has since ended ends the session only if the provider took it: an
+  // interrupt can stop a follow-up whose turn has not opened, which no client can name.
+  if (endsSession && (input.turnId === undefined || input.turnId === liveTurnId || taken)) {
+    input.endSession?.({ turnId: taken ? liveTurnId : null, stoppedAt })
     cancelled = true
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {
       note = { kind: 'status', text: 'Cancellation requested.' }
     }
+  } else if (runningCommand && !cancelled) {
+    await input.stopChild?.()
+    cancelled = true
+    note = { kind: 'status', text: 'Cancellation requested.' }
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()

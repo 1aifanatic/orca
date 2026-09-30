@@ -1,5 +1,6 @@
-// A Stop ends Claude's child on the shipping adapter: after the interrupt, once the stopped turn
-// ends or its grace runs out, whatever Claude answered. The chat rests; the next send resumes it.
+// A Stop ends Claude's child on the shipping adapter, whatever Claude answered the interrupt. The
+// Stop answers on the interrupt; its next serialized step ends the child once the stopped turn ends
+// or the grace runs out. The chat rests; the next send resumes it.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,7 +11,7 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
 import { ClaudeControlRequestError } from '../../claude/claude-agent-sdk-control-requests'
-import { CLAUDE_STOP_GRACE_MS } from '../../claude/claude-stop-grace'
+import { CLAUDE_STOP_GRACE_MS } from '../../claude/claude-turn-end-wait'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import type { ClaudeStructuredSessionEvent } from '../../claude/claude-structured-session-state'
 import {
@@ -44,6 +45,7 @@ let queued: string[]
 let claude: ReturnType<typeof fakeClaude>
 let events: ClaudeStructuredSessionEvent[]
 let backgroundStates: unknown[]
+let sinkErrors: unknown[]
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-stop-ends-session-'))
@@ -51,6 +53,7 @@ beforeEach(async () => {
   queued = []
   events = []
   backgroundStates = []
+  sinkErrors = []
   claude = fakeClaude({
     replayUuid: null,
     routes: {
@@ -92,6 +95,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
+    onEventSinkError: ({ error }) => sinkErrors.push(error),
     now: () => NOW
   })
   const params = hostTestAttachParams(null, {
@@ -117,12 +121,13 @@ function eventually<T>(assertion: () => T | Promise<T>): Promise<T> {
 
 function envelope(
   method: 'agentSession.send' | 'agentSession.cancel',
-  fields: Record<string, unknown>
+  fields: Record<string, unknown>,
+  fence = store.getRecord(SESSION)!.lease.runtimeFence
 ) {
   return {
     sessionId: SESSION,
     clientOperationId: hostTestOperationId(),
-    expectedRuntimeFence: store.getRecord(SESSION)!.lease.runtimeFence,
+    expectedRuntimeFence: fence,
     payloadFingerprint: computeAgentSessionPayloadFingerprint({
       method,
       sessionId: SESSION,
@@ -131,9 +136,12 @@ function envelope(
   }
 }
 
-async function send(text: string): Promise<string> {
+async function send(text: string, fence?: number): Promise<string> {
   const body = hostTestMessage(text)
-  const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  const sent = await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body }, fence),
+    body
+  })
   if (!sent.ok) {
     throw new Error('send refused')
   }
@@ -178,8 +186,18 @@ async function openTurn(connection: FakeConnection, text = 'Write a long reply.'
   return turnId!
 }
 
-function stop() {
-  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+function stop(turnId?: string) {
+  const fields = turnId === undefined ? {} : { turnId }
+  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
+}
+
+/** Resolves once everything queued on the session's lane so far has run: a Stop's second step. */
+function laneDrained(): Promise<void> {
+  return host['tasks'].serialize(SESSION, async () => {})
+}
+
+function wrote(connection: FakeConnection, text: string): boolean {
+  return connection.sent.some((message) => JSON.stringify(message).includes(text))
 }
 
 const INTERRUPTED_RESULT = {
@@ -188,12 +206,6 @@ const INTERRUPTED_RESULT = {
   is_error: true,
   terminal_reason: 'aborted_streaming',
   uuid: 'interrupted-result'
-}
-
-async function interruptSent(connection: FakeConnection): Promise<void> {
-  await eventually(() =>
-    expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
-  )
 }
 
 async function turnOutcome(): Promise<string | undefined> {
@@ -210,18 +222,18 @@ async function statusTexts(): Promise<string[]> {
   )
 }
 
-it('ends the child once the stopped turn ends, and the chat rests at that turn', async () => {
+it('answers on the interrupt, ends the child once the stopped turn ends, and rests at that turn', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
 
-  const stopped = stop()
-  await interruptSent(connection)
-  // The interrupt was taken: the child stays until Claude ends the turn itself.
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  // The Stop answered on the interrupt Claude took: the child waits for Claude to end the turn.
   expect(connection.closed).toBe(false)
+  expect(await statusTexts()).toEqual(['Cancellation requested.'])
   const ended = Date.now()
   frame(connection, INTERRUPTED_RESULT)
-  await expect(stopped).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
-  // The turn's own end releases the grace; it is not waited out.
+  await laneDrained()
+  // The turn's own end releases the wait; the grace is not waited out.
   expect(Date.now() - ended).toBeLessThan(CLAUDE_STOP_GRACE_MS / 2)
 
   expect(connection.closed).toBe(true)
@@ -243,20 +255,21 @@ it('withdraws a follow-up Claude queued behind the turn before the child ends, n
   queued.push(String(connection.sent.at(-1)!.uuid))
   await eventually(async () => expect((await dispatch(followUp)).state).toBe('pending'))
 
-  const stopped = stop()
-  await interruptSent(connection)
-  frame(connection, INTERRUPTED_RESULT)
-  await expect(stopped).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
 
-  expect(connection.closed).toBe(true)
-  // Withdrawn by Claude's own receipt, so it is never re-sent and never read as delivered.
+  // Withdrawn by Claude's own receipt while the child still runs, so it is never re-sent and never
+  // read as delivered.
+  expect(connection.closed).toBe(false)
   expect(await dispatch(followUp)).toEqual({
     state: 'rejected',
     reason: DISPATCH_REJECTED_CANCELLED
   })
+  frame(connection, INTERRUPTED_RESULT)
+  await laneDrained()
+  expect(connection.closed).toBe(true)
 })
 
-it('ends the child when Claude refuses the interrupt, and says only that the stop was asked', async () => {
+it('ends the child at once when Claude refuses the interrupt, and says only that the stop was asked', async () => {
   claude.routes.interrupt = () => {
     throw new ClaudeControlRequestError('interrupt', 'Claude did not answer the interrupt.')
   }
@@ -265,6 +278,7 @@ it('ends the child when Claude refuses the interrupt, and says only that the sto
 
   const asked = Date.now()
   await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
   // A turn Claude would not interrupt ends only with its child, so there is no grace to wait.
   expect(Date.now() - asked).toBeLessThan(CLAUDE_STOP_GRACE_MS / 2)
 
@@ -275,14 +289,15 @@ it('ends the child when Claude refuses the interrupt, and says only that the sto
   expect(texts.some((text) => text.includes("didn't stop"))).toBe(false)
 })
 
-it('ends the child when the interrupt goes unanswered, with no unconfirmed row', async () => {
+it('ends the child when the interrupt fails, with no unconfirmed row', async () => {
   claude.routes.interrupt = () => {
-    throw new Error('control request timed out')
+    throw new Error('control request lost')
   }
   const connection = claude.connections[0]!
   await openTurn(connection)
 
   await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
 
   expect(connection.closed).toBe(true)
   expect(await turnOutcome()).toBe('cancellation')
@@ -302,10 +317,9 @@ it('ends background work Claude runs when the Stop ends the child', async () => 
   })
   expect(backgroundStates.at(-1)).toMatchObject({ state: 'monitoring' })
 
-  const stopped = stop()
-  await interruptSent(connection)
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   frame(connection, INTERRUPTED_RESULT)
-  await expect(stopped).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
 
   expect(connection.closed).toBe(true)
   expect(backgroundStates.at(-1)).toBeNull()
@@ -314,18 +328,15 @@ it('ends background work Claude runs when the Stop ends the child', async () => 
 it('starts a new child for the next send after a Stop, on the same Claude conversation', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
-  const stopped = stop()
-  await interruptSent(connection)
+  await stop()
   frame(connection, INTERRUPTED_RESULT)
-  await stopped
+  await laneDrained()
 
   const next = await send('Carry on.')
   const resumed = await eventually(() => {
     const started = claude.connections.at(-1)
     expect(started).not.toBe(connection)
-    expect(started?.sent.some((message) => JSON.stringify(message).includes('Carry on.'))).toBe(
-      true
-    )
+    expect(started && wrote(started, 'Carry on.')).toBe(true)
     return started!
   })
   // The wake resumes the same Claude conversation; the first test pins the leaf it resumes after.

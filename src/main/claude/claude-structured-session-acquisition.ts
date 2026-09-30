@@ -9,7 +9,7 @@ import { openClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { buildClaudePermissionCallbacks } from './claude-structured-inbound-control'
 import { resolveClaudeReplayTurn } from './claude-replay-turn-resolution'
 import { claudeSessionStateEndsTurn } from './claude-session-state-turn-over'
-import { settleClaudeStopGrace } from './claude-stop-grace'
+import { settleClaudeTurnEndWaiters } from './claude-turn-end-wait'
 import {
   readClaudeCapabilities,
   readClaudeFrameString,
@@ -121,7 +121,7 @@ export async function acquireClaudeSession({
       }
       // The CLI's idle releases its doubted sends; a late echo still accepts one it goes on to run.
       if (claudeSessionStateEndsTurn(message) && sessions.get(sessionId) === liveSession) {
-        settleClaudeStopGrace(liveSession)
+        settleClaudeTurnEndWaiters(liveSession)
         deps.onSessionIdle?.({ sessionId })
       }
     }

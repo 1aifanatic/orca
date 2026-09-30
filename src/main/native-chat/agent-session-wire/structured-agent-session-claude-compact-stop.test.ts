@@ -213,15 +213,11 @@ it('ends a stopped /compact on its own interrupted result, then ends its child; 
   const first = await compact()
   const { connection, uuid: firstUuid } = await sent('/compact')
 
-  const stopped = stop(first)
-  // The interrupt was taken: the Stop's close waits for Claude to end the command itself.
-  await vi.waitFor(() =>
-    expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
-  )
+  await expect(stop(first)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  // The interrupt was taken: the child waits for Claude to end the command itself.
   expect(connection.closed).toBe(false)
   frame(connection, result(firstUuid, INTERRUPTED))
-  await expect(stopped).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
-  expect(connection.closed).toBe(true)
+  await vi.waitFor(() => expect(connection.closed).toBe(true))
   expect(await commandState(first)).toMatchObject({
     state: 'interrupted',
     outcome: 'cancellation'
@@ -232,7 +228,7 @@ it('ends a stopped /compact on its own interrupted result, then ends its child; 
     const started = claude.connections.at(-1)
     expect(started).not.toBe(connection)
     expect(started?.sent.some((message) => JSON.stringify(message).includes('/compact'))).toBe(true)
-    return started as FakeConnection
+    return started!
   })
   const secondUuid = String(next.sent.at(-1)?.uuid)
   frame(connection, result(firstUuid, INTERRUPTED))
