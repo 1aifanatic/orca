@@ -1,5 +1,5 @@
 // A provider retrying writes a row per attempt, and the journal keeps them all. A transcript
-// draws only the latest row of each run: retry rows with no other drawn row between them.
+// draws only each agent's latest row of a run: retry rows with no other drawn row between them.
 
 import type { NativeChatMessage } from './native-chat-types'
 
@@ -12,28 +12,27 @@ function isProviderRetryRow(message: NativeChatMessage): boolean {
   )
 }
 
-/** `agentOf` names the row's producer: the transcript draws every agent's rows inline, and one
- *  agent's retries must not hide another's. */
+/** The transcript draws every agent's rows inline, so agents retrying at once interleave in one
+ *  run; each keeps its own row, where it first appeared, and one never hides another's. */
 export function collapseProviderRetryRuns(
-  messages: readonly NativeChatMessage[],
-  agentOf: (messageId: string) => string | undefined
+  messages: readonly NativeChatMessage[]
 ): readonly NativeChatMessage[] {
   if (!messages.some(isProviderRetryRow)) {
     return messages
   }
   const drawn: NativeChatMessage[] = []
+  let runStart = 0
   for (const message of messages) {
-    const previous = drawn.at(-1)
-    if (
-      previous &&
-      isProviderRetryRow(previous) &&
-      isProviderRetryRow(message) &&
-      agentOf(previous.id) === agentOf(message.id)
-    ) {
-      drawn[drawn.length - 1] = message
-    } else {
+    if (!isProviderRetryRow(message)) {
       drawn.push(message)
+      runStart = drawn.length
+      continue
     }
+    let slot = runStart
+    while (slot < drawn.length && drawn[slot]?.agentId !== message.agentId) {
+      slot += 1
+    }
+    drawn[slot] = message
   }
   return drawn
 }

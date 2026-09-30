@@ -75,6 +75,25 @@ describe('a run of provider retry rows', () => {
     ])
   })
 
+  it('draws one row per agent when agents retrying at once interleave', () => {
+    expect(
+      drawn([
+        retry(1),
+        retry(1, 'subagent-1'),
+        retry(2),
+        retry(2, 'subagent-1'),
+        retry(3),
+        assistant('Back'),
+        retry(1, 'subagent-1')
+      ])
+    ).toEqual([
+      'Codex is retrying: Reconnecting... 3/5.',
+      'Codex is retrying: Reconnecting... 2/5.',
+      'Back',
+      'Codex is retrying: Reconnecting... 1/5.'
+    ])
+  })
+
   it('is not split by a row that draws nothing', () => {
     const turn = item({ kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1 })
     expect(drawn([retry(1), turn, retry(2)])).toEqual(['Codex is retrying: Reconnecting... 2/5.'])
@@ -113,6 +132,6 @@ describe('a run of provider retry rows', () => {
     const messages: NativeChatMessage[] = [
       { id: 'a', role: 'assistant', blocks: [], timestamp: 1, source: 'transcript' }
     ]
-    expect(collapseProviderRetryRuns(messages, () => undefined)).toBe(messages)
+    expect(collapseProviderRetryRuns(messages)).toBe(messages)
   })
 })

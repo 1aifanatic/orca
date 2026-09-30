@@ -40,10 +40,6 @@ export function projectStructuredAgentSessionMessages(
   )
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
-  // Built only once a retry row asks, so a transcript with none pays nothing for it.
-  let agents: Map<string, string | undefined> | undefined
-  const agentOf = (itemId: string): string | undefined =>
-    (agents ??= new Map(visibleItems.map((item) => [item.itemId, item.agentId]))).get(itemId)
   for (const message of projectItems(visibleItems)) {
     if (queued.has(message.id)) {
       held.push({ ...message, queued: true })
@@ -53,7 +49,7 @@ export function projectStructuredAgentSessionMessages(
   }
   return [
     // After the held sends leave, so a run is split only by what is drawn between its rows.
-    ...collapseProviderRetryRuns(delivered, agentOf),
+    ...collapseProviderRetryRuns(delivered),
     ...held,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
