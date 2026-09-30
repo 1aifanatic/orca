@@ -233,9 +233,13 @@ try {
   $hostAcl.SetSecurityDescriptorSddlForm('D:P(A;;FA;;;SY)(A;;FA;;;BA)',[Security.AccessControl.AccessControlSections]::Access)
   Set-Acl -LiteralPath $hostKey -AclObject $hostAcl
   $report.hostKeyAcl=(Get-Acl -LiteralPath $hostKey).Sddl
-  $authorized=Join-Path $root 'authorized_keys'
-  Copy-Item -LiteralPath "$clientKey.pub" -Destination $authorized
-  Invoke-Bounded icacls.exe (@($authorized,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F')+@($ownedAccounts | ForEach-Object {"*$($_.sid):R"})) | Out-Null
+  # One file per account: inbox sshd 8.1 refuses a keys file any other account can even read.
+  foreach($account in $ownedAccounts){
+    $authorized=Join-Path $root "authorized_keys_$($account.name)"
+    Copy-Item -LiteralPath "$clientKey.pub" -Destination $authorized
+    Invoke-Bounded icacls.exe @($authorized,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($account.sid):R") | Out-Null
+  }
+  $authorized=Join-Path $root 'authorized_keys_%u'
   $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
   $config=Join-Path $root 'sshd_config'
   $hostPosix=$hostKey.Replace('\','/');$authPosix=$authorized.Replace('\','/');$pidPosix=(Join-Path $root 'sshd.pid').Replace('\','/')

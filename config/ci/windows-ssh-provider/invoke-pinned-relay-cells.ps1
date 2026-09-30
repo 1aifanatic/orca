@@ -65,7 +65,8 @@ try {
     $env:ORCA_RUN_SSH_WINDOWS_HOST='1';$env:ORCA_SSH_WINDOWS_HOST_CELL=$descriptor
     Write-Host "Windows host cell $cell ($Target, DefaultShell $shell, account $($account.name))"
     & node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/ssh/ssh-relay-windows-host-lane.test.ts --reporter=verbose 2>&1 | Tee-Object -FilePath (Join-Path $ReceiptRoot "$cell.log")
-    $code=$LASTEXITCODE
+    # Why global: under the workflow's GetNewClosure callback, bare $LASTEXITCODE reads a stale captured copy.
+    $code=$global:LASTEXITCODE
     if(Test-Path -LiteralPath $Context.forbiddenToolLog){Copy-Item -LiteralPath $Context.forbiddenToolLog -Destination (Join-Path $ReceiptRoot "$cell.forbidden-tool-calls.log")}
     $summary.Add(@{cell=$cell;shell=$shell;account=$account.name;exitCode=$code})
     if($code -ne 0){$failed.Add($cell)}
