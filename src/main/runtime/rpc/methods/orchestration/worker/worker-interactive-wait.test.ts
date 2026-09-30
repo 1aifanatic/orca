@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { ORCHESTRATION_METHODS } from '../../orchestration'
-import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import {
+  createRootDispatch,
+  reattachDispatchConsumer
+} from '../../../../orchestration/db/root-dispatch-test-fixture'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -109,7 +112,7 @@ describe('worker-show interactive wait (STA-3714, STA-4513)', () => {
       'launch-hash', // A dispatch recorded against a process that has since been replaced.
       opts?.breakIdentity === true ? `${incarnation}:replaced` : incarnation
     )
-    db.setDispatchConsumer({
+    reattachDispatchConsumer(db, {
       dispatchId: dispatch.id,
       paneKey,
       processIncarnation: opts?.breakIdentity === true ? `${incarnation}:replaced` : incarnation

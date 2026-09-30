@@ -48,7 +48,6 @@ export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
         task_title?: string | null
         display_name?: string | null
         status: string
-        result?: string | null
         assignee_handle?: string | null
         dispatch_id?: string | null
         spec_truncated?: boolean
@@ -83,10 +82,7 @@ export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
           if (task.status === 'dispatched' && task.assignee_handle) {
             return `${head} -> ${task.assignee_handle} (${task.dispatch_id ?? '?'})`
           }
-          // Why: a cancelled Task is `failed` with its reason in `result`; show which kind of failure.
-          return task.status === 'failed' && task.result
-            ? `${head}: ${task.result.slice(0, 60)}`
-            : head
+          return head
         })
         .join('\n')
       return r.legacyReadOnly ? `Legacy Run ${r.runId} (read-only)\n${tasks}` : tasks

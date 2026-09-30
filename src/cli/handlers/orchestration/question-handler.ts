@@ -95,6 +95,7 @@ export const ORCHESTRATION_QUESTION_HANDLER: Record<string, CommandHandler> = {
         // Why: report the server's clamped effective budget rather than overstating the wait.
         const waitedMs = result.result.timeoutMs ?? timeoutMs
         const messageId = result.result.messageId
+        const dispatchCapability = getOptionalStringFlag(flags, 'dispatch-capability')
         const resumeCommand =
           messageId === null
             ? undefined
@@ -104,6 +105,7 @@ export const ORCHESTRATION_QUESTION_HANDLER: Record<string, CommandHandler> = {
                 'ask',
                 // A session's resume is flagless: its injected id names it again.
                 ...(from ? ['--from', from] : []),
+                ...(dispatchCapability ? ['--dispatch-capability', dispatchCapability] : []),
                 '--resume',
                 messageId,
                 '--timeout-ms',

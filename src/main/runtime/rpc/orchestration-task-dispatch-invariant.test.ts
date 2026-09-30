@@ -9,6 +9,7 @@ import { OrchestrationDb } from '../orchestration/db'
 import type { RpcRequest, RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { ORCHESTRATION_METHODS } from './methods/orchestration'
+import { reattachDispatchConsumer } from '../orchestration/db/root-dispatch-test-fixture'
 
 const COORDINATOR_HANDLE = 'term_invariant_coordinator'
 const COORDINATOR_PANE = 'tab_coord:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -293,7 +294,7 @@ async function createCapableDispatch(
     return { dispatch }
   }
   const dispatch = await dispatchTask(harness, taskId, WORKER_HANDLE)
-  harness.db.setDispatchConsumer({
+  reattachDispatchConsumer(harness.db, {
     dispatchId: dispatch.id,
     paneKey: WORKER_PANE,
     processIncarnation: WORKER_PROCESS

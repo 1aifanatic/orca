@@ -10,7 +10,10 @@ import { OrchestrationDb } from '../orchestration/db'
 import type { RpcRequest, RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { ORCHESTRATION_METHODS } from './methods/orchestration'
-import { createRootDispatch } from '../orchestration/db/root-dispatch-test-fixture'
+import {
+  createRootDispatch,
+  reattachDispatchConsumer
+} from '../orchestration/db/root-dispatch-test-fixture'
 
 const WORKER_HANDLE = 'term_pre_update_worker'
 const WORKER_PANE = 'tab_pre_update:33333333-3333-4333-8333-333333333333'
@@ -66,7 +69,7 @@ function createUpdateHarness(): Harness {
     createdByTerminalHandle: COORDINATOR_HANDLE
   })
   const dispatch = createRootDispatch(oldRuntimeDb, task.id, WORKER_HANDLE, WORKER_PANE)
-  oldRuntimeDb.setDispatchConsumer({
+  reattachDispatchConsumer(oldRuntimeDb, {
     dispatchId: dispatch.id,
     paneKey: WORKER_PANE,
     processIncarnation: PROCESS_INCARNATION

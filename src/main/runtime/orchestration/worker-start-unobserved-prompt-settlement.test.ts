@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { OrchestrationDb } from './db'
+import { reattachDispatchConsumer } from './db/root-dispatch-test-fixture'
 
 const WORKER_PANE_KEY = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const INCARNATION = 'runtime_test:term_worker:1'
@@ -13,7 +14,7 @@ function startWorker(spec: string): { taskId: string; dispatchId: string } {
     taskId: task.id,
     startOptions: {}
   })
-  db.setDispatchConsumer({
+  reattachDispatchConsumer(db, {
     dispatchId: started.dispatch.id,
     paneKey: WORKER_PANE_KEY,
     processIncarnation: INCARNATION
@@ -28,14 +29,11 @@ describe('worker start settled by an unobserved prompt', () => {
     db = new OrchestrationDb(':memory:')
     const { taskId, dispatchId } = startWorker('run to completion')
 
-    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled', {
-      retainCapability: true
-    })
+    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled')
 
     expect(db.getDispatchContextById(dispatchId)).toMatchObject({
       status: 'failed',
-      last_failure: 'agent_prompt_stalled',
-      capability_revoked_at: null
+      last_failure: 'agent_prompt_stalled'
     })
 
     expect(
@@ -51,7 +49,7 @@ describe('worker start settled by an unobserved prompt', () => {
     expect(db.getWorkerDispatch(dispatchId)).toMatchObject({ state: 'succeeded', stage: 'settled' })
   })
 
-  it('revokes and stays settled when the start failed for any other cause', () => {
+  it('stays settled when the start failed for any other cause', () => {
     db = new OrchestrationDb(':memory:')
     const { taskId, dispatchId } = startWorker('never became ready')
 
@@ -68,9 +66,7 @@ describe('worker start settled by an unobserved prompt', () => {
     db = new OrchestrationDb(':memory:')
     const { taskId, dispatchId } = startWorker('reports its own failure')
 
-    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled', {
-      retainCapability: true
-    })
+    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled')
 
     expect(
       db.settleWorkerReport({ taskId, dispatchId, outcome: 'failed', result: 'build broke on X' })
@@ -92,9 +88,7 @@ describe('worker start settled by an unobserved prompt', () => {
   it('rolls back every prompt-stall correction when the worker transition fails', () => {
     db = new OrchestrationDb(':memory:')
     const { taskId, dispatchId } = startWorker('atomic correction')
-    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled', {
-      retainCapability: true
-    })
+    db.failWorkerStart(dispatchId, 'dispatch_input', 'agent_prompt_stalled')
     // The worker correction is the last of the three, so aborting it must undo the other two.
     db.db.exec(`
       CREATE TRIGGER reject_worker_prompt_stall_correction
@@ -114,8 +108,7 @@ describe('worker start settled by an unobserved prompt', () => {
     expect(db.getTask(taskId)).toMatchObject({ status: 'failed', result: null })
     expect(db.getDispatchContextById(dispatchId)).toMatchObject({
       status: 'failed',
-      last_failure: 'agent_prompt_stalled',
-      capability_revoked_at: null
+      last_failure: 'agent_prompt_stalled'
     })
     expect(db.getWorkerDispatch(dispatchId)).toMatchObject({
       state: 'failed',
@@ -147,9 +140,7 @@ describe('worker start settled by an unobserved prompt', () => {
       .prepare('UPDATE worker_terminal_resources SET pane_key = ? WHERE owner_dispatch_id = ?')
       .run('tab_custody:cccccccc-cccc-4ccc-8ccc-cccccccccccc', started.dispatch.id)
 
-    db.failWorkerStart(started.dispatch.id, 'dispatch_input', 'agent_prompt_stalled', {
-      retainCapability: true
-    })
+    db.failWorkerStart(started.dispatch.id, 'dispatch_input', 'agent_prompt_stalled')
 
     expect(db.getDispatchContextById(started.dispatch.id)).toMatchObject({
       assignee_pane_key: WORKER_PANE_KEY,

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { ORCHESTRATION_METHODS } from '../../orchestration'
-import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import {
+  createRootDispatch,
+  reattachDispatchConsumer
+} from '../../../../orchestration/db/root-dispatch-test-fixture'
 import { eraseRpcMethods } from '../../../core'
 
 describe('manual Dispatch observation', () => {
@@ -89,7 +92,7 @@ describe('manual Dispatch observation', () => {
         runtime
       })
     ).resolves.toMatchObject({
-      worker: { state: 'unsupervised', stage: 'injected' },
+      worker: { state: 'unsupervised', stage: 'context_only' },
       observation: { status: 'live', exactWorker: true }
     })
   })
@@ -126,7 +129,7 @@ describe('manual Dispatch observation', () => {
       'launch-hash',
       'runtime_test:term_worker:1'
     )
-    db.setDispatchConsumer({
+    reattachDispatchConsumer(db, {
       dispatchId: dispatch.id,
       paneKey: 'tab_worker:leaf_worker',
       processIncarnation: 'runtime_test:term_worker:1'
@@ -180,7 +183,7 @@ describe('manual Dispatch observation', () => {
       dispatch: dispatch.id
     })) as { projection: { liveness: { verdict: string } } | null }
     expect(workerShow).toMatchObject({
-      worker: { state: 'unsupervised', stage: 'injected', agentTerminalHandle: 'term_worker' },
+      worker: { state: 'unsupervised', stage: 'context_only', agentTerminalHandle: 'term_worker' },
       observation: { status: 'live', exactWorker: true }
     })
     // Why: worker-show published only PTY liveness, so it read `live` for a dispatch that

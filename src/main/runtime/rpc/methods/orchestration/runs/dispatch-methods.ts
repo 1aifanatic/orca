@@ -136,9 +136,6 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         creator: resolveDispatchCreator(runtime, params.from, orchestrationCaller),
         maxDepth: runtime.getNestedWorkerMaxDepth()
       })
-      if (params.inject && assigneePaneKey && processIncarnation) {
-        db.setDispatchConsumer({ dispatchId: ctx.id, paneKey: assigneePaneKey, processIncarnation })
-      }
 
       // Why: built after ctx so dispatchId is the real ctx.id, letting heartbeats attribute liveness to a specific dispatch context, not just a task.
       const preamble = buildDispatchPreamble({

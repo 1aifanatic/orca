@@ -177,8 +177,8 @@ function exposeContextOnlyWorker(dispatch: DispatchContextRow) {
     dispatchId: dispatch.id,
     runtimeEpoch: null,
     state: 'unsupervised' as const,
-    // Why: only `dispatch --inject` attaches a consumer to a Dispatch that has no worker row.
-    stage: dispatch.consumer_generation > 0 ? 'injected' : 'context_only',
+    // Why: with no worker row Orca supervises only the context; it keeps no record of an --inject paste.
+    stage: 'context_only',
     worktreeId: null,
     agentTerminalHandle: dispatch.assignee_handle,
     setupState: 'not_applicable',

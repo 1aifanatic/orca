@@ -15,7 +15,10 @@ import {
   WORKER_HANDLE,
   WORKER_PANE
 } from './orchestration-legacy-compatibility-dispatcher-test-fixture'
-import { createRootDispatch } from '../orchestration/db/root-dispatch-test-fixture'
+import {
+  createRootDispatch,
+  reattachDispatchConsumer
+} from '../orchestration/db/root-dispatch-test-fixture'
 
 afterEach(() => {
   cleanupLegacyCompatibilityDispatcherHarnesses()
@@ -320,7 +323,7 @@ function createCurrentDispatch(harness: ReturnType<typeof createHarness>): {
     CURRENT_WORKER_HANDLE,
     CURRENT_WORKER_PANE
   )
-  harness.db.setDispatchConsumer({
+  reattachDispatchConsumer(harness.db, {
     dispatchId: dispatch.id,
     paneKey: CURRENT_WORKER_PANE,
     processIncarnation: 'process-1'
@@ -354,7 +357,7 @@ async function createReusedCurrentDispatch(
   })
   const task = harness.db.createTask({ spec: 'reused terminal assignment', runId: run.id })
   const dispatch = createRootDispatch(harness.db, task.id, WORKER_HANDLE, WORKER_PANE)
-  harness.db.setDispatchConsumer({
+  reattachDispatchConsumer(harness.db, {
     dispatchId: dispatch.id,
     paneKey: WORKER_PANE,
     processIncarnation: 'process-1'

@@ -5,7 +5,10 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { openDecisionGateFromMessage } from '../../../../orchestration/coordinator-decision-gates'
 import { applyEscalationToDispatch } from '../../../../orchestration/coordinator-escalation-triage'
 import { createOrchestrationRpcHarness } from '../rpc-test-harness'
-import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import {
+  createRootDispatch,
+  reattachDispatchConsumer
+} from '../../../../orchestration/db/root-dispatch-test-fixture'
 
 describe('orchestration.send Dispatch authority', () => {
   const harness = createOrchestrationRpcHarness()
@@ -44,7 +47,7 @@ describe('orchestration.send Dispatch authority', () => {
         handle === 'term_attacker' ? 'tab_attacker:leaf_attacker' : harness.coordinatorPaneKey
       )
       if (!legacyAuthority) {
-        db.setDispatchConsumer({
+        reattachDispatchConsumer(db, {
           dispatchId: attacker.id,
           paneKey: 'tab_attacker:leaf_attacker',
           processIncarnation: 'runtime_test:term_attacker:1'
