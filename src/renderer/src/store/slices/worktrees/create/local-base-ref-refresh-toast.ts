@@ -48,7 +48,7 @@ export function showLocalBaseRefRefreshToast(
   const worktreeName = createdWorktree ? resolveWorktreeDisplayName(createdWorktree).trim() : ''
   const detail = localBaseRefRefreshFailureDetail(result)
 
-  // Why: Infinity so create-time failures aren't buried; one id per repo and branch because every create that joined the same refresh reports the same fact.
+  // Why: Infinity so create-time failures aren't buried; one id per repo and branch because creates toward one target share a run and the latest result for the branch is its current state.
   toast.warning(
     worktreeName
       ? translate(

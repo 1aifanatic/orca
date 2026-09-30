@@ -185,6 +185,8 @@ describe('concurrent local base refreshes toward different remotes with real Git
 
     expect(results[0]).toMatchObject({ baseRef: 'origin/main', status: 'updated' })
     expect(results[1]).toMatchObject({ baseRef: 'upstream/main', status: 'updated' })
+    // Local is now ahead of origin/main: the existing ahead-of-requested-remote rule, not a sharing artifact.
+    expect(results[2]).toMatchObject({ baseRef: 'origin/main', status: 'skipped_not_fast_forward' })
     expect(git(repoPath, ['rev-parse', 'main'])).toBe(upstreamOid)
     expect(spy.maxConcurrent()).toBe(1)
   })
@@ -202,6 +204,8 @@ describe('concurrent local base refreshes toward different remotes with real Git
     expect(results[0]).toMatchObject({ baseRef: 'upstream/main', status: 'updated' })
     // Local already equals upstream/main, so the second upstream create has nothing to report.
     expect(results[1]).toBeUndefined()
+    // Local is now ahead of origin/main: the existing ahead-of-requested-remote rule, not a sharing artifact.
+    expect(results[2]).toMatchObject({ baseRef: 'origin/main', status: 'skipped_not_fast_forward' })
     expect(git(repoPath, ['rev-parse', 'main'])).toBe(upstreamOid)
     expect(spy.maxConcurrent()).toBe(1)
   })

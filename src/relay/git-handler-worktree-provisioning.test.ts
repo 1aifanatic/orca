@@ -417,9 +417,11 @@ describe('GitHandler', () => {
       ])
 
       const owner = reportedWorktreePath(tmpDir)
-      expect(results.slice(0, 2)).toEqual([
+      // The third is the existing ahead-of-requested-remote rule (local is past origin/main), not a sharing artifact.
+      expect(results).toEqual([
         { status: 'updated', ownerWorktreePath: owner },
-        { status: 'updated', ownerWorktreePath: owner }
+        { status: 'updated', ownerWorktreePath: owner },
+        { status: 'skipped_not_fast_forward' }
       ])
       expect(revParse('HEAD')).toBe(upstreamSha)
       expect(maxConcurrentMerges()).toBe(1)
@@ -434,9 +436,11 @@ describe('GitHandler', () => {
         'origin'
       ])
 
-      expect(results.slice(0, 2)).toEqual([
+      // The third is the existing ahead-of-requested-remote rule (local is past origin/main), not a sharing artifact.
+      expect(results).toEqual([
         { status: 'updated', ownerWorktreePath: reportedWorktreePath(tmpDir) },
-        { status: 'nothing_to_do' }
+        { status: 'nothing_to_do' },
+        { status: 'skipped_not_fast_forward' }
       ])
       expect(revParse('HEAD')).toBe(upstreamSha)
       expect(maxConcurrentMerges()).toBe(1)
