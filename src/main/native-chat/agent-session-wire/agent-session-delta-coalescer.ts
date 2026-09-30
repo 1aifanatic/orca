@@ -34,7 +34,8 @@ export type AgentSessionDeltaSnapshot = {
 
 export type AgentSessionDeltaCoalescerDeps = {
   /** Called with the FULL text accumulated for the key, not the increment. `opening` marks the
-   *  row-creating emit and the first snapshot after it, which a growth throttle must not skip. */
+   *  row-creating emit and the first snapshot after it that changed the text, which a growth
+   *  throttle must not skip. */
   emit: (
     key: string,
     text: string,
@@ -90,7 +91,10 @@ export function createAgentSessionDeltaCoalescer(
       observedBytes: number
       truncated: boolean
       dirty: boolean
-      /** Successful emits, counted to 2: the first makes the row, the second is its first snapshot. */
+      /** The text differs from the last successful emit's. */
+      changed: boolean
+      /** Successful emits that changed the text, counted to 2: the first makes the row, the second
+       *  is its first snapshot. */
       emits: number
     }
   >()
@@ -108,13 +112,16 @@ export function createAgentSessionDeltaCoalescer(
       key,
       text,
       { text, observedBytes: stream.observedBytes, truncated: stream.truncated },
-      stream.emits < 2
+      stream.emits < 2 && stream.changed
     )
     if (emitted === false) {
       return false
     }
     stream.dirty = false
-    stream.emits = Math.min(2, stream.emits + 1)
+    if (stream.changed) {
+      stream.changed = false
+      stream.emits = Math.min(2, stream.emits + 1)
+    }
     return true
   }
 
@@ -171,6 +178,7 @@ export function createAgentSessionDeltaCoalescer(
           observedBytes: 0,
           truncated: false,
           dirty: false,
+          changed: true,
           emits: 0
         }
         if (!deps.isProtected?.(key)) {
@@ -195,9 +203,10 @@ export function createAgentSessionDeltaCoalescer(
         stream.chunks = next.chunks
         stream.retainedBytes = next.retainedBytes
         stream.truncated = next.truncated
-        // An empty delta changes no text, so it owes no emit.
+        stream.dirty = true
+        // An empty delta still owes an emit, but not a forced one: its text is unchanged.
         if (deltaBytes > 0) {
-          stream.dirty = true
+          stream.changed = true
         }
       }
       streams.set(key, stream)

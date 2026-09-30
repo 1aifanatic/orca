@@ -124,15 +124,27 @@ describe('agent-session delta coalescer', () => {
     expect(emitted).toEqual([['item-1', 'hi']])
   })
 
-  it('owes no emit for an empty delta, even as the forced first snapshot', () => {
+  // Forced past a growth throttle, an unchanged snapshot would rewrite the row with the same text.
+  it('never marks a snapshot an empty delta left unchanged as the opening', () => {
     const clock = manualClock()
-    const { instance, emitted } = coalescer(clock)
+    const emits: [string, boolean][] = []
+    const instance = createAgentSessionDeltaCoalescer({
+      emit: (_key, text, _snapshot, opening) => emits.push([text, opening]),
+      schedule: clock.schedule
+    })
 
-    instance.append('item-1', 'Hello there')
+    instance.append('item-1', 'Hello')
     instance.append('item-1', '')
     clock.fire()
+    instance.append('item-1', ' there')
+    clock.fire()
 
-    expect(emitted).toEqual([['item-1', 'Hello there']])
+    // The first snapshot that changed the text is still the opening one.
+    expect(emits).toEqual([
+      ['Hello', true],
+      ['Hello', false],
+      ['Hello there', true]
+    ])
   })
 
   it('flushes pending text ahead of a lifecycle event and cancels the window', () => {
