@@ -91,10 +91,16 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     for (const session of restored) {
       this.projectStructuredAgentSessionTab({ ...session, activate: false, notify: false })
     }
-    // After the tabs are out, so no chat's history holds the list or paint; each chat's status row
-    // arrives as its history opens. One chat's failure leaves the others and the list alone.
-    void host?.restoreReadableSessions(listedIds).catch((error: unknown) => {
-      console.warn('[structured-agent-session] restoring chat history after listing failed', error)
+    // After the list's answer has gone out: the pass's synchronous start would otherwise run on the
+    // listing's stack. Each chat's status row arrives as its history opens; one chat's failure
+    // leaves the others and the list alone.
+    setImmediate(() => {
+      void host?.restoreReadableSessions(listedIds).catch((error: unknown) => {
+        console.warn(
+          '[structured-agent-session] restoring chat history after listing failed',
+          error
+        )
+      })
     })
     const wasUnverifiable = this.structuredAgentSessionInventoryUnverifiable
     // No host means no one can say which chats exist; with none on disk, empty is the answer.

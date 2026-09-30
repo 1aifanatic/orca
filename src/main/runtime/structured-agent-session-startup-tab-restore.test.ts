@@ -217,8 +217,9 @@ function startupRuntime(options: { afterInstall?: () => void; profileChats?: str
   }
 }
 
-/** The listing starts the history restore without awaiting it; this joins that pass. */
+/** The listing starts the history restore after its answer, without awaiting it; this joins it. */
 async function historyRestored(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve))
   await getStructuredAgentSessionHost()!.restoreReadableSessions()
 }
 

@@ -83,6 +83,9 @@ describe('structured session cold restoration', () => {
     const second = runtime.restoreStructuredAgentSessionTabs()
     expect(second).toBe(first)
     await Promise.all([first, second])
+    // The history pass starts after the list's answer has gone out, never on its stack.
+    expect(restoreReadableSessions).not.toHaveBeenCalled()
+    await new Promise((resolve) => setImmediate(resolve))
 
     expect(hydrate).toHaveBeenCalledWith('workspace-1', {
       allowAttachedWindow: true,
@@ -146,7 +149,9 @@ describe('structured session cold restoration', () => {
 
     await runtime.restoreStructuredAgentSessionTabs()
 
-    expect(restoreReadableSessions).toHaveBeenCalledWith(['session-survives-rollback'])
+    await vi.waitFor(() =>
+      expect(restoreReadableSessions).toHaveBeenCalledWith(['session-survives-rollback'])
+    )
   })
 
   it('treats an empty durable visible-session index as authoritative', async () => {
@@ -200,7 +205,7 @@ describe('structured session cold restoration', () => {
 
     await runtime.restoreStructuredAgentSessionTabs()
 
-    expect(restoreReadableSessions).toHaveBeenCalledWith([])
+    await vi.waitFor(() => expect(restoreReadableSessions).toHaveBeenCalledWith([]))
   })
 
   it('normalizes a restored tab id and removes it when closed', async () => {

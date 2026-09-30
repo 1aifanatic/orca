@@ -12,6 +12,7 @@ import {
   restTestChat,
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
+import { AgentSessionStoreTransactionQueue } from './agent-session-store-transaction-queue'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -45,6 +46,7 @@ afterEach(async () => {
   // The listing starts the lease check and the restore without awaiting either; both finish before
   // the rig removes their files.
   await rig.host.reconcileRestartLeases()
+  await new Promise((resolve) => setImmediate(resolve))
   await rig.host.restoreReadableSessions()
   setStructuredAgentSessionHost(null)
   await rig.dispose()
@@ -120,6 +122,40 @@ describe('listing chat tabs at startup', () => {
     expect(opened).toBe(3)
   })
 
+  it('starts the history restore only after the list has answered', async () => {
+    for (const sessionId of ['session-1', 'session-2']) {
+      await restTestChat(rig, sessionId, { message: sessionId })
+    }
+    await rig.crash()
+    await rig.boot()
+    const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
+    const { listAll } = restartedRuntime()
+
+    expect(await listAll()).toEqual(['session-1', 'session-2'])
+    // The caller has the answer before the pass has started, let alone opened a chat.
+    expect(restore).not.toHaveBeenCalled()
+    expect(rig.adapter.historyFilePath).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(rig.host.hasSession('session-2')).toBe(true))
+    expect(restore).toHaveBeenCalledOnce()
+  })
+
+  it('writes nothing to the record store while it lists', async () => {
+    const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5']
+    for (const sessionId of ids) {
+      await restTestChat(rig, sessionId, { message: sessionId })
+    }
+    await rig.crash()
+    await rig.boot()
+    // Settled first, so a write here could only be the listing's own.
+    await rig.host.reconcileRestartLeases()
+    const writes = vi.spyOn(AgentSessionStoreTransactionQueue.prototype, 'transact')
+    const { listAll } = restartedRuntime()
+
+    expect(await listAll()).toEqual(ids)
+    // Every write, a tab's visibility included, is one store transaction.
+    expect(writes).not.toHaveBeenCalled()
+  })
+
   it('answers while the startup lease check never finishes (T2)', async () => {
     await restTestChat(rig, 'session-1', { message: 'one' })
     await restTestChat(rig, 'session-2', { message: 'two' })
@@ -180,6 +216,7 @@ describe('listing chat tabs at startup', () => {
     const { listAll } = restartedRuntime()
 
     expect(await within(listAll())).toEqual(ids)
+    await vi.waitFor(() => expect(restore).toHaveBeenCalledOnce())
     await restore.mock.results[0]?.value
     for (const sessionId of ['session-5', 'session-6']) {
       expect(rig.host.hasSession(sessionId)).toBe(true)
