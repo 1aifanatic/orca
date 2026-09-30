@@ -30,14 +30,17 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
     // Why: a relay already chose the live owner on its own host; re-deciding against a record it
-    // replaced would pin the pane to an owner this desktop can never check. Exits still need our fence.
+    // replaced would pin the pane to an owner this desktop can never check. Exits still need our
+    // fence, except the host-stamped replay of the relay's own settled exit.
     const relayOwner = incoming.connectionId !== null ? incoming.agentPresence : undefined
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
     const stored = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
       | EnrichedAgentHookEventPayload
       | undefined
-    const transitioned =
-      relayOwner?.process && !relayOwner.ended ? incoming : transitionHookPresence(incoming, stored)
+    const relayDecided =
+      relayOwner?.process &&
+      (!relayOwner.ended || (incoming.agentPresenceFromExecutionHost && incoming.isReplay === true))
+    const transitioned = relayDecided ? incoming : transitionHookPresence(incoming, stored)
     if (!transitioned) {
       return undefined
     }
