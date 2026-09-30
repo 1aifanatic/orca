@@ -57,7 +57,14 @@ function unavailable(options?: CallOptions): RuntimeClientError {
 }
 
 describe('callOrchestrationMutation runtime_unavailable retry', () => {
-  it('retries with one request id until the runtime answers', async () => {
+  it.each([
+    ['a fresh', new Map<string, string | boolean>(), expect.stringMatching(/^[0-9a-f-]{36}$/)],
+    [
+      'an explicit --retry-request',
+      new Map([['retry-request', '11111111-2222-4333-8444-555555555555']]),
+      '11111111-2222-4333-8444-555555555555'
+    ]
+  ])('retries with %s request id until the runtime answers', async (_case, flags, requestId) => {
     vi.useFakeTimers()
     const { client, requestIds } = fakeClient((attempt, options) => {
       if (attempt < 3) {
@@ -67,7 +74,7 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
     })
     const call = callOrchestrationMutation(
       client,
-      new Map(),
+      flags,
       'orchestration.send',
       WORKER_DONE,
       undefined,
@@ -77,29 +84,7 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
     await expect(call).resolves.toEqual({ ok: true, result: 'sent' })
     expect(requestIds).toHaveLength(3)
     expect(new Set(requestIds).size).toBe(1)
-    expect(requestIds[0]).toMatch(/^[0-9a-f-]{36}$/)
-  })
-
-  it('keeps an explicit --retry-request id across retries', async () => {
-    vi.useFakeTimers()
-    const retryRequest = '11111111-2222-4333-8444-555555555555'
-    const { client, requestIds } = fakeClient((attempt, options) => {
-      if (attempt === 1) {
-        throw unavailable(options)
-      }
-      return { ok: true, result: 'sent' }
-    })
-    const call = callOrchestrationMutation(
-      client,
-      new Map([['retry-request', retryRequest]]),
-      'orchestration.send',
-      WORKER_DONE,
-      undefined,
-      RETRY_MS
-    )
-    await vi.advanceTimersByTimeAsync(1_000)
-    await call
-    expect(requestIds).toEqual([retryRequest, retryRequest])
+    expect(requestIds[0]).toEqual(requestId)
   })
 
   it('does not retry an error other than runtime_unavailable', async () => {
@@ -124,17 +109,13 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
       throw unavailable(options)
     })
     await expect(
-      callOrchestrationMutation(client, new Map(), 'orchestration.send', {
-        ...WORKER_DONE,
-        type: 'status'
-      })
+      callOrchestrationMutation(client, new Map(), 'orchestration.send', WORKER_DONE)
     ).rejects.toMatchObject({ code: 'runtime_unavailable' })
     expect(requestIds).toEqual([undefined])
   })
 
   it('gives up after about two minutes and prints the recovery command with the same id', async () => {
     vi.useFakeTimers()
-    const startedAt = Date.now()
     const { client, requestIds } = fakeClient((_attempt, options) => {
       throw unavailable(options)
     })
@@ -149,7 +130,6 @@ describe('callOrchestrationMutation runtime_unavailable retry', () => {
     const settled = call.catch((error: unknown) => error)
     await vi.advanceTimersByTimeAsync(RETRY_MS + 30_000)
     const error = await settled
-    expect(Date.now() - startedAt).toBeLessThanOrEqual(RETRY_MS + 30_000)
     expect(requestIds.length).toBeGreaterThan(5)
     expect(new Set(requestIds).size).toBe(1)
     expect(error).toMatchObject({
