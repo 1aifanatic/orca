@@ -146,7 +146,8 @@ function makeSession(
 
 type MockAdapter = {
   protocolVersion: number
-  listSessions: ReturnType<typeof vi.fn>
+  // Why the call signature: readSessions reads through whatever mock a case swapped in.
+  listSessions: ReturnType<typeof vi.fn> & (() => Promise<unknown>)
   readSessions: ReturnType<typeof vi.fn>
   hasPty: ReturnType<typeof vi.fn>
   shutdown: ReturnType<typeof vi.fn>

@@ -259,7 +259,7 @@ export function createRemoveWorktree(
         get,
         worktreeId,
         hostId,
-        runtimeEnvironmentId: removalRoute?.runtimeEnvironmentId,
+        runtimeEnvironmentId: removalRoute?.runtimeEnvironmentId ?? undefined,
         removalResult,
         worktreeBeforeRemoval,
         target,
