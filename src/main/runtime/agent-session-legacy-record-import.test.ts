@@ -394,7 +394,8 @@ describe('the tab index from before the table', () => {
 
     expect(journalPragmaNumber(database.db, 'user_version')).toBe(4)
     expect(store.listRecords().map(({ sessionId }) => sessionId)).toEqual([BETA, ALPHA])
-    expect(store.getVisibleSessionTabIndex().present).toBe(false)
+    // Restore then takes the profile's tabs, beside the tab the owed-era chat left.
+    expect(store.getVisibleSessionTabIndex()).toEqual({ present: false, sessionIds: [BETA] })
   })
 
   it('reads a recorded table, never the record field', async () => {

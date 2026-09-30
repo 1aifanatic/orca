@@ -137,7 +137,12 @@ export function showAgentSessionTabs(
 ): void {
   for (const sessionId of sessionIds) {
     if (state.records.has(sessionId)) {
-      setAgentSessionTabVisibility(state, sessionId, true)
+      setAgentSessionTabVisibility(
+        state,
+        sessionId,
+        true,
+        state.unrecordedSessionTabs?.tabIdFor(sessionId)
+      )
     }
   }
 }

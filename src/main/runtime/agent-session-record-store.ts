@@ -109,9 +109,14 @@ export class AgentSessionRecordStore {
       this.state.records.has(sessionId)
     )
 
+  /** Unrecorded, `sessionIds` are the tab rows a chat opened while the import was owed left. */
   getVisibleSessionTabIndex = (): { present: boolean; sessionIds: string[] } => ({
     present: this.state.sessionTabs !== null,
-    sessionIds: this.listVisibleSessionIds()
+    sessionIds: this.state.sessionTabs
+      ? this.listVisibleSessionIds()
+      : (this.state.unrecordedSessionTabs?.sessionIds() ?? []).filter((sessionId) =>
+          this.state.records.has(sessionId)
+        )
   })
 
   /** The id of the chat tab showing this conversation, if one does. */

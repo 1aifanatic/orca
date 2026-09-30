@@ -58,6 +58,7 @@ const PROMPT = 'add a retry'
 const CHAT_A = 'chat-a-0001'
 const CHAT_B = 'chat-b-0002'
 const CLEARED = 'chat-s-0003'
+const OWED = 'chat-o-0004'
 
 let root: string
 
@@ -166,6 +167,26 @@ async function seedProfile(
     await seedTestAgentSessionStoreFromNewerBuild(root)
   }
   return { path: journalDatabasePath(root) }
+}
+
+/** A chat opened, with its tab, while the records file could not be read and the copy was owed. */
+async function seedChatOpenedWhileOwed(record: AgentSessionRecord, tabId: string): Promise<void> {
+  // A directory where the file belongs: the read fails in a way that can clear.
+  await mkdir(legacyAgentSessionStorePath(root), { recursive: true })
+  const database = await openStructuredAgentSessionJournalDatabase({
+    stateDirectory: root,
+    hostId: 'local',
+    onLegacyRecordImportReport: () => undefined
+  })
+  database.db
+    .prepare('INSERT INTO agent_session_records (session_id, record_json) VALUES (?, ?)')
+    .run(record.sessionId, JSON.stringify(record))
+  await AgentSessionRecordStore.open({
+    journalDatabase: database,
+    hostId: 'local'
+  }).setSessionTabVisibility(record.sessionId, true, tabId)
+  database.close()
+  await rm(legacyAgentSessionStorePath(root), { recursive: true })
 }
 
 function startupRuntime(options: { afterInstall?: () => void; profileChats?: string[] } = {}) {
@@ -362,6 +383,26 @@ describe('restoring the chat tabs open at quit', () => {
       expect(prepared).toBe(1)
       // The restore's lease check and the seed.
       expect(writes.refused - prepared).toBe(2)
+    })
+
+    // The profile never lists a Claude chat, so only the tab row that chat left brings it back.
+    it("restores a chat opened while the copy was owed beside the profile's chats", async () => {
+      const owed = chatRecord(OWED)
+      await seedChatOpenedWhileOwed(owed, 'tab-opened-while-owed')
+      const records = [chatRecord(CHAT_A, { codex: true })]
+      await seedProfile(records, { history: [owed, ...records] })
+      const { runtime, published } = startupRuntime({ profileChats: [CHAT_A] })
+
+      await runtime.restoreStructuredAgentSessionTabs()
+
+      expect(published().map((tab) => tab.id)).toEqual([
+        `agent-session:${OWED}`,
+        `agent-session:${CHAT_A}`
+      ])
+      expect((await readPersistedTestAgentSessionStore(root)).sessionTabs).toEqual([
+        { tabId: 'tab-opened-while-owed', sessionId: OWED },
+        { tabId: `structured-agent-session-${CHAT_A}`, sessionId: CHAT_A }
+      ])
     })
 
     it('still lists the chats when that write fails, and leaves the index absent', async () => {

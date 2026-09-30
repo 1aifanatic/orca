@@ -38,6 +38,8 @@ export type AgentSessionStoreState = {
   unreadableRecords: Map<string, { reason: string; raw: unknown }>
   /** Chat tab id → the conversation it shows; null until this store first records a tab. */
   sessionTabs: AgentSessionTabTable | null
+  /** Tab rows an index never recorded holds (chats opened while the import was owed). */
+  unrecordedSessionTabs?: AgentSessionTabTable
 }
 
 export type LoadedAgentSessionStore = {

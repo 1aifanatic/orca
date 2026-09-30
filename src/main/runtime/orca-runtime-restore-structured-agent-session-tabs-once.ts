@@ -60,7 +60,10 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     const profileIds = collectSavedStructuredAgentSessionIds(
       this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
     )
-    const targets = persistedVisibleIndex.present ? persistedVisibleIndex.sessionIds : profileIds
+    // Unrecorded, the profile's chats join the tabs chats opened while the import was owed left.
+    const targets = persistedVisibleIndex.present
+      ? persistedVisibleIndex.sessionIds
+      : [...new Set([...persistedVisibleIndex.sessionIds, ...profileIds])]
     await host?.restoreReadableSessions(targets)
     for (const worktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId, {

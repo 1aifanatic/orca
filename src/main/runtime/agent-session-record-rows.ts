@@ -143,23 +143,25 @@ export function loadAgentSessionStoreRows(
   const recorded = db
     .prepare('SELECT 1 AS present FROM agent_session_store_meta WHERE key = ?')
     .get(SESSION_TABS_RECORDED)
-  if (recorded) {
-    const table = new AgentSessionTabTable()
-    for (const row of db
-      .prepare(
-        'SELECT tab_id AS tabId, session_id AS sessionId FROM agent_session_tabs ORDER BY position'
-      )
-      .all()) {
-      const entry = { tabId: row.tabId, sessionId: row.sessionId }
-      if (
-        isReadableAgentSessionStoreTab(entry) &&
-        table.sessionIdFor(entry.tabId) === undefined &&
-        table.tabIdFor(entry.sessionId) === undefined
-      ) {
-        table.show(entry.sessionId, entry.tabId)
-      }
+  const table = new AgentSessionTabTable()
+  for (const row of db
+    .prepare(
+      'SELECT tab_id AS tabId, session_id AS sessionId FROM agent_session_tabs ORDER BY position'
+    )
+    .all()) {
+    const entry = { tabId: row.tabId, sessionId: row.sessionId }
+    if (
+      isReadableAgentSessionStoreTab(entry) &&
+      table.sessionIdFor(entry.tabId) === undefined &&
+      table.tabIdFor(entry.sessionId) === undefined
+    ) {
+      table.show(entry.sessionId, entry.tabId)
     }
+  }
+  if (recorded) {
     state.sessionTabs = table
+  } else if (table.sessionIds().length > 0) {
+    state.unrecordedSessionTabs = table
   }
   return state
 }
@@ -268,7 +270,7 @@ export function insertAgentSessionStoreRowsIfAbsent(
     )
   } else {
     // An index a chat created while the import was owed recorded holds none of the file's chats:
-    // "never recorded" sends restore to the profile's tabs, which hold them all.
+    // "never recorded" sends restore to the profile's tabs, with that chat's tab row beside them.
     db.prepare('DELETE FROM agent_session_store_meta WHERE key = ?').run(SESSION_TABS_RECORDED)
   }
 }
