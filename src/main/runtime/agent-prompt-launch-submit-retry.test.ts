@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type * as HooksSetting from '../../shared/agent-status-hooks-setting'
 import { resolveAgentPromptSubmitDelayForAgent } from '../../shared/agent-prompt-injection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import { createAgentPromptSubmissionRuntime } from './agent-prompt-submission-runtime-test-fixture'
 import type { OrcaRuntimeService } from './orca-runtime'
 import { dispatchPreambleSendOptions } from './orchestration/preamble'
-
-// Status hooks off: these cases pin the blind retry; turn observation is covered separately.
-vi.mock('../../shared/agent-status-hooks-setting', async (importOriginal) => ({
-  ...(await importOriginal<typeof HooksSetting>()),
-  isAgentStatusHooksEnabledForAgent: () => false
-}))
 
 vi.mock('../git/worktree', () => ({
   listWorktrees: vi.fn().mockResolvedValue([

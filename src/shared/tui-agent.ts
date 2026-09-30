@@ -44,9 +44,3 @@ export type TuiAgent =
   | 'zcode' // ZCode (Z.ai `zcode` CLI)
   | 'prime-agent' // Prime Agent (Prime Intellect)
   | 'dsh' // DeepSeek Harness (`dsh`, launched through its `dsh-tui` terminal profile)
-
-/** Agents whose turn start Orca can observe for a prompt it sent. */
-export type AgentPromptObservedProvider = Extract<
-  TuiAgent,
-  'antigravity' | 'claude' | 'codex' | 'opencode' | 'opencode2'
->

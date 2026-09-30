@@ -1,20 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type * as HooksSetting from '../../shared/agent-status-hooks-setting'
-import type { AgentStatusHooksSettings } from '../../shared/agent-status-hooks-setting'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import { AGENT_PROMPT_TEST_WORKTREE_PATH } from './agent-prompt-submission-runtime-test-fixture'
-import { resolveAgentPromptObservedProvider } from './agent-prompt-submission-verification'
 import { OrcaRuntimeService } from './orca-runtime'
 import { dispatchPreambleSendOptions } from './orchestration/preamble'
-import { observeWorkerTurnStart } from './rpc/methods/orchestration/worker/worker-start-turn-observation'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
-
-const hooks = vi.hoisted(() => ({ enabled: true }))
-
-vi.mock('../../shared/agent-status-hooks-setting', async (importOriginal) => ({
-  ...(await importOriginal<typeof HooksSetting>()),
-  isAgentStatusHooksEnabledForAgent: () => hooks.enabled
-}))
 
 vi.mock('../git/worktree', () => ({
   listWorktrees: vi.fn().mockResolvedValue([
@@ -42,35 +31,43 @@ const RETRY_DELAY_MS = TUI_AGENT_CONFIG.opencode.submitRetryDelayMs ?? 0
 type HookRow = { state: 'done' | 'working' | 'waiting'; stateStartedAt: number; prompt: string }
 
 /**
- * An OpenCode pane whose status plugin reports through the hook store. `onEnter` runs on each
- * Enter with its ordinal, so a test can post the status OpenCode would.
+ * An OpenCode pane whose status plugin reports through the hook store. It has posted nothing
+ * before the first submit; `onEnter` runs on each Enter so a test can post what OpenCode would.
  */
-async function createOpenCodePane(onEnter: (enter: number, hook: HookRow) => void) {
+async function createOpenCodePane(onEnter: (enter: number, post: (row: HookRow) => void) => void) {
   let handle = ''
-  // OpenCode's plugin posts `done` with an empty prompt when it boots.
-  const hook: HookRow = { state: 'done', stateStartedAt: Date.now(), prompt: '' }
+  let hook: HookRow | null = null
   const writes: string[] = []
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only repos, worktree meta and settings from this store fixture.
   const runtime = new OrcaRuntimeService(makeStore() as never, undefined, {
-    getAgentStatusSnapshot: () => [
-      {
-        paneKey: 'prompt-pane',
-        terminalHandle: handle,
-        state: hook.state,
-        prompt: hook.prompt,
-        agentType: 'opencode',
-        connectionId: null,
-        receivedAt: Date.now(),
-        stateStartedAt: hook.stateStartedAt
-      }
-    ]
+    getAgentStatusSnapshot: () =>
+      hook
+        ? [
+            {
+              paneKey: 'prompt-pane',
+              terminalHandle: handle,
+              state: hook.state,
+              prompt: hook.prompt,
+              agentType: 'opencode',
+              connectionId: null,
+              receivedAt: Date.now(),
+              stateStartedAt: hook.stateStartedAt
+            }
+          ]
+        : []
   })
+  const post = (row: HookRow): void => {
+    hook = row
+  }
   runtime.setPtyController({
     spawn: vi.fn().mockResolvedValue({ id: 'pty-prompt' }),
     write: (_ptyId, data) => {
       writes.push(data)
       if (data === '\r') {
-        onEnter(writes.filter((write) => write === '\r').length, hook)
+        onEnter(
+          writes.filter((write) => write === '\r').length,
+          (row) => void setTimeout(() => post(row), 50)
+        )
       }
       return true
     },
@@ -86,153 +83,82 @@ async function createOpenCodePane(onEnter: (enter: number, hook: HookRow) => voi
     ...dispatchPreambleSendOptions('request-1'),
     retrySubmitAfterLaunch: true
   })
-  return { runtime, handle, sent, enters: () => writes.filter((data) => data === '\r').length }
+  return { runtime, sent, enters: () => writes.filter((data) => data === '\r').length }
 }
 
-function postWorkingAfter(delayMs: number, hook: HookRow): void {
-  setTimeout(() => {
-    hook.state = 'working'
-    hook.stateStartedAt = Date.now()
-    hook.prompt = 'Task: reply with OK'
-  }, delayMs)
-}
+const WORKING = (): HookRow => ({
+  state: 'working',
+  stateStartedAt: Date.now(),
+  prompt: 'Task: reply with OK'
+})
+const UNSUPPORTED_RECEIPT = { prompt: { provider: 'unsupported', observation: 'unsupported' } }
 
-// Why: OpenCode's plugin posts `working` 59-77 ms after every real submit and nothing for a brief
-// stuck in its box, so on a launched worker's first dispatch it both skips the retry Enter and
-// makes the receipt honest.
-describe('turn observation on a launched OpenCode worker first dispatch', () => {
-  afterEach(() => {
-    hooks.enabled = true
-    vi.useRealTimers()
-  })
+// Why: OpenCode's plugin posts `working` right after every real submit and nothing for a brief
+// stuck in its box, so a turn this request started makes the retry Enter unnecessary. The receipt
+// stays unsupported: with no post before the first submit, a plugin that never loaded looks the
+// same as a stuck brief.
+describe('retry Enter skip on a launched OpenCode worker first dispatch', () => {
+  afterEach(() => vi.useRealTimers())
 
   it('skips the retry Enter when the first Enter started a turn', async () => {
     vi.useFakeTimers()
-    const { sent, enters } = await createOpenCodePane((enter, hook) => {
+    const { sent, enters } = await createOpenCodePane((enter, post) => {
       if (enter === 1) {
-        postWorkingAfter(100, hook)
+        post(WORKING())
       }
     })
 
     await vi.runAllTimersAsync()
-    await expect(sent).resolves.toMatchObject({
-      prompt: { provider: 'opencode', stages: ['input_accepted', 'turn_started'] }
-    })
+    await expect(sent).resolves.toMatchObject(UNSUPPORTED_RECEIPT)
     expect(enters()).toBe(1)
   })
 
-  it('retries once and reports ready when only the retry Enter starts a turn', async () => {
+  it('retries once when no turn starts, with the same receipt', async () => {
     vi.useFakeTimers()
-    const { runtime, handle, sent, enters } = await createOpenCodePane((enter, hook) => {
-      if (enter === 2) {
-        postWorkingAfter(100, hook)
-      }
-    })
+    const { sent, enters } = await createOpenCodePane(() => {})
 
     await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS + 1_000)
-    const receipt = await sent
+    await expect(sent).resolves.toMatchObject(UNSUPPORTED_RECEIPT)
     expect(enters()).toBe(2)
-    expect(receipt.prompt).toMatchObject({ provider: 'opencode', observation: 'supported' })
-    const observing = observeWorkerTurnStart({
-      runtime,
-      terminalHandle: handle,
-      prompt: receipt.prompt,
-      timeoutMs: 5_000
-    })
-    await vi.runAllTimersAsync()
-    await expect(observing).resolves.toMatchObject({ verdict: 'observed' })
   })
 
-  it('leaves the start unobserved when no Enter starts a turn', async () => {
+  it("does not count the plugin's first `done` post as a turn start", async () => {
     vi.useFakeTimers()
-    const { runtime, handle, sent, enters } = await createOpenCodePane(() => {})
-
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS + 1_000)
-    const receipt = await sent
-    expect(enters()).toBe(2)
-    const observing = observeWorkerTurnStart({
-      runtime,
-      terminalHandle: handle,
-      prompt: receipt.prompt,
-      timeoutMs: 5_000
-    })
-    await vi.runAllTimersAsync()
-    await expect(observing).resolves.toMatchObject({ verdict: 'unobserved' })
-  })
-
-  it('does not count the boot `done` post as a turn start', async () => {
-    vi.useFakeTimers()
-    const { sent, enters } = await createOpenCodePane((enter, hook) => {
+    // The plugin's first post, `done` with an empty prompt, arrives just after the submit.
+    const { sent, enters } = await createOpenCodePane((enter, post) => {
       if (enter === 1) {
-        setTimeout(() => {
-          hook.state = 'done'
-          hook.stateStartedAt = Date.now()
-          hook.prompt = ''
-        }, 100)
+        post({ state: 'done', stateStartedAt: Date.now(), prompt: '' })
       }
     })
 
     await vi.runAllTimersAsync()
-    await expect(sent).resolves.toMatchObject({
-      prompt: { provider: 'opencode', stages: ['input_accepted'] }
-    })
+    await expect(sent).resolves.toMatchObject(UNSUPPORTED_RECEIPT)
     expect(enters()).toBe(2)
   })
 
   it('skips the retry Enter when OpenCode asks for permission after the first Enter', async () => {
     vi.useFakeTimers()
-    const { sent, enters } = await createOpenCodePane((enter, hook) => {
+    const { sent, enters } = await createOpenCodePane((enter, post) => {
       if (enter === 1) {
-        setTimeout(() => {
-          hook.state = 'waiting'
-          hook.stateStartedAt = Date.now()
-        }, 100)
+        post({ state: 'waiting', stateStartedAt: Date.now(), prompt: '' })
       }
     })
 
     await vi.runAllTimersAsync()
-    await expect(sent).resolves.toMatchObject({
-      prompt: { provider: 'opencode', observation: 'permission' }
-    })
+    await expect(sent).resolves.toMatchObject(UNSUPPORTED_RECEIPT)
     expect(enters()).toBe(1)
   })
 
-  it('keeps the blind retry and an unsupported receipt with status hooks off', async () => {
+  it('leaves the first Enter standing when the pane exits during the wait', async () => {
     vi.useFakeTimers()
-    hooks.enabled = false
-    const { runtime, handle, sent, enters } = await createOpenCodePane((enter, hook) => {
+    const { runtime, sent, enters } = await createOpenCodePane((enter) => {
       if (enter === 1) {
-        postWorkingAfter(100, hook)
+        setTimeout(() => void runtime.onPtyExit('pty-prompt', 0), 500)
       }
     })
 
     await vi.runAllTimersAsync()
-    const receipt = await sent
-    expect(enters()).toBe(2)
-    expect(receipt.prompt).toMatchObject({ provider: 'unsupported', observation: 'unsupported' })
-    await expect(
-      observeWorkerTurnStart({ runtime, terminalHandle: handle, prompt: receipt.prompt })
-    ).resolves.toMatchObject({ verdict: 'unsupported' })
-  })
-})
-
-describe('which provider settles a sent prompt', () => {
-  const settings: AgentStatusHooksSettings = {}
-
-  it.each([
-    ['opencode', true, 'opencode'],
-    ['opencode2', true, 'opencode2'],
-    ['opencode', false, null],
-    ['aider', true, null],
-    ['codex', false, 'codex']
-  ] as const)('%s, launched-worker first dispatch %s → %s', (agent, launched, provider) => {
-    expect(
-      resolveAgentPromptObservedProvider({
-        foregroundAgent: null,
-        launchAgent: agent,
-        retrySubmitAfterLaunch: launched,
-        settings
-      })
-    ).toBe(provider)
+    await expect(sent).resolves.toMatchObject({ accepted: true, ...UNSUPPORTED_RECEIPT })
+    expect(enters()).toBe(1)
   })
 })

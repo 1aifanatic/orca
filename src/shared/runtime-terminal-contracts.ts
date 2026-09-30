@@ -10,7 +10,7 @@ import type { RuntimeMobileSessionTabsResult } from './runtime-session-contracts
 import type { TabGroupLayoutNode } from './tab-types'
 import type { TerminalExitCause } from './terminal-exit-cause'
 import type { TerminalPaneLayoutNode } from './terminal-tab-types'
-import type { AgentPromptObservedProvider, TuiAgent } from './tui-agent'
+import type { TuiAgent } from './tui-agent'
 
 export type RuntimeTerminalSummary = {
   handle: string
@@ -217,7 +217,7 @@ export type RuntimeTerminalPromptStage = 'input_accepted' | 'turn_started'
 export type RuntimeTerminalPromptDelivery = {
   requestId: string
   stages: RuntimeTerminalPromptStage[]
-  provider: AgentPromptObservedProvider | 'unsupported' | 'old-host'
+  provider: 'claude' | 'codex' | 'unsupported' | 'old-host'
   observation: 'supported' | 'unsupported' | 'incarnation_replaced' | 'permission'
   processIncarnation: string
   generation: number
