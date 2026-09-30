@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizeHookPayload } from '../../agent-hook-listener'
 import { makePaneKey } from '../../stable-pane-id'
 import { createHookListenerState, type HookListenerState } from '../listener-state'
+import { catchUpOnClaudeTranscript, syncClaudeTranscriptCursor } from './claude-transcript-watch'
 import {
   claudePaneHasLaunchRecordedTask,
   claudePaneHasNonAgentWork,
@@ -177,5 +181,39 @@ describe('the task end line in the transcript', () => {
     expect(claudePaneHasLaunchRecordedTask(state, PANE)).toBe(false)
     expect(retireClaudeNonAgentTaskFromQueueRow(state, PANE, endLine())).toBe(false)
     expect(claudePaneHasNonAgentWork(state, PANE)).toBe(true)
+  })
+})
+
+describe('watching for the end line', () => {
+  it('parses only queue-operation lines that carry a notification, never the per-turn snapshot', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-background-shell-watch-'))
+    try {
+      const transcript = join(dir, 'session.jsonl')
+      writeFileSync(transcript, '')
+      const state = createHookListenerState()
+      claudeEvent(state, { hook_event_name: 'UserPromptSubmit', prompt: 'start it' })
+      const event = claudeEvent(state, {
+        ...LAUNCH,
+        session_id: '00000000-0000-4000-8000-0000000000d1',
+        transcript_path: transcript
+      })
+      if (!event) {
+        throw new Error('listener produced no event')
+      }
+      expect(syncClaudeTranscriptCursor(state, event)).toBe(true)
+      // Hand-built at the size of the per-turn prompt_snapshot attachment, which quotes the tag.
+      const snapshot = JSON.stringify({
+        type: 'attachment',
+        text: `<task-notification> ${'x'.repeat(56 * 1024)}`
+      })
+      appendFileSync(transcript, `${snapshot}\n${JSON.stringify(endLine())}\n`)
+      const parse = vi.spyOn(JSON, 'parse')
+      catchUpOnClaudeTranscript(state, PANE)
+      expect(parse).toHaveBeenCalledTimes(1)
+      parse.mockRestore()
+      expect(claudePaneHasNonAgentWork(state, PANE)).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

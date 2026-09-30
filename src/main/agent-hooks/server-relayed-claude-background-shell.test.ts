@@ -145,6 +145,7 @@ describe('a relayed Ctrl+C in the turn that launched a background shell (capture
     const transcript = join(temporaryDir('orca-relayed-shell-transcript-'), 'session.jsonl')
     writeFileSync(transcript, '')
     await launchAndCancel(pane, transcript)
+    expect(row(pane.desktop)).toMatchObject({ state: 'working', workingMode: 'monitoring' })
     // Hand-placed timing: the shell ends 20 s after the Ctrl+C with no hook (as a /tasks kill
     // does, r1-s9); the line is the one Claude wrote for this shell when /exit killed it.
     vi.setSystemTime(Date.now() + 20_000)

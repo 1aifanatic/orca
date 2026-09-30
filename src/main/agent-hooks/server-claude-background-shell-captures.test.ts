@@ -158,7 +158,6 @@ describe('Ctrl+C in the turn that launched a background shell (captured, 2.1.284
       backgroundTaskId: 'b19zrx6gz'
     })
     expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
-    expect(storedShellFact(server)).toBe(true)
 
     // The capture: Claude painted "Interrupted", sent no hook for 20 s, and kept the shell.
     expect(cancel).toMatchObject({ interrupted_painted: true, hooks_before_next_typed_prompt: [] })
@@ -171,6 +170,7 @@ describe('Ctrl+C in the turn that launched a background shell (captured, 2.1.284
       mainAgent: { state: 'done', outcome: 'cancellation' }
     })
     expect(row(server).interrupted).toBeUndefined()
+    expect(storedShellFact(server)).toBe(true)
 
     // The next typed turn's Stop lists the same shell running.
     await replay([7, 9, 8])
@@ -220,6 +220,39 @@ describe('Ctrl+C in the turn that launched a background shell (captured, 2.1.284
     await vi.waitFor(() => expect(row(server).state).toBe('done'), { timeout: 3_000 })
     expect(row(server)).toMatchObject({
       interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+})
+
+describe('a launch whose hook is still in flight at the Ctrl+C (captured hooks, hand-placed order)', () => {
+  const records = loadCapture('claude-background-shell-ctrl-c-hooks')
+  const cancel = cancelLabelled(records, 'S1-ctrl-c-mid-essay')
+
+  it('records the shell although the cancel latch holds the row, so the next cancelled turn monitors it', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    const replay = replayer(server, records, new Map([['*', transcript]]))
+    await replay([0, 1, 2])
+    vi.setSystemTime(captureEpoch(records) + cancel.t * 1000)
+    expect(pressCtrlC(server)).toBe(true)
+    const cancelled = row(server)
+    expect(cancelled).toMatchObject({ state: 'done', interrupted: true })
+    // Hand-placed: the launching PostToolUse lands after the inferred cancel (no capture has one).
+    await postHookEvent(
+      server,
+      buildBody({ ...hookAt(records, 3).payload, transcript_path: transcript })
+    )
+    expect(row(server)).toEqual(cancelled)
+    expect(server._getStateForTests().claudeNonAgentWorkByPaneKey.has(PANE)).toBe(true)
+
+    // The next typed turn is cancelled before its Stop: the shell still holds the pane.
+    await replay([7])
+    vi.setSystemTime(Date.now() + 1_000)
+    expect(pressCtrlC(server)).toBe(true)
+    expect(row(server)).toMatchObject({
+      state: 'working',
+      workingMode: 'monitoring',
       mainAgent: { state: 'done', outcome: 'cancellation' }
     })
   })
