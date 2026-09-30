@@ -63,7 +63,7 @@ describe('restart journal restoration', () => {
       openDeps: NO_OPEN_DEPS,
       records,
       reconcile: async () => true,
-      resolveRecovery: async () => undefined,
+      resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
       onReadable: () => undefined
@@ -104,7 +104,7 @@ describe('restart journal restoration', () => {
       openDeps: NO_OPEN_DEPS,
       records,
       reconcile: async () => true,
-      resolveRecovery: async () => undefined,
+      resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
       onReadable: () => undefined
@@ -153,6 +153,7 @@ describe('restart journal restoration', () => {
       reconcile: async () => true,
       resolveRecovery: async () => {
         calls.push('resolveRecovery')
+        return true
       },
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
@@ -175,7 +176,7 @@ describe('restart journal restoration', () => {
       records: [{ sessionId: 'session-1' } as AgentSessionRecord],
       openDeps: NO_OPEN_DEPS,
       reconcile: async () => true,
-      resolveRecovery: async () => undefined,
+      resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => true,
       onReadable: () => undefined

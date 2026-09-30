@@ -27,9 +27,11 @@ export type StructuredAgentSessionReadRestoreDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
-  /** Whether every lease is settled. Never throws: a read grants no writer, so bookkeeping can't block it. */
+  // Lease bookkeeping. Neither throws: a read grants no writer, so bookkeeping must not block it.
+  /** Whether every lease is settled. */
   reconcile: (sessionId: string) => Promise<boolean>
-  resolveRecovery: (sessionId: string) => Promise<unknown>
+  /** False when its store write failed; the next attach or send resolves it again. */
+  resolveRecovery: (sessionId: string) => Promise<boolean>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
   onReadable: (
@@ -41,12 +43,10 @@ export type StructuredAgentSessionReadRestoreDeps = {
 /** One session's share of the restart restore. Startup maps this over every supported record. */
 async function restoreOneStructuredAgentSessionRead(
   input: StructuredAgentSessionReadRestoreDeps,
-  sessionId: string
+  sessionId: string,
+  settleLeases: (sessionId: string) => Promise<void>
 ): Promise<void> {
-  if (await input.reconcile(sessionId)) {
-    // A session latched in recovery exits here at startup, without waiting for a client.
-    await input.resolveRecovery(sessionId)
-  }
+  await settleLeases(sessionId)
   await input.serialize(sessionId, () =>
     restoreOneStructuredAgentSessionReadUnderSerialize(input, sessionId)
   )
@@ -72,9 +72,19 @@ async function restoreOneStructuredAgentSessionReadUnderSerialize(
 export async function restoreStructuredAgentSessionsOnRestart(
   input: StructuredAgentSessionReadRestoreDeps & { records: AgentSessionRecord[] }
 ): Promise<void> {
+  // Once bookkeeping fails in this pass, trying again per chat only waits on the same store again.
+  let bookkeepingFailed = false
+  const settleLeases = async (sessionId: string): Promise<void> => {
+    if (bookkeepingFailed) {
+      return
+    }
+    // A session latched in recovery exits here at startup, without waiting for a client.
+    const settled = (await input.reconcile(sessionId)) && (await input.resolveRecovery(sessionId))
+    bookkeepingFailed ||= !settled
+  }
   await mapWithConcurrency(input.records, JOURNAL_RESTORE_CONCURRENCY, async ({ sessionId }) => {
     // A journal open is synchronous SQLite: without a macrotask per chat the restore is one long task.
     await yieldToEventLoop()
-    await restoreOneStructuredAgentSessionRead(input, sessionId)
+    await restoreOneStructuredAgentSessionRead(input, sessionId, settleLeases)
   })
 }

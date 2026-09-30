@@ -215,6 +215,7 @@ export class StructuredAgentSessionHost {
   listSessionTabs = () => sessionTabs.listStructuredAgentSessionTabs(this.sessions)
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
   getSessionTabId = (sessionId: string): string | null => this.deps.store.getSessionTabId(sessionId)
+  showSessionTabs = (sessionIds: readonly string[]) => this.deps.store.showSessionTabs(sessionIds)
 
   setSessionTabVisibility = async (
     sessionId: string,

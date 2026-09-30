@@ -45,32 +45,51 @@ export function createRestartReconciler(deps: {
   }
 }
 
+/** Reports each distinct failure once, until `clear` says the bookkeeping settled again. Every read
+ *  re-runs a failing reconcile, so without this a failing store would log on every chat list. */
+export type ReaderBookkeepingFailures = {
+  report: (failure: unknown) => void
+  clear: () => void
+}
+
+export function reportEachFailureOnce(
+  onFailure: ((failure: unknown) => void) | undefined
+): ReaderBookkeepingFailures {
+  let reported: string | null = null
+  return {
+    report: (failure) => {
+      const key = failureKey(failure)
+      if (key !== reported) {
+        reported = key
+        onFailure?.(failure)
+      }
+    },
+    clear: () => {
+      reported = null
+    }
+  }
+}
+
 /** The reconcile a reader runs, at startup and before each restored read: it never throws, since
  *  an unreconciled lease grants no writer and the next send reconciles again before it acts.
- *  Answers whether every lease is settled; a failure is reported once until a reconcile settles. */
+ *  Answers whether every lease is settled. */
 export function createReaderReconcile(
   reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
-  onFailure: ((failure: unknown) => void) | undefined
+  failures: ReaderBookkeepingFailures
 ): (sessionId: string) => Promise<boolean> {
-  let reported: string | null = null
   return async (sessionId) => {
     let failure: unknown
     try {
       const refusal = await reconcile(sessionId)
       if (!refusal) {
-        reported = null
+        failures.clear()
         return true
       }
       failure = refusal
     } catch (error) {
       failure = error
     }
-    // Every read re-runs a failing reconcile, so each distinct failure is reported once.
-    const key = failureKey(failure)
-    if (key !== reported) {
-      reported = key
-      onFailure?.(failure)
-    }
+    failures.report(failure)
     return false
   }
 }
