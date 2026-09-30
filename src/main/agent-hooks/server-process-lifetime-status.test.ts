@@ -86,4 +86,27 @@ describe('process-lifetime status', () => {
     processLifetime('done', commandStartedAt)
     expect(paneState()).toBe('done')
   })
+
+  // Why: a pane where an Orca-launched agent exited is retired; a new `opencode run` there is a new run.
+  it('revives a retired pane on its Working, as a hook new-turn event does', () => {
+    server.retirePaneAuthority(PANE)
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    expect(paneState()).toBe('working')
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('done')
+  })
+
+  it('keeps OSC status and a lone process Done out of a retired pane', () => {
+    server.retirePaneAuthority(PANE)
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: null,
+      payload: { state: 'working', prompt: '', agentType: 'opencode' }
+    })
+    processLifetime('done', Date.now())
+    expect(paneState()).toBe('missing')
+  })
 })

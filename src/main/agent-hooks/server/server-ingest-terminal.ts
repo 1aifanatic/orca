@@ -47,8 +47,18 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       return
     }
     const tabId = paneKey !== physicalPaneKey ? parsedPaneKey?.tabId : reportedTabId
-    if (this.getAgentStatusDisposition(paneKey) !== 'accept') {
+    // Why: a verified process-lifetime Working proves a new agent run, as a hook new-turn event does.
+    const disposition = this.getAgentStatusDisposition(
+      paneKey,
+      event.origin === 'process' && event.payload.state === 'working'
+        ? { processNewTurn: true }
+        : undefined
+    )
+    if (disposition === 'suppress') {
       return
+    }
+    if (disposition === 'restart') {
+      this.observations.rebind(paneKey)
     }
     const worktreeId =
       event.worktreeId !== undefined && event.worktreeId.trim().length > 0
