@@ -49,36 +49,13 @@ export const ORCHESTRATION_CALLER_METHODS = [
 ]
 
 /**
- * The ladder the coordinator verbs climb for a terminal caller: the handle the environment carries
- * while it is live, else the handle its pane was reminted as. Answering the stale handle instead
- * would hand out a mailbox nothing reads.
+ * The handle the mailbox verbs (`check`, `send`, `ask`) act as: the one the environment carries,
+ * live or not, since they do not remint. Without one they only guess the active terminal.
  */
 function resolveTerminalCaller(
   runtime: OrcaRuntimeService,
   evidence: OrchestrationCompatibilityEvidence | undefined
 ): OrchestrationCallerAddress | null {
   const handle = evidence?.terminalHandle
-  if (handle) {
-    const identity = runtime.resolveTerminalIdentity(handle)
-    if (identity.live) {
-      return { address: identity.handle, live: true }
-    }
-  }
-  const reminted = evidence?.paneKey ? resolvePaneHandle(runtime, evidence.paneKey) : null
-  if (reminted) {
-    return { address: reminted, live: true }
-  }
-  return handle ? { address: handle, live: false } : null
-}
-
-function resolvePaneHandle(runtime: OrcaRuntimeService, paneKey: string): string | null {
-  try {
-    return runtime.resolveTerminalPane(paneKey).handle
-  } catch (error) {
-    // Why: the verbs treat an unresolvable pane as no remint, not as a failed call.
-    if (error instanceof Error && error.message === 'terminal_not_found') {
-      return null
-    }
-    throw error
-  }
+  return handle ? { address: handle, live: runtime.resolveTerminalIdentity(handle).live } : null
 }

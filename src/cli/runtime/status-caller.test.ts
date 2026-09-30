@@ -171,13 +171,11 @@ describe.skipIf(process.platform === 'win32')('orca status reports its caller ad
     expect(await status(false)).toContain('caller: none')
   })
 
-  it('asks the host about a process that carries only a pane key', async () => {
+  it('leaves a process that carries only a pane key for the host to judge', async () => {
     process.env.ORCA_PANE_KEY = 'tab_1:leaf_1'
-    callerShowReply = {
-      result: { caller: { address: 'term_reminted', live: true } }
-    }
+    callerShowReply = { result: { caller: null } }
 
-    expect(await statusCaller()).toEqual({ address: 'term_reminted', live: true })
+    expect(await statusCaller()).toBeNull()
     expect(callerShowRequests()[0]?.orchestrationCompatibilityEvidence).toEqual({
       paneKey: 'tab_1:leaf_1'
     })

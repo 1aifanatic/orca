@@ -135,36 +135,52 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     expect(probe).toHaveBeenCalledTimes(2)
   })
 
-  it('answers the reminted handle, as the coordinator verbs act, when the carried one went stale', async () => {
+  it("answers the carried handle after a window reload, the mailbox the agent's own check reads", async () => {
     vi.spyOn(h.runtime, 'resolveTerminalIdentity').mockImplementation((handle) => ({
       handle,
       live: handle === 'term_new'
     }))
-    const resolvePane = vi.spyOn(h.runtime, 'resolveTerminalPane').mockImplementation((paneKey) => {
-      if (paneKey !== 'tab_1:leaf_1') {
-        throw new Error('terminal_not_found')
-      }
-      return { handle: 'term_new', tabId: 'tab_1', leafId: 'leaf_1', ptyId: null, connected: true }
+    // The reload reminted this pane as term_new; the process still carries term_old.
+    vi.spyOn(h.runtime, 'resolveTerminalPane').mockReturnValue({
+      handle: 'term_new',
+      tabId: 'tab_1',
+      leafId: 'leaf_1',
+      ptyId: null,
+      connected: true
     })
+    const evidence = { terminalHandle: 'term_old', paneKey: 'tab_1:leaf_1' }
 
-    const reminted = await h.dispatch(
-      callerShow({ evidence: { terminalHandle: 'term_old', paneKey: 'tab_1:leaf_1' } })
-    )
-    const paneOnly = await h.dispatch(callerShow({ evidence: { paneKey: 'tab_1:leaf_1' } }))
-    const gone = await h.dispatch(
-      callerShow({ evidence: { terminalHandle: 'term_old', paneKey: 'tab_gone:leaf' } })
-    )
-
-    expect(resultOf(reminted)).toEqual({
-      caller: { address: 'term_new', live: true }
-    })
-    expect(resultOf(paneOnly)).toEqual({
-      caller: { address: 'term_new', live: true }
-    })
-    expect(resultOf(gone)).toEqual({
+    expect(resultOf(await h.dispatch(callerShow({ evidence })))).toEqual({
       caller: { address: 'term_old', live: false }
     })
-    expect(resolvePane).toHaveBeenCalledTimes(3)
+    // A peer mails the address `orca status` advertised.
+    h.db.insertMessage({ from: 'term_peer', to: 'term_old', subject: 'hello' })
+    // What `orca orchestration check` sends from that process.
+    const checked = resultOf(
+      await h.dispatch(
+        orchestrationRequest(
+          'orchestration.check',
+          { terminal: 'term_old', terminalPaneKey: evidence.paneKey },
+          { evidence }
+        )
+      )
+    )
+
+    expect(checked).toMatchObject({ count: 1 })
+  })
+
+  it('answers null for a pane key alone, from which the mailbox verbs have no identity', async () => {
+    vi.spyOn(h.runtime, 'resolveTerminalPane').mockReturnValue({
+      handle: 'term_new',
+      tabId: 'tab_1',
+      leafId: 'leaf_1',
+      ptyId: null,
+      connected: true
+    })
+
+    const response = await h.dispatch(callerShow({ evidence: { paneKey: 'tab_1:leaf_1' } }))
+
+    expect(resultOf(response)).toEqual({ caller: null })
   })
 
   it('gives the menu the exact address each session of a cleared chat acts as', async () => {
