@@ -1,23 +1,25 @@
 // Startup no longer waits for the lease check, so a write can reach a chat whose lease the previous
-// app run left unadjudicated. Every write waits for that chat's check (or runs it) before it acts,
-// so none is admitted against the old lease and none starts a second agent.
+// app run left unadjudicated. Such a write waits for the lease check (or runs it) before it acts,
+// so while that check succeeds none is admitted against the old lease.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-host-database-test-support'
 import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
-  createStartupRig,
-  STARTUP_CALLER,
-  type StartupRig
-} from './structured-agent-session-startup-listing-test-rig'
+  createRestTestRig,
+  REST_TEST_CALLER,
+  restTestChat,
+  sendRestTestMessage,
+  type RestTestRig
+} from './structured-agent-session-rest-test-rig'
 
-let rig: StartupRig
+let rig: RestTestRig
 // A failed assertion must not leave teardown waiting on a held probe.
 let releaseProbe = (): void => undefined
 
 beforeEach(async () => {
-  rig = await createStartupRig()
+  rig = await createRestTestRig()
 })
 
 afterEach(async () => {
@@ -29,7 +31,7 @@ afterEach(async () => {
 
 /** Boots over a crashed run and starts the startup lease check with its owner probe held. */
 async function bootWithSlowLeaseCheck() {
-  await rig.chat('session-a', { message: 'before the restart' })
+  await restTestChat(rig, 'session-a', { message: 'before the restart' })
   await rig.crash()
   const probe = Promise.withResolvers<void>()
   const probing = Promise.withResolvers<void>()
@@ -64,7 +66,7 @@ describe('a write during a slow startup lease check', () => {
     const { probe, startupCheck, admittedUnreconciled } = await bootWithSlowLeaseCheck()
 
     let answered = false
-    const sent = rig.send('session-a', 'after the restart').then((result) => {
+    const sent = sendRestTestMessage(rig, 'session-a', 'after the restart').then((result) => {
       answered = true
       return result
     })
@@ -75,17 +77,17 @@ describe('a write during a slow startup lease check', () => {
     probe.resolve()
     await expect(sent).resolves.toMatchObject({ ok: true })
     await startupCheck
-    await vi.waitFor(() => expect(rig.dispatch).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledOnce())
 
     expect(admittedUnreconciled).toEqual([false])
-    expect(rig.acquire).toHaveBeenCalledOnce()
+    expect(rig.adapter.acquire).toHaveBeenCalledOnce()
   })
 
   it('holds a Stop until the chat’s check has run', async () => {
     const { host, probe, startupCheck, admittedUnreconciled } = await bootWithSlowLeaseCheck()
 
     const fields = {}
-    const stopped = host.cancel(STARTUP_CALLER, {
+    const stopped = host.cancel(REST_TEST_CALLER, {
       envelope: {
         sessionId: 'session-a',
         clientOperationId: hostTestOperationId(),
@@ -104,6 +106,6 @@ describe('a write during a slow startup lease check', () => {
     await expect(stopped).resolves.toMatchObject({ ok: true })
     await startupCheck
     expect(admittedUnreconciled).toEqual([false])
-    expect(rig.acquire).not.toHaveBeenCalled()
+    expect(rig.adapter.acquire).not.toHaveBeenCalled()
   })
 })

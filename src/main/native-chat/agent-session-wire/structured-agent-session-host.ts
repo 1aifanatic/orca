@@ -142,6 +142,7 @@ export class StructuredAgentSessionHost {
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       hasSession: this.hasSession,
+      isDisposed: () => this.lifetime.isDisposed(),
       // Site 10: cannot overwrite a live entry — the restorer returns early on
       // `hasSession` inside the same serialized step as this `set`.
       onReadable: this.conversationDelivery.adoptOpened
@@ -275,7 +276,7 @@ export class StructuredAgentSessionHost {
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
       flushStreamedEvents: this.flushStreamedEvents,
       conversation: this.lifetime.conversation,
-      // Every write funnels through here, so none acts on a lease the startup check has not reached.
+      // Every write funnels through here: one to a chat with an unchecked lease waits for the check.
       serialize: serializeAfterLeaseCheck(this.deps.store, this.reconcileLeases, this.serialize),
       openConversation: this.conversationDelivery.open,
       ensureAgent: (sessionId) =>

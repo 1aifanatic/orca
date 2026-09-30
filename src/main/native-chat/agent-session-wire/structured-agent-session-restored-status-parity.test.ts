@@ -7,12 +7,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-host-database-test-support'
 import {
-  createStartupRig,
-  latestStatus,
-  type StartupRig
-} from './structured-agent-session-startup-listing-test-rig'
+  createRestTestRig,
+  latestRestTestStatus,
+  restTestChat,
+  type RestTestRig
+} from './structured-agent-session-rest-test-rig'
 
-const rigs: StartupRig[] = []
+const rigs: RestTestRig[] = []
 
 afterEach(async () => {
   for (const rig of rigs.splice(0)) {
@@ -26,14 +27,14 @@ const CORPUS = ['session-settled', 'session-quiet', 'session-crashed', 'session-
 
 /** The chats a restart finds: two a clean quit settled, one cut off mid-turn by a crash, and one
  *  whose send the provider only admitted, left pending below a fence that has since moved. */
-async function seedCorpus(rig: StartupRig): Promise<void> {
-  await rig.chat('session-settled', { message: 'finished work' })
-  await rig.chat('session-quiet')
+async function seedCorpus(rig: RestTestRig): Promise<void> {
+  await restTestChat(rig, 'session-settled', { message: 'finished work' })
+  await restTestChat(rig, 'session-quiet')
   await rig.host.flushAllStreamedEvents()
   await rig.boot()
-  await rig.chat('session-crashed', { message: 'cut off' })
-  rig.dispatch.mockResolvedValueOnce({ state: 'admitted' })
-  await rig.chat('session-pending', { message: 'only admitted' })
+  await restTestChat(rig, 'session-crashed', { message: 'cut off' })
+  rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+  await restTestChat(rig, 'session-pending', { message: 'only admitted' })
   await rig.crash()
   await rig.store.transitionHandoff('session-pending', (record) => ({
     ...record,
@@ -42,14 +43,14 @@ async function seedCorpus(rig: StartupRig): Promise<void> {
 }
 
 it('ends every chat where a direct read of it lands, and shows no pre-crash work (T8)', async () => {
-  const passRig = await createStartupRig()
+  const passRig = await createRestTestRig()
   rigs.push(passRig)
   await seedCorpus(passRig)
   // One copy of the files for each boot, taken while nothing is writing.
   closeTestJournalHostDatabases()
   const readRoot = `${passRig.root}-read`
   await cp(passRig.root, readRoot, { recursive: true })
-  const readRig = await createStartupRig(readRoot)
+  const readRig = await createRestTestRig({}, { root: readRoot })
   rigs.push(readRig)
 
   // Startup's shape: the lease check started, the list answered, then the pass.
@@ -67,10 +68,10 @@ it('ends every chat where a direct read of it lands, and shows no pre-crash work
   await readCheck
 
   // `updatedAt` is when the row was projected, a wall-clock read that differs between two boots.
-  const rows = (rig: StartupRig): Record<string, Omit<AgentSessionStatusSummary, 'updatedAt'>> =>
+  const rows = (rig: RestTestRig): Record<string, Omit<AgentSessionStatusSummary, 'updatedAt'>> =>
     Object.fromEntries(
       CORPUS.flatMap((sessionId) => {
-        const summary = latestStatus(rig, sessionId)
+        const summary = latestRestTestStatus(rig, sessionId)
         if (!summary) {
           return []
         }
@@ -80,7 +81,7 @@ it('ends every chat where a direct read of it lands, and shows no pre-crash work
     )
   await vi.waitFor(() => expect(rows(passRig)).toEqual(rows(readRig)))
   for (const sessionId of CORPUS) {
-    expect(latestStatus(passRig, sessionId)).toBeDefined()
+    expect(latestRestTestStatus(passRig, sessionId)).toBeDefined()
   }
   const crashedRows = passRig.statusEvents.flatMap((event) =>
     event.type === 'status' && event.session.sessionId === 'session-crashed' ? [event.session] : []

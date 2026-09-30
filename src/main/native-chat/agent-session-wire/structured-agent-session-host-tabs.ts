@@ -32,6 +32,15 @@ export function setStructuredAgentSessionTabVisibility(
   return host.deps.store.setSessionTabVisibility(sessionId, visible, tabId)
 }
 
+/** Whether the chat still has its tab. A legacy store with no tab index cannot say, so yes. */
+export function sessionTabListed(
+  store: { getVisibleSessionTabIndex: () => { present: boolean; sessionIds: string[] } },
+  sessionId: string
+): boolean {
+  const tabs = store.getVisibleSessionTabIndex()
+  return !tabs.present || tabs.sessionIds.includes(sessionId)
+}
+
 export type StructuredAgentSessionTab = {
   sessionId: string
   workspaceId: string

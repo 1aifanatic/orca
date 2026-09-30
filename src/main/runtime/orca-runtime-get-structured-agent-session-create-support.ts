@@ -253,8 +253,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   /** Startup's structured step: the host and PTY inventory, awaited; the lease check, started and
-   *  never awaited. Neither the tab list nor paint needs leases, and every write to a chat whose
-   *  lease is unchecked waits for its own check (`serializeAfterLeaseCheck`). */
+   *  never awaited. Neither the tab list nor paint needs leases, and a write to a chat whose lease
+   *  is unchecked first waits for that check (`serializeAfterLeaseCheck`). */
   async prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
     await this.ensureStructuredAgentSessionInventory()
     if (this.hasPersistedStructuredAgentSessionStore()) {

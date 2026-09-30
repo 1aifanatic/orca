@@ -1,6 +1,8 @@
 // A real host over a real store and journal, with a scripted provider and a clock the test moves,
-// for the tests of a conversation that outlives its agent. The idle sweep runs on its own short
-// interval; a test moves `clock.now` past the idle window and waits for the outcome.
+// for the tests of a conversation that outlives its agent and of what a restarted host owes. The
+// idle sweep runs on its own short interval; a test moves `clock.now` past the idle window and
+// waits for the outcome. Every journal open calls `historyFilePath` once, so that mock is the open
+// counter, and holding it holds the open.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,6 +10,8 @@ import { join } from 'node:path'
 import { expect, vi, type Mock } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
   AgentSessionMutationEnvelope,
   AgentSessionStatusEvent,
@@ -21,6 +25,7 @@ import type {
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
+  HOST_TEST_LOCATION,
   HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -45,6 +50,8 @@ export type RestTestAdapter = {
   >
   backgroundTaskState: Mock<NonNullable<StructuredAgentSessionAdapter['backgroundTaskState']>>
   readOptions: Mock<NonNullable<StructuredAgentSessionAdapter['readOptions']>>
+  /** Called once per journal open, with the session id; replace its implementation to hold one. */
+  historyFilePath: Mock<(sessionId: string) => Promise<string | null>>
 }
 
 export type RestTestRig = {
@@ -55,36 +62,55 @@ export type RestTestRig = {
   clock: { now: number }
   statusEvents: AgentSessionStatusEvent[]
   sink: { publish: Mock; forget: Mock }
+  probeOwner: Mock<(record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>>
+  /** Workspaces this host's adapter does not serve, as a platform gate would. */
+  unsupportedWorkspaceIds: Set<string>
   /** Opens a fresh host over the same store and journals: what a restart leaves behind. */
   restart: (deps?: Partial<StructuredAgentSessionHostDeps>) => Promise<StructuredAgentSessionHost>
+  /** A crash: nothing settles or flushes; the process's timers and handles simply stop. */
+  crash: () => Promise<void>
+  /** A new app run over the same files, with no flush first; the mocks and status stream start
+   *  empty, so they hold what the new run saw and nothing the previous one did. */
+  boot: (deps?: Partial<StructuredAgentSessionHostDeps>) => Promise<StructuredAgentSessionHost>
   dispose: () => Promise<void>
 }
 
 let ordinal = 0
 let generations = 0
 
-export function acceptedDispatch(): AgentSessionDispatchOutcome {
+/** The rig's own chat keeps the shared test thread; any other chat gets a thread of its own. */
+function restTestThread(sessionId: string): string {
+  return sessionId === SESSION ? THREAD : `thread-${sessionId}`
+}
+
+export function acceptedDispatch(sessionId = SESSION): AgentSessionDispatchOutcome {
   ordinal += 1
   return {
     state: 'accepted',
-    providerIdentity: { provider: 'codex', threadId: THREAD, turnId: `turn-${ordinal}`, ordinal }
+    providerIdentity: {
+      provider: 'codex',
+      threadId: restTestThread(sessionId),
+      turnId: `turn-${ordinal}`,
+      ordinal
+    }
   }
 }
 
 export function restTestSend(
   text: string,
-  fence = 1
+  fence: number | null = 1,
+  sessionId = SESSION
 ): { envelope: AgentSessionMutationEnvelope; body: AgentJournalMessageItem } {
   const body = hostTestMessage(text)
   return {
     body,
     envelope: {
-      sessionId: SESSION,
+      sessionId,
       clientOperationId: hostTestOperationId(),
       expectedRuntimeFence: fence,
       payloadFingerprint: computeAgentSessionPayloadFingerprint({
         method: 'agentSession.send',
-        sessionId: SESSION,
+        sessionId,
         fields: { body }
       })
     }
@@ -117,27 +143,31 @@ export function collectSubscriber(): {
   return { events, emit: (event) => events.push(event) }
 }
 
+/** `root` is handed to the rig, which removes it on dispose; by default it makes its own. */
 export async function createRestTestRig(
-  deps: Partial<StructuredAgentSessionHostDeps> = {}
+  deps: Partial<StructuredAgentSessionHostDeps> = {},
+  options: { root?: string } = {}
 ): Promise<RestTestRig> {
   resetHostTestOperationIds()
   ordinal = 0
-  const root = await mkdtemp(join(tmpdir(), 'orca-rest-'))
+  const root = options.root ?? (await mkdtemp(join(tmpdir(), 'orca-rest-')))
   const clock = { now: HOST_TEST_NOW }
   const statusEvents: AgentSessionStatusEvent[] = []
   const sink = { publish: vi.fn(), forget: vi.fn() }
-  let store = await AgentSessionRecordStore.open({
-    directory: join(root, 'store'),
-    hostId: 'local'
-  })
+  const probeOwner: RestTestRig['probeOwner'] = vi.fn(async () => ({ outcome: 'pid-absent' }))
+  const unsupportedWorkspaceIds = new Set<string>()
+  const openStore = () =>
+    AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  let store = await openStore()
   const adapter: RestTestAdapter = {
-    acquire: vi.fn(async ({ fence, spawnToken }) => ({
+    acquire: vi.fn(async ({ fence, spawnToken, identity }) => ({
       acquisitionGeneration: `generation-${++generations}`,
       process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
       link: {
-        linkId: `link-${fence}`,
-        handle: { provider: 'codex' as const, threadId: THREAD },
-        origin: store.getRecord(SESSION)?.providerHandleChain.length
+        linkId:
+          identity.sessionId === SESSION ? `link-${fence}` : `link-${identity.sessionId}-${fence}`,
+        handle: { provider: 'codex' as const, threadId: restTestThread(identity.sessionId) },
+        origin: store.getRecord(identity.sessionId)?.providerHandleChain.length
           ? ('resumed' as const)
           : ('created' as const),
         mintedAtFence: fence,
@@ -145,16 +175,20 @@ export async function createRestTestRig(
       }
     })),
     closeSession: vi.fn(async () => true),
-    dispatch: vi.fn(async () => acceptedDispatch()),
+    dispatch: vi.fn(async (input) => acceptedDispatch(input.sessionId)),
     acknowledgeSessionRelease: vi.fn(),
     backgroundTaskState: vi.fn(() => undefined),
-    readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } }))
+    readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } })),
+    historyFilePath: vi.fn(async (_sessionId: string): Promise<string | null> => null)
   }
-  const hostFor = (overrides: Partial<StructuredAgentSessionHostDeps>) =>
-    new StructuredAgentSessionHost({
+  const hostFor = (overrides: Partial<StructuredAgentSessionHostDeps>) => {
+    const host = new StructuredAgentSessionHost({
       store,
       adapter: {
         ...adapter,
+        historyFilePath: ({ identity }) => adapter.historyFilePath(identity.sessionId),
+        supportsCreate: (location, agent) =>
+          agent === 'codex' && !unsupportedWorkspaceIds.has(location.workspaceId),
         releaseAcquisition: vi.fn(async () => true),
         cancelTurn: async () => ({ cancelled: true }),
         answerPrompt: async ({ commit }) => commit(),
@@ -163,13 +197,22 @@ export async function createRestTestRig(
       journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-a',
-      probeOwner: async () => ({ outcome: 'pid-absent' }),
+      probeOwner,
       now: () => clock.now,
       statusSink: sink,
       idleSweep: { intervalMs: SWEEP_INTERVAL_MS },
       ...deps,
       ...overrides
     })
+    host.subscribeStatus({ id: 'status', emit: (event) => statusEvents.push(event) })
+    return host
+  }
+  const reopen = async (overrides: Partial<StructuredAgentSessionHostDeps>) => {
+    store = await openStore()
+    rig.store = store
+    rig.host = hostFor(overrides)
+    return rig.host
+  }
   const rig: RestTestRig = {
     root,
     store,
@@ -178,38 +221,107 @@ export async function createRestTestRig(
     clock,
     statusEvents,
     sink,
+    probeOwner,
+    unsupportedWorkspaceIds,
     restart: async (overrides = {}) => {
       await rig.host.flushAllStreamedEvents().catch(() => undefined)
-      store = await AgentSessionRecordStore.open({
-        directory: join(root, 'store'),
-        hostId: 'local'
-      })
-      rig.store = store
-      rig.host = hostFor(overrides)
-      rig.host.subscribeStatus({ id: 'status', emit: (event) => statusEvents.push(event) })
-      return rig.host
+      return reopen(overrides)
+    },
+    crash: async () => {
+      const { runtimeState, lifetime, sessions } = rig.host.collaboratorsForTests()
+      await runtimeState.stopLeaseRenewal()
+      lifetime.dispose()
+      for (const session of sessions.values()) {
+        await session.journal.close()
+      }
+      sessions.clear()
+    },
+    boot: (overrides = {}) => {
+      for (const mock of [adapter.historyFilePath, adapter.acquire, adapter.dispatch, probeOwner]) {
+        mock.mockClear()
+      }
+      sink.publish.mockClear()
+      sink.forget.mockClear()
+      statusEvents.length = 0
+      return reopen(overrides)
     },
     dispose: async () => {
       await rig.host.flushAllStreamedEvents().catch(() => undefined)
       await rm(root, { recursive: true, force: true })
     }
   }
-  rig.host.subscribeStatus({ id: 'status', emit: (event) => statusEvents.push(event) })
   return rig
 }
 
-/** Creates the chat, lists its tab, and sends one message so its journal is on disk. */
-export async function foundRestTestChat(rig: RestTestRig): Promise<void> {
-  const attached = await rig.host.attach(REST_TEST_CALLER, hostTestAttachParams(null))
+/** Creates the chat, lists its tab unless told not to, and sends `message` when one is given,
+ *  waiting for its dispatch. */
+export async function restTestChat(
+  rig: RestTestRig,
+  sessionId: string,
+  options: { workspaceId?: string; listed?: boolean; message?: string } = {}
+): Promise<void> {
+  const fence = rig.store.getRecord(sessionId)?.lease.runtimeFence ?? null
+  const attached = await rig.host.attach(
+    REST_TEST_CALLER,
+    hostTestAttachParams(fence, {
+      envelope: {
+        sessionId,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: fence,
+        payloadFingerprint: ''
+      },
+      location: { ...HOST_TEST_LOCATION, workspaceId: options.workspaceId ?? 'workspace-1' },
+      providerHandle: { kind: 'codex', threadId: restTestThread(sessionId) }
+    })
+  )
   if (!attached.ok) {
     throw new Error(`attach refused: ${attached.refusal.code}`)
   }
-  await rig.store.setSessionTabVisibility(SESSION, true)
-  const sent = await rig.host.send(REST_TEST_CALLER, restTestSend('hello', attached.fence))
+  if (options.listed !== false) {
+    await rig.store.setSessionTabVisibility(sessionId, true)
+  }
+  if (options.message === undefined) {
+    return
+  }
+  const dispatched = rig.adapter.dispatch.mock.calls.length
+  const sent = await rig.host.send(
+    REST_TEST_CALLER,
+    restTestSend(options.message, attached.fence, sessionId)
+  )
   if (!sent.ok) {
     throw new Error(`send refused: ${sent.refusal.code}`)
   }
-  await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalled())
+  await vi.waitFor(() => expect(rig.adapter.dispatch.mock.calls.length).toBeGreaterThan(dispatched))
+}
+
+/** Creates the rig's own chat, lists its tab, and sends one message so its journal is on disk. */
+export function foundRestTestChat(rig: RestTestRig): Promise<void> {
+  return restTestChat(rig, SESSION, { message: 'hello' })
+}
+
+/** A send from a client that has not attached this run, so it names no fence. */
+export function sendRestTestMessage(rig: RestTestRig, sessionId: string, text: string) {
+  return rig.host.send(REST_TEST_CALLER, restTestSend(text, null, sessionId))
+}
+
+export function restTestOpens(rig: RestTestRig, sessionId: string): number {
+  return rig.adapter.historyFilePath.mock.calls.filter(([id]) => id === sessionId).length
+}
+
+/** The newest row the status stream carried for a session. */
+export function latestRestTestStatus(rig: RestTestRig, sessionId: string) {
+  for (const event of rig.statusEvents.toReversed()) {
+    if (event.type === 'status' && event.session.sessionId === sessionId) {
+      return event.session
+    }
+    if (event.type === 'snapshot') {
+      const found = event.sessions.find((session) => session.sessionId === sessionId)
+      if (found) {
+        return found
+      }
+    }
+  }
+  return undefined
 }
 
 /** Runs one sweep pass now, for a test that set `idleSweep.intervalMs` out of reach. */

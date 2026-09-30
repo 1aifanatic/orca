@@ -66,6 +66,8 @@ describe('restart journal restoration', () => {
       resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
+      isDisposed: () => false,
+      isListed: () => true,
       onReadable: () => undefined
     })
 
@@ -107,6 +109,8 @@ describe('restart journal restoration', () => {
       resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
+      isDisposed: () => false,
+      isListed: () => true,
       onReadable: () => undefined
     })
     ticking = false
@@ -157,6 +161,8 @@ describe('restart journal restoration', () => {
       },
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
+      isDisposed: () => false,
+      isListed: () => true,
       onReadable: (_sessionId, readable) => {
         calls.push(readable === restored ? 'onReadable:restored' : 'onReadable')
       }
@@ -184,6 +190,8 @@ describe('restart journal restoration', () => {
         ...bookkeeping,
         serialize: async (_sessionId, task) => task(),
         hasSession: () => false,
+        isDisposed: () => false,
+        isListed: () => true,
         onReadable: () => undefined
       })
 
@@ -231,6 +239,8 @@ describe('restart journal restoration', () => {
       resolveRecovery: async () => true,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => true,
+      isDisposed: () => false,
+      isListed: () => true,
       onReadable: () => undefined
     })
 

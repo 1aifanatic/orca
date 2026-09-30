@@ -7,10 +7,11 @@ import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
 import { closeTestJournalHostDatabases } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
-  createStartupRig,
-  latestStatus,
-  type StartupRig
-} from '../native-chat/agent-session-wire/structured-agent-session-startup-listing-test-rig'
+  createRestTestRig,
+  latestRestTestStatus,
+  restTestChat,
+  type RestTestRig
+} from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -31,16 +32,20 @@ const CONTEXT = {
   clientCapabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]
 }
 
-let rig: StartupRig
+let rig: RestTestRig
 // Anything a test holds is let go before teardown, so a failed assertion cannot hang it.
 let releaseHeld = (): void => undefined
 
 beforeEach(async () => {
-  rig = await createStartupRig()
+  rig = await createRestTestRig()
 })
 
 afterEach(async () => {
   releaseHeld()
+  // The listing starts the lease check and the restore without awaiting either; both finish before
+  // the rig removes their files.
+  await rig.host.reconcileRestartLeases()
+  await rig.host.restoreReadableSessions()
   setStructuredAgentSessionHost(null)
   await rig.dispose()
   closeTestJournalHostDatabases()
@@ -93,14 +98,14 @@ describe('listing chat tabs at startup', () => {
   it('answers before any chat opens, then opens each one (T1)', async () => {
     const ids = ['session-1', 'session-2', 'session-3']
     for (const sessionId of ids) {
-      await rig.chat(sessionId, { message: sessionId })
+      await restTestChat(rig, sessionId, { message: sessionId })
     }
     await rig.crash()
     await rig.boot()
     const opens = Promise.withResolvers<void>()
     releaseHeld = opens.resolve
     let opened = 0
-    rig.historyFilePath.mockImplementation(async () => {
+    rig.adapter.historyFilePath.mockImplementation(async () => {
       await opens.promise
       opened += 1
       return null
@@ -116,8 +121,8 @@ describe('listing chat tabs at startup', () => {
   })
 
   it('answers while the startup lease check never finishes (T2)', async () => {
-    await rig.chat('session-1', { message: 'one' })
-    await rig.chat('session-2', { message: 'two' })
+    await restTestChat(rig, 'session-1', { message: 'one' })
+    await restTestChat(rig, 'session-2', { message: 'two' })
     await rig.crash()
     const probe = Promise.withResolvers<void>()
     releaseHeld = probe.resolve
@@ -137,7 +142,7 @@ describe('listing chat tabs at startup', () => {
   })
 
   it('answers when the startup lease check fails (T2)', async () => {
-    await rig.chat('session-1', { message: 'one' })
+    await restTestChat(rig, 'session-1', { message: 'one' })
     await rig.crash()
     rig.probeOwner.mockRejectedValue(new Error('probe unavailable'))
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -154,15 +159,18 @@ describe('listing chat tabs at startup', () => {
     )
   })
 
-  it('lists every chat when one fails to open, and the others still get status rows (T5)', async () => {
-    const ids = ['session-1', 'session-2', 'session-3']
+  it('lists every chat when four fail to open, and the others still get status rows (T5)', async () => {
+    // More chats than the restore opens at once, with the first four failing: each failure must
+    // cost only its own chat, not one of the restore's four lanes.
+    const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5', 'session-6']
+    const failing = ids.slice(0, 4)
     for (const sessionId of ids) {
-      await rig.chat(sessionId, { message: `asked ${sessionId}` })
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
     }
     await rig.crash()
     await rig.boot()
-    rig.historyFilePath.mockImplementation(async (sessionId) => {
-      if (sessionId === 'session-2') {
+    rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+      if (failing.includes(sessionId)) {
         throw new Error('EACCES: permission denied')
       }
       return null
@@ -172,26 +180,31 @@ describe('listing chat tabs at startup', () => {
     const { listAll } = restartedRuntime()
 
     expect(await within(listAll())).toEqual(ids)
-    await vi.waitFor(() => {
-      expect(latestStatus(rig, 'session-1')).toMatchObject({ latestPrompt: 'asked session-1' })
-      expect(latestStatus(rig, 'session-3')).toMatchObject({ latestPrompt: 'asked session-3' })
-    })
-    await vi.waitFor(() =>
-      expect(warn).toHaveBeenCalledWith(
-        '[structured-agent-session] restoring chat history after listing failed',
-        expect.objectContaining({ message: 'EACCES: permission denied' })
+    await restore.mock.results[0]?.value
+    for (const sessionId of ['session-5', 'session-6']) {
+      expect(rig.host.hasSession(sessionId)).toBe(true)
+      expect(latestRestTestStatus(rig, sessionId)).toMatchObject({
+        latestPrompt: `asked ${sessionId}`
+      })
+    }
+    const failures = warn.mock.calls.filter(
+      ([message]) => message === '[structured-agent-session] restoring a chat for reading failed'
+    )
+    expect(failures.map(([, detail]) => detail)).toEqual(
+      failing.map((sessionId) =>
+        expect.objectContaining({
+          sessionId,
+          error: expect.objectContaining({ message: 'EACCES: permission denied' })
+        })
       )
     )
     expect(await listAll()).toEqual(ids)
     expect(restore).toHaveBeenCalledOnce()
-    expect(
-      warn.mock.calls.filter(([message]) => String(message).includes('after listing'))
-    ).toHaveLength(1)
   })
 
   it('lists in tab-table order, not the order the chats were created (T7)', async () => {
     for (const sessionId of ['session-c', 'session-a', 'session-b']) {
-      await rig.chat(sessionId, { listed: false })
+      await restTestChat(rig, sessionId, { listed: false })
     }
     for (const sessionId of ['session-b', 'session-c', 'session-a']) {
       await rig.store.setSessionTabVisibility(sessionId, true)
@@ -205,7 +218,7 @@ describe('listing chat tabs at startup', () => {
 
   it('lists in the saved window order when the profile has no tab table (T7)', async () => {
     for (const sessionId of ['session-c', 'session-a', 'session-b']) {
-      await rig.chat(sessionId, { listed: false })
+      await restTestChat(rig, sessionId, { listed: false })
     }
     await rig.crash()
     const host = await rig.boot()

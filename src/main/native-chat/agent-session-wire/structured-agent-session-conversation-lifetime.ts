@@ -20,6 +20,7 @@ import {
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
+import { sessionTabListed } from './structured-agent-session-host-tabs'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 
 export type StructuredAgentSessionConversationLifetime = ReturnType<
@@ -54,11 +55,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     closeStructuredAgentSessionConversationUnderSerialize(
       {
         sessions,
-        closeStatus: (id) => {
-          const tabs = deps().store.getVisibleSessionTabIndex()
-          // A legacy store cannot say, so the row stays; restart is the boundary that forgets.
-          host.closeStatus(id, { listed: !tabs.present || tabs.sessionIds.includes(id) })
-        }
+        // A legacy store cannot say, so the row stays; restart is the boundary that forgets.
+        closeStatus: (id) => host.closeStatus(id, { listed: sessionTabListed(deps().store, id) })
       },
       sessionId
     )
@@ -89,6 +87,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   return {
     idleSweep,
     stopAgent,
+    isDisposed: (): boolean => disposed,
     /** Quit has begun: nothing opens a conversation or sweeps one after this. */
     dispose: (): void => {
       disposed = true

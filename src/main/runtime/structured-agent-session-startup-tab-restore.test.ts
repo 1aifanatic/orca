@@ -1,7 +1,7 @@
-// With native chat on, the renderer's startup also awaits the chat tab restore (`session.tabs.listAll`),
-// which reads every chat whose tab was open at quit. That read must not wait on record-store
-// bookkeeping: with a saved tab index it writes nothing, and a store that cannot be written costs
-// a bounded number of lock waits, not one per chat.
+// With native chat on, the renderer's startup also awaits the chat tab list (`session.tabs.listAll`).
+// The list opens no chat; a restore it does not wait for then reads every chat whose tab was open at
+// quit. Neither may wait on record-store bookkeeping: with a saved tab index they write nothing, and
+// a store that cannot be written costs a bounded number of lock waits, not one per chat.
 
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
