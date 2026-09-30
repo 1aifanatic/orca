@@ -1,6 +1,7 @@
 /**
  * Puts the pinned Node beside the orcad slots, at `runtimes/node-<executableSha256>/bin/node`
  * (design D2/D5), where `selectOrcadSlotRuntimeCommand` resolves a slot's `.runtime-node`.
+ * The OpenCode vault reader uses the same store on SSH and WSL hosts (design D4a).
  *
  * The official archive is uploaded as published and extracted on the host; the executable's
  * hash is checked there before it is published. Promotion runs under the store lock that
@@ -18,11 +19,13 @@ import {
 import {
   ORCAD_NODE_RUNTIME_DIR_PREFIX,
   ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE,
+  ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE,
   ORCAD_RUNTIMES_DIRNAME
 } from '../../shared/orcad-artifacts'
 import type { SshConnection } from './ssh-connection'
 import { shellEscape } from './ssh-connection-utils'
 import { execCommand } from './ssh-relay-deploy-helpers'
+import { isUnconfirmedSshCommandTermination } from './ssh-relay-exec-command'
 import { uploadRelayDirectory } from './ssh-relay-install-transfers'
 import {
   isWindowsRemoteHost,
@@ -62,17 +65,47 @@ const VERIFIED_MARKER = REMOTE_NODE_RUNTIME_VERIFIED_MARKER
 /** Upload stages sit in the store beside the runtimes they become; store GC sweeps stale ones. */
 export const RUNTIME_STORE_STAGE_PREFIX = '.stage-'
 
-/** The runtime directory a slot at `slotDir` names; the selector computes the same path. */
+/** `<storeParent>/runtimes/node-<executableSha256>`, the one host layout (design D5). */
+export function nodeRuntimeStoreDir(
+  host: RemoteHostPlatform,
+  storeParent: string,
+  target: ServerTarget
+): string {
+  return joinRemotePath(
+    host,
+    storeParent,
+    ORCAD_RUNTIMES_DIRNAME,
+    `${ORCAD_NODE_RUNTIME_DIR_PREFIX}${NODE_RUNTIME_ASSETS[target].executableSha256}`
+  )
+}
+
+/**
+ * The runtime directory beside a version dir (an orcad slot or a relay install); the slot
+ * selector computes the same path, and the vault reader shares the store.
+ */
 export function remoteNodeRuntimeDir(
   host: RemoteHostPlatform,
   slotDir: string,
   target: ServerTarget
 ): string {
+  return nodeRuntimeStoreDir(host, remoteDirname(slotDir.replace(/\/+$/, ''), host), target)
+}
+
+/** The executable inside a POSIX runtime directory. */
+export function posixNodeRuntimeExecutable(host: RemoteHostPlatform, runtimeDir: string): string {
+  return joinRemotePath(host, runtimeDir, ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/'))
+}
+
+/** A per-installer stage beside the runtime; its dot prefix keeps it out of `node-*` listings. */
+export function nodeRuntimeStageDir(
+  host: RemoteHostPlatform,
+  runtimeDir: string,
+  token: string
+): string {
   return joinRemotePath(
     host,
-    remoteDirname(slotDir.replace(/\/+$/, ''), host),
-    ORCAD_RUNTIMES_DIRNAME,
-    `${ORCAD_NODE_RUNTIME_DIR_PREFIX}${NODE_RUNTIME_ASSETS[target].executableSha256}`
+    remoteDirname(runtimeDir, host),
+    `${RUNTIME_STORE_STAGE_PREFIX}${basename(runtimeDir)}-${token}`
   )
 }
 
@@ -90,9 +123,7 @@ export function probeRemoteNodeRuntimeCommand(
   if (isWindowsRemoteHost(host)) {
     return windowsNodeRuntimeProbeCommand(runtimeDir, target)
   }
-  const executable = shellEscape(
-    joinRemotePath(host, runtimeDir, ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/'))
-  )
+  const executable = shellEscape(posixNodeRuntimeExecutable(host, runtimeDir))
   const verified = shellEscape(joinRemotePath(host, runtimeDir, VERIFIED_MARKER))
   return (
     `if [ -f ${verified} ] && [ -x ${executable} ] && ` +
@@ -140,9 +171,7 @@ export function promoteRemoteNodeRuntimeCommand(
   const extracted = shellEscape(joinRemotePath(host, args.stageDir, ...member.split('/')))
   const binDir = shellEscape(joinRemotePath(host, args.runtimeDir, 'bin'))
   const temporary = shellEscape(joinRemotePath(host, args.runtimeDir, 'bin', `node.${args.token}`))
-  const executable = shellEscape(
-    joinRemotePath(host, args.runtimeDir, ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/'))
-  )
+  const executable = shellEscape(posixNodeRuntimeExecutable(host, args.runtimeDir))
   const verified = shellEscape(joinRemotePath(host, args.runtimeDir, VERIFIED_MARKER))
   return [
     `cd ${stage} || exit 1`,
@@ -173,7 +202,30 @@ function exec(
   return execCommand(conn, command, { ...options, wrapCommand: !isWindowsRemoteHost(host) })
 }
 
-/** Ensures the slot's runtime exists on the host; uploads the pinned archive only when needed. */
+/**
+ * Copies the archive at `$1` (a path the host can already read, e.g. a WSL view of the
+ * client's cache) into a fresh stage, promotes it, and removes the stage whatever happens.
+ */
+export function installNodeRuntimeFromHostArchiveCommand(
+  host: RemoteHostPlatform,
+  args: { runtimeDir: string; archive: string; target: ServerTarget; token: string }
+): string {
+  const stageDir = nodeRuntimeStageDir(host, args.runtimeDir, args.token)
+  const stage = shellEscape(stageDir)
+  const promote = promoteRemoteNodeRuntimeCommand(host, { ...args, stageDir })
+  const copy = `cp -- "$1" ${shellEscape(joinRemotePath(host, stageDir, args.archive))}`
+  // Subshell: promote's `exit 1` must still reach the stage cleanup.
+  return `(umask 077 && mkdir -p ${stage} && ${copy} && ${promote}); status=$?; rm -rf ${stage}; exit $status`
+}
+
+export type RemoteRuntimeStep = <T>(operation: () => Promise<T>) => Promise<T>
+
+const runDirectly: RemoteRuntimeStep = (operation) => operation()
+
+/**
+ * Ensures the runtime beside `slotDir` exists on the host, uploading the pinned archive only
+ * when needed, and returns its executable.
+ */
 export async function ensureRemoteOrcadNodeRuntime(options: {
   conn: SshConnection
   host: RemoteHostPlatform
@@ -182,33 +234,38 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
   /** The locally verified pinned archive (pinned-runtime-materializer). */
   archivePath: () => Promise<string>
   signal?: AbortSignal
-}): Promise<'cached' | 'uploaded'> {
+  /** Wraps each host round trip, so a caller can tell an unconfirmed channel from a local failure. */
+  remoteStep?: RemoteRuntimeStep
+}): Promise<{ executable: string; transfer: 'cached' | 'uploaded' }> {
   const { conn, host, target, signal } = options
   const windows = isWindowsRemoteHost(host)
+  const remoteStep = options.remoteStep ?? runDirectly
+  const run = (
+    command: string,
+    runOptions: { signal?: AbortSignal; timeoutMs?: number } = {}
+  ): Promise<string> => remoteStep(() => exec(conn, host, command, runOptions))
   const runtimeDir = remoteNodeRuntimeDir(host, options.slotDir, target)
+  const executable = windows
+    ? joinRemotePath(host, runtimeDir, ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE)
+    : posixNodeRuntimeExecutable(host, runtimeDir)
   const token = randomBytes(8).toString('hex')
-  const stageDir = joinRemotePath(
-    host,
-    remoteDirname(runtimeDir, host),
-    `${RUNTIME_STORE_STAGE_PREFIX}${basename(runtimeDir)}-${token}`
-  )
+  const stageDir = nodeRuntimeStageDir(host, runtimeDir, token)
   // Why the stage rides the probe on Windows: every exec there is a powershell.exe spawn.
-  const probe = await exec(
-    conn,
-    host,
+  const probe = await run(
     windows
       ? windowsNodeRuntimeProbeCommand(runtimeDir, target, stageDir)
       : probeRemoteNodeRuntimeCommand(host, runtimeDir, target),
     { signal }
   )
   if (probe.trim() === REMOTE_NODE_RUNTIME_READY) {
-    return 'cached'
+    return { executable, transfer: 'cached' }
   }
   const cleanupStage = windows
     ? windowsNodeRuntimeStageCleanupCommand(stageDir)
     : `rm -rf ${shellEscape(stageDir)}`
   let localStage: string | undefined
   let hostRemovedStage = false
+  let stageUnconfirmed = false
   try {
     const archivePath = await options.archivePath()
     const uploadDir = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
@@ -218,9 +275,9 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
       copyFile(archivePath, join(uploadDir, archive))
     )
     if (!windows) {
-      await exec(conn, host, `mkdir -p ${shellEscape(stageDir)}`, { signal })
+      await run(`mkdir -p ${shellEscape(stageDir)}`, { signal })
     }
-    await uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal })
+    await remoteStep(() => uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal }))
     const promote = (): Promise<string> =>
       exec(
         conn,
@@ -231,33 +288,39 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
         { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
       )
     // Why no store lock on Windows: store GC skips Windows hosts, and each lock step is a powershell.exe.
-    const promoted = windows
-      ? await promote()
-      : await withRuntimeStoreLock(
-          conn,
-          host,
-          remoteDirname(runtimeDir, host),
-          // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
-          async () =>
-            (
-              await exec(conn, host, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), {
-                signal
-              })
-            ).trim() === REMOTE_NODE_RUNTIME_READY
-              ? REMOTE_NODE_RUNTIME_READY
-              : promote(),
-          signal
-        )
+    const promoted = await remoteStep(() =>
+      windows
+        ? promote()
+        : withRuntimeStoreLock(
+            conn,
+            host,
+            remoteDirname(runtimeDir, host),
+            // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
+            async () =>
+              (
+                await exec(conn, host, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), {
+                  signal
+                })
+              ).trim() === REMOTE_NODE_RUNTIME_READY
+                ? REMOTE_NODE_RUNTIME_READY
+                : promote(),
+            signal
+          )
+    )
     // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
     hostRemovedStage = windows
     assertRemoteNodeRuntimePromoted(promoted)
-    return 'uploaded'
+    return { executable, transfer: 'uploaded' }
+  } catch (error) {
+    stageUnconfirmed = isUnconfirmedSshCommandTermination(error)
+    throw error
   } finally {
     if (localStage) {
       await rm(localStage, { recursive: true, force: true }).catch(() => {})
     }
-    if (!hostRemovedStage) {
-      await exec(conn, host, cleanupStage).catch(() => {})
+    // A transfer that may still be writing keeps its stage; loss of contact is not an exit.
+    if (!hostRemovedStage && !stageUnconfirmed) {
+      await run(cleanupStage).catch(() => {})
     }
   }
 }

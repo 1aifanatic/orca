@@ -84,7 +84,7 @@ export async function ensurePinnedRelayRuntime(
     }
   }
   try {
-    const transfer = await ensureRemoteOrcadNodeRuntime({
+    const { transfer } = await ensureRemoteOrcadNodeRuntime({
       conn,
       host,
       slotDir: remoteRelayDir,

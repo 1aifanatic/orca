@@ -24,6 +24,7 @@ const HASH = `const fs=require('node:fs');const fsp=fs.promises;const path=requi
 async function hash(file){try{const digest=require('node:crypto').createHash('sha256');for await(const chunk of fs.createReadStream(file))digest.update(chunk);return digest.digest('hex')}catch(error){if(error.code==='ENOENT')return null;throw error}}
 `
 
+/** Host Node needs backup() too: 22.13-22.15 have DatabaseSync without it (design D4). */
 export function probeOpenCodeNodeSqliteCommand(
   host: RemoteHostPlatform,
   nodePath: string,
@@ -40,7 +41,7 @@ try{if(override&&override!==':memory:'){present=(await fs.stat(path.isAbsolute(o
 else if(!override){const directory=await fs.opendir(data);for await(const entry of directory){if(entry.isFile()&&/^opencode(?:-[A-Za-z0-9_.-]+)?\\.db$/.test(entry.name)){present=true;break}}}}
 catch(error){if(error.code!=='ENOENT'&&error.code!=='ENOTDIR')throw error}
 if(!present){send({status:'not-needed'});return}
-let db;try{db=new(require('node:sqlite').DatabaseSync)(':memory:');
+let db;try{const sqlite=require('node:sqlite');if(typeof sqlite.backup!=='function')throw Error('SQLite backup unavailable');db=new sqlite.DatabaseSync(':memory:');
 if(db.prepare('SELECT 1 AS ready').get().ready!==1)throw Error('SQLite read failed');
 send({status:'ready',executable:process.execPath})}catch{send({status:'unsupported'})}finally{if(db)db.close()}
 })().catch(error=>{console.error(error.message);process.exitCode=1})`,
