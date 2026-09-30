@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { uptime } from 'node:os'
 import { isDaemonGoneError } from './daemon-endpoint-errors'
 import { probeSocketConnect } from './daemon-endpoint-probe'
 import {
@@ -13,6 +14,9 @@ import { inspectProcessLiveness } from './daemon-process-inspection'
 
 /** Named so a caller clamping this probe to a deadline cannot silently decouple from its default. */
 export const DAEMON_ENDPOINT_PROBE_TIMEOUT_MS = 1_000
+
+// Why generous: the record's start and this boot's start are both wall-clock, which a step shifts.
+const BOOT_TIME_TOLERANCE_MS = 5 * 60_000
 
 /**
  * The app's one answer to "is a daemon serving this endpoint?". A connect proves `live`. Only a
@@ -97,9 +101,17 @@ function recordedDaemonVerdict(pidPath: string | null): ProcessLivenessVerdict {
     return { status: 'unverifiable', reason: 'the endpoint refused and its pid record is invalid' }
   }
   const liveness = inspectProcessLiveness(record.pid)
+  if (liveness.status === 'live' && startedBeforeThisBoot(record.startedAtMs)) {
+    // Why: whatever answers to that pid now, it is not a process recorded before the last boot.
+    return { status: 'exited' }
+  }
   return liveness.status === 'live'
     ? { status: 'unverifiable', reason: 'the endpoint refused while its daemon process runs' }
     : liveness
+}
+
+function startedBeforeThisBoot(startedAtMs: number | null): boolean {
+  return startedAtMs !== null && startedAtMs < Date.now() - uptime() * 1000 - BOOT_TIME_TOLERANCE_MS
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {

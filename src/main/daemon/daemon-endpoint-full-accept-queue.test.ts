@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { tmpdir } from 'node:os'
+import { tmpdir, uptime } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawnForStablePane } from '../ipc/pty/pane/stable-owner'
@@ -155,5 +155,26 @@ describe.skipIf(process.platform === 'win32')('a live daemon whose accept queue 
     await expect(
       probeDaemonEndpoint(socketPath, getDaemonPidPath(runtimeDir, LEGACY))
     ).resolves.toEqual({ status: 'exited' })
+  })
+
+  // The crash left its socket file and pid record; the pid now names an unrelated live process.
+  it('reads a crashed version as exited when its record predates the last boot', async () => {
+    expect(await startWedgedDaemon()).not.toBeNull()
+    for (const socket of held.splice(0)) {
+      socket.destroy()
+    }
+    await stopListener()
+    const pidPath = getDaemonPidPath(runtimeDir, LEGACY)
+    const bootedAtMs = Date.now() - uptime() * 1000
+    const recordFor = (startedAtMs: number): string =>
+      JSON.stringify({ pid: process.pid, startedAtMs, launchNonce: 'crashed' })
+
+    writeFileSync(pidPath, recordFor(bootedAtMs - 60 * 60_000))
+    await expect(probeDaemonEndpoint(socketPath, pidPath)).resolves.toEqual({ status: 'exited' })
+
+    writeFileSync(pidPath, recordFor(Date.now() - process.uptime() * 1000))
+    await expect(probeDaemonEndpoint(socketPath, pidPath)).resolves.toMatchObject({
+      status: 'unverifiable'
+    })
   })
 })
