@@ -37,7 +37,10 @@ it.each([
   'src/shared/linux-glibc.ts',
   'src/main/daemon/entry.ts',
   'src/relay/index.ts',
-  'src/main/wsl/runner.ts'
+  'src/main/wsl/runner.ts',
+  'config/scripts/build-orcad-prebuilds.mjs',
+  'config/scripts/orcad-prebuild-slot-contents.mjs',
+  'src/shared/node-runtime-pin.ts'
 ])('retains all platforms for platform-flavoured input %s', (file) => {
   expect(bunProfileQualification([file], scope)).toEqual({
     qualification: true,

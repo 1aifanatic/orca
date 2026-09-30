@@ -14,6 +14,8 @@ const ROOT = resolve(import.meta.dirname, '../..')
 const BUILD_SCRIPTS = [
   'config/scripts/build-orcad-bun.mjs',
   'config/scripts/build-orcad.mjs',
+  'config/scripts/build-orcad-prebuilds.mjs',
+  'config/scripts/orcad-prebuild-smoke-child.cjs',
   'config/scripts/build-windows-process-tree-relay-addon.mjs',
   'config/scripts/run-bun-profile-tests.mjs',
   'config/vitest.config.ts',

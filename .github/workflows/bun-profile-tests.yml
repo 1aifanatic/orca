@@ -98,6 +98,15 @@ jobs:
       # build:orcad reuses the host addon validated by native-runtime preparation.
       - run: pnpm build:orcad
       - run: pnpm test:bun:profile --artifact
+      # Linux slots are built on the Ubuntu 20.04 and Alpine lanes below, where their libc floors live.
+      # Before setup-node 18: the script imports the TypeScript runtime pin.
+      - name: Build and smoke this runner's node-pty prebuild slot under the pinned Node
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          pnpm build:orcad-prebuilds
+          pnpm build:orcad-prebuilds --require-slots "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)"
+          pnpm build:orcad-prebuilds --smoke
       - uses: actions/setup-node@v6
         if: runner.arch == 'X64'
         with:
@@ -135,6 +144,11 @@ jobs:
       - uses: ./.github/actions/install-node-dependencies
       - run: pnpm build:orcad
       - run: pnpm test:bun:profile --artifact
+      - name: Build and smoke this runner's node-pty prebuild slot under the pinned Node
+        run: |
+          pnpm build:orcad-prebuilds
+          pnpm build:orcad-prebuilds --require-slots "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)"
+          pnpm build:orcad-prebuilds --smoke
 
   linux_musl:
     needs: [changes, persistence]
@@ -168,4 +182,7 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm build:orcad
           pnpm test:bun:profile --artifact
+          pnpm build:orcad-prebuilds
+          pnpm build:orcad-prebuilds --require-slots "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)"
+          pnpm build:orcad-prebuilds --smoke
           BUN_QUALIFICATION

@@ -10,7 +10,7 @@ import {
   NODE_RUNTIME_PIN,
   SERVER_TARGETS
 } from '../../src/shared/node-runtime-pin.ts'
-import { nodeDistArchiveName } from './update-node-runtime-pin.mjs'
+import { nodeDistArchiveName, windowsImportLibFile } from './update-node-runtime-pin.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const ASSET_SOURCES = new Set(['official', 'unofficial'])
@@ -71,6 +71,19 @@ export function findNodeRuntimePinProblems({ pin, assets, targets, packageJson, 
   }
   if (pin.headers?.file !== `node-v${pin.version}-headers.tar.gz`) {
     problems.push(`NODE_RUNTIME_PIN.headers.file ${pin.headers?.file} is not for ${pin.version}`)
+  }
+  for (const target of targets.filter((name) => name.startsWith('win32-'))) {
+    const lib = pin.windowsImportLibs?.[target]
+    if (lib?.file !== windowsImportLibFile(target)) {
+      problems.push(
+        `NODE_RUNTIME_PIN.windowsImportLibs.${target}.file is not ${windowsImportLibFile(target)}`
+      )
+    }
+    if (!SHA256.test(lib?.sha256 ?? '')) {
+      problems.push(
+        `NODE_RUNTIME_PIN.windowsImportLibs.${target}.sha256 is not a 64-character hex SHA-256`
+      )
+    }
   }
 
   const expected = new Set(targets)

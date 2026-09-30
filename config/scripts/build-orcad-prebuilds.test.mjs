@@ -4,10 +4,11 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   assertNodePtyPatchApplied,
+  bindingGypForLibc,
   detectLibc,
   MATRIX_SLOTS,
-  mergeManifest,
   readManifest,
+  requestedSlots,
   slotName
 } from './build-orcad-prebuilds.mjs'
 
@@ -67,7 +68,21 @@ describe('slot naming', () => {
       'linux-arm64-glibc',
       'linux-arm64-musl',
       'linux-x64-glibc',
-      'linux-x64-musl'
+      'linux-x64-musl',
+      'win32-arm64',
+      'win32-x64'
+    ])
+  })
+
+  it('requires the whole matrix by default and only the named slots otherwise', () => {
+    expect(requestedSlots(['node', 'x'])).toBeNull()
+    expect(requestedSlots(['node', 'x', '--require-slots'])).toEqual(MATRIX_SLOTS)
+    expect(requestedSlots(['node', 'x', '--require-slots', 'darwin-arm64'])).toEqual([
+      'darwin-arm64'
+    ])
+    expect(requestedSlots(['node', 'x', '--require-slots=win32-x64,win32-arm64'])).toEqual([
+      'win32-x64',
+      'win32-arm64'
     ])
   })
 
@@ -91,26 +106,21 @@ describe('slot naming', () => {
   })
 })
 
-describe('mergeManifest', () => {
-  it('accumulates slots across the per-container CI runs that build them', () => {
-    // Overwriting would erase every other container's record, and the release gate would
-    // then reject a matrix that is actually complete.
-    const first = mergeManifest(null, { slot: 'linux-x64-glibc', version: '1.1.0', nodeAbi: '127' })
-    const second = mergeManifest(first, {
-      slot: 'linux-arm64-musl',
-      version: '1.1.0',
-      nodeAbi: '127'
-    })
+describe('bindingGypForLibc', () => {
+  const gyp =
+    "'ldflags': [\n  '-Wl,--no-as-needed,-l:libutil.so.1,-l:libpthread.so.0,--as-needed'\n]"
 
-    expect(second.slots).toEqual(['linux-arm64-musl', 'linux-x64-glibc'])
-    expect(second).toMatchObject({ module: 'node-pty', version: '1.1.0', nodeAbi: '127' })
+  it('keeps the glibc DT_NEEDED ldflag everywhere but musl', () => {
+    expect(bindingGypForLibc(gyp, 'glibc')).toBe(gyp)
+    expect(bindingGypForLibc(gyp, 'none')).toBe(gyp)
   })
 
-  it('does not duplicate a slot rebuilt twice', () => {
-    const once = mergeManifest(null, { slot: 'darwin-arm64', version: '1.1.0', nodeAbi: '127' })
-    expect(
-      mergeManifest(once, { slot: 'darwin-arm64', version: '1.1.0', nodeAbi: '127' }).slots
-    ).toEqual(['darwin-arm64'])
+  it('drops it on musl, which has no libutil.so.1 to link', () => {
+    expect(bindingGypForLibc(gyp, 'musl')).not.toContain('libutil.so.1')
+  })
+
+  it('fails loudly if the patch stops carrying the flag it strips', () => {
+    expect(() => bindingGypForLibc("'ldflags': []", 'musl')).toThrow(/no longer carries/)
   })
 })
 

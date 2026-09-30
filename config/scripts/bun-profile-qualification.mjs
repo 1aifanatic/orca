@@ -22,7 +22,9 @@ const PLATFORM_PREFIXES = [
   'src/main/ssh/',
   'src/main/wsl/',
   'src/relay/',
-  'src/shared/child-process/'
+  'src/shared/child-process/',
+  // Every native prebuild slot is compiled and smoked against the pinned runtime.
+  'src/shared/node-runtime-pin.ts'
 ]
 
 export function bunProfileQualification(changedFiles, scope) {
@@ -31,7 +33,9 @@ export function bunProfileQualification(changedFiles, scope) {
       // A root manifest can move a native dependency on every platform at once.
       !file.includes('/') ||
       PLATFORM_PREFIXES.some((prefix) => file.startsWith(prefix)) ||
-      /(?:^|[/.-])(?:windows|win32|wsl|macos|darwin|linux|posix|bun)(?:[/.-]|$)/i.test(file)
+      /(?:^|[/.-])(?:windows|win32|wsl|macos|darwin|linux|posix|bun|prebuilds?)(?:[/.-]|$)/i.test(
+        file
+      )
   )
   // A pull request qualifies one platform unless the change is platform-flavoured; the push to
   // main re-qualifies all six, so an unescalated miss surfaces minutes after merge, not a day.
