@@ -3,10 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
-import {
-  useMobileNativeChatRowProps,
-  type MobileNativeChatRowProps
-} from './use-mobile-native-chat-row-props'
+import { useMobileNativeChatRowProps } from './use-mobile-native-chat-row-props'
 import {
   useMobileNativeChatTurnDisclosure,
   type MobileNativeChatTurnRow
@@ -16,7 +13,7 @@ function row(id: string, role: NativeChatMessage['role'], text: string): NativeC
   return { id, role, blocks: [{ type: 'text', text }], timestamp: null, source: 'transcript' }
 }
 
-let rendered: readonly MobileNativeChatRowProps[] = []
+let rendered: readonly MobileNativeChatTurnRow[] = []
 
 function Harness({
   messages,
@@ -36,7 +33,7 @@ function Harness({
     settledTurns,
     scopeKey: 'host\0worktree\0tab-a'
   })
-  rendered = useMobileNativeChatRowProps(messages, messages, turns.resolveRow)
+  rendered = useMobileNativeChatRowProps(turns.listMessages, turns.resolveRow)
   return null
 }
 
@@ -48,7 +45,7 @@ describe('useMobileNativeChatRowProps', () => {
     renderer = null
   })
 
-  function rows(): readonly MobileNativeChatRowProps[] {
+  function rows(): readonly MobileNativeChatTurnRow[] {
     return rendered
   }
 
@@ -100,7 +97,7 @@ describe('useMobileNativeChatRowProps', () => {
     }))
     // Stands in for the view re-rendering on a composer keystroke.
     function Static({ composerText }: { composerText: string }): string {
-      rendered = useMobileNativeChatRowProps(history, history, resolveTurnRow)
+      rendered = useMobileNativeChatRowProps(history, resolveTurnRow)
       return composerText
     }
     act(() => {
