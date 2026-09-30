@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
+import type { RpcResponse } from '../transport/types'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
@@ -606,7 +607,7 @@ describe('mobile structured queued messages', () => {
     })
 
     it('each press of a card action carries its own id, even while an earlier press is unanswered', async () => {
-      const held = Promise.withResolvers<unknown>()
+      const held = Promise.withResolvers<RpcResponse>()
       sendRequest.mockImplementation(async (method) =>
         method === 'agentSession.queuedMessageSend' || method === 'agentSession.queuedMessageDelete'
           ? held.promise

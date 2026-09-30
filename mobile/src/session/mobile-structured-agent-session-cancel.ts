@@ -48,7 +48,8 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
     ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
   }
   // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
-  const stop = () => sendStop({ client, sessionId, fence: current.fence, fields, onSendError })
+  const fence = current.fence
+  const stop = () => sendStop({ client, sessionId, fence, fields, onSendError })
   if (args.hostJoinsStops === true) {
     return stop()
   }
