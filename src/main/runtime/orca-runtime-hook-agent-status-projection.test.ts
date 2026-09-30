@@ -568,7 +568,7 @@ describe('hook-driven session tabs republish (#11761)', () => {
   })
 })
 
-it('uses the same host owner for headless terminal identity and running-agent queries', async () => {
+it('uses the host owner for headless identity but not for the keyboard check', async () => {
   const rows = [
     hookRow({
       state: 'done',
@@ -585,7 +585,8 @@ it('uses the same host owner for headless terminal identity and running-agent qu
   observePaneTitle(runtime, 'zsh')
   const terminal = (await runtime.listTerminals()).terminals[0]
   expect(terminal.agentIdentity).toBe('claude')
-  await expect(runtime.isTerminalRunningAgent(terminal.handle)).resolves.toBe(true)
+  // Presence names the owner; with nothing proving it is in front, the keyboard check stays main's.
+  await expect(runtime.isTerminalRunningAgent(terminal.handle)).resolves.toBe(false)
   const owner = rows[0].agentPresence
   if (!owner) {
     throw new Error('missing fixture owner')
