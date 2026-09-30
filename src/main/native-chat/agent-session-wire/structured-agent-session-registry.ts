@@ -8,9 +8,22 @@
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 
 let host: StructuredAgentSessionHost | null = null
+const installedListeners = new Set<() => void>()
 
 export function setStructuredAgentSessionHost(next: StructuredAgentSessionHost | null): void {
+  const installed = next !== null && host === null
   host = next
+  if (installed) {
+    for (const listener of installedListeners) {
+      listener()
+    }
+  }
+}
+
+/** Called each time a host is installed where there was none: this runtime now holds chats. */
+export function onStructuredAgentSessionHostInstalled(listener: () => void): () => void {
+  installedListeners.add(listener)
+  return () => installedListeners.delete(listener)
 }
 
 export function getStructuredAgentSessionHost(): StructuredAgentSessionHost | null {

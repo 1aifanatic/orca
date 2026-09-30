@@ -3,6 +3,10 @@ import { recoverLegacyWorkerTerminalsForRendererStartup } from './legacy-worker-
 import { logStartupMilestone } from './startup-diagnostics'
 import { mainProcessState as state } from './main-process-state'
 import { resolveOpenedMarkdownDocuments } from './os-opened-markdown-files'
+import {
+  getStructuredAgentSessionHost,
+  onStructuredAgentSessionHostInstalled
+} from '../native-chat/agent-session-wire/structured-agent-session-registry'
 
 export function registerMainProcessIpcHandlers(): void {
   ipcMain.handle('app:awaitFirstWindowStartupServices', async () => {
@@ -24,6 +28,15 @@ export function registerMainProcessIpcHandlers(): void {
       state.managedWslCliStartupBarrierReady
     ])
     await state.runtime?.prepareStructuredAgentSessionStartupRestoration()
+  })
+  // The host is built only when this runtime holds structured chats (saved ones restored at startup,
+  // or one a client created), which is when the renderer has chats of this machine's to mirror.
+  ipcMain.handle(
+    'app:hasStructuredAgentSessionHost',
+    () => getStructuredAgentSessionHost() !== null
+  )
+  onStructuredAgentSessionHostInstalled(() => {
+    state.mainWindow?.webContents.send('app:structuredAgentSessionHostInstalled')
   })
   ipcMain.handle('app:recoverLegacyWorkerTerminalsForRendererStartup', () =>
     recoverLegacyWorkerTerminalsForRendererStartup({
