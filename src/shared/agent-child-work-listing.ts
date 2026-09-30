@@ -64,5 +64,15 @@ export function structuredStripChildWork(
       .slice(0, room)
       .map((view) => view.id)
   )
-  return views.filter((view) => viewRuns(view, owners) || newestFinished.has(view.id))
+  const selected = views.filter((view) => viewRuns(view, owners) || newestFinished.has(view.id))
+  // An owner the budget cut leaves its child to the main agent, as a view whose owner is not in
+  // the projection reads; otherwise the child would render under a row that is not there.
+  const kept = new Set(selected.map((view) => view.id))
+  return selected.map((view) => {
+    if (view.parentChildWorkId === undefined || kept.has(view.parentChildWorkId)) {
+      return view
+    }
+    const { parentChildWorkId: _cut, ...toMainAgent } = view
+    return toMainAgent
+  })
 }

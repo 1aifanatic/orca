@@ -2,6 +2,7 @@
 // chat's strip every running child and then the newest finished ones, up to 100 rows.
 
 import { describe, expect, it } from 'vitest'
+import { buildAgentChildRowModels } from '../../../shared/agent-child-row-model'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import {
   STRUCTURED_STRIP_CHILD_WORK_LIMIT as LIMIT,
@@ -56,6 +57,28 @@ describe('the sidebar lists running children only', () => {
 })
 
 describe('the strip lists running children, then the newest finished, up to 100 rows', () => {
+  it('renders every row it keeps: a child whose owner the budget cut belongs to the main agent', () => {
+    const views = [
+      ...Array.from({ length: LIMIT - 2 }, (_, index) => running(`run-${index}`)),
+      finished('owner', 10),
+      { ...finished('nested', 200), parentChildWorkId: 'owner' },
+      finished('newest', 300)
+    ]
+    const strip = structuredStripChildWork(views)
+    expect(strip).toHaveLength(LIMIT)
+    expect(ids(strip)).not.toContain('owner')
+    expect(strip.find((view) => view.id === 'nested')).not.toHaveProperty('parentChildWorkId')
+    const rows = buildAgentChildRowModels(strip, {
+      parentEvidenceFresh: true,
+      transportObservation: 'live',
+      parentObservedAt: 1,
+      hostClockOffsetMs: 0
+    })
+    const rendered = (models: typeof rows): string[] =>
+      models.flatMap((model) => [model.id, ...rendered(model.owned)])
+    expect(rendered(rows)).toHaveLength(LIMIT)
+  })
+
   it('lists every child while they fit', () => {
     const views = [running('a'), finished('b', 2), finished('c', 3)]
     expect(ids(structuredStripChildWork(views))).toEqual(['a', 'b', 'c'])
