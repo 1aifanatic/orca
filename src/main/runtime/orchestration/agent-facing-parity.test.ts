@@ -36,8 +36,8 @@ const CHAT_ADDRESS = `session:${CHAT_SESSION}`
 const TERMINAL_HANDLE = 'term_worker'
 // A structured worker's mailbox address: the handle it was minted.
 const CHAT_WORKER_HANDLE = 'structworker_1'
-// `skill-guides/orchestration.md` on main before chats could orchestrate.
-const MAIN_KERNEL_LINES = 197
+// `skill-guides/orchestration.md` on main before chats could orchestrate, plus the one address line.
+const MAIN_KERNEL_LINES = 197 + 1
 
 const db = new OrchestrationDb(':memory:')
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
@@ -172,7 +172,7 @@ describe('a chat agent and a terminal agent see the same text but for the addres
 describe('the orchestration guide an agent loads', () => {
   const kernel = readFileSync(join(process.cwd(), 'skill-guides', 'orchestration.md'), 'utf8')
 
-  it('has no chat-only section and is no longer than it was before chats orchestrated', () => {
+  it('has no chat-only section and grows only by the address line', () => {
     expect(kernel.split('\n').length - 1).toBeLessThanOrEqual(MAIN_KERNEL_LINES)
     expect(kernel).not.toMatch(/chat|session:<id>|ORCA_CLI_COMMAND|\/clear|end your turn/i)
     expect(kernel).toContain('`ORCA status --json` shows your own orchestration address')
