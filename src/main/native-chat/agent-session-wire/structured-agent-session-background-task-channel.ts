@@ -13,6 +13,7 @@ import type {
   AgentSessionSubscribers,
   AgentSessionSubscribeInput
 } from './structured-agent-session-subscribers'
+import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -27,14 +28,17 @@ export class StructuredAgentSessionBackgroundTaskChannel {
 
   constructor(
     private readonly deps: StructuredAgentSessionHostDeps,
-    private readonly sessions: Map<string, StructuredAgentSessionHostSession>,
+    private readonly sessions: StructuredAgentSessionConversations,
     private readonly subscribers: AgentSessionSubscribers,
     /** The host's accessor: opens a conversation at rest, and never starts an agent. */
     private readonly conversation: (
       sessionId: string
     ) => Promise<StructuredAgentSessionHostSession>,
     private readonly readChildWork: (sessionId: string) => AgentChildWorkView[] | undefined
-  ) {}
+  ) {
+    // A closed conversation's last roster is not kept for the host's lifetime.
+    sessions.observeClose((sessionId) => this.published.delete(sessionId))
+  }
 
   /** `scope` is for in-process readers; a wire request reads every agent's rows. */
   async history(

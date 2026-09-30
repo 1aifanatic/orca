@@ -247,9 +247,11 @@ export type AgentSessionStatusSummary = {
    *  subagent children without holding a journal reader open. Optional for
    *  mixed-version hosts. Derived from `children` on hosts that publish it. */
   backgroundTasks?: AgentSessionBackgroundTask[]
-  /** The host's child records for this session, live and recently settled, as views. Absent from
-   *  older hosts; decode with `decodeAgentChildWorkViews`. Usage is omitted, and an evidence clock
-   *  that only ticked does not republish: per-tick freshness rides the background-task channel. */
+  /** The host's running child records for this session, as views: live ones, and a finished one
+   *  whose own work still runs (it reads monitoring); finished children ride the background-task
+   *  channel only. Absent from older hosts; decode with `decodeAgentChildWorkViews`. Usage is
+   *  omitted, and an evidence clock that only ticked does not republish: per-tick freshness rides
+   *  the background-task channel. */
   children?: AgentChildWorkView[]
   providerSession?: AgentProviderSessionMetadata
   updatedAt: number
