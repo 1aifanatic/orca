@@ -266,11 +266,16 @@ describe('/clear starts nothing', () => {
         claimKeyId: 'key'
       }
     })
+    // Written at the fence the old agent's stop released the lease at.
+    expect(store.getRecord(HOST_TEST_SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      runtimeFence: source.lease.runtimeFence + 1
+    })
     expect(store.getRecord(HOST_TEST_SESSION)?.conversationCommand).toEqual({
       command: 'clear',
       phase: 'committed',
       state: 'completed',
-      runtimeFence: source.lease.runtimeFence,
+      runtimeFence: source.lease.runtimeFence + 1,
       operationId: params.envelope.clientOperationId,
       callerKey: caller.callerKey,
       replacementSessionId: replacement
@@ -328,6 +333,20 @@ describe('/clear starts nothing', () => {
     expect(adapter.acquire).toHaveBeenCalledTimes(starts)
     expect(startsFor(HOST_TEST_SESSION)).toBe(1)
     expect(startsFor(replacement)).toBe(0)
+  })
+
+  it("stops a running source's agent before it writes the marker", async () => {
+    const commit = store.commitConversationClear
+    let atCommit: { child: unknown; claim: string | undefined } | undefined
+    vi.spyOn(store, 'commitConversationClear').mockImplementationOnce(async (clear) => {
+      atCommit = {
+        child: host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child ?? null,
+        claim: store.getRecord(HOST_TEST_SESSION)?.lease.claimStatus
+      }
+      return commit(clear)
+    })
+    await clearCommits()
+    expect(atCommit).toEqual({ child: null, claim: 'released' })
   })
 
   it('founds one record per /clear through a chain of clears, starting neither', async () => {

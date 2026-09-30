@@ -101,9 +101,13 @@ export function runStructuredConversationCommand(
           if (blocked) {
             return { ok: false, refusal: blocked }
           }
+          // Stopped before the marker, so nothing the old agent does can land after the clear. The
+          // stop releases the lease, which moves its fence: the marker is written at the new one.
+          await context.stopAgent(sessionId)
+          const fence = store.getRecord(sessionId)!.lease.runtimeFence
           const completed = {
             command,
-            runtimeFence: ctx.fence,
+            runtimeFence: fence,
             operationId: clientOperationId,
             callerKey: caller.callerKey,
             // Only has to be new: the marker is what points at it, and a same-id resend replays it.
@@ -113,7 +117,7 @@ export function runStructuredConversationCommand(
           }
           await store.commitConversationClear({
             sessionId,
-            fence: ctx.fence,
+            fence,
             command: completed,
             claimKeyId: context.deps.claimKeyId,
             now: context.now()
