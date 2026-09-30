@@ -163,11 +163,13 @@ describe('command-finished drop and a Done that lands after it', () => {
     })
     transportFactoryQueue.push(transport)
     const paneKey = makePaneKey('tab-1', LEAF_1)
-    connectPanePty(
-      createPane(1) as never,
-      createManager(1) as never,
-      createDeps({ isVisibleRef: { current: false } }) as never
-    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixtures implement the pane, manager and deps members connectPanePty reads.
+    const args = [
+      createPane(1),
+      createManager(1),
+      createDeps({ isVisibleRef: { current: false } })
+    ] as unknown as Parameters<typeof connectPanePty>
+    connectPanePty(...args)
     await vi.advanceTimersByTimeAsync(20)
     await flushAsyncTicks()
     const realStore = createTestStore()
