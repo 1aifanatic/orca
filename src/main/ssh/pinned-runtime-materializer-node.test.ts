@@ -24,7 +24,7 @@ function fetcherFor(body: Uint8Array): typeof fetch {
 }
 
 /** A real .tar.gz laid out like the official one, so extraction runs the host's tar. */
-async function officialShapedArchive(executable: Uint8Array): Promise<Uint8Array> {
+async function nodeDistArchiveFixture(executable: Uint8Array): Promise<Uint8Array> {
   const staging = join(root, 'staging')
   const member = nodeRuntimeExecutablePath(TARGET, NODE_RUNTIME_ASSETS[TARGET].archive)
   await mkdir(join(staging, member, '..'), { recursive: true })
@@ -50,7 +50,7 @@ afterEach(async () => {
 
 describe.skipIf(process.platform === 'win32')('pinned Node runtime materializer', () => {
   it('keeps the verified archive for upload and refetches only when it is corrupted', async () => {
-    const archive = await officialShapedArchive(new TextEncoder().encode('node'))
+    const archive = await nodeDistArchiveFixture(new TextEncoder().encode('node'))
     Object.assign(NODE_RUNTIME_ASSETS[TARGET], { archiveSha256: sha256(archive) })
     const cacheRoot = join(root, 'cache')
     const fetcher = fetcherFor(archive)
@@ -71,7 +71,7 @@ describe.skipIf(process.platform === 'win32')('pinned Node runtime materializer'
   })
 
   it('refuses an archive that does not match the pin before caching it', async () => {
-    const archive = await officialShapedArchive(new TextEncoder().encode('node'))
+    const archive = await nodeDistArchiveFixture(new TextEncoder().encode('node'))
     await expect(
       materializeNodeRuntimeArchive(TARGET, join(root, 'cache'), { fetcher: fetcherFor(archive) })
     ).rejects.toThrow('Node archive checksum mismatch')
