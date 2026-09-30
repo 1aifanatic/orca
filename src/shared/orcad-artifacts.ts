@@ -25,6 +25,17 @@ export function orcadArtifactHashPrefix(target: string): string {
     : ''
 }
 export const ORCAD_BUILD_TARGET_FILENAME = '.build-target'
+
+/**
+ * Marks a slot launched by the pinned Node runtime; its content is that runtime's
+ * executableSha256 (node-runtime-pin.ts). A Node slot must never carry `.build-target`:
+ * Bun-era selectors exit 78 on `.build-target` without `bun-runtime` (design D7.1 R5).
+ */
+export const ORCAD_NODE_RUNTIME_MARKER_FILENAME = '.runtime-node'
+/** Beside the slot dirs and shared across Orca versions (design D2): `runtimes/node-<sha256>/node`. */
+export const ORCAD_RUNTIMES_DIRNAME = 'runtimes'
+export const ORCAD_NODE_RUNTIME_DIR_PREFIX = 'node-'
+export const ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE = 'node'
 export const ORCAD_PARCEL_WATCHER_ENTRY = 'node_modules/@parcel/watcher/index.js'
 export const ORCAD_PARCEL_WATCHER_NATIVE = 'node_modules/@parcel/watcher/watcher.node'
 export const ORCAD_EMOJI_SHORTCODE_DATASET =
