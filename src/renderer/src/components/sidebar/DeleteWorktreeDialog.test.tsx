@@ -159,6 +159,13 @@ function buttonText(props: Record<string, unknown>): string {
   return renderToStaticMarkup(<>{props.children as ReactNode}</>)
 }
 
+function clickCancel(): void {
+  const onClick = mocks.buttonProps.find((props) => props.variant === 'outline')?.onClick
+  if (typeof onClick === 'function') {
+    onClick()
+  }
+}
+
 function visibleMarkupText(markup: string): string {
   return markup.replace(/<[^>]*>/g, '')
 }
@@ -379,6 +386,52 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     expect(markup).not.toContain('Force Delete')
     expect(markup).toContain('1 uncommitted or untracked change')
     expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
+  })
+
+  it('shows a failed delete’s host error and keeps it when the dialog is cancelled', async () => {
+    const failure = 'Operation not permitted'
+    const workspace = {
+      ...makeWorktree('Failed workspace', '/workspaces/failed'),
+      removalError: failure
+    }
+    mocks.state.modalData = { worktreeId: workspace.id }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    mocks.state.deleteStateByWorktreeId = {
+      [workspace.id]: {
+        isDeleting: false,
+        error: failure,
+        canForceDelete: false,
+        forceDeleteReason: null
+      }
+    }
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
+    clickCancel()
+
+    expect(markup).toContain(failure)
+    expect(mocks.state.clearWorktreeDeleteState).not.toHaveBeenCalled()
+    expect(mocks.state.closeModal).toHaveBeenCalled()
+  })
+
+  it('still clears an ordinary delete error when the dialog is cancelled', async () => {
+    const workspace = makeWorktree('Dirty workspace', '/workspaces/dirty')
+    mocks.state.modalData = { worktreeId: workspace.id }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    mocks.state.deleteStateByWorktreeId = {
+      [workspace.id]: {
+        isDeleting: false,
+        error: 'Worktree has uncommitted changes',
+        canForceDelete: true,
+        forceDeleteReason: 'dirty'
+      }
+    }
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    renderToStaticMarkup(<DeleteWorktreeDialog />)
+    clickCancel()
+
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(workspace.id)
   })
 
   it('notifies the dialog caller after a toast force delete succeeds', async () => {

@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
         displayName: string
         isMainWorktree: boolean
         hostId?: ExecutionHostId
+        removalError?: string
       }
     >(),
     repos: [] as { id: string; displayName: string; connectionId?: string }[],
@@ -104,6 +105,7 @@ function setWorktrees(
     displayName?: string
     isMainWorktree?: boolean
     hostId?: ExecutionHostId
+    removalError?: string
   }[]
 ): void {
   mocks.state.worktreeMap = new Map(
@@ -116,7 +118,8 @@ function setWorktrees(
         path: worktree.path ?? `/workspaces/${worktree.id}`,
         displayName: worktree.displayName ?? worktree.id,
         isMainWorktree: worktree.isMainWorktree ?? false,
-        ...(worktree.hostId ? { hostId: worktree.hostId } : {})
+        ...(worktree.hostId ? { hostId: worktree.hostId } : {}),
+        ...(worktree.removalError ? { removalError: worktree.removalError } : {})
       }
     ])
   )
@@ -168,6 +171,36 @@ describe('delete worktree flow', () => {
       worktreeId: 'wt-1',
       worktreeDeleteIdentities: [{ id: 'wt-1', instanceId: 'wt-1-instance' }]
     })
+  })
+
+  it('keeps a failed delete’s host error when Delete opens the dialog, so the dialog shows it', () => {
+    setWorktrees([{ id: 'wt-1', removalError: 'Operation not permitted' }])
+    mocks.state.deleteStateByWorktreeId['wt-1'] = {
+      isDeleting: false,
+      error: 'Operation not permitted',
+      canForceDelete: false
+    }
+
+    runWorktreeDelete('wt-1')
+    runWorktreeBatchDelete(['wt-1'])
+
+    expect(mocks.state.openModal).toHaveBeenCalledWith('delete-worktree', expect.anything())
+    expect(mocks.state.clearWorktreeDeleteState).not.toHaveBeenCalled()
+    expect(mocks.state.deleteStateByWorktreeId['wt-1']?.error).toBe('Operation not permitted')
+  })
+
+  it('still clears a stale error on a row the host does not list as failed', () => {
+    setWorktrees([{ id: 'wt-1' }])
+    mocks.state.deleteStateByWorktreeId['wt-1'] = {
+      isDeleting: false,
+      error: 'Worktree has uncommitted changes',
+      canForceDelete: true
+    }
+
+    runWorktreeDelete('wt-1')
+
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith('wt-1')
+    expect(mocks.state.deleteStateByWorktreeId['wt-1']).toBeUndefined()
   })
 
   it('treats duplicate selected ids as one delete target', () => {

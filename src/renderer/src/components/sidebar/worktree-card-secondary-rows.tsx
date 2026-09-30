@@ -32,7 +32,8 @@ export function WorktreeCardSecondaryRows({
     compactInlineAgentRows,
     showLineageChildChip,
     lineageChildAriaLabel,
-    childWorkspaceShortLabel
+    childWorkspaceShortLabel,
+    isDeleting
   } = card
   const { hasMetaRow } = presentation
 
@@ -53,6 +54,23 @@ export function WorktreeCardSecondaryRows({
           </span>
         </div>
       )}
+
+      {/* Why from the row: the host lists a failed delete until it is retried, forgotten or gone. */}
+      {worktree.removalError && !isDeleting ? (
+        <div
+          className="mt-0.5 flex items-start gap-1.5 text-[11px] leading-snug text-destructive"
+          data-worktree-card-delete-failed=""
+        >
+          <AlertTriangle className="mt-[1px] size-3 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1 break-words">
+            {translate(
+              'auto.components.sidebar.WorktreeCard.deleteFailed',
+              'Delete failed: {{error}}',
+              { error: worktree.removalError }
+            )}
+          </span>
+        </div>
+      ) : null}
 
       {isActive && worktree.linkedLinearIssue ? (
         <LinearAgentSkillSetupPrompt

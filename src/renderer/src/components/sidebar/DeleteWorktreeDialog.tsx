@@ -9,6 +9,8 @@ import {
 import { useAppStore } from '@/store'
 import { useAllWorktrees } from '@/store/selectors'
 import { runWorktreeDeletesInParallel } from './delete-worktree-flow'
+import { resetWorktreeDeleteState } from './worktree-delete-state-reset'
+import type { WorktreeDeleteIdentity } from './worktree-delete-request'
 import {
   composeWorktreeHostIdentity,
   getWorktreeHostIdentity
@@ -226,18 +228,23 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
       const currentState = currentTarget
         ? getDeleteStateForWorktreeHost(currentTarget, state)
         : undefined
+      const rowOf = (target: Pick<WorktreeDeleteIdentity, 'id' | 'hostId'>) =>
+        worktrees.find(
+          (item) => item.id === target.id && (!target.hostId || item.hostId === target.hostId)
+        )
       if (isBatchDelete) {
         for (const target of deleteStateTargets) {
           if (!getDeleteStateForWorktreeHost(target, state)?.isDeleting) {
-            clearWorktreeDeleteState(target.id, target.hostId)
+            resetWorktreeDeleteState(target, rowOf(target))
           }
         }
       } else if (worktreeId && !currentState?.isDeleting) {
-        clearWorktreeDeleteState(worktreeId, currentTarget?.hostId)
+        const target = { id: worktreeId, hostId: currentTarget?.hostId }
+        resetWorktreeDeleteState(target, rowOf(target))
       }
       closeModal()
     },
-    [clearWorktreeDeleteState, closeModal, deleteStateTargets, isBatchDelete, worktreeId]
+    [closeModal, deleteStateTargets, isBatchDelete, worktreeId, worktrees]
   )
 
   const persistDontAskAgainPreference = useCallback((): void => {
