@@ -39,6 +39,7 @@ import {
   type HostileHostTarget
 } from './ssh-hostile-host-test-fixture'
 import { openSshPtyConsumerSession } from './ssh-pty-consumer-session'
+import { retrySshOwnerRecoveryWhileBlocked } from './ssh-owner-recovery-retry'
 import { deployAndLaunchRelay, type RelayDeployResult } from './ssh-relay-deploy'
 import { pinnedRelayNodePath } from './ssh-relay-pinned-node'
 import {
@@ -111,13 +112,21 @@ async function assertCell(
 }
 
 /** Opens a PTY as the session owner and waits for the shell to evaluate what it was sent. */
-async function assertTerminalEchoes(deployed: RelayDeployResult): Promise<void> {
+async function assertTerminalEchoes(
+  deployed: RelayDeployResult,
+  clientInstanceId: string
+): Promise<void> {
   const mux = new SshChannelMultiplexer(deployed.transport)
   try {
-    await openSshPtyConsumerSession(mux, {
-      clientInstanceId: randomUUID(),
-      expectedServerBuildId: deployed.serverBuildId
-    })
+    // Why retry: the first connect's owner stays held for its grace period, and the app retries too.
+    await retrySshOwnerRecoveryWhileBlocked(
+      () =>
+        openSshPtyConsumerSession(mux, {
+          clientInstanceId,
+          expectedServerBuildId: deployed.serverBuildId
+        }),
+      { isCurrent: () => true, onClosed: () => () => {} }
+    )
     const output = new Map<string, string>()
     mux.onNotificationByMethod('pty.data', (params) => {
       if (typeof params.id === 'string' && typeof params.data === 'string') {
@@ -209,7 +218,9 @@ async function exerciseLaunchedCell(
   expect(posix.basename(posix.dirname(posix.dirname(nodePath)))).toBe(
     `node-${NODE_RUNTIME_ASSETS[cell.expect.target].executableSha256}`
   )
-  await assertTerminalEchoes(first.deployed)
+  // Why one id for both connects: the app reconnects as the same client instance.
+  const clientInstanceId = randomUUID()
+  await assertTerminalEchoes(first.deployed, clientInstanceId)
   await assertGcKeepsInUseRuntime(firstConn, target, first.deployed, nodePath)
   const before = await hostExec(target, `stat -c '%i:%Y' '${nodePath}'`)
   await firstConn.disconnect()
@@ -223,7 +234,7 @@ async function exerciseLaunchedCell(
     if (!second.deployed) {
       throw new Error(`${cell.id} did not relaunch on the second connect`)
     }
-    await assertTerminalEchoes(second.deployed)
+    await assertTerminalEchoes(second.deployed, clientInstanceId)
   } finally {
     await secondConn.disconnect()
   }
