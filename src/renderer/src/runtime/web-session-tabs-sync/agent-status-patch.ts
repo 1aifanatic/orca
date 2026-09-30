@@ -1,4 +1,8 @@
-import { readAgentProcessPresence } from '../../../../shared/agent-process-presence'
+import {
+  isSameAgentProcess,
+  readAgentProcessPresence,
+  type AgentProcessPresence
+} from '../../../../shared/agent-process-presence'
 import {
   agentStatusAuthorityObservedAt,
   type AgentStatusEntry
@@ -57,6 +61,17 @@ function withMirroredEvidenceReceipt(
       ? existing.mirroredEvidenceReceivedAt
       : now
   return { ...entry, mirroredEvidenceReceivedAt: receivedAt }
+}
+
+/** A status ping re-sends the same owner; only a new agent, process or exit changes presence. */
+function isSameOwnerRecord(a: AgentProcessPresence, b: AgentProcessPresence): boolean {
+  return (
+    a.agent === b.agent &&
+    a.ended === b.ended &&
+    a.process !== undefined &&
+    b.process !== undefined &&
+    isSameAgentProcess(a.process, b.process)
+  )
 }
 
 export function buildMirroredAgentStatusPatch(
@@ -132,9 +147,8 @@ export function buildMirroredAgentStatusPatch(
     } else if (
       presence?.process &&
       hostIsCurrent &&
-      (previousPresence?.receivedAt !== hostEntry.updatedAt ||
-        previousPresence.connectionId !== environmentId ||
-        JSON.stringify(previousPresence.presence) !== JSON.stringify(presence))
+      (previousPresence?.connectionId !== environmentId ||
+        !isSameOwnerRecord(previousPresence.presence, presence))
     ) {
       nextPresenceByPaneKey = {
         ...nextPresenceByPaneKey,

@@ -160,4 +160,13 @@ describe('paired host presence', () => {
     }
     expect(next.agentPresenceByPaneKey?.[paneKey]).toBeUndefined()
   })
+
+  it('does not republish presence for a status ping from the same owner', () => {
+    const state = makeState()
+    const live = { ...state, ...applyWebSessionTabsSnapshot(state, snapshot(false), ENV, NOW) }
+    const ping = { updatedAt: 20, prompt: 'next', state: 'working' } as const
+    const next = applyWebSessionTabsSnapshot(live, snapshot(false, ping, 2), ENV, NOW + 1)
+    expect(next).not.toBeNull()
+    expect(next).not.toHaveProperty('agentPresenceByPaneKey')
+  })
 })
