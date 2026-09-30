@@ -4,6 +4,7 @@ import {
   classifyPath,
   formatSummary,
   compileGlobs,
+  findMainDivergence,
   isTestPath,
   parseNumstatZ,
   serializeJson
@@ -155,6 +156,38 @@ describe('buildManifest', () => {
     expect(manifest.files['src/main/ssh/orcad-remote-deploy.ts'][1]).toBe('reconcile')
     expect(manifest.notes['src/main/ssh/orcad-remote-deploy.ts']).toMatch(/own copy/)
     expect(manifest.files['src/main/sqlite/sync-database.ts'][1]).toBe('dropped')
+  })
+})
+
+describe('findMainDivergence', () => {
+  const mainPaths = new Set([
+    'kept.ts',
+    'rename-source.ts',
+    'added-on-main.ts',
+    'renamed-on-main.ts'
+  ])
+  const divergence = findMainDivergence(
+    [
+      { path: 'kept.ts' },
+      { path: 'gone-from-main.ts' },
+      { path: 'added-on-main.ts' },
+      { path: 'new-only-in-pr.ts' },
+      { path: 'renamed.ts', previousPath: 'rename-source.ts' },
+      { path: 'renamed-away.ts', previousPath: 'missing-source.ts' },
+      { path: 'renamed-on-main.ts', previousPath: 'rename-source.ts' }
+    ],
+    { addedPaths: new Set(['added-on-main.ts', 'new-only-in-pr.ts']), mainPaths }
+  )
+
+  it('flags only real divergence, not a rename target that main never had', () => {
+    expect([...divergence.keys()].sort()).toEqual([
+      'added-on-main.ts',
+      'gone-from-main.ts',
+      'renamed-away.ts',
+      'renamed-on-main.ts'
+    ])
+    expect(divergence.get('renamed-away.ts')).toMatch(/rename source/)
+    expect(divergence.get('renamed-on-main.ts')).toMatch(/own copy/)
   })
 })
 

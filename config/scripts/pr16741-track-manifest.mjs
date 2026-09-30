@@ -222,32 +222,45 @@ async function git(args) {
   return result.stdout
 }
 
+/**
+ * Paths where main diverged from the PR's merge-base. A rename is judged by its source: its new
+ * path is absent from main by construction, so only a missing source means main moved on.
+ */
+export function findMainDivergence(entries, { addedPaths, mainPaths }) {
+  const divergence = new Map()
+  for (const entry of entries) {
+    const created = addedPaths.has(entry.path) || entry.previousPath !== undefined
+    if (created && mainPaths.has(entry.path)) {
+      divergence.set(entry.path, 'main has since added its own copy; port the delta only')
+    } else if (entry.previousPath !== undefined && !mainPaths.has(entry.previousPath)) {
+      divergence.set(entry.path, 'main has since removed or renamed the rename source')
+    } else if (!created && !mainPaths.has(entry.path)) {
+      divergence.set(entry.path, 'main has since removed or renamed this file')
+    }
+  }
+  return divergence
+}
+
 async function collectMainDivergence(entries, mainRef) {
   const statuses = (
     await git(['diff', '-z', '--name-status', '--find-renames', PR16741.mergeBase, PR16741.ref])
   ).split('\0')
-  const added = new Set()
+  const addedPaths = new Set()
   for (let i = 0; i < statuses.length; i += 1) {
     const status = statuses[i]
     if (!status) {
       continue
     }
     if (status === 'A') {
-      added.add(statuses[i + 1])
+      addedPaths.add(statuses[i + 1])
     }
     i += status.startsWith('R') || status.startsWith('C') ? 2 : 1
   }
   // One tree listing of main; no per-ref fan-out.
-  const onMain = new Set((await git(['ls-tree', '-r', '--name-only', '-z', mainRef])).split('\0'))
-  const divergence = new Map()
-  for (const entry of entries) {
-    if (added.has(entry.path) && onMain.has(entry.path)) {
-      divergence.set(entry.path, 'main has since added its own copy; port the delta only')
-    } else if (!added.has(entry.path) && !onMain.has(entry.path)) {
-      divergence.set(entry.path, 'main has since removed or renamed this file')
-    }
-  }
-  return divergence
+  const mainPaths = new Set(
+    (await git(['ls-tree', '-r', '--name-only', '-z', mainRef])).split('\0')
+  )
+  return findMainDivergence(entries, { addedPaths, mainPaths })
 }
 
 async function main(argv) {
