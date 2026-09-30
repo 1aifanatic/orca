@@ -5,8 +5,10 @@
 // owes work exactly when its open would write something. Each rule revises its entity out of the
 // state that selected it, so once the plan commits the flag reads false again.
 
+import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalItemBody,
+  AgentJournalItemIdentity,
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
@@ -15,6 +17,14 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { cancelledJournalPromptBody } from './journal-prompt-body-bounds'
 import type { JournalReducerState } from './journal-reducer'
 import { staleSubagentRosterRevision } from './journal-subagent-liveness'
+
+/** The key a settlement revises an item under. One that will not parse cannot be revised, so the
+ *  item owes nothing: a fresh identity would duplicate it rather than settle it. */
+export function openSettlementItemIdentity(
+  item: Pick<AgentJournalRenderItem, 'itemId'>
+): AgentJournalItemIdentity | null {
+  return parseAgentJournalItemKey(item.itemId)
+}
 
 /** A running tool call fails, and a pending approval or question is cancelled. */
 export function openSettlementTerminalBody(
@@ -43,11 +53,6 @@ export function owesRecoveredDispatch(submission: AgentJournalSubmission): boole
   )
 }
 
-/** A send accepted and never handed over is a leftover: nothing indexes a chat with one queued. */
-export function isLeftoverQueuedSubmission(submission: AgentJournalSubmission): boolean {
-  return isQueuedAgentJournalSubmission(submission)
-}
-
 /** The writer fence of an `unverifiable` turn, which only death evidence naming it revises. */
 export function unverifiableTurnOwnerFence(
   item: Pick<AgentJournalRenderItem, 'itemId' | 'body'>,
@@ -73,7 +78,8 @@ export function owesOpenSettlement(
 ): JournalOwedFacts {
   let owesWork = false
   for (const submission of fold.submissions.values()) {
-    if (owesRecoveredDispatch(submission) || isLeftoverQueuedSubmission(submission)) {
+    // A queued one is a leftover: its process is gone, since a close abandons what it queued.
+    if (owesRecoveredDispatch(submission) || isQueuedAgentJournalSubmission(submission)) {
       owesWork = true
       break
     }
@@ -81,14 +87,18 @@ export function owesOpenSettlement(
   const fences = new Set<number>()
   const itemFence = (itemId: string) => fold.itemFences.get(itemId)
   for (const item of fold.items.values()) {
+    owesWork ||= options.settlesRosters && staleSubagentRosterRevision(item) !== null
     const fence = unverifiableTurnOwnerFence(item, itemFence)
-    if (fence !== undefined) {
+    const settles =
+      fence !== undefined || isRunningJournalTurn(item) || openSettlementTerminalBody(item) !== null
+    if (!settles || !openSettlementItemIdentity(item)) {
+      continue
+    }
+    if (fence === undefined) {
+      owesWork = true
+    } else {
       fences.add(fence)
     }
-    owesWork ||=
-      isRunningJournalTurn(item) ||
-      openSettlementTerminalBody(item) !== null ||
-      (options.settlesRosters && staleSubagentRosterRevision(item) !== null)
   }
   return { owesWork, unverifiableOwnerFences: [...fences].sort((a, b) => a - b) }
 }

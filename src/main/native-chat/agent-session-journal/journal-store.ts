@@ -25,14 +25,16 @@ import {
   newestStructuredAgentSessionTurnBySequence
 } from '../../../shared/structured-agent-session-live-turn'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
+import { readJournalSince } from './journal-cursor'
 import type { JournalHostDatabase } from './journal-host-database'
-import type { JournalLoad } from './journal-open'
+import { readJournalRowsAfterCursor, type JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
   rejectJournalQueuedSubmissions
 } from './journal-pending-submission-recovery'
 import {
+  applyJournalRow,
   createJournalReducerState,
   renderJournalState,
   resolveJournalItemId,
@@ -56,6 +58,10 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
+import type {
+  JournalStatusProjection,
+  JournalStatusProjectionState
+} from './journal-status-projection'
 import type { AgentJournalEpochReason } from './journal-row-schema'
 import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
@@ -76,10 +82,10 @@ export class AgentSessionJournal {
   private state: JournalReducerState
   private readOnly = false
   private malformedRows = 0
-  private openedCorrupt = false
+  /** A fresh replay would report the history corrupt: it is still owed a rebuild. */
+  private loadCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
-  private onStranded: (() => void) | null = null
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
   private readonly epochController: JournalEpochController
@@ -89,7 +95,7 @@ export class AgentSessionJournal {
   /** Rewrites the chat's stored state if it does not describe this fold. Bookkeeping: never
    *  fails the open that calls it. */
   readonly ensureSessionState: () => void
-  readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
+  private readonly statusProjection: JournalStatusProjection
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
 
@@ -120,18 +126,15 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      replaceState: (state) => {
-        this.state = state
+      commit: (row) => {
+        applyJournalRow(this.state, row)
+        this.onCommitted?.()
       },
-      strand: () => {
-        this.queue.markClosed()
-        this.onStranded?.()
-      },
-      openedCorrupt: () => this.openedCorrupt,
+      loadCorrupt: () => this.loadCorrupt,
       currentFence: options.currentFence ?? (() => undefined),
       importPending: () => this.queue.owing,
-      setOpenedCorrupt: (corrupt) => {
-        this.openedCorrupt = corrupt
+      setLoadCorrupt: (corrupt) => {
+        this.loadCorrupt = corrupt
       },
       notifyCommitted: () => this.onCommitted?.(),
       malformedRows: () => this.malformedRows,
@@ -148,7 +151,7 @@ export class AgentSessionJournal {
     this.queuedMessages = collaborators.queuedMessages
     this.restore = collaborators.restore
     this.ensureSessionState = collaborators.ensureSessionState
-    this.readSince = collaborators.readSince
+    this.statusProjection = collaborators.statusProjection
   }
 
   get isReadOnly(): boolean {
@@ -176,7 +179,7 @@ export class AgentSessionJournal {
 
   /** The open replayed an unusable prefix: the chat is owed a rebuild from provider history. */
   get needsRebuild(): boolean {
-    return this.openedCorrupt
+    return this.loadCorrupt
   }
 
   async open(): Promise<void> {
@@ -195,11 +198,6 @@ export class AgentSessionJournal {
    *  without its writer saying so. One listener: a later call replaces it. It must not throw. */
   observeCommits(listener: () => void): void {
     this.onCommitted = listener
-  }
-
-  /** Told once this handle closed itself because its connection was stranded mid-append. */
-  observeStranded(listener: () => void): void {
-    this.onStranded = listener
   }
 
   /**
@@ -221,6 +219,10 @@ export class AgentSessionJournal {
   })
 
   snapshot = (): AgentJournalSnapshot => renderJournalState(this.state)
+
+  /** The status projection at this tip, projected once per commit for every reader. */
+  statusState = (fence: number | undefined): JournalStatusProjectionState =>
+    this.statusProjection.at(fence)
 
   /** Visits reduced items without allocating and sorting a full snapshot. */
   visitItems = (
@@ -286,6 +288,25 @@ export class AgentSessionJournal {
     this.state.receipts.get(clientMessageId) ?? null
 
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
+
+  readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
+    return readJournalSince(
+      {
+        state: this.state,
+        rowsAfter: (afterSequence) =>
+          readJournalRowsAfterCursor(
+            this.database.db,
+            this.identity.sessionId,
+            this.state.epoch,
+            afterSequence,
+            limit
+          ),
+        readOnly: this.readOnly
+      },
+      cursor,
+      () => this.cursor()
+    )
+  }
 
   /** Upsert by stable identity. The revision is assigned here so a caller
    *  cannot accidentally publish a revision the reducer will drop. */

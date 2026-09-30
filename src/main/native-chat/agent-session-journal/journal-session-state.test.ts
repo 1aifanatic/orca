@@ -1,5 +1,5 @@
-// Each chat's stored state: written in the journal row's own transaction, equal to what a fresh
-// replay derives, never able to fail an append, and trusted only at the chat's live tip.
+// Each chat's stored state: written right after each journal commit, equal to what a fresh replay
+// derives, never able to fail the write it describes, and trusted only at the chat's live tip.
 
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -18,6 +18,7 @@ import { journalPragmaNumber } from './journal-database'
 import {
   createTrackedJournalOpener,
   insertTestJournalRow,
+  insertTestJournalRowJson,
   loadTestJournal,
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
@@ -103,12 +104,14 @@ describe('the stored state follows every append (T3)', () => {
   it.each(JOURNAL_SESSION_STATE_CASES)('%s', async (name) => {
     const journal = await open(name)
     const mismatches: string[] = []
-    // Told after each commit: the row and its state landed in one transaction.
+    // Observers hear of a commit first; its state lands in the same task, before the next write.
     journal.observeCommits(() => {
-      const expected = freshDerivation(name)
-      if (!isDeepStrictEqual(stored(name), expected)) {
-        mismatches.push(`seq ${expected.seq}`)
-      }
+      queueMicrotask(() => {
+        const expected = freshDerivation(name)
+        if (!isDeepStrictEqual(stored(name), expected)) {
+          mismatches.push(`seq ${expected.seq}`)
+        }
+      })
     })
     await JOURNAL_SESSION_STATE_CORPUS[name](journal)
     await Promise.resolve()
@@ -117,13 +120,70 @@ describe('the stored state follows every append (T3)', () => {
   })
 })
 
+function refuseStateWrites(): void {
+  db().exec(`CREATE TEMP TRIGGER fail_state_write BEFORE UPDATE ON main.journal_session_state
+    BEGIN SELECT RAISE(ABORT, 'state write refused'); END`)
+}
+
+describe('a chat that opened corrupt stores what a fresh replay derives (T3)', () => {
+  const name = 'working subagent roster'
+
+  async function openCorrupt(): Promise<AgentSessionJournal> {
+    const journal = await write(name)
+    const tip = journal.cursor()
+    await journal.close()
+    // A bad write past the tip: the next open drops it and owes a rebuild from provider history.
+    insertTestJournalRowJson(db(), name, tip.sequence + 1, '{"not a row"')
+    const reopened = await open(name)
+    expect(reopened.needsRebuild).toBe(true)
+    // Rosters wait for the rebuild, as the open's plan does.
+    expect(stored(name)).toEqual(freshDerivation(name))
+    expect(stored(name)).toMatchObject({ owesWork: false })
+    return reopened
+  }
+
+  it('owes the roster again once the chat writes past the repair', async () => {
+    const journal = await openCorrupt()
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'note-1' },
+      { kind: 'status', text: 'a note' },
+      { fence: 3, turnScope: { kind: 'thread' } }
+    )
+    expect(journal.needsRebuild).toBe(false)
+    expect(stored(name)).toEqual(freshDerivation(name))
+    expect(stored(name)).toMatchObject({ owesWork: true })
+  })
+
+  it('owes the roster again once provider history rebuilds the chat', async () => {
+    const journal = await openCorrupt()
+    await journal.replaceEpochItems('legacy_import', 3, [
+      {
+        identity: { provider: 'orca', clientMessageId: 'roster-1' },
+        body: {
+          kind: 'message',
+          role: 'system',
+          blocks: [
+            {
+              type: 'subagent-group',
+              groupId: 'group-1',
+              agents: [{ id: 'child-1', label: 'reads', state: 'working', startedAt: 10 }]
+            }
+          ]
+        }
+      }
+    ])
+    expect(journal.needsRebuild).toBe(false)
+    expect(stored(name)).toEqual(freshDerivation(name))
+    expect(stored(name)).toMatchObject({ owesWork: true })
+  })
+})
+
 describe('a failing state write never fails the append (T2)', () => {
   it('commits the row, leaves the state behind the tip, and the next open re-derives it', async () => {
     const journal = await write('settled')
     const before = stored('settled')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    db().exec(`CREATE TEMP TRIGGER fail_state_write BEFORE UPDATE ON main.journal_session_state
-      BEGIN SELECT RAISE(ABORT, 'state write refused'); END`)
+    refuseStateWrites()
 
     await expect(
       journal.appendItem(
@@ -139,8 +199,8 @@ describe('a failing state write never fails the append (T2)', () => {
       { sessionId: 'settled', current: null }
     ])
     expect(warn).toHaveBeenCalledWith(
-      '[journal-append] state row skipped:',
-      expect.objectContaining({ sessionId: 'settled' })
+      '[agent-session-journal] storing the chat state failed',
+      expect.objectContaining({ sessionId: 'settled', error: 'state write refused' })
     )
 
     db().exec('DROP TRIGGER fail_state_write')
@@ -149,6 +209,42 @@ describe('a failing state write never fails the append (T2)', () => {
     reopened.ensureSessionState()
     expect(stored('settled')).toEqual(freshDerivation('settled'))
     expect(readJournalSessionStatesAtTip(db(), ['settled'])[0]?.current).not.toBeNull()
+  })
+})
+
+describe('a failed COMMIT leaves the fold equal to the disk (T1)', () => {
+  function note(journal: AgentSessionJournal, id: string) {
+    return journal.appendItem(
+      { provider: 'orca', clientMessageId: id },
+      { kind: 'status', text: id },
+      { fence: 3, turnScope: { kind: 'thread' } }
+    )
+  }
+
+  it('folds nothing, stores nothing, and the next append takes the sequence', async () => {
+    const journal = await write('settled')
+    const tip = journal.cursor()
+    const before = stored('settled')
+    const connection = db()
+    const exec = connection.exec.bind(connection)
+    let failCommit = true
+    vi.spyOn(connection, 'exec').mockImplementation((sql: string) => {
+      if (failCommit && sql === 'COMMIT') {
+        failCommit = false
+        throw new Error('COMMIT failed: disk I/O error')
+      }
+      return exec(sql)
+    })
+
+    await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')
+
+    expect(journal.cursor()).toEqual(tip)
+    expect(journal.snapshot()).toEqual(renderJournalState(loadTestJournal(root, 'settled')!.state))
+    expect(stored('settled')).toEqual(before)
+    await expect(note(journal, 'kept')).resolves.toMatchObject({
+      cursor: { sequence: tip.sequence + 1 }
+    })
+    expect(stored('settled')).toEqual(freshDerivation('settled'))
   })
 })
 
@@ -202,7 +298,7 @@ describe('trusted only at the live tip (T9)', () => {
 })
 
 describe('the epoch and history transactions keep it (T10)', () => {
-  it('writes it for a new epoch, a roll and a replacement, inside their transactions', async () => {
+  it('writes it for a new epoch, a roll and a replacement, after their transactions', async () => {
     const journal = await open('epochs')
     expect(stored('epochs')).toMatchObject({
       epoch: journal.epoch,
@@ -225,6 +321,25 @@ describe('the epoch and history transactions keep it (T10)', () => {
     ])
     expect(stored('epochs')).toEqual(freshDerivation('epochs'))
     expect(stored('epochs')).toMatchObject({ epoch: journal.epoch, seq: 2 })
+  })
+
+  it('never fails a roll or a replacement when the state write fails (R1J-2)', async () => {
+    const journal = await write('settled')
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    refuseStateWrites()
+
+    await expect(journal.rollEpoch('handle_forked', 3)).resolves.toMatchObject({ sequence: 1 })
+    expect(loadTestJournal(root, 'settled')?.state.epoch).toBe(journal.epoch)
+    await expect(
+      journal.replaceEpochItems('handle_forked', 3, [
+        {
+          identity: { provider: 'orca', clientMessageId: 'rebuilt-1' },
+          body: { kind: 'status', text: 'rebuilt' }
+        }
+      ])
+    ).resolves.toMatchObject({ sequence: 2 })
+    expect(loadTestJournal(root, 'settled')?.state.epoch).toBe(journal.epoch)
+    expect(readJournalSessionStatesAtTip(db(), ['settled'])[0]?.current).toBeNull()
   })
 
   it('drops it with a repair, and the next open writes it again', async () => {
@@ -251,7 +366,7 @@ describe('the derivation is versioned (T11)', () => {
   // Pinned with the version: a change to what a row holds must bump the version, so rows an
   // earlier derivation wrote read as absent and are derived again.
   const GOLDEN = {
-    version: 1,
+    version: 2,
     digest: '637041b814cfbd16b3d5bd1b0e19f505bba360a3cc2d90f4ad801433b5192346'
   }
 

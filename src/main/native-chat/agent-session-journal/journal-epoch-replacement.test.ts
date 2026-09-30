@@ -69,7 +69,6 @@ function replace(input: {
     items: input.items,
     now,
     mintEpoch: () => `epoch-${clock}`,
-    writeState: () => undefined,
     onPublished: input.onPublished ?? (() => undefined)
   })
 }

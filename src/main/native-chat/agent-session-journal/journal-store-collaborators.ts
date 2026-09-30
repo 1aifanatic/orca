@@ -18,16 +18,13 @@ import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
 import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
-import type Database from '../../sqlite/sync-database'
-import { applyJournalRow } from './journal-reducer'
-import { readJournalRowsAfterCursor, replayJournal } from './journal-open'
-import { readJournalSince } from './journal-cursor'
-import type { JournalReadSince } from './journal-store-contracts'
+import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import {
   deriveJournalSessionState,
   ensureJournalSessionStateCurrent,
   writeJournalSessionState
 } from './journal-session-state'
+import { JournalStatusProjection } from './journal-status-projection'
 
 export type JournalStoreHost = {
   /** Fires the journal's commit listener for a durable change that appended no
@@ -50,18 +47,15 @@ export type JournalStoreHost = {
   setReadOnly: (readOnly: boolean) => void
   cursor: () => AgentJournalCursor
   adopt: (loaded: JournalLoad) => void
-  /** Replaces the fold alone, quietly: a failed append's re-fold from disk. */
-  replaceState: (state: JournalReducerState) => void
-  /** The chat can no longer trust its fold or its connection: refuses every later write. */
-  strand: () => void
-  /** Whether this open's replay found an unusable prefix. */
-  openedCorrupt: () => boolean
+  commit: (row: JournalRow) => void
+  /** Whether a fresh replay would report the history corrupt. */
+  loadCorrupt: () => boolean
+  /** Records whether the loaded history is corrupt. */
+  setLoadCorrupt: (corrupt: boolean) => void
   /** The conversation's fence, which the stored status reads as the status feed does. */
   currentFence: () => number | undefined
   /** A per-chat file's copy is still owed: the fold is not the database's yet. */
   importPending: () => boolean
-  /** Records whether the open's replay found an unusable prefix. */
-  setOpenedCorrupt: (corrupt: boolean) => void
   malformedRows: () => number
   setMalformedRows: (count: number) => void
   journal: () => AgentSessionJournal
@@ -77,18 +71,15 @@ export type JournalStoreCollaborators = {
   /** Restores the store's state from disk. Owned here because it needs the same
    *  collaborators the constructor just built. */
   restore: () => Promise<void>
+  /** Rewrites the chat's stored state if it does not describe the fold. */
   ensureSessionState: () => void
-  readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
+  statusProjection: JournalStatusProjection
 }
 
 export function createJournalStoreCollaborators(host: JournalStoreHost): JournalStoreCollaborators {
-  const writeState = (db: Database.Database, state: JournalReducerState) =>
-    writeJournalSessionState(
-      db,
-      host.identity.sessionId,
-      deriveJournalSessionState(state, journalSessionStateInput(host)),
-      host.now()
-    )
+  const statusProjection = new JournalStatusProjection(host.state)
+  const storeState = (onlyIfStale: boolean) =>
+    storeJournalSessionState(host, statusProjection, onlyIfStale)
   const epochController = new JournalEpochController({
     identity: host.identity,
     now: host.now,
@@ -99,8 +90,11 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     setReadOnly: host.setReadOnly,
     highestFence: () => host.state().highestFence,
     cursor: host.cursor,
-    adopt: host.adopt,
-    writeState
+    adopt: (loaded) => {
+      host.setLoadCorrupt(loaded.corrupt)
+      host.adopt(loaded)
+      storeState(false)
+    }
   })
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
@@ -114,24 +108,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   return {
     epochController,
     queuedMessages,
-    ensureSessionState: () => ensureStoredSessionState(host),
-    readSince: (cursor, limit) =>
-      readJournalSince(
-        {
-          state: host.state(),
-          rowsAfter: (afterSequence) =>
-            readJournalRowsAfterCursor(
-              host.database().db,
-              host.identity.sessionId,
-              host.state().epoch,
-              afterSequence,
-              limit
-            ),
-          readOnly: host.readOnly()
-        },
-        cursor,
-        host.cursor
-      ),
+    statusProjection,
+    ensureSessionState: () => storeState(true),
     // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
     // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
     restore: () =>
@@ -146,10 +124,14 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       readOnly: host.readOnly,
       highestFence: () => host.state().highestFence,
       nextSequence: () => host.state().lastSequence + 1,
-      apply: (row) => applyJournalRow(host.state(), row),
-      committed: host.notifyCommitted,
-      recoverFold: () => recoverJournalFold(host),
-      writeState: (db) => writeState(db, host.state()),
+      commit: (row) => {
+        // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
+        if (!(row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID)) {
+          host.setLoadCorrupt(false)
+        }
+        host.commit(row)
+        storeState(false)
+      },
       // Every rejection is a dispatch row through this one writer; the draft
       // returned-transition rides it so no path can bypass the hook.
       inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
@@ -167,50 +149,38 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   }
 }
 
-function journalSessionStateInput(host: Pick<JournalStoreHost, 'openedCorrupt' | 'currentFence'>) {
-  return { settlesRosters: !host.openedCorrupt(), currentFence: host.currentFence() }
-}
-
-function ensureStoredSessionState(host: JournalStoreHost): void {
+/**
+ * The chat's stored state for the fold a commit (or an open) left, in its own transaction after the
+ * journal's, unsynced: bookkeeping that never fails the write it describes. A failed or lost write
+ * leaves the row behind the tip, which reads as stale, and the next open or startup re-derives it.
+ */
+function storeJournalSessionState(
+  host: JournalStoreHost,
+  projection: JournalStatusProjection,
+  onlyIfStale: boolean
+): void {
   const database = host.database()
   if (host.readOnly() || database.readOnly || host.importPending()) {
     return
   }
+  const input = {
+    settlesRosters: !host.loadCorrupt(),
+    currentFence: host.currentFence(),
+    statusSummary: () => projection.summaryAtTip(host.currentFence())
+  }
   try {
-    ensureJournalSessionStateCurrent(
-      database.db,
-      host.state(),
-      journalSessionStateInput(host),
-      host.now()
-    )
+    database.unsyncedTransaction((db) => {
+      if (onlyIfStale) {
+        ensureJournalSessionStateCurrent(db, host.state(), input, host.now())
+      } else {
+        const state = deriveJournalSessionState(host.state(), input)
+        writeJournalSessionState(db, host.identity.sessionId, state, host.now())
+      }
+    })
   } catch (error) {
-    console.warn('[agent-session-journal] re-deriving the stored chat state failed', {
+    console.warn('[agent-session-journal] storing the chat state failed', {
       sessionId: host.identity.sessionId,
-      error
+      error: error instanceof Error ? error.message : String(error)
     })
   }
-}
-
-/**
- * An append whose transaction failed after its row was folded: the fold is ahead of the disk, and
- * an in-place apply cannot be undone, so the chat is folded again from what committed. A stranded
- * connection may still hold the uncommitted row, so a re-read would adopt it: the chat closes
- * instead, and its next open reads the disk once the host database's own rollback goes through.
- */
-function recoverJournalFold(
-  host: Pick<JournalStoreHost, 'database' | 'identity' | 'replaceState' | 'strand'>
-): void {
-  const database = host.database()
-  if (!database.isStranded) {
-    try {
-      const reloaded = replayJournal(database.db, host.identity.sessionId)
-      if (reloaded) {
-        host.replaceState(reloaded.state)
-        return
-      }
-    } catch (error) {
-      console.warn('[agent-session-journal] re-folding after a failed append failed', error)
-    }
-  }
-  host.strand()
 }

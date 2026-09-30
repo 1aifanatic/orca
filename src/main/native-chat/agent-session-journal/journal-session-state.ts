@@ -1,10 +1,11 @@
 // Each chat's lifecycle state, stored beside its journal.
 //
 // One row per chat: whether its next open owes settlement work (see
-// journal-open-settlement-plan.ts), and the status summary a session list shows. Written in the
-// SAME transaction as the journal row it describes, and trusted only while its `(epoch, seq)` is the
-// chat's live tip, so a write this build missed (an older build's append, a failed savepoint)
-// reads as stale and the chat is re-derived. Deleting a row is always safe for the same reason.
+// journal-open-settlement-plan.ts), and the status summary a session list shows. Written right
+// after the journal commit it describes, in its own transaction, and trusted only while its
+// `(epoch, seq)` is the chat's live tip, so a write that failed, was lost, or was never made (an
+// older build's append) reads as stale and the chat is re-derived. Deleting a row is always safe for
+// the same reason.
 //
 // Created at every writable open with no `user_version` bump, as the draft table is
 // (queued-message-schema.ts): an older build ignores it and stays writable.
@@ -20,7 +21,7 @@ import { renderJournalState, type JournalReducerState } from './journal-reducer'
 
 /** Version of the rules that derive a row. A row of another version reads as absent. Bump it with
  *  any change to what `deriveJournalSessionState` produces; the golden test pins it. */
-export const JOURNAL_SESSION_STATE_VERSION = 1
+export const JOURNAL_SESSION_STATE_VERSION = 2
 
 export function ensureJournalSessionStateTable(db: Database.Database): void {
   db.exec(`
@@ -58,6 +59,8 @@ export type JournalSessionStateInput = {
   /** False while the chat's load is corrupt: its open settles no roster either. */
   settlesRosters: boolean
   currentFence?: number
+  /** The fold's status summary, when the caller already projected this tip. */
+  statusSummary?: () => StructuredAgentSessionStatusProjection
 }
 
 export function deriveJournalSessionState(
@@ -68,12 +71,9 @@ export function deriveJournalSessionState(
   let summary: StructuredAgentSessionStatusProjection | null = null
   if (!facts.owesWork) {
     // Fence-independent here: nothing unanswered or queued is left for the fence to judge.
-    const snapshot = renderJournalState(state)
-    summary = projectStructuredAgentSessionStatusState(
-      snapshot.items,
-      snapshot.submissions,
-      input.currentFence
-    ).summary
+    summary = input.statusSummary
+      ? input.statusSummary()
+      : projectSummary(state, input.currentFence)
   }
   return {
     ...facts,
@@ -82,6 +82,15 @@ export function deriveJournalSessionState(
     summary,
     lastActivityAt: state.lastActivityAt
   }
+}
+
+function projectSummary(
+  state: JournalReducerState,
+  fence: number | undefined
+): StructuredAgentSessionStatusProjection {
+  const snapshot = renderJournalState(state)
+  return projectStructuredAgentSessionStatusState(snapshot.items, snapshot.submissions, fence)
+    .summary
 }
 
 const UPSERT_STATE = `INSERT INTO journal_session_state (session_id, state_version, epoch, seq,
@@ -179,7 +188,13 @@ WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
   return results
 }
 
-/** Every chat this build's rows say may owe work at open, through the partial index. */
+/**
+ * Every chat this build's rows say may owe work at open, through the partial index, at any position:
+ * a row one write behind its tip (a write that failed, or a kill between the two commits) still
+ * owes what it owed, since a turn running then is still running, and an open that finds nothing to
+ * settle appends nothing. A row that owes nothing is never selected, stale or not, so no boot opens
+ * a settled chat: its own open re-derives it.
+ */
 export function readOwedJournalSessionStates(
   db: Database.Database
 ): (JournalOwedFacts & { sessionId: string })[] {
@@ -200,20 +215,6 @@ WHERE (owes_work = 1 OR unverifiable_owner_fences IS NOT NULL) AND state_version
           ]
         : []
     )
-}
-
-/** Chats with a draft the drain would send on open: waiting, not held, and the queue unpaused. */
-export function readSessionsWithDrainableDrafts(db: Database.Database): Set<string> {
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT q.session_id AS session_id FROM queued_messages q
-WHERE q.state = 'waiting' AND q.hold_reason IS NULL
-  AND NOT EXISTS (SELECT 1 FROM queued_message_pauses p WHERE p.session_id = q.session_id)`
-    )
-    .all()
-  return new Set(
-    rows.flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
-  )
 }
 
 function parseStoredState(row: Record<string, unknown>): StoredJournalSessionState | null {
@@ -284,6 +285,11 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
     return typeof field === 'string' ? field : undefined
   }
   const turnOutcome = source.get('turnOutcome')
+  if (turnOutcome !== undefined && !isAgentJournalTurnOutcome(turnOutcome)) {
+    // A verdict this build cannot show: stale, so the chat's open publishes it rather than a
+    // row without it.
+    return null
+  }
   const statusStartedAt = source.get('statusStartedAt')
   const toolName = text('toolName')
   const toolInput = text('toolInput')
@@ -301,8 +307,8 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
 
 /**
  * The open's re-derive: rewrites the chat's row when it is absent, another version's, off the
- * fold's tip, or older than a repair. What an older build, an import, a repair or a failed
- * savepoint left behind is caught here. Bookkeeping: the caller logs a failure and goes on.
+ * fold's tip, or older than a repair. What an older build, an import, a repair or a failed or lost
+ * write left behind is caught here. Bookkeeping: the caller logs a failure and goes on.
  */
 export function ensureJournalSessionStateCurrent(
   db: Database.Database,

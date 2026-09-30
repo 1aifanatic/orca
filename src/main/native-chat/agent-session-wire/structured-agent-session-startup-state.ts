@@ -6,8 +6,8 @@
 // not, is opened once, one at a time, and its open appends the settlement plan. A listed one goes
 // through the restart restore's own per-chat worker and stays open; an unlisted one is settled and
 // closed, never indexed or published. Everything else a listed chat needs (a stale row, a per-chat
-// file not yet copied, a draft the drain would send) is left to the background restore after the
-// listing, which is the same worker.
+// file not yet copied) is left to the background restore after the listing, which is the same
+// worker.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -16,8 +16,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { owesOnOpen } from '../agent-session-journal/journal-open-settlement-plan'
 import {
   readJournalSessionStatesAtTip,
-  readOwedJournalSessionStates,
-  readSessionsWithDrainableDrafts
+  readOwedJournalSessionStates
 } from '../agent-session-journal/journal-session-state'
 import {
   openStructuredAgentSessionConversationJournal,
@@ -71,10 +70,8 @@ function seedStoredStatuses(
     return [...listedIds]
   }
   let states: ReturnType<typeof readJournalSessionStatesAtTip>
-  let drafts: Set<string>
   try {
     states = readJournalSessionStatesAtTip(database.db, listedIds)
-    drafts = readSessionsWithDrainableDrafts(database.db)
   } catch (error) {
     // Fails open: every listed chat is restored in the background, as before stored state existed.
     console.warn('[structured-agent-session] reading stored chat state failed', error)
@@ -111,10 +108,6 @@ function seedStoredStatuses(
       continue
     }
     deps.seedStatus(record, { projected: stored.summary, lastActivityAt: stored.lastActivityAt })
-    if (drafts.has(sessionId)) {
-      // Opened so the drain runs on open, as the restore always did.
-      background.push(sessionId)
-    }
   }
   return background
 }

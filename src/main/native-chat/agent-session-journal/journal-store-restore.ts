@@ -47,7 +47,7 @@ export async function restoreJournalStore(
     legacyDirectory: host.legacyDirectory,
     replay: () => {
       const loaded = preview ?? replayJournal(host.database().db, host.identity.sessionId)
-      host.setOpenedCorrupt(loaded?.corrupt ?? false)
+      host.setLoadCorrupt(loaded?.corrupt ?? false)
       return loaded
     },
     deleteSuffix: (fromSeq, contentFrom) =>
@@ -99,7 +99,7 @@ async function restoreFromNewerDatabase(
       { cause: error }
     )
   }
-  host.setOpenedCorrupt(false)
+  host.setLoadCorrupt(false)
   host.adopt({
     state: loaded?.state ?? createJournalReducerState(sessionId, ''),
     readOnly: true,

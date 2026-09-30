@@ -6,9 +6,15 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+  type AgentJournalItemBody,
+  type AgentSessionJournalIdentity
+} from '../../../shared/agent-session-journal-types'
 import {
   createTrackedJournalOpener,
+  insertTestJournalRow,
+  insertTestJournalRowJson,
   liveTestJournalRows,
   openTestJournalHostDatabase
 } from '../agent-session-journal/journal-host-database-test-support'
@@ -106,6 +112,88 @@ describe('the stored flag and the plan agree (T4)', () => {
     expect(
       openSettlementPlanIsEmpty(planOpenSettlement(journal, record, { settlesRosters: true }))
     ).toBe(true)
+  })
+
+  it('agrees on a chat that opened corrupt, and again once it writes past the repair', async () => {
+    const first = await open('corrupt')
+    await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](first)
+    const tip = first.cursor()
+    await first.close()
+    insertTestJournalRowJson(openTestJournalHostDatabase(root).db, 'corrupt', tip.sequence + 1, '{')
+    const journal = await open('corrupt')
+    const record: OpenSettlementRecordFacts = {
+      sessionId: 'corrupt',
+      fence: CORPUS_FENCE,
+      deathEvidence: null
+    }
+    const plan = () =>
+      planOpenSettlement(journal, record, { settlesRosters: !journal.needsRebuild })
+
+    // The rebuild is still owed, so neither touches the roster.
+    expect(journal.needsRebuild).toBe(true)
+    expect(owesOnOpen(storedFacts('corrupt'), null)).toBe(false)
+    expect(openSettlementPlanIsEmpty(plan())).toBe(true)
+
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'note-1' },
+      { kind: 'status', text: 'a note' },
+      { fence: CORPUS_FENCE, turnScope: { kind: 'thread' } }
+    )
+    expect(owesOnOpen(storedFacts('corrupt'), null)).toBe(true)
+    expect(plan().rosters).toHaveLength(1)
+    await appendOpenSettlement(journal, plan(), CORPUS_FENCE, (error) => {
+      throw error
+    })
+    expect(owesOnOpen(storedFacts('corrupt'), null)).toBe(false)
+  })
+
+  it('owes nothing for an item whose key will not parse, which no plan can revise (R1J-4)', async () => {
+    const first = await open('unkeyed')
+    await JOURNAL_SESSION_STATE_CORPUS.settled(first)
+    const tip = first.cursor()
+    await first.close()
+    const unkeyed = (seq: number, itemId: string, body: AgentJournalItemBody) =>
+      insertTestJournalRow(openTestJournalHostDatabase(root).db, 'unkeyed', {
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+        kind: 'item',
+        itemId,
+        revision: 1,
+        body,
+        epoch: tip.epoch,
+        seq,
+        fence: CORPUS_FENCE,
+        ts: 5_000
+      })
+    unkeyed(tip.sequence + 1, 'legacy-tool-1', {
+      kind: 'tool-call',
+      name: 'shell',
+      input: { command: 'ls' },
+      state: 'running'
+    })
+    unkeyed(tip.sequence + 2, 'legacy-turn-2', {
+      kind: 'turn',
+      turnId: 't2',
+      state: 'running',
+      startedAt: 40
+    })
+    unkeyed(tip.sequence + 3, 'legacy-turn-3', {
+      kind: 'turn',
+      turnId: 't3',
+      state: 'unverifiable',
+      startedAt: 50
+    })
+    const journal = await open('unkeyed')
+    journal.ensureSessionState()
+    const deathEvidence = CORPUS_DEATH_EVIDENCE['names the writer'] ?? null
+    const plan = planOpenSettlement(
+      journal,
+      { sessionId: 'unkeyed', fence: CORPUS_FENCE, deathEvidence },
+      { settlesRosters: true }
+    )
+
+    expect(openSettlementPlanIsEmpty(plan)).toBe(true)
+    expect(storedFacts('unkeyed')).toMatchObject({ owesWork: false, unverifiableOwnerFences: [] })
+    expect(owesOnOpen(storedFacts('unkeyed'), deathEvidence)).toBe(false)
   })
 
   it('owes nothing for a settled chat, whatever the record says', async () => {

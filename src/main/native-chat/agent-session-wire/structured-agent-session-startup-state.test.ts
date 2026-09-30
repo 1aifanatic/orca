@@ -196,11 +196,11 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     }
     await crashMidSend(rig, 'session-crashed')
     await crashMidSend(rig, 'session-crashed-closed', false)
+    await crashMidSend(rig, 'session-crashed-state-lost', false)
     for (const sessionId of [
       'session-stale',
       'session-repaired',
       'session-draft',
-      'session-paused',
       'session-uncopied'
     ]) {
       await restTestChat(rig, sessionId, { message: sessionId })
@@ -213,18 +213,22 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
           ?.epoch
       )
     const tip = (sessionId: string) => readJournalSessionState(db(rig), sessionId)!
+    const appendPastState = (sessionId: string) =>
+      insertTestJournalRow(db(rig), sessionId, {
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+        kind: 'item',
+        itemId: agentJournalItemKey({ provider: 'orca', clientMessageId: 'unstored-note' }),
+        revision: 1,
+        body: { kind: 'status', text: 'no state stored beside it' },
+        epoch: live(sessionId),
+        seq: tip(sessionId).seq + 1,
+        fence: 1,
+        ts: 9_000
+      })
     // An older build appended past the stored state.
-    insertTestJournalRow(db(rig), 'session-stale', {
-      v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-      kind: 'item',
-      itemId: agentJournalItemKey({ provider: 'orca', clientMessageId: 'older-build-note' }),
-      revision: 1,
-      body: { kind: 'status', text: 'from an older build' },
-      epoch: live('session-stale'),
-      seq: tip('session-stale').seq + 1,
-      fence: 1,
-      ts: 9_000
-    })
+    appendPastState('session-stale')
+    // A kill between a commit and its state write: the row is one behind, still owing.
+    appendPastState('session-crashed-state-lost')
     // An older build repaired the chat after its state was stored, and wrote back to that sequence.
     db(rig)
       .prepare(
@@ -236,23 +240,16 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
         tip('session-repaired').seq,
         tip('session-repaired').writtenAt + 1
       )
-    const draft = db(rig).prepare(
-      `INSERT INTO queued_messages (session_id, message_id, position, body_json, fingerprint,
-        created_at, host_instance, state) VALUES (?, 'draft-1', 1, ?, 'fp', 1, 'host-a', 'waiting')`
-    )
-    const body = JSON.stringify({
-      kind: 'message',
-      role: 'user',
-      blocks: [{ type: 'text', text: 'x' }]
-    })
-    draft.run('session-draft', body)
-    draft.run('session-paused', body)
+    // A draft an earlier process queued: paused by the restart, so an open would send nothing.
     db(rig)
       .prepare(
-        `INSERT INTO queued_message_pauses (session_id, reason, epoch, sequence, recorded_at)
-        VALUES ('session-paused', 'stopped', ?, 1, 1)`
+        `INSERT INTO queued_messages (session_id, message_id, position, body_json, fingerprint,
+        created_at, host_instance, state) VALUES (?, 'draft-1', 1, ?, 'fp', 1, 'host-a', 'waiting')`
       )
-      .run(live('session-paused'))
+      .run(
+        'session-draft',
+        JSON.stringify({ kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'x' }] })
+      )
     // Still in the format a pre-database build wrote: nothing of it is in the host's database.
     for (const table of ['journal_rows', 'journal_sessions', 'journal_session_state']) {
       db(rig).prepare(`DELETE FROM ${table} WHERE session_id = ?`).run('session-uncopied')
@@ -269,21 +266,22 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     expect(listed).not.toContain('session-crashed-closed')
     const background = await startup(rig, listed)
 
-    expect(opened(rig, [...listed, 'session-crashed-closed']).toSorted()).toEqual(
+    const unlisted = ['session-crashed-closed', 'session-crashed-state-lost']
+    expect(opened(rig, [...listed, ...unlisted]).toSorted()).toEqual(
       [
         'session-crashed',
-        'session-crashed-closed',
-        'session-draft',
+        ...unlisted,
         'session-repaired',
         'session-stale',
         'session-uncopied'
       ].toSorted()
     )
     expect(background.toSorted()).toEqual(
-      ['session-draft', 'session-repaired', 'session-stale', 'session-uncopied'].toSorted()
+      ['session-repaired', 'session-stale', 'session-uncopied'].toSorted()
     )
+    expect(latestRestTestStatus(rig, 'session-draft')).toMatchObject({ status: 'idle' })
     // Settled with no user action; the listed one is open and never showed its pre-crash work.
-    for (const sessionId of ['session-crashed', 'session-crashed-closed']) {
+    for (const sessionId of ['session-crashed', ...unlisted]) {
       // The unanswered send is now recovered doubt, which projects as no running request.
       expect(readJournalSessionState(db(rig), sessionId)).toMatchObject({
         owesWork: false,
@@ -292,11 +290,11 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     }
     expect(rig.host.hasSession('session-crashed')).toBe(true)
     expect(statusRows(rig, 'session-crashed').map((row) => row.status)).not.toContain('working')
-    // The tabless one is settled and closed: never indexed, never given a status row (T14).
-    expect(rig.host.hasSession('session-crashed-closed')).toBe(false)
-    expect(
-      rig.sink.publish.mock.calls.filter(([row]) => row.sessionId === 'session-crashed-closed')
-    ).toEqual([])
+    // The tabless ones are settled and closed: never indexed, never given a status row (T14).
+    for (const sessionId of unlisted) {
+      expect(rig.host.hasSession(sessionId)).toBe(false)
+      expect(rig.sink.publish.mock.calls.filter(([row]) => row.sessionId === sessionId)).toEqual([])
+    }
     // Every settled chat has its row without being opened.
     for (const sessionId of settled) {
       expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ status: 'idle' })
@@ -306,10 +304,7 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     await rig.crash()
     await rig.boot()
     const again = await startup(rig, listedIds(rig))
-    expect(opened(rig, [...listedIds(rig), 'session-crashed-closed']).toSorted()).toEqual(
-      again.toSorted()
-    )
-    // Only the chat whose draft still waits is opened again, as every listed chat used to be.
-    expect(again).toEqual(['session-draft'])
+    expect(again).toEqual([])
+    expect(opened(rig, [...listedIds(rig), ...unlisted])).toEqual([])
   })
 })
