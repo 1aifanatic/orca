@@ -160,6 +160,29 @@ jobs:
             sed '/^### Verify your download\r*$/,$d'
           }
 
+          # Why: reuse the desktop release path's character-safe truncation so a multi-byte
+          # character cannot be split at the cap. The section's own length is reserved out of
+          # that cap, because appending after truncating would push a near-limit body past
+          # GitHub's API limit and fail the call — on the upload path, after --clobber has
+          # already replaced the assets. `wc -c` counts bytes, so the section's multi-byte
+          # characters over-reserve, which errs toward a shorter body.
+          write_notes_with_verification() {
+            NOTES_FILE="$notes_file" \
+            NOTES_RESERVE="$(verification_section | wc -c | tr -d ' ')" \
+            NOTES_MODULE="$GITHUB_WORKSPACE/config/scripts/create-draft-release.mjs" \
+            node --input-type=module -e '
+              const { readFileSync, writeFileSync } = await import("node:fs")
+              const { pathToFileURL } = await import("node:url")
+              const { MAX_RELEASE_BODY_LENGTH, truncateReleaseBody } = await import(
+                pathToFileURL(process.env.NOTES_MODULE).href
+              )
+              const file = process.env.NOTES_FILE
+              const max = MAX_RELEASE_BODY_LENGTH - Number(process.env.NOTES_RESERVE)
+              writeFileSync(file, truncateReleaseBody(readFileSync(file, "utf8"), max))
+            '
+            verification_section >> "$notes_file"
+          }
+
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" \
               --repo "$GITHUB_REPOSITORY" \
@@ -169,11 +192,9 @@ jobs:
             # Why the body is rewritten too: --clobber replaced the APK, so a digest left
             # over from the previous build now describes a file nobody can download, and a
             # reader comparing against it would reject a good APK.
-            {
-              gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
-                | drop_verification_section
-              verification_section
-            } > "$notes_file"
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+              | drop_verification_section > "$notes_file"
+            write_notes_with_verification
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$notes_file"
           else
             # Why: release tags live on side branches, so GitHub's automatic
@@ -199,21 +220,7 @@ jobs:
             if [ ! -s "$notes_file" ]; then
               printf 'Orca Mobile Android %s\n' "$tag" > "$notes_file"
             fi
-            # Why: reuse the desktop release path's character-safe truncation so a
-            # multi-byte character cannot be split at the cap.
-            NOTES_FILE="$notes_file" \
-            NOTES_MODULE="$GITHUB_WORKSPACE/config/scripts/create-draft-release.mjs" \
-            node --input-type=module -e '
-              const { readFileSync, writeFileSync } = await import("node:fs")
-              const { pathToFileURL } = await import("node:url")
-              const { truncateReleaseBody } = await import(pathToFileURL(process.env.NOTES_MODULE).href)
-              const file = process.env.NOTES_FILE
-              writeFileSync(file, truncateReleaseBody(readFileSync(file, "utf8")))
-            '
-
-            # Why appended after the truncation above: the cap is what the body is allowed to
-            # lose, and the verification section is the part a reader needs most.
-            verification_section >> "$notes_file"
+            write_notes_with_verification
 
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
