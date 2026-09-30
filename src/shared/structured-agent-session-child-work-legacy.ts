@@ -12,6 +12,7 @@
 // it feeds in-app readers of `AgentStatusEntry.subagents`, and dies when they read `children`.
 
 import type { AgentSessionHandleProvider } from './agent-session-provider-handle'
+import { codexChildCommandDescription } from './codex-child-command-description'
 import {
   projectAgentChildWorkLegacyBackgroundTasks,
   projectAgentChildWorkLegacySubagents,
@@ -37,11 +38,32 @@ function withLegacyIds(
   )
 }
 
+/** A Codex child agent's commands as the flat roster showed them before views: hidden while the
+ *  agent runs (its row stands for them), then named "<agent> — <command>" once it has finished. */
+function withCodexChildCommands(views: readonly AgentChildWorkView[]): AgentChildWorkView[] {
+  const byId = new Map(views.map((view) => [view.id, view]))
+  return views.flatMap((view) => {
+    const owner = view.parentChildWorkId ? byId.get(view.parentChildWorkId) : undefined
+    if (view.kind !== 'command' || owner?.kind !== 'agent') {
+      return [view]
+    }
+    if (owner.membership !== 'settled') {
+      return []
+    }
+    const label = owner.description ?? owner.name
+    return [
+      label ? { ...view, description: codexChildCommandDescription(label, view.description) } : view
+    ]
+  })
+}
+
 export function structuredChildWorkLegacyTasks(
   views: readonly AgentChildWorkView[],
   provider: AgentSessionHandleProvider
 ): AgentChildWorkLegacyBackgroundProjection {
-  return projectAgentChildWorkLegacyBackgroundTasks(withLegacyIds(views, provider))
+  return projectAgentChildWorkLegacyBackgroundTasks(
+    withLegacyIds(provider === 'codex' ? withCodexChildCommands(views) : views, provider)
+  )
 }
 
 export function structuredChildWorkLegacySubagents(
