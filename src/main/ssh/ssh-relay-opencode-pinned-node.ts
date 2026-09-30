@@ -1,10 +1,10 @@
 import { join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
-import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
+import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE } from '../../shared/orcad-artifacts'
 import type { SshConnection } from './ssh-connection'
-import { resolveOrcadDeploymentTarget } from './orcad-deployment-target'
+import { resolveOrcadDeploymentTargetFacts } from './orcad-deployment-target'
 import {
   ensureRemoteOrcadNodeRuntime,
   remoteNodeRuntimeDir,
@@ -19,6 +19,7 @@ import {
   parseOpenCodeRuntimeResult,
   probeOpenCodeRuntimeCacheCommand
 } from './ssh-relay-opencode-runtime-commands'
+import { pinnedRuntimeTargetForHost } from './ssh-relay-runtime-ladder'
 
 const DOWNLOAD_TIMEOUT_MS = 180_000
 const downloads = new Map<string, Promise<string>>()
@@ -43,7 +44,13 @@ export async function preparePinnedNodeForVault(options: {
   remote: RemoteRuntimeStep
 }): Promise<{ executable: string; upload?: PinnedNodeVaultUpload }> {
   const { conn, host, signal, exec } = options
-  const target = await resolveOrcadDeploymentTarget({ conn, host, signal, exec })
+  const facts = await resolveOrcadDeploymentTargetFacts({ conn, host, signal, exec })
+  // Why before any upload: below every runtime's glibc floor the self-test could only fail.
+  const target = pinnedRuntimeTargetForHost(facts)
+  if (!target) {
+    const glibc = facts.glibc ? `${facts.glibc.major}.${facts.glibc.minor}` : 'unknown'
+    throw new Error(`No Orca-managed Node runs on this host's glibc ${glibc}`)
+  }
   const cacheRoot =
     options.cacheRoot ?? join(getAppEnvironment().getPath('userData'), 'orcad-artifacts')
   if (!isWindowsRemoteHost(host)) {
@@ -59,7 +66,7 @@ export async function preparePinnedNodeForVault(options: {
     return { executable }
   }
   // Why a bare executable: Windows hosts get archive extraction with the upload path (design D5).
-  const expectedHash = NODE_RUNTIME_ASSETS[target].executableSha256
+  const expectedHash = pinnedNodeRuntimeAsset(target).executableSha256
   const executable = joinRemotePath(
     host,
     remoteNodeRuntimeDir(host, options.relayDir, target),
@@ -89,7 +96,7 @@ export async function preparePinnedNodeForVault(options: {
 
 function cachedRuntime(
   kind: 'archive' | 'executable',
-  target: ServerTarget,
+  target: NodeRuntimeTarget,
   cacheRoot: string,
   signal: AbortSignal
 ): Promise<string> {

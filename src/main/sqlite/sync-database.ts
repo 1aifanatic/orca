@@ -59,10 +59,17 @@ function hasBackup(value: unknown): value is { backup: typeof backup } {
   )
 }
 
+/**
+ * The node:sqlite surface Orca's readers need: DatabaseSync plus backup(). Node 22.13-22.15
+ * ship DatabaseSync alone, so probing it by itself admits a host that fails later (design D4).
+ */
+export function hasNodeSqliteReaderApi(sqlite: unknown): boolean {
+  return hasDatabaseSync(sqlite) && hasBackup(sqlite)
+}
+
 export function isSqliteAvailable(): boolean {
   try {
-    const sqlite: unknown = process.getBuiltinModule?.('node:sqlite')
-    return hasDatabaseSync(sqlite) && hasBackup(sqlite)
+    return hasNodeSqliteReaderApi(process.getBuiltinModule?.('node:sqlite'))
   } catch {
     return false
   }
