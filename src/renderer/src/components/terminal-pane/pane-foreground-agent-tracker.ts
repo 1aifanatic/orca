@@ -9,10 +9,7 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
 import { createPaneForegroundProcessReader } from './pane-foreground-process-reader'
-import {
-  FOREGROUND_COMMAND_RETRY_DELAYS_MS as WRAPPER_RESOLVE_RETRY_DELAYS_MS,
-  FOREGROUND_COMMAND_SETTLE_MS as COMMAND_SETTLE_MS
-} from '../../../../shared/foreground-command-settle'
+import { FOREGROUND_COMMAND_READS } from '../../../../shared/foreground-command-settle'
 
 const VISIBLE_PTY_SETTLE_MS = 350
 type ForegroundReadReason = 'command' | 'visible-pty' | 'command-finished'
@@ -204,7 +201,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     // so a still-live generation means the command is running and the shell is
     // a nested one (sh/bash without integration); marking shell-foreground
     // would suppress live title identity. Only 133;D proves the prompt.
-    const retryDelay = WRAPPER_RESOLVE_RETRY_DELAYS_MS[retryIndex]
+    const retryDelay = FOREGROUND_COMMAND_READS.retryDelaysMs[retryIndex]
     const hasConfirmationExpectation =
       hasForegroundAgentEvidence || hasKnownAgentEvidence || hasAgentExpectation
     const shouldRetryExpectedIdentity =
@@ -322,7 +319,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       if (deps.isRemotePtyId?.(ptyId) !== true) {
         deps.publish({ agent: null, shellForeground: false })
       }
-      scheduleRead(COMMAND_SETTLE_MS, 0, 'command')
+      scheduleRead(FOREGROUND_COMMAND_READS.settleMs, 0, 'command')
     },
     onCommandFinished() {
       if (deps.hasKnownAgentIdentity?.() === true) {
@@ -356,7 +353,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       }
       // Why: confirm the foreground before clearing — if the agent still owns it,
       // the read republishes its identity; only a genuine shell result clears it.
-      scheduleRead(COMMAND_SETTLE_MS, 0, 'command-finished')
+      scheduleRead(FOREGROUND_COMMAND_READS.settleMs, 0, 'command-finished')
       return true
     },
     onProcessExitConfirmed(process) {

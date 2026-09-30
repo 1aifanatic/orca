@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ParsedAgentStatusPayload } from '../../shared/agent-status-types'
-import {
-  FOREGROUND_COMMAND_RETRY_DELAYS_MS,
-  FOREGROUND_COMMAND_SETTLE_MS
-} from '../../shared/foreground-command-settle'
+import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
 
 type Published = { ptyId: string; payload: ParsedAgentStatusPayload; yieldsToHookSince: number }
@@ -42,7 +39,7 @@ function setup(
 }
 
 async function settle(): Promise<void> {
-  await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+  await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
 }
 
 describe('OpenCodeRunLifetimeStatus', () => {
@@ -106,7 +103,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
       lifetime.onCommandStarted('pty-1')
       await settle()
       expect(states()).toEqual([])
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_RETRY_DELAYS_MS[0])
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.retryDelaysMs[0])
       expect(states()).toEqual(['working'])
       expect(readForegroundProcessName).toHaveBeenCalledTimes(2)
     }
@@ -118,7 +115,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
       lifetime.onCommandStarted('pty-1')
       await vi.advanceTimersByTimeAsync(60_000)
       expect(readForegroundProcessName).toHaveBeenCalledTimes(
-        1 + FOREGROUND_COMMAND_RETRY_DELAYS_MS.length
+        1 + FOREGROUND_COMMAND_READS.retryDelaysMs.length
       )
     }
   })

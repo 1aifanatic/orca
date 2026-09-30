@@ -7,7 +7,7 @@ vi.mock('./local-pty-foreground-command-line', () => ({
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
-import { FOREGROUND_COMMAND_SETTLE_MS } from '../../shared/foreground-command-settle'
+import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import type { RuntimeTerminalAgentStatusEvent } from './runtime-terminal-contracts'
 
 const WORKTREE_ID = 'repo::/worktree'
@@ -75,7 +75,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
     const { runtime, statuses } = createRuntime()
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
 
     expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
@@ -88,7 +88,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
     const { runtime, channelOrder } = createRuntime()
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
 
     expect(channelOrder).toEqual(['status:working', 'fact:command-finished', 'status:done'])
@@ -98,7 +98,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
     const { runtime, statuses, channelOrder } = createRuntime()
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 130 })
 
     expect(channelOrder.slice(-2)).toEqual(['fact:command-finished', 'status:done'])
@@ -113,7 +113,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
     runtime.registerPty('pty-1', WORKTREE_ID, 'ssh-conn-1')
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 101)
 
     expect(statuses).toEqual([])
@@ -128,7 +128,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
       readCommandLineMock.mockResolvedValue('"C:\\Tools\\opencode.exe" run fix it')
 
       runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_SETTLE_MS)
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
       runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 101)
 
       expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])

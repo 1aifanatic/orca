@@ -4,10 +4,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../shared/agent-status-types'
-import {
-  FOREGROUND_COMMAND_RETRY_DELAYS_MS,
-  FOREGROUND_COMMAND_SETTLE_MS
-} from '../../shared/foreground-command-settle'
+import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
 import { isShellProcess } from '../../shared/shell-process-detection'
 
@@ -73,7 +70,7 @@ export class OpenCodeRunLifetimeStatus {
       armed: null
     }
     this.commands.set(ptyId, state)
-    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_SETTLE_MS, 0)
+    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
   }
 
   onCommandFinished(ptyId: string, exitCode: number | null): void {
@@ -125,7 +122,7 @@ export class OpenCodeRunLifetimeStatus {
         return
       }
       if (agent !== 'opencode' && agent !== 'opencode2') {
-        const retryDelay = FOREGROUND_COMMAND_RETRY_DELAYS_MS[retryIndex]
+        const retryDelay = FOREGROUND_COMMAND_READS.retryDelaysMs[retryIndex]
         if (retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
           this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
         }
