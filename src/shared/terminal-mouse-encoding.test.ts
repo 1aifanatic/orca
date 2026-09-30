@@ -24,8 +24,8 @@ describe('readTerminalMouseEncoding', () => {
     terminal.dispose()
   })
 
-  it('answers default for non-terminal shapes', () => {
-    expect(readTerminalMouseEncoding({})).toBe('default')
-    expect(readTerminalMouseEncoding({ _core: null })).toBe('default')
+  it('answers default when the private internals are missing', () => {
+    expect(readTerminalMouseEncoding({ cols: 80, rows: 24 })).toBe('default')
+    expect(readTerminalMouseEncoding({ cols: 80, rows: 24, _core: {} })).toBe('default')
   })
 })

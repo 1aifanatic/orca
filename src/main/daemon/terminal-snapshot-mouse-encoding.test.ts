@@ -30,28 +30,46 @@ async function replay(data: string): Promise<Terminal> {
   return terminal
 }
 
-/** The report xterm's own encoder (the one desktop viewers use) sends for a wheel-up, or null when tracking is off. */
+type XtermCoreMouseEvent = {
+  col: number
+  row: number
+  x: number
+  y: number
+  button: number
+  action: number
+}
+
+/** xterm's private mouse state service: the encoder desktop viewers send reports through. */
+type XtermMouseStateService = {
+  areMouseEventsActive: boolean
+  encodeMouseEvent: (event: XtermCoreMouseEvent) => string
+}
+
+function isXtermMouseStateService(value: unknown): value is XtermMouseStateService {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'areMouseEventsActive' in value &&
+    typeof value.areMouseEventsActive === 'boolean' &&
+    'encodeMouseEvent' in value &&
+    typeof value.encodeMouseEvent === 'function'
+  )
+}
+
+/** The report xterm's own encoder sends for a wheel-up, or null when tracking is off. */
 function wheelUpReport(terminal: Terminal): string | null {
   const core = '_core' in terminal ? terminal._core : undefined
   const service =
     typeof core === 'object' && core !== null && 'mouseStateService' in core
       ? core.mouseStateService
       : undefined
-  if (
-    typeof service !== 'object' ||
-    service === null ||
-    !('areMouseEventsActive' in service) ||
-    !('encodeMouseEvent' in service) ||
-    typeof service.encodeMouseEvent !== 'function'
-  ) {
+  if (!isXtermMouseStateService(service)) {
     throw new Error('xterm mouse state service is unavailable')
   }
-  if (service.areMouseEventsActive !== true) {
+  if (!service.areMouseEventsActive) {
     return null
   }
-  const event = { col: 10, row: 5, x: 0, y: 0, button: 4, action: 0 }
-  const report: unknown = Reflect.apply(service.encodeMouseEvent, service, [event])
-  return typeof report === 'string' ? report : null
+  return service.encodeMouseEvent({ col: 10, row: 5, x: 0, y: 0, button: 4, action: 0 })
 }
 
 describe('snapshot mouse encoding', () => {
