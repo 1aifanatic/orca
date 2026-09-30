@@ -45,6 +45,45 @@ class Desktop extends AgentHookServer {
   }
 }
 
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function relayRig(dir: string) {
+  const forwarded: AgentHookRelayEnvelope[] = []
+  const relay = new RelayAgentHookServer({ endpointDir: dir, forward: (e) => forwarded.push(e) })
+  const desktop = new Desktop()
+  servers.push(relay, desktop)
+  await relay.start()
+  const { port, token } = relay.getCoordinates()
+  const post = async (event: string, session: string, pid: number, extra = {}) => {
+    const response = await fetch(`http://127.0.0.1:${port}/hook/claude`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Orca-Agent-Hook-Token': token },
+      body: JSON.stringify({
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        agentProcess: JSON.stringify({ pid, platform: process.platform, startTime: `b-${pid}` }),
+        payload: {
+          hook_event_name: event,
+          session_id: session,
+          source: 'startup',
+          prompt: 'x',
+          ...extra
+        }
+      })
+    })
+    expect(response.status).toBe(204)
+  }
+  const sent: AgentHookRelayEnvelope[] = []
+  const pump = (): void => {
+    for (const envelope of forwarded.splice(0)) {
+      sent.push(envelope)
+      desktop.ingestRemote(envelope, 'ssh-1')
+    }
+  }
+  return { desktop, post, pump, sent }
+}
+
 describe('owner handover across execution hosts', () => {
   it('hands a relay pane to the Claude that replaced a silently dead one, with no exit', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
@@ -137,5 +176,92 @@ describe('owner handover across execution hosts', () => {
     await flush()
     expect(desktop.getStatusSnapshot()[0]?.agentPresence).toEqual(outer)
     expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['UserPromptSubmit', 'Stop'])(
+    'restates the successor on a relay handover instead of applying its %s twice',
+    async (lastHook) => {
+      const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
+      try {
+        const { desktop, post, pump, sent } = await relayRig(dir)
+        await post('UserPromptSubmit', 'a', 4001)
+        pump()
+        let finishProbe!: (verdict: 'exited') => void
+        probe.mockImplementation(() => new Promise((resolve) => (finishProbe = resolve)))
+        await post('UserPromptSubmit', 'b', 4005)
+        if (lastHook === 'Stop') {
+          await post('Stop', 'b', 4005, { last_assistant_message: 'done!' })
+        }
+        pump()
+        const before = desktop.getStatusSnapshot()[0]
+        const restated: { state: string; stateStartedAt: number; isReplay?: boolean }[] = []
+        desktop.subscribeEnrichedStatus((row) =>
+          restated.push({
+            state: row.payload.state,
+            stateStartedAt: row.stateStartedAt,
+            isReplay: row.isReplay
+          })
+        )
+        await wait(20)
+        finishProbe('exited')
+        await flush()
+        await flush()
+        pump()
+        const after = desktop.getStatusSnapshot()[0]
+        expect(after?.agentPresence?.process?.pid).toBe(4005)
+        expect(after?.turnStartedAt).toBe(before?.turnStartedAt)
+        expect(after?.stateStartedAt).toBe(before?.stateStartedAt)
+        // The new owner is published once, as a restatement of the same turn: no new turn, no new
+        // done identity, so no second completion anywhere downstream.
+        expect(restated).toEqual([
+          { state: before?.state, stateStartedAt: before?.stateStartedAt, isReplay: true }
+        ])
+        expect(sent.at(-1)?.isReplay).toBe(true)
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('hands a dead owner to the first process that doubted it, on both hosts', async () => {
+    const desktop = new Desktop()
+    servers.push(desktop)
+    const a = {
+      agent: 'claude',
+      process: { pid: 4001, platform: 'linux', startTime: 'boot:1' }
+    } satisfies AgentProcessPresence
+    const b = {
+      agent: 'claude',
+      process: { pid: 4005, platform: 'linux', startTime: 'boot:5' }
+    } satisfies AgentProcessPresence
+    const nested = {
+      agent: 'claude',
+      process: { pid: 4009, platform: 'linux', startTime: 'boot:9' }
+    } satisfies AgentProcessPresence
+    desktop.hook({ agentPresence: a, hookEventName: 'UserPromptSubmit' })
+    let finishProbe!: (verdict: 'exited') => void
+    probe.mockImplementation(() => new Promise((resolve) => (finishProbe = resolve)))
+    desktop.hook({ agentPresence: b, hookEventName: 'SessionStart' })
+    desktop.hook({ agentPresence: nested, hookEventName: 'PreToolUse' })
+    finishProbe('exited')
+    await flush()
+    expect(desktop.getStatusSnapshot()[0]?.agentPresence).toEqual(b)
+
+    const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
+    try {
+      const rig = await relayRig(dir)
+      await rig.post('UserPromptSubmit', 'a', 4001)
+      rig.pump()
+      probe.mockImplementation(() => new Promise((resolve) => (finishProbe = resolve)))
+      await rig.post('SessionStart', 'b', 4005)
+      await rig.post('PreToolUse', 'nested', 4009)
+      finishProbe('exited')
+      await flush()
+      await flush()
+      rig.pump()
+      expect(rig.desktop.getStatusSnapshot()[0]?.agentPresence?.process?.pid).toBe(4005)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
