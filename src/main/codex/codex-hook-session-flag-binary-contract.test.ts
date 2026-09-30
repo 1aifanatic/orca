@@ -42,10 +42,17 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     // Why a disposable root: never read or start anything under the user's ~/.codex.
     root = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-contract-'))
     hookLog = join(root, 'hook-fired.log')
-    hookScript = join(root, 'hook.sh')
-    writeFileSync(hookScript, `#!/bin/sh\ncat >/dev/null\necho fired >> '${hookLog}'\n`)
-    chmodSync(hookScript, 0o755)
-    hookCommand = `/bin/sh '${hookScript}'`
+    if (process.platform === 'win32') {
+      // Why a bare forward-slash path: the Windows flag carries no quotes, as Orca's own command.
+      hookScript = join(root, 'hook.cmd')
+      writeFileSync(hookScript, `@more >nul\r\n@echo fired>> "${hookLog}"\r\n`)
+      hookCommand = hookScript.replaceAll('\\', '/')
+    } else {
+      hookScript = join(root, 'hook.sh')
+      writeFileSync(hookScript, `#!/bin/sh\ncat >/dev/null\necho fired >> '${hookLog}'\n`)
+      chmodSync(hookScript, 0o755)
+      hookCommand = `/bin/sh '${hookScript}'`
+    }
     const version = await execFileAsync(binary!, ['--version'], {
       timeout: TIMEOUT_MS,
       env: { ...process.env, CODEX_HOME: freshHome('version') }
