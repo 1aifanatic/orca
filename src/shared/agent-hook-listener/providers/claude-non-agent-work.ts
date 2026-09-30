@@ -76,11 +76,11 @@ export function claudePaneHasLaunchRecordedTask(
 
 export type ClaudeBackgroundTaskLaunch = { taskId: unknown; kind: AgentChildWorkKind }
 
-/** The background task a tool result launched, if any. A shell names it `backgroundTaskId`, its
- *  kind unknown until an inventory types it (r1-s1). Any other kind is Claude's `async_launched`
- *  result naming a `taskId` and a `taskType` (a workflow, r6-w1..w4), admitted as the inventory
- *  admits it: every kind the table does not call an agent, unknown ones included, since agents are
- *  the rosters' and an unknown kind fails active. */
+/** The background task a tool result launched, if any: a shell's `backgroundTaskId`, its kind
+ *  unknown until an inventory types it (r1-s1); otherwise an `async_launched` result's `taskId`
+ *  and `taskType` (captured for workflows, r6-w1..w4). Skips agent kinds, since agents are the
+ *  rosters', but admits unknown ones, which fail active. Skips any other result, e.g. a remote
+ *  `remote_launched` launch, which the next inventory still records. */
 export function readClaudeBackgroundTaskLaunch(
   response: Record<string, unknown>
 ): ClaudeBackgroundTaskLaunch | undefined {

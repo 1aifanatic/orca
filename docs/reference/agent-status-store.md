@@ -248,11 +248,12 @@ reader does not mistake them for drift:
   host that runs the session. A task enters it from the main agent's launching
   `PostToolUse`, with that call's `tool_use_id`, or from the
   `background_tasks` inventory Claude attaches to `Stop`, which replaces the
-  record. A shell's launch names it `tool_response.backgroundTaskId`; any other
-  kind's is Claude's `status: "async_launched"` result naming a `taskId` and a
-  `taskType` (a workflow's is `local_workflow`). The launch admits what the
-  inventory admits: every kind the shared kind table does not call an agent,
-  unknown kinds included, since agents belong to the subagent roster. It
+  record. The launch reader takes a shell's `tool_response.backgroundTaskId`;
+  otherwise a `status: "async_launched"` result's `taskId` and `taskType`,
+  captured only for workflows (`local_workflow`). It skips kinds the shared
+  kind table calls an agent, since agents belong to the subagent roster, and
+  admits unknown kinds. It skips any other result, such as a remote
+  `remote_launched` launch, which the next inventory still records. A task
   leaves on the next inventory that omits it, on a `TaskStop` result naming
   it, or on the `queue-operation` `enqueue` line Claude writes to its
   transcript the moment the task ends, read by the transcript watch below and
