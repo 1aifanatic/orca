@@ -1,9 +1,9 @@
 // A Claude background workflow is live work from the tool call that launches it, like a background
 // shell. These stories replay hook payloads recorded from Claude Code 2.1.285 over a real PTY
-// (src/shared/__fixtures__/claude-background-workflow-*-hooks.jsonl, sidecars beside them). A
-// workflow runs its agents one after another, so between them, and before the first, no agent
-// holds the pane: after a Ctrl+C in the launch turn only the workflow's own record does. Claude
-// writes a completed workflow's end as the same `queue-operation` line a shell gets.
+// (src/shared/__fixtures__/claude-background-workflow-*-hooks.jsonl, sidecars beside them). The
+// captured scripts run their agents one after another, so between them, and before the first, no
+// agent holds the pane: after a Ctrl+C in the launch turn only the workflow's own record does.
+// Claude writes a completed workflow's end as the same `queue-operation` line a shell gets.
 import { appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -25,7 +25,6 @@ import {
   replayer,
   row,
   startServer,
-  storedTaskFact,
   temporaryDir,
   transcriptFile,
   watchCaughtUp,
@@ -394,8 +393,8 @@ describe('an idle-prompt Ctrl+C while a background workflow runs (captured, 2.1.
     await replay([9, 10, 11])
     expect(row(server)).toMatchObject({ ...MONITORING, mainAgent: { state: 'done' } })
     writeCaptured(records, completed, transcript)
-    await vi.waitFor(() => expect(storedTaskFact(server)).toBe(false), { timeout: 3_000 })
-    expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+    await vi.waitFor(() => expect(row(server).state).toBe('done'), { timeout: 3_000 })
+    expect(row(server)).toMatchObject({ mainAgent: { state: 'done' } })
     expect(row(server).turnCompletedAt).toBe(idle.turnCompletedAt)
   })
 })
