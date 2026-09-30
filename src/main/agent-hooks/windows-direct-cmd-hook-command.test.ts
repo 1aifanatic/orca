@@ -1,6 +1,6 @@
 // The registered command must not depend on the shell Claude selects.
 import { describe, expect, it } from 'vitest'
-import { runProcessSync } from '../../shared/child-process/run-process'
+import { runProcess } from '../../shared/child-process/run-process'
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -66,13 +66,13 @@ describe.skipIf(process.platform !== 'win32')(
       }
     })()
 
-    function runInHosts(command: string, cwd: string) {
-      const hosts = [
-        runCapture('cmd.exe', ['/d', '/c', command], cwd),
-        runCapture(getWindowsPowerShellExecutablePath(), ['-NoProfile', '-Command', command], cwd)
+    async function runInHosts(command: string, cwd: string) {
+      const hosts: [string, string[]][] = [
+        ['cmd.exe', ['/d', '/c', command]],
+        [getWindowsPowerShellExecutablePath(), ['-NoProfile', '-Command', command]]
       ]
       if (gitBash) {
-        hosts.push(runCapture(gitBash, ['-c', command], cwd))
+        hosts.push([gitBash, ['-c', command]])
       }
       const pwsh = join(
         process.env.ProgramFiles ?? 'C:\\Program Files',
@@ -81,19 +81,28 @@ describe.skipIf(process.platform !== 'win32')(
         'pwsh.exe'
       )
       if (existsSync(pwsh)) {
-        hosts.push(runCapture(pwsh, ['-NoProfile', '-Command', command], cwd))
+        hosts.push([pwsh, ['-NoProfile', '-Command', command]])
       }
-      return hosts
+      const results: Awaited<ReturnType<typeof runCapture>>[] = []
+      for (const [file, args] of hosts) {
+        results.push(await runCapture(file, args, cwd))
+      }
+      return results
     }
 
-    function runCapture(file: string, args: string[], cwd: string) {
-      const result = runProcessSync({
+    // Why async runProcess: runProcessSync cannot take a string stdin (it forces encoding 'buffer').
+    async function runCapture(file: string, args: string[], cwd: string) {
+      const result = await runProcess({
         program: file,
         args,
         cwd,
+        // Why PATHEXT: without it Windows PowerShell 5.1 prints nothing and exits 0 for a .cmd path
+        // (measured); every real hook host inherits it.
         env: {
           SystemRoot: process.env.SystemRoot,
           PATH: process.env.PATH,
+          PATHEXT: process.env.PATHEXT,
+          ComSpec: process.env.ComSpec,
           HOME: cwd,
           USERPROFILE: cwd
         },
@@ -101,7 +110,7 @@ describe.skipIf(process.platform !== 'win32')(
         timeoutMs: 5_000
       })
       expect(result.timedOut, result.stderr).toBe(false)
-      return { stdout: result.stdout, status: result.code }
+      return { stdout: result.stdout, status: result.code, label: `${file}: ${result.stderr}` }
     }
 
     // Why: a runner whose TEMP sits under a profile with a space is the encoded-launcher case,
@@ -109,13 +118,15 @@ describe.skipIf(process.platform !== 'win32')(
     const tempIsCmdSafe = WINDOWS_CMD_SAFE_PATH.test(join(tmpdir(), 'orca-direct-hook-x', 'x.cmd'))
     const canRunLive = tempIsCmdSafe
 
-    function withTempDir(run: (dir: string, scriptPath: string, command: string) => void): void {
+    async function withTempDir(
+      run: (dir: string, scriptPath: string, command: string) => Promise<void>
+    ): Promise<void> {
       const dir = mkdtempSync(join(tmpdir(), 'orca-direct-hook-'))
       try {
         const scriptPath = join(dir, 'claude-hook.cmd')
         const command = wrapWindowsDirectCmdHookCommand(scriptPath)
         expect(command, 'precondition: temp path must be cmd-safe').not.toBeNull()
-        run(dir, scriptPath, command!)
+        await run(dir, scriptPath, command!)
       } finally {
         // Why: cmd.exe/bash have just exited in this tree; a raw recursive rm throws EPERM on
         // Windows while their handles drain.
@@ -123,29 +134,32 @@ describe.skipIf(process.platform !== 'win32')(
       }
     }
 
-    it.skipIf(!canRunLive)('answers {} and exit 0 in both hosts when the script exists', () => {
-      withTempDir((dir, scriptPath, command) => {
-        writeFileSync(scriptPath, '@echo off\r\necho {}\r\nexit /b 0\r\n', 'utf8')
-        for (const result of runInHosts(command, dir)) {
-          expect(result.stdout.trim()).toBe('{}')
-          expect(result.status).toBe(0)
-        }
-      })
-    })
+    it.skipIf(!canRunLive)(
+      'answers {} and exit 0 in both hosts when the script exists',
+      async () => {
+        await withTempDir(async (dir, scriptPath, command) => {
+          writeFileSync(scriptPath, '@echo off\r\necho {}\r\nexit /b 0\r\n', 'utf8')
+          for (const result of await runInHosts(command, dir)) {
+            expect(result.stdout.trim(), result.label).toBe('{}')
+            expect(result.status, result.label).toBe(0)
+          }
+        })
+      }
+    )
 
     it.skipIf(!canRunLive)(
       'runs the generated pair and answers when its payload is missing',
-      () => {
-        withTempDir((dir, scriptPath, command) => {
+      async () => {
+        await withTempDir(async (dir, scriptPath, command) => {
           writeFileSync(scriptPath, getWindowsClaudeHookEntry(), 'utf8')
-          for (const result of runInHosts(command, dir)) {
-            expect(result.stdout.trim()).toBe('{}')
-            expect(result.status).toBe(0)
+          for (const result of await runInHosts(command, dir)) {
+            expect(result.stdout.trim(), result.label).toBe('{}')
+            expect(result.status, result.label).toBe(0)
           }
           writeFileSync(join(dir, 'claude-hook-impl.cmd'), getManagedScript(), 'utf8')
-          for (const result of runInHosts(command, dir)) {
-            expect(result.stdout.trim()).toBe('{}')
-            expect(result.status).toBe(0)
+          for (const result of await runInHosts(command, dir)) {
+            expect(result.stdout.trim(), result.label).toBe('{}')
+            expect(result.status, result.label).toBe(0)
           }
         })
       }
@@ -153,26 +167,29 @@ describe.skipIf(process.platform !== 'win32')(
 
     it.skipIf(!canRunLive)(
       'reports a non-blocking failure, never exit 2, when the entry is gone',
-      () => {
-        withTempDir((dir, scriptPath, command) => {
+      async () => {
+        await withTempDir(async (dir, scriptPath, command) => {
           expect(existsSync(scriptPath)).toBe(false)
-          for (const result of runInHosts(command, dir)) {
-            expect(result.stdout.trim()).toBe('')
-            expect(result.status).toBeGreaterThan(0)
-            expect(result.status).not.toBe(2)
+          for (const result of await runInHosts(command, dir)) {
+            expect(result.stdout.trim(), result.label).toBe('')
+            expect(result.status, result.label).toBeGreaterThan(0)
+            expect(result.status, result.label).not.toBe(2)
           }
         })
       }
     )
 
-    it.skipIf(!canRunLive)('leaves no stray `nul` file behind in the working directory', () => {
-      // Why this is worth a test: adding `2>nul` to silence the missing-script line looks like
-      // tidy-up, but under MSYS it creates a real file named `nul` in the cwd — which is the
-      // user's repo. Measured on Windows 11. Keep stderr unredirected.
-      withTempDir((dir, _scriptPath, command) => {
-        runInHosts(command, dir)
-        expect(readdirSync(dir)).not.toContain('nul')
-      })
-    })
+    it.skipIf(!canRunLive)(
+      'leaves no stray `nul` file behind in the working directory',
+      async () => {
+        // Why this is worth a test: adding `2>nul` to silence the missing-script line looks like
+        // tidy-up, but under MSYS it creates a real file named `nul` in the cwd — which is the
+        // user's repo. Measured on Windows 11. Keep stderr unredirected.
+        await withTempDir(async (dir, _scriptPath, command) => {
+          await runInHosts(command, dir)
+          expect(readdirSync(dir)).not.toContain('nul')
+        })
+      }
+    )
   }
 )

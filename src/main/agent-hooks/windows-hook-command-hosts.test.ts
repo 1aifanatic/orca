@@ -12,21 +12,17 @@ const input = '{"message":"café 日本語 & %PATH%", "hook_event_name":"Stop"}'
 
 // A POSIX fixture at the exact registered spelling exercises tokenization, not Windows batch execution.
 describe.skipIf(process.platform === 'win32')('Windows command under available POSIX hosts', () => {
-  for (const shell of ['/bin/bash', '/bin/zsh', '/opt/homebrew/bin/pwsh', '/usr/bin/pwsh']) {
+  // PowerShell parsing is covered by the Windows-only host legs in windows-direct-cmd-hook-command.test.ts.
+  for (const shell of ['/bin/bash', '/bin/zsh']) {
     it.skipIf(!existsSync(shell))(
       `preserves invocation and reports a missing entry without exit 2: ${shell}`,
       async () => {
         const root = mkdtempSync(join(tmpdir(), 'claude-command-host-'))
         const fixture = join(root, 'C:/Users/alice/.orca/agent-hooks/claude-hook.cmd')
-        const shellArgs = shell.endsWith('pwsh') ? ['-NoProfile', '-Command'] : ['-c']
-        // PowerShell needs a drive mapping on POSIX; its Windows behavior is tested on Windows.
-        const invocation = shell.endsWith('pwsh')
-          ? `New-PSDrive -Name C -PSProvider FileSystem -Root './C:' | Out-Null; ${command}`
-          : command
         const run = () =>
           runProcess({
             program: '/usr/bin/env',
-            args: ['-i', `HOME=${root}`, 'PATH=/usr/bin:/bin', shell, ...shellArgs, invocation],
+            args: ['-i', `HOME=${root}`, 'PATH=/usr/bin:/bin', shell, '-c', command],
             cwd: root,
             env: {},
             input,
