@@ -47,10 +47,15 @@ export function bindRegisterPaneSerializer(session: ConnectPanePtySession): void
           // later restore painted only the TUI screen (#6106).
           // Why appended last: SerializeAddon writes mouse tracking but not its
           // encoding, and readers keep only what follows the final `?1049h`.
-          const data =
-            serializeWithAbsoluteCursor(session.pane.serializeAddon, session.pane.terminal, {
-              scrollback: opts?.scrollbackRows
-            }) + terminalMouseEncodingRestoreAnsi(session.pane.terminal)
+          const serialized = serializeWithAbsoluteCursor(
+            session.pane.serializeAddon,
+            session.pane.terminal,
+            { scrollback: opts?.scrollbackRows }
+          )
+          // Why non-empty only: '' means nothing to restore to its readers.
+          const data = serialized
+            ? serialized + terminalMouseEncodingRestoreAnsi(session.pane.terminal)
+            : serialized
           const orderedSeq =
             session.rendererOrderedPtyId === ptyId ? session.rendererOrderedSeq : null
           // Why snapshotFlags and not `flags`: this pane may itself have

@@ -78,7 +78,7 @@ export type TerminalDocumentState = {
   lastEmittedModes: TerminalDocumentModes
   /** `terminal-init`: whether the terminal has ever reached ready. */
   everReady: boolean
-  /** `mouse-mode-decset-scan`: whether replayed bytes proved the mouse encoding (1006/1016 set or reset, or RIS). */
+  /** `mouse-mode-decset-scan`: whether the encoding is proven (1006/1016 set or reset, RIS, or a live tracking enable). */
   mouseEncodingKnown: boolean
   /** `mouse-mode-decset-scan`: the tail of the last chunk, in case a DECSET straddles two writes. */
   mouseModeScanTail: string

@@ -86,7 +86,14 @@ const RESTORE_ANSI_BY_ENCODING: Record<TerminalMouseEncoding, string> = {
   'sgr-pixels': `\x1b[?${SGR_PIXELS_MOUSE_MODE}h`
 }
 
-/** The DECSET that restores this terminal's mouse encoding on replay; '' for the default. */
-export function terminalMouseEncodingRestoreAnsi(terminal: object): string {
-  return RESTORE_ANSI_BY_ENCODING[encodingByTerminal.get(terminal) ?? 'default']
+/** The DECSET that restores this terminal's mouse encoding on replay. */
+export function terminalMouseEncodingRestoreAnsi(terminal: {
+  modes?: { mouseTrackingMode?: string }
+}): string {
+  const encoding = encodingByTerminal.get(terminal) ?? 'default'
+  if (encoding === 'default' && (terminal.modes?.mouseTrackingMode ?? 'none') !== 'none') {
+    // Why: states the default while tracking, so a replay reader never has to guess it.
+    return `\x1b[?${SGR_MOUSE_MODE}l`
+  }
+  return RESTORE_ANSI_BY_ENCODING[encoding]
 }

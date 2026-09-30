@@ -103,7 +103,8 @@ export function abandonMouseGesture(scope: TerminalDocumentScope) {
 
 export function beginMouseDrag(scope: TerminalDocumentScope, gesture: TerminalMouseGesture) {
   gesture.moved = true
-  if (getMouseTrackingMode(scope) !== 'none') {
+  // Why: with no proven encoding the program would get no reports, so select locally instead.
+  if (getMouseTrackingMode(scope) !== 'none' && scope.mouseEncodingKnown) {
     gesture.mode = 'tracking'
     gesture.lastCellKey = mouseReportCellKey(scope, gesture.startX, gesture.startY)
     const press = buildMouseButtonReport(scope, 'press', gesture.startX, gesture.startY)

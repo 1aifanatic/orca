@@ -22,7 +22,8 @@ export function normalizeInitialData(data: unknown) {
   return on > 0 ? data.slice(on) : data
 }
 
-export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unknown) {
+// `live`: bytes the program just wrote, as opposed to a snapshot replay.
+export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unknown, live = false) {
   if (typeof data !== 'string' || data.length === 0) {
     return
   }
@@ -50,6 +51,11 @@ export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unkn
       const param = Number(params[i])
       if (!Number.isInteger(param)) {
         continue
+      }
+      // Why: a program enabling tracking live states its encoding in that same burst, or
+      // means the default; only a replay can carry tracking without its encoding.
+      if (live && enabled && (param === 9 || param === 1000 || param === 1002 || param === 1003)) {
+        scope.mouseEncodingKnown = true
       }
       if (param === 9) {
         scope.trackedMouseTrackingMode = enabled ? 'x10' : 'none'

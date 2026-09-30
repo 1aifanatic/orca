@@ -55,6 +55,17 @@ describe('terminal WebView external mouse drag', () => {
     expect(modes).toEqual([{ type: 'set-select-mode', enabled: true }])
   })
 
+  it('selects text instead of reporting a drag while the encoding is unproven', () => {
+    mouse.boot(`${ESC}[?1002h`)
+    mouse.activeTerminal().modes.mouseTrackingMode = 'drag'
+    mouse.clearPostedMessages()
+
+    mouse.mouseDrag(40, 60, 160, 90)
+
+    expect(mouse.terminalInputBytes()).toBe('')
+    expect(mouse.selectionSpy()).toHaveBeenCalled()
+  })
+
   it('releases a tracked drag when the button state shows the pointerup was lost', () => {
     mouse.boot()
     mouse.writeLegacyMouseEncoding()

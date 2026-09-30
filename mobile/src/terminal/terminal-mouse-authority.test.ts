@@ -100,6 +100,21 @@ describe('mobile mouse encoding proof', () => {
     expect(mouse.terminalInputBytes()).toContain(`${ESC}${prefix}`)
   })
 
+  it('reports legacy wheel input from a pane snapshot that states the default encoding', () => {
+    bootAltScreen(`${PANE_PREFIX}${ESC}[?1006l`)
+    wheel()
+    expect(mouse.terminalInputBytes()).toContain(`${ESC}[Ma`)
+  })
+
+  it('reports legacy wheel input for a program that enables tracking live without an encoding', () => {
+    mouse.boot()
+    message({ type: 'write', data: `${ESC}[?1049h${ESC}[?1000h` })
+    mouse.showAlternateBuffer()
+    mouse.activeTerminal().modes.mouseTrackingMode = 'vt200'
+    wheel()
+    expect(mouse.terminalInputBytes()).toContain(`${ESC}[Ma`)
+  })
+
   it('forgets encoding proof on the next snapshot', () => {
     mouse.boot()
     message({ type: 'write', data: `${ESC}[?1006l` })
