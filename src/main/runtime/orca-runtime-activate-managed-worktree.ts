@@ -5,6 +5,7 @@ import { navigationTargetsClients, navigationTargetsHost } from '../../shared/ru
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type {
   WorktreeStartupDraftPaste,
@@ -30,7 +31,10 @@ import {
 } from './runtime-worktree-startup-readiness'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
-import { isFreshComposerClear } from './launched-agent-composer-readiness'
+import {
+  FRESH_COMPOSER_DIALOG_ERROR,
+  readFreshComposerHold
+} from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
@@ -181,18 +185,24 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     pasteWorktreeStartupDraftWhenReady(this.getWorktreeStartupReadinessHost(), handle, draft)
   }
 
-  /** Only for a newly launched agent, before its first input. */
+  /**
+   * Only for a newly launched agent, before its first input. Settles when the agent's composer
+   * signal fires on a screen with no startup dialog and no Codex provisional header; with
+   * `stopOnDialog`, a dialog ends the wait so the caller's idle wait can report it.
+   */
   async waitForFreshWorkerComposer(
     handle: string,
     agent: TuiAgent,
     timeoutMs: number,
     {
       requireComposerMarker = true,
-      signal
-    }: { requireComposerMarker?: boolean; signal?: AbortSignal } = {}
-  ): Promise<void> {
+      stopOnDialog = false
+    }: { requireComposerMarker?: boolean; stopOnDialog?: boolean } = {}
+  ): Promise<RuntimeTerminalWait> {
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
+    const stop = new AbortController()
+    let sawDialog = false
     const ptyId = await waitForWorktreeStartupDraft(
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
@@ -200,26 +210,31 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       {
         timeoutMs,
         requireComposerMarker,
-        signal,
+        signal: stop.signal,
         accept: (readyPtyId) => {
           const pty = this.ptysById.get(readyPtyId)
-          return (
-            !pty ||
-            isFreshComposerClear(
-              buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
-              this.readLiveTerminalScreenLines(readyPtyId)
-            )
-          )
+          const hold = pty
+            ? readFreshComposerHold(
+                buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
+                this.readLiveTerminalScreenLines(readyPtyId)
+              )
+            : null
+          if (hold === 'dialog' && stopOnDialog) {
+            sawDialog = true
+            stop.abort()
+          }
+          return hold === null
         }
       }
     )
     if (!ptyId) {
-      throw new Error('timeout')
+      throw new Error(sawDialog ? FRESH_COMPOSER_DIALOG_ERROR : 'timeout')
     }
     this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
     if (!this.ptysById.get(ptyId)?.connected) {
       throw new Error('terminal_handle_stale')
     }
+    return this.buildTuiIdleProbeResult(handle, null)
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

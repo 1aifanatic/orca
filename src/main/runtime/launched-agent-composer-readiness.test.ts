@@ -10,6 +10,14 @@ import {
 } from './launched-agent-composer-readiness'
 import { waitForWorktreeStartupDraft } from './runtime-worktree-startup-readiness'
 
+const READY: RuntimeTerminalWait = {
+  handle: 'term-1',
+  condition: 'tui-idle',
+  satisfied: true,
+  status: 'running',
+  exitCode: null
+}
+
 /** The runtime's composer wait over a replayed PTY stream, with its defaults. */
 function replayRuntime() {
   let listener = (_data: string): void => {}
@@ -18,11 +26,8 @@ function replayRuntime() {
       handle: string,
       agent: TuiAgent,
       timeoutMs: number,
-      {
-        requireComposerMarker = true,
-        signal
-      }: { requireComposerMarker?: boolean; signal?: AbortSignal } = {}
-    ): Promise<void> => {
+      { requireComposerMarker = true }: { requireComposerMarker?: boolean } = {}
+    ): Promise<RuntimeTerminalWait> => {
       const ptyId = await waitForWorktreeStartupDraft(
         {
           getPtyId: () => 'pty-1',
@@ -38,24 +43,21 @@ function replayRuntime() {
         },
         handle,
         agent,
-        { timeoutMs, requireComposerMarker, signal }
+        { timeoutMs, requireComposerMarker }
       )
       if (!ptyId) {
         throw new Error('timeout')
       }
+      return READY
     }
   )
-  /** The `tui-idle` floor: pending until a test settles it, and it records its stop signal. */
-  let idleSignal: AbortSignal | undefined
+  /** The `tui-idle` fallback: pending until a test settles it. */
   let settleIdle = (_wait: RuntimeTerminalWait): void => {}
   const waitForTerminal = vi.fn(
-    (_handle: string, options?: { signal?: AbortSignal }): Promise<RuntimeTerminalWait> => {
-      idleSignal = options?.signal
-      return new Promise((resolve, reject) => {
+    (): Promise<RuntimeTerminalWait> =>
+      new Promise((resolve) => {
         settleIdle = resolve
-        options?.signal?.addEventListener('abort', () => reject(new Error('request_aborted')))
       })
-    }
   )
   const runtime: LaunchedAgentReadinessRuntime = {
     waitForTerminal,
@@ -71,9 +73,9 @@ function replayRuntime() {
   }
   return {
     runtime,
+    waitForTerminal,
     play,
     feed: (data: string) => listener(data),
-    idleStopped: () => idleSignal?.aborted === true,
     settleIdle: (wait: RuntimeTerminalWait) => settleIdle(wait)
   }
 }
@@ -86,7 +88,7 @@ describe('launched grok composer readiness', () => {
     const h = replayRuntime()
     const ready = waitForLaunchedAgentComposer(h.runtime, 'term-1', 'grok', 60_000)
     await h.play(GROK_STARTUP_PTY_TRACE)
-    await expect(ready).resolves.toBeUndefined()
+    await expect(ready).resolves.toEqual(READY)
   })
 
   it('still opens in inline mode, which never switches to the alternate screen', async () => {
@@ -99,7 +101,7 @@ describe('launched grok composer readiness', () => {
     void ready.then(settled, settled)
     await h.play(GROK_INLINE_STARTUP_PTY_TRACE)
     await vi.advanceTimersByTimeAsync(5_000)
-    expect(settled).toHaveBeenCalledWith(undefined)
+    expect(settled).toHaveBeenCalledWith(READY)
   })
 
   it('keeps ZCode on its composer marker alone', async () => {
@@ -118,15 +120,7 @@ describe('launched grok composer readiness', () => {
 describe('launched composer readiness for agents the idle evidence can also read', () => {
   afterEach(() => vi.useRealTimers())
 
-  const IDLE_READY: RuntimeTerminalWait = {
-    handle: 'term-1',
-    condition: 'tui-idle',
-    satisfied: true,
-    status: 'running',
-    exitCode: null
-  }
-
-  it('pastes on the quiet window after bracketed paste, as the desktop did, and stops the idle wait', async () => {
+  it('pastes on the quiet window after bracketed paste, as the desktop did, without the idle evidence', async () => {
     vi.useFakeTimers()
     const h = replayRuntime()
     const ready = waitForLaunchedAgentComposer(h.runtime, 'term-1', 'claude', 60_000)
@@ -137,19 +131,27 @@ describe('launched composer readiness for agents the idle evidence can also read
     await vi.advanceTimersByTimeAsync(1_400)
     expect(settled).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(200)
-    expect(settled).toHaveBeenCalledWith(undefined)
-    expect(h.idleStopped()).toBe(true)
+    expect(settled).toHaveBeenCalledWith(READY)
+    expect(h.waitForTerminal).not.toHaveBeenCalled()
   })
 
-  it('settles on the idle evidence where bracketed paste never arrives, as under Windows ConPTY', async () => {
+  it('checks the idle evidence only once the desktop paste’s budget ran out, where it pasted blind', async () => {
     vi.useFakeTimers()
     const h = replayRuntime()
     const ready = waitForLaunchedAgentComposer(h.runtime, 'term-1', 'claude', 60_000)
+    // Output, but bracketed paste never turns on, so the composer signal cannot fire.
     h.feed('\x1b[?25l welcome to claude code \x1b[?25h')
-    await vi.advanceTimersByTimeAsync(10_000)
 
-    h.settleIdle(IDLE_READY)
+    await vi.advanceTimersByTimeAsync(7_900)
+    expect(h.waitForTerminal).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(h.waitForTerminal).toHaveBeenCalledWith('term-1', {
+      condition: 'tui-idle',
+      timeoutMs: 52_000,
+      launchReadiness: true
+    })
+    h.settleIdle(READY)
 
-    await expect(ready).resolves.toEqual(IDLE_READY)
+    await expect(ready).resolves.toEqual(READY)
   })
 })

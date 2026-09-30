@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { RuntimeTerminalWait } from '../../../../../../shared/runtime-types'
 import { createOrchestrationWorkerReleaseHarness } from './worker-release.test-support'
 
 describe('composer-marker first dispatch readiness', () => {
@@ -11,7 +12,7 @@ describe('composer-marker first dispatch readiness', () => {
     'waits for %s’s new composer before delivering exactly one dispatch',
     async (agent) => {
       h.setup()
-      const gate = h.deferred<void>()
+      const gate = h.deferred<RuntimeTerminalWait>()
       vi.spyOn(h.runtime, 'waitForFreshWorkerComposer').mockReturnValue(gate.promise)
       const pending = h.startWorker({ agent })
       await vi.waitFor(() =>
@@ -24,7 +25,13 @@ describe('composer-marker first dispatch readiness', () => {
       )
       expect(h.runtime.waitForTerminal).not.toHaveBeenCalled()
       expect(h.runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()
-      gate.resolve()
+      gate.resolve({
+        handle: 'term_worker',
+        condition: 'tui-idle',
+        satisfied: true,
+        status: 'running',
+        exitCode: null
+      })
       await pending
       expect(h.runtime.sendTerminalAgentPrompt).toHaveBeenCalledOnce()
     }

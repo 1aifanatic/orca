@@ -64,14 +64,15 @@ describe('launch readiness for a freshly launched Claude', () => {
 
     await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS + 100)
     expect(settled).toHaveBeenCalled()
-    const wait = await ready
-    expect(wait === undefined || wait.satisfied).toBe(true)
+    await expect(ready).resolves.toMatchObject({ satisfied: true })
   })
 
   it('claude-dialog-trust-workspace: never reads the trust dialog as the composer', async () => {
-    const { ready, settled } = await launchAndStream('claude-dialog-trust-workspace', 10_000)
+    const { ready, settled } = await launchAndStream('claude-dialog-trust-workspace', 60_000)
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    // Reported inside the desktop paste's budget: the quiet window settles over the dialog, the
+    // screen check refuses it, and the idle wait names it.
+    await vi.advanceTimersByTimeAsync(4_000)
     expect(settled).toHaveBeenCalled()
     await expect(ready).resolves.toMatchObject({
       satisfied: false,

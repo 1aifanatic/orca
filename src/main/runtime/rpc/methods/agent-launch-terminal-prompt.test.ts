@@ -18,40 +18,26 @@ type SendFn = (
   options: Record<string, unknown>
 ) => Promise<SendResult>
 
-/** Until aborted, as a wait that has seen nothing settles. */
-function pendingUntilAborted(signal: AbortSignal | undefined): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    signal?.addEventListener('abort', () => reject(new Error('request_aborted')))
-  })
-}
+const COMPOSER_READY = { satisfied: true, status: 'running' }
 
 function runtimeStub(overrides: {
   wait?: unknown
   waits?: unknown[]
   send?: SendFn
-  /** Whether the agent's composer signal fires; the idle evidence alone decides otherwise. */
+  /** Whether the agent's composer signal fires within its budget; else the idle evidence decides. */
   composerSignal?: boolean
-  idlePending?: boolean
 }) {
   const queued = [...(overrides.waits ?? [])]
   const waitForTerminal = vi.fn(
-    async (
-      _handle: string,
-      options?: { condition?: string; timeoutMs?: number; signal?: AbortSignal }
-    ) =>
-      overrides.idlePending
-        ? pendingUntilAborted(options?.signal)
-        : (queued.shift() ?? overrides.wait ?? { satisfied: true, status: 'idle' })
+    async (_handle: string, _options?: { condition?: string; timeoutMs?: number }) =>
+      queued.shift() ?? overrides.wait ?? { satisfied: true, status: 'idle' }
   )
-  const waitForFreshWorkerComposer = vi.fn(
-    async (
-      _handle: string,
-      _agent: string,
-      _timeoutMs: number,
-      options?: { signal?: AbortSignal }
-    ): Promise<void> =>
-      overrides.composerSignal ? undefined : pendingUntilAborted(options?.signal)
-  )
+  const waitForFreshWorkerComposer = vi.fn(async () => {
+    if (!overrides.composerSignal) {
+      throw new Error('timeout')
+    }
+    return COMPOSER_READY
+  })
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
     overrides.send ?? (async () => ({ handle: 'term_1', accepted: true, bytesWritten: 12 }))
   )
@@ -89,12 +75,16 @@ describe('writing a launch prompt into a terminal agent', () => {
     })
 
     expect(delivered).toBe(true)
+    // The composer signal did not fire within its budget, so the idle evidence decided.
+    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'claude', 8_000, {
+      requireComposerMarker: false,
+      stopOnDialog: true
+    })
     expect(stub.waitForTerminal).toHaveBeenCalledWith('term_1', {
       condition: 'tui-idle',
-      timeoutMs: 60_000,
+      timeoutMs: expect.any(Number),
       // A name-only title proves nothing about a just-launched agent until its stream is quiet.
-      launchReadiness: true,
-      signal: expect.any(AbortSignal)
+      launchReadiness: true
     })
     const [handle, text, options] = stub.sendTerminalAgentPrompt.mock.calls[0]!
     expect(handle).toBe('term_1')
@@ -202,7 +192,9 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(delivered).toBe(true)
     expect(stub.waitForTerminal).toHaveBeenCalledTimes(3)
     // Each re-wait spends only what is left of the one launch budget.
-    expect(stub.waitForTerminal.mock.calls.at(-1)?.[1]).toMatchObject({ timeoutMs: 58_000 })
+    const lastTimeoutMs = stub.waitForTerminal.mock.calls.at(-1)?.[1]?.timeoutMs ?? 0
+    expect(lastTimeoutMs).toBeLessThanOrEqual(58_000)
+    expect(lastTimeoutMs).toBeGreaterThan(57_000)
     expect(stub.sendTerminalAgentPrompt).toHaveBeenCalledTimes(1)
   })
 
@@ -226,8 +218,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(stub.waitForTerminal.mock.calls.length).toBeLessThanOrEqual(60)
   })
 
-  it('writes as soon as the composer signal fires, without waiting out the idle evidence', async () => {
-    const stub = runtimeStub({ composerSignal: true, idlePending: true })
+  it('writes as soon as the composer signal fires, without consulting the idle evidence', async () => {
+    const stub = runtimeStub({ composerSignal: true })
 
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
@@ -238,11 +230,11 @@ describe('writing a launch prompt into a terminal agent', () => {
     })
 
     expect(delivered).toBe(true)
-    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'claude', 60_000, {
+    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'claude', 8_000, {
       requireComposerMarker: false,
-      signal: expect.any(AbortSignal)
+      stopOnDialog: true
     })
-    expect(stub.waitForTerminal.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+    expect(stub.waitForTerminal).not.toHaveBeenCalled()
   })
 
   it.each(['zcode', 'dsh', 'grok'] as const)('waits for %s’s composer readiness', async (agent) => {

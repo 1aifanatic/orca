@@ -21,7 +21,9 @@ const SUBMIT = { text: 'fix the failing checks\nlog tail follows', delivery: 'su
 function withPromptWriter(runtime: AgentLaunchRuntimeStub) {
   const waitForTerminal = vi.fn(async () => ({ satisfied: true, status: 'idle' }))
   // The idle evidence settles these launches; the composer signal never fires.
-  const waitForFreshWorkerComposer = vi.fn(() => new Promise<void>(() => {}))
+  const waitForFreshWorkerComposer = vi.fn(async () => {
+    throw new Error('timeout')
+  })
   const sendTerminalAgentPrompt = vi.fn(async () => ({
     handle: 'term_1',
     accepted: true,
