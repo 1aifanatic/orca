@@ -7,3 +7,24 @@ export function combineUnsubscribes(unsubscribes: (() => void)[]): () => void {
     }
   }
 }
+
+/** One idempotent unsubscribe for `unsubscribes`, held in `owned` until released so dispose reaches it. */
+export function trackedUnsubscribe(
+  owned: (() => void)[],
+  unsubscribes: (() => void)[]
+): () => void {
+  let active = true
+  const release = (): void => {
+    if (!active) {
+      return
+    }
+    active = false
+    const idx = owned.indexOf(release)
+    if (idx !== -1) {
+      owned.splice(idx, 1)
+    }
+    combineUnsubscribes(unsubscribes)()
+  }
+  owned.push(release)
+  return release
+}

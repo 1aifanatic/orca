@@ -41,7 +41,9 @@ export function formatState(session: PtyManagementSession): string {
  * (docs/reference/ssh-execution-boundary.md).
  */
 export function formatGenerationSessionCount(generation: PtyManagementGeneration): string {
-  return generation.contact === 'live' ? String(generation.sessions.length) : 'unverifiable'
+  return generation.contact === 'unverifiable'
+    ? 'unverifiable'
+    : String(generation.contact === 'live' ? generation.sessions.length : 0)
 }
 
 /** The total, marked as a lower bound whenever a generation could not be counted. */
@@ -50,7 +52,7 @@ export function formatVisibleSessionCount(generations: PtyManagementGeneration[]
     (total, generation) => total + (generation.contact === 'live' ? generation.sessions.length : 0),
     0
   )
-  return generations.some((generation) => generation.contact !== 'live')
+  return generations.some((generation) => generation.contact === 'unverifiable')
     ? `${counted}+`
     : String(counted)
 }

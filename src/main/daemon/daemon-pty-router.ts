@@ -14,6 +14,12 @@ import type { DaemonPtyRouterDataEvent, DaemonPtyRouterExitEvent } from './daemo
 import { DaemonSessionOwnerResolver } from './daemon-session-owner-resolution'
 import { SessionNotFoundError, TerminalSessionOwnerUnverifiedError } from './daemon-errors'
 import { writeRefused, type WriteSettlement } from '../../shared/pty-write-settlement'
+import {
+  requireCompleteProcessListing,
+  type PtyProcessSourceListing
+} from '../providers/pty-process-source-listing'
+import { listDaemonProcessesBySource } from './daemon-generation-listing'
+import { reconcileAdaptersOnStartup } from './daemon-router-startup-reconcile'
 
 export class DaemonPtyRouter implements IPtyProvider {
   private current: DaemonPtyAdapter
@@ -209,13 +215,15 @@ export class DaemonPtyRouter implements IPtyProvider {
     await this.current.revive(state)
   }
 
+  // Why: runtime exact-stop/liveness flows must fail closed if any adapter
+  // cannot provide a trustworthy process list.
   async listProcesses(opts?: { deadlineMs?: number }): Promise<PtyProcessInfo[]> {
-    // Why: runtime exact-stop/liveness flows must fail closed if any adapter
-    // cannot provide a trustworthy process list.
-    const results = await Promise.all(
-      this.allAdapters().map((adapter) => adapter.listProcesses(opts))
-    )
-    return results.flat()
+    return requireCompleteProcessListing(await this.listProcessesBySource(opts))
+  }
+
+  async listProcessesBySource(opts?: { deadlineMs?: number }): Promise<PtyProcessSourceListing[]> {
+    const sources = { adapters: this.allAdapters(), current: this.current }
+    return await listDaemonProcessesBySource(sources, this.sessionAdapters, opts)
   }
 
   async getDefaultShell(): Promise<string> {
@@ -258,34 +266,11 @@ export class DaemonPtyRouter implements IPtyProvider {
     alive: string[]
     killed: string[]
   }> {
-    const alive: string[] = []
-    const killed: string[] = []
-    const aliveProviders = new Map<string, Set<DaemonPtyAdapter>>()
-    for (const adapter of this.allAdapters()) {
-      const result = await adapter.reconcileOnStartup(validWorktreeIds)
-      // Why: daemon startup can reconcile many restored sessions; spreading
-      // those arrays into push can exceed JavaScript's argument limit.
-      for (const id of result.alive) {
-        alive.push(id)
-      }
-      for (const id of result.killed) {
-        killed.push(id)
-      }
-      for (const id of result.alive) {
-        const providers = aliveProviders.get(id) ?? new Set<DaemonPtyAdapter>()
-        providers.add(adapter)
-        aliveProviders.set(id, providers)
-      }
-    }
-    for (const id of new Set([...alive, ...killed])) {
-      const providers = aliveProviders.get(id)
-      if (providers?.size === 1) {
-        this.ownerResolver.recordRoute(id, providers.values().next().value!)
-      } else {
-        this.ownerResolver.forgetRoute(id)
-      }
-    }
-    return { alive, killed }
+    return await reconcileAdaptersOnStartup(
+      this.allAdapters(),
+      this.ownerResolver,
+      validWorktreeIds
+    )
   }
 
   dispose(): void {

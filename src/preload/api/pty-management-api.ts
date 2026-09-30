@@ -24,6 +24,7 @@ export type PtyManagementSession = {
  */
 export type PtyManagementGeneration = { protocolVersion: number; isCurrent: boolean } & (
   | { contact: 'live'; sessions: PtyManagementSession[] }
+  | { contact: 'exited' }
   | { contact: 'unverifiable'; reason: 'listing-failed'; detail: string | null }
 )
 

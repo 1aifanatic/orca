@@ -152,7 +152,7 @@ function GenerationBody(
       </p>
     )
   }
-  if (generation.sessions.length === 0) {
+  if (generation.contact === 'exited' || generation.sessions.length === 0) {
     return (
       <p className="px-3 py-2 text-xs text-muted-foreground">
         {translate('auto.components.settings.ManageSessionsSection.e26a60d9eb', 'No sessions.')}
@@ -176,7 +176,7 @@ export function ManageSessionsTable({
   onRequestKill
 }: ManageSessionsTableProps): React.JSX.Element {
   const reportedCount = reportedSessions(generations).length
-  const hasUnverifiable = generations.some((generation) => generation.contact !== 'live')
+  const hasUnverifiable = generations.some((generation) => generation.contact === 'unverifiable')
   // Why: one generation is the ordinary case, and a header per group would be noise there.
   // Labels appear exactly when there is another generation to tell it apart from.
   const showGenerationHeaders = generations.length > 1

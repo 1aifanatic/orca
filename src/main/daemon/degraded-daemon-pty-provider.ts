@@ -1,5 +1,5 @@
 import type { DaemonPtyAdapter } from './daemon-pty-adapter'
-import { combineUnsubscribes } from './combine-unsubscribes'
+import { combineUnsubscribes, trackedUnsubscribe } from './combine-unsubscribes'
 import { shutdownDegradedFallbackSessions } from './degraded-daemon-fallback-shutdown'
 import { inspectPtyProviderProcess } from '../providers/pty-process-inspection'
 import type {
@@ -20,6 +20,11 @@ import {
 import { DegradedDaemonFreshSpawnRouter } from './degraded-daemon-fresh-spawn-routing'
 import { DegradedDaemonOwnerRecovery } from './degraded-daemon-owner-recovery'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
+import {
+  requireCompleteProcessListing,
+  type PtyProcessSourceListing
+} from '../providers/pty-process-source-listing'
+import { listDaemonProcessesBySource } from './daemon-generation-listing'
 
 export class DegradedDaemonPtyProvider implements IPtyProvider {
   readonly isDegraded = true
@@ -206,10 +211,16 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   async listProcesses(opts?: { deadlineMs?: number }): Promise<PtyProcessInfo[]> {
-    const results = await Promise.all(
-      this.allProviders().map((provider) => provider.listProcesses(opts))
-    )
-    return results.flat()
+    return requireCompleteProcessListing(await this.listProcessesBySource(opts))
+  }
+
+  async listProcessesBySource(opts?: { deadlineMs?: number }): Promise<PtyProcessSourceListing[]> {
+    const sources = {
+      adapters: this.allDaemonAdapters(),
+      current: this.current,
+      local: this.fallback
+    }
+    return await listDaemonProcessesBySource(sources, this.sessionProviders, opts)
   }
 
   async getDefaultShell(): Promise<string> {
@@ -247,20 +258,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
 
   onReplay(callback: (payload: { id: string; data: string }) => void): () => void {
     const unsubscribes = this.allProviders().map((provider) => provider.onReplay(callback))
-    let active = true
-    const trackedUnsubscribe = (): void => {
-      if (!active) {
-        return
-      }
-      active = false
-      const idx = this.unsubscribers.indexOf(trackedUnsubscribe)
-      if (idx !== -1) {
-        this.unsubscribers.splice(idx, 1)
-      }
-      combineUnsubscribes(unsubscribes)()
-    }
-    this.unsubscribers.push(trackedUnsubscribe)
-    return trackedUnsubscribe
+    return trackedUnsubscribe(this.unsubscribers, unsubscribes)
   }
 
   onExit(callback: (payload: { id: string; code: number }) => void): () => void {

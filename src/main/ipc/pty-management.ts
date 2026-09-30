@@ -20,6 +20,11 @@ import {
 import type { MacDaemonTccAttributionHealth } from '../daemon/daemon-tcc-attribution'
 import type { DaemonEndpointIdentity } from '../daemon/daemon-hello-protocol'
 import type { DaemonSessionInfo } from '../daemon/types'
+import {
+  listPerGeneration,
+  USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+} from '../daemon/daemon-generation-listing'
+import { describeListingError } from '../providers/pty-process-source-listing'
 
 // Why: poll past the daemon's 5s SIGTERM→SIGKILL ladder (KILL_TIMEOUT_MS in session.ts), else slow-exiting shells falsely look "refused".
 const MAX_POLL_ATTEMPTS = 65
@@ -61,16 +66,13 @@ function readCurrentDaemonIdentity(): DaemonEndpointIdentity | null {
 }
 
 /**
- * One daemon protocol generation and what this process actually knows about it.
- *
- * A generation whose adapter did not answer is `unverifiable` and carries no session list at
- * all: an empty array would read as a counted zero, and absence from a client-side listing is
- * never evidence that the generation's PTYs exited (docs/reference/ssh-execution-boundary.md).
- * Only two of that document's contact arms appear here because a daemon adapter either answered
- * this listing or it did not — this channel has no refuse or retire signal to report.
+ * One daemon protocol generation and what this process actually knows about it, in the contact
+ * words of docs/reference/ssh-execution-boundary.md. An `unverifiable` generation carries no
+ * session list: an empty array would read as a counted zero.
  */
 export type DaemonGenerationInventory = { protocolVersion: number; isCurrent: boolean } & (
   | { contact: 'live'; sessions: DaemonSessionInfo[] }
+  | { contact: 'exited' }
   | { contact: 'unverifiable'; reason: 'listing-failed'; detail: string | null }
 )
 
@@ -78,32 +80,34 @@ async function collectGenerations({
   adapters,
   current
 }: DaemonAdapterSet): Promise<DaemonGenerationInventory[]> {
-  return Promise.all(
-    adapters.map(async (adapter): Promise<DaemonGenerationInventory> => {
-      const generation = {
-        protocolVersion: adapter.protocolVersion,
-        isCurrent: adapter === current
-      }
-      try {
-        const sessions = await adapter.listSessions()
-        return {
-          ...generation,
-          contact: 'live',
-          sessions: sessions.map<DaemonSessionInfo>((s) => ({
-            ...s,
-            protocolVersion: adapter.protocolVersion
-          }))
-        }
-      } catch (err) {
-        return {
-          ...generation,
-          contact: 'unverifiable',
-          reason: 'listing-failed',
-          detail: err instanceof Error ? err.message : null
-        }
-      }
-    })
+  const deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+  const listings = await listPerGeneration(
+    adapters,
+    (adapter) => adapter.readSessions({ deadlineMs }),
+    deadlineMs
   )
+  return listings.map(({ source: adapter, ...listing }): DaemonGenerationInventory => {
+    const generation = { protocolVersion: adapter.protocolVersion, isCurrent: adapter === current }
+    if (listing.contact === 'unverifiable') {
+      return {
+        ...generation,
+        contact: 'unverifiable',
+        reason: 'listing-failed',
+        detail: describeListingError(listing.error)
+      }
+    }
+    if (listing.contact === 'exited') {
+      return { ...generation, contact: 'exited' }
+    }
+    return {
+      ...generation,
+      contact: 'live',
+      sessions: listing.items.map<DaemonSessionInfo>((s) => ({
+        ...s,
+        protocolVersion: adapter.protocolVersion
+      }))
+    }
+  })
 }
 
 // Why named rather than inlined: kill routing can only reach sessions a generation actually

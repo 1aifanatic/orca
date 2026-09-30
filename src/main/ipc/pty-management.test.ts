@@ -146,6 +146,7 @@ function makeSession(
 type MockAdapter = {
   protocolVersion: number
   listSessions: ReturnType<typeof vi.fn>
+  readSessions: ReturnType<typeof vi.fn>
   shutdown: ReturnType<typeof vi.fn>
   getDaemonIdentity: ReturnType<typeof vi.fn>
 }
@@ -159,12 +160,18 @@ function makeAdapter(
   // and then annotates with adapter.protocolVersion. The mock returns the
   // *internal* SessionInfo shape (no protocolVersion) since the adapter adds
   // it. Stripping it here mirrors production behavior.
-  return {
+  const adapter: MockAdapter = {
     protocolVersion,
     listSessions: vi.fn(async () => sessions.map(({ protocolVersion: _pv, ...rest }) => rest)),
+    // Why late-bound: tests swap listSessions, and the listing reads through it like the real one.
+    readSessions: vi.fn(async () => ({
+      contact: 'live' as const,
+      items: await adapter.listSessions()
+    })),
     shutdown: vi.fn(shutdownImpl ?? (async () => {})),
     getDaemonIdentity: vi.fn(() => ({ pid: 1530, startedAtMs: 1_700_000, launchNonce: 'n1' }))
   }
+  return adapter
 }
 
 type ListSessionsReply = { generations: DaemonGenerationInventory[]; degraded: boolean }
@@ -317,6 +324,47 @@ describe('pty:management IPC handlers', () => {
       // array would read as a counted zero (docs/reference/ssh-execution-boundary.md).
       expect(unreachable).not.toHaveProperty('sessions')
       expect(JSON.stringify(unreachable)).not.toContain('exited')
+    })
+
+    it('lists the current version within the deadline while a previous version is frozen', async () => {
+      vi.useFakeTimers()
+      try {
+        const current = makeAdapter(5, [makeSession('new-1')])
+        const legacy = makeAdapter(3, [])
+        legacy.readSessions = vi.fn(() => new Promise(() => {}))
+        const { registerDaemonManagementHandlers } = await importFresh()
+        getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
+        registerDaemonManagementHandlers()
+
+        const reply = invokeListSessions(buildHandlerMap())
+        await vi.advanceTimersByTimeAsync(3_000)
+        const result = await reply
+
+        expect(result.generations.map((g) => [g.protocolVersion, g.contact])).toEqual([
+          [5, 'live'],
+          [3, 'unverifiable']
+        ])
+        expect(current.readSessions).toHaveBeenCalledWith({ deadlineMs: expect.any(Number) })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('reports a previous version whose daemon is proven gone as exited, not as live and empty', async () => {
+      const current = makeAdapter(5, [makeSession('new-1')])
+      const legacy = makeAdapter(3, [])
+      legacy.readSessions = vi.fn(async () => ({ contact: 'exited' as const }))
+      const { registerDaemonManagementHandlers } = await importFresh()
+      getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
+      registerDaemonManagementHandlers()
+
+      const result = await invokeListSessions(buildHandlerMap())
+
+      expect(result.generations.find((g) => g.protocolVersion === 3)).toEqual({
+        protocolVersion: 3,
+        isCurrent: false,
+        contact: 'exited'
+      })
     })
 
     it('keeps a reachable generation listable while a sibling generation is unverifiable', async () => {
