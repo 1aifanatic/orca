@@ -564,6 +564,11 @@ describe('hook-less agent rows identified by the foreground process', () => {
         foreground: processRead('codex')
       })
     ).toHaveLength(0)
+    // Codex clears its title on exit; a pane without command marks never re-reads the process.
+    expect(rowsFor({ title: '', foreground: processRead('codex') })).toHaveLength(0)
+    expect(
+      rowsFor({ title: '  ', launchAgent: 'codex', foreground: processRead('codex') })
+    ).toHaveLength(0)
     // The PTY exited.
     expect(
       rowsFor({

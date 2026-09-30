@@ -54,16 +54,21 @@ export type TitleDerivedPaneForeground = Pick<
   'agent' | 'agentEvidence' | 'shellForeground'
 >
 
+// Why: Codex clears its title on exit (OSC 0 with no text) and the tab then shows its default title.
+function titleRetiresProcessRead(args: { title: string; defaultTitle?: string }): boolean {
+  return args.title.trim().length === 0 || titleShowsNoAgent(args.title, args.defaultTitle)
+}
+
 /**
  * Which agent a hook-less pane runs: a live process read (unless the title is a shell's), then the
  * title, then the agent Orca launched while the title shows activity. Sidebar-only; the tab icon
  * orders its signals differently. Null means the pane shows no agent row.
  *
  * Only the process read may keep a row whose title shows no agent activity (Codex retitles itself
- * to the project name, #23767): the mounted pane's tracker re-derives it at every command
- * boundary and clears it when the shell returns. The launch record is a tab-scoped latch with no
- * run id, so it stays a fallback for titles that show activity, and ranks below a title that
- * names a different agent (pane reuse).
+ * to the project name, #23767): the mounted pane's tracker re-derives it at command boundaries,
+ * which a pane without shell command marks never emits, so exit titles must still retire it. The
+ * launch record is a tab-scoped latch with no run id, so it stays a fallback for titles that show
+ * activity, and ranks below a title that names a different agent (pane reuse).
  */
 export function resolveTitleDerivedPaneAgent(args: {
   title: string
@@ -76,8 +81,7 @@ export function resolveTitleDerivedPaneAgent(args: {
   // Why: a shell/default title is exit evidence the process read may not have caught up with; a
   // reattach's launch record is not a read at all and can name an agent that already exited.
   const processAgent =
-    args.foreground?.agentEvidence !== 'process-read' ||
-    titleShowsNoAgent(args.title, args.defaultTitle)
+    args.foreground?.agentEvidence !== 'process-read' || titleRetiresProcessRead(args)
       ? null
       : args.foreground.agent
   // Why: OMP's nested pi process must not take an OMP-launched pane from its owner.
