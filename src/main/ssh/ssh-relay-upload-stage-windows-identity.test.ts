@@ -11,7 +11,6 @@ import {
   mkdtempSync,
   readFileSync,
   renameSync,
-  rmSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -29,6 +28,7 @@ import {
   type WindowsUploadStageIdentity
 } from './ssh-relay-upload-stage-commands'
 import { WINDOWS_UPLOAD_STAGE_IDENTITY_JS } from './ssh-relay-upload-stage-windows-commands'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 
 const windows = getRemoteHostPlatform('win32-x64')
 const owner = '.sftp-namespace-123e4567e89b12d3a456426614174000'
@@ -69,7 +69,7 @@ function nodeIdentity(path: string): string {
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true })
+    removeTreeSync(root)
   }
 })
 

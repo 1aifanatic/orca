@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,6 +21,7 @@ import {
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { decodeRemotePowerShellScript } from './ssh-remote-powershell'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: all connection access is replaced by execCommand's mock.
 const conn = {} as SshConnection
@@ -181,7 +182,7 @@ describe.runIf(powerShell)('Windows runtime store commands (real PowerShell)', (
     home = mkdtempSync(join(tmpdir(), 'orca-win-store-'))
   })
   afterEach(() => {
-    rmSync(home, { recursive: true, force: true })
+    removeTreeSync(home)
   })
 
   function run(command: string): string {
