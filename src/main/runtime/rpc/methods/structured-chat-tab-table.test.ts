@@ -412,3 +412,23 @@ describe('a chat tab over records a newer Orca wrote', () => {
     )
   })
 })
+
+describe('a chat tab whose restore index cannot be written', () => {
+  // The index is bookkeeping: the chat is created and its tab opens, but no restart restores it.
+  it('creates the chat and opens its tab, reporting the index write', async () => {
+    const failure = new Error('disk I/O error')
+    vi.spyOn(store, 'setSessionTabVisibility').mockRejectedValue(failure)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const created = await createChat(HOST_TEST_SESSION)
+
+    expect(created).toMatchObject({ ok: true, value: { sessionId: HOST_TEST_SESSION } })
+    expect(created.ok ? created.value.tabId : null).toBeUndefined()
+    expect((await snapshot()).activeTabId).toBe(`agent-session:${HOST_TEST_SESSION}`)
+    expect(warn).toHaveBeenCalledWith(
+      '[structured-agent-session] recording an opened chat tab failed',
+      failure
+    )
+    expect(store.getSessionTabId(HOST_TEST_SESSION)).toBeNull()
+  })
+})
