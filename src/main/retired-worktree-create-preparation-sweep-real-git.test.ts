@@ -105,8 +105,10 @@ it('reclaims spares left by dead Orca processes and leaves everything else alone
   const userWorktree = join(workspaceRoot, 'feature')
   await addSpare(repo, deadSpare, { lockPid: DEAD_PID })
   await addSpare(repo, liveSpare, { lockPid: LIVE_PID })
-  await mkdir(orphanDirectory, { recursive: true })
-  await writeFile(join(orphanDirectory, 'file.txt'), 'leftover\n')
+  // What a delete Git could not finish leaves: checkout files, no `.git`, no registration.
+  await addSpare(repo, orphanDirectory)
+  await rm(join(orphanDirectory, '.git'))
+  await gitExecFileAsync(['worktree', 'prune'], { cwd: repo })
   await gitExecFileAsync(['worktree', 'add', '-b', 'feature', userWorktree, 'main'], { cwd: repo })
 
   const result = await sweepRetiredWorktreeCreatePreparations(
