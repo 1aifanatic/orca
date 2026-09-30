@@ -11,7 +11,7 @@ export type StructuredAgentSessionHostSupport = {
   questionAnswers: boolean
   /** Mid-turn sends queue as host-held drafts; an older host keeps today's immediate path. */
   queuedMessages: boolean
-  /** A Stop of a turn an earlier Stop already answered for adds no row. */
+  /** A Stop that stopped nothing adds no row, so a repeated Stop is quiet. */
   quietRepeatedStop: boolean
 }
 

@@ -237,7 +237,7 @@ export const AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY =
 // `answers` to an older host; they fall back to the answer packed into `optionId`.
 export const AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY =
   'agent-session.question-answers.v1' as const
-// Why: a Stop of a turn an earlier Stop already answered for adds no row on this host. An older
+// Why: a Stop that stopped nothing adds no row on this host, and its note is keyed by turn. An older
 // host has the second write a false "already finished" row, so a client joins a Stop still on its
 // way itself there. Transitional: drop the client join once no supported host lacks this.
 export const AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY =

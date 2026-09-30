@@ -48,7 +48,7 @@ export function supportsStructuredAgentSessionPromptCancel(
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY)
 }
 
-/** Whether the host answers a Stop of a turn an earlier Stop already answered for quietly. */
+/** Whether the host writes no row for a Stop that stopped nothing, so a repeated Stop is quiet. */
 export function supportsStructuredAgentSessionQuietRepeatedStop(
   target: RuntimeClientTarget
 ): Promise<boolean> {
