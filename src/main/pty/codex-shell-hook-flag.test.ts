@@ -17,12 +17,13 @@ import { resolveFishBinary } from '../../shared/fish-binary-requirement'
 
 const isWindows = process.platform === 'win32'
 const fishLookup = resolveFishBinary()
-const pwshAvailable =
-  spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-Command', 'exit 0']).status === 0
+const canRun = (command: string): boolean =>
+  spawnSync(command, ['-NoLogo', '-NoProfile', '-Command', 'exit 0']).status === 0
+const pwshAvailable = canRun('pwsh')
 const FLAG = "hooks={ Stop = [{ hooks = [{ type = 'command', command = 'x' }] }] }"
 const VERSION = 'codex-cli 9.9.9'
 
-type Shell = 'bash' | 'zsh' | 'fish' | 'pwsh'
+type Shell = 'bash' | 'zsh' | 'fish' | 'pwsh' | 'powershell'
 const roots: string[] = []
 
 afterEach(() => {
@@ -72,7 +73,7 @@ function run(shell: Shell, sandbox: Sandbox, env: Record<string, string>): strin
   const template =
     shell === 'fish'
       ? getFishCodexShellLaunchPreflight()
-      : shell === 'pwsh'
+      : shell === 'pwsh' || shell === 'powershell'
         ? getPowerShellCodexShellLaunchPreflight()
         : getPosixCodexShellLaunchPreflight()
   const body = `${template}\ncodex resume --last`
@@ -85,7 +86,7 @@ function run(shell: Shell, sandbox: Sandbox, env: Record<string, string>): strin
         ? ['/bin/zsh', ['-f', scriptFile]]
         : shell === 'fish'
           ? [String(fishLookup.path), ['--no-config', '-c', body]]
-          : ['pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', body]]
+          : [shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', body]]
   const result = spawnSync(command, args, {
     encoding: 'utf-8',
     env: {
@@ -110,7 +111,9 @@ const shells: [Shell, boolean][] = [
   ['bash', !isWindows && existsSync('/bin/bash')],
   ['zsh', !isWindows && existsSync('/bin/zsh')],
   ['fish', fishLookup.available],
-  ['pwsh', pwshAvailable]
+  ['pwsh', pwshAvailable],
+  // Why: Windows PowerShell 5.1 is the default Windows shell and mangles embedded quotes in native args.
+  ['powershell', isWindows && canRun('powershell')]
 ]
 
 describe('codex function status hook flag', () => {
