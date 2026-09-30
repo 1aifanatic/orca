@@ -30,8 +30,7 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import {
   admitStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionEntryHeldForRetry,
-  structuredAgentSessionEntryWaitsForNewOwner
+  structuredAgentSessionEntryHeldForRetry
 } from '../../../../shared/structured-agent-session-outbox-admission'
 import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
@@ -89,8 +88,7 @@ function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
   recorded: AgentJournalSubmission | undefined,
-  startFailures: readonly AgentSessionFailureFact[],
-  resendsOnNewOwner: boolean
+  startFailures: readonly AgentSessionFailureFact[]
 ): string {
   // A send attempted before a Stop and then interrupted may already be with the host.
   const attemptedAcrossStop =
@@ -117,15 +115,12 @@ function deliveryNoticeText(
   ) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
-  const parts = structuredAgentSessionAttemptFailureParts(
-    entry.lastFailure,
-    context,
-    readWholeAgentSessionFailureFact(recorded?.rejection)
-  )
   return agentSessionWriteNoticeText(
-    resendsOnNewOwner && structuredAgentSessionEntryWaitsForNewOwner(entry)
-      ? [...parts, 'resendsOnRestart']
-      : parts
+    structuredAgentSessionAttemptFailureParts(
+      entry.lastFailure,
+      context,
+      readWholeAgentSessionFailureFact(recorded?.rejection)
+    )
   )
 }
 
@@ -138,9 +133,7 @@ export function structuredAgentSessionDeliveryNotices(
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
-  startFailures: readonly AgentSessionFailureFact[],
-  /** The host is known to be older: what it refused for want of an owner goes out on its next. */
-  resendsOnNewOwner = false
+  startFailures: readonly AgentSessionFailureFact[]
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -163,8 +156,7 @@ export function structuredAgentSessionDeliveryNotices(
         entry,
         { agentName, retryControl },
         rejected.get(entry.clientMessageId),
-        startFailures,
-        resendsOnNewOwner
+        startFailures
       )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),

@@ -14976,7 +14976,6 @@
         "notDoneCommand": "El comando no se ejecutó.",
         "notDoneGoal": "El objetivo no se cambió.",
         "restartFailed": "El agente no pudo reiniciarse.",
-        "resendsOnRestart": "Orca lo volverá a enviar cuando el agente se reinicie.",
         "capacity": "Orca ha recibido demasiadas solicitudes en el último día.",
         "outcomeUnknown": "Orca no pudo confirmar qué pasó. Revise el chat.",
         "questionChanged": "Esta pregunta ya se respondió o ha cambiado.",

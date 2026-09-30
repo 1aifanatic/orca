@@ -18,7 +18,6 @@ import { readOutbox, writeOutbox } from './structured-agent-session-outbox-stora
 import {
   dispatchStructuredAgentSessionOutboxEntry,
   readMountedStructuredAgentSessionOutbox,
-  releaseStructuredAgentSessionRefusalsForNewOwner,
   requeueInterruptedStructuredAgentSessionDispatches
 } from './structured-agent-session-outbox-dispatch'
 import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-session-launch-prompt'
@@ -71,7 +70,7 @@ export function useStructuredAgentSessionOutbox(args: {
     target
   } = args
   const { capability: queueCapability, enabled: queueEnabled } = queueDelivery
-  // What resends, releases and drops a send in flight besides a Retry or a new send; see the hook.
+  // What resends and drops a send in flight besides a Retry or a new send; see the hook.
   const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
   const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(sessionId, composerScopeKey)
   const [outbox, setOutbox] = useState<StructuredAgentSessionOutboxEntry[]>(() =>
@@ -83,9 +82,6 @@ export function useStructuredAgentSessionOutbox(args: {
   // "which entry" must never disagree: the journal can settle the tail while the head moves.
   const inFlightIdRef = useRef<string | null>(null)
   const dispatchGenerationRef = useRef(0)
-  // The last owner an older host's refusals here waited on; a later one is a new owner, a mount or
-  // a session change is not.
-  const refusalOwnerRef = useRef({ sessionId, owner: owner.refusalOwner })
   const [error, setError] = useState<string | null>(null)
   const [errorSession, setErrorSession] = useState(sessionId)
   // Render-time reset (react.dev: adjusting state when a prop changes), so the
@@ -121,25 +117,6 @@ export function useStructuredAgentSessionOutbox(args: {
       writeOutbox(sessionId, next)
     }
   }, [owner.fenceRef, owner.ownerChange, sessionId, target])
-
-  useEffect(() => {
-    const last = refusalOwnerRef.current
-    // A host not heard from says nothing about its owner, so the last known one stands.
-    if (owner.refusalOwner === null) {
-      return
-    }
-    refusalOwnerRef.current = { sessionId, owner: owner.refusalOwner }
-    if (last.sessionId !== sessionId || last.owner === null || last.owner === owner.refusalOwner) {
-      return
-    }
-    const current = outboxRef.current
-    const next = releaseStructuredAgentSessionRefusalsForNewOwner(current)
-    if (next.some((entry, index) => entry !== current[index])) {
-      outboxRef.current = next
-      setOutbox(next)
-      writeOutbox(sessionId, next)
-    }
-  }, [owner.refusalOwner, sessionId])
 
   useEffect(() => {
     const current = outboxRef.current
@@ -198,7 +175,10 @@ export function useStructuredAgentSessionOutbox(args: {
   )
 
   useEffect(() => {
-    const head = outbox[0]
+    // The latest list, not this render's: an effect earlier in this commit (an owner change's
+    // requeue, a reconcile) may have written a newer one that staging must keep.
+    const current = outboxRef.current
+    const head = current[0]
     if (!head || head.sessionId !== sessionId) {
       return
     }
@@ -209,7 +189,7 @@ export function useStructuredAgentSessionOutbox(args: {
     }
     // A launch settlement dispatches outside this hook's single-flight, so while its send is up
     // nothing else may go out beside it and race it for the host's arrival order.
-    const launching = outbox.find((entry) => entry.source === 'launch')
+    const launching = current.find((entry) => entry.source === 'launch')
     const launchDispatch = launching
       ? getStructuredAgentLaunchPromptDispatch(
           launching.sessionId,
@@ -229,7 +209,7 @@ export function useStructuredAgentSessionOutbox(args: {
       void launchDispatch.then(mirrorPersisted)
       return
     }
-    const admission = admitStructuredAgentSessionOutboxEntry(outbox)
+    const admission = admitStructuredAgentSessionOutboxEntry(current)
     if (admission.state !== 'dispatch' || fence === null || inFlightIdRef.current !== null) {
       return
     }
@@ -252,7 +232,7 @@ export function useStructuredAgentSessionOutbox(args: {
     const dispatchGeneration = dispatchGenerationRef.current
     const dispatch = dispatchStructuredAgentSessionOutboxEntry({
       next: attempt.wire,
-      entries: outbox.map((entry) =>
+      entries: current.map((entry) =>
         entry.clientMessageId === next.clientMessageId ? attempt.stored : entry
       ),
       sessionId,
@@ -335,8 +315,6 @@ export function useStructuredAgentSessionOutbox(args: {
   return {
     outbox,
     error,
-    /** A refusal the host gave for want of an owner goes out again on its next one. */
-    resendsOnNewOwner: owner.olderHost,
     send,
     retry,
     withdrawUnsent

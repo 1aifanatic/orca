@@ -17386,7 +17386,6 @@
         "notDoneCommand": "コマンドは実行されませんでした。",
         "notDoneGoal": "目標は変更されませんでした。",
         "restartFailed": "Agent を再起動できませんでした。",
-        "resendsOnRestart": "Agent が再起動したら、Orca が再送信します。",
         "capacity": "Orca が過去 1 日に受け取ったリクエストが多すぎます。",
         "outcomeUnknown": "Orca は何が起きたかを確認できませんでした。チャットを確認してください。",
         "questionChanged": "この質問はすでに回答済みか、変更されています。",

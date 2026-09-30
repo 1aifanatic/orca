@@ -395,30 +395,6 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
-  // An older host's next agent owner sends it again; the Retry stays in case none comes.
-  it('says a message an older host refused for want of an owner goes again on its restart', () => {
-    const outbox = [
-      entry('owner', {
-        lastAttemptAt: 1,
-        lastFailure: { kind: 'refused', code: 'agent_session_checkpoint_stale' }
-      }),
-      entry('journal', {
-        lastAttemptAt: 1,
-        lastFailure: { kind: 'refused', code: 'agent_session_journal_unreadable' }
-      })
-    ]
-    const retry = vi.fn()
-    const older = structuredAgentSessionDeliveryNotices(outbox, 'Claude', retry, [], [], true)
-    expect(older.get(agentJournalSubmissionKey('owner'))?.text).toBe(
-      'Your message was not sent. Orca will send it again when the agent restarts.'
-    )
-    expect(older.get(agentJournalSubmissionKey('owner'))?.onRetry).toBeDefined()
-    expect(older.get(agentJournalSubmissionKey('journal'))?.text).toBe(
-      "Orca couldn't read this chat's saved history. Your message was not sent."
-    )
-    expect(texts(outbox)[agentJournalSubmissionKey('owner')]).toBe('Your message was not sent.')
-  })
-
   // An earlier attempt under the id may have landed, so the row never says it was not sent.
   it('words a kept message whose id expired as an outcome Orca cannot confirm', () => {
     const notices = structuredAgentSessionDeliveryNotices(

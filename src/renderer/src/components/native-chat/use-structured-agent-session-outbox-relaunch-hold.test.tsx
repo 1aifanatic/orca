@@ -29,6 +29,8 @@ import { writeOutbox } from './structured-agent-session-outbox-storage'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const SESSION = 'session-1'
+// Stable, as the view passes it: a new object each render would re-run the owner-change requeue.
+const LOCAL_TARGET = { kind: 'local' } as const
 const NEWER_ORCA_WORDS =
   'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
 
@@ -93,7 +95,7 @@ function mount(fence = 1) {
     ({ fence: current }: { fence: number }) =>
       useStructuredAgentSessionOutbox({
         sessionId: SESSION,
-        target: { kind: 'local' },
+        target: LOCAL_TARGET,
         fence: current,
         submissions: []
       }),
@@ -251,8 +253,8 @@ describe('a message the host refused, across a relaunch', () => {
   })
 })
 
-// An older host restarts the agent inside a send and refuses it unrecorded when that fails; a new
-// fence while the chat is open is still its word to send again. A relaunch is not.
+// An older host restarts the agent inside a send and refuses it unrecorded when that fails. The
+// refused message was shown as not sent, so neither a relaunch nor a new owner sends it.
 describe('a message an older host refused, across a relaunch', () => {
   afterEach(() => {
     cleanup()
@@ -278,7 +280,7 @@ describe('a message an older host refused, across a relaunch', () => {
     expect(mocks.call).toHaveBeenCalledTimes(1)
   })
 
-  it('still sends it again when the fence moves while the chat is open', async () => {
+  it('is not sent when the fence moves while the chat is open; its Retry sends it once', async () => {
     hostAccepts()
     mocks.call.mockResolvedValueOnce(refusal('agent_session_checkpoint_stale'))
     const { result, rerender } = mount(1)
@@ -286,7 +288,13 @@ describe('a message an older host refused, across a relaunch', () => {
     await waitFor(() => expect(result.current.outbox[0]?.lastFailure).toBeDefined())
 
     rerender({ fence: 3 })
+    await settle()
+    expect(mocks.call).toHaveBeenCalledTimes(1)
+
+    act(() => result.current.retry(result.current.outbox[0]!.clientMessageId))
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    await settle()
+    expect(sentIds()).toHaveLength(2)
     expect(sentIds()[1]).toBe(sentIds()[0])
   })
 })
@@ -388,7 +396,7 @@ describe('a message whose send could not be saved before it went out', () => {
       ({ fence }: { fence: number | null }) =>
         useStructuredAgentSessionOutbox({
           sessionId: SESSION,
-          target: { kind: 'local' },
+          target: LOCAL_TARGET,
           fence,
           submissions: []
         }),
@@ -506,7 +514,7 @@ describe('a held message whose id expired', () => {
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
         sessionId: SESSION,
-        target: { kind: 'local' },
+        target: LOCAL_TARGET,
         fence: 1,
         submissions: [],
         composerScopeKey: 'pane-1'

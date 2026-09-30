@@ -6,8 +6,7 @@ import { writeOutbox } from './structured-agent-session-outbox-storage'
 const UNCONFIRMED_PROBE_BASE_DELAY_MS = 1_000
 /** No attempt ceiling: a transport outage outlives any fixed budget, and giving up
  *  restores the wedge this fixes. Growth caps the rate at one status query per 16s.
- *  A refusal that blocks the head still ends probing until a manual Retry (or, on an older
- *  host, a fence change), because the entry leaves `unconfirmed`. */
+ *  A refusal still ends probing until a manual Retry, because the entry leaves `unconfirmed`. */
 const UNCONFIRMED_PROBE_MAX_DELAY_MS = 16_000
 
 /** Re-queues the entry holding the outbox in `unconfirmed`, with backoff, until the journal answers it. */

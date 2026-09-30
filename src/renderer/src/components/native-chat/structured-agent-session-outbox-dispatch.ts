@@ -20,7 +20,6 @@ import {
   updateStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import { structuredAgentSessionEntryWaitsForNewOwner } from '../../../../shared/structured-agent-session-outbox-admission'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import {
   getStructuredAgentLaunchPromptDispatch,
@@ -74,20 +73,6 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
       ? { ...entry, state: 'queued' as const }
       : entry
   )
-}
-
-/** An older host's new owner is its word that a send it refused for want of one may now land (see
- *  `useStructuredAgentSessionOutboxOwnerChange`), so that send goes out again, same id. */
-export function releaseStructuredAgentSessionRefusalsForNewOwner(
-  entries: StructuredAgentSessionOutboxEntry[]
-): StructuredAgentSessionOutboxEntry[] {
-  return entries.map((entry) => {
-    if (!structuredAgentSessionEntryWaitsForNewOwner(entry)) {
-      return entry
-    }
-    const { lastFailure: _released, ...released } = entry
-    return released
-  })
 }
 
 export function dispatchStructuredAgentSessionOutboxEntry(args: {
