@@ -38,13 +38,11 @@ function entry(
 
 function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
-  blocked: string | null = null,
   submissions: readonly AgentJournalSubmission[] = [],
   startFailures: readonly AgentSessionFailureFact[] = []
 ): Record<string, string> {
   const notices = structuredAgentSessionDeliveryNotices(
     outbox,
-    blocked,
     'Claude',
     () => {},
     submissions,
@@ -71,7 +69,6 @@ describe('the notice on each message that did not go through', () => {
           }
         })
       ],
-      null,
       'Claude',
       retry,
       [],
@@ -92,25 +89,22 @@ describe('the notice on each message that did not go through', () => {
     expect(retry).toHaveBeenCalledExactlyOnceWith('second')
   })
 
-  it('chooses the words from the saved refusal on the message the queue stopped on', () => {
+  it('chooses the words from the saved refusal on a refused message', () => {
     expect(
-      texts(
-        [
-          entry('held', {
-            lastFailure: { kind: 'refused', code: 'agent_session_owner_restart_failed' }
-          })
-        ],
-        'held'
-      )
+      texts([
+        entry('held', {
+          lastFailure: { kind: 'refused', code: 'agent_session_owner_restart_failed' }
+        })
+      ])
     ).toEqual({
       [agentJournalSubmissionKey('held')]: "The agent couldn't restart. Your message was not sent."
     })
   })
 
   // The same rule as a rejected row's: its own Retry is the resend step, and any other step stays.
-  it('leaves a retry step to the Retry beside the message the queue stopped on', () => {
+  it('leaves a retry step to the Retry beside a refused message', () => {
     const held = (lastFailure: StructuredAgentSessionOutboxEntry['lastFailure']) =>
-      texts([entry('held', { lastFailure })], 'held')
+      texts([entry('held', { lastFailure })])
     expect(
       held({
         kind: 'refused',
@@ -137,35 +131,37 @@ describe('the notice on each message that did not go through', () => {
     expect(texts([entry('doubt', { state: 'unconfirmed' })])).toEqual({
       [agentJournalSubmissionKey('doubt')]: 'Message delivery is unconfirmed.'
     })
-    expect(texts([entry('bare')], 'bare')).toEqual({
+    expect(texts([entry('bare', { state: 'rejected' })])).toEqual({
       [agentJournalSubmissionKey('bare')]: 'Message was not sent.'
     })
   })
 
   it('never says a send attempted before a Stop was not sent: the host may hold it', () => {
     const interrupted = entry('stopped', { state: 'queued', lastAttemptAt: 5, outlivedStop: true })
-    expect(texts([interrupted], 'stopped')).toEqual({
+    expect(texts([interrupted])).toEqual({
       [agentJournalSubmissionKey('stopped')]: 'Message delivery is unconfirmed.'
     })
     const neverSent = entry('unsent', { state: 'queued', outlivedStop: true })
-    expect(texts([neverSent], 'unsent')).toEqual({
+    expect(texts([neverSent])).toEqual({
       [agentJournalSubmissionKey('unsent')]: 'Message was not sent.'
     })
   })
 
   // The drain's own rule: a message behind the one the queue stopped on is only waiting, so it says
-  // nothing. A rejected message holds nothing up and keeps its words.
-  it('says why on the message the queue stopped on and on every rejected one', () => {
+  // nothing. A rejected or refused message holds nothing up and keeps its words.
+  it('says why on the message the queue stopped on and on every rejected or refused one', () => {
     expect(
       texts([
         entry('sent', { state: 'dispatching' }),
         entry('rejected', { state: 'rejected' }),
+        entry('failed', { lastFailure: { kind: 'failed' } }),
         entry('stuck', { state: 'unconfirmed' }),
         entry('behind', { state: 'unconfirmed' }),
         entry('queued')
       ])
     ).toEqual({
       [agentJournalSubmissionKey('rejected')]: 'Message was not sent.',
+      [agentJournalSubmissionKey('failed')]: 'Your message was not sent.',
       [agentJournalSubmissionKey('stuck')]: 'Message delivery is unconfirmed.'
     })
   })
@@ -173,18 +169,11 @@ describe('the notice on each message that did not go through', () => {
   // Its Retry would put it back in the queue to wait unseen behind the stopped message.
   it('keeps a rejected message its words but not its Retry while the queue is stopped', () => {
     const retry = vi.fn()
-    for (const [outbox, blocked] of [
-      [[entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })], null],
-      [[entry('rejected', { state: 'rejected' }), entry('held')], 'held']
-    ] as const) {
-      const notices = structuredAgentSessionDeliveryNotices(
-        [...outbox],
-        blocked,
-        'Claude',
-        retry,
-        [],
-        []
-      )
+    for (const outbox of [
+      [entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })],
+      [entry('rejected', { state: 'rejected' }), entry('held', { outlivedStop: true })]
+    ]) {
+      const notices = structuredAgentSessionDeliveryNotices(outbox, 'Claude', retry, [], [])
       expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
         text: 'Message was not sent.'
       })
@@ -206,7 +195,7 @@ describe('the notice on each message that did not go through', () => {
       [agentJournalSubmissionKey('first')]: 'Claude stopped before it finished starting.',
       [agentJournalSubmissionKey('second')]: 'Claude stopped before it finished starting.'
     })
-    expect(texts([startFailed('rejected'), entry('held')], 'held')).toMatchObject({
+    expect(texts([startFailed('rejected'), entry('held', { outlivedStop: true })])).toMatchObject({
       [agentJournalSubmissionKey('rejected')]:
         'Claude stopped before it finished starting. Send your message to try again.'
     })
@@ -296,7 +285,6 @@ describe('the notice on each message that did not go through', () => {
     expect(
       texts(
         facts.map(([id]) => rejected(id)),
-        null,
         facts.map(([id, fact]) => recorded(id, fact))
       )
     ).toEqual(
@@ -357,7 +345,6 @@ describe('the notice on each message that did not go through', () => {
             })
           })
         ],
-        null,
         [
           {
             clientMessageId: 'recorded',
@@ -443,7 +430,6 @@ describe('the notice on each message that did not go through', () => {
             rejected('second', startFailed),
             rejected('other', otherRefusal)
           ],
-          null,
           [
             recorded('first', startFailed),
             recorded('second', startFailed),
@@ -461,12 +447,12 @@ describe('the notice on each message that did not go through', () => {
 
     it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
       const shown = "Claude couldn't start. Start a new chat to continue."
-      expect(texts([rejected('first', startFailed)], null, [], [startFailed])).toEqual({
+      expect(texts([rejected('first', startFailed)], [], [startFailed])).toEqual({
         [agentJournalSubmissionKey('first')]: 'Written by the host.'
       })
-      expect(
-        texts([rejected('first', startFailed)], null, [recorded('first', startFailed)], [])
-      ).toEqual({ [agentJournalSubmissionKey('first')]: shown })
+      expect(texts([rejected('first', startFailed)], [recorded('first', startFailed)], [])).toEqual(
+        { [agentJournalSubmissionKey('first')]: shown }
+      )
     })
   })
 })

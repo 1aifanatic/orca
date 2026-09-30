@@ -3,8 +3,8 @@
 // Derived from the outbox on every render and never stored: each failed or held message carries
 // its own typed failure, so each row words its own reason. Read through the drain's own rule: while
 // the queue is stopped, only the message it stopped on has a Retry; another's would wait unseen
-// behind it. One waiting behind says nothing; a rejected message holds nothing up, so it keeps its
-// words and gets its Retry once the queue moves.
+// behind it. One waiting behind says nothing; a rejected or refused message holds nothing up, so it
+// keeps its words and gets its Retry once the queue moves.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
@@ -23,10 +23,11 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   admitStructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+  structuredAgentSessionEntryHeldForRetry
+} from '../../../../shared/structured-agent-session-outbox-admission'
 import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { translate } from '@/i18n/i18n'
@@ -115,11 +116,10 @@ function deliveryNoticeText(
   )
 }
 
-/** Keyed by the message id the transcript renders each entry under. `blockedClientMessageId` is
- *  the entry a refusal stopped the queue on; `agentName` is the chat's agent, for the words. */
+/** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
+ *  agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
-  blockedClientMessageId: string | null,
   agentName: string,
   retry: (clientMessageId: string) => void,
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
@@ -127,7 +127,7 @@ export function structuredAgentSessionDeliveryNotices(
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[]
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
-  const admission = admitStructuredAgentSessionOutboxEntry(outbox, blockedClientMessageId)
+  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
   const rejected = new Map(
     submissions
@@ -136,7 +136,11 @@ export function structuredAgentSessionDeliveryNotices(
   )
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const entry of outbox) {
-    if (entry.state === 'rejected' || entry.clientMessageId === held) {
+    if (
+      entry.state === 'rejected' ||
+      structuredAgentSessionEntryHeldForRetry(entry) ||
+      entry.clientMessageId === held
+    ) {
       // Its own Retry is the step, so the words leave out sending again.
       const retryControl = held === null || entry.clientMessageId === held
       const text = deliveryNoticeText(

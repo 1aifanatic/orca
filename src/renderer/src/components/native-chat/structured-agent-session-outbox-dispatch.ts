@@ -20,6 +20,7 @@ import {
   updateStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { structuredAgentSessionEntryHeldForRetry } from '../../../../shared/structured-agent-session-outbox-admission'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import {
   getStructuredAgentLaunchPromptDispatch,
@@ -75,6 +76,20 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
   )
 }
 
+/** An older host's new owner is its word that a send it refused may now land (see
+ *  `useStructuredAgentSessionOutboxOwnerChange`), so what it refused goes out again, same id. */
+export function releaseStructuredAgentSessionRefusalsForNewOwner(
+  entries: StructuredAgentSessionOutboxEntry[]
+): StructuredAgentSessionOutboxEntry[] {
+  return entries.map((entry) => {
+    if (!structuredAgentSessionEntryHeldForRetry(entry)) {
+      return entry
+    }
+    const { lastFailure: _released, ...released } = entry
+    return released
+  })
+}
+
 export function dispatchStructuredAgentSessionOutboxEntry(args: {
   next: StructuredAgentSessionOutboxEntry
   persisted: readonly StructuredAgentSessionOutboxEntry[]
@@ -84,7 +99,6 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
   dispatchGeneration: number
   dispatchGenerationRef: MutableRef<number>
   inFlightIdRef: MutableRef<string | null>
-  blockedIdRef: MutableRef<string | null>
   outboxRef: MutableRef<StructuredAgentSessionOutboxEntry[]>
   setOutbox: (entries: StructuredAgentSessionOutboxEntry[]) => void
   setError: (error: string | null) => void
@@ -100,7 +114,14 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
     )
     if (!writeOutbox(args.sessionId, staged)) {
       args.inFlightIdRef.current = null
-      args.blockedIdRef.current = args.next.clientMessageId
+      // Held for Retry in memory: the save that would record the hold is what failed.
+      const held = updateStructuredAgentSessionOutboxEntry(
+        args.outboxRef.current,
+        args.next.clientMessageId,
+        (entry) => ({ ...entry, lastFailure: { kind: 'failed' } })
+      )
+      args.outboxRef.current = held
+      args.setOutbox(held)
       args.setError('Message could not be saved to the outbox')
       return false
     }
@@ -119,7 +140,6 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
         disposeStructuredAgentSessionSendResult({
           entries: args.outboxRef.current,
           entry: args.next,
-          blockedClientMessageId: args.blockedIdRef.current,
           result,
           createOperationId: args.createOperationId
         })
@@ -139,11 +159,7 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
       if (args.dispatchGenerationRef.current !== args.dispatchGeneration) {
         return false
       }
-      const input = {
-        entries: args.outboxRef.current,
-        entry: args.next,
-        blockedClientMessageId: args.blockedIdRef.current
-      }
+      const input = { entries: args.outboxRef.current, entry: args.next }
       const thrown = readAgentSessionErrorRefusal(caught)
       const refusal = thrown ? agentSessionRefusalFailure(thrown) : undefined
       args.applyDisposition(

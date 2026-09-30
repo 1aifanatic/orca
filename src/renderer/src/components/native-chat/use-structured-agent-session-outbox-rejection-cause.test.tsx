@@ -108,7 +108,6 @@ describe('a send the host rejected because the agent never started', () => {
     // Settled as not delivered: it waits for Retry and holds no later message up.
     expect(result.current.error).toBeNull()
     expect(result.current.outbox[0]?.state).toBe('rejected')
-    expect(result.current.blockedClientMessageId).toBeNull()
   })
 
   it('sends a new message past one the host could not start the agent for, without resending it', async () => {
@@ -181,7 +180,6 @@ describe('a send the host rejected because the agent never started', () => {
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
     expect(shownFailure(result.current.outbox[0])).toBe(reason)
     expect(result.current.error).toBeNull()
-    expect(result.current.blockedClientMessageId).toBeNull()
 
     // Retry is a new message with the same text: a fresh id, sent once.
     act(() => result.current.retry(id))
@@ -448,7 +446,6 @@ describe('a send refused while its agent restarted', () => {
     rerender({ fence: 3, submissions: [submission(id, 'accepted')] })
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
     expect(result.current.error).toBeNull()
-    expect(result.current.blockedClientMessageId).toBeNull()
   })
 })
 
