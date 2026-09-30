@@ -142,8 +142,8 @@ export function createCodexStructuredItemStreams(
     maxTotalRetainedBytes: deps.maxTotalRetainedBytes,
     isProtected: (key) => states.isPersistent(key),
     schedule: deps.schedule,
-    emit: (key, text) => {
-      return persist(key, text, false)
+    emit: (key, text, _snapshot, opening) => {
+      return persist(key, text, opening)
     }
   })
 

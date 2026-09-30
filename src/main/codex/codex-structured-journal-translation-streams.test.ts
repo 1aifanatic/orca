@@ -563,6 +563,28 @@ describe('codex journal translation', () => {
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'begun' }] }
     ])
   })
+
+  // The row-creating write is not a checkpoint, so a short headline is not held back behind it.
+  it("writes a reasoning row's first window in full after the section break that made it", () => {
+    const { translator, tap, window } = translatorWith()
+    translator.handle(TURN_STARTED)
+    const reasoning = { turnId: TURN_ID, itemId: 'reasoning-1', summaryIndex: 0 }
+    translator.handle(notification('item/reasoning/summaryPartAdded', reasoning))
+    for (const delta of ['**Inspecting', ' tests**']) {
+      translator.handle(notification('item/reasoning/summaryTextDelta', { ...reasoning, delta }))
+    }
+    window.fire()
+
+    expect(tap.rows.map((row) => row.body)).toEqual([
+      { kind: 'message', role: 'reasoning', blocks: [{ type: 'text', text: '\n' }] },
+      {
+        kind: 'message',
+        role: 'reasoning',
+        blocks: [{ type: 'text', text: '\n**Inspecting tests**' }]
+      }
+    ])
+    translator.dispose()
+  })
 })
 
 describe('notice journal pipeline', () => {

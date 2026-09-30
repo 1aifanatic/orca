@@ -112,7 +112,7 @@ export function createClaudeStreamedTextCheckpoints(
   const coalescer = createAgentSessionDeltaCoalescer({
     ...(deps.coalesceMs === undefined ? {} : { windowMs: deps.coalesceMs }),
     ...(deps.schedule ? { schedule: deps.schedule } : {}),
-    emit: (key, text) => persist(key, text, false)
+    emit: (key, text, _snapshot, opening) => persist(key, text, opening)
   })
 
   const drop = (key: string): void => {

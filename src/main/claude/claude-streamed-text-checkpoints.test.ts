@@ -102,6 +102,22 @@ describe('claude streamed text checkpoints', () => {
     expect(store.pending).toBe(1)
   })
 
+  it("writes the window's first snapshot however little it grew the row, then widens", () => {
+    const { store, rows, runWindow } = checkpoints()
+
+    store.append(identityOf('block-1'), 'I')
+    store.append(identityOf('block-1'), "'ll check")
+    runWindow()
+    // The row-creating write is not a checkpoint: the window's snapshot lands in full.
+    expect(rows).toEqual([
+      { uuid: 'block-1', text: 'I' },
+      { uuid: 'block-1', text: "I'll check" }
+    ])
+    store.append(identityOf('block-1'), ' the tests.')
+    runWindow()
+    expect(rows).toHaveLength(2)
+  })
+
   it('drops every block still awaiting its final frame at settlement', () => {
     const { store, rows, runWindow } = checkpoints()
 

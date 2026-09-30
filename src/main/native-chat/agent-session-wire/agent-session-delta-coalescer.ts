@@ -33,8 +33,14 @@ export type AgentSessionDeltaSnapshot = {
 }
 
 export type AgentSessionDeltaCoalescerDeps = {
-  /** Called with the FULL text accumulated for the key, not the increment. */
-  emit: (key: string, text: string, snapshot: AgentSessionDeltaSnapshot) => unknown
+  /** Called with the FULL text accumulated for the key, not the increment. `opening` marks the
+   *  row-creating emit and the first snapshot after it, which a growth throttle must not skip. */
+  emit: (
+    key: string,
+    text: string,
+    snapshot: AgentSessionDeltaSnapshot,
+    opening: boolean
+  ) => unknown
   windowMs?: number
   maxRetainedBytes?: number
   maxTotalRetainedBytes?: number
@@ -84,8 +90,8 @@ export function createAgentSessionDeltaCoalescer(
       observedBytes: number
       truncated: boolean
       dirty: boolean
-      /** An emit has succeeded, so the row exists and later text only revises it. */
-      emitted: boolean
+      /** Successful emits, counted to 2: the first makes the row, the second is its first snapshot. */
+      emits: number
     }
   >()
   let totalRetainedBytes = 0
@@ -98,16 +104,17 @@ export function createAgentSessionDeltaCoalescer(
       return true
     }
     const text = stream.chunks.join('')
-    const emitted = deps.emit(key, text, {
+    const emitted = deps.emit(
+      key,
       text,
-      observedBytes: stream.observedBytes,
-      truncated: stream.truncated
-    })
+      { text, observedBytes: stream.observedBytes, truncated: stream.truncated },
+      stream.emits < 2
+    )
     if (emitted === false) {
       return false
     }
     stream.dirty = false
-    stream.emitted = true
+    stream.emits = Math.min(2, stream.emits + 1)
     return true
   }
 
@@ -164,7 +171,7 @@ export function createAgentSessionDeltaCoalescer(
           observedBytes: 0,
           truncated: false,
           dirty: false,
-          emitted: false
+          emits: 0
         }
         if (!deps.isProtected?.(key)) {
           evictable.add(key)
@@ -192,7 +199,7 @@ export function createAgentSessionDeltaCoalescer(
       }
       streams.set(key, stream)
       // The first text makes the row; refused under backpressure, it waits for the window.
-      if (!stream.emitted && stream.dirty && stream.retainedBytes > 0 && flushKey(key)) {
+      if (stream.emits === 0 && stream.dirty && stream.retainedBytes > 0 && flushKey(key)) {
         return true
       }
       // One timer for every stream: a shared deadline bounds latency the same

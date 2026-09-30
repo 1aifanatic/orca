@@ -66,6 +66,23 @@ describe('agent-session delta coalescer', () => {
     ])
   })
 
+  // A growth throttle behind emit must not count the row-creating write as a checkpoint.
+  it('marks the row-creating emit and the first snapshot after it as the opening', () => {
+    const clock = manualClock()
+    const openings: boolean[] = []
+    const instance = createAgentSessionDeltaCoalescer({
+      emit: (_key, _text, _snapshot, opening) => openings.push(opening),
+      schedule: clock.schedule
+    })
+
+    for (const delta of ['I', "'ll", ' check']) {
+      instance.append('item-1', delta)
+      clock.fire()
+    }
+
+    expect(openings).toEqual([true, true, false])
+  })
+
   it('emits the accumulated snapshot again, not the increment, on the next window', () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)
