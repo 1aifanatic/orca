@@ -211,6 +211,11 @@ export function recordPinnedRuntimeRefusal(
   refusals.set(refusalKey(targetId, target), refusal)
 }
 
+/** Forgets a refusal a later rung has disproved, so the next connect retries rung A. */
+export function forgetPinnedRuntimeRefusal(targetId: string, target: ServerTarget): void {
+  refusals.delete(refusalKey(targetId, target))
+}
+
 export function resetPinnedRuntimeRefusalsForTests(): void {
   refusals.clear()
 }

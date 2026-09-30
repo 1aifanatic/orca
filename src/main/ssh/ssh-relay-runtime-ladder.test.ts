@@ -49,6 +49,10 @@ describe('relay runtime ladder (design D6)', () => {
     expect(compatRelayRuntimeFor(facts, catalog)?.id).toBe('glibc217')
     expect(compatRelayRuntimeFor({ ...facts, glibc: { major: 2, minor: 12 } }, catalog)).toBeNull()
     expect(compatRelayRuntimeFor({ target: 'linux-x64-musl', glibc: null }, catalog)).toBeNull()
+    const muslCatalog = [{ id: 'musl', hostTarget: 'linux-x64-musl' as const, glibcFloor: null }]
+    expect(compatRelayRuntimeFor({ target: 'linux-x64-musl', glibc: null }, muslCatalog)?.id).toBe(
+      'musl'
+    )
   })
 
   it('names the rung D reason in words the user can act on', () => {
