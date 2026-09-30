@@ -1,7 +1,7 @@
-// The captured background-shell stories on a relayed pane (WSL's local relay: the desktop never
-// infers a Ctrl+C on an SSH pane, whose input is not delivery-confirmed): hooks go through a real
-// relay-side listener, which owns the task record and reads the transcript, and reach the desktop
-// only as relayed rows. The relay never learns the Ctrl+C the desktop infers, so every row it
+// The captured background-shell and -workflow stories on a relayed pane (WSL's local relay: the
+// desktop never infers a Ctrl+C on an SSH pane, whose input is not delivery-confirmed): hooks go
+// through a real relay-side listener, which owns the task record and reads the transcript, and
+// reach the desktop only as relayed rows. The relay never learns the Ctrl+C the desktop infers, so every row it
 // publishes afterwards still names its own working main agent.
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -158,6 +158,56 @@ describe('a relayed Ctrl+C in the turn that launched a background shell (capture
     expect(
       pane.relay._getStateForTests().lastStatusByPaneKey.get(PANE)?.payload.mainAgent?.state
     ).toBe('working')
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+})
+
+describe('a relayed Ctrl+C in the turn that launched a background workflow (captured, 2.1.285)', () => {
+  const records = loadCapture('claude-background-workflow-ctrl-c-hooks')
+  const cancel = cancelLabelled(records, 'W2-ctrl-c-mid-essay')
+  const scan = records.find(
+    (record): record is CapturedTranscriptScan =>
+      record.kind === 'transcript' && record.label === 'queue-operation-enqueue'
+  )
+  if (!scan) {
+    throw new Error('the capture has no enqueue line')
+  }
+  // JSON.parse returns any; the timestamp is checked by Date.parse.
+  const parsed: Record<string, unknown> = JSON.parse(scan.lines[0])
+  const t0 = Date.parse(String(parsed.timestamp)) - scan.t * 1000
+
+  async function post(pane: SshPane, transcript: string, indices: number[]): Promise<void> {
+    for (const index of indices) {
+      vi.setSystemTime(t0 + hookAt(records, index).t * 1000)
+      await pane.post({ ...hookAt(records, index).payload, transcript_path: transcript })
+    }
+  }
+
+  it('monitors the workflow after its agent stops, then settles on the end line the relay reads', async () => {
+    const pane = await startSshPane()
+    const transcript = join(temporaryDir('orca-relayed-workflow-transcript-'), 'session.jsonl')
+    writeFileSync(transcript, '')
+    await post(pane, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8])
+    vi.setSystemTime(t0 + cancel.t * 1000)
+    expect(pressCtrlC(pane.desktop)).toBe(true)
+
+    // 32 s later, long after the latch window: the agent's own hooks, relayed.
+    await post(pane, transcript, [9, 10, 11])
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'working',
+      workingMode: 'monitoring',
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+
+    vi.setSystemTime(t0 + scan.t * 1000)
+    appendFileSync(transcript, `${scan.lines[0]}\n`)
+    await vi.waitFor(() => expect(row(pane.desktop).workingMode).toBeUndefined(), {
+      timeout: 3_000
+    })
     expect(row(pane.desktop)).toMatchObject({
       state: 'done',
       interrupted: true,
