@@ -25,6 +25,7 @@ import { bumpWorktreeScanGeneration } from './git/worktree-scan-cache'
 import { invalidateWslLinkedWorktreeGitRouting } from './git/wsl-linked-worktree-git-routing'
 import { whenLocalWorktreeCreatesSettle } from './git/local-worktree-create-activity'
 import { removeHostTree } from './host-tree-removal'
+import { isWorktreeRemovalPendingAt } from './worktree-background-removal'
 import { computeWorkspaceRoot, getWorktreePathSettings } from './ipc/worktree-logic'
 import type { Store } from './persistence'
 import {
@@ -168,8 +169,9 @@ async function reclaimSpareDirectory(
   ownerPid: number,
   hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>
 ): Promise<keyof SweepResult | null> {
-  // Never follow a symlink out of the folder.
-  if (!(await lstat(sparePath)).isDirectory()) {
+  // A delete the user asked for (a spare they adopted) owns the path, and its startup finish ends
+  // it. Never follow a symlink out of the folder.
+  if (isWorktreeRemovalPendingAt(sparePath) || !(await lstat(sparePath)).isDirectory()) {
     return null
   }
   const hasDotGit = (await nullWhenMissing(lstat(join(sparePath, '.git')))) !== null

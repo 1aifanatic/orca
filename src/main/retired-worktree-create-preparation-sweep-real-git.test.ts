@@ -10,6 +10,11 @@ import {
   holdLocalWorktreeCreate
 } from './git/local-worktree-create-activity'
 import { sweepRetiredWorktreeCreatePreparations } from './retired-worktree-create-preparation-sweep'
+import {
+  _resetPendingWorktreeRemovalsForTests,
+  loadWorktreeRemovalRecords
+} from './worktree-background-removal'
+import { writeWorktreeRemovalRecords } from './worktree-removal-records'
 
 vi.mock('./git/runner', async (importOriginal) => {
   const actual = await importOriginal<typeof GitRunner>()
@@ -25,6 +30,7 @@ const roots: string[] = []
 afterEach(async () => {
   vi.mocked(gitExecFileAsync).mockImplementation(actualGitExecFileAsync)
   _resetLocalWorktreeCreateActivityForTests()
+  _resetPendingWorktreeRemovalsForTests()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -364,6 +370,37 @@ it('keeps a checked-out spare Git pruned, and one whose repo moved away', async 
 
   expect(await readFile(join(prunedSpare, 'notes.md'), 'utf-8')).toBe('user notes\n')
   expect(await readFile(join(movedRepoSpare, 'file.txt'), 'utf-8')).toBe('user edit\n')
+})
+
+it('leaves a spare the user was deleting to that delete’s own startup finish', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const workspaceRoot = join(root, 'workspaces')
+  const adoptedSpare = join(workspaceRoot, '.orca-preparing', spareName(DEAD_PID, '11111111'))
+  await addSpare(repo, adoptedSpare)
+  // A quit stopped Git's delete after it removed the checkout's `.git`; the registration stays.
+  await rm(join(adoptedSpare, '.git'))
+  const profileDirectory = await makeRoot()
+  await writeWorktreeRemovalRecords(profileDirectory, () => [
+    {
+      worktreeId: `repo::${adoptedSpare}`,
+      repoId: 'repo',
+      repoPath: repo,
+      worktreePath: adoptedSpare,
+      branch: '',
+      head: '',
+      deleteBranch: false,
+      force: true,
+      requestedAt: 1
+    }
+  ])
+  await loadWorktreeRemovalRecords(profileDirectory)
+
+  expect(await sweepDeadOwners(workspaceRoot, repo)).toEqual({
+    reclaimed: 0,
+    removedDirectories: 0
+  })
+  expect(existsSync(join(adoptedSpare, 'file.txt'))).toBe(true)
 })
 
 it('holds each deletion for a create that starts mid-sweep', async () => {
