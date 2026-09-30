@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import {
@@ -11,16 +12,15 @@ export function AgentCapabilityStatusPill(props: {
 }): React.JSX.Element | null {
   if (props.status.tone === 'unavailable') {
     return (
-      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-        {props.status.label}
-      </span>
+      <span className="text-[11px] font-medium text-muted-foreground">{props.status.label}</span>
     )
   }
   if (!props.status.installed) {
     return null
   }
   return (
-    <span className="rounded-full border border-status-success-border bg-status-success-background px-2 py-0.5 text-[11px] font-semibold leading-none text-status-success">
+    <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+      <Check className="size-3" />
       {translate(
         'auto.components.feature.wall.AgentCapabilitiesSetupAction.b8dc9dd8a2',
         'Installed'

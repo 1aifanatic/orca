@@ -6519,7 +6519,6 @@
           "SetupGuideModal": {
             "3598a3ca0c": "Finish the core workflows that make Orca useful for parallel agent work.",
             "48a9e5ef2d": "Getting started",
-            "28cf59fcb4": "This will hide the checklist from the sidebar",
             "f3b5ffb2a6": "Hide checklist from sidebar"
           },
           "SetupGuideProgressRing": {
@@ -13797,10 +13796,9 @@
           "69af7e9c1c": "isn't on your PATH yet. Orca will set it as your default and you can install it any time.",
           "1eee1c7bd8": "No agents detected on your PATH. Pick one to install later, or continue with a blank terminal.",
           "hideAgents": "Hide agents",
-          "showMoreAgents": "Show {{value0}} more agents→",
-          "yoloPermissionsLabel": "Yolo / Dangerously skip permissions",
-          "yoloPermissionsInfo": "Agent permission info",
-          "yoloPermissionsTooltip": "Skip permission checks for agents for less interruptions"
+          "showMoreAgents": "Show {{value0}} more agents →",
+          "skipPermissionPromptsLabel": "Skip permission prompts",
+          "yoloPermissionsDescription": "Agents run without stopping to ask for permission."
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Press Enter to run the command and confirm npx if asked. You can also set this up later in Settings.",
@@ -13833,9 +13831,8 @@
           "a74c6d6b18": "not-installed"
         },
         "NotificationStep": {
-          "3bede04483": "Send Test Notification",
+          "3bede04483": "Send test notification",
           "dc897423e1": "Choose notification sound",
-          "53aaffe49a": "Notification Sound",
           "0fe570690c": "Pick the alert Orca plays after a desktop notification is delivered.",
           "0af746e41f": "Choose a sound",
           "8124d085a6": "Open Mac Settings",
@@ -13844,8 +13841,8 @@
           "e52aacf380": "Loading notification settings…",
           "3cd5374e22": "Notification settings are still loading",
           "b6a994e36e": "Notification sound could not be played",
-          "c0692baa52": "Choose Custom File",
-          "ac80d97e02": "Change Custom File",
+          "c0692baa52": "Choose custom file",
+          "ac80d97e02": "Change custom file",
           "56b836215c": "Checking notification permission…",
           "fd84d3e9b8": "Notifications are enabled",
           "4f7bce5644": "macOS will alert you when agents finish or terminals need attention.",
@@ -14360,7 +14357,7 @@
             "c605f51f2b": "Capability setup ready",
             "1aa657d8f4": "Some capability setup needs attention",
             "allInstalled": "All skills installed",
-            "installSkills": "Install Skills"
+            "installSkills": "Install skills"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "e.g. ollama run llama3.1 {{value0}}",
@@ -14453,7 +14450,6 @@
             "1a6a7d6c80": "Setup",
             "713cc529a5": "Milestones",
             "b1f1981c5e": "See tasks",
-            "0235b268b2": "Not done yet",
             "13294d3405": "Done"
           },
           "FeatureWallSetupWorkflowActions": {
@@ -14581,7 +14577,7 @@
                 "checklist": {
                   "localized": {
                     "copy": {
-                      "ec0a363633": "Multi-task",
+                      "workOnTwoTasks": "Work on two tasks at once",
                       "62bac8f43c": "Work in 2 different worktrees at once. Each one is isolated (even in the same project). Perfect for working on 2 features at once.",
                       "908898c3ee": "Use Orca's browser",
                       "43781563c3": "Browse your web app without leaving Orca. Grab any element and send its exact source and styles to an agent with one click.",

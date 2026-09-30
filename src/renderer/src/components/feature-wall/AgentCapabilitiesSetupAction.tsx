@@ -229,7 +229,7 @@ function AgentCapabilitySetupControls(props: {
         installStatus={props.installStatus}
       />
       {showSetupAction && showAllReady ? (
-        <p className="mt-6 flex items-center gap-1.5 text-sm font-medium text-status-success">
+        <p className="mt-6 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Check className="size-4" />
           {translate(
             'auto.components.feature.wall.AgentCapabilitiesSetupAction.allInstalled',
@@ -253,7 +253,7 @@ function AgentCapabilitySetupControls(props: {
             {props.setupBusyLabel ??
               translate(
                 'auto.components.feature.wall.AgentCapabilitiesSetupAction.installSkills',
-                'Install Skills'
+                'Install skills'
               )}
           </Button>
         </div>
@@ -288,23 +288,14 @@ function AgentCapabilitySetupChecklist(props: {
               aria-checked={selected}
               aria-label={`${selected ? 'Disable' : 'Enable'} ${row.title}`}
               className={cn(
-                'flex min-h-24 flex-col rounded-lg border px-4 py-3 text-left transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                selected
-                  ? 'border-ring bg-accent text-foreground ring-2 ring-ring/25'
-                  : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/40'
+                'flex min-h-24 flex-col rounded-lg border px-4 py-3.5 text-left transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                selected ? 'border-foreground/60 bg-accent' : 'border-border hover:bg-accent/60'
               )}
               onClick={() => props.onChange({ ...props.value, [row.id]: !selected })}
             >
               <span className="flex items-start justify-between gap-3">
-                <span
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-lg border',
-                    selected
-                      ? 'border-border bg-background text-foreground'
-                      : 'border-border bg-muted/40'
-                  )}
-                >
+                <span className="grid size-7 place-items-center rounded-md bg-muted text-foreground">
                   {row.icon}
                 </span>
                 <span className="flex items-center gap-2">
@@ -316,8 +307,8 @@ function AgentCapabilitySetupChecklist(props: {
                       className={cn(
                         'flex size-5 items-center justify-center rounded-full border transition-colors',
                         selected
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-background'
+                          ? 'border-foreground bg-foreground text-background'
+                          : 'border-border'
                       )}
                     >
                       {selected ? <Check className="size-3" strokeWidth={3} /> : null}

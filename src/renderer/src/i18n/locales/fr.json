@@ -6454,7 +6454,6 @@
           "SetupGuideModal": {
             "3598a3ca0c": "Terminez les workflows essentiels qui rendent Orca utile au travail parallèle avec des agents.",
             "48a9e5ef2d": "Premiers pas",
-            "28cf59fcb4": "Cela masquera la checklist de la barre latérale",
             "f3b5ffb2a6": "Masquer la checklist de la barre latérale"
           },
           "SetupGuideProgressRing": {
@@ -13721,9 +13720,7 @@
           "1eee1c7bd8": "Aucun agent détecté dans votre PATH. Choisissez-en un à installer plus tard, ou continuez avec un terminal vide.",
           "hideAgents": "Masquer les agents",
           "showMoreAgents": "Afficher {{value0}} autres agents→",
-          "yoloPermissionsLabel": "Yolo / Ignorer dangereusement les permissions",
-          "yoloPermissionsInfo": "Informations sur les permissions des agents",
-          "yoloPermissionsTooltip": "Ignorer les vérifications de permissions des agents pour moins d'interruptions"
+          "skipPermissionPromptsLabel": "Ignorer les demandes d'autorisation"
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Appuyez sur Entrée pour exécuter la commande et confirmez npx si demandé. Vous pouvez aussi configurer cela plus tard dans les paramètres.",
@@ -13758,7 +13755,6 @@
         "NotificationStep": {
           "3bede04483": "Envoyer une notification de test",
           "dc897423e1": "Choisir le son de notification",
-          "53aaffe49a": "Son de notification",
           "0fe570690c": "Choisissez l'alerte jouée par Orca après l'envoi d'une notification bureau.",
           "0af746e41f": "Choisir un son",
           "8124d085a6": "Ouvrir les réglages Mac",
@@ -14374,7 +14370,6 @@
             "1a6a7d6c80": "Configuration",
             "713cc529a5": "Jalons",
             "b1f1981c5e": "Voir les tâches",
-            "0235b268b2": "Pas encore terminé",
             "13294d3405": "Terminé"
           },
           "FeatureWallSetupWorkflowActions": {
@@ -14506,7 +14501,6 @@
                 "checklist": {
                   "localized": {
                     "copy": {
-                      "ec0a363633": "Multitâche",
                       "62bac8f43c": "Travaillez dans 2 arbres de travail différents à la fois. Chacun est isolé (même dans le même projet). Parfait pour travailler sur 2 fonctionnalités à la fois.",
                       "908898c3ee": "Utiliser le navigateur d'Orca",
                       "43781563c3": "Parcourez votre application Web sans quitter Orca. Saisissez n'importe quel élément et envoyez sa source exacte et ses styles à un agent en un seul clic.",
@@ -14519,7 +14513,8 @@
                       "eddc532e58": "Automatisez la configuration de l'espace de travail",
                       "56049b74c2": "Exécutez automatiquement les commandes d'installation et de configuration afin que chaque nouvelle arborescence de travail soit prête pour les agents.",
                       "2cf795433b": "Commencez à travailler dans plusieurs dépôts",
-                      "42525ba8a4": "Importez vos dépôts de clés dans Orca afin de pouvoir démarrer le travail d'agent sans rechercher de dossiers."
+                      "42525ba8a4": "Importez vos dépôts de clés dans Orca afin de pouvoir démarrer le travail d'agent sans rechercher de dossiers.",
+                      "workOnTwoTasks": "Travaillez sur deux tâches à la fois"
                     }
                   }
                 }

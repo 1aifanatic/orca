@@ -131,10 +131,9 @@ export function isAgentCapabilityReadinessComplete(readiness: AgentCapabilityRea
 
 export function getAgentCapabilityStatusClassName(tone: AgentCapabilityInstallStatusTone): string {
   switch (tone) {
-    case 'ready':
-      return 'text-green-600 dark:text-green-300'
     case 'error':
       return 'text-destructive'
+    case 'ready':
     case 'checking':
     case 'pending':
     case 'unavailable':

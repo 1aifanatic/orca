@@ -11,8 +11,8 @@ const getLocalizedFeatureWallSetupChecklistCopyById = createLocalizedCatalog(
   (): Record<FeatureWallSetupStepId, LocalizedFeatureWallSetupChecklistCopy> => ({
     'two-worktrees': {
       name: translate(
-        'auto.components.feature.wall.feature.wall.setup.checklist.localized.copy.ec0a363633',
-        'Multi-task'
+        'auto.components.feature.wall.feature.wall.setup.checklist.localized.copy.workOnTwoTasks',
+        'Work on two tasks at once'
       ),
       description: translate(
         'auto.components.feature.wall.feature.wall.setup.checklist.localized.copy.62bac8f43c',

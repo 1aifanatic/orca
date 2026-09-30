@@ -5409,7 +5409,6 @@
           "SetupGuideModal": {
             "3598a3ca0c": "Completa los flujos de trabajo principales que hacen útil a Orca para trabajar con agentes en paralelo.",
             "48a9e5ef2d": "Primeros pasos",
-            "28cf59fcb4": "Esto ocultará el checklist de la barra lateral.",
             "f3b5ffb2a6": "Ocultar checklist de la barra lateral"
           },
           "SetupGuideProgressRing": {
@@ -11863,9 +11862,7 @@
           "1eee1c7bd8": "No se detectaron agentes en tu PATH. Elige uno para instalarlo más tarde o continúa con una terminal en blanco.",
           "hideAgents": "Ocultar agentes",
           "showMoreAgents": "Mostrar {{value0}} agentes más→",
-          "yoloPermissionsLabel": "Yolo / Omitir permisos de forma peligrosa",
-          "yoloPermissionsInfo": "Información de permisos del agente",
-          "yoloPermissionsTooltip": "Omite las comprobaciones de permisos de los agentes para reducir interrupciones"
+          "skipPermissionPromptsLabel": "Omitir solicitudes de permiso"
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Pulsa Enter para ejecutar el comando y confirma npx si se te solicita. También puedes configurarlo más tarde en Configuración.",
@@ -11900,7 +11897,6 @@
         "NotificationStep": {
           "3bede04483": "Enviar notificación de prueba",
           "dc897423e1": "Elige sonido de notificación",
-          "53aaffe49a": "Sonido de notificación",
           "0fe570690c": "Elija la alerta que Orca reproduce después de que se envía una notificación de escritorio.",
           "0af746e41f": "Elige un sonido",
           "8124d085a6": "Abra la configuración de Mac",
@@ -12475,7 +12471,6 @@
             "1a6a7d6c80": "Configuración",
             "713cc529a5": "Hitos",
             "b1f1981c5e": "Ver tareas",
-            "0235b268b2": "Aún no hecho",
             "13294d3405": "Hecho"
           },
           "FeatureWallSetupWorkflowActions": {
@@ -12601,6 +12596,15 @@
                   "b94ec70eda": "Seguimiento no configurado",
                   "cc39a87288": "Conectado · Sistema predeterminado",
                   "00087eecb2": "Conectado · {{value0}}"
+                }
+              },
+              "setup": {
+                "checklist": {
+                  "localized": {
+                    "copy": {
+                      "workOnTwoTasks": "Trabaja en dos tareas a la vez"
+                    }
+                  }
                 }
               }
             }

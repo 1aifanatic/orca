@@ -6351,7 +6351,6 @@
           "SetupGuideModal": {
             "3598a3ca0c": "Orca를 병렬 agent 작업에 유용하게 만드는 핵심 워크플로를 완료합니다.",
             "48a9e5ef2d": "시작하기",
-            "28cf59fcb4": "이렇게 하면 사이드바에서 체크리스트가 숨겨집니다.",
             "f3b5ffb2a6": "사이드바에서 체크리스트 숨기기"
           },
           "SetupGuideProgressRing": {
@@ -13618,9 +13617,7 @@
           "1eee1c7bd8": "PATH에서 agents를 찾지 못했습니다. 나중에 설치할 항목을 선택하거나 빈 terminal로 계속 진행하세요.",
           "hideAgents": "agents 숨기기",
           "showMoreAgents": "agents {{value0}}개 더 보기→",
-          "yoloPermissionsLabel": "Yolo / 권한 확인 위험하게 건너뛰기",
-          "yoloPermissionsInfo": "Agent 권한 정보",
-          "yoloPermissionsTooltip": "중단을 줄이기 위해 agents 권한 확인을 건너뜁니다."
+          "skipPermissionPromptsLabel": "권한 확인 건너뛰기"
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Enter를 눌러 명령을 실행하고 요청 시 npx를 확인합니다. 나중에 설정에서 설정할 수도 있습니다.",
@@ -13655,7 +13652,6 @@
         "NotificationStep": {
           "3bede04483": "테스트 알림 보내기",
           "dc897423e1": "알림 소리 선택",
-          "53aaffe49a": "알림음",
           "0fe570690c": "데스크톱 알림이 전달된 후 Orca가 재생하는 경고를 선택합니다.",
           "0af746e41f": "소리를 선택하세요",
           "8124d085a6": "맥 설정 열기",
@@ -14271,7 +14267,6 @@
             "1a6a7d6c80": "설정",
             "713cc529a5": "마일스톤",
             "b1f1981c5e": "작업 보기",
-            "0235b268b2": "아직 완료되지 않음",
             "13294d3405": "완료"
           },
           "FeatureWallSetupWorkflowActions": {
@@ -14396,7 +14391,6 @@
                 "checklist": {
                   "localized": {
                     "copy": {
-                      "ec0a363633": "동시 작업",
                       "62bac8f43c": "동시에 2개의 서로 다른 워크트리에서 작업하세요. 같은 프로젝트 내에서도 각각 완벽히 격리되어 있어 2개의 기능을 동시에 작업하기에 적합합니다.",
                       "908898c3ee": "Orca 브라우저 사용",
                       "43781563c3": "Orca를 벗어나지 않고 웹 앱을 탐색하세요. 원하는 요소를 선택하고 클릭 한 번으로 정확한 소스와 스타일을 에이전트에 전달할 수 있습니다.",
@@ -14411,7 +14405,8 @@
                       "2cf795433b": "여러 저장소에서 작업 시작",
                       "42525ba8a4": "주요 저장소를 Orca로 가져와 폴더를 일일이 찾을 필요 없이 에이전트 작업을 시작하세요.",
                       "agentSkillsName": "에이전트에 Orca 스킬 제공",
-                      "agentSkillsDescription": "에이전트가 Orca 브라우저를 조작하고, 컴퓨터를 제어하고, 여러 단계 작업을 조율하는 데 쓰는 스킬을 설치하세요."
+                      "agentSkillsDescription": "에이전트가 Orca 브라우저를 조작하고, 컴퓨터를 제어하고, 여러 단계 작업을 조율하는 데 쓰는 스킬을 설치하세요.",
+                      "workOnTwoTasks": "두 작업을 동시에 진행하기"
                     }
                   }
                 }
