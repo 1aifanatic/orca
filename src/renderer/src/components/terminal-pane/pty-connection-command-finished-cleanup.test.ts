@@ -286,6 +286,7 @@ describe('connectPanePty', () => {
     expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })

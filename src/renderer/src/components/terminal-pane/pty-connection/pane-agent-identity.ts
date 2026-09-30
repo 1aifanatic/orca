@@ -202,6 +202,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       }
       useAppStore.getState().setPaneForegroundAgent(session.cacheKey, {
         agent: foreground.agent,
+        agentEvidence: foreground.agentEvidence,
         routingRevoked: true,
         shellForeground: foreground.shellForeground
       })
@@ -300,6 +301,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     // as a hint, but revoke bytes until one current provider confirmation lands.
     useAppStore.getState().setPaneForegroundAgent(session.cacheKey, {
       agent: foreground.agent,
+      agentEvidence: foreground.agentEvidence,
       routingRevoked: true,
       shellForeground: false
     })
@@ -311,6 +313,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     if (session.paneForegroundAgentTracker.hasReadInFlight()) {
       useAppStore.getState().setPaneForegroundAgent(session.cacheKey, {
         agent: foreground.agent,
+        agentEvidence: foreground.agentEvidence,
         routingRevoked: true,
         shellForeground: false,
         routingConfirmationPending: true

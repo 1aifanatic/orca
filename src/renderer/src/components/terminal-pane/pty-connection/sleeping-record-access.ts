@@ -158,6 +158,7 @@ export function installSleepingRecordAccess(session: ConnectPanePtySession): voi
         // closed. Use it to request confirmation, never as current byte authority.
         useAppStore.getState().setPaneForegroundAgent(session.cacheKey, {
           agent: metadata.launchAgent,
+          agentEvidence: 'launch-record',
           shellForeground: false
         })
       }

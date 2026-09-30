@@ -274,6 +274,7 @@ describe('connectPanePty', () => {
       expect(foregroundReadCallsFor(ptyId)).toEqual([[ptyId]])
       expect(mockStoreState.setPaneForegroundAgent).toHaveBeenCalledWith(cacheKey, {
         agent: 'codex',
+        agentEvidence: 'process-read',
         shellForeground: false
       })
     })
@@ -416,6 +417,7 @@ describe('connectPanePty', () => {
       expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId)
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: 'droid',
+        agentEvidence: 'process-read',
         routingTrusted: true,
         shellForeground: false
       })
@@ -425,6 +427,7 @@ describe('connectPanePty', () => {
       await flushAsyncTicks()
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: 'droid',
+        agentEvidence: 'process-read',
         routingTrusted: true,
         shellForeground: false
       })
@@ -498,6 +501,7 @@ describe('connectPanePty', () => {
       expect(mockStoreState.registerAgentLaunchConfig).not.toHaveBeenCalled()
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: 'droid',
+        agentEvidence: 'launch-record',
         shellForeground: false
       })
       expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, cacheKey)).toBe('alt-enter')
@@ -505,6 +509,7 @@ describe('connectPanePty', () => {
       binding.sampleForegroundAgentOnFocus()
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: 'droid',
+        agentEvidence: 'launch-record',
         shellForeground: false
       })
       expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, cacheKey)).toBe('alt-enter')
@@ -513,6 +518,7 @@ describe('connectPanePty', () => {
 
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: 'droid',
+        agentEvidence: 'process-read',
         routingTrusted: true,
         shellForeground: false
       })
@@ -809,6 +815,7 @@ describe('connectPanePty', () => {
       })
       expect(mockStoreState.setPaneForegroundAgent).toHaveBeenCalledWith(cacheKey, {
         agent: 'droid',
+        agentEvidence: 'process-read',
         routingTrusted: true,
         shellForeground: false
       })

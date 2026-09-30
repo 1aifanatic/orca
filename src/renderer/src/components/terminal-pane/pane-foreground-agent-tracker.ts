@@ -169,6 +169,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       hasAgentExpectation = false
       deps.publish({
         agent: recognized.agent,
+        agentEvidence: 'process-read',
         shellForeground: false,
         ...(requiresRoutingConfirmation ? { routingTrusted: true } : {})
       })

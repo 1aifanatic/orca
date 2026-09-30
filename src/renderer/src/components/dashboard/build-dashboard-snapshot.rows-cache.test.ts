@@ -126,7 +126,9 @@ describe('buildDashboardSnapshot rows cache', () => {
 
     const codexStarted: DashboardSnapshotState = {
       ...state,
-      paneForegroundAgentByPaneKey: { [PANE_2]: { agent: 'codex', shellForeground: false } }
+      paneForegroundAgentByPaneKey: {
+        [PANE_2]: { agent: 'codex', agentEvidence: 'process-read', shellForeground: false }
+      }
     }
     const cached = buildDashboardSnapshot(codexStarted, NOW + 500, {
       rowsCache: cache,

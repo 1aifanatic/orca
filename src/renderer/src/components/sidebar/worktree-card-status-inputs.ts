@@ -67,6 +67,41 @@ export const selectLivePtyIdsForWorktree = createWorktreeRecordSelector<
   }
 })
 
+type PaneForegroundAgentsByTabId = ReadonlyMap<
+  string,
+  readonly [string, PaneForegroundAgentEntry][]
+>
+
+// Why: grouped once per map identity so each card walks only its own tabs, not every pane key.
+const paneForegroundAgentsByTabIdCache = new WeakMap<
+  Record<string, PaneForegroundAgentEntry>,
+  PaneForegroundAgentsByTabId
+>()
+
+function getPaneForegroundAgentsByTabId(
+  entries: Record<string, PaneForegroundAgentEntry>
+): PaneForegroundAgentsByTabId {
+  const cached = paneForegroundAgentsByTabIdCache.get(entries)
+  if (cached) {
+    return cached
+  }
+  const byTabId = new Map<string, [string, PaneForegroundAgentEntry][]>()
+  for (const [paneKey, entry] of Object.entries(entries)) {
+    const tabId = parsePaneKey(paneKey)?.tabId
+    if (!tabId) {
+      continue
+    }
+    const group = byTabId.get(tabId)
+    if (group) {
+      group.push([paneKey, entry])
+    } else {
+      byTabId.set(tabId, [[paneKey, entry]])
+    }
+  }
+  paneForegroundAgentsByTabIdCache.set(entries, byTabId)
+  return byTabId
+}
+
 /** This worktree's pane foreground-process reads, keyed by pane key. */
 export const selectPaneForegroundAgentsForWorktree = createWorktreeRecordSelector<
   WorktreeCardForegroundInputState,
@@ -75,11 +110,14 @@ export const selectPaneForegroundAgentsForWorktree = createWorktreeRecordSelecto
   readSources: (state) => [state.tabsByWorktree, state.paneForegroundAgentByPaneKey],
   empty: EMPTY_PANE_FOREGROUND_AGENTS,
   build: (state, worktreeId) => {
-    const tabIds = new Set((state.tabsByWorktree[worktreeId] ?? []).map((tab) => tab.id))
+    const tabs = state.tabsByWorktree[worktreeId]
+    if (!tabs?.length || !state.paneForegroundAgentByPaneKey) {
+      return EMPTY_PANE_FOREGROUND_AGENTS
+    }
+    const byTabId = getPaneForegroundAgentsByTabId(state.paneForegroundAgentByPaneKey)
     const out: Record<string, PaneForegroundAgentEntry> = {}
-    for (const [paneKey, entry] of Object.entries(state.paneForegroundAgentByPaneKey ?? {})) {
-      const tabId = parsePaneKey(paneKey)?.tabId
-      if (tabId && tabIds.has(tabId)) {
+    for (const tab of tabs) {
+      for (const [paneKey, entry] of byTabId.get(tab.id) ?? []) {
         out[paneKey] = entry
       }
     }

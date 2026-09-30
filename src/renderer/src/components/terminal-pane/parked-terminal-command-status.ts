@@ -152,8 +152,8 @@ export function createParkedTerminalCommandStatusPolicy(options: {
     settleCommandCodeDone
   )
 
-  // Why: a full-screen agent's nested shells leak 133;D, so confirm like the mounted ladder does
-  // and retire the process read only on a shell or no answer; reveal re-reads it anyway.
+  // Why: a full-screen agent's nested shells leak 133;D, so make one confirming read (no retry
+  // ladder, unlike the mounted tracker) and retire the process read only on a shell or no answer.
   const retireForegroundAgentUnlessConfirmed = async (): Promise<void> => {
     const entry = useAppStore.getState().paneForegroundAgentByPaneKey[paneKey]
     if (!entry?.agent) {

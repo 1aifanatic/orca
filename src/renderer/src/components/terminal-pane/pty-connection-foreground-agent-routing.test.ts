@@ -287,6 +287,7 @@ describe('connectPanePty', () => {
     await vi.advanceTimersByTimeAsync(1200)
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -318,6 +319,7 @@ describe('connectPanePty', () => {
     expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId)
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -358,6 +360,7 @@ describe('connectPanePty', () => {
     expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId)
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -394,6 +397,7 @@ describe('connectPanePty', () => {
 
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -440,6 +444,7 @@ describe('connectPanePty', () => {
 
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })

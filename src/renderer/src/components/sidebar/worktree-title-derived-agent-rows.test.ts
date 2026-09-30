@@ -4,6 +4,7 @@ import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/ter
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
+import type { TitleDerivedPaneForeground } from './title-derived-pane-agent-identity'
 
 const LEAF_ID_1 = '77777777-7777-4777-8777-777777777777'
 const LEAF_ID_2 = '88888888-8888-4888-8888-888888888888'
@@ -41,6 +42,10 @@ function makeSingleLayout(leafId: string): TerminalLayoutSnapshot {
     activeLeafId: leafId,
     expandedLeafId: null
   }
+}
+
+function processRead(agent: TuiAgent): TitleDerivedPaneForeground {
+  return { agent, agentEvidence: 'process-read', shellForeground: false }
 }
 
 describe('buildTitleDerivedAgentRows', () => {
@@ -372,7 +377,7 @@ describe('buildTitleDerivedAgentRows', () => {
     const rowsFor = (
       title: string,
       launchAgent?: TuiAgent,
-      foreground?: { agent: TuiAgent | null; shellForeground: boolean }
+      foreground?: TitleDerivedPaneForeground
     ) =>
       buildWorktreeAgentRows({
         tabs: [makeTab('tab-1', launchAgent ? { launchAgent } : {})],
@@ -392,9 +397,7 @@ describe('buildTitleDerivedAgentRows', () => {
     // a latch with no run id, so the title outranks it even before any process read.
     expect(rowsFor('✳ Claude Code', 'opencode').map((row) => row.agentType)).toEqual(['claude'])
     expect(
-      rowsFor('✳ Claude Code', 'opencode', { agent: 'claude', shellForeground: false }).map(
-        (row) => row.agentType
-      )
+      rowsFor('✳ Claude Code', 'opencode', processRead('claude')).map((row) => row.agentType)
     ).toEqual(['claude'])
     // No owner to defend the pane: naming Claude stays the only available identity.
     expect(rowsFor('⠋ use Claude Sonnet').map((row) => row.agentType)).toEqual(['claude'])
@@ -424,7 +427,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
   function rowsFor(args: {
     title: string
     launchAgent?: TuiAgent
-    foreground?: { agent: TuiAgent | null; shellForeground: boolean }
+    foreground?: TitleDerivedPaneForeground
     ptyIds?: string[]
     layout?: TerminalLayoutSnapshot
   }) {
@@ -449,7 +452,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
     rows.map((row) => [row.agentType, row.state, row.entry.prompt, row.entry.lastAssistantMessage])
 
   it('keeps a launched Codex row when Codex retitles the pane to the project name', () => {
-    const foreground = { agent: 'codex' as const, shellForeground: false }
+    const foreground = processRead('codex')
     expect(summarize(rowsFor({ title: 'Codex', launchAgent: 'codex', foreground }))).toEqual([
       ['codex', 'idle', 'Codex', 'Idle']
     ])
@@ -471,9 +474,32 @@ describe('hook-less agent rows identified by the foreground process', () => {
     ).toHaveLength(0)
   })
 
+  it("does not trust a reattach's launch record as a process read", () => {
+    // Reattach seeds the daemon's launch agent, which can outlive the process while Orca is
+    // closed; a background pane is not re-read until it is shown.
+    const launchSeed: TitleDerivedPaneForeground = {
+      agent: 'codex',
+      agentEvidence: 'launch-record',
+      shellForeground: false
+    }
+    expect(rowsFor({ title: 'demo-repo', launchAgent: 'codex', foreground: launchSeed })).toEqual(
+      []
+    )
+    expect(rowsFor({ title: 'demo-repo', foreground: launchSeed })).toEqual([])
+    expect(
+      rowsFor({ title: 'demo-repo', foreground: { ...launchSeed, agentEvidence: undefined } })
+    ).toEqual([])
+    // Once a real read confirms the same agent, the row comes back.
+    expect(
+      summarize(
+        rowsFor({ title: 'demo-repo', launchAgent: 'codex', foreground: processRead('codex') })
+      )
+    ).toEqual([['codex', 'idle', 'Codex', 'Idle']])
+  })
+
   it('rows a hand-typed agent from its foreground process, whatever its title says', () => {
     for (const agent of ['codex', 'claude', 'gemini', 'opencode', 'grok'] as const) {
-      const rows = rowsFor({ title: 'demo-repo', foreground: { agent, shellForeground: false } })
+      const rows = rowsFor({ title: 'demo-repo', foreground: processRead(agent) })
       expect(rows.map((row) => [row.paneKey, row.agentType, row.state])).toEqual([
         [PANE_KEY, agent, 'idle']
       ])
@@ -489,7 +515,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
       ptyIdsByTabId: { 'tab-1': ['pty-left', 'pty-right'] },
       terminalLayoutsByTabId: { 'tab-1': makeSplitLayout() },
       paneForegroundAgentByPaneKey: {
-        [makePaneKey('tab-1', LEAF_ID_2)]: { agent: 'codex', shellForeground: false }
+        [makePaneKey('tab-1', LEAF_ID_2)]: processRead('codex')
       },
       now: 2000
     })
@@ -500,7 +526,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
   })
 
   it('lets the title drive activity without deciding who the agent is', () => {
-    const foreground = { agent: 'codex' as const, shellForeground: false }
+    const foreground = processRead('codex')
     expect(summarize(rowsFor({ title: '⠋ demo-repo', foreground }))).toEqual([
       ['codex', 'working', 'Codex', 'Running']
     ])
@@ -527,7 +553,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
       rowsFor({
         title: 'zsh',
         launchAgent: 'codex',
-        foreground: { agent: 'codex', shellForeground: false }
+        foreground: processRead('codex')
       })
     ).toHaveLength(0)
     expect(rowsFor({ title: 'Terminal 1', launchAgent: 'codex' })).toHaveLength(0)
@@ -535,7 +561,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
     expect(
       rowsFor({
         title: 'MINGW64:/c/Users/dev/demo-repo',
-        foreground: { agent: 'codex', shellForeground: false }
+        foreground: processRead('codex')
       })
     ).toHaveLength(0)
     // The PTY exited.
@@ -543,7 +569,7 @@ describe('hook-less agent rows identified by the foreground process', () => {
       rowsFor({
         title: 'demo-repo',
         launchAgent: 'codex',
-        foreground: { agent: 'codex', shellForeground: false },
+        foreground: processRead('codex'),
         ptyIds: []
       })
     ).toHaveLength(0)

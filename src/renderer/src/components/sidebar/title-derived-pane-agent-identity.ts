@@ -49,11 +49,15 @@ export function resolveTitleDerivedAgentType(
 }
 
 /** The pane's foreground-process read as the tracker publishes it; routing fields are omitted. */
-export type TitleDerivedPaneForeground = Pick<PaneForegroundAgentEntry, 'agent' | 'shellForeground'>
+export type TitleDerivedPaneForeground = Pick<
+  PaneForegroundAgentEntry,
+  'agent' | 'agentEvidence' | 'shellForeground'
+>
 
 /**
- * Which agent a hook-less pane runs, in the tab icon's order: the foreground process, then the
- * title, then the agent Orca launched. Null means the pane shows no agent row.
+ * Which agent a hook-less pane runs: a live process read (unless the title is a shell's), then the
+ * title, then the agent Orca launched while the title shows activity. Sidebar-only; the tab icon
+ * orders its signals differently. Null means the pane shows no agent row.
  *
  * Only the process read may keep a row whose title shows no agent activity (Codex retitles itself
  * to the project name, #23767): the mounted pane's tracker re-derives it at every command
@@ -69,10 +73,13 @@ export function resolveTitleDerivedPaneAgent(args: {
   launchAgentType: AgentType | null
   foreground: TitleDerivedPaneForeground | undefined
 }): AgentType | null {
-  // Why: a shell/default title is exit evidence the process read may not have caught up with.
-  const processAgent = titleShowsNoAgent(args.title, args.defaultTitle)
-    ? null
-    : args.foreground?.agent
+  // Why: a shell/default title is exit evidence the process read may not have caught up with; a
+  // reattach's launch record is not a read at all and can name an agent that already exited.
+  const processAgent =
+    args.foreground?.agentEvidence !== 'process-read' ||
+    titleShowsNoAgent(args.title, args.defaultTitle)
+      ? null
+      : args.foreground.agent
   // Why: OMP's nested pi process must not take an OMP-launched pane from its owner.
   const ownedProcessAgent = processAgent
     ? (resolveCompatibleAgentTypeForOwner(processAgent, args.launchAgentType) ?? processAgent)
