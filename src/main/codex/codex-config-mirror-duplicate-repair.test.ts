@@ -134,6 +134,27 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     })
   })
 
+  it('keeps managed trust for a project ~/.codex defines only through a sub-table', () => {
+    writeFileSync(
+      getSystemConfigPath(),
+      'model = "m"\n\n[projects."/repo".extra]\nx = 1\n',
+      'utf-8'
+    )
+    mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
+    writeFileSync(
+      getRuntimeConfigPath(),
+      'model = "m"\n\n[projects."/repo".extra]\nx = 1\n\n[projects."/repo"]\ntrust_level = "trusted"\n',
+      'utf-8'
+    )
+
+    syncSystemConfigIntoManagedCodexHome()
+
+    expect(parse(readFileSync(getRuntimeConfigPath(), 'utf-8'))).toEqual({
+      model: 'm',
+      projects: { '/repo': { extra: { x: 1 }, trust_level: 'trusted' } }
+    })
+  })
+
   it('collapses Orca\u2019s own duplicate hook tables, so managed-only trust survives', () => {
     writeFileSync(getSystemConfigPath(), 'model = "m"\n', 'utf-8')
     mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
@@ -256,6 +277,14 @@ describe('a ~/.codex the user broke by hand is mirrored as before', () => {
         mcp_servers: { mine: { command: 'm' } },
         projects: { '/sub': { trust_level: 'trusted' } }
       })
+
+      // The promotion ended that stall, so the next one is reported again.
+      writeFileSync(rtPath, readFileSync(rtPath, 'utf8').replace('model = "B"', 'model = "C"'))
+      writeFileSync(sysPath, brokenSource.replace('model = "A"', 'model = "B"'))
+      syncSystemConfigIntoManagedCodexHome(homes)
+      expect(
+        warn.mock.calls.flat().filter((line) => String(line).includes('Skipped promoting'))
+      ).toHaveLength(2)
     } finally {
       warn.mockRestore()
     }

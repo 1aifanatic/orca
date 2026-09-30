@@ -8,6 +8,7 @@ import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-hom
 import { upsertPromotedSettingsInContent } from './codex-config-settings-upsert'
 import {
   applyCheckedCodexConfigTomlEdit,
+  clearCodexConfigTomlEditRefusalReport,
   CodexConfigTomlEditRefusedError,
   reportCodexConfigTomlEditRefusal
 } from './codex-config-toml-checked-edit'
@@ -118,8 +119,12 @@ function getHostPromotionHomes(): CodexSettingsPromotionHomes {
 export function promoteCodexRuntimeSettingsToSystem(
   homes?: CodexSettingsPromotionHomes
 ): CodexSettingsPromotionPlan | null {
+  const resolvedHomes = homes ?? getHostPromotionHomes()
   try {
-    return promoteCodexRuntimeSettingsToSystemUnsafe(homes ?? getHostPromotionHomes())
+    const plan = promoteCodexRuntimeSettingsToSystemUnsafe(resolvedHomes)
+    // Why: a pass that did not stall ends the stall, so a later one is reported again.
+    clearCodexConfigTomlEditRefusalReport(join(resolvedHomes.systemHomePath, 'config.toml'))
+    return plan
   } catch (error) {
     // Why: promotion is best-effort launch prep; a malformed file must not block Codex launch.
     // A refused edit was already reported once per file.

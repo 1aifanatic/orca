@@ -14,6 +14,8 @@ import {
   joinTomlBlocks,
   stripRuntimeOwnedTomlSections
 } from './config-toml-runtime-owned-sections'
+import { parseTomlTableHeaderPath } from './config-toml-key-path'
+import { mayNameTomlKeys, parseProjectTomlHeaderPath } from './config-toml-syntax'
 
 /** Ordinary settings from ~/.codex plus the trust and MCP tables the managed home owns. */
 export function mergeSystemCodexConfigIntoRuntime(
@@ -92,13 +94,30 @@ function getProjectsDefinedOutsideTables(config: string): ReadonlySet<string> {
     return new Set()
   }
   const tableProjects = new Set(
-    getTomlSections(config)
-      .filter((section) => isRuntimeProjectTomlSection(section.header))
-      .map((section) => getTomlSectionHeaderKey(section.header))
+    getTomlSections(config).flatMap((section) => {
+      const projectPath = getProjectTablePath(section.header)
+      return projectPath === null ? [] : [projectKey(projectPath)]
+    })
   )
   return new Set(
     Object.keys(projects)
-      .map((projectPath) => `project:${normalizeCodexProjectPathForLookup(projectPath)}`)
+      .map(projectKey)
       .filter((key) => !tableProjects.has(key))
   )
+}
+
+function projectKey(projectPath: string): string {
+  return `project:${normalizeCodexProjectPathForLookup(projectPath)}`
+}
+
+// Why: a sub-table header such as `[projects."/a".extra]` also defines `/a` as a table.
+function getProjectTablePath(header: string): string | null {
+  const projectPath = parseProjectTomlHeaderPath(header)
+  if (projectPath !== null || !mayNameTomlKeys(header, ['projects'])) {
+    return projectPath
+  }
+  const table = parseTomlTableHeaderPath(header)
+  return table?.segments[0] === 'projects' && table.segments.length > 2
+    ? (table.segments[1] ?? null)
+    : null
 }
