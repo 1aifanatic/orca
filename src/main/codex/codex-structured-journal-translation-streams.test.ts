@@ -548,11 +548,20 @@ describe('codex journal translation', () => {
     translator.handle(
       notification('item/started', { item: { type: 'agentMessage', id: 'item-1', text: '' } })
     )
-    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'gone' }))
+    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'begun' }))
+    translator.handle(
+      notification('item/agentMessage/delta', {
+        itemId: 'item-1',
+        delta: ' and then gone, before the window closed on it'
+      })
+    )
     translator.dispose()
     window.fire()
 
-    expect(tap.rows).toEqual([])
+    // Only the row the first delta made at once.
+    expect(tap.rows.map((row) => row.body)).toEqual([
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'begun' }] }
+    ])
   })
 })
 

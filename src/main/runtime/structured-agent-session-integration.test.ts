@@ -597,9 +597,9 @@ describe('a structured codex session over agentSession.*', () => {
     codex.notify('item/agentMessage/delta', { itemId: 'item-1', delta: 'Two ' })
     codex.notify('item/agentMessage/delta', { itemId: 'item-1', delta: 'files.' })
     await drainStreamedEvents()
-    // The 60ms window has not elapsed, so no half-written row reached the
-    // journal — the coalescer is holding both deltas.
-    expect(itemsOf(stream).filter((item) => textOf(item).startsWith('Two'))).toEqual([])
+    // The first delta made the row at once; the 60ms window still holds the second.
+    const streamed = itemsOf(stream).filter((item) => textOf(item).startsWith('Two'))
+    expect(streamed.map(textOf)).toEqual(['Two '])
 
     codex.notify('item/completed', {
       item: { type: 'agentMessage', id: 'item-1', text: 'Two files.' }
@@ -790,12 +790,6 @@ describe('a structured codex session over agentSession.*', () => {
     })
     await drainStreamedEvents()
 
-    codex.notify('item/agentMessage/delta', {
-      threadId: THREAD,
-      turnId: TURN,
-      itemId: 'item-final',
-      delta: 'Final text before shutdown.'
-    })
     const host = getStructuredAgentSessionHost()
     const journal = (
       host as unknown as { sessions: Map<string, { journal: AgentSessionJournal }> }
@@ -807,6 +801,13 @@ describe('a structured codex session over agentSession.*', () => {
       appendEntered.resolve()
       await appendGate.promise
       return originalAppend(...args)
+    })
+    // The text's first delta writes its row at once: still landing when teardown begins.
+    codex.notify('item/agentMessage/delta', {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: 'item-final',
+      delta: 'Final text before shutdown.'
     })
 
     let stopped = false

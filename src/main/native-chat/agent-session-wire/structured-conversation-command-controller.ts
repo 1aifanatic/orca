@@ -15,10 +15,7 @@ export class StructuredConversationCommandController {
   readonly pending = new Map<string, { key: string; count: number }>()
   constructor(
     private readonly context: () => StructuredAgentSessionMutationContext,
-    private readonly host: Pick<
-      StructuredAgentSessionHost,
-      'attach' | 'flushStreamedEvents' | 'waitForSendSettlement'
-    >
+    private readonly host: Pick<StructuredAgentSessionHost, 'attach' | 'waitForSendSettlement'>
   ) {}
   send = (
     caller: StructuredAgentSessionCaller,

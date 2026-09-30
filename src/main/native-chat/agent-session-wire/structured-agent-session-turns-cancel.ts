@@ -13,16 +13,11 @@ import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
-/** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain.
- *  A failed drain reads working: bookkeeping never talks a Stop out of stopping. */
-export async function isMainAgentWorkingOnceFlushed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>
-): Promise<boolean> {
-  try {
-    await ctx.flushStreamedEvents()
-  } catch {
-    return true
-  }
+/** Whether the fold reads working. Every write has landed by its call's return, so a Stop reads
+ *  it without waiting on the write queue. */
+export function isMainAgentWorking(
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence'>
+): boolean {
   return isStructuredAgentSessionMainAgentWorking(
     ctx.journal.activeTurnId(),
     ctx.journal.submissions(),
@@ -41,8 +36,9 @@ export async function performCancel(
     prompt?: { itemId: string; expectedRevision: number }
     /** Ends the provider child, for a running command the provider did not take the Stop on. */
     stopChild?: () => Promise<void>
-    /** The host already withdrew queued messages for this Stop. */
-    withdrewQueued?: boolean
+    /** Whether the host's withdrawal of queued messages for this Stop withdrew any; awaited only
+     *  after the interrupt. */
+    withdrewQueued?: Promise<boolean>
   }
 ): Promise<TurnOutcome<AgentSessionCancelResult>> {
   if (input.prompt) {
@@ -91,7 +87,7 @@ export async function performCancel(
             ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
           })
     cancelled = outcome.cancelled
-    if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
+    if (!cancelled && (await input.withdrewQueued) === true && !isMainAgentWorking(ctx)) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
       cancelled = true
@@ -125,9 +121,6 @@ export async function performCancel(
     await input.stopChild?.()
     cancelled = true
     note = { kind: 'status', text: 'Cancellation requested.' }
-  }
-  if (cancelled && input.prompt) {
-    await ctx.flushStreamedEvents()
   }
   const value = { ...(input.turnId !== undefined ? { turnId: input.turnId } : {}), cancelled }
   if (input.scope || note === null) {

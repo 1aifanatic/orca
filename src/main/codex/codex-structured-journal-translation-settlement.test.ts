@@ -25,6 +25,7 @@ import {
   CODEX_USER_INPUT_METHOD
 } from './codex-structured-prompt-replies'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
+import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
 
 const SESSION_ID = 'session-1'
 const THREAD_ID = 'thread-abc'
@@ -104,7 +105,8 @@ function deferredTarget(
 ): StructuredAgentSessionEventTarget {
   return {
     fence: 7,
-    journal: {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a double for the journal members this path calls; the helper adds the in-order ones.
+    journal: withJournalQueueMembers({
       appendItem: vi.fn(async (_identity: AgentJournalItemIdentity, body: AgentJournalItemBody) => {
         log.push(body)
         return { cursor: { epoch: 'e', sequence: log.length } }
@@ -120,7 +122,7 @@ function deferredTarget(
           return { epoch: 'e', sequence: log.length }
         }
       )
-    } as unknown as StructuredAgentSessionEventTarget['journal'],
+    }) as unknown as StructuredAgentSessionEventTarget['journal'],
     publish: vi.fn(() => {
       publishes.push('publish')
     })

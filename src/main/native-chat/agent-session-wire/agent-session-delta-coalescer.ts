@@ -9,7 +9,10 @@
 //
 // The window applies to text only. Lifecycle — an item completing, a turn
 // ending, an approval arriving — bypasses it by flushing first, so nothing can
-// be journaled ahead of the text that preceded it.
+// be journaled ahead of the text that preceded it. A stream's first delta is
+// emitted at once, so its row takes its place in the journal when the text
+// begins and any write issued after lands below it; the window only delays
+// later snapshots of that row.
 
 /** Long enough to fold a burst of tokens into one row, short enough that the
  *  text still reads as streaming. */
@@ -81,6 +84,8 @@ export function createAgentSessionDeltaCoalescer(
       observedBytes: number
       truncated: boolean
       dirty: boolean
+      /** An emit has succeeded, so the row exists and later text only revises it. */
+      emitted: boolean
     }
   >()
   let totalRetainedBytes = 0
@@ -102,6 +107,7 @@ export function createAgentSessionDeltaCoalescer(
       return false
     }
     stream.dirty = false
+    stream.emitted = true
     return true
   }
 
@@ -157,7 +163,8 @@ export function createAgentSessionDeltaCoalescer(
           retainedBytes: 0,
           observedBytes: 0,
           truncated: false,
-          dirty: false
+          dirty: false,
+          emitted: false
         }
         if (!deps.isProtected?.(key)) {
           evictable.add(key)
@@ -184,6 +191,10 @@ export function createAgentSessionDeltaCoalescer(
         stream.dirty = true
       }
       streams.set(key, stream)
+      // The first text makes the row; refused under backpressure, it waits for the window.
+      if (!stream.emitted && stream.dirty && stream.retainedBytes > 0 && flushKey(key)) {
+        return true
+      }
       // One timer for every stream: a shared deadline bounds latency the same
       // way and costs one wakeup per window instead of one per stream.
       scheduleFlush()

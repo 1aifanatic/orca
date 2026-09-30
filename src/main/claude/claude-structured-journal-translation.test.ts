@@ -210,7 +210,7 @@ describe('Claude structured journal translation', () => {
       messageId: 'msg_01',
       startUuid: 'block-start-1',
       finalUuid: 'assistant-final-1',
-      chunks: ['ST', 'REAMOK_ELEC_64E632']
+      chunks: ['ST', 'REAMOK_ELEC_64E632', ' streamed on past the next checkpoint']
     })
     const streamedIdentity = {
       provider: 'claude',
@@ -229,7 +229,13 @@ describe('Claude structured journal translation', () => {
     for (const delta of turn.deltas) {
       translator.handle(delta)
     }
-    expect(assistantMessages(state.items)).toEqual([])
+    // The first delta made the block's row at once; the rest waits for the window.
+    expect(assistantMessages(state.items)).toEqual([
+      {
+        identity: streamedIdentity,
+        body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'ST' }] }
+      }
+    ])
 
     const run = scheduled as (() => void) | null
     run?.()

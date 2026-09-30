@@ -64,7 +64,7 @@ import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
-import type { JournalItemAppender } from './journal-item-appender'
+import type { JournalItemAppender, JournalResolvedItem } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 
 export { AgentSessionJournalError } from './journal-write-guards'
@@ -268,6 +268,12 @@ export class AgentSessionJournal {
 
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
 
+  /** Reads the fold with every write issued before this call committed, and none issued after: at
+   *  once unless writes still wait behind an owed import or a running write. */
+  readInOrder<T>(read: () => T): Promise<T> {
+    return this.queue.readInOrder(read)
+  }
+
   readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
     return readJournalSince(
       {
@@ -295,6 +301,14 @@ export class AgentSessionJournal {
     options: JournalItemAppendOptions
   ): Promise<JournalAppendResult> {
     return this.itemAppender.append(identity, body, options)
+  }
+
+  /** An upsert whose row is chosen from the fold at its own turn in the queue; null writes nothing. */
+  appendResolvedItem(
+    resolve: () => JournalResolvedItem | null,
+    options: JournalItemAppendOptions
+  ): Promise<JournalAppendResult | null> {
+    return this.itemAppender.appendResolved(resolve, options)
   }
 
   appendTombstone(

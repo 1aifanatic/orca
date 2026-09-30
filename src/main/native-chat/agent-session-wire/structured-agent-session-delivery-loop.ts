@@ -57,7 +57,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
   onError: (sessionId: string, error: unknown) => void
   record: (sessionId: string) => AgentSessionRecord | null
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   now: () => number
 }
 
@@ -218,7 +217,6 @@ export class StructuredAgentSessionDeliveryLoop {
         providerChildPhase: () => this.deps.sessions.get(sessionId)?.child?.phase,
         failureTextContext: this.deps.failureTextContext(sessionId),
         record: () => this.deps.record(sessionId),
-        flushStreamedEvents: () => this.deps.flushStreamedEvents(sessionId),
         now: this.deps.now
       },
       next

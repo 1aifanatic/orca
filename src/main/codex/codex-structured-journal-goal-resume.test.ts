@@ -12,6 +12,7 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { CodexJournalGoals } from './codex-structured-journal-goals'
 import { MAX_CODEX_GOAL_THREADS } from './codex-structured-journal-limits'
+import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
 
 const THREAD = '01a08cc2-f96e-76d0-bb74-88b9bc0b03fc'
 
@@ -45,7 +46,7 @@ function goalJournal(
   const writes: string[] = []
   const deferred = createDeferredStructuredAgentSessionEventSink(options)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a fake journal exposing only the members the goal translator and deferred sink call.
-  const journal = {
+  const journal = withJournalQueueMembers({
     get epoch() {
       return `epoch-${epochNumber}`
     },
@@ -77,7 +78,7 @@ function goalJournal(
         visit(item.itemId, item.sequence, item.body)
       }
     }
-  } as unknown as StructuredAgentSessionEventTarget['journal']
+  }) as unknown as StructuredAgentSessionEventTarget['journal']
   const target = {
     journal,
     fence: 1,

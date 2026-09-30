@@ -14,6 +14,7 @@ import {
   type StructuredAgentSessionEventSink
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { ClaudeSubagentRoster } from './claude-subagent-roster'
+import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
 
 const TURN_1 = 'claude-session:turn-1'
 
@@ -455,13 +456,14 @@ describe('ClaudeSubagentRoster — through the real sink queue', () => {
   it('lands every revision, not just the one that was already in flight', async () => {
     const appended: AgentJournalItemBody[] = []
     let published = 0
-    const journal = {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a double for the journal members this path calls; the helper adds the in-order ones.
+    const journal = withJournalQueueMembers({
       appendItem: async (_identity: AgentJournalItemIdentity, body: AgentJournalItemBody) => {
         appended.push(body)
         return { cursor: { epoch: 'e', sequence: appended.length } }
       },
       appendTombstone: async () => ({ epoch: 'e', sequence: 0 })
-    } as unknown as AgentSessionJournal
+    }) as unknown as AgentSessionJournal
     const deferred = createDeferredStructuredAgentSessionEventSink()
     deferred.bind({
       journal,

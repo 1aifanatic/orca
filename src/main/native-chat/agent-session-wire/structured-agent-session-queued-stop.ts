@@ -52,10 +52,29 @@ export async function runStopWithQueuePause<TValue>(
     }
     // Recorded only over a card it holds back — judged in its own transaction, which
     // still counts an owed return to waiting if that heal failed.
-    await queuedMessages
-      .recordPause('stopped')
-      .catch((error: unknown) => report(ctx, 'queue pause', error))
+    try {
+      await queuedMessages.recordPause('stopped')
+    } catch (error) {
+      report(ctx, 'queue pause', error)
+    }
   })
+}
+
+/** The Stop's withdrawal of every queued send, issued at once and never awaited ahead of the
+ *  interrupt. Bookkeeping: one that fails is reported and withdrew nothing. */
+export function withdrawQueuedForStop(
+  ctx: AgentSessionTurnContext,
+  withdraw: () => Promise<readonly string[]>
+): Promise<boolean> {
+  const failed = (error: unknown): boolean => {
+    report(ctx, 'withdrawal', error)
+    return false
+  }
+  try {
+    return withdraw().then((withdrawn) => withdrawn.length > 0, failed)
+  } catch (error) {
+    return Promise.resolve(failed(error))
+  }
 }
 
 function report(ctx: AgentSessionTurnContext, step: string, error: unknown): void {

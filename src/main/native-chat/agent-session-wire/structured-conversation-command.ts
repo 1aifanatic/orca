@@ -134,7 +134,7 @@ function otherCallersClearIsLive(
 
 export function runStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,
-  host: Pick<StructuredAgentSessionHost, 'attach' | 'flushStreamedEvents'>,
+  host: Pick<StructuredAgentSessionHost, 'attach'>,
   caller: StructuredAgentSessionCaller,
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
@@ -157,7 +157,6 @@ export function runStructuredConversationCommand(
       prepareSession: openWithAgent(context, params.envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
@@ -175,7 +174,6 @@ export function runStructuredConversationCommand(
         // changed nothing and runs again, finishing the replacement its earliest try started.
         rerunWhenReplayMissing: () => command === 'clear',
         run: async (ctx) => {
-          await host.flushStreamedEvents(sessionId)
           const record = store.getRecord(sessionId)!
           const blocked = conversationCommandBlocked(ctx, record)
           if (blocked) {

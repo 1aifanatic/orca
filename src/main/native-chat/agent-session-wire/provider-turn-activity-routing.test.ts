@@ -84,7 +84,8 @@ describe('provider turn activity routing', () => {
         delta: 'Tracing the activity pipeline'
       })
     )
-    expect(state.rows).toHaveLength(lifecycleRows)
+    // The reasoning's own row, made at its first delta; no protocol row beside it.
+    expect(state.rows.slice(lifecycleRows).map((row) => row.kind)).toEqual(['message'])
     expect(state.activities.at(-1)?.text).toBe('Tracing the activity pipeline')
   })
 

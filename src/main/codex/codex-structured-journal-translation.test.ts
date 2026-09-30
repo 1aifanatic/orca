@@ -18,6 +18,7 @@ import {
   CODEX_USER_INPUT_METHOD
 } from './codex-structured-prompt-replies'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
+import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
 
 const SESSION_ID = 'session-1'
 const THREAD_ID = 'thread-abc'
@@ -102,7 +103,8 @@ function deferredTarget(
 ): StructuredAgentSessionEventTarget {
   return {
     fence: 7,
-    journal: {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a double for the journal members this path calls; the helper adds the in-order ones.
+    journal: withJournalQueueMembers({
       appendItem: vi.fn(async (_identity: AgentJournalItemIdentity, body: AgentJournalItemBody) => {
         log.push(body)
         return { cursor: { epoch: 'e', sequence: log.length } }
@@ -118,7 +120,7 @@ function deferredTarget(
           return { epoch: 'e', sequence: log.length }
         }
       )
-    } as unknown as StructuredAgentSessionEventTarget['journal'],
+    }) as unknown as StructuredAgentSessionEventTarget['journal'],
     publish: vi.fn(() => {
       publishes.push('publish')
     })
@@ -573,17 +575,17 @@ describe('codex journal translation', () => {
     translator.handle(
       notification('item/started', { item: { type: 'agentMessage', id: 'item-1', text: '' } })
     )
+    const rest = 'llo, and on past the next checkpoint'
     translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'he' }))
-    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'llo' }))
+    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: rest }))
     window.fire()
 
-    // `item/started` had no text to journal; only the coalesced snapshot lands.
-    expect(tap.rows).toEqual([
-      {
-        key: 'codex:thread-abc:turn-1:0',
-        body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'hello' }] }
-      }
-    ])
+    // `item/started` had no text to journal; the first delta makes the row, the window its snapshot.
+    const reply = (text: string) => ({
+      key: 'codex:thread-abc:turn-1:0',
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }
+    })
+    expect(tap.rows).toEqual([reply('he'), reply(`he${rest}`)])
   })
 
   it('upserts the streamed text and the completed body onto one row, body last', () => {

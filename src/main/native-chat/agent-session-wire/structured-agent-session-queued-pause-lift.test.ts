@@ -437,20 +437,25 @@ describe('Resume', () => {
 })
 
 describe('a failed Stop', () => {
-  it('records nothing when it fails before taking effect, so the queue sends as if no Stop was pressed', async () => {
-    const working = await rig.workingSend()
+  // Withdrawing is bookkeeping: its failure is reported, and the Stop still interrupts and pauses.
+  it('still takes effect when its withdrawal fails, and pauses the queue', async () => {
+    await rig.workingSend()
     const draftId = await queuedDraft('queued before the stop')
     const reject = vi
       .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
       .mockRejectedValueOnce(new Error('disk full'))
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
-      await expect(rig.stop()).rejects.toThrow('disk full')
+      expect(await rig.stop()).toMatchObject({ ok: true })
+      expect(warned).toHaveBeenCalledWith(
+        "[agent-session] Stop's withdrawal skipped:",
+        expect.objectContaining({ error: 'disk full' })
+      )
     } finally {
       reject.mockRestore()
+      warned.mockRestore()
     }
-    expect(await rig.queuePause()).toBeNull()
-    await rig.settleAccepted(working, 'working')
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+    await expectPaused(draftId)
   })
 
   it('keeps its pause when it fails after the interrupt reached the agent', async () => {

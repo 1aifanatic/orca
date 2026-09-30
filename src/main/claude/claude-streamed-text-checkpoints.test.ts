@@ -88,11 +88,17 @@ describe('claude streamed text checkpoints', () => {
   it('rewrites a block row with the full text accumulated so far', () => {
     const { store, rows, runWindow } = checkpoints()
 
+    const rest = 'lo, reading the failing test before the fix'
     store.append(identityOf('block-1'), 'hel')
-    store.append(identityOf('block-1'), 'lo')
+    // The first delta makes the row at once; the window folds the rest into one rewrite.
+    expect(rows).toEqual([{ uuid: 'block-1', text: 'hel' }])
+    store.append(identityOf('block-1'), rest)
     runWindow()
 
-    expect(rows).toEqual([{ uuid: 'block-1', text: 'hello' }])
+    expect(rows).toEqual([
+      { uuid: 'block-1', text: 'hel' },
+      { uuid: 'block-1', text: `hel${rest}` }
+    ])
     expect(store.pending).toBe(1)
   })
 
@@ -237,11 +243,12 @@ describe('claude streamed text checkpoints', () => {
     const { store, rows, runWindow } = checkpoints()
 
     store.append(identityOf('block-1'), 'text')
+    store.append(identityOf('block-1'), ' and the rest of it, long enough to checkpoint')
     store.dispose()
     runWindow()
     store.flush()
 
-    expect(rows).toEqual([])
+    expect(rows).toEqual([{ uuid: 'block-1', text: 'text' }])
     expect(store.pending).toBe(0)
   })
 })

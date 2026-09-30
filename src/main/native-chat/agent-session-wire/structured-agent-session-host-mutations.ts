@@ -22,10 +22,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
-import {
-  isMainAgentWorkingOnceFlushed,
-  performCancel
-} from './structured-agent-session-turns-cancel'
+import { isMainAgentWorking, performCancel } from './structured-agent-session-turns-cancel'
 import {
   admitAndRunAgentSessionMutation,
   type AgentSessionMutationRequest,
@@ -46,7 +43,10 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
+import {
+  runStopWithQueuePause,
+  withdrawQueuedForStop
+} from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -61,7 +61,6 @@ export type StructuredAgentSessionMutationContext = {
   deps: StructuredAgentSessionHostDeps
   sessions: Map<string, StructuredAgentSessionHostSession>
   publish: (sessionId: string, journal: StructuredAgentSessionHostSession['journal']) => void
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   /** The host's accessor, for a caller outside the session's serialize. */
   conversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
@@ -98,7 +97,6 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(envelope.sessionId)?.journal,
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
       now: () => context.now()
     })
@@ -179,38 +177,50 @@ export function cancelStructuredAgentSessionTurn(
       run: (ctx) =>
         runStopWithQueuePause(ctx, async (tookEffect) => {
           // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
-          const withdrawn = await ctx.journal.rejectQueuedSubmissions(
-            ctx.fence,
-            agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
+          // Issued, not awaited: the interrupt never waits on bookkeeping, nor on an owed import.
+          const withdrew = withdrawQueuedForStop(ctx, () =>
+            ctx.journal.rejectQueuedSubmissions(
+              ctx.fence,
+              agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
+                surface: 'rejection'
+              })
+            )
           )
+          // The pause is judged once the withdrawal has landed, so it sees each card sent back.
+          const tookEffectOnceWithdrawn = (): Promise<void> => withdrew.then(tookEffect)
           const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
           const child = context.sessions.get(ctx.sessionId)?.child
           if (child?.phase === 'starting') {
             // A start that may never land is the one thing here Stop has to end; the chat stays.
-            await tookEffect()
+            const effect = tookEffectOnceWithdrawn()
             await context.stopAgent(ctx.sessionId)
+            await effect
             return { ok: true, value: { ...named, cancelled: true } }
           }
           // A Stop naming no turn ends nothing more unless the session reads working, by the rule
-          // every session list and the chat's own Stop read it.
-          const inFlight = params.turnId !== undefined || (await isMainAgentWorkingOnceFlushed(ctx))
+          // every session list and the chat's own Stop read it, over the fold as it stands.
+          const inFlight = params.turnId !== undefined || isMainAgentWorking(ctx)
           const record = context.deps.store.getRecord(ctx.sessionId)
           if (!child || !inFlight) {
-            if (withdrawn.length > 0) {
+            // Nothing to interrupt, so the answer may wait for the withdrawal.
+            const withdrewAny = await withdrew
+            if (withdrewAny) {
               await tookEffect()
             }
-            return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+            return { ok: true, value: { ...named, cancelled: withdrewAny } }
           }
-          await tookEffect()
-          return performCancel(
+          const effect = tookEffectOnceWithdrawn()
+          const outcome = await performCancel(
             { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
             {
               clientOperationId: params.envelope.clientOperationId,
               ...named,
               stopChild: () => context.stopAgent(params.envelope.sessionId),
-              withdrewQueued: withdrawn.length > 0
+              withdrewQueued: withdrew
             }
           )
+          await effect
+          return outcome
         })
     },
     openForWrite(context, params.envelope)

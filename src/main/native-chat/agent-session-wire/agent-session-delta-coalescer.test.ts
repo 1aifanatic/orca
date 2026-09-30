@@ -40,21 +40,29 @@ function coalescer(clock: ReturnType<typeof manualClock>, windowMs?: number) {
 }
 
 describe('agent-session delta coalescer', () => {
-  it('folds a burst into one emit carrying the full text, on one shared window', () => {
+  // The first delta makes the row, so a write issued after the text began lands below it.
+  it("emits a stream's first delta at once, then folds a burst into one emit on one shared window", () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)
 
     instance.append('item-1', 'he')
+    expect(emitted).toEqual([['item-1', 'he']])
+    expect(clock.windows()).toEqual([])
     instance.append('item-1', 'llo')
+    instance.append('item-1', ' there')
     instance.append('item-2', 'world')
 
-    expect(emitted).toEqual([])
+    expect(emitted).toEqual([
+      ['item-1', 'he'],
+      ['item-2', 'world']
+    ])
     expect(clock.windows()).toEqual([AGENT_SESSION_DELTA_COALESCE_MS])
 
     clock.fire()
     expect(emitted).toEqual([
-      ['item-1', 'hello'],
-      ['item-2', 'world']
+      ['item-1', 'he'],
+      ['item-2', 'world'],
+      ['item-1', 'hello there']
     ])
   })
 
@@ -82,7 +90,10 @@ describe('agent-session delta coalescer', () => {
     }
     clock.fire()
 
-    expect(emitted).toEqual([['item-1', 'x'.repeat(10_000)]])
+    expect(emitted).toEqual([
+      ['item-1', 'x'],
+      ['item-1', 'x'.repeat(10_000)]
+    ])
   })
 
   it('does not re-emit a stream with no new text', () => {
@@ -151,7 +162,10 @@ describe('agent-session delta coalescer', () => {
     expect(instance.snapshot('first')?.text).toBe('preserve me')
     reject = false
     expect(instance.append('second', 'new stream')).toBe(true)
-    expect(emitted).toEqual([['first', 'preserve me']])
+    expect(emitted).toEqual([
+      ['first', 'preserve me'],
+      ['second', 'new stream']
+    ])
   })
 
   it('drops a forgotten stream without emitting it, because its final body already landed', () => {
@@ -160,21 +174,28 @@ describe('agent-session delta coalescer', () => {
 
     instance.append('item-1', 'stale')
     instance.append('item-2', 'kept')
+    instance.append('item-1', ' and more')
+    instance.append('item-2', ' too')
     instance.forget('item-1')
     clock.fire()
 
-    expect(emitted).toEqual([['item-2', 'kept']])
+    expect(emitted).toEqual([
+      ['item-1', 'stale'],
+      ['item-2', 'kept'],
+      ['item-2', 'kept too']
+    ])
   })
 
   it('emits nothing after dispose, and leaves no timer behind', () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)
 
-    instance.append('item-1', 'gone')
+    instance.append('item-1', 'begun')
+    instance.append('item-1', ' and gone')
     instance.dispose()
     clock.fire()
 
-    expect(emitted).toEqual([])
+    expect(emitted).toEqual([['item-1', 'begun']])
     expect(clock.pendingCount()).toBe(0)
   })
 
@@ -183,6 +204,7 @@ describe('agent-session delta coalescer', () => {
     const { instance } = coalescer(clock, 5)
 
     instance.append('item-1', 'x')
+    instance.append('item-1', 'y')
 
     expect(clock.windows()).toEqual([5])
   })
@@ -203,6 +225,7 @@ describe('agent-session delta coalescer', () => {
     clock.fire()
 
     expect(emitted).toEqual([
+      { text: 'éé', observedBytes: 4, truncated: false },
       {
         text: 'ééé\n[Orca: streamed output truncated]',
         observedBytes: 48,

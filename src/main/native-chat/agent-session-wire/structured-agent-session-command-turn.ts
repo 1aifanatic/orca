@@ -153,7 +153,6 @@ export type StructuredAgentSessionCommandHandoverContext = {
   /** Who a failure the handover meets names, as the start's own row does. */
   failureTextContext?: AgentSessionFailureWordsContext
   record: () => AgentSessionRecord | null
-  flushStreamedEvents: () => Promise<void>
   now: () => number
 }
 
@@ -164,8 +163,7 @@ export async function handOverStructuredAgentSessionCommand(
   body: AgentJournalMessageItem
 ): Promise<void> {
   const { clientMessageId } = submission
-  // Provider frames already received decide whether a turn is running.
-  await ctx.flushStreamedEvents()
+  // Provider frames already received decide whether a turn is running: each landed at its call.
   const blocked = commandBlocked(ctx, body)
   if (blocked) {
     await ctx.journal.resolveDispatch({
