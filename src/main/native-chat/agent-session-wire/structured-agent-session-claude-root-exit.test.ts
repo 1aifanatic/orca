@@ -8,8 +8,11 @@ import {
   fakeClaude,
   identityFor
 } from '../../claude/claude-structured-session-test-support'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
@@ -28,7 +31,8 @@ describe('Claude root-exit stop', () => {
   it('releases a captured live claim after the provider root exits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-claude-root-exit-'))
     roots.push(root)
-    const store = await AgentSessionRecordStore.open({ directory: root, hostId: 'local' })
+    const stateDirectory = join(root, 'journal')
+    const store = await openTestAgentSessionRecordStore(stateDirectory)
     const claude = fakeClaude({
       unprovenCloseVerdict: { root: 'exited', tree: 'unverifiable' }
     })
@@ -75,7 +79,7 @@ describe('Claude root-exit stop', () => {
     })
     const journal = await journals.open({
       identity: { ...identityFor(), hostId: 'local', workspaceId: 'folder-1' },
-      journalDir: join(root, 'journal')
+      stateDirectory
     })
     const close = vi.spyOn(journal, 'close')
     const publishStatus = vi.fn()
@@ -112,7 +116,12 @@ describe('Claude root-exit stop', () => {
         }
       ]
     ])
-    const deps = { store, adapter, journalRoot: root, claimKeyId: 'key-1' }
+    const deps = {
+      store,
+      adapter,
+      journalDatabase: openTestJournalHostDatabase(root),
+      claimKeyId: 'key-1'
+    }
     const runtimeState = new StructuredAgentSessionHostRuntimeState(deps)
 
     claude.connections[0]!.handlers.onExit?.(new Error('provider exited'))
