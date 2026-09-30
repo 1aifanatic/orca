@@ -17,6 +17,7 @@
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import type {
   ProviderHistoryItem,
   ProviderHistoryWindow
@@ -281,12 +282,8 @@ export async function readClaudeProviderHistoryWindow(
   } catch (error) {
     // Unreadable, unprovable, or a single record too large to frame: all of them
     // leave the boundary unvouched for, which is not the same as an empty window.
-    // Oversize is no longer among them, so only the log separates what is left.
-    console.warn('[claude-history-window] transcript unprovable; boundary inconsistent:', {
-      transcriptPath: input.transcriptPath,
-      sessionId: input.sessionId,
-      error
-    })
+    // Oversize is no longer among them, so only the trace separates what is left.
+    traceAgentSessionError({ step: 'claude-history-window', sessionId: input.sessionId, error })
     return INCONSISTENT
   }
 }

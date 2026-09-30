@@ -38,7 +38,7 @@ import {
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -125,14 +125,14 @@ export class StructuredAgentSessionDeliveryLoop {
       }
     } catch (error) {
       // The error is Orca's own and goes to the log; the chat says only that Orca failed.
-      reportAgentSessionFailure({ step: 'delivery-loop', sessionId, error })
+      traceAgentSessionError({ step: 'delivery-loop', sessionId, error })
       const cause = { hostFault: true } as const
       await this.deps
         .serialize(sessionId, () => this.fail(sessionId, { startKey: null, cause }))
         .catch((failure: unknown) => {
           // Rows left queued are rejected by the next open, or by the next loop an accept wakes.
           this.running.delete(sessionId)
-          reportAgentSessionFailure({
+          traceAgentSessionError({
             step: 'delivery-loop-failure-settlement',
             sessionId,
             error: failure

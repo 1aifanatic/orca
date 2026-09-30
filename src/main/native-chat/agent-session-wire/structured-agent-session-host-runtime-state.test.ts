@@ -13,9 +13,11 @@ import {
 } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const NOW = 1_800_000_000_000
 
@@ -153,7 +155,7 @@ describe('host runtime-state owner probe', () => {
       state as unknown as { leaseRenewer: { renewNow: () => Promise<void> } }
     ).leaseRenewer.renewNow()
 
-    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+    expect(traceAgentSessionError).toHaveBeenCalledWith({
       step: 'lease-probe',
       sessionId: record.sessionId,
       error: expect.any(Error)

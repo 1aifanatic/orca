@@ -17,7 +17,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { nativeSessionOptionsFromReport } from './structured-agent-session-option-restoration'
 import { markProviderChildStarted } from './structured-agent-session-provider-child'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionProviderStartedContext = {
   deps: StructuredAgentSessionHostDeps
@@ -46,11 +46,7 @@ export function settleStructuredAgentSessionProviderStarted(
     try {
       await persistStartedOptions(context, event)
     } catch (error) {
-      reportAgentSessionFailure({
-        step: 'started-options-persist',
-        sessionId: event.sessionId,
-        error
-      })
+      traceAgentSessionError({ step: 'started-options-persist', sessionId: event.sessionId, error })
     } finally {
       context.publishStatus?.(event.sessionId)
     }

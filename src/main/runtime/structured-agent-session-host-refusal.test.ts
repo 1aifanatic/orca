@@ -25,9 +25,11 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
-import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 
-vi.mock('../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 let root: string
 
@@ -110,7 +112,7 @@ describe('a process whose journal will not open', () => {
     earlier.pragma('user_version = 2')
     earlier.close()
     const before = await digest(path)
-    const reports = vi.mocked(reportAgentSessionFailure)
+    const reports = vi.mocked(traceAgentSessionError)
     reports.mockClear()
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -156,10 +158,10 @@ describe('logging a journal that will not open', () => {
 
   // Every chat request retries the open; the same failure each time is one log, not one per request.
   it('logs a repeated failure once, with its stack, and again after an open succeeds', async () => {
-    vi.mocked(reportAgentSessionFailure).mockClear()
+    vi.mocked(traceAgentSessionError).mockClear()
     const openFailureLogs = () =>
       vi
-        .mocked(reportAgentSessionFailure)
+        .mocked(traceAgentSessionError)
         .mock.calls.filter(([report]) => report.step === 'journal-database-open')
     await install()
     await stopStructuredAgentSessionRuntime()

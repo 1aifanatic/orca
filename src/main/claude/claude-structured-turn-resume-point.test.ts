@@ -180,8 +180,9 @@ describe('Claude durable resume point at turn end', () => {
       events.filter((event) => event.type === 'message' && event.message.type === 'result')
     ).toHaveLength(2)
     expect(warn).toHaveBeenCalledWith(
-      '[claude-resume-point] turn-end resume point was not persisted:',
-      expect.objectContaining({ leafUuid: 'a2' })
+      '[agent-session] claude-resume-point-persist failed',
+      { sessionId: 'session-1', leafUuid: 'a2' },
+      expect.any(Error)
     )
     await expect(adapter.closeSession('session-1')).resolves.toBe(true)
     expect(persistedHandles).toEqual([expect.objectContaining({ leafUuid: 'a2' })])

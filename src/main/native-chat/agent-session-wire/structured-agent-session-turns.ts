@@ -23,6 +23,7 @@ import {
 } from '../../../shared/agent-session-wire'
 import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   AgentSessionDispatchOutcome,
@@ -238,8 +239,13 @@ export async function handOverSubmission(
         reason: DISPATCH_DOUBT_PERSISTENCE_FAILED,
         fence: ctx.fence
       })
-    } catch {
-      // Nothing further to record; the pending row is settled on the next open.
+    } catch (doubtError) {
+      // The pending row is settled on the next open.
+      traceAgentSessionError({
+        step: 'dispatch-doubt-record',
+        sessionId: ctx.sessionId,
+        error: doubtError
+      })
     }
     throw error
   }

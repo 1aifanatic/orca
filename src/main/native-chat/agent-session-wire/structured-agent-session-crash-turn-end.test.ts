@@ -41,9 +41,11 @@ import {
   HOST_TEST_LOCATION as LOCATION,
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const PROVIDER_SESSION = 'provider-session-alpha-1'
 /** The tool call's row: the last thing the provider wrote before the crash. */
@@ -409,7 +411,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
 
   it('stays unverifiable when the revision cannot be written, and a later open revises it', async () => {
     let now = RELAUNCHED_AT
-    vi.mocked(reportAgentSessionFailure).mockClear()
+    vi.mocked(traceAgentSessionError).mockClear()
     openHost({
       probeOwner: async () => ({ outcome: 'pid-absent' }),
       now: () => now
@@ -421,7 +423,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await host.reconcileRestartLeases()
     await drainSession()
 
-    expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith(
+    expect(traceAgentSessionError).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ step: 'gone-generation-settlement', sessionId: SESSION })
     )
     expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)

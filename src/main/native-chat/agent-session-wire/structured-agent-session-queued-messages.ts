@@ -30,7 +30,7 @@ import {
   structuredAgentSessionHostInstance,
   structuredQueuePause
 } from './structured-agent-session-queued-pause'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -312,7 +312,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
       })
       .catch((error: unknown) => {
         this.scheduled.delete(sessionId)
-        reportAgentSessionFailure({ step: 'queued-drain', sessionId, error })
+        traceAgentSessionError({ step: 'queued-drain', sessionId, error })
       })
   }
 
@@ -326,7 +326,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (journal.queuedMessages.settlementOwed() || journal.queuedMessages.deliveredByEchoOwed()) {
       // A live per-row hook was skipped; heal now, before a draft sends, rather than at reopen.
       await journal.queuedMessages.settleOwed().catch((error: unknown) => {
-        reportAgentSessionFailure({ step: 'queued-owed-settlement', sessionId, error })
+        traceAgentSessionError({ step: 'queued-owed-settlement', sessionId, error })
       })
     }
     const next = oldestActionableQueuedMessage(journal)
@@ -372,7 +372,9 @@ export class StructuredAgentSessionQueuedMessageDrain {
       // no automatic retry loop.
       await journal.queuedMessages
         .hold({ messageIds: [next.messageId], reason: QUEUED_MESSAGE_PAUSED_SEND_FAILED })
-        .catch(() => {})
+        .catch((holdError: unknown) => {
+          traceAgentSessionError({ step: 'queued-send-failure-hold', sessionId, error: holdError })
+        })
       throw error
     }
     this.deps.wakeDelivery(sessionId)

@@ -21,7 +21,7 @@ import type {
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
@@ -107,7 +107,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       })
       .catch((error: unknown) => {
         wakesQueued.delete(sessionId)
-        reportAgentSessionFailure({ step: 'delivery-wake', sessionId, error })
+        traceAgentSessionError({ step: 'delivery-wake', sessionId, error })
       })
   }
   // A chat open before its owner's death was proven revises what its open settled. Queued, never
@@ -121,7 +121,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
           )
         )
         .catch((error: unknown) =>
-          reportAgentSessionFailure({ step: 'death-evidence-resettle', sessionId, error })
+          traceAgentSessionError({ step: 'death-evidence-resettle', sessionId, error })
         )
     }
   })
@@ -153,6 +153,6 @@ async function settleInterruptedCommands(
   try {
     await recoverStructuredRewind(deps.store, sessionId, session.journal, fence)
   } catch (error) {
-    reportAgentSessionFailure({ step: 'rewind-recovery', sessionId, error })
+    traceAgentSessionError({ step: 'rewind-recovery', sessionId, error })
   }
 }

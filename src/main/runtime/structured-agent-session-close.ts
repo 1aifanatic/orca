@@ -19,7 +19,7 @@ import {
   observeStructuredWorker,
   structuredSessionCloseSettled
 } from './structured-worker-authority'
-import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionCloseOutcome = {
   stopped: boolean
@@ -78,6 +78,8 @@ export async function closeStructuredAgentSessionChild(
     closeAttempted = true
     await host.close(sessionId)
   } catch (error) {
+    // The receipt keeps only the message; the cause chain goes to the trace.
+    traceAgentSessionError({ step: 'session-close', sessionId, error })
     // Only `closeAttempted` proves the hide landed: the store transaction restores its own state on
     // failure, so a `setSessionTabVisibility` that threw hid nothing and has nothing to undo.
     if (closeAttempted) {
@@ -147,6 +149,6 @@ async function restorePersistedTabVisibility(
   try {
     await host.setSessionTabVisibility?.(sessionId, true, tabId)
   } catch (error) {
-    reportAgentSessionFailure({ step: 'tab-visibility-restore', sessionId, error })
+    traceAgentSessionError({ step: 'tab-visibility-restore', sessionId, error })
   }
 }

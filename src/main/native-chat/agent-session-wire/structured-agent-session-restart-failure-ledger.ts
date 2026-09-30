@@ -31,7 +31,7 @@ import {
   type StructuredAgentSessionResumeOutcome
 } from './structured-agent-session-restart-resume-runner'
 import { RESTART_CONTINUATION_SUPERSEDED } from './structured-agent-session-restart-continuation'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 type FailureCapsule = Pick<
   AgentSessionRecoveryCapsule,
@@ -89,7 +89,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
       return (await deps.capsule?.listFailed(deps.now())) ?? []
     } catch (error) {
       // Recovery is advisory; a malformed capsule must not make ordinary chat actions unusable.
-      reportAgentSessionFailure({ step: 'recovery-capsule-read', error })
+      traceAgentSessionError({ step: 'recovery-capsule-read', error })
       return []
     }
   }
@@ -176,23 +176,17 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     }
     await deps
       .enqueue(() => capsule.completeResume(operationId, completed, deps.now()))
-      .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'restart-offer-complete', error })
-      )
+      .catch((error: unknown) => traceAgentSessionError({ step: 'restart-offer-complete', error }))
     // Filed before the rollback so a failure the user must act on is never reopened as an offer
     // that would silently re-run it.
     await deps
       .enqueue(() => capsule.failResume(operationId, failures, deps.now()))
-      .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'restart-failure-record', error })
-      )
+      .catch((error: unknown) => traceAgentSessionError({ step: 'restart-failure-record', error }))
     // This only reopens rows still owned by this operation. Rows removed by completeResume stay
     // removed, even when the write of a later bookkeeping step fails.
     await deps
       .enqueue(() => capsule.rollbackResume(operationId, deps.now()))
-      .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'restart-offer-rollback', error })
-      )
+      .catch((error: unknown) => traceAgentSessionError({ step: 'restart-offer-rollback', error }))
   }
 
   return {

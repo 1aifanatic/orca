@@ -8,7 +8,7 @@ import {
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export class StructuredAgentSessionHostRuntimeState {
   private readonly eventSinks = new Map<string, DeferredStructuredAgentSessionEventSink>()
@@ -65,7 +65,7 @@ export class StructuredAgentSessionHostRuntimeState {
     const minted: DeferredStructuredAgentSessionEventSink =
       createDeferredStructuredAgentSessionEventSink({
         onFailure: (error) => {
-          reportAgentSessionFailure({ step: 'event-sink', sessionId, error })
+          traceAgentSessionError({ step: 'event-sink', sessionId, error })
           // Only the session's own sink may force its provider down; an attempt's never is.
           if (this.eventSinks.get(sessionId) === minted) {
             this.onEventSinkFailure(sessionId, error)

@@ -41,9 +41,11 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
@@ -208,7 +210,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   sink = null
   hostErrors = []
-  vi.mocked(reportAgentSessionFailure).mockImplementation(({ error }) => {
+  vi.mocked(traceAgentSessionError).mockImplementation(({ error }) => {
     hostErrors.push(error)
   })
   clock = NOW

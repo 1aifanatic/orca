@@ -35,7 +35,6 @@ import {
   exitedRootTurnScope,
   runningRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
@@ -103,7 +102,8 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
 }
 
-/** A failed settlement carries its error so a caller that throws can name the cause. */
+/** A failed settlement carries its error: the caller that swallows it reports it, and one that
+ *  throws names it as the cause. */
 export type StructuredAgentSessionDeadGenerationSettlement =
   | { ok: true }
   | { ok: false; error: unknown }
@@ -196,11 +196,6 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     }
     return { ok: true }
   } catch (error) {
-    reportAgentSessionFailure({
-      step: 'dead-generation-settlement',
-      sessionId: input.sessionId,
-      error
-    })
     return { ok: false, error }
   }
 }

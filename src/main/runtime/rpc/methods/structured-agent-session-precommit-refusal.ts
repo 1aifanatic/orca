@@ -18,6 +18,7 @@ import {
   type AgentSessionWireRefusal,
   type AgentSessionWireRefusalCode
 } from '../../../../shared/agent-session-wire'
+import { traceAgentSessionError } from '../../../observability/agent-session-error-trace'
 
 export type StructuredCreateRefused = { refusal: AgentSessionWireRefusal }
 
@@ -56,8 +57,8 @@ function precommitRefusal(error: unknown): AgentSessionWireRefusal {
   }
   const message = error instanceof Error ? error.message : String(error)
   // A code-less failure here is often a defect, not a policy answer; the refusal keeps the user
-  // moving, the log keeps the cause findable. Nothing names its situation, so it carries no reason.
-  console.warn('[agent-session] create refused before it committed anything', error)
+  // moving, the trace keeps the cause findable. Nothing names its situation, so it carries no reason.
+  traceAgentSessionError({ step: 'create-precommit', error })
   return refuseUnclassified(
     UNCODED_PRECOMMIT_REFUSAL_CODE,
     `Orca could not prepare a structured agent chat for this workspace: ${message}`

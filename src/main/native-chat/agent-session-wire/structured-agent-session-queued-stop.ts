@@ -12,7 +12,7 @@ import {
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
  *  waiting or returned. Pending/unknown/accepted deliveries stay outside it. */
@@ -49,14 +49,14 @@ export async function runStopWithQueuePause<TValue>(
         await queuedMessages.settleOwed()
       }
     } catch (error) {
-      reportAgentSessionFailure({ step: 'stop-owed-settlement', sessionId: ctx.sessionId, error })
+      traceAgentSessionError({ step: 'stop-owed-settlement', sessionId: ctx.sessionId, error })
     }
     // Recorded only over a card it holds back — judged in its own transaction, which
     // still counts an owed return to waiting if that heal failed.
     await queuedMessages
       .recordPause('stopped')
       .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'stop-queue-pause', sessionId: ctx.sessionId, error })
+        traceAgentSessionError({ step: 'stop-queue-pause', sessionId: ctx.sessionId, error })
       )
   })
 }

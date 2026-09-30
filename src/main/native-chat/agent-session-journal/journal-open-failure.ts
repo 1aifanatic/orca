@@ -13,7 +13,7 @@ import {
 } from '../../../shared/agent-session-wire-refusals'
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 import { AgentSessionJournalError } from './journal-write-guards'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 type JournalRefusalReason = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
 
@@ -150,7 +150,7 @@ function unreadableRefusal(
   report: { log: boolean; sessionId?: string }
 ): AgentSessionRefusalError {
   if (report.log) {
-    reportAgentSessionFailure({
+    traceAgentSessionError({
       step: 'journal-open-read',
       ...(report.sessionId === undefined ? {} : { sessionId: report.sessionId }),
       error,

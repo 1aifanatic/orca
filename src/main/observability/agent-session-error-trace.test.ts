@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { reportAgentSessionFailure } from './agent-session-failure'
+import {
+  AGENT_SESSION_ERROR_STEPS,
+  traceAgentSessionError,
+  type AgentSessionErrorStep
+} from './agent-session-error-trace'
 import { createLocalFileSink } from './local-file-sink'
 import { setActiveSink } from './tracer'
 
@@ -25,14 +29,14 @@ function readTrace(filePath: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
-describe('reportAgentSessionFailure', () => {
+describe('traceAgentSessionError', () => {
   it('writes a failed span with its step and session to the trace file', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const filePath = join(dir, 'logs', 'main.trace.ndjson')
     const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
     setActiveSink(sink)
 
-    reportAgentSessionFailure({
+    traceAgentSessionError({
       step: 'lease-renewal',
       sessionId: 'session-1',
       error: new Error('dead generation work settlement failed', {
@@ -65,7 +69,7 @@ describe('reportAgentSessionFailure', () => {
     const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
     setActiveSink(sink)
 
-    reportAgentSessionFailure({ step: 'journal-rollback', error: 'database is locked' })
+    traceAgentSessionError({ step: 'journal-rollback', error: 'database is locked' })
     sink.flush()
     sink.close()
 
@@ -77,6 +81,82 @@ describe('reportAgentSessionFailure', () => {
     ])
   })
 
+  it('keeps a SQLite or journal code the message leaves out', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const filePath = join(dir, 'main.trace.ndjson')
+    const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
+    setActiveSink(sink)
+    const error = Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' })
+
+    traceAgentSessionError({ step: 'journal-rollback', error })
+    sink.flush()
+    sink.close()
+
+    const { cause } = readTrace(filePath)[0].exit as { cause: string }
+    expect(cause).toContain('database or disk is full')
+    expect(cause).toContain('[code] SQLITE_FULL')
+  })
+
+  it('keeps its own step and session over same-named detail keys', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const filePath = join(dir, 'main.trace.ndjson')
+    const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
+    setActiveSink(sink)
+
+    traceAgentSessionError({
+      step: 'idle-sweep',
+      sessionId: 'session-1',
+      error: 'x',
+      detail: { step: 'forged', sessionId: 'session-2', fence: 3 }
+    })
+    sink.flush()
+    sink.close()
+
+    expect(readTrace(filePath)[0].attributes).toEqual({
+      step: 'idle-sweep',
+      sessionId: 'session-1',
+      fence: 3
+    })
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] idle-sweep failed',
+      { sessionId: 'session-1', fence: 3, step: 'forged' },
+      'x'
+    )
+  })
+
+  const kindOnlySteps = Object.entries(AGENT_SESSION_ERROR_STEPS)
+    .filter(([, recorded]) => recorded === 'kind')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Object.entries of the step table yields only its keys.
+    .map(([step]) => step as AgentSessionErrorStep)
+
+  it('has kind-only steps to check', () => {
+    expect(kindOnlySteps.length).toBeGreaterThan(0)
+  })
+
+  it.each(kindOnlySteps)('keeps %s to the error kind, in the trace and on the console', (step) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const filePath = join(dir, 'main.trace.ndjson')
+    const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
+    setActiveSink(sink)
+    const sentinel = 'latest prompt: my private words'
+    // What a corrupt capsule's parse throws: V8 quotes the input in the message.
+    const error = new Error('outer', { cause: syntaxErrorQuoting(sentinel) })
+
+    traceAgentSessionError({ step, sessionId: 'session-1', error })
+    sink.flush()
+    sink.close()
+
+    expect(readFileSync(filePath, 'utf8')).not.toContain('my private')
+    expect(readTrace(filePath)).toEqual([
+      expect.objectContaining({ exit: { _tag: 'Failure', cause: 'Error' } })
+    ])
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      `[agent-session] ${step} failed`,
+      { sessionId: 'session-1' },
+      'Error'
+    )
+  })
+
   it('keeps a recovery step to the error kind, in the trace and on the console', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const filePath = join(dir, 'main.trace.ndjson')
@@ -84,7 +164,7 @@ describe('reportAgentSessionFailure', () => {
     setActiveSink(sink)
     const error = Object.assign(new Error('latest prompt: "my private words"'), { code: 'EISDIR' })
 
-    reportAgentSessionFailure({ step: 'recovery-capsule-record', error })
+    traceAgentSessionError({ step: 'recovery-capsule-record', error })
     sink.flush()
     sink.close()
 
@@ -102,7 +182,7 @@ describe('reportAgentSessionFailure', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const error = new Error('boom')
 
-    reportAgentSessionFailure({ step: 'idle-sweep', sessionId: 'session-1', error })
+    traceAgentSessionError({ step: 'idle-sweep', sessionId: 'session-1', error })
 
     expect(warn).toHaveBeenCalledWith(
       '[agent-session] idle-sweep failed',
@@ -124,8 +204,17 @@ describe('reportAgentSessionFailure', () => {
     })
 
     expect(() =>
-      reportAgentSessionFailure({ step: 'event-sink', sessionId: 'session-1', error: 'x' })
+      traceAgentSessionError({ step: 'event-sink', sessionId: 'session-1', error: 'x' })
     ).not.toThrow()
     expect(warn).toHaveBeenCalledTimes(1)
   })
 })
+
+function syntaxErrorQuoting(text: string): unknown {
+  try {
+    JSON.parse(text)
+  } catch (error) {
+    return error
+  }
+  throw new Error('expected a SyntaxError')
+}

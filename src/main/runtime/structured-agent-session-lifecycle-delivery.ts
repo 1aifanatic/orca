@@ -7,7 +7,7 @@
 // serialized step, and is tracked here so the same drain still waits for it.
 
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 
 export function createStructuredAgentSessionLifecycleDelivery(input: {
   handle: (event: StructuredAgentSessionLifecycleEvent) => Promise<void> | undefined
@@ -24,7 +24,7 @@ export function createStructuredAgentSessionLifecycleDelivery(input: {
     try {
       await input.handle(event)
     } catch (error) {
-      reportAgentSessionFailure({
+      traceAgentSessionError({
         step: event.type === 'started' ? 'provider-started-settlement' : 'provider-exit-settlement',
         sessionId: event.sessionId,
         error

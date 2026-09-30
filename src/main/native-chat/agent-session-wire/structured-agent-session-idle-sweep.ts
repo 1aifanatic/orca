@@ -14,7 +14,7 @@ import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-qu
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTaskState } from '../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export const STRUCTURED_AGENT_SESSION_IDLE_SWEEP_INTERVAL_MS = 5 * 60_000
 export const STRUCTURED_AGENT_SESSION_IDLE_MS = 30 * 60_000
@@ -85,7 +85,7 @@ export class StructuredAgentSessionIdleSweep {
           this.deps
             .serialize(sessionId, () => this.tickUnderSerialize(sessionId))
             .catch((error: unknown) =>
-              reportAgentSessionFailure({ step: 'idle-sweep', sessionId, error })
+              traceAgentSessionError({ step: 'idle-sweep', sessionId, error })
             )
         )
       )

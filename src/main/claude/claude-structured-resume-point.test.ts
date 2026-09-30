@@ -135,8 +135,9 @@ describe('Claude resume point is the last completed turn on every exit path', ()
     await tick()
     expect(events.at(-1)).toMatchObject({ type: 'ended', cause: 'unexpected-exit' })
     expect(warn).toHaveBeenCalledWith(
-      '[claude-resume-point] exit cursor was not persisted:',
-      expect.objectContaining({ sessionId: 'session-1', error: expect.any(Error) })
+      '[agent-session] claude-exit-cursor-persist failed',
+      { sessionId: 'session-1' },
+      expect.any(Error)
     )
   })
 })

@@ -10,7 +10,7 @@ import type {
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import { settleStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
 import { settleUnexpectedStructuredAgentSessionExit } from './structured-agent-session-unexpected-exit'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export class StructuredAgentSessionEventRecovery {
   private readonly sinkFailures = new Set<string>()
@@ -59,7 +59,7 @@ export class StructuredAgentSessionEventRecovery {
       })
       .then((event) => (event ? this.handle(event) : undefined))
       .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'sink-failure-recovery', sessionId, error })
+        traceAgentSessionError({ step: 'sink-failure-recovery', sessionId, error })
       )
       .finally(() => this.sinkFailures.delete(sessionId))
   }

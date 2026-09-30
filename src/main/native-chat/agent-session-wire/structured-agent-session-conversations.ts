@@ -1,6 +1,6 @@
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /**
  * The host's open conversations. A journal handle becomes a conversation's when it is set here,
@@ -46,7 +46,7 @@ export class StructuredAgentSessionConversations extends Map<
         try {
           this.delivery.deliver(sessionId, journal)
         } catch (error) {
-          reportAgentSessionFailure({ step: 'journal-delivery', sessionId, error })
+          traceAgentSessionError({ step: 'journal-delivery', sessionId, error })
         }
       })
     })

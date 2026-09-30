@@ -30,7 +30,7 @@ import {
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -63,9 +63,7 @@ export async function abandonQueuedStructuredAgentSessionMessages(
       structuredAgentSessionConversationFence(deps.store, sessionId),
       agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     )
-    .catch((error: unknown) =>
-      reportAgentSessionFailure({ step: 'queued-abandon', sessionId, error })
-    )
+    .catch((error: unknown) => traceAgentSessionError({ step: 'queued-abandon', sessionId, error }))
 }
 
 /** The wind-down this host owes for the session's child. A live child always owes one, whatever a

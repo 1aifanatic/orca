@@ -4,7 +4,7 @@ import type { JournalHostDatabase } from './journal-host-database'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalRow } from './journal-row-schema'
 import { assertJournalFence, assertJournalWritable } from './journal-write-guards'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /** Runs between BEGIN IMMEDIATE and COMMIT, on the SAME connection as the row
  *  insert; a throw rolls the whole append back. Synchronous by construction so
@@ -84,7 +84,7 @@ export class JournalRowWriter {
       this.deps.rolledBack?.()
       // The draft store re-derives what this missed from the committed rows: at open, and in
       // the drain step before a draft sends.
-      reportAgentSessionFailure({
+      traceAgentSessionError({
         step: 'journal-row-bookkeeping',
         sessionId: this.deps.sessionId,
         error,

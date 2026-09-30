@@ -167,9 +167,10 @@ describe('Claude structured dispatch attachment rejections', () => {
       rejection: { kind: 'attachmentUnreadable' }
     })
     expect(session.connection.send).not.toHaveBeenCalled()
-    // The row drops the error, so the log is the only place left to find why.
+    // The row drops the error, so the trace is the only place left to find why.
     expect(warn).toHaveBeenCalledWith(
-      '[claude-dispatch] attachment could not be read:',
+      '[agent-session] claude-attachment-read failed',
+      { providerSessionId: session.providerSessionId },
       expect.objectContaining({ code: 'ENOENT' })
     )
     warn.mockRestore()

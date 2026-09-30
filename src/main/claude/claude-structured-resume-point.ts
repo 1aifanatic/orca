@@ -1,3 +1,4 @@
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import type {
   ClaudeSession,
   ClaudeStructuredSessionAdapterDeps
@@ -6,7 +7,7 @@ import type {
 /**
  * Record a completed turn: its leaf becomes the one close and exit persist, and the durable point
  * advances in place so an owner that dies before its close path runs keeps it. Writes run one at a
- * time, and a failure is only logged: this is bookkeeping and must never fail the turn.
+ * time, and a failure is only reported: this is bookkeeping and must never fail the turn.
  */
 export function persistClaudeTurnResumePoint(
   sessionId: string,
@@ -35,10 +36,11 @@ export function persistClaudeTurnResumePoint(
         })
       )
       .catch((error: unknown) => {
-        console.warn('[claude-resume-point] turn-end resume point was not persisted:', {
+        traceAgentSessionError({
+          step: 'claude-resume-point-persist',
           sessionId,
-          leafUuid,
-          error
+          error,
+          detail: { leafUuid }
         })
         // Forget the failed leaf so the next turn end retries it even when the leaf has not moved.
         if (session.resumePointWrite === write) {

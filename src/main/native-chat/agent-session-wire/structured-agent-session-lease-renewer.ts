@@ -4,7 +4,7 @@ import {
   AGENT_SESSION_LEASE_TTL_MS,
   type AgentSessionRecordStore
 } from '../../runtime/agent-session-record-store'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 const RENEW_INTERVAL_MS = Math.floor(AGENT_SESSION_LEASE_TTL_MS / 3)
 
@@ -107,7 +107,7 @@ export class StructuredAgentSessionLeaseRenewer {
       if (result.status === 'rejected') {
         const renewal = renewals[index]
         if (renewal) {
-          reportAgentSessionFailure({
+          traceAgentSessionError({
             step: 'lease-renewal',
             sessionId: renewal.sessionId,
             error: result.reason
@@ -131,7 +131,7 @@ export class StructuredAgentSessionLeaseRenewer {
         if (result.status === 'fulfilled') {
           probes.set(record.sessionId, result.value)
         } else {
-          reportAgentSessionFailure({
+          traceAgentSessionError({
             step: 'lease-probe',
             sessionId: record.sessionId,
             error: result.reason
@@ -141,7 +141,7 @@ export class StructuredAgentSessionLeaseRenewer {
       return probes
     } catch (error) {
       for (const record of records) {
-        reportAgentSessionFailure({ step: 'lease-probe', sessionId: record.sessionId, error })
+        traceAgentSessionError({ step: 'lease-probe', sessionId: record.sessionId, error })
       }
       return new Map()
     }

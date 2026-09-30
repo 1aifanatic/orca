@@ -152,7 +152,7 @@ async function openHost() {
   })
   const events: AgentSessionStatusEvent[] = []
   feed.subscribe({ id: 'renderer', emit: (event) => events.push(event) })
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   const publish = (): void => feed.publish(SESSION, journal)
   deferred.bind({ journal, fence: 1, publish })
   const prompts: string[] = []

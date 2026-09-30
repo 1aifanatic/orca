@@ -17,7 +17,7 @@ import {
 } from './structured-agent-session-host-lifetime'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionTeardownPhase = {
   name: string
@@ -75,7 +75,7 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
         try {
           collaborators.beginResumeMarkers()
         } catch (error) {
-          reportAgentSessionFailure({ step: 'recovery-witness-begin', error })
+          traceAgentSessionError({ step: 'recovery-witness-begin', error })
         }
       }
     },
@@ -90,7 +90,7 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
       name: 'record-resume-markers',
       run: () =>
         withPhaseTimeout(collaborators.recordResumeMarkers, RESUME_MARKER_RECORD_TIMEOUT_MS).catch(
-          (error: unknown) => reportAgentSessionFailure({ step: 'recovery-capsule-record', error })
+          (error: unknown) => traceAgentSessionError({ step: 'recovery-capsule-record', error })
         )
     },
     { name: 'flush-event-sinks', run: () => collaborators.runtimeState.flushAllEventSinks() }

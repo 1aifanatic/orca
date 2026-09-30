@@ -31,7 +31,7 @@ import {
   StructuredAgentSessionStatusOwnership,
   type StructuredAgentSessionStatusSink
 } from './structured-agent-session-status-ownership'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-ownership'
 
@@ -183,7 +183,7 @@ export class StructuredAgentSessionStatusFeed {
     try {
       this.ownership.forget(sessionId)
     } catch (error) {
-      reportAgentSessionFailure({ step: 'status-forget', sessionId, error })
+      traceAgentSessionError({ step: 'status-forget', sessionId, error })
     }
   }
 
@@ -255,7 +255,7 @@ export class StructuredAgentSessionStatusFeed {
       this.deps.onStatusChanged?.(summary, { replay: options?.replay === true })
     } catch (error) {
       // An observer must never cost the subscribers their status event.
-      reportAgentSessionFailure({ step: 'status-observer', sessionId, error })
+      traceAgentSessionError({ step: 'status-observer', sessionId, error })
     }
   }
 
@@ -307,7 +307,7 @@ export class StructuredAgentSessionStatusFeed {
     try {
       this.ownership.publishChildWork(sessionId, evidence, session.params.provider)
     } catch (error) {
-      reportAgentSessionFailure({ step: 'child-work-publish', sessionId, error })
+      traceAgentSessionError({ step: 'child-work-publish', sessionId, error })
     }
   }
 
@@ -354,7 +354,7 @@ export class StructuredAgentSessionStatusFeed {
     try {
       this.ownership.publish(summary, location)
     } catch (error) {
-      reportAgentSessionFailure({ step: 'status-publish', sessionId: summary.sessionId, error })
+      traceAgentSessionError({ step: 'status-publish', sessionId: summary.sessionId, error })
     }
   }
 

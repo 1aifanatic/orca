@@ -21,9 +21,11 @@ import {
 } from './structured-agent-session-rest-test-rig'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { hostTestAttachParams } from './structured-agent-session-host-test-data'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 let rig: RestTestRig
 
@@ -320,9 +322,9 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
       stopStartingAgent: stopAgent,
       closeConversation: vi.fn(async () => false)
     })
-    vi.mocked(reportAgentSessionFailure).mockClear()
+    vi.mocked(traceAgentSessionError).mockClear()
     await sweep.tick()
-    expect(reportAgentSessionFailure).not.toHaveBeenCalled()
+    expect(traceAgentSessionError).not.toHaveBeenCalled()
     expect(stopAgent).not.toHaveBeenCalled()
   })
 })

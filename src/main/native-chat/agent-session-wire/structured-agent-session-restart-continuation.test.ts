@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { marker, SESSION } from './structured-agent-session-restart-resume-test-harness'
 import {
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
@@ -10,9 +10,15 @@ import {
   startStructuredAgentSessionContinuation,
   type StructuredAgentSessionContinuationDeps
 } from './structured-agent-session-restart-continuation'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
+
+beforeEach(() => {
+  vi.mocked(traceAgentSessionError).mockClear()
+})
 
 /** The whole continuation: handed over, then its verdict. */
 async function continueStructuredAgentSessionAfterRestart(
@@ -72,7 +78,7 @@ it('reports a note it could not write without failing the continuation', async (
   await expect(
     continueStructuredAgentSessionAfterRestart(deps, SESSION, marker(), 'operation-1')
   ).resolves.toEqual({ sessionId: SESSION, outcome: 'continued' })
-  expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith({
+  expect(traceAgentSessionError).toHaveBeenCalledExactlyOnceWith({
     step: 'restart-continuation-note',
     sessionId: SESSION,
     error: failure

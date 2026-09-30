@@ -3,7 +3,7 @@
 
 import type { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionRestartOfferRecords = {
   /** Every pending offer. Read-only; nothing is spent. */
@@ -34,7 +34,7 @@ export function createStructuredAgentSessionRestartOfferRecords(deps: {
     } catch (error) {
       // Recovery is advisory. A malformed capsule must not make ordinary chat actions unusable;
       // the durable bytes stay untouched so an explicit dismissal can remove them.
-      reportAgentSessionFailure({ step: 'recovery-capsule-read', error })
+      traceAgentSessionError({ step: 'recovery-capsule-read', error })
       return []
     }
   }
@@ -69,9 +69,7 @@ export function createStructuredAgentSessionRestartOfferRecords(deps: {
       }))
       void deps
         .enqueue(() => capsule.forgetSuperseded(gone, deps.now()))
-        .catch((error: unknown) =>
-          reportAgentSessionFailure({ step: 'restart-offer-prune', error })
-        )
+        .catch((error: unknown) => traceAgentSessionError({ step: 'restart-offer-prune', error }))
     }
   }
 }

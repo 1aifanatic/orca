@@ -19,9 +19,9 @@ import {
 } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionTurnVerdict } from './structured-agent-session-stale-turn-verdict'
 import {
-  reportAgentSessionFailure,
-  type AgentSessionFailureStep
-} from '../../observability/agent-session-failure'
+  traceAgentSessionError,
+  type AgentSessionErrorStep
+} from '../../observability/agent-session-error-trace'
 
 type UnexpectedExitLifecycleEvent = StructuredAgentSessionEndedEvent & {
   cause: 'unexpected-exit'
@@ -91,8 +91,8 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       return
     }
 
-    const reportExitFailure = (step: AgentSessionFailureStep, error: unknown): void =>
-      reportAgentSessionFailure({ step, sessionId: unexpectedEvent.sessionId, error })
+    const reportExitFailure = (step: AgentSessionErrorStep, error: unknown): void =>
+      traceAgentSessionError({ step, sessionId: unexpectedEvent.sessionId, error })
     const stableSettlementId = providerExitSettlementId(unexpectedEvent)
     const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
     try {
@@ -104,7 +104,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       } catch (error) {
         reportExitFailure('provider-exit-barrier', error)
       }
-      await retryUnexpectedExitSettlement({
+      const settled = await retryUnexpectedExitSettlement({
         event: unexpectedEvent,
         journal: session.journal,
         fence: child.fence,
@@ -121,6 +121,9 @@ export async function settleUnexpectedStructuredAgentSessionExit<
             observedAt
           )
       })
+      if (!settled.ok) {
+        reportExitFailure('dead-generation-settlement', settled.error)
+      }
     } finally {
       // Provider exit was positively observed, so release the owner even when
       // terminal settlement could not be durably accepted.

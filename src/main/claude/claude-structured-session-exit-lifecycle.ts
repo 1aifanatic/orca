@@ -4,6 +4,7 @@ import {
   providerStartupFailureFact
 } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import {
   claudeRootExitObserved,
   settleClaudeExitedSession
@@ -79,8 +80,8 @@ export function settleClaudeUnexpectedExit(
     // Persist the last completed turn before publishing the lifecycle
     // event that lets the host release and reacquire this exact child.
     await persistClaudeSessionHandle(sessionId, exit.session, deps).catch((error: unknown) => {
-      // Recovery still publishes: the record keeps its last durable point, and the loss is logged.
-      console.warn('[claude-resume-point] exit cursor was not persisted:', { sessionId, error })
+      // Recovery still publishes: the record keeps its last durable point, and the loss is reported.
+      traceAgentSessionError({ step: 'claude-exit-cursor-persist', sessionId, error })
     })
     if (exits.get(sessionId) !== exit) {
       settleClaudeExitedSession(exit.session)

@@ -24,7 +24,7 @@ import {
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionStopVerdict } from './structured-agent-session-host-types'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type StructuredAgentSessionEvictionContext = {
   sessionId: string
@@ -74,7 +74,7 @@ export const STRUCTURED_AGENT_SESSION_EVICTION_STEPS: readonly StructuredAgentSe
         try {
           context.beforeProviderChildStop()
         } catch (error) {
-          reportAgentSessionFailure({
+          traceAgentSessionError({
             step: 'recovery-witness-capture',
             sessionId: context.sessionId,
             error

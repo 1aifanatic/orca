@@ -412,9 +412,10 @@ describe('Claude structured dispatch image limits', () => {
       reason: 'provider_write_failed',
       rejection: { kind: 'writeFailed' }
     })
-    // The row keeps only the marker; why the write failed goes to the log.
+    // The row keeps only the marker; why the write failed goes to the trace.
     expect(warn).toHaveBeenCalledWith(
-      '[claude-dispatch] message could not be handed to Claude:',
+      '[agent-session] claude-dispatch-write failed',
+      { providerSessionId: session.providerSessionId },
       expect.objectContaining({ message: expect.stringContaining('broken pipe') })
     )
     warn.mockRestore()

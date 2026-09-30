@@ -54,7 +54,7 @@ import {
   readJournalRowsAfter,
   readJournalSessionEpoch
 } from './journal-row-table'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 const INSERT_ROW =
   'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
@@ -131,7 +131,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     if (!published) {
       return 'absent'
     }
-    retireLegacyJournal(input.legacyDirectory, input.remove)
+    retireLegacyJournal(input.legacyDirectory, sessionId, input.remove)
     return 'already-imported'
   }
   if (plan?.kind === 'kept') {
@@ -139,7 +139,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     return 'kept'
   }
   // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
-  retireLegacyJournal(input.legacyDirectory, input.remove)
+  retireLegacyJournal(input.legacyDirectory, sessionId, input.remove)
   if (plan?.kind === 'copied') {
     return 'already-imported'
   }
@@ -253,7 +253,7 @@ async function verifyCopiedJournal(
   )
   if (!loggedMismatches.has(`${sessionId}\n${want}\n${got}`)) {
     loggedMismatches.add(`${sessionId}\n${want}\n${got}`)
-    reportAgentSessionFailure({ step: 'legacy-journal-import', sessionId, error })
+    traceAgentSessionError({ step: 'legacy-journal-import', sessionId, error })
   }
   throw journalOpenRefusalError(error)
 }

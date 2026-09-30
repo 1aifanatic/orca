@@ -321,7 +321,8 @@ it('keeps concurrent recovery reads independent and non-destructive', async () =
 
 it('fails closed on corrupt recovery storage while an ordinary send still works', async () => {
   const { host, root, dispatch } = await interruptedRestart()
-  await writeFile(join(root, AGENT_SESSION_RECOVERY_CAPSULE_FILE), '{')
+  // Not JSON: its SyntaxError quotes the start of the file, which no log may repeat.
+  await writeFile(join(root, AGENT_SESSION_RECOVERY_CAPSULE_FILE), 'my private prompt text')
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
   expect(await host.restartResume.list()).toEqual([])
   expect(await host.restartResume.continueAfterRestart([SESSION], 'modal')).toEqual({
@@ -338,8 +339,13 @@ it('fails closed on corrupt recovery storage while an ordinary send still works'
   // list; the action's read of offers and of failures; the post-action refresh of both. The send
   // cannot withdraw an offer it cannot read either, and says so.
   const withdrawing = '[agent-session] restart-offer-withdraw failed'
-  await vi.waitFor(() => expect(warning.mock.lastCall?.[0]).toBe(withdrawing))
-  expect(warning.mock.calls.filter(([message]) => message !== withdrawing)).toHaveLength(5)
+  await vi.waitFor(() =>
+    expect(warning).toHaveBeenLastCalledWith(withdrawing, { sessionId: SESSION }, 'SyntaxError')
+  )
+  expect(warning.mock.calls.filter(([message]) => message !== withdrawing)).toEqual(
+    Array.from({ length: 5 }, () => [expect.any(String), {}, 'SyntaxError'])
+  )
+  expect(warning.mock.calls.flat().map(String).join(' ')).not.toContain('private')
   warning.mockRestore()
 })
 

@@ -31,7 +31,7 @@ import {
 import { AgentSessionPreDispatchError } from './structured-agent-session-operation-settlement'
 import { restartContinuationEnvelope } from './structured-agent-session-restart-continuation-envelope'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /**
  * All four dispatch states are preserved, never collapsed into transport success.
@@ -182,8 +182,8 @@ export type StructuredAgentSessionContinuationDeps = {
     clientMessageId: string
   ) => Promise<ContinuationSubmission | undefined>
   /** Records a host-authored journal note: that this send was Orca's, not the user's, or that the
-   *  chat did not carry on. `tone` is a display hint older clients render as plain text. */
-  /** Best effort, but a note that could not be written is reported: a swallowed append is how this
+   *  chat did not carry on. `tone` is a display hint older clients render as plain text. Best
+   *  effort, but a note that could not be written is reported: a swallowed append is how this
    *  regressed unnoticed once already. */
   note: (sessionId: string, text: string, tone?: 'error' | 'warning') => Promise<void>
 }
@@ -240,7 +240,7 @@ async function noteOutcome(
     try {
       await deps.note(sessionId, AGENT_SESSION_RESTART_CONTINUATION_NOTE)
     } catch (error) {
-      reportAgentSessionFailure({ step: 'restart-continuation-note', sessionId, error })
+      traceAgentSessionError({ step: 'restart-continuation-note', sessionId, error })
     }
   } else {
     await noteNotContinued(
@@ -273,7 +273,7 @@ async function noteNotContinued(
           'error'
         ))
   } catch (error) {
-    reportAgentSessionFailure({ step: 'restart-continuation-note', sessionId, error })
+    traceAgentSessionError({ step: 'restart-continuation-note', sessionId, error })
   }
 }
 
@@ -293,7 +293,7 @@ async function sendContinuation(
       throw error
     }
     // Persistence can fail after dispatch; a thrown send is not proof of non-delivery.
-    reportAgentSessionFailure({ step: 'restart-continuation-send', sessionId, error })
+    traceAgentSessionError({ step: 'restart-continuation-send', sessionId, error })
     return null
   })
   if (!sent) {

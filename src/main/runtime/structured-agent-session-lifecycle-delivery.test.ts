@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
 
-vi.mock('../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const EXIT = {
   type: 'ended',
@@ -14,7 +16,7 @@ const EXIT = {
 } as const
 
 afterEach(() => {
-  vi.mocked(reportAgentSessionFailure).mockClear()
+  vi.mocked(traceAgentSessionError).mockClear()
 })
 
 describe('structured agent-session lifecycle delivery', () => {
@@ -32,7 +34,7 @@ describe('structured agent-session lifecycle delivery', () => {
     await delivery.drain()
 
     expect(handle).toHaveBeenCalledTimes(2)
-    expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith({
+    expect(traceAgentSessionError).toHaveBeenCalledExactlyOnceWith({
       step: 'provider-exit-settlement',
       sessionId: 'session-1',
       error: failure
@@ -56,7 +58,7 @@ describe('structured agent-session lifecycle delivery', () => {
     })
     await delivery.drain()
 
-    expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith({
+    expect(traceAgentSessionError).toHaveBeenCalledExactlyOnceWith({
       step: 'provider-started-settlement',
       sessionId: 'session-1',
       error: failure

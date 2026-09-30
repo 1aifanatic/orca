@@ -18,9 +18,11 @@ import {
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 let rig: RestTestRig
 
@@ -311,9 +313,9 @@ describe('the idle sweep with no child running (P2-22 ii)', () => {
       stopStartingAgent: stopAgent,
       closeConversation
     })
-    vi.mocked(reportAgentSessionFailure).mockClear()
+    vi.mocked(traceAgentSessionError).mockClear()
     await sweep.tick()
-    expect(reportAgentSessionFailure).not.toHaveBeenCalled()
+    expect(traceAgentSessionError).not.toHaveBeenCalled()
     expect(stopAgent).not.toHaveBeenCalled()
     expect(closeConversation).toHaveBeenCalledWith(SESSION)
   })

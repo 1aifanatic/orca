@@ -27,6 +27,7 @@ import type { StructuredAgentSessionHost } from '../../../native-chat/agent-sess
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { StructuredAgentSessionResumeSource } from '../../../../shared/structured-agent-session-create'
 import type { OrcaRuntimeService } from '../../orca-runtime'
+import { traceAgentSessionError } from '../../../observability/agent-session-error-trace'
 import {
   resolveUncommittedStructuredCreate,
   type StructuredCreateRefused
@@ -142,7 +143,7 @@ export async function commitStructuredAgentSessionCreate(args: {
       ...(surfaceTabId ? { tabId: surfaceTabId } : {})
     })
   } catch (error) {
-    console.warn('[agent-session] create committed before tab publication failed', error)
+    traceAgentSessionError({ step: 'create-tab-publish', sessionId: result.value.sessionId, error })
     return {
       ok: false,
       refusal: refuse(

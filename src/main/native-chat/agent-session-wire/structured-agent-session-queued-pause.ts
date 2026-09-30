@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto'
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { QueuePauseFact } from '../agent-session-journal/queued-message-pause-table'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /** A per-process id, minted once per host process like the runtime's own
  *  `runtimeId` (`orca-runtime-runtime-id.ts`); a draft written by another
@@ -89,7 +89,7 @@ export async function retireEndedQueuePause(
       adoptInto: adopt ? hostInstance : null
     })
   } catch (error) {
-    reportAgentSessionFailure({ step: 'queue-pause-retire', sessionId, error })
+    traceAgentSessionError({ step: 'queue-pause-retire', sessionId, error })
   }
 }
 

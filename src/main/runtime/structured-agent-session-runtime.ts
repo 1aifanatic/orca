@@ -55,7 +55,7 @@ import { createStructuredAgentEnvironmentResolvers } from './structured-agent-sh
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
-import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import {
   modelCatalogHostDeps,
@@ -225,7 +225,7 @@ async function installOnJournal(
     settlement: Parameters<StructuredAgentSessionHost['settleLateDispatch']>[0]
   ): void => {
     void host?.settleLateDispatch(settlement).catch((error: unknown) =>
-      reportAgentSessionFailure({
+      traceAgentSessionError({
         step: 'late-dispatch-settlement',
         sessionId: settlement.sessionId,
         error
@@ -240,7 +240,7 @@ async function installOnJournal(
         reason: DISPATCH_DOUBT_PROVIDER_IDLE
       })
       .catch((error: unknown) =>
-        reportAgentSessionFailure({ step: 'unanswered-dispatch-release', sessionId, error })
+        traceAgentSessionError({ step: 'unanswered-dispatch-release', sessionId, error })
       )
   }
   const codex = new CodexStructuredSessionAdapter({

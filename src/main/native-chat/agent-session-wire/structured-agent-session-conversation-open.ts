@@ -24,7 +24,7 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 export type OpenedStructuredAgentSessionConversation = {
   session: StructuredAgentSessionHostSession
@@ -101,7 +101,7 @@ export async function openStructuredAgentSessionConversationJournal(
     // one is only doubt, which provider history decides under a won lease.
     await opened.journal.markPendingSubmissionsUnknown(fence)
   } catch (error) {
-    reportAgentSessionFailure({ step: 'journal-open-pending-doubt', sessionId, error })
+    traceAgentSessionError({ step: 'journal-open-pending-doubt', sessionId, error })
   }
   // No child in this process writes to a journal nobody had open, so whatever it shows running
   // belongs to a generation that is gone, whatever the lease still claims. Settled before any
@@ -146,7 +146,7 @@ async function settleGoneGeneration(
     })
   } catch (error) {
     // Best effort: the next open or acquire re-derives it.
-    reportAgentSessionFailure({
+    traceAgentSessionError({
       step: 'gone-generation-settlement',
       sessionId: record.sessionId,
       error

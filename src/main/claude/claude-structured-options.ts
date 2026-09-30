@@ -1,6 +1,7 @@
 import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
 import { ClaudeControlRequestTimeoutError } from './claude-agent-sdk-control-requests'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import {
   AgentSessionOptionRejectedError,
   isAgentSessionOptionRejectedError
@@ -268,9 +269,11 @@ export async function restoreClaudeStructuredSessionOptions(
       // A write the CLI never answered must not fault a start that is otherwise fine. Silence is
       // not a refusal, so the choice stays wanted, unconfirmed, and the next start retries it.
       if (error instanceof ClaudeControlRequestTimeoutError) {
-        console.warn(
-          `[claude-structured] restore of ${key} for ${session.providerSessionId} was not answered in time; keeping it unconfirmed`
-        )
+        traceAgentSessionError({
+          step: 'claude-option-restore',
+          error,
+          detail: { option: key, providerSessionId: session.providerSessionId }
+        })
         session.options.set(key, value)
         session.confirmedOptions.delete(key)
         continue

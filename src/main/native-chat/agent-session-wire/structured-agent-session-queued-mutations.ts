@@ -41,7 +41,7 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 function invalid(message: string): {
   ok: false
@@ -128,7 +128,7 @@ export async function carryQueuedMessagesToClearReplacement(
       operationId: input.operationId
     })
   } catch (error) {
-    reportAgentSessionFailure({ step: 'clear-draft-carry', sessionId: ctx.sessionId, error })
+    traceAgentSessionError({ step: 'clear-draft-carry', sessionId: ctx.sessionId, error })
   }
 }
 

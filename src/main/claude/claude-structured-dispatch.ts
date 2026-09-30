@@ -19,6 +19,7 @@ import {
 import { dispatchWriteOutcomeUnknownReason } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import { DISPATCH_REJECTED_QUEUE_FULL } from '../../shared/structured-agent-session-dispatch-rejection'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
+import { traceAgentSessionError } from '../observability/agent-session-error-trace'
 import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
 import {
   claudeUnwrittenUserMessageError,
@@ -71,9 +72,16 @@ export function retireClaudeDispatchWaiters(session: ClaudeSession): void {
   }
 }
 
-/** The row keeps only the marker released clients hide; why the write failed belongs in the log. */
-function claudeWriteFailureRejection(error: unknown): AgentJournalDispatchRejection {
-  console.warn('[claude-dispatch] message could not be handed to Claude:', error)
+/** The row keeps only the marker released clients hide; why the write failed belongs in the trace. */
+function claudeWriteFailureRejection(
+  session: ClaudeSession,
+  error: unknown
+): AgentJournalDispatchRejection {
+  traceAgentSessionError({
+    step: 'claude-dispatch-write',
+    error,
+    detail: { providerSessionId: session.providerSessionId }
+  })
   return claudeDispatchRejection(agentSessionFailureFact('writeFailed'))
 }
 
@@ -92,7 +100,10 @@ export async function dispatchClaudeTurn(
   try {
     content = await claudeDispatchMessageContent(input.body)
   } catch (error) {
-    return { state: 'rejected', ...claudeDispatchContentRejection(error) }
+    return {
+      state: 'rejected',
+      ...claudeDispatchContentRejection(error, session.providerSessionId)
+    }
   }
   if (session.dispatchWaiters.length >= MAX_ACTIVE_DISPATCH_WAITERS) {
     return { state: 'rejected', ...claudeDispatchRejection(agentSessionFailureFact('queueFull')) }
@@ -145,7 +156,7 @@ export async function dispatchClaudeTurn(
       if (error instanceof AgentSessionPreDispatchError) {
         throw error
       }
-      return { state: 'rejected', ...claudeWriteFailureRejection(error) }
+      return { state: 'rejected', ...claudeWriteFailureRejection(session, error) }
     }
     const waiter = replay.waiter
     if (waiter.settledUuid) {
@@ -163,7 +174,7 @@ export async function dispatchClaudeTurn(
       waiter.resolve(null)
       // The frame was never handed to the SDK's input pump, so this is not doubt:
       // the message provably did not happen, which is what `rejected` means.
-      return { state: 'rejected', ...claudeWriteFailureRejection(error) }
+      return { state: 'rejected', ...claudeWriteFailureRejection(session, error) }
     }
     if (!waiter.retired) {
       retireWaiter(session, waiter)

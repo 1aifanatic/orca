@@ -9,7 +9,7 @@ import { startJournalRowFold, type JournalLoad } from './journal-open'
 import { legacyJournalDatabaseFile } from './journal-paths'
 import type { PerSessionJournalHead } from './journal-per-session-reimport'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
 /** The newest per-chat file shape any build wrote. */
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
@@ -124,6 +124,7 @@ export async function foldLegacyJournal(
  */
 export function retireLegacyJournal(
   legacyDirectory: string,
+  sessionId: string,
   remove: (path: string) => void = (path) => rmSync(path, { force: true })
 ): void {
   const file = legacyJournalDatabaseFile(legacyDirectory)
@@ -134,7 +135,7 @@ export function retireLegacyJournal(
       remove(path)
     }
   } catch (error) {
-    reportAgentSessionFailure({ step: 'legacy-journal-retire', error })
+    traceAgentSessionError({ step: 'legacy-journal-retire', sessionId, error })
     return
   }
   try {

@@ -13,9 +13,11 @@ import {
   type StructuredAgentSessionUnexpectedExitContext,
   type StructuredAgentSessionUnexpectedExitSession
 } from './structured-agent-session-unexpected-exit'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const exitOutcome = (agent: string): string =>
   `${agent} stopped while this response was in progress. You can continue in this conversation.`
@@ -409,7 +411,7 @@ describe('provider-exit settlement', () => {
         })
       }
     }
-    vi.mocked(reportAgentSessionFailure).mockClear()
+    vi.mocked(traceAgentSessionError).mockClear()
     const publishFence = vi.fn()
     const event = {
       type: 'ended' as const,
@@ -432,7 +434,7 @@ describe('provider-exit settlement', () => {
 
     expect(session.child).toBeNull()
     expect(publishFence).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(reportAgentSessionFailure).mock.calls.map(([report]) => report.step)).toEqual([
+    expect(vi.mocked(traceAgentSessionError).mock.calls.map(([report]) => report.step)).toEqual([
       'provider-exit-barrier',
       'dead-generation-settlement'
     ])

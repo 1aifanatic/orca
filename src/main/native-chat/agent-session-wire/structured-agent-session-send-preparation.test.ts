@@ -25,9 +25,11 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
 
-vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
+vi.mock('../../observability/agent-session-error-trace', () => ({
+  traceAgentSessionError: vi.fn()
+}))
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -46,7 +48,7 @@ let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-send-recovery-'))
   resetHostTestOperationIds()
-  vi.mocked(reportAgentSessionFailure).mockClear()
+  vi.mocked(traceAgentSessionError).mockClear()
   let generation = 0
   spawnChild = async ({ fence, spawnToken }) => ({
     process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
@@ -426,7 +428,7 @@ describe('a send with no live owner', () => {
       "Codex couldn't restart. Send your message to try again."
     ])
     // Orca's own text is logged once where the start failed.
-    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+    expect(traceAgentSessionError).toHaveBeenCalledWith({
       step: 'provider-start',
       sessionId: SESSION,
       error: expect.objectContaining({ message: `thread/resume failed: ${said}` })
@@ -537,7 +539,7 @@ describe('a send with no live owner', () => {
       reason: "Orca ran into a problem, so this didn't go through. Try again.",
       rejection: { kind: 'hostFault' }
     })
-    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+    expect(traceAgentSessionError).toHaveBeenCalledWith({
       step: 'delivery-loop',
       sessionId: SESSION,
       error: expect.objectContaining({ message: 'spawn-token mint failed' })
