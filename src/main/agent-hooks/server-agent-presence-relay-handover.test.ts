@@ -226,12 +226,18 @@ describe('owner handover across execution hosts', () => {
   it('hands a dead owner to the first process that doubted it, on both hosts', async () => {
     const desktop = new Desktop()
     servers.push(desktop)
-    const a = { agent: 'claude', process: { pid: 4001, platform: 'linux', startTime: 'boot:1' } }
-    const b = { agent: 'claude', process: { pid: 4005, platform: 'linux', startTime: 'boot:5' } }
+    const a = {
+      agent: 'claude',
+      process: { pid: 4001, platform: 'linux', startTime: 'boot:1' }
+    } satisfies AgentProcessPresence
+    const b = {
+      agent: 'claude',
+      process: { pid: 4005, platform: 'linux', startTime: 'boot:5' }
+    } satisfies AgentProcessPresence
     const nested = {
       agent: 'claude',
       process: { pid: 4009, platform: 'linux', startTime: 'boot:9' }
-    }
+    } satisfies AgentProcessPresence
     desktop.hook({ agentPresence: a, hookEventName: 'UserPromptSubmit' })
     let finishProbe!: (verdict: 'exited') => void
     probe.mockImplementation(() => new Promise((resolve) => (finishProbe = resolve)))
