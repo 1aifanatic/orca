@@ -5,6 +5,7 @@
 // rows read as the same child.
 
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
+import { CODEX_COLLAB_ROW_AGENTS_KEY } from '../../shared/codex-collab-agent-tools'
 import {
   boundInlineText,
   boundToolInput,
@@ -124,7 +125,9 @@ export function codexCollabAgentToolCallBody(
     ...(call.prompt ? { prompt: call.prompt } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(call.receiverThreadIds.length > 0 ? { agents: call.receiverThreadIds } : {})
+    ...(call.receiverThreadIds.length > 0
+      ? { [CODEX_COLLAB_ROW_AGENTS_KEY]: call.receiverThreadIds }
+      : {})
   }
   const text = outputText(call, helperName)
   const output = text === null ? null : boundInlineText(text, DEFAULT_JOURNAL_PAYLOAD_LIMITS)

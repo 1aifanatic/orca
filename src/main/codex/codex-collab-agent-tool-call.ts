@@ -17,6 +17,7 @@
 //     which says the receiver is no helper, and the snapshot a wait or resume reports, which its
 //     row shows as output. A spawn's or close's predates what the call did, so its row does not.
 
+import { codexCollabToolRowName } from '../../shared/codex-collab-agent-tools'
 import { collapsedToolInputPrefix } from '../../shared/native-chat-tool-preview-prefix'
 import { readRecord, readString } from './codex-item-field-readers'
 import type { CodexThreadItem } from './codex-thread-item-identity'
@@ -96,20 +97,6 @@ export function codexCollabHelperLabel(prompt: string | null): string | null {
   return `${collapsed.slice(0, end)}…`
 }
 
-/** The name the model called the tool by, which is what its row shows. The wire item spells the
- *  tool in camelCase; the model-facing name is snake_case, so this map is not a spelling fix. */
-const CODEX_COLLAB_TOOL_NAMES = new Map<string, string>([
-  ['spawnAgent', 'spawn_agent'],
-  ['sendInput', 'send_input'],
-  ['resumeAgent', 'resume_agent'],
-  ['wait', 'wait_agent'],
-  ['closeAgent', 'close_agent'],
-  ['sendMessage', 'send_message'],
-  ['followupTask', 'followup_task'],
-  ['interruptAgent', 'interrupt_agent'],
-  ['listAgents', 'list_agents']
-])
-
 export function codexCollabToolName(call: CodexCollabAgentToolCall): string {
-  return CODEX_COLLAB_TOOL_NAMES.get(call.tool) ?? call.tool
+  return codexCollabToolRowName(call.tool)
 }
