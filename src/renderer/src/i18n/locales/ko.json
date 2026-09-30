@@ -6831,7 +6831,8 @@
           "0462565413": "다시 가져오기",
           "de9b2f32f3": "활성화",
           "8f2675c2f3": "파일에서 {{value0}}개의 쿠키를 가져왔습니다.",
-          "5301857d88": "{{value0}}에서"
+          "5301857d88": "{{value0}}에서",
+          "finishSteps": "코딩 agents가 로그인된 상태로 이 브라우저를 조작하게 합니다. 아래 단계를 완료하세요."
         },
         "BrowserUseSkillStep": {
           "0871b6998d": "agents가 Orca 브라우저에서 페이지를 탐색하고 확인할 수 있습니다.",
@@ -6875,7 +6876,8 @@
           "cbe55e4d48": "탐색기에서 보기",
           "9fd4023db0": "파일 관리자에서 보기",
           "installFailureUnknownReason": "Orca가 CLI 등록을 완료하지 못했고 이유를 보고하지 않았습니다.",
-          "installFailureConflictRemedy": "{{value0}}을(를) 제거하고 더 이상 필요하지 않으면 다시 등록하세요."
+          "installFailureConflictRemedy": "{{value0}}을(를) 제거하고 더 이상 필요하지 않으면 다시 등록하세요.",
+          "outsideOrcaDescription": "Orca 터미널에서는 이미 `orca`를 쓸 수 있습니다. Orca 밖의 다른 터미널에서 `orca`를 쓰려면 켜세요."
         },
         "CliSkillRuntimeSetup": {
           "04325573f8": "WSL",
@@ -13611,7 +13613,8 @@
           "1eee1c7bd8": "PATH에서 agents를 찾지 못했습니다. 나중에 설치할 항목을 선택하거나 빈 terminal로 계속 진행하세요.",
           "hideAgents": "agents 숨기기",
           "showMoreAgents": "agents {{value0}}개 더 보기→",
-          "skipPermissionPromptsLabel": "권한 확인 건너뛰기"
+          "yoloModeLabel": "Yolo 모드",
+          "yoloPermissionsDescription": "agents가 묻지 않고 명령을 실행하고 파일을 편집하며, 일부는 샌드박스도 우회합니다. 신뢰할 수 있는 프로젝트에서만 사용하세요."
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Enter를 눌러 명령을 실행하고 요청 시 npx를 확인합니다. 나중에 설정에서 설정할 수도 있습니다.",
@@ -14168,7 +14171,9 @@
             "e9eb197e12": "열린 컴퓨터 사용 권한",
             "3a59452a67": "리뷰를 위해 스킬 명령을 아래에 복사하여 삽입했습니다.",
             "c605f51f2b": "기능 설정 준비 완료",
-            "1aa657d8f4": "일부 기능 설정에 주의가 필요합니다."
+            "1aa657d8f4": "일부 기능 설정에 주의가 필요합니다.",
+            "allInstalled": "모든 스킬 설치됨",
+            "installSkills": "스킬 설치"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "예: ollama run llama3.1 {{value0}}",
@@ -14374,7 +14379,10 @@
                   "5c9293e51a": "앱 액세스 확인 중",
                   "aa8e143a2f": "설치를 확인할 수 없습니다.",
                   "9b33e7fb13": "설치 확인 중",
-                  "6d2b0a84e1": "이 빌드에서는 사용할 수 없습니다"
+                  "6d2b0a84e1": "이 빌드에서는 사용할 수 없습니다",
+                  "needsMacAccess": "macOS 접근 권한 필요",
+                  "notInstalled": "설치되지 않음",
+                  "requiresOrcaDesktop": "Orca Desktop 필요"
                 }
               }
             }
@@ -14663,7 +14671,8 @@
                   "setup": {
                     "state": {
                       "35dea1ae12": "agent 제어가 준비되었습니다.",
-                      "c94ff11e91": "설정 상태를 다시 확인할 수 없습니다."
+                      "c94ff11e91": "설정 상태를 다시 확인할 수 없습니다.",
+                      "skillNotInstalled": "Orca CLI 스킬이 아직 설치되지 않았습니다."
                     }
                   }
                 },
@@ -14685,7 +14694,8 @@
             "3756cbeca7": "나중에",
             "6d950431d2": "숨기기",
             "ebceac65a4": "설정",
-            "3f003507f4": "설정에서 전체 설정 열기"
+            "3f003507f4": "설정에서 전체 설정 열기",
+            "installSkillPrompt": "agents가 이 시뮬레이터를 조작하게 하려면 Orca CLI 스킬을 설치하세요."
           },
           "MobileEmulatorAgentSetupGuideSteps": {
             "21f5687c07": "Orca CLI 스킬",

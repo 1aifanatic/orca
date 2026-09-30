@@ -6949,7 +6949,8 @@
           "0462565413": "Réimporter",
           "de9b2f32f3": "Activer",
           "8f2675c2f3": "{{value0}} cookies importés depuis un fichier.",
-          "5301857d88": "Depuis {{value0}}"
+          "5301857d88": "Depuis {{value0}}",
+          "finishSteps": "Laissez les agents de code piloter ce navigateur avec vos connexions. Suivez les étapes ci-dessous."
         },
         "BrowserUseSkillStep": {
           "0871b6998d": "Permet aux agents de naviguer et de vérifier des pages dans le navigateur d'Orca.",
@@ -6993,7 +6994,8 @@
           "cbe55e4d48": "Afficher dans l'Explorateur",
           "9fd4023db0": "Afficher dans le Gestionnaire de fichiers",
           "installFailureUnknownReason": "Orca n'a pas pu terminer l'enregistrement de l'interface CLI et n'a signalé aucune raison.",
-          "installFailureConflictRemedy": "Supprimez {{value0}} s'il n'est plus nécessaire, puis réenregistrez la CLI."
+          "installFailureConflictRemedy": "Supprimez {{value0}} s'il n'est plus nécessaire, puis réenregistrez la CLI.",
+          "outsideOrcaDescription": "Les terminaux Orca disposent déjà de `orca`. Activez cette option pour utiliser `orca` depuis d'autres terminaux en dehors d'Orca."
         },
         "CliSkillRuntimeSetup": {
           "04325573f8": "WSL",
@@ -13714,7 +13716,8 @@
           "1eee1c7bd8": "Aucun agent détecté dans votre PATH. Choisissez-en un à installer plus tard, ou continuez avec un terminal vide.",
           "hideAgents": "Masquer les agents",
           "showMoreAgents": "Afficher {{value0}} autres agents→",
-          "skipPermissionPromptsLabel": "Ignorer les demandes d'autorisation"
+          "yoloModeLabel": "Mode Yolo",
+          "yoloPermissionsDescription": "Les agents exécutent des commandes et modifient des fichiers sans demander, et certains contournent aussi leur sandbox. À utiliser uniquement dans des projets de confiance."
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Appuyez sur Entrée pour exécuter la commande et confirmez npx si demandé. Vous pouvez aussi configurer cela plus tard dans les paramètres.",
@@ -14271,7 +14274,9 @@
             "e9eb197e12": "Autorisations Computer Use ouvertes",
             "3a59452a67": "Commande de skill copiée et insérée ci-dessous pour vérification.",
             "c605f51f2b": "Configuration des capacités prête",
-            "1aa657d8f4": "Certaines configurations de capacités demandent votre attention"
+            "1aa657d8f4": "Certaines configurations de capacités demandent votre attention",
+            "allInstalled": "Toutes les skills sont installées",
+            "installSkills": "Installer les skills"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "ex. ollama run llama3.1 {{value0}}",
@@ -14477,7 +14482,10 @@
                   "5c9293e51a": "vérification de l'accès à l'app",
                   "aa8e143a2f": "Impossible de vérifier l'installation",
                   "9b33e7fb13": "Vérification de l'installation",
-                  "6d2b0a84e1": "Indisponible dans ce build"
+                  "6d2b0a84e1": "Indisponible dans ce build",
+                  "needsMacAccess": "Nécessite l'accès macOS",
+                  "notInstalled": "Non installée",
+                  "requiresOrcaDesktop": "Nécessite Orca Desktop"
                 }
               }
             }
@@ -14508,7 +14516,9 @@
                       "56049b74c2": "Exécutez automatiquement les commandes d'installation et de configuration afin que chaque nouvelle arborescence de travail soit prête pour les agents.",
                       "2cf795433b": "Commencez à travailler dans plusieurs dépôts",
                       "42525ba8a4": "Importez vos dépôts de clés dans Orca afin de pouvoir démarrer le travail d'agent sans rechercher de dossiers.",
-                      "workOnTwoTasks": "Travaillez sur deux tâches à la fois"
+                      "workOnTwoTasks": "Travaillez sur deux tâches à la fois",
+                      "agentSkillsName": "Donnez aux agents les skills Orca",
+                      "agentSkillsDescription": "Installez les skills que les agents utilisent pour piloter le navigateur d'Orca, contrôler votre ordinateur et coordonner des tâches en plusieurs étapes."
                     }
                   }
                 }
@@ -14764,7 +14774,8 @@
                   "setup": {
                     "state": {
                       "35dea1ae12": "Le contrôle des agents est prêt.",
-                      "c94ff11e91": "Impossible de revérifier l'état de la configuration."
+                      "c94ff11e91": "Impossible de revérifier l'état de la configuration.",
+                      "skillNotInstalled": "La skill Orca CLI n'est pas encore installée."
                     }
                   }
                 },
@@ -14786,7 +14797,8 @@
             "3756cbeca7": "Pas maintenant",
             "6d950431d2": "Masquer",
             "ebceac65a4": "Configurer",
-            "3f003507f4": "Ouvrir la configuration complète dans les paramètres"
+            "3f003507f4": "Ouvrir la configuration complète dans les paramètres",
+            "installSkillPrompt": "Installez la skill Orca CLI lorsque vous voulez que les agents pilotent ce simulateur."
           },
           "MobileEmulatorAgentSetupGuideSteps": {
             "21f5687c07": "Compétence CLI Orca",

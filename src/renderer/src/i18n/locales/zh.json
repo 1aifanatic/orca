@@ -6831,7 +6831,8 @@
           "0462565413": "重新导入",
           "de9b2f32f3": "启用",
           "8f2675c2f3": "已从文件导入 {{value0}} 个 Cookie。",
-          "5301857d88": "从 {{value0}}"
+          "5301857d88": "从 {{value0}}",
+          "finishSteps": "让编程智能体使用你的登录状态操作此浏览器。请完成以下步骤。"
         },
         "BrowserUseSkillStep": {
           "0871b6998d": "使智能体能够在 Orca 浏览器中导航和验证页面。",
@@ -6875,7 +6876,8 @@
           "cbe55e4d48": "在资源管理器中显示",
           "9fd4023db0": "在文件管理器中显示",
           "installFailureUnknownReason": "Orca 无法完成 CLI 注册，且未报告任何原因。",
-          "installFailureConflictRemedy": "删除 {{value0}} 并在不再需要时重新注册。"
+          "installFailureConflictRemedy": "删除 {{value0}} 并在不再需要时重新注册。",
+          "outsideOrcaDescription": "Orca 终端已内置 `orca`。开启后可在 Orca 以外的其他终端中使用 `orca`。"
         },
         "CliSkillRuntimeSetup": {
           "04325573f8": "WSL",
@@ -13611,7 +13613,8 @@
           "1eee1c7bd8": "PATH 中未检测到智能体。可选择一个稍后安装，或使用空白终端继续。",
           "hideAgents": "隐藏智能体",
           "showMoreAgents": "显示另外 {{value0}} 个智能体→",
-          "skipPermissionPromptsLabel": "跳过权限确认"
+          "yoloModeLabel": "Yolo 模式",
+          "yoloPermissionsDescription": "智能体会在不询问的情况下运行命令和编辑文件，部分智能体还会绕过沙箱。仅在你信任的项目中使用。"
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "按 Enter 运行命令并在询问时确认 npx。您也可以稍后在“设置”中进行设置。",
@@ -14168,7 +14171,9 @@
             "e9eb197e12": "打开计算机使用权限",
             "3a59452a67": "技能命令已复制并插入到下方以供评审。",
             "c605f51f2b": "能力设置就绪",
-            "1aa657d8f4": "一些能力设置需要注意"
+            "1aa657d8f4": "一些能力设置需要注意",
+            "allInstalled": "所有技能均已安装",
+            "installSkills": "安装技能"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "例如llama 运行 llama3.1 {{value0}}",
@@ -14374,7 +14379,10 @@
                   "5c9293e51a": "检查应用程序访问权限",
                   "aa8e143a2f": "无法检查安装",
                   "9b33e7fb13": "检查安装",
-                  "6d2b0a84e1": "此版本不可用"
+                  "6d2b0a84e1": "此版本不可用",
+                  "needsMacAccess": "需要 macOS 访问权限",
+                  "notInstalled": "未安装",
+                  "requiresOrcaDesktop": "需要 Orca Desktop"
                 }
               }
             }
@@ -14405,7 +14413,9 @@
                       "56049b74c2": "自动运行安装和设置命令，以便每个新工作树都为代理做好准备。",
                       "2cf795433b": "在多个存储库中开始工作",
                       "42525ba8a4": "将您的关键存储库带入 Orca，这样您就可以开始代理工作，而无需寻找文件夹。",
-                      "workOnTwoTasks": "同时处理两项任务"
+                      "workOnTwoTasks": "同时处理两项任务",
+                      "agentSkillsName": "为智能体提供 Orca 技能",
+                      "agentSkillsDescription": "安装智能体用于操作 Orca 浏览器、控制你的电脑以及协调多步骤工作的技能。"
                     }
                   }
                 }
@@ -14661,7 +14671,8 @@
                   "setup": {
                     "state": {
                       "35dea1ae12": "智能体控制已就绪。",
-                      "c94ff11e91": "无法重新检查设置状态。"
+                      "c94ff11e91": "无法重新检查设置状态。",
+                      "skillNotInstalled": "Orca CLI 技能尚未安装。"
                     }
                   }
                 },
@@ -14683,7 +14694,8 @@
             "3756cbeca7": "暂不",
             "6d950431d2": "隐藏",
             "ebceac65a4": "设置",
-            "3f003507f4": "在设置中打开完整设置"
+            "3f003507f4": "在设置中打开完整设置",
+            "installSkillPrompt": "如需让智能体操作此模拟器，请安装 Orca CLI 技能。"
           },
           "MobileEmulatorAgentSetupGuideSteps": {
             "21f5687c07": "Orca CLI 技能",

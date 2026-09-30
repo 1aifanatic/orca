@@ -162,15 +162,12 @@ function YoloPermissionsControl({
     <div className="flex shrink-0 items-center justify-between gap-6 border-t border-border pt-4">
       <label htmlFor={switchId} className="min-w-0 cursor-pointer space-y-0.5">
         <span className="block text-sm font-medium text-foreground">
-          {translate(
-            'auto.components.onboarding.AgentStep.skipPermissionPromptsLabel',
-            'Skip permission prompts'
-          )}
+          {translate('auto.components.onboarding.AgentStep.yoloModeLabel', 'Yolo mode')}
         </span>
         <span className="block text-xs text-muted-foreground">
           {translate(
             'auto.components.onboarding.AgentStep.yoloPermissionsDescription',
-            'Agents run without stopping to ask for permission.'
+            'Agents run commands and edit files without asking, and some also bypass their sandbox. Use only in projects you trust.'
           )}
         </span>
       </label>

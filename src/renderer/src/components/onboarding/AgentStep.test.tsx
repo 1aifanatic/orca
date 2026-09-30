@@ -22,7 +22,7 @@ describe('AgentStep', () => {
     expect(html).toContain(`Show ${AGENT_CATALOG.length - 1} more agents →`)
     expect(html).toContain('data-agent-grid-scroll')
     expect(html).toContain('data-slot="switch"')
-    expect(html).toContain('Skip permission prompts')
+    expect(html).toContain('Yolo mode')
     expect(html).not.toContain('role="radiogroup"')
   })
 

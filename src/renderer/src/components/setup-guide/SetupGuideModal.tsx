@@ -138,13 +138,14 @@ function SetupGuideModalContent({
         className="grid h-[min(780px,calc(100vh-2rem))] w-[min(1080px,calc(100vw-2rem))] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:max-w-none"
         tabIndex={-1}
       >
-        {/* Why: a labeled action; an eye-off icon beside the close X was easy to confuse with it. */}
+        {/* Why: labeled so it can't be mistaken for close; hidden below sm, where the header
+            centers the title under it (the sidebar entry keeps its own hide control). */}
         <Button
           type="button"
           variant="ghost"
           size="xs"
           onClick={handleHideFromSidebar}
-          className="absolute right-11 top-3.5"
+          className="absolute right-11 top-3.5 hidden sm:inline-flex"
         >
           {translate(
             'auto.components.setup.guide.SetupGuideModal.f3b5ffb2a6',

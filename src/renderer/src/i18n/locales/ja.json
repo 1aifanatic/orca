@@ -6831,7 +6831,8 @@
           "0462565413": "再インポート",
           "de9b2f32f3": "有効化",
           "8f2675c2f3": "ファイルから {{value0}} 個の Cookie をインポートしました。",
-          "5301857d88": "{{value0}} から"
+          "5301857d88": "{{value0}} から",
+          "finishSteps": "コーディング Agent がログイン状態のままこのブラウザを操作できるようにします。以下の手順を完了してください。"
         },
         "BrowserUseSkillStep": {
           "0871b6998d": "Agent が Orca のブラウザでページに移動して確認できるようにします。",
@@ -6875,7 +6876,8 @@
           "cbe55e4d48": "エクスプローラーで表示",
           "9fd4023db0": "ファイルマネージャーで表示",
           "installFailureUnknownReason": "Orca は CLI 登録を完了できず、理由を報告しませんでした。",
-          "installFailureConflictRemedy": "{{value0}} を削除して、不要になった場合は再度登録してください。"
+          "installFailureConflictRemedy": "{{value0}} を削除して、不要になった場合は再度登録してください。",
+          "outsideOrcaDescription": "Orca のターミナルでは `orca` がすでに使えます。Orca 以外のターミナルから `orca` を使うにはオンにしてください。"
         },
         "CliSkillRuntimeSetup": {
           "04325573f8": "WSL",
@@ -13611,7 +13613,8 @@
           "1eee1c7bd8": "PATH 上に Agent が検出されませんでした。後でインストールするものを選択するか、空のターミナルを使用して続行します。",
           "hideAgents": "Agent を非表示にする",
           "showMoreAgents": "{{value0}} 件の Agent をさらに表示→",
-          "skipPermissionPromptsLabel": "権限の確認をスキップ"
+          "yoloModeLabel": "Yolo モード",
+          "yoloPermissionsDescription": "Agent は確認なしでコマンドを実行しファイルを編集します。一部はサンドボックスも回避します。信頼できるプロジェクトでのみ使用してください。"
         },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Enter キーを押してコマンドを実行し、要求されたら npx を確認します。これは、後で [設定] で設定することもできます。",
@@ -14168,7 +14171,9 @@
             "e9eb197e12": "開かれたコンピュータ操作許可",
             "3a59452a67": "スキルコマンドをコピーし、確認用に以下へ挿入しました。",
             "c605f51f2b": "機能セットアップの準備完了",
-            "1aa657d8f4": "一部の機能の設定には注意が必要です"
+            "1aa657d8f4": "一部の機能の設定には注意が必要です",
+            "allInstalled": "すべてのスキルがインストール済み",
+            "installSkills": "スキルをインストール"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "例: ollama run llama3.1 {{value0}}",
@@ -14374,7 +14379,10 @@
                   "5c9293e51a": "アプリのアクセスを確認する",
                   "aa8e143a2f": "インストールを確認できませんでした",
                   "9b33e7fb13": "インストールを確認しています",
-                  "6d2b0a84e1": "このビルドでは利用できません"
+                  "6d2b0a84e1": "このビルドでは利用できません",
+                  "needsMacAccess": "macOS のアクセス許可が必要",
+                  "notInstalled": "未インストール",
+                  "requiresOrcaDesktop": "Orca Desktop が必要"
                 }
               }
             }
@@ -14405,7 +14413,9 @@
                       "56049b74c2": "インストールおよびセットアップのコマンドを自動的に実行することで、すべての新規ワークツリーが Agent に対応できるようになります。",
                       "2cf795433b": "複数のリポジトリで作業を開始する",
                       "42525ba8a4": "キーリポジトリを Orca に取り込むと、フォルダーを探さずに Agent の作業を開始できます。",
-                      "workOnTwoTasks": "2つのタスクを同時に進める"
+                      "workOnTwoTasks": "2つのタスクを同時に進める",
+                      "agentSkillsName": "Agent に Orca スキルを追加",
+                      "agentSkillsDescription": "Agent が Orca のブラウザを操作し、コンピューターを制御し、複数ステップの作業を調整するためのスキルをインストールします。"
                     }
                   }
                 }
@@ -14661,7 +14671,8 @@
                   "setup": {
                     "state": {
                       "35dea1ae12": "Agent 制御の準備ができました。",
-                      "c94ff11e91": "セットアップ状況を再確認できませんでした。"
+                      "c94ff11e91": "セットアップ状況を再確認できませんでした。",
+                      "skillNotInstalled": "Orca CLI スキルはまだインストールされていません。"
                     }
                   }
                 },
@@ -14683,7 +14694,8 @@
             "3756cbeca7": "後で",
             "6d950431d2": "非表示",
             "ebceac65a4": "セットアップ",
-            "3f003507f4": "設定で完全なセットアップを開く"
+            "3f003507f4": "設定で完全なセットアップを開く",
+            "installSkillPrompt": "Agent にこのシミュレーターを操作させたいときは、Orca CLI スキルをインストールしてください。"
           },
           "MobileEmulatorAgentSetupGuideSteps": {
             "21f5687c07": "Orca CLI スキル",
