@@ -56,7 +56,7 @@ function terminal(args: {
   title: string
   foreground: string
   waitText?: string
-  explicit?: 'working' | 'done'
+  explicit?: 'working'
   titleStatus?: 'working'
 }) {
   const presence = new RuntimeTerminalAgentPresence({
