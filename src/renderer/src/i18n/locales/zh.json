@@ -17347,6 +17347,7 @@
         "pastedImageLabel": "粘贴的图片",
         "imagePasteFailed": "图片粘贴失败。",
         "worktreeNotReady": "工作树未就绪 — 请稍后重试。",
+        "pasteUnavailable": "无法粘贴 — 此聊天当前不接受输入。",
         "uploadingAttachments": "正在将 {{value0}} 个文件上传到远端…",
         "model": "模型",
         "effort": "推理强度",
@@ -17640,8 +17641,7 @@
         "ranOne": "Ran 1 子代理",
         "ranN": "Ran {{value0}} 子代理",
         "tokens": "{{value0}} 代币",
-        "unnamed": "子代理",
-        "writtenBy": "由子代理 {{value0}} 输出"
+        "unnamed": "子代理"
       },
       "conversationCommand": {
         "pendingWork": "在使用此命令之前，请等待挂起的工作和消息完成。",
@@ -17678,6 +17678,9 @@
         "title": "上下文",
         "estimated": "根据上一次响应的估算值。"
       },
+      "dismissDeliveryNotice": "关闭",
+      "messageNotSent": "消息未发送",
+      "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "queuedMessages": {
         "alreadySent": "此消息已发送。",
         "editAlreadySent": "已发送 — 你的文本仍在输入框中。",
