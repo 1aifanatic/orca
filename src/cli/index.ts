@@ -21,6 +21,7 @@ import type { RuntimeClient } from './runtime-client'
 import { COMMAND_SPECS } from './specs'
 import { resolveOrchestrationCliExecutable } from './runtime/orchestration-recovery-command'
 import { refuseConflictingSessionCallerFlags } from './session-caller-flags'
+import { refuseDesktopOnlyCommandInStandalone } from './standalone-cli-mode'
 
 export { COMMAND_SPECS } from './specs'
 export { buildCurrentWorktreeSelector, normalizeWorktreeSelector } from './selectors'
@@ -116,6 +117,7 @@ export async function main(
       findCommandSpec(COMMAND_SPECS, parsed.commandPath),
       parsed.flags
     )
+    refuseDesktopOnlyCommandInStandalone(parsed.commandPath)
     const RuntimeClientClass = await loadRuntimeClientClass()
     const ignoreRemoteSelection = shouldIgnoreRemoteSelection(parsed.commandPath)
     const pairingCode = ignoreRemoteSelection ? null : parsed.flags.get('pairing-code')
@@ -198,6 +200,7 @@ async function runClaudeTeams(argv: string[], cwd: string): Promise<void> {
   try {
     // Why: everything after `orca claude-teams` belongs to Claude Code, not
     // Orca's own flag parser, so new Claude flags work without Orca changes.
+    refuseDesktopOnlyCommandInStandalone(['claude-teams'])
     const client = new (await loadRuntimeClientClass())(undefined, undefined, null, null)
     await dispatch(['claude-teams'], {
       flags: new Map(),

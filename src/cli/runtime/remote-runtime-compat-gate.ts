@@ -63,6 +63,19 @@ export class RemoteRuntimeCompatGate {
     )
   }
 
+  // Why: a standalone CLI can sit beside a runtime from another release, so its
+  // local socket needs the same protocol-window check the paired path gets.
+  async verifyLocal(sendStatus: () => Promise<RuntimeRpcResponse<RuntimeStatus>>): Promise<void> {
+    if (this.checked) {
+      return
+    }
+    const response = await sendStatus()
+    if (response.ok === false) {
+      throw new RuntimeRpcFailureError(response)
+    }
+    this.noteVerifiedStatus(response.result)
+  }
+
   noteVerifiedStatus(status: RuntimeStatus): void {
     const verdict = evaluateRuntimeCompat({
       clientProtocolVersion: RUNTIME_PROTOCOL_VERSION,
