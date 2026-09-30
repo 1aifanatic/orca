@@ -110,6 +110,7 @@ function fixture(historySeedChunks?: readonly string[]) {
             spawnBunPty(args, {
               platform: 'win32',
               runtime,
+              supportsDirectJobSpawn: () => false,
               assignHostJob: () => true,
               createJob: () => ({
                 terminate: () => {
