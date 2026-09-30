@@ -8,7 +8,6 @@ import { createRootDispatch } from './db/root-dispatch-test-fixture'
 
 type WorkerFixture = {
   dispatchId: string
-  capability: string
   handle: string
   paneKey: string
   processIncarnation: string
@@ -113,7 +112,7 @@ describe('Task/Dispatch lifecycle guards', () => {
   })
 
   it.each(['failed', 'stopped'] as const)(
-    'treats abandon of an already %s worker as stale without a lifecycle conflict',
+    'treats abandon of an already %s worker as settled without a lifecycle conflict',
     (state) => {
       const database = createDatabase()
       const task = database.createTask({
@@ -128,8 +127,8 @@ describe('Task/Dispatch lifecycle guards', () => {
         database.settleWorkerStop(worker.dispatchId)
       }
 
-      expect(database.abandonWorkerDispatch(worker.dispatchId)).toMatchObject({
-        disposition: 'stale',
+      expect(database.abandonWorkerDispatch(worker.dispatchId, 'epoch_test')).toMatchObject({
+        disposition: 'already_settled',
         worker: { state }
       })
     }
@@ -421,7 +420,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       const released =
         operation === 'stop'
           ? database.beginWorkerStop(contextOnly.id, 'runtime_test')
-          : database.abandonWorkerDispatch(contextOnly.id)
+          : database.abandonWorkerDispatch(contextOnly.id, 'epoch_test')
       expect(released).toMatchObject({
         disposition: 'context_only',
         alreadySettled: false,
@@ -456,7 +455,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       const released =
         operation === 'stop'
           ? database.beginWorkerStop(contextOnly.id, 'runtime_test')
-          : database.abandonWorkerDispatch(contextOnly.id)
+          : database.abandonWorkerDispatch(contextOnly.id, 'epoch_test')
 
       expect(released).toMatchObject({
         disposition: 'context_only',
@@ -515,7 +514,9 @@ describe('Task/Dispatch lifecycle guards', () => {
         )
         expect(database.settleWorkerStop(released.dispatchId).state).toBe('stopped')
       } else {
-        expect(database.abandonWorkerDispatch(released.dispatchId).disposition).toBe('abandoned')
+        expect(database.abandonWorkerDispatch(released.dispatchId, 'epoch_test').disposition).toBe(
+          'abandoned'
+        )
       }
 
       expect(database.getTask(task.id)?.status).toBe('dispatched')
@@ -546,7 +547,9 @@ describe('Task/Dispatch lifecycle guards', () => {
     expect(database.beginWorkerStop(stopping.dispatchId, 'runtime_test').disposition).toBe(
       'stopping'
     )
-    expect(database.abandonWorkerDispatch(abandoned.dispatchId).disposition).toBe('abandoned')
+    expect(database.abandonWorkerDispatch(abandoned.dispatchId, 'epoch_test').disposition).toBe(
+      'abandoned'
+    )
     expect(database.getTask(task.id)?.status).toBe('dispatched')
 
     expect(database.settleWorkerStop(stopping.dispatchId).state).toBe('stopped')
@@ -690,7 +693,7 @@ function startWorker(database: OrchestrationDb, taskId: string, name: string): W
   const paneKey = `tab_${name}:aaaaaaaa-aaaa-4aaa-8aaa-${paneSuffix}`
   const processIncarnation = `${name}:1`
   const handle = `term_${name}`
-  const capability = database.prepareStartingWorkerAuthority({
+  database.prepareStartingWorkerAuthority({
     dispatchId: started.dispatch.id,
     handle,
     paneKey,
@@ -701,7 +704,7 @@ function startWorker(database: OrchestrationDb, taskId: string, name: string): W
     terminalOwnership: 'created'
   })
   database.markWorkerDispatchReady(started.dispatch.id)
-  return { dispatchId: started.dispatch.id, capability, handle, paneKey, processIncarnation }
+  return { dispatchId: started.dispatch.id, handle, paneKey, processIncarnation }
 }
 
 function sqliteFor(database: OrchestrationDb): Database.Database {
