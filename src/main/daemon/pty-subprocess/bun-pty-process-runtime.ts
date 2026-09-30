@@ -20,7 +20,6 @@ import type {
 } from './bun-pty-process-contract'
 import { resolveBunRuntime } from './bun-pty-process-capabilities'
 import { createBunPtyProducerFlowControl } from './bun-pty-process-flow-control'
-import { createPtyOutputPacer } from './bun-pty-output-pacer'
 
 export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): BunPtyProcess {
   const runtime = resolveBunRuntime(deps.runtime)
@@ -73,7 +72,6 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
     }
   }
 
-  const outputPacer = createPtyOutputPacer(emitData)
   const emitExit = (code: number): void => {
     if (exited) {
       return
@@ -85,8 +83,6 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
     exitSignal = Object.entries(constants.signals).find(
       ([name]) => name === processHandle.signalCode
     )?.[1]
-    // Queued slices precede the decoder tail and must reach listeners before exit.
-    outputPacer.flush()
     const pending = decoder.decode()
     if (pending) {
       emitData(pending)
@@ -122,7 +118,10 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
       rows: args.rows,
       name: args.env.TERM ?? 'xterm-256color',
       data: (_terminal, data) => {
-        outputPacer.push(decoder.decode(data, { stream: true }))
+        const decoded = decoder.decode(data, { stream: true })
+        if (decoded) {
+          emitData(decoded)
+        }
       },
       exit() {
         terminalFinished = true
