@@ -354,7 +354,8 @@ it('a card sent now into the running turn comes back paused when Stop withdraws 
     uuid: 'interrupted-result'
   })
 
-  await eventually(async () => {
+  // Inside the test's budget, so a re-send fails on this diff rather than the timeout.
+  await vi.waitFor(async () => {
     const page = await host.history({ sessionId: SESSION, direction: 'tail' })
     expect({
       pause: page.ok ? (page.page.queuePause ?? null) : 'history refused',
@@ -365,6 +366,6 @@ it('a card sent now into the running turn comes back paused when Stop withdraws 
       cards: ['waiting'],
       sends: [{ origin: 'client', state: 'rejected', reason: DISPATCH_REJECTED_CANCELLED }]
     })
-  })
+  }, 5_000)
   expect(connection.sent).toHaveLength(2)
 }, 15_000)
