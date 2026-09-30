@@ -322,7 +322,7 @@ describe('Last-status persistence', () => {
     try {
       expect(server.getStatusSnapshot()).toHaveLength(1)
 
-      server.clearPaneKeyAliasesForPty('pty-1', 'ended')
+      server.clearPaneKeyAliasesForPty('pty-1', 'released')
 
       expect(server.getStatusSnapshot()).toEqual([])
       expect(statusListener).toHaveBeenCalledWith([])
@@ -344,7 +344,9 @@ describe('Last-status persistence', () => {
       'conn-1'
     )
 
-    server.clearPaneKeyAliasesForPty('old-pty', 'ended', { shouldClearStablePaneKey: () => false })
+    server.clearPaneKeyAliasesForPty('old-pty', 'released', {
+      shouldClearStablePaneKey: () => false
+    })
 
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({
@@ -401,7 +403,7 @@ describe('Last-status persistence', () => {
       let parsed = JSON.parse(readFileSync(lastStatusPath(), 'utf8'))
       expect(parsed.entries[PANE]).toBeTruthy()
 
-      server.clearPaneState(PANE, 'ended')
+      server.clearPaneState(PANE, 'released')
       server.flushStatusPersistSync()
       parsed = JSON.parse(readFileSync(lastStatusPath(), 'utf8'))
       expect(parsed.entries[PANE]).toBeUndefined()

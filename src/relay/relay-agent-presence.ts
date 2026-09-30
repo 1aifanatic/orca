@@ -1,34 +1,74 @@
 import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listener-event'
+import {
+  isSameAgentProcess,
+  type AgentProcessIdentity,
+  type AgentProcessPresence
+} from '../shared/agent-process-presence'
+import { handOverDeadOwner } from '../shared/agent-hook-presence-transition'
 import { probeAgentProcessPresence } from '../shared/agent-process-presence-probe'
 
-export class RelayAgentPresence {
-  private readonly pending = new WeakMap<AgentHookEventPayload, Promise<void>>()
+type PendingCheck = {
+  owner: AgentProcessIdentity
+  check: Promise<void>
+  successor?: AgentProcessPresence
+}
 
+export class RelayAgentPresence {
+  // Why keyed by pane and owner: every hook rewrites the row, and one owner needs only one probe.
+  private readonly pending = new Map<string, PendingCheck>()
+
+  /** `publish` gets a handover when a live process doubted the owner, otherwise the owner's exit. */
   check(
     row: AgentHookEventPayload | undefined,
     current: () => AgentHookEventPayload | undefined,
-    publish: (event: AgentHookEventPayload) => void
+    publish: (event: AgentHookEventPayload, handover: boolean) => void,
+    successor?: AgentProcessPresence
   ): Promise<void> {
-    if (!row?.agentPresence?.process || row.agentPresence.ended) {
+    const presence = row?.agentPresence
+    const owner = presence?.process
+    if (!row || !presence || !owner || presence.ended) {
       return Promise.resolve()
     }
-    const existing = this.pending.get(row)
-    if (existing) {
-      return existing
+    const existing = this.pending.get(row.paneKey)
+    if (existing && isSameAgentProcess(existing.owner, owner)) {
+      // Why: the latest doubting process is the one still reporting.
+      existing.successor = successor ?? existing.successor
+      return existing.check
     }
-    const presence = row.agentPresence
-    const check = probeAgentProcessPresence(presence.process)
+    const entry: PendingCheck = { owner, check: Promise.resolve(), successor }
+    entry.check = probeAgentProcessPresence(owner)
       .then((verdict) => {
-        if (verdict === 'exited' && current() === row) {
-          publish({
-            ...row,
+        // Why: fence on the owner, not the row object — the doubting process keeps rewriting it.
+        const latest = current()
+        const latestOwner = latest?.agentPresence
+        if (
+          verdict !== 'exited' ||
+          !latest ||
+          !latestOwner?.process ||
+          latestOwner.ended ||
+          !isSameAgentProcess(latestOwner.process, owner)
+        ) {
+          return
+        }
+        if (entry.successor) {
+          publish(handOverDeadOwner(latest, entry.successor), true)
+          return
+        }
+        publish(
+          {
+            ...latest,
             hookEventName: 'AgentProcessExit',
             agentPresence: { ...presence, ended: true }
-          })
+          },
+          false
+        )
+      })
+      .finally(() => {
+        if (this.pending.get(row.paneKey) === entry) {
+          this.pending.delete(row.paneKey)
         }
       })
-      .finally(() => this.pending.delete(row))
-    this.pending.set(row, check)
-    return check
+    this.pending.set(row.paneKey, entry)
+    return entry.check
   }
 }

@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { agentHookServer } from '../agent-hooks/server'
+import { publishableAgentPresence } from '../agent-hooks/server/server-status-identity'
 import { setMigrationUnsupportedPtyListener } from '../agent-hooks/migration-unsupported-pty-state'
 import { getDashboardPopoutWindow } from '../window/dashboard-popout-window'
 import {
@@ -28,7 +29,7 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
   agentHookServer.setListener(
     ({
       paneKey,
-      agentPresence,
+      agentPresence: recordedPresence,
       tabId,
       worktreeId,
       connectionId,
@@ -50,6 +51,10 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
       if (state.mainWindow?.isDestroyed()) {
         return
       }
+      const agentPresence = publishableAgentPresence({
+        agentPresence: recordedPresence,
+        connectionId
+      })
       // Why: the renderer still derives structured rows from its own feed subscription; forwarding
       // these too would give one pane key two writers until that bridge is retired.
       if (structuredHost) {

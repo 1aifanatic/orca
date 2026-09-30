@@ -113,7 +113,7 @@ describe('onPtyExit agent-status reconciliation', () => {
   // The runtime resolves exit pane keys from its own PTY record, not the provider's pane mapping
   // that clearProviderPtyState has already dropped by the time onPtyExit runs.
   it.each([false, true])(
-    'ends the identified owner through the runtime pane key, after provider cleanup=%s',
+    'retires the identified owner through the runtime pane key, after provider cleanup=%s',
     (providerCleanupRan) => {
       const store = new OwnerStatusStore()
       store.publishOwner()
@@ -123,10 +123,8 @@ describe('onPtyExit agent-status reconciliation', () => {
       runtimeWithBoundPane((paneKeys) =>
         store.reconcileEndedProcessForPaneKeys(paneKeys, { kind: 'terminal-ended' })
       ).onPtyExit(PTY, 0)
-      expect(store.getStatusSnapshotForPane(PANE)[0]?.agentPresence).toEqual({
-        ...owner,
-        ended: true
-      })
+      expect(store.getStatusSnapshotForPane(PANE)).toEqual([])
+      expect(store.hasVerifiableAgentProcess(PANE)).toBe(false)
       store.stop()
     }
   )

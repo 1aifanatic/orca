@@ -121,7 +121,7 @@ describe('opencode binder loop', () => {
     writeDb(dbPath, 'session_v2')
     await server.runBinderRound()
     expect(server.readRegistry('ses_live')).toBe(PANE_A)
-    server.clearPaneState(PANE_A, 'ended')
+    server.clearPaneState(PANE_A, 'released')
     expect(server.readRegistry('ses_live')).toBeUndefined()
   })
 

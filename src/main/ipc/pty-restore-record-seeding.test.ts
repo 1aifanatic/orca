@@ -584,7 +584,7 @@ describe('registerPtyHandlers', () => {
 
     clearProviderPtyState(second.id)
     expect(getPtyIdForPaneKey(stablePaneKey)).toBeUndefined()
-    expect(clearAgentHookPaneStateMock).toHaveBeenCalledWith(stablePaneKey, 'ended')
+    expect(clearAgentHookPaneStateMock).toHaveBeenCalledWith(stablePaneKey, 'released')
   })
   it('tells the host a local teardown ended the owner and a remote one proves nothing', async () => {
     registerPtyHandlers(mainWindow as never)
@@ -606,7 +606,7 @@ describe('registerPtyHandlers', () => {
     }
 
     clearProviderPtyState(await spawnPane())
-    expect(clearAgentHookPaneStateMock).toHaveBeenLastCalledWith(stablePaneKey, 'ended')
+    expect(clearAgentHookPaneStateMock).toHaveBeenLastCalledWith(stablePaneKey, 'released')
 
     const disconnected = await spawnPane()
     setPtyOwnership(disconnected, 'ssh-a')

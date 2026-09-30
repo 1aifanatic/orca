@@ -12,6 +12,7 @@ import type {
   PaneOwnerDisposition
 } from './server-types'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
+import { isUncheckableAgentOwner } from './server-status-identity'
 
 /** A `providerSessionOnly` remnant carries no state claim, so it cannot gate a pane `working`. */
 function toRetainedRow(
@@ -28,8 +29,8 @@ function toRetainedRow(
   return { ...resumeIdentity, providerSessionOnly: true, retainedForLiveness: true }
 }
 
-/** What survives a pane cleanup: the process owner per the caller's evidence, else resume identity
- *  when the terminal outlives its agent. */
+/** What survives a pane cleanup: a still-unverified owner, the ended owner of a surviving
+ *  terminal, else resume identity when the terminal outlives its agent. */
 function rowAfterPaneCleanup(
   entry: EnrichedAgentHookEventPayload | undefined,
   disposition: PaneOwnerDisposition
@@ -45,6 +46,7 @@ function rowAfterPaneCleanup(
   if (!retained || disposition === 'unverified' || presence.ended) {
     return retained
   }
+  // disposition is 'agent-exited': the terminal lives, so the exit is the owner's own.
   return {
     ...retained,
     agentPresence: { ...presence, ended: true },
@@ -56,9 +58,10 @@ function endedProcessDisposition(
   previous: EnrichedAgentHookEventPayload | undefined,
   evidence: EndedProcessEvidence
 ): PaneOwnerDisposition | null {
-  const owner = previous?.agentPresence?.process
+  const owner =
+    previous && !isUncheckableAgentOwner(previous) ? previous.agentPresence?.process : undefined
   if (evidence.kind === 'terminal-ended') {
-    return 'ended'
+    return 'released'
   }
   if (!owner) {
     return 'agent-exited'
@@ -92,17 +95,9 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         retained,
         AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
       )
-    }
-    if (retained && owner?.process && disposition === 'ended' && !previous?.agentPresence?.ended) {
-      // Why: a torn-down terminal is not the agent finishing; renderers drop the owner as main
-      // dropped the row, so sleep keeps the user's view and raises no finished notice.
-      this.emitAgentPresenceReleased({ paneKey: retained.paneKey, process: owner.process })
-    } else if (
-      retained &&
-      owner?.process &&
-      (!previous?.providerSessionOnly || owner !== previous.agentPresence)
-    ) {
-      this.emitEnrichedStatus(retained)
+      if (owner?.process && (!previous?.providerSessionOnly || owner !== previous.agentPresence)) {
+        this.emitEnrichedStatus(retained)
+      }
     }
     this.commitStatusRowMutation(previous, retained)
   }

@@ -1,6 +1,6 @@
 import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
-import { worktreeIdsEqual } from '../../../shared/worktree/id'
+import { getRepoIdFromWorktreeId, worktreeIdsEqual } from '../../../shared/worktree/id'
 import { paneCacheKeyMatchesTab } from './server-status-identity'
 import { AgentHookServerCleanup } from './server-cleanup'
 import type { EnrichedAgentHookEventPayload, PaneOwnerDisposition } from './server-types'
@@ -104,10 +104,19 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
 
   /** Drop the rows of every tab a removed workspace owned, as closing those tabs would. */
   dropStatusEntriesForWorktree(worktreeId: string): void {
+    this.dropStatusEntriesForWorktrees((candidate) => worktreeIdsEqual(candidate, worktreeId))
+  }
+
+  /** Same for every workspace of a removed repo. */
+  dropStatusEntriesForRepo(repoId: string): void {
+    this.dropStatusEntriesForWorktrees((candidate) => getRepoIdFromWorktreeId(candidate) === repoId)
+  }
+
+  private dropStatusEntriesForWorktrees(matches: (worktreeId: string) => boolean): void {
     const tabIds = new Set<string>()
     for (const [paneKey, row] of this.state.lastStatusByPaneKey) {
       const tabId = parsePaneKey(paneKey)?.tabId
-      if (tabId && row.worktreeId && worktreeIdsEqual(row.worktreeId, worktreeId)) {
+      if (tabId && row.worktreeId && matches(row.worktreeId)) {
         tabIds.add(tabId)
       }
     }

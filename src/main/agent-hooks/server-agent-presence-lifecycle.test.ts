@@ -94,23 +94,20 @@ async function restartWithOwnerRow(): Promise<LifecycleServer> {
 }
 
 describe('host owner lifecycle', () => {
-  it('ends the owner with its local terminal and releases it to renderers without an exit', () => {
+  it('releases the owner with its local terminal in every projection, never as an exit', () => {
     const server = createServer()
     server.publish()
     const live = vi.fn()
     const released = vi.fn()
     server.subscribeEnrichedStatus(live)
     server.setAgentPresenceReleaseListener(released)
-    server.clearPaneState(PANE, 'ended')
-    expect(server.getStatusSnapshot()).toEqual([
-      expect.objectContaining({
-        providerSessionOnly: true,
-        agentPresence: { ...owner, ended: true }
-      })
-    ])
-    // Why: sleep and hibernate tear the terminal down; that must not read as the agent finishing.
+    server.clearPaneState(PANE, 'released')
+    // Why: sleep and hibernate tear the terminal down; that must not read as the agent finishing,
+    // neither live nor in a later snapshot, replay or restart.
     expect(released).toHaveBeenCalledWith({ paneKey: PANE, process: owner.process })
     expect(live).not.toHaveBeenCalled()
+    expect(server.getStatusSnapshot()).toEqual([])
+    expect(server.serializedEntries()).toEqual({})
   })
 
   it('lets the restored-pane reaper end an owner whose terminal died while Orca was down', async () => {
@@ -122,9 +119,7 @@ describe('host owner lifecycle', () => {
       () => true
     )
     expect(reaped).toBe(1)
-    expect(server.getStatusSnapshot()).toEqual([
-      expect.objectContaining({ agentPresence: { ...owner, ended: true } })
-    ])
+    expect(server.getStatusSnapshot()).toEqual([])
     expect(server.hasVerifiableAgentProcess(PANE)).toBe(false)
   })
 
@@ -217,7 +212,7 @@ describe('host owner lifecycle', () => {
   it('drops a removed workspace like closing its tabs', () => {
     const server = createServer()
     server.publish()
-    server.clearPaneState(PANE, 'ended')
+    server.clearPaneState(PANE, 'unverified')
     server.publish({
       paneKey: GOOD_PANE,
       tabId: 'tab-good',
@@ -227,6 +222,14 @@ describe('host owner lifecycle', () => {
     server.dropStatusEntriesForWorktree('folder-1')
     expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([GOOD_PANE])
     expect(Object.keys(server.serializedEntries())).toEqual([GOOD_PANE])
+  })
+
+  it('drops every workspace of a removed repo', () => {
+    const server = createServer()
+    server.publish({ worktreeId: 'repo-a::/a' })
+    server.publish({ paneKey: GOOD_PANE, tabId: 'tab-good', worktreeId: 'repo-b::/b' })
+    server.dropStatusEntriesForRepo('repo-a')
+    expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([GOOD_PANE])
   })
 
   it('never lets a legacy shell-foreground signal end an identified owner', () => {
@@ -250,5 +253,18 @@ describe('host owner lifecycle', () => {
     })
     expect(projected).toHaveBeenCalledTimes(1)
     expect(projected).toHaveBeenLastCalledWith(null)
+  })
+
+  it('leaves an owner no host can check (WSL) to the legacy exit rules', async () => {
+    const server = createServer()
+    server.publish({ connectionId: 'wsl:Ubuntu' })
+    expect(server.hasVerifiableAgentProcess(PANE)).toBe(false)
+    await expect(server.checkAgentPresence(PANE)).resolves.toBeNull()
+    // Published without its process, so renderers keep the pre-presence rules for this pane.
+    expect(server.getStatusSnapshot()[0]?.agentPresence).toEqual({ agent: 'claude' })
+    expect(
+      server.reconcileEndedProcessForPaneKeys([PANE], { kind: 'legacy-shell-foreground' })
+    ).toBe(1)
+    expect(server.getStatusChangeSnapshot()).toEqual([])
   })
 })
