@@ -3,8 +3,8 @@
  * (design D2/D5), where `selectOrcadSlotRuntimeCommand` resolves a slot's `.runtime-node`.
  *
  * The official archive is uploaded as published and extracted on the host; the executable's
- * hash is checked there before it is published. Store-wide GC and the fallback ladder are
- * Phase 2: nothing here deletes a runtime.
+ * hash is checked there before it is published. Promotion runs under the store lock that
+ * store GC also takes (design D5); nothing here deletes a runtime.
  */
 import { randomBytes } from 'node:crypto'
 import { copyFile, link, mkdtemp, rm } from 'node:fs/promises'
@@ -26,12 +26,15 @@ import { execCommand } from './ssh-relay-deploy-helpers'
 import { uploadRelayDirectory } from './ssh-relay-install-transfers'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
 import { assertPosixOrcadHost } from './orcad-remote-host-support'
+import { withRuntimeStoreLock } from './remote-node-runtime-store-lock'
 
 export const REMOTE_NODE_RUNTIME_READY = 'ORCA_NODE_RUNTIME_READY'
 export const REMOTE_NODE_RUNTIME_MISSING = 'ORCA_NODE_RUNTIME_MISSING'
 export const REMOTE_NODE_RUNTIME_SELFTEST_FAILED = 'ORCA_NODE_RUNTIME_SELFTEST_FAILED'
 export const REMOTE_NODE_RUNTIME_EXIT_PREFIX = 'ORCA_RUNTIME_EXIT='
 const VERIFIED_MARKER = '.verified'
+/** Upload stages sit in the store beside the runtimes they become; store GC sweeps stale ones. */
+export const RUNTIME_STORE_STAGE_PREFIX = '.stage-'
 
 /** The pinned runtime ran on the host and did not report its version: a host verdict, with evidence. */
 export class RemoteNodeRuntimeSelfTestError extends Error {
@@ -188,7 +191,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
   const stageDir = joinRemotePath(
     host,
     remoteDirname(runtimeDir, host),
-    `.stage-${basename(runtimeDir)}-${token}`
+    `${RUNTIME_STORE_STAGE_PREFIX}${basename(runtimeDir)}-${token}`
   )
   const localStage = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
   try {
@@ -198,9 +201,28 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     )
     await exec(conn, `mkdir -p ${shellEscape(stageDir)}`, signal)
     await uploadRelayDirectory(conn, localStage, stageDir, host, { signal })
-    const promoted = await exec(
+    const storeDir = remoteDirname(runtimeDir, host)
+    // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
+    const promoted = await withRuntimeStoreLock(
       conn,
-      promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
+      host,
+      storeDir,
+      async () =>
+        (
+          await exec(conn, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), signal)
+        ).trim() === REMOTE_NODE_RUNTIME_READY
+          ? REMOTE_NODE_RUNTIME_READY
+          : exec(
+              conn,
+              promoteRemoteNodeRuntimeCommand(host, {
+                stageDir,
+                archive,
+                runtimeDir,
+                target,
+                token
+              }),
+              signal
+            ),
       signal
     )
     const selfTestFailure = promoted.indexOf(REMOTE_NODE_RUNTIME_SELFTEST_FAILED)

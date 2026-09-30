@@ -11,6 +11,8 @@ import {
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
 import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-pinned-node-install'
+import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
+import { NODE_RUNTIME_ASSETS } from '../../shared/node-runtime-pin'
 import type { SshConnection } from './ssh-connection'
 import { RELAY_REMOTE_DIR, type RelayPlatform } from './relay-protocol'
 import type { MultiplexerTransport } from './ssh-channel-multiplexer'
@@ -823,6 +825,14 @@ async function deployAndLaunchRelayOnRuntime({
         // in the same connect rather than the next one.
         .then(() =>
           gcRemoteRipgrepCache(conn, hostPlatform, remoteHome, { pinnedEntry: ripgrepEntry })
+        )
+        // Same ordering reason as ripgrep: the version pass drops the refs that held old runtimes.
+        .then(() =>
+          pinned
+            ? gcRemoteNodeRuntimeStore(conn, hostPlatform, remoteHome, {
+                currentPins: [NODE_RUNTIME_ASSETS[pinned.target].executableSha256]
+              })
+            : undefined
         )
         .then(() => true)
         .catch(
