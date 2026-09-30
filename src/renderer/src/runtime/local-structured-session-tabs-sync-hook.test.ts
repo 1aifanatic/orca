@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(async () => undefined),
   hostInstalled: false,
   isWebClient: false,
-  installedListener: null as null | (() => void)
+  installedListeners: new Array<() => void>()
 }))
 
 vi.mock('./local-structured-session-tabs-sync/subscription', () => ({
@@ -37,7 +37,7 @@ beforeEach(() => {
   mocks.start.mockClear()
   mocks.hostInstalled = false
   mocks.isWebClient = false
-  mocks.installedListener = null
+  mocks.installedListeners.splice(0)
   resetLocalStructuredChatsForTests()
   Object.defineProperty(window, 'api', {
     configurable: true,
@@ -45,7 +45,7 @@ beforeEach(() => {
       app: {
         hasStructuredAgentSessionHost: vi.fn(async () => mocks.hostInstalled),
         onStructuredAgentSessionHostInstalled: vi.fn((listener: () => void) => {
-          mocks.installedListener = listener
+          mocks.installedListeners.push(listener)
           return () => undefined
         })
       }
@@ -84,7 +84,7 @@ describe("this machine's structured chat mirror", () => {
     await mountSync()
     expect(mocks.start).not.toHaveBeenCalled()
 
-    act(() => mocks.installedListener?.())
+    act(() => mocks.installedListeners.forEach((listener) => listener()))
 
     expect(mocks.start).toHaveBeenCalledOnce()
   })
