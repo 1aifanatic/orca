@@ -21,10 +21,7 @@ import {
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
-import type {
-  StructuredAgentSessionCloseCause,
-  StructuredAgentSessionLifetimeContext
-} from './structured-agent-session-host-lifetime'
+import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import {
   ensureStructuredAgentSessionAgent,
   ensureStructuredAgentSessionAgentForOperation
@@ -205,13 +202,12 @@ export class StructuredAgentSessionHost {
       tasks: this.tasks,
       reconcileLeases: (sessionId) => this.reconcileLeases(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
-      publishStatus: this.clientDelivery.publishStatus,
       openConversation: this.conversationDelivery.open
     }
   }
   /** Releases a session's resources without ending the conversation; see the lifetime's close.
    *  `user-close` makes a turn it cuts short the user's cancellation; an `evict` leaves it news. */
-  close = (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> =>
+  close: StructuredAgentSessionConversationLifetime['close'] = (sessionId, cause) =>
     this.lifetime.close(sessionId, cause)
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
@@ -321,8 +317,8 @@ export class StructuredAgentSessionHost {
   handoffStatus = (sessionId: string): SessionWire.AgentSessionHandoffStatus =>
     structuredAgentSessionOwnerStatus(this.deps, sessionId)
 
-  history: StructuredAgentSessionBackgroundTaskChannel['history'] = (request) =>
-    this.backgroundTasks.history(request)
+  history: StructuredAgentSessionBackgroundTaskChannel['history'] = (request, scope) =>
+    this.backgroundTasks.history(request, scope)
 
   /** The fully reduced timeline, for readers that cannot tolerate a page's ambiguity — rows are
    *  revised or tombstoned in place, so an item's ABSENCE from a bounded page proves nothing. */
