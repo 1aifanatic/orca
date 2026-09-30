@@ -4,9 +4,10 @@
 // the same request reuses it and the host upserts one row instead of two (a
 // payload naming no target gets a new one on every call), and
 // every result is discarded unless the runtime fence it was issued against is
-// still the current one; a conversation command's own reply is kept while the
-// pane still shows its chat. A write that did not happen is reported once, in the
-// person's words, by the caller that knows where to say it; nothing latches.
+// still the current one; the reply to the conversation command a pane still
+// waits on is kept, since that command may move the fence itself. A write that
+// did not happen is reported once, in the person's words, by the caller that
+// knows where to say it; nothing latches.
 
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
@@ -60,10 +61,14 @@ export function useStructuredAgentSessionMutate(args: {
 } {
   const { enabled = true, sessionId, stateRef, target } = args
   const operationIds = useRef(new Map<string, string>())
-  const paneRef = useRef({ enabled, sessionId })
+  const enabledRef = useRef(enabled)
+  // The conversation command this pane waits on for this chat; only its reply may outlive a fence
+  // move, and closing the pane or showing another chat forgets it.
+  const commandInFlight = useRef<object | null>(null)
   useEffect(() => {
     // Why: update the gate after commit so render stays free of ref mutations.
-    paneRef.current = { enabled, sessionId }
+    enabledRef.current = enabled
+    commandInFlight.current = null
   }, [enabled, sessionId])
 
   const write = useCallback(
@@ -73,18 +78,25 @@ export function useStructuredAgentSessionMutate(args: {
       fields: Record<string, unknown>,
       operationIdOverride?: string | null
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
-      if (!enabled || !paneRef.current.enabled || stateRef.current.fence === null) {
+      if (!enabled || !enabledRef.current || stateRef.current.fence === null) {
         return { kind: 'dropped' }
       }
       const targetFence = stateRef.current.fence
+      const request = {}
+      if (fingerprintMethod === 'agentSession.conversationCommand') {
+        commandInFlight.current = request
+      }
       // Whether this call's answer is still for what the pane shows. Another fence's result is about
-      // a runtime the pane replaced; a conversation command may start the agent itself, moving the
-      // fence under its own reply, which is about the chat, so only a closed or other chat drops it.
-      const settlesHere = () =>
-        paneRef.current.enabled &&
-        (stateRef.current.fence === targetFence ||
-          (fingerprintMethod === 'agentSession.conversationCommand' &&
-            paneRef.current.sessionId === sessionId))
+      // a runtime the pane replaced; a conversation command may itself start or stop the agent,
+      // moving the fence under its own reply, so that reply is kept while this pane still waits on
+      // it. Called once, when the call settles.
+      const settlesHere = (): boolean => {
+        const waitedOn = commandInFlight.current === request
+        if (waitedOn) {
+          commandInFlight.current = null
+        }
+        return enabledRef.current && (stateRef.current.fence === targetFence || waitedOn)
+      }
       const key = `${sessionId}:${fingerprintMethod}:${JSON.stringify(fields)}`
       // A write naming no target acts on whatever is in flight when the host reaches it, so every
       // press is its own write; one naming its target keeps its id for a retry to replay.

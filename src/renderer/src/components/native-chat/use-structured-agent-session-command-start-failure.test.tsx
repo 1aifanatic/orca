@@ -47,6 +47,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
 
 import { i18n } from '@/i18n/i18n'
 import { useStructuredAgentSession } from './use-structured-agent-session'
+import { useStructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 
 type Pane = { sessionId: string; transportEnabled: boolean }
 
@@ -215,6 +216,71 @@ describe('a conversation command whose reply lands after the fence moved', () =>
       }
     })
     expect(outcome).toEqual({ accepted: false, error: "The command didn't run." })
+  })
+
+  it('keeps the reply of a /clear that stopped the running agent: done clears the draft, failed says why', async () => {
+    // A live runtime at fence 3; stopping it for the new chat moves the fence during the request.
+    expect(await commandAcrossFenceMove('clear', commandReply('clear'))).toEqual({
+      accepted: true,
+      error: null
+    })
+    fence = 3
+    expect(await commandAcrossFenceMove('clear', commandReply('clear', NOT_SIGNED_IN))).toEqual({
+      accepted: false,
+      error: expect.stringMatching(/^Codex is not signed in.*\/clear/)
+    })
+  })
+
+  it('drops a reply the pane stopped waiting on: it left the chat and came back', async () => {
+    const answer = heldWrites()
+    const { result, rerender } = renderPane()
+    let sent: Promise<{ accepted: boolean; error: string | null }> = Promise.resolve({
+      accepted: true,
+      error: null
+    })
+    act(() => {
+      sent = result.current.runConversationCommand('clear')
+    })
+    fence = 5
+    rerender({ sessionId: 'session-2', transportEnabled: true })
+    rerender({ sessionId: 'session-1', transportEnabled: true })
+    await act(async () => {
+      answer(commandReply('clear', NOT_SIGNED_IN))
+      await sent
+    })
+    expect(await sent).toEqual({ accepted: false, error: null })
+  })
+
+  it('drops a reply the pane stopped waiting on: a newer command replaced it', async () => {
+    const answers: ((reply: unknown) => void)[] = []
+    mocks.call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answers.push(resolve)
+        })
+    )
+    const stateRef: { current: { fence: number | null } } = { current: { fence: 3 } }
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionMutate({
+        sessionId: 'session-1',
+        target: { kind: 'local' },
+        stateRef
+      })
+    )
+    const command = (): Promise<unknown> =>
+      result.current.write('agentSession.conversationCommand', 'agentSession.conversationCommand', {
+        command: 'clear'
+      })
+    const older = command()
+    const newer = command()
+    stateRef.current.fence = 5
+    await act(async () => {
+      answers[0](commandReply('clear', NOT_SIGNED_IN))
+      answers[1](commandReply('clear'))
+      await Promise.all([older, newer])
+    })
+    expect(await older).toEqual({ kind: 'dropped' })
+    expect(await newer).toEqual({ kind: 'done', value: commandReply('clear').value })
   })
 
   it('drops a reply once the pane has moved to another chat or closed', async () => {

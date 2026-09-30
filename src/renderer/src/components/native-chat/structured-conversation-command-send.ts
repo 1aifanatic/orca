@@ -39,7 +39,7 @@ export async function sendStructuredConversationCommand(input: {
     if (outcome.kind === 'not-done') {
       return { accepted: false, error: outcome.notice }
     }
-    // Answered after the pane closed or moved to another chat: there is no one here to tell.
+    // The pane stopped waiting on this reply (closed, left the chat, or sent a newer command).
     if (outcome.kind === 'dropped') {
       return { accepted: false, error: null }
     }
