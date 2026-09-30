@@ -4,7 +4,7 @@
 // that runs for half a minute leaves one journal row at its start. The lease renewal the host
 // wrote every ten seconds is what saw the child working after that row.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,9 +18,15 @@ import {
   completedStructuredAgentTurnSeconds,
   selectStructuredAgentTurnTimings
 } from '../../../shared/structured-agent-session-turn-timing'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import { AGENT_SESSION_STORE_FILE_NAME } from '../../runtime/agent-session-record-store-file'
-import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import {
+  openTestAgentSessionRecordStore,
+  seedTestAgentSessionRecordStore
+} from '../../runtime/agent-session-record-store-test-harness'
+import {
+  closeTestJournalHostDatabases,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import {
   AgentSessionAcquisitionExitUnprovenError,
@@ -93,21 +99,8 @@ function crashedClaudeRecord(): AgentSessionRecord {
 }
 
 async function seedCrashedStore(): Promise<void> {
-  const directory = join(root, 'store')
-  await mkdir(directory, { recursive: true })
-  await writeFile(
-    join(directory, AGENT_SESSION_STORE_FILE_NAME),
-    JSON.stringify({
-      schemaVersion: 2,
-      hostId: 'local',
-      records: { [SESSION]: crashedClaudeRecord() },
-      operations: {},
-      retiredClaimKeys: [],
-      unusableRecords: {}
-    }),
-    'utf-8'
-  )
-  store = await AgentSessionRecordStore.open({ directory, hostId: 'local' })
+  await seedTestAgentSessionRecordStore(root, { records: [crashedClaudeRecord()] })
+  store = await openTestAgentSessionRecordStore(root)
 }
 
 /** A running turn whose only row after its start is a Bash call that never reported back, for a
@@ -122,10 +115,7 @@ async function seedClaudeToolTurn(): Promise<void> {
       agent: 'claude',
       providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
     },
-    journalDir: journalDirectoryFor(root, {
-      workspaceId: LOCATION.workspaceId,
-      sessionId: SESSION
-    }),
+    database: openTestJournalHostDatabase(root),
     now: () => now
   })
   await journal.appendSubmission({
@@ -170,7 +160,7 @@ function openHost(overrides: Partial<StructuredAgentSessionHostDeps>): void {
       setOption: vi.fn(),
       supportsCreate: () => true
     },
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-new',
     now: () => RELAUNCHED_AT,
@@ -193,6 +183,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await host?.flushAllStreamedEvents()
+  closeTestJournalHostDatabases()
   await rm(root, { recursive: true, force: true })
 })
 

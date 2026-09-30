@@ -16,7 +16,8 @@ import {
 } from '../../shared/structured-agent-session-reducer'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
-import { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
 import { CodexJournalPrompts } from './codex-structured-journal-prompts'
 import { CODEX_USER_INPUT_METHOD } from './codex-structured-prompt-replies'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -34,6 +35,7 @@ import {
   projectStructuredQuestionMessages,
   structuredQuestionTranscript
 } from '../../renderer/src/components/native-chat/structured-agent-question-projection'
+import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -89,11 +91,11 @@ beforeEach(async () => {
     answerPrompt: vi.fn(async ({ commit }) => commit()),
     setOption: vi.fn(async () => undefined)
   }
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter,
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
     // Every write lands on its own millisecond, as it does live.
