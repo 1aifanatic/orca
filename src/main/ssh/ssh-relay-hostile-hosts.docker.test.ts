@@ -69,6 +69,11 @@ describe('SSH relay hostile-host matrix', () => {
     cleanupAppEnvironment?.()
   })
 
+  // Why: with every cell skipped the job would pass having deployed nothing.
+  it.runIf(RUN)('selects at least one cell this machine can host', () => {
+    expect(SELECTED.size).toBeGreaterThan(0)
+  })
+
   for (const cell of HOSTILE_HOST_CELLS) {
     it.skipIf(!SELECTED.has(cell.id))(
       `${cell.id} lands on ${cell.expect.outcome === 'launched' ? `rung ${cell.expect.rung}` : cell.expect.outcome}`,

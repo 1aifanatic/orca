@@ -107,16 +107,19 @@ describe('sftp-upload', () => {
       await writeFile(join(realParent, 'root', 'asset.txt'), 'asset')
       const linkedParent = `${realParent}-link`
       await symlink(realParent, linkedParent)
-      const localDir = join(linkedParent, 'root')
-      const sftp = createSftpMock()
+      try {
+        const localDir = join(linkedParent, 'root')
+        const sftp = createSftpMock()
 
-      await uploadDirectory(sftp, localDir, '/remote/assets', localDir)
+        await uploadDirectory(sftp, localDir, '/remote/assets', localDir)
 
-      expect(sftp.createWriteStream).toHaveBeenCalledWith('/remote/assets/asset.txt', {
-        flags: 'w'
-      })
-      await rm(linkedParent)
-      await rm(realParent, { recursive: true, force: true })
+        expect(sftp.createWriteStream).toHaveBeenCalledWith('/remote/assets/asset.txt', {
+          flags: 'w'
+        })
+      } finally {
+        await rm(linkedParent, { force: true })
+        await rm(realParent, { recursive: true, force: true })
+      }
     }
   )
 

@@ -208,8 +208,8 @@ export function canRunHostileHostCell(cell: HostileHostCell, machine: HostileHos
 }
 
 /**
- * `ORCA_SSH_HOSTILE_HOST_CELLS=a,b` narrows a run; unset or empty runs every cell. Either way only
- * cells this machine can host are kept, so one dispatch list can feed the Linux and macOS jobs.
+ * `ORCA_SSH_HOSTILE_HOST_CELLS=a,b` narrows a run and every named cell must be hostable here;
+ * unset or empty runs every cell this machine can host.
  */
 export function selectHostileHostCells(
   filter: string | undefined,
@@ -223,6 +223,15 @@ export function selectHostileHostCells(
   const unknown = wanted.filter((id) => !cells.some((cell) => cell.id === id))
   if (unknown.length > 0) {
     throw new Error(`Unknown hostile-host cells: ${unknown.join(', ')}`)
+  }
+  // Why: a named cell skipped for the wrong OS or arch would leave its CI job green with no run.
+  const unhostable = cells.filter(
+    (cell) => wanted.includes(cell.id) && !canRunHostileHostCell(cell, machine)
+  )
+  if (unhostable.length > 0) {
+    throw new Error(
+      `Hostile-host cells cannot run on ${machine.platform}-${machine.arch}: ${unhostable.map((cell) => cell.id).join(', ')}`
+    )
   }
   return cells.filter(
     (cell) =>

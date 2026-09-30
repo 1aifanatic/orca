@@ -100,10 +100,14 @@ describe('hostile-host cells', () => {
       'macos-arm64-local-sshd'
     ])
     expect(
-      selectHostileHostCells('alpine-musl,macos-arm64-local-sshd', HOSTILE_HOST_CELLS, LINUX).map(
-        (c) => c.id
-      )
-    ).toEqual(['alpine-musl'])
+      selectHostileHostCells('macos-arm64-local-sshd', HOSTILE_HOST_CELLS, MAC_ARM).map((c) => c.id)
+    ).toEqual(['macos-arm64-local-sshd'])
+    expect(() =>
+      selectHostileHostCells('alpine-musl,macos-arm64-local-sshd', HOSTILE_HOST_CELLS, LINUX)
+    ).toThrow('cannot run on linux-x64: macos-arm64-local-sshd')
+    expect(() =>
+      selectHostileHostCells('macos-x64-local-sshd', HOSTILE_HOST_CELLS, MAC_ARM)
+    ).toThrow('cannot run on darwin-arm64: macos-x64-local-sshd')
     expect(canRunHostileHostCell(cell('macos-x64-local-sshd'), MAC_ARM)).toBe(false)
     expect(
       canRunHostileHostCell(cell('macos-x64-local-sshd'), { platform: 'darwin', arch: 'x64' })
