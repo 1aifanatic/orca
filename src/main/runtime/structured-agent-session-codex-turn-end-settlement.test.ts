@@ -1,7 +1,7 @@
 // A Codex send the turn it went into never took: the Stop that interrupts that turn
 // withdraws it, and nothing reads as working after. A send made while that turn runs, a
-// queued card's Send-now included, goes in as `turn/steer` naming it. A Stop sent before
-// Codex opens that turn waits for it to open, since Codex refuses an interrupt until then.
+// queued card's Send-now included, goes in as `turn/steer` naming it. A Stop or a send made
+// before Codex opens that turn waits for it to open, since Codex refuses an interrupt until then.
 // Driven through the shipped host, journal and Codex adapter; only the Codex child is fake,
 // keeping Codex 0.157's turn bookkeeping.
 
@@ -16,7 +16,7 @@ import type {
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
-import { CODEX_STOP_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-prompt-ownership'
+import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
@@ -302,6 +302,36 @@ describe("a queued card's Send-now while a Codex turn runs", () => {
   })
 })
 
+describe('a second send made after Codex answered the first, before it opened that turn', () => {
+  it('joins that turn once it opens, on a Codex that names a steered start falsely, so a Stop withdraws both', async () => {
+    turns = codexTurnLifecycleFake(
+      THREAD,
+      () => (method, params) => handlers?.onNotification?.(method, params),
+      { legacyStartAnswers: true }
+    )
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const followUp = await send('and check the tests')
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, followUp)).toBe('pending')
+    )
+    // Long enough for the follow-up to reach the adapter before Codex opens the first turn.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    turns.start()
+    await vi.waitFor(() => expect(steers + answers).toBe(2))
+
+    await stop()
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, followUp)).not.toBe('pending')
+    )
+    const after = await settled()
+    expect(verdictOf(after.submissions, opening)).toBe('withdrawn')
+    expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
+    expect(after.owesWork).toBe(false)
+  })
+})
+
 describe('a Stop sent after Codex answered a cold send, before it opened the turn', () => {
   it('waits for the turn to open, then stops it and withdraws the send', async () => {
     const sent = await send('look around')
@@ -354,7 +384,7 @@ describe('a Stop in that window that the turn never opens for', () => {
     const closing = host.close(SESSION)
 
     expect(
-      await settledWithin(closing, CODEX_STOP_TURN_OPEN_WAIT_MS + CHILD_EVICTION_TIMEOUT_MS)
+      await settledWithin(closing, CODEX_TURN_OPEN_WAIT_MS + CHILD_EVICTION_TIMEOUT_MS)
     ).not.toBe('held')
     expect(await settledWithin(stopping, 0)).not.toBe('held')
     expect(childCloses).toBe(1)

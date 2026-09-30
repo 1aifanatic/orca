@@ -152,14 +152,17 @@ export async function openAfterTurnStarts(
 }
 
 /** An acquired adapter over a fake Codex that keeps Codex's own turn bookkeeping. */
-export async function codexTurnLifecycleRig(options: { requestTimeoutMs?: number } = {}) {
+export async function codexTurnLifecycleRig(
+  options: { requestTimeoutMs?: number; legacyStartAnswers?: boolean } = {}
+) {
+  const { legacyStartAnswers, ...adapterOptions } = options
   const codex = fakeCodexAppServer()
   const notify = (method: string, params: unknown): void =>
     codex.connections.at(-1)?.handlers.onNotification?.(method, params)
-  const turns = codexTurnLifecycleFake(CODEX_TEST_THREAD_ID, () => notify)
+  const turns = codexTurnLifecycleFake(CODEX_TEST_THREAD_ID, () => notify, { legacyStartAnswers })
   Object.assign(codex.routes, turns.routes)
   const settlements: LateSettlement[] = []
-  const adapter = await acquiredCodexAdapter({ codex, settlements, ...options })
+  const adapter = await acquiredCodexAdapter({ codex, settlements, ...adapterOptions })
   const send = (clientMessageId: string) =>
     adapter.dispatch({
       sessionId: 'session-1',

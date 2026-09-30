@@ -5,7 +5,8 @@
 // the running turn, and `turn_interrupt_inner` refuses with -32600 until the
 // turn has started. The answer can be held, so a test can deliver it after the
 // turn's own frames, as the wire allows. `legacyStartAnswers` is a Codex before 0.148,
-// whose `turn/start` answers a steered send with its submission id, a turn that never opens.
+// whose `turn/start` answers a steered send with its submission id, a turn that never opens,
+// and whose `turn/steer` finds no turn to steer until the picked one has started.
 
 import { CodexAppServerRequestError } from './codex-app-server-connection'
 
@@ -59,17 +60,18 @@ export function codexTurnLifecycleFake(
   return {
     routes: {
       'turn/start': () => {
-        const turnId = active ?? picked ?? `turn-${++minted}`
+        const running = active ?? picked
+        const turnId = running ?? `turn-${++minted}`
         picked ??= active ? null : turnId
         lastTurn = turnId
-        const answeredId = options.legacyStartAnswers && active ? `turn-${++minted}` : turnId
+        const answeredId = options.legacyStartAnswers && running ? `turn-${++minted}` : turnId
         const answer = { turn: { id: answeredId, status: 'inProgress' } }
         const wait = held
         held = null
         return wait ? wait.then(() => answer) : answer
       },
       'turn/steer': (params) => {
-        const running = active ?? picked
+        const running = options.legacyStartAnswers ? active : (active ?? picked)
         if (!running) {
           throw refusal('turn/steer', 'no active turn to steer')
         }

@@ -1,6 +1,7 @@
 // A send made while a Codex turn runs goes in as `turn/steer` naming that turn, so the
 // send is bound to the turn that carries it and that turn's end can settle it. A steer
-// Codex refuses took no input, so the send falls back to `turn/start`.
+// Codex refuses took no input, so the send steers a turn opened meanwhile, once, or else
+// falls back to `turn/start`. A send made before Codex opens an earlier send's turn waits for it.
 
 import { describe, expect, it } from 'vitest'
 import { CodexAppServerRequestError } from './codex-app-server-request-error'
@@ -10,8 +11,10 @@ import {
 } from './codex-app-server-session'
 import {
   acquiredCodexAdapter,
+  codexTurnLifecycleRig,
   echoUserMessage,
   fakeCodexAppServer,
+  settledWithin,
   startTurn,
   CODEX_TEST_THREAD_ID,
   CODEX_TEST_USER_MESSAGE,
@@ -117,6 +120,32 @@ describe('a Codex send while a turn runs', () => {
     expect(connection.calls.at(-1)?.params).toMatchObject({ clientUserMessageId: 'client-1' })
   })
 
+  it('steers once more when Codex refuses because a turn Orca just heard of is running', async () => {
+    let steers = 0
+    const { connection, settlements, send, methods, endTurn } = await rig({
+      'turn/steer': () => {
+        steers += 1
+        if (steers === 1) {
+          // Codex moved on to a turn Orca did not start; its frames land before the refusal is read.
+          endTurn('turn-1', 'completed')
+          startTurn(connection, 'turn-2')
+          throw refusedSteer('expected active turn id `turn-1` but found `turn-2`')
+        }
+        return { turnId: 'turn-2' }
+      }
+    })
+    startTurn(connection, 'turn-1')
+
+    expect(await send('client-1')).toEqual({ state: 'admitted' })
+    expect(methods()).toEqual(['thread/start', 'turn/steer', 'turn/steer'])
+    expect(connection.calls.at(-1)?.params).toMatchObject({ expectedTurnId: 'turn-2' })
+    endTurn('turn-2', 'interrupted')
+
+    expect(settlements).toEqual([
+      expect.objectContaining({ clientMessageId: 'client-1', state: 'rejected' })
+    ])
+  })
+
   it('never re-sends a steer that may have landed, and keeps it armed for its echo', async () => {
     const { connection, settlements, send, methods } = await rig({
       'turn/steer': () => {
@@ -141,5 +170,43 @@ describe('a Codex send while a turn runs', () => {
 
     expect(await send('client-1')).toEqual({ state: 'admitted' })
     expect(methods()).toEqual(['thread/start', 'turn/start'])
+  })
+})
+
+describe('a Codex send made after Codex answered an earlier one, before it opened that turn', () => {
+  /** A Codex before 0.148, which names a steered start falsely and steers only an opened turn. */
+  async function answeredUnopened() {
+    const rig = await codexTurnLifecycleRig({ legacyStartAnswers: true })
+    expect(await rig.send('client-1')).toEqual({ state: 'admitted' })
+    const sending = rig.send('client-2')
+    expect(await settledWithin(sending)).toBe('held')
+    const methods = () => rig.codex.connections[0]!.calls.map(({ method }) => method)
+    expect(methods()).toEqual(['thread/start', 'turn/start'])
+    return { ...rig, sending, methods }
+  }
+
+  it('waits for that turn to open and steers it, so a Stop withdraws both', async () => {
+    const rig = await answeredUnopened()
+
+    rig.turns.start()
+
+    expect(await rig.sending).toEqual({ state: 'admitted' })
+    expect(rig.methods()).toEqual(['thread/start', 'turn/start', 'turn/steer'])
+    expect(await rig.adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).toEqual({
+      cancelled: true
+    })
+    expect(rig.settlements.map(({ clientMessageId }) => clientMessageId).sort()).toEqual([
+      'client-1',
+      'client-2'
+    ])
+  })
+
+  it('starts its own turn when that turn ends without opening', async () => {
+    const rig = await answeredUnopened()
+
+    rig.turns.end('failed')
+
+    expect(await rig.sending).toEqual({ state: 'admitted' })
+    expect(rig.methods()).toEqual(['thread/start', 'turn/start', 'turn/start'])
   })
 })

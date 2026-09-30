@@ -10,6 +10,10 @@ import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import {
+  codexRunningOrOpeningTurn,
+  type CodexTurnOpenWaits
+} from './codex-structured-turn-open-wait'
+import {
   codexDispatchRejection,
   codexTurnEndRejection
 } from './codex-structured-turn-end-settlement'
@@ -21,7 +25,9 @@ import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured
 // turn's end can settle it. A message sent while a turn is running goes in as
 // `turn/steer` naming that turn, so the answer names the turn that carries it.
 // `turn/start` would also steer it, with no second `turn/started`, but a Codex
-// before 0.148 answers that with an id no turn ever opens or ends under.
+// before 0.148 answers that with an id no turn ever opens or ends under. So a send
+// made after Codex answered an earlier one, before it opened that turn, waits for
+// the turn to open and steers it.
 
 /** Keys Codex accepts as per-turn overrides. An unlisted key would otherwise
  *  become an arbitrary client-controlled `turn/start` parameter. Permission posture is owned by
@@ -48,6 +54,7 @@ export type CodexTurnHost = {
   fastModeTierByModel: ReadonlyMap<string, string>
   dispatchEchoes: CodexDispatchEchoes
   activeTurnIds?: ReadonlySet<string>
+  turnOpenWaits: Pick<CodexTurnOpenWaits, 'wait'>
 }
 
 function turnInputFor(body: AgentJournalMessageItem): Record<string, unknown>[] {
@@ -140,8 +147,13 @@ export async function startCodexTurn(
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
     return false
   }
-  const runningTurnId = [...(host.activeTurnIds ?? [])].at(-1)
-  const steered = runningTurnId ? await steerCodexTurn(host, runningTurnId, input) : null
+  const runningTurnId = await codexRunningOrOpeningTurn(host)
+  let steered = runningTurnId ? await steerCodexTurn(host, runningTurnId, input) : null
+  // Refused because a turn Orca heard of meanwhile is running: steer that one, once.
+  const runningSince = steered ? undefined : [...(host.activeTurnIds ?? [])].at(-1)
+  if (runningSince && runningSince !== runningTurnId) {
+    steered = await steerCodexTurn(host, runningSince, input)
+  }
   if (steered) {
     return steered
   }
