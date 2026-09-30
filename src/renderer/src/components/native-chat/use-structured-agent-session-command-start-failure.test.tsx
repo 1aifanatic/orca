@@ -50,6 +50,7 @@ import { useStructuredAgentSession } from './use-structured-agent-session'
 
 type Pane = { sessionId: string; transportEnabled: boolean }
 
+const START_FAILED: AgentSessionFailureFact = { kind: 'startFailed' }
 const RESTART_FAILED: AgentSessionFailureFact = { kind: 'restartFailed' }
 const NOT_SIGNED_IN: AgentSessionFailureFact = { kind: 'notSignedIn' }
 
@@ -113,8 +114,8 @@ function renderPane() {
   )
 }
 
-// A command on a chat at rest starts its agent first; that start takes a new lease and moves the
-// fence before the command's reply lands. The reply still answers what this pane asked.
+// The fence moves while the command is in flight, as a start during the command does, and then
+// the command's reply lands. The reply still answers what this pane asked.
 async function commandAcrossFenceMove(
   command: 'clear' | 'compact',
   reply: unknown,
@@ -150,13 +151,33 @@ afterEach(async () => {
   await i18n.changeLanguage('en')
 })
 
-describe('a conversation command whose own start moved the fence', () => {
-  it("shows why a /clear's new chat did not start, in the reader's language", async () => {
+describe('a conversation command whose reply lands after the fence moved', () => {
+  it("shows, in the reader's language, why a start during the command failed", async () => {
     await i18n.changeLanguage('fr')
-    // A row the source chat kept from an earlier start is not the new chat's failure.
+    // A /clear's start is its new chat's; a /compact's restarts this one.
+    for (const [command, failure, error] of [
+      ['clear', START_FAILED, "Codex n'a pas pu démarrer. Relancez /clear."],
+      ['compact', RESTART_FAILED, "Codex n'a pas pu redémarrer. Relancez /compact."]
+    ] as const) {
+      fence = 3
+      expect(await commandAcrossFenceMove(command, commandReply(command, failure))).toEqual({
+        accepted: false,
+        error
+      })
+    }
+  })
+
+  it('clears the draft for a /clear that completed', async () => {
+    expect(await commandAcrossFenceMove('clear', commandReply('clear'))).toEqual({
+      accepted: true,
+      error: null
+    })
+  })
+
+  it("says a /clear's failure even when an equal start row is loaded: that row is not the /clear's", async () => {
+    await i18n.changeLanguage('fr')
     items = [startFailureRow(NOT_SIGNED_IN)]
-    const reply = commandReply('clear', NOT_SIGNED_IN)
-    const outcome = await commandAcrossFenceMove('clear', reply)
+    const outcome = await commandAcrossFenceMove('clear', commandReply('clear', NOT_SIGNED_IN))
     expect(outcome.accepted).toBe(false)
     expect(outcome.error).toMatch(/^Codex n'est pas connecté/)
     expect(outcome.error).toContain('/clear')
