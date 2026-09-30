@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  RUNTIME_CAPABILITIES,
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../../shared/electron-remote-runtime-client-capabilities'
 import {
   hasExplicitTuiLaunchCommand,
   resolveAgentLaunchRoute,
@@ -95,6 +97,18 @@ describe('resolveAgentLaunchRoute', () => {
 
   it('keeps an SSH workspace terminal-backed, since no Orca runtime runs there', () => {
     expect(route({ executionHostId: 'ssh:host-a' })).toBe('legacy-native-chat')
+  })
+
+  // The lists the two sides really advertise, not hand-written ones: dropping the launch-mode
+  // capability from either would quietly turn every paired-server launch into a terminal.
+  it('opens a chat on a current paired server with the lists both sides advertise', () => {
+    expect(
+      route({
+        executionHostId: 'runtime:environment-a',
+        hostCapabilities: RUNTIME_CAPABILITIES,
+        clientCapabilities: ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
+      })
+    ).toBe('structured-native-chat')
   })
 
   it('routes a paired server by its own capabilities', () => {
