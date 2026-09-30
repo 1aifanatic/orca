@@ -1001,13 +1001,15 @@ export class RelayAssignmentStore {
       let isolatedIncumbent: CellRow | undefined
       let isolatedTarget: CellRow | undefined
       // Set when only the target rows are locked. The old cell's row is never
-      // written then, so its counter must already equal its leases' units.
+      // written then, so the host must hold no units that no lease backs.
+      // Counters below the leases (drift the old reset left) are fine: the
+      // write below rebuilds them from the leases.
       let sourceRowSkipped = false
       if (existing && !dormant && inventoryScope !== 'all') {
         // Unlocked on purpose: this only chooses which rows to lock. A restore
         // racing it lets one host move off a cell that no longer needed it.
         if (
-          requestUnits(existing) === leaseRequestUnits(activityLeases) &&
+          requestUnits(existing) <= leaseRequestUnits(activityLeases) &&
           (await this.isolatedIncumbentMayMove(transaction, identity, existing, now))
         ) {
           const source = await this.unlockedCell(transaction, text(existing, 'cell_id'))
@@ -1084,8 +1086,8 @@ export class RelayAssignmentStore {
             isolatedIncumbent = current
           } else {
             // Keep the pin: the host retries its own cell. The narrowed path
-            // has already tried every region, or declined because the counters
-            // disagree with the leases; the reason string is a log contract.
+            // has already tried every region, or declined because the host
+            // holds units no lease backs; the reason string is a log contract.
             events.push(
               JSON.stringify({
                 event: 'orca_relay_sticky_replacement_deferred',

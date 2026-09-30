@@ -86,6 +86,17 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
     }
   }
 
+  async function expectReservationAccountingExcept(cellId: string): Promise<void> {
+    for (const cell of CELLS.filter(({ id }) => id !== cellId)) {
+      const leased = await databases[0]!.query(
+        `SELECT COALESCE(SUM(request_units), 0) AS units
+         FROM relay_assignment_activity_leases WHERE cell_id = ?`,
+        [cell.id]
+      )
+      expect(await reservedRequests(cell.id)).toBe(Number(leased[0]!['units']))
+    }
+  }
+
   async function counters(identity: {
     userId: string
     relayHostId: string
@@ -703,5 +714,89 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
       await heartbeatAll()
       await applySelector({ [TARGETS[1]!.id]: 'general' })
     }
+  }, 30_000)
+  // A host main's old placement left behind: its counters were reset while its
+  // source lease stayed, and the lease's release floored them at zero.
+  async function seedDriftedHost(
+    index: number,
+    counted: { controls: number; unbackedSourceUnits: number }
+  ): Promise<{ identity: { userId: string; relayHostId: string }; epoch: number }> {
+    const identity = hostIdentity(index)
+    await applySelector({ [TARGETS[0]!.id]: 'migration-only', [TARGETS[1]!.id]: 'migration-only' })
+    const first = await stores[0]!.assign(identity, 'us-central1')
+    expect(first.cellId).toBe(ISOLATED.id)
+    await stores[0]!.activateControl(identity, {
+      cellId: ISOLATED.id,
+      assignmentEpoch: first.assignmentEpoch,
+      generation: 1
+    })
+    await databases[0]!.query(
+      `UPDATE relay_assignments SET reserved_controls = ? WHERE user_id = ? AND relay_host_id = ?`,
+      [counted.controls, identity.userId, identity.relayHostId]
+    )
+    // Units the source still counts with no lease behind them.
+    await databases[0]!.query(
+      `UPDATE relay_cells SET reserved_requests = reserved_requests + ? WHERE cell_id = ?`,
+      [counted.unbackedSourceUnits, ISOLATED.id]
+    )
+    await applySelector({ [TARGETS[0]!.id]: 'general', [TARGETS[1]!.id]: 'general' })
+    await applySelector({ [ISOLATED.id]: 'migration-only' }, [ISOLATED.id])
+    return { identity, epoch: first.assignmentEpoch }
+  }
+
+  it('heals counters below the leases on the narrowed path', async () => {
+    await resetFleet()
+    const { identity, epoch } = await seedDriftedHost(918, { controls: 0, unbackedSourceUnits: 0 })
+    expect(await counters(identity)).toEqual({ controls: 0, splices: 0 })
+    await expectReservationAccounting()
+    const release = await holdCellRows([ISOLATED.id])
+    try {
+      const moved = await Promise.race([
+        stores[1]!.assign(identity, 'us-central1'),
+        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 3_000))
+      ])
+      expect(moved).toMatchObject({ assignmentEpoch: epoch + 1 })
+      expect(TARGETS.map(({ id }) => id)).toContain(moved === 'blocked' ? moved : moved.cellId)
+    } finally {
+      await release()
+    }
+    // The kept source control plus the new one.
+    expect(await counters(identity)).toEqual({ controls: 2, splices: 0 })
+    await expectReservationAccounting()
+    expect(await stores[0]!.releaseActivity(identity, `control:${ISOLATED.id}:1`)).toBe(true)
+    expect(await counters(identity)).toEqual({ controls: 1, splices: 0 })
+    expect(await reservedRequests(ISOLATED.id)).toBe(0)
+    await expectReservationAccounting()
+  }, 30_000)
+
+  it('takes the all-rows path for units no lease backs', async () => {
+    await resetFleet()
+    const { identity, epoch } = await seedDriftedHost(919, { controls: 3, unbackedSourceUnits: 2 })
+    await expectReservationAccountingExcept(ISOLATED.id)
+    const release = await holdCellRows([ISOLATED.id])
+    const held = stores[1]!.assign(identity, 'us-central1').then(
+      () => 'placed' as const,
+      () => 'failed' as const
+    )
+    try {
+      // It needs the source row to take the unbacked units off it, so while the
+      // row is held it either waits or times out; it never places.
+      expect(
+        await Promise.race([
+          held,
+          new Promise<'waiting'>((resolve) => setTimeout(() => resolve('waiting'), 1_000))
+        ])
+      ).not.toBe('placed')
+    } finally {
+      await release()
+    }
+    await held
+    // Whether the held dial finished after the release or failed, the next one
+    // lands the single move.
+    expect(await stores[1]!.assign(identity, 'us-central1')).toMatchObject({
+      assignmentEpoch: epoch + 1
+    })
+    expect(await counters(identity)).toEqual({ controls: 2, splices: 0 })
+    await expectReservationAccounting()
   }, 30_000)
 })
