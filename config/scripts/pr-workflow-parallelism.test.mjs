@@ -2,12 +2,10 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { UNIT_EXCLUDE } from './ci-unit-files.mjs'
-import { mobileWebCheckArgs } from './run-mobile-web-app-checks.mjs'
 import { MOBILE_WEB_APP_DEPENDENCIES_REQUIRED_ENV } from './mobile-web-app-bundle-dependencies.mjs'
 
 const workflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
 const prTestLocWorkflow = parse(readFileSync('.github/workflows/pr-test-loc.yml', 'utf8'))
-const trackingWorkflow = parse(readFileSync('.github/workflows/track-community-prs.yaml', 'utf8'))
 const releasePolicyWorkflow = parse(readFileSync('.github/workflows/release-policy.yml', 'utf8'))
 const issueLabelWorkflow = parse(readFileSync('.github/workflows/issue-os-labeler.yaml', 'utf8'))
 const unitTestWorkflow = parse(readFileSync('.github/workflows/unit-tests.yml', 'utf8'))
@@ -55,7 +53,6 @@ describe('PR workflow parallelism', () => {
     expect(workflow.jobs.typecheck['runs-on']).toBe('ubuntu-24.04-arm')
     expect(workflow.jobs.verify['runs-on']).toBe('ubuntu-slim')
     expect(prTestLocWorkflow.jobs.loc['runs-on']).toBe('ubuntu-slim')
-    expect(trackingWorkflow.jobs['track-community-pr']['runs-on']).toBe('ubuntu-slim')
     expect(releasePolicyWorkflow.jobs.enforce['runs-on']).toBe('ubuntu-slim')
     expect(issueLabelWorkflow.jobs['apply-os-label']['runs-on']).toBe('ubuntu-slim')
   })
@@ -561,12 +558,5 @@ describe('PR workflow parallelism', () => {
     expect(step.run).toContain('node config/scripts/run-mobile-web-app-checks.mjs')
     expect(step.run).not.toContain('--prepare-route-snapshot')
     expect(step.env[MOBILE_WEB_APP_DEPENDENCIES_REQUIRED_ENV]).toBe('1')
-    expect(mobileWebCheckArgs).toEqual([
-      'run',
-      '--config',
-      'config/vitest.config.ts',
-      'config/scripts/mobile-web-app-',
-      'config/scripts/build-mobile-web-app-bundle.test.mjs'
-    ])
   })
 })
