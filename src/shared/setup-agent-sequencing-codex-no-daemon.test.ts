@@ -24,6 +24,9 @@ function prepareGate(startupCommand: string) {
   roots.push(root)
   const bin = join(root, 'bin')
   mkdirSync(bin)
+  // Why: `bash -l` reads /etc/profile, whose macOS path_helper moves the fixture bin
+  // behind /usr/local/bin and /opt/homebrew/bin; re-prepend it so a real codex never runs.
+  writeFileSync(join(root, '.bash_profile'), `export PATH=${JSON.stringify(bin)}:"$PATH"\n`)
   const runner = join(root, 'setup-runner.sh')
   const sequenced = createSequencedSetupAgentCommands({
     runnerScriptPath: runner,
@@ -35,8 +38,8 @@ function prepareGate(startupCommand: string) {
   })
   return {
     sequenced,
-    // Why HOME and PATH: `bash -l` must read no real profile and resolve only the fake codex.
-    env: { HOME: root, PATH: `${bin}:/usr/bin:/bin`, ...sequenced.startupEnv },
+    // Why HOME and CODEX_HOME: `bash -l` must read no real profile, and nothing may touch ~/.codex.
+    env: { HOME: root, CODEX_HOME: root, PATH: `${bin}:/usr/bin:/bin`, ...sequenced.startupEnv },
     finishSetup: (help: string) => {
       const codex = join(bin, 'codex')
       writeFileSync(

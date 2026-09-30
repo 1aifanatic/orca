@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { planCodexNoDaemonLaunch, type LocalCodexLaunch } from './codex-no-daemon-launch-command'
 
 const HELP_WITH_FLAG = 'Usage: codex [OPTIONS] [PROMPT]\n      --no-daemon  Run in-process\n'
@@ -19,6 +19,7 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch', () => {
 
   afterEach(() => {
     Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
+    vi.unstubAllEnvs()
     rmSync(dir, { recursive: true, force: true })
   })
 
@@ -60,6 +61,14 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch', () => {
 
   it('leaves SSH and WSL launches to the codex function on that host', () => {
     expect(plan(`${codex} --yolo`, { executesOnThisHost: false })).toBeNull()
+  })
+
+  it('ignores an inherited opt-out the pane deletes', async () => {
+    vi.stubEnv('ORCA_CODEX_ISOLATE', '0')
+
+    await expect(plan(`${codex} --yolo`, { envToDelete: ['ORCA_CODEX_ISOLATE'] })).resolves.toBe(
+      `${codex} --no-daemon --yolo`
+    )
   })
 
   it('honours ORCA_CODEX_ISOLATE=0 from the pane env', () => {

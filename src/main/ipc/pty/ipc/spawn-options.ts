@@ -84,6 +84,7 @@ export async function buildPtyIpcSpawnOptions(
     executesOnThisHost: !args.connectionId && ctx.codexSelectionTarget.runtime !== 'wsl',
     shellOverride: ctx.effectiveShellOverride,
     env: ctx.spawnEnv,
+    envToDelete: ctx.combinedEnvToDelete,
     cwd: ctx.cwd
   })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand

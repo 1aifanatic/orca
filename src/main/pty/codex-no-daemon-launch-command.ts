@@ -18,6 +18,8 @@ export type LocalCodexLaunch = {
   shellOverride: string | undefined
   /** Env the PTY gets on top of this process's own. */
   env: Record<string, string | undefined> | undefined
+  /** Keys the provider removes from that merged env. */
+  envToDelete?: readonly string[]
   cwd: string | undefined
 }
 
@@ -54,6 +56,9 @@ export function planCodexNoDaemonLaunch(launch: LocalCodexLaunch): Promise<strin
     return null
   }
   const env = { ...process.env, ...launch.env }
+  for (const key of launch.envToDelete ?? []) {
+    delete env[key]
+  }
   if (
     env.ORCA_CODEX_ISOLATE === '0' ||
     args.some((arg) => SHARED_SERVER_ARGS.has(arg) || arg.startsWith('--remote='))
