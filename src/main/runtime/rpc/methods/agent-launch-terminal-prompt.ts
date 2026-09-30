@@ -120,6 +120,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     }
     const sent = await args.runtime.sendTerminalAgentPrompt(args.handle, args.text, {
       inputKind: 'launch',
+      // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
+      composerReady: args.freshLaunch,
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.

@@ -93,6 +93,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     // agent would be reported as undelivered while its prompt sat in the pane.
     expect(options.acceptQueued).toBe(true)
     expect(options.requestId).toEqual(expect.any(String))
+    // Enter follows the paste on the desktop draft paste's timing: this composer was just seen ready.
+    expect(options.composerReady).toBe(true)
   })
 
   it('does not write when the composer never opened', async () => {
@@ -318,6 +320,8 @@ describe('writing a launch prompt into a terminal agent', () => {
       condition: 'tui-idle',
       timeoutMs: 60_000
     })
+    // A reused pane's render state is only inferred, so its Enter still waits for the render.
+    expect(stub.sendTerminalAgentPrompt.mock.calls[0]?.[2]?.composerReady).toBe(false)
   })
 })
 
