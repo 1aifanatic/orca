@@ -119,6 +119,10 @@ vi.mock('@/components/AgentStateDot', () => ({
         return 'Blocked'
       case 'waiting':
         return 'Waiting for input'
+      case 'failed':
+        return 'Failed'
+      case 'interrupted':
+        return 'Interrupted'
       case 'done':
         return 'Done'
       case 'idle':
@@ -446,6 +450,56 @@ describe('ReviewNotesSendMenuContent', () => {
     expect(collectText(items[0])).toContain('2m ago')
     expect(collectText(items[0])).toContain('Second session')
     expect(collectText(items[1])).toContain('Claude')
+  })
+
+  it('shows a chat whose turn failed as failed, as its sidebar row does', () => {
+    const chatPaneKey = 'structured-agent-session-claude_1:chat'
+    const failedRow = agentRow({
+      paneKey: chatPaneKey,
+      tabId: 'structured-agent-session-claude_1',
+      title: 'Claude Chat',
+      agentType: 'claude'
+    })
+    failedRow.entry.mainAgent = { state: 'done', outcome: 'failure', stateStartedAt: harness.now }
+    harness.worktreeAgentRows = [failedRow]
+    harness.noteTargets = [
+      {
+        paneKey: chatPaneKey,
+        tabId: 'structured-agent-session-claude_1',
+        messageTarget: { kind: 'structured-session', sessionId: 'claude_1' },
+        agentType: 'claude',
+        tabTitle: 'Claude Chat',
+        status: 'eligible'
+      }
+    ]
+
+    const item = findByType(render(), 'DropdownMenuItem')
+
+    expect(findByType(item, 'AgentStateDot').props.state).toBe('failed')
+    expect(collectText(item)).toContain('Failed')
+    expect(collectText(item)).not.toContain('Done')
+  })
+
+  it('shows a stopped terminal agent as interrupted, as its sidebar row does', () => {
+    const paneKey = makePaneKey(TAB_A, LEAF_A)
+    const stoppedRow = agentRow({ paneKey, tabId: TAB_A, title: 'Terminal 1', agentType: 'claude' })
+    stoppedRow.entry.interrupted = true
+    harness.worktreeAgentRows = [stoppedRow]
+    harness.noteTargets = [
+      {
+        paneKey,
+        tabId: TAB_A,
+        messageTarget: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
+        agentType: 'claude',
+        tabTitle: 'Terminal 1',
+        status: 'eligible'
+      }
+    ]
+
+    const item = findByType(render(), 'DropdownMenuItem')
+
+    expect(findByType(item, 'AgentStateDot').props.state).toBe('interrupted')
+    expect(collectText(item)).toContain('Interrupted')
   })
 
   it('does not target title-detected rows skipped by target derivation', async () => {
