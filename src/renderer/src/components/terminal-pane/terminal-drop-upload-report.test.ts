@@ -59,7 +59,7 @@ describe('reportTerminalDropUploadSkipsAndFailures', () => {
 
     expect(toast.message).toHaveBeenCalledWith(
       'auto.components.terminal.pane.terminal.drop.handler.b4cf68e889:Skipped {{value0}} {{value1}}.',
-      { description: 'auto.hooks.useComposerState.attachSkipPermissionDenied:Permission denied.' }
+      { description: 'auto.lib.dropSkipReason.permissionDenied:Permission denied.' }
     )
   })
 

@@ -3,19 +3,19 @@ import type { ImportSkipReason } from '../../../shared/filesystem-import-result-
 
 const SKIP_REASON_COPY: Record<ImportSkipReason, { key: string; fallback: string }> = {
   missing: {
-    key: 'auto.hooks.useComposerState.attachSkipMissing',
+    key: 'auto.lib.dropSkipReason.missing',
     fallback: 'No longer at its original path.'
   },
   symlink: {
-    key: 'auto.hooks.useComposerState.attachSkipSymlink',
+    key: 'auto.lib.dropSkipReason.symlink',
     fallback: 'Symbolic links cannot be attached.'
   },
   'permission-denied': {
-    key: 'auto.hooks.useComposerState.attachSkipPermissionDenied',
+    key: 'auto.lib.dropSkipReason.permissionDenied',
     fallback: 'Permission denied.'
   },
   unsupported: {
-    key: 'auto.hooks.useComposerState.attachSkipUnsupported',
+    key: 'auto.lib.dropSkipReason.unsupported',
     fallback: 'Unsupported file type.'
   }
 }
