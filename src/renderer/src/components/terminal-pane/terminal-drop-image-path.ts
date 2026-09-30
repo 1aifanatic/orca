@@ -6,8 +6,9 @@ import type { TerminalTargetShell } from './terminal-drop-shell'
 // *bracketed paste* of the file path — exactly how clipboard screenshot paste
 // already works in Orca (see terminal-clipboard-paste.ts + issue #2842).
 const IMAGE_DROP_EXTENSIONS = new Set(IMAGE_FILE_EXTENSIONS)
-const POSIX_RAW_IMAGE_DROP_UNSAFE_RE = /["'`$;&|<>(){}[\]*?!#\\]/
-const WINDOWS_RAW_IMAGE_DROP_UNSAFE_RE = /["'`$;&|<>(){}[\]*?!#^%]/
+// Why: an ASCII space is unsafe because Codex shlex-splits a raw spaced path into several tokens.
+const POSIX_RAW_IMAGE_DROP_UNSAFE_RE = /[ "'`$;&|<>(){}[\]*?!#\\]/
+const WINDOWS_RAW_IMAGE_DROP_UNSAFE_RE = /[ "'`$;&|<>(){}[\]*?!#^%]/
 
 /**
  * Returns true when `path` looks like a local/remote image file based on its

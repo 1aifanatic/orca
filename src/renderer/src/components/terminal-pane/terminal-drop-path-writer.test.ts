@@ -62,7 +62,7 @@ describe('terminal drop path writer', () => {
       dropTarget: { paneId: pane.id, leafId: pane.leafId, ptyId: 'pty-1', transport } as never,
       manager: manager as never,
       paneTransports: new Map([[pane.id, transport]]) as never,
-      paths: ['/repo/My Screenshot.png'],
+      paths: ['/tmp/orca-paste-1-abc.png'],
       targetShell: 'posix'
     })
 
@@ -70,9 +70,78 @@ describe('terminal drop path writer', () => {
     // Why: image attachment detection in terminal TUIs keys off bracketed paste
     // of the literal path — no shell-escaping, no trailing space.
     expect(sendInputAccepted).toHaveBeenCalledWith(
-      wrapTerminalBracketedPasteText('/repo/My Screenshot.png'),
+      wrapTerminalBracketedPasteText('/tmp/orca-paste-1-abc.png'),
       'driving'
     )
+  })
+
+  it('pastes a spaced macOS screenshot name as a quoted path', async () => {
+    const sendInput = vi.fn(() => true)
+    const sendInputAccepted = vi.fn(async () => true)
+    const { manager, pane } = createManager()
+    const transport = createTransport(sendInput, 'pty-1', sendInputAccepted)
+
+    await writeTerminalDropPathsToCapturedTarget({
+      dropTarget: { paneId: pane.id, leafId: pane.leafId, ptyId: 'pty-1', transport } as never,
+      manager: manager as never,
+      paneTransports: new Map([[pane.id, transport]]) as never,
+      paths: ['/tmp/drag/Screenshot 2026-09-28 at 4.03.11\u202fPM.png'],
+      targetShell: 'posix'
+    })
+
+    // Why: pasted raw, Codex shlex-splits the ASCII spaces and keeps the path as text.
+    expect(sendInputAccepted).toHaveBeenCalledTimes(1)
+    expect(sendInputAccepted).toHaveBeenCalledWith(
+      wrapTerminalBracketedPasteText("'/tmp/drag/Screenshot 2026-09-28 at 4.03.11\u202fPM.png'"),
+      'driving'
+    )
+  })
+
+  it('pastes a spaced Windows image name as a double-quoted path', async () => {
+    const sendInput = vi.fn(() => true)
+    const sendInputAccepted = vi.fn(async () => true)
+    const { manager, pane } = createManager()
+    const transport = createTransport(sendInput, 'pty-1', sendInputAccepted)
+
+    await writeTerminalDropPathsToCapturedTarget({
+      dropTarget: { paneId: pane.id, leafId: pane.leafId, ptyId: 'pty-1', transport } as never,
+      manager: manager as never,
+      paneTransports: new Map([[pane.id, transport]]) as never,
+      paths: ['C:\\Users\\me\\My Pictures\\shot.png'],
+      targetShell: 'windows'
+    })
+
+    expect(sendInputAccepted).toHaveBeenCalledWith(
+      wrapTerminalBracketedPasteText('"C:\\Users\\me\\My Pictures\\shot.png"'),
+      'driving'
+    )
+  })
+
+  it('keeps separating spaces around quoted spaced image pastes', async () => {
+    const sendInput = vi.fn(() => true)
+    const sendInputAccepted = vi.fn(async () => true)
+    const { manager, pane } = createManager()
+    const transport = createTransport(sendInput, 'pty-1', sendInputAccepted)
+
+    await writeTerminalDropPathsToCapturedTarget({
+      dropTarget: { paneId: pane.id, leafId: pane.leafId, ptyId: 'pty-1', transport } as never,
+      manager: manager as never,
+      paneTransports: new Map([[pane.id, transport]]) as never,
+      paths: ['/repo/Screenshot 1.png', '/repo/Screenshot 2.png', '/repo/a.ts'],
+      targetShell: 'posix'
+    })
+
+    expect(sendInputAccepted).toHaveBeenNthCalledWith(
+      1,
+      `${wrapTerminalBracketedPasteText("'/repo/Screenshot 1.png'")} `,
+      'driving'
+    )
+    expect(sendInputAccepted).toHaveBeenNthCalledWith(
+      2,
+      `${wrapTerminalBracketedPasteText("'/repo/Screenshot 2.png'")} `,
+      'driving'
+    )
+    expect(sendInputAccepted).toHaveBeenNthCalledWith(3, '/repo/a.ts ', 'driving')
   })
 
   it('keeps shell-escaped input for mixed image and non-image drops', async () => {

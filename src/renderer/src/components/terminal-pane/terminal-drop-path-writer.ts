@@ -50,9 +50,10 @@ export async function writeTerminalDropPathsToCapturedTarget({
     // screenshot flow (terminal-clipboard-paste.ts, issue #2842). Every image
     // drop is framed as a paste; only its text differs. Safe image paths are
     // pasted raw, because escaping would corrupt the file-existence check those
-    // tools run on the pasted path. Image paths with shell metacharacters
-    // (`download (1).png`) keep their shell-escaped text so a shell still gets
-    // a quoted argument; agent TUIs strip the quotes before that check. Unframed,
+    // tools run on the pasted path. Image paths with spaces or shell
+    // metacharacters (`download (1).png`) keep their shell-escaped text so a
+    // shell still gets a quoted argument; agent TUIs strip the quotes before
+    // that check. Unframed,
     // the escaped text reaches the TUI as typed keystrokes and stays plain text
     // instead of becoming an attachment. Non-image drops keep the original
     // shell-escaped, space-separated behaviour for use in shell commands.
