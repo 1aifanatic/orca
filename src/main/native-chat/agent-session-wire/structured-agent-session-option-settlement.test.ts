@@ -7,7 +7,8 @@ import type {
   AgentSessionMutationEnvelope,
   AgentSessionStatusEvent
 } from '../../../shared/agent-session-wire'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { AgentSessionOptionRejectedError } from './structured-agent-session-option-error'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -19,6 +20,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const DEFAULT_MODEL = 'gpt-default'
@@ -119,12 +121,12 @@ beforeEach(async () => {
   closeSessionExit = true
   dispatchedModels.length = 0
   const accountHome = join(root, 'codex-home')
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   router = adapter()
   host = new StructuredAgentSessionHost({
     store,
     adapter: router,
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-native',
     now: () => NOW

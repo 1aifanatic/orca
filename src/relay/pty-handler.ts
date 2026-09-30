@@ -1,5 +1,7 @@
-import { FreebuffStatusProjection } from './freebuff-status-projection'
 /* oxlint-disable max-lines */
+import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
+import { FreebuffStatusProjection } from './freebuff-status-projection'
+import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
 import type * as NodePty from 'node-pty'
@@ -77,6 +79,7 @@ import {
   type PtyIngressEmission
 } from '../shared/pty-startup-ingress'
 import { resolvePtyOwnerBackend, type PtyOwnerBackend } from '../shared/pty-owner-backend'
+import { setPtyOwnerHostColors } from '../shared/pty-owner-color-query-colors'
 import { RecentPtyOutputBuffer } from '../main/runtime/recent-pty-output-buffer'
 import { TerminalShellRecoveryBarrier } from '../main/daemon/terminal-shell-recovery-barrier'
 import { confirmPtyShellForeground } from '../main/daemon/pty-subprocess/pty-shell-foreground-confirmation'
@@ -845,6 +848,8 @@ export class PtyHandler {
     // pane to another worktree's history file — and wrapping a zsh pane that
     // nothing asked to wrap, since `history` is selected on its presence.
     delete result.ORCA_HISTFILE
+    // Why: the codex wrapper runs this path as hook prep, and a relay pane never gets one of its own.
+    delete result.ORCA_CODEX_LAUNCH_PREFLIGHT
     // Why: match local/daemon precedence so defaults/augmenters can't resurrect explicitly-removed values.
     for (const key of envToDelete) {
       delete result[key]
@@ -1148,6 +1153,10 @@ export class PtyHandler {
 
     this.dispatcher.onNotification('pty.data', (p) => this.writeData(p))
     this.dispatcher.onNotification('pty.resize', (p) => this.resize(p))
+    // A notification, so a client newer than this relay is ignored rather than refused.
+    this.dispatcher.onNotification('pty.setColorQueryReplyColors', (p) =>
+      setPtyOwnerHostColors(p.colors)
+    )
   }
 
   private isLikelyInteractiveRedraw(data: string): boolean {
@@ -1340,6 +1349,19 @@ export class PtyHandler {
         ? desiredChars
         : (this.dispatcher.maxLegacyPtyDataChars?.(paramsWithoutData, pending.data, desiredChars) ??
           desiredChars)
+    // Why before the surrogate guard: splitting inside an open DEC 2026 frame
+    // strands the closing \x1b[?2026l in the remainder, and xterm stops repainting
+    // until it arrives or its 1000ms timeout fires. The surrogate guard keeps the
+    // final say so a frame boundary can never sever a pair.
+    if (!pending.transformed && !pending.sourceChunk && chunkChars > 0) {
+      const frameAligned = resolveSynchronizedOutputSafeSplit(pending.data, chunkChars)
+      // Why the floor of 2: the surrogate guard below can decrement by one, and
+      // a chunkChars of 0 takes the pause-and-retry path. Never let frame
+      // alignment walk a healthy slice into that.
+      if (frameAligned >= 2) {
+        chunkChars = frameAligned
+      }
+    }
     if (
       chunkChars > 0 &&
       chunkChars < pending.data.length &&
@@ -1920,6 +1942,9 @@ export class PtyHandler {
       { id, paneKey, shell, command, launchAgent },
       envToDelete
     )
+    await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
+      wslShell: isRelayWslShell(shell)
+    })
     const worktreeId =
       typeof params.worktreeId === 'string' ? params.worktreeId : env?.ORCA_WORKTREE_ID
     const historyIsolationEnabled = params.historyIsolationEnabled === true
