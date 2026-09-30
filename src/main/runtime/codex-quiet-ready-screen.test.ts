@@ -330,13 +330,16 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
   })
 
   // Why: a restored or reattached pane has no lastOutputAt, so the quiet lane can never fire.
+  const NOW = 60_000
   it.each([
     [null, 'ready-strong'],
     [0, 'ready-strong'],
-    [Date.now() + 60_000, 'pending']
+    [NOW - 1_000, 'pending']
   ] as const)(
     'a codex pane whose lastOutputAt is %s reads its header as %s',
     (lastOutputAt, kind) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
       const waitText = header.join('\n')
       const record = { lastAgentStatus: null, lastOutputAt, lastOscTitle: null }
       const verdict = evaluateTuiIdle({
