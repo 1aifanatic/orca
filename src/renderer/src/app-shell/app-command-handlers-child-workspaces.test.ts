@@ -19,6 +19,7 @@ vi.mock('../store', () => ({
 }))
 
 vi.mock('../components/sidebar/child-workspaces-toggle-target', () => ({
+  getRenderedLineageChipKeys: () => new Set<string>(),
   resolveChildWorkspacesToggleGroupKey: () => mocks.target.groupKey
 }))
 

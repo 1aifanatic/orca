@@ -6,7 +6,10 @@ import { requestVirtualizedScrollAnchorRecord } from '@/hooks/requestVirtualized
 import { showTerminalShortcutCaptureNotification } from '@/lib/terminal-shortcut-capture-notification'
 import { shouldShowWorktreeHistoryControls } from '../lib/titlebar-worktree-history-controls'
 import { TOGGLE_WORKSPACE_BOARD_EVENT } from '../components/sidebar/useWorkspaceBoardPanel'
-import { resolveChildWorkspacesToggleGroupKey } from '../components/sidebar/child-workspaces-toggle-target'
+import {
+  getRenderedLineageChipKeys,
+  resolveChildWorkspacesToggleGroupKey
+} from '../components/sidebar/child-workspaces-toggle-target'
 import { requestTerminalTabRename } from '../components/tab-bar/terminal-tab-rename-request'
 import {
   deleteHoveredWorkspaceImmediately,
@@ -184,7 +187,10 @@ export function createAppCommandHandlers(
       'sidebar.childWorkspaces.toggle',
       () => {
         const store = useAppStore.getState()
-        const groupKey = resolveChildWorkspacesToggleGroupKey(store)
+        const groupKey = resolveChildWorkspacesToggleGroupKey(
+          store,
+          getRenderedLineageChipKeys(store)
+        )
         if (!groupKey) {
           return false
         }

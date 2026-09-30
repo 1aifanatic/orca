@@ -1,7 +1,7 @@
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
-import { seedLineageScenario } from './worktree-lineage-state'
+import { seedLineageScenario, seedWorkspaceLiveTerminal } from './worktree-lineage-state'
 import { worktreeRow } from './worktree-row-locators'
 
 const ACTION_ID = 'sidebar.childWorkspaces.toggle' as const
@@ -72,6 +72,40 @@ test.describe('Toggle Child Workspaces shortcut', () => {
     // A hovered parent unfolds its own children.
     await parentRow.hover()
     await orcaPage.keyboard.press(CHORD)
+    await expect(childRow).toBeVisible()
+  })
+
+  test('does nothing while a sidebar filter hides every child', async ({ orcaPage }) => {
+    const { parentId, childId } = await seedLineageScenario(orcaPage)
+    await setToggleBinding(orcaPage, ['Mod+Alt+H'])
+    await seedWorkspaceLiveTerminal(orcaPage, parentId)
+    const parentRow = worktreeRow(orcaPage, parentId)
+    const childRow = worktreeRow(orcaPage, childId)
+    await parentRow.click()
+    await expect(parentRow).toHaveAttribute('aria-current', 'page')
+
+    const readCollapsedGroups = (): Promise<string[]> =>
+      orcaPage.evaluate(() => [...(window.__store?.getState().collapsedGroups ?? [])].sort())
+    const setShowSleeping = (show: boolean): Promise<void> =>
+      orcaPage.evaluate((show) => window.__store?.getState().setShowSleepingWorkspaces(show), show)
+
+    // The child has no live terminal, so hiding sleeping workspaces removes it and its chip.
+    await setShowSleeping(false)
+    try {
+      await expect(childRow).toBeHidden()
+      await expect(parentRow.getByRole('button', { name: /child workspace/ })).toHaveCount(0)
+      const before = await readCollapsedGroups()
+
+      // Checked after each press: two toggles of one key would cancel out.
+      await movePointerOffSidebar(orcaPage)
+      await orcaPage.keyboard.press(CHORD)
+      expect(await readCollapsedGroups()).toEqual(before)
+      await parentRow.hover()
+      await orcaPage.keyboard.press(CHORD)
+      expect(await readCollapsedGroups()).toEqual(before)
+    } finally {
+      await setShowSleeping(true)
+    }
     await expect(childRow).toBeVisible()
   })
 })
