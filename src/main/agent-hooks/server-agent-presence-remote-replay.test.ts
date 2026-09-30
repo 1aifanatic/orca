@@ -142,6 +142,28 @@ describe('execution host presence replay', () => {
     expect(main.storedRow(PANE)?.agentPresence).toMatchObject(owner)
     expect(main.storedRow(PANE)).not.toHaveProperty('agentPresenceFromExecutionHost')
   })
+  it('keeps a later unidentified row when the old owner exit replays', async () => {
+    const { main, relay, relayHook, frames, connect } = await setup()
+    await relayHook('SessionStart', 'a', owner.process)
+    probe.mockResolvedValue('exited')
+    await relay.checkAgentPresence(PANE)
+    // A later agent in the same pane reports only through terminal bytes (no process identity).
+    main.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'folder-1',
+      connectionId: 'ssh-1',
+      payload: { state: 'working', prompt: 'fix the build', agentType: 'codex' }
+    })
+    connect(false)
+    relay.replayCachedPayloadsForPanes()
+    main.ingestRemote(frames.at(-1)!, 'ssh-1')
+    expect(main.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      agentType: 'codex',
+      prompt: 'fix the build'
+    })
+  })
   it('retains the ordering of a connected exit when an older live frame replays', async () => {
     const { main, relay, relayHook, frames } = await setup()
     await relayHook('SessionStart', 'a', owner.process)

@@ -37,9 +37,16 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     const stored = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
       | EnrichedAgentHookEventPayload
       | undefined
+    const storedOwner = stored?.agentPresence?.process
+    // Why: a replayed exit only settles the owner it names against a different identified stored
+    // owner; with no stored process it goes through the transition, which drops an ownerless exit.
     const relayDecided =
       relayOwner?.process &&
-      (!relayOwner.ended || (incoming.agentPresenceFromExecutionHost && incoming.isReplay === true))
+      (!relayOwner.ended ||
+        (incoming.agentPresenceFromExecutionHost &&
+          incoming.isReplay === true &&
+          storedOwner !== undefined &&
+          !isSameAgentProcess(storedOwner, relayOwner.process)))
     const transitioned = relayDecided ? incoming : transitionHookPresence(incoming, stored)
     if (!transitioned) {
       return undefined
