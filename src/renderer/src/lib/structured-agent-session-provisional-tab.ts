@@ -11,9 +11,25 @@ import type {
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import { replaceUnstartedStructuredChat } from '@/lib/structured-agent-session-unstarted-launch'
+import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import {
+  beginPairedStructuredLaunch,
+  openDeclinedStructuredLaunchTerminal,
+  type PairedStructuredLaunch,
+  type StructuredLaunchTerminal
+} from '@/lib/structured-agent-session-paired-admission'
+import {
+  resolveStructuredAgentSessionOwner,
+  structuredAgentSessionTargetForHost
+} from '@/runtime/structured-agent-session-owner'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 
-export type StructuredAgentSessionProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
+type LocalProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
+
+/** A local chat has its tab at once; a paired server's has none until the server admits it. */
+export type StructuredAgentSessionProvisionalLaunch =
+  | LocalProvisionalLaunch
+  | PairedStructuredLaunch
 
 export function openStructuredAgentSessionProvisionalTab(args: {
   worktreeId: string
@@ -55,16 +71,78 @@ export function openStructuredAgentSessionProvisionalTab(args: {
   return tab
 }
 
-/** Binds the synchronous launch identity to a chat tab before the caller yields. */
-export function beginStructuredAgentSessionProvisionalLaunch(args: {
+/** The paired server a structured launch would run on, which admits the chat before it exists. */
+export function structuredLaunchPairedOwner(
+  plan: Pick<AgentSessionLaunchPlan, 'route' | 'executionHostId'>,
+  worktreeId: string,
+  target?: AgentSessionLaunchTarget
+): { executionHostId: ExecutionHostId; target: RuntimeClientTarget } | null {
+  if (plan.route !== 'structured-native-chat') {
+    return null
+  }
+  const executionHostId =
+    target?.executionHostId ??
+    plan.executionHostId ??
+    resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)
+  const hostTarget = structuredAgentSessionTargetForHost(executionHostId)
+  return executionHostId && hostTarget?.kind === 'environment'
+    ? { executionHostId, target: hostTarget }
+    : null
+}
+
+type ProvisionalLaunchArgs = {
   plan: AgentSessionLaunchPlan
   hooks: StructuredAgentLaunchHooks
   target?: AgentSessionLaunchTarget
   targetGroupId?: string
   activate?: boolean
-  /** Lets workspace flows reveal between final identity allocation and tab ownership. */
-  beforeOpen?: (sessionId: string) => boolean | void
-}): StructuredAgentSessionProvisionalLaunch | null {
+  /** Lets workspace flows reveal before the chat's tab is owned; a paired launch reveals before its
+   *  server is asked, when no session id exists yet. */
+  beforeOpen?: (sessionId?: string) => boolean | void
+  /** The terminal a paired server's "no" opens; a caller without one gets a new agent tab's. */
+  onHostDeclined?: () => Promise<StructuredLaunchTerminal> | StructuredLaunchTerminal
+}
+
+/** Binds the launch to a chat tab: at once locally, after the server admits it on a paired host. */
+export function beginStructuredAgentSessionProvisionalLaunch(
+  args: ProvisionalLaunchArgs
+): StructuredAgentSessionProvisionalLaunch | null {
+  const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
+  const agent = args.plan.agent
+  const paired =
+    worktreeId && isAgentSessionHandleProvider(agent)
+      ? structuredLaunchPairedOwner(args.plan, worktreeId, args.target)
+      : null
+  if (!paired || !worktreeId || !isAgentSessionHandleProvider(agent)) {
+    return beginLocalProvisionalLaunch(args)
+  }
+  if (args.beforeOpen?.() === false) {
+    return null
+  }
+  return beginPairedStructuredLaunch({
+    plan: { ...args.plan, agent },
+    hooks: args.hooks,
+    worktreeId,
+    executionHostId: paired.executionHostId,
+    target: paired.target,
+    openAdmitted: () =>
+      beginLocalProvisionalLaunch({
+        ...args,
+        target: { ...args.target, worktreeId, executionHostId: paired.executionHostId },
+        beforeOpen: undefined
+      }),
+    onHostDeclined:
+      args.onHostDeclined ??
+      (() =>
+        openDeclinedStructuredLaunchTerminal({
+          plan: args.plan,
+          worktreeId,
+          ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {})
+        }))
+  })
+}
+
+function beginLocalProvisionalLaunch(args: ProvisionalLaunchArgs): LocalProvisionalLaunch | null {
   const handle = args.plan.begin(args.hooks, args.target)
   if (!handle) {
     return null
@@ -85,16 +163,6 @@ export function beginStructuredAgentSessionProvisionalLaunch(args: {
       agent: args.plan.agent,
       ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
       ...(args.activate !== undefined ? { activate: args.activate } : {})
-    })
-    void handle.settlement.then((settlement) => {
-      if (settlement.kind === 'failed') {
-        replaceUnstartedStructuredChat({
-          plan: args.plan,
-          worktreeId,
-          sessionId: handle.sessionId,
-          error: settlement.error
-        })
-      }
     })
     return { ...handle, tab }
   } catch (error) {

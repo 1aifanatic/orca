@@ -3,14 +3,13 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { useAppStore } from '@/store'
 import {
+  admitStructuredLaunchOnHost,
   createStructuredAgentSessionLaunchIntent,
   launchStructuredAgentSession,
   restoreStructuredAgentSessionLaunchIntent,
   retryStructuredAgentSessionLaunchIntent,
   StructuredAgentSessionCreateRefusalError,
   StructuredAgentSessionCreateUnknownOutcomeError,
-  StructuredAgentSessionHostDeclinedError,
-  StructuredAgentSessionHostUnreachableError,
   StructuredAgentSessionOwnerUnresolvedError
 } from './launch-structured-agent-session'
 
@@ -234,31 +233,30 @@ describe('structured agent session launch', () => {
     }
   )
 
-  // createSupport only reads, so a host that could not be asked holds no session to reconcile.
-  it('fails an unanswered create support probe before anything is created', async () => {
+  // A retry may follow a create whose reply was lost, so an unanswered probe stays reconcilable.
+  it('keeps an unanswered create support probe recoverable', async () => {
     vi.mocked(callStructuredAgentSession).mockRejectedValue(new Error('runtime unreachable'))
 
     const intent = createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
 
     await expect(launchStructuredAgentSession(intent)).rejects.toBeInstanceOf(
-      StructuredAgentSessionHostUnreachableError
+      StructuredAgentSessionCreateUnknownOutcomeError
     )
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 
-  it('opens a terminal only for a paired server that declines, not for this machine', async () => {
-    vi.mocked(callStructuredAgentSession).mockResolvedValue({ supported: false, reason: 'wsl' })
-
-    const paired = launchStructuredAgentSession(
-      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'runtime:server-1')
+  it('answers admission with the host verdict, before anything is created', async () => {
+    const server = { kind: 'environment' as const, environmentId: 'server-1' }
+    vi.mocked(callStructuredAgentSession).mockResolvedValueOnce({ supported: true })
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe('admitted')
+    vi.mocked(callStructuredAgentSession).mockResolvedValueOnce({ supported: false, reason: 'wsl' })
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe('declined')
+    vi.mocked(callStructuredAgentSession).mockRejectedValueOnce(new Error('runtime unreachable'))
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe(
+      'unreachable'
     )
-    await expect(paired).rejects.toBeInstanceOf(StructuredAgentSessionHostDeclinedError)
-    await expect(paired).rejects.toMatchObject({ opensTerminal: true })
-    const local = launchStructuredAgentSession(
-      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'local')
-    )
-    await expect(local).rejects.toMatchObject({ opensTerminal: false })
     expect(vi.mocked(callStructuredAgentSession).mock.calls.map(([, method]) => method)).toEqual([
+      'agentSession.createSupport',
       'agentSession.createSupport',
       'agentSession.createSupport'
     ])
@@ -325,7 +323,7 @@ describe('structured agent session launch', () => {
       launchStructuredAgentSession(
         createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
       )
-    ).rejects.toBeInstanceOf(StructuredAgentSessionHostUnreachableError)
+    ).rejects.toBeInstanceOf(StructuredAgentSessionCreateUnknownOutcomeError)
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 
@@ -339,7 +337,7 @@ describe('structured agent session launch', () => {
       launchStructuredAgentSession(
         createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
       )
-    ).rejects.toBeInstanceOf(StructuredAgentSessionHostUnreachableError)
+    ).rejects.toBeInstanceOf(StructuredAgentSessionCreateUnknownOutcomeError)
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 

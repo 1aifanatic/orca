@@ -16,10 +16,13 @@ export type StructuredAgentLaunchSettlement =
     }
   | {
       kind: 'cancelled'
-      sessionId: string
+      /** Null when the launch was abandoned before its host admitted a chat. */
+      sessionId: string | null
     }
   | { kind: 'visibility-unknown'; sessionId: string }
   | { kind: 'failed'; error: unknown }
+  /** The owning host declined the chat before anything was created; its terminal opened instead. */
+  | { kind: 'terminal' }
 
 export type StructuredAgentLaunchHooks = {
   onStructuredReady?: (sessionId: string) => void

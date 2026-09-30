@@ -87,7 +87,7 @@ export async function launchStructuredWorktreeSession(
     })
     ownershipTransferred = launch !== null
     if (launch) {
-      primaryTabId = launch.tab.id
+      primaryTabId = launch.tab?.id ?? primaryTabId
     }
   } catch {
     // Why: nothing awaits this creation's caller, so an escaped throw would strand the panel

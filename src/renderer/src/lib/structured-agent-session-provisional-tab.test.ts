@@ -4,8 +4,7 @@ import type { AgentSessionLaunchPlan } from './agent-session-launch-plan'
 import type { StructuredAgentLaunchSettlement } from './structured-agent-launch-settlement'
 
 const mocks = vi.hoisted(() => ({
-  createUnifiedTab: vi.fn(),
-  replaceUnstartedStructuredChat: vi.fn()
+  createUnifiedTab: vi.fn()
 }))
 
 vi.mock('@/store', () => ({
@@ -16,9 +15,6 @@ vi.mock('@/store', () => ({
       setActiveTabType: vi.fn()
     })
   }
-}))
-vi.mock('@/lib/structured-agent-session-unstarted-launch', () => ({
-  replaceUnstartedStructuredChat: mocks.replaceUnstartedStructuredChat
 }))
 
 import { beginStructuredAgentSessionProvisionalLaunch } from './structured-agent-session-provisional-tab'
@@ -58,32 +54,5 @@ describe('a provisional structured chat tab', () => {
       'agent-session',
       expect.objectContaining({ executionHostId: 'runtime:server-1' })
     )
-  })
-
-  it('hands a launch that failed before creating anything to the unstarted-chat handling', async () => {
-    const error = new Error('declined')
-    const launch = beginStructuredAgentSessionProvisionalLaunch({
-      plan: planSettlingAs({ kind: 'failed', error }),
-      hooks: {}
-    })
-    await launch?.settlement
-
-    expect(mocks.replaceUnstartedStructuredChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        worktreeId: 'wt-1',
-        sessionId: 'claude_1',
-        error
-      })
-    )
-  })
-
-  it('leaves a chat that started alone', async () => {
-    const launch = beginStructuredAgentSessionProvisionalLaunch({
-      plan: planSettlingAs({ kind: 'structured', sessionId: 'claude_1' }),
-      hooks: {}
-    })
-    await launch?.settlement
-
-    expect(mocks.replaceUnstartedStructuredChat).not.toHaveBeenCalled()
   })
 })

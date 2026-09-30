@@ -1,5 +1,4 @@
 import type { AgentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
-import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 
 export class StructuredAgentSessionCreateError extends Error {
   constructor(
@@ -37,27 +36,6 @@ export class StructuredAgentSessionCreateUnknownOutcomeError extends StructuredA
   constructor(message: string, code: string, refusal?: AgentSessionRefusalReference) {
     super(message, code, refusal)
     this.name = 'StructuredAgentSessionCreateUnknownOutcomeError'
-  }
-}
-
-/** The owning host answered createSupport and said it cannot run this chat: nothing was created. */
-export class StructuredAgentSessionHostDeclinedError extends StructuredAgentSessionCreateRefusalError {
-  /** A paired server's decline opens the terminal the route would have chosen had it known, the
-   *  way that server's own launcher downgrades such a launch; a local one stays a failed chat. */
-  readonly opensTerminal: boolean
-
-  constructor(readonly executionHostId: ExecutionHostId) {
-    super('structured_agent_session_unsupported', 'structured_agent_session_unsupported')
-    this.name = 'StructuredAgentSessionHostDeclinedError'
-    this.opensTerminal = executionHostId !== LOCAL_EXECUTION_HOST_ID
-  }
-}
-
-/** createSupport could not reach the owning host. It is a read, so nothing was created either. */
-export class StructuredAgentSessionHostUnreachableError extends StructuredAgentSessionCreateRefusalError {
-  constructor(message: string, code: string) {
-    super(message, code)
-    this.name = 'StructuredAgentSessionHostUnreachableError'
   }
 }
 

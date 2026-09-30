@@ -56,6 +56,8 @@ export type AgentSessionStructuredFeasibilityRequest = AgentLaunchRouteArgs & {
 export type AgentSessionLaunchTarget = {
   /** Overrides the verdict's workspace when it was created after planning. */
   worktreeId?: string
+  /** The host that admitted the chat, when one was asked first; it is the host the chat is made on. */
+  executionHostId?: ExecutionHostId
 }
 
 export type AgentSessionLaunchPlan = Readonly<AgentSessionLaunchVerdict> & {
@@ -93,11 +95,15 @@ function beginStructuredPlanLaunch(
   if (!worktreeId) {
     throw new Error('A structured agent launch needs the workspace it targets.')
   }
+  const executionHostId = target?.executionHostId ?? verdict.executionHostId
   try {
     return beginStructuredAgentLaunchSettlement(
       worktreeId,
       verdict.agent,
-      structuredLaunchOptions(verdict),
+      {
+        ...structuredLaunchOptions(verdict),
+        ...(executionHostId ? { executionHostId } : {})
+      },
       hooks
     )
   } catch (error) {

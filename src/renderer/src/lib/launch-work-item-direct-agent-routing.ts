@@ -81,7 +81,7 @@ export async function resolveDirectWorkItemAgent(args: {
 export function beginDirectWorkItemStructuredLaunch(args: {
   plan: AgentSessionLaunchPlan | null
   primaryTabId: string | null
-  beforeOpen: (sessionId: string) => boolean | void
+  beforeOpen: (sessionId?: string) => boolean | void
 }): {
   completed: boolean
   structuredLaunch: boolean
@@ -107,6 +107,6 @@ export function beginDirectWorkItemStructuredLaunch(args: {
   return {
     completed: true,
     structuredLaunch: true,
-    primaryTabId: launch.tab.id
+    primaryTabId: launch.tab?.id ?? args.primaryTabId
   }
 }

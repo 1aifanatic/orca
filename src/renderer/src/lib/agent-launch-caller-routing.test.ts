@@ -13,10 +13,13 @@ import {
 } from './agent-launch-caller-profiles-test-harness'
 import { createLaunchFunnelStore, resetLaunchFunnelStore } from './agent-launch-funnel-test-harness'
 
+import type * as PairedAdmissionModule from './structured-agent-session-paired-admission'
 const store = createLaunchFunnelStore()
 const mockIsWebRuntimeSessionActive = vi.fn(() => false)
 const mockLaunchAgentInWebHostTab = vi.fn()
 const mockLaunchAgentInStructuredNewTab = vi.fn()
+const mockBeginPairedStructuredLaunch = vi.fn()
+const mockCreateSupport = vi.fn()
 const mockHostCapabilities = vi.fn<() => readonly string[] | null>(() => [])
 const mockExecutionHostId = vi.fn(() => 'local')
 
@@ -53,6 +56,15 @@ vi.mock('@/lib/agent-ready-wait', () => ({
 // Why: the structured executor is mocked, the structured ROUTE is not. The real resolver still
 // decides which profiles reach this seam, which is the fact worth pinning; the seam itself is an
 // internal boundary a migration is free to move.
+vi.mock('@/runtime/structured-agent-session-client', () => ({
+  callStructuredAgentSession: (_target: unknown, method: string) =>
+    method === 'agentSession.createSupport' ? mockCreateSupport() : new Promise(() => undefined)
+}))
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }))
+vi.mock('@/lib/structured-agent-session-paired-admission', async (importOriginal) => ({
+  ...(await importOriginal<typeof PairedAdmissionModule>()),
+  beginPairedStructuredLaunch: mockBeginPairedStructuredLaunch
+}))
 vi.mock('@/lib/launch-agent-in-new-tab-structured', () => ({
   launchAgentInStructuredNewTab: mockLaunchAgentInStructuredNewTab
 }))
@@ -181,11 +193,65 @@ describe('agent launch caller routing', () => {
     ])
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
+    mockBeginPairedStructuredLaunch.mockReturnValueOnce({
+      sessionId: null,
+      tab: null,
+      settlement: new Promise(() => undefined),
+      cancel: vi.fn()
+    })
+
     const result = launchAgentInNewTab({ agent: 'claude', worktreeId: 'wt-1' })
 
-    expect(result?.surface.kind).toBe('local-agent-session')
-    expect(mockLaunchAgentInStructuredNewTab).toHaveBeenCalledTimes(1)
+    // The server admits the chat before any of it exists here, so the surface is the host's.
+    expect(result?.surface.kind).toBe('host-published')
+    expect(mockBeginPairedStructuredLaunch).toHaveBeenCalledTimes(1)
+    expect(mockLaunchAgentInStructuredNewTab).not.toHaveBeenCalled()
     expect(mockLaunchAgentInWebHostTab).not.toHaveBeenCalled()
+  })
+
+  // Before, the chat opened first and a decline replaced it: the workspace could lose its only tab,
+  // the caller heard "failed" while a terminal ran its prompt, and the caller's arguments were lost.
+  it("runs the caller's own launch as the server's terminal when the server declines the chat", async () => {
+    store.settings = { ...store.settings, ...CHAT_DEFAULT_SETTINGS }
+    mockIsWebRuntimeSessionActive.mockReturnValue(true)
+    mockExecutionHostId.mockReturnValue('runtime:web-runtime')
+    serverReports([
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+      STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+    ])
+    const actual = await vi.importActual<typeof PairedAdmissionModule>(
+      './structured-agent-session-paired-admission'
+    )
+    mockBeginPairedStructuredLaunch.mockImplementationOnce(actual.beginPairedStructuredLaunch)
+    mockCreateSupport.mockResolvedValue({ supported: false, reason: 'wsl' })
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    const result = launchAgentInNewTab({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: 'fix the flaky test',
+      promptDelivery: 'submit-after-ready',
+      agentArgs: '--model sonnet'
+    })
+
+    expect(result?.surface).toEqual({ kind: 'host-published' })
+    await expect(result?.structuredSettlement).resolves.toEqual({ kind: 'terminal' })
+    await expect(result?.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+    expect(mockLaunchAgentInWebHostTab).toHaveBeenCalledOnce()
+    expect(mockLaunchAgentInWebHostTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'claude',
+        worktreeId: 'wt-1',
+        environmentId: 'web-runtime',
+        prompt: 'fix the flaky test',
+        agentArgs: '--model sonnet'
+      })
+    )
+    expect(mockLaunchAgentInStructuredNewTab).not.toHaveBeenCalled()
+    expect(store.createTab).not.toHaveBeenCalled()
   })
 
   it('keeps the host-published terminal for a paired server without structured sessions', async () => {

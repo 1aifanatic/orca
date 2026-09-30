@@ -34,16 +34,12 @@ import {
   StructuredAgentSessionCreateError,
   StructuredAgentSessionCreateRefusalError,
   StructuredAgentSessionCreateUnknownOutcomeError,
-  StructuredAgentSessionHostDeclinedError,
-  StructuredAgentSessionHostUnreachableError,
   StructuredAgentSessionOwnerUnresolvedError
 } from '@/lib/structured-agent-session-launch-errors'
 
 export {
   StructuredAgentSessionCreateRefusalError,
   StructuredAgentSessionCreateUnknownOutcomeError,
-  StructuredAgentSessionHostDeclinedError,
-  StructuredAgentSessionHostUnreachableError,
   StructuredAgentSessionOwnerUnresolvedError
 }
 
@@ -237,27 +233,36 @@ function runtimeErrorCode(error: unknown): string {
   return 'runtime_unavailable'
 }
 
+/** The owning host's answer to "can you run this chat here?", asked before anything is created. */
+export type StructuredLaunchAdmission = 'admitted' | 'declined' | 'unreachable'
+
+type HostCreateSupport =
+  | { kind: 'admitted' | 'declined' }
+  | { kind: 'unreachable'; code: string; message: string; error: unknown }
+
 /**
- * Whether the executing host supports creating this session — retrying only while the host cannot
- * yet resolve the worktree.
- *
- * "Could not answer" and "answered no" are different states, but neither leaves a session behind:
- * createSupport only reads, so both settle before anything is sent to create.
+ * Whether the executing host supports creating this session, retrying only while the host cannot
+ * yet resolve the worktree. "Could not answer" and "answered no" are different states and only the
+ * second is a verdict. Each call is bounded by the runtime RPC client's own timeout.
  */
-async function hostSupportsCreate(intent: StructuredAgentSessionLaunchIntent): Promise<boolean> {
+async function askHostCreateSupport(
+  target: RuntimeClientTarget,
+  worktree: string,
+  agent: AgentSessionHandleProvider
+): Promise<HostCreateSupport> {
   for (let attempt = 0; ; attempt += 1) {
     try {
       const support = await callStructuredAgentSession<{ supported: boolean; reason?: string }>(
-        intent.target,
+        target,
         'agentSession.createSupport',
-        { worktree: intent.params.worktree, agent: intent.agent }
+        { worktree, agent }
       )
-      return support.supported === true
+      return { kind: support.supported === true ? 'admitted' : 'declined' }
     } catch (error) {
       const retryDelayMs = CREATE_SUPPORT_RETRY_DELAYS_MS[attempt]
       if (retryDelayMs === undefined) {
         // A selector that never appears is a definitive refusal.
-        return false
+        return { kind: 'declined' }
       }
       if (hasRuntimeRpcErrorCode(error, SELECTOR_NOT_RESOLVABLE_CODE)) {
         await delay(retryDelayMs)
@@ -265,33 +270,45 @@ async function hostSupportsCreate(intent: StructuredAgentSessionLaunchIntent): P
       }
       const code = runtimeErrorCode(error)
       if (isDefinitiveAgentSessionCreateRefusal(code)) {
-        return false
+        return { kind: 'declined' }
       }
-      throw new StructuredAgentSessionHostUnreachableError(
-        error instanceof Error ? error.message : String(error),
-        code
-      )
+      const message = error instanceof Error ? error.message : String(error)
+      return { kind: 'unreachable', code, message, error }
     }
   }
+}
+
+/** Asks a host to admit a chat before the client commits any of it. */
+export async function admitStructuredLaunchOnHost(
+  target: RuntimeClientTarget,
+  worktree: string,
+  agent: AgentSessionHandleProvider
+): Promise<StructuredLaunchAdmission> {
+  return (await askHostCreateSupport(target, worktree, agent)).kind
 }
 
 /**
  * Only the host that will execute the session can answer whether it supports creating one there —
  * on Windows that means reading the provider child's process start time, which a client cannot
  * observe. Both providers ask: the host classifies per agent, and Codex inherits the
- * unresolvable-selector retry above along with the probe.
+ * unresolvable-selector retry above along with the probe. The unknown branch stays on the chat for
+ * reconciliation: a retry may follow a create whose reply was lost.
  */
 async function requireHostCreateSupport(intent: StructuredAgentSessionLaunchIntent): Promise<void> {
-  let supported: boolean
-  try {
-    supported = await hostSupportsCreate(intent)
-  } catch (error) {
-    abandonStructuredAgentSessionLaunchIntent(intent)
-    throw error
+  const support = await askHostCreateSupport(intent.target, intent.params.worktree, intent.agent)
+  if (support.kind === 'unreachable') {
+    throw new StructuredAgentSessionCreateUnknownOutcomeError(
+      support.message,
+      support.code,
+      readAgentSessionErrorRefusal(support.error)
+    )
   }
-  if (!supported) {
+  if (support.kind === 'declined') {
     abandonStructuredAgentSessionLaunchIntent(intent)
-    throw new StructuredAgentSessionHostDeclinedError(intent.executionHostId)
+    throw new StructuredAgentSessionCreateRefusalError(
+      'structured_agent_session_unsupported',
+      'structured_agent_session_unsupported'
+    )
   }
 }
 
