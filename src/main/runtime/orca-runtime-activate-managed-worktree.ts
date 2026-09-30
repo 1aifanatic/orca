@@ -4,6 +4,7 @@ import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import { navigationTargetsClients, navigationTargetsHost } from '../../shared/runtime-navigation'
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
+import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type {
@@ -177,14 +178,18 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     pasteWorktreeStartupDraftWhenReady(this.getWorktreeStartupReadinessHost(), handle, draft)
   }
 
+  /** Platform of the pty transport behind a handle: Windows for a local WSL pane, the remote OS over SSH. */
+  getTerminalPtyHostPlatform(handle: string): NodeJS.Platform {
+    return this.getPtyWriteHostPlatform(this.getLiveTerminalPtyId(handle))
+  }
+
   /** Only for a newly launched worker, before its first dispatch input. */
   async waitForFreshWorkerComposer(
     handle: string,
     agent: TuiAgent,
     timeoutMs: number
-  ): Promise<void> {
-    const initialPtyId =
-      this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
+  ): Promise<RuntimeTerminalWait> {
+    const initialPtyId = this.getLiveTerminalPtyId(handle)
     const ptyId = await waitForWorktreeStartupDraft(
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
@@ -198,6 +203,14 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     if (!this.ptysById.get(ptyId)?.connected) {
       throw new Error('terminal_handle_stale')
     }
+    // The tui-idle result it stands in for, so callers record the wait-for-setup outcome too.
+    return { handle, condition: 'tui-idle', satisfied: true, status: 'running', exitCode: null }
+  }
+
+  private getLiveTerminalPtyId(handle: string): string {
+    return (
+      this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
+    )
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

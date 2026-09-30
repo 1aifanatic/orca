@@ -1,0 +1,49 @@
+/**
+ * The one answer to "has the agent Orca just launched opened its input box?" for a worker's first
+ * dispatch. An agent whose row cites captures of its composer marker (`composerReadyCaptures`)
+ * waits for that marker alone: a title holding only the agent's name can arrive before the box
+ * (OpenCode's own, or a shell auto-title), and a task typed then is lost. Every other agent keeps
+ * the `tui-idle` wait.
+ */
+
+import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
+import type { TuiAgent } from '../../shared/tui-agent'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import type { OrcaRuntimeService } from './orca-runtime'
+
+export type LaunchedAgentReadinessLane = 'composer-marker' | 'tui-idle'
+
+export type LaunchedAgentReadinessRuntime = Pick<
+  OrcaRuntimeService,
+  'waitForTerminal' | 'waitForFreshWorkerComposer' | 'getTerminalPtyHostPlatform'
+>
+
+export function getLaunchedAgentReadinessLane(
+  agent: TuiAgent,
+  getPtyHostPlatform: () => NodeJS.Platform
+): LaunchedAgentReadinessLane {
+  const row = TUI_AGENT_CONFIG[agent]
+  if (!row.composerReadyCaptures?.length) {
+    return 'tui-idle'
+  }
+  // Temporary: no capture through Orca's bundled conpty.dll shows this marker at the box yet.
+  if (
+    row.draftPasteReadySignal === 'render-cursor-after-bracketed-paste' &&
+    getPtyHostPlatform() === 'win32'
+  ) {
+    return 'tui-idle'
+  }
+  return 'composer-marker'
+}
+
+export function waitForLaunchedAgentComposer(
+  runtime: LaunchedAgentReadinessRuntime,
+  handle: string,
+  agent: TuiAgent,
+  timeoutMs: number
+): Promise<RuntimeTerminalWait> {
+  return getLaunchedAgentReadinessLane(agent, () => runtime.getTerminalPtyHostPlatform(handle)) ===
+    'composer-marker'
+    ? runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
+    : runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
+}
