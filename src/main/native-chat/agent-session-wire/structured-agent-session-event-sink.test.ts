@@ -206,6 +206,7 @@ describe('deferred structured agent-session event sink', () => {
   })
 
   it('replaces a failed cached sink before recovery drain', async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the runtime state's event sinks run here; the store is never read.
     const runtime = new StructuredAgentSessionHostRuntimeState({ store: {} } as never, () => {})
     const failed = runtime.eventSinkFor('session-1')
     failed.bind(target(1, [], 0))

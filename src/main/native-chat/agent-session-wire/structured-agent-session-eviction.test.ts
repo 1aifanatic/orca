@@ -45,6 +45,7 @@ function context(): StructuredAgentSessionEvictionContext & { order: string[] } 
 
 function runtimeState(): StructuredAgentSessionHostRuntimeState {
   return new StructuredAgentSessionHostRuntimeState(
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these tests use only the runtime state's event sinks; the store and adapter are never read.
     {
       store: {} as never,
       adapter: {} as never

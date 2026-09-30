@@ -309,7 +309,7 @@ describe('structured agent-session lease renewal', () => {
     }
 
     /** Each tick's renewal throws whatever `failure` holds, or renews when it holds null. */
-    function stuckRenewer(
+    async function stuckRenewer(
       sessionIds: string[],
       probe: () => Promise<AgentSessionOwnerProbe> = async () => ({
         outcome: 'identity-matched',
@@ -320,20 +320,17 @@ describe('structured agent-session lease renewal', () => {
         failure: () => new Error('agent_session_ownership_unknown'),
         records: sessionIds
       }
-      const store = {
-        listRecords: () => state.records.map(liveRecord),
-        renewLeases: async () => {
-          throw new Error('batch refused')
-        },
-        renewLease: async (renewal: { sessionId: string }) => {
-          if (state.failure) {
-            throw state.failure()
-          }
-          return liveRecord(renewal.sessionId)
+      const store = await liveStore()
+      vi.spyOn(store, 'listRecords').mockImplementation(() => state.records.map(liveRecord))
+      vi.spyOn(store, 'renewLeases').mockRejectedValue(new Error('batch refused'))
+      vi.spyOn(store, 'renewLease').mockImplementation(async (renewal) => {
+        if (state.failure) {
+          throw state.failure()
         }
-      }
+        return liveRecord(renewal.sessionId)
+      })
       const renewer = new StructuredAgentSessionLeaseRenewer({
-        store: store as unknown as AgentSessionRecordStore,
+        store,
         probe,
         now: () => NOW + 10_000
       })
@@ -353,7 +350,7 @@ describe('structured agent-session lease renewal', () => {
 
     it('records it once, however many ticks it repeats', async () => {
       vi.mocked(traceAgentSessionError).mockClear()
-      const { renewer } = stuckRenewer(['session-a'])
+      const { renewer } = await stuckRenewer(['session-a'])
 
       await ticks(renewer, 5)
 
@@ -370,7 +367,7 @@ describe('structured agent-session lease renewal', () => {
 
     it('keys a store error on its code, not its per-attempt temp path', async () => {
       vi.mocked(traceAgentSessionError).mockClear()
-      const { state, renewer } = stuckRenewer(['session-a'])
+      const { state, renewer } = await stuckRenewer(['session-a'])
       let attempt = 0
       state.failure = () =>
         Object.assign(
@@ -387,7 +384,7 @@ describe('structured agent-session lease renewal', () => {
 
     it('records it again after the session renews, and when the failure changes', async () => {
       vi.mocked(traceAgentSessionError).mockClear()
-      const { state, renewer } = stuckRenewer(['session-a'])
+      const { state, renewer } = await stuckRenewer(['session-a'])
       const unknown = state.failure
 
       await ticks(renewer, 2)
@@ -408,7 +405,7 @@ describe('structured agent-session lease renewal', () => {
 
     it('forgets a session that stops being renewable', async () => {
       vi.mocked(traceAgentSessionError).mockClear()
-      const { state, renewer } = stuckRenewer(['session-a'])
+      const { state, renewer } = await stuckRenewer(['session-a'])
 
       await ticks(renewer, 1)
       state.records = []
@@ -421,7 +418,7 @@ describe('structured agent-session lease renewal', () => {
 
     it('records a probe that keeps failing once', async () => {
       vi.mocked(traceAgentSessionError).mockClear()
-      const { renewer } = stuckRenewer(['session-a'], async () => {
+      const { renewer } = await stuckRenewer(['session-a'], async () => {
         throw new Error('probe unavailable')
       })
 

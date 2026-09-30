@@ -22,11 +22,29 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function readTrace(filePath: string): Record<string, unknown>[] {
   return readFileSync(filePath, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .map((line) => {
+      const record: unknown = JSON.parse(line)
+      if (!isRecord(record)) {
+        throw new Error(`trace line is not an object: ${line}`)
+      }
+      return record
+    })
+}
+
+function failureCause(record: Record<string, unknown> | undefined): string {
+  const exit = record?.exit
+  if (!isRecord(exit) || typeof exit.cause !== 'string') {
+    throw new Error('trace record has no failure cause')
+  }
+  return exit.cause
 }
 
 describe('traceAgentSessionError', () => {
@@ -56,7 +74,7 @@ describe('traceAgentSessionError', () => {
         exit: { _tag: 'Failure', cause: expect.any(String) }
       })
     ])
-    const { cause } = records[0].exit as { cause: string }
+    const cause = failureCause(records[0])
     // The wrapper alone names only the step; the chain is what says why.
     expect(cause).toContain('dead generation work settlement failed')
     expect(cause).toContain('[cause] AggregateError: settle failed')
@@ -92,7 +110,7 @@ describe('traceAgentSessionError', () => {
     sink.flush()
     sink.close()
 
-    const { cause } = readTrace(filePath)[0].exit as { cause: string }
+    const cause = failureCause(readTrace(filePath)[0])
     expect(cause).toContain('database or disk is full')
     expect(cause).toContain('[code] SQLITE_FULL')
   })
