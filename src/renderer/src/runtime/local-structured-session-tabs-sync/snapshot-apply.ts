@@ -16,16 +16,10 @@ import {
   reviveRetiredValue,
   sameSessionTabsPublicationLineage
 } from '../web-session-tabs-sync/publisher-identity-fences'
+import { knownStructuredSessionWorktreeIds } from '../local-structured-session-tab-retirement'
 import {
-  knownStructuredSessionWorktreeIds,
-  removeStructuredSessionTabsForVersions
-} from '../local-structured-session-tab-retirement'
-import {
-  dropLocalStructuredSessionRestoreLatch,
-  forgetLocalStructuredSessionPublicationCursors,
   localStructuredSessionEpochHistoryByWorktree,
-  localStructuredSessionVersionByWorktree,
-  supersedeLocalStructuredSessionGeneration
+  localStructuredSessionVersionByWorktree
 } from './inventory-generation-fence'
 import { forgetRetiredEpochRepairsOutside } from './retired-epoch-repair'
 import { projectLocalStructuredSessionTabs } from './snapshot-projection'
@@ -102,29 +96,6 @@ export function applyStructuredSessionTabSnapshots(
       LOCAL_EXECUTION_HOST_ID
     )
   }
-}
-
-export function removeLocalStructuredSessionTabs<
-  State extends WebSessionTabsSyncState & WorktreeRuntimeOwnerState
->(state: State, owner = LOCAL_STRUCTURED_SESSION_OWNER, now = Date.now()): State {
-  return removeStructuredSessionTabsForVersions(
-    state,
-    localStructuredSessionVersionByWorktree,
-    owner,
-    now
-  )
-}
-
-export function clearLocalStructuredSessionTabs(): void {
-  // Fence responses from the previous enabled instance before clearing its mirror.
-  supersedeLocalStructuredSessionGeneration()
-  const settleStructuredSessionClear = applyWebSessionTabsStorePatch(
-    (state) => removeLocalStructuredSessionTabs(state),
-    { frames: [] }
-  )
-  settleStructuredSessionClear()
-  dropLocalStructuredSessionRestoreLatch()
-  forgetLocalStructuredSessionPublicationCursors()
 }
 
 export function applyLocalStructuredSessionTabSnapshots<

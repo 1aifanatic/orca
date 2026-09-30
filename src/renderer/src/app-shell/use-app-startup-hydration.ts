@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { restoreLocalStructuredChatsAtStartup } from '@/runtime/local-structured-chats'
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
 import { installCodexDetachedPaneRestartExecutor } from '@/components/terminal-pane/codex-detached-pane-restart-scheduler'
 import { useAppStore } from '../store'
@@ -35,7 +36,6 @@ import {
 } from '../../../shared/execution-host'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
-import { restoreLocalStructuredSessionTabsOnce } from '../runtime/local-structured-session-tabs-sync'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
 
 async function listRuntimeSessionHostIdsForStartup(): Promise<ExecutionHostId[]> {
@@ -281,9 +281,8 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           await timeRendererStartupStep('recover-legacy-worker-terminals-post-reconnect', () =>
             window.api.app.recoverLegacyWorkerTerminalsForRendererStartup()
           )
-          // Existing chats come back whatever the chat setting says; it picks only new launches.
-          await timeRendererStartupStep('project-structured-session-tabs', () =>
-            restoreLocalStructuredSessionTabsOnce()
+          await restoreLocalStructuredChatsAtStartup(useAppStore.getState().settings, (restore) =>
+            timeRendererStartupStep('project-structured-session-tabs', restore)
           )
           if (cancelled) {
             return
