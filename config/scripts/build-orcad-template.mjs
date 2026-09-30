@@ -12,13 +12,24 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import {
+  ORCAD_NODE_PTY_DIR,
+  ORCAD_NODE_RUNTIME_MARKER_FILENAME,
+  ORCAD_SERVER_TARGET_FILENAME,
   ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
+  orcadNodePtySlotFiles,
   orcadTemplateCommonFilenames,
   orcadTemplateTargetFilenames
 } from '../../src/shared/orcad-artifacts.ts'
 import { orcadAgentBrowserNativeName } from '../../src/shared/orcad-agent-browser-name.ts'
-import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/node-runtime-pin.ts'
+import {
+  COMPAT_SERVER_TARGET_BASES,
+  COMPAT_SERVER_TARGETS,
+  ORCAD_TEMPLATE_TARGETS,
+  pinnedNodeRuntimeAsset
+} from '../../src/shared/node-runtime-pin.ts'
+import { ORCAD_PREBUILDS_DIR } from './build-orcad-prebuilds.mjs'
+import { findSlotProblems, readManifest } from './orcad-prebuild-slot-contents.mjs'
 import { runProcessSync } from './script-child-process.mjs'
 import { verifyPackagedOrcadTemplate } from './verify-packaged-orcad-template.cjs'
 
@@ -90,6 +101,46 @@ function stageTarget(target, packageDir) {
   return { files, browserName, browserSha256: sha256(browserDestination) }
 }
 
+/**
+ * A compat target (design D6 rung B) is its base target's package with the compat node-pty
+ * slot and runtime marker swapped in; everything else is target-independent or libc-static.
+ * Omitted, not failed, when this build has no compat slot: rung B then refuses as unavailable.
+ */
+function stageCompatTarget(compat, basePackageDir) {
+  const problems = findSlotProblems(readManifest(ORCAD_PREBUILDS_DIR), ORCAD_PREBUILDS_DIR, [
+    compat
+  ])
+  if (problems.length > 0) {
+    process.stdout.write(
+      `[build-orcad-template] skipping compat target ${compat}: ${problems.join('; ')}\n`
+    )
+    return null
+  }
+  const destination = join(outputDir, ORCAD_TEMPLATE_TARGETS_DIR, compat)
+  const slotFiles = new Map(
+    orcadNodePtySlotFiles(compat).map((file) => [
+      `${ORCAD_NODE_PTY_DIR}/build/Release/${file}`,
+      join(ORCAD_PREBUILDS_DIR, compat, ...file.split('/'))
+    ])
+  )
+  const files = {}
+  for (const filename of orcadTemplateTargetFilenames(compat)) {
+    const staged = join(destination, ...filename.split('/'))
+    if (filename === ORCAD_SERVER_TARGET_FILENAME) {
+      mkdirSync(dirname(staged), { recursive: true })
+      writeFileSync(staged, `${compat}\n`)
+    } else if (filename === ORCAD_NODE_RUNTIME_MARKER_FILENAME) {
+      mkdirSync(dirname(staged), { recursive: true })
+      writeFileSync(staged, `${pinnedNodeRuntimeAsset(compat).executableSha256}\n`)
+    } else {
+      const source = slotFiles.get(filename) ?? join(basePackageDir, ...filename.split('/'))
+      copy(source, staged, isExecutable(filename))
+    }
+    files[filename] = sha256(staged)
+  }
+  return { files }
+}
+
 function sameBytes(left, right) {
   return sha256(left) === sha256(right)
 }
@@ -115,6 +166,12 @@ async function main() {
   const targets = Object.fromEntries(
     ORCAD_TEMPLATE_TARGETS.map((target) => [target, stageTarget(target, packages[target])])
   )
+  for (const compat of COMPAT_SERVER_TARGETS) {
+    const staged = stageCompatTarget(compat, packages[COMPAT_SERVER_TARGET_BASES[compat]])
+    if (staged) {
+      targets[compat] = staged
+    }
+  }
   const commonSha256 = Object.fromEntries(
     commonArtifacts.map((filename) => [filename, sha256(join(outputDir, filename))])
   )
@@ -124,7 +181,7 @@ async function main() {
   )
   verifyPackagedOrcadTemplate(join(root, 'out'))
   rmSync(buildDir, { recursive: true, force: true })
-  process.stdout.write(`[build-orcad-template] ok — ${ORCAD_TEMPLATE_TARGETS.length} targets\n`)
+  process.stdout.write(`[build-orcad-template] ok — ${Object.keys(targets).length} targets\n`)
 }
 
 await main()

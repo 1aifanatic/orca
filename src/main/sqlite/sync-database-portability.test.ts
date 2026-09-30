@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import SyncDatabase, { isSqliteAvailable } from './sync-database'
+import SyncDatabase, { hasNodeSqliteReaderApi, isSqliteAvailable } from './sync-database'
 
 const directories: string[] = []
 const databases: SyncDatabase[] = []
@@ -52,6 +52,13 @@ describe('SQLite runtime contract', () => {
 
   it('admits the actual runtime driver', () => {
     expect(isSqliteAvailable()).toBe(true)
+  })
+
+  it('refuses a node:sqlite without backup(), as Node 22.13-22.15 ship it', () => {
+    const DatabaseSync = function DatabaseSync() {}
+    expect(hasNodeSqliteReaderApi({ DatabaseSync })).toBe(false)
+    expect(hasNodeSqliteReaderApi({ DatabaseSync, backup: () => {} })).toBe(true)
+    expect(hasNodeSqliteReaderApi(undefined)).toBe(false)
   })
 
   it('enforces foreign keys by default', () => {

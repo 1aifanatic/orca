@@ -29,7 +29,7 @@ vi.mock('./pinned-runtime-materializer', () => ({
   materializeNodeRuntimeArchive: mocks.materialize,
   materializeCachedNodeRuntime: vi.fn()
 }))
-vi.mock('./orcad-deployment-target', () => ({ resolveOrcadDeploymentTarget: mocks.target }))
+vi.mock('./orcad-deployment-target', () => ({ resolveOrcadDeploymentTargetFacts: mocks.target }))
 // The store lock has its own tests; here it only has to let promotion run.
 vi.mock('./remote-node-runtime-store-lock', () => ({
   withRuntimeStoreLock: (_conn: unknown, _host: unknown, _store: unknown, task: () => unknown) =>
@@ -95,7 +95,7 @@ beforeEach(async () => {
   runtime = join(cacheRoot, archiveName)
   await writeFile(runtime, 'verified runtime')
   mocks.materialize.mockResolvedValue(runtime)
-  mocks.target.mockResolvedValue('linux-x64-glibc')
+  mocks.target.mockResolvedValue({ target: 'linux-x64-glibc', glibc: { major: 2, minor: 31 } })
   mocks.warm = false
   mocks.checksumError = false
   mocks.cleanupError = false
