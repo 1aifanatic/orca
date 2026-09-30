@@ -112,15 +112,22 @@ describe('verifyPackagedOrcadTemplate', () => {
     )
   })
 
-  it('does not ship the unused deployment template in desktop packages', async () => {
+  // Design D2 reverses the old "unused, excluded" contract: SSH relays and managed orcad deploys
+  // materialize their slot from process.resourcesPath/orcad-template, so every desktop OS ships it.
+  it('ships the deployment template as a resource on every desktop OS, never its runtimes', async () => {
     for (const platform of ['win', 'mac', 'linux']) {
+      expect(builderConfig[platform].extraResources).toContainEqual({
+        from: 'out/orcad-template',
+        to: 'orcad-template'
+      })
       expect(
         builderConfig[platform].extraResources.some(
-          (resource) => typeof resource === 'object' && resource.to.startsWith('orcad-template')
+          (resource) =>
+            typeof resource === 'object' && /runtimes|node-runtime-cache/.test(resource.from)
         )
       ).toBe(false)
     }
-    // The pinned Node a local build references is ~120 MB; none of these outputs is desktop code.
+    // The pinned Node a local build references is ~120 MB and is downloaded on demand instead.
     expect(builderConfig.files).toEqual(
       expect.arrayContaining([
         '!out/orcad{,/**/*}',
@@ -129,6 +136,8 @@ describe('verifyPackagedOrcadTemplate', () => {
         '!out/node-runtime-cache{,/**/*}'
       ])
     )
+    expect(builderConfig.mac.signIgnore).toContain('/orcad-template/')
+    // Release CI builds the template from every lane's slot; one host cannot build it alone.
     const { scripts } = JSON.parse(await readFile(join(process.cwd(), 'package.json'), 'utf8'))
     for (const name of ['build:desktop', 'build:release', 'build:release:parallel']) {
       expect(scripts[name]).not.toContain('build:orcad-template')
