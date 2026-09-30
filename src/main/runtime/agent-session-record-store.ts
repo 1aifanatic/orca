@@ -290,7 +290,7 @@ export class AgentSessionRecordStore {
   admitAndClaimOperation = (
     args: AgentSessionOperationAdmission,
     claimAfter: ClaimAfterAdmission
-  ) => this.transact(() => admitAndClaimAgentSessionOperationInto(this.state, args, claimAfter))
+  ) => this.transact((draft) => admitAndClaimAgentSessionOperationInto(draft, args, claimAfter))
 
   async recordOperationOutcome(args: {
     callerKey?: string
