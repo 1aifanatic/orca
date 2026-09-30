@@ -147,7 +147,7 @@ export class JournalQueuedMessages {
   }
 
   /** The person's Stop still pausing the queue, if any (`journalUserStopInForce`). */
-  userStopInForce(): JournalQueuePauseMarks['userStop'] {
+  userStopInForce(): JournalQueuePauseMarks['latestStop'] {
     const state = this.deps.state()
     return journalUserStopInForce(state.queuePauseMarks, state.latestPersonTurnSequence)
   }

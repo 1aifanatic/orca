@@ -296,13 +296,23 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBeNull()
   })
 
-  it("a later Stop by the host, an eviction or a close never lifts a person's Stop", async () => {
+  it("a later Stop of any reason ends a person's Stop, without pausing itself", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    for (const later of ['host-stop', 'evict', 'user-close'] as const) {
+      await userStop(journal)
+      expect(held(journal)).toEqual([['draft-1', true]])
+      await journal.appendStopEvent({ reason: later }, 0)
+      expect(reason(journal)).toBeNull()
+      expect(held(journal)).toEqual([['draft-1', false]])
+    }
+  })
+
+  it("no Stop event after a person's Stop means no lift: an idle eviction writes none", async () => {
     const journal = await open()
     await queueDraft(journal, 'held')
-    await journal.appendStopEvent({ reason: 'user-stop' }, 0)
-    for (const reason of ['host-stop', 'evict', 'user-close'] as const) {
-      await journal.appendStopEvent({ reason }, 0)
-    }
+    await userStop(journal)
+    // An eviction writer must write only when it ends a running turn, or it would lift this pause.
     expect(reason(journal)).toBe('stopped')
     expect(held(journal)).toEqual([['held', true]])
   })
@@ -482,7 +492,7 @@ describe('which cards the pauses in force hold', () => {
     return deriveQueuePauses({
       epoch: 'epoch-1',
       marks: {
-        userStop: stopped ? { sequence: stopped, event: { reason: 'user-stop', at: 0 } } : null,
+        latestStop: stopped ? { sequence: stopped, event: { reason: 'user-stop', at: 0 } } : null,
         resumedSequence: 0
       },
       latestPersonTurnSequence: 0,

@@ -1,7 +1,8 @@
 // The queue's pauses: a pure function of the journal fold and the cards, never a stored flag, so
 // nothing has to retire them. Each holds its own cards (`queuePauseHolding`). In force when:
-//   - 'stopped': the latest person's Stop event (reason `user-stop`) has no later Resume row, and
-//     no turn a person asked for was sent after it and accepted. A later Stop is simply the latest.
+//   - 'stopped': the latest Stop event is a person's (reason `user-stop`), with no later Resume row
+//     and no turn a person asked for sent after it and accepted. A later Stop of any reason
+//     supersedes it; only a person's pauses.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
@@ -14,9 +15,9 @@ import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
-/** The latest person's Stop event and Resume row, folded by the reducer. */
+/** The latest Stop event, whatever its reason, and the latest Resume row, folded by the reducer. */
 export type JournalQueuePauseMarks = {
-  userStop: { sequence: number; event: JournalStopEvent } | null
+  latestStop: { sequence: number; event: JournalStopEvent } | null
   /** 0 when none. */
   resumedSequence: number
 }
@@ -36,29 +37,29 @@ type QueueCard = {
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
-  return { userStop: null, resumedSequence: 0 }
+  return { latestStop: null, resumedSequence: 0 }
 }
 
 export function foldJournalQueuePauseMark(
   marks: JournalQueuePauseMarks,
   row: JournalTombstoneRow
 ): void {
-  // Only a person's Stop pauses; any other reason, or a newer build's shape, is left alone.
-  if (row.stopEvent?.reason === 'user-stop') {
-    marks.userStop = { sequence: row.seq, event: row.stopEvent }
+  if (row.stopEvent !== undefined) {
+    marks.latestStop = { sequence: row.seq, event: row.stopEvent }
   } else if (row.queueResume !== undefined) {
     marks.resumedSequence = row.seq
   }
 }
 
-/** The latest person's Stop still pauses: nothing a person did since, and no Resume, ended it. */
+/** A person's Stop still pauses: it is the latest Stop, and nothing a person did since, and no
+ *  Resume, ended it. A later Stop for any other reason ends it without pausing itself. */
 export function journalQueueStopHolds(
   marks: JournalQueuePauseMarks,
   latestPersonTurnSequence: number
 ): boolean {
   return (
-    marks.userStop !== null &&
-    marks.userStop.sequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
+    marks.latestStop?.event.reason === 'user-stop' &&
+    marks.latestStop.sequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
   )
 }
 
@@ -66,8 +67,8 @@ export function journalQueueStopHolds(
 export function journalUserStopInForce(
   marks: JournalQueuePauseMarks,
   latestPersonTurnSequence: number
-): JournalQueuePauseMarks['userStop'] {
-  return journalQueueStopHolds(marks, latestPersonTurnSequence) ? marks.userStop : null
+): JournalQueuePauseMarks['latestStop'] {
+  return journalQueueStopHolds(marks, latestPersonTurnSequence) ? marks.latestStop : null
 }
 
 /** What a rewind's new epoch restates so its pauses read as they did: a lift of /clear's pause (a
@@ -101,8 +102,9 @@ export function deriveQueuePauses(input: {
 }): DerivedQueuePause[] {
   const { epoch, marks, latestPersonTurnSequence } = input
   const pauses: DerivedQueuePause[] = []
-  if (marks.userStop && journalQueueStopHolds(marks, latestPersonTurnSequence)) {
-    pauses.push({ reason: 'stopped', since: { epoch, sequence: marks.userStop.sequence } })
+  const stop = journalUserStopInForce(marks, latestPersonTurnSequence)
+  if (stop) {
+    pauses.push({ reason: 'stopped', since: { epoch, sequence: stop.sequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
   const carried = waiting.filter((card) => card.carriedFrom !== null)
