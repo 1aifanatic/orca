@@ -10,6 +10,7 @@ import { forgetWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
 import { readIpcErrorDetail } from '@/lib/ipc-error'
 import { isArchiveHookRemovalError } from '../../../../../../shared/worktree/archive-hook-removal-gate'
 import { showUncheckedTerminalServicesToast } from '@/components/sidebar/unchecked-terminal-services-toast'
+import { openManageSessions } from '@/components/settings/open-manage-sessions'
 import {
   resolveWorktreeOperationRouteResult,
   resolveWorktreeOperationRouteResultForHost,
@@ -265,11 +266,11 @@ export function createRemoveWorktree(
         target,
         suppressToast: options?.suppressPreservedBranchToast === true
       })
-      if (options?.suppressPreservedBranchToast !== true) {
-        showUncheckedTerminalServicesToast(removalResult, {
-          onThisMachine: target.kind === 'local'
-        })
-      }
+      // Why not per-row suppression: a batch must still report the unchecked part; the toast id keeps it to one.
+      showUncheckedTerminalServicesToast(
+        removalResult,
+        target.kind === 'local' ? () => openManageSessions(get()) : undefined
+      )
       pruneHostedReviewLinkMutationGenerations([worktreeId])
       return completed
     } catch (err) {
