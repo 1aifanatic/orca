@@ -170,9 +170,14 @@ export class StructuredAgentSessionLeaseRenewer {
 
 /** A store error's code, not its message: EACCES names a fresh temp file on every attempt. */
 function leaseFailureKey(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error)
+  // Never throws: a hostile getter or toString would otherwise reject the interval's tick.
+  try {
+    if (!(error instanceof Error)) {
+      return String(error)
+    }
+    const code = 'code' in error ? error.code : undefined
+    return `${error.name}:${typeof code === 'string' || typeof code === 'number' ? code : error.message}`
+  } catch {
+    return 'unkeyable'
   }
-  const code = 'code' in error ? error.code : undefined
-  return `${error.name}:${typeof code === 'string' || typeof code === 'number' ? code : error.message}`
 }

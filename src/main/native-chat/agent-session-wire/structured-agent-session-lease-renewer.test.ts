@@ -308,15 +308,20 @@ describe('structured agent-session lease renewal', () => {
       )
     }
 
-    /** Each tick's renewal throws whatever `failure` holds, or renews when it holds null. */
+    /** Each tick's renewal throws whatever `failure` returns for the session, or renews when it
+     *  holds or returns null. */
     async function stuckRenewer(
       sessionIds: string[],
       probe: () => Promise<AgentSessionOwnerProbe> = async () => ({
         outcome: 'identity-matched',
         matchedOn: ['spawn-token']
-      })
+      }),
+      probeMany?: () => Promise<Map<string, AgentSessionOwnerProbe>>
     ) {
-      const state: { failure: (() => Error) | null; records: string[] } = {
+      const state: {
+        failure: ((sessionId: string) => Error | null) | null
+        records: string[]
+      } = {
         failure: () => new Error('agent_session_ownership_unknown'),
         records: sessionIds
       }
@@ -324,14 +329,16 @@ describe('structured agent-session lease renewal', () => {
       vi.spyOn(store, 'listRecords').mockImplementation(() => state.records.map(liveRecord))
       vi.spyOn(store, 'renewLeases').mockRejectedValue(new Error('batch refused'))
       vi.spyOn(store, 'renewLease').mockImplementation(async (renewal) => {
-        if (state.failure) {
-          throw state.failure()
+        const failure = state.failure?.(renewal.sessionId)
+        if (failure) {
+          throw failure
         }
         return liveRecord(renewal.sessionId)
       })
       const renewer = new StructuredAgentSessionLeaseRenewer({
         store,
         probe,
+        ...(probeMany ? { probeMany } : {}),
         now: () => NOW + 10_000
       })
       return { state, renewer }
@@ -429,6 +436,57 @@ describe('structured agent-session lease renewal', () => {
           .mocked(traceAgentSessionError)
           .mock.calls.filter(([report]) => report.step === 'lease-probe')
       ).toHaveLength(1)
+    })
+
+    it('records a batch probe that keeps failing once per session', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { renewer } = await stuckRenewer(['session-a', 'session-b'], undefined, async () => {
+        throw new Error('owner probe unavailable')
+      })
+
+      await ticks(renewer, 3)
+
+      expect(
+        vi
+          .mocked(traceAgentSessionError)
+          .mock.calls.filter(([report]) => report.step === 'lease-probe')
+          .map(([report]) => report.sessionId)
+      ).toEqual(['session-a', 'session-b'])
+    })
+
+    it("clears only the renewed session's failure", async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { state, renewer } = await stuckRenewer(['session-a', 'session-b'])
+      const unknown = state.failure
+
+      await ticks(renewer, 2)
+      state.failure = (sessionId) =>
+        sessionId === 'session-b' ? null : new Error('agent_session_ownership_unknown')
+      await ticks(renewer, 1)
+      state.failure = unknown
+      await ticks(renewer, 2)
+
+      expect(renewalRecords().map(([report]) => report.sessionId)).toEqual([
+        'session-a',
+        'session-b',
+        'session-b'
+      ])
+    })
+
+    it('records an error it cannot key without failing the tick', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { state, renewer } = await stuckRenewer(['session-a'])
+      state.failure = () =>
+        Object.defineProperty(new Error('agent_session_ownership_unknown'), 'name', {
+          get: () => {
+            throw new Error('hostile name')
+          }
+        })
+
+      await expect(renewer.renewNow()).resolves.toBeUndefined()
+      await expect(renewer.renewNow()).resolves.toBeUndefined()
+
+      expect(renewalRecords()).toHaveLength(1)
     })
   })
 })
