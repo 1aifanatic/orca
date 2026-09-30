@@ -1,17 +1,8 @@
 {
+  "goldenFormatVersion": 6,
   "operation": "session.pr-mutations",
   "family": "github.pr-mutation",
   "namedDeltas": [],
-  "runnerVersion": 1,
-  "baseline": "aae9aa70fc170ce196210dc78cd7a4be6bc35c5f",
-  "lockfileSha256": "9317f3a98ab047f9f96fe26fd8531b8a632ac5954064b322f41a904148cbf6bb",
-  "recorderSha256": "d84c5b621299225403c21ae18ff2817b4abc63c0eab8037c8a713f75989f9f9b",
-  "adapterSha256": "5f65c5b318f4764b0f58a5e7b593333759a9cfa799db45b11190ac26f4083335",
-  "scenarioSha256": "2235d05e0d2c6f1a9518cfdd76870e303cccd35289d6a44334147b6a5b6b675e",
-  "platform": "darwin",
-  "scenarioVersion": 1,
-  "projectionVersion": 2,
-  "goldenFormatVersion": 5,
   "values": {
     "0347a5b67d44": {
       "auto-merge": {
