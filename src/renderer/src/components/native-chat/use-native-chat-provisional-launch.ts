@@ -2,12 +2,12 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   getStructuredAgentSessionLaunchLifecycle,
   getStructuredAgentSessionLaunchResumes,
-  retryStructuredAgentSessionLaunch,
   useStructuredAgentSessionLaunchFailure,
   useStructuredAgentSessionLaunchLifecycle,
   useStructuredAgentSessionLaunchSelection
 } from '@/lib/structured-agent-session-launch'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
+import { retryStructuredChatLaunch } from '@/lib/structured-agent-session-unstarted-launch'
 
 /** A chat this view launched: a new conversation, or one resumed from history. */
 export type StructuredAgentSessionLaunchView = {
@@ -70,7 +70,7 @@ export function useNativeChatProvisionalLaunch(
   const launch = useLatchedLaunchView(sessionId, worktreeId, lifecycle !== null)
   const retry = useCallback(() => {
     if (worktreeId) {
-      retryStructuredAgentSessionLaunch(worktreeId, sessionId)
+      retryStructuredChatLaunch(worktreeId, sessionId)
     }
   }, [sessionId, worktreeId])
   // A send into a start that never published relaunches it; the queued message goes out on publish.
@@ -82,7 +82,7 @@ export function useNativeChatProvisionalLaunch(
         worktreeId &&
         getStructuredAgentSessionLaunchLifecycle(worktreeId, sessionId) === 'failed'
       ) {
-        retryStructuredAgentSessionLaunch(worktreeId, sessionId)
+        retryStructuredChatLaunch(worktreeId, sessionId)
       }
       return accepted
     },

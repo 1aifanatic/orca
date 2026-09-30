@@ -91,7 +91,6 @@ export function beginStructuredAgentSessionProvisionalLaunch(args: {
         replaceUnstartedStructuredChat({
           plan: args.plan,
           worktreeId,
-          tabId: tab.id,
           sessionId: handle.sessionId,
           error: settlement.error
         })

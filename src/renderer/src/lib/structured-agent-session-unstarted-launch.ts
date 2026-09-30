@@ -11,7 +11,11 @@ import {
   getStructuredLaunchStateBySessionId,
   notifyStructuredLaunchListeners
 } from '@/lib/structured-agent-session-launch-registry'
-import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import {
+  discardStructuredAgentSessionLaunchOutbox,
+  readOutbox
+} from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { retryStructuredAgentSessionLaunch } from '@/lib/structured-agent-session-launch'
 import { clearStructuredAgentLaunchDraft } from '@/lib/structured-agent-session-launch-draft'
 import {
   adoptAgentSessionLaunchVerdict,
@@ -39,9 +43,9 @@ function forgetUnstartedStructuredAgentLaunch(sessionId: string): void {
  * unreachable host leaves the failure toast alone.
  */
 export function replaceUnstartedStructuredChat(args: {
-  plan: AgentSessionLaunchPlan
+  /** What the chat was launched with, which its replacement terminal is launched with too. */
+  plan: Pick<AgentSessionLaunchPlan, 'agent' | 'prompt' | 'promptDelivery' | 'onPromptDelivered'>
   worktreeId: string
-  tabId: string
   sessionId: string
   error: unknown
 }): void {
@@ -53,7 +57,8 @@ export function replaceUnstartedStructuredChat(args: {
   forgetUnstartedStructuredAgentLaunch(args.sessionId)
   const state = useAppStore.getState()
   const tab = (state.unifiedTabsByWorktree[args.worktreeId] ?? []).find(
-    (candidate) => candidate.id === args.tabId
+    (candidate) =>
+      candidate.contentType === 'agent-session' && candidate.entityId === args.sessionId
   )
   if (!tab) {
     return
@@ -95,4 +100,36 @@ export function replaceUnstartedStructuredChat(args: {
       })
     })
   )
+}
+
+/**
+ * Retries a chat's launch. A launch restored after a reload has no first-launch settlement to hand
+ * a pre-create failure on, so the retry's own does: a declining paired server opens its terminal
+ * here too, carrying the prompt the launch had staged.
+ */
+export function retryStructuredChatLaunch(worktreeId: string, sessionId: string): boolean {
+  if (!retryStructuredAgentSessionLaunch(worktreeId, sessionId)) {
+    return false
+  }
+  const state = getStructuredLaunchStateBySessionId(sessionId)
+  if (!state) {
+    return true
+  }
+  const prompt = readOutbox(sessionId)
+    .find((entry) => entry.source === 'launch')
+    ?.body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('\n')
+  const plan = {
+    agent: state.intent.agent,
+    ...(prompt ? { prompt, promptDelivery: 'auto-submit' as const } : {})
+  }
+  void state.promise.catch((error: unknown) =>
+    replaceUnstartedStructuredChat({
+      plan,
+      worktreeId,
+      sessionId,
+      error
+    })
+  )
+  return true
 }

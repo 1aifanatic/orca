@@ -71,7 +71,6 @@ describe('a provisional structured chat tab', () => {
     expect(mocks.replaceUnstartedStructuredChat).toHaveBeenCalledWith(
       expect.objectContaining({
         worktreeId: 'wt-1',
-        tabId: 'structured-agent-session-claude_1',
         sessionId: 'claude_1',
         error
       })

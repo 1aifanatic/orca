@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   launchAgentInNewTab: vi.fn(),
   deleteLaunch: vi.fn(() => true),
   discardOutbox: vi.fn(),
+  retry: vi.fn(() => true),
+  outbox: new Array<{ source?: 'launch'; body: { blocks: { type: 'text'; text: string }[] } }>(),
+  launchPromise: Promise.resolve<unknown>(undefined),
   toastInfo: vi.fn()
 }))
 
@@ -30,13 +33,20 @@ vi.mock('@/store', () => ({
 vi.mock('@/lib/structured-agent-session-launch-registry', () => ({
   getStructuredLaunchStateBySessionId: (sessionId: string) =>
     sessionId === 'claude_1'
-      ? { intent: { worktreeId: 'wt-1', sessionId, target: { kind: 'local' } } }
+      ? {
+          intent: { worktreeId: 'wt-1', sessionId, agent: 'claude', target: { kind: 'local' } },
+          promise: mocks.launchPromise
+        }
       : undefined,
   deleteStructuredLaunchStateIfCurrent: mocks.deleteLaunch,
   notifyStructuredLaunchListeners: vi.fn()
 }))
 vi.mock('@/components/native-chat/structured-agent-session-outbox-storage', () => ({
-  discardStructuredAgentSessionLaunchOutbox: mocks.discardOutbox
+  discardStructuredAgentSessionLaunchOutbox: mocks.discardOutbox,
+  readOutbox: () => mocks.outbox
+}))
+vi.mock('@/lib/structured-agent-session-launch', () => ({
+  retryStructuredAgentSessionLaunch: mocks.retry
 }))
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({
   launchAgentInNewTab: mocks.launchAgentInNewTab
@@ -48,7 +58,10 @@ import {
   StructuredAgentSessionHostUnreachableError
 } from '@/lib/launch-structured-agent-session'
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
-import { replaceUnstartedStructuredChat } from './structured-agent-session-unstarted-launch'
+import {
+  replaceUnstartedStructuredChat,
+  retryStructuredChatLaunch
+} from './structured-agent-session-unstarted-launch'
 
 const plan = adoptAgentSessionLaunchVerdict({
   route: 'structured-native-chat',
@@ -78,7 +91,6 @@ function settleWith(error: unknown): void {
   replaceUnstartedStructuredChat({
     plan,
     worktreeId: 'wt-1',
-    tabId: 'agent-session:claude_1',
     sessionId: 'claude_1',
     error
   })
@@ -91,6 +103,7 @@ async function flush(): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.tabs.splice(0, Infinity, chatTab())
+  mocks.outbox.splice(0)
 })
 
 describe('a structured chat whose launch ended before anything was created', () => {
@@ -145,5 +158,30 @@ describe('a structured chat whose launch ended before anything was created', () 
 
     expect(mocks.launchAgentInNewTab).not.toHaveBeenCalled()
     expect(mocks.toastInfo).not.toHaveBeenCalled()
+  })
+
+  // A launch restored after a reload has no first settlement; its Retry is where the host answers.
+  it('gives a retried launch the same terminal when the paired server declines it', async () => {
+    mocks.outbox.push({
+      source: 'launch',
+      body: { blocks: [{ type: 'text', text: 'fix the flaky test' }] }
+    })
+    mocks.launchPromise = Promise.reject(
+      new StructuredAgentSessionHostDeclinedError('runtime:server-1')
+    )
+
+    expect(retryStructuredChatLaunch('wt-1', 'claude_1')).toBe(true)
+    await flush()
+
+    expect(mocks.retry).toHaveBeenCalledWith('wt-1', 'claude_1')
+    expect(mocks.closeUnifiedTab).toHaveBeenCalledWith('agent-session:claude_1')
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'claude',
+        worktreeId: 'wt-1',
+        prompt: 'fix the flaky test',
+        promptDelivery: 'auto-submit'
+      })
+    )
   })
 })
