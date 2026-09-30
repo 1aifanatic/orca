@@ -98,14 +98,19 @@ describe('resolveAgentLaunchRoute', () => {
   })
 
   it('routes a paired server by its own capabilities', () => {
+    const structured = [
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+      STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+    ]
     const server = {
       executionHostId: 'runtime:environment-a',
-      hostCapabilities: [
-        STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-        STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
-      ]
+      hostCapabilities: structured,
+      clientCapabilities: structured
     }
     expect(route(server)).toBe('structured-native-chat')
+    // A client that never told the server it reads structured sessions keeps the host terminal.
+    expect(route({ ...server, clientCapabilities: [] })).toBe('legacy-native-chat')
+    expect(route({ ...server, clientCapabilities: undefined })).toBe('legacy-native-chat')
     // A released server admits chats only with its own setting on, so it keeps the terminal.
     expect(route({ executionHostId: 'runtime:environment-a' })).toBe('legacy-native-chat')
     // The server has not answered yet, or answered without structured sessions.

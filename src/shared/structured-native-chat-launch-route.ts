@@ -39,6 +39,8 @@ export type StructuredNativeChatBlocker =
   /** The owning host has not answered yet. Distinct from `runtime-capability`, which is the
    *  host saying no: an unestablished answer must not read as a refusal. */
   | 'runtime-capability-unknown'
+  /** This client does not tell a paired host it can read and launch structured sessions. */
+  | 'client-capability'
 
 export type StructuredNativeChatSupport =
   | { supported: true }
@@ -50,6 +52,8 @@ export type StructuredNativeChatSupportInput = {
   /** Capabilities of the host this launch would run on — a paired server's own, not this
    *  machine's. `null` = not yet established. */
   hostCapabilities: readonly string[] | null
+  /** What this client advertises to a paired host; read only for `runtime:` hosts. */
+  clientCapabilities?: readonly string[]
   /** Host-derived. Absent means the kind was never established, which is not evidence of any kind. */
   workspaceKind?: WorkspaceLaunchKind
   projectRuntime?: ProjectExecutionRuntimeResolution | null
@@ -73,6 +77,13 @@ export function prefersStructuredNativeChatByDefault(
 ): boolean {
   return (
     agentTabsDefaultToNativeChat(settings) && settings?.experimentalStructuredNativeChat === true
+  )
+}
+
+function clientChoosesStructuredLaunches(capabilities: readonly string[] | undefined): boolean {
+  return (
+    capabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY) === true &&
+    capabilities.includes(STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY)
   )
 }
 
@@ -107,13 +118,17 @@ export function resolveStructuredNativeChatSupport(
   if (!input.hostCapabilities.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)) {
     return { supported: false, blocker: 'runtime-capability' }
   }
-  // An older paired host advertises structured sessions but admits them only with its own chat
-  // setting on, so a chat opened there could never start; it keeps the terminal it always got.
-  if (
-    host.kind === 'runtime' &&
-    !input.hostCapabilities.includes(STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY)
-  ) {
-    return { supported: false, blocker: 'runtime-capability' }
+  if (host.kind === 'runtime') {
+    // An older paired host advertises structured sessions but admits them only with its own chat
+    // setting on, so a chat opened there could never start; it keeps the terminal it always got.
+    if (!input.hostCapabilities.includes(STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY)) {
+      return { supported: false, blocker: 'runtime-capability' }
+    }
+    // The host refuses a client that did not say it reads structured sessions, as the browser
+    // client does not; that client keeps the host terminal.
+    if (!clientChoosesStructuredLaunches(input.clientCapabilities)) {
+      return { supported: false, blocker: 'client-capability' }
+    }
   }
   return { supported: true }
 }

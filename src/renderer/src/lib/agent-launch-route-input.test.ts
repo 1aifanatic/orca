@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   getConnectionIdFromState: vi.fn(),
   getLocalProjectExecutionRuntimeContext: vi.fn(),
   getLocalRepoProjectExecutionRuntimeContext: vi.fn(),
-  readLocalRuntimeCapabilitiesOrUnknown: vi.fn()
+  readLocalRuntimeCapabilitiesOrUnknown: vi.fn(),
+  isWebClientLocation: vi.fn(() => false)
 }))
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
@@ -27,6 +28,9 @@ vi.mock('@/lib/connection-owner-resolution', async (importOriginal) => ({
 vi.mock('@/lib/local-preflight-context', () => ({
   getLocalProjectExecutionRuntimeContext: mocks.getLocalProjectExecutionRuntimeContext,
   getLocalRepoProjectExecutionRuntimeContext: mocks.getLocalRepoProjectExecutionRuntimeContext
+}))
+vi.mock('@/lib/web-client-location', () => ({
+  isWebClientLocation: mocks.isWebClientLocation
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: mocks.readLocalRuntimeCapabilitiesOrUnknown
@@ -382,6 +386,17 @@ describe('buildAgentLaunchRouteInput', () => {
       expect(routeFor(pairedStore([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]), args)).toBe(
         'legacy-native-chat'
       )
+    })
+
+    // The browser client's handshake never says it reads structured sessions, so the server
+    // would refuse its chat.
+    it('keeps the host terminal for a browser client', () => {
+      mocks.isWebClientLocation.mockReturnValue(true)
+      try {
+        expect(routeFor(pairedStore(CURRENT_SERVER), args)).toBe('legacy-native-chat')
+      } finally {
+        mocks.isWebClientLocation.mockReturnValue(false)
+      }
     })
 
     // The override is this machine's; the server's createSupport applies its own.

@@ -29,6 +29,8 @@ export type AgentLaunchRoutingInput = {
   executionHostId: string
   /** Capabilities of the target host; `null` = not yet established. */
   hostCapabilities: readonly string[] | null
+  /** What this client advertises to a paired host. */
+  clientCapabilities?: readonly string[]
   workspaceKind?: WorkspaceLaunchKind
   projectRuntime?: ProjectExecutionRuntimeResolution | null
   promptDelivery?: NativeChatLaunchPromptDelivery
@@ -72,6 +74,7 @@ export function structuredAgentLaunchSupported(
       agent: input.agent,
       executionHostId: input.executionHostId,
       hostCapabilities: input.hostCapabilities,
+      ...(input.clientCapabilities ? { clientCapabilities: input.clientCapabilities } : {}),
       workspaceKind: input.workspaceKind,
       projectRuntime: input.projectRuntime,
       requiresTuiLaunchCommand: input.requiresTuiLaunchCommand

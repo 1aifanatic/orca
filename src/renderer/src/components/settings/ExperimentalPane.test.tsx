@@ -262,8 +262,11 @@ describe('ExperimentalPane', () => {
     expect(container.textContent).toContain(
       'Opt in to the host-owned structured chat runtime for Codex and Claude.'
     )
+    // The setting picks what new agents open as; existing chats are left alone.
+    expect(container.textContent).toContain('Chats you already have stay as they are.')
+    // Paired Orca servers run structured chats too; only WSL and SSH stay on terminal chat.
     expect(container.textContent).toContain(
-      'Local sessions only for now. WSL and remote execution hosts (including SSH) continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.'
+      'Runs on this machine and on paired Orca servers. WSL and SSH hosts continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.'
     )
     expect(container.textContent).toContain('Default view')
     root.unmount()

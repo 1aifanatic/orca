@@ -27,6 +27,7 @@ import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcrip
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
 import { resolveStructuredAgentSessionOwner } from '@/runtime/structured-agent-session-owner'
+import { pairedHostClientCapabilities } from '@/runtime/paired-host-client-capabilities'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 
 export type ProspectiveWorkspaceKind = NonNullable<AgentLaunchRoutingInput['workspaceKind']>
@@ -142,6 +143,9 @@ export function buildAgentLaunchRouteInput(
     settings: store.settings,
     executionHostId,
     hostCapabilities: owner === null ? null : resolveHostCapabilities(store, executionHostId),
+    ...(parseExecutionHostId(executionHostId)?.kind === 'runtime'
+      ? { clientCapabilities: pairedHostClientCapabilities() }
+      : {}),
     workspaceKind: workspace.kind,
     projectRuntime: resolveProjectRuntime(store, workspace, executionHostId),
     promptDelivery: args.promptDelivery,
