@@ -1,11 +1,14 @@
 // Test fixture: a packaged Node slot whose runtime is the real pinned Node, laid out as shipped.
 import { existsSync } from 'node:fs'
 import { copyFile, link, mkdir, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import type * as NodePty from 'node-pty'
 import { join, resolve } from 'node:path'
 import { it } from 'vitest'
 import { runProcessSync } from '../../shared/child-process/run-process'
 import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
 import {
+  ORCAD_NODE_PTY_DIR,
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_SERVER_TARGET_FILENAME,
   orcadNodeRuntimeRelativePath
@@ -74,6 +77,25 @@ export async function writeNodeSlotFixture(
 export const ORCA_REQUIRED_TEST_INPUTS_ENV = 'ORCA_REQUIRED_TEST_INPUTS'
 export type RequiredTestInputGroup = 'artifact' | 'cross-runtime'
 
+function laneRequires(group: RequiredTestInputGroup): boolean {
+  return (process.env[ORCA_REQUIRED_TEST_INPUTS_ENV] ?? '').split(',').includes(group)
+}
+
+/**
+ * node-pty as orcad loads it: an artifact lane's packaged slot, else the dev install.
+ * Why: server lanes install without building node-pty, and Linux has no upstream prebuild.
+ */
+export async function loadNodePtyForTests(): Promise<typeof NodePty> {
+  if (!laneRequires('artifact')) {
+    return import('node-pty')
+  }
+  const packaged = resolve('out/orcad', ORCAD_NODE_PTY_DIR)
+  if (!existsSync(packaged)) {
+    throw new Error(`Missing artifact test input: out/orcad/${ORCAD_NODE_PTY_DIR}`)
+  }
+  return createRequire(import.meta.url)(packaged)
+}
+
 /**
  * True when a suite must skip for `missing` inputs. A lane that named `group` as required
  * gets a failing test instead, so a missing input can never pass as a silent skip.
@@ -85,7 +107,7 @@ export function skipForMissingInputs(
   if (missing.length === 0) {
     return false
   }
-  if ((process.env[ORCA_REQUIRED_TEST_INPUTS_ENV] ?? '').split(',').includes(group)) {
+  if (laneRequires(group)) {
     it(`has its required ${group} inputs`, () => {
       throw new Error(`Missing ${group} test inputs: ${missing.join('; ')}`)
     })

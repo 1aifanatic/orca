@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { runProcessSync } from './script-child-process.mjs'
+import { describeProcessFailure, runProcessSync } from './script-child-process.mjs'
 import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
   parseOrcadProfilePreflight
@@ -94,7 +94,9 @@ export async function smokeProfileStateWorkers(outDir, { timeoutMs = 30_000, run
       maxOutputBytes: 64 * 1024
     })
     if (result.code !== 0 || result.timedOut || result.outputTruncated) {
-      throw new Error(`Packaged profile runtime preflight failed: ${result.stderr}`)
+      throw new Error(
+        `Packaged profile runtime preflight failed: ${describeProcessFailure(result)}`
+      )
     }
     parseOrcadProfilePreflight(result.stdout, nonce, {
       runtime: 'node',
