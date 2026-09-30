@@ -89,7 +89,9 @@ function itemBlocks(item: AgentJournalRenderItem): {
               {
                 type: 'tool-result' as const,
                 output: boundedText(body.output),
-                isError: body.state === 'failed'
+                isError: body.state === 'failed',
+                // The call and its output are one journal row, so the result names its call.
+                ...(body.callId !== undefined ? { callId: body.callId } : {})
               }
             ]
           : [])
@@ -134,10 +136,10 @@ function isAgentJournalMessageSendMode(value: string): value is AgentJournalMess
 
 const projectedItems = new WeakMap<AgentJournalRenderItem, NativeChatMessage | null>()
 
-/** Deliberately NOT scoped by producer: the transcript shows every agent's
- *  output, and each message keeps its row's linkage so the transcript can say
- *  whose it is. Every "what is this agent doing right now" scan renders only the
- *  session's own agent's. */
+/** Deliberately NOT scoped by producer: every agent's rows are projected, and
+ *  each message keeps its row's linkage so the transcript can keep a subagent's
+ *  rows with that subagent. Every "what is this agent doing right now" scan
+ *  renders only the session's own agent's. */
 export function projectStructuredItemsToNativeChat(
   items: readonly AgentJournalRenderItem[]
 ): NativeChatMessage[] {
