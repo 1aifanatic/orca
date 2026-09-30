@@ -13,9 +13,9 @@ import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refu
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import {
   openTestAgentSessionRecordStore,
-  readPersistedTestAgentSessionStore
+  readPersistedTestAgentSessionStore,
+  testAgentSessionStoreFilePath
 } from './agent-session-record-store-test-harness'
-import { agentSessionStorePath } from './agent-session-record-store-file'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
 
 const NOW = 1_800_000_000_000
@@ -70,7 +70,7 @@ async function open(): Promise<AgentSessionRecordStore> {
 
 describe('chat tab table', () => {
   const LEGACY_TAB_ID = 'structured-agent-session-session-alpha'
-  const filePath = () => agentSessionStorePath(directory)
+  const filePath = () => testAgentSessionStoreFilePath(directory)
   const readFileJson = async () => JSON.parse(await readFile(filePath(), 'utf-8'))
 
   it('takes a reserved id only when the tab is shown, and refuses it to a second chat', async () => {

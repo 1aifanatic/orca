@@ -90,7 +90,7 @@ afterEach(async () => {
 })
 
 function openStore(): Promise<AgentSessionRecordStore> {
-  return openTestAgentSessionRecordStore(join(stateDirectory, 'agent-sessions'), {
+  return openTestAgentSessionRecordStore(stateDirectory, {
     hostId: HOST_ID
   })
 }

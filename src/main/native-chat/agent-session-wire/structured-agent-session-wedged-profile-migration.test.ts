@@ -114,9 +114,8 @@ function wedgedRecord(overrides: WedgeOverrides): PersistedAgentSessionRecord {
 }
 
 async function seedStore(record: PersistedAgentSessionRecord): Promise<void> {
-  const directory = join(root, 'store')
-  await seedTestAgentSessionRecordStore(directory, { records: [record] })
-  store = await openTestAgentSessionRecordStore(directory)
+  await seedTestAgentSessionRecordStore(root, { records: [record] })
+  store = await openTestAgentSessionRecordStore(root)
 }
 
 /** Every recorded owner in these fixtures is long gone; that is the present-time evidence. */
@@ -274,7 +273,7 @@ describe('already-wedged profiles become usable on load', () => {
       expect(acquire).not.toHaveBeenCalled()
 
       await host.flushAllStreamedEvents()
-      store = await openTestAgentSessionRecordStore(join(root, 'store'))
+      store = await openTestAgentSessionRecordStore(root)
       openHost()
       await host.restoreReadableSessions()
 

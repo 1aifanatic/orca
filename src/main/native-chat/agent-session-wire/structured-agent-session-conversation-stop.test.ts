@@ -49,7 +49,7 @@ beforeEach(async () => {
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
   awaitStarted = vi.fn(async () => undefined)
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: {

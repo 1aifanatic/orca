@@ -2,7 +2,6 @@
 // loaded: on a send and a Stop as on a read. Each retry runs the same copy, so "try again" is wrong.
 
 import { cp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
@@ -92,7 +91,7 @@ async function relaunchWithMismatchedCopy(): Promise<StructuredAgentSessionHost>
     recursive: true,
     filter: (source) => !source.includes('.lock')
   })
-  const store = await openTestAgentSessionRecordStore(join(relaunched, 'store'))
+  const store = await openTestAgentSessionRecordStore(relaunched)
   const host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),

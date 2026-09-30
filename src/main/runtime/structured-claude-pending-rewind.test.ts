@@ -107,7 +107,7 @@ async function reattach() {
 beforeEach(async () => {
   resetHostTestOperationIds()
   directory = await mkdtemp(join(tmpdir(), 'orca-claude-pending-rewind-'))
-  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
+  store = await openTestAgentSessionRecordStore(directory)
   claude = fakeClaude({ initSessionId: PROVIDER_SESSION_ID })
   adapter = createStructuredClaudeRuntimeAdapter({
     store,

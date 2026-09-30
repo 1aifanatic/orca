@@ -120,7 +120,7 @@ async function attach(
   sessionAdapter: StructuredAgentSessionAdapter,
   onAttached: AttachFlowInput['onAttached'] = () => {}
 ) {
-  store ??= await openTestAgentSessionRecordStore(join(root!, 'store'))
+  store ??= await openTestAgentSessionRecordStore(root!)
   return performAttach({
     store,
     adapter: sessionAdapter,
@@ -231,7 +231,7 @@ describe('adopting a provider conversation on create', () => {
     root = await mkdtemp(join(tmpdir(), 'orca-adopt-host-failure-'))
     const transcriptPath = join(root, 'rollout.jsonl')
     await writeCodexRollout(transcriptPath, 'valid source')
-    store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    store = await openTestAgentSessionRecordStore(root)
     const host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),

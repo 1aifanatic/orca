@@ -121,7 +121,7 @@ beforeEach(async () => {
   closeSessionExit = true
   dispatchedModels.length = 0
   const accountHome = join(root, 'codex-home')
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   router = adapter()
   host = new StructuredAgentSessionHost({
     store,

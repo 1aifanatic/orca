@@ -73,8 +73,8 @@ async function persistFromOlderBuild(lease: OlderBuildLease): Promise<void> {
   const attached = store.getRecord(SESSION)?.lease
   await host.flushAllStreamedEvents()
   // Over the attached owner: the older build's stage or terminal owner kept it from releasing.
-  await writeOlderBuildLease(join(root, 'store'), SESSION, { ...attached, ...lease })
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  await writeOlderBuildLease(root, SESSION, { ...attached, ...lease })
+  store = await openTestAgentSessionRecordStore(root)
   acquire.mockClear()
   openHost()
 }
@@ -131,7 +131,7 @@ beforeEach(async () => {
       observedAt: NOW
     }
   }))
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   openHost()
 })
 

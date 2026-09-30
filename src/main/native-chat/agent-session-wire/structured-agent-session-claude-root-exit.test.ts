@@ -31,7 +31,8 @@ describe('Claude root-exit stop', () => {
   it('releases a captured live claim after the provider root exits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-claude-root-exit-'))
     roots.push(root)
-    const store = await openTestAgentSessionRecordStore(root)
+    const stateDirectory = join(root, 'journal')
+    const store = await openTestAgentSessionRecordStore(stateDirectory)
     const claude = fakeClaude({
       unprovenCloseVerdict: { root: 'exited', tree: 'unverifiable' }
     })
@@ -78,7 +79,7 @@ describe('Claude root-exit stop', () => {
     })
     const journal = await journals.open({
       identity: { ...identityFor(), hostId: 'local', workspaceId: 'folder-1' },
-      stateDirectory: join(root, 'journal')
+      stateDirectory
     })
     const close = vi.spyOn(journal, 'close')
     const publishStatus = vi.fn()

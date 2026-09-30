@@ -176,7 +176,7 @@ describe('committed adopting create RPC replay', () => {
       .mockRejectedValueOnce(new Error('simulated lost tab publication'))
       .mockResolvedValue(undefined)
 
-    const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+    const store = await openTestAgentSessionRecordStore(root)
     const sessionAdapter = adapter()
     host = new StructuredAgentSessionHost({
       store,

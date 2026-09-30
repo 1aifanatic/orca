@@ -99,9 +99,8 @@ function crashedClaudeRecord(): AgentSessionRecord {
 }
 
 async function seedCrashedStore(): Promise<void> {
-  const directory = join(root, 'store')
-  await seedTestAgentSessionRecordStore(directory, { records: [crashedClaudeRecord()] })
-  store = await openTestAgentSessionRecordStore(directory)
+  await seedTestAgentSessionRecordStore(root, { records: [crashedClaudeRecord()] })
+  store = await openTestAgentSessionRecordStore(root)
 }
 
 /** A running turn whose only row after its start is a Bash call that never reported back, for a

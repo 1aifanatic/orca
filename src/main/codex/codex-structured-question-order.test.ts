@@ -91,7 +91,7 @@ beforeEach(async () => {
     answerPrompt: vi.fn(async ({ commit }) => commit()),
     setOption: vi.fn(async () => undefined)
   }
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter,

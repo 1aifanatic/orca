@@ -127,7 +127,7 @@ export async function createRestTestRig(
   const clock = { now: HOST_TEST_NOW }
   const statusEvents: AgentSessionStatusEvent[] = []
   const sink = { publish: vi.fn(), forget: vi.fn() }
-  let store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  let store = await openTestAgentSessionRecordStore(root)
   const adapter: RestTestAdapter = {
     acquire: vi.fn(async ({ fence, spawnToken }) => ({
       acquisitionGeneration: `generation-${++generations}`,
@@ -178,7 +178,7 @@ export async function createRestTestRig(
     sink,
     restart: async (overrides = {}) => {
       await rig.host.flushAllStreamedEvents().catch(() => undefined)
-      store = await openTestAgentSessionRecordStore(join(root, 'store'))
+      store = await openTestAgentSessionRecordStore(root)
       rig.store = store
       rig.host = hostFor(overrides)
       rig.host.subscribeStatus({ id: 'status', emit: (event) => statusEvents.push(event) })

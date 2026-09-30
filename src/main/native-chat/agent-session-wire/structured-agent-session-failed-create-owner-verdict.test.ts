@@ -49,7 +49,7 @@ beforeEach(async () => {
       observedAt: NOW
     }
   }))
-  store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: {

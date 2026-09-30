@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../shared/agent-session-lease-adjudication'
 import type {
@@ -16,13 +16,10 @@ import {
   editPersistedTestAgentSessionStore,
   openTestAgentSessionRecordStore,
   readPersistedTestAgentSessionStore,
-  seedTestAgentSessionStoreFromNewerBuild
+  seedTestAgentSessionStoreFromNewerBuild,
+  testAgentSessionStoreFilePath
 } from './agent-session-record-store-test-harness'
 import { AGENT_SESSION_CLAIM_KEY_RETENTION_MS } from './agent-session-claim-key-retention'
-import {
-  agentSessionStorePath,
-  AGENT_SESSION_STORE_FILE_NAME
-} from './agent-session-record-store-file'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
 
 const NOW = 1_800_000_000_000
@@ -837,7 +834,7 @@ describe('claim keys, checkpoints, and unreadable rows', () => {
       checkpoint: { epoch: 1, sequence: 1 },
       now: NOW
     })
-    await writeFile(join(directory, AGENT_SESSION_STORE_FILE_NAME), '{ truncated')
+    await writeFile(testAgentSessionStoreFilePath(directory), '{ truncated')
 
     const reopened = await open()
     expect(reopened.recoveredFromBackup).toBe(true)
@@ -861,7 +858,8 @@ describe('claim keys, checkpoints, and unreadable rows', () => {
     ['invalid retired key', [BAD_KEY_STORE]],
     ['corrupt in both committed copies', ['{ truncated', '{ also truncated']]
   ])('fails closed when the store is %s', async (_name, copies) => {
-    const filePath = agentSessionStorePath(directory)
+    const filePath = testAgentSessionStoreFilePath(directory)
+    await mkdir(dirname(filePath), { recursive: true })
     await writeFile(filePath, copies[0])
     if (copies[1]) {
       await writeFile(`${filePath}.bak`, copies[1])

@@ -27,9 +27,9 @@ import {
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import {
   openTestAgentSessionRecordStore,
-  readPersistedTestAgentSessionStore
+  readPersistedTestAgentSessionStore,
+  testAgentSessionStoreFilePath
 } from '../../agent-session-record-store-test-harness'
-import { agentSessionStorePath } from '../../agent-session-record-store-file'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { RpcContext } from '../core'
@@ -434,7 +434,7 @@ describe('an unreadable launch payload costs one replay, never the store', () =>
   /** The whole file, primary and backup: `loadAgentSessionStore` falls through to the backup, and
    *  the backup is a copy of the validated primary, so both carry the same payload in real life. */
   async function rewriteRecordedLaunch(payload: unknown): Promise<void> {
-    const path = agentSessionStorePath(directory)
+    const path = testAgentSessionStoreFilePath(directory)
     const file: { operations: Record<string, { outcome: Record<string, unknown> }> } = JSON.parse(
       await readFile(path, 'utf-8')
     )

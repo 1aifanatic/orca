@@ -78,8 +78,7 @@ describe('structured session provider restore', () => {
   it('restores a durable Claude session tab with its recorded provider', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-provider-restore-'))
     resetHostTestOperationIds()
-    const storeDirectory = join(root, 'store')
-    const store = await openTestAgentSessionRecordStore(storeDirectory)
+    const store = await openTestAgentSessionRecordStore(root)
     const host = createHost(store)
     const attached = await host.attach(
       { callerKey: 'client-1' },
@@ -92,7 +91,7 @@ describe('structured session provider restore', () => {
     )
     expect(attached).toMatchObject({ ok: true })
 
-    const reopenedStore = await openTestAgentSessionRecordStore(storeDirectory)
+    const reopenedStore = await openTestAgentSessionRecordStore(root)
     const restarted = createHost(reopenedStore, async () => ({
       outcome: 'indeterminate',
       reason: 'read does not need ownership'

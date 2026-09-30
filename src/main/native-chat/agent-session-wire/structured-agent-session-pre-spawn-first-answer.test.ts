@@ -66,7 +66,7 @@ function createParams(): AgentSessionAttachParams {
 /** The thrown first answer as the wire sends it, and the ledger's replay of the same operation. */
 async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
   root = await mkdtemp(join(tmpdir(), 'orca-pre-spawn-first-answer-'))
-  const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  const store = await openTestAgentSessionRecordStore(root)
   const unused = async (): Promise<never> => {
     throw new Error('not reached before a spawn')
   }

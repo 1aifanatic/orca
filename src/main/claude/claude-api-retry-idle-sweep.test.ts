@@ -53,7 +53,7 @@ beforeEach(async () => {
   sink = null
   clock = NOW
   closeSession = vi.fn(async () => true)
-  const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  const store = await openTestAgentSessionRecordStore(root)
   const adapter: StructuredAgentSessionAdapter = {
     acquire: async ({ fence, spawnToken, events }) => {
       sink = events ?? null

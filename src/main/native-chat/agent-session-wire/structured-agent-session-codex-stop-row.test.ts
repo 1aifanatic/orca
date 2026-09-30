@@ -49,7 +49,7 @@ beforeEach(async () => {
     )
     return {}
   }
-  const store = await openTestAgentSessionRecordStore(join(root, 'store'))
+  const store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: Object.assign(adapterFor(codex), { supportsCreate: () => true }),
