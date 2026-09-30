@@ -1,5 +1,9 @@
-import { selectTabAgentPresence } from './agent-presence-selectors'
 import { useEffect, useRef, useState } from 'react'
+import {
+  resolveLaunchExitWithPresence,
+  resolvePaneAgentWithPresence,
+  selectFocusedPanePresence
+} from './agent-presence-selectors'
 import { useAppStore } from '@/store'
 import { worktreeUsesRemoteConnection } from '@/store/terminals/terminal-workspace-routing'
 import { hasRemoteRuntimePtyForTab } from './tab-agent-remote-pty-selector'
@@ -13,18 +17,27 @@ import {
   resolveSiblingTabAgent
 } from './tab-agent'
 import { resolveExplicitTerminalTitleAgentType } from '../../../shared/terminal-title-agent-type'
-import type { TerminalTab } from '../../../shared/terminal-tab-types'
-import type { TuiAgent } from '../../../shared/tui-agent'
-
 import {
   resolveLaunchedAgentExitEvidence,
   resolveTabAgentFromSignals
-} from './tab-agent-from-signals'
-export {
-  resolveLaunchedAgentExitEvidence,
-  resolveTabAgentFromSignals
-} from './tab-agent-from-signals'
+} from './legacy-unidentified-tab-icon-agent'
+import type { TerminalTab } from '../../../shared/terminal-tab-types'
+import type { TuiAgent } from '../../../shared/tui-agent'
 
+/**
+ * Resolve which coding-harness agent a terminal tab is running, for its tab-bar
+ * icon. A pane's IDENTITY (separate from activity state), from the same
+ * already-computed state as the sidebar rows — no foreground probing.
+ * Identity-first precedence:
+ *
+ * 1. Live focused hook — ground truth while the agent works; never title-overridden.
+ * 2. Process identity — recognized foreground process (local only); re-owned within its title-identity group so OMP's nested `pi` (shell → omp → pi) can't flip the icon.
+ * 3. Title — only a reuse override or legacy standalone identity; native OpenCode titles cannot displace durable ownership.
+ * 4. Idle focused identity — the pane's completed hook or sidebar-retained completion; suppressed locally once OSC 133;D proves exit.
+ * 5. Sleeping session identity — current provider-session ownership.
+ * 6. launchAgent — bootstrap before any hook/process signal; cleared once exit evidence shows it left.
+ * 7. Sibling-pane identity (live, then completed/retained) — split-tab fallback.
+ */
 export function useTabAgent(tab: TerminalTab): TuiAgent | null {
   const focusedHookAgent = useAppStore((s) =>
     resolveFocusedTabAgent(s.agentStatusByPaneKey, s.terminalLayoutsByTabId[tab.id], tab.id)
@@ -64,8 +77,9 @@ export function useTabAgent(tab: TerminalTab): TuiAgent | null {
     const activeLeafId = s.terminalLayoutsByTabId[tab.id]?.activeLeafId
     return activeLeafId && isTerminalLeafId(activeLeafId) ? makePaneKey(tab.id, activeLeafId) : null
   })
+  // Why focused pane only: a sibling's owner must not relabel the pane the user is looking at.
   const agentPresence = useAppStore((s) =>
-    selectTabAgentPresence(s.agentPresenceByPaneKey, tab.id, focusedPaneKey)
+    selectFocusedPanePresence(s.agentPresenceByPaneKey, tab.id, focusedPaneKey)
   )
   const processAgent = useAppStore((s) =>
     focusedPaneKey ? (s.paneForegroundAgentByPaneKey[focusedPaneKey]?.agent ?? null) : null
@@ -153,18 +167,22 @@ export function useTabAgent(tab: TerminalTab): TuiAgent | null {
       return
     }
     // Why: AND ref with state — the ref is generation-safe this commit while state can lag one render behind a respawn.
-    const launchedAgentExited = resolveLaunchedAgentExitEvidence({
+    const launchedAgentExited = resolveLaunchExitWithPresence(
       agentPresence,
-      title: tab.title,
-      defaultTitle: tab.defaultTitle,
-      isRemote: isRemoteLike,
-      hasObservedAgentSignal: hasObservedAgentSignal && hasObservedAgentSignalRef.current,
-      hookAgent: focusedHookAgent,
-      siblingHookAgent,
-      hasCompletedHook: completedHookEvidence,
-      processAgent,
-      processShellForeground
-    })
+      tab.launchAgent,
+      {
+        title: tab.title,
+        defaultTitle: tab.defaultTitle,
+        isRemote: isRemoteLike,
+        hasObservedAgentSignal: hasObservedAgentSignal && hasObservedAgentSignalRef.current,
+        hookAgent: focusedHookAgent,
+        siblingHookAgent,
+        hasCompletedHook: completedHookEvidence,
+        processAgent,
+        processShellForeground
+      },
+      resolveLaunchedAgentExitEvidence
+    )
     if (launchedAgentExited) {
       clearTabLaunchAgent(tab.id)
     }
@@ -184,19 +202,22 @@ export function useTabAgent(tab: TerminalTab): TuiAgent | null {
     tab.title
   ])
 
-  return resolveTabAgentFromSignals({
+  return resolvePaneAgentWithPresence(
     agentPresence,
-    hasObservedAgentSignal,
-    isRemote: isRemoteLike,
-    title: tab.title,
-    defaultTitle: tab.defaultTitle,
-    hookAgent: focusedHookAgent,
-    siblingHookAgent,
-    focusedCompletedHookAgent,
-    siblingCompletedHookAgent,
-    processAgent,
-    processShellForeground,
-    sleepingSessionAgent,
-    launchAgent: tab.launchAgent
-  })
+    {
+      hasObservedAgentSignal,
+      isRemote: isRemoteLike,
+      title: tab.title,
+      defaultTitle: tab.defaultTitle,
+      hookAgent: focusedHookAgent,
+      siblingHookAgent,
+      focusedCompletedHookAgent,
+      siblingCompletedHookAgent,
+      processAgent,
+      processShellForeground,
+      sleepingSessionAgent,
+      launchAgent: tab.launchAgent
+    },
+    resolveTabAgentFromSignals
+  )
 }

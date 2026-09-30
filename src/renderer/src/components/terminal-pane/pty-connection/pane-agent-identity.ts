@@ -1,5 +1,6 @@
 import { agentTypeToIconAgent } from '@/lib/agent-status'
 import { applyLegacyUnidentifiedAgentSignal } from '@/lib/legacy-unidentified-agent-presence'
+import { requestAgentOwnerCheck } from '@/lib/agent-owner-check'
 import { useAppStore } from '@/store'
 import { getConnectionId } from '@/lib/connection-context'
 import { CONFIRMED_SHELL_MODE_RESET } from '../../../../../shared/terminal-mode-reset-profiles'
@@ -195,16 +196,13 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       // otherwise the tab resolver can repaint the exited agent from sleeping occupancy.
       const state = useAppStore.getState()
       const presence = state.agentPresenceByPaneKey?.[session.cacheKey]?.presence
-      if (presence?.process) {
-        window.api?.agentStatus?.reconcileEndedProcess?.(session.cacheKey)
+      requestAgentOwnerCheck(session.cacheKey, presence)
+      // Presentation cleanup follows the shell being back, whoever owns the pane.
+      const sleepingRecord = session.getSleepingRecordForPane(state)
+      if (sleepingRecord) {
+        session.clearSleepingRecordProviderDuplicates(state, sleepingRecord)
       }
-      applyLegacyUnidentifiedAgentSignal(presence, () => {
-        const sleepingRecord = session.getSleepingRecordForPane(state)
-        if (sleepingRecord) {
-          session.clearSleepingRecordProviderDuplicates(state, sleepingRecord)
-        }
-        session.clearStaleAgentTabTitleOnConfirmedShell()
-      })
+      session.clearStaleAgentTabTitleOnConfirmedShell()
       // Why: a hard-killed agent leaves mouse/focus/kitty modes armed, and the
       // surviving shell then receives pointer moves as typed SGR reports; the
       // replay guard keeps xterm's auto-replies from leaking to the shell.

@@ -1,53 +1,90 @@
-import { isSameAgentProcess } from '../../../../shared/agent-process-presence'
+import {
+  isSameAgentProcess,
+  type AgentProcessPresence
+} from '../../../../shared/agent-process-presence'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
+import { isLegacyUnidentified } from '@/lib/legacy-unidentified-agent-presence'
 import type { ProcessMonitorOptions } from './agent-completion-process-types'
 
-/** Undefined alone admits the temporary no-process-identity compatibility path. */
+/** A live identified owner is the host's to judge: a trigger asks its exact check, nothing polls.
+ *  Undefined admits the temporary legacy inspection. */
 export function inspectAgentCompletionHostPresence({
   options,
   state,
-  establishAgentEvidence,
-  clearAgentRunEvidence,
-  dispatchCompletion
+  establishAgentEvidence
 }: ProcessMonitorOptions): Promise<boolean> | undefined {
   const owner = options.getAgentPresence?.()
   const expected = owner?.process
-  if (!expected) {
+  if (!expected || isLegacyUnidentified(owner)) {
     return undefined
   }
   return (async () => {
-    const verdict = owner.ended
-      ? 'exited'
-      : ((await options.checkAgentPresence?.(expected)) ?? 'unverifiable')
+    const verdict = (await options.checkAgentPresence?.(expected)) ?? 'unverifiable'
     const current = options.getAgentPresence?.()
-    if (state.disposed || !current?.process || !isSameAgentProcess(expected, current.process)) {
+    if (
+      state.disposed ||
+      isLegacyUnidentified(current) ||
+      !current?.process ||
+      !isSameAgentProcess(expected, current.process)
+    ) {
       return false
     }
     state.pendingProcessExit = null
-    if (verdict === 'unverifiable') {
+    // Why: an exit reaches this pane as the host's published ended owner, never from this reply.
+    if (verdict !== 'live') {
       return false
     }
-    if (verdict === 'live') {
-      if (isTuiAgent(owner.agent)) {
-        state.lastForegroundAgent = { agent: owner.agent, processName: owner.agent }
-      }
-      establishAgentEvidence()
-      return true
+    establishAgentEvidence()
+    return true
+  })()
+}
+
+/** The mirrored host exit is this pane's one process-exit completion. */
+export function createAgentOwnerExitObserver({
+  options,
+  state,
+  clearAgentRunEvidence,
+  dispatchCompletion,
+  scheduleNextPoll
+}: Pick<
+  ProcessMonitorOptions,
+  'options' | 'state' | 'clearAgentRunEvidence' | 'dispatchCompletion'
+> & {
+  scheduleNextPoll: () => void
+}): (presence: AgentProcessPresence | undefined) => void {
+  let observed = options.getAgentPresence?.()
+  return (presence) => {
+    const previous = observed
+    if (presence === previous) {
+      return
     }
-    const exited = isTuiAgent(owner.agent) ? { agent: owner.agent, processName: owner.agent } : null
-    if (exited && state.hasAgentRunEvidence) {
-      dispatchCompletion('process-exit', exited.processName, {
+    observed = presence
+    const exited = presence?.process
+    if (
+      state.disposed ||
+      !exited ||
+      !presence.ended ||
+      !previous?.process ||
+      previous.ended ||
+      !isSameAgentProcess(previous.process, exited)
+    ) {
+      return
+    }
+    const agent = isTuiAgent(presence.agent) ? presence.agent : null
+    // Why isLive: a torn-down terminal ends its owner too, and that is not a finished task.
+    if (agent && state.hasAgentRunEvidence && options.isLive()) {
+      dispatchCompletion('process-exit', agent, {
         terminalIdleConfirmed: true,
         completionIdentity: {
           source: 'process-exit',
-          identity: `${expected.platform}:${expected.pid}:${expected.startTime}`,
-          agentIdentity: exited.agent
+          identity: `${exited.platform}:${exited.pid}:${exited.startTime}`,
+          agentIdentity: agent
         }
       })
-      options.onForegroundAgentExited?.(exited)
+      options.onForegroundAgentExited?.({ agent, processName: agent })
     }
     state.lastForegroundAgent = null
     clearAgentRunEvidence()
-    return false
-  })()
+    scheduleNextPoll()
+  }
 }

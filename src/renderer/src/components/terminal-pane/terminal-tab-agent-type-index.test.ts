@@ -97,22 +97,16 @@ describe('createTerminalTabAgentTypeSelector', () => {
       })
     ).toEqual({})
   })
-  it('uses the host owner over stale hook and process identities, including positive exit', () => {
+  it('uses a live host owner; an ended one hides only its own identity', () => {
     const select = createTerminalTabAgentTypeSelector()
-    const state = { 'tab:leaf': entry('codex') }
     const owner = {
       agent: 'claude',
       process: { pid: 4001, platform: 'linux', startTime: 'birth' }
     } as const
     const live = { 'tab:leaf': { presence: owner, receivedAt: 1 } }
-    expect(select(state, 'tab', {}, live)).toEqual({ leaf: 'claude' })
-    expect(
-      select(
-        state,
-        'tab',
-        {},
-        { 'tab:leaf': { presence: { ...owner, ended: true }, receivedAt: 2 } }
-      )
-    ).toEqual({})
+    const ended = { 'tab:leaf': { presence: { ...owner, ended: true as const }, receivedAt: 2 } }
+    expect(select({ 'tab:leaf': entry('codex') }, 'tab', {}, live)).toEqual({ leaf: 'claude' })
+    expect(select({ 'tab:leaf': entry('claude') }, 'tab', {}, ended)).toEqual({})
+    expect(select({ 'tab:leaf': entry('codex') }, 'tab', {}, ended)).toEqual({ leaf: 'codex' })
   })
 })

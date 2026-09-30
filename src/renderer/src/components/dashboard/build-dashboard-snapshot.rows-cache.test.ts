@@ -216,8 +216,11 @@ describe('buildDashboardSnapshot rows cache', () => {
     const cache = createWorktreeAgentRowsCache()
     const state = baseState()
     buildDashboardSnapshot(state, NOW, { rowsCache: cache, rowsGeneration: 1 })
+    const { [PANE_1]: _removedByExit, ...agentStatusByPaneKey } = state.agentStatusByPaneKey
     const exited: DashboardSnapshotState = {
       ...state,
+      // The mirrored exit removes the owner's row in the same store write.
+      agentStatusByPaneKey,
       agentPresenceByPaneKey: {
         [PANE_1]: {
           presence: {

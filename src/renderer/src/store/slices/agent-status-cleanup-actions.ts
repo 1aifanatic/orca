@@ -51,10 +51,6 @@ export function createAgentStatusCleanupActions(
 
     removeAgentStatus: (paneKey) => {
       const current = get()
-      const presence = current.agentPresenceByPaneKey[paneKey]?.presence
-      if (presence?.process && !presence.ended) {
-        return
-      }
       // Why no ack/cleared-at/manual-unread in the guard: PTY exit calls this unconditionally,
       // including unverified exits from a lost SSH link. A retained-only pane keeps its read
       // state (see preserveActivityClearedState); only a row that is actually here gets swept.

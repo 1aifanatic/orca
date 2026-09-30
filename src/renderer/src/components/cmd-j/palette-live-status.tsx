@@ -1,4 +1,3 @@
-import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import React, { createContext, useContext, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
@@ -102,11 +101,7 @@ export function PaletteLiveStatusProvider({
       agentStatusByPaneKey,
       migrationUnsupportedByPtyId
     )
-    const livePaneIds = buildLiveAgentStatusPaneIdsByTabId(
-      entriesByTabId,
-      now,
-      agentPresenceByPaneKey
-    )
+    const livePaneIds = buildLiveAgentStatusPaneIdsByTabId(entriesByTabId, now)
     return {
       liveAgentStatusByWorktreeId: getLiveAgentStatusByWorktreeId(
         agentStatusByPaneKey,
@@ -152,8 +147,7 @@ export function PaletteLiveStatusProvider({
 /** Fresh rows suppress all title heuristics; stale rows suppress generated permission labels. */
 function buildLiveAgentStatusPaneIdsByTabId(
   entriesByTabId: ReadonlyMap<string, readonly AgentStatusEntry[]>,
-  now: number,
-  agentPresenceByPaneKey?: AgentPresenceByPaneKey
+  now: number
 ): {
   paneIdsByTabId: Record<string, ReadonlySet<string>>
   stalePaneIdsByTabId: Record<string, ReadonlySet<string>>
@@ -182,12 +176,6 @@ function buildLiveAgentStatusPaneIdsByTabId(
     }
     if (stalePaneIds.size > 0) {
       stalePaneIdsByTabId[tabId] = stalePaneIds
-    }
-  }
-  for (const [paneKey, record] of Object.entries(agentPresenceByPaneKey ?? {})) {
-    const pane = parsePaneKey(paneKey)
-    if (pane && record.presence.process) {
-      paneIdsByTabId[pane.tabId] = new Set([...(paneIdsByTabId[pane.tabId] ?? []), pane.leafId])
     }
   }
   return { paneIdsByTabId, stalePaneIdsByTabId }
@@ -232,7 +220,8 @@ export function PaletteWorktreeStatusDot({
       liveAgentStatus: live.liveAgentStatusByWorktreeId.get(worktree.id),
       agentStatusPaneIdsByTabId: live.agentStatusPaneIdsByTabId,
       stalePaneIdsByTabId: live.stalePaneIdsByTabId,
-      terminalLayoutsByTabId: live.paneSources.terminalLayoutsByTabId
+      terminalLayoutsByTabId: live.paneSources.terminalLayoutsByTabId,
+      agentPresenceByPaneKey: live.paneSources.agentPresenceByPaneKey
     }
   )
   return (

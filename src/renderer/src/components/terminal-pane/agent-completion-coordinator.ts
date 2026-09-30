@@ -289,6 +289,8 @@ export function createAgentCompletionCoordinator(
     dropPendingTitle
   })
 
+  const stopPresence = options.subscribeAgentPresence?.(processMonitor.observeAgentPresence)
+
   lifecycle = createAgentCompletionLifecycle({
     state: completionState,
     processState,
@@ -319,7 +321,10 @@ export function createAgentCompletionCoordinator(
     observeForegroundAgentProcess: processMonitor.observeRecognizedProcess,
     hasPendingHookDoneCompletion: lifecycle.hasPendingHookDoneCompletion,
     resetCompletionState: lifecycle.resetCompletionState,
-    dispose: lifecycle.dispose
+    dispose: () => {
+      stopPresence?.()
+      lifecycle.dispose()
+    }
   }
 }
 

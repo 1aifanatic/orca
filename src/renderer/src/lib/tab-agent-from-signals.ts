@@ -1,34 +1,33 @@
 import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
-import { isTuiAgent } from '../../../shared/tui-agent-config'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import {
+  resolveLaunchExitWithPresence,
+  resolvePaneAgentWithPresence
+} from './agent-presence-selectors'
 import {
   resolveLegacyLaunchedAgentExitEvidence,
   resolveLegacyTabAgentFromSignals
 } from './legacy-unidentified-agent-presence'
 
-/** Undefined means this host has not published a process identity. */
-export function selectAgentPresence(presence?: AgentProcessPresence): TuiAgent | null | undefined {
-  if (!presence?.process) {
-    return undefined
-  }
-  return !presence.ended && isTuiAgent(presence.agent) ? presence.agent : null
-}
-
+/** `agentPresence` is the focused pane's host record; siblings keep their legacy row signals. */
 export function resolveTabAgentFromSignals(
   args: Parameters<typeof resolveLegacyTabAgentFromSignals>[0] & {
     agentPresence?: AgentProcessPresence
   }
 ): TuiAgent | null {
-  const owner = selectAgentPresence(args.agentPresence)
-  return owner === undefined ? resolveLegacyTabAgentFromSignals(args) : owner
+  return resolvePaneAgentWithPresence(args.agentPresence, args, resolveLegacyTabAgentFromSignals)
 }
 
 export function resolveLaunchedAgentExitEvidence(
   args: Parameters<typeof resolveLegacyLaunchedAgentExitEvidence>[0] & {
     agentPresence?: AgentProcessPresence
+    launchAgent?: TuiAgent
   }
 ): boolean {
-  return args.agentPresence?.process
-    ? args.agentPresence.ended === true
-    : resolveLegacyLaunchedAgentExitEvidence(args)
+  return resolveLaunchExitWithPresence(
+    args.agentPresence,
+    args.launchAgent,
+    args,
+    resolveLegacyLaunchedAgentExitEvidence
+  )
 }
