@@ -17,8 +17,9 @@ import {
 } from '../../shared/agent-prompt-injection'
 import type { AgentPromptWaitTextCache } from './agent-prompt-submission-verification'
 import {
-  isTerminalSendSettlementAgent,
+  isAgentPromptStalledError,
   resolveAgentPromptEffectTimeoutMs,
+  resolveAgentPromptObservedProvider,
   verifyAgentPromptSubmission
 } from './agent-prompt-submission-verification'
 
@@ -113,19 +114,71 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         throw new Error(options.suffixFailureError ?? 'terminal_not_writable')
       }
     }
+    const settlementAgent =
+      options.acceptQueued && options.requestId
+        ? resolveAgentPromptObservedProvider({
+            foregroundAgent: this.ptysById.get(ptyId)?.foregroundAgent,
+            launchAgent: this.ptysById.get(ptyId)?.launchAgent,
+            retrySubmitAfterLaunch: options.retrySubmitAfterLaunch === true,
+            settings: this.store?.getSettings()
+          })
+        : null
+    const acceptTurnStart = (evidence) =>
+      this.acceptAgentPromptTurnStart(
+        ptyId,
+        generation,
+        options.requestId!,
+        baseline.workingSequence,
+        baseline.explicitWorkingStartedAt,
+        evidence
+      )
+    // Registered before the retry wait, so a turn the first Enter started is this request's.
+    const registeredBeforeRetry = settlementAgent !== null && submitRetryDelayMs !== undefined
+    if (registeredBeforeRetry) {
+      this.registerAgentPromptRequest(
+        ptyId,
+        generation,
+        options.requestId,
+        baseline.workingSequence,
+        baseline.explicitWorkingStartedAt
+      )
+    }
     let submits = 1
+    let turnStartedBeforeRetry = false
     if (submitRetryDelayMs !== undefined) {
       try {
-        await waitForAgentPromptDelay(submitRetryDelayMs, options.signal)
-        assertAgentPromptRequestActive(options.signal)
-        this.assertAgentPromptGeneration(ptyId, generation)
-        // A permission prompt drawn after the first Enter must never be answered by the retry.
-        this.assertAgentPromptPermissionSafe(
-          permissionBaseline,
-          this.getAgentPromptActivity(handle, ptyId)
-        )
-        if (this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT, options.inputKind)) {
-          submits = 2
+        if (registeredBeforeRetry) {
+          // An observed turn proves the first Enter landed; a stuck brief posts nothing.
+          turnStartedBeforeRetry = await verifyAgentPromptSubmission({
+            baseline,
+            readActivity: () => this.getAgentPromptActivity(handle, ptyId, waitTextCache),
+            acceptTurnStart,
+            allowOutputEvidence: false,
+            signal: options.signal,
+            timeoutMs: submitRetryDelayMs
+          }).then(
+            () => true,
+            (error) => {
+              if (isAgentPromptStalledError(error)) {
+                return false
+              }
+              throw error
+            }
+          )
+        } else {
+          await waitForAgentPromptDelay(submitRetryDelayMs, options.signal)
+        }
+        if (!turnStartedBeforeRetry) {
+          assertAgentPromptRequestActive(options.signal)
+          this.assertAgentPromptGeneration(ptyId, generation)
+          // A permission prompt drawn after the first Enter must never be answered by the retry.
+          this.assertAgentPromptPermissionSafe(
+            permissionBaseline,
+            this.getAgentPromptActivity(handle, ptyId)
+          )
+          if (this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT, options.inputKind)) {
+            submits = 2
+          }
         }
       } catch {
         // The retry is best-effort; a refused one leaves the first Enter's result standing.
@@ -142,13 +195,6 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       return { submits }
     }
     const binding = this.getTerminalPromptRequestBinding(handle)
-    const foregroundAgent = this.ptysById.get(ptyId)?.foregroundAgent
-    const launchAgent = this.ptysById.get(ptyId)?.launchAgent
-    const settlementAgent = isTerminalSendSettlementAgent(foregroundAgent)
-      ? foregroundAgent
-      : isTerminalSendSettlementAgent(launchAgent)
-        ? launchAgent
-        : null
     const inputAccepted: RuntimeTerminalPromptDelivery = {
       requestId: options.requestId,
       stages: ['input_accepted'],
@@ -173,26 +219,23 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     if (!settlementAgent) {
       return { submits, prompt: inputAccepted }
     }
-    this.registerAgentPromptRequest(
-      ptyId,
-      generation,
-      options.requestId,
-      baseline.workingSequence,
-      baseline.explicitWorkingStartedAt
-    )
+    if (turnStartedBeforeRetry) {
+      return { submits, prompt: { ...inputAccepted, stages: ['input_accepted', 'turn_started'] } }
+    }
+    if (!registeredBeforeRetry) {
+      this.registerAgentPromptRequest(
+        ptyId,
+        generation,
+        options.requestId,
+        baseline.workingSequence,
+        baseline.explicitWorkingStartedAt
+      )
+    }
     try {
       await verifyAgentPromptSubmission({
         baseline,
         readActivity: () => this.getAgentPromptActivity(handle, ptyId, waitTextCache),
-        acceptTurnStart: (evidence) =>
-          this.acceptAgentPromptTurnStart(
-            ptyId,
-            generation,
-            options.requestId!,
-            baseline.workingSequence,
-            baseline.explicitWorkingStartedAt,
-            evidence
-          ),
+        acceptTurnStart,
         allowOutputEvidence: false,
         signal: options.signal,
         timeoutMs: options.observationTimeoutMs ?? effectTimeoutMs

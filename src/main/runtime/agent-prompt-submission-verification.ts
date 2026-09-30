@@ -1,6 +1,10 @@
 export { AGENT_PROMPT_EFFECT_TIMEOUT_MS } from '../../shared/orchestration-timing-budgets'
 import { AGENT_PROMPT_EFFECT_TIMEOUT_MS } from '../../shared/orchestration-timing-budgets'
-import type { TuiAgent } from '../../shared/tui-agent'
+import type { AgentPromptObservedProvider, TuiAgent } from '../../shared/tui-agent'
+import {
+  isAgentStatusHooksEnabledForAgent,
+  type AgentStatusHooksSettings
+} from '../../shared/agent-status-hooks-setting'
 
 export const AGENT_PROMPT_HOOK_EFFECT_TIMEOUT_MS = AGENT_PROMPT_EFFECT_TIMEOUT_MS
 const AGENT_PROMPT_EFFECT_POLL_MS = 50
@@ -55,6 +59,31 @@ export function isTerminalSendSettlementAgent(
   agent: TuiAgent | null | undefined
 ): agent is 'antigravity' | 'claude' | 'codex' {
   return agent === 'antigravity' || agent === 'claude' || agent === 'codex'
+}
+
+/**
+ * The provider whose turn start settles this prompt's receipt, or null when none can be observed.
+ * OpenCode's status plugin posts `working` on every real submit and nothing for a brief stuck in
+ * its box, so a launched worker's first dispatch is observable there while its hooks are on.
+ */
+export function resolveAgentPromptObservedProvider(args: {
+  foregroundAgent: TuiAgent | null | undefined
+  launchAgent: TuiAgent | null | undefined
+  retrySubmitAfterLaunch: boolean
+  settings: AgentStatusHooksSettings
+}): AgentPromptObservedProvider | null {
+  if (isTerminalSendSettlementAgent(args.foregroundAgent)) {
+    return args.foregroundAgent
+  }
+  if (isTerminalSendSettlementAgent(args.launchAgent)) {
+    return args.launchAgent
+  }
+  const agent = args.foregroundAgent ?? args.launchAgent
+  return args.retrySubmitAfterLaunch &&
+    (agent === 'opencode' || agent === 'opencode2') &&
+    isAgentStatusHooksEnabledForAgent(args.settings, agent)
+    ? agent
+    : null
 }
 
 export function isAgentPromptStalledError(error: unknown): boolean {
