@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listWorktreesFromMembershipStrict } from '../git/worktree'
 import { scanLocalRepoWorktreesForResolution } from './repo-worktree-resolution-scan'
+import { RESOLVED_WORKTREE_REPO_TIMEOUT_MS } from './repo-worktree-row-resolution'
 
 vi.mock('../git/worktree', () => ({ listWorktreesFromMembershipStrict: vi.fn() }))
 
@@ -26,6 +27,9 @@ describe('scanLocalRepoWorktreesForResolution', () => {
     await expect(
       scanLocalRepoWorktreesForResolution('/repo', { wslDistro: 'Ubuntu' })
     ).resolves.toEqual({ ok: true, worktrees: [] })
-    expect(listWorktreesFromMembershipStrict).toHaveBeenCalledWith('/repo', { wslDistro: 'Ubuntu' })
+    expect(listWorktreesFromMembershipStrict).toHaveBeenCalledWith('/repo', {
+      wslDistro: 'Ubuntu',
+      waitMs: RESOLVED_WORKTREE_REPO_TIMEOUT_MS
+    })
   })
 })

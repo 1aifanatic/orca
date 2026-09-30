@@ -89,6 +89,8 @@ export async function validateMembershipFromGit(input: {
   previous: GitDerivationState
   previousRows: GitWorktreeInfo[] | null
   mustRun: boolean
+  /** How to list when Git must run; defaults to `git worktree list` with the sparse annotation. */
+  listRows?: () => Promise<GitWorktreeInfo[]>
 }): Promise<GitValidationResult> {
   const { commonDir, previous } = input
   const worktreesDir = join(commonDir, 'worktrees')
@@ -108,7 +110,9 @@ export async function validateMembershipFromGit(input: {
   if (unchanged && input.previousRows) {
     return { rows: input.previousRows, state: previous }
   }
-  const { rows } = await readGitWorktreeRows(input.repoPath, input.options)
+  const rows = input.listRows
+    ? await input.listRows()
+    : (await readGitWorktreeRows(input.repoPath, input.options)).rows
   const stampByPath = new Map(
     dependencies.map((dependency, index) => [dependency.path, before[index]])
   )

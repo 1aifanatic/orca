@@ -68,9 +68,10 @@ export type WorktreeMembershipModel = {
   listingOwed: boolean
   /** The first build, until it settles; resolves null when the layout is not one files can read. */
   building: (MembershipDerivationStart & { work: Promise<GitWorktreeInfo[] | null> }) | null
-  inFlight: Map<string, MembershipDerivationStart & { work: Promise<GitWorktreeInfo[]> }>
+  /** The one derivation running, if any. */
+  inFlight: (MembershipDerivationStart & { work: Promise<GitWorktreeInfo[]> }) | null
+  /** The derivation queued to start once `inFlight` settles, shared by every reader waiting on it. */
+  followUp: Promise<GitWorktreeInfo[]> | null
   startedDerivations: number
   committedDerivation: number
-  /** Fs work that outlived a reader's deadline and has not settled; no new derivation starts. */
-  stalledWork: number
 }

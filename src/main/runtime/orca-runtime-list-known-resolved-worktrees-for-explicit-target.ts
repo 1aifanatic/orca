@@ -12,11 +12,7 @@ import {
   resolveLocalProjectRuntimesForRepos
 } from '../project-runtime-git-options'
 import { getAgentLaunchPlatformForRepo } from './runtime-agent-launch-resolution'
-import {
-  RESOLVED_WORKTREE_REPO_TIMEOUT_MS,
-  resolveRepoWorktreeRows,
-  resolveScopedWorktreeIdRow
-} from './repo-worktree-row-resolution'
+import { resolveRepoWorktreeRows, resolveScopedWorktreeIdRow } from './repo-worktree-row-resolution'
 import { projectResolvedWorktreeLineage } from '../../shared/resolved-worktree-lineage'
 import type { RepoWorktreeRowDeps } from './repo-worktree-row-resolution'
 import { listRuntimeFolderWorkspaces } from './runtime-worktree-filesystem'
@@ -27,10 +23,7 @@ import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 import { getSshGitProviderGeneration } from '../providers/ssh-git-dispatch'
 import { getRepoExecutionHostId, getRepoSshConnectionId } from '../../shared/execution-host'
 import { resolveWorktreeScanCacheTtlMs } from './runtime-worktree-scan-cache'
-import { mapWithConcurrency } from '../../shared/map-with-concurrency'
 import { isWorktreeMembershipModelBacked } from '../git/worktree-membership/worktree-membership-store'
-
-const RESOLVED_WORKTREE_FLEET_CONCURRENCY = 8
 
 export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends OrcaRuntimeWithResolveWorktreeSelector {
   protected listKnownResolvedWorktreesForExplicitTarget(
@@ -106,21 +99,13 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       ])
     )
     const deps = this.repoWorktreeRowDeps()
-    // Why capped: one fleet snapshot must not start a read for every registered repo at once. The
-    // per-repo budget runs from the snapshot's start, so stalled repos cannot stack it into waves.
-    const deadlineAt = Date.now() + RESOLVED_WORKTREE_REPO_TIMEOUT_MS
-    const perRepoWorktrees = await mapWithConcurrency(
-      repos,
-      RESOLVED_WORKTREE_FLEET_CONCURRENCY,
-      async (repo) =>
-        await resolveRepoWorktreeRows(
-          deps,
-          repo,
-          metaById,
-          projectRuntimeByRepoId,
-          undefined,
-          Math.max(0, deadlineAt - Date.now())
-        )
+    // Every repo at once, each with its own budget: a stalled repo (a half-open SSH host, a hung
+    // mount) must not delay or starve a healthy one. A model runs one derivation at a time, and Git
+    // spawns go through admission, so this does not multiply local disk work.
+    const perRepoWorktrees = await Promise.all(
+      repos.map(
+        async (repo) => await resolveRepoWorktreeRows(deps, repo, metaById, projectRuntimeByRepoId)
+      )
     )
     const lineageById = this.store?.getAllWorktreeLineage?.() ?? {}
     const worktrees = perRepoWorktrees.flatMap((rows) =>

@@ -105,7 +105,7 @@ function makeStore(repos: { id: string; path: string; connectionId?: string }[])
 }
 
 type RuntimeInternals = {
-  listResolvedWorktrees: () => Promise<{ id: string; head: string }[]>
+  listResolvedWorktrees: () => Promise<{ id: string; head: string; branch: string }[]>
   worktreeScanCache: Map<string, unknown>
 }
 
@@ -163,4 +163,33 @@ describe('runtime fleet scan over membership models', () => {
     expect(runtime.worktreeScanCache.has('git-only\0local')).toBe(true)
     expect(runtime.worktreeScanCache.has('ssh\0ssh:remote-1')).toBe(true)
   }, 60_000)
+
+  it('answers a healthy local repo fresh on every snapshot while many SSH repos stall', async () => {
+    const local = await makeRepo('local')
+    // A half-open SSH host: every remote listing hangs.
+    getSshGitProviderMock.mockReturnValue({ listWorktrees: () => new Promise(() => {}) })
+    const stalled = Array.from({ length: 9 }, (_unused, index) => ({
+      id: `ssh-${index}`,
+      path: `/remote/app-${index}`,
+      connectionId: 'remote-1'
+    }))
+    const store = makeStore([...stalled, { id: 'local', path: local.repoPath }])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns the repo, meta and settings reads a fleet scan makes; the rest of Store is unreached.
+    const service = new OrcaRuntimeService(store as never)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both members exist on the runtime; they are protected, not absent.
+    const runtime = service as unknown as RuntimeInternals
+    // Real time plus a skip per snapshot: the stalled repos' budgets must really run out.
+    const realNow = Date.now.bind(Date)
+    let skipped = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow() + skipped)
+
+    for (const name of ['first', 'second']) {
+      // Created from a terminal: only a fresh read of the repo knows it.
+      await git(['worktree', 'add', '-q', join(scratchDir, name), '-b', name], local.repoPath)
+      skipped += 1_000
+      const worktrees = await runtime.listResolvedWorktrees()
+      const created = worktrees.find((row) => row.id === `local::${join(scratchDir, name)}`)
+      expect(created?.branch).toBe(`refs/heads/${name}`)
+    }
+  }, 30_000)
 })

@@ -180,24 +180,6 @@ describe('runtime worktree scan cache', () => {
     expect(scanCount()).toBe(1)
   })
 
-  it('reads at most eight repos at once for one fleet snapshot', async () => {
-    let inFlight = 0
-    let peak = 0
-    listWorktreesStrictMock.mockImplementation(async (repoPath: string) => {
-      inFlight += 1
-      peak = Math.max(peak, inFlight)
-      await new Promise((resolve) => setTimeout(resolve, 5))
-      inFlight -= 1
-      return [{ path: repoPath, head: 'abc', branch: 'main', isBare: false, isMainWorktree: true }]
-    })
-    const { list } = makeRuntime({ repoCount: 20 })
-
-    await list()
-
-    expect(scanCount()).toBe(20)
-    expect(peak).toBe(8)
-  })
-
   it('settles a fleet snapshot within one per-repo budget however many repos stall', async () => {
     vi.useFakeTimers()
     try {
@@ -208,8 +190,6 @@ describe('runtime worktree scan cache', () => {
       void list().then(() => {
         settled = true
       })
-      // Repos that wait for a slot past the budget answer from stored rows on the next tick,
-      // instead of each wave of eight stalling for a budget of its own.
       await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS + 100)
       expect(settled).toBe(true)
     } finally {

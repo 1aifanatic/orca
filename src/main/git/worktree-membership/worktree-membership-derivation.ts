@@ -2,13 +2,15 @@ import { realpath, stat } from 'node:fs/promises'
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import { getErrorCode, type GitWorktreeExecOptions } from '../worktree-operation-options'
 import { canonicalWorktreePath } from '../worktree-path-comparison'
+import { annotateSparseCheckoutStatus } from '../worktree-sparse-annotation'
 import { readRepoConfigFacts, resolveRepoCommonDirFromFiles } from './repo-admin-layout'
 import { WorktreeRowsNeedGit } from './worktree-membership-file-rows'
 import { validateMembershipFromFiles } from './worktree-membership-file-validation'
 import {
   describeMembershipParityMismatch,
   readGitWorktreeRows,
-  validateMembershipFromGit
+  validateMembershipFromGit,
+  type GitValidationResult
 } from './worktree-membership-git-rows'
 import {
   MEMBERSHIP_FULL_DERIVE_FLOOR_MS,
@@ -72,10 +74,10 @@ export function createMembershipModelShell(
     generation: 0,
     listingOwed: false,
     building: null,
-    inFlight: new Map(),
+    inFlight: null,
+    followUp: null,
     startedDerivations: 0,
-    committedDerivation: 0,
-    stalledWork: 0
+    committedDerivation: 0
   }
 }
 
@@ -97,17 +99,13 @@ export async function buildMembershipModel(
   const gitOptions = gitOptionsFor(options)
   const facts = await readRepoConfigFacts(commonDir).catch(() => null)
   const gitOnlyReason = facts === null ? 'unreadable config' : facts.gitOnlyReason
-  const adopted = gitOnlyReason ? null : await adoptFileRows(model, gitOptions)
-  if (adopted) {
-    model.main = adopted.main
-    model.files = adopted.files
-    model.rows = adopted.rows
+  if (!gitOnlyReason) {
+    const { git, adoption } = await readGitGatedAdoption(model, gitOptions, null, true)
+    applyGitGatedAdoption(model, git, adoption)
+    model.rows = git.rows
     return model.rows
   }
-  if (gitOnlyReason) {
-    model.source = { kind: 'git', reason: gitOnlyReason }
-  }
-  // Pinned, or a transient read failure: a files model with no file state re-runs parity next read.
+  model.source = { kind: 'git', reason: gitOnlyReason }
   const git = await validateMembershipFromGit({
     repoPath: model.repoPath,
     commonDir,
@@ -118,9 +116,7 @@ export async function buildMembershipModel(
   })
   model.git = git.state
   model.rows = git.rows
-  if (gitOnlyReason) {
-    model.main = { path: git.rows[0]?.path ?? model.repoPath, isBare: git.rows[0]?.isBare ?? false }
-  }
+  model.main = { path: git.rows[0]?.path ?? model.repoPath, isBare: git.rows[0]?.isBare ?? false }
   return model.rows
 }
 
@@ -128,6 +124,47 @@ type FileAdoption = {
   main: WorktreeMembershipModel['main']
   files: FileDerivationState
   rows: GitWorktreeInfo[]
+}
+
+/**
+ * For a files model with no file state (or whose files just failed): Git's rows by the Git-derived
+ * stat gate, so a file read that keeps failing costs no Git until a stat moves or the floor is due.
+ * When Git does run, that listing is a new adoption attempt, and its baseline is the answer if the
+ * files still fail.
+ */
+async function readGitGatedAdoption(
+  model: WorktreeMembershipModel,
+  gitOptions: GitWorktreeExecOptions,
+  previousRows: GitWorktreeInfo[] | null,
+  mustRun: boolean
+): Promise<{ git: GitValidationResult; adoption: FileAdoption | null }> {
+  let adoption: FileAdoption | null = null
+  const git = await validateMembershipFromGit({
+    repoPath: model.repoPath,
+    commonDir: model.commonDir,
+    options: gitOptions,
+    previous: model.git,
+    previousRows,
+    mustRun,
+    listRows: async () => {
+      const attempt = await adoptFileRows(model, gitOptions)
+      adoption = attempt.adoption
+      return attempt.rows
+    }
+  })
+  return { git, adoption }
+}
+
+function applyGitGatedAdoption(
+  model: WorktreeMembershipModel,
+  git: GitValidationResult,
+  adoption: FileAdoption | null
+): void {
+  model.git = git.state
+  if (adoption) {
+    model.main = adoption.main
+    model.files = adoption.files
+  }
 }
 
 /**
@@ -139,14 +176,24 @@ type FileAdoption = {
 async function adoptFileRows(
   model: WorktreeMembershipModel,
   gitOptions: GitWorktreeExecOptions
-): Promise<FileAdoption | null> {
+): Promise<{ adoption: FileAdoption | null; rows: GitWorktreeInfo[] }> {
+  // Not adopted: Git's own baseline answers, with the sparse annotation files would have given.
+  const answerFromGit = async (
+    rows: GitWorktreeInfo[]
+  ): Promise<{ adoption: null; rows: GitWorktreeInfo[] }> => ({
+    adoption: null,
+    rows: await annotateSparseCheckoutStatus(model.repoPath, rows, gitOptions)
+  })
   let mismatch: string | null = null
+  let baseline = await readGitWorktreeRows(model.repoPath, gitOptions, false)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const baseline = await readGitWorktreeRows(model.repoPath, gitOptions, false)
+    if (attempt > 0) {
+      baseline = await readGitWorktreeRows(model.repoPath, gitOptions, false)
+    }
     const gitMain = baseline.rows[0]
     if (!gitMain?.isMainWorktree) {
       pinToGit(model, 'git listed no main worktree')
-      return null
+      return answerFromGit(baseline.rows)
     }
     const main = { path: gitMain.path, isBare: gitMain.isBare }
     try {
@@ -163,7 +210,7 @@ async function adoptFileRows(
         baseline.nulDelimited
       )
       if (!mismatch) {
-        return { main, files: derived.state, rows: derived.rows }
+        return { adoption: { main, files: derived.state, rows: derived.rows }, rows: derived.rows }
       }
     } catch (error) {
       if (!(error instanceof WorktreeRowsNeedGit)) {
@@ -172,11 +219,11 @@ async function adoptFileRows(
       if (!error.transient) {
         pinToGit(model, error.reason)
       }
-      return null
+      return answerFromGit(baseline.rows)
     }
   }
   pinToGit(model, `file rows differ from git: ${mismatch}`)
-  return null
+  return answerFromGit(baseline.rows)
 }
 
 export async function deriveMembershipModel(
@@ -223,20 +270,7 @@ export async function deriveMembershipModel(
     dropModel()
     return (await readGitWorktreeRows(model.repoPath, gitOptionsFor(options))).rows
   }
-  if (model.source.kind === 'files' && !model.files) {
-    // A cold build that fell back on a transient read failure never compared file rows with Git.
-    const adopted = await adoptFileRows(model, gitOptionsFor(options))
-    if (adopted) {
-      return commit(
-        adopted.rows,
-        () => {
-          model.main = adopted.main
-          model.files = adopted.files
-        },
-        true
-      )
-    }
-  } else if (model.source.kind === 'files') {
+  if (model.source.kind === 'files' && model.files) {
     try {
       const result = await validateMembershipFromFiles({
         commonDir: model.commonDir,
@@ -256,6 +290,16 @@ export async function deriveMembershipModel(
         pinToGit(model, error.reason)
       }
     }
+  }
+  if (model.source.kind === 'files') {
+    // No file state yet, or the files just failed to read: never adopt file rows unchecked.
+    const { git, adoption } = await readGitGatedAdoption(
+      model,
+      gitOptionsFor(options),
+      model.git.signature ? model.rows : null,
+      full || listingOwed
+    )
+    return commit(git.rows, () => applyGitGatedAdoption(model, git, adoption), full || !!adoption)
   }
   const result = await validateMembershipFromGit({
     repoPath: model.repoPath,

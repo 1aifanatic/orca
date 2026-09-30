@@ -98,8 +98,7 @@ export async function resolveRepoWorktreeRows(
   repo: Repo,
   metaById: Record<string, WorktreeMeta>,
   projectRuntimeByRepoId: ReadonlyMap<string, ProjectExecutionRuntimeResolution>,
-  repoOwnerCount = deps.store.getRepos().filter((candidate) => candidate.id === repo.id).length,
-  timeoutMs = RESOLVED_WORKTREE_REPO_TIMEOUT_MS
+  repoOwnerCount = deps.store.getRepos().filter((candidate) => candidate.id === repo.id).length
 ): Promise<RepoWorktreeRow[]> {
   const { store } = deps
   if (isFolderRepo(repo)) {
@@ -128,7 +127,7 @@ export async function resolveRepoWorktreeRows(
     deps
       .scanRepo(repo, projectRuntimeByRepoId)
       .catch(() => ({ ok: false, worktrees: [] }) satisfies RuntimeWorktreeScanResult),
-    timeoutMs,
+    RESOLVED_WORKTREE_REPO_TIMEOUT_MS,
     null
   )) ?? { ok: false, worktrees: listStoredWorktreeRowsForRepo(store, repo, repoOwnerCount) }
   const gitWorktrees = preserveFolderUpgradeWorktreePath(repo, scan.worktrees)

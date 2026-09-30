@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const hang = vi.hoisted(() => ({ prefix: '', started: 0 }))
+const hang = vi.hoisted(() => ({ prefix: '', started: 0, held: [] as (() => void)[] }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromises>()
   const hangUnderPrefix =
@@ -16,7 +16,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     (...args: A): Promise<R> => {
       if (hang.prefix && String(args[0]).startsWith(hang.prefix)) {
         hang.started += 1
-        return new Promise<R>(() => {})
+        // Held until the test lets the mount recover; then the op runs for real.
+        return new Promise<R>((resolve, reject) => {
+          hang.held.push(() => void read(...args).then(resolve, reject))
+        })
       }
       return read(...args)
     }
@@ -31,6 +34,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import {
+  _getWorktreeMembershipModelForTests,
   _resetWorktreeMembershipModelsForTests,
   markWorktreeMembershipDirty,
   readWorktreeMembership,
@@ -59,6 +63,7 @@ beforeEach(async () => {
   _resetWorktreeMembershipModelsForTests()
   hang.prefix = ''
   hang.started = 0
+  hang.held.length = 0
 })
 
 afterEach(async () => {
@@ -87,6 +92,33 @@ describe('worktree membership model on a hung mount', () => {
       )
     }
     expect(hang.started).toBe(stalledReads)
+  })
+
+  it('runs one derivation at a time however many readers arrive while the disk hangs', async () => {
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    await readWorktreeMembership(repoPath)
+    const model = _getWorktreeMembershipModelForTests(repoPath)!
+    const derivationsBefore = model.startedDerivations
+    hang.prefix = join(repoPath, '.git')
+    const reads: ReturnType<typeof readWorktreeMembership>[] = []
+    for (let reader = 0; reader < 6; reader++) {
+      now += MEMBERSHIP_REUSE_WINDOW_MS + 50
+      reads.push(readWorktreeMembership(repoPath, { timeout: 60_000 }))
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    expect(model.startedDerivations - derivationsBefore).toBe(1)
+    const stalledReads = hang.started
+
+    // The mount recovers: the running derivation, then one shared follow-up, answer everyone.
+    hang.prefix = ''
+    while (hang.held.length > 0) {
+      hang.held.shift()!()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    await Promise.all(reads)
+    expect(model.startedDerivations - derivationsBefore).toBe(2)
+    expect(stalledReads).toBeGreaterThan(0)
   })
 
   it('fails a cold build by its deadline and joins it instead of building again', async () => {

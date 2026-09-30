@@ -1,6 +1,5 @@
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import { parseWslPath } from '../../wsl'
-import { resolveGitAdmissionTier } from '../command-runner/git-operation-executor'
 import { readTranslatedWorktreeGraph } from '../worktree-list-reader'
 import {
   WORKTREE_LIST_TIMEOUT_MS,
@@ -25,7 +24,10 @@ export { MissingRepoPathError } from './worktree-membership-derivation'
 // listing reads it; it re-derives its own truth from disk by stat, so no watcher has to be alive
 // for it to be right. Orca's own mutations bump its generation so no read reuses an older result.
 
-export type WorktreeMembershipReadOptions = GitWorktreeExecOptions
+export type WorktreeMembershipReadOptions = GitWorktreeExecOptions & {
+  /** How long this reader waits on shared model work (default: `timeout`); never shortens Git. */
+  waitMs?: number
+}
 
 export type WorktreeMembershipRead = {
   rows: GitWorktreeInfo[]
@@ -43,7 +45,6 @@ export class WorktreeMembershipTimeoutError extends Error {
 }
 
 const models = new Map<string, WorktreeMembershipModel>()
-const stalledWork = new WeakSet<Promise<unknown>>()
 
 function raceSignal<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) {
@@ -74,32 +75,19 @@ function boundByDeadline<T>(
   })
 }
 
-function readTimeoutMs(options: WorktreeMembershipReadOptions): number {
-  // Zero is no deadline override, as the Git runner treats it.
-  return options.timeout || WORKTREE_LIST_TIMEOUT_MS
-}
-
-/**
- * Awaits shared fs work under this reader's own deadline. Work that outlives a deadline marks the
- * model stalled until it settles, so no read queues another fs derivation behind it.
- */
+/** Awaits shared model work under this reader's own deadline and signal. */
 function awaitModelWork<T>(
   model: WorktreeMembershipModel,
   work: Promise<T>,
   options: WorktreeMembershipReadOptions
 ): Promise<T> {
-  const bounded = boundByDeadline(work, readTimeoutMs(options), () => {
-    if (!stalledWork.has(work)) {
-      stalledWork.add(work)
-      model.stalledWork += 1
-      void work
-        .catch(() => {})
-        .finally(() => {
-          model.stalledWork -= 1
-        })
-    }
-    return new WorktreeMembershipTimeoutError(model.repoPath)
-  })
+  // Zero is no deadline override, as the Git runner treats it.
+  const waitMs = options.waitMs || options.timeout || WORKTREE_LIST_TIMEOUT_MS
+  const bounded = boundByDeadline(
+    work,
+    waitMs,
+    () => new WorktreeMembershipTimeoutError(model.repoPath)
+  )
   return raceSignal(bounded, options.signal)
 }
 
@@ -153,24 +141,15 @@ function startModel(
   return model
 }
 
-function readModel(
+function startDerivation(
   model: WorktreeMembershipModel,
-  options: WorktreeMembershipReadOptions,
-  now: number
+  options: WorktreeMembershipReadOptions
 ): Promise<GitWorktreeInfo[]> {
-  if (isReusable(model, model.validated, now)) {
-    return Promise.resolve(model.rows)
+  const start = {
+    generation: model.generation,
+    startedAt: Date.now(),
+    listingOwed: model.listingOwed
   }
-  // Why the tier: an interactive read joining a queued background derivation inherits its wait.
-  const tier = resolveGitAdmissionTier(options.admissionTier)
-  const joined = model.inFlight.get(tier)
-  if (joined && isReusable(model, joined, now)) {
-    return awaitModelWork(model, joined.work, options)
-  }
-  if (model.stalledWork > 0) {
-    return Promise.reject(new WorktreeMembershipTimeoutError(model.repoPath))
-  }
-  const start = { generation: model.generation, startedAt: now, listingOwed: model.listingOwed }
   model.listingOwed = false
   const derivation = ++model.startedDerivations
   const work: Promise<GitWorktreeInfo[]> = deriveMembershipModel(
@@ -186,12 +165,41 @@ function readModel(
       throw error
     })
     .finally(() => {
-      if (model.inFlight.get(tier)?.work === work) {
-        model.inFlight.delete(tier)
+      if (model.inFlight?.work === work) {
+        model.inFlight = null
       }
     })
-  model.inFlight.set(tier, { generation: start.generation, startedAt: now, work })
-  return awaitModelWork(model, work, options)
+  model.inFlight = { generation: start.generation, startedAt: start.startedAt, work }
+  return work
+}
+
+function readModel(
+  model: WorktreeMembershipModel,
+  options: WorktreeMembershipReadOptions,
+  now: number
+): Promise<GitWorktreeInfo[]> {
+  if (isReusable(model, model.validated, now)) {
+    return Promise.resolve(model.rows)
+  }
+  const inFlight = model.inFlight
+  if (!inFlight) {
+    return awaitModelWork(model, startDerivation(model, options), options)
+  }
+  if (isReusable(model, inFlight, now)) {
+    return awaitModelWork(model, inFlight.work, options)
+  }
+  // One derivation per model at a time, so a slow or hung disk never stacks fs work. A reader that
+  // cannot reuse the running one shares the next, which starts after it arrived.
+  model.followUp ??= inFlight.work
+    .then(
+      () => undefined,
+      () => undefined
+    )
+    .then(() => {
+      model.followUp = null
+      return startDerivation(model, options)
+    })
+  return awaitModelWork(model, model.followUp, options)
 }
 
 /**
@@ -266,11 +274,12 @@ export function retainWorktreeMembershipModels(registeredRepoPaths: readonly str
 
 /**
  * True when the repo's rows come from Git's files, so a read costs stats, not a Git run. A repo the
- * model leaves to Git (WSL, reftable, failed parity) keeps the upper caches' row TTLs instead.
+ * model leaves to Git (WSL, reftable, failed parity, files not readable yet) keeps the upper
+ * caches' row TTLs instead.
  */
 export function isWorktreeMembershipModelBacked(repoPath: string, wslDistro?: string): boolean {
   const model = wslDistro ? undefined : models.get(canonicalWorktreePath(repoPath))
-  return model?.building === null && model.source.kind === 'files'
+  return model?.building === null && model.source.kind === 'files' && model.files !== null
 }
 
 export function _getWorktreeMembershipModelForTests(

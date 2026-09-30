@@ -281,17 +281,14 @@ describe('worktree membership model: freshness', () => {
     const created = join(scratchDir, 'created')
     await git(['worktree', 'add', '-q', created, '-b', 'created'])
     markWorktreeMembershipDirty(repoPath)
-    const newerHold = holdNextValidation()
-    const newer = readWorktreeMembership(repoPath)
-    await newerHold.entered
+    // Both queue behind the running derivation and share one that starts after them.
+    const afterMark = [readWorktreeMembership(repoPath), readWorktreeMembership(repoPath)]
 
-    // The older derivation commits first; a reader after the mark must still see the create.
     olderHold.release()
     expect((await older).rows.map((row) => row.path)).not.toContain(created)
-    const afterMark = readWorktreeMembership(repoPath)
-    newerHold.release()
-    expect((await newer).rows.map((row) => row.path)).toContain(created)
-    expect((await afterMark).rows.map((row) => row.path)).toContain(created)
+    for (const read of await Promise.all(afterMark)) {
+      expect(read.rows.map((row) => row.path)).toContain(created)
+    }
   })
 
   it('keeps a mark that lands while the model is first built', async () => {
@@ -310,7 +307,7 @@ describe('worktree membership model: freshness', () => {
     expect(rows.map((row) => row.path)).toContain(created)
   })
 
-  it('compares file rows with Git once a cold build fell back on a transient read failure', async () => {
+  it('adopts file rows after a transient cold failure only through the Git parity check', async () => {
     const linked = join(scratchDir, 'linked')
     await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
     let now = Date.now()
@@ -318,15 +315,51 @@ describe('worktree membership model: freshness', () => {
     validationGate.transientFailures = 1
     await readWorktreeMembership(repoPath)
     const model = _getWorktreeMembershipModelForTests(repoPath)!
-    expect(model.files).toBeNull()
     const coldListings = worktreeListSpawns()
 
+    // Nothing moved: no Git, and no file rows adopted unchecked.
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    await readWorktreeMembership(repoPath)
+    expect(worktreeListSpawns()).toBe(coldListings)
+    expect(model.files).toBeNull()
+
+    const head = await commitIn(linked, 'moved')
     now += MEMBERSHIP_REUSE_WINDOW_MS
     const { rows } = await readWorktreeMembership(repoPath)
-    // The parity baseline: file rows are adopted only once Git agreed with them.
+    // The listing that ran is the parity baseline the file rows were adopted against.
     expect(worktreeListSpawns()).toBe(coldListings + 1)
     expect(model.files).not.toBeNull()
-    expect(rows.map((row) => row.path)).toContain(linked)
+    expect(rows.find((row) => row.path === linked)?.head).toBe(head)
+  })
+
+  it('reads a repo whose files keep failing with Git only when its stats move', async () => {
+    // HEAD names `ghost` while `ghost/child` exists: reading that ref hits a directory (EISDIR),
+    // an error no retry cures, though Git lists the worktree fine.
+    const linked = join(scratchDir, 'linked')
+    await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
+    await git(['symbolic-ref', 'HEAD', 'refs/heads/ghost'], linked)
+    await git(['branch', 'ghost/child'])
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    await readWorktreeMembership(repoPath)
+    const coldListings = worktreeListSpawns()
+    expect(coldListings).toBe(1)
+    expect(isWorktreeMembershipModelBacked(repoPath)).toBe(false)
+
+    for (let read = 0; read < 5; read++) {
+      now += MEMBERSHIP_REUSE_WINDOW_MS
+      await readWorktreeMembership(repoPath)
+    }
+    expect(worktreeListSpawns()).toBe(coldListings)
+
+    await git(['worktree', 'lock', linked])
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    const { rows } = await readWorktreeMembership(repoPath)
+    expect(worktreeListSpawns()).toBe(coldListings + 1)
+    expect(rows.find((row) => row.path === linked)).toMatchObject({
+      branch: 'refs/heads/ghost',
+      locked: true
+    })
   })
 
   it('sees an unmarked change one watcher debounce later, whatever path the repo is registered by', async () => {
