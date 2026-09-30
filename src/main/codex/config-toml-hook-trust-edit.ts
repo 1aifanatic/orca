@@ -13,7 +13,7 @@ import {
   findHookTrustBlockRanges,
   type HookTrustBlockRange
 } from './config-toml-hook-trust-blocks'
-import { escapeTomlBasicString } from './config-toml-syntax'
+import { CODEX_HOOK_TRUST_KEY, escapeTomlBasicString } from './config-toml-syntax'
 import { repairOrcaDuplicateTrustTables } from './config-toml-project-duplicate-repair'
 
 export function upsertHookTrustContent(
@@ -51,10 +51,6 @@ export function removeHookTrustContent(content: string, keys: readonly string[])
   }
   return updated + content.slice(cursor)
 }
-
-// Why: Codex's hook_key is `<path>:<event>:<group>:<handler>` (checked unchanged
-// from 0.141 to 0.158). Any other shape means the format moved under us.
-const CODEX_HOOK_TRUST_KEY = /^.+:[a-z][a-z0-9_]*:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
 
 /**
  * Moves each hook's trust block to the hook's new key, body bytes unchanged:
