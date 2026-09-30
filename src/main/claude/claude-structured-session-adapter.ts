@@ -3,10 +3,12 @@ import { dispatchClaudeCommand } from './claude-structured-command-dispatch'
 import type {
   AgentSessionAcquisition,
   StructuredAgentSessionAcquireInput,
-  StructuredAgentSessionAdapter
+  StructuredAgentSessionAdapter,
+  StructuredAgentSessionStopCause
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import { claudeHoldsDispatch } from './claude-command-lifecycle'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
@@ -227,6 +229,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.sessions.get(sessionId)?.commands.commands
+  holdsDispatch = (sessionId: string): boolean => {
+    const session = this.sessions.get(sessionId)
+    return session ? claudeHoldsDispatch(session) : false
+  }
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     answerClaudeStructuredPrompt({ request, sessions: this.sessions })
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>
@@ -277,20 +283,30 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       ...(this.deps.onEvent ? { onEvent: this.deps.onEvent } : {})
     })
 
-  closeSession = (sessionId: string): Promise<boolean> =>
+  closeSession = (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> =>
     // After the close, not before: releasing an exit still settling settles it on the way.
-    this.closeSessionProcess(sessionId).finally(() => this.settledExitErrors.delete(sessionId))
+    this.closeSessionProcess(sessionId, cause).finally(() =>
+      this.settledExitErrors.delete(sessionId)
+    )
 
-  private closeSessionProcess(sessionId: string): Promise<boolean> {
+  private closeSessionProcess(
+    sessionId: string,
+    cause: StructuredAgentSessionStopCause | undefined
+  ): Promise<boolean> {
+    // An exit seen first settles as that exit, whoever asked for the close after it.
     if (this.exits.has(sessionId)) {
       return this.releaseAcquisition({ sessionId })
     }
-    return this.afterClose(sessionId, () => this.closeProviderSession(sessionId))
+    return this.afterClose(sessionId, () => this.closeProviderSession(sessionId, cause))
   }
 
-  private closeProviderSession = (sessionId: string): Promise<boolean> =>
+  private closeProviderSession = (
+    sessionId: string,
+    stopCause?: StructuredAgentSessionStopCause
+  ): Promise<boolean> =>
     closeClaudeSession({
       sessionId,
+      ...(stopCause ? { stopCause } : {}),
       sessions: this.sessions,
       acquisitions: this.acquisitions,
       ...(this.deps.persistHandle ? { persistHandle: this.deps.persistHandle } : {}),
