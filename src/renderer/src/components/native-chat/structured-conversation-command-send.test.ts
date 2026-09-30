@@ -142,6 +142,25 @@ describe('the line under the composer after a conversation command failed', () =
     )
   })
 
+  it("shows the host's sentence as written for a command this build doesn't know", async () => {
+    await i18n.changeLanguage('fr')
+    const error = "Claude couldn't start. Run /rewind again."
+    // A newer host's command, with a fact this build reads whole and a loaded row stating it.
+    const result: AgentSessionConversationCommandResult = JSON.parse(
+      `{ "command": "rewind", "state": "completed", "error": ${JSON.stringify(error)}, "failure": { "kind": "startFailed" } }`
+    )
+    expect(
+      await sendStructuredConversationCommand({
+        command: 'compact',
+        agentName: 'Claude',
+        pending: { current: false },
+        blocked: false,
+        startFailures: () => [START_FAILED],
+        send: async () => ({ kind: 'done', value: result })
+      })
+    ).toEqual({ accepted: false, error })
+  })
+
   it("shows an older host's sentence as written when it sent no fact", async () => {
     await i18n.changeLanguage('fr')
     expect(

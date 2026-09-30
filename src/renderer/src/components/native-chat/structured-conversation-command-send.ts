@@ -1,6 +1,7 @@
-import type {
-  AgentSessionConversationCommand,
-  AgentSessionConversationCommandResult
+import {
+  isAgentSessionConversationCommand,
+  type AgentSessionConversationCommand,
+  type AgentSessionConversationCommandResult
 } from '../../../../shared/agent-session-conversation-command'
 import {
   readWholeAgentSessionFailureFact,
@@ -45,8 +46,10 @@ export async function sendStructuredConversationCommand(input: {
     }
     const { value } = outcome
     // The chat's own start failed and its loaded row already says why, as for a message that start
-    // rejected. A /clear's failed start is its new chat's, whose row this pane never shows.
+    // rejected. A /clear's failed start is its new chat's, whose row this pane never shows, and a
+    // command this build doesn't know may be either, so its host's words are shown.
     if (
+      isAgentSessionConversationCommand(value.command) &&
       value.command !== 'clear' &&
       agentSessionFailureStatedByStartRow(value.failure, input.startFailures())
     ) {
@@ -60,12 +63,14 @@ export async function sendStructuredConversationCommand(input: {
 }
 
 /** The host's sentence in the reader's language, from the fact beside it; with no fact (an older
- *  host) or one this build can't read whole, the sentence as written. */
+ *  host), one this build can't read whole, or a command it doesn't know, the sentence as written. */
 function conversationCommandFailureText(
   result: AgentSessionConversationCommandResult,
   agentName: string
 ): string | null {
-  const fact = readWholeAgentSessionFailureFact(result.failure)
+  const fact = isAgentSessionConversationCommand(result.command)
+    ? readWholeAgentSessionFailureFact(result.failure)
+    : undefined
   if (!fact) {
     return result.error ?? null
   }
