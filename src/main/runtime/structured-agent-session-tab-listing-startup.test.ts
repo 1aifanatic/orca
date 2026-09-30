@@ -141,14 +141,14 @@ describe('listing chat tabs at startup', () => {
     await rig.crash()
     rig.probeOwner.mockRejectedValue(new Error('probe unavailable'))
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const onStartupReconcileFailure = vi.fn()
-    await rig.boot({ onStartupReconcileFailure })
+    const onLeaseReconcileFailure = vi.fn()
+    await rig.boot({ onLeaseReconcileFailure })
     const { runtime, listAll } = restartedRuntime()
 
     await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).resolves.toBe(undefined)
     expect(await within(listAll())).toEqual(['session-1'])
     await vi.waitFor(() =>
-      expect(onStartupReconcileFailure).toHaveBeenCalledWith(
+      expect(onLeaseReconcileFailure).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'probe unavailable' })
       )
     )

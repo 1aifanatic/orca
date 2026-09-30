@@ -82,7 +82,8 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
         agent: session.agent,
         sessionId,
         activate: false,
-        notify: false
+        notify: false,
+        visibilityWriteMayFail: true
       })
     }
     // After the tabs are out, so no chat's history holds the list or paint; each chat's status row
@@ -109,14 +110,25 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     replacesSessionId?: string
     /** The host tab id a create reserved; a session that already has a tab keeps its own. */
     tabId?: string
+    /** A restore's republish: a failed visibility write is logged and the tab still publishes,
+     *  since a client drops every unpublished chat tab. */
+    visibilityWriteMayFail?: boolean
   }): Promise<void> {
     const host = getStructuredAgentSessionHost()
     if (typeof host?.setSessionTabVisibility === 'function') {
-      await host.setSessionTabVisibility(
+      const written = host.setSessionTabVisibility(
         input.sessionId,
         true,
         ...(input.tabId ? [input.tabId] : [])
       )
+      await (input.visibilityWriteMayFail
+        ? written.catch((error) =>
+            console.warn('[structured-agent-session] recording a restored chat tab failed', {
+              sessionId: input.sessionId,
+              error
+            })
+          )
+        : written)
     }
     const existing = this.mobileSessionTabsByWorktree.get(input.workspaceId)
     const id = `agent-session:${input.sessionId}`

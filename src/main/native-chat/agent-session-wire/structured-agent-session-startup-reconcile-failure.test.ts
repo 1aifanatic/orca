@@ -1,6 +1,6 @@
-// The startup reconcile is bookkeeping: a lock that gives up or a store this build may not write
-// is reported, and startup carries on. Nothing is owed after it, because every chat reconciles its
-// own lease again when it is sent to or read.
+// The lease reconcile is bookkeeping: a lock that gives up or a store this build may not write is
+// reported, and startup and every read carry on. Nothing is owed after it, because an unreconciled
+// lease grants no writer and the next send reconciles every lease again before it acts.
 
 import { cp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -73,7 +73,7 @@ async function relaunch(rewrite?: (json: Record<string, unknown>) => void) {
     await writeFile(path, JSON.stringify(json))
   }
   const store = await AgentSessionRecordStore.open({ directory: storeDirectory, hostId: 'local' })
-  const onStartupReconcileFailure = vi.fn()
+  const onLeaseReconcileFailure = vi.fn()
   const host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),
@@ -82,31 +82,29 @@ async function relaunch(rewrite?: (json: Record<string, unknown>) => void) {
     mintSpawnToken: () => 'spawn-next',
     probeOwner: async () => ({ outcome: 'pid-absent' }),
     now: () => NOW,
-    onStartupReconcileFailure
+    onLeaseReconcileFailure
   })
   replaceHostTestState({ store, host })
-  return { host, store, storeDirectory, onStartupReconcileFailure }
+  return { host, store, storeDirectory, onLeaseReconcileFailure }
 }
 
 it('reports a startup reconcile whose store write fails, and does not reject', async () => {
-  const { host, store, onStartupReconcileFailure } = await relaunch()
+  const { host, store, onLeaseReconcileFailure } = await relaunch()
 
   lock.failing = true
   await expect(host.reconcileRestartLeases()).resolves.toBeUndefined()
 
-  expect(onStartupReconcileFailure).toHaveBeenCalledOnce()
-  expect(onStartupReconcileFailure).toHaveBeenCalledWith(
-    expect.objectContaining({ code: 'ELOCKED' })
-  )
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
   // Nothing was adjudicated, so the lease still grants no writer.
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
 })
 
 it('reconciles the chat on its next send once the store can be written again', async () => {
-  const { host, store, onStartupReconcileFailure } = await relaunch()
+  const { host, store, onLeaseReconcileFailure } = await relaunch()
   lock.failing = true
   await host.reconcileRestartLeases()
-  expect(onStartupReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
   lock.failing = false
 
   const body = hostTestMessage('sent after a startup reconcile failed')
@@ -119,13 +117,13 @@ it('reconciles the chat on its next send once the store can be written again', a
     timeout: 10_000
   })
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(false)
-  expect(onStartupReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
   // Before the relaunched directory is removed, so the child's wind-down can write its lease.
   await host.flushAllStreamedEvents()
 })
 
 it('reports a store a newer Orca wrote without writing it, and does not reject', async () => {
-  const { host, store, storeDirectory, onStartupReconcileFailure } = await relaunch((json) => {
+  const { host, store, storeDirectory, onLeaseReconcileFailure } = await relaunch((json) => {
     json.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION + 1
   })
   expect(store.readOnly).toBe(true)
@@ -135,11 +133,38 @@ it('reports a store a newer Orca wrote without writing it, and does not reject',
 
   await expect(host.reconcileRestartLeases()).resolves.toBeUndefined()
 
-  expect(onStartupReconcileFailure).toHaveBeenCalledOnce()
-  expect(onStartupReconcileFailure).toHaveBeenCalledWith(
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(
     expect.objectContaining({ message: 'agent_session_legacy_required' })
   )
   expect(store.listRecords().map((record) => record.sessionId)).toEqual([SESSION])
   expect(await readFile(path)).toEqual(bytes)
   expect(await readdir(storeDirectory)).toEqual(files)
+})
+
+it('restores a chat for reading while the reconcile keeps failing, and reports it once', async () => {
+  const { host, store, onLeaseReconcileFailure } = await relaunch()
+  lock.failing = true
+  await host.reconcileRestartLeases()
+
+  await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
+
+  expect(host.hasSession(SESSION)).toBe(true)
+  expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
+})
+
+it('restores a chat for reading from a store a newer Orca wrote', async () => {
+  const { host, storeDirectory, onLeaseReconcileFailure } = await relaunch((json) => {
+    json.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION + 1
+  })
+  const path = agentSessionStorePath(storeDirectory)
+  const bytes = await readFile(path)
+
+  await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
+
+  expect(host.hasSession(SESSION)).toBe(true)
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(await readFile(path)).toEqual(bytes)
 })

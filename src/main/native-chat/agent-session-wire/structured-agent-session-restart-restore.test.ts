@@ -62,7 +62,7 @@ describe('restart journal restoration', () => {
     const restoration = restoreStructuredAgentSessionsOnRestart({
       openDeps: NO_OPEN_DEPS,
       records,
-      reconcile: async () => null,
+      reconcile: async () => true,
       resolveRecovery: async () => undefined,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
@@ -103,7 +103,7 @@ describe('restart journal restoration', () => {
     await restoreStructuredAgentSessionsOnRestart({
       openDeps: NO_OPEN_DEPS,
       records,
-      reconcile: async () => null,
+      reconcile: async () => true,
       resolveRecovery: async () => undefined,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
@@ -150,7 +150,7 @@ describe('restart journal restoration', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restore reads only the record's session id here.
       records: [{ sessionId: 'session-1' } as AgentSessionRecord],
       openDeps: NO_OPEN_DEPS,
-      reconcile: async () => null,
+      reconcile: async () => true,
       resolveRecovery: async () => {
         calls.push('resolveRecovery')
       },
@@ -174,7 +174,7 @@ describe('restart journal restoration', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restore reads only the record's session id here.
       records: [{ sessionId: 'session-1' } as AgentSessionRecord],
       openDeps: NO_OPEN_DEPS,
-      reconcile: async () => null,
+      reconcile: async () => true,
       resolveRecovery: async () => undefined,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => true,

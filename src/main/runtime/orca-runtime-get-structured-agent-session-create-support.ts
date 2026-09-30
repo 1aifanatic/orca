@@ -258,7 +258,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   async prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
     await this.ensureStructuredAgentSessionInventory()
     if (this.hasPersistedStructuredAgentSessionStore()) {
-      // Never rejects: a failure goes to the host's startup-reconcile report.
+      // Never rejects: a failure goes to the host's lease-reconcile report.
       void getStructuredAgentSessionHost()?.reconcileRestartLeases()
     }
   }

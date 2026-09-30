@@ -13,7 +13,6 @@
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type {
@@ -28,7 +27,8 @@ export type StructuredAgentSessionReadRestoreDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
-  reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+  /** Whether every lease is settled. Never throws: a read grants no writer, so bookkeeping can't block it. */
+  reconcile: (sessionId: string) => Promise<boolean>
   resolveRecovery: (sessionId: string) => Promise<unknown>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
@@ -43,8 +43,7 @@ async function restoreOneStructuredAgentSessionRead(
   input: StructuredAgentSessionReadRestoreDeps,
   sessionId: string
 ): Promise<void> {
-  const unreconciled = await input.reconcile(sessionId)
-  if (!unreconciled) {
+  if (await input.reconcile(sessionId)) {
     // A session latched in recovery exits here at startup, without waiting for a client.
     await input.resolveRecovery(sessionId)
   }

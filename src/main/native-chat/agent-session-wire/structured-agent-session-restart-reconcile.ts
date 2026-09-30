@@ -45,20 +45,46 @@ export function createRestartReconciler(deps: {
   }
 }
 
-/** Startup never fails on this verdict: a lease left unreconciled grants no writer, and the next
- *  attach, send or read of that chat reconciles it again. So a failure is reported, never owed. */
-export async function reconcileLeasesAtStartup(
+/** The reconcile a reader runs, at startup and before each restored read: it never throws, since
+ *  an unreconciled lease grants no writer and the next send reconciles again before it acts.
+ *  Answers whether every lease is settled; a failure is reported once until a reconcile settles. */
+export function createReaderReconcile(
   reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
   onFailure: ((failure: unknown) => void) | undefined
-): Promise<void> {
-  try {
-    const refusal = await reconcile('startup')
-    if (refusal) {
-      onFailure?.(refusal)
+): (sessionId: string) => Promise<boolean> {
+  let reported: string | null = null
+  return async (sessionId) => {
+    let failure: unknown
+    try {
+      const refusal = await reconcile(sessionId)
+      if (!refusal) {
+        reported = null
+        return true
+      }
+      failure = refusal
+    } catch (error) {
+      failure = error
     }
-  } catch (error) {
-    onFailure?.(error)
+    // Every read re-runs a failing reconcile, so each distinct failure is reported once.
+    const key = failureKey(failure)
+    if (key !== reported) {
+      reported = key
+      onFailure?.(failure)
+    }
+    return false
   }
+}
+
+function failureKey(failure: unknown): string {
+  if (typeof failure === 'object' && failure !== null) {
+    if ('code' in failure && failure.code) {
+      return String(failure.code)
+    }
+    if ('message' in failure) {
+      return String(failure.message)
+    }
+  }
+  return String(failure)
 }
 
 /** The chat's queue, entered by a write only once that chat's lease is checked. Startup does not
