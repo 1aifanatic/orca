@@ -220,12 +220,13 @@ export class StructuredAgentSessionStatusFeed {
   }
 
   /** A finished child's record stays, with its outcome, until the user's next turn: the next send
-   *  the provider accepts (see `newestAcceptedSendKey`), unless it still owns live work. The provider ending the session removes nothing: children
-   *  still live settle `unknown`, and settled ones stay. The one earlier death is the host letting
-   *  go of the session, whose row takes every child record with it (see `forget`). Nothing caps how
-   *  many records a turn keeps, and a command never settles: its record goes when it stops. What
-   *  each surface lists of them is picked on every read (`agent-child-work-listing`): the sidebar
-   *  only running children, the strip running then newest finished. */
+   *  the provider accepts (see `newestAcceptedSendKey`), unless it still owns live work. The
+   *  provider ending the session removes nothing: children still live settle `unknown`, and
+   *  settled ones stay. The one earlier death is the host letting go of the session, whose row
+   *  takes every child record with it (see `forget`). Nothing caps how many records a turn keeps,
+   *  and a command never settles: its record goes when it stops. What each surface lists of them
+   *  is picked on every read (`agent-child-work-listing`): the sidebar only running children, the
+   *  strip running then newest finished. */
   private retireSettledChildrenOnNewTurn(
     sessionId: string,
     session: StatusFeedSession,
