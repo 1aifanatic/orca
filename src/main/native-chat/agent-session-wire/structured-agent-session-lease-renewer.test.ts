@@ -6,6 +6,7 @@ import {
   agentSessionLeaseFixture,
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
+import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
@@ -285,5 +286,152 @@ describe('structured agent-session lease renewal', () => {
 
     expect(probe).not.toHaveBeenCalled()
     expect(store.getRecord('session-renewal')?.lease.lastRenewedAt).toBe(NOW)
+  })
+
+  describe('a failure that repeats every tick', () => {
+    function liveRecord(sessionId: string) {
+      return agentSessionRecordFixture(
+        agentSessionLeaseFixture({
+          sessionId,
+          runtimeKind: 'native',
+          runtimeFence: 1,
+          ownerProcess: {
+            hostId: 'local',
+            pid: 4200,
+            processStartTimeMs: NOW - 1_000,
+            spawnToken: 'spawn-a'
+          },
+          reservedSpawnToken: 'spawn-a',
+          lastRenewedAt: NOW,
+          leaseDeadlineAt: NOW + 30_000
+        })
+      )
+    }
+
+    /** Each tick's renewal throws whatever `failure` holds, or renews when it holds null. */
+    function stuckRenewer(
+      sessionIds: string[],
+      probe: () => Promise<AgentSessionOwnerProbe> = async () => ({
+        outcome: 'identity-matched',
+        matchedOn: ['spawn-token']
+      })
+    ) {
+      const state: { failure: (() => Error) | null; records: string[] } = {
+        failure: () => new Error('agent_session_ownership_unknown'),
+        records: sessionIds
+      }
+      const store = {
+        listRecords: () => state.records.map(liveRecord),
+        renewLeases: async () => {
+          throw new Error('batch refused')
+        },
+        renewLease: async (renewal: { sessionId: string }) => {
+          if (state.failure) {
+            throw state.failure()
+          }
+          return liveRecord(renewal.sessionId)
+        }
+      }
+      const renewer = new StructuredAgentSessionLeaseRenewer({
+        store: store as unknown as AgentSessionRecordStore,
+        probe,
+        now: () => NOW + 10_000
+      })
+      return { state, renewer }
+    }
+
+    async function ticks(renewer: StructuredAgentSessionLeaseRenewer, count: number) {
+      for (let tick = 0; tick < count; tick += 1) {
+        await renewer.renewNow()
+      }
+    }
+
+    const renewalRecords = () =>
+      vi
+        .mocked(traceAgentSessionError)
+        .mock.calls.filter(([report]) => report.step === 'lease-renewal')
+
+    it('records it once, however many ticks it repeats', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { renewer } = stuckRenewer(['session-a'])
+
+      await ticks(renewer, 5)
+
+      expect(renewalRecords()).toEqual([
+        [
+          {
+            step: 'lease-renewal',
+            sessionId: 'session-a',
+            error: expect.objectContaining({ message: 'agent_session_ownership_unknown' })
+          }
+        ]
+      ])
+    })
+
+    it('keys a store error on its code, not its per-attempt temp path', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { state, renewer } = stuckRenewer(['session-a'])
+      let attempt = 0
+      state.failure = () =>
+        Object.assign(
+          new Error(`EACCES: permission denied, open 'records.${(attempt += 1)}.tmp'`),
+          {
+            code: 'EACCES'
+          }
+        )
+
+      await ticks(renewer, 3)
+
+      expect(renewalRecords()).toHaveLength(1)
+    })
+
+    it('records it again after the session renews, and when the failure changes', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { state, renewer } = stuckRenewer(['session-a'])
+      const unknown = state.failure
+
+      await ticks(renewer, 2)
+      state.failure = null
+      await ticks(renewer, 1)
+      state.failure = unknown
+      await ticks(renewer, 2)
+      expect(renewalRecords()).toHaveLength(2)
+
+      state.failure = () => new Error('agent_session_checkpoint_stale')
+      await ticks(renewer, 2)
+      expect(renewalRecords().map(([report]) => String(report.error))).toEqual([
+        'Error: agent_session_ownership_unknown',
+        'Error: agent_session_ownership_unknown',
+        'Error: agent_session_checkpoint_stale'
+      ])
+    })
+
+    it('forgets a session that stops being renewable', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { state, renewer } = stuckRenewer(['session-a'])
+
+      await ticks(renewer, 1)
+      state.records = []
+      await ticks(renewer, 1)
+      state.records = ['session-a']
+      await ticks(renewer, 1)
+
+      expect(renewalRecords()).toHaveLength(2)
+    })
+
+    it('records a probe that keeps failing once', async () => {
+      vi.mocked(traceAgentSessionError).mockClear()
+      const { renewer } = stuckRenewer(['session-a'], async () => {
+        throw new Error('probe unavailable')
+      })
+
+      await ticks(renewer, 3)
+
+      expect(
+        vi
+          .mocked(traceAgentSessionError)
+          .mock.calls.filter(([report]) => report.step === 'lease-probe')
+      ).toHaveLength(1)
+    })
   })
 })

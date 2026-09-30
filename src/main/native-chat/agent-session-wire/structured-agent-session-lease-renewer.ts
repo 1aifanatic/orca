@@ -4,7 +4,10 @@ import {
   AGENT_SESSION_LEASE_TTL_MS,
   type AgentSessionRecordStore
 } from '../../runtime/agent-session-record-store'
-import { traceAgentSessionError } from '../../observability/agent-session-error-trace'
+import {
+  traceAgentSessionError,
+  type AgentSessionErrorStep
+} from '../../observability/agent-session-error-trace'
 
 const RENEW_INTERVAL_MS = Math.floor(AGENT_SESSION_LEASE_TTL_MS / 3)
 
@@ -15,6 +18,9 @@ export class StructuredAgentSessionLeaseRenewer {
    *  not turn one into a teardown failure as well. Lease failures are transient: reported, never
    *  a reason to force a provider down. */
   private inFlight: Promise<void> = Promise.resolve()
+  /** A stuck lease fails every tick (one store EACCES left ownership_unknown every 10 s, forever),
+   *  so a session's failure is recorded once until it renews or the failure changes. */
+  private readonly recordedFailures = new Map<string, string>()
 
   constructor(
     private readonly input: {
@@ -72,6 +78,12 @@ export class StructuredAgentSessionLeaseRenewer {
         // keeps an orphan pid's lease reading as a healthy owner.
         record.lease.handoffStage !== 'recovering'
     )
+    const renewable = new Set(records.map((record) => record.sessionId))
+    for (const sessionId of this.recordedFailures.keys()) {
+      if (!renewable.has(sessionId)) {
+        this.recordedFailures.delete(sessionId)
+      }
+    }
     const probes = await this.probe(records)
     const renewals: {
       sessionId: string
@@ -104,17 +116,29 @@ export class StructuredAgentSessionLeaseRenewer {
       )
     }
     results.forEach((result, index) => {
+      const renewal = renewals[index]
+      if (!renewal) {
+        return
+      }
       if (result.status === 'rejected') {
-        const renewal = renewals[index]
-        if (renewal) {
-          traceAgentSessionError({
-            step: 'lease-renewal',
-            sessionId: renewal.sessionId,
-            error: result.reason
-          })
-        }
+        this.recordFailure('lease-renewal', renewal.sessionId, result.reason)
+      } else {
+        this.recordedFailures.delete(renewal.sessionId)
       }
     })
+  }
+
+  private recordFailure(
+    step: Extract<AgentSessionErrorStep, 'lease-renewal' | 'lease-probe'>,
+    sessionId: string,
+    error: unknown
+  ): void {
+    const failure = `${step}:${leaseFailureKey(error)}`
+    if (this.recordedFailures.get(sessionId) === failure) {
+      return
+    }
+    this.recordedFailures.set(sessionId, failure)
+    traceAgentSessionError({ step, sessionId, error })
   }
 
   private async probe(
@@ -131,19 +155,24 @@ export class StructuredAgentSessionLeaseRenewer {
         if (result.status === 'fulfilled') {
           probes.set(record.sessionId, result.value)
         } else {
-          traceAgentSessionError({
-            step: 'lease-probe',
-            sessionId: record.sessionId,
-            error: result.reason
-          })
+          this.recordFailure('lease-probe', record.sessionId, result.reason)
         }
       }
       return probes
     } catch (error) {
       for (const record of records) {
-        traceAgentSessionError({ step: 'lease-probe', sessionId: record.sessionId, error })
+        this.recordFailure('lease-probe', record.sessionId, error)
       }
       return new Map()
     }
   }
+}
+
+/** A store error's code, not its message: EACCES names a fresh temp file on every attempt. */
+function leaseFailureKey(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error)
+  }
+  const code = 'code' in error ? error.code : undefined
+  return `${error.name}:${typeof code === 'string' || typeof code === 'number' ? code : error.message}`
 }
