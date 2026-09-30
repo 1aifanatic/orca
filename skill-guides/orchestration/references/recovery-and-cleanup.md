@@ -131,9 +131,10 @@ ORCA orchestration worker-abandon --dispatch <dispatch_id> --json
 `worker-stop` closes only the exact proven supervised agent terminal. It never
 deletes the worktree, setup terminal, configured tabs, or unrelated processes.
 `worker-abandon` fences orchestration while accepting that resources may remain
-live; it performs no remote, process, or filesystem action. It retains an owned
-terminal by the same rule as `worker-retain`, so Orca stops owing its release; a
-release already committed (`releasing`, `release_unknown`) is left as it is.
+live; it performs no remote, process, or filesystem action. When it settles a
+worker, it retains an owned terminal by the same rule as `worker-retain`, so Orca
+stops owing its release; a release already committed (`releasing`,
+`release_unknown`) is left as it is. An already-settled worker is left untouched.
 
 To cancel a Task, settle its worker with `worker-stop` or `worker-abandon`, then
 record the reason. A cancelled Task is `failed`, so its dependents stay blocked

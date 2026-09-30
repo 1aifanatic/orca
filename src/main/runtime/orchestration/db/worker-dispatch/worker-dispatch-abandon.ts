@@ -75,11 +75,11 @@ export function abandonWorkerDispatch(
       }
       reconcileTaskAfterDispatchInterruption(this, dispatch.task_id, dispatchId)
       this.closeQuestionsForDispatch(dispatchId)
-    }
-    const terminal = this.getWorkerTerminalResourceByOwner(dispatchId)
-    // Abandon hands an owned terminal back instead of closing it, by the same rule as worker-retain.
-    if (terminal?.ownership_state === 'owned') {
-      retainTerminalResourceInTransaction(this, terminal.id, dispatchId)
+      const terminal = this.getWorkerTerminalResourceByOwner(dispatchId)
+      // Abandon hands an owned terminal back instead of closing it, by the same rule as worker-retain.
+      if (terminal?.ownership_state === 'owned') {
+        retainTerminalResourceInTransaction(this, terminal.id, dispatchId)
+      }
     }
     this.db.exec('COMMIT')
     return {

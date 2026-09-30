@@ -122,17 +122,13 @@ describe('worker-abandon settles a stuck worker', () => {
   })
 
   it.each(['requested', 'not_requested'] as const)(
-    'retains a failed worker terminal whose release is %s instead of leaving it owed',
+    'retains the terminal of a worker it settles whose release is %s',
     (releaseState) => {
       const { dispatch } = readyWorker()
-      db.failDispatch(dispatch.id, 'operator closed the tab', { workerProcessExited: true })
       setReleaseState(dispatch.id, releaseState)
       storeArchive(dispatch.id)
 
-      expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME)).toMatchObject({
-        disposition: 'already_settled',
-        worker: { state: 'failed' }
-      })
+      expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME).disposition).toBe('abandoned')
       expect(db.getWorkerTerminalResourceByOwner(dispatch.id)).toMatchObject({
         ownership_state: 'owned',
         release_state: 'retained',
@@ -142,20 +138,13 @@ describe('worker-abandon settles a stuck worker', () => {
     }
   )
 
-  it('leaves a succeeded outcome alone and only retains its terminal', () => {
-    const { task, dispatch } = readyWorker()
-    db.settleWorkerReport({
-      taskId: task.id,
-      dispatchId: dispatch.id,
-      outcome: 'succeeded',
-      result: 'done'
-    })
+  it('leaves a settled worker and its terminal release untouched', () => {
+    const { dispatch } = readyWorker()
+    db.failDispatch(dispatch.id, 'operator closed the tab', { workerProcessExited: true })
     setReleaseState(dispatch.id, 'requested')
 
     expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME).disposition).toBe('already_settled')
-    expect(db.getWorkerDispatch(dispatch.id)?.state).toBe('succeeded')
-    expect(db.getTask(task.id)?.status).toBe('completed')
-    expect(db.getWorkerTerminalResourceByOwner(dispatch.id)?.release_state).toBe('retained')
+    expect(db.getWorkerTerminalResourceByOwner(dispatch.id)?.release_state).toBe('requested')
   })
 
   it('keeps a committed release and a terminal Orca does not own as they are', () => {
