@@ -246,8 +246,6 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       opts.onStartupPromptCarry?.(promptCarried)
     }
 
-    await this.markWorkspaceTrustedForAgent(agent, workspace.connectionId, workspace.path)
-
     return {
       ...opts,
       command: startupPlan.launchCommand,
