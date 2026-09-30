@@ -249,8 +249,10 @@ export class PtyStartupIngress {
   private processQuerySpan(span: PtyIngressSourceSpan): void {
     const input = combinePtyIngressSourceSpans(this.queryPending, span)
     this.queryPending = null
-    const suppressConptyQuery = this.ownerBackend === 'windows-conpty'
-    if ((!this.queryOpen || !this.intent) && !this.kittyQueryOpen && !suppressConptyQuery) {
+    // Why unanswered ConPTY queries pass through: downstream replies re-enter via
+    // answerLiveQueryReply, which arms the ConPTY echo projection; swallowing them left
+    // programs like Command Code waiting on OSC 11 forever.
+    if ((!this.queryOpen || !this.intent) && !this.kittyQueryOpen) {
       this.emit(input, false)
       return
     }
@@ -292,7 +294,7 @@ export class PtyStartupIngress {
       if (query.kind === 'kitty' && answered) {
         this.kittyQueryOpen = false
       }
-      if (answered || (suppressConptyQuery && query.kind !== 'kitty')) {
+      if (answered) {
         this.emit(querySpan, true, '')
       } else {
         this.emit(querySpan, false)
