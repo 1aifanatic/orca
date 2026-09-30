@@ -74,4 +74,17 @@ describe('orchestration.workerAbandon', () => {
     })
     expect(db.getWorkerDispatch(dispatchId)?.last_error).toBe('Abandoned by session:chat_1.')
   })
+
+  it('reports an already-settled worker as stale and changes nothing', async () => {
+    const dispatchId = readyWorker()
+    db.failDispatch(dispatchId, 'tab closed', { workerProcessExited: true })
+    const before = db.getWorkerDispatch(dispatchId)
+
+    await expect(abandon(dispatchId, {})).resolves.toMatchObject({
+      state: 'failed',
+      alreadySettled: true,
+      stale: true
+    })
+    expect(db.getWorkerDispatch(dispatchId)).toEqual(before)
+  })
 })

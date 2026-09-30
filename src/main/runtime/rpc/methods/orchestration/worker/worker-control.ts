@@ -232,8 +232,8 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
         dispatchId: params.dispatch,
         state: worker.state,
         alreadySettled: abandoned.disposition !== 'abandoned',
-        // Kept for --json readers: this attempt was not the Task's current one.
-        stale: abandoned.superseded,
+        // Kept for --json readers: this attempt was no longer current, as main reported it.
+        stale: abandoned.superseded || abandoned.disposition === 'already_settled',
         processAction: 'none',
         warning:
           abandoned.disposition === 'abandoned'
