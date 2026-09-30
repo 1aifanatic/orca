@@ -311,6 +311,18 @@ describe('a primary the backup stands in for', () => {
     expect(journalPragmaNumber(database.db, 'user_version')).toBe(3)
     expect(store.listRecords()).toEqual([])
   })
+
+  // Falling back would replace the primary's newer state with the backup's older one for good.
+  it('never takes a valid backup when the primary cannot be read', async () => {
+    await mkdir(legacyPath(), { recursive: true })
+    await writeFile(`${legacyPath()}.bak`, JSON.stringify(legacyFile([record(ALPHA)])))
+
+    const { database, store, reports } = await install()
+
+    expect(reports).toMatchObject([{ kind: 'unavailable' }])
+    expect(journalPragmaNumber(database.db, 'user_version')).toBe(3)
+    expect(store.listRecords()).toEqual([])
+  })
 })
 
 describe('the tab index from before the table', () => {
