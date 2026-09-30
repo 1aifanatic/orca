@@ -184,14 +184,15 @@ export class StructuredAgentSessionHost {
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
     this.eventRecovery.handle(event)
 
-  private lifetimeContext(): StructuredAgentSessionLifetimeContext {
+  // Inferred, so the attach context's spread keeps `publishStatus` required.
+  private lifetimeContext() {
     return {
       deps: this.deps,
       runtimeState: this.runtimeState,
       sessions: this.sessions,
       now: () => this.now(),
       publishStatus: this.clientDelivery.publishStatus
-    }
+    } satisfies StructuredAgentSessionLifetimeContext
   }
 
   /** The host's half of attaching, named so it cannot grow dependencies unnoticed. */
