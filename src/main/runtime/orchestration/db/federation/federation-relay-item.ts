@@ -5,7 +5,7 @@ import type {
 } from '../../types'
 import { OrchestrationError } from '../../orchestration-error'
 import type { OrchestrationDb } from '../orchestration-db'
-import { SETTLEABLE_REMOTE_ATTACHMENT_STATES } from './remote-attachment-liveness'
+import { isWorkerStateIn, SETTLEABLE_WORKER_STATES } from '../../worker-report-admission'
 
 export function getFederationRelayItem(
   this: OrchestrationDb,
@@ -41,7 +41,7 @@ export function settleRemoteAttachmentInRelayTransaction(
   if (attachment.state === state) {
     return
   }
-  if (!SETTLEABLE_REMOTE_ATTACHMENT_STATES.includes(attachment.state)) {
+  if (!isWorkerStateIn(SETTLEABLE_WORKER_STATES, attachment.state)) {
     throw new OrchestrationError(
       'request_mismatch',
       `Remote Dispatch ${dispatchId} cannot settle as ${state} from ${attachment.state}.`

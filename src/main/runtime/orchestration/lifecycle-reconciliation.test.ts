@@ -74,7 +74,6 @@ describe('lifecycle reconciliation', () => {
       effects: []
     })
     db.markWorkerStartUnknown(started.dispatch.id, 'agent_readiness', 'connection lost')
-    expect(db.getDispatchContextById(started.dispatch.id)?.capability_revoked_at).toBeNull()
 
     const message = db.insertMessage({
       runId: 'run_legacy_local',

@@ -47,8 +47,8 @@ describe('Task/Dispatch lifecycle guards', () => {
     expect(database.getDispatchContextById(second.dispatchId)?.status).toBe('dispatched')
     expect(database.getWorkerDispatch(first.dispatchId)?.state).toBe('ready')
     expect(database.getWorkerDispatch(second.dispatchId)?.state).toBe('ready')
-    expectCapability(database, first, true)
-    expectCapability(database, second, true)
+    expectDispatchActive(database, first, true)
+    expectDispatchActive(database, second, true)
   })
 
   it.each(['succeeded', 'failed'] as const)(
@@ -158,7 +158,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       capability_revoked_at: null
     })
     expect(database.getWorkerDispatch(worker.dispatchId)?.state).toBe('ready')
-    expectCapability(database, worker, true)
+    expectDispatchActive(database, worker, true)
   })
 
   it('atomically settles worker state when a proven process exit fails its Dispatch', () => {
@@ -178,7 +178,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       stage: 'process_exited',
       last_error: 'process exited'
     })
-    expectCapability(database, worker, false)
+    expectDispatchActive(database, worker, false)
   })
 
   it('settles a stop-unknown worker when a positive PTY exit arrives', () => {
@@ -211,7 +211,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       stage: 'process_exited',
       last_error: 'process exited'
     })
-    expectCapability(database, worker, false)
+    expectDispatchActive(database, worker, false)
   })
 
   it('keeps a Task dispatched when missing-terminal recovery leaves another worker active', () => {
@@ -234,12 +234,12 @@ describe('Task/Dispatch lifecycle guards', () => {
     expect(database.getWorkerDispatch(missing.dispatchId)?.state).toBe('abandoned')
     expect(database.getDispatchContextById(live.dispatchId)?.status).toBe('dispatched')
     expect(database.getWorkerDispatch(live.dispatchId)?.state).toBe('ready')
-    expectCapability(database, missing, false)
-    expectCapability(database, live, true)
+    expectDispatchActive(database, missing, false)
+    expectDispatchActive(database, live, true)
 
     database.reconcileMissingWorkerTerminal(live.dispatchId, 'second terminal missing')
     expect(database.getTask(task.id)?.status).toBe('ready')
-    expectCapability(database, live, false)
+    expectDispatchActive(database, live, false)
   })
 
   it.each(['local', 'federated'] as const)(
@@ -288,7 +288,7 @@ describe('Task/Dispatch lifecycle guards', () => {
       expect(database.getWorkerDispatch(failed.dispatch.id)?.state).toBe('failed')
       expect(database.getDispatchContextById(live.dispatchId)?.status).toBe('dispatched')
       expect(database.getWorkerDispatch(live.dispatchId)?.state).toBe('ready')
-      expectCapability(database, live, true)
+      expectDispatchActive(database, live, true)
     }
   )
 
@@ -528,7 +528,7 @@ describe('Task/Dispatch lifecycle guards', () => {
 
       expect(database.getTask(task.id)?.status).toBe('dispatched')
       expect(database.getDispatchContextById(live.dispatchId)?.status).toBe('dispatched')
-      expectCapability(database, live, true)
+      expectDispatchActive(database, live, true)
       expect(
         database.settleWorkerReport({
           taskId: task.id,
@@ -538,7 +538,7 @@ describe('Task/Dispatch lifecycle guards', () => {
         })
       ).toEqual({ action: 'settled', outcome: 'succeeded', duplicate: false })
       expect(database.getTask(task.id)?.status).toBe('completed')
-      expectCapability(database, live, false)
+      expectDispatchActive(database, live, false)
     }
   )
 
@@ -656,7 +656,7 @@ describe('Task/Dispatch lifecycle guards', () => {
     expect(database.getTask(task.id)?.status).toBe('dispatched')
     expect(database.getDispatchContextById(worker.dispatchId)?.status).toBe('dispatched')
     expect(database.getWorkerDispatch(worker.dispatchId)?.state).toBe('ready')
-    expectCapability(database, worker, true)
+    expectDispatchActive(database, worker, true)
   })
 
   it('rolls back gate resolution when an active Dispatch blocks readiness', () => {
@@ -714,10 +714,13 @@ function startWorker(database: OrchestrationDb, taskId: string, name: string): W
   return { dispatchId: started.dispatch.id, capability, handle, paneKey, processIncarnation }
 }
 
-function expectCapability(database: OrchestrationDb, worker: WorkerFixture, valid: boolean): void {
-  expect(database.getDispatchContextById(worker.dispatchId)?.capability_revoked_at ?? null).toEqual(
-    valid ? null : expect.any(String)
-  )
+function expectDispatchActive(
+  database: OrchestrationDb,
+  worker: WorkerFixture,
+  active: boolean
+): void {
+  const status = database.getDispatchContextById(worker.dispatchId)?.status
+  expect(status === 'pending' || status === 'dispatched').toBe(active)
 }
 
 function sqliteFor(database: OrchestrationDb): Database.Database {

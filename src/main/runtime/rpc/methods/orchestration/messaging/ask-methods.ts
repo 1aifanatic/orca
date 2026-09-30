@@ -11,7 +11,7 @@ import {
 } from '../../../../orchestration/orchestration-caller-identity'
 import { resolveOrchestrationParty } from '../../../../orchestration/orchestration-party'
 import { assertLifecycleCallerIsNotAnotherParty } from './lifecycle-caller-fence'
-import { assertWorkerCanReport } from './worker-report-admission'
+import { assertWorkerCanReport } from '../../../../orchestration/worker-report-admission'
 
 export const ORCHESTRATION_ASK_METHODS = [
   defineMethod({

@@ -1,4 +1,5 @@
 import type { MessageType, OrchestrationDb } from '../../../../orchestration/db'
+import type { WorkerDispatchState } from '../../../../orchestration/types'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { waitForFederatedLifecycleSettlement } from '../../../../orchestration/federation-lifecycle-settlement'
@@ -8,13 +9,13 @@ import type { z } from 'zod'
 import { parseRemoteWorkerPayload } from '../schemas'
 import type { SendParams } from '../schemas'
 import { rejectFederatedExplicitTarget } from '../routing'
-import { assertWorkerCanReport } from './worker-report-admission'
+import { assertWorkerCanReport } from '../../../../orchestration/worker-report-admission'
 
 type SendParamsInput = z.infer<typeof SendParams>
 
 type RemoteAttachment = {
   dispatch_id: string
-  state: string
+  state: WorkerDispatchState
   protocol_version: number
 }
 

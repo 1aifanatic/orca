@@ -254,8 +254,8 @@ describe('orchestration RPC methods', () => {
 
       expect(rejected.lifecycle).toEqual({
         action: 'rejected',
-        code: 'sender_not_assignee',
-        reason: `Dispatch ${dispatch.id} process incarnation is no longer current for its pane.`
+        code: 'worker_identity_changed',
+        reason: `term_worker is not the exact process that owns Dispatch ${dispatch.id}.`
       })
       expect(db.getTask(task.id)?.status).toBe('dispatched')
 
@@ -304,7 +304,7 @@ describe('orchestration RPC methods', () => {
 
         expect(rejected.lifecycle).toMatchObject({
           action: 'rejected',
-          code: 'sender_not_assignee'
+          code: 'worker_identity_changed'
         })
         expect(db.getTask(task.id)?.status).toBe('dispatched')
         expect(db.getDispatchContextById(dispatch.id)?.status).toBe('dispatched')
@@ -416,7 +416,7 @@ describe('orchestration RPC methods', () => {
         handle === 'term_worker' ? 'tab_foreign:leaf_foreign' : coordinatorPaneKey
       )
       expect(await send()).toMatchObject({
-        lifecycle: { code: 'sender_not_assignee' },
+        lifecycle: { code: 'worker_identity_changed' },
         message: { subject: 'Rejected worker_done: Done' }
       })
 
@@ -424,7 +424,7 @@ describe('orchestration RPC methods', () => {
         handle === 'term_worker' ? 'tab_worker:leaf_worker' : coordinatorPaneKey
       )
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:2')
-      expect(await send()).toMatchObject({ lifecycle: { code: 'sender_not_assignee' } })
+      expect(await send()).toMatchObject({ lifecycle: { code: 'worker_identity_changed' } })
       expect(db.getTask(task.id)?.status).toBe('dispatched')
 
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:1')

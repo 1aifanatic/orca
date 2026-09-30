@@ -97,7 +97,6 @@ describe('coordinator dispatch with an unobserved prompt', () => {
       processIncarnation: 'incarnation-1'
     })
 
-    expect(db.getDispatchContextById(dispatchId)?.capability_revoked_at).toBeNull()
     expect(
       db.settleWorkerReport({
         taskId: task.id,

@@ -339,8 +339,8 @@ describe('orchestration runtime update settlement', () => {
       result: {
         lifecycle: {
           action: 'rejected',
-          code: 'sender_not_assignee',
-          reason: `Dispatch ${harness.dispatchId} process incarnation is no longer current for its pane.`
+          code: 'worker_identity_changed',
+          reason: `term_pre_update_worker is not the exact process that owns Dispatch ${harness.dispatchId}.`
         }
       }
     })

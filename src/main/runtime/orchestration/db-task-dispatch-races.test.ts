@@ -171,7 +171,6 @@ describe('Task/Dispatch concurrency', () => {
       status: 'completed',
       last_failure: null
     })
-    expect(first.db.getDispatchContextById(started.dispatch.id)?.capability_revoked_at).toBeTruthy()
   })
 
   it('keeps nested dispatch failure atomic with its caller transaction', () => {
