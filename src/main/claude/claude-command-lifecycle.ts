@@ -66,9 +66,9 @@ export function observeClaudeCommandLifecycle(
   }
 }
 
-/** A send the CLI started and neither echoed nor ended: the idle sweep must not rest its child. */
+/** A send the CLI took, until its echo, a terminal state or exit: the sweep must not rest its child. */
 export function claudeHoldsDispatch(session: ClaudeSession): boolean {
-  return session.dispatchWaiters.some((waiter) => waiter.commandLifecycle === 'started')
+  return session.dispatchWaiters.some((waiter) => waiter.commandLifecycle !== undefined)
 }
 
 /**

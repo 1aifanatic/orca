@@ -519,7 +519,7 @@ describe('a send the CLI holds', () => {
     expect(replay.turnStates.get(uuid)).toBe('completed')
   })
 
-  it('does not hold the child for a send the CLI has only queued, nor release it at idle', async () => {
+  it('holds the child for a send the CLI has only queued, and does not release it at idle', async () => {
     const replay = await replayCapture('auth-failed', {
       omitFrame: (frame) =>
         isTurnOutput(frame) ||
@@ -528,8 +528,41 @@ describe('a send the CLI holds', () => {
     })
 
     expect(replay.idles).toEqual(['session-1'])
-    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(true)
     expect(replay.settlementsFor('client-A')).toEqual([])
+  })
+
+  it('holds a queued send until the CLI withdraws it', async () => {
+    const held: boolean[] = []
+    const replay = await replayCapture('cancel-async', {
+      atControl: async (point) => {
+        // The lead was echoed already; only the queued follow-up is left.
+        held.push(point.adapter.holdsDispatch('session-1'))
+        point.deliverInFlight()
+        held.push(point.adapter.holdsDispatch('session-1'))
+      }
+    })
+
+    expect(held).toEqual([true, false])
+    expect(replay.settlementsFor('client-B')).toEqual([WITHDRAWN])
+  })
+
+  it('holds a queued send until it starts and is echoed', async () => {
+    const held: boolean[] = []
+    const replay = await replayCapture('batch-lead', {
+      // Without its turn's end or the idle, only the start and echo can let it go.
+      omitFrame: (frame) =>
+        frame.type === 'result' || isLifecycleFrame(frame, 'completed') || isIdleFrame(frame),
+      atControl: async (point) => {
+        point.deliverInFlight()
+        // The batch lead is withdrawn; the send behind it is only queued.
+        held.push(point.adapter.holdsDispatch('session-1'))
+      }
+    })
+
+    expect(held).toEqual([true])
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
+    expect(replay.settlementsFor('client-C')).toEqual([acceptedAs(replay.liveUuid('client-C'))])
   })
 
   it.each(['interrupt-lost', 'cancel-async', 'batch-lead', 'auth-failed'])(

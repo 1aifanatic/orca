@@ -162,4 +162,30 @@ describe('a live Claude chat whose CLI took a send and let it go without an echo
       hasUnansweredStructuredAgentSessionDispatch((await host.journalSnapshot(SESSION)).submissions)
     ).toBe(false)
   })
+
+  it('holds a send it has only queued, through an idle that may precede its start', async () => {
+    const host = await claude.install()
+    await expect(host.attach(CALLER, claude.attachParams(SESSION, null))).resolves.toMatchObject({
+      ok: true
+    })
+    const child = claude.child(SESSION)
+    let sentUuid = ''
+    child.connection.send = async (message, beforeDispatch) => {
+      await beforeDispatch?.()
+      sentUuid = String(message.uuid)
+    }
+    const queued = await send(host, 'behind a turn')
+    await vi.waitFor(() => expect(sentUuid).not.toBe(''))
+    // POSITIVE CONTROL: written but not yet taken, nothing holds the child.
+    expect(host.deps.adapter.holdsDispatch?.(SESSION)).toBe(false)
+
+    child.handlers.onMessage?.(lifecycle(sentUuid, 'queued'))
+    expect(host.deps.adapter.holdsDispatch?.(SESSION)).toBe(true)
+    child.handlers.onMessage?.(sessionState('idle'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(host.deps.adapter.holdsDispatch?.(SESSION)).toBe(true)
+    expect(await submission(host, queued)).toMatchObject({ dispatchState: 'pending' })
+    expect((await submission(host, queued))?.recovered).toBeUndefined()
+  })
 })
