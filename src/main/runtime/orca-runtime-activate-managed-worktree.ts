@@ -246,9 +246,17 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
    * Whether the agent a launch started, rather than the shell that ran its launch line, is in the
    * terminal's foreground. Not only the expected name: macOS reports the native Claude by its
    * version (`2.1.258`), and a runtime such as node can front an agent.
+   *
+   * Why a fresh scan: for its first 5 s the daemon's cached read names the launch agent whenever a
+   * shell is in front, so before the launch line runs and after an agent exits it answered the
+   * agent (measured on a zsh pane: cached `copilot`, scan `zsh`).
    */
   async launchedAgentOwnsTerminal(ptyId: string, agent: TuiAgent): Promise<boolean> {
-    const foreground = (await this.ptyController?.getForegroundProcess(ptyId)) ?? null
+    const controller = this.ptyController
+    const foreground =
+      (controller?.confirmForegroundProcess
+        ? await controller.confirmForegroundProcess(ptyId)
+        : await controller?.getForegroundProcess(ptyId)) ?? null
     if (!foreground) {
       return false
     }

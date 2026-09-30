@@ -103,4 +103,25 @@ describe('whether a launched Claude, not its shell, owns the terminal', () => {
       owns
     )
   })
+
+  // Measured on a zsh pane with the daemon's foreground tracker: for its first 5 s the cached read
+  // names the launch agent while zsh is in front, before the launch line runs and after an agent
+  // that exited; a fresh process-table scan answers `zsh`, and names a script agent by its command.
+  it.each([
+    ['before the launch line runs', 'copilot', 'zsh', false],
+    ['after the agent exited', 'copilot', 'zsh', false],
+    ['while a script agent runs', 'bash', 'copilot', true]
+  ])('%s: cached %s, scanned %s, owns %s', async (_moment, cached, scanned, owns) => {
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'copilot',
+      foregroundProcess: cached,
+      confirmedForegroundProcess: scanned,
+      launchAgent: 'copilot',
+      data: ''
+    })
+
+    await expect(
+      runtime.launchedAgentOwnsTerminal(TRANSCRIPT_PANE_PTY_ID, 'copilot')
+    ).resolves.toBe(owns)
+  })
 })

@@ -20,6 +20,8 @@ export type TranscriptPaneOptions = {
   onForegroundProbe?: () => void
   /** PTY grid the controller reports; the runtime's emulator otherwise defaults to 80x24. */
   size?: { cols: number; rows: number }
+  /** What a fresh process-table scan finds, where it differs from the cached foreground read. */
+  confirmedForegroundProcess?: string | null
 }
 
 export async function createTranscriptPane(
@@ -47,7 +49,10 @@ export async function createTranscriptPane(
       return options.foregroundProbeHangs === true
         ? new Promise<string | null>(() => {})
         : Promise.resolve(options.foregroundProcess)
-    }
+    },
+    ...(options.confirmedForegroundProcess !== undefined
+      ? { confirmForegroundProcess: async () => options.confirmedForegroundProcess ?? null }
+      : {})
   })
   const terminal = await runtime.createTerminal(`id:${TRANSCRIPT_PANE_WORKTREE_ID}`, {
     tabId: TRANSCRIPT_PANE_TAB_ID,

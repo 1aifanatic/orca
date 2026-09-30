@@ -16,7 +16,8 @@ const BRACKETED_PASTE_QUIET_MS = 1500
 // Why: an interactive shell turns bracketed paste on at its prompt and off when it runs the typed
 // command (`zsh-prompt-runs-command.txt`), so a 2004 before the last `?2004l` is the shell's.
 const DECRST_BRACKETED_PASTE = '\x1b[?2004l'
-const AGENT_OWNERSHIP_POLL_MS = 150
+// Each check is a process-table scan; this pace keeps an 8 s wait to a few dozen of them.
+const AGENT_OWNERSHIP_POLL_MS = 250
 /** Output held until the agent owns the terminal; the ready signal reads only its recent tail. */
 const PRE_OWNERSHIP_OUTPUT_CHARS = 64 * 1024
 
