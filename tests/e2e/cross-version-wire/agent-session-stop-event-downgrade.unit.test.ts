@@ -28,6 +28,16 @@ function item(ordinal: number): AgentJournalItemIdentity {
   return { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal }
 }
 
+/** A function the pinned release exports, typed as the caller calls it. */
+function releaseExport<T>(module: Record<string, unknown>, name: string): T {
+  const value = module[name]
+  if (typeof value !== 'function') {
+    throw new Error(`the pinned release exports no ${name}`)
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a function the pinned release exports; each caller names the signature it calls, and a changed one fails the test.
+  return value as T
+}
+
 type OldReplay = {
   state: { items: Map<string, unknown> }
   readOnly: boolean
@@ -71,26 +81,31 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
         'src/main/native-chat/agent-session-wire/agent-session-journal-batch.ts'
       ].map((path) => importReleaseCheckoutModule(checkout, path))
     )
-    /* oxlint-disable typescript/consistent-type-assertions -- SAFETY: the pinned release exports these functions with the signatures called below; a missing or changed one fails the test. */
-    const openJournalDatabase = database.openJournalDatabase as (path: string) => {
-      db: { close: () => void }
-    }
-    const upsertJournalSessionRow = table.upsertJournalSessionRow as (
-      ...args: [unknown, string, string, number]
-    ) => void
-    const insertJournalRow = table.insertJournalRow as (
-      ...args: [unknown, string, JournalRow]
-    ) => void
-    const replayJournal = open.replayJournal as (
-      ...args: [unknown, boolean, string]
-    ) => OldReplay | null
-    const renderJournalState = reducer.renderJournalState as (state: unknown) => unknown
-    const projectJournalBatch = batch.projectJournalBatch as (input: {
-      rows: readonly JournalRow[]
-      snapshot: unknown
-      afterSequence: number
-    }) => { ok: boolean; batch?: { items: unknown[]; removedItemIds: string[] } }
-    /* oxlint-enable typescript/consistent-type-assertions */
+    const openJournalDatabase = releaseExport<(path: string) => { db: { close: () => void } }>(
+      database,
+      'openJournalDatabase'
+    )
+    const upsertJournalSessionRow = releaseExport<
+      (...args: [unknown, string, string, number]) => void
+    >(table, 'upsertJournalSessionRow')
+    const insertJournalRow = releaseExport<(...args: [unknown, string, JournalRow]) => void>(
+      table,
+      'insertJournalRow'
+    )
+    const replayJournal = releaseExport<(...args: [unknown, boolean, string]) => OldReplay | null>(
+      open,
+      'replayJournal'
+    )
+    const renderJournalState = releaseExport<(state: unknown) => unknown>(
+      reducer,
+      'renderJournalState'
+    )
+    const projectJournalBatch = releaseExport<
+      (input: { rows: readonly JournalRow[]; snapshot: unknown; afterSequence: number }) => {
+        ok: boolean
+        batch?: { items: unknown[]; removedItemIds: string[] }
+      }
+    >(batch, 'projectJournalBatch')
 
     const { db } = openJournalDatabase(join(directory, 'older-build-journal.sqlite'))
     try {
