@@ -205,6 +205,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     ? windowsNodeRuntimeStageCleanupCommand(stageDir)
     : `rm -rf ${shellEscape(stageDir)}`
   let localStage: string | undefined
+  let hostRemovedStage = false
   try {
     const archivePath = await options.archivePath()
     const uploadDir = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
@@ -217,20 +218,23 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
       await exec(conn, host, `mkdir -p ${shellEscape(stageDir)}`, { signal })
     }
     await uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal })
-    assertRemoteNodeRuntimePromoted(
-      await exec(
-        conn,
-        host,
-        windows
-          ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
-          : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
-        { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
-      )
+    const promoted = await exec(
+      conn,
+      host,
+      windows
+        ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
+        : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
+      { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
     )
+    // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
+    hostRemovedStage = windows
+    assertRemoteNodeRuntimePromoted(promoted)
   } finally {
     if (localStage) {
       await rm(localStage, { recursive: true, force: true }).catch(() => {})
     }
-    await exec(conn, host, cleanupStage).catch(() => {})
+    if (!hostRemovedStage) {
+      await exec(conn, host, cleanupStage).catch(() => {})
+    }
   }
 }

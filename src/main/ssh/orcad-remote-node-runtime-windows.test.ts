@@ -171,14 +171,14 @@ describe('ensureRemoteOrcadNodeRuntime on Windows', () => {
     expect(uploadRelayDirectory).not.toHaveBeenCalled()
   })
 
-  it('uploads into the stage the probe created, promotes with a long budget, then cleans up', async () => {
+  it('uploads into the stage the probe created and promotes with a long budget in two execs', async () => {
     vi.mocked(execCommand)
       .mockResolvedValueOnce(REMOTE_NODE_RUNTIME_MISSING)
       .mockResolvedValueOnce(`extracted-by tar\r\n${REMOTE_NODE_RUNTIME_READY}\r\n`)
-      .mockResolvedValueOnce('')
     await ensureRemoteOrcadNodeRuntime({ conn, host, slotDir: relayDir, target, archivePath })
     const calls = vi.mocked(execCommand).mock.calls
-    expect(calls).toHaveLength(3)
+    // The promote script removes its own stage, so no third powershell.exe runs.
+    expect(calls).toHaveLength(2)
     for (const call of calls) {
       expect(call[1]).toMatch(/^powershell\.exe /)
       expect(call[2]).toMatchObject({ wrapCommand: false })
@@ -190,7 +190,20 @@ describe('ensureRemoteOrcadNodeRuntime on Windows', () => {
     )
     expect(vi.mocked(uploadRelayDirectory).mock.calls[0][2]).toBe(stage)
     expect(calls[1][2]).toMatchObject({ timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS })
-    expect(decodeRemotePowerShellScript(calls[2][1])).toBe(
+  })
+
+  it('still removes the stage when the upload fails before promote runs', async () => {
+    vi.mocked(execCommand).mockResolvedValueOnce(REMOTE_NODE_RUNTIME_MISSING).mockResolvedValue('')
+    vi.mocked(uploadRelayDirectory).mockRejectedValueOnce(new Error('sftp write failed'))
+    await expect(
+      ensureRemoteOrcadNodeRuntime({ conn, host, slotDir: relayDir, target, archivePath })
+    ).rejects.toThrow('sftp write failed')
+    const calls = vi.mocked(execCommand).mock.calls
+    expect(calls).toHaveLength(2)
+    const stage = /New-Item -ItemType Directory -Force -Path '([^']+)'/.exec(
+      decodeRemotePowerShellScript(calls[0][1])
+    )?.[1]
+    expect(decodeRemotePowerShellScript(calls[1][1])).toBe(
       `Remove-Item -LiteralPath '${stage}' -Recurse -Force -ErrorAction SilentlyContinue`
     )
   })
@@ -201,7 +214,6 @@ describe('ensureRemoteOrcadNodeRuntime on Windows', () => {
       .mockResolvedValueOnce(
         'ORCA_NODE_RUNTIME_SECURITY_MODIFIED node.exe changed after it ran\r\n'
       )
-      .mockResolvedValueOnce('')
     const failure = await ensureRemoteOrcadNodeRuntime({
       conn,
       host,
@@ -219,7 +231,6 @@ describe('ensureRemoteOrcadNodeRuntime on Windows', () => {
       .mockResolvedValueOnce(
         "ORCA_NODE_RUNTIME_SELFTEST_FAILED\r\nORCA_RUNTIME_EXIT=-1\r\nProgram 'node.exe' failed to run: This program is blocked by group policy.\r\n"
       )
-      .mockResolvedValueOnce('')
     const failure = await ensureRemoteOrcadNodeRuntime({
       conn,
       host,
