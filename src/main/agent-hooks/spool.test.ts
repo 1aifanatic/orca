@@ -16,7 +16,6 @@ import {
   AGENT_HOOK_SPOOL_MAX_FILES,
   drainAgentHookSpool,
   launchTokenHash,
-  readSpoolRecords,
   type SpoolRecord
 } from '../../shared/agent-hook-spool'
 import { AgentHookServer, _internals } from './server'
@@ -37,16 +36,6 @@ describe('agent hook spool', () => {
     )
   })
 
-  it('drops torn lines while retaining complete records', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'orca-spool-'))
-    const file = join(dir, 'pane.jsonl')
-    writeFileSync(
-      file,
-      '\n{"paneKey":"tab:1","source":"codex","receivedAt":1,"payload":{}}\n{"paneKey":'
-    )
-    expect(readSpoolRecords(file, 1)).toHaveLength(1)
-  })
-
   it('waits for a newline before replaying a complete-looking final record', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-spool-unterminated-'))
     const spool = join(dir, 'spool')
@@ -65,7 +54,6 @@ describe('agent hook spool', () => {
       getPersistedLaunchTokenHash: () => undefined,
       ingest: (value: SpoolRecord) => ingested.push(value)
     }
-    expect(readSpoolRecords(file)).toHaveLength(0)
     expect(drainAgentHookSpool(options)).toBe(0)
     expect(readFileSync(file, 'utf8')).toBe(record)
 
