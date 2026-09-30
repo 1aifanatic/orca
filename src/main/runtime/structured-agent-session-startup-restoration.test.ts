@@ -3,10 +3,12 @@
 // (the lease check, one chat's open, one chat's settlement) costs startup or the other chats.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { closeTestJournalHostDatabases } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  closeTestJournalHostDatabases,
+  openTestJournalHostDatabase
+} from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { readJournalSessionState } from '../native-chat/agent-session-journal/journal-session-state'
 import { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
-import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createRestTestRig,
