@@ -72,8 +72,9 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     }
     const pending = this.presenceChecks.get(resolved)
     if (pending && isSameAgentProcess(pending.owner, owner)) {
-      // Why: one probe per owner; the latest doubting process is the one still reporting.
-      pending.successor = successor ?? pending.successor
+      // Why: one probe per owner; the first doubter started after the death, a later one may be
+      // an agent it launched.
+      pending.successor = pending.successor ?? successor
       return pending.check
     }
     const entry: {

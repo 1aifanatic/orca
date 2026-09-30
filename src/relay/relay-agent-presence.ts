@@ -31,8 +31,8 @@ export class RelayAgentPresence {
     }
     const existing = this.pending.get(row.paneKey)
     if (existing && isSameAgentProcess(existing.owner, owner)) {
-      // Why: the latest doubting process is the one still reporting.
-      existing.successor = successor ?? existing.successor
+      // Why: the first doubter started after the death; a later one may be an agent it launched.
+      existing.successor = existing.successor ?? successor
       return existing.check
     }
     const entry: PendingCheck = { owner, check: Promise.resolve(), successor }
