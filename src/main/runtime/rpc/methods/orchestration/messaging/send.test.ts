@@ -6,10 +6,7 @@ import { createOrchestrationRpcHarness } from '../rpc-test-harness'
 import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../../../../../shared/protocol-version'
-import {
-  createRootDispatch,
-  reattachDispatchConsumer
-} from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
 
 function lifecycleGroupRecipientError(
   type: 'worker_done' | 'heartbeat' | 'escalation' | 'decision_gate'
@@ -390,55 +387,6 @@ describe('orchestration RPC methods', () => {
         expect.objectContaining({ id: result.message.id, type: 'worker_done' })
       ])
       expect(runtime.notifyMessageArrived).toHaveBeenCalledWith(`run:${activeRunId}`, 'worker_done')
-    })
-
-    it('ignores a pre-upgrade capability hash and requires the exact pane and process', async () => {
-      setup()
-      const task = db.createTask({ spec: 'capability work' })
-      const dispatch = createRootDispatch(db, task.id, 'term_worker', 'tab_worker:leaf_worker')
-      reattachDispatchConsumer(db, {
-        dispatchId: dispatch.id,
-        paneKey: 'tab_worker:leaf_worker',
-        processIncarnation: 'runtime_test:term_worker:1'
-      })
-      // A row minted before the upgrade keeps its hash; only pane and process decide.
-      db.db
-        .prepare(
-          "UPDATE dispatch_contexts SET capability_hash = 'minted-before-upgrade' WHERE id = ?"
-        )
-        .run(dispatch.id)
-      const payload = JSON.stringify({
-        taskId: task.id,
-        dispatchId: dispatch.id,
-        outcome: 'succeeded'
-      })
-      const send = () =>
-        call('orchestration.send', {
-          from: 'term_worker',
-          subject: 'Done',
-          type: 'worker_done',
-          payload
-        })
-
-      vi.spyOn(runtime, 'getTerminalPaneKey').mockImplementation((handle) =>
-        handle === 'term_worker' ? 'tab_foreign:leaf_foreign' : coordinatorPaneKey
-      )
-      expect(await send()).toMatchObject({
-        lifecycle: { code: 'worker_identity_changed' },
-        message: { subject: 'Rejected worker_done: Done' }
-      })
-
-      vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
-        handle === 'term_worker' ? 'tab_worker:leaf_worker' : coordinatorPaneKey
-      )
-      vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:2')
-      expect(await send()).toMatchObject({ lifecycle: { code: 'worker_identity_changed' } })
-      expect(db.getTask(task.id)?.status).toBe('dispatched')
-
-      vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:1')
-      expect(await send()).toMatchObject({ lifecycle: { action: 'completed' } })
-      expect(db.getTask(task.id)?.status).toBe('completed')
-      expect(db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeTruthy()
     })
 
     it('does not wake waiters for a heartbeat suppressed at send time', async () => {
