@@ -543,6 +543,27 @@ describe('a relayed idle-prompt Ctrl+C that killed a background agent (captured)
     expect(row(pane.desktop).subagents).toBeUndefined()
   })
 
+  it('still retires the child on the desktop when the relay read the kill inside a hook the desktop held', async () => {
+    const pane = await startSshPane(new AgentHookServer())
+    const transcript = transcriptFile()
+    await replay(pane, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8])
+    expect(pressCtrlC(pane.desktop)).toBe(true)
+    // Hand-built timing: the idle Ctrl+C's kill line, then a late main-agent hook of the cancelled
+    // turn reaching the relay before its tick. The relay's catch-up folds the kill into that
+    // hook's row, which the desktop's latch holds as late tool progress.
+    vi.setSystemTime(killedAt + 120)
+    appendFileSync(transcript, `${killedLine}\n`)
+    await pane.post({ ...hookAt(records, 7).payload, transcript_path: transcript })
+    expect(row(pane.desktop).subagents).toEqual([expect.objectContaining({ state: 'working' })])
+    // The relay's next tick restates the kill as the child's own stop, which the desktop re-folds.
+    await vi.waitFor(() => expect(row(pane.desktop).subagents).toBeUndefined(), { timeout: 3_000 })
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'working',
+      workingMode: 'monitoring',
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+
   it('restores no killed child when the desktop restarts', async () => {
     const userDataPath = temporaryDir('orca-relayed-agents-killed-restart-')
     const firstDesktop = new AgentHookServer()
