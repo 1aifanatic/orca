@@ -54,12 +54,11 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       typeof host?.getPersistedVisibleSessionTabIndex === 'function'
         ? host.getPersistedVisibleSessionTabIndex()
         : { present: false, sessionIds: [] }
-    const profileIds = collectSavedStructuredAgentSessionIds(
-      this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
-    )
-    await host?.restoreReadableSessions(
-      persistedVisibleIndex.present ? persistedVisibleIndex.sessionIds : profileIds
-    )
+    const listedIds = persistedVisibleIndex.present
+      ? persistedVisibleIndex.sessionIds
+      : collectSavedStructuredAgentSessionIds(
+          this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+        )
     for (const worktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId, {
         allowAttachedWindow: true,
@@ -70,7 +69,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     for (const replacement of host?.conversationReplacements?.() ?? []) {
       await this.replaceStructuredAgentSessionTab(replacement)
     }
-    for (const session of host?.listSessionTabs() ?? []) {
+    for (const session of host?.listSessionTabs(listedIds) ?? []) {
       if (session.agent !== 'codex' && session.agent !== 'claude') {
         continue
       }
@@ -86,6 +85,11 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
         notify: false
       })
     }
+    // After the tabs are out, so no chat's history holds the list or paint; each chat's status row
+    // arrives as its history opens. One chat's failure leaves the others and the list alone.
+    void host?.restoreReadableSessions(listedIds).catch((error: unknown) => {
+      console.warn('[structured-agent-session] restoring chat history after listing failed', error)
+    })
     const wasUnverifiable = this.structuredAgentSessionInventoryUnverifiable
     // No host means no one can say which chats exist; with none on disk, empty is the answer.
     this.structuredAgentSessionInventoryUnverifiable =

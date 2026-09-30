@@ -61,6 +61,25 @@ export async function reconcileLeasesAtStartup(
   }
 }
 
+/** The chat's queue, entered by a write only once that chat's lease is checked. Startup does not
+ *  wait for the lease check, so a write can reach a chat whose lease is still the previous run's;
+ *  it waits for that check, or runs it. With none owed it enqueues at once, keeping its place. A
+ *  check that fails gates nothing: the lease stays unreconciled, which admits no writer, and the
+ *  next start checks again. */
+export function serializeAfterLeaseCheck(
+  store: Pick<AgentSessionRecordStore, 'getRecord'>,
+  reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+): <T>(sessionId: string, task: () => Promise<T>) => Promise<T> {
+  return (sessionId, task) =>
+    store.getRecord(sessionId)?.lease.unreconciled
+      ? reconcile(sessionId).then(
+          () => serialize(sessionId, task),
+          () => serialize(sessionId, task)
+        )
+      : serialize(sessionId, task)
+}
+
 async function reconcileCurrentLeases(deps: {
   store: AgentSessionRecordStore
   probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>

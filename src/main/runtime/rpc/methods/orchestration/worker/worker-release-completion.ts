@@ -19,6 +19,7 @@ import { workerTerminalLeaseIsCurrent } from './worker-terminal-release-lease'
 import { resolveStructuredWorkerForDispatch } from '../../orchestration-structured-worker-lifecycle'
 import { stopStructuredWorkerForRelease } from './structured-worker-release-stop'
 import { isStructuredWorkerHandle } from '../../../../structured-worker-identity'
+import { getStructuredAgentSessionHost } from '../../../../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 export {
   archiveSummary,
@@ -95,7 +96,9 @@ async function completeWorkerTerminalReleaseOnce(
   if (isStructuredWorkerHandle(resource.terminal_handle)) {
     // Observation and archive capture both read the structured host, and after a restart nothing
     // has installed it yet — the startup recovery reconciler runs exactly this path. Installing it
-    // here is what lets the release see the session instead of reporting it unreadable.
+    // here is what lets the release see the session instead of reporting it unreadable. Startup no
+    // longer waits for the lease check either, and an unchecked worker lease from the previous run
+    // reads as live, so the release runs that check first (it never rejects; failures are reported).
     //
     // NOT yet handled, and deliberately follow-up: rebinding a restarted runtime to a structured
     // worker's redrive subscription. Until that exists, a worker that survives a restart has its
@@ -107,6 +110,7 @@ async function completeWorkerTerminalReleaseOnce(
         error
       )
     })
+    await getStructuredAgentSessionHost()?.reconcileRestartLeases()
   }
   const worker = db.getWorkerDispatch(dispatchId)
   if (!worker || worker.agent_terminal_handle !== resource.terminal_handle) {

@@ -51,7 +51,7 @@ describe('structured session cold restoration', () => {
     expect(restoreReadableSessions).not.toHaveBeenCalled()
   })
 
-  it('loads records, inventories PTYs, restores ownership, then projects tabs exactly once', async () => {
+  it('loads records, inventories PTYs, starts the lease check, projects tabs, then restores history, once', async () => {
     const runtime = new OrcaRuntimeService()
     const hydrate = vi.fn()
     const refresh = vi.fn(async () => new Set<string>())
@@ -102,8 +102,9 @@ describe('structured session cold restoration', () => {
     expect(reconcileRestartLeases.mock.invocationCallOrder[0]).toBeLessThan(
       restoreReadableSessions.mock.invocationCallOrder[0] ?? Infinity
     )
-    expect(restoreReadableSessions.mock.invocationCallOrder[0]).toBeLessThan(
-      hydrate.mock.invocationCallOrder[0] ?? Infinity
+    // Tabs are projected first; history opens after, so no chat's history holds the list.
+    expect(hydrate.mock.invocationCallOrder[0]).toBeLessThan(
+      restoreReadableSessions.mock.invocationCallOrder[0] ?? Infinity
     )
   })
 

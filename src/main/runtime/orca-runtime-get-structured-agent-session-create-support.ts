@@ -252,16 +252,27 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     return this.structuredAgentSessionTabRestorePromise
   }
 
-  prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
+  /** Startup's structured step: the host and PTY inventory, awaited; the lease check, started and
+   *  never awaited. Neither the tab list nor paint needs leases, and every write to a chat whose
+   *  lease is unchecked waits for its own check (`serializeAfterLeaseCheck`). */
+  async prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
+    await this.ensureStructuredAgentSessionInventory()
+    if (this.hasPersistedStructuredAgentSessionStore()) {
+      // Never rejects: a failure goes to the host's startup-reconcile report.
+      void getStructuredAgentSessionHost()?.reconcileRestartLeases()
+    }
+  }
+
+  protected ensureStructuredAgentSessionInventory(): Promise<void> {
     this.structuredAgentSessionStartupRestorePromise ??=
-      this.prepareStructuredAgentSessionStartupRestorationOnce().catch((error) => {
+      this.ensureStructuredAgentSessionInventoryOnce().catch((error) => {
         this.structuredAgentSessionStartupRestorePromise = null
         throw error
       })
     return this.structuredAgentSessionStartupRestorePromise
   }
 
-  protected async prepareStructuredAgentSessionStartupRestorationOnce(): Promise<void> {
+  private async ensureStructuredAgentSessionInventoryOnce(): Promise<void> {
     if (!this.hasPersistedStructuredAgentSessionStore()) {
       return
     }
@@ -271,7 +282,6 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       this.ensureStructuredAgentSessionHost()
     )
     await this.refreshMobileSessionPtyRecords()
-    await getStructuredAgentSessionHost()?.reconcileRestartLeases()
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {

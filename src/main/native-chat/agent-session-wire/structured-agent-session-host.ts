@@ -12,7 +12,8 @@ import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import {
   createRestartReconciler,
-  reconcileLeasesAtStartup
+  reconcileLeasesAtStartup,
+  serializeAfterLeaseCheck
 } from './structured-agent-session-restart-reconcile'
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
@@ -215,7 +216,8 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
-  listSessionTabs = () => sessionTabs.listStructuredAgentSessionTabs(this.sessions)
+  /** From the record store and the given tab ids; opens no conversation. */
+  listSessionTabs = (ids: readonly string[]) => sessionTabs.listPersistedSessionTabs(this.deps, ids)
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
   getSessionTabId = (sessionId: string): string | null => this.deps.store.getSessionTabId(sessionId)
 
@@ -274,7 +276,8 @@ export class StructuredAgentSessionHost {
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
       flushStreamedEvents: this.flushStreamedEvents,
       conversation: this.lifetime.conversation,
-      serialize: (sessionId, task) => this.serialize(sessionId, task),
+      // Every write funnels through here, so none acts on a lease the startup check has not reached.
+      serialize: serializeAfterLeaseCheck(this.deps.store, this.reconcileLeases, this.serialize),
       openConversation: this.conversationDelivery.open,
       ensureAgent: (sessionId) =>
         ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),

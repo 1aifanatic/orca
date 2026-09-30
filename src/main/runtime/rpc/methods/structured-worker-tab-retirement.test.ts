@@ -43,9 +43,11 @@ function installHost(options: { closeThrows?: boolean; lease?: Record<string, un
     }
     attached = false
   })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stop and release paths read only these host members.
   setStructuredAgentSessionHost({
     setSessionTabVisibility,
     close,
+    reconcileRestartLeases: async () => undefined,
     hasSession: () => attached,
     hold: async () => {},
     release: () => {},
