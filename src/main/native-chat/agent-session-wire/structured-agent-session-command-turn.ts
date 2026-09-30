@@ -126,6 +126,12 @@ export function structuredAgentSessionStopNoteIdentity(
   return { provider: 'orca', clientMessageId: `${STOP_NOTE_PREFIX}${clientOperationId}` }
 }
 
+/** Whether a journal row is a Stop's note. */
+export function isStructuredAgentSessionStopNote(itemId: string): boolean {
+  const identity = parseAgentJournalItemKey(itemId)
+  return identity?.provider === 'orca' && identity.clientMessageId.startsWith(STOP_NOTE_PREFIX)
+}
+
 /** Whether an earlier Stop already asked the running command `turnId` names to end. Read from the
  *  journal, so nothing is held that could outlive the command. */
 export function structuredAgentSessionCommandWasStopped(
@@ -133,15 +139,14 @@ export function structuredAgentSessionCommandWasStopped(
   turnId: string
 ): boolean {
   const { itemId } = structuredAgentSessionCommandTurn(turnId.slice('compact:'.length))
-  return journal.snapshot().items.some((item) => {
-    const identity = parseAgentJournalItemKey(item.itemId)
-    return (
-      item.turnScope?.kind === 'turn' &&
-      item.turnScope.turnItemId === itemId &&
-      identity?.provider === 'orca' &&
-      identity.clientMessageId.startsWith(STOP_NOTE_PREFIX)
+  return journal
+    .snapshot()
+    .items.some(
+      (item) =>
+        item.turnScope?.kind === 'turn' &&
+        item.turnScope.turnItemId === itemId &&
+        isStructuredAgentSessionStopNote(item.itemId)
     )
-  })
 }
 
 export type StructuredAgentSessionCommandHandoverContext = {

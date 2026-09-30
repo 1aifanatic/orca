@@ -11,7 +11,7 @@ import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
-  AGENT_SESSION_STOP_JOIN_RUNTIME_CAPABILITY,
+  AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import {
@@ -48,11 +48,11 @@ export function supportsStructuredAgentSessionPromptCancel(
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY)
 }
 
-/** Whether the host joins a second Stop of a target it is still stopping. */
-export function supportsStructuredAgentSessionStopJoin(
+/** Whether the host answers a Stop of a turn an earlier Stop already answered for quietly. */
+export function supportsStructuredAgentSessionQuietRepeatedStop(
   target: RuntimeClientTarget
 ): Promise<boolean> {
-  return structuredAgentSessionHostSupports(target, AGENT_SESSION_STOP_JOIN_RUNTIME_CAPABILITY)
+  return structuredAgentSessionHostSupports(target, AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
 }
 
 export function supportsStructuredAgentSessionQuestionAnswers(

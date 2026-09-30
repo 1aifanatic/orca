@@ -28,10 +28,10 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   stateRef: { readonly current: StructuredAgentSessionState }
   promptCancelSupported: boolean | null
   prompt?: PromptIdentity
-  /** Whether the host joins a second Stop itself; null until the status probe answers. */
-  hostJoinsStops: boolean | null
-  /** Stops still on their way, by what they stop; against a host that does not join them, a
-   *  press for the same one joins it here. */
+  /** Whether the host answers a repeated Stop of a turn quietly; null until the status probe answers. */
+  hostAnswersRepeatedStops: boolean | null
+  /** Stops still on their way, by what they stop; against a host that does not answer a repeat
+   *  quietly, a press for the same one joins it here. */
   inFlight: Map<string, Promise<boolean>>
   onSendError: (message: string) => void
 }): Promise<boolean> {
@@ -50,10 +50,10 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
   const fence = current.fence
   const stop = () => sendStop({ client, sessionId, fence, fields, onSendError })
-  if (args.hostJoinsStops === true) {
+  if (args.hostAnswersRepeatedStops === true) {
     return stop()
   }
-  // Temporary, for a host older than its Stop join: remove once every supported host has it.
+  // Temporary, for a host that predates the quiet repeated Stop: remove once none is supported.
   const key = `${sessionId}:agentSession.cancel:${JSON.stringify(fields)}`
   const joined = inFlight.get(key)
   if (joined) {

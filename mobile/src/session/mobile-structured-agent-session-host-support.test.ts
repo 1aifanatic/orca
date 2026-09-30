@@ -3,7 +3,7 @@ import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
-  AGENT_SESSION_STOP_JOIN_RUNTIME_CAPABILITY
+  AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
 import { structuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 
@@ -13,7 +13,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: false,
-      stopJoin: false
+      quietRepeatedStop: false
     })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY])
@@ -21,7 +21,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: true,
       queuedMessages: false,
-      stopJoin: false
+      quietRepeatedStop: false
     })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY])
@@ -29,7 +29,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: true,
       questionAnswers: false,
       queuedMessages: false,
-      stopJoin: false
+      quietRepeatedStop: false
     })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
@@ -37,15 +37,15 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: true,
-      stopJoin: false
+      quietRepeatedStop: false
     })
-    expect(structuredAgentSessionHostSupport([AGENT_SESSION_STOP_JOIN_RUNTIME_CAPABILITY])).toEqual(
-      {
-        promptCancel: false,
-        questionAnswers: false,
-        queuedMessages: false,
-        stopJoin: true
-      }
-    )
+    expect(
+      structuredAgentSessionHostSupport([AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY])
+    ).toEqual({
+      promptCancel: false,
+      questionAnswers: false,
+      queuedMessages: false,
+      quietRepeatedStop: true
+    })
   })
 })

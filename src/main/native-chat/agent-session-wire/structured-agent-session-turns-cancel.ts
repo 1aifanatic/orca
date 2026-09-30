@@ -10,6 +10,11 @@ import {
   structuredAgentSessionStopNoteIdentity
 } from './structured-agent-session-command-turn'
 import { settledPrompt, validatePendingPrompt } from './structured-agent-session-prompt-state'
+import {
+  STOP_NOTE_ALREADY_FINISHED,
+  STOP_NOTE_CANCELLATION_REQUESTED,
+  structuredAgentSessionNamedTurnStop
+} from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
@@ -61,9 +66,17 @@ export async function performCancel(
     }
   }
   let cancelled = false
-  let note: AgentJournalStatusItem | null = { kind: 'status', text: 'Cancellation requested.' }
+  // A turn an earlier Stop already answered for gets no second row, however late this one lands.
+  const named =
+    input.turnId !== undefined && !input.scope
+      ? structuredAgentSessionNamedTurnStop(ctx.journal, input.turnId)
+      : null
+  const answeredBefore = named?.answered === true
+  let note: AgentJournalStatusItem | null = answeredBefore
+    ? null
+    : { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
   // The turn the Stop names, read before the cancel settles it: the note reports on that turn.
-  const turnScope = ctx.journal.liveTurnScope()
+  const turnScope = named?.turnScope ?? ctx.journal.liveTurnScope()
   // Only the provider's end or the child's ends a command. A command the provider has not opened a
   // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
   // dead-generation settlement writes the command's verdict.
@@ -106,7 +119,7 @@ export async function performCancel(
       cancelled = true
       note = null
     } else if (!cancelled && input.turnId !== undefined) {
-      note = { kind: 'status', text: 'The provider had already finished this turn.' }
+      note = answeredBefore ? null : { kind: 'status', text: STOP_NOTE_ALREADY_FINISHED }
     } else if (!cancelled && input.prompt) {
       note = null
     } else if (!cancelled) {
@@ -133,7 +146,7 @@ export async function performCancel(
   if (runningCommand && !cancelled) {
     await input.stopChild?.()
     cancelled = true
-    note = { kind: 'status', text: 'Cancellation requested.' }
+    note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()

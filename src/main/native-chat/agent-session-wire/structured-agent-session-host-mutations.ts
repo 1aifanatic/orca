@@ -34,6 +34,11 @@ import {
 } from './structured-agent-session-turns-cancel'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
+  admitAndRunAgentSessionMutation,
+  type AgentSessionMutationRequest,
+  type AgentSessionMutationSessionPreparation
+} from './structured-agent-session-mutation-admission'
+import {
   openForWrite,
   openWithAgent,
   sendPreparation,
@@ -44,28 +49,68 @@ import {
   cancelPlan,
   promptPlan,
   sendPlan,
-  setOptionPlan
+  setOptionPlan,
+  type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
-import {
-  joinStructuredAgentSessionStop,
-  type StructuredAgentSessionStopsInFlight
-} from './structured-agent-session-stop-join'
-import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
-import {
-  mutateStructuredAgentSession,
-  type StructuredAgentSessionMutationContext
-} from './structured-agent-session-mutation-context'
+import type {
+  StructuredAgentSessionCaller,
+  StructuredAgentSessionHostDeps,
+  StructuredAgentSessionHostSession
+} from './structured-agent-session-host-types'
 import {
   readStructuredAgentSessionOptions,
   recordStructuredAgentSessionOptionIntent
 } from './structured-agent-session-options-read'
 
-export {
-  mutateStructuredAgentSession,
-  type StructuredAgentSessionMutationContext
-} from './structured-agent-session-mutation-context'
+export type StructuredAgentSessionMutationContext = {
+  deps: StructuredAgentSessionHostDeps
+  sessions: Map<string, StructuredAgentSessionHostSession>
+  publish: (sessionId: string, journal: StructuredAgentSessionHostSession['journal']) => void
+  flushStreamedEvents: (sessionId: string) => Promise<void>
+  /** The host's accessor, for a caller outside the session's serialize. */
+  conversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession>
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+  /** The session's conversation, opened when closed; inside the caller's serialize. */
+  openConversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  /** Gives the session a provider child; inside the caller's serialize. */
+  ensureAgent: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
+  /** A message was accepted: the session's delivery loop hands it over. */
+  wakeDelivery: (sessionId: string) => void
+  /** Stops the session's provider child, keeping its conversation; inside the caller's serialize. */
+  stopAgent: (sessionId: string) => Promise<void>
+  /** Only for gate inputs living in the RECORD store, which can settle with no
+   *  journal commit (a conversation command). Draft-table changes need no call:
+   *  the draft store notifies through the journal's own commit listener. */
+  wakeQueuedDrain?: (sessionId: string) => void
+  now: () => number
+}
+
+/** Admits the envelope and runs the plan inside the session's serialize. */
+export function mutateStructuredAgentSession<TValue>(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  envelope: AgentSessionMutationEnvelope,
+  plan: MutationPlan<TValue>,
+  prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
+): Promise<AgentSessionMutationResult<TValue>> {
+  return context.serialize(envelope.sessionId, () =>
+    admitAndRunAgentSessionMutation({
+      store: context.deps.store,
+      adapter: context.deps.adapter,
+      callerKey: caller.callerKey,
+      envelope,
+      plan,
+      journal: () => context.sessions.get(envelope.sessionId)?.journal,
+      prepareSession,
+      publish: (journal) => context.publish(envelope.sessionId, journal),
+      flushStreamedEvents: context.flushStreamedEvents,
+      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
+      now: () => context.now()
+    })
+  )
+}
 
 export function sendStructuredAgentSessionTurn(
   context: StructuredAgentSessionMutationContext,
@@ -105,39 +150,16 @@ export function sendStructuredAgentSessionTurn(
   )
 }
 
-type CancelParams = {
-  envelope: AgentSessionMutationEnvelope
-  turnId?: string
-  scope?: 'background-tasks'
-  taskId?: string
-  prompt?: { itemId: string; expectedRevision: number }
-}
-
 export function cancelStructuredAgentSessionTurn(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
-  params: CancelParams,
-  stopsInFlight: StructuredAgentSessionStopsInFlight
-): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  return joinStructuredAgentSessionStop(
-    stopsInFlight,
-    params,
-    () => runStructuredAgentSessionStop(context, caller, params),
-    (value) =>
-      mutateStructuredAgentSession(
-        context,
-        caller,
-        params.envelope,
-        { ...cancelPlan(params), run: async () => ({ ok: true, value }) },
-        openForWrite(context, params.envelope)
-      )
-  )
-}
-
-function runStructuredAgentSessionStop(
-  context: StructuredAgentSessionMutationContext,
-  caller: StructuredAgentSessionCaller,
-  params: CancelParams
+  params: {
+    envelope: AgentSessionMutationEnvelope
+    turnId?: string
+    scope?: 'background-tasks'
+    taskId?: string
+    prompt?: { itemId: string; expectedRevision: number }
+  }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
   if (params.scope || params.prompt) {
     return mutateStructuredAgentSession(
@@ -299,11 +321,11 @@ export async function settleStructuredAgentSessionLateDispatch(
 export function structuredAgentSessionMutationDelegates(
   context: () => StructuredAgentSessionMutationContext
 ) {
-  // One host's Stops still on their way.
-  const stopsInFlight: StructuredAgentSessionStopsInFlight = new Map()
   return {
-    cancel: (caller: StructuredAgentSessionCaller, params: CancelParams) =>
-      cancelStructuredAgentSessionTurn(context(), caller, params, stopsInFlight),
+    cancel: (
+      caller: StructuredAgentSessionCaller,
+      params: Parameters<typeof cancelStructuredAgentSessionTurn>[2]
+    ) => cancelStructuredAgentSessionTurn(context(), caller, params),
     respondToPrompt: (
       caller: StructuredAgentSessionCaller,
       params: Parameters<typeof respondToStructuredAgentSessionPrompt>[2]

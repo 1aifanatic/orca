@@ -16,7 +16,7 @@ export const CAPABLE: StructuredAgentSessionHostSupport = {
   promptCancel: false,
   questionAnswers: false,
   queuedMessages: true,
-  stopJoin: false
+  quietRepeatedStop: false
 }
 export const LEGACY: StructuredAgentSessionHostSupport = { ...CAPABLE, queuedMessages: false }
 

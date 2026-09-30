@@ -1,8 +1,8 @@
 // One structured-session mutation, fenced and idempotent.
 //
 // Every call is its own action with its own client operation id, so a press is never answered
-// from an earlier one. The host joins a Stop of a named turn or task pressed while one is still on
-// its way; against an older host that does not, this client joins it instead of stopping twice.
+// from an earlier one. The host answers a second Stop of a named turn or task quietly; against an
+// older host that does not, this client joins one still on its way instead of stopping twice.
 // Every result is discarded unless the runtime fence it was issued against is still the current
 // one. A write that did not happen is reported once, in the person's words, by the caller that
 // knows where to say it; nothing latches.
@@ -20,7 +20,7 @@ import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import {
   callStructuredAgentSession,
-  supportsStructuredAgentSessionStopJoin
+  supportsStructuredAgentSessionQuietRepeatedStop
 } from '@/runtime/structured-agent-session-client'
 import { structuredSessionOperationId } from './use-structured-agent-session-outbox'
 import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
@@ -139,11 +139,11 @@ export function useStructuredAgentSessionMutate(args: {
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
       if (
         !namesWhatItStops(fingerprintMethod, fields) ||
-        (await supportsStructuredAgentSessionStopJoin(target))
+        (await supportsStructuredAgentSessionQuietRepeatedStop(target))
       ) {
         return send<T>(method, fingerprintMethod, fields)
       }
-      // Temporary, for a host older than its Stop join: remove once every supported host has it.
+      // Temporary, for a host that predates the quiet repeated Stop: remove once none is supported.
       const key = `${sessionId}:${method}:${JSON.stringify(fields)}`
       const joined = inFlightStops.current.get(key)
       if (joined) {

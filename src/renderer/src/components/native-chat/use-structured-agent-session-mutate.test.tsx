@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  hostJoinsStops: vi.fn(async () => false),
+  hostAnswersRepeatedStops: vi.fn(async () => false),
   toastError: vi.fn(),
   operations: 0
 }))
@@ -16,7 +16,7 @@ vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } 
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
-  supportsStructuredAgentSessionStopJoin: mocks.hostJoinsStops
+  supportsStructuredAgentSessionQuietRepeatedStop: mocks.hostAnswersRepeatedStops
 }))
 
 vi.mock('./use-structured-agent-session-outbox', () => ({
@@ -76,7 +76,7 @@ function render() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.hostJoinsStops.mockResolvedValue(false)
+  mocks.hostAnswersRepeatedStops.mockResolvedValue(false)
   mocks.operations = 0
 })
 
@@ -203,7 +203,7 @@ function heldStops() {
 const stop = (current: ReturnType<typeof render>['current'], turnId = 'turn-1') =>
   current.mutate('agentSession.cancel', 'agentSession.cancel', { turnId })
 
-describe('a Stop pressed again, against a host older than its Stop join', () => {
+describe('a Stop pressed again, against a host without the quiet repeated Stop', () => {
   it('joins the one still in flight instead of sending a second', async () => {
     const host = heldStops()
     const { current } = render()
@@ -288,9 +288,9 @@ describe('a Stop pressed again, against a host older than its Stop join', () => 
   })
 })
 
-describe('a Stop pressed again, against a host that joins it', () => {
+describe('a Stop pressed again, against a host that answers a repeat quietly', () => {
   it('sends every press under its own id, even while an earlier one is on its way', async () => {
-    mocks.hostJoinsStops.mockResolvedValue(true)
+    mocks.hostAnswersRepeatedStops.mockResolvedValue(true)
     const host = heldStops()
     const { current } = render()
 
