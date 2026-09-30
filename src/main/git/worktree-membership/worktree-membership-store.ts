@@ -276,8 +276,12 @@ export function retainWorktreeMembershipModels(registeredRepoPaths: readonly str
   }
 }
 
+/**
+ * True when the repo's rows come from Git's files, so a read costs stats, not a Git run. A repo the
+ * model leaves to Git (WSL, reftable, failed parity) keeps the upper caches' row TTLs instead.
+ */
 export function isWorktreeMembershipModelBacked(repoPath: string, wslDistro?: string): boolean {
-  return models.has(membershipKey(repoPath, wslDistro))
+  return models.get(membershipKey(repoPath, wslDistro))?.source.kind === 'files'
 }
 
 export function _getWorktreeMembershipModelForTests(

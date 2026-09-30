@@ -12,7 +12,11 @@ import {
   resolveLocalProjectRuntimesForRepos
 } from '../project-runtime-git-options'
 import { getAgentLaunchPlatformForRepo } from './runtime-agent-launch-resolution'
-import { resolveRepoWorktreeRows, resolveScopedWorktreeIdRow } from './repo-worktree-row-resolution'
+import {
+  RESOLVED_WORKTREE_REPO_TIMEOUT_MS,
+  resolveRepoWorktreeRows,
+  resolveScopedWorktreeIdRow
+} from './repo-worktree-row-resolution'
 import { projectResolvedWorktreeLineage } from '../../shared/resolved-worktree-lineage'
 import type { RepoWorktreeRowDeps } from './repo-worktree-row-resolution'
 import { listRuntimeFolderWorkspaces } from './runtime-worktree-filesystem'
@@ -102,11 +106,21 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       ])
     )
     const deps = this.repoWorktreeRowDeps()
-    // Why capped: one fleet snapshot must not start a read for every registered repo at once.
+    // Why capped: one fleet snapshot must not start a read for every registered repo at once. The
+    // per-repo budget runs from the snapshot's start, so stalled repos cannot stack it into waves.
+    const deadlineAt = Date.now() + RESOLVED_WORKTREE_REPO_TIMEOUT_MS
     const perRepoWorktrees = await mapWithConcurrency(
       repos,
       RESOLVED_WORKTREE_FLEET_CONCURRENCY,
-      async (repo) => await resolveRepoWorktreeRows(deps, repo, metaById, projectRuntimeByRepoId)
+      async (repo) =>
+        await resolveRepoWorktreeRows(
+          deps,
+          repo,
+          metaById,
+          projectRuntimeByRepoId,
+          undefined,
+          Math.max(0, deadlineAt - Date.now())
+        )
     )
     const lineageById = this.store?.getAllWorktreeLineage?.() ?? {}
     const worktrees = perRepoWorktrees.flatMap((rows) =>
@@ -160,7 +174,7 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
     const now = Date.now()
     const scanScopeKey = `${repo.id}\0${getRepoExecutionHostId(repo)}`
     const generation = this.worktreeScanGenerations.get(scanScopeKey) ?? 0
-    // A local repo with a membership model keeps no rows here: the model owns their freshness.
+    // A local repo whose model reads Git's files keeps no rows here: the model owns their freshness.
     const modelBacked = (): boolean =>
       !sshConnectionId &&
       isWorktreeMembershipModelBacked(

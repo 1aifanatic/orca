@@ -34,6 +34,7 @@ vi.mock('../git/worktree', async (importOriginal) => ({
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
+import { RESOLVED_WORKTREE_REPO_TIMEOUT_MS } from './repo-worktree-row-resolution'
 import { canonicalWorktreeIdentity } from '../../shared/worktree/identity'
 
 const REPO_ID = 'repo-local'
@@ -195,6 +196,25 @@ describe('runtime worktree scan cache', () => {
 
     expect(scanCount()).toBe(20)
     expect(peak).toBe(8)
+  })
+
+  it('settles a fleet snapshot within one per-repo budget however many repos stall', async () => {
+    vi.useFakeTimers()
+    try {
+      // A half-open SSH connection: every repo's listing hangs.
+      getSshGitProviderMock.mockReturnValue({ listWorktrees: () => new Promise(() => {}) })
+      const { list } = makeRuntime({ connectionId: 'remote-1', repoCount: 16 })
+      let settled = false
+      void list().then(() => {
+        settled = true
+      })
+      // Repos that wait for a slot past the budget answer from stored rows on the next tick,
+      // instead of each wave of eight stalling for a budget of its own.
+      await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS + 100)
+      expect(settled).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

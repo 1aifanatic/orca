@@ -28,7 +28,7 @@ import {
 import { pruneMetadataMissingFromAuthoritativeLocalScan } from './authoritative-local-worktree-metadata-pruning'
 
 // Why: absorb renderer polling bursts while bounding external worktree-change lag to one short refresh
-// window. Only for repos Git answers directly; model-backed repos are fresh on every read.
+// window. Only for repos Git answers; repos whose model reads Git's files are fresh on every read.
 export const DETECTED_WORKTREE_SCAN_CACHE_TTL_MS = 5_000
 
 export type DetectedWorktreeScanCacheEntry = {
@@ -133,7 +133,7 @@ export async function listDetectedGitWorktrees(
   }
 
   const cacheKey = getDetectedWorktreeScanCacheKey(repo.id, localWorktreeGitOptions)
-  // A repo with a membership model keeps no rows here: the model re-validates on every read.
+  // A repo whose model reads Git's files keeps no rows here: the model re-validates on every read.
   const modelBacked = (): boolean =>
     isWorktreeMembershipModelBacked(repo.path, localWorktreeGitOptions.wslDistro)
   const cached = modelBacked() ? undefined : detectedWorktreeScanCache.get(cacheKey)

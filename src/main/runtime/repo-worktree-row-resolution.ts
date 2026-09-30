@@ -28,9 +28,6 @@ import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 /**
  * Per-repo budget for one resolution pass. Why: mobile startup shares this path, so one slow repo
  * degrades its own metadata instead of blocking all session loading.
- *
- * Exported because the Git-admin fingerprint probe derives its own timeout by subtracting a fallback
- * allowance from this, and that invariant only holds with a single source of truth.
  */
 export const RESOLVED_WORKTREE_REPO_TIMEOUT_MS = 5000
 
@@ -101,7 +98,8 @@ export async function resolveRepoWorktreeRows(
   repo: Repo,
   metaById: Record<string, WorktreeMeta>,
   projectRuntimeByRepoId: ReadonlyMap<string, ProjectExecutionRuntimeResolution>,
-  repoOwnerCount = deps.store.getRepos().filter((candidate) => candidate.id === repo.id).length
+  repoOwnerCount = deps.store.getRepos().filter((candidate) => candidate.id === repo.id).length,
+  timeoutMs = RESOLVED_WORKTREE_REPO_TIMEOUT_MS
 ): Promise<RepoWorktreeRow[]> {
   const { store } = deps
   if (isFolderRepo(repo)) {
@@ -130,7 +128,7 @@ export async function resolveRepoWorktreeRows(
     deps
       .scanRepo(repo, projectRuntimeByRepoId)
       .catch(() => ({ ok: false, worktrees: [] }) satisfies RuntimeWorktreeScanResult),
-    RESOLVED_WORKTREE_REPO_TIMEOUT_MS,
+    timeoutMs,
     null
   )) ?? { ok: false, worktrees: listStoredWorktreeRowsForRepo(store, repo, repoOwnerCount) }
   const gitWorktrees = preserveFolderUpgradeWorktreePath(repo, scan.worktrees)
