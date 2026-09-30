@@ -4,6 +4,7 @@ import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity,
   AgentJournalMessageItem,
+  AgentJournalProducerLinkage,
   AgentJournalResetReason,
   AgentJournalRowAttribution,
   AgentJournalTurnScope,
@@ -61,6 +62,14 @@ export type JournalItemAppendOptions = AgentJournalRowAttribution & {
   recovered?: true
 }
 export type JournalTombstoneInput = { fence: number }
+
+/** One reduced item, the producer that wrote it and the turn it was created beside. */
+export type JournalItemLinkageVisitor = (
+  itemId: string,
+  sequence: number,
+  body: AgentJournalItemBody,
+  attribution: AgentJournalProducerLinkage & { turnScope?: AgentJournalTurnScope }
+) => void
 
 export type JournalLifecycleBatchInput = {
   settlementId: string
