@@ -135,8 +135,7 @@ const GLIBC_DT_NEEDED_LDFLAG = "'-Wl,--no-as-needed,-l:libutil.so.1,-l:libpthrea
 
 /**
  * musl has no libutil.so.1 (openpty/forkpty live in libc and libutil is an empty static stub),
- * so the patch's glibc DT_NEEDED ldflag cannot link there. The `.symver` pins stay: musl's
- * loader ignores symbol versions.
+ * so the patch's glibc DT_NEEDED ldflag cannot link there.
  */
 export function bindingGypForLibc(bindingGyp, libc) {
   if (libc !== 'musl') {
@@ -148,6 +147,28 @@ export function bindingGypForLibc(bindingGyp, libc) {
     )
   }
   return bindingGyp.replace(GLIBC_DT_NEEDED_LDFLAG, '')
+}
+
+const GLIBC_SYMVER_GUARD =
+  '#if defined(__linux__)\n#  if defined(__x86_64__)\n#    define ORCA_GLIBC_COMPAT_VERSION'
+
+/**
+ * The patch's `.symver` pins bind openpty/forkpty/pthread_sigmask to `@GLIBC_*` versions, which
+ * musl's unversioned libc cannot satisfy at link time; musl never defines __GLIBC__.
+ */
+export function ptySourceForLibc(ptySource, libc) {
+  if (libc !== 'musl') {
+    return ptySource
+  }
+  if (!ptySource.includes(GLIBC_SYMVER_GUARD)) {
+    throw new Error(
+      '[orcad-prebuilds] pty.cc no longer carries the glibc .symver guard this build scopes on musl'
+    )
+  }
+  return ptySource.replace(
+    GLIBC_SYMVER_GUARD,
+    GLIBC_SYMVER_GUARD.replace('defined(__linux__)', 'defined(__linux__) && defined(__GLIBC__)')
+  )
 }
 
 function nodePtyDir() {
@@ -166,10 +187,13 @@ async function compileNodePty(sourceDir, slot) {
   for (const entry of ['package.json', 'src']) {
     cpSync(join(sourceDir, entry), join(stagedDir, entry), { recursive: true })
   }
+  const libc = detectLibc()
   writeFileSync(
     join(stagedDir, 'binding.gyp'),
-    bindingGypForLibc(readFileSync(join(sourceDir, 'binding.gyp'), 'utf8'), detectLibc())
+    bindingGypForLibc(readFileSync(join(sourceDir, 'binding.gyp'), 'utf8'), libc)
   )
+  const ptySourcePath = join(stagedDir, 'src', 'unix', 'pty.cc')
+  writeFileSync(ptySourcePath, ptySourceForLibc(readFileSync(ptySourcePath, 'utf8'), libc))
   const addonApiDir = dirname(
     require.resolve('node-addon-api/package.json', { paths: [sourceDir] })
   )

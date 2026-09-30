@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   assertNodePtyPatchApplied,
   bindingGypForLibc,
+  ptySourceForLibc,
   detectLibc,
   MATRIX_SLOTS,
   readManifest,
@@ -119,8 +121,46 @@ describe('bindingGypForLibc', () => {
     expect(bindingGypForLibc(gyp, 'musl')).not.toContain('libutil.so.1')
   })
 
+  it('matches the binding.gyp the installed patch produces', () => {
+    const require = createRequire(import.meta.url)
+    const installed = readFileSync(
+      join(dirname(require.resolve('node-pty/package.json')), 'binding.gyp'),
+      'utf8'
+    )
+    expect(bindingGypForLibc(installed, 'musl')).not.toContain('-l:libutil.so.1')
+  })
+
   it('fails loudly if the patch stops carrying the flag it strips', () => {
     expect(() => bindingGypForLibc("'ldflags': []", 'musl')).toThrow(/no longer carries/)
+  })
+})
+
+describe('ptySourceForLibc', () => {
+  const source =
+    '#if defined(__linux__)\n#  if defined(__x86_64__)\n#    define ORCA_GLIBC_COMPAT_VERSION "GLIBC_2.2.5"\n'
+
+  it('keeps the glibc .symver pins everywhere but musl', () => {
+    expect(ptySourceForLibc(source, 'glibc')).toBe(source)
+    expect(ptySourceForLibc(source, 'none')).toBe(source)
+  })
+
+  it('scopes them to glibc on musl, whose libc has no GLIBC_ versions to bind', () => {
+    expect(ptySourceForLibc(source, 'musl')).toMatch(
+      /^#if defined\(__linux__\) && defined\(__GLIBC__\)\n/
+    )
+  })
+
+  it('matches the pty.cc the installed patch produces', () => {
+    const require = createRequire(import.meta.url)
+    const installed = readFileSync(
+      join(dirname(require.resolve('node-pty/package.json')), 'src', 'unix', 'pty.cc'),
+      'utf8'
+    )
+    expect(ptySourceForLibc(installed, 'musl')).toContain('defined(__GLIBC__)')
+  })
+
+  it('fails loudly if the patch stops carrying the guard it scopes', () => {
+    expect(() => ptySourceForLibc('int main() {}', 'musl')).toThrow(/no longer carries/)
   })
 })
 
