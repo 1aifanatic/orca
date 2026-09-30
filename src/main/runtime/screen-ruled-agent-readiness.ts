@@ -1,5 +1,6 @@
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
+import { isClineComposerReadyScreen } from './cline-terminal-readiness'
 
 type ScreenReadyRule = (screenLines: readonly string[]) => boolean
 
@@ -10,8 +11,12 @@ type ScreenReadyRule = (screenLines: readonly string[]) => boolean
  * erased before its redraw).
  */
 const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
-  antigravity: isAntigravityComposerReadyScreen
+  antigravity: isAntigravityComposerReadyScreen,
+  cline: isClineComposerReadyScreen
 }
+
+// Why no clockless tier 1: Cline repaints the same composer box while a reply streams.
+const MID_TURN_COMPOSER_AGENTS: ReadonlySet<TuiAgent> = new Set(['cline'])
 
 export function getScreenReadyRule(agent: TuiAgent | null): ScreenReadyRule | null {
   return agent === null ? null : (SCREEN_READY_RULES[agent] ?? null)
@@ -46,7 +51,7 @@ export function readScreenRuledReady(
   if (hasOutputClock) {
     return false
   }
-  return rule(screenLines) ? true : null
+  return !MID_TURN_COMPOSER_AGENTS.has(agent) && rule(screenLines) ? true : null
 }
 
 /**

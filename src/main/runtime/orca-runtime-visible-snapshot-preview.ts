@@ -8,6 +8,7 @@ import {
   VISIBLE_TERMINAL_SNAPSHOT_TIMEOUT_MS
 } from './orca-runtime-postlude'
 import { projectTerminalVisibleLines } from './orca-runtime-terminal-projection'
+import { visibleNonBlankTerminalLines } from './terminal-tail-read'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
 import { withTimeout } from './runtime-async-boundaries'
 
@@ -155,7 +156,9 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
       return null
     }
     // Why unawaited writeChain: callers are synchronous; a grid one chunk behind is re-read next poll.
-    return projectTerminalVisibleLines(state.emulator).lines
+    // Why raw rows, not the read projection: it blanks a composer it takes for a draft, and Cline's
+    // placeholder reads as one, so a typed draft and an empty composer would look the same.
+    return visibleNonBlankTerminalLines(state.emulator.getVisibleLines())
   }
 
   protected async parseVisibleSnapshot(snapshot: {

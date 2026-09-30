@@ -69,7 +69,7 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'dsh-tui-ready-no-key': 10,
   // Hermes banner cells restore with an extra bold bit under the jitter schedule.
   'hermes-tui-ready': 2,
-  // STA-8741 agy captures, serializer untouched: the same true-colour background
+  // STA-8741 agy/Cline captures, serializer untouched: the same true-colour background
   // left on restored cells as DSH.
   'antigravity-1-2-14-busy-thinking': 2,
   'antigravity-1-2-14-command-palette': 4,
@@ -80,7 +80,15 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'antigravity-1-2-14-ready-80x24': 2,
   'antigravity-1-2-14-ready-accept-edits': 4,
   'antigravity-1-2-14-ready-plan': 4,
-  'antigravity-1-2-14-trust-dialog': 26
+  'antigravity-1-2-14-trust-dialog': 26,
+  'cline-3-0-66-busy-streaming': 2,
+  'cline-3-0-66-draft': 6,
+  'cline-3-0-66-permission': 6,
+  'cline-3-0-66-promo': 15,
+  'cline-3-0-66-ready': 11,
+  'cline-3-0-66-ready-80x24': 2,
+  'cline-3-0-66-slash-menu': 6,
+  'cline-3-0-66-turn-ended': 10
 }
 
 // Exact resize checkpoints and full GridDiff hashes from base 6835b9b4e3ea, not this branch.

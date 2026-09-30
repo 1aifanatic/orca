@@ -2,11 +2,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
-import { projectTerminalVisibleLines } from './orca-runtime-terminal-projection'
 import { normalizeTerminalChunk } from './terminal-ansi-normalization'
 import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
 import { buildPreview } from './terminal-tail-state'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
+import { visibleNonBlankTerminalLines } from './terminal-tail-read'
 
 const DEFAULT_CHUNK_CHARS = 64
 
@@ -45,7 +45,8 @@ export async function* replayTranscript(
       partialLine = tail.partialLine
       redrawCursor = tail.redrawCursor
       yield {
-        screenLines: projectTerminalVisibleLines(emulator).lines,
+        // Same rows as readLiveTerminalScreenLines.
+        screenLines: visibleNonBlankTerminalLines(emulator.getVisibleLines()),
         waitText: buildTerminalWaitText(lines, partialLine, buildPreview(lines, partialLine))
       }
     }
