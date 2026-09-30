@@ -185,7 +185,7 @@ const TYPED_TRANSLATOR_KINDS: ReadonlyMap<string, ReadonlySet<string>> = new Map
   ],
   [
     'codex',
-    // Every status arm is thread state the verdict reader consumes; a fault's sentence arrives on `error`.
+    // Every status arm is thread state the translator reads; a fault's sentence arrives on `error`.
     new Set([
       'notification:thread/status/changed'
     ] satisfies `notification:${CodexAppServerNotificationMethod}`[])
