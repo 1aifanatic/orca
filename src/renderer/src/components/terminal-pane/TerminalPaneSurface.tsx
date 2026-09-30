@@ -17,6 +17,7 @@ import { TerminalQuickCommandEditorDialog } from './TerminalQuickCommandEditorDi
 import { TerminalPaneNativeChatPortal } from './TerminalPaneNativeChatPortal'
 import {
   TerminalPaneCodexRestartPortals,
+  TerminalPaneCodexSharedServerPortals,
   TerminalPaneMobileDriverPortals,
   TerminalPaneProcessExitPortals,
   TerminalPaneRecoveryPortals,
@@ -161,6 +162,7 @@ export function TerminalPaneSurface({
         }}
       />
       <TerminalPaneCodexRestartPortals controller={controller} />
+      <TerminalPaneCodexSharedServerPortals controller={controller} />
       {/* Why: the reconnect banner already owns SSH recovery UX; the z-50 error
           toast was painting over it (same bottom strip) with the raw ssh:connect failure. */}
       {visibleTerminalError && isActive && !showSshReconnectOverlay && activePane

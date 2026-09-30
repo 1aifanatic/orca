@@ -1,5 +1,8 @@
 import { createPortal } from 'react-dom'
 import CodexRestartChip from '../CodexRestartChip'
+import { CodexSharedServerBanner } from './CodexSharedServerBanner'
+import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
+import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { TerminalSshReconnectOverlay } from './TerminalSshReconnectOverlay'
 import { TerminalRemoteRuntimeReconnectBanner } from './TerminalRemoteRuntimeReconnectBanner'
 import { TerminalProcessExitOverlay } from './TerminalProcessExitOverlay'
@@ -35,6 +38,37 @@ export function TerminalPaneCodexRestartPortals({
           />,
           pane.container,
           `codex-restart-${pane.id}`
+        )
+      })}
+    </>
+  )
+}
+
+export function TerminalPaneCodexSharedServerPortals({
+  controller
+}: {
+  controller: TerminalPaneController
+}): React.JSX.Element | null {
+  const { managedPanes, paneTransportsRef, tabId } = controller
+  // Why: a paired web client's terminals belong to the host, whose setting this window does not own.
+  if (isPairedWebClientWindow()) {
+    return null
+  }
+  return (
+    <>
+      {managedPanes.map((pane) => {
+        const ptyId = paneTransportsRef.current.get(pane.id)?.getPtyId()
+        if (!ptyId) {
+          return null
+        }
+        return createPortal(
+          <CodexSharedServerBanner
+            key={`codex-shared-server-${pane.id}-${ptyId}`}
+            ptyId={ptyId}
+            paneKey={makePaneKey(tabId, pane.leafId)}
+          />,
+          pane.container,
+          `codex-shared-server-${pane.id}`
         )
       })}
     </>

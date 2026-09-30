@@ -16,6 +16,8 @@ export const ptyStreamAndSerializationApi = {
     ipcRenderer.invoke('pty:inspectProcess', { id, ...options }),
   confirmForegroundProcess: (id: string): Promise<string | null> =>
     ipcRenderer.invoke('pty:confirmForegroundProcess', { id }),
+  isCodexOnSharedServer: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('pty:isCodexOnSharedServer', { id }),
   getCwd: (id: string): Promise<string> => ipcRenderer.invoke('pty:getCwd', { id }),
   getSize: (id: string): Promise<{ cols: number; rows: number } | null> =>
     ipcRenderer.invoke('pty:getSize', { id }),
