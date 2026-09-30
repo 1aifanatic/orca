@@ -5,6 +5,7 @@ import {
   acknowledgeAgentPromptSubmit
 } from '../orca-runtime-test-mocks.spec'
 import { TEST_WORKTREE_PATH, store } from '../orca-runtime-test-fixtures.spec'
+import { wrapTerminalBracketedPasteText } from '../../../shared/terminal-bracketed-paste-text'
 
 // A launch's first prompt goes in right after the caller saw the agent's composer accept input, as
 // the desktop's own draft paste did: Enter one turn after the paste, not after the render settles.
@@ -36,6 +37,33 @@ async function launchedAgentPane(agent: 'claude' | 'codex' | 'qwen-code') {
 }
 
 describe('a launch prompt into a composer the caller saw ready', () => {
+  it('pastes the same bytes the desktop draft paste sent for the prompt', async () => {
+    vi.useFakeTimers()
+    try {
+      const { runtime, handle, writes } = await launchedAgentPane('claude')
+      const prompt = 'Explain this commit:\n- first line\r\n- second line with \x1b[31m colour'
+
+      const send = runtime.sendTerminalAgentPrompt(handle, prompt, {
+        inputKind: 'launch',
+        composerReady: true
+      })
+      await vi.advanceTimersByTimeAsync(100)
+      await send
+
+      const pasted = writes
+        .map((write) => write.data)
+        .filter((data) => data !== '\r')
+        .join('')
+      expect(pasted).toBe(wrapTerminalBracketedPasteText(prompt))
+      // Main's draft paste: every line break as CR, and an embedded ESC made inert.
+      expect(pasted).toBe(
+        '\x1b[200~Explain this commit:\r- first line\r- second line with \u241b[31m colour\x1b[201~'
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('submits one turn after the paste instead of waiting out the render cap', async () => {
     vi.useFakeTimers()
     try {
