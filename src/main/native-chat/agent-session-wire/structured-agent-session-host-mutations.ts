@@ -169,7 +169,7 @@ export function cancelStructuredAgentSessionTurn(
       context,
       caller,
       params.envelope,
-      cancelPlan(params),
+      cancelPlan({ ...params, childWork: () => context.readChildWork(params.envelope.sessionId) }),
       openForWrite(context, params.envelope)
     )
   }

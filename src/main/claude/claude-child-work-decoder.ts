@@ -113,6 +113,15 @@ export class ClaudeChildWorkDecoder {
     }
   }
 
+  /** The CLI acknowledged a stop of this task. A running task sends its own `stopped` frame first;
+   *  one the CLI no longer knows is acknowledged with no frame at all, so the acknowledgement is the
+   *  ending of a task still live here. */
+  stopAcknowledged(id: string): void {
+    if (this.live.has(id)) {
+      this.end(id, 'stopped', {})
+    }
+  }
+
   /** The provider session is gone: the host settles what it still holds live. */
   clear(): void {
     this.live.clear()

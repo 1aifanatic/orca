@@ -1,4 +1,4 @@
-import { agentChildWorkViewOffersStop } from '../../../shared/agent-child-row-model'
+import { agentChildWorkViewOffersStop } from '../../../shared/agent-child-work-stop'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'

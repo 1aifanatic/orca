@@ -58,15 +58,14 @@ export async function cancelClaudeTurn(
   }
 }
 
+/** Stops each task the host named. An acknowledged stop ends the task's record: the CLI answers
+ *  success for a task it no longer knows without sending that task any frame. */
 export async function stopClaudeBackgroundTasks(
   session: ClaudeSession,
   timeoutMs: number | undefined,
-  isCurrent: ClaudeTurnCancellationGuard = () => true,
-  taskId?: string
+  isCurrent: ClaudeTurnCancellationGuard,
+  taskIds: readonly string[]
 ): Promise<{ cancelled: boolean }> {
-  const stoppableTaskIds = session.backgroundTasks.stoppableTaskIds
-  const taskIds =
-    taskId === undefined ? stoppableTaskIds : stoppableTaskIds.includes(taskId) ? [taskId] : []
   let cancelled = false
   for (const taskId of taskIds) {
     if (!isCurrent()) {
@@ -74,6 +73,7 @@ export async function stopClaudeBackgroundTasks(
     }
     try {
       await session.connection.stopTask(taskId, { timeoutMs })
+      session.childWork.stopAcknowledged(taskId)
       cancelled = true
     } catch (error) {
       if (!(error instanceof ClaudeControlRequestError)) {

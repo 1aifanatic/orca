@@ -140,8 +140,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     })
 
   private emit(session: ClaudeSession | null, event: ClaudeStructuredSessionEvent): void {
-    // The tracker's roster serves this provider's own stops; the host's child records, fed by the
-    // decoder's evidence drained below, are what every surface reads.
+    // The host's child records, fed by the decoder's evidence drained below, are what every surface
+    // and every Stop reads; the tracker's roster is kept only for tests that compare the two.
     if (event.type === 'ended') {
       session?.childWork.clear()
       session?.backgroundTasks.clear()
@@ -195,24 +195,31 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         this.deps.onDispatchSettledLate?.({ sessionId: request.sessionId, ...settlement }),
       ...(this.deps.requestTimeoutMs === undefined ? {} : { timeoutMs: this.deps.requestTimeoutMs })
     })
-  stopBackgroundTasks: StructuredAgentSessionAdapter['stopBackgroundTasks'] = (input) => {
+  stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = async (
+    input
+  ) => {
     const session = this.session(input.sessionId)
     const acquisitionGeneration = session.acquisitionGeneration
-    return stopClaudeBackgroundTasks(
-      session,
-      this.deps.requestTimeoutMs,
-      () =>
-        Boolean(
-          this.sessions.get(input.sessionId) === session &&
-          session.fence === input.fence &&
-          session.acquisitionGeneration === acquisitionGeneration &&
-          session.backgroundTasks.state
-        ),
-      input.taskId
-    )
+    const isCurrent = () =>
+      this.sessions.get(input.sessionId) === session &&
+      session.fence === input.fence &&
+      session.acquisitionGeneration === acquisitionGeneration
+    try {
+      return await stopClaudeBackgroundTasks(
+        session,
+        this.deps.requestTimeoutMs,
+        isCurrent,
+        input.taskIds
+      )
+    } finally {
+      if (isCurrent()) {
+        this.publishChildWork(input.sessionId, session)
+      }
+    }
   }
-  /** The tracker's own roster. No host decision reads it: the host's child records are the one
-   *  owner of "what runs", and this stays only so tests can hold the two rule sets side by side. */
+  /** The tracker's own roster, for the tests that compare it with the host's child records. No
+   *  production code reads it: what runs, what a Stop reaches and what blocks a command are all
+   *  read from the host's child records. */
   backgroundTaskState = (sessionId: string): AgentSessionBackgroundTaskState | null | undefined => {
     const session = this.sessions.get(sessionId)
     return session ? backgroundTaskState(session) : undefined

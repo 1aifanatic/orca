@@ -19,6 +19,7 @@ import {
   deriveAgentChildDisplayState,
   type AgentChildDisplayState
 } from './agent-status-child-work-display'
+import { agentChildWorkViewOffersStop } from './agent-child-work-stop'
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 import {
   agentStatusAuthorityObservedAt,
@@ -201,12 +202,6 @@ function viewName(view: AgentChildWorkView): string {
     usableAgentChildLabel(view.agentType) ??
     ''
   )
-}
-
-/** The strip offers this child its own stop: it is live, stoppable, and addressable by the id a
- *  targeted stop names. The host's command admission asks the same question of the same views. */
-export function agentChildWorkViewOffersStop(view: AgentChildWorkView): boolean {
-  return view.membership !== 'settled' && view.stoppable && view.providerId !== undefined
 }
 
 function rowFromView(

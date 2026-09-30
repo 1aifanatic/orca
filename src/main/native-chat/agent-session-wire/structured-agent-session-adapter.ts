@@ -332,10 +332,11 @@ export type StructuredAgentSessionAdapter = {
   supportsThreadGoal?(sessionId: string, agent?: string): boolean
   /** Whether this session writes context facts to its turn rows; `agent` answers one at rest. */
   recordsContextUsage?(sessionId: string, agent?: string): boolean
+  /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string
     fence: number
-    taskId?: string
+    taskIds: readonly string[]
   }): Promise<{ cancelled: boolean }>
   /** The stops this provider honours for a live session's background work; undefined when the
    *  adapter holds no live session for it. */
