@@ -97,8 +97,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (this.ptysById.get(ptyId) !== current || current?.incarnationId !== incarnation) {
         return
       }
-      // Why: without an identified owner (null) the foreground read keeps today's rules; with one
-      // whose process cannot be checked right now, silence from that read is never an exit.
+      // Foreground reads can recover activity, but cannot end an unverifiable process owner.
       if (verdict === null || verdict === 'unverifiable') {
         this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook, verdict === 'unverifiable')
       } else if (verdict === 'exited' && !recoverCompletedHook) {
@@ -202,11 +201,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         this.restoreDisprovedAgentExit(ptyId, confirmedStatus)
         return
       }
-      const answered =
-        result.controller === this.ptyController &&
-        result.available &&
-        typeof result.process === 'string'
-      if (!keepOnSilence || answered) {
+      if (!keepOnSilence) {
         if (!recoverCompletedHook) {
           this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
         }

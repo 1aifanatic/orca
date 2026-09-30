@@ -1,3 +1,4 @@
+import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import React, { createContext, useContext, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
@@ -64,6 +65,7 @@ export function PaletteLiveStatusProvider({
 }): React.JSX.Element {
   const now = useNow(30_000, active)
   const {
+    agentPresenceByPaneKey,
     agentStatusByPaneKey,
     runtimePaneTitlesByTabId,
     ptyIdsByTabId,
@@ -77,6 +79,7 @@ export function PaletteLiveStatusProvider({
     useShallow((s) =>
       active
         ? {
+            agentPresenceByPaneKey: s.agentPresenceByPaneKey,
             agentStatusByPaneKey: s.agentStatusByPaneKey,
             runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId,
             ptyIdsByTabId: s.ptyIdsByTabId,
@@ -99,7 +102,11 @@ export function PaletteLiveStatusProvider({
       agentStatusByPaneKey,
       migrationUnsupportedByPtyId
     )
-    const livePaneIds = buildLiveAgentStatusPaneIdsByTabId(entriesByTabId, now)
+    const livePaneIds = buildLiveAgentStatusPaneIdsByTabId(
+      entriesByTabId,
+      now,
+      agentPresenceByPaneKey
+    )
     return {
       liveAgentStatusByWorktreeId: getLiveAgentStatusByWorktreeId(
         agentStatusByPaneKey,
@@ -109,6 +116,7 @@ export function PaletteLiveStatusProvider({
       agentStatusPaneIdsByTabId: livePaneIds.paneIdsByTabId,
       stalePaneIdsByTabId: livePaneIds.stalePaneIdsByTabId,
       paneSources: {
+        agentPresenceByPaneKey,
         entriesByTabId,
         ptyIdsByTabId,
         runtimePaneTitlesByTabId,
@@ -122,6 +130,7 @@ export function PaletteLiveStatusProvider({
       now
     }
   }, [
+    agentPresenceByPaneKey,
     agentStatusByPaneKey,
     browserTabsByWorktree,
     migrationUnsupportedByPtyId,
@@ -143,7 +152,8 @@ export function PaletteLiveStatusProvider({
 /** Fresh rows suppress all title heuristics; stale rows suppress generated permission labels. */
 function buildLiveAgentStatusPaneIdsByTabId(
   entriesByTabId: ReadonlyMap<string, readonly AgentStatusEntry[]>,
-  now: number
+  now: number,
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
 ): {
   paneIdsByTabId: Record<string, ReadonlySet<string>>
   stalePaneIdsByTabId: Record<string, ReadonlySet<string>>
@@ -174,10 +184,17 @@ function buildLiveAgentStatusPaneIdsByTabId(
       stalePaneIdsByTabId[tabId] = stalePaneIds
     }
   }
+  for (const [paneKey, record] of Object.entries(agentPresenceByPaneKey ?? {})) {
+    const pane = parsePaneKey(paneKey)
+    if (pane && record.presence.process) {
+      paneIdsByTabId[pane.tabId] = new Set([...(paneIdsByTabId[pane.tabId] ?? []), pane.leafId])
+    }
+  }
   return { paneIdsByTabId, stalePaneIdsByTabId }
 }
 
 const EMPTY_LIVE_INPUTS = Object.freeze({
+  agentPresenceByPaneKey: {},
   agentStatusByPaneKey: {},
   runtimePaneTitlesByTabId: {},
   ptyIdsByTabId: {},

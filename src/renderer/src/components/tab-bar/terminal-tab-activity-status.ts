@@ -1,3 +1,4 @@
+import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import {
   readAgentAttentionUnreadReason,
   type ReadableAgentAttentionUnread
@@ -29,6 +30,7 @@ type TerminalTabActivityFlags = AgentPaneActivityFlags & {
 }
 
 type FlagsCache = {
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   agentStatusByPaneKey: Record<string, AgentStatusEntry> | undefined
   agentStatusEpoch: number | undefined
   flagsByTabId: Map<string, TerminalTabActivityFlags>
@@ -42,7 +44,8 @@ let flagsCache: FlagsCache | null = null
 
 function getTerminalTabActivityFlags(
   agentStatusByPaneKey: Record<string, AgentStatusEntry> | undefined,
-  agentStatusEpoch: number | undefined
+  agentStatusEpoch: number | undefined,
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
 ): Map<string, TerminalTabActivityFlags> {
   // Why: freshness is time-based, so the store bumps agentStatusEpoch without
   // replacing the map at the 30m stale boundary (createFreshnessScheduler).
@@ -51,6 +54,7 @@ function getTerminalTabActivityFlags(
   // on agentStatusEpoch — correctly de-spins. Invalidate on either changing.
   if (
     flagsCache &&
+    flagsCache.agentPresenceByPaneKey === agentPresenceByPaneKey &&
     flagsCache.agentStatusByPaneKey === agentStatusByPaneKey &&
     flagsCache.agentStatusEpoch === agentStatusEpoch
   ) {
@@ -63,6 +67,13 @@ function getTerminalTabActivityFlags(
     const identity = parseAgentStatusPaneKey(entry.paneKey || paneKey)
     if (!identity) {
       continue
+    }
+    const presence = agentPresenceByPaneKey?.[paneKey]?.presence
+    if (presence?.process) {
+      getOrCreateTerminalTabActivityFlags(flagsByTabId, identity.tabId).paneIds.add(identity.paneId)
+      if (presence.ended) {
+        continue
+      }
     }
     if (entry.restoredUnconfirmed) {
       const flags = getOrCreateTerminalTabActivityFlags(flagsByTabId, identity.tabId)
@@ -84,7 +95,13 @@ function getTerminalTabActivityFlags(
     applyAgentPaneActivityFlags(flags, entry)
   }
 
-  flagsCache = { agentStatusByPaneKey, agentStatusEpoch, flagsByTabId }
+  for (const [paneKey, record] of Object.entries(agentPresenceByPaneKey ?? {})) {
+    const identity = parseAgentStatusPaneKey(paneKey)
+    if (identity && record.presence.process) {
+      getOrCreateTerminalTabActivityFlags(flagsByTabId, identity.tabId).paneIds.add(identity.paneId)
+    }
+  }
+  flagsCache = { agentPresenceByPaneKey, agentStatusByPaneKey, agentStatusEpoch, flagsByTabId }
   return flagsByTabId
 }
 
@@ -124,6 +141,7 @@ function parseAgentStatusPaneKey(paneKey: string): { tabId: string; paneId: stri
 const EMPTY_PANE_IDS: ReadonlySet<string> = new Set()
 
 type TerminalTabActivityInput = {
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   // Why: launchAgent is read, not just carried — the status gate needs it to attribute a
   // bare spinner title to an agent (#9040). Narrowing it away here compiles (it is optional)
   // but silently drops the tab-bar dot back to the pre-#9040 behavior.
@@ -144,6 +162,7 @@ type TerminalTabActivityInput = {
  * Returns a `WorktreeStatus` primitive so the tab re-renders only when it flips.
  */
 export function resolveTerminalTabActivityStatus({
+  agentPresenceByPaneKey,
   tab,
   agentStatusByPaneKey,
   agentStatusEpoch,
@@ -151,7 +170,11 @@ export function resolveTerminalTabActivityStatus({
   ptyIdsByTabId,
   terminalLayout
 }: TerminalTabActivityInput): TerminalTabActivityStatus {
-  const flags = getTerminalTabActivityFlags(agentStatusByPaneKey, agentStatusEpoch).get(tab.id)
+  const flags = getTerminalTabActivityFlags(
+    agentStatusByPaneKey,
+    agentStatusEpoch,
+    agentPresenceByPaneKey
+  ).get(tab.id)
   return resolveWorktreeStatus({
     tabs: [tab],
     browserTabs: [],

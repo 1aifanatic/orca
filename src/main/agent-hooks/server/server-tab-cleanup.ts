@@ -137,7 +137,8 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
       this.notifyPaneKeyAliasPersistenceListener()
     }
     if (options?.emitStatusRowMutation !== false) {
-      this.commitStatusRowMutation(previousStatus, undefined)
+      const retained = this.retainProcessOwnerAfterCleanup(previousStatus)
+      this.commitStatusRowMutation(previousStatus, retained)
     }
     if (hadStatus || authorityChanged) {
       this.runtimeObservedStatusPaneKeys.delete(resolvedPaneKey)

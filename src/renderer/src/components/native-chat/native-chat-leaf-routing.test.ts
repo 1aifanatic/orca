@@ -191,7 +191,7 @@ describe('resolveNativeChatLeafRoute', () => {
         activeLeafId: 'exited-agent',
         chatLeafStillMounted: true,
         activeLeafIsEligible: true,
-        chatLeafHasConfirmedAgentExit: true
+        chatLeafAgentExit: 'exited'
       })
     ).toEqual({ chatLeafId: null, exitChat: true })
   })
@@ -204,7 +204,7 @@ describe('resolveNativeChatLeafRoute', () => {
         activeLeafId: 'agent-sibling',
         chatLeafStillMounted: true,
         activeLeafIsEligible: true,
-        chatLeafHasConfirmedAgentExit: true
+        chatLeafAgentExit: 'exited'
       })
     ).toEqual({ chatLeafId: 'agent-sibling', exitChat: false })
   })
@@ -241,6 +241,17 @@ describe('resolveNativeChatLeafRoute', () => {
         activeLeafId: 'agent-leaf',
         chatLeafStillMounted: true,
         activeLeafIsEligible: true
+      })
+    ).toEqual({ chatLeafId: null, exitChat: false })
+  })
+  it('keeps a startup request unbound until owner evidence arrives', () => {
+    expect(
+      resolveNativeChatLeafRoute({
+        isChatViewMode: true,
+        chatLeafId: null,
+        activeLeafId: 'new-pane',
+        chatLeafStillMounted: false,
+        activeLeafIsEligible: false
       })
     ).toEqual({ chatLeafId: null, exitChat: false })
   })

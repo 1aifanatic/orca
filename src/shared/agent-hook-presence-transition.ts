@@ -7,7 +7,11 @@ export function transitionHookPresence(
   previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload | undefined {
   const recorded = previous?.agentPresence
-  const owner = recorded && !recorded.ended && !previous?.providerSessionOnly ? recorded : undefined
+  // Dismissing a turn does not release its identified process owner.
+  const owner =
+    recorded && !recorded.ended && (recorded.process || !previous?.providerSessionOnly)
+      ? recorded
+      : undefined
   const sender = incoming.agentPresence?.process
   // Why: only an admitted exit is marked ended (Claude's process-ending SessionEnd, or a host-proved
   // exit); other agents' SessionEnd hooks are ordinary status updates.

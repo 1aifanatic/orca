@@ -1,3 +1,4 @@
+import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
 import { ipcRenderer } from 'electron'
 import type {
   AgentStatusCacheIdentity,
@@ -28,6 +29,11 @@ export const agentStatusApi = {
     ipcRenderer.invoke('agentStatus:getSnapshot'),
   inferInterrupt: (request: AgentInterruptInferenceRequest): Promise<boolean> =>
     ipcRenderer.invoke('agentStatus:inferInterrupt', request),
+  checkAgentPresence: (
+    paneKey: string,
+    expectedProcess: AgentProcessIdentity
+  ): Promise<AgentProcessVerdict> =>
+    ipcRenderer.invoke('agentStatus:checkAgentPresence', paneKey, expectedProcess),
   hasVerifiableAgentProcess: (paneKey: string): Promise<boolean> =>
     ipcRenderer.invoke('agentStatus:hasVerifiableAgentProcess', paneKey),
   inferQuestionAnswered: (request: AgentQuestionAnsweredInferenceRequest): Promise<boolean> =>

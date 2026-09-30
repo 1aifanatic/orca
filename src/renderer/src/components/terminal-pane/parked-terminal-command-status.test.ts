@@ -1,3 +1,4 @@
+import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry, AgentType } from '../../../../shared/agent-status-types'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
@@ -14,6 +15,7 @@ const DONE_SETTLE_MS = 1500
 const ROUTING = { connectionId: null }
 
 type MockStoreState = {
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   tabsByWorktree: Record<string, { id: string; launchAgent?: AgentType }[]>
   agentStatusByPaneKey: Record<string, AgentStatusEntry | undefined>
   retainedAgentsByPaneKey: Record<string, { agentType: AgentType } | undefined>
@@ -527,4 +529,32 @@ describe('readInFlightCommandCodeTurn', () => {
     delete mockStoreState.agentStatusByPaneKey[PANE_KEY]
     expect(readInFlightCommandCodeTurn(PANE_KEY)).toBeNull()
   })
+  it.each([PTY_ID_LOCAL, PTY_ID_SSH])(
+    'asks the host instead of applying command-finish compatibility to an identified owner (%s)',
+    async (ptyId) => {
+      mockStoreState.agentPresenceByPaneKey = {
+        [PANE_KEY]: {
+          presence: {
+            agent: 'claude',
+            process: { pid: 4001, platform: 'linux', startTime: 'birth' }
+          },
+          receivedAt: 1
+        }
+      }
+      mockStoreState.agentStatusByPaneKey[PANE_KEY] = makeStatusEntry()
+      const reconcileEndedProcess = vi.fn()
+      const confirmForegroundProcess = vi.fn()
+      vi.stubGlobal('window', {
+        api: { agentStatus: { reconcileEndedProcess }, pty: { confirmForegroundProcess } }
+      })
+      const policy = await createPolicy(ptyId)
+      policy.onCommandFinished(0)
+      await Promise.resolve()
+      expect(reconcileEndedProcess).toHaveBeenCalledWith(PANE_KEY)
+      expect(confirmForegroundProcess).not.toHaveBeenCalled()
+      expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
+      expect(mockStoreState.setPaneForegroundAgent).not.toHaveBeenCalled()
+      policy.dispose()
+    }
+  )
 })

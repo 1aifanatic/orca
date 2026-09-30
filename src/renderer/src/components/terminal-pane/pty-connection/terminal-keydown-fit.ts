@@ -174,6 +174,11 @@ export function installTerminalKeydownFit(session: ConnectPanePtySession): void 
   session.agentCompletionCoordinator = createAgentCompletionCoordinator({
     paneKey: session.cacheKey,
     statusLane: 'pty',
+    getAgentPresence: () =>
+      useAppStore.getState().agentPresenceByPaneKey[session.cacheKey]?.presence,
+    checkAgentPresence: async (process) =>
+      (await window.api.agentStatus.checkAgentPresence?.(session.cacheKey, process)) ??
+      'unverifiable',
     getPtyId: () => session.transport.getPtyId(),
     isRemotePtyId: (ptyId) =>
       Boolean(isRemoteExecutionHostPtyId(ptyId) || isRemoteRuntimePtyId(ptyId)),

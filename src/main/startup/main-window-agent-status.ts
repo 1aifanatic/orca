@@ -28,6 +28,7 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
   agentHookServer.setListener(
     ({
       paneKey,
+      agentPresence,
       tabId,
       worktreeId,
       connectionId,
@@ -56,9 +57,10 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
       }
       if (providerSessionOnly) {
         // Why: session_start just refreshes durable resume identity while Pi is idle; forward it without titles, telemetry, or status UI.
-        state.mainWindow?.webContents.send('agentStatus:set', {
+        const metadataEvent = {
           ...payload,
           paneKey,
+          ...(agentPresence ? { agentPresence } : {}),
           ...(launchToken ? { launchToken } : {}),
           tabId,
           worktreeId,
@@ -69,7 +71,9 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
           ...(providerSession ? { providerSession } : {}),
           ...(observation ? { observation } : {}),
           providerSessionOnly: true
-        })
+        }
+        state.mainWindow?.webContents.send('agentStatus:set', metadataEvent)
+        getDashboardPopoutWindow()?.webContents.send('agentStatus:set', metadataEvent)
         return
       }
       if (!restoredUnconfirmed) {
@@ -82,6 +86,7 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
         ...(authorityRestartId && isReplay !== true ? { authorityRestartId } : {}),
         ...payload,
         paneKey,
+        ...(agentPresence ? { agentPresence } : {}),
         ...(launchToken ? { launchToken } : {}),
         ...(terminalHandle ? { terminalHandle } : {}),
         tabId,

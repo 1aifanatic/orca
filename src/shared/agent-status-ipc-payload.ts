@@ -4,6 +4,7 @@
 // other. Re-exported from agent-status-types, so existing import sites are unchanged.
 
 import type { StructuredHostStatus } from './agent-hook-listener/listener-event'
+import type { AgentProcessPresence } from './agent-process-presence'
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
 import type { WithAgentStatusObservation } from './agent-status-observation'
 import type {
@@ -30,6 +31,8 @@ export type MigrationUnsupportedPtyEntry = {
 }
 
 export type AgentStatusIpcPayload = ParsedAgentStatusPayload & {
+  /** Execution-host owner; absent on hosts predating presence publication. */
+  agentPresence?: AgentProcessPresence
   /** Optional run-aware identity; absent on legacy hosts and compatibility projections. */
   runId?: AgentStatusRunId
   /** Host-owned process-incarnation attachment for the run-aware row. */

@@ -1,4 +1,8 @@
+import { useAgentOwnerExit } from './use-agent-owner-exit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { selectAgentPresence } from '@/lib/tab-agent-from-signals'
+import { selectAgentPresencesForTab } from '@/lib/agent-presence-selectors'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '../../store'
 import { getCachedTerminalTabForWorktree } from './terminal-tab-lookup'
@@ -56,8 +60,12 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
     selectTerminalTabAgentTypesByLeaf(
       store.agentStatusByPaneKey,
       tabId,
-      store.paneForegroundAgentByPaneKey
+      store.paneForegroundAgentByPaneKey,
+      store.agentPresenceByPaneKey
     )
+  )
+  const agentPresenceByPaneKey = useAppStore((store) =>
+    selectAgentPresencesForTab(store.agentPresenceByPaneKey, tabId)
   )
   const savedLayout = useAppStore((store) => store.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
   const terminalTab = useAppStore((store) =>
@@ -121,6 +129,12 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
   )
   const isChatEligibleForLeaf = useCallback(
     (leafId: string | null): boolean => {
+      const owner = selectAgentPresence(
+        leafId ? agentPresenceByPaneKey[makePaneKey(tabId, leafId)]?.presence : undefined
+      )
+      if (owner === null) {
+        return false
+      }
       const detectedAgent = leafId ? (tabAgentTypeByLeaf[leafId] ?? null) : null
       const launchAgent = nativeChatLaunchAgentForLeaf({
         launchAgent: terminalTab?.launchAgent,
@@ -139,6 +153,8 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
     },
     [
       tabAgentTypeByLeaf,
+      agentPresenceByPaneKey,
+      tabId,
       nativeChatEnabled,
       nativeChatTranscriptIsLocalReadable,
       terminalTab?.launchAgent,
@@ -179,8 +195,13 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
     [chatLeafId, isChatViewMode, setTabLayout, setTabViewMode, tabId, unifiedTabId, worktreeId]
   )
-  const handleConfirmedAgentExit = useCallback(
+  const handleAgentExit = useCallback(
     (leafId: string): void => {
+      const presence =
+        useAppStore.getState().agentPresenceByPaneKey[makePaneKey(tabId, leafId)]?.presence
+      if (presence?.process && !presence.ended) {
+        return
+      }
       if (leafId !== chatLeafId) {
         return
       }
@@ -193,17 +214,18 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
           activeLeafId,
           chatLeafStillMounted: panes.some((pane) => pane.leafId === chatLeafId),
           activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
-          chatLeafHasConfirmedAgentExit: true
+          chatLeafAgentExit: presence?.process ? 'exited' : 'legacy-unidentified'
         })
       )
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode]
+    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode, tabId]
   )
+  useAgentOwnerExit(agentPresenceByPaneKey, tabId, chatLeafId, handleAgentExit)
   useEffect(() => {
-    onAgentExitedRef.current = handleConfirmedAgentExit
+    onAgentExitedRef.current = handleAgentExit
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-  }, [handleConfirmedAgentExit])
+  }, [handleAgentExit])
   const canToggleChatForLeaf = useCallback(
     (leafId: string | null): boolean => {
       // Scope the "always allow toggling back" rule to the leaf showing chat; must not make an unsupported sibling look eligible.

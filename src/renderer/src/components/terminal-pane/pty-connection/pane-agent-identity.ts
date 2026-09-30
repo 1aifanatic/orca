@@ -1,4 +1,5 @@
 import { agentTypeToIconAgent } from '@/lib/agent-status'
+import { applyLegacyUnidentifiedAgentSignal } from '@/lib/legacy-unidentified-agent-presence'
 import { useAppStore } from '@/store'
 import { getConnectionId } from '@/lib/connection-context'
 import { CONFIRMED_SHELL_MODE_RESET } from '../../../../../shared/terminal-mode-reset-profiles'
@@ -129,8 +130,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       }
       return
     }
-    // Why: only a pane whose agent process the host can check keeps its row on an unanswered read;
-    // every other pane keeps today's cleanup until the renderer reads the owner record (step 2).
+    // Temporary no-identity compatibility until step 3; the shared drop also fences newly identified owners.
     // The drop stays armed while main answers, so a new command start still cancels it.
     const dropUnlessVerifiable = (verifiable: boolean): void => {
       if (session.deferredCommandFinishedStatusDrop !== dropStatus) {
@@ -194,23 +194,30 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       // Why: a confirmed local shell proves any hibernation record for this pane is stale;
       // otherwise the tab resolver can repaint the exited agent from sleeping occupancy.
       const state = useAppStore.getState()
-      const sleepingRecord = session.getSleepingRecordForPane(state)
-      if (sleepingRecord) {
-        session.clearSleepingRecordProviderDuplicates(state, sleepingRecord)
+      const presence = state.agentPresenceByPaneKey?.[session.cacheKey]?.presence
+      if (presence?.process) {
+        window.api?.agentStatus?.reconcileEndedProcess?.(session.cacheKey)
       }
-      session.clearStaleAgentTabTitleOnConfirmedShell()
+      applyLegacyUnidentifiedAgentSignal(presence, () => {
+        const sleepingRecord = session.getSleepingRecordForPane(state)
+        if (sleepingRecord) {
+          session.clearSleepingRecordProviderDuplicates(state, sleepingRecord)
+        }
+        session.clearStaleAgentTabTitleOnConfirmedShell()
+      })
       // Why: a hard-killed agent leaves mouse/focus/kitty modes armed, and the
       // surviving shell then receives pointer moves as typed SGR reports; the
       // replay guard keeps xterm's auto-replies from leaking to the shell.
       session.writeInputModeGround(CONFIRMED_SHELL_MODE_RESET)
-      // Why: no 133;D backs these proofs, so a deferred command-finished drop keeps its own read.
+      // Reopen the sample for the next agent typed into a surviving shell.
       if (reason === 'process-exit') {
-        // Why: reopen the one-shot visible sample so the next agent typed here is identified.
         session.visibleForegroundSamplePending = false
         session.visibleForegroundSampleSettled = false
       }
       if (reason === 'visible-pty' || reason === 'process-exit') {
-        state.clearAgentLaunchConfig(session.cacheKey)
+        applyLegacyUnidentifiedAgentSignal(presence, () =>
+          state.clearAgentLaunchConfig(session.cacheKey)
+        )
         return
       }
       session.settleDeferredCommandFinishedStatusDrop({ confirmedShell: true })

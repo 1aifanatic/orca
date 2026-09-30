@@ -1,3 +1,4 @@
+import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
 import type {
   AgentStatusCacheIdentity,
   AgentStatusClearIpcPayload,
@@ -19,6 +20,10 @@ export type AgentStatusApi = {
   /** Guarded clear for an answered AskUserQuestion wait — the CLI emits no hook at answer time, so the renderer reports the submit keystroke. */
   inferQuestionAnswered: (request: AgentQuestionAnsweredInferenceRequest) => Promise<boolean>
   /** Whether the host can check this pane's agent process; without that, silence keeps today's cleanup. */
+  checkAgentPresence?: (
+    paneKey: string,
+    expectedProcess: AgentProcessIdentity
+  ) => Promise<AgentProcessVerdict>
   hasVerifiableAgentProcess?: (paneKey: string) => Promise<boolean>
   /** Listen for PTYs on a legacy numeric pane key that have registry-backed UUID pane proof. */
   onMigrationUnsupported: (callback: (entry: MigrationUnsupportedPtyEntry) => void) => () => void

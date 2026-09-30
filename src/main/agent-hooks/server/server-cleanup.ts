@@ -10,14 +10,12 @@ import type { EnrichedAgentHookEventPayload } from './server-types'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 
 export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFences {
-  /** The resume-identity remnant of a dropped row: a `providerSessionOnly` entry carries no state
-   *  claim — it cannot gate a pane `working` — so it survives teardowns that end the pane's live
-   *  claims. Returns null when the row has no resumable session to keep. */
+  /** Keep process ownership and resume identity without retaining a turn-state claim. */
   protected toRetainedProviderSessionRow(
     entry: EnrichedAgentHookEventPayload | null | undefined
   ): EnrichedAgentHookEventPayload | null {
     if (
-      !entry?.providerSession ||
+      (!entry?.providerSession && !entry?.agentPresence?.process) ||
       !entry.payload.agentType ||
       entry.payload.agentType === 'unknown'
     ) {
@@ -47,6 +45,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         retained,
         AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
       )
+      this.emitEnrichedStatus(retained)
     }
     this.commitStatusRowMutation(deleted, retained)
     this.scheduleStatusPersist()
@@ -117,10 +116,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     paneKeys: Iterable<string>,
     options?: {
       endedPresence?: AgentProcessPresence
-      /** The pane's PTY outlived its agent (a confirmed shell foreground), so the session can still
-       *  be resumed in place — keep the `providerSessionOnly` remnant the paired `agentStatus:drop`
-       *  minted for exactly this case. A certified PTY exit passes nothing: there is no pane left to
-       *  resume into, and dropping it matches what `clearProviderPtyState` already does. */
+      /** Keep resume metadata when the terminal outlives its agent; identified exits always retain their host fact. */
       preserveResumeIdentity?: boolean
     }
   ): number {
@@ -131,20 +127,27 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       if (!this.hasLiveClaimsForPaneKey(resolvedPaneKey)) {
         continue
       }
-      const resumeRow = options?.preserveResumeIdentity
-        ? this.toRetainedProviderSessionRow(
-            this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
-              | EnrichedAgentHookEventPayload
-              | undefined
-          )
-        : null
-      const retained =
-        resumeRow && options?.endedPresence
-          ? { ...resumeRow, agentPresence: options.endedPresence }
-          : resumeRow
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.
       const previous = this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
         | EnrichedAgentHookEventPayload
         | undefined
+      const endedPresence =
+        options?.endedPresence ??
+        (previous?.agentPresence?.process
+          ? { ...previous.agentPresence, ended: true as const }
+          : undefined)
+      const resumeRow =
+        options?.preserveResumeIdentity || endedPresence
+          ? this.toRetainedProviderSessionRow(previous)
+          : null
+      const retained =
+        resumeRow && endedPresence
+          ? {
+              ...resumeRow,
+              agentPresence: endedPresence,
+              receivedAt: Math.max(Date.now(), resumeRow.receivedAt + 1)
+            }
+          : resumeRow
       this.clearPaneState(resolvedPaneKey, { emitStatusRowMutation: false })
       if (retained) {
         admitLegacyAgentStatus(
@@ -155,6 +158,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         )
         this.scheduleStatusPersist()
         this.notifyStatusChangeListeners()
+        this.emitEnrichedStatus(retained)
       }
       this.commitStatusRowMutation(previous, retained)
       cleared += 1
@@ -182,7 +186,8 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     )
     this.connectionTimestampWatermarkById.set(normalizedConnectionId, clearedAt)
     let statusChanged = false
-    for (const [paneKey, rawEntry] of this.state.lastStatusByPaneKey) {
+    const entriesBeforeCleanup = [...this.state.lastStatusByPaneKey]
+    for (const [paneKey, rawEntry] of entriesBeforeCleanup) {
       const entry = rawEntry as EnrichedAgentHookEventPayload
       // Why: unstamped rows can't be attributed to one host; leave them for normal pane teardown.
       if (entry.connectionId !== normalizedConnectionId) {
@@ -191,7 +196,8 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const deleted = this.deleteStatusEntry(paneKey, { preserveAuthority: true })
       if (deleted) {
         statusChanged = true
-        this.commitStatusRowMutation(deleted, undefined)
+        const retained = this.retainProcessOwnerAfterCleanup(deleted)
+        this.commitStatusRowMutation(deleted, retained)
         if (deleted.payload.agentType === 'codex') {
           // Why: a replacement remote process may reuse the pane; don't merge it with the lost connection's children.
           this.state.codexSubagentRosterByPaneKey.delete(paneKey)

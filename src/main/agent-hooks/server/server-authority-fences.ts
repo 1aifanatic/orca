@@ -1,4 +1,8 @@
-import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
+import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
+import {
+  admitLegacyAgentStatus,
+  clearPaneCacheState
+} from '../../../shared/agent-hook-listener/listener-state'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { AgentHookServerAuthorityAliases } from './server-authority-aliases'
 import type {
@@ -8,6 +12,29 @@ import type {
 } from './server-types'
 
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
+  /** Generic cache cleanup cannot decide whether the recorded process ended. */
+  protected retainProcessOwnerAfterCleanup(
+    entry: EnrichedAgentHookEventPayload | undefined
+  ): EnrichedAgentHookEventPayload | undefined {
+    if (!entry?.agentPresence?.process) {
+      return undefined
+    }
+    const { launchToken: _launchToken, ...metadata } = entry
+    const retained: EnrichedAgentHookEventPayload = {
+      ...metadata,
+      providerSessionOnly: true,
+      retainedForLiveness: true
+    }
+    admitLegacyAgentStatus(
+      this.state,
+      'main-status-cleanup',
+      retained,
+      AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+    )
+    this.emitEnrichedStatus(retained)
+    return retained
+  }
+
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.
   retirePaneAuthority(paneKey: string, retirementId?: string): void {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
@@ -203,7 +230,8 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.notifyPaneKeyAliasPersistenceListener()
     }
     for (const row of clearedStatusRows.values()) {
-      this.commitStatusRowMutation(row, undefined)
+      const retained = this.retainProcessOwnerAfterCleanup(row)
+      this.commitStatusRowMutation(row, retained)
     }
     if (statusChanged) {
       this.scheduleStatusPersist()

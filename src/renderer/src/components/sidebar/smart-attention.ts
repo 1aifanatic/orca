@@ -17,6 +17,8 @@ import {
   type MigrationUnsupportedPtyEntry
 } from '../../../../shared/agent-status-types'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
+import { selectAgentPresencesForTab } from '@/lib/agent-presence-selectors'
 
 /**
  * Ordinal class for the "Smart" sort. Lower number = more attention-demanding.
@@ -59,30 +61,7 @@ export type WorktreeAttention = {
 
 export const IDLE: WorktreeAttention = { cls: 5, attentionTimestamp: 0 }
 
-export function hasFreshAttributedAgentStatus(
-  agentStatusByPaneKey: Record<string, AgentStatusEntry> | undefined,
-  now: number,
-  tabsByWorktree: Record<string, TerminalTab[]>
-): boolean {
-  const freshUnstampedTabIds = new Set<string>()
-  for (const entry of Object.values(agentStatusByPaneKey ?? {})) {
-    const parsed = parsePaneKey(entry.paneKey)
-    if (parsed === null || !isExplicitAgentStatusFresh(entry, now, AGENT_STATUS_STALE_AFTER_MS)) {
-      continue
-    }
-    if (entry.worktreeId) {
-      return true
-    }
-    // Why: hook rows can omit the worktree stamp but still map via paneKey to a mirrored tab — enough to end cold-start.
-    freshUnstampedTabIds.add(parsed.tabId)
-  }
-  if (freshUnstampedTabIds.size === 0) {
-    return false
-  }
-  return Object.values(tabsByWorktree).some((tabs) =>
-    tabs.some((tab) => freshUnstampedTabIds.has(tab.id))
-  )
-}
+export { hasFreshAttributedAgentStatus } from './smart-attention-attribution'
 
 /**
  * Return the timestamp of the most recent `done`/`blocked`/`waiting` history row, ignoring
@@ -278,6 +257,7 @@ function leafIdFromPaneKey(paneKey: string): string | null {
 
 /** Renderer state a single tab's panes are resolved from. */
 export type TabPaneInputSources = {
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   entriesByTabId: ReadonlyMap<string, AgentStatusEntry[]>
   ptyIdsByTabId: Record<string, string[]>
   runtimePaneTitlesByTabId: Record<string, Record<number, string>>
@@ -301,7 +281,20 @@ export function collectTabPaneInputs(
   const hookLeafIds = new Set<string>()
   // Stale hooks still suppress one-shot permission titles, matching worktree and tab status dots.
   const permissionHookLeafIds = new Set<string>()
+  for (const [paneKey, record] of Object.entries(
+    selectAgentPresencesForTab(sources.agentPresenceByPaneKey, tab.id)
+  )) {
+    const leafId = leafIdFromPaneKey(paneKey)
+    if (leafId && record.presence.process) {
+      hookLeafIds.add(leafId)
+      permissionHookLeafIds.add(leafId)
+    }
+  }
   for (const entry of sources.entriesByTabId.get(tab.id) ?? []) {
+    const owner = sources.agentPresenceByPaneKey?.[entry.paneKey]?.presence
+    if (owner?.process && owner.ended) {
+      continue
+    }
     panes.push({ kind: 'hook', entry, hasLivePty })
     const leafId = leafIdFromPaneKey(entry.paneKey)
     if (leafId !== null) {
@@ -371,7 +364,8 @@ export function buildAttentionByWorktree(
   ptyIdsByTabId: Record<string, string[]>,
   now: number,
   migrationUnsupportedByPtyId?: Record<string, MigrationUnsupportedPtyEntry>,
-  terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot>
+  terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot>,
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
 ): Map<string, WorktreeAttention> {
   const byTab = buildExplicitEntriesByTabId(agentStatusByPaneKey, migrationUnsupportedByPtyId)
   const byAttributedWorktree = buildExplicitEntriesByWorktreeId(agentStatusByPaneKey)
@@ -382,6 +376,7 @@ export function buildAttentionByWorktree(
     }
   }
   const paneSources: TabPaneInputSources = {
+    agentPresenceByPaneKey,
     entriesByTabId: byTab,
     ptyIdsByTabId,
     runtimePaneTitlesByTabId,
@@ -394,6 +389,10 @@ export function buildAttentionByWorktree(
     // Why: hook stamps can precede tab mirroring; once mirrored, live tab ownership wins so both worktrees aren't promoted.
     const panes: PaneInput[] = (byAttributedWorktree.get(worktree.id) ?? [])
       .filter((entry) => {
+        const owner = agentPresenceByPaneKey?.[entry.paneKey]?.presence
+        if (owner?.process && owner.ended) {
+          return false
+        }
         const parsed = parsePaneKey(entry.paneKey)
         return parsed !== null && !mirroredTabIds.has(parsed.tabId)
       })

@@ -80,6 +80,13 @@ export function registerAgentStatusRowTeardownIpcHandlers(): void {
     if (typeof paneKey !== 'string' || !isValidPaneKey(paneKey)) {
       return
     }
+    if (agentHookServer.hasVerifiableAgentProcess(paneKey)) {
+      // Desktop signals request an owner check; they cannot certify its exit.
+      void agentHookServer.checkAgentPresence(paneKey).catch((err) => {
+        console.warn('[agent-hooks] owner process check failed:', err)
+      })
+      return
+    }
     try {
       // Why: a process-table-confirmed agent exit is exactly the case the dismissal above excludes
       // — the pane's agent is NOT still alive — so its latches must go with the row (STA-4612).

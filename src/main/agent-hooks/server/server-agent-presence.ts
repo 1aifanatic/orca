@@ -1,6 +1,7 @@
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import {
   isSameAgentProcess,
+  type AgentProcessIdentity,
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
@@ -29,9 +30,21 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     return presence?.process !== undefined && !presence.ended
   }
 
-  checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
+  checkAgentPresence(
+    paneKey: string,
+    expectedProcess?: AgentProcessIdentity
+  ): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
+    if (expectedProcess) {
+      const recorded = row?.agentPresence
+      if (!recorded?.process || !isSameAgentProcess(recorded.process, expectedProcess)) {
+        return Promise.resolve('unverifiable')
+      }
+      if (recorded.ended) {
+        return Promise.resolve('exited')
+      }
+    }
     // Why: an ended owner already published its exit, and an owner no hook identified cannot be checked.
     if (!row?.agentPresence?.process || row.agentPresence.ended) {
       return Promise.resolve(null)

@@ -1,5 +1,7 @@
 import type { AgentStatusEntry, AgentType } from '../../../../shared/agent-status-types'
 import type { PaneForegroundAgentEntry } from '../../store/slices/pane-foreground-agent'
+import type { AgentPresenceByPaneKey } from '../../store/slices/agent-presence'
+import { selectAgentPresence } from '../../lib/tab-agent-from-signals'
 
 export type TerminalTabAgentTypeState = Record<string, AgentStatusEntry>
 export type TerminalTabAgentTypesByLeaf = Readonly<Record<string, AgentType>>
@@ -9,6 +11,7 @@ type SelectorDependencies = {
 }
 
 const EMPTY_AGENT_TYPES_BY_LEAF: TerminalTabAgentTypesByLeaf = Object.freeze({})
+const EMPTY_PRESENCE: AgentPresenceByPaneKey = Object.freeze({})
 const EMPTY_FOREGROUND_AGENT_BY_PANE_KEY: Record<string, PaneForegroundAgentEntry> = Object.freeze(
   {}
 )
@@ -32,16 +35,23 @@ export function createTerminalTabAgentTypeSelector(
 ): (
   state: TerminalTabAgentTypeState,
   tabId: string,
-  foreground?: Record<string, PaneForegroundAgentEntry>
+  foreground?: Record<string, PaneForegroundAgentEntry>,
+  presence?: AgentPresenceByPaneKey
 ) => TerminalTabAgentTypesByLeaf {
   let cachedState: TerminalTabAgentTypeState | null = null
   let cachedForeground: Record<string, PaneForegroundAgentEntry> | null = null
+  let cachedPresence: AgentPresenceByPaneKey | null = null
   let cachedByTabId = new Map<string, TerminalTabAgentTypesByLeaf>()
 
-  return (state, tabId, foreground = EMPTY_FOREGROUND_AGENT_BY_PANE_KEY) => {
+  return (
+    state,
+    tabId,
+    foreground = EMPTY_FOREGROUND_AGENT_BY_PANE_KEY,
+    presence = EMPTY_PRESENCE
+  ) => {
     // Why: production writes replace this map. Its identity lets unrelated
     // Zustand notifications skip the global scan entirely.
-    if (state !== cachedState || foreground !== cachedForeground) {
+    if (state !== cachedState || foreground !== cachedForeground || presence !== cachedPresence) {
       const previousByTabId = cachedByTabId
       const nextByTabId = new Map<string, Record<string, AgentType>>()
       for (const [paneKey, entry] of Object.entries(state)) {
@@ -80,6 +90,25 @@ export function createTerminalTabAgentTypeSelector(
         }
       }
 
+      for (const [paneKey, record] of Object.entries(presence)) {
+        const owner = selectAgentPresence(record.presence)
+        if (owner === undefined) {
+          continue
+        }
+        const separator = paneKey.indexOf(':')
+        if (separator <= 0) {
+          continue
+        }
+        const entryTabId = paneKey.slice(0, separator)
+        const leafId = paneKey.slice(separator + 1)
+        const byLeaf = nextByTabId.get(entryTabId) ?? {}
+        if (owner === null) {
+          delete byLeaf[leafId]
+        } else {
+          byLeaf[leafId] = owner
+        }
+        nextByTabId.set(entryTabId, byLeaf)
+      }
       const stabilizedByTabId = new Map<string, TerminalTabAgentTypesByLeaf>()
       for (const [entryTabId, byLeaf] of nextByTabId) {
         stabilizedByTabId.set(
@@ -90,6 +119,7 @@ export function createTerminalTabAgentTypeSelector(
       cachedByTabId = stabilizedByTabId
       cachedState = state
       cachedForeground = foreground
+      cachedPresence = presence
     }
     return cachedByTabId.get(tabId) ?? EMPTY_AGENT_TYPES_BY_LEAF
   }

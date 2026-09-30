@@ -1,4 +1,5 @@
 import type { AppState } from '@/store'
+import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
 import {
@@ -55,10 +56,12 @@ export type AgentActivityInput = Pick<
   | 'retainedAgentsByPaneKey'
 > & {
   tabsByWorktree: AgentActivityTabsByWorktree
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   runtimeAgentOrchestrationByPaneKey?: AppState['runtimeAgentOrchestrationByPaneKey']
 }
 
 type AgentActivityCache = {
+  agentPresenceByPaneKey?: AgentPresenceByPaneKey
   tabsByWorktree: AgentActivityTabsByWorktree
   agentStatusEpoch: number
   migrationUnsupportedByPtyId: AppState['migrationUnsupportedByPtyId']
@@ -82,6 +85,7 @@ function getWorktreeAgentActivitySummaries(
   const runtimeAgentOrchestrationByPaneKey = state.runtimeAgentOrchestrationByPaneKey
   if (
     agentActivityCache &&
+    agentActivityCache.agentPresenceByPaneKey === state.agentPresenceByPaneKey &&
     agentActivityCache.tabsByWorktree === state.tabsByWorktree &&
     agentActivityCache.agentStatusEpoch === state.agentStatusEpoch &&
     agentActivityCache.migrationUnsupportedByPtyId === state.migrationUnsupportedByPtyId &&
@@ -126,6 +130,13 @@ function getWorktreeAgentActivitySummaries(
       continue
     }
     const summary = summaryForWorktree(worktreeId)
+    const presence = state.agentPresenceByPaneKey?.[paneKey]?.presence
+    if (presence?.process) {
+      addAgentStatusPaneId(summary, paneIdentity.tabId, paneIdentity.paneId)
+      if (presence.ended) {
+        continue
+      }
+    }
     if (entry.restoredUnconfirmed) {
       addAgentStatusPaneId(summary, paneIdentity.tabId, paneIdentity.paneId)
       continue
@@ -144,6 +155,14 @@ function getWorktreeAgentActivitySummaries(
     applyAgentPaneActivityFlags(summary, entry)
   }
 
+  for (const [paneKey, record] of Object.entries(state.agentPresenceByPaneKey ?? {})) {
+    const identity = parseAgentStatusPaneIdentity(paneKey)
+    const worktreeId =
+      record.worktreeId ?? (identity ? tabIdToWorktreeId.get(identity.tabId) : undefined)
+    if (identity && worktreeId && record.presence.process) {
+      addAgentStatusPaneId(summaryForWorktree(worktreeId), identity.tabId, identity.paneId)
+    }
+  }
   for (const unsupported of Object.values(state.migrationUnsupportedByPtyId ?? {})) {
     const entry = migrationUnsupportedToAgentStatusEntry(unsupported)
     const worktreeId = entry ? worktreeIdForPaneKey(entry.paneKey, tabIdToWorktreeId) : null
@@ -184,6 +203,7 @@ function getWorktreeAgentActivitySummaries(
   }
 
   agentActivityCache = {
+    agentPresenceByPaneKey: state.agentPresenceByPaneKey,
     tabsByWorktree: state.tabsByWorktree,
     agentStatusEpoch: state.agentStatusEpoch,
     migrationUnsupportedByPtyId: state.migrationUnsupportedByPtyId,
