@@ -191,3 +191,29 @@ it('retires a local folder-workspace split without a git worktree row', async ()
   await p.connecting
   expect(window.api.pty.kill).toHaveBeenCalledTimes(2)
 })
+
+it('commits the explicit split close in main by its leaf without waiting for its write', async () => {
+  const p = await preparePendingSplitClose()
+  // Main's durable write never settles here: the pane must still leave and be killed at once.
+  const closeTerminalSurface = vi.fn(() => new Promise<void>(() => {}))
+  Object.assign(window.api, { session: { ...window.api.session, closeTerminalSurface } })
+  p.actions.executeClosePane(1)
+  expect(closeTerminalSurface).toHaveBeenCalledExactlyOnceWith({
+    worktreeId: 'workspace',
+    target: { kind: 'pane', tabId: p.tabId, leafId: p.leafId }
+  })
+  expect(p.transports.has(1)).toBe(false)
+  expect(p.state.terminalLayoutsByTabId[p.tabId].ptyIdsByLeafId?.[p.leafId]).toBeUndefined()
+  expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith('pty-restored')
+})
+
+it('asks main to stop the split before its close intent retires the saved binding', async () => {
+  const p = await preparePendingSplitClose()
+  const closeTerminalSurface = vi.fn(() => Promise.resolve())
+  Object.assign(window.api, { session: { ...window.api.session, closeTerminalSurface } })
+  p.actions.executeClosePane(1)
+  // Main resolves the stop's owner by the pane's saved incarnation, which the intent deletes.
+  const [killOrder] = vi.mocked(window.api.pty.kill).mock.invocationCallOrder
+  const [closeOrder] = closeTerminalSurface.mock.invocationCallOrder
+  expect(killOrder).toBeLessThan(closeOrder)
+})

@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import type { PtyRendererDelivery } from '../session'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { Store } from '../../../persistence'
 import type { IPtyProvider } from '../../../providers/types'
@@ -66,7 +66,12 @@ export type PtyRuntimeControllerDeps = {
   shutdownProviderAndDetectExit: (
     provider: IPtyProvider,
     id: string,
-    opts: { immediate?: boolean; keepHistory?: boolean; deadlineMs?: number }
+    opts: {
+      immediate?: boolean
+      keepHistory?: boolean
+      deadlineMs?: number
+      expectedIncarnationId?: string
+    }
   ) => Promise<boolean>
   rememberSyntheticKillExit: (id: string, incarnationId?: string) => void
   rememberRetiredRejectedPty: (id: string) => void
@@ -82,8 +87,9 @@ export type PtyRuntimeControllerDeps = {
   }
   trustedTerminalHandleEnv: Set<string>
   retiredRejectedPtyIds: Map<string, NodeJS.Timeout>
-  reversibleStopOwnersByPtyId: Map<string, number>
-  mainWindow: BrowserWindow
+  mainWindow?: PtyRendererDelivery
+  transitionSpawnHiddenRendererPtyDeliveryState?: (id: string, hidden: boolean) => void
+  syncPtyBackgroundedDelivery?: (id: string, caller: string) => void
 }
 
 export type { StablePaneOwner }

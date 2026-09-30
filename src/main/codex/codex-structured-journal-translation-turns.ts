@@ -43,11 +43,12 @@ export function codexTurnLifecycleBody(
   return agentJournalTurnBody(turnLifecycle)
 }
 
-/** `turn/completed` is Codex's only turn-end notification; a missing status is a clean finish. */
+/** Maps a `turn/completed` status, live or restored. Only `interrupted` is a stop;
+ *  a failed turn completed, and `codexTurnOutcome` says it failed. */
 export function codexTurnLifecycleState(
   status: string | null
 ): Extract<AgentJournalTurnLifecycleState, 'completed' | 'interrupted'> {
-  return status === null || status === 'completed' ? 'completed' : 'interrupted'
+  return status === 'interrupted' ? 'interrupted' : 'completed'
 }
 
 /**

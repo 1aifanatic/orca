@@ -12,7 +12,8 @@ import {
   launchDaemonChild,
   terminateLaunchedDaemonChild
 } from './daemon-launched-child'
-import { getDaemonEntryPath, probeDaemonSocket as probeSocket } from './daemon-launch-paths'
+import { probeDaemonEndpoint } from './daemon-endpoint-verdict'
+import { getDaemonEntryPath } from './daemon-launch-paths'
 import { materializeRelocatedDaemonHost } from './daemon-host-relocation'
 import { DAEMON_RECOVERY_BUDGET_MS, daemonRecoveryProbeTimeoutMs } from './daemon-recovery-budget'
 import { cleanupDaemonForProtocol } from './daemon-protocol-cleanup'
@@ -109,7 +110,8 @@ export function createOutOfProcessLauncher(
         recoveryDeadlineMs,
         attributedReason,
         releaseAdoptionClient,
-        preserveDaemon
+        preserveDaemon,
+        launchNonce
       })
       if (preservedHandle) {
         return preservedHandle
@@ -171,7 +173,7 @@ export function createOutOfProcessLauncher(
       } catch (error) {
         if (error instanceof DaemonEndpointOwnershipError) {
           await terminateLaunchedDaemonChild(launched.child)
-          unlinkOwnedDaemonPidFile(pidPath, launched.child.pid as number, launchNonce)
+          unlinkOwnedDaemonPidFile(pidPath, launched.identity.pid, launchNonce)
           throw error
         }
         // Why: another client may have adopted this live process; keep its pid record until exit, but remove one published after an early exit.
@@ -181,7 +183,7 @@ export function createOutOfProcessLauncher(
             return
           }
           pidRecordRemoved = true
-          unlinkOwnedDaemonPidFile(pidPath, launched.child.pid as number, launchNonce)
+          unlinkOwnedDaemonPidFile(pidPath, launched.identity.pid, launchNonce)
         }
         launched.child.once('exit', removeExitedPidRecord)
         if (
@@ -205,7 +207,7 @@ export function createOutOfProcessLauncher(
       // after it — past the kill, the fork and the lease. Clamping to the remainder yields a 1ms
       // probe that loses to its own timer against a live socket, turning the rescue into the total
       // daemon loss it exists to prevent.
-      if (await probeSocket(socketPath)) {
+      if ((await probeDaemonEndpoint(socketPath, pidPath)).status === 'live') {
         console.warn(
           '[daemon] DEGRADED MODE: adopting the daemon that owns the endpoint after a replacement could not publish onto it. Existing sessions keep working; fresh terminals run on the local provider WITHOUT daemon persistence until you restart the daemon (Manage Sessions → Restart).'
         )

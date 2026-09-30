@@ -1,3 +1,5 @@
+import { rollbackWorkspaceSessionAfterFailedAsyncWrite } from '../../../persistence/restoring-sessions/workspace-session-write-rollback'
+import { cloneWorkspaceSessionState } from '../../../persistence/restoring-sessions/session-owner-fields'
 import { toSshExecutionHostId } from '../../../../shared/execution-host'
 import { makePaneKey, parsePaneKey } from '../../../../shared/stable-pane-id'
 import { UNVERIFIED_PROCESS_EXIT_CODE } from '../../../../shared/terminal-exit-cause'
@@ -6,11 +8,7 @@ import { retireTerminalSurfaceFromPersistence } from '../../../runtime/mobile-se
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { IPtyProvider, PtySpawnOptions, PtySpawnResult } from '../../../providers/types'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
-import {
-  isDaemonEndpointGoneError,
-  TerminalHostGoneError,
-  TerminalSessionOwnerUnverifiedError
-} from '../../../daemon/daemon-errors'
+import { TerminalSessionOwnerUnverifiedError } from '../../../daemon/daemon-errors'
 import { ptyIncarnationById, ptyOwnership } from '../provider/ownership-state'
 import { isHostReportedPtyAbsenceError, isObservedPtyExitEvidence } from '../provider/liveness'
 import { clearProviderPtyState } from '../provider/state-cleanup'
@@ -98,8 +96,7 @@ export function resolveStablePaneOwner(
   }
   const registeredConnectionId = ptyOwnership.get(ptyId)
   const parsedSshId = registeredConnectionId === undefined ? parseAppSshPtyId(ptyId) : null
-  const ownerConnectionId = registeredConnectionId ?? parsedSshId?.connectionId ?? null
-  if (ownerConnectionId !== (connectionId ?? null)) {
+  if ((registeredConnectionId ?? parsedSshId?.connectionId ?? null) !== (connectionId ?? null)) {
     throw new Error('terminal_pane_owner_host_mismatch')
   }
   const runtimeIncarnationId = ptyIncarnationById.get(ptyId)
@@ -121,41 +118,50 @@ export function resolveStablePaneOwner(
   }
 }
 
-export function retirePersistedStablePaneOwner(
+export async function retirePersistedStablePaneOwner(
   store: Store | undefined,
   owner: StablePaneOwner,
   worktreeId: string,
   connectionId: string | null | undefined
-): boolean {
+): Promise<boolean> {
   if (!store) {
     return false
   }
-  const paneKey = makePaneKey(owner.tabId, owner.leafId)
-  const hostId = connectionId ? toSshExecutionHostId(connectionId) : undefined
-  const current = resolvePersistedStablePaneOwner(store, paneKey, worktreeId, connectionId)
-  if (!current) {
-    // Why: persistence already dropped this pane binding (an earlier stop retired it while the
-    // runtime kept history), so there is nothing left to clear — that is a completed retirement,
-    // not a competing owner. Reporting failure here strands the pane after its PTY is proven dead.
-    return true
-  }
-  if (current.ptyId !== owner.ptyId || current.incarnationId !== owner.persistedIncarnationId) {
-    return false
-  }
-  const session = store.getWorkspaceSession(hostId)
-  const retired = retireTerminalSurfaceFromPersistence(session, {
-    worktreeId,
-    parentTabId: owner.tabId,
-    leafId: owner.leafId,
-    ptyId: owner.ptyId,
-    ...(current.incarnationId ? { incarnationId: current.incarnationId } : {})
+  return store.runDurableMutation(() => {
+    const paneKey = makePaneKey(owner.tabId, owner.leafId)
+    const hostId = connectionId ? toSshExecutionHostId(connectionId) : undefined
+    const current = resolvePersistedStablePaneOwner(store, paneKey, worktreeId, connectionId)
+    if (!current) {
+      // A renderer removal may still be waiting for its debounced write.
+      return { value: true, persist: 'if-dirty' }
+    }
+    if (current.ptyId !== owner.ptyId || current.incarnationId !== owner.persistedIncarnationId) {
+      return { value: false, persist: false }
+    }
+    const session = cloneWorkspaceSessionState(store.getWorkspaceSession(hostId))
+    const retired = retireTerminalSurfaceFromPersistence(session, {
+      worktreeId,
+      parentTabId: owner.tabId,
+      leafId: owner.leafId,
+      ptyId: owner.ptyId,
+      ...(current.incarnationId ? { incarnationId: current.incarnationId } : {})
+    })
+    if (retired === session) {
+      return { value: false, persist: false }
+    }
+    store.setWorkspaceSession(retired, hostId)
+    const staged = cloneWorkspaceSessionState(store.getWorkspaceSession(hostId))
+    return {
+      value: true,
+      rollback: () => {
+        const current = store.getWorkspaceSession(hostId)
+        const rolledBack = rollbackWorkspaceSessionAfterFailedAsyncWrite(session, staged, current)
+        if (rolledBack !== current) {
+          store.setWorkspaceSession(rolledBack, hostId)
+        }
+      }
+    }
   })
-  if (retired === session) {
-    return false
-  }
-  store.setWorkspaceSession(retired, hostId)
-  store.flushOrThrow()
-  return true
 }
 
 export type StablePaneSpawnContext = {
@@ -181,19 +187,19 @@ export function stablePanePersistenceFence(
     : undefined
 }
 
-export function persistAdmittedStablePaneBinding(args: {
+export async function persistAdmittedStablePaneBinding(args: {
   store: Store | undefined
   owner: StablePaneOwner | null
   result: PtySpawnResult
   worktreeId: string | undefined
   startupCwd: string | undefined
   connectionId: string | null | undefined
-}): boolean {
+}): Promise<boolean> {
   const expectedBinding = stablePanePersistenceFence(args.owner)
   if (!args.store || !args.owner || !args.worktreeId || !expectedBinding) {
     return false
   }
-  const persisted = args.store.persistPtyBinding(
+  const persisted = await args.store.persistPtyBinding(
     {
       worktreeId: args.worktreeId,
       tabId: args.owner.tabId,
@@ -236,12 +242,12 @@ export async function attachStablePaneOwner(
     })
   } catch (error) {
     if (error instanceof TerminalSessionOwnerUnverifiedError) {
+      console.warn(
+        `[daemon] Keeping pane session ${owner.ptyId} unverified: no daemon proved its owner`
+      )
       throw new Error('terminal_pane_owner_unverified')
     }
-    // Why: translate before paired-runtime RPC strips the socket error's code and syscall.
-    if (isDaemonEndpointGoneError(error)) {
-      throw new TerminalHostGoneError()
-    }
+    // A daemon endpoint proven gone already arrives as TerminalHostGoneError (daemon-endpoint-verdict).
     if (!isHostReportedPtyAbsenceError(error)) {
       throw error
     }
@@ -270,7 +276,7 @@ export async function attachStablePaneOwner(
     ptyOwnership.delete(owner.ptyId)
     if (
       args.worktreeId &&
-      !retirePersistedStablePaneOwner(args.store, owner, args.worktreeId, args.connectionId)
+      !(await retirePersistedStablePaneOwner(args.store, owner, args.worktreeId, args.connectionId))
     ) {
       throw new Error('terminal_pane_owner_changed')
     }

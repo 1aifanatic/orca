@@ -7,7 +7,18 @@ import {
   getDaemonProvider,
   restartDaemon
 } from '../daemon/daemon-init'
+import { getCurrentDaemonAdapter } from '../daemon/daemon-provider-routing'
+import {
+  getDaemonFolderAccessMismatch,
+  refreshDaemonFolderAccessProbe,
+  type DaemonFolderAccessMismatchNotice
+} from '../daemon/daemon-folder-access-mismatch'
+import {
+  resetFolderAccessForDaemon,
+  type DaemonFolderAccessResetResult
+} from '../daemon/daemon-folder-access-reset'
 import type { MacDaemonTccAttributionHealth } from '../daemon/daemon-tcc-attribution'
+import type { DaemonEndpointIdentity } from '../daemon/daemon-hello-protocol'
 import type { DaemonSessionInfo } from '../daemon/types'
 
 // Why: poll past the daemon's 5s SIGTERM→SIGKILL ladder (KILL_TIMEOUT_MS in session.ts), else slow-exiting shells falsely look "refused".
@@ -40,6 +51,13 @@ function isDaemonDegraded(): boolean {
     provider instanceof DegradedDaemonPtyProvider &&
     provider.routesFreshSpawnsToLocalProvider === true
   )
+}
+
+// Why the current adapter only: evidence is keyed to the daemon now spawning terminals, so a
+// legacy adapter's daemon must never satisfy the identity match that keeps the notice up.
+function readCurrentDaemonIdentity(): DaemonEndpointIdentity | null {
+  const provider = getDaemonProvider()
+  return provider ? getCurrentDaemonAdapter(provider).getDaemonIdentity() : null
 }
 
 /**
@@ -104,15 +122,38 @@ export function registerDaemonManagementHandlers(): void {
   ipcMain.removeHandler('pty:management:killOne')
   ipcMain.removeHandler('pty:management:restart')
   ipcMain.removeHandler('pty:management:macTccAttribution')
+  ipcMain.removeHandler('pty:management:resetFolderAccess')
 
-  // Why: lets Settings warn that macOS privacy grants no longer reach daemon terminals (STA-3491).
+  // Why: lets Settings warn that macOS privacy grants no longer reach daemon terminals (STA-3491),
+  // and carries the folder-access evidence the notice needs (STA-7948) on the same focus-time poll.
   ipcMain.handle(
     'pty:management:macTccAttribution',
-    async (): Promise<{ health: MacDaemonTccAttributionHealth }> => {
+    async (): Promise<{
+      health: MacDaemonTccAttributionHealth
+      folderAccessMismatch: DaemonFolderAccessMismatchNotice | null
+    }> => {
+      // Why two guards: the two answers are independent evidence, and a failed health read must
+      // not present as "the folder evidence is gone".
+      const health = await getCurrentDaemonMacTccAttributionHealth().catch(
+        (): MacDaemonTccAttributionHealth => 'unknown'
+      )
+      const identity = readCurrentDaemonIdentity()
+      // Why re-probe on the poll: the fix dialog's first step completes in System Settings, and
+      // returning to Orca is the only moment anything can notice. The refresh owns when to skip.
+      await refreshDaemonFolderAccessProbe(identity).catch(() => {})
+      return { health, folderAccessMismatch: getDaemonFolderAccessMismatch(identity) }
+    }
+  )
+
+  // Why a separate channel from the poll: this one has a side effect — it clears Orca's TCC row and
+  // makes the app touch the folder so macOS re-prompts — and only a user click may trigger it.
+  ipcMain.handle(
+    'pty:management:resetFolderAccess',
+    async (): Promise<DaemonFolderAccessResetResult> => {
       try {
-        return { health: await getCurrentDaemonMacTccAttributionHealth() }
+        return await resetFolderAccessForDaemon(readCurrentDaemonIdentity())
       } catch {
-        return { health: 'unknown' }
+        return { outcome: 'unsupported' }
       }
     }
   )
@@ -187,18 +228,28 @@ export function registerDaemonManagementHandlers(): void {
 
   ipcMain.handle(
     'pty:management:killOne',
-    async (_event, args: { sessionId: string }): Promise<{ success: boolean }> => {
-      if (typeof args?.sessionId !== 'string' || args.sessionId.length === 0) {
+    async (
+      _event,
+      args: { sessionId: string; protocolVersion: number; incarnationId?: string }
+    ): Promise<{ success: boolean }> => {
+      if (
+        typeof args?.sessionId !== 'string' ||
+        args.sessionId.length === 0 ||
+        typeof args.protocolVersion !== 'number'
+      ) {
         return { success: false }
       }
-      const adapterSet = getDaemonAdapters()
-      const sessions = await collectSessions(adapterSet)
-      const match = sessions.find((s) => s.sessionId === args.sessionId)
-      if (!match) {
-        return { success: false }
-      }
-      const owner = adapterSet.adapters.find((a) => a.protocolVersion === match.protocolVersion)
-      if (!owner) {
+      // Why the clicked row's exact identity: after a fresh start over an unreachable version the
+      // same id is live in two versions, and killing the first match ended the tab's own agent.
+      const { adapters } = getDaemonAdapters()
+      const owner = adapters.find((a) => a.protocolVersion === args.protocolVersion)
+      const listed = await owner?.listSessions().catch(() => [])
+      const match = listed?.some(
+        (s) =>
+          s.sessionId === args.sessionId &&
+          (args.incarnationId === undefined || s.incarnationId === args.incarnationId)
+      )
+      if (!owner || !match) {
         return { success: false }
       }
       try {

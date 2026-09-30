@@ -77,7 +77,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
         on(event: string, cb: (arg?: unknown) => void) {
           handlers[event]?.push(cb)
           if (event === 'message') {
-            queueMicrotask(() => cb({ type: 'ready', startedAtMs: 1_000_000 }))
+            queueMicrotask(() => cb({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
           }
           return this
         },
@@ -189,7 +189,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
         on(event: string, cb: (arg?: unknown) => void) {
           handlers[event]?.push(cb)
           if (event === 'message') {
-            queueMicrotask(() => cb({ type: 'ready', startedAtMs: 1_000_000 }))
+            queueMicrotask(() => cb({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
           }
           return this
         },
@@ -512,7 +512,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
           exitHandlers.push(callback)
         }
         if (event === 'message') {
-          queueMicrotask(() => callback({ type: 'ready', startedAtMs: 1_000_000 }))
+          queueMicrotask(() => callback({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
         }
         return this
       },
@@ -539,7 +539,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
       return true
     })
     probeSocketExistsMock.mockReturnValue(true)
-    // A loaded host answers late but well inside probeDaemonSocket's own 1s default.
+    // A loaded host answers late but well inside the endpoint probe's own 1s default.
     netConnectMock.mockImplementation(() => ({
       on(event: string, callback: () => void) {
         if (event === 'connect') {
@@ -548,6 +548,9 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
         return this
       },
       removeListener() {
+        return this
+      },
+      off() {
         return this
       },
       destroy() {}

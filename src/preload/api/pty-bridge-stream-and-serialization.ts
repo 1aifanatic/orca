@@ -1,7 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type { PtyModelRestoreNeededEvent } from '../../shared/pty-model-restore-marker'
 import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-facts'
-import type { PreloadApi } from '../api-types'
+import type { PreloadApi, PtyManagementSessionIdentity } from '../api-types'
 import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
 
 export const ptyStreamAndSerializationApi = {
@@ -74,6 +74,8 @@ export const ptyStreamAndSerializationApi = {
       incarnationId?: string
       /** Set only when the owning relay disowned this id; never a claim that the process died. */
       ptySourceDisowned?: true
+      /** Main stopped this PTY so a new process could take its pane; the pane is not dying. */
+      replacedByRestart?: true
     }) => void
   ): (() => void) => {
     const listener = (
@@ -84,6 +86,7 @@ export const ptyStreamAndSerializationApi = {
         preserveRendererBinding?: boolean
         incarnationId?: string
         ptySourceDisowned?: true
+        replacedByRestart?: true
       }
     ) => callback(data)
     ipcRenderer.on('pty:exit', listener)
@@ -117,6 +120,11 @@ export const ptyStreamAndSerializationApi = {
     ipcRenderer.on('pty:clearBuffer:request', listener)
     return () => ipcRenderer.removeListener('pty:clearBuffer:request', listener)
   },
+  onResetInputModesRequest: (callback: (data: { ptyId: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { ptyId: string }) => callback(data)
+    ipcRenderer.on('pty:resetInputModes:request', listener)
+    return () => ipcRenderer.removeListener('pty:resetInputModes:request', listener)
+  },
   sendSerializedBuffer: (
     requestId: string,
     snapshot: {
@@ -141,8 +149,10 @@ export const ptyStreamAndSerializationApi = {
   management: {
     listSessions: () => ipcRenderer.invoke('pty:management:listSessions'),
     killAll: () => ipcRenderer.invoke('pty:management:killAll'),
-    killOne: (args: { sessionId: string }) => ipcRenderer.invoke('pty:management:killOne', args),
+    killOne: (args: PtyManagementSessionIdentity) =>
+      ipcRenderer.invoke('pty:management:killOne', args),
     restart: () => ipcRenderer.invoke('pty:management:restart'),
-    macTccAttribution: () => ipcRenderer.invoke('pty:management:macTccAttribution')
+    macTccAttribution: () => ipcRenderer.invoke('pty:management:macTccAttribution'),
+    resetFolderAccess: () => ipcRenderer.invoke('pty:management:resetFolderAccess')
   }
 } satisfies Partial<PreloadApi['pty']>
