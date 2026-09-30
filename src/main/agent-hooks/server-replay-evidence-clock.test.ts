@@ -65,7 +65,7 @@ describe('the observation clock a relay replay must not restamp', () => {
 
     const replayed = lastForPane()
     expect(replayed.payload.state).toBe('working')
-    // Delivery order must still clear the connection watermark, or the renderer drops the row.
+    // Delivery order must still pass the connection watermark, or the renderer drops the row.
     expect(replayed.receivedAt).toBeGreaterThan(T0 + 25 * 60 * 1000 - 1)
     expect(replayed.evidenceObservedAt).toBe(T0)
   })
