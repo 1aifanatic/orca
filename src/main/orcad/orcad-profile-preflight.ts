@@ -13,9 +13,9 @@ import {
 import { readOrcadArtifactIdentity } from './orcad-artifact-identity'
 import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import { ORCAD_VERSION_FILENAME, orcadBunRuntimeFilename } from '../../shared/orcad-artifacts'
-import { ORCAD_BUN_VERSION } from '../../shared/orcad-bun-runtime'
+import { ORCAD_BUN_RUNTIME_IDENTITY } from '../../shared/orcad-bun-runtime'
 import { runProcess } from '../../shared/child-process/run-process'
-import { preflightOrcadBunNativeRuntime } from './orcad-bun-native-preflight'
+import { preflightOrcadNativeRuntime } from './orcad-runtime-native-preflight'
 import { OrcadBundledRuntimeError } from './orcad-bundled-runtime'
 
 /** Check every packaged start before a profile index, data-root lock or import is touched. */
@@ -40,7 +40,7 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
     throw new Failure(`The bundled Orca runtime failed readiness: ${result.stderr}`)
   }
   try {
-    parseOrcadProfilePreflight(result.stdout, nonce, ORCAD_BUN_VERSION, identity)
+    parseOrcadProfilePreflight(result.stdout, nonce, ORCAD_BUN_RUNTIME_IDENTITY, identity)
   } catch (cause) {
     throw new OrcadBundledRuntimeError('The bundled runtime returned invalid readiness identity', {
       cause
@@ -64,7 +64,7 @@ export async function runOrcadProfilePreflight(
   }
   const result = await preflightProfileStateRuntime()
   if (process.versions.bun) {
-    await preflightOrcadBunNativeRuntime(options)
+    await preflightOrcadNativeRuntime(options)
   }
   const response: OrcadProfilePreflightResponse = {
     type: 'orca_profile_state_ready',

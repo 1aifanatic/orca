@@ -5,7 +5,7 @@ import {
   ORCAD_VERSION_FILENAME,
   orcadBunRuntimeFilename
 } from '../../src/shared/orcad-artifacts.ts'
-import { ORCAD_BUN_VERSION } from '../../src/shared/orcad-bun-runtime.ts'
+import { ORCAD_BUN_RUNTIME_IDENTITY } from '../../src/shared/orcad-bun-runtime.ts'
 import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
   parseOrcadProfilePreflight
@@ -53,7 +53,7 @@ if (artifact) {
   const response = parseOrcadProfilePreflight(
     result.stdout,
     nonce,
-    ORCAD_BUN_VERSION,
+    ORCAD_BUN_RUNTIME_IDENTITY,
     readFileSync(join(runtimeDir, ORCAD_VERSION_FILENAME), 'utf8').trim()
   )
   process.stdout.write(`${JSON.stringify({ target, ...response })}\n`)
