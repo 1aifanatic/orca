@@ -60,7 +60,9 @@ function editProjectTrust(
       line.kind === 'assignment' && pathEquals(getAssignmentKeyPath(line), trustPath)
   )
   if (trustLine) {
-    return result(replaceAssignmentValue(content, trustLine, trustValue))
+    // Why (#22592): a key Codex quoted is rewritten bare, the one spelling Orca writes.
+    const bareKey = trustLine.keySegments.length === 1 ? 'trust_level' : null
+    return result(replaceAssignmentValue(content, trustLine, trustValue, bareKey))
   }
   const header = lines.find(
     (line) =>
@@ -112,30 +114,39 @@ function findLastDottedProjectAssignment(
   lines: readonly TomlStructureLine[],
   projectTablePath: readonly string[]
 ): TomlAssignmentLine | undefined {
-  return lines.findLast((line): line is TomlAssignmentLine => {
-    if (line.kind !== 'assignment') {
-      return false
+  // Why: no findLast(); the SSH relay bundles this for older Node hosts.
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]
+    if (line?.kind !== 'assignment') {
+      continue
     }
     const path = getAssignmentKeyPath(line)
-    return (
+    if (
       path !== null &&
       path.length > projectTablePath.length &&
       tomlKeyPathStartsWith(path, projectTablePath) &&
       line.table.segments.length < projectTablePath.length
-    )
-  })
+    ) {
+      return line
+    }
+  }
+  return undefined
 }
 
 function replaceAssignmentValue(
   content: string,
   line: TomlAssignmentLine,
-  renderedValue: string
+  renderedValue: string,
+  renderedKey: string | null
 ): string {
   const valueStart = line.lineStart + line.valueOffset
   const rest = content.slice(valueStart, line.contentEnd)
   const stringValue = /^(?:"(?:[^"\\]|\\.)*"|'[^']*')/.exec(rest)
   const valueEnd = stringValue ? valueStart + stringValue[0].length : line.contentEnd
-  return content.slice(0, valueStart) + renderedValue + content.slice(valueEnd)
+  const keyStart = line.lineStart + line.text.length - line.text.trimStart().length
+  const assignment = renderedKey === null ? renderedValue : `${renderedKey} = ${renderedValue}`
+  const replaceFrom = renderedKey === null ? valueStart : keyStart
+  return content.slice(0, replaceFrom) + assignment + content.slice(valueEnd)
 }
 
 function insertLineAt(

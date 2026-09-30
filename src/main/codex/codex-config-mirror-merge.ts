@@ -4,6 +4,7 @@ import { repairUnparseableCodexConfig } from './codex-config-toml-repair'
 import { normalizeCodexProjectPathForLookup } from './config-toml-trust'
 import {
   deduplicateProjectTomlSections,
+  getHookTrustTomlSectionKeys,
   getMcpServerTomlSectionName,
   getProjectTrustLevel,
   getRevocationTomlSectionHeaderKey,
@@ -17,10 +18,11 @@ import {
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
 import { mayNameTomlKeys, parseProjectTomlHeaderPath } from './config-toml-syntax'
 
-/** Ordinary settings from ~/.codex plus the trust and MCP tables the managed home owns. */
+/** Ordinary settings and shared hook trust from ~/.codex plus the tables the managed home owns. */
 export function mergeSystemCodexConfigIntoRuntime(
   runtimeConfig: string,
   systemConfig: string,
+  systemConfigDir: string,
   mirroredMcpServerNames: ReadonlySet<string> = new Set(),
   mirroredMcpServerRoot = false
 ): string {
@@ -61,7 +63,10 @@ export function mergeSystemCodexConfigIntoRuntime(
   // must survive the copy unless the user explicitly revoked project trust in
   // the system config.
   return joinTomlBlocks([
-    stripRuntimeOwnedTomlSections(systemConfig, runtimeProjectHeaders),
+    stripRuntimeOwnedTomlSections(systemConfig, runtimeProjectHeaders, {
+      systemHomeDir: systemConfigDir,
+      runtimeHookTrustKeys: getHookTrustTomlSectionKeys(runtimeSections)
+    }),
     ...runtimeSections
       .filter((section) => {
         if (isRuntimePreservedTomlSection(section.header)) {

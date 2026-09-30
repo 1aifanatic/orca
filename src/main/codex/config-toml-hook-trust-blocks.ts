@@ -124,9 +124,10 @@ export function ensureHooksStateParentTable(content: string): string {
   }
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const parent = `[hooks.state]${eol}`
+  // Why (#22592): any `hooks.state.*` spelling is a child; the parent must precede it.
   const firstHookHeader = tables.find(
     (line) =>
-      line.segments.length === 3 && line.segments[0] === 'hooks' && line.segments[1] === 'state'
+      line.segments.length > 2 && line.segments[0] === 'hooks' && line.segments[1] === 'state'
   )
   if (firstHookHeader) {
     return `${content.slice(0, firstHookHeader.lineStart)}${parent}${eol}${content.slice(firstHookHeader.lineStart)}`
