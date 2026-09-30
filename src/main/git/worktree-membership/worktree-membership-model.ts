@@ -2,7 +2,7 @@ import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import type { AdminStatSignature } from './admin-stat-signature'
 import type { RepoConfigFacts } from './repo-admin-layout'
 import type { DerivedFileRow } from './worktree-membership-file-rows'
-import type { SharedDerivationWork } from './shared-derivation-work'
+import type { PromiseSettlementWaiters } from '../../../shared/promise-settlement-waiters'
 
 // A read may reuse a derivation (finished or in flight) only if it started at the model's current
 // generation and less than this long ago. Why under the watcher's 250 ms trailing debounce: every
@@ -69,12 +69,14 @@ export type WorktreeMembershipModel = {
   listingOwed: boolean
   /** The first build, until it settles; resolves null when the layout is not one files can read. */
   building:
-    | (MembershipDerivationStart & { work: SharedDerivationWork<GitWorktreeInfo[] | null> })
+    | (MembershipDerivationStart & { work: PromiseSettlementWaiters<GitWorktreeInfo[] | null> })
     | null
   /** The one derivation running, if any. */
-  inFlight: (MembershipDerivationStart & { work: SharedDerivationWork<GitWorktreeInfo[]> }) | null
+  inFlight:
+    | (MembershipDerivationStart & { work: PromiseSettlementWaiters<GitWorktreeInfo[]> })
+    | null
   /** The derivation queued to start once `inFlight` settles, shared by every reader waiting on it. */
-  followUp: SharedDerivationWork<GitWorktreeInfo[]> | null
+  followUp: PromiseSettlementWaiters<GitWorktreeInfo[]> | null
   startedDerivations: number
   committedDerivation: number
 }

@@ -17,7 +17,7 @@ import {
   type MembershipDerivationStart,
   type WorktreeMembershipModel
 } from './worktree-membership-model'
-import { SharedDerivationWork } from './shared-derivation-work'
+import { PromiseSettlementWaiters } from '../../../shared/promise-settlement-waiters'
 
 export { MissingRepoPathError } from './worktree-membership-derivation'
 
@@ -50,12 +50,17 @@ const models = new Map<string, WorktreeMembershipModel>()
 /** Waits on shared model work under this reader's own deadline and signal. */
 function awaitModelWork<T>(
   model: WorktreeMembershipModel,
-  work: SharedDerivationWork<T>,
+  work: PromiseSettlementWaiters<T>,
   options: WorktreeMembershipReadOptions
 ): Promise<T> {
-  // Zero is no deadline override, as the Git runner treats it.
-  const waitMs = options.waitMs || options.timeout || WORKTREE_LIST_TIMEOUT_MS
-  return work.wait(waitMs, () => new WorktreeMembershipTimeoutError(model.repoPath), options.signal)
+  // Why the waiter set: on a hung mount the work never settles, and a reader that gave up must not
+  // stay attached to it. Zero is no deadline override, as the Git runner treats it.
+  return work.wait({
+    timeoutMs: options.waitMs || options.timeout || WORKTREE_LIST_TIMEOUT_MS,
+    createTimeoutError: () => new WorktreeMembershipTimeoutError(model.repoPath),
+    signal: options.signal,
+    createAbortError: () => options.signal?.reason
+  })
 }
 
 /** The one reuse rule, for finished and in-flight derivations alike. */
@@ -104,14 +109,14 @@ function startModel(
       throw error
     }
   )
-  model.building = { generation: 0, startedAt, work: new SharedDerivationWork(work) }
+  model.building = { generation: 0, startedAt, work: new PromiseSettlementWaiters(work) }
   return model
 }
 
 function startDerivation(
   model: WorktreeMembershipModel,
   options: WorktreeMembershipReadOptions
-): SharedDerivationWork<GitWorktreeInfo[]> {
+): PromiseSettlementWaiters<GitWorktreeInfo[]> {
   const start = {
     generation: model.generation,
     startedAt: Date.now(),
@@ -136,7 +141,7 @@ function startDerivation(
         model.inFlight = null
       }
     })
-  const shared = new SharedDerivationWork(work)
+  const shared = new PromiseSettlementWaiters(work)
   model.inFlight = { generation: start.generation, startedAt: start.startedAt, work: shared }
   return shared
 }
@@ -171,7 +176,7 @@ function readModel(
       model.followUp = null
       return startDerivation(model, options).promise
     })
-  model.followUp = new SharedDerivationWork(followUp)
+  model.followUp = new PromiseSettlementWaiters(followUp)
   return awaitModelWork(model, model.followUp, options)
 }
 
