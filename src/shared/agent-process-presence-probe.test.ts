@@ -12,6 +12,7 @@ describe('single-process presence evidence', () => {
     [{ verdict: 'live', startTime: 'boot:100', zombie: false }, 'live'],
     [{ verdict: 'live', startTime: 'boot:101', zombie: false }, 'exited'],
     [{ verdict: 'live', startTime: 'boot:100', zombie: true }, 'exited'],
+    [{ verdict: 'live', startTime: 'boot:100', zombie: false, stopped: true }, 'unverifiable'],
     [{ verdict: 'exited' }, 'exited'],
     [{ verdict: 'unverifiable' }, 'unverifiable']
   ])('judges %j as %s', async (observation, verdict) => {

@@ -25,6 +25,13 @@ import {
 } from './agent-hook-listener/opencode-session-registry'
 import { readString } from './agent-hook-listener/tool-input-preview'
 /** Canonical transport-agnostic normalization entry shared by main and relay listeners. */
+const CLAUDE_EXIT_SESSION_END_REASONS = new Set([
+  'prompt_input_exit',
+  'logout',
+  'other',
+  'bypass_permissions_disabled'
+])
+
 export function normalizeHookPayload(
   state: HookListenerState,
   source: AgentHookSource,
@@ -146,9 +153,10 @@ export function normalizeHookPayload(
     eventName === 'SessionEnd' &&
     agentPresence &&
     !readString(hookPayloadRecord, 'agent_id') &&
-    // Why: /clear and /resume switch sessions inside the same running process.
-    sessionEndReason !== 'clear' &&
-    sessionEndReason !== 'resume'
+    // Why: only reasons that end the process; /clear and /resume keep it running, and an unknown
+    // reason is left to the process check rather than guessed.
+    sessionEndReason !== undefined &&
+    CLAUDE_EXIT_SESSION_END_REASONS.has(sessionEndReason)
   ) {
     const payload =
       previousStatus?.payload ??

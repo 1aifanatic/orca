@@ -496,6 +496,26 @@ describe('terminal side-effect fact channel', () => {
     )
   })
 
+  it.each(['wsl.exe', 'tmux'])(
+    'confirms an exit when the foreground answers with non-agent %s',
+    async (foreground) => {
+      const { runtime, batches } = createSideEffectRuntime(async () => null)
+      syncSinglePty(runtime)
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: vi.fn(async () => foreground)
+      })
+      runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
+
+      runtime.onPtyData('pty-1', '\x1b]0;~/repo\x07', 100)
+
+      await vi.waitFor(() =>
+        expect(batches.flatMap((batch) => batch.facts)).toContainEqual({ kind: 'agent-exited' })
+      )
+    }
+  )
+
   it('treats synchronous foreground read failures as unavailable', async () => {
     const { runtime, batches } = createSideEffectRuntime()
     syncSinglePty(runtime)

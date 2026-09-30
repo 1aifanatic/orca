@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
@@ -134,6 +137,73 @@ describe('host-owned hook presence', () => {
     await hook(server, 'PostToolUse', 'outer', undefined, null)
     expect(state(server)).toBe('working')
     expect(await server.checkAgentPresence(PANE)).toBeNull()
+  })
+
+  it('does not let a Claude started inside a working Codex turn end the pane', async () => {
+    const server = await createServer()
+    const base = { paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1' }
+    server.ingestRemote(
+      {
+        ...base,
+        source: 'codex',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'codex task', agentType: 'codex' }
+      },
+      'ssh-1'
+    )
+    // The relay has no identity resolution, so it can hand the nested Claude ownership.
+    server.ingestRemote(
+      {
+        ...base,
+        source: 'claude',
+        hookEventName: 'SessionEnd',
+        providerSessionOnly: true,
+        agentPresence: {
+          process: { pid: 4002, platform: 'linux', startTime: 'boot:1' },
+          ended: true
+        },
+        payload: { state: 'done', prompt: '', agentType: 'claude' }
+      },
+      'ssh-1'
+    )
+    expect(state(server)).toBe('working')
+  })
+
+  it('checks each pane once after replaying its spooled hooks', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-presence-spool-'))
+    const first = new AgentHookServer()
+    servers.push(first)
+    await first.start({ env: 'production', userDataPath })
+    await hook(first, 'SessionStart')
+    first.flushStatusPersistSync()
+    first.stop()
+    const spoolDir = join(userDataPath, 'agent-hooks', 'spool')
+    mkdirSync(spoolDir, { recursive: true })
+    const agentProcess = JSON.stringify({
+      pid: 4001,
+      platform: process.platform,
+      startTime: 'birth-4001'
+    })
+    const records = Array.from({ length: 40 }, (_, index) =>
+      JSON.stringify({
+        paneKey: PANE,
+        source: 'claude',
+        receivedAt: Date.now(),
+        agentProcess,
+        payload: {
+          hook_event_name: index % 2 ? 'PreToolUse' : 'PostToolUse',
+          session_id: 'session-a',
+          tool_name: 'Bash',
+          tool_input: { command: 'ls' }
+        }
+      })
+    )
+    writeFileSync(join(spoolDir, 'pane-spooled.jsonl'), `\n${records.join('\n')}\n`)
+    probe.mockClear()
+    const restarted = new AgentHookServer()
+    servers.push(restarted)
+    await restarted.start({ env: 'production', userDataPath })
+    expect(probe).toHaveBeenCalledOnce()
   })
 
   it('keeps unanswered reads and clears only a positive process exit', async () => {

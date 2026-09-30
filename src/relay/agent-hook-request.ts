@@ -24,7 +24,7 @@ export async function handleRelayHookRequest(
       source: AgentHookSource,
       env?: string,
       version?: string
-    ) => void
+    ) => AgentHookEventPayload | undefined
     retryScheduler: AgentHookResultRetryScheduler
     transportInterference: ReturnType<typeof createHookTransportInterferenceTracker>
   }
@@ -62,9 +62,11 @@ export async function handleRelayHookRequest(
       // TODO: once normalizeHookPayload returns validated env/version, drop bodyEnv/bodyVersion and source them from the listener result.
       const env = hookBodyEnv(hookBody)
       const version = hookBodyVersion(hookBody)
-      options.applyEvent(event, source, env, version)
-      options.retryScheduler.scheduleAssistantMessageRetry(source, hookBody, event, env, version)
-      options.retryScheduler.scheduleTranscriptPoll(source, hookBody, event, env, version)
+      const stored = options.applyEvent(event, source, env, version)
+      if (stored) {
+        options.retryScheduler.scheduleAssistantMessageRetry(source, hookBody, stored, env, version)
+        options.retryScheduler.scheduleTranscriptPoll(source, hookBody, stored, env, version)
+      }
     }
     res.writeHead(204)
     res.end()

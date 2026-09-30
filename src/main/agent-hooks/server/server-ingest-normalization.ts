@@ -82,10 +82,7 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
       this.observations.rebind(event.paneKey)
     }
     this.recordCurrentAuthorityObservation(event)
-    const enriched = this.applyNormalizedStatus(event, normalized.onAccepted)
-    if (enriched) {
-      void this.checkAgentPresence(enriched.paneKey)
-    }
+    this.applyNormalizedStatus(event, normalized.onAccepted)
     if (event.payload.state !== 'done') {
       this.withdrawReplayObservation(this.resolvePaneKeyAlias(event.paneKey))
     }

@@ -45,12 +45,20 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       this.captureHydratedAuthorityCommitments()
       // Drain before binding the listener so replay cannot race a live hook during startup.
       if (this.endpointDir) {
+        const replayedPaneKeys = new Set<string>()
         drainAgentHookSpool({
           endpointDir: this.endpointDir,
           getPersistedLaunchTokenHash: (paneKey) =>
             this.hydratedLaunchTokenHashByPaneKey.get(this.resolvePaneKeyAlias(paneKey)),
-          ingest: (record: SpoolRecord) => this.ingestSpoolRecord(record)
+          ingest: (record: SpoolRecord) => {
+            this.ingestSpoolRecord(record)
+            replayedPaneKeys.add(this.resolvePaneKeyAlias(record.paneKey))
+          }
         })
+        // Why: the owner may have died while Orca was down; check each replayed pane once.
+        for (const paneKey of replayedPaneKeys) {
+          void this.checkAgentPresence(paneKey)
+        }
       }
       this.ownerStateInitialized = true
     }

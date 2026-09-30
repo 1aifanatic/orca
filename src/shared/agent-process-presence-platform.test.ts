@@ -43,7 +43,12 @@ describe('platform process evidence', () => {
     expect(await readAgentProcess(4242)).toEqual({
       verdict: 'live',
       startTime: 'boot-id:100',
-      zombie: false
+      zombie: false,
+      stopped: false
     })
+    read
+      .mockResolvedValueOnce(`4242 (agent) ${['T', ...fields.slice(1)].join(' ')}`)
+      .mockResolvedValueOnce('boot-id\n')
+    expect(await readAgentProcess(4242)).toMatchObject({ verdict: 'live', stopped: true })
   })
 })

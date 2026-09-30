@@ -6,7 +6,6 @@ import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agen
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { hasCompatibleAgentTitleIdentity } from '../../shared/agent-title-owner'
 import type { PtyForegroundProcessRead } from './runtime-terminal-contracts'
-import { isShellProcess } from '../../shared/shell-process-detection'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import type {
   AgentPromptActivity,
@@ -103,10 +102,41 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook)
       } else if (verdict === 'exited' && !recoverCompletedHook) {
         this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      } else if (verdict === 'live') {
+        this.restoreDisprovedAgentExit(ptyId)
       } else {
         this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
     })
+  }
+
+  private restoreDisprovedAgentExit(ptyId: string, confirmedStatus?: 'idle'): void {
+    const current = this.ptysById.get(ptyId)
+    const restoredStatus = this.ptyTitleTrackersByPtyId
+      .get(ptyId)
+      ?.tracker.restoreLastAgentExit(confirmedStatus)
+    if (!current || restoredStatus === null || restoredStatus === undefined) {
+      return
+    }
+    current.lastAgentStatus = restoredStatus
+    if (restoredStatus === 'idle') {
+      this.resolvePtyTuiIdleWaiters(current, ptyId)
+    }
+    for (const leaf of this.getLeavesForPty(ptyId)) {
+      if (leaf.lastAgentStatus !== null) {
+        continue
+      }
+      // Why: the live agent disproved the neutral title's exit signal; keep runtime delivery state aligned with the restored tracker.
+      leaf.lastAgentStatus = restoredStatus
+      if (restoredStatus === 'idle') {
+        this.resolveTuiIdleWaiters(leaf)
+        // Why gated like every other delivery edge: a neutral-title restoration can
+        // reinstate `idle` from a name-only title, which is not evidence a turn ended.
+        if (this.checkDeliverySettledAndArmRecheck(leaf)) {
+          this.deliverPendingMessagesForLeaf(leaf)
+        }
+      }
+    }
   }
 
   private confirmLegacyPtyAgentExit(ptyId: string, recoverCompletedHook: boolean): void {
@@ -160,38 +190,15 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
           recoverCompletedHook && recognizeAgentProcess(result.process)?.agent === 'codex'
             ? 'idle'
             : undefined
-        const restoredStatus = this.ptyTitleTrackersByPtyId
-          .get(ptyId)
-          ?.tracker.restoreLastAgentExit(confirmedStatus)
-        if (restoredStatus !== null && restoredStatus !== undefined) {
-          current.lastAgentStatus = restoredStatus
-          if (restoredStatus === 'idle') {
-            this.resolvePtyTuiIdleWaiters(current, ptyId)
-          }
-          for (const leaf of this.getLeavesForPty(ptyId)) {
-            if (leaf.lastAgentStatus !== null) {
-              continue
-            }
-            // Why: the foreground agent disproved the neutral title's exit signal; keep runtime delivery state aligned with the restored tracker.
-            leaf.lastAgentStatus = restoredStatus
-            if (restoredStatus === 'idle') {
-              this.resolveTuiIdleWaiters(leaf)
-              // Why gated like every other delivery edge: a neutral-title restoration can
-              // reinstate `idle` from a name-only title, which is not evidence a turn ended.
-              if (this.checkDeliverySettledAndArmRecheck(leaf)) {
-                this.deliverPendingMessagesForLeaf(leaf)
-              }
-            }
-          }
-        }
+        this.restoreDisprovedAgentExit(ptyId, confirmedStatus)
         return
       }
+      // Why: only an answered read naming a non-agent is an exit; silence is never one.
       if (
         !recoverCompletedHook &&
         result.controller === this.ptyController &&
         result.available &&
-        typeof result.process === 'string' &&
-        isShellProcess(result.process)
+        typeof result.process === 'string'
       ) {
         this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
       } else {

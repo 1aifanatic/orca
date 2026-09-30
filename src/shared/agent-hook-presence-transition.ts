@@ -17,13 +17,23 @@ export function transitionHookPresence(
     claimsAgent(incoming) &&
     previous.payload.agentType !== incoming.payload.agentType
   ) {
-    return incoming
+    // Why: an agent of another type started mid-turn is nested; it may report status, not own the pane.
+    if (
+      previous.payload.state === 'done' ||
+      previous.providerSessionOnly ||
+      !incoming.agentPresence
+    ) {
+      return incoming
+    }
+    return incoming.hookEventName === 'SessionEnd' || incoming.agentPresence.ended
+      ? undefined
+      : { ...incoming, agentPresence: undefined }
   }
   const owner = previous?.agentPresence
   const next = incoming.agentPresence
   if (!next) {
     // Why: evidence without an identity can neither extend nor revive the owner's presence.
-    return { ...incoming, agentPresence: owner && !owner.ended ? owner : undefined }
+    return owner && !owner.ended ? { ...incoming, agentPresence: owner } : incoming
   }
   const fromOwner = owner !== undefined && isSameAgentProcess(owner.process, next.process)
   // Why: SessionEnd, or an exit the execution host already proved (relay-forwarded).

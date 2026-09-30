@@ -279,13 +279,13 @@ export class RelayAgentHookServer {
     env?: string,
     version?: string,
     options: { isReplay?: boolean; checkPresence?: boolean } = {}
-  ): void {
+  ): AgentHookEventPayload | undefined {
     const transitioned = transitionHookPresence(
       incoming,
       this.state.lastStatusByPaneKey.get(incoming.paneKey)
     )
     if (!transitioned) {
-      return
+      return undefined
     }
     const event = transitioned.agentPresence?.ended
       ? { ...transitioned, providerSessionOnly: true }
@@ -296,7 +296,7 @@ export class RelayAgentHookServer {
     // transcript the orphan is still writing (#12447). Drop the stale cache with it.
     if (this.isPaneSurfaceRetired(event.paneKey)) {
       this.clearPaneState(event.paneKey)
-      return
+      return undefined
     }
     if (event.payload.state !== 'done' || event.payload.lastAssistantMessage) {
       this.retryScheduler.clearAssistantMessageRetry(event.paneKey)
@@ -309,7 +309,7 @@ export class RelayAgentHookServer {
         this.clearPaneState(paneKey)
       )
     ) {
-      return
+      return undefined
     }
     this.lastEnvelopeMetaByPaneKey.delete(event.paneKey)
     this.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
@@ -326,6 +326,8 @@ export class RelayAgentHookServer {
     ) {
       void this.checkAgentPresence(event.paneKey)
     }
+    // Why: retries compare against the cached row by identity, so they must hold that exact row.
+    return this.state.lastStatusByPaneKey.get(event.paneKey)
   }
 
   private ingestSpoolRecord(record: SpoolRecord): void {

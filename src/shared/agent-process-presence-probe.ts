@@ -3,7 +3,7 @@ import { runProcess } from './child-process/run-process'
 import type { AgentProcessIdentity, AgentProcessVerdict } from './agent-process-presence'
 
 export type AgentProcessObservation =
-  | { verdict: 'live'; startTime: string; zombie: boolean }
+  | { verdict: 'live'; startTime: string; zombie: boolean; stopped?: boolean }
   | { verdict: 'unverifiable' | 'exited' }
 
 function isMissing(error: unknown): boolean {
@@ -34,7 +34,12 @@ export async function readAgentProcess(pid: number): Promise<AgentProcessObserva
       if (!/^\d+$/.test(fields[19] ?? '') || !boot) {
         return { verdict: 'unverifiable' }
       }
-      return { verdict: 'live', startTime: `${boot}:${fields[19]}`, zombie: fields[0] === 'Z' }
+      return {
+        verdict: 'live',
+        startTime: `${boot}:${fields[19]}`,
+        zombie: fields[0] === 'Z',
+        stopped: fields[0] === 'T' || fields[0] === 't'
+      }
     }
     if (process.platform === 'darwin') {
       const result = await runProcess({
@@ -48,7 +53,12 @@ export async function readAgentProcess(pid: number): Promise<AgentProcessObserva
       if (!result.timedOut && result.code === 0) {
         const match = /^\s*(\S+)\s+(.+?)\s*$/.exec(result.stdout)
         if (match) {
-          return { verdict: 'live', startTime: match[2], zombie: match[1].startsWith('Z') }
+          return {
+            verdict: 'live',
+            startTime: match[2],
+            zombie: match[1].startsWith('Z'),
+            stopped: match[1].startsWith('T')
+          }
         }
       }
       try {
@@ -78,5 +88,9 @@ export async function probeAgentProcessPresence(
   if (observed.verdict !== 'live') {
     return observed.verdict
   }
-  return observed.zombie || observed.startTime !== identity.startTime ? 'exited' : 'live'
+  if (observed.zombie || observed.startTime !== identity.startTime) {
+    return 'exited'
+  }
+  // Why: a suspended (Ctrl-Z) agent still exists but is not running in its terminal.
+  return observed.stopped ? 'unverifiable' : 'live'
 }
