@@ -15,21 +15,11 @@ import {
 import type Database from '../sqlite/sync-database'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import {
-  AGENT_SESSION_STORE_DIR_NAME,
   AGENT_SESSION_STORE_SCHEMA_VERSION,
   type RetiredAgentSessionClaimKey
 } from './agent-session-record-store-file'
 
 const TEST_HOST_ID = 'local'
-
-function storeDirectory(stateDirectory: string): string {
-  return join(stateDirectory, AGENT_SESSION_STORE_DIR_NAME)
-}
-
-/** The store's file, for the tests that assert on or damage its bytes directly. */
-export function testAgentSessionStoreFilePath(stateDirectory: string): string {
-  return agentSessionStorePath(storeDirectory(stateDirectory))
-}
 
 /** One committed state of the store, as tests seed it and read it back. */
 export type PersistedTestAgentSessionStore = {

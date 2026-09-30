@@ -67,7 +67,7 @@ const OPERATION: AgentSessionOperationRow = {
 }
 
 function legacyFile(
-  records: readonly { sessionId: string }[],
+  records: readonly (Record<string, unknown> & { sessionId: string })[],
   extra: Record<string, unknown> = {}
 ): Record<string, unknown> {
   return {
