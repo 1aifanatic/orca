@@ -417,7 +417,8 @@ describe('dead structured-session generation settlement', () => {
       await journal.resolveDispatch({
         clientMessageId: 'client-handed',
         state: 'pending',
-        fence: 7
+        fence: 7,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
       })
     }
 
