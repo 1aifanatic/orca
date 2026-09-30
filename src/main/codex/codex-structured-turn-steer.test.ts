@@ -147,6 +147,35 @@ describe('a Codex send while a turn runs', () => {
     ])
   })
 
+  it('is rejected in Codex words and disarmed when Codex refuses the steer and the start', async () => {
+    const { connection, settlements, send, methods } = await rig({
+      'turn/steer': () => {
+        throw refusedSteer('active turn cannot be steered')
+      },
+      'turn/start': () => {
+        throw new CodexAppServerRequestError(
+          'turn/start',
+          -32600,
+          'codex app-server turn/start failed: thread not found',
+          'thread not found'
+        )
+      }
+    })
+    startTurn(connection, 'turn-1')
+
+    expect(await send('client-1')).toEqual({
+      state: 'rejected',
+      reason: 'The provider did not accept this message: thread not found.',
+      rejection: {
+        kind: 'providerRejected',
+        detail: { text: 'thread not found', audience: 'person' }
+      }
+    })
+    expect(methods()).toEqual(['thread/start', 'turn/steer', 'turn/start'])
+    echoUserMessage(connection, { turnId: 'turn-1', itemId: 'item-u1', clientId: 'client-1' })
+    expect(settlements).toEqual([])
+  })
+
   it('never re-sends a steer that may have landed, and keeps it armed for its echo', async () => {
     const { connection, settlements, send, methods } = await rig({
       'turn/steer': () => {

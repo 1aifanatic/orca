@@ -134,6 +134,15 @@ async function stop(turnId?: string): Promise<void> {
   }
 }
 
+/** `/compact` as the chat surface runs it; refused while the chat still owes work. */
+async function compact() {
+  const command = 'compact' as const
+  return host.conversationCommand(CALLER, {
+    command,
+    envelope: envelope('agentSession.conversationCommand', { command })
+  })
+}
+
 async function settled(): Promise<{
   submissions: readonly AgentJournalSubmission[]
   owesWork: boolean
@@ -272,6 +281,33 @@ describe('a Codex send its turn ended without taking it', () => {
     expect(verdictOf(after.submissions, opening)).toBe('accepted')
     expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
     expect(after.owesWork).toBe(false)
+  })
+})
+
+describe('a Codex before 0.148, which names a steered start falsely', () => {
+  it('withdraws a send made while a turn runs when a Stop ends it, and then takes /compact', async () => {
+    turns = codexTurnLifecycleFake(
+      THREAD,
+      () => (method, params) => handlers?.onNotification?.(method, params),
+      { legacyStartAnswers: true }
+    )
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    const followUp = await send('and check the tests')
+    await vi.waitFor(() => expect(steers + answers).toBe(2))
+
+    await stop()
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, followUp)).not.toBe('pending')
+    )
+    const after = await settled()
+    expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
+    expect(after.owesWork).toBe(false)
+    expect(await compact()).toMatchObject({ ok: true })
+    expect(steers).toBe(1)
   })
 })
 
