@@ -18,9 +18,9 @@ export type UnixSocketTransportOptions = {
   endpoint: string
   kind: 'unix' | 'named-pipe'
   // Why: how often to write `{"_keepalive":true}\n` frames while a dispatch
-  // is pending. Each write resets both the server-side idle timer and, once
-  // the client honours them, the client-side idle timer. Tests override this
-  // to avoid waiting 10 s for a frame.
+  // is pending. Each write resets the client-side idle timer (the server's is
+  // suspended while a dispatch is in flight). Tests override this to avoid
+  // waiting 10 s for a frame.
   keepaliveIntervalMs?: number
 }
 

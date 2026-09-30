@@ -1,7 +1,7 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { userDataPath } = vi.hoisted(() => ({ userDataPath: { current: '' } }))
 
@@ -31,6 +31,10 @@ process.stdout.write(JSON.stringify({ daemonPid: daemon.pid, payload: 'x'.repeat
 `
 
 describe('AgentBrowserBridge raw helper process', () => {
+  afterEach(() => {
+    rmSync(userDataPath.current, { recursive: true, force: true })
+  })
+
   it('settles on helper exit with full output while a descendant still holds the pipes', async () => {
     userDataPath.current = mkdtempSync(join(tmpdir(), 'orca-agent-browser-raw-'))
     const bridge = new AgentBrowserBridge(mockBrowserManager())
