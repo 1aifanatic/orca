@@ -1,7 +1,8 @@
-// The captured background-shell stories on an SSH pane: hooks go through a real relay-side
-// listener, which owns the task record and reads the transcript, and reach the desktop only as
-// relayed rows. The relay never learns the Ctrl+C the desktop infers, so every row it publishes
-// afterwards still names its own working main agent.
+// The captured background-shell stories on a relayed pane (WSL's local relay: the desktop never
+// infers a Ctrl+C on an SSH pane, whose input is not delivery-confirmed): hooks go through a real
+// relay-side listener, which owns the task record and reads the transcript, and reach the desktop
+// only as relayed rows. The relay never learns the Ctrl+C the desktop infers, so every row it
+// publishes afterwards still names its own working main agent.
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
