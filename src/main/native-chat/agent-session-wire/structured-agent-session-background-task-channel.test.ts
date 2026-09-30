@@ -23,7 +23,12 @@ const child: AgentChildWorkView = {
   invocation: { invocationId: 'spawn-1', generation: 1 }
 }
 
-function channelOver(children: () => AgentChildWorkView[] = () => [child]) {
+type Stops = { supportsTaskStop: boolean; supportsStopAll: boolean } | undefined
+
+function channelOver(
+  children: () => AgentChildWorkView[] = () => [child],
+  stops: () => Stops = () => ({ supportsTaskStop: true, supportsStopAll: true })
+) {
   const sessions = new StructuredAgentSessionConversations({
     deliver: () => {},
     onDeliveryError: () => {},
@@ -34,7 +39,7 @@ function channelOver(children: () => AgentChildWorkView[] = () => [child]) {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the channel reads only the record store's fence and the adapter's stop capability.
     {
       store: { getRecord: () => null },
-      adapter: { backgroundTaskStops: () => ({ supportsTaskStop: true, supportsStopAll: true }) }
+      adapter: { backgroundTaskStops: stops }
     } as unknown as StructuredAgentSessionHostDeps,
     sessions,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: publish sends through `backgroundTasks` only.
@@ -86,5 +91,24 @@ describe('the background-task channel', () => {
       1,
       null
     ])
+  })
+
+  // Claude's release path settles the last child after the adapter let go of the session, so no
+  // provider answers for it any more: the strip must still hide.
+  it('hides the strip when its last child settles after the provider let go of the session', () => {
+    let views: AgentChildWorkView[] = [child]
+    let held: Stops = { supportsTaskStop: true, supportsStopAll: true }
+    const { sessions, sent, channel, session } = channelOver(
+      () => views,
+      () => held
+    )
+    sessions.set('session-1', session)
+    channel.publish('session-1')
+    expect(sent.mock.calls.at(-1)?.[1]?.children).toHaveLength(1)
+
+    held = undefined
+    views = [{ ...child, state: 'done', membership: 'settled', outcome: 'unknown', settledAt: 2 }]
+    channel.publish('session-1')
+    expect(sent.mock.calls.at(-1)?.[1]).toBeNull()
   })
 })

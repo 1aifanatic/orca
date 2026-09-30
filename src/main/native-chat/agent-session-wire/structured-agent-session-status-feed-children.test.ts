@@ -187,7 +187,7 @@ describe('structured status summary child records', () => {
     })
   })
 
-  // The sidebar lists running children only; a finished one stays in the chat's strip.
+  // The sidebar and the strip list running children only; a finished one is on neither.
   it('lists only running children on the summary, and no finished one in any of its lists', async () => {
     const { feed, events, views } = await feedWithChildren()
     const failed = childView({

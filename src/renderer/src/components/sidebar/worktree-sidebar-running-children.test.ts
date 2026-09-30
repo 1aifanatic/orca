@@ -1,5 +1,5 @@
 // The worktree sidebar and the chat's strip list running children only, by one rule, whichever
-// source they read them from. An older host's own task roster reaches the strip as it always did.
+// source they read them from, an older host's own task roster included.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -14,6 +14,7 @@ import {
   buildBackgroundTaskGroups,
   buildBackgroundTaskGroupsFromViews
 } from '@/components/native-chat/background-task-roster'
+import { structuredSessionBackgroundTasksView } from '@/components/native-chat/structured-session-background-tasks-view'
 import { buildSubagentChildRows } from './worktree-subagent-child-rows'
 
 const NOW = 1_000_000
@@ -108,7 +109,7 @@ describe('the worktree sidebar lists running children only', () => {
     expect(sidebarNames(parent({ subagents: [] }))).toEqual([])
   })
 
-  it("applies the one rule to a finished child from an older host's task roster, which that host's strip still lists", () => {
+  it("applies the one rule to a finished child from an older host's task roster, on both surfaces", () => {
     const tasks = [
       { id: 'live', kind: 'agent' as const, description: 'Live task', state: 'working' as const }
     ]
@@ -119,7 +120,11 @@ describe('the worktree sidebar lists running children only', () => {
         .filter((row) => agentChildWorkIsRunning({ settled: row.settled, ownsLiveWork: false }))
         .map((row) => row.name)
     ).toEqual(['Live task'])
-    const [agents] = buildBackgroundTaskGroups(tasks, settledTasks)
-    expect(agents.tasks.map((entry) => entry.row.name).sort()).toEqual(['Done task', 'Live task'])
+    const strip = structuredSessionBackgroundTasksView(
+      { state: 'monitoring', tasks, settledTasks },
+      null
+    )
+    const [agents] = buildBackgroundTaskGroups(strip.tasks, strip.settledTasks)
+    expect(agents.tasks.map((entry) => entry.row.name)).toEqual(['Live task'])
   })
 })

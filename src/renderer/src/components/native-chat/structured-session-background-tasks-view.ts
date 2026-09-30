@@ -41,12 +41,17 @@ export function structuredSessionBackgroundTasksView(
   // Decoded once where the frame entered the client's state, so its identity holds between frames.
   const children = monitoring ? backgroundTasks.children : undefined
   // Only running children arrive; a roster with none holds nothing open either way.
-  const liveWork = children ? agentChildWorkLiveness(children) !== null : monitoring
+  // An older host's roster whose listed rows have all finished shows nothing that runs.
+  const onlyFinished =
+    !children && !backgroundTasks?.tasks?.length && Boolean(backgroundTasks?.settledTasks?.length)
+  const show = monitoring && !onlyFinished
+  const liveWork = children ? agentChildWorkLiveness(children) !== null : show
   return {
-    show: monitoring,
+    show,
     isMonitoring: turnId === null && liveWork,
     tasks: backgroundTasks?.tasks ?? NO_TASKS,
-    settledTasks: backgroundTasks?.settledTasks ?? NO_TASKS,
+    // Running work only, from any host: an older host's finished rows are not shown either.
+    settledTasks: NO_TASKS,
     ...(children ? { children } : {}),
     supportsStop: backgroundTasks?.supportsTaskStop === true,
     // Absent means the host predates the field and does accept an untargeted
