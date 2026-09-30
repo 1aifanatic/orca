@@ -7,10 +7,14 @@ import {
 } from './config-toml-line-scan'
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
 import { findProjectTrustLevelEntries } from './config-toml-project-trust-level'
+import { parseHookStateTomlHeaderKey } from './config-toml-syntax'
 import {
+  codexHookSourcePathsEqual,
+  getCodexExplicitHomeHookSourcePath,
   normalizeCodexProjectPathForLookup,
   normalizeCodexProjectPathForRevocationLookup,
-  parseCodexProjectHeaderPath
+  parseCodexProjectHeaderPath,
+  parseTrustKey
 } from './config-toml-trust'
 
 export type TomlSection = {
@@ -19,19 +23,32 @@ export type TomlSection = {
   start: number
 }
 
+export type SharedHookTrustCarry = {
+  systemHomeDir: string
+  /** Decoded hook-trust keys the runtime config already holds. */
+  runtimeHookTrustKeys: ReadonlySet<string>
+}
+
 export function stripRuntimeOwnedTomlSections(
   config: string,
-  runtimeProjectHeaders = new Set<string>()
+  runtimeProjectHeaders = new Set<string>(),
+  sharedHookTrust?: SharedHookTrustCarry
 ): string {
   const lines = config.split('\n')
   const sourceSections = getTomlSections(config)
   const sections = deduplicateProjectTomlSections(sourceSections)
   const firstSectionIndex = sourceSections[0]?.start ?? -1
   const preamble = firstSectionIndex === -1 ? config : lines.slice(0, firstSectionIndex).join('\n')
+  const carriedHookTrustKeys = new Set(sharedHookTrust?.runtimeHookTrustKeys)
   return joinTomlBlocks([
     preamble,
     ...sections
-      .filter((section) => !isRuntimeHookTrustTomlSection(section.header))
+      .filter(
+        (section) =>
+          !isRuntimeHookTrustTomlSection(section.header) ||
+          (sharedHookTrust !== undefined &&
+            claimSharedHookTrustSection(section.header, sharedHookTrust, carriedHookTrustKeys))
+      )
       .filter(
         (section) =>
           !isRuntimeProjectTomlSection(section.header) ||
@@ -88,6 +105,51 @@ export function isRuntimeHookTrustTomlSection(header: string): boolean {
   // part of runtime-owned trust and must survive the next config mirror too.
   // Its `["hooks"."state"]` spelling is the same table (#22592).
   return !!table && !table.isArray && table.segments[0] === 'hooks' && table.segments[1] === 'state'
+}
+
+// Why: user-layer keys name the home's own hooks.json/config.toml; plugin/project keys don't.
+export function classifyHookTrustKey(key: string, homeDir: string): 'home-scoped' | 'shared' {
+  const sourcePath = parseTrustKey(key)?.sourcePath
+  if (sourcePath === undefined) {
+    // Why: every key Codex writes parses; carry nothing we cannot attribute.
+    return 'home-scoped'
+  }
+  const homeFiles = ['hooks.json', 'config.toml'].flatMap((file) => {
+    // Why: not path.join; a WSL home is a Linux path even when Orca runs on Windows.
+    const logicalPath = `${homeDir.replace(/[\\/]+$/, '')}/${file}`
+    return [logicalPath, getCodexExplicitHomeHookSourcePath(logicalPath)]
+  })
+  return homeFiles.some((homeFile) => codexHookSourcePathsEqual(sourcePath, homeFile))
+    ? 'home-scoped'
+    : 'shared'
+}
+
+export function getHookTrustTomlSectionKeys(sections: readonly TomlSection[]): Set<string> {
+  const keys = new Set<string>()
+  for (const section of sections) {
+    const key = parseHookStateTomlHeaderKey(section.header)
+    if (key !== null) {
+      keys.add(key)
+    }
+  }
+  return keys
+}
+
+// Why: runtime copy wins, else a duplicate table breaks Codex; exact keys keep slash variants apart.
+function claimSharedHookTrustSection(
+  header: string,
+  { systemHomeDir }: SharedHookTrustCarry,
+  claimedKeys: Set<string>
+): boolean {
+  const key = parseHookStateTomlHeaderKey(header)
+  if (key === null || classifyHookTrustKey(key, systemHomeDir) === 'home-scoped') {
+    return false
+  }
+  if (claimedKeys.has(key)) {
+    return false
+  }
+  claimedKeys.add(key)
+  return true
 }
 
 export function isRuntimeProjectTomlSection(header: string): boolean {
