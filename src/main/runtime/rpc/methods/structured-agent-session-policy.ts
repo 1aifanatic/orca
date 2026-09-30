@@ -1,4 +1,8 @@
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import {
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
+import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcContext } from '../core'
 
 /**
@@ -15,4 +19,30 @@ export function supportsStructuredAgentSessions(
     context.clientKind === undefined ||
     context.clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY) === true
   )
+}
+
+/**
+ * COMPAT(released phones): a remote client that does not pick each launch's mode itself reads
+ * `agentSession.createSupport` as "should this launch be a chat", which the host's setting
+ * answered. Such a client keeps that answer until no supported build lacks the capability.
+ */
+export function createSupportFollowsHostSetting(
+  context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>
+): boolean {
+  return (
+    context.clientKind !== undefined &&
+    context.clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY) !==
+      true
+  )
+}
+
+/** An unreadable settings store reads as off, the default. */
+export function isStructuredNativeChatEnabled(
+  runtime: Pick<OrcaRuntimeService, 'getClientSettings'>
+): boolean {
+  try {
+    return runtime.getClientSettings().experimentalStructuredNativeChat === true
+  } catch {
+    return false
+  }
 }
