@@ -45,6 +45,7 @@ export function createInitialStoreState(getState: () => StoreState): StoreState 
     consumePendingColdRestore: vi.fn(() => null),
     consumePendingSnapshot: vi.fn(() => null),
     runtimePaneTitlesByTabId: {},
+    agentPresenceByPaneKey: {},
     agentStatusByPaneKey: {},
     retainedAgentsByPaneKey: {},
     paneForegroundAgentByPaneKey: {},
