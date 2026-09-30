@@ -14,6 +14,7 @@ vi.mock('./providers/ssh-filesystem-dispatch', () => ({
 }))
 
 const { markRemoteAgentWorkspaceTrusted } = await import('./remote-agent-trust-presets')
+const { reportCodexTrustWriteRefusals } = await import('./codex/codex-config-toml-checked-edit')
 
 function makeFsProvider(overrides: Record<string, unknown> = {}) {
   return {
@@ -248,6 +249,34 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
       })
     ).rejects.toThrow('/home/u/.codex/config.toml')
     expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('reports a remote trust refusal again after a remote trust write lands', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let remoteConfig = '[a]\nx = 1\n[a]\ny = 2\n'
+    const fsProvider = makeFsProvider({
+      readFile: vi.fn(async () => ({ content: remoteConfig, isBinary: false }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+    const attempt = () =>
+      markRemoteAgentWorkspaceTrusted({
+        preset: 'codex',
+        connectionId: 'ssh-1',
+        workspacePath: '/repo'
+      }).catch((error: unknown) => reportCodexTrustWriteRefusals(error))
+    try {
+      await attempt()
+      await attempt()
+      expect(warn).toHaveBeenCalledTimes(1)
+      remoteConfig = 'model = "m"\n'
+      await attempt()
+      expect(fsProvider.writeFile).toHaveBeenCalledTimes(1)
+      remoteConfig = '[a]\nx = 1\n[a]\ny = 2\n'
+      await attempt()
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 

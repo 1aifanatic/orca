@@ -1,7 +1,10 @@
 import { markRemoteQoderWorkspaceTrusted } from './qoder/workspace-trust'
 import type { AgentTrustPreset } from './agent-trust-presets'
 import { upsertProjectTrustLevelInContent } from './codex/config-toml-trust'
-import { CodexConfigTomlEditRefusedError } from './codex/codex-config-toml-checked-edit'
+import {
+  clearCodexTrustWriteRefusalReport,
+  CodexConfigTomlEditRefusedError
+} from './codex/codex-config-toml-checked-edit'
 import { getActiveMultiplexer } from './ssh/ssh-target-registry'
 import { getSshFilesystemProvider } from './providers/ssh-filesystem-dispatch'
 import type { FileReadResult, IFilesystemProvider } from './providers/types'
@@ -118,6 +121,8 @@ async function markRemoteCodexProjectTrusted(
   }
   await fsProvider.createDir(codexDir)
   await fsProvider.writeFile(configPath, updated)
+  // Why: same as the local trust write, a landed write ends the refusal so a later one is reported again.
+  clearCodexTrustWriteRefusalReport(configPath)
 }
 
 async function markRemoteCursorWorkspaceTrusted(
