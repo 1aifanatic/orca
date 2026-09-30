@@ -58,9 +58,9 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
   return pending
 }
 
-/** Waiting, not held on its own, not positioned behind a returned card, and not
- *  held by the queue's pause. The admission rule (§accept) and the drain's
- *  selection both read it. */
+/** Waiting, not held on its own, and not positioned behind a returned card or a
+ *  card the queue's pause holds: the queue never reorders. The admission rule
+ *  (§accept) and the drain's selection both read it. */
 function oldestActionableQueuedMessage(
   journal: Pick<AgentSessionJournal, 'queuedMessages'>
 ): QueuedMessageRow | null {
@@ -71,15 +71,11 @@ function oldestActionableQueuedMessage(
   }
   const pause = structuredQueuePause(journal)
   for (const row of rows) {
-    if (row.state === 'returned') {
-      // A returned card blocks everything after it until the user acts.
+    if (row.state === 'returned' || (pause && queuePauseHolds(pause, row))) {
+      // A returned or paused card blocks everything after it until the user acts.
       return null
     }
-    if (
-      row.state === 'waiting' &&
-      row.holdReason === null &&
-      !(pause && queuePauseHolds(pause, row))
-    ) {
+    if (row.state === 'waiting' && row.holdReason === null) {
       return row
     }
   }

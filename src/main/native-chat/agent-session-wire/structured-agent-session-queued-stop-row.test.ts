@@ -1,6 +1,7 @@
 // Stop writes one journal row before it interrupts, and the queue's pause is derived from it:
-// through the real host, a card queued after a Stop is held (the default of an open decision), a
-// withdrawn card comes back under it, a crash keeps it, and no stored pause is ever written.
+// through the real host, the cards queued before a Stop wait, a card queued after it sends
+// normally but never ahead of them, a withdrawn card comes back under it, a crash keeps it, and
+// no stored pause is ever written.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -91,16 +92,37 @@ describe("Stop's row", () => {
     expect(pausedAtInterrupt).toBe('stopped')
   })
 
-  it('over an EMPTY queue still pauses: a card typed during a later mail turn waits for the person', async () => {
+  it('over an EMPTY queue holds nothing: a card queued during a later mail turn sends normally', async () => {
     const working = await rig.workingSend()
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
     const mail = await mailTurn()
     const typed = await queuedDraft('typed during the mail turn')
+    expect(await rig.queuePause()).toBeNull()
     await rig.settleAccepted(mail, 'mail')
-    await expectHeld('stopped', typed)
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
+  })
+
+  it('a card queued after the Stop waits behind the cards it holds, then all send in order', async () => {
+    const working = await rig.workingSend()
+    const held = await queuedDraft('queued before the stop')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    const mail = await mailTurn()
+    const later = await queuedDraft('queued during the mail turn')
+    await rig.settleAccepted(mail, 'mail')
+    // The queue never reorders: the newer card waits behind the held one, with no caption of its own.
+    await expectHeld('stopped', held, later)
+    expect(await rig.drafts()).toEqual([
+      { messageId: held, state: 'waiting' },
+      { messageId: later, state: 'waiting' }
+    ])
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
+    expect(await rig.handoff(later)).toBeUndefined()
+    await eventually(async () => expect((await rig.handoff(held))?.handedOverAt).toBeDefined())
+    await rig.settleAccepted(await rig.handoffId(held), 'held')
+    await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
   })
 
   it("a person's accepted turn lifts it; a host turn and a later Stop do not", async () => {
@@ -225,8 +247,8 @@ describe('no stored pause', () => {
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     expect(storedPauses()).toBe(0)
     await eventually(async () => expect((await rig.handoff(draftId))?.handedOverAt).toBeDefined())
-    await rig.stop()
     await queuedDraft('carried')
+    await rig.stop()
     await rig.settleAccepted(await rig.handoffId(draftId), 'drained')
     const fields = { command: 'clear' as const }
     const cleared = await rig.host.conversationCommand(QUEUED_RIG_CALLER, {

@@ -113,7 +113,13 @@ export class JournalQueuedMessages {
           return existing
         }
         inserted = true
-        return insertQueuedMessage(db, { ...input, sessionId, now: this.deps.now() })
+        const { epoch, lastSequence } = this.deps.state()
+        return insertQueuedMessage(db, {
+          ...input,
+          sessionId,
+          queuedAt: { epoch, sequence: lastSequence },
+          now: this.deps.now()
+        })
       },
       () => inserted
     )
@@ -140,6 +146,7 @@ export class JournalQueuedMessages {
   ): DerivedQueuePause | null {
     const state = this.deps.state()
     return deriveQueuePause({
+      epoch: state.epoch,
       marks: state.queuePauseMarks,
       latestPersonTurnSequence: state.latestPersonTurnSequence,
       cards,

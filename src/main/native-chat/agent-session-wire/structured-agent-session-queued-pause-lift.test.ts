@@ -205,16 +205,16 @@ describe('the pause read', () => {
   })
 })
 
-describe('a Stop pauses the queue whatever it held', () => {
-  it('a Stop over an empty queue holds a correction typed before the turn ends', async () => {
+describe('a card queued after a Stop is a new instruction', () => {
+  it('a correction typed after a Stop over an empty queue sends when the stopped turn ends', async () => {
     const working = await rig.workingSend()
     await rig.stop()
     const correction = await queuedDraft('typed right after the stop')
     await rig.settleAccepted(working, 'stopped')
-    await expectPaused(correction)
+    await eventually(async () => expect(await rig.handoff(correction)).toBeDefined())
   })
 
-  it('a card sent now before the Stop and taken by the agent anyway lifts nothing: it was sent first', async () => {
+  it('a card sent now before the Stop and taken anyway lifts nothing, and holds nothing typed later', async () => {
     const working = await rig.workingSend()
     const sentId = await queuedDraft('sent now into the turn')
     await rig.sendNow(sentId)
@@ -231,7 +231,9 @@ describe('a Stop pauses the queue whatever it held', () => {
     )
     const later = await queuedDraft('typed during the mail turn')
     await rig.settleAccepted(mail.id, 'mail')
-    await expectPaused(later)
+    await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    expect(journal && structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
   })
 
   it("deleting the last paused card hides the pause; a person's next turn is what ends it", async () => {

@@ -20,6 +20,9 @@ import { QueuedMessageNotConsumableError } from './journal-queued-messages'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { parseJournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
+import { queuePauseHolds } from './queued-message-pause'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-p',
@@ -88,6 +91,15 @@ function acceptTurn(journal: AgentSessionJournal, id: string) {
 
 function reason(journal: AgentSessionJournal): string | null {
   return journal.queuedMessages.pause(HOST)?.reason ?? null
+}
+
+/** Each card, and whether the queue's pause holds it. */
+function held(journal: AgentSessionJournal): [string, boolean][] {
+  const pause = journal.queuedMessages.pause(HOST)
+  return journal.queuedMessages
+    .list()
+    .filter((card) => card.state === 'waiting')
+    .map((card) => [card.messageId, pause !== null && queuePauseHolds(pause, card)])
 }
 
 function storedPauses(): number {
@@ -236,6 +248,65 @@ describe("the queue's pause, derived from the journal", () => {
     await turn(journal, 'typed', 'client')
     await journal.replaceEpochItems('handle_forked', 0, [])
     expect(reason(journal)).toBeNull()
+  })
+})
+
+describe('which cards a pause holds', () => {
+  it('only cards queued before the Stop row: one queued after it is a new instruction', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'before')
+    await journal.appendQueuePauseMark('stopped', 0)
+    await queueDraft(journal, 'after')
+    expect(held(journal)).toEqual([
+      ['before', true],
+      ['after', false]
+    ])
+    await journal.close()
+    journal = await open()
+    expect(held(journal)).toEqual([
+      ['before', true],
+      ['after', false]
+    ])
+  })
+
+  it('a steer the Stop withdrew comes back in its own place, and is held', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'steered')
+    await journal.appendSubmission(
+      {
+        clientMessageId: 'send-now-1',
+        origin: 'client',
+        payloadFingerprint: 'fp-steered',
+        body: message('steered'),
+        fence: 0,
+        handoverRecorded: true
+      },
+      { messageId: 'steered', expect: 'waiting', settledByOp: null, hostInstance: HOST }
+    )
+    await journal.appendQueuePauseMark('stopped', 0)
+    await queueDraft(journal, 'after')
+    await journal.resolveDispatch({
+      clientMessageId: 'send-now-1',
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
+      fence: 0
+    })
+    expect(held(journal)).toEqual([
+      ['steered', true],
+      ['after', false]
+    ])
+  })
+
+  it("'cleared' holds the carried cards, not one typed after them", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'carried-1', 'source-session')
+    await queueDraft(journal, 'carried-2', 'source-session')
+    await queueDraft(journal, 'typed-here')
+    expect(held(journal)).toEqual([
+      ['carried-1', true],
+      ['carried-2', true],
+      ['typed-here', false]
+    ])
   })
 })
 
