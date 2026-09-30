@@ -28,3 +28,14 @@ export function trackedUnsubscribe(
   owned.push(release)
   return release
 }
+
+/** Adds `callback` to `listeners` and returns the matching removal. */
+export function addListener<T>(listeners: T[], callback: T): () => void {
+  listeners.push(callback)
+  return () => {
+    const idx = listeners.indexOf(callback)
+    if (idx !== -1) {
+      listeners.splice(idx, 1)
+    }
+  }
+}

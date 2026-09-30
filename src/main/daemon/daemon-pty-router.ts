@@ -20,6 +20,7 @@ import {
 } from '../providers/pty-process-source-listing'
 import { listDaemonProcessesBySource } from './daemon-generation-listing'
 import { reconcileAdaptersOnStartup } from './daemon-router-startup-reconcile'
+import { DaemonStoppedSessionOwners } from './daemon-stopped-session-owners'
 
 export class DaemonPtyRouter implements IPtyProvider {
   private current: DaemonPtyAdapter
@@ -27,6 +28,7 @@ export class DaemonPtyRouter implements IPtyProvider {
   private sessionAdapters = new Map<string, DaemonPtyAdapter>()
   private readonly ownerResolver: DaemonSessionOwnerResolver<DaemonPtyAdapter>
   private readonly subscriptions: DaemonPtyAdapterSubscriptionFanout
+  private readonly stoppedOwners = new DaemonStoppedSessionOwners<DaemonPtyAdapter>()
 
   constructor(opts: { current: DaemonPtyAdapter; legacy: DaemonPtyAdapter[] }) {
     this.current = opts.current
@@ -37,7 +39,10 @@ export class DaemonPtyRouter implements IPtyProvider {
       (id) => {
         this.ownerResolver.forgetRoute(id)
       },
-      (adapter) => this.ownerResolver.invalidateProvider(adapter)
+      (adapter) => {
+        this.ownerResolver.invalidateProvider(adapter)
+        this.stoppedOwners.forgetOwner(adapter)
+      }
     )
   }
 
@@ -46,6 +51,7 @@ export class DaemonPtyRouter implements IPtyProvider {
   }
 
   async spawn(opts: PtySpawnOptions): Promise<PtySpawnResult> {
+    this.stoppedOwners.record(opts.sessionId, undefined)
     if (opts.attachOnly && opts.sessionId) {
       return await this.ownerResolver.spawnAttachOnly({ ...opts, sessionId: opts.sessionId })
     }
@@ -97,6 +103,11 @@ export class DaemonPtyRouter implements IPtyProvider {
     return await this.ownerResolver.probe(id)
   }
 
+  // Why not probePtyLiveness: the stop drops the route, and a route-less probe needs every version.
+  async confirmPtyStopped(id: string, opts?: { deadlineMs?: number }): Promise<boolean | null> {
+    return await this.stoppedOwners.confirm(id, () => this.probePtyLiveness(id), opts?.deadlineMs)
+  }
+
   write(id: string, data: string): boolean {
     return this.knownOwnerFor(id)?.write(id, data) ?? false
   }
@@ -128,7 +139,9 @@ export class DaemonPtyRouter implements IPtyProvider {
   }
 
   async shutdown(id: string, opts: Parameters<IPtyProvider['shutdown']>[1]): Promise<void> {
+    this.stoppedOwners.record(id, undefined)
     const adapter = await this.ownerFor(id, opts.expectedIncarnationId)
+    this.stoppedOwners.record(id, adapter)
     const migrateHistory = shouldHandoffDaemonHistory(opts.keepHistory, adapter, this.current)
     await adapter.shutdown(id, opts)
     if (!opts.keepHistory || migrateHistory) {

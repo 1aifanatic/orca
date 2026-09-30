@@ -21,7 +21,7 @@ export class DaemonListingDeadlineError extends Error {
   }
 }
 
-function withinDeadline<T>(work: Promise<T>, deadlineMs: number | undefined): Promise<T> {
+export function withinDeadline<T>(work: Promise<T>, deadlineMs: number | undefined): Promise<T> {
   if (deadlineMs === undefined) {
     return work
   }

@@ -143,6 +143,8 @@ export type IPtyProvider = {
   hasPty?: (id: string) => boolean
   /** Exact provider readback: false only when the provider answered that the PTY is absent. */
   probePtyLiveness?: (id: string) => Promise<boolean | null>
+  /** After a stop: true once the owner that stopped it no longer holds it; null when it cannot say. */
+  confirmPtyStopped?: (id: string, opts?: { deadlineMs?: number }) => Promise<boolean | null>
   write(id: string, data: string): boolean | void
   /** Three-valued settlement for writes whose delivery a durable claim depends on.
    *  Required: a provider that answers this from its own fire-and-forget `write` is

@@ -10,6 +10,9 @@ import {
   type PtyLivenessVerdict
 } from '../../shared/pty-liveness-verdict'
 import { settleBeforeDeadline } from './settle-before-deadline'
+import { mapWithConcurrency } from '../../shared/map-with-concurrency'
+
+const PER_PTY_VERIFY_CONCURRENCY = 8
 
 // Floor for the verification window when the sweep ran on a very short budget.
 export const WORKTREE_TEARDOWN_VERIFY_GRACE_MS = 2_000
@@ -34,6 +37,9 @@ export async function verifyUnstoppedPtys(
 ): Promise<UnstoppedPtyVerdict> {
   const verifyBudgetMs = Math.max(WORKTREE_TEARDOWN_VERIFY_GRACE_MS, sweepBudgetMs)
   const verifyDeadline = Date.now() + verifyBudgetMs
+  if (provider.confirmPtyStopped) {
+    return await verifyEachWithItsOwner(failedPtyIds, provider, verifyDeadline)
+  }
   let listError: unknown
   const sessions = await settleBeforeDeadline(
     async () => {
@@ -56,6 +62,30 @@ export async function verifyUnstoppedPtys(
   const livePtyIds = new Set(sessions.map((session) => session.id))
   const stillLive = failedPtyIds.filter((ptyId) => livePtyIds.has(ptyId))
   return stillLive.length > 0 ? { status: 'live', ptyIds: stillLive } : { status: 'exited' }
+}
+
+// Why per id: a merged list fails whenever any daemon version is silent, and a partial one would
+// read an id held by the silent version as exited.
+async function verifyEachWithItsOwner(
+  failedPtyIds: readonly string[],
+  provider: IPtyProvider,
+  verifyDeadline: number
+): Promise<UnstoppedPtyVerdict> {
+  const stopped = await settleBeforeDeadline(
+    () =>
+      mapWithConcurrency(failedPtyIds, PER_PTY_VERIFY_CONCURRENCY, (ptyId) =>
+        provider.confirmPtyStopped!(ptyId, { deadlineMs: verifyDeadline }).catch(() => null)
+      ),
+    null,
+    verifyDeadline
+  )
+  const stillLive = failedPtyIds.filter((_, index) => stopped?.[index] === false)
+  if (stillLive.length > 0) {
+    return { status: 'live', ptyIds: stillLive }
+  }
+  return stopped && stopped.every((verdict) => verdict === true)
+    ? { status: 'exited' }
+    : { status: 'unverifiable', reason: 'the terminal service that owns it did not answer' }
 }
 
 /**
