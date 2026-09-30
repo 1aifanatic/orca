@@ -94,11 +94,13 @@ async function restartWithOwnerRow(): Promise<LifecycleServer> {
 }
 
 describe('host owner lifecycle', () => {
-  it('ends the owner when its local terminal is torn down', () => {
+  it('ends the owner with its local terminal and releases it to renderers without an exit', () => {
     const server = createServer()
     server.publish()
     const live = vi.fn()
+    const released = vi.fn()
     server.subscribeEnrichedStatus(live)
+    server.setAgentPresenceReleaseListener(released)
     server.clearPaneState(PANE, 'ended')
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({
@@ -106,9 +108,9 @@ describe('host owner lifecycle', () => {
         agentPresence: { ...owner, ended: true }
       })
     ])
-    expect(live).toHaveBeenLastCalledWith(
-      expect.objectContaining({ agentPresence: { ...owner, ended: true } })
-    )
+    // Why: sleep and hibernate tear the terminal down; that must not read as the agent finishing.
+    expect(released).toHaveBeenCalledWith({ paneKey: PANE, process: owner.process })
+    expect(live).not.toHaveBeenCalled()
   })
 
   it('lets the restored-pane reaper end an owner whose terminal died while Orca was down', async () => {
@@ -152,7 +154,6 @@ describe('host owner lifecycle', () => {
     server.publish()
     server.dropStatusEntry(PANE)
     server.clearPaneState(PANE, 'unverified')
-    server.clearPaneState(PANE, 'ended')
     expect(released).not.toHaveBeenCalled()
   })
 
@@ -243,7 +244,10 @@ describe('host owner lifecycle', () => {
     server.publish()
     const projected = vi.fn()
     server.subscribeEnrichedStatus((row) => projected(projectPluginAgentStatusChangedPayload(row)))
-    server.clearPaneState(PANE, 'ended')
+    server.reconcileEndedProcessForPaneKeys([PANE], {
+      kind: 'owner-exited',
+      presence: { ...owner, ended: true }
+    })
     expect(projected).toHaveBeenCalledTimes(1)
     expect(projected).toHaveBeenLastCalledWith(null)
   })

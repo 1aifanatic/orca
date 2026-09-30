@@ -72,25 +72,18 @@ export function createAgentOwnerExitObserver({
     }
     const agent = isTuiAgent(presence.agent) ? presence.agent : null
     state.lastForegroundAgent = null
-    // Why a task later: a torn-down terminal also ends its owner, and main sends that PTY exit right
-    // behind this event; it disposes the pane first, so no finished-task notice fires for it.
-    setTimeout(() => {
-      if (state.disposed) {
-        return
-      }
-      if (agent && state.hasAgentRunEvidence && options.isLive()) {
-        dispatchCompletion('process-exit', agent, {
-          terminalIdleConfirmed: true,
-          completionIdentity: {
-            source: 'process-exit',
-            identity: `${exited.platform}:${exited.pid}:${exited.startTime}`,
-            agentIdentity: agent
-          }
-        })
-        options.onForegroundAgentExited?.({ agent, processName: agent })
-      }
-      clearAgentRunEvidence()
-      scheduleNextPoll()
-    }, 0)
+    if (agent && state.hasAgentRunEvidence && options.isLive()) {
+      dispatchCompletion('process-exit', agent, {
+        terminalIdleConfirmed: true,
+        completionIdentity: {
+          source: 'process-exit',
+          identity: `${exited.platform}:${exited.pid}:${exited.startTime}`,
+          agentIdentity: agent
+        }
+      })
+      options.onForegroundAgentExited?.({ agent, processName: agent })
+    }
+    clearAgentRunEvidence()
+    scheduleNextPoll()
   }
 }

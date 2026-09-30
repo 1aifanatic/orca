@@ -84,6 +84,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     disposition: PaneOwnerDisposition
   ): void {
     const retained = rowAfterPaneCleanup(previous, disposition)
+    const owner = retained?.agentPresence
     if (retained) {
       admitLegacyAgentStatus(
         this.state,
@@ -91,12 +92,17 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         retained,
         AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
       )
-      if (
-        retained.agentPresence?.process &&
-        (!previous?.providerSessionOnly || retained.agentPresence !== previous.agentPresence)
-      ) {
-        this.emitEnrichedStatus(retained)
-      }
+    }
+    if (retained && owner?.process && disposition === 'ended' && !previous?.agentPresence?.ended) {
+      // Why: a torn-down terminal is not the agent finishing; renderers drop the owner as main
+      // dropped the row, so sleep keeps the user's view and raises no finished notice.
+      this.emitAgentPresenceReleased({ paneKey: retained.paneKey, process: owner.process })
+    } else if (
+      retained &&
+      owner?.process &&
+      (!previous?.providerSessionOnly || owner !== previous.agentPresence)
+    ) {
+      this.emitEnrichedStatus(retained)
     }
     this.commitStatusRowMutation(previous, retained)
   }

@@ -21,7 +21,12 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     const owner = row.agentPresence
     if (sender && owner?.process && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
       const agent = event.agentPresence?.agent ?? event.payload.agentType
-      void this.checkAgentPresence(row.paneKey, undefined, { agent, process: sender })
+      // Why: a sender with no agent type cannot own a pane, so it only rechecks the owner.
+      void this.checkAgentPresence(
+        row.paneKey,
+        undefined,
+        agent && agent !== 'unknown' ? { agent, process: sender } : undefined
+      )
     }
   }
 
@@ -50,8 +55,10 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
         return Promise.resolve('exited')
       }
     }
+    const presence = row?.agentPresence
+    const owner = presence?.process
     // Why: an ended owner already published its exit, and an owner no hook identified cannot be checked.
-    if (!row?.agentPresence?.process || row.agentPresence.ended) {
+    if (!row || !presence || !owner || presence.ended) {
       return Promise.resolve(null)
     }
     if (row.connectionId !== null) {
@@ -61,8 +68,6 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     if (pending && !successor) {
       return pending
     }
-    const presence = row.agentPresence
-    const owner = presence.process
     const check = probeAgentProcessPresence(owner)
       .then((verdict) => {
         // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
@@ -71,7 +76,11 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
           | EnrichedAgentHookEventPayload
           | undefined
         const currentOwner = current?.agentPresence
-        if (!currentOwner?.process || !isSameAgentProcess(currentOwner.process, owner)) {
+        if (
+          !current ||
+          !currentOwner?.process ||
+          !isSameAgentProcess(currentOwner.process, owner)
+        ) {
           return 'unverifiable' as const
         }
         if (verdict !== 'exited' || currentOwner.ended) {
