@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tab } from '../../../shared/tab-types'
 
 const mocks = vi.hoisted(() => ({
+  tabs: new Array<Tab>(),
   closeUnifiedTab: vi.fn(),
   launchAgentInNewTab: vi.fn(),
   deleteLaunch: vi.fn(() => true),
   discardOutbox: vi.fn(),
-  toastInfo: vi.fn(),
-  tabs: [] as Tab[]
+  toastInfo: vi.fn()
 }))
 
 vi.mock('sonner', () => ({ toast: { info: mocks.toastInfo, error: vi.fn() } }))

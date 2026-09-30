@@ -34,6 +34,7 @@ function chatTab(executionHostId?: Tab['executionHostId']): Tab {
 function storeWith(tab: Tab): ReturnType<typeof createTestStore> {
   const store = createTestStore()
   seedStore(store, {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: owner resolution reads only the repo id.
     repos: [{ id: 'repo-1', path: '/work/app', name: 'app' }] as never,
     worktreesByRepo: {
       'repo-1': [

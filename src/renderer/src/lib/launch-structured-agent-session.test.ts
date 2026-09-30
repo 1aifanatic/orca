@@ -87,6 +87,7 @@ describe('structured agent session launch', () => {
 
   it('creates the session on the paired server that owns the workspace', async () => {
     const initial = useAppStore.getState()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the catalog fields owner resolution reads are staged.
     useAppStore.setState({
       repos: [{ id: 'repo-remote', connectionId: null, executionHostId: 'runtime:server-1' }],
       worktreesByRepo: {
@@ -123,6 +124,7 @@ describe('structured agent session launch', () => {
     const initial = useAppStore.getState()
     // `repoId::path` names a checkout on this machine and one on the paired server.
     const stageCollidingWorkspace = (): void =>
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the catalog fields owner resolution reads are staged.
       useAppStore.setState({
         activeWorktreeId: 'another-workspace',
         worktreesByRepo: {
