@@ -167,7 +167,7 @@ const REMOTE_RUNTIME_UNAVAILABLE_MESSAGES: Record<RemoteRuntimeUnavailableReason
 const REMEMBERED_NOEXEC_MESSAGE =
   "Orca can't run its remote runtime on this host: an earlier connect found the home directory " +
   'mounted noexec, so nothing under ~/.orca-remote may execute. Remote terminals and file ' +
-  'browsing are unavailable until an administrator allows exec there.'
+  'browsing are unavailable until exec is allowed there; Orca re-checks on the next connect.'
 
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,

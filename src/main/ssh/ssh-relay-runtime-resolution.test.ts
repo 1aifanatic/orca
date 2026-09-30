@@ -62,6 +62,19 @@ describe('RelayRuntimeLadderRun', () => {
     expect(store.value?.pinnedRefusal).toBe('noexec')
   })
 
+  it('drops a replayed noexec at rung D, so a remounted home is re-proved next connect', () => {
+    const store = memoryStore()
+    const run = new RelayRuntimeLadderRun('ssh-1', store)
+    run.host = getRemoteHostPlatform('linux-x64')
+    run.facts = facts
+    run.refused('A', 'noexec', true)
+    run.refused('C', 'host_node_missing')
+    run.settle('D')
+    expect(store.value?.rung).toBe('D')
+    expect(store.value).not.toHaveProperty('pinnedRefusal')
+    expect(remoteRuntimeUnavailableError(run)).toMatchObject({ data: { reason: 'home_noexec' } })
+  })
+
   it('reports a remembered noexec at rung D without advising a host Node install', () => {
     const run = new RelayRuntimeLadderRun('ssh-1', null)
     run.host = getRemoteHostPlatform('linux-x64')
