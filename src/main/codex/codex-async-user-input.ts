@@ -65,6 +65,15 @@ export function codexAsyncAnswerText(prompt: CodexPendingPrompt): string {
   return prompt.questionIds.map((id) => `${id}: ${prompt.answers.get(id) ?? ''}`).join('\n')
 }
 
+/** Card answers a typed reply overtook before the ask was complete; null when there are none. */
+export function codexAsyncPartialAnswerText(prompt: CodexPendingPrompt): string | null {
+  const lines = prompt.questionIds.flatMap((id) => {
+    const answer = prompt.answers.get(id)
+    return answer === undefined ? [] : [`${id}: ${answer}`]
+  })
+  return lines.length > 0 ? lines.join('\n') : null
+}
+
 /** A live user message, which answers every async ask still open on its thread; null otherwise. */
 export function readCodexUserMessageReply(
   method: string,

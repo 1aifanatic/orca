@@ -1,15 +1,17 @@
 import type { CodexAppServerServerRequest } from './codex-app-server-connection'
 import {
+  codexAsyncPartialAnswerText,
   readCodexAsyncQuestionRequest,
   readCodexUserMessageReply,
   type CodexAsyncQuestionRequest
 } from './codex-async-user-input'
-import { CODEX_USER_INPUT_METHOD } from './codex-prompt-registry'
+import { CODEX_USER_INPUT_METHOD, type CodexPendingPrompt } from './codex-prompt-registry'
 import { disposeCodexServerRequest } from './codex-server-request-disposition'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
 import * as codexRewind from './codex-structured-rewind'
 import type { CodexSession, CodexStructuredSessionEvent } from './codex-structured-session-state'
 import { readCodexThreadId } from './codex-structured-thread-facts'
+import { steerCodexTurn } from './codex-structured-turn-start'
 
 type EmitCodexEvent = (
   session: CodexSession,
@@ -25,6 +27,7 @@ export function translateCodexNotification(input: {
   observedAt?: number
   dispatchSequenceAtReceipt?: number
   emit: EmitCodexEvent
+  requestTimeoutMs?: number
 }): CodexJournalTranslationAdmission {
   const { sessionId, session, method, params, observedAt, dispatchSequenceAtReceipt } = input
   codexRewind.observeCodexRewindActivity(session, method, params)
@@ -43,10 +46,30 @@ export function translateCodexNotification(input: {
   }
   const threadId = readCodexThreadId(params) ?? session.threadId
   if (readCodexUserMessageReply(method, params)) {
-    session.prompts.forgetAsync(threadId)
+    for (const answered of session.prompts.forgetAsync(threadId)) {
+      steerCodexPartialAnswers(session, answered, input.requestTimeoutMs)
+    }
   }
   const asked = readCodexAsyncQuestionRequest(threadId, method, params)
   return asked ? deliverCodexAsyncQuestion(sessionId, session, asked, input.emit) : admission
+}
+
+/** The journal already shows these card answers as resolved, so Codex must still receive them
+ *  after the typed reply that closed the ask. */
+function steerCodexPartialAnswers(
+  session: CodexSession,
+  prompt: CodexPendingPrompt,
+  timeoutMs: number | undefined
+): void {
+  const text = codexAsyncPartialAnswerText(prompt)
+  if (!text) {
+    return
+  }
+  steerCodexTurn(session.connection, { threadId: prompt.threadId, text, timeoutMs }).catch(
+    (error: unknown) => {
+      console.warn('[codex] could not deliver answered async question cards', error)
+    }
+  )
 }
 
 /** Registers an async ask as a question prompt so it renders, and is answered, like a blocking one. */

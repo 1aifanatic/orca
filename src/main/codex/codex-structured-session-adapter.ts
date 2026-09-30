@@ -68,7 +68,8 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
           params,
           observedAt,
           dispatchSequenceAtReceipt,
-          emit: (current, event) => this.emit(current, event)
+          emit: (current, event) => this.emit(current, event),
+          requestTimeoutMs: deps.requestTimeoutMs
         })
     })
     this.teardown = new CodexStructuredSessionTeardown({

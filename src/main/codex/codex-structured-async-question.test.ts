@@ -239,6 +239,54 @@ describe('a Codex async question (request_user_input_async)', () => {
     expect(steers()).toBe(2)
   })
 
+  it('still delivers a card answer when a typed reply closes a partly answered ask', async () => {
+    expect(await send('ask me two things')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))
+    turns.start()
+    notify('item/completed', {
+      threadId: THREAD,
+      turnId: 'turn-1',
+      item: {
+        ...ASYNC_QUESTION_ITEM,
+        questions: [
+          { title: 'Color?', options: ['Red', 'Blue'] },
+          { title: 'Size?', options: ['Small', 'Large'] }
+        ]
+      }
+    })
+    const [color] = await questionRows()
+    expect(await answer(color!, 'Blue')).toMatchObject({ ok: true })
+
+    expect(await send('Large')).toMatchObject({ ok: true })
+    const typed = () =>
+      codex.connections[0]!.calls.find(
+        (call) =>
+          call.method === 'turn/start' &&
+          JSON.stringify(call.params?.input) === JSON.stringify([{ type: 'text', text: 'Large' }])
+      )
+    await vi.waitFor(() => expect(typed()).toBeDefined())
+    const clientId = typed()?.params?.clientUserMessageId
+    notify('item/started', {
+      threadId: THREAD,
+      turnId: 'turn-1',
+      item: {
+        type: 'userMessage',
+        id: 'item-user-2',
+        clientId,
+        content: [{ type: 'text', text: 'Large' }]
+      }
+    })
+
+    const inputs = codex.connections[0]!.calls.filter((call) => call.method === 'turn/start').map(
+      (call) => call.params?.input
+    )
+    expect(inputs).toEqual([
+      [{ type: 'text', text: 'ask me two things' }],
+      [{ type: 'text', text: 'Large' }],
+      [{ type: 'text', text: 'Color?: Blue' }]
+    ])
+  })
+
   it('keeps the blocking requestUserInput path for older Codex builds', async () => {
     expect(await send('ask me')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))

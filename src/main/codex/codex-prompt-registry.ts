@@ -217,8 +217,8 @@ export class CodexPromptRegistry {
     }
   }
 
-  /** A user message on the thread answered every async ask still open there. */
-  forgetAsync(threadId: string): void {
+  /** A user message on the thread answered every async ask still open there; returns them. */
+  forgetAsync(threadId: string): CodexPendingPrompt[] {
     const prompts = new Set(
       [...this.byAddress.values(), ...this.boundPrompts.values()].filter(
         (prompt) => prompt.delivery === 'async' && prompt.threadId === threadId
@@ -227,6 +227,7 @@ export class CodexPromptRegistry {
     for (const prompt of prompts) {
       this.forget(prompt)
     }
+    return [...prompts]
   }
 
   clearTurn(threadId: string, turnId: string): void {
