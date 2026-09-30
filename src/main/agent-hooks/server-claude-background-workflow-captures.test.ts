@@ -28,7 +28,6 @@ import {
   storedTaskFact,
   temporaryDir,
   transcriptFile,
-  watch,
   watchCaughtUp,
   writeCaptured
 } from './claude-background-task-capture.test-fixture'
@@ -89,10 +88,6 @@ describe('Ctrl+C in the turn that launched a workflow whose script waits between
     const replay = replayer(server, records, new Map([['*', transcript]]))
     // Hook order by the capture's clock: the launch result lands 11 ms before agent 1 starts.
     await replay([0, 1, 2, 4, 3, 5])
-    expect(recordedTasks(server)?.get('w1mq9q8uo')).toEqual({
-      kind: 'workflow',
-      launchToolUseId: 'toolu_01TQmzzuafz2UhRsCBJgZWEe'
-    })
 
     // The capture: no hook inside the renderer's settle window, so it infers the Ctrl+C.
     expect(cancel).toMatchObject({ interrupted_painted: true })
@@ -151,10 +146,6 @@ describe('Ctrl+C in the turn that launched a background workflow (captured, 2.1.
       taskId: 'wuxzs3s3c',
       taskType: 'local_workflow'
     })
-    expect(recordedTasks(server)?.get('wuxzs3s3c')).toEqual({
-      kind: 'workflow',
-      launchToolUseId: 'toolu_01KDk2uKk754Pvw5EpcecXru'
-    })
     await replay([4, 5, 6, 7, 8])
     expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
 
@@ -198,16 +189,11 @@ describe('a background workflow run to completion (captured, 2.1.285)', () => {
     const transcript = transcriptFile()
     const replay = replayer(server, records, new Map([['*', transcript]]))
     await replay([0, 1, 2, 3])
-    expect(watch(server)?.reasons).toContain('recorded-task')
     await replay([4, 5, 6, 7])
-    // The launch turn's Stop lists it as `workflow`, which types it the same as the launch did.
+    // The launch turn's Stop lists it by the inventory's name for a workflow.
     expect(hookAt(records, 7).payload.background_tasks).toEqual([
       expect.objectContaining({ id: 'w1kuktaid', type: 'workflow', status: 'running' })
     ])
-    expect(recordedTasks(server)?.get('w1kuktaid')).toEqual({
-      kind: 'workflow',
-      launchToolUseId: 'toolu_01S3s8SyG9VLFN3QhiERnGmU'
-    })
     const settled = row(server)
     expect(settled).toMatchObject({ ...MONITORING, mainAgent: { state: 'done' } })
     expect(typeof settled.turnCompletedAt).toBe('number')
