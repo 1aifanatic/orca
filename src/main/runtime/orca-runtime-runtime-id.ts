@@ -1,8 +1,8 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { randomUUID } from 'node:crypto'
 import { preserveTerminalRetirementProofs } from './mobile-session-terminal-retirement-proof'
-import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeStore } from './runtime-store-contract'
@@ -124,9 +124,6 @@ export class OrcaRuntimeWithRuntimeId {
   }
 
   protected structuredAgentSessionTabRestorePromise: Promise<void> | null = null
-
-  // The history restore a tab restore owes, until a caller that answered with its list starts it.
-  protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
 
   // Whether the last tab restore ran with chats on disk but no host to list them.
   protected structuredAgentSessionInventoryUnverifiable = false

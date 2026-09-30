@@ -26,6 +26,9 @@ import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
+  // The history restore a tab restore owes, until a caller that answered with its list starts it.
+  protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
+
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
     agent: 'claude' | 'codex'
