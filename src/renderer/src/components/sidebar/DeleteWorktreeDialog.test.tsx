@@ -388,7 +388,7 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
   })
 
-  it('shows a failed delete’s host error and keeps it when the dialog is cancelled', async () => {
+  it('shows the error the host lists for a failed delete, not a stale local one', async () => {
     const failure = 'Operation not permitted'
     const workspace = {
       ...makeWorktree('Failed workspace', '/workspaces/failed'),
@@ -396,10 +396,11 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     }
     mocks.state.modalData = { worktreeId: workspace.id }
     mocks.state.allWorktrees.mockReturnValue([workspace])
+    // What a lost retry reply leaves behind while the host lists the retry's own failure.
     mocks.state.deleteStateByWorktreeId = {
       [workspace.id]: {
         isDeleting: false,
-        error: failure,
+        error: 'Request timed out',
         canForceDelete: false,
         forceDeleteReason: null
       }
@@ -407,19 +408,21 @@ describe('DeleteWorktreeDialog lineage copy', () => {
 
     const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
     const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
-    clickCancel()
 
     expect(markup).toContain(failure)
-    expect(mocks.state.clearWorktreeDeleteState).not.toHaveBeenCalled()
-    expect(mocks.state.closeModal).toHaveBeenCalled()
+    expect(markup).not.toContain('Request timed out')
   })
 
-  it('still clears an ordinary delete error when the dialog is cancelled', async () => {
-    const workspace = makeWorktree('Dirty workspace', '/workspaces/dirty')
-    mocks.state.modalData = { worktreeId: workspace.id }
-    mocks.state.allWorktrees.mockReturnValue([workspace])
+  it('shows a failed row’s host error in a batch and clears every stale error on Cancel', async () => {
+    const failed = {
+      ...makeWorktree('Failed workspace', '/workspaces/failed'),
+      removalError: 'Operation not permitted'
+    }
+    const dirty = makeWorktree('Dirty workspace', '/workspaces/dirty')
+    mocks.state.modalData = { worktreeIds: [failed.id, dirty.id] }
+    mocks.state.allWorktrees.mockReturnValue([failed, dirty])
     mocks.state.deleteStateByWorktreeId = {
-      [workspace.id]: {
+      [dirty.id]: {
         isDeleting: false,
         error: 'Worktree has uncommitted changes',
         canForceDelete: true,
@@ -428,10 +431,12 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     }
 
     const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
-    renderToStaticMarkup(<DeleteWorktreeDialog />)
+    const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
     clickCancel()
 
-    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(workspace.id)
+    expect(markup).toContain('Operation not permitted')
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(failed.id, undefined)
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(dirty.id, undefined)
   })
 
   it('notifies the dialog caller after a toast force delete succeeds', async () => {

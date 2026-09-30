@@ -55,21 +55,25 @@ export function WorktreeCardSecondaryRows({
         </div>
       )}
 
-      {/* Why from the row: the host lists a failed delete until it is retried, forgotten or gone. */}
+      {/* Why from the row: the host lists a failed delete until it is retried, forgotten or gone.
+          Why a tooltip: the error leads with the path; the Delete dialog shows it inline too. */}
       {worktree.removalError && !isDeleting ? (
-        <div
-          className="mt-0.5 flex items-start gap-1.5 text-[11px] leading-snug text-destructive"
-          data-worktree-card-delete-failed=""
-        >
-          <AlertTriangle className="mt-[1px] size-3 shrink-0" />
-          <span className="line-clamp-2 min-w-0 flex-1 break-words">
-            {translate(
-              'auto.components.sidebar.WorktreeCard.deleteFailed',
-              'Delete failed: {{error}}',
-              { error: worktree.removalError }
-            )}
-          </span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-snug text-destructive"
+              data-worktree-card-delete-failed=""
+            >
+              <AlertTriangle className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">
+                {translate('auto.components.sidebar.WorktreeCard.deleteFailed', 'Delete failed')}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8} className="max-w-72 break-words">
+            {worktree.removalError}
+          </TooltipContent>
+        </Tooltip>
       ) : null}
 
       {isActive && worktree.linkedLinearIssue ? (

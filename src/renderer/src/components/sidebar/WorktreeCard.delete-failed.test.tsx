@@ -133,11 +133,13 @@ describe('WorktreeCard for a delete that failed partway', () => {
     worktreeCardProperties = ['status']
   })
 
-  it('says the delete failed, with the error the host lists', () => {
+  it('says the delete failed, with the full error the host lists one hover away', () => {
     const markup = renderCard(makeWorktree({ removalError: FAILURE }))
 
     expect(markup).toContain('data-worktree-card-delete-failed')
-    expect(markup).toContain(`Delete failed: ${FAILURE}`)
+    expect(markup).toContain('Delete failed')
+    // The tooltip primitive is rendered inline by this harness.
+    expect(markup).toContain(FAILURE)
   })
 
   it('shows nothing extra on a normal row', () => {

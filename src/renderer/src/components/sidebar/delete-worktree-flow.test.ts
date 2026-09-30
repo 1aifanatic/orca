@@ -173,34 +173,27 @@ describe('delete worktree flow', () => {
     })
   })
 
-  it('keeps a failed delete’s host error when Delete opens the dialog, so the dialog shows it', () => {
-    setWorktrees([{ id: 'wt-1', removalError: 'Operation not permitted' }])
-    mocks.state.deleteStateByWorktreeId['wt-1'] = {
+  it('clears stale delete errors for a mixed batch before its dialog opens', () => {
+    setWorktrees([{ id: 'wt-failed', removalError: 'Operation not permitted' }, { id: 'wt-dirty' }])
+    mocks.state.deleteStateByWorktreeId['wt-failed'] = {
       isDeleting: false,
-      error: 'Operation not permitted',
+      error: 'Request timed out',
       canForceDelete: false
     }
-
-    runWorktreeDelete('wt-1')
-    runWorktreeBatchDelete(['wt-1'])
-
-    expect(mocks.state.openModal).toHaveBeenCalledWith('delete-worktree', expect.anything())
-    expect(mocks.state.clearWorktreeDeleteState).not.toHaveBeenCalled()
-    expect(mocks.state.deleteStateByWorktreeId['wt-1']?.error).toBe('Operation not permitted')
-  })
-
-  it('still clears a stale error on a row the host does not list as failed', () => {
-    setWorktrees([{ id: 'wt-1' }])
-    mocks.state.deleteStateByWorktreeId['wt-1'] = {
+    mocks.state.deleteStateByWorktreeId['wt-dirty'] = {
       isDeleting: false,
       error: 'Worktree has uncommitted changes',
       canForceDelete: true
     }
 
-    runWorktreeDelete('wt-1')
+    expect(runWorktreeBatchDelete(['wt-failed', 'wt-dirty'])).toBe(true)
 
-    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith('wt-1')
-    expect(mocks.state.deleteStateByWorktreeId['wt-1']).toBeUndefined()
+    expect(mocks.state.openModal).toHaveBeenCalledWith(
+      'delete-worktree',
+      expect.objectContaining({ worktreeIds: ['wt-failed', 'wt-dirty'] })
+    )
+    // The failed row's own error still shows in the dialog: it comes from the row.
+    expect(mocks.state.deleteStateByWorktreeId).toEqual({})
   })
 
   it('treats duplicate selected ids as one delete target', () => {

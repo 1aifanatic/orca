@@ -9,8 +9,7 @@ import {
 import { useAppStore } from '@/store'
 import { useAllWorktrees } from '@/store/selectors'
 import { runWorktreeDeletesInParallel } from './delete-worktree-flow'
-import { resetWorktreeDeleteState } from './worktree-delete-state-reset'
-import type { WorktreeDeleteIdentity } from './worktree-delete-request'
+import { getWorktreeDeleteErrorToShow } from './worktree-delete-error-display'
 import {
   composeWorktreeHostIdentity,
   getWorktreeHostIdentity
@@ -170,7 +169,7 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
     ? getDeleteStateForWorktreeHost(worktree, deleteStateByWorktreeId)
     : undefined
   const isDeleting = deleteStates.some((state) => state.isDeleting)
-  const deleteError = !isBatchDelete ? (deleteState?.error ?? null) : null
+  const deleteError = !isBatchDelete ? getWorktreeDeleteErrorToShow(worktree, deleteState) : null
   const canForceDelete = !isBatchDelete && (deleteState?.canForceDelete ?? false)
   const gitStatusByWorktreeIdentity = useDeleteWorktreeStatusHydration({
     isOpen,
@@ -228,23 +227,18 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
       const currentState = currentTarget
         ? getDeleteStateForWorktreeHost(currentTarget, state)
         : undefined
-      const rowOf = (target: Pick<WorktreeDeleteIdentity, 'id' | 'hostId'>) =>
-        worktrees.find(
-          (item) => item.id === target.id && (!target.hostId || item.hostId === target.hostId)
-        )
       if (isBatchDelete) {
         for (const target of deleteStateTargets) {
           if (!getDeleteStateForWorktreeHost(target, state)?.isDeleting) {
-            resetWorktreeDeleteState(target, rowOf(target))
+            clearWorktreeDeleteState(target.id, target.hostId)
           }
         }
       } else if (worktreeId && !currentState?.isDeleting) {
-        const target = { id: worktreeId, hostId: currentTarget?.hostId }
-        resetWorktreeDeleteState(target, rowOf(target))
+        clearWorktreeDeleteState(worktreeId, currentTarget?.hostId)
       }
       closeModal()
     },
-    [closeModal, deleteStateTargets, isBatchDelete, worktreeId, worktrees]
+    [clearWorktreeDeleteState, closeModal, deleteStateTargets, isBatchDelete, worktreeId]
   )
 
   const persistDontAskAgainPreference = useCallback((): void => {
