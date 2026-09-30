@@ -7,7 +7,7 @@
  * relay runs the SAME shared scanners main uses (terminal-side-effect
  * authority doc: semantics must not drift) over every raw chunk BEFORE any
  * drop decision, and emits compact transientFact stream events in byte order.
- * Main suppresses its own copies of these four scanners between the
+ * Main suppresses its own copies of these scanners between the
  * sessionBackgroundMarker handoffs, so no fact double-fires or goes missing.
  *
  * Title/agent-status facts are deliberately NOT relayed: they converge from
@@ -60,6 +60,9 @@ export class BackgroundTransientFactRelay {
         sessionId,
         createTerminalTitleTracker({
           onBell: () => this.emitFact(sessionId, { kind: 'bell' }),
+          // Why: main's 133 scanner is suppressed while hidden, so a command started here
+          // (CLI send, type-ahead) would otherwise never reach main's command-start consumers.
+          onCommandStarted: () => this.emitFact(sessionId, { kind: 'command-started' }),
           onCommandFinished: (exitCode) =>
             this.emitFact(sessionId, { kind: 'command-finished', exitCode }),
           // Note: recreating the tracker on each background toggle resets the

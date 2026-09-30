@@ -14,10 +14,11 @@ const WORKTREE_ID = 'repo::/worktree'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = `tab-1:${LEAF_ID}`
 
-function createRuntime(): {
+function createRuntime(foregroundProcess = 'opencode'): {
   runtime: OrcaRuntimeService
   statuses: RuntimeTerminalAgentStatusEvent[]
   channelOrder: string[]
+  getForegroundProcess: ReturnType<typeof vi.fn>
 } {
   const statuses: RuntimeTerminalAgentStatusEvent[] = []
   const channelOrder: string[] = []
@@ -29,11 +30,12 @@ function createRuntime(): {
     onTerminalSideEffects: (batch) =>
       channelOrder.push(...batch.facts.map((fact) => `fact:${fact.kind}`))
   })
+  const getForegroundProcess = vi.fn(async () => foregroundProcess)
   runtime.setPtyController({
     spawn: vi.fn(),
     write: () => true,
     kill: () => true,
-    getForegroundProcess: async () => 'opencode'
+    getForegroundProcess
   })
   runtime.attachWindow(1)
   runtime.syncWindowGraph(1, {
@@ -50,7 +52,7 @@ function createRuntime(): {
       { tabId: 'tab-1', worktreeId: WORKTREE_ID, leafId: LEAF_ID, paneRuntimeId: 1, ptyId: 'pty-1' }
     ]
   })
-  return { runtime, statuses, channelOrder }
+  return { runtime, statuses, channelOrder, getForegroundProcess }
 }
 
 const summary = (statuses: RuntimeTerminalAgentStatusEvent[]): string[] =>
@@ -137,5 +139,105 @@ describe('OpenCode run process lifetime in the runtime', () => {
         Object.defineProperty(process, 'platform', platform)
       }
     }
+  })
+
+  // Main hands its 133 scanner to the daemon while the pane's tab is hidden.
+  describe('a run that starts while its tab is hidden', () => {
+    it("posts Working from the daemon's command-started fact and Done from its command-finished", async () => {
+      const { runtime, statuses } = createRuntime()
+      runtime.setPtyTransientFactDelegation('pty-1', true)
+
+      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-started' })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 0 })
+
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+    })
+
+    // Why: exactly one side scans each byte, so the relayed fact is the only start main acts on.
+    it('does not arm from delivered bytes while the daemon holds the scan', async () => {
+      const { runtime, statuses, getForegroundProcess } = createRuntime()
+      runtime.setPtyTransientFactDelegation('pty-1', true)
+
+      runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(getForegroundProcess).not.toHaveBeenCalled()
+
+      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-started' })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+      expect(getForegroundProcess).toHaveBeenCalledTimes(1)
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
+    })
+
+    it("posts Done from main's own scanner once the tab is shown again", async () => {
+      const { runtime, statuses } = createRuntime()
+      runtime.setPtyTransientFactDelegation('pty-1', true)
+      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-started' })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+
+      runtime.setPtyTransientFactDelegation('pty-1', false)
+      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
+
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+    })
+  })
+
+  // An Orca restart: the run printed its 133;C before this main process was listening.
+  describe('a run already in flight when Orca reattaches', () => {
+    it('posts Working from one foreground check at reattach and Done at its 133;D', async () => {
+      const { runtime, statuses } = createRuntime()
+      runtime.registerPty('pty-1', WORKTREE_ID)
+
+      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
+
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+    })
+
+    it('treats an adopted agent session as a reattach', async () => {
+      const { runtime, statuses } = createRuntime()
+      runtime.registerPty('pty-1', WORKTREE_ID)
+
+      runtime.noteTerminalSpawnCommit({
+        id: 'pty-1',
+        agentSessionEnsure: { disposition: 'adopted' }
+      })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
+    })
+
+    it('checks nothing for a freshly spawned or split pane', async () => {
+      const { runtime, getForegroundProcess } = createRuntime()
+      runtime.registerPty('pty-1', WORKTREE_ID)
+
+      runtime.noteTerminalSpawnCommit({ id: 'pty-1' })
+      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true }, { sourcePtyId: 'x' })
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(getForegroundProcess).not.toHaveBeenCalled()
+    })
+
+    it('checks a pane back at its prompt once and never again', async () => {
+      const { runtime, statuses, getForegroundProcess } = createRuntime('zsh')
+      runtime.registerPty('pty-1', WORKTREE_ID)
+
+      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true })
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(getForegroundProcess).toHaveBeenCalledTimes(1)
+      expect(statuses).toEqual([])
+    })
+
+    it('stays silent for a reattached SSH pane', async () => {
+      const { runtime, getForegroundProcess } = createRuntime()
+      runtime.registerPty('pty-1', WORKTREE_ID, 'ssh-conn-1')
+
+      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true })
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+
+      expect(getForegroundProcess).not.toHaveBeenCalled()
+    })
   })
 })

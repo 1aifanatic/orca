@@ -41,6 +41,8 @@ type CommandState = {
   startedAt: number
   timer: ReturnType<typeof setTimeout> | null
   armed: OpenCodeAgent | null
+  /** False for a reattach check: a command already running needs no wait for its exec. */
+  retryUntilExec: boolean
 }
 
 /**
@@ -57,20 +59,19 @@ export class OpenCodeRunLifetimeStatus {
   onCommandStarted(ptyId: string): void {
     // Why: a new command proves the armed one ended even though its 133;D never arrived.
     this.onCommandFinished(ptyId, null)
-    if (
-      !this.deps.isObservablePty(ptyId) ||
-      (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
-    ) {
+    this.track(ptyId, true)
+  }
+
+  /**
+   * Orca reattached to a PTY that outlived it (app restart). A run already in flight printed its
+   * 133;C before this process was listening, so check the foreground once instead.
+   */
+  onReattached(ptyId: string): void {
+    // Why: a tracked command means this process saw the pane's current 133;C itself.
+    if (this.commands.has(ptyId)) {
       return
     }
-    const state: CommandState = {
-      generation: ++this.nextGeneration,
-      startedAt: this.deps.now(),
-      timer: null,
-      armed: null
-    }
-    this.commands.set(ptyId, state)
-    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
+    this.track(ptyId, false)
   }
 
   onCommandFinished(ptyId: string, exitCode: number | null): void {
@@ -88,6 +89,24 @@ export class OpenCodeRunLifetimeStatus {
     if (payload) {
       this.deps.publish(ptyId, payload, state.startedAt)
     }
+  }
+
+  private track(ptyId: string, retryUntilExec: boolean): void {
+    if (
+      !this.deps.isObservablePty(ptyId) ||
+      (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
+    ) {
+      return
+    }
+    const state: CommandState = {
+      generation: ++this.nextGeneration,
+      startedAt: this.deps.now(),
+      timer: null,
+      armed: null,
+      retryUntilExec
+    }
+    this.commands.set(ptyId, state)
+    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
   }
 
   forgetPty(ptyId: string): void {
@@ -123,7 +142,7 @@ export class OpenCodeRunLifetimeStatus {
       }
       if (agent !== 'opencode' && agent !== 'opencode2') {
         const retryDelay = FOREGROUND_COMMAND_READS.retryDelaysMs[retryIndex]
-        if (retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
+        if (state.retryUntilExec && retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
           this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
         }
         return

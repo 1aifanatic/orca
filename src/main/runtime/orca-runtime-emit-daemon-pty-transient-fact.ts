@@ -17,6 +17,9 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
       case 'bell':
         this.recordTerminalSideEffectFact(ptyId, { kind: 'bell' })
         return
+      case 'command-started':
+        this.openCodeRunLifetime.onCommandStarted(ptyId)
+        return
       case 'command-finished':
         this.retirePtyAgentLaunchAuthority(ptyId)
         this.recordTerminalSideEffectFact(ptyId, {

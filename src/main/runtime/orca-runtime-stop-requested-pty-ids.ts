@@ -26,6 +26,8 @@ import { RuntimeManagedWorktreeQueries } from './runtime-managed-worktree-querie
 import { RuntimePtyForegroundAgent } from './runtime-pty-foreground-agent'
 import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
 import { readLocalPtyForegroundCommandLine } from './local-pty-foreground-command-line'
+import type { TerminalSpawnCommit } from './terminal-run-facts'
+import { spawnCommitBindingOrigin } from '../persistence/loading-store/pty-binding-span'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
 import type { OrchestrationDb } from './orchestration/db'
@@ -191,6 +193,14 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       ),
     now: () => Date.now()
   })
+
+  noteTerminalSpawnCommit(commit: TerminalSpawnCommit, expectedSourceBinding?: unknown): void {
+    super.noteTerminalSpawnCommit(commit, expectedSourceBinding)
+    // Why: a run in flight across an Orca restart printed its 133;C before main was listening.
+    if (spawnCommitBindingOrigin(commit, expectedSourceBinding) === 'reattach') {
+      this.openCodeRunLifetime.onReattached(commit.id)
+    }
+  }
 
   protected readonly terminalAgentStatus = new RuntimeTerminalAgentStatusQuery({
     getController: () => this.ptyController,

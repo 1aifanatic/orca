@@ -39,6 +39,40 @@ describe('BackgroundTransientFactRelay', () => {
     expect(emitted).toEqual([{ sessionId: 's1', fact: { kind: 'command-finished', exitCode: 0 } }])
   })
 
+  // Why: main's scanner is suppressed while hidden, so the daemon is the only one who sees a
+  // command start there (a CLI send or type-ahead into a background tab).
+  it('emits command-started for OSC 133;C, in byte order with command-finished', () => {
+    const { relay, emitted } = createRelay()
+    relay.setSessionBackground('s1', true)
+    relay.onSessionData('s1', '\x1b]133;C\x07run output\x1b]133;D;130\x07')
+    expect(emitted).toEqual([
+      { sessionId: 's1', fact: { kind: 'command-started' } },
+      { sessionId: 's1', fact: { kind: 'command-finished', exitCode: 130 } }
+    ])
+  })
+
+  it('emits one command-started for a 133;C split across chunks', () => {
+    const { relay, emitted } = createRelay()
+    relay.setSessionBackground('s1', true)
+    relay.onSessionData('s1', 'prompt\x1b]13')
+    relay.onSessionData('s1', '3;C\x07output')
+    expect(emitted).toEqual([{ sessionId: 's1', fact: { kind: 'command-started' } }])
+  })
+
+  it('emits one command-started for a 133;C split across the background handoff', () => {
+    const { relay, emitted } = createRelay()
+    relay.setSessionBackground('s1', true)
+    relay.seedSessionScanState('s1', '\x1b]133;')
+    relay.onSessionData('s1', 'C\x07output')
+    expect(emitted).toEqual([{ sessionId: 's1', fact: { kind: 'command-started' } }])
+  })
+
+  it('emits no command-started for a session main still scans', () => {
+    const { relay, emitted } = createRelay()
+    relay.onSessionData('s1', '\x1b]133;C\x07')
+    expect(emitted).toEqual([])
+  })
+
   it('preserves a provisional 2031 subscribe when scan authority moves to the daemon', () => {
     const { relay, emitted } = createRelay()
     relay.onSessionData('s1', '\x1b[?2031h\x1b[?')
