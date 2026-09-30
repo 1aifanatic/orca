@@ -7,7 +7,11 @@ import {
 } from './agent-transcript-replay-test-harness'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { describeScreenRuledAgentTranscripts } from './screen-ruled-agent-transcript-suite'
-import { isKnownReadyPromptPreview, isQuietReadyScreenBody } from './terminal-wait-detection'
+import {
+  isKnownReadyPromptBody,
+  isKnownReadyPromptPreview,
+  isQuietReadyScreenBody
+} from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -65,6 +69,7 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
     // Presence precondition: the text alone would say ready.
     expect(isKnownReadyPromptPreview(waitText)).toBe(true)
     expect(isQuietReadyScreenBody(waitText, 'antigravity', () => screenLines)).toBe(false)
+    expect(isKnownReadyPromptBody(waitText, 'antigravity', () => screenLines, false)).toBe(false)
   })
 
   // Why a caret rule is not enough: agy keeps the bare composer caret painted through both.

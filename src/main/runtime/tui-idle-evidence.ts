@@ -16,7 +16,7 @@ import {
   isKnownReadyPromptBody,
   isQuietReadyScreenBody
 } from './terminal-wait-detection'
-import { isReadinessDecidedByScreen } from './screen-ruled-agent-readiness'
+import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent-readiness'
 
 /**
  * Ranking the evidence that a `tui-idle` wait may settle on.
@@ -220,13 +220,7 @@ const READY_STRONG: TuiIdleVerdict = { kind: 'ready-strong' }
 const READY_WEAK: TuiIdleVerdict = { kind: 'ready-weak' }
 const WORKING: TuiIdleVerdict = { kind: 'working' }
 
-const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set([
-  'muse',
-  'codex',
-  'antigravity',
-  'cline',
-  'prime-agent'
-])
+const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex'])
 
 /**
  * Tier 1b: a ready screen in the body, believed only once the stream has gone quiet.
@@ -245,7 +239,7 @@ export function hasQuietReadyScreen(
   readBodyEvidence: () => boolean,
   quiescenceMs: number
 ): boolean {
-  if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent)) {
+  if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent) && !getScreenReadyRule(agent)) {
     return false
   }
   // Why: same rule as the tier-3 lane — without an output clock there is no
@@ -362,7 +356,7 @@ export function leafTuiIdleEvidence(
     readQuietReadyBodyEvidence: () =>
       isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(leaf.ptyId)),
     readScreenDecidesReadiness: () =>
-      isReadinessDecidedByScreen(agent, () => source.readScreenLines(leaf.ptyId)),
+      readScreenRuledVerdict(agent, () => source.readScreenLines(leaf.ptyId)) !== null,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
     quiescenceMs: source.quiescenceMs
@@ -390,7 +384,7 @@ export function ptyTuiIdleEvidence(
     readQuietReadyBodyEvidence: () =>
       isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(pty.ptyId)),
     readScreenDecidesReadiness: () =>
-      isReadinessDecidedByScreen(agent, () => source.readScreenLines(pty.ptyId)),
+      readScreenRuledVerdict(agent, () => source.readScreenLines(pty.ptyId)) !== null,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
     quiescenceMs: source.quiescenceMs

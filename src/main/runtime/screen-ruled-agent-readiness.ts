@@ -17,55 +17,20 @@ const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
   'prime-agent': isPrimeAgentComposerReadyScreen
 }
 
-export function getScreenReadyRule(agent: TuiAgent | null): ScreenReadyRule | null {
-  return agent === null ? null : (SCREEN_READY_RULES[agent] ?? null)
+export function getScreenReadyRule(agent: TuiAgent | null | undefined): ScreenReadyRule | null {
+  return agent ? (SCREEN_READY_RULES[agent] ?? null) : null
 }
 
 /**
- * Whether a trustworthy live screen decides this pane's readiness. When it does, the lanes that
- * cannot see a screen (a name-only title, a quiet process) must not settle what it refused.
+ * The agent's screen rule applied to its live screen, or null when it has no rule or no
+ * trustworthy screen is readable. Why a verdict outranks every text rule: the screen is what
+ * the folded text was copied from, and the text cannot see a picker or dialog covering it.
  */
-export function isReadinessDecidedByScreen(
-  agent: TuiAgent | null,
+export function readScreenRuledVerdict(
+  agent: TuiAgent | null | undefined,
   readScreenLines: () => readonly string[] | null
-): boolean {
-  return getScreenReadyRule(agent) !== null && readScreenLines() !== null
-}
-
-/**
- * Tier 1 for a screen-ruled pane with a live screen, or null to leave it to the text rules.
- * Why false for a clocked pane: its composer is also painted mid-turn, so the quiet lane decides.
- * Why a clockless pane keeps it: quiescence needs an output clock, which a restored pane lacks.
- */
-export function readScreenRuledReady(
-  agent: TuiAgent | null,
-  readScreenLines: () => readonly string[] | null,
-  hasOutputClock: boolean
 ): boolean | null {
   const rule = getScreenReadyRule(agent)
   const screenLines = rule ? readScreenLines() : null
-  if (rule === null || screenLines === null) {
-    return null
-  }
-  if (hasOutputClock) {
-    return false
-  }
-  return rule(screenLines) ? true : null
-}
-
-/**
- * Tier 1b for a screen-ruled pane, or null for any other agent.
- * Why no text fallback: without a trustworthy screen tier 1 already ran the text rules, and a
- * screen that refused outranks a line-folded copy of it.
- */
-export function readScreenRuledQuietReady(
-  agent: TuiAgent | null,
-  readScreenLines: () => readonly string[] | null
-): boolean | null {
-  const rule = getScreenReadyRule(agent)
-  if (rule === null) {
-    return null
-  }
-  const screenLines = readScreenLines()
-  return screenLines !== null && rule(screenLines)
+  return rule && screenLines ? rule(screenLines) : null
 }

@@ -8,7 +8,7 @@ import {
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
-import { readScreenRuledQuietReady, readScreenRuledReady } from './screen-ruled-agent-readiness'
+import { readScreenRuledVerdict } from './screen-ruled-agent-readiness'
 import {
   findCodexHeaderIndex,
   findCodexScreenReadyPromptIndex,
@@ -90,9 +90,9 @@ export function isKnownReadyPromptBody(
   if (agent === 'qoder') {
     return isQoderComposerReady(readScreenLines())
   }
-  const screenReady = readScreenRuledReady(agent, readScreenLines, hasOutputClock)
-  if (screenReady !== null) {
-    return screenReady
+  const screenVerdict = readScreenRuledVerdict(agent, readScreenLines)
+  if (screenVerdict !== null) {
+    return screenVerdict && !hasOutputClock
   }
   if (agent === 'codex' && hasOutputClock) {
     return false
@@ -130,9 +130,8 @@ export function isQuietReadyScreenBody(
     const normalized = waitText.toLowerCase()
     return isReadyPromptSettled(normalized, findCodexReadyPromptIndex(normalized))
   }
-  const quietScreenReady = readScreenRuledQuietReady(agent, readScreenLines)
-  if (quietScreenReady !== null) {
-    return quietScreenReady
+  if (readScreenRuledVerdict(agent, readScreenLines) === true) {
+    return true
   }
   return (agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)
 }
