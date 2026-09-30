@@ -151,7 +151,7 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
     const state = this.headlessTerminals.get(ptyId)
     if (
       !state ||
-      state.reflowedWithoutRepaint === true ||
+      state.unrepaintedReflowGrid !== undefined ||
       this.providerSnapshotPreferredPtys.has(ptyId) ||
       this.headlessHydrationState.get(ptyId) === 'pending'
     ) {

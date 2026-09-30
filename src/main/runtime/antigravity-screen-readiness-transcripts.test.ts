@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTranscriptPane } from './agent-transcript-pane-test-harness'
+import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import {
   finalReplayFrame,
   readRuntimeFixture,
@@ -113,4 +113,36 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
       runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
     ).rejects.toThrow(/timeout/)
   }, 15_000)
+
+  // Why this recording: only the screen reads it ready, so settling proves the grid is trusted.
+  it('trusts a reflowed grid again once a PTY resize off it repaints the TUI', async () => {
+    const turnEnded = readRuntimeFixture('antigravity-1-2-14-turn-ended')
+    const options = {
+      paneTitle: 'Terminal',
+      foregroundProcess: 'agy',
+      launchAgent: 'antigravity' as const,
+      data: turnEnded,
+      size: { cols: 100, rows: 30 }
+    }
+    const { runtime, handle } = await createTranscriptPane(options)
+    const resizePty = (cols: number, rows: number) => {
+      options.size = { cols, rows }
+      runtime.onExternalPtyResize(TRANSCRIPT_PANE_PTY_ID, cols, rows)
+    }
+    const settles = async () =>
+      (
+        await runtime
+          .waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
+          .catch(() => ({ satisfied: false }))
+      ).satisfied
+    options.size = { cols: 120, rows: 40 }
+    runtime.reflowHeadlessTerminalToPtyGrid(TRANSCRIPT_PANE_PTY_ID, 120, 40)
+    await runtime.readTerminal(handle, { screen: true })
+    expect(await settles()).toBe(false)
+    resizePty(121, 40)
+    resizePty(120, 40)
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, turnEnded, Date.now())
+    await runtime.readTerminal(handle, { screen: true })
+    expect(await settles()).toBe(true)
+  }, 45_000)
 })

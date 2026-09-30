@@ -120,8 +120,8 @@ export type RuntimeHeadlessTerminal = {
   outputSequence: number
   writeChain: Promise<void>
   ownership: PtyShellOwnershipMirror
-  /** Set once the grid was reflowed to a size the running TUI never painted for. */
-  reflowedWithoutRepaint?: boolean
+  /** The grid a reattach reflowed the model onto, until a PTY resize off it repaints the TUI. */
+  unrepaintedReflowGrid?: { cols: number; rows: number }
 }
 
 export type RuntimeVisibleTerminalState = {

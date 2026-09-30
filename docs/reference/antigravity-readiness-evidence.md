@@ -55,12 +55,13 @@ What they show:
   decides, and that lane stays shut.
 - **A mismatched grid garbles the chrome.** At 80x24, 100x30 or 60x20 the 120x40 recordings lose
   the four-row shape, and resizing the model does not make the TUI repaint. So the live screen
-  counts only when its grid matches the PTY's reported size and was never reflowed without a
-  repaint (a re-attach that learned the real size late). Otherwise every pre-existing lane (text
-  rules, title, quiet process) decides, as before this change.
+  counts only when its grid matches the PTY's reported size and is not a reflow the TUI never
+  repainted for (a re-attach that learned the real size late; a later PTY resize off that size
+  repaints it). Otherwise every pre-existing lane (text rules, title, quiet process) decides, as
+  before this change.
 - **A readable screen outranks the text.** When the grid is trustworthy and refuses, the text rules
-  do not overrule it; they decide only when there is no trustworthy grid. No recorded verdict
-  depends on that ordering.
+  do not overrule it, in the ready-prompt tier or the quiet one; they decide only when there is no
+  trustworthy grid. The recorded picker-dismissed text over a model-picker screen proves it.
 
 The visible-read probe's Antigravity branch is retired. It read the provider screen with a looser
 rule (any caret after the banner) whenever the pane was Antigravity. The probe now runs the shared

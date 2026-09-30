@@ -154,6 +154,8 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
           firstReady.cols,
           firstReady.rows
         )
+        // Why: an echo of the reflowed size sends no SIGWINCH, so nothing repaints.
+        runtime.onExternalPtyResize(TRANSCRIPT_PANE_PTY_ID, firstReady.cols, firstReady.rows)
         await runtime.readTerminal(handle, { screen: true })
         const result = await runtime
           .waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: READY_TIMEOUT_MS })

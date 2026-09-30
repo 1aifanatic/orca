@@ -159,6 +159,11 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
     if (!state) {
       return
     }
+    const unpainted = state.unrepaintedReflowGrid
+    // Why: a PTY resize off the reflowed grid makes the TUI repaint; an echo of it does not.
+    if (unpainted && (unpainted.cols !== cols || unpainted.rows !== rows)) {
+      state.unrepaintedReflowGrid = undefined
+    }
     // Why: terminal reflow is a parser operation. It must sit in the same
     // per-PTY stream as output bytes or restore snapshots can bake in wraps
     // from the wrong terminal width.
@@ -181,12 +186,15 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
       return
     }
     const state = this.headlessTerminals.get(ptyId)
-    const applied = state?.emulator.getAppliedSize()
-    // Why: nothing resized the PTY, so the TUI does not repaint and its cells keep the old grid.
-    if (state && applied && (applied.cols !== cols || applied.rows !== rows)) {
-      state.reflowedWithoutRepaint = true
+    if (!state) {
+      return
     }
+    const applied = state.emulator.getAppliedSize()
     this.resizeHeadlessTerminal(ptyId, cols, rows)
+    // Why: nothing resized the PTY, so the TUI does not repaint and its cells keep the old grid.
+    if (applied.cols !== cols || applied.rows !== rows) {
+      state.unrepaintedReflowGrid = { cols, rows }
+    }
   }
 
   // Public: desktop-initiated clears (ipc/pty.ts) must also drop this mobile
