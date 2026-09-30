@@ -34,7 +34,7 @@ import {
   findSlotProblems,
   highestGlibcNeed,
   mergeManifest,
-  napiVersionGypi,
+  prebuildCompileGypi,
   readManifest,
   sha256Of,
   slotSourceFiles,
@@ -208,8 +208,8 @@ async function compileNodePty(sourceDir, slot) {
       nodePtyDir: stagedDir
     })
   }
-  const napiGypi = join(workDir, 'napi-version.gypi')
-  writeFileSync(napiGypi, napiVersionGypi())
+  const compileGypi = join(workDir, 'prebuild-compile.gypi')
+  writeFileSync(compileGypi, prebuildCompileGypi())
   const nodeDir = await preparePinnedNodeDir({ target: slot, workDir: join(workDir, 'nodedir') })
 
   console.log(
@@ -224,7 +224,7 @@ async function compileNodePty(sourceDir, slot) {
       `--nodedir=${nodeDir}`,
       '--',
       '-I',
-      napiGypi
+      compileGypi
     ],
     cwd: stagedDir,
     stdio: 'inherit',
