@@ -1,12 +1,13 @@
+import type { CrashReportBreadcrumbData } from '../../shared/crash-reporting'
 import { setCrashBreadcrumbRecordedListener } from './crash-breadcrumb-store'
 import { getPreviousSessionCrashpadDump } from './crashpad-capture'
 import { recordDurableCrashBreadcrumb } from './durable-crash-breadcrumb'
 import { getMainProcessLifecycleIdentity } from './main-process-lifecycle-identity'
 import {
   beginMainSessionTracking,
-  buildUncleanMainExitBreadcrumbData,
   noteMainSessionActivity,
   recordProvisionalMainSessionExitSync,
+  type PreviousSessionCrashpadDump,
   type PreviousUncleanMainSession
 } from './main-session-exit-marker'
 
@@ -24,6 +25,28 @@ export function startMainSessionExitTracking(
   })
   setCrashBreadcrumbRecordedListener(noteMainSessionActivity)
   return pendingReport
+}
+
+export function buildUncleanMainExitBreadcrumbData(
+  previous: PreviousUncleanMainSession,
+  dump: PreviousSessionCrashpadDump | null
+): CrashReportBreadcrumbData {
+  return {
+    previousLaunchId: previous.launchId,
+    previousPid: previous.pid,
+    previousStartedAt: previous.startedAt,
+    previousAppVersion: previous.appVersion,
+    previousLastBreadcrumbAt: previous.lastBreadcrumbAt,
+    crashpadDumpAfterStart: dump !== null,
+    ...(dump
+      ? {
+          dumpWrittenAt: dump.writtenAt,
+          dumpSizeBytes: dump.sizeBytes,
+          dumpProcessType: dump.processType,
+          dumpCount: dump.dumpCount
+        }
+      : {})
+  }
 }
 
 /** Call once observability is up so the breadcrumb reaches the diagnostic log. */

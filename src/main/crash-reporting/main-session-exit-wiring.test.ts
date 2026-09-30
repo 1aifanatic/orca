@@ -33,6 +33,23 @@ describe('main session exit record wiring', () => {
     expect(recordAt).toBeLessThan(body.lastIndexOf('app.quit()'))
   })
 
+  it('starts exit tracking after the single-instance lock and feeds it to Crashpad', () => {
+    const source = readSource('startup/main-process-preflight.ts')
+    const lockAt = source.indexOf('acquireSingleInstanceLock(app,')
+    const trackCall = 'const previousUncleanMainSession = startMainSessionExitTracking('
+    const trackAt = source.indexOf(trackCall)
+    const crashpadAt = source.indexOf('startCrashpadCapture({')
+    expect(source.split(trackCall).length - 1).toBe(1)
+    // Why after the lock: a losing second instance must not overwrite the running launch's record.
+    expect(lockAt).toBeGreaterThanOrEqual(0)
+    expect(trackAt).toBeGreaterThan(lockAt)
+    // Why before Crashpad: the unclean verdict picks which dump to read before pruning.
+    expect(crashpadAt).toBeGreaterThan(trackAt)
+    expect(source.slice(crashpadAt).split('})')[0]).toContain(
+      'previousUncleanSessionStartedAtMs: previousUncleanMainSession'
+    )
+  })
+
   it('installs the OS shutdown record during observer startup', () => {
     const body = bodyAfter(
       readSource('startup/main-process-observers.ts'),

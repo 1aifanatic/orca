@@ -188,6 +188,31 @@ describe('previous main-session unclean exit', () => {
     })
   })
 
+  it('commits a labelled relaunch only when will-quit records the exit', async () => {
+    const first = await launch()
+    first.marker.labelMainSessionExit('relaunch')
+    const { readFile } = await import('node:fs/promises')
+    const exitPath = path.join(userData, first.marker.MAIN_SESSION_EXIT_FILE)
+    await expect(readFile(exitPath, 'utf-8')).rejects.toThrow()
+    await first.marker.recordMainSessionExit('quit')
+    expect(JSON.parse(await readFile(exitPath, 'utf-8'))).toMatchObject({
+      launchId: first.launchId,
+      kind: 'relaunch'
+    })
+    const second = await launch()
+    expect(uncleanExitCrumb(second)).toBeUndefined()
+  })
+
+  it('reports a crash during relaunch teardown as unclean', async () => {
+    const first = await launch()
+    first.marker.labelMainSessionExit('relaunch')
+    // Native crash before will-quit's post-teardown record.
+    const second = await launch()
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      previousLaunchId: first.launchId
+    })
+  })
+
   it('keeps an OS shutdown label when the committed quit follows it', async () => {
     const first = await launch()
     first.marker.recordProvisionalMainSessionExitSync('os-shutdown')

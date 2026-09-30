@@ -8,7 +8,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { CrashReportBreadcrumbData } from '../../shared/crash-reporting'
 import type { MainProcessLifecycleIdentity } from './main-process-lifecycle-identity'
 
 export const MAIN_SESSION_LAUNCH_FILE = 'main-session-launch.json'
@@ -67,6 +66,8 @@ let tracking: TrackingState | null = null
 // Why provisional: an OS shutdown notice can still be cancelled, so it must not latch like a committed quit.
 let recordedExit: { kind: MainSessionExitKind; provisional: boolean } | null = null
 let provisionalRevokeTimer: NodeJS.Timeout | null = null
+// Why: a relaunch that exits via app.quit() names the exit now but commits it after teardown.
+let pendingExitLabel: MainSessionExitKind | null = null
 let launchWriteChain: Promise<void> = Promise.resolve()
 let lastActivityWriteAtMs = Number.NEGATIVE_INFINITY
 let activityTimer: NodeJS.Timeout | null = null
@@ -185,6 +186,7 @@ export function beginMainSessionTracking({
     }
   }
   recordedExit = null
+  pendingExitLabel = null
   clearProvisionalRevokeTimer()
   void enqueueLaunchWrite()
   if (
@@ -257,7 +259,7 @@ function takeExitRecord(kind: MainSessionExitKind): { path: string; record: Exit
   if (!tracking || isExitCommitted()) {
     return null
   }
-  const label = recordedExit?.kind ?? kind
+  const label = recordedExit?.kind ?? pendingExitLabel ?? kind
   recordedExit = { kind: label, provisional: false }
   clearProvisionalRevokeTimer()
   if (activityTimer) {
@@ -266,6 +268,16 @@ function takeExitRecord(kind: MainSessionExitKind): { path: string; record: Exit
   }
   const record = buildExitRecord(label)
   return record ? { path: tracking.exitPath, record } : null
+}
+
+/**
+ * Names the exit without recording it, for a quit whose will-quit teardown will
+ * commit the record; a crash before then must still read as unclean.
+ */
+export function labelMainSessionExit(kind: MainSessionExitKind): void {
+  if (tracking && !isExitCommitted()) {
+    pendingExitLabel = kind
+  }
 }
 
 /** For committed quits that can await teardown (will-quit). */
@@ -320,28 +332,6 @@ export function revokeProvisionalMainSessionExit(): void {
   }
 }
 
-export function buildUncleanMainExitBreadcrumbData(
-  previous: PreviousUncleanMainSession,
-  dump: PreviousSessionCrashpadDump | null
-): CrashReportBreadcrumbData {
-  return {
-    previousLaunchId: previous.launchId,
-    previousPid: previous.pid,
-    previousStartedAt: previous.startedAt,
-    previousAppVersion: previous.appVersion,
-    previousLastBreadcrumbAt: previous.lastBreadcrumbAt,
-    crashpadDumpAfterStart: dump !== null,
-    ...(dump
-      ? {
-          dumpWrittenAt: dump.writtenAt,
-          dumpSizeBytes: dump.sizeBytes,
-          dumpProcessType: dump.processType,
-          dumpCount: dump.dumpCount
-        }
-      : {})
-  }
-}
-
 export function _resetMainSessionTrackingForTest(): void {
   if (activityTimer) {
     clearTimeout(activityTimer)
@@ -349,6 +339,7 @@ export function _resetMainSessionTrackingForTest(): void {
   clearProvisionalRevokeTimer()
   tracking = null
   recordedExit = null
+  pendingExitLabel = null
   launchWriteChain = Promise.resolve()
   lastActivityWriteAtMs = Number.NEGATIVE_INFINITY
   activityTimer = null
