@@ -38,6 +38,8 @@ describe('orcad template release wiring (design D2)', () => {
       )
       expect(upload.if).toContain('inputs.build_template')
       expect(upload.with.path).toBe('out/orcad-prebuilds/')
+      // A rerun of a flaky lane must be able to replace its earlier attempt's slot.
+      expect(upload.with.overwrite).toBe(true)
       // Only qualified slots: the upload follows the lane's own gates and tests.
       const gates = steps.filter((step) => /require-slots|test:node-server/.test(step.run ?? ''))
       expect(gates.length).toBeGreaterThan(0)
@@ -60,7 +62,8 @@ describe('orcad template release wiring (design D2)', () => {
     expect(upload.with).toMatchObject({
       name: 'orcad-template',
       path: 'out/orcad-template/',
-      'include-hidden-files': true
+      'include-hidden-files': true,
+      overwrite: true
     })
   })
 
