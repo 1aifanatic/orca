@@ -55,18 +55,17 @@ export function readScreenRuledReady(
 
 /**
  * Tier 1b for a screen-ruled pane, or null for any other agent.
- * Why the text rules too: a grid out of step with the PTY garbles the chrome the rule reads, and
- * this lane took over their tier-1 verdict for a clocked pane.
+ * Why no text fallback: without a trustworthy screen tier 1 already ran the text rules, and a
+ * screen that refused outranks a line-folded copy of it.
  */
 export function readScreenRuledQuietReady(
   agent: TuiAgent | null,
-  readScreenLines: () => readonly string[] | null,
-  readTextReady: () => boolean
+  readScreenLines: () => readonly string[] | null
 ): boolean | null {
   const rule = getScreenReadyRule(agent)
   if (rule === null) {
     return null
   }
   const screenLines = readScreenLines()
-  return (screenLines !== null && rule(screenLines)) || readTextReady()
+  return screenLines !== null && rule(screenLines)
 }

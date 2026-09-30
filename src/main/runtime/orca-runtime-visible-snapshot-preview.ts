@@ -142,7 +142,8 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
   }
 
   /** Synchronous visible grid of the live emulator, for tui-idle body evidence. Null when the
-   *  model is not the whole screen: a provider-restored partial suffix or a pending hydration. */
+   *  model is not the whole screen (a provider-restored partial suffix or a pending hydration) or
+   *  not the PTY's grid (an unknown or different size, or a reflow the TUI never repainted for). */
   protected readLiveTerminalScreenLines(ptyId: string | null | undefined): string[] | null {
     if (!ptyId) {
       return null
@@ -150,9 +151,16 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
     const state = this.headlessTerminals.get(ptyId)
     if (
       !state ||
+      state.reflowedWithoutRepaint === true ||
       this.providerSnapshotPreferredPtys.has(ptyId) ||
       this.headlessHydrationState.get(ptyId) === 'pending'
     ) {
+      return null
+    }
+    // Why: a TUI painted for another grid garbles on this one, and a screen rule would refuse it.
+    const ptySize = this.getTerminalSize(ptyId)
+    const grid = state.emulator.getAppliedSize()
+    if (!ptySize || ptySize.cols !== grid.cols || ptySize.rows !== grid.rows) {
       return null
     }
     // Why unawaited writeChain: callers are synchronous; a grid one chunk behind is re-read next poll.

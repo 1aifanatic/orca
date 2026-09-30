@@ -1,7 +1,8 @@
 // One replay suite for every agent whose readiness its live screen decides (terminal-wait-detection.ts).
 import { describe, expect, it, vi } from 'vitest'
-import { createTranscriptPane } from './agent-transcript-pane-test-harness'
+import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import {
+  finalReadProjection,
   finalReplayFrame,
   readRuntimeFixture,
   type TranscriptReplayResize
@@ -17,6 +18,8 @@ export type ScreenRuledAgentSuite = {
   rule: (screenLines: readonly string[]) => boolean
   ready: readonly ScreenRuledFixture[]
   notReady: readonly ScreenRuledFixture[]
+  /** Ready recordings the text rules or the quiet-process lane settle with no screen. */
+  readyWithoutScreen: readonly string[]
 }
 
 // Why these: grids out of step with the recording garble cursor-addressed chrome (#23475 review).
@@ -111,9 +114,59 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
       REFUSAL_TIMEOUT_MS + PANE_SETUP_SLACK_MS
     )
 
+    // Why 100x30: a grid no recording was painted for. The PTY reports its real size.
+    it.each(suite.ready)(
+      '$name: on a grid the PTY does not have, the lanes the screen would shut decide',
+      async (fixture) => {
+        const options = {
+          paneTitle: 'Terminal',
+          foregroundProcess: suite.foregroundProcess,
+          launchAgent: agent,
+          data: readRuntimeFixture(fixture.name),
+          size: { cols: 100, rows: 30 }
+        }
+        const { runtime, handle } = await createTranscriptPane(options)
+        await runtime.readTerminal(handle, { screen: true })
+        options.size = { cols: fixture.cols, rows: fixture.rows }
+        const result = await runtime
+          .waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: READY_TIMEOUT_MS })
+          .catch(() => ({ satisfied: false }))
+        expect(result.satisfied).toBe(suite.readyWithoutScreen.includes(fixture.name))
+      },
+      READY_TIMEOUT_MS + PANE_SETUP_SLACK_MS
+    )
+
+    // Why: a re-attach reflows a grid built before the real size was known; the TUI never repaints.
+    it(
+      'on a grid reflowed to the PTY size without a repaint, the lanes the screen would shut decide',
+      async () => {
+        const options = {
+          paneTitle: 'Terminal',
+          foregroundProcess: suite.foregroundProcess,
+          launchAgent: agent,
+          data: readRuntimeFixture(firstReady.name),
+          size: { cols: 100, rows: 30 }
+        }
+        const { runtime, handle } = await createTranscriptPane(options)
+        options.size = { cols: firstReady.cols, rows: firstReady.rows }
+        runtime.reflowHeadlessTerminalToPtyGrid(
+          TRANSCRIPT_PANE_PTY_ID,
+          firstReady.cols,
+          firstReady.rows
+        )
+        await runtime.readTerminal(handle, { screen: true })
+        const result = await runtime
+          .waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: READY_TIMEOUT_MS })
+          .catch(() => ({ satisfied: false }))
+        expect(result.satisfied).toBe(suite.readyWithoutScreen.includes(firstReady.name))
+      },
+      READY_TIMEOUT_MS + PANE_SETUP_SLACK_MS
+    )
+
     // Why no bytes: a restored pane has no output clock, so the provider's screen is all it has.
+    // Why the read projection: it is what the probe's screen read returns, draft blanked.
     async function probedVerdict(fixture: ScreenRuledFixture): Promise<boolean> {
-      const { screenLines } = await finalReplayFrame(fixture.name, fixture.cols, fixture.rows)
+      const { lines, draft } = await finalReadProjection(fixture.name, fixture.cols, fixture.rows)
       const { runtime, handle } = await createTranscriptPane({
         paneTitle: 'Terminal',
         foregroundProcess: suite.foregroundProcess,
@@ -123,7 +176,8 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
       const read = vi.spyOn(runtime, 'readTerminal').mockResolvedValue({
         handle,
         status: 'running',
-        tail: screenLines,
+        tail: lines,
+        ...(draft === undefined ? {} : { draft }),
         truncated: false,
         nextCursor: null,
         source: 'screen'
@@ -136,9 +190,13 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
       return result.satisfied === true
     }
 
-    it('a restored pane settles from a visible-screen read of a ready screen', async () => {
-      expect(await probedVerdict(firstReady)).toBe(true)
-    }, 15_000)
+    it.each(suite.ready)(
+      '$name: a restored pane settles from a visible-screen read',
+      async (fixture) => {
+        expect(await probedVerdict(fixture)).toBe(true)
+      },
+      15_000
+    )
 
     it.each(suite.notReady)(
       '$name: a restored pane does not settle from a visible-screen read',

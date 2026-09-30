@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import {
+  finalReadProjection,
   finalReplayFrame,
   readRuntimeFixture,
   replayTranscript
@@ -39,7 +40,16 @@ describe('Cline readiness from captured bytes', () => {
     foregroundProcess: 'cline',
     rule: isClineComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY
+    notReady: NOT_READY,
+    // Why all: an idle Cline is quiet, so the quiet-process lane settles it.
+    readyWithoutScreen: READY.map(({ name }) => name)
+  })
+
+  // Presence precondition for the restored-pane suite: the read projection blanks this placeholder.
+  it('reads the ended turn through a projection that blanks its placeholder', async () => {
+    const { lines, draft } = await finalReadProjection('cline-3-0-66-turn-ended', 120, 40)
+    expect(lines).toContain('❯')
+    expect(draft).toBe('Ask anything...')
   })
 
   // Why only quiescence can refuse it: the streaming reply has scrolled its spinner away.

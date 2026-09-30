@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
+import { projectTerminalVisibleLines } from './orca-runtime-terminal-projection'
 import { normalizeTerminalChunk } from './terminal-ansi-normalization'
 import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
 import { buildPreview } from './terminal-tail-state'
@@ -69,6 +70,23 @@ export async function finalReplayFrame(
     throw new Error(`empty fixture ${name}`)
   }
   return last
+}
+
+/** The final screen as `terminal read --screen` projects it, composer draft blanked. */
+export async function finalReadProjection(
+  name: string,
+  cols: number,
+  rows: number
+): Promise<{ lines: string[]; draft?: string }> {
+  const emulator = new HeadlessEmulator({ cols, rows })
+  try {
+    for (const chunk of splitIntoChunks(readRuntimeFixture(name))) {
+      await emulator.write(chunk)
+    }
+    return projectTerminalVisibleLines(emulator)
+  } finally {
+    emulator.dispose()
+  }
 }
 
 function splitIntoChunks(data: string): string[] {

@@ -130,9 +130,7 @@ export function isQuietReadyScreenBody(
     const normalized = waitText.toLowerCase()
     return isReadyPromptSettled(normalized, findCodexReadyPromptIndex(normalized))
   }
-  const quietScreenReady = readScreenRuledQuietReady(agent, readScreenLines, () =>
-    isKnownReadyPromptSettled(waitText)
-  )
+  const quietScreenReady = readScreenRuledQuietReady(agent, readScreenLines)
   if (quietScreenReady !== null) {
     return quietScreenReady
   }

@@ -7,7 +7,7 @@ import {
 } from './agent-transcript-replay-test-harness'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { describeScreenRuledAgentTranscripts } from './screen-ruled-agent-transcript-suite'
-import { isKnownReadyPromptPreview } from './terminal-wait-detection'
+import { isKnownReadyPromptPreview, isQuietReadyScreenBody } from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -41,7 +41,13 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
     foregroundProcess: 'agy',
     rule: isAntigravityComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY
+    notReady: NOT_READY,
+    // Why these: the line-folded text rule reads only these ready screens.
+    readyWithoutScreen: [
+      'antigravity-1-2-14-ready',
+      'antigravity-1-2-14-ready-80x24',
+      'antigravity-1-2-14-picker-dismissed'
+    ]
   })
 
   it.each([
@@ -51,6 +57,14 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
   ])('%s: the line-folded text rule alone misses this ready screen', async (name) => {
     const { waitText } = await finalReplayFrame(name, 120, 40)
     expect(isKnownReadyPromptPreview(waitText)).toBe(false)
+  })
+
+  it('does not let the text rules overrule a screen that refused', async () => {
+    const { waitText } = await finalReplayFrame('antigravity-1-2-14-picker-dismissed', 120, 40)
+    const { screenLines } = await finalReplayFrame('antigravity-1-2-14-model-picker', 120, 40)
+    // Presence precondition: the text alone would say ready.
+    expect(isKnownReadyPromptPreview(waitText)).toBe(true)
+    expect(isQuietReadyScreenBody(waitText, 'antigravity', () => screenLines)).toBe(false)
   })
 
   // Why a caret rule is not enough: agy keeps the bare composer caret painted through both.

@@ -180,6 +180,12 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
     if (cols <= 0 || rows <= 0) {
       return
     }
+    const state = this.headlessTerminals.get(ptyId)
+    const applied = state?.emulator.getAppliedSize()
+    // Why: nothing resized the PTY, so the TUI does not repaint and its cells keep the old grid.
+    if (state && applied && (applied.cols !== cols || applied.rows !== rows)) {
+      state.reflowedWithoutRepaint = true
+    }
     this.resizeHeadlessTerminal(ptyId, cols, rows)
   }
 

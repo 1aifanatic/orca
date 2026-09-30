@@ -209,9 +209,24 @@ describe('rest signal agrees with the lanes that can settle a wait', () => {
     )
     const quietScreenBody = hasQuietReadyScreen(record(), agent, () => true, QUIESCENCE_MS)
     // Why a screen-ruled `none` is sound: its screen shuts the quiet lane whenever one is readable.
-    if (getScreenReadyRule(agent) !== null) {
-      expect(isReadinessDecidedByScreen(agent, () => [])).toBe(true)
-      expect(isReadinessDecidedByScreen(agent, () => null)).toBe(false)
+    const rule = getScreenReadyRule(agent)
+    if (rule !== null) {
+      const refused = ['> not an idle composer']
+      expect(rule(refused)).toBe(false)
+      const verdict = (screen: readonly string[] | null) =>
+        evaluateTuiIdle(
+          input({
+            agent,
+            record: record({ lastOscTitle: null }),
+            readQuietReadyBodyEvidence: () => false,
+            readScreenDecidesReadiness: () => isReadinessDecidedByScreen(agent, () => screen)
+          })
+        )
+      expect(verdict(refused)).toEqual({ kind: 'pending', quietForeground: 'closed' })
+      expect(verdict(null)).toEqual({
+        kind: 'pending',
+        quietForeground: signal === 'none' ? 'after-paint' : 'closed'
+      })
       return
     }
     // Why not only ready-body: Codex keeps its stronger hook-driven title beside this lane.

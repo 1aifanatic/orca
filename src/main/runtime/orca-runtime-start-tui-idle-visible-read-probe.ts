@@ -15,6 +15,7 @@ import {
   isKnownReadyPromptSettled
 } from './terminal-wait-detection'
 import { getScreenReadyRule } from './screen-ruled-agent-readiness'
+import { restoreProjectedComposerDraft } from './orca-runtime-terminal-projection'
 import type {
   RuntimeTerminalWait,
   RuntimeTerminalWaitBlockedReason
@@ -79,7 +80,12 @@ export class OrcaRuntimeWithStartTuiIdleVisibleReadProbe extends OrcaRuntimeWith
         const blockedReason = detectTerminalWaitBlockedReason(snapshotText)
         // Why the shared tier-1 rule: a probe must not settle what the live screen would refuse.
         const ready = screenRule
-          ? isKnownReadyPromptBody(snapshotText, agent, () => projection.tail, hasOutputClock)
+          ? isKnownReadyPromptBody(
+              snapshotText,
+              agent,
+              () => restoreProjectedComposerDraft(projection.tail, projection.draft),
+              hasOutputClock
+            )
           : isKnownReadyPromptSettled(snapshotText)
         if (!blockedReason && !ready) {
           return

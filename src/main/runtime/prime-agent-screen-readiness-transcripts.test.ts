@@ -44,7 +44,9 @@ describe('Prime Agent readiness from captured bytes', () => {
     foregroundProcess: 'prime-agent',
     rule: isPrimeAgentComposerReadyScreen,
     ready: READY,
-    notReady: NOT_READY
+    notReady: NOT_READY,
+    // Why all: an idle Prime is quiet, so the quiet-process lane settles it.
+    readyWithoutScreen: READY.map(({ name }) => name)
   })
 
   // Why the footer is no ready signal (#22153): it and the bare caret stay painted mid-turn.
