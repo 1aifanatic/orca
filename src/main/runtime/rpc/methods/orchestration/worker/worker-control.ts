@@ -200,13 +200,12 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
     name: 'orchestration.workerAbandon',
     params: WorkerDispatchParams,
     handler: (params, { runtime, orchestrationCaller, orchestrationCompatibilityEvidence }) => {
-      const abandoned = runtime
-        .getOrchestrationDb()
-        .abandonWorkerDispatch(
-          params.dispatch,
-          runtime.getRuntimeId(),
-          orchestrationCaller?.address ?? orchestrationCompatibilityEvidence?.terminalHandle
-        )
+      const abandoned = runtime.getOrchestrationDb().abandonWorkerDispatch(
+        params.dispatch,
+        runtime.getRuntimeId(),
+        // Display only: worker-abandon sends no --from, so the terminal handle is unverified caller env.
+        orchestrationCaller?.address ?? orchestrationCompatibilityEvidence?.terminalHandle
+      )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {
           // Abandon settles the Dispatch, so it owes the same binding release stop and release do:
@@ -233,6 +232,8 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
         dispatchId: params.dispatch,
         state: worker.state,
         alreadySettled: abandoned.disposition !== 'abandoned',
+        // Kept for --json readers: this attempt was not the Task's current one.
+        stale: abandoned.superseded,
         processAction: 'none',
         warning:
           abandoned.disposition === 'abandoned'

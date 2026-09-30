@@ -46,6 +46,15 @@ describe('worker-abandon settles a stuck worker', () => {
       .run(releaseState, dispatchId)
   }
 
+  function storeArchive(dispatchId: string) {
+    const resource = db.getWorkerTerminalResourceByOwner(dispatchId)!
+    db.db
+      .prepare(
+        "INSERT INTO worker_terminal_archives (dispatch_id, resource_id, kind, content) VALUES (?, ?, 'terminal_tail', '{}')"
+      )
+      .run(dispatchId, resource.id)
+  }
+
   function expectAbandoned(dispatchId: string, taskId: string) {
     expect(db.getWorkerDispatch(dispatchId)).toMatchObject({
       state: 'abandoned',
@@ -121,12 +130,13 @@ describe('worker-abandon settles a stuck worker', () => {
     expect(db.getTask(first.task.id)?.status).toBe('dispatched')
   })
 
-  it.each(['requested', 'unknown', 'not_requested'] as const)(
+  it.each(['requested', 'not_requested'] as const)(
     'retains a failed worker terminal whose release is %s instead of leaving it owed',
     (releaseState) => {
       const { dispatch } = readyWorker()
       db.failDispatch(dispatch.id, 'operator closed the tab', { workerProcessExited: true })
       setReleaseState(dispatch.id, releaseState)
+      storeArchive(dispatch.id)
 
       expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME)).toMatchObject({
         disposition: 'already_settled',
@@ -138,6 +148,7 @@ describe('worker-abandon settles a stuck worker', () => {
         release_state: 'retained',
         retained_reason: 'user_requested'
       })
+      expect(db.getWorkerTerminalArchive(dispatch.id)).toBeUndefined()
       expect(
         deriveWorkerTerminalListState({
           workerState: 'failed',
@@ -148,7 +159,7 @@ describe('worker-abandon settles a stuck worker', () => {
     }
   )
 
-  it('leaves a succeeded outcome alone and only retains its stuck terminal', () => {
+  it('leaves a succeeded outcome alone and only retains its terminal', () => {
     const { task, dispatch } = readyWorker()
     db.settleWorkerReport({
       taskId: task.id,
@@ -156,7 +167,7 @@ describe('worker-abandon settles a stuck worker', () => {
       outcome: 'succeeded',
       result: 'done'
     })
-    setReleaseState(dispatch.id, 'unknown')
+    setReleaseState(dispatch.id, 'requested')
 
     expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME).disposition).toBe('already_settled')
     expect(db.getWorkerDispatch(dispatch.id)?.state).toBe('succeeded')
@@ -164,9 +175,12 @@ describe('worker-abandon settles a stuck worker', () => {
     expect(db.getWorkerTerminalResourceByOwner(dispatch.id)?.release_state).toBe('retained')
   })
 
-  it('does not interrupt a close already in flight or touch a terminal Orca does not own', () => {
+  it('keeps a committed release and a terminal Orca does not own as they are', () => {
     const releasing = readyWorker(undefined, 'releasing')
     setReleaseState(releasing.dispatch.id, 'releasing')
+    const unknown = readyWorker(undefined, 'unknown')
+    setReleaseState(unknown.dispatch.id, 'unknown')
+    storeArchive(unknown.dispatch.id)
     const external = readyWorker(undefined, 'external')
     db.db
       .prepare(
@@ -175,11 +189,14 @@ describe('worker-abandon settles a stuck worker', () => {
       .run(external.dispatch.id)
 
     db.abandonWorkerDispatch(releasing.dispatch.id, THIS_RUNTIME)
+    db.abandonWorkerDispatch(unknown.dispatch.id, THIS_RUNTIME)
     db.abandonWorkerDispatch(external.dispatch.id, THIS_RUNTIME)
 
     expect(db.getWorkerTerminalResourceByOwner(releasing.dispatch.id)?.release_state).toBe(
       'releasing'
     )
+    expect(db.getWorkerTerminalResourceByOwner(unknown.dispatch.id)?.release_state).toBe('unknown')
+    expect(db.getWorkerTerminalArchive(unknown.dispatch.id)).toBeDefined()
     expect(db.getWorkerTerminalResourceByOwner(external.dispatch.id)).toMatchObject({
       ownership_state: 'external',
       release_state: 'unknown'

@@ -9,6 +9,7 @@ import { reconcileTaskAfterDispatchInterruption } from '../dispatch-context/task
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
 import { WORKER_SETTLED_STATES } from '../../worker-terminal-ownership'
 import { isStopStrandedByAnotherRuntime } from './worker-dispatch-stop'
+import { retainTerminalResourceInTransaction } from '../worker-terminal/worker-terminal-archive'
 
 export function abandonWorkerDispatch(
   this: OrchestrationDb,
@@ -19,6 +20,7 @@ export function abandonWorkerDispatch(
   | {
       disposition: 'abandoned' | 'already_abandoned' | 'already_settled'
       worker: WorkerDispatchRow
+      superseded: boolean
     }
   | ({ disposition: 'context_only' } & ContextOnlyDispatchReleaseResult) {
   this.db.exec('BEGIN IMMEDIATE')
@@ -44,6 +46,7 @@ export function abandonWorkerDispatch(
       )
     }
     const settles = !WORKER_SETTLED_STATES.includes(worker.state)
+    const superseded = this.getDispatchContext(dispatch.task_id)?.id !== dispatchId
     if (settles) {
       const now = new Date().toISOString()
       transitionLifecycleWithDb(this.db, {
@@ -73,16 +76,11 @@ export function abandonWorkerDispatch(
       reconcileTaskAfterDispatchInterruption(this, dispatch.task_id, dispatchId)
       this.closeQuestionsForDispatch(dispatchId)
     }
-    // Abandon hands the terminal back instead of closing it, so a stuck release stops owing action.
-    this.db
-      .prepare(
-        `UPDATE worker_terminal_resources
-         SET release_state = 'retained', retained_reason = 'user_requested',
-             updated_at = datetime('now')
-         WHERE owner_dispatch_id = ? AND ownership_state = 'owned'
-           AND release_state IN ('not_requested', 'requested', 'unknown')`
-      )
-      .run(dispatchId)
+    const terminal = this.getWorkerTerminalResourceByOwner(dispatchId)
+    // Abandon hands an owned terminal back instead of closing it, by the same rule as worker-retain.
+    if (terminal?.ownership_state === 'owned') {
+      retainTerminalResourceInTransaction(this, terminal.id, dispatchId)
+    }
     this.db.exec('COMMIT')
     return {
       disposition: settles
@@ -90,6 +88,7 @@ export function abandonWorkerDispatch(
         : worker.state === 'abandoned'
           ? 'already_abandoned'
           : 'already_settled',
+      superseded,
       worker: this.getWorkerDispatch(dispatchId) as WorkerDispatchRow
     }
   } catch (error) {

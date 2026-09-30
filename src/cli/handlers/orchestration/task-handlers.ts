@@ -15,6 +15,8 @@ const TASK_STATUS_VALUES = [
   'blocked'
 ] as const
 
+const TASK_LIST_TEXT_MAX_CHARS = 60
+
 export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
   'orchestration task-create': async ({ flags, client, cwd, json }) => {
     const callerTerminalHandle = await resolveCoordinatorTerminalHandle(flags, cwd, client)
@@ -48,6 +50,7 @@ export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
         task_title?: string | null
         display_name?: string | null
         status: string
+        result?: string | null
         assignee_handle?: string | null
         dispatch_id?: string | null
         spec_truncated?: boolean
@@ -78,11 +81,13 @@ export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
       const tasks = r.tasks
         .map((task) => {
           const label = task.display_name ?? task.task_title ?? task.spec
-          const head = `${task.id} [${task.status}] ${label.slice(0, 60)}`
+          const head = `${task.id} [${task.status}] ${label.slice(0, TASK_LIST_TEXT_MAX_CHARS)}`
           if (task.status === 'dispatched' && task.assignee_handle) {
             return `${head} -> ${task.assignee_handle} (${task.dispatch_id ?? '?'})`
           }
-          return head
+          // Why: a cancelled Task is `failed` with its reason in `result`; show which kind of failure.
+          const reason = task.status === 'failed' ? task.result?.replace(/\s+/g, ' ').trim() : ''
+          return reason ? `${head}: ${reason.slice(0, TASK_LIST_TEXT_MAX_CHARS)}` : head
         })
         .join('\n')
       return r.legacyReadOnly ? `Legacy Run ${r.runId} (read-only)\n${tasks}` : tasks
