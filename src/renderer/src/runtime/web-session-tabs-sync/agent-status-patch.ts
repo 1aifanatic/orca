@@ -112,11 +112,18 @@ export function buildMirroredAgentStatusPatch(
     }
     const presence = readAgentProcessPresence(hostEntry.agentPresence)
     const previousPresence = nextPresenceByPaneKey[hostEntry.paneKey]
-    if (
+    const hostIsCurrent =
+      !previousPresence ||
+      previousPresence.connectionId !== environmentId ||
+      hostEntry.updatedAt >= previousPresence.receivedAt
+    if (!presence?.process && hostIsCurrent && previousPresence?.connectionId === environmentId) {
+      // Why: presence is derived per snapshot; a newer uncovered row means the host no longer vouches for that owner.
+      const { [hostEntry.paneKey]: _released, ...remaining } = nextPresenceByPaneKey
+      nextPresenceByPaneKey = remaining
+      presenceChanged = true
+    } else if (
       presence?.process &&
-      (!previousPresence ||
-        previousPresence.connectionId !== environmentId ||
-        hostEntry.updatedAt >= previousPresence.receivedAt) &&
+      hostIsCurrent &&
       (previousPresence?.receivedAt !== hostEntry.updatedAt ||
         previousPresence.connectionId !== environmentId ||
         JSON.stringify(previousPresence.presence) !== JSON.stringify(presence))
