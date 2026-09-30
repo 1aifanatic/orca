@@ -23,7 +23,7 @@ import {
   nodeRuntimeExecutablePath,
   nodeRuntimeReleaseUrl
 } from '../../src/shared/node-runtime-pin.ts'
-import { currentTarget } from './build-orcad-bun.mjs'
+import { currentTarget } from './server-build-target.mjs'
 import { nodeDistArchiveName, windowsImportLibFile } from './node-dist-archive-name.mjs'
 import { runProcessSync } from './script-child-process.mjs'
 import { getZipExtractorCommand } from './zip-extractor-command.mjs'

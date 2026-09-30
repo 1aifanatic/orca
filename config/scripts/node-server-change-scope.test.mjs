@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import {
-  classifyBunProfileChanges,
-  collectBunProfileInputs,
-  discoverBunProfileTests
-} from './bun-profile-change-scope.mjs'
-import { bunProfileTestPaths } from './bun-profile-test-paths.mjs'
+  classifyNodeServerChanges,
+  collectNodeServerInputs,
+  discoverNodeServerTests
+} from './node-server-change-scope.mjs'
+import { nodeServerTestPaths } from './node-server-test-paths.mjs'
 import { ORCAD_CHILD_ENTRY_POINTS } from './orcad-entry-build.mjs'
 
 const temporaryDirs = []
@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 function moduleTree(files) {
-  const root = mkdtempSync(join(tmpdir(), 'bun-profile-scope-'))
+  const root = mkdtempSync(join(tmpdir(), 'node-server-scope-'))
   temporaryDirs.push(root)
   for (const [file, source] of Object.entries(files)) {
     const path = join(root, file)
@@ -39,7 +39,7 @@ it('follows static imports, re-exports, dynamic imports and require without exec
     'nested/leaf.ts': 'export const value = 4',
     'unrelated.ts': 'throw Error("unrelated")'
   })
-  const inputs = await collectBunProfileInputs({ root, entryPoints: ['entry.ts'] })
+  const inputs = await collectNodeServerInputs({ root, entryPoints: ['entry.ts'] })
   expect([...inputs].sort()).toEqual([
     'dynamic.ts',
     'entry.ts',
@@ -52,12 +52,12 @@ it('follows static imports, re-exports, dynamic imports and require without exec
 
 it('runs the matrix when a dependency is deleted or graph analysis fails', async () => {
   const root = moduleTree({ 'entry.ts': `import './deleted'` })
-  const result = await classifyBunProfileChanges(['deleted.ts'], () =>
-    collectBunProfileInputs({ root, entryPoints: ['entry.ts'] })
+  const result = await classifyNodeServerChanges(['deleted.ts'], () =>
+    collectNodeServerInputs({ root, entryPoints: ['entry.ts'] })
   )
   expect(result.shouldRun).toBe(true)
   expect(result.reason).toContain('Dependency graph unavailable')
-  expect((await classifyBunProfileChanges([])).shouldRun).toBe(true)
+  expect((await classifyNodeServerChanges([])).shouldRun).toBe(true)
 })
 
 it.each([
@@ -67,7 +67,7 @@ it.each([
 ])(
   'runs deleted or renamed selected tests even when absent from the graph: %j',
   async (...files) => {
-    expect((await classifyBunProfileChanges(files, async () => new Set())).shouldRun).toBe(true)
+    expect((await classifyNodeServerChanges(files, async () => new Set())).shouldRun).toBe(true)
   }
 )
 
@@ -78,20 +78,20 @@ it.each([
   '.npmrc',
   'tsconfig.json',
   'config/tsconfig.node.json',
-  'config/scripts/bun-profile-qualification.mjs',
+  'config/scripts/node-server-qualification.mjs',
   'config/patches/node-pty@1.1.0.patch',
   'native/windows-registry/src/addon.cc',
   '.github/actions/install-node-dependencies/action.yml',
-  '.github/workflows/bun-profile-tests.yml',
+  '.github/workflows/node-server-tests.yml',
   'src/main/persistence/profile-state/new-worker.ts'
 ])('always selects build, native and dynamically opened inputs: %s', async (file) => {
-  expect((await classifyBunProfileChanges([file], async () => new Set())).shouldRun).toBe(true)
+  expect((await classifyNodeServerChanges([file], async () => new Set())).shouldRun).toBe(true)
 })
 
 describe('the actual Bun build and profile-test dependency graph', () => {
   let inputs
   beforeAll(async () => {
-    inputs = await collectBunProfileInputs()
+    inputs = await collectNodeServerInputs()
   }, 60_000)
 
   it.each([
@@ -100,7 +100,7 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     'src/main/ssh/ssh-relay-upload-stage-commands.test.ts',
     'src/main/menu/register-app-menu.ts'
   ])('skips unrelated work: %s', async (file) => {
-    expect((await classifyBunProfileChanges([file], async () => inputs)).shouldRun).toBe(false)
+    expect((await classifyNodeServerChanges([file], async () => inputs)).shouldRun).toBe(false)
   })
 
   it.each([
@@ -116,22 +116,22 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     'tests/e2e/daemon-running-work-probe.unit.test.ts'
   ])('retains the full matrix for a real runtime, worker or test input: %s', async (file) => {
     expect(inputs.has(file)).toBe(true)
-    expect((await classifyBunProfileChanges([file], async () => inputs)).shouldRun).toBe(true)
+    expect((await classifyNodeServerChanges([file], async () => inputs)).shouldRun).toBe(true)
   })
 
   it('retains all selected tests and the selectors the Bun runner uses', () => {
-    const tests = discoverBunProfileTests()
+    const tests = discoverNodeServerTests()
     expect(tests.length).toBeGreaterThan(80)
     expect(tests.every((file) => inputs.has(file))).toBe(true)
     expect(
-      bunProfileTestPaths().every((selector) => tests.some((file) => file.includes(selector)))
+      nodeServerTestPaths().every((selector) => tests.some((file) => file.includes(selector)))
     ).toBe(true)
   })
 })
 
 it('keeps all ten platform jobs and runs them when detection is skipped or fails', () => {
   const workflow = parse(
-    readFileSync(new URL('../../.github/workflows/bun-profile-tests.yml', import.meta.url), 'utf8')
+    readFileSync(new URL('../../.github/workflows/node-server-tests.yml', import.meta.url), 'utf8')
   )
   expect(workflow.on).toHaveProperty('workflow_dispatch')
   expect(workflow.jobs.changes.if).toBe("github.event_name == 'pull_request'")

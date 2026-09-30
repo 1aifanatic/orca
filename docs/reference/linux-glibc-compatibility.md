@@ -105,9 +105,10 @@ finds is published in `status.get`'s `degradations[]` under `terminal_unavailabl
 
 **4. Ship the binary, built from patched sources.**
 [`config/scripts/build-orcad-prebuilds.mjs`](../../config/scripts/build-orcad-prebuilds.mjs)
-(`pnpm run build:orcad-prebuilds`, after `build:orcad`) compiles node-pty for the current
+(`pnpm run build:orcad-prebuilds`, before `build:orcad`, which copies its target's slot into
+the package's `node_modules/node-pty/build/Release`) compiles node-pty for the current
 host against the pinned Node's hash-verified headers at N-API 8, and files it under
-`out/orcad/prebuilds/<slot>/`, where a slot is `linux-{x64,arm64}-{glibc,musl}`,
+`out/orcad-prebuilds/<slot>/`, where a slot is `linux-{x64,arm64}-{glibc,musl}`,
 `darwin-{x64,arm64}` or `win32-{x64,arm64}`. Its `manifest.json` records each file's
 sha256, the N-API level and, for glibc slots, the highest `GLIBC_` version the binary
 needs; the loader checks N-API, libc, arch and that glibc version before it installs a
@@ -121,7 +122,7 @@ than a first-connect error. CI runs it once per slot inside the matching contain
 (`--slot=` forces the label), merges the trees, and `--require-slots` fails a release with
 a hole in the matrix; `--require-slots <slot>` checks one slot's files against their
 hashes and `--smoke` loads it under the pinned Node and spawns a PTY
-(`.github/workflows/bun-profile-tests.yml` runs both on every slot's runner).
+(`.github/workflows/node-server-tests.yml` runs both on every slot's runner).
 
 ## Adding or upgrading a native dependency
 

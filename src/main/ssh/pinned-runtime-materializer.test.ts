@@ -7,7 +7,7 @@ import { ORCAD_BUN_RUNTIME_FILENAME } from '../../shared/orcad-artifacts'
 import { ORCAD_BUN_RELEASE_ASSETS, ORCAD_BUN_VERSION } from '../../shared/orcad-bun-runtime'
 import { setMainHttpClient } from '../network/http-client'
 import { runProcess } from '../../shared/child-process/run-process'
-import { materializeCachedOrcadBunRuntime } from './orcad-bun-runtime-materializer'
+import { materializeCachedOrcadBunRuntime } from './pinned-runtime-materializer'
 
 const extraction = vi.hoisted(() => ({ executable: new Uint8Array(), executableName: 'bun' }))
 

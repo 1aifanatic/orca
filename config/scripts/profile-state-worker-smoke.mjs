@@ -11,7 +11,7 @@ import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
   parseOrcadProfilePreflight
 } from '../../src/shared/orcad-profile-preflight.ts'
-import { ORCAD_BUN_RUNTIME_IDENTITY } from '../../src/shared/orcad-bun-runtime.ts'
+import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
 
 async function initializeFixture(directory, databasePath, profileId) {
   const fixture = join(directory, 'initialize.cjs')
@@ -96,7 +96,10 @@ export async function smokeProfileStateWorkers(outDir, { timeoutMs = 30_000, run
     if (result.code !== 0 || result.timedOut || result.outputTruncated) {
       throw new Error(`Packaged profile runtime preflight failed: ${result.stderr}`)
     }
-    parseOrcadProfilePreflight(result.stdout, nonce, ORCAD_BUN_RUNTIME_IDENTITY)
+    parseOrcadProfilePreflight(result.stdout, nonce, {
+      runtime: 'node',
+      runtimeVersion: NODE_RUNTIME_PIN.version
+    })
     return
   }
   const directory = mkdtempSync(join(tmpdir(), 'orca-profile-worker-smoke-'))

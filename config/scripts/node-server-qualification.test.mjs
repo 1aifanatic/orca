@@ -1,10 +1,10 @@
 import { expect, it } from 'vitest'
-import { BUN_PERSISTENCE_RUNNERS, bunProfileQualification } from './bun-profile-qualification.mjs'
+import { NODE_SERVER_RUNNERS, nodeServerQualification } from './node-server-qualification.mjs'
 
 const scope = { shouldRun: true }
 
 it('qualifies one platform for a change no platform can alter', () => {
-  expect(bunProfileQualification(['src/main/runtime/rpc/methods/example.ts'], scope)).toEqual({
+  expect(nodeServerQualification(['src/main/runtime/rpc/methods/example.ts'], scope)).toEqual({
     qualification: false,
     runners: ['ubuntu-22.04']
   })
@@ -18,7 +18,7 @@ it.each([
   '.github/workflows/pr.yml',
   'docs/reference/agent-status-store.md'
 ])('keeps one platform for unflavoured input %s', (file) => {
-  expect(bunProfileQualification([file], scope).runners).toEqual(['ubuntu-22.04'])
+  expect(nodeServerQualification([file], scope).runners).toEqual(['ubuntu-22.04'])
 })
 
 it.each([
@@ -42,16 +42,16 @@ it.each([
   'config/scripts/orcad-prebuild-slot-contents.mjs',
   'src/shared/node-runtime-pin.ts'
 ])('retains all platforms for platform-flavoured input %s', (file) => {
-  expect(bunProfileQualification([file], scope)).toEqual({
+  expect(nodeServerQualification([file], scope)).toEqual({
     qualification: true,
-    runners: BUN_PERSISTENCE_RUNNERS
+    runners: NODE_SERVER_RUNNERS
   })
 })
 
 it('fails closed to every platform when the evidence is incomplete', () => {
-  expect(bunProfileQualification([], scope).qualification).toBe(true)
+  expect(nodeServerQualification([], scope).qualification).toBe(true)
   expect(
-    bunProfileQualification(['src/main/runtime/rpc/methods/example.ts'], {
+    nodeServerQualification(['src/main/runtime/rpc/methods/example.ts'], {
       ...scope,
       graphUnavailable: true
     }).qualification

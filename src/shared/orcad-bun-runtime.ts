@@ -1,12 +1,8 @@
+// Bun remains only for the OpenCode vault reader until design Phase 2.
 // Targets come from SERVER_TARGETS. Type-only: a value import needs a .ts suffix tsc rejects.
 import type { ServerTarget } from './node-runtime-pin.ts'
 
 export const ORCAD_BUN_VERSION = '1.4.2'
-
-export const ORCAD_BUN_RUNTIME_IDENTITY = {
-  runtime: 'bun',
-  runtimeVersion: ORCAD_BUN_VERSION
-} as const
 
 export type OrcadBunTarget = ServerTarget
 

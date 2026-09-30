@@ -1,4 +1,4 @@
-export const BUN_PERSISTENCE_RUNNERS = [
+export const NODE_SERVER_RUNNERS = [
   'ubuntu-22.04',
   'ubuntu-24.04-arm',
   'macos-14',
@@ -27,7 +27,7 @@ const PLATFORM_PREFIXES = [
   'src/shared/node-runtime-pin.ts'
 ]
 
-export function bunProfileQualification(changedFiles, scope) {
+export function nodeServerQualification(changedFiles, scope) {
   const platformSpecific = changedFiles.some(
     (file) =>
       // A root manifest can move a native dependency on every platform at once.
@@ -42,6 +42,6 @@ export function bunProfileQualification(changedFiles, scope) {
   const full = changedFiles.length === 0 || scope.graphUnavailable === true || platformSpecific
   return {
     qualification: full,
-    runners: full ? BUN_PERSISTENCE_RUNNERS : ['ubuntu-22.04']
+    runners: full ? NODE_SERVER_RUNNERS : ['ubuntu-22.04']
   }
 }

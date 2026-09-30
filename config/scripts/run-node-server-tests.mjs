@@ -1,28 +1,29 @@
+// Runs the headless-server suites under the pinned Node (design D4/D4a), not the host's.
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import {
-  ORCAD_VERSION_FILENAME,
-  orcadBunRuntimeFilename
-} from '../../src/shared/orcad-artifacts.ts'
-import { ORCAD_BUN_RUNTIME_IDENTITY } from '../../src/shared/orcad-bun-runtime.ts'
+import { ORCAD_VERSION_FILENAME } from '../../src/shared/orcad-artifacts.ts'
+import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
 import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
   parseOrcadProfilePreflight
 } from '../../src/shared/orcad-profile-preflight.ts'
-import { currentTarget } from './build-orcad-bun.mjs'
+import { packagedNodeRuntimePath } from './build-orcad-node.mjs'
+import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
+import { currentTarget } from './server-build-target.mjs'
 import { runProcessSync } from './script-child-process.mjs'
-import { bunProfileTestPaths } from './bun-profile-test-paths.mjs'
+import { nodeServerTestPaths } from './node-server-test-paths.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const target = currentTarget()
 const artifact = process.argv.includes('--artifact')
 const testArgs = process.argv.slice(2).filter((arg) => arg !== '--artifact')
-const runtimeDir = artifact
-  ? join(root, 'out', 'orcad')
-  : join(root, 'out', '.bun-profile-test-runtime', target)
-const runtimePath = join(runtimeDir, orcadBunRuntimeFilename(target))
-const env = { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', BUN_EXECUTABLE: runtimePath }
+const packageDir = join(root, 'out', 'orcad')
+const runtimePath = artifact
+  ? packagedNodeRuntimePath(packageDir, target)
+  : await ensurePinnedNodeExecutable({ target })
+// Tests that launch the packaged runtime themselves find it here.
+const env = { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_PINNED_NODE: runtimePath }
 
 function run(program, args) {
   const result = runProcessSync({
@@ -42,7 +43,7 @@ if (artifact) {
   const nonce = randomUUID()
   const result = runProcessSync({
     program: runtimePath,
-    args: [join(runtimeDir, 'orcad.js'), ORCAD_PROFILE_PREFLIGHT_FLAG, nonce],
+    args: [join(packageDir, 'orcad.js'), ORCAD_PROFILE_PREFLIGHT_FLAG, nonce],
     cwd: root,
     env,
     timeoutMs: 90_000
@@ -53,22 +54,15 @@ if (artifact) {
   const response = parseOrcadProfilePreflight(
     result.stdout,
     nonce,
-    ORCAD_BUN_RUNTIME_IDENTITY,
-    readFileSync(join(runtimeDir, ORCAD_VERSION_FILENAME), 'utf8').trim()
+    { runtime: 'node', runtimeVersion: NODE_RUNTIME_PIN.version },
+    readFileSync(join(packageDir, ORCAD_VERSION_FILENAME), 'utf8').trim()
   )
   process.stdout.write(`${JSON.stringify({ target, ...response })}\n`)
-} else {
-  run(process.execPath, [
-    join(root, 'config/scripts/build-orcad-bun.mjs'),
-    '--runtime-only',
-    '--out-dir',
-    runtimeDir
-  ])
 }
 run(runtimePath, [
   join(root, 'node_modules/vitest/vitest.mjs'),
   'run',
   '--config',
   'config/vitest.config.ts',
-  ...(testArgs.length > 0 ? testArgs : bunProfileTestPaths({ artifact }))
+  ...(testArgs.length > 0 ? testArgs : nodeServerTestPaths({ artifact }))
 ])

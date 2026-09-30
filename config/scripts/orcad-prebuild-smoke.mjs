@@ -36,7 +36,7 @@ export async function runOrcadPrebuildSmoke({ slot, prebuildsDir }) {
   const node = await ensurePinnedNodeExecutable({ target: slot })
   const nodePtyDir = stageSmokeNodePty({
     slotDir: join(prebuildsDir, slot),
-    stageDir: join(prebuildsDir, '..', 'prebuild-smoke', slot)
+    stageDir: join(prebuildsDir, '..', 'orcad-prebuild-smoke', slot)
   })
   const result = runProcessSync({
     program: node,

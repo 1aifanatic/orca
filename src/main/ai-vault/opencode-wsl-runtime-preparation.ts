@@ -6,7 +6,7 @@ import { ORCAD_BUN_RELEASE_ASSETS, type OrcadBunTarget } from '../../shared/orca
 import { RELAY_OPENCODE_SQLITE_READER_FILENAME } from '../../shared/relay-artifacts'
 import { parseWslUncPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
-import { materializeCachedOrcadBunRuntime } from '../ssh/orcad-bun-runtime-materializer'
+import { materializeCachedOrcadBunRuntime } from '../ssh/pinned-runtime-materializer'
 import { parseOrcadLinuxLibc } from '../ssh/orcad-deployment-target'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'

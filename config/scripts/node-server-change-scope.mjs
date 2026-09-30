@@ -7,17 +7,19 @@ import {
   ORCAD_CHILD_ENTRY_POINTS,
   ORCAD_ENTRY_POINT
 } from './orcad-entry-build.mjs'
-import { bunProfileTestPaths } from './bun-profile-test-paths.mjs'
-import { bunProfileQualification } from './bun-profile-qualification.mjs'
+import { nodeServerTestPaths } from './node-server-test-paths.mjs'
+import { nodeServerQualification } from './node-server-qualification.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const BUILD_SCRIPTS = [
-  'config/scripts/build-orcad-bun.mjs',
+  'config/scripts/build-orcad-node.mjs',
+  'config/scripts/server-build-target.mjs',
+  'config/scripts/pinned-node-downloads.mjs',
   'config/scripts/build-orcad.mjs',
   'config/scripts/build-orcad-prebuilds.mjs',
   'config/scripts/orcad-prebuild-smoke-child.cjs',
   'config/scripts/build-windows-process-tree-relay-addon.mjs',
-  'config/scripts/run-bun-profile-tests.mjs',
+  'config/scripts/run-node-server-tests.mjs',
   'config/vitest.config.ts',
   'config/scripts/happy-dom-offscreen-canvas.ts',
   'config/scripts/happy-dom-mutation-observer-retention.ts',
@@ -31,11 +33,11 @@ const ALWAYS_FILES = new Set([
   '.npmrc',
   '.pnpmfile.cjs',
   'tsconfig.json',
-  '.github/workflows/bun-profile-tests.yml',
-  'config/scripts/bun-profile-change-scope.mjs',
-  'config/scripts/bun-profile-change-scope.test.mjs',
-  'config/scripts/bun-profile-qualification.mjs',
-  'config/scripts/bun-profile-qualification.test.mjs'
+  '.github/workflows/node-server-tests.yml',
+  'config/scripts/node-server-change-scope.mjs',
+  'config/scripts/node-server-change-scope.test.mjs',
+  'config/scripts/node-server-qualification.mjs',
+  'config/scripts/node-server-qualification.test.mjs'
 ])
 const ALWAYS_PREFIXES = [
   '.github/actions/install-node-dependencies/',
@@ -51,8 +53,8 @@ const ALWAYS_PREFIXES = [
   'resources/licenses/ripgrep/'
 ]
 
-export function discoverBunProfileTests(root = ROOT) {
-  const selectors = bunProfileTestPaths({ artifact: true })
+export function discoverNodeServerTests(root = ROOT) {
+  const selectors = nodeServerTestPaths({ artifact: true })
   return globSync(
     ['src/**/*.test.{ts,tsx}', 'config/scripts/**/*.test.{ts,mjs}', 'tests/e2e/**/*.unit.test.ts'],
     { cwd: root }
@@ -62,19 +64,19 @@ export function discoverBunProfileTests(root = ROOT) {
     .sort()
 }
 
-export async function collectBunProfileInputs({ root = ROOT, entryPoints } = {}) {
+export async function collectNodeServerInputs({ root = ROOT, entryPoints } = {}) {
   const entries = entryPoints ?? [
     ORCAD_ENTRY_POINT,
     ...Object.values(ORCAD_CHILD_ENTRY_POINTS),
     ...BUILD_SCRIPTS,
-    ...discoverBunProfileTests(root)
+    ...discoverNodeServerTests(root)
   ]
   const result = await build({
     absWorkingDir: root,
     entryPoints: entries,
     bundle: true,
     write: false,
-    outdir: resolve(root, '.bun-profile-scope'),
+    outdir: resolve(root, '.node-server-scope'),
     platform: 'node',
     format: 'esm',
     splitting: true,
@@ -94,11 +96,11 @@ export async function collectBunProfileInputs({ root = ROOT, entryPoints } = {})
   )
 }
 
-export async function classifyBunProfileChanges(changedFiles, collect = collectBunProfileInputs) {
+export async function classifyNodeServerChanges(changedFiles, collect = collectNodeServerInputs) {
   if (changedFiles.length === 0) {
     return { shouldRun: true, reason: 'No complete changed-file evidence' }
   }
-  const selectors = bunProfileTestPaths({ artifact: true })
+  const selectors = nodeServerTestPaths({ artifact: true })
   const forced = changedFiles.find(
     (file) =>
       ALWAYS_FILES.has(file) ||
@@ -113,7 +115,9 @@ export async function classifyBunProfileChanges(changedFiles, collect = collectB
     const matched = changedFiles.find((file) => inputs.has(file))
     return {
       shouldRun: Boolean(matched),
-      reason: matched ? `Runtime or test dependency changed: ${matched}` : 'No Bun inputs changed'
+      reason: matched
+        ? `Runtime or test dependency changed: ${matched}`
+        : 'No headless-server inputs changed'
     }
   } catch (error) {
     return {
@@ -126,9 +130,9 @@ export async function classifyBunProfileChanges(changedFiles, collect = collectB
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const changedFiles = readFileSync(process.argv[2], 'utf8').split('\0').filter(Boolean)
-  const result = await classifyBunProfileChanges(changedFiles)
+  const result = await classifyNodeServerChanges(changedFiles)
   console.log(result.reason)
-  const policy = bunProfileQualification(changedFiles, result)
+  const policy = nodeServerQualification(changedFiles, result)
   const output = `should_run=${result.shouldRun}\nqualification=${policy.qualification}\nrunners=${JSON.stringify(policy.runners)}\n`
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, output)

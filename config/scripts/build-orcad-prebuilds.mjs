@@ -15,7 +15,7 @@
  *   linux-{x64,arm64}-{glibc,musl}, darwin-{x64,arm64}, win32-{x64,arm64}
  *
  * CI runs this once per slot, each on the runner or container that owns that libc/arch, and
- * merges the resulting `out/orcad/prebuilds` trees. `--slot=<name>` forces the label so
+ * merges the resulting `out/orcad-prebuilds` trees. `--slot=<name>` forces the label so
  * the glibc/musl distinction is recorded from the container rather than detected.
  *
  * Usage:
@@ -46,8 +46,10 @@ export { readManifest }
 
 const require = createRequire(import.meta.url)
 const ROOT = join(import.meta.dirname, '..', '..')
-const PREBUILDS_DIR = join(ROOT, 'out', 'orcad', 'prebuilds')
-const WORK_DIR = join(ROOT, 'out', 'orcad', 'prebuild-work')
+// Why outside out/orcad: build:orcad wipes that directory and copies its target's slot from here.
+export const ORCAD_PREBUILDS_DIR = join(ROOT, 'out', 'orcad-prebuilds')
+const PREBUILDS_DIR = ORCAD_PREBUILDS_DIR
+const WORK_DIR = join(ROOT, 'out', 'orcad-prebuild-work')
 
 /** Every slot a shipped matrix must fill. The single source of truth for the matrix. */
 export const MATRIX_SLOTS = [

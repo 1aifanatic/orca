@@ -1,33 +1,33 @@
 import { build } from 'esbuild'
-import { existsSync, readFileSync } from 'node:fs'
-import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
-import { orcadBunRuntimeFilename } from '../../shared/orcad-artifacts'
-import { ORCAD_BUN_VERSION } from '../../shared/orcad-bun-runtime'
+import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
+import { locatePinnedNodeForTests, writeNodeSlotFixture } from './orcad-node-slot-fixture'
 
-const runtimePath =
-  process.env.BUN_EXECUTABLE ?? resolve('out/orcad', orcadBunRuntimeFilename(process.platform))
-const nodePath =
-  process.env.ORCA_TEST_NODE_EXECUTABLE ?? (process.versions.bun ? 'node' : process.execPath)
+const pinnedNode = locatePinnedNodeForTests()
+// Any Node other than the slot's runtime path plays the service unit's launcher.
+const nodePath = process.env.ORCA_TEST_NODE_EXECUTABLE ?? process.execPath
 let directory = ''
+let slotDir = ''
+let slotRuntime = ''
 const children = new Set<ReturnType<typeof spawnProcess>>()
 const runtimes = new Set<number>()
 
-describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
+describe.skipIf(!pinnedNode)('real pinned-Node launcher lifecycle', () => {
   beforeEach(async () => {
-    directory = await mkdtemp(join(tmpdir(), 'orca-bun-launcher-'))
-    await copyFile(runtimePath, join(directory, orcadBunRuntimeFilename(process.platform)))
-    await writeFile(join(directory, '.build-target'), `${process.platform}-${process.arch}\n`)
+    directory = await mkdtemp(join(tmpdir(), 'orca-node-launcher-'))
+    ;({ slotDir, runtime: slotRuntime } = await writeNodeSlotFixture(directory, pinnedNode!))
     await build({
       // Record entry before imports without relying on either process's stdout.
       banner: {
         js: `
           function traceLauncherPhase(phase) {
-            const runtime = process.versions.bun ? 'bun' : 'node'
+            const runtime = process.env.ORCA_TEST_ROLE === 'runtime' ? 'runtime' : 'launcher'
             try {
               require('node:fs').appendFileSync(process.env.ORCA_TEST_PHASES + '.' + runtime,
                 JSON.stringify({ at: Date.now(), phase, pid: process.pid, runtime, arch: process.arch }) + '\\n')
@@ -41,11 +41,12 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
       },
       stdin: {
         contents: `
-          import {handoffToBundledOrcad, OrcadBundledRuntimeError} from './src/main/orcad/orcad-bundled-runtime'
+          import {handoffToBundledOrcad, isRunningAsBundledOrcadRuntime, OrcadBundledRuntimeError} from './src/main/orcad/orcad-bundled-runtime'
           import {installOrcadShutdownSignals} from './src/main/orcad/orcad-lifecycle'
           import {resolveOrcadExitCode} from './src/main/orcad/orcad-exit-code'
           import {writeFile} from 'node:fs/promises'
-          if (!process.versions.bun) {
+          process.env.ORCA_TEST_ROLE = isRunningAsBundledOrcadRuntime(__dirname) ? 'runtime' : 'launcher'
+          if (process.env.ORCA_TEST_ROLE !== 'runtime') {
             traceLauncherPhase('before-handoff')
             if (!handoffToBundledOrcad()) throw new Error('Missing bundled runtime')
             traceLauncherPhase('after-handoff')
@@ -53,7 +54,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
           } else {
             traceLauncherPhase('before-booting')
             console.log('booting:' + process.pid)
-            console.log('runtime:' + process.versions.bun)
+            console.log('runtime:' + process.versions.node)
             console.log('channel-env:' + (process.env.ORCA_BUNDLED_LAUNCHER_CHANNEL ?? 'absent'))
             traceLauncherPhase('booting-written')
             process.on('exit', code => console.log('runtime-exit:' + code))
@@ -85,7 +86,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
         resolveDir: process.cwd(),
         loader: 'ts'
       },
-      outfile: join(directory, 'orcad.js'),
+      outfile: join(slotDir, 'orcad.js'),
       bundle: true,
       platform: 'node',
       target: 'node18',
@@ -116,9 +117,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
       failStartup?: boolean
     } = {}
   ) {
-    const runtime = options.direct
-      ? join(directory, orcadBunRuntimeFilename(process.platform))
-      : nodePath
+    const runtime = options.direct ? slotRuntime : nodePath
     const startedAt = Date.now()
     const events: { at: number; event: string }[] = []
     const record = (event: string): void => {
@@ -128,7 +127,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
     }
     const child = spawnProcess({
       program: options.nohup ? 'nohup' : runtime,
-      args: [...(options.nohup ? [runtime] : []), join(directory, 'orcad.js')],
+      args: [...(options.nohup ? [runtime] : []), join(slotDir, 'orcad.js')],
       env: {
         ...process.env,
         ORCA_BACKGROUND_LAUNCH: '1',
@@ -197,7 +196,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
         error: stream.errored?.message,
         bufferedBytes: stream.readableLength
       })),
-      phases: ['node', 'bun'].map((runtime) => {
+      phases: ['launcher', 'runtime'].map((runtime) => {
         try {
           return {
             runtime,
@@ -212,13 +211,13 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
   }
 
   it.each([false, true])(
-    'drains Bun after its launcher is killed (startup pending: %s)',
+    'drains the pinned runtime after its launcher is killed (startup pending: %s)',
     async (delay) => {
       const h = launch({ delay })
       await vi.waitFor(
         () => {
           expect(h.output()).toContain(delay ? 'booting:' : 'ready')
-          expect(h.output()).toContain(`runtime:${ORCAD_BUN_VERSION}`)
+          expect(h.output()).toContain(`runtime:${NODE_RUNTIME_PIN.version}`)
           expect(h.output()).toContain('channel-env:absent')
         },
         { timeout: 5_000 }
@@ -236,7 +235,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
   )
 
   it.skipIf(process.platform === 'win32').each([false, true])(
-    'survives nohup hangups and drains on TERM (direct Bun: %s)',
+    'survives nohup hangups and drains on TERM (direct runtime: %s)',
     async (direct) => {
       const h = launch({ direct, nohup: true })
       await vi.waitFor(() => expect(h.output()).toContain('ready'), { timeout: 5_000 })
@@ -286,7 +285,7 @@ describe.skipIf(!existsSync(runtimePath))('real Bun launcher lifecycle', () => {
     try {
       await vi.waitFor(() => expect(h.output()).toContain('booting:'), { timeout: 5_000 })
     } catch (error) {
-      console.error('Bun launcher startup diagnostics:', JSON.stringify(h.diagnostics()))
+      console.error('Node launcher startup diagnostics:', JSON.stringify(h.diagnostics()))
       throw error
     }
     h.child.kill('SIGKILL')

@@ -14,11 +14,12 @@ export const RUNTIME_LAUNCHER_PATHS = [
   'src/main/orcad/orcad-bundled-runtime.ts',
   'src/shared/orcad-bun-runtime.ts',
   'src/shared/node-runtime-pin.ts',
-  'src/main/ssh/orcad-bun-runtime-materializer.ts',
+  'src/main/ssh/pinned-runtime-materializer.ts',
+  'src/main/ssh/orcad-remote-node-runtime.ts',
   // orcad slot layout: which runtime file a packaged slot carries.
   'src/shared/orcad-artifacts.ts',
   'config/scripts/build-orcad.mjs',
-  'config/scripts/build-orcad-bun.mjs',
+  'config/scripts/build-orcad-node.mjs',
   'config/scripts/build-orcad-template.mjs',
   // Remote slot runtime selection.
   'src/main/ssh/orcad-remote-runtime.ts',
