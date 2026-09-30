@@ -16,10 +16,6 @@ const BRACKETED_PASTE_QUIET_MS = 1500
 // Why: an interactive shell turns bracketed paste on at its prompt and off when it runs the typed
 // command (`zsh-prompt-runs-command.txt`), so a 2004 before the last `?2004l` is the shell's.
 const DECRST_BRACKETED_PASTE = '\x1b[?2004l'
-// A foreground read can cost a process-table scan; this pace keeps an 8 s wait to a few dozen.
-const AGENT_FOREGROUND_RETRY_MS = 250
-/** Output held until the agent owns the terminal; the ready signal reads only its recent tail. */
-const PRE_OWNERSHIP_OUTPUT_CHARS = 64 * 1024
 
 export type WorktreeStartupReadinessHost = {
   getPtyId: (handle: string) => string | null
@@ -94,9 +90,6 @@ export async function waitForWorktreeStartupFollowup(
   return null
 }
 
-/** Who is in the terminal's foreground: the launched agent, the shell, or it could not be read. */
-export type LaunchedAgentForeground = 'agent' | 'shell' | 'unknown'
-
 export type StartupDraftReadinessOptions = {
   timeoutMs?: number
   requireComposerMarker?: boolean
@@ -105,19 +98,11 @@ export type StartupDraftReadinessOptions = {
    *  scan continues, so the agent's next marker or quiet window asks again. */
   accept?: (ptyId: string) => boolean | Promise<boolean>
   /**
-   * Who owns the terminal. With it, output is held rather than scanned until the shell hands the
-   * terminal over (its `?2004l`), or failing that until the agent is seen in front, and only what
-   * followed the hand-off counts: the shell's own prompt enables bracketed paste too. A ready
-   * signal then settles only once the agent is seen in front; it is kept, not dropped, while that
-   * is not yet so, since an idle agent may never signal again.
+   * For a launched agent. With it, only output after the shell's last `?2004l` counts, since the
+   * shell's own prompt enables bracketed paste too, and a ready signal is dropped while a shell is
+   * proven in front: the launch line has not run yet, or the agent exited.
    */
-  readAgentForeground?: (ptyId: string) => Promise<LaunchedAgentForeground>
-}
-
-/** The output after the shell last turned bracketed paste off to run a command. */
-function outputSinceShellHandoff(held: string): string {
-  const handoff = held.lastIndexOf(DECRST_BRACKETED_PASTE)
-  return handoff === -1 ? held : held.slice(handoff + DECRST_BRACKETED_PASTE.length)
+  isShellInFront?: (ptyId: string) => Promise<boolean>
 }
 
 export function waitForWorktreeStartupDraft(
@@ -132,17 +117,19 @@ export function waitForWorktreeStartupDraft(
   }
   const signal =
     TUI_AGENT_CONFIG[agent].draftPasteReadySignal ?? 'render-quiet-after-bracketed-paste'
-  const readAgentForeground = options.readAgentForeground
+  const isShellInFront = options.isShellInFront
   return new Promise((resolve) => {
     let settled = false
-    const scanner = createDraftPasteReadyScanner(signal)
+    let scanner = createDraftPasteReadyScanner(signal)
     let quietTimer: NodeJS.Timeout | null = null
     let hardTimer: NodeJS.Timeout | null = null
-    let foregroundTimer: NodeJS.Timeout | null = null
     let unsubscribe: (() => void) | null = null
-    let heldOutput: string | null = readAgentForeground ? '' : null
+    // Bumped at each shell hand-off: a check begun before one must not settle the wait after it.
+    let handoffs = 0
+    let handoffCarry = ''
     let checking = false
-    let checkAgain = false
+    /** The hand-off count at a signal that fired while a check ran. */
+    let recheckAt: number | null = null
     const onAbort = (): void => finish(null)
     const finish = (value: string | null): void => {
       if (settled) {
@@ -155,74 +142,63 @@ export function waitForWorktreeStartupDraft(
       if (hardTimer) {
         clearTimeout(hardTimer)
       }
-      if (foregroundTimer) {
-        clearTimeout(foregroundTimer)
-      }
       unsubscribe?.()
       options.signal?.removeEventListener('abort', onAbort)
       resolve(value)
     }
-    const retryForeground = (check: () => void): void => {
-      if (foregroundTimer) {
-        clearTimeout(foregroundTimer)
-      }
-      foregroundTimer = setTimeout(check, AGENT_FOREGROUND_RETRY_MS)
-    }
-    /** Settles a fired signal once its screen is clear and the agent is in front. */
-    const settleSignal = async (): Promise<void> => {
-      if (checking) {
-        checkAgain = true
-        return
-      }
+    /** Settles a fired signal once its screen is clear and no shell is proven in front. */
+    const settleSignal = async (signalHandoffs: number): Promise<void> => {
       checking = true
       try {
         if (options.accept && !(await options.accept(ptyId))) {
           return
         }
-        const foreground = readAgentForeground ? await readAgentForeground(ptyId) : 'agent'
-        if (foreground === 'agent') {
+        if (isShellInFront && (await isShellInFront(ptyId))) {
+          return
+        }
+        if (signalHandoffs === handoffs) {
           finish(ptyId)
-        } else if (!settled) {
-          retryForeground(() => void settleSignal())
         }
       } catch {
-        if (!settled) {
-          retryForeground(() => void settleSignal())
-        }
+        // A check that failed is no settle; the agent's next signal asks again.
       } finally {
         checking = false
-        if (checkAgain && !settled) {
-          checkAgain = false
-          void settleSignal()
+        const next = recheckAt
+        recheckAt = null
+        if (next === handoffs && !settled) {
+          void settleSignal(next)
         }
       }
     }
     const onSignal = (): void => {
-      void settleSignal()
-    }
-    const release = (): void => {
-      const held = heldOutput ?? ''
-      heldOutput = null
-      if (foregroundTimer) {
-        clearTimeout(foregroundTimer)
-        foregroundTimer = null
+      if (checking) {
+        recheckAt = handoffs
+        return
       }
-      const fromAgent = outputSinceShellHandoff(held)
-      if (fromAgent) {
-        observe(fromAgent)
-      }
+      void settleSignal(handoffs)
     }
-    const observe = (data: string): void => {
+    /** The part of a chunk after the shell's last hand-off in it, resetting the scan at one. */
+    const sinceShellHandoff = (chunk: string): string => {
+      const window = handoffCarry + chunk
+      // Why 7: one short of the sequence, so a split one is rejoined and never counted twice.
+      handoffCarry = window.slice(-(DECRST_BRACKETED_PASTE.length - 1))
+      const handoff = window.lastIndexOf(DECRST_BRACKETED_PASTE)
+      if (handoff === -1) {
+        return chunk
+      }
+      handoffs += 1
+      scanner = createDraftPasteReadyScanner(signal)
+      if (quietTimer) {
+        clearTimeout(quietTimer)
+        quietTimer = null
+      }
+      return window.slice(handoff + DECRST_BRACKETED_PASTE.length)
+    }
+    const observe = (chunk: string): void => {
       if (settled) {
         return
       }
-      if (heldOutput !== null) {
-        heldOutput = (heldOutput + data).slice(-PRE_OWNERSHIP_OUTPUT_CHARS)
-        if (data.includes(DECRST_BRACKETED_PASTE)) {
-          release()
-        }
-        return
-      }
+      const data = isShellInFront ? sinceShellHandoff(chunk) : chunk
       const result = scanner.observe(data)
       if (result.ready) {
         return onSignal()
@@ -243,24 +219,6 @@ export function waitForWorktreeStartupDraft(
     const replay = host.readRecentOutput(ptyId)
     if (replay) {
       observe(replay)
-    }
-    // A shell that never enables bracketed paste never hands over in the stream; ask who is in front.
-    if (readAgentForeground && heldOutput !== null) {
-      const checkHandoff = (): void => {
-        void readAgentForeground(ptyId)
-          .catch((): LaunchedAgentForeground => 'unknown')
-          .then((foreground) => {
-            if (settled || heldOutput === null) {
-              return
-            }
-            if (foreground === 'agent') {
-              release()
-            } else {
-              retryForeground(checkHandoff)
-            }
-          })
-      }
-      retryForeground(checkHandoff)
     }
   })
 }

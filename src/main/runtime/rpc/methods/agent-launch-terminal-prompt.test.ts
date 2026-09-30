@@ -26,8 +26,8 @@ function runtimeStub(overrides: {
   send?: SendFn
   /** Whether the agent's composer signal fires within its budget; else the idle evidence decides. */
   composerSignal?: boolean
-  /** Who is in the terminal's foreground. */
-  foreground?: 'agent' | 'shell' | 'unknown'
+  /** Whether a shell is proven in the terminal's foreground. */
+  shellInFront?: boolean
 }) {
   const queued = [...(overrides.waits ?? [])]
   const waitForTerminal = vi.fn(
@@ -40,7 +40,7 @@ function runtimeStub(overrides: {
     }
     return COMPOSER_READY
   })
-  const readLaunchedAgentForeground = vi.fn(async () => overrides.foreground ?? 'agent')
+  const isLaunchShellInFront = vi.fn(async () => overrides.shellInFront ?? false)
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
     overrides.send ?? (async () => ({ handle: 'term_1', accepted: true, bytesWritten: 12 }))
   )
@@ -48,13 +48,13 @@ function runtimeStub(overrides: {
     waitForTerminal,
     waitForFreshWorkerComposer,
     sendTerminalAgentPrompt,
-    readLaunchedAgentForeground,
+    isLaunchShellInFront,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these four runtime methods; anything else would throw rather than read a wrong value.
     runtime: {
       waitForTerminal,
       waitForFreshWorkerComposer,
       sendTerminalAgentPrompt,
-      readLaunchedAgentForeground
+      isLaunchShellInFront
     } as unknown as Parameters<typeof deliverTerminalAgentLaunchPrompt>[0]['runtime']
   }
 }
@@ -226,13 +226,12 @@ describe('writing a launch prompt into a terminal agent', () => {
   })
 
   it.each([
-    ['refuses the write when the shell is back in front', 'shell' as const, false],
+    ['refuses the write when the shell is back in front', true, false],
     // An unread foreground is no proof the agent exited; the composer was just seen ready.
-    ['writes when the foreground could not be read', 'unknown' as const, true],
-    ['writes when the agent is in front', 'agent' as const, true]
-  ])('%s', async (_label, foreground, delivered) => {
+    ['writes unless a shell is proven in front', false, true]
+  ])('%s', async (_label, shellInFront, delivered) => {
     // An agent that exits at startup hands its shell back, which must never run the prompt.
-    const stub = runtimeStub({ composerSignal: true, foreground })
+    const stub = runtimeStub({ composerSignal: true, shellInFront })
     stub.sendTerminalAgentPrompt.mockImplementation(async (handle, _text, options) => {
       const { beforeWrite } = options
       if (typeof beforeWrite === 'function') {
@@ -250,7 +249,7 @@ describe('writing a launch prompt into a terminal agent', () => {
         text: 'do the thing'
       })
     ).resolves.toBe(delivered)
-    expect(stub.readLaunchedAgentForeground).toHaveBeenCalledWith('pty-1', 'claude')
+    expect(stub.isLaunchShellInFront).toHaveBeenCalledWith('pty-1', 'claude')
   })
 
   it('writes as soon as the composer signal fires, without consulting the idle evidence', async () => {

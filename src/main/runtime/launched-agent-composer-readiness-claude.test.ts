@@ -99,17 +99,18 @@ describe('launch readiness for a freshly launched Claude', () => {
   })
 })
 
-describe('who is in front of a launched agent’s terminal', () => {
+describe('whether a shell is proven in front of a launched agent’s terminal', () => {
   it.each([
-    ['claude', 'agent'],
+    ['claude', false],
     // macOS reports the native Claude by its version.
-    ['2.1.285', 'agent'],
-    ['node', 'agent'],
-    ['zsh', 'shell'],
-    ['-zsh', 'shell'],
-    ['bash', 'shell'],
-    [null, 'unknown']
-  ])('foreground %s: %s', async (foregroundProcess, foreground) => {
+    ['2.1.285', false],
+    ['node', false],
+    ['zsh', true],
+    ['-zsh', true],
+    ['bash', true],
+    // An unread foreground proves nothing.
+    [null, false]
+  ])('foreground %s: %s', async (foregroundProcess, shellInFront) => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Claude Code',
       foregroundProcess,
@@ -117,20 +118,20 @@ describe('who is in front of a launched agent’s terminal', () => {
       data: ''
     })
 
-    await expect(
-      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
-    ).resolves.toBe(foreground)
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+      shellInFront
+    )
   })
 
   // Measured on a zsh pane with the daemon's foreground tracker: for its first 5 s the cached read
   // names the launch agent while zsh is in front, before the launch line runs and after an agent
   // that exited; a fresh process-table scan answers `zsh`, and names a script agent by its command.
   it.each([
-    ['before the launch line runs', 'copilot', 'zsh', 'shell'],
-    ['after the agent exited', 'copilot', 'zsh', 'shell'],
-    ['while a script agent runs', 'bash', 'copilot', 'agent'],
-    ['while the scan cannot answer', 'copilot', null, 'unknown']
-  ])('%s: cached %s, scanned %s, reads %s', async (_moment, cached, scanned, foreground) => {
+    ['before the launch line runs', 'copilot', 'zsh', true],
+    ['after the agent exited', 'copilot', 'zsh', true],
+    ['while a script agent runs', 'bash', 'copilot', false],
+    ['while the scan cannot answer', 'copilot', null, false]
+  ])('%s: cached %s, scanned %s, shell %s', async (_moment, cached, scanned, shellInFront) => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'copilot',
       foregroundProcess: cached,
@@ -139,17 +140,17 @@ describe('who is in front of a launched agent’s terminal', () => {
       data: ''
     })
 
-    await expect(
-      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
-    ).resolves.toBe(foreground)
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
+      shellInFront
+    )
   })
 
   // The runtime controller answers every pane's scan, and null for an SSH relay that has none;
-  // taken as "cannot tell", no SSH launch settled on its signal before the 8 s fallback.
+  // taken as "cannot tell", a shell the relay names in front was never refused.
   it.each([
-    ['claude', 'agent'],
-    ['bash', 'shell']
-  ])('SSH: takes the relay’s own read %s as %s, without a scan', async (relayRead, foreground) => {
+    ['claude', false],
+    ['bash', true]
+  ])('SSH: takes the relay’s own read %s (shell %s), without a scan', async (relayRead, shell) => {
     const scan = vi.fn()
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Claude Code',
@@ -161,9 +162,9 @@ describe('who is in front of a launched agent’s terminal', () => {
       data: ''
     })
 
-    await expect(
-      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
-    ).resolves.toBe(foreground)
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+      shell
+    )
     expect(scan).not.toHaveBeenCalled()
   })
 
@@ -180,9 +181,9 @@ describe('who is in front of a launched agent’s terminal', () => {
       data: ''
     })
 
-    await expect(
-      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
-    ).resolves.toBe('agent')
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+      false
+    )
     expect(scan).not.toHaveBeenCalled()
   })
 })

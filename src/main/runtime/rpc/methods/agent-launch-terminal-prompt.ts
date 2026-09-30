@@ -37,7 +37,7 @@ const AGENT_READY_TIMEOUT_MS = 60_000
 const BLOCKED_RECHECK_MS = 1_000
 
 type TerminalPromptRuntime = LaunchedAgentReadinessRuntime &
-  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt' | 'readLaunchedAgentForeground'>
+  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt' | 'isLaunchShellInFront'>
 
 type ReadinessClock = { now: () => number; sleep: (ms: number) => Promise<void> }
 
@@ -127,8 +127,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       ...(args.freshLaunch
         ? {
             beforeWrite: async (ptyId: string) => {
-              // Only a shell seen in front refuses: an unread foreground is no proof it exited.
-              if ((await args.runtime.readLaunchedAgentForeground(ptyId, args.agent)) === 'shell') {
+              // Only a shell proven in front refuses: an unread foreground is no proof it exited.
+              if (await args.runtime.isLaunchShellInFront(ptyId, args.agent)) {
                 throw new Error('agent_not_in_foreground')
               }
             }

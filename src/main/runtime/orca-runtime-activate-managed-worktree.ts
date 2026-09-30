@@ -33,18 +33,7 @@ import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
 import { readFreshComposerHold } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
-import { isShellProcess } from '../../shared/shell-process-detection'
-import {
-  isExpectedAgentProcess,
-  recognizeAgentProcess
-} from '../../shared/agent-process-recognition'
-import type { LaunchedAgentForeground } from './runtime-worktree-startup-readiness'
-import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
-
-/** A login shell is reported as `-zsh`. */
-function isLaunchShell(processName: string): boolean {
-  return isShellProcess(processName.replace(/^-/, ''))
-}
+import { isShellInFrontOfLaunchedAgent } from './launched-agent-shell-foreground'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -219,7 +208,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         timeoutMs,
         requireComposerMarker,
         signal: stop.signal,
-        readAgentForeground: (ownerPtyId) => this.readLaunchedAgentForeground(ownerPtyId, agent),
+        isShellInFront: (ownerPtyId) => this.isLaunchShellInFront(ownerPtyId, agent),
         accept: (readyPtyId) => {
           const pty = this.ptysById.get(readyPtyId)
           const hold = pty
@@ -245,40 +234,9 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     return this.buildTuiIdleProbeResult(handle, null)
   }
 
-  /**
-   * Whether the agent a launch started, rather than the shell that ran its launch line, is in the
-   * terminal's foreground. Any non-shell process counts: macOS reports the native Claude by its
-   * version (`2.1.258`), and a runtime such as node can front an agent.
-   *
-   * Why a scan only for the agent's own name or a shell: for its first 5 s the daemon's cached read
-   * names the launch agent whenever a shell is in front (measured on a zsh pane: cached `copilot`,
-   * scan `zsh`), so any other non-shell name it gives is the process itself.
-   */
-  async readLaunchedAgentForeground(
-    ptyId: string,
-    agent: TuiAgent
-  ): Promise<LaunchedAgentForeground> {
-    const controller = this.ptyController
-    if (!controller) {
-      return 'unknown'
-    }
-    const cached = (await controller.getForegroundProcess(ptyId)) ?? null
-    if (cached && !isLaunchShell(cached) && recognizeAgentProcess(cached)?.agent !== agent) {
-      return 'agent'
-    }
-    // Why not for SSH: the relay reads its foreground live, with no startup bootstrap to see past,
-    // and has no scan; the controller answers null for one, which would never settle.
-    const foreground =
-      controller.confirmForegroundProcess && !this.ptysById.get(ptyId)?.connectionId
-        ? await controller.confirmForegroundProcess(ptyId)
-        : cached
-    if (!foreground) {
-      return 'unknown'
-    }
-    return isLaunchShell(foreground) &&
-      !isExpectedAgentProcess(foreground, TUI_AGENT_CONFIG[agent].expectedProcess)
-      ? 'shell'
-      : 'agent'
+  /** Whether a shell, not the agent a launch started, is proven to be in the terminal's foreground. */
+  isLaunchShellInFront(ptyId: string, agent: TuiAgent): Promise<boolean> {
+    return isShellInFrontOfLaunchedAgent(this.ptyController, this.ptysById.get(ptyId), ptyId, agent)
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

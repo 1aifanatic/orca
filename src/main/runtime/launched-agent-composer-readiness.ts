@@ -7,7 +7,9 @@
  * the agent's `draftPasteReadySignal` (its composer marker, or a quiet render after 2004), read by
  * the shared `draft-paste-ready-scanner`, within the same per-agent budget. That signal cannot tell
  * a composer from a startup dialog drawn in the same mode, so it counts only while the pane shows no
- * startup dialog and no Codex provisional header (`readFreshComposerHold`).
+ * startup dialog and no Codex provisional header (`readFreshComposerHold`). Unlike the desktop's
+ * paste it reads only output after the shell's last `?2004l`, and drops a signal while a shell is
+ * proven in front (`isLaunchShellInFront`).
  *
  * Where the desktop pasted blind once its budget ran out, the host falls back to the `tui-idle`
  * evidence ranking (idle titles, known ready screens), which also reports a dialog left up. A few
