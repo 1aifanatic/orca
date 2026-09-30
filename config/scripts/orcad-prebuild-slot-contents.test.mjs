@@ -7,7 +7,7 @@ import {
   findSlotProblems,
   highestGlibcNeed,
   mergeManifest,
-  napiVersionGypi,
+  prebuildCompileGypi,
   sha256Of,
   slotSourceFiles,
   SLOT_NAPI_VERSION,
@@ -46,9 +46,16 @@ const next = (slot, overrides = {}) => ({
 describe('N-API pinning', () => {
   it('pins N-API 8 so a host Node 18 (rung C) can load every slot', () => {
     expect(SLOT_NAPI_VERSION).toBe(8)
-    expect(JSON.parse(napiVersionGypi())).toEqual({
-      target_defaults: { defines: ['NAPI_VERSION=8'] }
-    })
+    expect(JSON.parse(prebuildCompileGypi()).target_defaults.defines).toEqual(['NAPI_VERSION=8'])
+  })
+
+  it('pins the macOS C++ standard that the headers config.gypi (clang: 0) would skip', () => {
+    expect(JSON.parse(prebuildCompileGypi()).target_defaults.conditions).toEqual([
+      [
+        'OS=="mac"',
+        { xcode_settings: { CLANG_CXX_LANGUAGE_STANDARD: 'gnu++20', CLANG_CXX_LIBRARY: 'libc++' } }
+      ]
+    ])
   })
 
   it('flags node_api_* imports but not the module version export', () => {

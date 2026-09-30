@@ -24,9 +24,29 @@ export const SLOT_NAPI_VERSION = 8
 /** The one export every Node-API addon may carry; any other `node_api_*` name is a post-8 import. */
 const NODE_API_EXPORTS = new Set(['node_api_module_get_api_version_v1'])
 
-/** gyp include that defines NAPI_VERSION for every target node-gyp compiles. */
-export function napiVersionGypi(napi = SLOT_NAPI_VERSION) {
-  return `${JSON.stringify({ target_defaults: { defines: [`NAPI_VERSION=${napi}`] } }, null, 2)}\n`
+/**
+ * gyp include for every target node-gyp compiles: pins NAPI_VERSION, and on macOS the C++
+ * standard, because the official headers' config.gypi says `clang: 0`, which skips
+ * common.gypi's gnu++20 and leaves older Apple clang at its C++98 default.
+ */
+export function prebuildCompileGypi(napi = SLOT_NAPI_VERSION) {
+  const gypi = {
+    target_defaults: {
+      defines: [`NAPI_VERSION=${napi}`],
+      conditions: [
+        [
+          'OS=="mac"',
+          {
+            xcode_settings: {
+              CLANG_CXX_LANGUAGE_STANDARD: 'gnu++20',
+              CLANG_CXX_LIBRARY: 'libc++'
+            }
+          }
+        ]
+      ]
+    }
+  }
+  return `${JSON.stringify(gypi, null, 2)}\n`
 }
 
 /**
