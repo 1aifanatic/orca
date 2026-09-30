@@ -565,7 +565,7 @@ describe('re-placing a host off a cell isolated for a roll', () => {
 
     warn.mockClear()
     // The first write after the event is decided.
-    counter.failOnce = 'INSERT INTO relay_assignments'
+    counter.failOnce = 'UPDATE relay_assignments SET cell_id'
     await expect(store.assign(IDENTITY, 'us-central1')).rejects.toThrow(
       'injected_placement_write_failure'
     )

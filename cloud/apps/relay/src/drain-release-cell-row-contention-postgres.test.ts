@@ -19,10 +19,12 @@ import {
   type StatementDelay
 } from './test-fixtures/delayed-postgres-database.js'
 
-// Reproduces the Asia drain brownout: a draining cell's releases each end with
-// a one-row UPDATE of the source relay_cells row, held for a round trip to
-// COMMIT, while every director's re-placement of reconnecting hosts needs all
-// relay_cells rows. Prints one line per run and asserts the before picture.
+// Reproduces the Asia drain: a draining cell's releases each end with a one-row
+// UPDATE of the source relay_cells row, held for a round trip to COMMIT, while
+// the directors re-place its reconnecting hosts. Placement used to lock every
+// relay_cells row and starved (about 9/s at 6 releases/s, 5/s at 18/s, every
+// director backend lock-waiting); it now locks only the targets. Prints one
+// line per run and asserts the after picture.
 
 const databaseUrl = process.env.ORCA_RELAY_TEST_POSTGRES_URL
 const describePostgres = databaseUrl ? describe : describe.skip
@@ -112,10 +114,6 @@ function failureCode(error: unknown): string {
 
 function count(tally: Tally, key: string): void {
   tally[key] = (tally[key] ?? 0) + 1
-}
-
-function total(tally: Tally): number {
-  return Object.values(tally).reduce((sum, value) => sum + value, 0)
 }
 
 function percentile(values: number[], fraction: number): number {
@@ -500,21 +498,19 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     }
   }, 120_000)
 
-  it('starves director placement once the draining cell is an Asia round trip away', async () => {
-    const paced6 = await run(ASIA_ROUND_TRIP_MS, 6)
-    const herd18 = await run(ASIA_ROUND_TRIP_MS, 18)
-    // Measured 9.2-9.5/s and 4.5-5.3/s against 20/s at local latency.
-    expect(paced6.placementsPerSecond).toBeLessThan(0.75 * DIAL_RATE_PER_SECOND)
-    expect(herd18.placementsPerSecond).toBeLessThan(0.5 * DIAL_RATE_PER_SECOND)
-    expect(herd18.placementsPerSecond).toBeLessThan(paced6.placementsPerSecond)
-    expect(total(herd18.dials.admissionRejected)).toBeGreaterThan(0)
-    // Every active director backend is blocked on a lock. The 500ms bound never
-    // fires: lock_timeout is per acquisition, and each hold ahead is ~1 RTT.
-    expect(herd18.director.activeMean).toBeGreaterThan(1)
-    expect(herd18.director.lockWaitingMean).toBeGreaterThanOrEqual(0.9 * herd18.director.activeMean)
-    // Releases on one row serialise at ~1/RTT (~5.8/s); the excess sheds.
-    expect(herd18.releases.ok).toBeLessThan(0.6 * herd18.releases.attempted)
-    expect(total(herd18.releases.failed)).toBeGreaterThan(0)
+  it('keeps placing while an Asia drain holds the source row', async () => {
+    for (const rate of [6, 18]) {
+      const report = await run(ASIA_ROUND_TRIP_MS, rate)
+      expect(report.dials.failed).toEqual({})
+      expect(report.dials.admissionRejected).toEqual({})
+      expect(report.placementsPerSecond).toBeGreaterThanOrEqual(0.9 * DIAL_RATE_PER_SECOND)
+      expect(report.director.lockWaitingMean).toBeLessThan(0.5)
+      if (rate === 18) {
+        // Still cell-side: releases on one row serialise at ~1/RTT (~5.8/s)
+        // and the excess sheds to lease expiry. The director no longer waits.
+        expect(report.releases.ok).toBeLessThan(0.6 * report.releases.attempted)
+      }
+    }
   }, 180_000)
 })
 

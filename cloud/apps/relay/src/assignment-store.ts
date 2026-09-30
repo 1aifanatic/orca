@@ -426,7 +426,9 @@ const REGIONAL_REHOME_QUARANTINE_MEMORY_LIMIT = 1_000
 const REGIONAL_REHOME_FAILURE_BUDGET = 3
 const REGIONAL_REHOME_OBSERVATION_MS = 24 * 60 * 60_000
 const ASSIGNMENT_LOCK_RETRY_MAX_DELAY_MS = 50
-type AssignmentInventoryScope = 'none' | 'general' | 'all'
+// 'isolated': the same-region general rows a roll-isolated incumbent can move
+// to, never its own. The source row is the one a drain's releases keep busy.
+type AssignmentInventoryScope = 'none' | 'general' | 'isolated' | 'all'
 type RetriedAssignmentInventoryScope = Exclude<AssignmentInventoryScope, 'none'>
 
 class AssignmentInventoryLockUnavailable extends Error {
@@ -938,19 +940,30 @@ export class RelayAssignmentStore {
       // The retry paths below open with the inventory, so this path takes its
       // host rows before any of them rather than where the others do.
       await this.lockControlConnectionReservations(transaction, identity, lockMode)
+      const isolatedRetrySource =
+        inventoryScope === 'isolated' ? await this.pinnedCellId(transaction, identity) : undefined
       let lockedCells =
         inventoryScope === 'all'
           ? await this.lockCellInventory(transaction, lockMode)
           : inventoryScope === 'general'
             ? await this.lockGeneralCellInventory(transaction, lockMode)
-            : undefined
+            : inventoryScope === 'isolated'
+              ? await this.lockIsolatedReplacementCells(transaction, isolatedRetrySource, lockMode)
+              : undefined
       const existing = await this.assignmentRow(
         transaction,
         identity,
         inventoryScope !== 'none'
       )
-      retryScope = existing ? 'all' : 'general'
-      if (inventoryScope === 'general' && existing) {
+      // A dormant host holds no units, so its placement never writes its old
+      // cell and needs only the rows it could land on.
+      const dormant = !existing || mayNormallyReassign(activity(existing), now)
+      retryScope = dormant ? 'general' : 'all'
+      if (
+        (inventoryScope === 'general' && !dormant) ||
+        (inventoryScope === 'isolated' &&
+          (!existing || dormant || text(existing, 'cell_id') !== isolatedRetrySource))
+      ) {
         throw new AssignmentInventoryScopeChanged()
       }
       const activityLeases = await this.lockAssignmentActivities(transaction, identity, true)
@@ -960,7 +973,32 @@ export class RelayAssignmentStore {
       let strandedReassignment = false
       let isolatedIncumbent: CellRow | undefined
       let isolatedTarget: CellRow | undefined
-      if (existing && !mayNormallyReassign(activity(existing), now)) {
+      // Set when the placement leaves the old cell's row alone: its leases stay,
+      // and each one's own release or expiry takes its units back off it.
+      let sourceRowSkipped = false
+      if (existing && !dormant && inventoryScope !== 'all') {
+        // Unlocked on purpose: this only chooses which rows to lock. A restore
+        // racing it lets one host move off a cell that no longer needed it.
+        if (await this.isolatedIncumbentMayMove(transaction, identity, existing, now)) {
+          const source = await this.unlockedCell(transaction, text(existing, 'cell_id'))
+          retryScope = 'isolated'
+          lockedCells ??= await this.lockIsolatedReplacementCells(
+            transaction,
+            source.cellId,
+            'nowait'
+          )
+          isolatedTarget =
+            (await this.leastLoadedCell(transaction, lockedCells, source.region, 'require')) ??
+            undefined
+          // No same-region headroom: decide under the all-rows lock, as before.
+          if (!isolatedTarget) throw new AssignmentInventoryScopeChanged()
+          isolatedIncumbent = source
+          sourceRowSkipped = true
+        } else if (inventoryScope === 'isolated') {
+          throw new AssignmentInventoryScopeChanged()
+        }
+      }
+      if (existing && !dormant && !sourceRowSkipped) {
         lockedCells ??= await this.lockCellInventory(transaction, 'nowait')
         const admission = await cellAdmissionStates(transaction)
         const currentRow = lockedCells.find(
@@ -1089,9 +1127,8 @@ export class RelayAssignmentStore {
         }
       }
 
-      lockedCells ??= existing
-        ? await this.lockCellInventory(transaction, 'nowait')
-        : await this.lockGeneralCellInventory(transaction, 'nowait')
+      // Only a host with no assignment or a dormant one reaches here unlocked.
+      lockedCells ??= await this.lockGeneralCellInventory(transaction, 'nowait')
       // The isolated target was chosen under the same inventory lock, with
       // region required rather than preferred; re-picking here would reopen the
       // cross-region spill it exists to refuse.
@@ -1115,7 +1152,10 @@ export class RelayAssignmentStore {
       }
       const previousUnits = existing ? requestUnits(existing) : 0
       if (existing) {
-        await this.adjustCellReservation(transaction, text(existing, 'cell_id'), -previousUnits)
+        // A zero delta is a no-op, and the old row may not be locked here.
+        if (!sourceRowSkipped && previousUnits > 0) {
+          await this.adjustCellReservation(transaction, text(existing, 'cell_id'), -previousUnits)
+        }
         if (forcedDeadReassignment || strandedReassignment) {
           // A fenced/dead incarnation cannot own drainable work, and a
           // stranded host's only leases are the unclaimed grant artifacts of
@@ -1131,38 +1171,59 @@ export class RelayAssignmentStore {
       await this.adjustCellReservation(transaction, target.cellId, 1)
       const assignmentEpoch = existing ? integer(existing, 'assignment_epoch') + 1 : 1
       const leaseExpiresAt = now + ASSIGNMENT_LIMITS.activityLeaseMs
-      await transaction.query(
-        `INSERT INTO relay_assignments
-         (user_id, relay_host_id, cell_id, assignment_epoch, lease_expires_at,
-          last_activity_at, reserved_controls, reserved_splices, reserved_invites,
-          pending_installs, pending_confirmations, migration_leases)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id, relay_host_id) DO UPDATE SET
-           cell_id = excluded.cell_id,
-           assignment_epoch = excluded.assignment_epoch,
-           lease_expires_at = excluded.lease_expires_at,
-           last_activity_at = excluded.last_activity_at,
-           reserved_controls = excluded.reserved_controls,
-           reserved_splices = excluded.reserved_splices,
-           reserved_invites = excluded.reserved_invites,
-           pending_installs = excluded.pending_installs,
-           pending_confirmations = excluded.pending_confirmations,
-           migration_leases = excluded.migration_leases`,
-        [
-          identity.userId,
-          identity.relayHostId,
-          target.cellId,
-          assignmentEpoch,
-          leaseExpiresAt,
-          now,
-          1,
-          0,
-          0,
-          0,
-          0,
-          0
-        ]
-      )
+      if (sourceRowSkipped) {
+        // The old cell's leases still count here until each is released, so
+        // keep the counters and add the new control. Resetting them let those
+        // releases take the new cell's control off the count.
+        await transaction.query(
+          `UPDATE relay_assignments SET cell_id = ?, assignment_epoch = ?,
+             lease_expires_at = CASE WHEN lease_expires_at > ? THEN lease_expires_at ELSE ? END,
+             last_activity_at = ?, reserved_controls = reserved_controls + 1
+           WHERE user_id = ? AND relay_host_id = ?`,
+          [
+            target.cellId,
+            assignmentEpoch,
+            leaseExpiresAt,
+            leaseExpiresAt,
+            now,
+            identity.userId,
+            identity.relayHostId
+          ]
+        )
+      } else {
+        await transaction.query(
+          `INSERT INTO relay_assignments
+           (user_id, relay_host_id, cell_id, assignment_epoch, lease_expires_at,
+            last_activity_at, reserved_controls, reserved_splices, reserved_invites,
+            pending_installs, pending_confirmations, migration_leases)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, relay_host_id) DO UPDATE SET
+             cell_id = excluded.cell_id,
+             assignment_epoch = excluded.assignment_epoch,
+             lease_expires_at = excluded.lease_expires_at,
+             last_activity_at = excluded.last_activity_at,
+             reserved_controls = excluded.reserved_controls,
+             reserved_splices = excluded.reserved_splices,
+             reserved_invites = excluded.reserved_invites,
+             pending_installs = excluded.pending_installs,
+             pending_confirmations = excluded.pending_confirmations,
+             migration_leases = excluded.migration_leases`,
+          [
+            identity.userId,
+            identity.relayHostId,
+            target.cellId,
+            assignmentEpoch,
+            leaseExpiresAt,
+            now,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        )
+      }
       if (existing) {
         await this.releaseSupersededControlConnectionReservations(
           transaction,
@@ -7342,6 +7403,61 @@ export class RelayAssignmentStore {
       cellInventoryLockOptions(mode)
     )
     return rows
+  }
+
+  // The rows a roll-isolated incumbent may move to: general, in its own region,
+  // never its own. Placement re-reads admission and headroom under the lock.
+  private async lockIsolatedReplacementCells(
+    database: RelayDatabase,
+    sourceCellId: string | undefined,
+    mode: CellInventoryLockMode
+  ): Promise<SqlRow[]> {
+    if (sourceCellId === undefined) throw new AssignmentInventoryScopeChanged()
+    const candidates = await database.query(
+      `SELECT admission.cell_id FROM relay_cell_admission admission
+       LEFT JOIN relay_cell_regions region ON region.cell_id = admission.cell_id
+       WHERE admission.admission_state = 'general' AND admission.cell_id <> ?
+         AND COALESCE(region.region, ?) = ?`,
+      [sourceCellId, RELAY_DEFAULT_REGION, await this.cellRegion(database, sourceCellId)]
+    )
+    if (candidates.length === 0) throw new AssignmentInventoryScopeChanged()
+    return await this.lockCellRows(
+      database,
+      candidates.map((row) => text(row, 'cell_id')),
+      mode
+    )
+  }
+
+  // The same questions the all-rows path asks before moving an isolated
+  // incumbent, none of which needs a relay_cells lock.
+  private async isolatedIncumbentMayMove(
+    database: RelayDatabase,
+    identity: AssignmentIdentity,
+    existing: SqlRow,
+    now: number
+  ): Promise<boolean> {
+    const cellId = text(existing, 'cell_id')
+    const pinned = await this.pinnedCellAdmission(database, cellId)
+    if (await this.assignmentStrandedOnUnservedCell(database, identity, existing, now, pinned?.state)) {
+      return false
+    }
+    if (this.requireLiveCells && !(await this.cellIsLive(database, cellId, now))) return false
+    return await this.incumbentCellIsolatedForRoll(
+      database,
+      identity,
+      existing,
+      now,
+      undefined,
+      pinned
+    )
+  }
+
+  private async unlockedCell(database: RelayDatabase, cellId: string): Promise<CellRow> {
+    const row = (
+      await database.query(`SELECT * FROM relay_cells WHERE cell_id = ?`, [cellId])
+    )[0]
+    if (!row) throw new Error('assigned_cell_missing')
+    return cell(row, await this.cellRegion(database, cellId))
   }
 
   private async leastLoadedCell(
