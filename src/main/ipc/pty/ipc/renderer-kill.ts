@@ -94,7 +94,7 @@ async function stopRendererOwnedPtyProcess(
   const ownedConnectionId = ptyOwnership.get(args.id)
   const parsedSshId = ownedConnectionId === undefined ? parseAppSshPtyId(args.id) : null
   const connectionId = ownedConnectionId ?? parsedSshId?.connectionId
-  // Why read before any await: the tab's close intent retires its saved binding right after.
+  // Why read before any await: the tab or pane close intent, sent right after, retires its saved binding.
   const expectedIncarnationId = connectionId
     ? undefined
     : localPtyShutdownIncarnation(store, args.id)
