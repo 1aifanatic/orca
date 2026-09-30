@@ -7611,15 +7611,9 @@
           "c7f3fe0a6e": "Commandes d'émulateur courantes",
           "d94ca6a623": "Permet aux agents d'utiliser les commandes CLI d'Orca, y compris le contrôle de l'émulateur mobile.",
           "67e19ee03c": "Compétence CLI Orca",
-          "aaf62a3dd2": "Installé dans",
-          "2fef055608": "Enregistre la commande CLI Orca pour que les agents puissent contrôler l'émulateur actif depuis leur shell.",
-          "4f2205f3b6": "Activer Orca CLI",
           "ff4b7e65d6": "Laisser les agents de codage contrôler l'émulateur mobile actif avec des commandes CLI Orca.",
           "2a674aa810": "Contrôle de l'émulateur mobile par les agents",
-          "cdeaed9e37": "Orca CLI enregistré dans PATH.",
-          "3d34423e88": "Enregistrement de la CLI Orca",
-          "3be27641c9": "afin que les commandes d'émulateur puissent s'exécuter depuis les shells des agents.",
-          "3941719a56": "Vérification de la CLI Orca avant d'ouvrir la configuration du skill."
+          "cdeaed9e37": "Orca CLI enregistré dans PATH."
         },
         "MobileEmulatorExamples": {
           "edf13dd03b": "Copier",
@@ -14769,17 +14763,8 @@
                 "agent": {
                   "setup": {
                     "state": {
-                      "fdcca1ec75": "Enregistrement...",
-                      "69fb2c2289": "Activé",
-                      "c6705092ba": "Corriger PATH",
-                      "7c1b6bdb1e": "Activer",
-                      "51074ccb05": "Échec du chargement de l'état de la CLI.",
                       "35dea1ae12": "Le contrôle des agents est prêt.",
-                      "9dff3a6338": "La skill est installée. Activez l'Orca CLI pour terminer la configuration.",
-                      "15986a1080": "L'Orca CLI est prêt. Installez la skill pour terminer la configuration.",
-                      "4c26913def": "Toujours pas configuré. Terminez les deux étapes pour activer le contrôle des agents.",
-                      "c94ff11e91": "Impossible de revérifier l'état de la configuration.",
-                      "2b519eed94": "Orca CLI enregistré dans PATH."
+                      "c94ff11e91": "Impossible de revérifier l'état de la configuration."
                     }
                   }
                 },
@@ -14797,7 +14782,6 @@
             "2fda9ff015": "Configurer le contrôle des agents",
             "0ac0fef514": "Le contrôle des agents est prêt.",
             "2bdfff8763": "Contrôle des agents (facultatif).",
-            "72736b051f": "Configurez Orca CLI + skill quand vous voulez que des agents pilotent ce simulateur.",
             "d10ae98046": "Terminé",
             "3756cbeca7": "Pas maintenant",
             "6d950431d2": "Masquer",
@@ -14805,15 +14789,10 @@
             "3f003507f4": "Ouvrir la configuration complète dans les paramètres"
           },
           "MobileEmulatorAgentSetupGuideSteps": {
-            "9b49d892e3": "Activer Orca CLI",
-            "3d8dc52c93": "Enregistre la commande orca de contrôle de l'émulateur dans les shells des agents.",
             "21f5687c07": "Compétence CLI Orca",
             "64fb057667": "Apprend aux agents les commandes orca de l'émulateur pour ce worktree.",
             "5c59ea96ca": "Configuration de la skill Orca CLI de l'émulateur mobile",
-            "bff5341ac3": "Terminal d'installation de la skill Orca CLI de l'émulateur mobile",
-            "3d34423e88": "Enregistrement de la CLI Orca",
-            "3be27641c9": "afin que les commandes d'émulateur puissent s'exécuter depuis les shells des agents.",
-            "3941719a56": "Vérification de la CLI Orca avant d'ouvrir la configuration du skill."
+            "bff5341ac3": "Terminal d'installation de la skill Orca CLI de l'émulateur mobile"
           },
           "MobileEmulatorTabIntroCallout": {
             "1924982130": "Ignorer",
