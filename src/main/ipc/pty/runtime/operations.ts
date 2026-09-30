@@ -112,9 +112,10 @@ export async function attachPtyFromRuntimeController(
   if (provider !== localProvider || provider instanceof LocalPtyProvider) {
     return false
   }
+  let attachResult: Awaited<ReturnType<IPtyProvider['attach']>>
   try {
     const sequenceBeforeProviderAttach = deps.runtime?.getPtyOutputSequence?.(ptyId) ?? 0
-    const attachResult = await provider.attach(ptyId)
+    attachResult = await provider.attach(ptyId)
     if (attachResult?.providerSequence) {
       deps.runtime?.synchronizePtyOutputSequenceFromProvider?.(
         ptyId,
@@ -122,10 +123,15 @@ export async function attachPtyFromRuntimeController(
         sequenceBeforeProviderAttach
       )
     }
-    return true
   } catch {
     return false
   }
+  try {
+    deps.runtime?.noteTerminalProviderReattach?.(ptyId, attachResult?.shellCommand)
+  } catch {
+    // Why: status bookkeeping must never fail the attach a viewer is waiting on.
+  }
+  return true
 }
 
 export async function getForegroundProcessFromRuntimeController(ptyId: string) {

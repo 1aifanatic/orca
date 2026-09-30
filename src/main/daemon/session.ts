@@ -38,7 +38,8 @@ export class Session {
   private readonly shellReady: SessionShellReadyBarrier
   private readonly termination: SessionTerminationController
   private readonly startupIngress: PtyStartupIngress
-  private readonly recoveryBarrier: TerminalShellRecoveryBarrier
+  /** Public for its read-only lifecycle answers (e.g. the shell's OSC 133 state at attach). */
+  readonly recoveryBarrier: TerminalShellRecoveryBarrier
 
   constructor(opts: SessionOptions) {
     this.sessionId = opts.sessionId

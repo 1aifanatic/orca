@@ -7,6 +7,7 @@ import {
 import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
 import { isShellProcess } from '../../shared/shell-process-detection'
+import type { ShellCommandState } from '../../shared/shell-command-state'
 
 const SIGINT_EXIT_CODE = 130
 // Launchers that can still exec OpenCode after the first read (`npx`/`bunx opencode-ai run`).
@@ -63,11 +64,15 @@ export class OpenCodeRunLifetimeStatus {
   }
 
   /**
-   * Orca reattached to a PTY that outlived it (app restart). A run already in flight printed its
-   * 133;C before this process was listening, so check the foreground once instead.
+   * Main attached to a surviving PTY (a pane mount or remote viewer), possibly after missing its
+   * 133;C, e.g. across an Orca restart. `shellCommand` is the host's own 133 state at the attach.
    */
-  onReattached(ptyId: string): void {
-    // Why: a tracked command means this process saw the pane's current 133;C itself.
+  onReattached(ptyId: string, shellCommand: ShellCommandState | undefined): void {
+    // Why: only a shell mid-command will print the 133;D that ends an armed run.
+    if (shellCommand !== 'running') {
+      return
+    }
+    // Why: main already holds this command's state, from its markers or an earlier attach.
     if (this.commands.has(ptyId)) {
       return
     }

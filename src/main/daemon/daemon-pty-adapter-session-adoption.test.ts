@@ -150,7 +150,24 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         providerSequence: {
           value: 'preserved output'.length,
           generation: 'continued'
-        }
+        },
+        shellCommand: 'unmarked'
+      })
+    })
+
+    it("carries the daemon's OSC 133 state on a reattach and an attach, never on a create", async () => {
+      const sessionId = 'shell-command-handoff'
+      const created = await adapter.spawn({ cols: 80, rows: 24, sessionId })
+      lastSubprocess._simulateData('\x1b]133;A\x07$ \x1b]133;C\x07')
+      await new Promise((r) => setTimeout(r, 50))
+
+      const reattached = await adapter.spawn({ cols: 80, rows: 24, sessionId })
+      expect(created.shellCommand).toBeUndefined()
+      expect(reattached.shellCommand).toBe('running')
+      lastSubprocess._simulateData('\x1b]133;D;0\x07')
+      await new Promise((r) => setTimeout(r, 50))
+      await expect(adapter.attach(sessionId)).resolves.toMatchObject({
+        shellCommand: 'at-prompt'
       })
     })
 

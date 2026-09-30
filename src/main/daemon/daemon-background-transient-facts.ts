@@ -3,7 +3,7 @@
  *
  * While a session is backgrounded (its pane hidden in the renderer), the
  * daemon→main stream copy may be keep-tail thinned under backlog — but the
- * notification-bearing facts inside those bytes must never be lost. This
+ * edge-triggered facts inside those bytes must never be lost. This
  * relay runs the SAME shared scanners main uses (terminal-side-effect
  * authority doc: semantics must not drift) over every raw chunk BEFORE any
  * drop decision, and emits compact transientFact stream events in byte order.

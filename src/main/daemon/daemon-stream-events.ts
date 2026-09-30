@@ -67,7 +67,7 @@ export type DataGapEvent = {
   payload: { droppedChars: number; sequenceChars?: number }
 }
 
-/** Notification-bearing fact detected by the daemon while it holds scan
+/** Edge-triggered fact detected by the daemon while it holds scan
  *  authority for a backgrounded session. Title/agent-status facts stay
  *  main-side: they converge from the kept tail (stale-working-title timer,
  *  snapshot-restores-title-state) and fuse with main-fabricated synthetic

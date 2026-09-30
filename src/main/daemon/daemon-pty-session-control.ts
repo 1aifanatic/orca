@@ -17,7 +17,9 @@ export const LIVENESS_PROBE_TIMEOUT_MS = 2_000
 const MAX_TOMBSTONES = 1000
 
 export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
-  async attach(id: string): Promise<Pick<PtySpawnResult, 'providerSequence'> | void> {
+  async attach(
+    id: string
+  ): Promise<Pick<PtySpawnResult, 'providerSequence' | 'shellCommand'> | void> {
     await this.ensureConnected()
     if (!this.canDelegateBackgroundToDaemon) {
       this.setPtyBackgrounded(id, false)
@@ -42,7 +44,13 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
     if (result.exitedBeforeSpawnReply) {
       throw new SessionNotFoundError(id)
     }
-    return result.providerSequence ? { providerSequence: result.providerSequence } : undefined
+    if (!result.providerSequence && !result.shellCommand) {
+      return undefined
+    }
+    return {
+      ...(result.providerSequence ? { providerSequence: result.providerSequence } : {}),
+      ...(result.shellCommand ? { shellCommand: result.shellCommand } : {})
+    }
   }
 
   hasPty(id: string): boolean {

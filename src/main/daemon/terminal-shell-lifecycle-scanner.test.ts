@@ -285,4 +285,44 @@ describe('unclean trigger arming', () => {
     expect(left.uncleanDeathTriggerEnd).toBeUndefined()
     expect(scanner.scan(prompt).uncleanDeathTriggerEnd).toBeUndefined()
   })
+
+  describe('shell command state', () => {
+    it('is unmarked until the shell prints an OSC 133 marker', () => {
+      const scanner = new TerminalShellLifecycleScanner()
+      scanner.scan('$ plain prompt, no integration\r\n')
+
+      expect(scanner.shellCommand).toBe('unmarked')
+    })
+
+    it('runs from a command start until its finish or the next prompt', () => {
+      const scanner = new TerminalShellLifecycleScanner()
+      scanner.scan('\x1b]133;A\x07$ ')
+      expect(scanner.shellCommand).toBe('at-prompt')
+      scanner.scan('\x1b]133;C\x07output')
+      expect(scanner.shellCommand).toBe('running')
+      scanner.scan('\x1b]133;D;0\x07')
+      expect(scanner.shellCommand).toBe('at-prompt')
+      scanner.scan('\x1b]133;C\x1b\\')
+      scanner.scan('\x1b]133;A\x07')
+      expect(scanner.shellCommand).toBe('at-prompt')
+    })
+
+    it('sees a command start split across chunks', () => {
+      const scanner = new TerminalShellLifecycleScanner()
+      scanner.scan('\x1b]13')
+      expect(scanner.shellCommand).toBe('unmarked')
+      scanner.scan('3;C\x07')
+
+      expect(scanner.shellCommand).toBe('running')
+    })
+
+    it('records the finish of a command that died on the alternate screen', () => {
+      const scanner = new TerminalShellLifecycleScanner()
+      scanner.scan(`\x1b]133;C\x07${ENTER_ALT}TUI`)
+      const events = scanner.scan('\x1b]133;D;137\x07prompt')
+
+      expect(events.uncleanDeathTriggerEnd).toBeDefined()
+      expect(scanner.shellCommand).toBe('at-prompt')
+    })
+  })
 })

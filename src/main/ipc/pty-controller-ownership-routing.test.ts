@@ -286,6 +286,33 @@ describe('registerPtyHandlers', () => {
       0
     )
   })
+  it("hands the daemon's shell command state to the runtime on a subscriber-driven attach", async () => {
+    const daemonPtyId = 'repo-1::/tmp/wt@@shell-command'
+    const localProvider = createAgentClaimProvider({})
+    localProvider.attach.mockResolvedValueOnce({ shellCommand: 'running' })
+    setLocalPtyProvider(localProvider as never)
+    const noteTerminalProviderReattach = vi.fn()
+    const controller = registerAgentClaimController({ noteTerminalProviderReattach })
+
+    await expect(controller.attach(daemonPtyId)).resolves.toBe(true)
+
+    expect(noteTerminalProviderReattach).toHaveBeenCalledWith(daemonPtyId, 'running')
+  })
+  it('keeps a subscriber-driven attach successful when the reattach hook throws', async () => {
+    const localProvider = createAgentClaimProvider({})
+    localProvider.attach.mockResolvedValueOnce(undefined)
+    setLocalPtyProvider(localProvider as never)
+    const noteTerminalProviderReattach = vi.fn(() => {
+      throw new Error('status bookkeeping failed')
+    })
+    const controller = registerAgentClaimController({ noteTerminalProviderReattach })
+
+    await expect(controller.attach('repo-1::/tmp/wt@@hook-throws')).resolves.toBe(true)
+    expect(noteTerminalProviderReattach).toHaveBeenCalledWith(
+      'repo-1::/tmp/wt@@hook-throws',
+      undefined
+    )
+  })
   it('does not dispatch a runtime PTY spawn after its client disconnects', async () => {
     const provider = createAgentClaimProvider({})
     setLocalPtyProvider(provider as never)

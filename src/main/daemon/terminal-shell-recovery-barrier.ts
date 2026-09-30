@@ -1,6 +1,7 @@
 import { TerminalShellCleanExitConfirmation } from './terminal-shell-clean-exit-confirmation'
 import { TerminalShellLifecycleScanner } from './terminal-shell-lifecycle-scanner'
 import type { PtyIngressEmission } from '../../shared/pty-startup-ingress'
+import type { ShellCommandState } from '../../shared/shell-command-state'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 
 // Why bounded: a pause only bridges one process proof (~100ms measured p95); a
@@ -84,6 +85,10 @@ export class TerminalShellRecoveryBarrier {
 
   getOwner(): TerminalOwner | undefined {
     return this.scanner.owner
+  }
+
+  getShellCommand(): ShellCommandState {
+    return this.scanner.shellCommand
   }
 
   /** Reset Terminal: grounds the lifecycle model now and returns the bytes for

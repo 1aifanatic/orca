@@ -232,20 +232,31 @@ describe('OpenCodeRunLifetimeStatus', () => {
     ])
   })
 
-  // An Orca restart reattaches to a pane whose run printed its 133;C before main was listening.
+  // Main attaches a surviving pane (e.g. after an Orca restart) whose run printed its 133;C unseen.
   describe('on reattach', () => {
     it('arms a run already in flight and ends it at its 133;D', async () => {
       const { lifetime, states } = setup({ name: 'opencode2', commandLine: 'opencode2 run hi' })
-      lifetime.onReattached('pty-1')
+      lifetime.onReattached('pty-1', 'running')
       await settle()
       expect(states()).toEqual(['working'])
       lifetime.onCommandFinished('pty-1', 0)
       expect(states()).toEqual(['working', 'done'])
     })
 
-    it('checks a pane at its prompt exactly once, with no retry ladder', async () => {
+    it.each(['at-prompt', 'unmarked', undefined] as const)(
+      'reads nothing when the host reports the shell as %s',
+      async (shellCommand) => {
+        const { lifetime, states, readForegroundProcessName } = setup()
+        lifetime.onReattached('pty-1', shellCommand)
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(readForegroundProcessName).not.toHaveBeenCalled()
+        expect(states()).toEqual([])
+      }
+    )
+
+    it('checks a running command that is not OpenCode exactly once, with no retry ladder', async () => {
       const { lifetime, states, readForegroundProcessName } = setup({ name: 'zsh' })
-      lifetime.onReattached('pty-1')
+      lifetime.onReattached('pty-1', 'running')
       await vi.advanceTimersByTimeAsync(60_000)
       expect(readForegroundProcessName).toHaveBeenCalledTimes(1)
       expect(states()).toEqual([])
@@ -255,7 +266,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
       const { lifetime, states, readForegroundProcessName } = setup()
       lifetime.onCommandStarted('pty-1')
       await settle()
-      lifetime.onReattached('pty-1')
+      lifetime.onReattached('pty-1', 'running')
       await vi.advanceTimersByTimeAsync(60_000)
       expect(readForegroundProcessName).toHaveBeenCalledTimes(1)
       expect(states()).toEqual(['working'])
@@ -263,14 +274,14 @@ describe('OpenCodeRunLifetimeStatus', () => {
 
     it('reads nothing for a pane whose foreground is on another host', async () => {
       const { lifetime, readForegroundProcessName } = setup({ observable: false })
-      lifetime.onReattached('pty-1')
+      lifetime.onReattached('pty-1', 'running')
       await settle()
       expect(readForegroundProcessName).not.toHaveBeenCalled()
     })
 
     it('is superseded by a command that starts before the check lands', async () => {
       const { lifetime, readForegroundProcessName } = setup({ name: 'zsh' })
-      lifetime.onReattached('pty-1')
+      lifetime.onReattached('pty-1', 'running')
       lifetime.onCommandStarted('pty-1')
       await vi.advanceTimersByTimeAsync(60_000)
       // One read for the new command and its ladder; the reattach check never ran.
