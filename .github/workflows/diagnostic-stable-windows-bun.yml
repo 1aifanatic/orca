@@ -17,7 +17,7 @@ jobs:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-stable-bun-native-diagnostic'
     uses: ./.github/workflows/windows-watcher-artifacts.yml
     with:
-      ref: 25b0b1f3cccad41918f13181a627c26c01ea39e1
+      ref: 593f9bb9bd
   windows:
     needs: windows_watcher
     strategy:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 25b0b1f3cccad41918f13181a627c26c01ea39e1
+          ref: 593f9bb9bd
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -50,7 +50,7 @@ jobs:
         env:
           WATCHER_SOURCE: ${{ needs.windows_watcher.outputs.source_sha }}
         run: |
-          if ($env:WATCHER_SOURCE -ne '25b0b1f3cccad41918f13181a627c26c01ea39e1') { throw 'Watcher source mismatch' }
+          if ($env:WATCHER_SOURCE -ne '593f9bb9bd') { throw 'Watcher source mismatch' }
           if ((git rev-parse HEAD) -ne $env:WATCHER_SOURCE) { throw 'Product checkout mismatch' }
       - uses: actions/download-artifact@v8
         with:
