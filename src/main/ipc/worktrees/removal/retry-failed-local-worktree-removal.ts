@@ -2,7 +2,7 @@ import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../../share
 import type { RemoveWorktreeResult } from '../../../../shared/worktree/create-types'
 import { retryFailedWorktreeRemoval } from '../../../worktree-background-removal'
 import { interruptedLocalWorktreeRemovalJob } from '../../../runtime/runtime-interrupted-local-worktree-removal'
-import { invalidateAuthorizedRootsCache } from '../../registered-worktree-roots-cache'
+import { invalidateAuthorizedRootsCacheForRepo } from '../../registered-worktree-roots-scoped-invalidation'
 import type { RemoveWorktreeArgs } from '../ipc-context-schemas'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
 import {
@@ -44,7 +44,7 @@ export function retryFailedLocalWorktreeRemoval(
             pushTarget
           )
       },
-      purge: ({ worktreeId }) => {
+      purge: ({ worktreeId, repoId }) => {
         runtime.clearOptimisticReconcileToken(worktreeId)
         removeWorktreeMetadataAndTransientState(
           store,
@@ -52,7 +52,7 @@ export function retryFailedLocalWorktreeRemoval(
           LOCAL_EXECUTION_HOST_ID,
           args.snapshotPruneBatchId
         )
-        invalidateAuthorizedRootsCache()
+        invalidateAuthorizedRootsCacheForRepo(store, repoId)
       },
       onRemoved: ({ worktreeId, worktreePath }) =>
         options?.onWorktreeLifecycle?.({ kind: 'removed', worktreeId, path: worktreePath }),
