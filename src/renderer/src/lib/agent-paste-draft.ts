@@ -4,6 +4,7 @@ import type { TerminalInputKind } from '../../../shared/terminal-input-kind'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { resolveDraftPasteReadyTimeoutMs } from '../../../shared/draft-paste-ready-timeout'
 import { getAgentSubmitRetryDelayMs } from '../../../shared/agent-prompt-injection'
+import { isSubmitRetryStillOwed, readAgentStatusForPtyId } from './agent-submit-retry-guard'
 import { useAppStore } from '@/store'
 import {
   inspectRuntimeTerminalProcess,
@@ -242,6 +243,8 @@ async function sendBracketedPasteToAgent(args: {
       // Enter arrive in the same PTY write. Split the submit into the next turn so
       // the TUI processes bracketed-paste termination before handling Enter.
       await new Promise<void>((resolve) => window.setTimeout(resolve, POST_PASTE_SUBMIT_DELAY_MS))
+      const statusBeforeSubmit =
+        submitRetryDelayMs === undefined ? undefined : readAgentStatusForPtyId(ptyId)
       const submitted = await sendRuntimePtyInputVerified(settings, ptyId, '\r', inputKind)
 
       if (submitRetryDelayMs !== undefined) {
@@ -249,7 +252,9 @@ async function sendBracketedPasteToAgent(args: {
         // the first Enter; the retry is best-effort and never downgrades `submitted`.
         await new Promise<void>((resolve) => window.setTimeout(resolve, submitRetryDelayMs))
         try {
-          await sendRuntimePtyInputVerified(settings, ptyId, '\r', inputKind)
+          if (isSubmitRetryStillOwed(statusBeforeSubmit, readAgentStatusForPtyId(ptyId))) {
+            await sendRuntimePtyInputVerified(settings, ptyId, '\r', inputKind)
+          }
         } catch {
           // Why: a rejected retry leaves the first Enter's verdict untouched.
         }
