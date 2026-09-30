@@ -17385,6 +17385,7 @@
         "pastedImageLabel": "貼り付けた画像",
         "imagePasteFailed": "画像の貼り付けに失敗しました。",
         "worktreeNotReady": "ワークツリーが準備できていません — しばらくしてから再試行してください。",
+        "pasteUnavailable": "貼り付けできません — このチャットは現在入力を受け付けていません。",
         "uploadingAttachments": "{{value0}}個のファイルをリモートにアップロード中…",
         "model": "モデル",
         "effort": "推論レベル",
@@ -17715,6 +17716,9 @@
         "title": "コンテキスト",
         "estimated": "最後の応答から推定。"
       },
+      "dismissDeliveryNotice": "閉じる",
+      "messageNotSent": "メッセージは送信されませんでした",
+      "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "queuedMessages": {
         "alreadySent": "このメッセージはすでに送信されています。",
         "editAlreadySent": "すでに送信されています — テキストは入力欄に残っています。",
