@@ -47,8 +47,6 @@ export type RpcRequest = {
   authToken: string
   method: string
   params?: unknown
-  // Why: CLIs still forward --dispatch-capability from older hosts' preambles; this host ignores it.
-  orchestrationCapability?: string
   orchestrationContractVersion?: number
   orchestrationRequestId?: string
   compatibilityInvocationId?: string

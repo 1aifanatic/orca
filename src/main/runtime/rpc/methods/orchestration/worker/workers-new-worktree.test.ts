@@ -232,7 +232,6 @@ describe('orchestration new-worktree workers', () => {
 
     const prompt = vi.mocked(runtime.sendTerminalAgentPrompt).mock.calls[0]?.[1] ?? ''
     expect(prompt).toContain('orca-ide orchestration send')
-    expect(prompt).not.toContain('--dispatch-capability')
     expect(prompt).not.toMatch(/(^|\s)orca orchestration send/)
   })
 

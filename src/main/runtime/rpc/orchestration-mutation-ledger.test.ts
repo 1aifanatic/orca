@@ -10,10 +10,7 @@ import { OrchestrationDb } from '../orchestration/db'
 import { defineMethod, type RpcRequest } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { ORCHESTRATION_METHODS } from './methods/orchestration'
-import {
-  createRootDispatch,
-  reattachDispatchConsumer
-} from '../orchestration/db/root-dispatch-test-fixture'
+import { createRootDispatch } from '../orchestration/db/root-dispatch-test-fixture'
 
 const Params = z.object({ subject: z.string() })
 
@@ -380,12 +377,14 @@ describe('durable orchestration mutation ledger', () => {
       coordinatorPaneKey: 'tab_coord:leaf_coord'
     })
     const task = db.createTask({ spec: 'ask', runId: run.id })
-    const dispatch = createRootDispatch(db, task.id, 'term_worker', 'tab_worker:leaf_worker')
-    reattachDispatchConsumer(db, {
-      dispatchId: dispatch.id,
-      paneKey: 'tab_worker:leaf_worker',
-      processIncarnation: 'runtime:pty:1'
-    })
+    createRootDispatch(
+      db,
+      task.id,
+      'term_worker',
+      'tab_worker:leaf_worker',
+      undefined,
+      'runtime:pty:1'
+    )
     const askRequest: RpcRequest = {
       id: 'rpc_ask_1',
       authToken: 'caller-token',

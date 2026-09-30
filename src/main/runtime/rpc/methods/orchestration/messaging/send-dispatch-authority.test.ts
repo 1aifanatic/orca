@@ -5,10 +5,7 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { openDecisionGateFromMessage } from '../../../../orchestration/coordinator-decision-gates'
 import { applyEscalationToDispatch } from '../../../../orchestration/coordinator-escalation-triage'
 import { createOrchestrationRpcHarness } from '../rpc-test-harness'
-import {
-  createRootDispatch,
-  reattachDispatchConsumer
-} from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
 
 describe('orchestration.send Dispatch authority', () => {
   const harness = createOrchestrationRpcHarness()
@@ -46,13 +43,6 @@ describe('orchestration.send Dispatch authority', () => {
       vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
         handle === 'term_attacker' ? 'tab_attacker:leaf_attacker' : harness.coordinatorPaneKey
       )
-      if (!legacyAuthority) {
-        reattachDispatchConsumer(db, {
-          dispatchId: attacker.id,
-          paneKey: 'tab_attacker:leaf_attacker',
-          processIncarnation: 'runtime_test:term_attacker:1'
-        })
-      }
 
       const result = (await send({
         from: 'term_attacker',

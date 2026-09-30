@@ -182,13 +182,6 @@ describe('buildDispatchPreamble', () => {
     expect(cadence).toContain('immediately before\n  # you send worker_done')
   })
 
-  it('renders lifecycle and question commands with nothing secret to retype', () => {
-    const result = buildDispatchPreamble(baseParams())
-
-    expect(result).not.toContain('--dispatch-capability')
-    expect(result).not.toContain('dcap_')
-  })
-
   it('renders worker_done and heartbeat recipes bound to the exact Dispatch', () => {
     const result = buildDispatchPreamble(baseParams())
 

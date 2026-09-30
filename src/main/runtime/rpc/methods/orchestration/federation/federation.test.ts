@@ -61,8 +61,7 @@ describe('orchestration federation', () => {
           method,
           params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
-          orchestrationRequestId: envelope?.orchestrationRequestId,
-          orchestrationCapability: envelope?.orchestrationCapability
+          orchestrationRequestId: envelope?.orchestrationRequestId
         })) as RuntimeRpcResponse<unknown>
         if (method === 'orchestration.federationAck' && loseNextAckResponse) {
           loseNextAckResponse = false
@@ -281,8 +280,6 @@ describe('orchestration federation', () => {
     const started = await homeDispatcher.dispatch(startRequest(task.id))
     expect(started.ok).toBe(true)
     const dispatch = homeDb.getDispatchContext(task.id)!
-    const prompt = vi.mocked(workerRuntime.sendTerminalAgentPrompt).mock.calls[0]?.[1] ?? ''
-    expect(prompt).not.toContain('--dispatch-capability')
 
     const sent = await workerDispatcher.dispatch({
       id: 'rpc_worker_done',

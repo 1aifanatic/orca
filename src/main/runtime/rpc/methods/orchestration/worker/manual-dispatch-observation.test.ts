@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { ORCHESTRATION_METHODS } from '../../orchestration'
-import {
-  createRootDispatch,
-  reattachDispatchConsumer
-} from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
 import { eraseRpcMethods } from '../../../core'
 
 describe('manual Dispatch observation', () => {
@@ -77,8 +74,7 @@ describe('manual Dispatch observation', () => {
     expect(db.getDispatchContextById(result.dispatch.id)).toMatchObject({
       assignee_handle: 'term_worker',
       assignee_pane_key: workerPaneKey,
-      process_incarnation: 'runtime_test:term_worker:1',
-      capability_hash: null
+      process_incarnation: 'runtime_test:term_worker:1'
     })
 
     const workerShowMethod = eraseRpcMethods(ORCHESTRATION_METHODS).find(
@@ -129,11 +125,6 @@ describe('manual Dispatch observation', () => {
       'launch-hash',
       'runtime_test:term_worker:1'
     )
-    reattachDispatchConsumer(db, {
-      dispatchId: dispatch.id,
-      paneKey: 'tab_worker:leaf_worker',
-      processIncarnation: 'runtime_test:term_worker:1'
-    })
     const context = { runtime }
     const call = async (name: string, params: Record<string, unknown>) => {
       const method = eraseRpcMethods(ORCHESTRATION_METHODS).find(

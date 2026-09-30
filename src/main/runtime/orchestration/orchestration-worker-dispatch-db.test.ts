@@ -37,10 +37,6 @@ describe('OrchestrationDb worker Dispatch state', () => {
       setupState: 'not_applicable',
       effects: [{ kind: 'terminal', action: 'created', id: 'term_worker' }]
     })
-    expect(d.getDispatchContextById(started.dispatch.id)).toMatchObject({
-      process_incarnation: 'runtime:pty:1',
-      capability_hash: null
-    })
     expect(d.markWorkerDispatchReady(started.dispatch.id)).toMatchObject({
       state: 'ready',
       stage: 'input_accepted'

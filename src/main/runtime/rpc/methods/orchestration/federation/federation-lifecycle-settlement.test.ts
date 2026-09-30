@@ -62,8 +62,7 @@ describe('orchestration federation lifecycle settlement', () => {
           method,
           params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
-          orchestrationRequestId: envelope?.orchestrationRequestId,
-          orchestrationCapability: envelope?.orchestrationCapability
+          orchestrationRequestId: envelope?.orchestrationRequestId
         })) as RuntimeRpcResponse<unknown>
       }
     }

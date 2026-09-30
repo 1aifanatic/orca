@@ -125,8 +125,7 @@ describe('orchestration federated worker output', () => {
           method,
           params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
-          orchestrationRequestId: envelope?.orchestrationRequestId,
-          orchestrationCapability: envelope?.orchestrationCapability
+          orchestrationRequestId: envelope?.orchestrationRequestId
         })) as RuntimeRpcResponse<unknown>
       }
     }

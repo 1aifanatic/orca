@@ -10,10 +10,7 @@ import { OrchestrationDb } from '../orchestration/db'
 import type { RpcRequest, RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { ORCHESTRATION_METHODS } from './methods/orchestration'
-import {
-  createRootDispatch,
-  reattachDispatchConsumer
-} from '../orchestration/db/root-dispatch-test-fixture'
+import { createRootDispatch } from '../orchestration/db/root-dispatch-test-fixture'
 
 const WORKER_HANDLE = 'term_pre_update_worker'
 const WORKER_PANE = 'tab_pre_update:33333333-3333-4333-8333-333333333333'
@@ -68,12 +65,14 @@ function createUpdateHarness(): Harness {
     spec: 'finish work across an app update',
     createdByTerminalHandle: COORDINATOR_HANDLE
   })
-  const dispatch = createRootDispatch(oldRuntimeDb, task.id, WORKER_HANDLE, WORKER_PANE)
-  reattachDispatchConsumer(oldRuntimeDb, {
-    dispatchId: dispatch.id,
-    paneKey: WORKER_PANE,
-    processIncarnation: PROCESS_INCARNATION
-  })
+  const dispatch = createRootDispatch(
+    oldRuntimeDb,
+    task.id,
+    WORKER_HANDLE,
+    WORKER_PANE,
+    undefined,
+    PROCESS_INCARNATION
+  )
   // The pre-update runtime minted a capability; its hash is what classifies the row as current.
   oldRuntimeDb.db
     .prepare("UPDATE dispatch_contexts SET capability_hash = 'minted-before-update' WHERE id = ?")
@@ -408,8 +407,8 @@ describe('orchestration runtime update settlement', () => {
       dispatch_id: attachment.dispatch_id
     } as never)
 
-    const response = await harness.createDispatcher().dispatch({
-      ...request(
+    const response = await harness.createDispatcher().dispatch(
+      request(
         'orchestration.send',
         {
           from: CURRENT_COORDINATOR_HANDLE,
@@ -419,9 +418,8 @@ describe('orchestration runtime update settlement', () => {
         },
         'current-coordinator',
         'retained-remote-status'
-      ),
-      orchestrationCapability: 'dcap_remote_retained'
-    })
+      )
+    )
 
     expect(resultOf(response)).toMatchObject({
       relay: { dispatchId: attachment.dispatch_id, accepted: true }
