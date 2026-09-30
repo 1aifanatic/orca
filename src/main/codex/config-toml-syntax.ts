@@ -1,8 +1,10 @@
 import {
   createTomlLineScanState,
+  getTomlTableHeader,
   isTomlStructuralLine,
   updateTomlLineScanState
 } from './config-toml-line-scan'
+import { parseTomlTableHeaderPath } from './config-toml-key-path'
 
 type ParsedTomlString = {
   value: string
@@ -26,10 +28,14 @@ export function parseHookStateTomlHeaderKey(line: string): string | null {
   return prefixMatch ? parseTomlTableStringKey(trimmed, prefixMatch[0].length) : null
 }
 
+// Why (#22592): Codex writes `["projects"."/p"]`; every spelling of the key path must match.
 export function parseProjectTomlHeaderPath(line: string): string | null {
-  const trimmed = line.replace(/\r$/, '').trimStart()
-  const prefixMatch = /^\[[ \t]*projects[ \t]*\.[ \t]*/.exec(trimmed)
-  return prefixMatch ? parseTomlTableStringKey(trimmed, prefixMatch[0].length) : null
+  const header = getTomlTableHeader(line.replace(/\r$/, ''))
+  const table = header === null ? null : parseTomlTableHeaderPath(header)
+  if (!table || table.isArray || table.segments.length !== 2 || table.segments[0] !== 'projects') {
+    return null
+  }
+  return table.segments[1] ?? null
 }
 
 function parseTomlTableStringKey(line: string, startIndex: number): string | null {

@@ -6,6 +6,7 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
+import { findProjectTrustLevelEntries } from './config-toml-project-trust-level'
 import {
   normalizeCodexProjectPathForLookup,
   normalizeCodexProjectPathForRevocationLookup,
@@ -150,12 +151,7 @@ export function deduplicateProjectTomlSections(sections: TomlSection[]): TomlSec
 }
 
 export function getProjectTrustLevel(block: string): 'trusted' | 'untrusted' | null {
-  const match =
-    /^[ \t]*trust_level[ \t]*=[ \t]*(?:"(trusted|untrusted)"|'(trusted|untrusted)')[ \t\r]*(?:#.*)?$/m.exec(
-      block
-    )
-  const trustLevel = match?.[1] ?? match?.[2] ?? null
-  return trustLevel === 'trusted' || trustLevel === 'untrusted' ? trustLevel : null
+  return findProjectTrustLevelEntries(block).find((entry) => entry.value !== null)?.value ?? null
 }
 
 export function joinTomlBlocks(blocks: string[]): string {
