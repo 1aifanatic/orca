@@ -124,6 +124,17 @@ describe('agent-session delta coalescer', () => {
     expect(emitted).toEqual([['item-1', 'hi']])
   })
 
+  it('owes no emit for an empty delta, even as the forced first snapshot', () => {
+    const clock = manualClock()
+    const { instance, emitted } = coalescer(clock)
+
+    instance.append('item-1', 'Hello there')
+    instance.append('item-1', '')
+    clock.fire()
+
+    expect(emitted).toEqual([['item-1', 'Hello there']])
+  })
+
   it('flushes pending text ahead of a lifecycle event and cancels the window', () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)

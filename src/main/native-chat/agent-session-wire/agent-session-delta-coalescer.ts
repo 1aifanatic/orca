@@ -195,7 +195,10 @@ export function createAgentSessionDeltaCoalescer(
         stream.chunks = next.chunks
         stream.retainedBytes = next.retainedBytes
         stream.truncated = next.truncated
-        stream.dirty = true
+        // An empty delta changes no text, so it owes no emit.
+        if (deltaBytes > 0) {
+          stream.dirty = true
+        }
       }
       streams.set(key, stream)
       // The first text makes the row; refused under backpressure, it waits for the window.

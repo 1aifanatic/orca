@@ -564,6 +564,23 @@ describe('codex journal translation', () => {
     ])
   })
 
+  it('writes no second revision for an empty delta after the first', () => {
+    const { translator, tap, window } = translatorWith()
+    translator.handle(TURN_STARTED)
+    translator.handle(
+      notification('item/started', { item: { type: 'agentMessage', id: 'item-1', text: '' } })
+    )
+    for (const delta of ['Hello there', '']) {
+      translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta }))
+    }
+    window.fire()
+
+    expect(tap.rows.map((row) => row.body)).toEqual([
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'Hello there' }] }
+    ])
+    translator.dispose()
+  })
+
   // The row-creating write is not a checkpoint, so a short headline is not held back behind it.
   it("writes a reasoning row's first window in full after the section break that made it", () => {
     const { translator, tap, window } = translatorWith()
