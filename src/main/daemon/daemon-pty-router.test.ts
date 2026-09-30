@@ -757,7 +757,7 @@ describe('DaemonPtyRouter', () => {
     expect(current.listProcesses).toHaveBeenCalledTimes(3)
   })
 
-  it('pins colliding unmapped legacy ids falling through to the current daemon', async () => {
+  it('refuses a colliding unmapped id instead of writing it into the current daemon', async () => {
     const sessionId = 'cross-generation-collision'
     const current = createAdapter('current', [sessionId])
     const legacy = createAdapter('legacy', [sessionId])
@@ -766,9 +766,9 @@ describe('DaemonPtyRouter', () => {
     const router = new DaemonPtyRouter({ current, legacy: [legacy] })
 
     await router.discoverLegacySessions()
-    router.write(sessionId, 'misrouted\n')
 
-    expect(current.write).toHaveBeenCalledWith(sessionId, 'misrouted\n')
+    expect(router.write(sessionId, 'unroutable\n')).toBe(false)
+    expect(current.write).not.toHaveBeenCalled()
     expect(legacy.write).not.toHaveBeenCalled()
     warn.mockRestore()
   })

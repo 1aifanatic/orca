@@ -22,7 +22,10 @@ function isMissingFileError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
-export function probeSocketConnect(socketPath: string): Promise<SocketProbeOutcome> {
+export function probeSocketConnect(
+  socketPath: string,
+  timeoutMs = ENDPOINT_PROBE_TIMEOUT_MS
+): Promise<SocketProbeOutcome> {
   return new Promise((resolve) => {
     let occupiedUnixEntry = false
     if (process.platform !== 'win32') {
@@ -73,7 +76,7 @@ export function probeSocketConnect(socketPath: string): Promise<SocketProbeOutco
     const timer = setTimeout(() => {
       settle('unknown')
       sock.destroy()
-    }, ENDPOINT_PROBE_TIMEOUT_MS)
+    }, timeoutMs)
     sock.on('connect', onConnect)
     sock.on('error', onError)
   })

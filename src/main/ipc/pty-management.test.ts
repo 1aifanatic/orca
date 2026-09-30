@@ -472,12 +472,49 @@ describe('pty:management IPC handlers', () => {
       registerDaemonManagementHandlers()
 
       const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne']({}, { sessionId: 'old-1' })) as {
-        success: boolean
-      }
+      const result = (await handlers['pty:management:killOne'](
+        {},
+        { sessionId: 'old-1', protocolVersion: 3 }
+      )) as { success: boolean }
 
       expect(result.success).toBe(true)
       expect(legacy.shutdown).toHaveBeenCalledWith('old-1', { immediate: true })
+      expect(current.shutdown).not.toHaveBeenCalled()
+    })
+
+    it('kills the clicked row when the same id is live in two versions', async () => {
+      const copy = makeSession('dup', { incarnationId: 'copy' })
+      const orphan = makeSession('dup', { protocolVersion: 3, incarnationId: 'orphan' })
+      const current = makeAdapter(5, [copy])
+      const legacy = makeAdapter(3, [orphan])
+      const { registerDaemonManagementHandlers } = await importFresh()
+      getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
+      registerDaemonManagementHandlers()
+
+      const handlers = buildHandlerMap()
+      const result = (await handlers['pty:management:killOne'](
+        {},
+        { sessionId: 'dup', protocolVersion: 3, incarnationId: 'orphan' }
+      )) as { success: boolean }
+
+      expect(result.success).toBe(true)
+      expect(legacy.shutdown).toHaveBeenCalledWith('dup', { immediate: true })
+      expect(current.shutdown).not.toHaveBeenCalled()
+    })
+
+    it('does not kill a session that replaced the clicked row under the same id', async () => {
+      const current = makeAdapter(5, [makeSession('pane', { incarnationId: 'replacement' })])
+      const { registerDaemonManagementHandlers } = await importFresh()
+      getDaemonProviderMock.mockReturnValue(await makeRouter(current))
+      registerDaemonManagementHandlers()
+
+      const handlers = buildHandlerMap()
+      const result = (await handlers['pty:management:killOne'](
+        {},
+        { sessionId: 'pane', protocolVersion: 5, incarnationId: 'clicked' }
+      )) as { success: boolean }
+
+      expect(result.success).toBe(false)
       expect(current.shutdown).not.toHaveBeenCalled()
     })
 
@@ -488,9 +525,10 @@ describe('pty:management IPC handlers', () => {
       registerDaemonManagementHandlers()
 
       const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne']({}, { sessionId: 'ghost' })) as {
-        success: boolean
-      }
+      const result = (await handlers['pty:management:killOne'](
+        {},
+        { sessionId: 'ghost', protocolVersion: 5 }
+      )) as { success: boolean }
 
       expect(result.success).toBe(false)
       expect(current.shutdown).not.toHaveBeenCalled()
