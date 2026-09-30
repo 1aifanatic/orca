@@ -18,7 +18,6 @@ describe('first dispatch readiness of a freshly launched worker', () => {
     '%s waits for its input box before delivering exactly one dispatch',
     async (agent) => {
       h.setup()
-      vi.spyOn(h.runtime, 'getTerminalPtyHostPlatform').mockReturnValue('darwin')
       const gate = h.deferred<RuntimeTerminalWait>()
       vi.spyOn(h.runtime, 'waitForFreshWorkerComposer').mockReturnValue(gate.promise)
       const pending = h.startWorker({ agent })
@@ -51,22 +50,6 @@ describe('first dispatch readiness of a freshly launched worker', () => {
     }
   )
 
-  it.each(['opencode', 'opencode2'] as const)(
-    '%s on a Windows-hosted pane keeps the tui-idle wait until a ConPTY capture exists',
-    async (agent) => {
-      h.setup()
-      vi.spyOn(h.runtime, 'getTerminalPtyHostPlatform').mockReturnValue('win32')
-      vi.spyOn(h.runtime, 'waitForFreshWorkerComposer')
-      await h.startWorker({ agent })
-      expect(h.runtime.getTerminalPtyHostPlatform).toHaveBeenCalledWith('term_worker')
-      expect(h.runtime.waitForFreshWorkerComposer).not.toHaveBeenCalled()
-      expect(h.runtime.waitForTerminal).toHaveBeenCalledWith(
-        'term_worker',
-        expect.objectContaining({ condition: 'tui-idle' })
-      )
-    }
-  )
-
   it('keeps reused terminals on the normal idle wait', async () => {
     h.setup()
     vi.spyOn(h.runtime, 'waitForFreshWorkerComposer')
@@ -82,7 +65,6 @@ describe('first dispatch readiness of a freshly launched worker', () => {
     '%s never delivers a task after a startup timeout',
     async (agent) => {
       h.setup()
-      vi.spyOn(h.runtime, 'getTerminalPtyHostPlatform').mockReturnValue('darwin')
       vi.spyOn(h.runtime, 'waitForFreshWorkerComposer').mockRejectedValue(new Error('timeout'))
       await expect(h.startWorker({ agent })).rejects.toThrow('Expected worker-start')
       expect(h.runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()

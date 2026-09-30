@@ -111,27 +111,7 @@ describe('which lane a freshly launched worker waits on', () => {
     if (!isTuiAgent(agent)) {
       throw new Error(`${agent} is not a TuiAgent`)
     }
-    expect(getLaunchedAgentReadinessLane(agent, () => 'darwin')).toBe(lane)
-    expect(getLaunchedAgentReadinessLane(agent, () => 'linux')).toBe(lane)
-  })
-
-  it.each(['opencode', 'opencode2'] as const)(
-    '%s on a Windows-hosted pane keeps tui-idle until a ConPTY capture exists (temporary)',
-    (agent) => {
-      expect(getLaunchedAgentReadinessLane(agent, () => 'win32')).toBe('tui-idle')
-    }
-  )
-
-  it('keeps ZCode on its marker on Windows, whose marker is anchored on the alternate screen', () => {
-    expect(getLaunchedAgentReadinessLane('zcode', () => 'win32')).toBe('composer-marker')
-  })
-
-  it('asks for the pane host only for rows that carry evidence', () => {
-    expect(
-      getLaunchedAgentReadinessLane('claude', () => {
-        throw new Error('the host must not be asked')
-      })
-    ).toBe('tui-idle')
+    expect(getLaunchedAgentReadinessLane(agent)).toBe(lane)
   })
 })
 

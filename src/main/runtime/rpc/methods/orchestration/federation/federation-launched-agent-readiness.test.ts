@@ -20,13 +20,12 @@ describe('federated worker first dispatch readiness', () => {
     vi.restoreAllMocks()
   })
 
-  function createWorkerHost(ptyHostPlatform: NodeJS.Platform): OrcaRuntimeService {
+  function createWorkerHost(): OrcaRuntimeService {
     const db = new OrchestrationDb(':memory:')
     databases.push(db)
     const runtime = new OrcaRuntimeService()
     runtime.setOrchestrationDb(db)
     configureFederationWorkerRuntime(runtime)
-    vi.spyOn(runtime, 'getTerminalPtyHostPlatform').mockReturnValue(ptyHostPlatform)
     vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockResolvedValue({
       handle: HANDLE,
       condition: 'tui-idle',
@@ -75,7 +74,7 @@ describe('federated worker first dispatch readiness', () => {
   it.each(['opencode', 'opencode2', 'zcode'] as const)(
     'a %s terminal this attach created waits for its input box, not tui-idle',
     async (agent) => {
-      const runtime = createWorkerHost('darwin')
+      const runtime = createWorkerHost()
 
       await expect(attach(runtime, { agent })).resolves.toMatchObject({ state: 'ready' })
 
@@ -90,7 +89,7 @@ describe('federated worker first dispatch readiness', () => {
   )
 
   it('a reused --terminal keeps the tui-idle wait', async () => {
-    const runtime = createWorkerHost('darwin')
+    const runtime = createWorkerHost()
     vi.spyOn(runtime, 'showManagedTerminalWorkspace').mockResolvedValue(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the reuse path reads only the worktree id.
       { id: WORKTREE } as never
@@ -106,21 +105,8 @@ describe('federated worker first dispatch readiness', () => {
     )
   })
 
-  it('an opencode pane on a Windows pty host keeps the tui-idle wait', async () => {
-    const runtime = createWorkerHost('win32')
-
-    await expect(attach(runtime, { agent: 'opencode' })).resolves.toMatchObject({ state: 'ready' })
-
-    expect(runtime.getTerminalPtyHostPlatform).toHaveBeenCalledWith(HANDLE)
-    expect(runtime.waitForFreshWorkerComposer).not.toHaveBeenCalled()
-    expect(runtime.waitForTerminal).toHaveBeenCalledWith(
-      HANDLE,
-      expect.objectContaining({ condition: 'tui-idle' })
-    )
-  })
-
   it('fails at agent_readiness without typing the task when the input box never appears', async () => {
-    const runtime = createWorkerHost('darwin')
+    const runtime = createWorkerHost()
     vi.mocked(runtime.waitForFreshWorkerComposer).mockRejectedValue(new Error('timeout'))
 
     await expect(attach(runtime, { agent: 'opencode' })).resolves.toMatchObject({

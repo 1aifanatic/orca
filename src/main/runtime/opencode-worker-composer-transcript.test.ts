@@ -50,7 +50,6 @@ async function replay(name: string, agent: TuiAgent) {
     size: { cols: 120, rows: 40 },
     data: ''
   })
-  vi.spyOn(runtime, 'getTerminalPtyHostPlatform').mockReturnValue('darwin')
   vi.useFakeTimers()
   runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, ZSH_LAUNCH, Date.now())
   const settledAt: { composer: number | null; tuiIdle: number | null } = {

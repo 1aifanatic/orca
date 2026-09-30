@@ -395,7 +395,6 @@ describe('orchestration new-worktree workers', () => {
     'records wait-for-setup success when %s waits on its input box',
     async (agent) => {
       mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'running' })
-      vi.spyOn(runtime, 'getTerminalPtyHostPlatform').mockReturnValue('darwin')
       vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockResolvedValue({
         handle: 'term_worker',
         condition: 'tui-idle',

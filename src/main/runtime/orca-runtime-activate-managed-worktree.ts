@@ -178,18 +178,14 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     pasteWorktreeStartupDraftWhenReady(this.getWorktreeStartupReadinessHost(), handle, draft)
   }
 
-  /** Platform of the pty transport behind a handle: Windows for a local WSL pane, the remote OS over SSH. */
-  getTerminalPtyHostPlatform(handle: string): NodeJS.Platform {
-    return this.getPtyWriteHostPlatform(this.getLiveTerminalPtyId(handle))
-  }
-
   /** Only for a newly launched worker, before its first dispatch input. */
   async waitForFreshWorkerComposer(
     handle: string,
     agent: TuiAgent,
     timeoutMs: number
   ): Promise<RuntimeTerminalWait> {
-    const initialPtyId = this.getLiveTerminalPtyId(handle)
+    const initialPtyId =
+      this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
     const ptyId = await waitForWorktreeStartupDraft(
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
@@ -205,12 +201,6 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     }
     // The tui-idle result it stands in for, so callers record the wait-for-setup outcome too.
     return { handle, condition: 'tui-idle', satisfied: true, status: 'running', exitCode: null }
-  }
-
-  private getLiveTerminalPtyId(handle: string): string {
-    return (
-      this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
-    )
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

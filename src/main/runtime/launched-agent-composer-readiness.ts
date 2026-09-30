@@ -15,25 +15,11 @@ export type LaunchedAgentReadinessLane = 'composer-marker' | 'tui-idle'
 
 export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
-  'waitForTerminal' | 'waitForFreshWorkerComposer' | 'getTerminalPtyHostPlatform'
+  'waitForTerminal' | 'waitForFreshWorkerComposer'
 >
 
-export function getLaunchedAgentReadinessLane(
-  agent: TuiAgent,
-  getPtyHostPlatform: () => NodeJS.Platform
-): LaunchedAgentReadinessLane {
-  const row = TUI_AGENT_CONFIG[agent]
-  if (!row.composerReadyCaptures?.length) {
-    return 'tui-idle'
-  }
-  // Temporary: no capture through Orca's bundled conpty.dll shows this marker at the box yet.
-  if (
-    row.draftPasteReadySignal === 'render-cursor-after-bracketed-paste' &&
-    getPtyHostPlatform() === 'win32'
-  ) {
-    return 'tui-idle'
-  }
-  return 'composer-marker'
+export function getLaunchedAgentReadinessLane(agent: TuiAgent): LaunchedAgentReadinessLane {
+  return TUI_AGENT_CONFIG[agent].composerReadyCaptures?.length ? 'composer-marker' : 'tui-idle'
 }
 
 export function waitForLaunchedAgentComposer(
@@ -42,8 +28,7 @@ export function waitForLaunchedAgentComposer(
   agent: TuiAgent,
   timeoutMs: number
 ): Promise<RuntimeTerminalWait> {
-  return getLaunchedAgentReadinessLane(agent, () => runtime.getTerminalPtyHostPlatform(handle)) ===
-    'composer-marker'
+  return getLaunchedAgentReadinessLane(agent) === 'composer-marker'
     ? runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
     : runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
 }
