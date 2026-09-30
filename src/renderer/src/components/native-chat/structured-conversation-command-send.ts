@@ -33,14 +33,13 @@ export async function sendStructuredConversationCommand(input: {
     if (outcome.kind === 'not-done') {
       return { accepted: false, error: outcome.notice }
     }
-    const result = outcome.kind === 'done' ? outcome.value : null
-    const error = result
-      ? conversationCommandFailureText(result, input.agentName)
-      : translate(
-          'components.native-chat.conversationCommand.unconfirmed',
-          'Conversation operation was not confirmed.'
-        )
-    return { accepted: result?.state === 'completed' && !error, error }
+    // Answered for a fence this pane no longer shows, such as the one a failed start replaced;
+    // the chat's own rows say what happened.
+    if (outcome.kind === 'dropped') {
+      return { accepted: false, error: null }
+    }
+    const error = conversationCommandFailureText(outcome.value, input.agentName)
+    return { accepted: outcome.value.state === 'completed' && !error, error }
   } finally {
     input.pending.current = false
   }

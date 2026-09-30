@@ -17847,8 +17847,7 @@
         "writtenBy": "Écrit par le sous-agent {{value0}}"
       },
       "conversationCommand": {
-        "pendingWork": "Attendez la fin du travail et des messages en attente avant d'utiliser cette commande.",
-        "unconfirmed": "L'opération de conversation n'a pas été confirmée."
+        "pendingWork": "Attendez la fin du travail et des messages en attente avant d'utiliser cette commande."
       },
       "drop": {
         "title": "Déposer pour joindre à ce chat",

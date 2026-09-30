@@ -17748,8 +17748,7 @@
         "writtenBy": "由子代理 {{value0}} 输出"
       },
       "conversationCommand": {
-        "pendingWork": "在使用此命令之前，请等待挂起的工作和消息完成。",
-        "unconfirmed": "对话操作未确认。"
+        "pendingWork": "在使用此命令之前，请等待挂起的工作和消息完成。"
       },
       "drop": {
         "title": "拖放以附加到此聊天",
