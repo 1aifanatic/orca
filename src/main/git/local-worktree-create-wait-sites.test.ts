@@ -21,7 +21,6 @@ const WAITERS: Record<string, { definedIn: string; callers: string[] }> = {
     definedIn: 'src/main/git/local-worktree-create-activity.ts',
     callers: ['src/main/github/pr-refresh-queue-drainer.ts']
   },
-  whenWorktreeTrashDeletionsSettled: { definedIn: 'src/main/worktree-trash.ts', callers: [] },
   sweepStaleWorktreeTrash: {
     definedIn: 'src/main/worktree-trash.ts',
     callers: ['src/main/startup/main-process-ready-runtime.ts']
@@ -33,11 +32,7 @@ const WAITERS: Record<string, { definedIn: string; callers: string[] }> = {
 }
 
 // Promise-returning exports of the waiting modules that do not wait for creates to settle.
-const NON_WAITING_ASYNC_EXPORTS = new Set([
-  'runWithLocalWorktreeCreateHold',
-  'moveWorktreeDirectoryToTrash',
-  'restoreWorktreeDirectoryFromTrash'
-])
+const NON_WAITING_ASYNC_EXPORTS = new Set(['runWithLocalWorktreeCreateHold'])
 
 const REPO_ROOT = join(__dirname, '..', '..', '..')
 

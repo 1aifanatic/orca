@@ -685,7 +685,7 @@ describe('registerWorktreeHandlers', () => {
           launch_source: 'new_workspace_composer',
           request_kind: 'new'
         },
-        activate: true
+        surfaceOwner: false
       }
     )
     expect(runtimeStub.createTerminal).toHaveBeenNthCalledWith(
@@ -698,7 +698,8 @@ describe('registerWorktreeHandlers', () => {
           ORCA_ROOT_PATH: '/workspace/repo',
           ORCA_WORKTREE_PATH: '/workspace/improve-dashboard'
         },
-        activate: false
+        activate: false,
+        surfaceOwner: false
       }
     )
     const startupCreateCall = runtimeStub.createTerminal.mock.calls[0]
@@ -706,6 +707,9 @@ describe('registerWorktreeHandlers', () => {
     if (!startupCreateCall || !setupCreateCall) {
       throw new Error('expected startup and setup terminal calls')
     }
+    // The submitting renderer decides whether to open the new workspace, so the host must not
+    // activate it for the startup terminal (#9944).
+    expect(startupCreateCall[1]).not.toHaveProperty('activate')
     const startupCommand = (startupCreateCall[1] as { command: string }).command
     const setupCommand = (setupCreateCall[1] as { command: string }).command
     expect(startupCommand).toBe('claude --prefill test')
@@ -777,6 +781,47 @@ describe('registerWorktreeHandlers', () => {
       })
     )
     expect(result.setup?.command).toContain('printf')
+  })
+
+  it('splits split-mode setup into the startup terminal without surfacing the workspace', async () => {
+    addWorktreeMock.mockResolvedValue({})
+    listWorktreesMock.mockResolvedValueOnce([
+      {
+        path: '/workspace/improve-dashboard',
+        head: 'def',
+        branch: 'improve-dashboard',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ])
+    store.getSettings.mockReturnValue({
+      branchPrefix: 'none',
+      nestWorkspaces: false,
+      refreshLocalBaseRefOnWorktreeCreate: false,
+      workspaceDir: '/workspace',
+      setupScriptLaunchMode: 'split-vertical'
+    })
+    loadHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    getEffectiveHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    getEffectiveHooksFromConfigMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    shouldRunSetupForCreateMock.mockReturnValue(true)
+
+    await handlers['worktrees:create'](null, {
+      repoId: 'repo-1',
+      name: 'improve-dashboard',
+      createdWithAgent: 'claude',
+      startup: { command: 'claude' }
+    })
+
+    expect(runtimeStub.createTerminal).toHaveBeenCalledTimes(1)
+    // A user who moved on must not be scrolled to the new workspace by its setup pane (#9944).
+    expect(runtimeStub.splitTerminal).toHaveBeenCalledWith('term-startup', {
+      direction: 'vertical',
+      command: expect.stringContaining('setup-runner.sh'),
+      env: expect.any(Object),
+      activate: false,
+      surfaceOwner: false
+    })
   })
 
   it('rejects ask-policy creates before mutating git state when setup decision is missing', async () => {

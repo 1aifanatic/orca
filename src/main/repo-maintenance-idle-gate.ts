@@ -6,6 +6,7 @@ import {
 } from './git/local-repo-ref-maintenance'
 import { hasWorktreeRemovalsInFlight } from './ipc/worktrees/worktree-ipc-context'
 import { isBackgroundWorkHeldForLocalCreates } from './git/local-worktree-create-activity'
+import { hasPendingWorktreeRemovals } from './worktree-background-removal'
 
 /**
  * The app-wide "not now" answer for idle repo maintenance.
@@ -32,6 +33,7 @@ export function installRepoMaintenanceIdleGate(
       inputs.getWorkingAgentCount() > 0 ||
       isBackgroundWorkHeldForLocalCreates() ||
       hasWorktreeRemovalsInFlight() ||
+      hasPendingWorktreeRemovals() ||
       isOnBatteryPower()
   )
   // Do-not-start, never stop-what-is-running. Killing a pack to honour a battery
