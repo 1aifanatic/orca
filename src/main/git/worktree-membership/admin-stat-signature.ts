@@ -1,5 +1,6 @@
 import { lstat, stat } from 'node:fs/promises'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
+import { getErrorCode } from '../worktree-operation-options'
 
 /** One file whose change can move a derived row. `noFollow` stats the link itself, as Git's
  *  `file_exists` does for a checkout's `.git`. */
@@ -20,7 +21,7 @@ export async function readAdminStatStamp(dependency: AdminStatDependency): Promi
     const stats = await (dependency.noFollow ? lstat(dependency.path) : stat(dependency.path))
     return `${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}:${stats.ino}`
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException | null)?.code
+    const code = getErrorCode(error)
     return code === 'ENOENT' || code === 'ENOTDIR' ? MISSING : null
   }
 }

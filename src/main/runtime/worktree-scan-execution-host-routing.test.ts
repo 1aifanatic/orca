@@ -32,7 +32,6 @@ vi.mock('../git/worktree', async (importOriginal) => ({
   listWorktreesStrict: listWorktreesStrictMock
 }))
 
-
 import { OrcaRuntimeService } from './orca-runtime'
 
 const TARGET_ID = 'remote-1'

@@ -108,11 +108,15 @@ export async function validateMembershipFromGit(input: {
     return { rows: input.previousRows, state: previous }
   }
   const { rows } = await readGitWorktreeRows(input.repoPath, input.options)
-  const stampByPath = new Map(dependencies.map((dependency, index) => [dependency.path, before[index]]))
+  const stampByPath = new Map(
+    dependencies.map((dependency, index) => [dependency.path, before[index]])
+  )
   const nextDependencies = gitDependencies(commonDir, entryNames, rows)
   const discovered = nextDependencies.filter((dependency) => !stampByPath.has(dependency.path))
   const discoveredStamps = await readAdminStatSignature(discovered)
-  discovered.forEach((dependency, index) => stampByPath.set(dependency.path, discoveredStamps[index]))
+  discovered.forEach((dependency, index) =>
+    stampByPath.set(dependency.path, discoveredStamps[index])
+  )
   const signature: AdminStatSignature = nextDependencies.map(
     (dependency) => stampByPath.get(dependency.path) ?? null
   )

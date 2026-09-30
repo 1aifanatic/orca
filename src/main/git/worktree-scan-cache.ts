@@ -1,10 +1,11 @@
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import {
+  isMembershipModelRows,
   listWorktreeGraph as listWorktreeGraphUnshared,
   listWorktreesFromMembershipStrict,
-  listWorktreesStrictAllowingTrueEmpty as listWorktreesStrictAllowingTrueEmptyUnshared,
-  listWorktreesUnshared
+  listWorktreesStrictAllowingTrueEmpty as listWorktreesStrictAllowingTrueEmptyUnshared
 } from './worktree-listing'
+import { annotateSparseCheckoutStatus } from './worktree-sparse-annotation'
 import { markWorktreeMembershipDirty } from './worktree-membership/worktree-membership-store'
 import type { GitWorktreeExecOptions } from './worktree-operation-options'
 import { WORKTREE_LIST_TIMEOUT_MS } from './worktree-operation-options'
@@ -97,6 +98,22 @@ function shareWorktreeScan(
 }
 
 /**
+ * Sparse annotation layered over the shared graph read rather than its own read, so a path-only
+ * caller and a badge reader that overlap share one listing. Model rows already carry `isSparse`;
+ * only rows Git answered directly pay the per-worktree probe. Strict stays separate because it must
+ * be able to reject.
+ */
+async function runAnnotatedWorktreeScan(
+  repoPath: string,
+  options: GitWorktreeExecOptions
+): Promise<GitWorktreeInfo[]> {
+  const worktrees = await listWorktreeGraph(repoPath, options)
+  return isMembershipModelRows(worktrees)
+    ? worktrees
+    : annotateSparseCheckoutStatus(repoPath, worktrees, options)
+}
+
+/**
  * List all worktrees for a git repo at the given path, from the repo's membership model. Concurrent
  * calls for the same repo share one read (unless the caller passes an AbortSignal, which must only
  * cancel its own read). Failures soften to `[]`.
@@ -105,7 +122,7 @@ export function listWorktrees(
   repoPath: string,
   options: GitWorktreeExecOptions = {}
 ): Promise<GitWorktreeInfo[]> {
-  return shareWorktreeScan(repoPath, options, 'lenient', listWorktreesUnshared)
+  return shareWorktreeScan(repoPath, options, 'lenient', runAnnotatedWorktreeScan)
 }
 
 /**

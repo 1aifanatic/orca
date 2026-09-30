@@ -7,6 +7,7 @@ import {
   readGitConfigFlag,
   readGitConfigValue
 } from '../git-config-file-entries'
+import { getErrorCode } from '../worktree-operation-options'
 
 /** What the repo config decides about deriving worktree rows from files. */
 export type RepoConfigFacts = {
@@ -20,7 +21,7 @@ export type RepoConfigFacts = {
 }
 
 function isAbsentError(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException | null)?.code
+  const code = getErrorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
@@ -91,7 +92,9 @@ export async function readRepoConfigFacts(commonDir: string): Promise<RepoConfig
 
 export function parseRepoConfigFacts(content: string): RepoConfigFacts {
   const entries = readGitConfigFileEntries(content)
-  const objectFormat = readGitConfigValue(entries, 'extensions', 'objectformat')?.trim().toLowerCase()
+  const objectFormat = readGitConfigValue(entries, 'extensions', 'objectformat')
+    ?.trim()
+    .toLowerCase()
   const refStorage = readGitConfigValue(entries, 'extensions', 'refstorage')?.trim().toLowerCase()
   const gitOnlyReason =
     // Loose refs do not exist under reftable; a file read would misreport every branch.

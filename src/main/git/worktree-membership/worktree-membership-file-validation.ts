@@ -30,6 +30,7 @@ import type {
   FileDerivationState,
   MembershipDirtyScope
 } from './worktree-membership-model'
+import { getErrorCode } from '../worktree-operation-options'
 
 export type FileValidationInput = {
   commonDir: string
@@ -47,7 +48,7 @@ async function readLinkedEntryNames(worktreesDir: string): Promise<string[]> {
     return await readdir(worktreesDir)
   } catch (error) {
     // A repo with no linked worktrees has no admin dir at all.
-    if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+    if (getErrorCode(error) === 'ENOENT') {
       return []
     }
     throw new WorktreeRowsNeedGit(`unreadable ${worktreesDir}`, true)
@@ -80,7 +81,9 @@ async function revalidateRow(
   if (memo && !forced && isAdminStatSignatureUnchanged(memo.signature, before)) {
     return memo
   }
-  const stampByPath = new Map(dependencies.map((dependency, index) => [dependency.path, before[index]]))
+  const stampByPath = new Map(
+    dependencies.map((dependency, index) => [dependency.path, before[index]])
+  )
   const derived = await read()
   const signature: AdminStatSignature = derived.dependencies.map(
     (dependency) => stampByPath.get(dependency.path) ?? null

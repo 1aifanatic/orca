@@ -29,6 +29,14 @@ import {
   type WorktreeMembershipReadOptions
 } from './worktree-membership/worktree-membership-store'
 
+// Row arrays the model produced; they already carry `isSparse`, so the annotation pass skips them.
+const membershipModelRowSets = new WeakSet<GitWorktreeInfo[]>()
+
+/** True for rows the membership model answered, which need no sparse annotation. */
+export function isMembershipModelRows(rows: GitWorktreeInfo[]): boolean {
+  return membershipModelRowSets.has(rows)
+}
+
 /**
  * Rows from the repo's worktree membership model, which re-validates Git's admin files by stat
  * instead of running `git worktree list` per read. Git answers directly only for a layout the model
@@ -42,11 +50,15 @@ async function readMembershipRows(
   const { rows, fromModel } = await readWorktreeMembership(repoPath, options)
   // Copies: the model's rows are its memo, and callers may edit what they get.
   const visible = rows
-    .filter((worktree) => options.includeCreatePreparations || !isWorktreeCreatePreparation(worktree))
+    .filter(
+      (worktree) => options.includeCreatePreparations || !isWorktreeCreatePreparation(worktree)
+    )
     .map((worktree) => ({ ...worktree }))
-  return annotateSparse && !fromModel
-    ? annotateSparseCheckoutStatus(repoPath, visible, options)
-    : visible
+  if (fromModel) {
+    membershipModelRowSets.add(visible)
+    return visible
+  }
+  return annotateSparse ? annotateSparseCheckoutStatus(repoPath, visible, options) : visible
 }
 
 export async function listWorktreeGraph(

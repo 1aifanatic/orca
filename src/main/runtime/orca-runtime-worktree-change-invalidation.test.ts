@@ -34,7 +34,6 @@ vi.mock('../git/worktree', async (importOriginal) => ({
   listWorktreesFromMembershipStrict: listWorktreesStrictMock
 }))
 
-
 import { OrcaRuntimeService } from './orca-runtime'
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
 import { getLocalWorktreeScanGeneration } from '../local-worktree-scan-generation'

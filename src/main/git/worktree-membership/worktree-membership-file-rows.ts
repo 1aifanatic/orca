@@ -12,6 +12,7 @@ import {
   type RefResolutionTrace,
   type Unreadable
 } from './worktree-admin-file-reads'
+import { getErrorCode } from '../worktree-operation-options'
 
 // These rules reproduce what `git worktree list --porcelain` prints for the layouts they accept.
 // Anything outside them throws WorktreeRowsNeedGit and the model asks Git instead.
@@ -26,7 +27,7 @@ export class WorktreeRowsNeedGit extends Error {
   }
 }
 
-// Git writes this reason untranslated only under LC_ALL=C; nothing in Orca reads its text.
+// Git's English wording; Orca reads only the `prunable` flag, never this text.
 export const PRUNABLE_REASON = 'gitdir file points to non-existent location'
 
 export type FileRowContext = {
@@ -57,7 +58,10 @@ export function isGitRefNameFormat(ref: string): boolean {
   }
   return ref
     .split('/')
-    .every((part) => part.length > 0 && !part.startsWith('.') && !part.endsWith('.lock') && !part.includes('..'))
+    .every(
+      (part) =>
+        part.length > 0 && !part.startsWith('.') && !part.endsWith('.lock') && !part.includes('..')
+    )
 }
 
 function isGitAbsolutePath(path: string, platform: NodeJS.Platform): boolean {
@@ -69,7 +73,7 @@ async function readRawAdminFile(path: string): Promise<string | null> {
   try {
     return await readFile(path, 'utf8')
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException | null)?.code
+    const code = getErrorCode(error)
     if (code === 'ENOENT' || code === 'ENOTDIR') {
       return null
     }
@@ -82,7 +86,7 @@ async function pathExistsNoFollow(path: string): Promise<boolean> {
     await lstat(path)
     return true
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException | null)?.code
+    const code = getErrorCode(error)
     if (code === 'ENOENT' || code === 'ENOTDIR') {
       return false
     }
@@ -113,11 +117,20 @@ async function readHeadFields(context: FileRowContext, headPath: string): Promis
   if (!isGitRefNameFormat(parsed.symref) || PER_WORKTREE_REF.test(parsed.symref)) {
     throw new WorktreeRowsNeedGit(`HEAD names ${parsed.symref}`, false)
   }
-  const resolved = await resolveRefToOid(context.commonDir, parsed.symref, context.packedRefs, trace)
+  const resolved = await resolveRefToOid(
+    context.commonDir,
+    parsed.symref,
+    context.packedRefs,
+    trace
+  )
   if (resolved === UNREADABLE) {
     throw new WorktreeRowsNeedGit(`unreadable ref ${parsed.symref}`, true)
   }
-  if (resolved.ref === null || !isGitRefNameFormat(resolved.ref) || PER_WORKTREE_REF.test(resolved.ref)) {
+  if (
+    resolved.ref === null ||
+    !isGitRefNameFormat(resolved.ref) ||
+    PER_WORKTREE_REF.test(resolved.ref)
+  ) {
     throw new WorktreeRowsNeedGit(`unresolvable ref ${parsed.symref}`, false)
   }
   // An unborn branch keeps its name with the zero id, exactly as Git prints it.
@@ -164,8 +177,7 @@ export async function readLinkedEntryRow(
   ])
   const locked = lockContent !== null
   const prunable = !locked && !(await pathExistsNoFollow(checkoutDotGit))
-  const isSparse =
-    !prunable && (await detectSparseCheckoutInGitDir(entryDir, context.facts))
+  const isSparse = !prunable && (await detectSparseCheckoutInGitDir(entryDir, context.facts))
   const lockReason = lockContent?.trim()
   return {
     row: {
@@ -222,7 +234,12 @@ export async function readMainRow(
 const utf8 = (value: string): Buffer => Buffer.from(value, 'utf8')
 
 /** Git's `pathsort`: bytewise, folding only ASCII case when `core.ignorecase` is set. */
-export function compareWorktreePathsLikeGit(left: string, right: string, ignoreCase: boolean): number {
-  const fold = (value: string): string => (ignoreCase ? value.replace(/[A-Z]/g, (c) => c.toLowerCase()) : value)
+export function compareWorktreePathsLikeGit(
+  left: string,
+  right: string,
+  ignoreCase: boolean
+): number {
+  const fold = (value: string): string =>
+    ignoreCase ? value.replace(/[A-Z]/g, (c) => c.toLowerCase()) : value
   return Buffer.compare(utf8(fold(left)), utf8(fold(right)))
 }

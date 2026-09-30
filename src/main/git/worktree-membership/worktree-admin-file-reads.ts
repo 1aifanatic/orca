@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { normalizeRuntimePathForComparison } from '../../../shared/cross-platform-path'
+import { getErrorCode } from '../worktree-operation-options'
 
 // The one set of rules for reading Git's admin files without spawning Git. The worktree
 // membership model and the head-identity reader both go through these, so the two can never
@@ -25,7 +26,7 @@ export async function readTrimmedAdminFile(path: string): Promise<string | null 
   try {
     return (await readFile(path, 'utf8')).trim()
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? null : UNREADABLE
+    return getErrorCode(error) === 'ENOENT' ? null : UNREADABLE
   }
 }
 
@@ -121,7 +122,9 @@ export async function resolveRefToOid(
         trace.usedPackedRefs = true
       }
       const packed = await packedRefs()
-      return packed === UNREADABLE ? UNREADABLE : { ref: current, oid: asObjectId(packed.get(current)) }
+      return packed === UNREADABLE
+        ? UNREADABLE
+        : { ref: current, oid: asObjectId(packed.get(current)) }
     }
     const parsed = parseRefFileContent(loose)
     if ('symref' in parsed) {

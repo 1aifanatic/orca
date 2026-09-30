@@ -4,10 +4,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as Runner from '../runner'
+import type * as FileValidation from './worktree-membership-file-validation'
 
-const runnerSpy = vi.hoisted(() => ({ calls: [] as string[][], failWorktreeList: false }))
+const runnerSpy = vi.hoisted(() => {
+  const calls: string[][] = []
+  return { calls, failWorktreeList: false }
+})
 vi.mock('../runner', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../runner')>()
+  const actual = await importOriginal<typeof Runner>()
   return {
     ...actual,
     gitExecFileAsync: (args: string[], options: Parameters<typeof actual.gitExecFileAsync>[1]) => {
@@ -20,9 +25,15 @@ vi.mock('../runner', async (importOriginal) => {
   }
 })
 
-const validationGate = vi.hoisted(() => ({ entered: null as null | (() => void), release: null as null | Promise<void> }))
+const validationGate = vi.hoisted(() => {
+  const gate: { entered: (() => void) | null; release: Promise<void> | null } = {
+    entered: null,
+    release: null
+  }
+  return gate
+})
 vi.mock('./worktree-membership-file-validation', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./worktree-membership-file-validation')>()
+  const actual = await importOriginal<typeof FileValidation>()
   return {
     validateMembershipFromFiles: async (
       input: Parameters<typeof actual.validateMembershipFromFiles>[0]
@@ -43,7 +54,10 @@ import {
   bumpWorktreeScanGeneration
 } from '../worktree-scan-cache'
 import { adminEntryKey } from './worktree-admin-file-reads'
-import { MEMBERSHIP_FULL_DERIVE_FLOOR_MS, MEMBERSHIP_IDLE_DROP_MS } from './worktree-membership-model'
+import {
+  MEMBERSHIP_FULL_DERIVE_FLOOR_MS,
+  MEMBERSHIP_IDLE_DROP_MS
+} from './worktree-membership-model'
 import {
   _getWorktreeMembershipModelForTests,
   _resetWorktreeMembershipModelsForTests,

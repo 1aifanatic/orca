@@ -139,7 +139,20 @@ describe('worktree membership model against the real Git binary', () => {
     const reftableRepo = join(scratchDir, 'reftable')
     await mkdir(reftableRepo)
     await git(['init', '-q', '--ref-format=reftable', '-b', 'main'], reftableRepo)
-    await git(['-c', 'user.email=r@example.invalid', '-c', 'user.name=R', 'commit', '-q', '--allow-empty', '-m', 'seed'], reftableRepo)
+    await git(
+      [
+        '-c',
+        'user.email=r@example.invalid',
+        '-c',
+        'user.name=R',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'seed'
+      ],
+      reftableRepo
+    )
     await git(['worktree', 'add', '-q', join(scratchDir, 'reftable-wt'), '-b', 'wt'], reftableRepo)
     const fromGit = await listWorktreesStrict(reftableRepo, { includeCreatePreparations: true })
     const { rows } = await readWorktreeMembership(reftableRepo)
