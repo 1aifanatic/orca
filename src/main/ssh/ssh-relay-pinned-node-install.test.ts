@@ -5,6 +5,7 @@ import {
   ensureRemoteOrcadNodeRuntime,
   REMOTE_NODE_RUNTIME_MISSING,
   REMOTE_NODE_RUNTIME_READY,
+  RemoteNodeRuntimeSecurityModifiedError,
   RemoteNodeRuntimeSelfTestError
 } from './orcad-remote-node-runtime'
 import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-pinned-node-install'
@@ -16,6 +17,7 @@ import {
 } from './ssh-relay-pinned-node'
 import { runPinnedRuntimeSelfTest } from './ssh-relay-runtime-self-test'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
+import { decodeRemotePowerShellScript } from './ssh-remote-powershell'
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand: vi.fn() }))
 vi.mock('./orcad-remote-node-runtime', async (importOriginal) => ({
@@ -109,7 +111,8 @@ describe('verifyPinnedRelayInstall', () => {
       conn,
       context.remoteRelayDir,
       expect.stringMatching(/\/\.orca-remote\/runtimes\/node-[0-9a-f]{64}\/bin\/node$/),
-      undefined
+      undefined,
+      { host }
     )
   })
 
@@ -156,6 +159,79 @@ describe('verifyPinnedRelayInstall', () => {
       conn,
       expect.stringContaining("node_modules/node-pty/build/Release/spawn-helper'"),
       expect.anything()
+    )
+  })
+})
+
+describe('pinned relay on a Windows host', () => {
+  const windowsHost = getRemoteHostPlatform('win32-x64')
+  const windowsContext = {
+    ...context,
+    host: windowsHost,
+    remoteRelayDir: 'C:/Users/u/.orca-remote/relay-0.1.0+feedfacecafe',
+    plan: { ...plan, target: 'win32-x64' as const, glibc: null }
+  }
+
+  it('checks the warm runtime through one unwrapped powershell.exe', async () => {
+    vi.mocked(execCommand).mockResolvedValueOnce(`${REMOTE_NODE_RUNTIME_READY}\r\n`)
+    await ensurePinnedRelayRuntime(windowsContext, true)
+    const [, command, options] = vi.mocked(execCommand).mock.calls[0]
+    expect(command).toMatch(/^powershell\.exe /)
+    expect(options).toMatchObject({ wrapCommand: false })
+    expect(decodeRemotePowerShellScript(command)).toContain('/.orca-remote/runtimes/node-')
+    expect(ensureRemoteOrcadNodeRuntime).not.toHaveBeenCalled()
+  })
+
+  it('steps down to host Node, and remembers it, when security software touched node.exe', async () => {
+    vi.mocked(ensureRemoteOrcadNodeRuntime).mockRejectedValueOnce(
+      new RemoteNodeRuntimeSecurityModifiedError('node.exe changed after it ran')
+    )
+    const failure = await ensurePinnedRelayRuntime(windowsContext, false).catch(
+      (error: unknown) => error
+    )
+    expect(failure).toBeInstanceOf(PinnedRelayFallbackError)
+    expect(failure).toMatchObject({ reason: 'security_software' })
+    await expect(
+      planPinnedNodeRelay({
+        conn,
+        host: windowsHost,
+        baseVersion: '0.1.0+abc',
+        targetId: 'target-1'
+      })
+    ).resolves.toEqual({ kind: 'host-node', fallbackReason: 'security_software' })
+  })
+
+  it('classifies application control blocking node.exe as a refusal', async () => {
+    vi.mocked(ensureRemoteOrcadNodeRuntime).mockRejectedValueOnce(
+      new RemoteNodeRuntimeSelfTestError(-1, 'This program is blocked by group policy.')
+    )
+    await expect(ensurePinnedRelayRuntime(windowsContext, false)).rejects.toMatchObject({
+      reason: 'noexec'
+    })
+  })
+
+  it('self-tests on node.exe with no chmod step', async () => {
+    vi.mocked(runPinnedRuntimeSelfTest).mockResolvedValueOnce({
+      verdict: 'passed',
+      report: {
+        ok: true,
+        nonce: 'n',
+        node: 'v24.21.0',
+        napi: '10',
+        glibcVersionRuntime: null,
+        runtime: 'pinned-node'
+      }
+    })
+    await expect(verifyPinnedRelayInstall(windowsContext)).resolves.toBeUndefined()
+    expect(execCommand).not.toHaveBeenCalled()
+    expect(runPinnedRuntimeSelfTest).toHaveBeenCalledWith(
+      conn,
+      windowsContext.remoteRelayDir,
+      expect.stringMatching(
+        /^C:\/Users\/u\/\.orca-remote\/runtimes\/node-[0-9a-f]{64}\/node\.exe$/
+      ),
+      undefined,
+      { host: windowsHost }
     )
   })
 })

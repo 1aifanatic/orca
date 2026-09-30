@@ -24,47 +24,40 @@ import type { SshConnection } from './ssh-connection'
 import { shellEscape } from './ssh-connection-utils'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { uploadRelayDirectory } from './ssh-relay-install-transfers'
-import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
+import {
+  isWindowsRemoteHost,
+  joinRemotePath,
+  remoteDirname,
+  type RemoteHostPlatform
+} from './ssh-remote-platform'
 import { assertPosixOrcadHost } from './orcad-remote-host-support'
+import {
+  assertRemoteNodeRuntimePromoted,
+  REMOTE_NODE_RUNTIME_EXIT_PREFIX,
+  REMOTE_NODE_RUNTIME_MISSING,
+  REMOTE_NODE_RUNTIME_READY,
+  REMOTE_NODE_RUNTIME_SELFTEST_FAILED,
+  REMOTE_NODE_RUNTIME_VERIFIED_MARKER
+} from './orcad-remote-node-runtime-report'
+import {
+  windowsNodeRuntimePresentCommand,
+  windowsNodeRuntimeProbeCommand,
+  windowsNodeRuntimePromoteCommand,
+  windowsNodeRuntimeStageCleanupCommand,
+  WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS
+} from './orcad-remote-node-runtime-windows'
 
-export const REMOTE_NODE_RUNTIME_READY = 'ORCA_NODE_RUNTIME_READY'
-export const REMOTE_NODE_RUNTIME_MISSING = 'ORCA_NODE_RUNTIME_MISSING'
-export const REMOTE_NODE_RUNTIME_SELFTEST_FAILED = 'ORCA_NODE_RUNTIME_SELFTEST_FAILED'
-export const REMOTE_NODE_RUNTIME_EXIT_PREFIX = 'ORCA_RUNTIME_EXIT='
-const VERIFIED_MARKER = '.verified'
-
-/** The pinned runtime ran on the host and did not report its version: a host verdict, with evidence. */
-export class RemoteNodeRuntimeSelfTestError extends Error {
-  constructor(
-    readonly exitStatus: number | null,
-    readonly output: string
-  ) {
-    super(
-      `The pinned Node runtime did not run on the host (exit ${exitStatus ?? 'unknown'}): ${output}`
-    )
-    this.name = 'RemoteNodeRuntimeSelfTestError'
-  }
-}
-
-/** Splits `ORCA_RUNTIME_EXIT=<n>` from the output that follows it. */
-export function parseRemoteRuntimeExitReport(text: string): {
-  exitStatus: number | null
-  output: string
-} {
-  const lines = text.split('\n')
-  const index = lines.findIndex((line) => line.startsWith(REMOTE_NODE_RUNTIME_EXIT_PREFIX))
-  if (index === -1) {
-    return { exitStatus: null, output: text.trim() }
-  }
-  const status = Number.parseInt(lines[index].slice(REMOTE_NODE_RUNTIME_EXIT_PREFIX.length), 10)
-  return {
-    exitStatus: Number.isNaN(status) ? null : status,
-    output: lines
-      .slice(index + 1)
-      .join('\n')
-      .trim()
-  }
-}
+export {
+  parseRemoteRuntimeExitReport,
+  REMOTE_NODE_RUNTIME_EXIT_PREFIX,
+  REMOTE_NODE_RUNTIME_MISSING,
+  REMOTE_NODE_RUNTIME_READY,
+  REMOTE_NODE_RUNTIME_SECURITY_MODIFIED,
+  REMOTE_NODE_RUNTIME_SELFTEST_FAILED,
+  RemoteNodeRuntimeSecurityModifiedError,
+  RemoteNodeRuntimeSelfTestError
+} from './orcad-remote-node-runtime-report'
+const VERIFIED_MARKER = REMOTE_NODE_RUNTIME_VERIFIED_MARKER
 
 /** The runtime directory a slot at `slotDir` names; the selector computes the same path. */
 export function remoteNodeRuntimeDir(
@@ -91,7 +84,9 @@ export function probeRemoteNodeRuntimeCommand(
   runtimeDir: string,
   target: ServerTarget
 ): string {
-  assertPosixOrcadHost(host)
+  if (isWindowsRemoteHost(host)) {
+    return windowsNodeRuntimeProbeCommand(runtimeDir, target)
+  }
   const executable = shellEscape(
     joinRemotePath(host, runtimeDir, ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/'))
   )
@@ -108,7 +103,9 @@ export function remoteNodeRuntimePresentCommand(
   host: RemoteHostPlatform,
   runtimeDir: string
 ): string {
-  assertPosixOrcadHost(host)
+  if (isWindowsRemoteHost(host)) {
+    return windowsNodeRuntimePresentCommand(runtimeDir)
+  }
   const executable = shellEscape(
     joinRemotePath(host, runtimeDir, ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/'))
   )
@@ -163,8 +160,14 @@ export function promoteRemoteNodeRuntimeCommand(
   ].join(' && ')
 }
 
-function exec(conn: SshConnection, command: string, signal?: AbortSignal): Promise<string> {
-  return execCommand(conn, command, { signal })
+function exec(
+  conn: SshConnection,
+  host: RemoteHostPlatform,
+  command: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<string> {
+  // Why unwrapped on Windows: these are already self-contained powershell.exe command lines.
+  return execCommand(conn, command, { ...options, wrapCommand: !isWindowsRemoteHost(host) })
 }
 
 /** Ensures the slot's runtime exists on the host; uploads the pinned archive only when needed. */
@@ -178,41 +181,56 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
   signal?: AbortSignal
 }): Promise<void> {
   const { conn, host, target, signal } = options
+  const windows = isWindowsRemoteHost(host)
   const runtimeDir = remoteNodeRuntimeDir(host, options.slotDir, target)
-  const probe = await exec(conn, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), signal)
-  if (probe.trim() === REMOTE_NODE_RUNTIME_READY) {
-    return
-  }
-  const archivePath = await options.archivePath()
   const token = randomBytes(8).toString('hex')
   const stageDir = joinRemotePath(
     host,
     remoteDirname(runtimeDir, host),
     `.stage-${basename(runtimeDir)}-${token}`
   )
-  const localStage = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
+  // Why the stage rides the probe on Windows: every exec there is a powershell.exe spawn.
+  const probe = await exec(
+    conn,
+    host,
+    windows
+      ? windowsNodeRuntimeProbeCommand(runtimeDir, target, stageDir)
+      : probeRemoteNodeRuntimeCommand(host, runtimeDir, target),
+    { signal }
+  )
+  if (probe.trim() === REMOTE_NODE_RUNTIME_READY) {
+    return
+  }
+  const cleanupStage = windows
+    ? windowsNodeRuntimeStageCleanupCommand(stageDir)
+    : `rm -rf ${shellEscape(stageDir)}`
+  let localStage: string | undefined
   try {
+    const archivePath = await options.archivePath()
+    const uploadDir = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
+    localStage = uploadDir
     const archive = basename(archivePath)
-    await link(archivePath, join(localStage, archive)).catch(() =>
-      copyFile(archivePath, join(localStage, archive))
+    await link(archivePath, join(uploadDir, archive)).catch(() =>
+      copyFile(archivePath, join(uploadDir, archive))
     )
-    await exec(conn, `mkdir -p ${shellEscape(stageDir)}`, signal)
-    await uploadRelayDirectory(conn, localStage, stageDir, host, { signal })
-    const promoted = await exec(
-      conn,
-      promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
-      signal
+    if (!windows) {
+      await exec(conn, host, `mkdir -p ${shellEscape(stageDir)}`, { signal })
+    }
+    await uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal })
+    assertRemoteNodeRuntimePromoted(
+      await exec(
+        conn,
+        host,
+        windows
+          ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
+          : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
+        { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
+      )
     )
-    const selfTestFailure = promoted.indexOf(REMOTE_NODE_RUNTIME_SELFTEST_FAILED)
-    if (selfTestFailure !== -1) {
-      const report = parseRemoteRuntimeExitReport(promoted.slice(selfTestFailure))
-      throw new RemoteNodeRuntimeSelfTestError(report.exitStatus, report.output)
-    }
-    if (promoted.trim().split('\n').at(-1) !== REMOTE_NODE_RUNTIME_READY) {
-      throw new Error(`The host did not verify the pinned Node runtime: ${promoted.trim()}`)
-    }
   } finally {
-    await rm(localStage, { recursive: true, force: true }).catch(() => {})
-    await exec(conn, `rm -rf ${shellEscape(stageDir)}`).catch(() => {})
+    if (localStage) {
+      await rm(localStage, { recursive: true, force: true }).catch(() => {})
+    }
+    await exec(conn, host, cleanupStage).catch(() => {})
   }
 }

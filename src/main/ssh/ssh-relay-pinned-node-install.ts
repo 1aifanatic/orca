@@ -4,6 +4,7 @@ import {
   ensureRemoteOrcadNodeRuntime,
   remoteNodeRuntimeDir,
   remoteNodeRuntimePresentCommand,
+  RemoteNodeRuntimeSecurityModifiedError,
   RemoteNodeRuntimeSelfTestError,
   REMOTE_NODE_RUNTIME_READY
 } from './orcad-remote-node-runtime'
@@ -22,7 +23,7 @@ import {
   classifyPinnedRuntimeFailure,
   runPinnedRuntimeSelfTest
 } from './ssh-relay-runtime-self-test'
-import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 
 type PinnedInstallContext = {
   conn: SshConnection
@@ -52,7 +53,8 @@ export async function ensurePinnedRelayRuntime(
   if (relayAlreadyInstalled) {
     const runtimeDir = remoteNodeRuntimeDir(host, remoteRelayDir, plan.target)
     const present = await execCommand(conn, remoteNodeRuntimePresentCommand(host, runtimeDir), {
-      signal
+      signal,
+      wrapCommand: !isWindowsRemoteHost(host)
     })
     if (present.trim() === REMOTE_NODE_RUNTIME_READY) {
       return
@@ -70,6 +72,9 @@ export async function ensurePinnedRelayRuntime(
   } catch (error) {
     if (error instanceof PinnedRelayFallbackError) {
       refuse(context, error)
+    }
+    if (error instanceof RemoteNodeRuntimeSecurityModifiedError) {
+      refuse(context, new PinnedRelayFallbackError('security_software', error.detail))
     }
     if (error instanceof RemoteNodeRuntimeSelfTestError) {
       const refusal = classifyPinnedRuntimeFailure(error.exitStatus, error.output)
@@ -100,7 +105,7 @@ export async function verifyPinnedRelayInstall(context: PinnedInstallContext): P
     )
   }
   const nodePath = pinnedRelayNodePath(host, remoteRelayDir, plan.target)
-  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal)
+  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal, { host })
   switch (verdict.verdict) {
     case 'passed':
       console.log(

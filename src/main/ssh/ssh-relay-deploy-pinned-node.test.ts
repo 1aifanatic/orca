@@ -123,6 +123,7 @@ import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-
 import type { SshConnection } from './ssh-connection'
 import { NODE_RUNTIME_ASSETS } from '../../shared/node-runtime-pin'
 import type { SshRemoteRuntime } from '../../shared/ssh-types'
+import { decodeRemotePowerShellScript } from './ssh-remote-powershell'
 
 const PINNED_VERSION = '0.1.0+feedfacecafe'
 const RUNTIME_SHA = NODE_RUNTIME_ASSETS['linux-x64-glibc'].executableSha256
@@ -305,5 +306,41 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
       vi.mocked(execCommand).mock.calls.some(([, cmd]) => /npm (?:install|ci)/.test(String(cmd)))
     ).toBe(false)
     expect(detachedLaunchCommand(conn)).toContain(`'${PINNED_NODE}' relay.js --detached`)
+  })
+
+  it('launches a Windows relay on node.exe from the runtimes store, with no host Node probe', async () => {
+    const conn = makeConnection('pinned-node')
+    Object.assign(conn, { writeFile: vi.fn().mockResolvedValue(undefined) })
+    const sha = NODE_RUNTIME_ASSETS['win32-x64'].executableSha256
+    const nodeExe = `C:/Users/me/.orca-remote/runtimes/node-${sha}/node.exe`
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      ...pinnedPlan(),
+      target: 'win32-x64',
+      glibc: null
+    })
+    vi.mocked(execCommand)
+      .mockRejectedValueOnce(new Error('uname not found'))
+      .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Windows X64')
+      .mockResolvedValueOnce('C:\\Users\\me')
+      .mockResolvedValueOnce('') // no persisted active pipe
+      .mockResolvedValueOnce('WAITING') // named pipe probe
+      .mockResolvedValueOnce('') // WMI relay launch
+      .mockResolvedValueOnce('READY') // named pipe poll
+      .mockResolvedValueOnce('') // persist active pipe marker
+
+    const result = await deployAndLaunchRelay(conn, undefined, 300, 'target-1')
+
+    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+    expect(result.nodePath).toBe(nodeExe)
+    expect(result.remoteRelayDir).toBe(`C:/Users/me/.orca-remote/relay-${PINNED_VERSION}`)
+    expect(ensurePinnedRelayRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ host: expect.objectContaining({ os: 'win32' }) }),
+      true
+    )
+    const launchScript = vi
+      .mocked(execCommand)
+      .mock.calls.map(([, command]) => decodeRemotePowerShellScript(String(command)))
+      .find((script) => script.includes('Invoke-CimMethod'))
+    expect(launchScript).toContain(nodeExe)
   })
 })
