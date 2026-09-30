@@ -67,15 +67,13 @@ const OPERATION: AgentSessionOperationRow = {
 }
 
 function legacyFile(
-  records: readonly unknown[],
+  records: readonly { sessionId: string }[],
   extra: Record<string, unknown> = {}
 ): Record<string, unknown> {
   return {
     schemaVersion: 2,
     hostId: 'local',
-    records: Object.fromEntries(
-      records.map((value) => [(value as { sessionId: string }).sessionId, value])
-    ),
+    records: Object.fromEntries(records.map((value) => [value.sessionId, value])),
     operations: {},
     retiredClaimKeys: [],
     unusableRecords: {},

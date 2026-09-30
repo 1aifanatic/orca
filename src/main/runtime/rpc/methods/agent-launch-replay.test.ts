@@ -420,10 +420,8 @@ describe('the recorded row stays readable by a build that predates it', () => {
     const outcome = Object.values(file.operations)[0].outcome
 
     // The ratchet, and the reason this is not a new status arm or an optional `sessionId`: a build
-    // without `launch` validates a row by these two fields, one row it rejects returns null for the
-    // whole file, and the schema version cannot be bumped to excuse it — a store is unreadable to
-    // any build whose version is higher than the file's. A downgrade must skip what it cannot
-    // understand, not lose every lease.
+    // without `launch` validates a row by these two fields and drops a row it rejects, losing its
+    // replay. A downgrade must skip only what it cannot understand.
     expect(outcome.status).toBe('succeeded')
     expect(typeof outcome.sessionId).toBe('string')
     expect(outcome.launch).toMatchObject({ outcome: { kind: 'terminal' } })
@@ -439,10 +437,9 @@ describe('an unreadable launch payload costs one replay, never the store', () =>
     })
   }
 
-  it('still admits the row, because one rejected row makes the whole file unparseable', () => {
+  it('still admits the row, because a load drops a row it rejects', () => {
     // The ratchet. `isAgentLaunchResult` mirrors a result type by hand, so a field tightened there
-    // would reject rows this same build wrote — and a primary and backup that both fail to parse
-    // raise `agent_session_store_corrupt`, taking every lease in the profile with them.
+    // would reject rows this same build wrote and lose their replay.
     expect(
       isAgentSessionOperationRow({
         callerKey: 'device-1',
