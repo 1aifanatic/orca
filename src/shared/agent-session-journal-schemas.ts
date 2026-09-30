@@ -178,7 +178,8 @@ const MessageBody = z.object({
   role: z.string().min(1),
   blocks: z.array(Block),
   // Open like roles: a send mode a newer build writes must not turn the row malformed.
-  sentAs: z.string().min(1).optional()
+  sentAs: z.string().min(1).optional(),
+  command: z.object({ name: z.string().min(1) }).optional()
 })
 
 const ThreadGoal = z.object({
@@ -207,6 +208,21 @@ const FailureFact = z.object({
   detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
   refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
 })
+
+/** A turn's record, as the turn body and a status row's `turnLifecycle` both carry it. */
+const TurnRecordFields = {
+  turnId: z.string(),
+  state: z.string().min(1),
+  // Open like `state`: a verdict a newer build writes must not turn the row
+  // malformed. `readAgentJournalTurnOutcome` is where an unplaceable one
+  // becomes unknown rather than an arm a caller would act on.
+  outcome: z.string().min(1).optional(),
+  userItemId: z.string().min(1).optional(),
+  startedAt: z.number().finite().positive().optional(),
+  requestedAt: z.number().finite().positive().optional(),
+  completedAt: z.number().finite().positive().optional(),
+  durationMs: z.number().finite().nonnegative().optional()
+}
 
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
   MessageBody,
@@ -247,36 +263,16 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
     text: z.string(),
     presentation: z.string().optional(),
     tone: z.string().optional(),
-    turnLifecycle: z
-      .object({
-        turnId: z.string(),
-        state: z.string().min(1),
-        outcome: z.string().min(1).optional(),
-        userItemId: z.string().min(1).optional(),
-        startedAt: z.number().finite().positive().optional(),
-        requestedAt: z.number().finite().positive().optional(),
-        completedAt: z.number().finite().positive().optional(),
-        durationMs: z.number().finite().nonnegative().optional()
-      })
-      .optional(),
+    turnLifecycle: z.object(TurnRecordFields).optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: ThreadGoalState.optional(),
     failure: FailureFact.optional()
   }),
   z.object({
     kind: z.literal('turn'),
-    turnId: z.string(),
-    state: z.string().min(1),
-    // Open like `state`: a verdict a newer build writes must not turn the row
-    // malformed. `readAgentJournalTurnOutcome` is where an unplaceable one
-    // becomes unknown rather than an arm a caller would act on.
-    outcome: z.string().min(1).optional(),
-    userItemId: z.string().min(1).optional(),
-    startedAt: z.number().finite().positive().optional(),
-    requestedAt: z.number().finite().positive().optional(),
-    completedAt: z.number().finite().positive().optional(),
-    durationMs: z.number().finite().nonnegative().optional(),
-    contextUsage: AgentSessionContextUsageSchema.optional()
+    ...TurnRecordFields,
+    contextUsage: AgentSessionContextUsageSchema.optional(),
+    providerTurnId: z.string().min(1).optional()
   })
 ])
 
@@ -294,6 +290,13 @@ export const AgentJournalProducerLinkageFields = {
   attempt: z.number().int().optional()
 } as const
 
+/** Open like the other persisted vocabularies: a scope kind a newer host states must not turn
+ *  the row malformed. A reader places only `turn` with an id; anything else reads as `thread`. */
+export const AgentJournalTurnScopeSchema = z.object({
+  kind: z.string().min(1),
+  turnItemId: z.string().min(1).optional()
+})
+
 export const AgentJournalRenderItemSchema = z.object({
   itemId: z.string().min(1),
   revision: z.number().int(),
@@ -303,6 +306,7 @@ export const AgentJournalRenderItemSchema = z.object({
   observedAt: z.number(),
   recovered: z.literal(true).optional(),
   recoveredAt: z.number().optional(),
+  turnScope: AgentJournalTurnScopeSchema.optional(),
   ...AgentJournalProducerLinkageFields
 })
 
@@ -320,7 +324,9 @@ export const AgentJournalSubmissionSchema = z.object({
   handedOverAt: z.number().optional(),
   rejection: FailureFact.optional(),
   // Any value: a malformed one is dropped by the host's reader, never the submission.
-  rejectedByStartKey: z.unknown().optional()
+  rejectedByStartKey: z.unknown().optional(),
+  // Listed, or the parse strips it: this schema drops unknown keys.
+  queuedMessageId: z.string().min(1).optional()
 })
 
 export function isAgentJournalResolution(value: unknown): value is AgentJournalResolution {

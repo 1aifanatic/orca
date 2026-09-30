@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import {
@@ -16,10 +16,11 @@ import {
 const START_KEY = 'generation-1'
 let root: string
 let journal: AgentSessionJournal
+const journals = createTrackedJournalOpener()
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-start-failure-row-'))
-  journal = await openAgentSessionJournal({
+  journal = await journals.open({
     identity: {
       sessionId: 'session-start-failure',
       workspaceId: 'workspace-1',
@@ -27,13 +28,13 @@ beforeEach(async () => {
       agent: 'codex',
       providerHandle: { kind: 'codex', threadId: 'thread-1' }
     },
-    journalDir: root,
+    stateDirectory: root,
     now: () => 1_000
   })
 })
 
 afterEach(async () => {
-  await journal.close()
+  await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
 

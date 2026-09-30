@@ -3,7 +3,10 @@ import {
   readAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemBody
+} from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../shared/structured-agent-session-start-failure-row-key'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
@@ -30,7 +33,9 @@ export function structuredAgentSessionStartFailureRow(
     kind: 'item',
     identity: structuredAgentSessionStartFailureRowIdentity(startKey),
     // The row repeats the sentence the start's rejected messages carry.
-    body: { kind: 'status', text: words.reason, tone: 'error', failure: words.rejection }
+    body: { kind: 'status', text: words.reason, tone: 'error', failure: words.rejection },
+    // A start that failed opened no turn.
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
   }
 }
 
