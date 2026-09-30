@@ -36,9 +36,13 @@ async function seedCorpus(rig: RestTestRig): Promise<void> {
   rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
   await restTestChat(rig, 'session-pending', { message: 'only admitted' })
   await rig.crash()
+  // A live lease names the link proven at its fence, so the fence moves with that link.
   await rig.store.transitionHandoff('session-pending', (record) => ({
     ...record,
-    lease: { ...record.lease, runtimeFence: record.lease.runtimeFence + 1 }
+    lease: { ...record.lease, runtimeFence: record.lease.runtimeFence + 1 },
+    providerHandleChain: record.providerHandleChain.map((link, index, chain) =>
+      index === chain.length - 1 ? { ...link, mintedAtFence: link.mintedAtFence + 1 } : link
+    )
   }))
 }
 

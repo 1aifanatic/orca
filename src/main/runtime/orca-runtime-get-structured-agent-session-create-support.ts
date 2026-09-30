@@ -255,6 +255,16 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     return this.structuredAgentSessionTabRestorePromise
   }
 
+  /** Starts the history restore the tab restore owes, once. On the next macrotask, so a caller that
+   *  starts it as it answers has sent that answer first. */
+  startStructuredAgentSessionHistoryRestore(): void {
+    const owed = this.owedStructuredAgentSessionHistoryRestore
+    this.owedStructuredAgentSessionHistoryRestore = null
+    if (owed) {
+      setImmediate(owed)
+    }
+  }
+
   prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
     this.structuredAgentSessionStartupRestorePromise ??=
       this.prepareStructuredAgentSessionStartupRestorationOnce().catch((error) => {

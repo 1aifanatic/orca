@@ -57,11 +57,14 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       typeof host?.getPersistedVisibleSessionTabIndex === 'function'
         ? host.getPersistedVisibleSessionTabIndex()
         : { present: false, sessionIds: [] }
+    const profileIds = collectSavedStructuredAgentSessionIds(
+      this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+    )
+    // Unrecorded, the profile's chats join the tabs chats opened while the import was owed left.
+    // First: after a /clear the profile's chat would take their tab id, so seeds hit tabIdTaken.
     const listedIds = persistedVisibleIndex.present
       ? persistedVisibleIndex.sessionIds
-      : collectSavedStructuredAgentSessionIds(
-          this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
-        )
+      : [...new Set([...persistedVisibleIndex.sessionIds, ...profileIds])]
     for (const worktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId, {
         allowAttachedWindow: true,
@@ -106,22 +109,15 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
           })
       : null
     const wasUnverifiable = this.structuredAgentSessionInventoryUnverifiable
-    // No host means no one can say which chats exist; with none on disk, empty is the answer.
+    // No host, or one still owed the records file's chats, means no one can say which chats exist;
+    // with none on disk, empty is the answer.
+    const importOwed =
+      typeof host?.legacyRecordImportOwed === 'function' && host.legacyRecordImportOwed()
     this.structuredAgentSessionInventoryUnverifiable =
-      !host && this.hasPersistedStructuredAgentSessionStore()
+      (!host || importOwed) && this.hasPersistedStructuredAgentSessionStore()
     // This restore published quietly; subscribers still hold the frames that said "cannot tell".
     if (wasUnverifiable && !this.structuredAgentSessionInventoryUnverifiable) {
       this.notifyMobileSessionTabSnapshots()
-    }
-  }
-
-  /** Starts the history restore the tab restore owes, once. On the next macrotask, so a caller that
-   *  starts it as it answers has sent that answer first. */
-  startStructuredAgentSessionHistoryRestore(): void {
-    const owed = this.owedStructuredAgentSessionHistoryRestore
-    this.owedStructuredAgentSessionHistoryRestore = null
-    if (owed) {
-      setImmediate(owed)
     }
   }
 
@@ -137,11 +133,13 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   }): Promise<void> {
     const host = getStructuredAgentSessionHost()
     if (typeof host?.setSessionTabVisibility === 'function') {
-      await host.setSessionTabVisibility(
-        input.sessionId,
-        true,
-        ...(input.tabId ? [input.tabId] : [])
-      )
+      // The restore index is bookkeeping: one that cannot be written (a newer Orca's records, a
+      // failing disk) is reported, and the tab still opens.
+      await host
+        .setSessionTabVisibility(input.sessionId, true, ...(input.tabId ? [input.tabId] : []))
+        .catch((error: unknown) => {
+          console.warn('[structured-agent-session] recording an opened chat tab failed', error)
+        })
     }
     this.projectStructuredAgentSessionTab(input)
   }
