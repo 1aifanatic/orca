@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
-import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync'
+import {
+  applyWebSessionTabsSnapshot,
+  shouldApplyWebSessionTabsSnapshot
+} from './web-session-tabs-sync'
 import {
   ENV,
   HOST_SURFACE_ID,
@@ -17,6 +20,7 @@ const presence = {
   agent: 'claude',
   process: { pid: 42, platform: 'linux', startTime: 'boot:42' }
 } as const
+const relaunchedProcess = { pid: 43, platform: 'linux', startTime: 'boot:43' } as const
 function snapshot(
   ended: boolean,
   row: Partial<AgentStatusEntry> = {},
@@ -105,16 +109,65 @@ describe('paired host presence', () => {
   })
 
   it('does not resurrect an ended owner from an older live snapshot', () => {
+    // Snapshot order, not the status clock, decides: an older version never reaches the mirror.
+    const ended = snapshot(true, {}, 2)
+    expect(shouldApplyWebSessionTabsSnapshot(ended, ENV)).toBe(true)
+    expect(shouldApplyWebSessionTabsSnapshot(snapshot(false, {}, 1), ENV)).toBe(false)
+  })
+
+  it('takes each newer snapshot owner even when its status clock is older', () => {
     const state = makeState()
-    const endedRow = { updatedAt: 20, stateStartedAt: 20 }
-    const ended = {
+    // Case A: a live owner first seen at 1000, then its exit published on a status stamped 400.
+    const live = {
       ...state,
-      ...applyWebSessionTabsSnapshot(state, snapshot(true, endedRow), ENV, NOW)
+      ...applyWebSessionTabsSnapshot(state, snapshot(false, { updatedAt: 1000 }), ENV, NOW)
     }
-    const paneKey = Object.keys(ended.agentPresenceByPaneKey ?? {})[0]
-    const stale = applyWebSessionTabsSnapshot(ended, snapshot(false, {}, 2), ENV, NOW + 1)
-    const next = { ...ended, ...stale }
+    const paneKey = Object.keys(live.agentPresenceByPaneKey ?? {})[0]
+    const exited = {
+      ...live,
+      ...applyWebSessionTabsSnapshot(live, snapshot(true, { updatedAt: 400 }, 2), ENV, NOW + 1)
+    }
+    expect(exited.agentPresenceByPaneKey?.[paneKey]?.presence.ended).toBe(true)
+    expect(exited.agentStatusByPaneKey[paneKey]).toBeUndefined()
+    // Case C: a relaunched Claude (new process) published on an older status clock.
+    const relaunched = {
+      ...exited,
+      ...applyWebSessionTabsSnapshot(
+        exited,
+        snapshot(
+          false,
+          { updatedAt: 300, agentPresence: { agent: 'claude', process: relaunchedProcess } },
+          3
+        ),
+        ENV,
+        NOW + 2
+      )
+    }
+    expect(relaunched.agentPresenceByPaneKey?.[paneKey]?.presence).toEqual({
+      agent: 'claude',
+      process: relaunchedProcess
+    })
+    expect(relaunched.agentStatusByPaneKey[paneKey]).toBeDefined()
+  })
+
+  it('keeps a later agent status in the pane after the owner exited', () => {
+    // Case B: a hookless successor publishes under the retained exited owner record.
+    const state = makeState()
+    const next = {
+      ...state,
+      ...applyWebSessionTabsSnapshot(
+        state,
+        snapshot(true, { state: 'working', prompt: 'refactor', agentType: 'aider' }),
+        ENV,
+        NOW
+      )
+    }
+    const paneKey = Object.keys(next.agentPresenceByPaneKey ?? {})[0]
     expect(next.agentPresenceByPaneKey?.[paneKey]?.presence.ended).toBe(true)
+    expect(next.agentStatusByPaneKey[paneKey]).toMatchObject({
+      state: 'working',
+      agentType: 'aider'
+    })
   })
 
   it('releases mirrored presence when the host retracts the terminal', () => {

@@ -1,3 +1,4 @@
+import { paneEvidenceCounts } from '../../../../shared/ended-agent-owner-evidence'
 import {
   isSameAgentProcess,
   readAgentProcessPresence,
@@ -135,18 +136,14 @@ export function buildMirroredAgentStatusPatch(
     }
     const presence = readAgentProcessPresence(hostEntry.agentPresence)
     const previousPresence = nextPresenceByPaneKey[hostEntry.paneKey]
-    const hostIsCurrent =
-      !previousPresence ||
-      previousPresence.connectionId !== environmentId ||
-      hostEntry.updatedAt >= previousPresence.receivedAt
-    if (!presence?.process && hostIsCurrent && previousPresence?.connectionId === environmentId) {
-      // Why: presence is derived per snapshot; a newer uncovered row means the host no longer vouches for that owner.
+    // Why: snapshots are already delivery/version ordered and the host re-derives presence for each
+    // one; the published status clock is not a presence clock, so it must not reorder owners.
+    if (!presence?.process && previousPresence?.connectionId === environmentId) {
       const { [hostEntry.paneKey]: _released, ...remaining } = nextPresenceByPaneKey
       nextPresenceByPaneKey = remaining
       presenceChanged = true
     } else if (
       presence?.process &&
-      hostIsCurrent &&
       (previousPresence?.connectionId !== environmentId ||
         !isSameOwnerRecord(previousPresence.presence, presence))
     ) {
@@ -161,9 +158,9 @@ export function buildMirroredAgentStatusPatch(
       }
       presenceChanged = true
     }
+    // Why: an exited owner's own status is history; a later agent's status in the pane still shows.
     if (
-      nextPresenceByPaneKey[hostEntry.paneKey]?.presence.ended &&
-      nextPresenceByPaneKey[hostEntry.paneKey]?.presence.process
+      !paneEvidenceCounts(nextPresenceByPaneKey[hostEntry.paneKey]?.presence, hostEntry.agentType)
     ) {
       endedPaneKeys.add(hostEntry.paneKey)
       continue
