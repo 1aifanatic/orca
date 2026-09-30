@@ -806,32 +806,57 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
   it('refuses at once while the host’s own release holds its assignment row', async () => {
     await resetFleet()
     const { identity, epoch } = await seedDriftedHost(921, { controls: 1, unbackedSourceUnits: 0 })
-    // Placed after the isolate, so it sits on a target and takes the sticky path.
-    const pinned = hostIdentity(920)
-    const pinnedGrant = await stores[0]!.assign(pinned, 'us-central1')
-    expect(TARGETS.map(({ id }) => id)).toContain(pinnedGrant.cellId)
-    // Both a sticky re-grant and an isolated re-placement meet the held row.
-    for (const [host, expectedEpoch] of [
-      [pinned, pinnedGrant.assignmentEpoch],
-      [identity, epoch]
-    ] as const) {
-      const release = await holdRows(
-        `SELECT user_id FROM relay_assignments WHERE user_id = ? AND relay_host_id = ?`,
-        [host.userId, host.relayHostId]
+    const release = await holdRows(
+      `SELECT user_id FROM relay_assignments WHERE user_id = ? AND relay_host_id = ?`,
+      [identity.userId, identity.relayHostId]
+    )
+    try {
+      const startedAt = performance.now()
+      await expect(stores[1]!.assign(identity, 'us-central1')).rejects.toBeInstanceOf(
+        RelayAssignmentRowBusyError
       )
-      try {
-        const startedAt = performance.now()
-        await expect(stores[1]!.assign(host, 'us-central1')).rejects.toBeInstanceOf(
-          RelayAssignmentRowBusyError
-        )
-        // No wait on the row: far under the 1s lock timeout a release can hold it.
-        expect(performance.now() - startedAt).toBeLessThan(500)
-      } finally {
-        await release()
-      }
-      expect((await stores[0]!.resolve(host))?.assignmentEpoch).toBe(expectedEpoch)
+      // An isolated pin gets no wait: far under the 1s a release can hold it.
+      expect(performance.now() - startedAt).toBeLessThan(500)
+    } finally {
+      await release()
     }
+    expect((await stores[0]!.resolve(identity))?.assignmentEpoch).toBe(epoch)
     expect((await stores[1]!.assign(identity, 'us-central1')).assignmentEpoch).toBe(epoch + 1)
     await expectReservationAccounting()
+  }, 30_000)
+
+  it('waits up to a second for the row of a host pinned to a live general cell', async () => {
+    await resetFleet()
+    const identity = hostIdentity(922)
+    const first = await stores[0]!.assign(identity, 'us-central1')
+    const holdAssignment = async (): Promise<() => Promise<void>> =>
+      await holdRows(
+        `SELECT user_id FROM relay_assignments WHERE user_id = ? AND relay_host_id = ?`,
+        [identity.userId, identity.relayHostId]
+      )
+
+    // A short hold, like a calm host's own release: the sticky re-grant waits.
+    const shortHold = await holdAssignment()
+    const regrant = stores[1]!.assign(identity, 'us-central1')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await shortHold()
+    expect(await regrant).toMatchObject({
+      cellId: first.cellId,
+      assignmentEpoch: first.assignmentEpoch
+    })
+
+    // Held past the bound: refused, after about the bound and not the pool's.
+    const longHold = await holdAssignment()
+    try {
+      const startedAt = performance.now()
+      await expect(stores[1]!.assign(identity, 'us-central1')).rejects.toBeInstanceOf(
+        RelayAssignmentRowBusyError
+      )
+      const waitedMs = performance.now() - startedAt
+      expect(waitedMs).toBeGreaterThanOrEqual(900)
+      expect(waitedMs).toBeLessThan(2_000)
+    } finally {
+      await longHold()
+    }
   }, 30_000)
 })

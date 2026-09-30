@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { RelayAssignmentStore } from './assignment-store.js'
+import { RelayAssignmentRowBusyError, RelayAssignmentStore } from './assignment-store.js'
 import {
   encodeMembership,
   type CellAdmissionMembership,
@@ -118,6 +118,9 @@ type DepartingReport = {
   hosts: number
   placed: number
   firstAttempt: { placed: number; rejected: Tally; failed: Tally }
+  // Row-busy refusals on any attempt, and errors no client would retry.
+  busyRefusals: number
+  unexpected: Tally
   redials: number
   // Release start to the grant that re-placed the host, redials included.
   timeToPlacedMs: { p50: number; p95: number; max: number }
@@ -504,6 +507,8 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     const releases = { ok: 0, failed: releaseFailed }
     const timeToPlaced: number[] = []
     let redials = 0
+    let busyRefusals = 0
+    const unexpected: Tally = {}
     let placedInWindow = 0
     const activationWork: Promise<unknown>[] = []
     delay.delayMs = ASIA_ROUND_TRIP_MS
@@ -533,7 +538,8 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
         )
         return 'placed'
       } catch (error) {
-        return `rejected:${failureCode(error)}`
+        if (error instanceof RelayAssignmentRowBusyError) return `rejected:${error.message}`
+        return `failed:${failureCode(error)}`
       } finally {
         lease.release()
       }
@@ -556,6 +562,8 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       for (let attempt = 0; ; attempt += 1) {
         const sentAt = performance.now()
         const outcome = await dial(identity, director)
+        if (outcome === `rejected:${new RelayAssignmentRowBusyError().message}`) busyRefusals += 1
+        if (outcome.startsWith('failed:')) count(unexpected, outcome.slice(7))
         if (attempt === 0) {
           if (outcome === 'placed') firstAttempt.placed += 1
           else if (outcome.startsWith('rejected:')) count(firstRejected, outcome.slice(9))
@@ -589,6 +597,8 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       hosts: hosts.length,
       placed: timeToPlaced.length,
       firstAttempt,
+      busyRefusals,
+      unexpected,
       redials,
       timeToPlacedMs: {
         p50: percentile(timeToPlaced, 0.5),
@@ -699,7 +709,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     for (const neighboursCapped of [false, true]) {
       for (const dialDelayMs of [150, 400, 1_000]) {
         const report = await runDepartingRedial(dialDelayMs, neighboursCapped)
-        expect(report.firstAttempt.failed).toEqual({})
+        expect(report.unexpected).toEqual({})
         expect(report.placed).toBe(report.hosts)
         // A busy own row is refused at once by design; what must not happen is
         // the sticky slot backing up behind it. Before: 72-143 wait-timeouts at
@@ -708,10 +718,9 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
           report.firstAttempt.rejected
         expect(total(slotRejections)).toBeLessThan(0.1 * report.hosts)
         expect(report.lockWaitingMean).toBeLessThan(0.5)
-        // A refused host is placed on its next paced redial. Before: p95 11-16s.
-        expect(report.timeToPlacedMs.p95).toBeLessThan(
-          dialDelayMs + HOST_ASSIGN_MIN_INTERVAL_MS + HOST_ASSIGN_INTERVAL_JITTER_MS + 2_000
-        )
+        // Measured 16-20 refusals of 180 and a p95 of 5.7-6.3s; before, p95 was 11-16s.
+        expect(report.busyRefusals).toBeLessThanOrEqual(0.2 * report.hosts)
+        expect(report.timeToPlacedMs.p95).toBeLessThanOrEqual(8_000)
       }
     }
   }, 600_000)
@@ -752,6 +761,8 @@ function flattenDeparting(report: DepartingReport): Record<string, string | numb
     placed: `${report.placed}/${report.hosts}`,
     firstPlaced: report.firstAttempt.placed,
     firstRejected: failed(report.firstAttempt.rejected),
+    busy: report.busyRefusals,
+    unexpected: failed(report.unexpected),
     redials: report.redials,
     placedP50Ms: report.timeToPlacedMs.p50,
     placedP95Ms: report.timeToPlacedMs.p95,

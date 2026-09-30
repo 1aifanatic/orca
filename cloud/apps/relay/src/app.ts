@@ -496,6 +496,9 @@ export function createRelayApp(
         })
       }
       if (isRelayAssignmentUnavailableError(error)) {
+        if (error instanceof RelayAssignmentRowBusyError) {
+          context.header('Retry-After', String(ASSIGNMENT_ROW_BUSY_RETRY_AFTER_SECONDS))
+        }
         return context.json({ error: operationError(error) }, 503)
       }
       if (isRelayDatabaseTransientError(error)) return rejectPublicAssignment(context)
