@@ -52,7 +52,7 @@ describe('owner handover across execution hosts', () => {
     const relay = new RelayAgentHookServer({ endpointDir: dir, forward: (e) => forwarded.push(e) })
     const desktop = new Desktop()
     servers.push(relay, desktop)
-    const desktopEvents: { paneKey: string; state?: string; presence?: unknown }[] = []
+    const desktopEvents: { paneKey: string; state?: string; presence?: AgentProcessPresence }[] = []
     desktop.subscribeEnrichedStatus((row) =>
       desktopEvents.push({
         paneKey: row.paneKey,
@@ -103,9 +103,7 @@ describe('owner handover across execution hosts', () => {
       await flush()
       pump()
       const snapshot = desktop.getStatusSnapshot().find((r) => r.paneKey === PANE)
-      expect(
-        desktopEvents.some((e) => (e.presence as AgentProcessPresence | undefined)?.ended)
-      ).toBe(false)
+      expect(desktopEvents.some((e) => e.presence?.ended)).toBe(false)
       // The dead owner is released, never reported as an exit, and the new Claude owns the pane.
       expect(released).toEqual([{ paneKey: PANE, process: expect.objectContaining({ pid: 4001 }) }])
       expect(snapshot?.providerSessionOnly).toBeUndefined()
