@@ -1,4 +1,5 @@
-/** Why a provider child ended. In memory only, except the stop arms a Stop event journals. */
+/** Why a provider child ended. In memory only, except `user-stop`, the one arm a Stop event
+ *  journals so far. */
 export type StructuredAgentSessionChildEndCause =
   | 'user-stop'
   /** The user closed this chat: its tab, its launch, or a `/clear` that replaces it. */
