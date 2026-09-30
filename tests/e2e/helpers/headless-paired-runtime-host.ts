@@ -79,6 +79,8 @@ export async function launchHeadlessPairedRuntimeHost(
   options: {
     agentBrowserSocketParent?: string
     executablePath?: string
+    /** Extra serve-process env (e.g. a PATH with an agent shim first); cannot override the HOME boundary. */
+    extraEnv?: Record<string, string>
     /** Bind a stable loopback port so `restartServeProcess` can reclaim it. */
     pinnedServePort?: boolean
     userDataParent?: string
@@ -107,7 +109,7 @@ export async function launchHeadlessPairedRuntimeHost(
         ORCA_E2E_ENFORCE_SINGLE_INSTANCE_LOCK: '1',
         ORCA_E2E_HEADLESS: '1'
       },
-      extraEnv: {},
+      extraEnv: options.extraEnv ?? {},
       userDataDir
     })
     if (agentBrowserSocketDir) {
