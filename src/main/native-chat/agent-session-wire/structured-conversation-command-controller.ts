@@ -32,8 +32,7 @@ export class StructuredConversationCommandController {
     if (params.command === 'compact') {
       return runStructuredCompaction(this.context(), this.host, caller, params)
     }
-    // The same caller's same command waits its turn and is answered from what the first did.
-    const key = JSON.stringify([caller.callerKey, params.command])
+    const key = JSON.stringify([caller.callerKey, params.envelope.clientOperationId])
     const pending = this.pending.get(params.envelope.sessionId)
     if (pending && pending.key !== key) {
       return Promise.resolve({ ok: false as const, refusal: conversationCommandInFlight() })
