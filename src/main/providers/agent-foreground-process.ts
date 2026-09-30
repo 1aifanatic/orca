@@ -210,7 +210,7 @@ function selectAgentForegroundFromPs(
   shellPid: number
 ): {
   selected: SelectedForegroundProcess
-  candidates: ReturnType<typeof collectDescendantsFromIndex>
+  candidates: (ProcessTableRow & { depth: number })[]
 } | null {
   // Memoized per snapshot identity, so the caller's own index build is reused.
   const index = getProcessTableIndex(rows)
