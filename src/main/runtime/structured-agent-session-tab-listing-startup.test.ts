@@ -287,8 +287,7 @@ describe('listing chat tabs at startup', () => {
   })
 
   it('lists every chat when four fail to open, and the others still get status rows (T5)', async () => {
-    // More chats than the restore opens at once, with the first four failing: each failure must
-    // cost only its own chat, not one of the restore's four lanes.
+    // The first four failing: each failure must cost only its own chat, never the chats after it.
     const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5', 'session-6']
     const failing = ids.slice(0, 4)
     for (const sessionId of ids) {

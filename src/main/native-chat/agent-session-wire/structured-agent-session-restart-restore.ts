@@ -21,7 +21,9 @@ import type {
 } from './structured-agent-session-conversation-open'
 import { restoreStructuredAgentSessionRead } from './structured-agent-session-read-restore'
 
-const JOURNAL_RESTORE_CONCURRENCY = 4
+// One chat at a time: the restore is CPU-bound on the main thread, so more lanes only lengthen each
+// event-loop turn that a user's read or send waits behind.
+const JOURNAL_RESTORE_CONCURRENCY = 1
 
 export type StructuredAgentSessionReadRestoreDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {

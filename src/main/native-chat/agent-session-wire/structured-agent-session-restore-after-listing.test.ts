@@ -27,8 +27,8 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-/** Boots over a crashed run and starts the pass with the first four opens held, so it has not
- *  reached the last chat. */
+/** Boots over a crashed run and starts the pass with its first open held, so it has not reached
+ *  the last chat. */
 async function bootWithHeldPass() {
   for (const sessionId of IDS) {
     await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
@@ -38,13 +38,13 @@ async function bootWithHeldPass() {
   const held = Promise.withResolvers<void>()
   releaseHeld = held.resolve
   rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
-    if (sessionId !== LAST) {
+    if (sessionId === IDS[0]) {
       await held.promise
     }
     return null
   })
   const pass = host.restoreReadableSessions(IDS)
-  await vi.waitFor(() => expect(rig.adapter.historyFilePath).toHaveBeenCalledTimes(4))
+  await vi.waitFor(() => expect(rig.adapter.historyFilePath).toHaveBeenCalledOnce())
   return { host, pass, release: held.resolve }
 }
 

@@ -35,7 +35,7 @@ const NO_OPEN_DEPS = {
 describe('restart journal restoration', () => {
   beforeEach(() => restoreRead.mockReset())
 
-  it('bounds historical journal parsing to four sessions at a time', async () => {
+  it('opens one chat at a time', async () => {
     const gate = Promise.withResolvers<void>()
     let active = 0
     let peak = 0
@@ -71,13 +71,16 @@ describe('restart journal restoration', () => {
       onReadable: () => undefined
     })
 
-    await vi.waitFor(() => expect(active).toBe(4))
-    expect(restoreRead).toHaveBeenCalledTimes(4)
+    await vi.waitFor(() => expect(active).toBeGreaterThan(0))
+    // Held long enough for a second lane, had there been one, to have started.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const startedWhileHeld = restoreRead.mock.calls.length
     gate.resolve()
     await restoration
 
+    expect(startedWhileHeld).toBe(1)
     expect(restoreRead).toHaveBeenCalledTimes(records.length)
-    expect(peak).toBe(4)
+    expect(peak).toBe(1)
   })
 
   it('lets the event loop run between chats', async () => {
