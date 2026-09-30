@@ -19,7 +19,7 @@ import {
   deriveAgentChildDisplayState,
   type AgentChildDisplayState
 } from './agent-status-child-work-display'
-import { agentChildWorkViewOffersStop } from './agent-child-work-stop'
+import { agentChildWorkViewOffersStop } from './agent-child-work-stop-targets'
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 import {
   agentStatusAuthorityObservedAt,

@@ -1,4 +1,4 @@
-import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop'
+import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop-targets'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'

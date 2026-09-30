@@ -3,7 +3,7 @@
 // order through the real adapter and a real hook server.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { agentChildWorkStopTargets } from '../../shared/agent-child-work-stop'
+import { agentChildWorkStopTargets } from '../../shared/agent-child-work-stop-targets'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { conversationCommandBlocked } from '../native-chat/agent-session-wire/structured-conversation-command-admission'
 import type { CapturedFrame } from './claude-captured-frame-builders.test-fixture'

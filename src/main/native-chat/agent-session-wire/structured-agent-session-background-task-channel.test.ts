@@ -23,7 +23,7 @@ const child: AgentChildWorkView = {
   invocation: { invocationId: 'spawn-1', generation: 1 }
 }
 
-function channelOver() {
+function channelOver(children: () => AgentChildWorkView[] = () => [child]) {
   const sessions = new StructuredAgentSessionConversations({
     deliver: () => {},
     onDeliveryError: () => {},
@@ -42,7 +42,7 @@ function channelOver() {
     async () => {
       throw new Error('not opened here')
     },
-    () => [child]
+    children
   )
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the map reads only the journal's commit observer and the session's provider.
   const session = {
@@ -66,5 +66,25 @@ describe('the background-task channel', () => {
     sessions.set('session-1', session)
     channel.publish('session-1')
     expect(sent).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends "no children" once, not again on every change that leaves none', () => {
+    let views: AgentChildWorkView[] = []
+    const { sessions, sent, channel, session } = channelOver(() => views)
+    sessions.set('session-1', session)
+    channel.publish('session-1')
+    channel.publish('session-1')
+    expect(sent.mock.calls.map(([, state]) => state)).toEqual([null])
+
+    views = [child]
+    channel.publish('session-1')
+    views = []
+    channel.publish('session-1')
+    channel.publish('session-1')
+    expect(sent.mock.calls.map(([, state]) => state?.children?.length ?? null)).toEqual([
+      null,
+      1,
+      null
+    ])
   })
 })

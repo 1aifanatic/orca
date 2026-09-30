@@ -85,7 +85,7 @@ export class StructuredAgentSessionBackgroundTaskChannel {
   /** Re-read after the session's child records changed; an unchanged roster sends nothing. */
   publish(sessionId: string): void {
     const session = this.sessions.get(sessionId)
-    // Explicit null once rows were sent, not silence: a reader keeps its last roster on
+    // Explicit null once a roster was sent, not silence: a reader keeps its last roster on
     // `undefined`, and a closing provider stops answering before its records are gone.
     const read = this.state(sessionId)
     const state = read === undefined && this.published.has(sessionId) ? null : read
@@ -96,11 +96,9 @@ export class StructuredAgentSessionBackgroundTaskChannel {
     if (this.published.get(sessionId) === fingerprint) {
       return
     }
-    if (state === null) {
-      this.published.delete(sessionId)
-    } else {
-      this.published.set(sessionId, fingerprint)
-    }
+    // "None" is remembered too, so a session with no children sends it once, not on every change;
+    // the entry goes when the conversation closes.
+    this.published.set(sessionId, fingerprint)
     this.subscribers.backgroundTasks(
       sessionId,
       state,

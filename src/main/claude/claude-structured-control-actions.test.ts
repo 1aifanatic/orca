@@ -6,6 +6,10 @@ import {
 } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
+import {
+  ClaudeControlRequestTimeoutError,
+  runClaudeControl
+} from './claude-agent-sdk-control-requests'
 import { buildClaudePromptReply, ClaudePromptRegistry } from './claude-structured-prompt-replies'
 import type { ClaudeDispatchWaiter, ClaudeSession } from './claude-structured-session-state'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
@@ -388,5 +392,26 @@ describe('stopClaudeBackgroundTasks', () => {
     expect(childWork.drain(2)).toMatchObject([
       { type: 'ended', handle: { id: 'task-2' }, outcome: 'cancelled' }
     ])
+  })
+
+  it('stops asking after a request times out: a CLI not answering costs one deadline, not one per task', async () => {
+    const childWork = liveChildWork(['task-0', 'task-1', 'task-2', 'task-3', 'task-4'])
+    // Never answered, behind the real deadline wrapper, with a short deadline.
+    const stopTask = vi.fn((_taskId: string, options?: { timeoutMs?: number }) =>
+      runClaudeControl('stop_task', () => new Promise<void>(() => {}), options?.timeoutMs)
+    )
+    const session = stoppingSession(childWork, stopTask)
+
+    await expect(
+      stopClaudeBackgroundTasks(session, 50, () => true, [
+        'task-0',
+        'task-1',
+        'task-2',
+        'task-3',
+        'task-4'
+      ])
+    ).rejects.toBeInstanceOf(ClaudeControlRequestTimeoutError)
+    expect(stopTask).toHaveBeenCalledTimes(1)
+    expect(childWork.drain(2)).toEqual([])
   })
 })
