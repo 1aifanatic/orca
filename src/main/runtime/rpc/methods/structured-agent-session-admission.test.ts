@@ -2,7 +2,12 @@
 // a paired client that can read structured sessions reaches every method whatever that setting says.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
 import {
   CLEANUP_METHODS,
   WORK_METHODS
@@ -13,6 +18,7 @@ import {
   envelope,
   hostCalls,
   installStructuredHostStub,
+  runtimeCalls,
   SESSION,
   STRUCTURED_CLIENT
 } from './structured-agent-session-rpc.test-fixture'
@@ -26,11 +32,30 @@ afterEach(() => {
 })
 
 const SETTING_OFF = { getClientSettings: () => ({ experimentalStructuredNativeChat: false }) }
+const SETTING_ON = { getClientSettings: () => ({ experimentalStructuredNativeChat: true }) }
+// A client that picks each launch's mode itself, as the desktop does.
+const MODE_CHOOSING_CLIENT = {
+  ...STRUCTURED_CLIENT,
+  clientCapabilities: [
+    ...STRUCTURED_CLIENT.clientCapabilities,
+    STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+  ]
+}
+// Phones released before `agent.launch` picked their mode by asking createSupport.
+const RELEASED_PHONE = {
+  clientKind: 'mobile' as const,
+  clientCapabilities: [
+    STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_RUNTIME_CAPABILITY
+  ]
+}
+const CREATE_SUPPORT = WORK_METHODS.find((entry) => entry.method === 'agentSession.createSupport')!
 const UNSUPPORTED = { message: expect.stringContaining('structured_agent_session_unsupported') }
 
 describe('a host with structured chat turned off', () => {
   it.each(WORK_METHODS)('still serves $method to a capable client', async ({ method, params }) => {
-    const response = await call(method, params, STRUCTURED_CLIENT, SETTING_OFF).catch(
+    const response = await call(method, params, MODE_CHOOSING_CLIENT, SETTING_OFF).catch(
       (error: Error) => {
         // An admitted stream the stub never feeds answers nothing; a refused one replies at once.
         expect(error.message).toBe(`no reply for ${method}`)
@@ -43,7 +68,7 @@ describe('a host with structured chat turned off', () => {
   })
 
   it.each(CLEANUP_METHODS)('still serves $method to a capable client', async (entry) => {
-    const response = await call(entry.method, entry.params, STRUCTURED_CLIENT, SETTING_OFF)
+    const response = await call(entry.method, entry.params, MODE_CHOOSING_CLIENT, SETTING_OFF)
 
     expect(response).toMatchObject({ ok: true })
     // `unsubscribe` retires runtime-owned subscriptions and `release` is a no-op, so neither
@@ -57,7 +82,7 @@ describe('a host with structured chat turned off', () => {
 
   it('creates a session for a paired client', async () => {
     const create = WORK_METHODS.find((entry) => entry.method === 'agentSession.create')!
-    const response = await call(create.method, create.params, STRUCTURED_CLIENT, SETTING_OFF)
+    const response = await call(create.method, create.params, MODE_CHOOSING_CLIENT, SETTING_OFF)
 
     expect(response).toMatchObject({ ok: true })
   })
@@ -95,7 +120,7 @@ describe('a host with structured chat turned off', () => {
         method,
         params,
         { clientKind: 'runtime', clientCapabilities: [] },
-        { getClientSettings: () => ({ experimentalStructuredNativeChat: true }) }
+        SETTING_ON
       )
 
       // Asserting the gate's own code, not merely `ok: false`: a params-validation failure would
@@ -118,4 +143,46 @@ describe('a host with structured chat turned off', () => {
       expect(hostCalls.close).toHaveBeenCalledWith(SESSION)
     }
   )
+})
+
+describe('a client that leaves the launch mode to the host', () => {
+  it('is told a chat is unsupported while the host setting is off, so it opens a terminal', async () => {
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      RELEASED_PHONE,
+      SETTING_OFF
+    )
+
+    expect(response).toMatchObject({ ok: false, error: UNSUPPORTED })
+    expect(runtimeCalls.getStructuredAgentSessionCreateSupport).not.toHaveBeenCalled()
+  })
+
+  it('is answered by the workspace once the host setting is on', async () => {
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      RELEASED_PHONE,
+      SETTING_ON
+    )
+
+    expect(response).toMatchObject({ ok: true })
+  })
+
+  it('reads an unreadable settings store as off', async () => {
+    const response = await call(CREATE_SUPPORT.method, CREATE_SUPPORT.params, RELEASED_PHONE, {
+      getClientSettings: () => {
+        throw new Error('store unavailable')
+      }
+    })
+
+    expect(response).toMatchObject({ ok: false, error: UNSUPPORTED })
+  })
+
+  it('keeps every other method on capability alone', async () => {
+    const create = WORK_METHODS.find((entry) => entry.method === 'agentSession.create')!
+    const response = await call(create.method, create.params, RELEASED_PHONE, SETTING_OFF)
+
+    expect(response).toMatchObject({ ok: true })
+  })
 })
