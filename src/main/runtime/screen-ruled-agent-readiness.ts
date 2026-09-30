@@ -1,6 +1,7 @@
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { isClineComposerReadyScreen } from './cline-terminal-readiness'
+import { isPrimeAgentComposerReadyScreen } from './prime-agent-terminal-readiness'
 
 type ScreenReadyRule = (screenLines: readonly string[]) => boolean
 
@@ -8,11 +9,12 @@ type ScreenReadyRule = (screenLines: readonly string[]) => boolean
  * Agents whose live screen decides readiness. Each rule reads an idle composer off the grid,
  * which a folded text tail loses to cursor addressing. Why a clocked pane waits for quiet too:
  * the captures paint that composer for a moment mid-turn (a submit repaint, a spinner row
- * erased before its redraw).
+ * erased before its redraw) and, for Prime, just before its first-launch question.
  */
 const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
   antigravity: isAntigravityComposerReadyScreen,
-  cline: isClineComposerReadyScreen
+  cline: isClineComposerReadyScreen,
+  'prime-agent': isPrimeAgentComposerReadyScreen
 }
 
 // Why no clockless tier 1: Cline repaints the same composer box while a reply streams.

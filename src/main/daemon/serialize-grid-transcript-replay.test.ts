@@ -69,8 +69,8 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'dsh-tui-ready-no-key': 10,
   // Hermes banner cells restore with an extra bold bit under the jitter schedule.
   'hermes-tui-ready': 2,
-  // STA-8741 agy/Cline captures, serializer untouched: the same true-colour background
-  // left on restored cells as DSH.
+  // STA-8741 agy/Cline/Prime captures, serializer untouched: the same true-colour background
+  // left on restored cells as DSH, plus Prime's cursor row after its alternate-screen repaints.
   'antigravity-1-2-14-busy-thinking': 2,
   'antigravity-1-2-14-command-palette': 4,
   'antigravity-1-2-14-draft': 4,
@@ -88,7 +88,18 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'cline-3-0-66-ready': 11,
   'cline-3-0-66-ready-80x24': 2,
   'cline-3-0-66-slash-menu': 6,
-  'cline-3-0-66-turn-ended': 10
+  'cline-3-0-66-turn-ended': 10,
+  'prime-agent-0-9-5-ready': 18,
+  'prime-agent-0-9-5-turn': 4,
+  'prime-agent-0-9-8-busy-streaming': 6,
+  'prime-agent-0-9-8-draft': 10,
+  'prime-agent-0-9-8-ready': 22,
+  'prime-agent-0-9-8-ready-80x24': 16,
+  'prime-agent-0-9-8-ready-after-question': 2,
+  'prime-agent-0-9-8-slash-menu': 34,
+  'prime-agent-0-9-8-tool-turn': 40,
+  'prime-agent-0-9-8-trace-question': 10,
+  'prime-agent-0-9-8-turn-ended': 24
 }
 
 // Exact resize checkpoints and full GridDiff hashes from base 6835b9b4e3ea, not this branch.

@@ -9,7 +9,7 @@ import { TUI_AGENT_CONFIG } from './tui-agent-config'
  * - `synthetic-title`: its hooks drive an Orca-written `<Agent> ready` title.
  * - `title`: its running process names itself in a title the status classifier reads.
  * - `ready-body`: a ready screen Orca recognises (Muse; Qoder, whose idle title can show while
- *   its trust menu still owns input; Antigravity and Cline, read off the live screen).
+ *   its trust menu still owns input; Antigravity, Cline and Prime Agent, read off the live screen).
  * - `none`: no stronger lane, so a quiet foreground process is its only one. Hooks or a first-party
  *   `done` (amp, kimi, command-code, freebuff) do not count: tui-idle takes their `working` as a
  *   veto, and trusts a first-party `done` only from DSH.
@@ -22,7 +22,8 @@ const IDENTITY_REST_SIGNALS: Partial<Record<TuiAgent, TuiAgentRestSignal>> = {
   muse: 'ready-body',
   qoder: 'ready-body',
   antigravity: 'ready-body',
-  cline: 'ready-body'
+  cline: 'ready-body',
+  'prime-agent': 'ready-body'
 }
 
 // Why derived, not declared per agent: the title tables are the evidence, so a second

@@ -31,7 +31,7 @@ import { isReadinessDecidedByScreen } from './screen-ruled-agent-readiness'
  *   1. STRONG READY — the agent states it is ready: an explicit idle marker in its own
  *      title, or a known ready-prompt body.
  *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, and the screen-ruled
- *      agents (Antigravity, Cline) can paint their idle composer mid-turn, so their
+ *      agents (Antigravity, Cline, Prime Agent) can paint their idle composer mid-turn, so their
  *      ready-screen body is believed only once quiet.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
@@ -224,7 +224,8 @@ const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set([
   'muse',
   'codex',
   'antigravity',
-  'cline'
+  'cline',
+  'prime-agent'
 ])
 
 /**
