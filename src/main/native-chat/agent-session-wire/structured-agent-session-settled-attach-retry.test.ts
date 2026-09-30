@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
 import type * as DurableFileWrite from '../../durable-file-write'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter
@@ -24,6 +25,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -108,11 +110,11 @@ beforeEach(async () => {
   }))
   releaseAcquisition = vi.fn(async () => true)
   dispatch = vi.fn(async () => accepted())
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
     now: () => NOW
@@ -139,7 +141,7 @@ describe('settled attach retry', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), historyFilePath },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-a',
       now: () => NOW
@@ -196,7 +198,7 @@ describe('settled attach retry', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken,
       now: () => NOW
@@ -240,7 +242,7 @@ describe('settled attach retry', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken,
       // A host that cannot read another process's environment, so no scan can prove anything.
@@ -266,11 +268,11 @@ describe('settled attach retry', () => {
     })
 
     await host.flushAllStreamedEvents()
-    store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+    store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken,
       // A host that cannot read another process's environment, so no scan can prove anything.
@@ -323,11 +325,11 @@ describe('settled attach retry', () => {
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
 
     await host.flushAllStreamedEvents()
-    store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+    store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
       store,
       adapter: adapter(),
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-restarted',
       probeOwner: async () => ({ outcome: 'pid-absent' }),
