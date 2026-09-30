@@ -105,12 +105,16 @@ export class RuntimeTerminalAgentStatusQuery {
     const owner = selectLiveOwnerAgent(presence)
     if (explicitStatus) {
       // Why: permission titles can linger after hooks report the agent resumed. Fresh hook state is
-      // tighter, but current shell/management evidence wins; a live owner overrides only a shell title.
-      const titleBlocks = owner
+      // tighter, but current shell/management evidence wins; only the owner itself in front
+      // overrides a shell title.
+      const ownerInFront =
+        owner !== undefined && (await this.foregroundIsOwner(handle, ptyId, owner))
+      const titleBlocks = ownerInFront
         ? terminal.title !== null && isClaudeManagementTitle(terminal.title)
         : terminalTitleBlocksExplicitAgentStatus(terminal.title)
       const isRunningAgent =
-        !titleBlocks && !(await this.terminalHasShellForegroundProcess(handle, ptyId))
+        !titleBlocks &&
+        (ownerInFront || !(await this.terminalHasShellForegroundProcess(handle, ptyId)))
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
       return {
         handle,
@@ -239,6 +243,17 @@ export class RuntimeTerminalAgentStatusQuery {
       titleStatus: title ? detectAgentStatusFromTitle(title.title) : leaf.lastAgentStatus,
       titleStatusIsLive: (title?.updatedAt ?? 0) > 0
     }
+  }
+
+  private async foregroundIsOwner(handle: string, ptyId: string, owner: string): Promise<boolean> {
+    let foregroundProcess: string | null = null
+    try {
+      foregroundProcess = (await this.deps.getController()?.getForegroundProcess(ptyId)) ?? null
+    } catch {
+      foregroundProcess = null
+    }
+    this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
+    return recognizeAgentProcess(foregroundProcess)?.agent === owner
   }
 
   private async terminalHasShellForegroundProcess(handle: string, ptyId: string): Promise<boolean> {

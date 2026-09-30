@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
 import {
   RuntimeTerminalAgentPresence,
@@ -61,11 +61,17 @@ function leaf(title: string): RuntimeLeafRecord {
 function terminal(args: {
   presence: AgentProcessPresence | undefined
   title: string
-  foreground: string | null
+  foreground: string | null | Error
   waitText?: string
   explicit?: 'working'
   titleStatus?: 'working'
 }) {
+  const readForeground = async () => {
+    if (args.foreground instanceof Error) {
+      throw args.foreground
+    }
+    return args.foreground
+  }
   const presence = new RuntimeTerminalAgentPresence({
     getAgentPresence: () => args.presence,
     getLivePty: () => null,
@@ -73,13 +79,13 @@ function terminal(args: {
     getPrimaryLeaf: () => null,
     getTrackedPty: () => null,
     getTabTitle: () => null,
-    getForegroundProcess: async () => args.foreground
+    getForegroundProcess: readForeground
   })
   const controller: RuntimePtyController = {
     write: () => false,
     kill: () => false,
-    getForegroundProcess: async () => args.foreground,
-    confirmForegroundProcess: async () => args.foreground
+    getForegroundProcess: readForeground,
+    confirmForegroundProcess: readForeground
   }
   const query = new RuntimeTerminalAgentStatusQuery({
     getAgentPresence: () => args.presence,
@@ -118,16 +124,6 @@ describe('headless terminal presence', () => {
       isRunningAgent: !ended,
       status: ended ? null : 'working'
     })
-  })
-
-  it('answers for an owner whose foreground read is unavailable', async () => {
-    const { presence, query } = terminal({
-      presence: owner('claude'),
-      title: 'zsh',
-      foreground: null
-    })
-    expect(await presence.isRunning('terminal')).toBe(true)
-    expect(await query.getStatus('terminal')).toMatchObject({ isRunningAgent: true })
   })
 
   it('refuses to send into the shell in front of a suspended owner', async () => {
@@ -246,12 +242,89 @@ describe('headless terminal presence', () => {
         await main.query.getStatus('terminal')
       )
     }
-    // A local owner this host can check still answers for an unrecognised foreground.
-    const local = terminal({
-      presence: selectKeyboardAgentPresence([row(null)]),
-      title: 'user@host: ~/repo',
-      foreground: 'wsl.exe'
+  })
+})
+
+async function settle<T>(work: Promise<T>): Promise<T> {
+  const done = work.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error })
+  )
+  await vi.runAllTimersAsync()
+  const result = await done
+  if ('error' in result) {
+    throw result.error
+  }
+  return result.value
+}
+
+async function sendGuardAnswer(query: RuntimeTerminalAgentStatusQuery): Promise<string> {
+  const runtime: Pick<OrcaRuntimeService, 'getTerminalAgentStatus'> = {
+    getTerminalAgentStatus: (handle) => query.getStatus(handle)
+  }
+  try {
+    await settle(
+      assertTerminalAgentSendable({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the guard reads only getTerminalAgentStatus.
+        runtime: runtime as OrcaRuntimeService,
+        handle: 'terminal',
+        assertWritable: () => {}
+      })
+    )
+    return 'sends'
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
+describe('keyboard routing for a live owner that is not in front', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // After Ctrl-Z the owner stays live (a stopped process reads as unverifiable), so only the
+  // program in front may decide; every row must answer exactly as it does without presence.
+  it.each([
+    ['ssh', 'user@prod: ~', undefined],
+    ['vim', 'vim notes.md', undefined],
+    ['python3', 'python3', undefined],
+    ['less', 'git log', undefined],
+    ['tmux', 'tmux', undefined],
+    ['bash', 'user@host: ~/repo', undefined],
+    [null, 'user@host: ~/repo', undefined],
+    [new Error('foreground read failed'), 'user@host: ~/repo', undefined],
+    ['vim', 'zsh', 'working']
+  ] as const)(
+    'matches main with %s in front (title %s, hook %s)',
+    async (foreground, title, explicit) => {
+      const withOwner = terminal({ presence: owner('claude'), title, foreground, explicit })
+      const main = terminal({ presence: undefined, title, foreground, explicit })
+      const mainRunning = await settle(main.presence.isRunning('terminal'))
+      expect(mainRunning).toBe(false)
+      expect(await settle(withOwner.presence.isRunning('terminal'))).toBe(mainRunning)
+      expect(await settle(withOwner.query.getStatus('terminal'))).toEqual(
+        await settle(main.query.getStatus('terminal'))
+      )
+      expect(await sendGuardAnswer(withOwner.query)).toBe('terminal_guard_no_agent')
+      expect(await sendGuardAnswer(main.query)).toBe('terminal_guard_no_agent')
+    }
+  )
+
+  it('keeps the owner under a shell title when the owner itself is in front', async () => {
+    const withOwner = terminal({
+      presence: owner('claude'),
+      title: 'zsh',
+      foreground: 'claude',
+      explicit: 'working'
     })
-    expect(await local.presence.isRunning('terminal')).toBe(true)
+    expect(await settle(withOwner.query.getStatus('terminal'))).toEqual({
+      handle: 'terminal',
+      isRunningAgent: true,
+      status: 'working'
+    })
+    expect(await sendGuardAnswer(withOwner.query)).toBe('sends')
   })
 })

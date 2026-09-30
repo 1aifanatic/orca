@@ -3,7 +3,6 @@ import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import {
   paneEvidenceAgent,
   paneEvidenceCounts,
-  selectLiveOwnerAgent,
   withoutEndedOwnerTitle
 } from '../../shared/ended-agent-owner-evidence'
 import {
@@ -11,7 +10,7 @@ import {
   isExpectedAgentProcess,
   recognizeAgentProcess
 } from '../../shared/agent-process-recognition'
-import { isOpenCodeNativeTitle, isShellProcess } from '../../shared/agent-detection'
+import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isKnownReadyPromptPreview } from './terminal-wait-detection'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
@@ -190,20 +189,16 @@ export class RuntimeTerminalAgentPresence {
     return await this.isForegroundAgent(pty.ptyId, presence, suppressClaude, options)
   }
 
-  /** Presence proves the agent exists; the foreground read still decides who holds the keyboard. */
+  /** Presence proves the agent exists; only the program in front decides who holds the keyboard. */
   private async isForegroundAgent(
     ptyId: string,
     presence: AgentProcessPresence | undefined,
     suppressClaude: boolean,
     options: RuntimeTerminalAgentPresenceOptions
   ): Promise<boolean> {
+    // Why: a live owner never answers for the read. When the owner itself is in front, the
+    // recognition below already says so; any other program (Ctrl-Z then vim, ssh) keeps main's no.
     const foreground = await this.readForegroundProcess(ptyId, options).catch(() => null)
-    const owner = selectLiveOwnerAgent(presence)
-    // Why: a live owner answers only when the read cannot (unavailable, or a name like wsl.exe);
-    // a shell in front, as after Ctrl-Z, still owns the keyboard. Never over a management screen.
-    if (owner && !(foreground && isShellProcess(foreground))) {
-      return !(suppressClaude && owner === 'claude')
-    }
     if (!foreground) {
       return false
     }
