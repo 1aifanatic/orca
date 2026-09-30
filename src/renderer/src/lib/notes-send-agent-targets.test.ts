@@ -82,6 +82,7 @@ function state(
   overrides: Partial<{
     agentStatusByPaneKey: Record<string, AgentStatusEntry>
     tabsByWorktree: Record<string, TerminalTab[]>
+    unifiedTabsByWorktree: NotesSendAgentTargetState['unifiedTabsByWorktree']
     terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot>
     ptyIdsByTabId: Record<string, string[]>
     runtimePaneTitlesByTabId: Record<string, Record<number, string>>
@@ -91,11 +92,12 @@ function state(
   return {
     agentStatusByPaneKey: {},
     tabsByWorktree: { [WORKTREE_ID]: [] },
+    unifiedTabsByWorktree: {},
     terminalLayoutsByTabId,
     ptyIdsByTabId: deriveLivePtyIdsByTabId(terminalLayoutsByTabId),
     runtimePaneTitlesByTabId: {},
     ...overrides
-  } as NotesSendAgentTargetState
+  }
 }
 
 function deriveLivePtyIdsByTabId(
@@ -126,7 +128,7 @@ describe('notes send agent targets', () => {
       {
         paneKey,
         tabId: STATUS_TAB_ID,
-        leafId: LEAF_A,
+        messageTarget: { kind: 'terminal', tabId: STATUS_TAB_ID, leafId: LEAF_A },
         agentType: 'codex',
         tabTitle: 'Terminal 1',
         status: 'eligible'
@@ -194,7 +196,7 @@ describe('notes send agent targets', () => {
       {
         paneKey: makePaneKey(LAUNCH_TAB_ID, LEAF_B),
         tabId: LAUNCH_TAB_ID,
-        leafId: LEAF_B,
+        messageTarget: { kind: 'terminal', tabId: LAUNCH_TAB_ID, leafId: LEAF_B },
         agentType: 'codex',
         tabTitle: 'Terminal 2',
         status: 'eligible'
@@ -219,7 +221,7 @@ describe('notes send agent targets', () => {
       {
         paneKey: makePaneKey(MANUAL_TAB_ID, LEAF_B),
         tabId: MANUAL_TAB_ID,
-        leafId: LEAF_B,
+        messageTarget: { kind: 'terminal', tabId: MANUAL_TAB_ID, leafId: LEAF_B },
         agentType: 'codex',
         tabTitle: 'Terminal 2',
         status: 'eligible'
@@ -411,7 +413,7 @@ describe('notes send agent targets', () => {
     expect(targets).toHaveLength(1)
     expect(targets[0]).toMatchObject({
       tabId: LAUNCH_TAB_ID,
-      leafId: LEAF_A,
+      messageTarget: { kind: 'terminal', tabId: LAUNCH_TAB_ID, leafId: LEAF_A },
       status: 'eligible'
     })
   })
@@ -436,7 +438,7 @@ describe('notes send agent targets', () => {
     expect(targets).toHaveLength(1)
     expect(targets[0]).toMatchObject({
       tabId: MANUAL_TAB_ID,
-      leafId: LEAF_A,
+      messageTarget: { kind: 'terminal', tabId: MANUAL_TAB_ID, leafId: LEAF_A },
       status: 'eligible'
     })
   })
@@ -464,7 +466,7 @@ describe('notes send agent targets', () => {
       {
         paneKey,
         tabId: LAUNCH_TAB_ID,
-        leafId: LEAF_B,
+        messageTarget: { kind: 'terminal', tabId: LAUNCH_TAB_ID, leafId: LEAF_B },
         agentType: 'codex',
         tabTitle: 'Previous Codex session',
         status: 'eligible'
@@ -671,7 +673,7 @@ describe('notes send agent targets', () => {
       {
         paneKey: makePaneKey(MANUAL_TAB_ID, LEAF_B),
         tabId: MANUAL_TAB_ID,
-        leafId: LEAF_B,
+        messageTarget: { kind: 'terminal', tabId: MANUAL_TAB_ID, leafId: LEAF_B },
         agentType: 'opencode',
         tabTitle: 'Terminal 2',
         status: 'eligible'

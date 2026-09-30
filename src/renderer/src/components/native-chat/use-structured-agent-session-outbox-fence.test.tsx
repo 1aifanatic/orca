@@ -4,8 +4,8 @@
 // starts an agent. There, only a Retry or a new send goes out. An older host, which restarts the
 // agent inside the send and refuses it unrecorded when that fails, keeps the resend on a new fence.
 
-import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 
@@ -17,6 +17,9 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+
+// Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
+afterEach(cleanup)
 
 const LOCAL_TARGET = { kind: 'local' } as const
 
