@@ -37,7 +37,7 @@ const TERMINAL_HANDLE = 'term_worker'
 // A structured worker's mailbox address: the handle it was minted.
 const CHAT_WORKER_HANDLE = 'structworker_1'
 // `skill-guides/orchestration.md` on main before chats could orchestrate, plus the one address line.
-const MAIN_KERNEL_LINES = 197 + 1
+const MAIN_KERNEL_LINES = 198 + 1
 
 const db = new OrchestrationDb(':memory:')
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
@@ -100,7 +100,6 @@ async function renderPreamble(worker: 'chat' | 'terminal'): Promise<string> {
     taskId: 'task_1',
     taskSpec: 'do it',
     coordinatorHandle: 'term_coord',
-    dispatchCapability: 'cap',
     devMode: false,
     requestId: 'req_1'
   })
