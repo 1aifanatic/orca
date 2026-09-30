@@ -58,17 +58,25 @@ function snapshot(items: AgentJournalRenderItem[]): AgentSessionSubscribeEvent {
   }
 }
 
+// Module scope: the harness assigns these, which a test body's own `let` would narrow to null.
 let renderer: ReactTestRenderer | null = null
+let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
+let listener: ((value: unknown) => void) | null = null
 afterEach(() => {
   act(() => renderer?.unmount())
   renderer = null
+  hook = null
+  listener = null
 })
 
 it('draws one row for a run of provider retries, with what failed on its second line', async () => {
-  let listener: ((value: unknown) => void) | null = null
-  let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
   const client: RpcClient = {
-    sendRequest: async () => ({ ok: true, result: {}, _meta: { runtimeId: 'runtime-1' } }),
+    sendRequest: async () => ({
+      id: 'request-1',
+      ok: true,
+      result: {},
+      _meta: { runtimeId: 'runtime-1' }
+    }),
     subscribe: (_method, _params, onData) => {
       listener = onData
       return () => {}
