@@ -10,8 +10,13 @@ import type {
   openCodexAppServerConnection
 } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
+import {
+  createCodexTurnOpenWaits,
+  type CodexTurnOpenWaits
+} from './codex-structured-turn-open-wait'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
+import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
 import type { CodexTurnProcessSnapshot } from './codex-structured-turn-processes'
@@ -78,6 +83,8 @@ export type CodexStructuredSessionAdapterDeps = {
     sessionId: string,
     state: AgentSessionBackgroundTaskState | null
   ) => void
+  /** What the session's child work did, delivered after the journal handled the frame. */
+  onChildWorkEvidence?: (sessionId: string, evidence: AgentChildWorkEvidence[]) => void
   /** A send admitted earlier: its identity once Codex echoes it, or its rejection when the turn
    *  Codex answered it into ended without taking it. */
   onDispatchSettledLate?: (
@@ -115,7 +122,11 @@ export type CodexSession = {
   threadId: string
   historyPath: string | null
   historyMode?: 'legacy' | 'paginated'
+  /** Primary-thread turns Codex reported started and not yet ended, as read off the wire: what
+   *  rewind waits out and what a Stop naming no turn interrupts when the journal shows none. */
   activeTurnIds?: Set<string>
+  /** Stops waiting for the turn Codex answered a send into to open. */
+  turnOpenWaits: CodexTurnOpenWaits
   dispatchPending?: boolean
   prompts: CodexAcquisitionWindow['prompts']
   options: Map<string, string>
@@ -146,8 +157,27 @@ export function mintCodexAcquisitionGeneration(deps: CodexStructuredSessionAdapt
 export function codexSessionLifecycle(
   fence: number,
   acquisitionGeneration: string
-): Pick<CodexSession, 'ended' | 'requestedClose' | 'fence' | 'acquisitionGeneration'> {
-  return { ended: false, requestedClose: false, fence, acquisitionGeneration }
+): Pick<
+  CodexSession,
+  'ended' | 'requestedClose' | 'fence' | 'acquisitionGeneration' | 'turnOpenWaits'
+> {
+  return {
+    ended: false,
+    requestedClose: false,
+    fence,
+    acquisitionGeneration,
+    turnOpenWaits: createCodexTurnOpenWaits()
+  }
+}
+
+/** A child that exited while being acquired never becomes the session's. */
+export function assertCodexConnectionOpen(
+  connection: Pick<CodexAppServerConnection, 'closed'>,
+  sessionId: string
+): void {
+  if (connection.closed) {
+    throw new Error(`codex app-server for session ${sessionId} exited while being acquired`)
+  }
 }
 
 export function requireLiveCodexSession(
