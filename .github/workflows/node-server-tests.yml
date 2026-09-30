@@ -144,6 +144,24 @@ jobs:
           echo "ORCA_BUN_ORCAD_SLOT=$RUNNER_TEMP/bun-orcad" >> "$GITHUB_ENV"
           echo "BUN_EXECUTABLE=$(command -v bun)" >> "$GITHUB_ENV"
       - run: pnpm test:node-server --artifact ${{ runner.os == 'Linux' && '--cross-runtime' || '' }}
+      # Only a Windows runner compiles it; arm64 cross-compiles here, as release-cut does for the relay.
+      # Before the Node 18 check below: the build script imports TypeScript, which Node 18 cannot load.
+      - name: Build the Windows process-table addons for the desktop template
+        if: inputs.build_template && matrix.os == 'windows-2022'
+        shell: bash
+        run: |
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+      - name: Keep the Windows process-table addons for the desktop template
+        if: inputs.build_template && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v7
+        with:
+          name: orcad-windows-process-tree
+          path: .build/windows-process-tree/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
       - uses: actions/setup-node@v6
         if: runner.arch == 'X64'
         with:
@@ -165,23 +183,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           # A rerun attempt re-uploads under the same name, which v4 otherwise refuses.
-          overwrite: true
-      # Only a Windows runner compiles it; arm64 cross-compiles here, as release-cut does for the relay.
-      - name: Build the Windows process-table addons for the desktop template
-        if: inputs.build_template && matrix.os == 'windows-2022'
-        shell: bash
-        run: |
-          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
-          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
-      - name: Keep the Windows process-table addons for the desktop template
-        if: inputs.build_template && matrix.os == 'windows-2022'
-        uses: actions/upload-artifact@v7
-        with:
-          name: orcad-windows-process-tree
-          path: .build/windows-process-tree/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
           overwrite: true
 
   linux_glibc_floor:
