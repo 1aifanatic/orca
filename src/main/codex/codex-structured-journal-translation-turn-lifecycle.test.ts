@@ -11,7 +11,7 @@ import {
   readAgentJournalTurn,
   readAgentJournalTurnOutcome
 } from '../../shared/agent-session-turn-record'
-import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import {
   createDeferredStructuredAgentSessionEventSink,
   type StructuredAgentSessionEventSink
@@ -221,7 +221,7 @@ describe('codex turn lifecycle rows', () => {
         providerHandle: { kind: 'codex', threadId: THREAD_ID }
       },
       now: () => 9_000,
-      journalDir: join(root, SESSION_ID)
+      stateDirectory: join(root, SESSION_ID)
     })
     const deferred = createDeferredStructuredAgentSessionEventSink()
     const translator = createCodexJournalTranslator({
@@ -533,8 +533,8 @@ describe('codex turn lifecycle rows', () => {
       })
     ).toEqual({ accepted: true })
 
+    // Each record precedes its turn's items, the order the live path writes.
     expect(tap.rows).toEqual([
-      expect.objectContaining({ body: expect.objectContaining({ kind: 'message' }) }),
       {
         key: 'legacy:codex:session-1:turn-lifecycle%3Aturn-done',
         body: {
@@ -548,6 +548,7 @@ describe('codex turn lifecycle rows', () => {
           durationMs: 41_900
         }
       },
+      expect.objectContaining({ body: expect.objectContaining({ kind: 'message' }) }),
       {
         key: 'legacy:codex:session-1:turn-lifecycle%3Aturn-cut',
         body: {

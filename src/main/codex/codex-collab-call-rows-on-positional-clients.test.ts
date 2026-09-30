@@ -8,8 +8,9 @@ import type {
   AgentJournalItemBody,
   AgentJournalRenderItem
 } from '../../shared/agent-session-journal-types'
-import { foldToolMessages, pairToolBlocks } from '../../shared/native-chat-tool-fold'
+import { pairToolBlocks } from '../../shared/native-chat-tool-fold'
 import { pairNativeChatToolResults } from '../../shared/native-chat-tool-pairing'
+import { projectNativeChatTranscript } from '../../shared/native-chat-transcript-projection'
 import type { NativeChatBlock, NativeChatMessage } from '../../shared/native-chat-types'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -100,7 +101,7 @@ async function publishedRows(frames: Frame[]): Promise<AgentJournalRenderItem[]>
   // The latest revision of each row, in first-written order, as a client's journal holds it.
   const rows = new Map<string, AgentJournalRenderItem>()
   const journal: StructuredAgentSessionEventSink = {
-    appendItem: (identity, body, options = {}) => {
+    appendItem: (identity, body, options) => {
       const itemId = JSON.stringify(identity)
       const previous = rows.get(itemId)
       const sequence = previous?.sequence ?? rows.size + 1
@@ -149,9 +150,14 @@ function positionalRuns(rows: AgentJournalRenderItem[]): {
       return legacy
     })
   })
-  const runs = foldToolMessages(
+  const transcript = projectNativeChatTranscript(
     projectStructuredAgentSessionMessages(rows, [], []).map(withoutCallIds)
-  ).filter((message) => message.blocks.some((block) => block.type === 'tool-call'))
+  )
+  // The conversation's runs, then each helper's section's.
+  const runs = [
+    ...transcript.conversation,
+    ...[...transcript.subagentRows.values()].flat().map((row) => row.message)
+  ].filter((message) => message.blocks.some((block) => block.type === 'tool-call'))
   return {
     mobile: runs.map((message) =>
       pairToolBlocks(message.blocks).map((pair): PairedOutput => [
@@ -214,18 +220,16 @@ describe('Codex collab call rows on a client that pairs results by position', ()
       shell('item/started', THREAD_ID, PARENT_TURN, 'call-parent-shell-2', 'AFTER_CLOSE'),
       shell('item/completed', THREAD_ID, PARENT_TURN, 'call-parent-shell-2', 'AFTER_CLOSE')
     ])
-    // The helper's own shell is its own run, between the parent's two.
+    // The parent's calls are one run; the helper's own shell is in the helper's section.
     const runs = [
       [
         ['spawn_agent', 'Spawned'],
-        ['shell', 'PARENT_DONE']
-      ],
-      [['shell', 'CHILD_DONE']],
-      [
+        ['shell', 'PARENT_DONE'],
         ['wait_agent', 'CHILD_REPLY'],
         ['close_agent', 'Closed'],
         ['shell', 'AFTER_CLOSE']
-      ]
+      ],
+      [['shell', 'CHILD_DONE']]
     ]
     const { mobile, desktop } = positionalRuns(rows)
     expect(mobile).toEqual(runs)

@@ -21,6 +21,8 @@ import { describeToolInput } from './native-chat-tool-summary'
 import { statusStructuredAgentSessionToolCall } from './structured-agent-session-live-turn'
 import {
   hasStructuredAgentSessionRequest,
+  latestStructuredAgentSessionAssistantMessage,
+  latestStructuredAgentSessionPrompt,
   latestStructuredAgentSessionRequest,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
@@ -30,26 +32,17 @@ import {
 } from './structured-agent-session-tool-call-block'
 
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
-import {
-  latestStructuredAgentSessionAssistantMessage,
-  latestStructuredAgentSessionPrompt
-} from './structured-agent-session-latest-messages'
 import { sha256 } from './sha256'
 import { structuredAgentSessionStatusStartedAt } from './structured-agent-session-status-started-at'
 import { owesStructuredAgentSessionWork } from './structured-agent-session-owed-work'
 
-// Re-exported so the live-turn readers', the latest-message readers' and the unanswered-send rule's
-// existing consumers keep one import site.
+// Re-exported so the live-turn readers' and the unanswered-send rule's existing consumers keep one
+// import site.
 export {
   activeStructuredAgentSessionTurnId,
   newestStructuredAgentSessionTurn
 } from './structured-agent-session-live-turn'
 export { hasUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
-export {
-  latestStructuredAgentSessionAssistantMessage,
-  latestStructuredAgentSessionPrompt,
-  latestStructuredAgentSessionUserItem
-} from './structured-agent-session-latest-messages'
 
 function boundedText(payload: { head: string; truncated: boolean; byteLength: number }): string {
   return payload.truncated ? `${payload.head}\n… (${payload.byteLength} bytes)` : payload.head
@@ -143,10 +136,10 @@ function isAgentJournalMessageSendMode(value: string): value is AgentJournalMess
 
 const projectedItems = new WeakMap<AgentJournalRenderItem, NativeChatMessage | null>()
 
-/** Deliberately NOT scoped by producer: the transcript shows every agent's
- *  output, and each message keeps its row's linkage so the transcript can say
- *  whose it is. Every "what is this agent doing right now" scan renders only the
- *  session's own agent's. */
+/** Deliberately NOT scoped by producer: every agent's rows are projected, and
+ *  each message keeps its row's linkage so the transcript can keep a subagent's
+ *  rows with that subagent. Every "what is this agent doing right now" scan
+ *  renders only the session's own agent's. */
 export function projectStructuredItemsToNativeChat(
   items: readonly AgentJournalRenderItem[]
 ): NativeChatMessage[] {
