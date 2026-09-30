@@ -41,8 +41,10 @@ export function probeSocketConnect(
     }
     const sock = connect({ path: socketPath })
     let settled = false
+    let timeoutReport: NodeJS.Immediate | undefined
     const cleanup = (): void => {
       clearTimeout(timer)
+      clearImmediate(timeoutReport)
       sock.off('connect', onConnect)
       sock.off('error', onError)
     }
@@ -74,8 +76,12 @@ export function probeSocketConnect(
       )
     }
     const timer = setTimeout(() => {
-      settle('unknown')
-      sock.destroy()
+      // Why a turn later: after a main-thread stall, expired timers run before the I/O poll, so a
+      // connect that completed during the stall is only seen after this callback.
+      timeoutReport = setImmediate(() => {
+        settle('unknown')
+        sock.destroy()
+      })
     }, timeoutMs)
     sock.on('connect', onConnect)
     sock.on('error', onError)
