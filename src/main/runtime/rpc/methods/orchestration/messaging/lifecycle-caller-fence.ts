@@ -34,7 +34,7 @@ export function assertLifecycleCallerIsNotAnotherParty(
     ? 'a Run coordinator'
     : db.getActiveDispatchForIdentity(callerHandle, callerPaneKey) ||
         db.findActiveRemoteAttachmentForPane(callerPaneKey)
-      ? 'the worker of another Dispatch'
+      ? 'a Dispatch worker'
       : undefined
   if (party) {
     throw new OrchestrationError(
