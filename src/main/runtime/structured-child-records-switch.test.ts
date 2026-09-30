@@ -23,9 +23,11 @@ import type {
   openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
 import { AgentHookServer, _internals } from '../agent-hooks/server'
+import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import {
   HOST_TEST_SESSION as SESSION,
-  hostTestAttachParams
+  hostTestAttachParams,
+  hostTestMessage
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import type { StructuredAgentSessionStatusSink } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import {
@@ -129,9 +131,9 @@ describe('the chat strip and the session list read the same host child records',
     })
     const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
     attachParams.envelope.clientOperationId = `${Date.now()}-${'1'.padStart(32, '0')}`
-    expect(await host.attach({ callerKey: 'switch-test' }, attachParams)).toMatchObject({
-      ok: true
-    })
+    const attached = await host.attach({ callerKey: 'switch-test' }, attachParams)
+    expect(attached).toMatchObject({ ok: true })
+    const fence = attached.ok ? attached.value.fence : 0
     const summaries: AgentSessionStatusSummary[] = []
     host.subscribeStatus({
       id: 'session-list',
@@ -307,9 +309,37 @@ describe('the chat strip and the session list read the same host child records',
       }
     ])
 
+    // A turn nobody sent retires nothing: only the user's next message does.
+    await notify('turn/started', { threadId: THREAD, turn: { id: 'p-own', status: 'inProgress' } })
+    await notify('turn/completed', { threadId: THREAD, turn: { id: 'p-own', status: 'completed' } })
+    expect(stripRows()).toHaveLength(1)
+    // The user's next message, which Codex takes into its next turn.
+    const body = hostTestMessage('check it again')
+    const clientOperationId = `${Date.now()}-${'2'.padStart(32, '0')}`
+    await host.send(
+      { callerKey: 'switch-test' },
+      {
+        envelope: {
+          sessionId: SESSION,
+          clientOperationId,
+          expectedRuntimeFence: fence,
+          payloadFingerprint: computeAgentSessionPayloadFingerprint({
+            method: 'agentSession.send',
+            sessionId: SESSION,
+            fields: { body }
+          })
+        },
+        body
+      }
+    )
     await notify('turn/started', { threadId: THREAD, turn: { id: 'p2', status: 'inProgress' } })
+    await notify('item/started', {
+      threadId: THREAD,
+      turn: { id: 'p2' },
+      item: { type: 'userMessage', id: 'user-2', clientId: clientOperationId }
+    })
+    await vi.waitFor(() => expect(strip.at(-1)).toBeNull())
     expect(summaries.at(-1)).not.toHaveProperty('children')
-    expect(strip.at(-1)).toBeNull()
 
     // The reviewer's next run is still going when the provider exits: it settles with an outcome
     // nobody reported, and leaves the sidebar while the strip keeps listing it.

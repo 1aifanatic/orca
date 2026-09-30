@@ -1,10 +1,10 @@
 // The status feed's per-journal projection, cached per commit: what a session's journal says its
-// row is, and the newest root turn it holds.
+// row is, and the user's newest send the provider accepted.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { newestRootTurnId } from './structured-agent-session-status-child-work'
+import { newestAcceptedSendKey } from './structured-agent-session-status-child-work'
 
 export type StructuredAgentSessionStatusState = ReturnType<
   typeof projectStructuredAgentSessionStatusState
@@ -16,7 +16,8 @@ export type StructuredAgentSessionJournalProjection = {
   readOnly: boolean
   fence: number | undefined
   state: StructuredAgentSessionStatusState
-  rootTurnId: string | null
+  /** Null for an unreadable journal, which says nothing about the user's turns. */
+  acceptedSendKey: string | null
 }
 
 export class StructuredAgentSessionJournalProjections {
@@ -55,7 +56,7 @@ export class StructuredAgentSessionJournalProjections {
           snapshot?.submissions ?? [],
           fence
         ),
-        rootTurnId: newestRootTurnId(snapshot?.items ?? [])
+        acceptedSendKey: snapshot ? newestAcceptedSendKey(cursor.epoch, snapshot.submissions) : null
       }
       this.byJournal.set(journal, projection)
     }

@@ -267,7 +267,7 @@ describe('structured status summary child records', () => {
     expect(lastSummary(events)?.children).toEqual([childView()])
   })
 
-  it("retires finished children when the session's own next turn begins", async () => {
+  it("retires finished children at the user's next accepted send, not at a turn nobody sent", async () => {
     const { journal, feed, admitted } = await feedWithChildren()
     const turn = (turnId: string, state: 'running' | 'completed', agentId?: string) =>
       journal.appendItem(
@@ -275,22 +275,51 @@ describe('structured status summary child records', () => {
         { kind: 'turn', turnId, state },
         { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE, ...(agentId ? { agentId } : {}) }
       )
+    const send = async (clientMessageId: string) => {
+      await journal.appendSubmission({
+        clientMessageId,
+        payloadFingerprint: clientMessageId,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] },
+        fence: 1
+      })
+      feed.publish(SESSION)
+    }
+    const accept = async (clientMessageId: string) => {
+      await journal.resolveDispatch({
+        clientMessageId,
+        state: 'accepted',
+        providerIdentity: { ...USER_IDENTITY, ordinal: USER_IDENTITY.ordinal + 1 },
+        fence: 1
+      })
+      feed.publish(SESSION)
+    }
     const retirements = () => admitted.flat().filter((edge) => edge.type === 'turn-started')
-    // The session was first projected before it had a turn, so its first turn is a new one.
+    feed.publish(SESSION)
+    await send('send-1')
+    // Written but not taken: the provider may still refuse it.
+    expect(retirements()).toHaveLength(0)
+    await accept('send-1')
+    expect(retirements()).toHaveLength(1)
     await turn('turn-1', 'running')
     feed.publish(SESSION)
-    expect(retirements()).toHaveLength(1)
     await turn('turn-1', 'completed')
     feed.publish(SESSION)
-    // A subagent's own turn is not the session's.
+    // Neither a subagent's turn nor a turn the provider opened on its own is the user's.
     await turn('child-turn', 'running', 'child-thread')
+    feed.publish(SESSION)
+    await turn('wake-turn', 'running')
     feed.publish(SESSION)
     expect(retirements()).toHaveLength(1)
 
-    await turn('turn-2', 'running')
-    feed.publish(SESSION)
+    await send('send-2')
+    await accept('send-2')
     feed.publish(SESSION)
     expect(retirements()).toHaveLength(2)
+
+    // A rewind replaces the conversation, as the user's own action.
+    await journal.replaceEpochItems('handle_forked', 1, [])
+    feed.publish(SESSION)
+    expect(retirements()).toHaveLength(3)
   })
 
   it("forgets a closed session's children in the projection it keeps", async () => {

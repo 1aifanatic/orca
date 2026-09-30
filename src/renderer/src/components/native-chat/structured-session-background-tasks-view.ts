@@ -6,7 +6,7 @@
 // mounted through a running turn — turn state is not a filter on the rows,
 // because the producers publish only tasks they still have live evidence for.
 // A host that publishes its child records also keeps a finished child listed,
-// with how it ended, until the session's next turn. Only an idle session with
+// with how it ended, until the user's next turn. Only an idle session with
 // live work lets the strip animate or speak for itself.
 
 import type {
@@ -15,7 +15,6 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import { agentChildWorkLiveness } from '../../../../shared/agent-status-child-work-liveness'
 import type { AgentChildWorkView } from '../../../../shared/agent-status-child-work-view'
-import { decodeAgentChildWorkViews } from '../../../../shared/agent-status-child-work-view-wire'
 
 export type StructuredSessionBackgroundTasksView = {
   /** The strip renders whenever the host reports rows — mid-turn included. */
@@ -36,7 +35,8 @@ export function structuredSessionBackgroundTasksView(
   turnId: string | null
 ): StructuredSessionBackgroundTasksView {
   const monitoring = backgroundTasks?.state === 'monitoring'
-  const children = monitoring ? decodeAgentChildWorkViews(backgroundTasks.children) : undefined
+  // Decoded once where the frame entered the client's state, so its identity holds between frames.
+  const children = monitoring ? backgroundTasks.children : undefined
   // A roster of finished children is shown, but nothing in it is running.
   const liveWork = children ? agentChildWorkLiveness(children) !== null : monitoring
   return {

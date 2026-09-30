@@ -7,9 +7,7 @@
 // open chat subscribes to, carries every tick.
 
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
-import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
-import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
-import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentChildWorkViewsEqual } from '../../../shared/agent-status-child-work-view-wire'
@@ -54,14 +52,14 @@ export function structuredStatusChildrenEqual(
   return agentChildWorkViewsEqual(a, b, SUMMARY_CHILD_CLOCK_TOLERANCE_MS)
 }
 
-/** The session's own newest turn, whatever state it is in; a subagent's rows never count. */
-export function newestRootTurnId(items: readonly AgentJournalRenderItem[]): string | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]
-    const turn = isRootAgentJournalItem(item) ? readAgentJournalTurn(item?.body) : null
-    if (turn) {
-      return turn.turnId
-    }
-  }
-  return null
+/** The user's newest send the provider accepted (a message, a steer or a command), keyed by the
+ *  journal epoch: its change is the user's next turn. A turn the provider opens itself, such as
+ *  Claude waking the agent when a background task ends, carries no send, and a subagent's turn is
+ *  never one; a rewind replaces the epoch. */
+export function newestAcceptedSendKey(
+  epoch: string,
+  submissions: readonly AgentJournalSubmission[]
+): string {
+  const accepted = submissions.findLast((submission) => submission.dispatchState === 'accepted')
+  return `${epoch}:${accepted?.clientMessageId ?? ''}`
 }

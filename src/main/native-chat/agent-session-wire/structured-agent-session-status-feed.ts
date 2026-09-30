@@ -97,8 +97,9 @@ export class StructuredAgentSessionStatusFeed {
   )
   private readonly subscribers = new Map<string, StructuredAgentSessionStatusSubscriber>()
   private readonly published = new Map<string, AgentSessionStatusSummary>()
-  /** The newest root turn each session was last projected with; a new one retires settled children. */
-  private readonly rootTurns = new Map<string, string | null>()
+  /** The user's newest accepted send each session was last projected with; a new one retires
+   *  settled children. */
+  private readonly acceptedSends = new Map<string, string | null>()
   private readonly projections = new StructuredAgentSessionJournalProjections()
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
@@ -126,7 +127,7 @@ export class StructuredAgentSessionStatusFeed {
   /** The sink lists what is running; a forgotten session must not be in it. Its child records
    *  leave the store with its row, and the retained projection re-reads them like any summary. */
   forget(sessionId: string): void {
-    this.rootTurns.delete(sessionId)
+    this.acceptedSends.delete(sessionId)
     try {
       this.ownership.forget(sessionId)
     } catch (error) {
@@ -195,7 +196,7 @@ export class StructuredAgentSessionStatusFeed {
     const source = journal ?? session.journal
     const record = this.deps.getRecord(sessionId)
     const projection = this.projections.read(source, record)
-    this.retireSettledChildrenOnNewTurn(sessionId, session, projection.rootTurnId)
+    this.retireSettledChildrenOnNewTurn(sessionId, session, projection.acceptedSendKey)
     const summary = this.summaryFor(sessionId, session, source, record, projection.state)
     const previous = this.published.get(sessionId)
     if (previous && structuredStatusSummariesEqual(previous, summary)) {
@@ -218,8 +219,8 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
-  /** A finished child's record stays, with its outcome, until the session's own next turn begins,
-   *  unless it still owns live work. The provider ending the session removes nothing: children
+  /** A finished child's record stays, with its outcome, until the user's next turn: the next send
+   *  the provider accepts (see `newestAcceptedSendKey`), unless it still owns live work. The provider ending the session removes nothing: children
    *  still live settle `unknown`, and settled ones stay. The one earlier death is the host letting
    *  go of the session, whose row takes every child record with it (see `forget`). Nothing caps how
    *  many records a turn keeps, and a command never settles: its record goes when it stops. What
@@ -228,12 +229,12 @@ export class StructuredAgentSessionStatusFeed {
   private retireSettledChildrenOnNewTurn(
     sessionId: string,
     session: StatusFeedSession,
-    rootTurnId: string | null
+    acceptedSendKey: string | null
   ): void {
-    const seen = this.rootTurns.has(sessionId)
-    const previous = this.rootTurns.get(sessionId)
-    this.rootTurns.set(sessionId, rootTurnId)
-    if (!seen || rootTurnId === null || rootTurnId === previous) {
+    const seen = this.acceptedSends.has(sessionId)
+    const previous = this.acceptedSends.get(sessionId)
+    this.acceptedSends.set(sessionId, acceptedSendKey)
+    if (!seen || acceptedSendKey === null || acceptedSendKey === previous) {
       return
     }
     this.admitChildWork(sessionId, session, [{ type: 'turn-started', observedAt: this.deps.now() }])

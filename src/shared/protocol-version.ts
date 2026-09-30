@@ -245,7 +245,7 @@ export const AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY =
 export const AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY =
   'agent-session.background-task-row-stop.v1' as const
 // Why: the strip's roster now carries the host's child records, and keeps a finished child listed
-// until the parent's next turn. A reader that predates it reads any roster as live work (it
+// until the user's next turn. A reader that predates it reads any roster as live work (it
 // animates the monitoring indicator and blocks conversation commands), so it never receives one
 // whose rows are all settled.
 export const AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY =
