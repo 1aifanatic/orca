@@ -1,9 +1,11 @@
-// Codex 0.157's turn bookkeeping as `turn/start` and `turn/interrupt` see it, for
-// tests. From app-server `turn_processor.rs`: `turn/start` picks the turn before it
+// Codex 0.157's turn bookkeeping as `turn/start`, `turn/steer` and `turn/interrupt` see
+// it, for tests. From app-server `turn_processor.rs`: `turn/start` picks the turn before it
 // answers, a send while a turn is open is steered into it under the same id with no
-// second `turn/started`, and `turn_interrupt_inner` refuses with -32600 until the
+// second `turn/started`, `turn/steer` refuses with -32600 unless its `expectedTurnId` is
+// the running turn, and `turn_interrupt_inner` refuses with -32600 until the
 // turn has started. The answer can be held, so a test can deliver it after the
-// turn's own frames, as the wire allows.
+// turn's own frames, as the wire allows. `legacyStartAnswers` is a Codex before 0.148,
+// whose `turn/start` answers a steered send with its submission id, a turn that never opens.
 
 import { CodexAppServerRequestError } from './codex-app-server-connection'
 
@@ -12,6 +14,7 @@ type Notify = (method: string, params: unknown) => void
 export type CodexTurnLifecycleFake = {
   routes: {
     'turn/start': () => unknown
+    'turn/steer': (params: Record<string, unknown> | undefined) => unknown
     'turn/interrupt': (params: Record<string, unknown> | undefined) => unknown
   }
   /** The next `turn/start` answer waits until the returned release runs. */
@@ -25,18 +28,19 @@ export type CodexTurnLifecycleFake = {
   readonly turnId: string | null
 }
 
-function refusal(message: string): CodexAppServerRequestError {
+function refusal(method: string, message: string): CodexAppServerRequestError {
   return new CodexAppServerRequestError(
-    'turn/interrupt',
+    method,
     -32600,
-    `codex app-server turn/interrupt failed: ${message}`,
+    `codex app-server ${method} failed: ${message}`,
     message
   )
 }
 
 export function codexTurnLifecycleFake(
   threadId: string,
-  notify: () => Notify
+  notify: () => Notify,
+  options: { legacyStartAnswers?: boolean } = {}
 ): CodexTurnLifecycleFake {
   let minted = 0
   let echoes = 0
@@ -58,18 +62,36 @@ export function codexTurnLifecycleFake(
         const turnId = active ?? picked ?? `turn-${++minted}`
         picked ??= active ? null : turnId
         lastTurn = turnId
-        const answer = { turn: { id: turnId, status: 'inProgress' } }
+        const answeredId = options.legacyStartAnswers && active ? `turn-${++minted}` : turnId
+        const answer = { turn: { id: answeredId, status: 'inProgress' } }
         const wait = held
         held = null
         return wait ? wait.then(() => answer) : answer
       },
+      'turn/steer': (params) => {
+        const running = active ?? picked
+        if (!running) {
+          throw refusal('turn/steer', 'no active turn to steer')
+        }
+        if (params?.expectedTurnId !== running) {
+          throw refusal(
+            'turn/steer',
+            `expected active turn id \`${String(params?.expectedTurnId)}\` but found \`${running}\``
+          )
+        }
+        lastTurn = running
+        return { turnId: running }
+      },
       'turn/interrupt': (params) => {
         const turnId = params?.turnId
         if (!active) {
-          throw refusal('no active turn to interrupt')
+          throw refusal('turn/interrupt', 'no active turn to interrupt')
         }
         if (active !== turnId) {
-          throw refusal(`expected active turn id ${String(turnId)} but found ${active}`)
+          throw refusal(
+            'turn/interrupt',
+            `expected active turn id ${String(turnId)} but found ${active}`
+          )
         }
         // Codex answers the interrupt once the turn has aborted.
         finish(active, 'interrupted')

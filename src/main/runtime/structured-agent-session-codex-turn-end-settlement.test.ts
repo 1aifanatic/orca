@@ -1,8 +1,9 @@
 // A Codex send the turn it went into never took: the Stop that interrupts that turn
-// withdraws it, and nothing reads as working after. A Stop sent before Codex opens that
-// turn waits for it to open, since Codex refuses an interrupt until then. Driven through the shipped host,
-// journal and Codex adapter; only the Codex child is fake, keeping Codex 0.157's
-// turn bookkeeping.
+// withdraws it, and nothing reads as working after. A send made while that turn runs, a
+// queued card's Send-now included, goes in as `turn/steer` naming it. A Stop sent before
+// Codex opens that turn waits for it to open, since Codex refuses an interrupt until then.
+// Driven through the shipped host, journal and Codex adapter; only the Codex child is fake,
+// keeping Codex 0.157's turn bookkeeping.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -48,6 +49,7 @@ let host: StructuredAgentSessionHost
 let fence: number
 let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
+let steers: number
 let interrupts: number
 let childCloses: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
@@ -76,6 +78,30 @@ async function send(text: string): Promise<string> {
     throw new Error(JSON.stringify(sent.refusal))
   }
   return sent.value.clientMessageId
+}
+
+/** A mid-turn send held as a card, then that card's Send-now; resolves with the send it made. */
+async function queueThenSendNow(text: string): Promise<{ messageId: string; sent: string }> {
+  const body = hostTestMessage(text)
+  const delivery = 'queue-if-active' as const
+  const queued = await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body, delivery }),
+    body,
+    delivery,
+    userSend: true
+  })
+  if (!queued.ok || !('queued' in queued.value)) {
+    throw new Error(`expected a queued card: ${JSON.stringify(queued)}`)
+  }
+  const { messageId } = queued.value.queued
+  const sentNow = await host.queuedMessageSend(CALLER, {
+    envelope: envelope('agentSession.queuedMessageSend', { messageId }),
+    messageId
+  })
+  if (!sentNow.ok) {
+    throw new Error(JSON.stringify(sentNow.refusal))
+  }
+  return { messageId, sent: sentNow.value.clientMessageId }
 }
 
 async function stop(turnId?: string): Promise<void> {
@@ -111,6 +137,7 @@ function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessage
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-turn-end-'))
   answers = 0
+  steers = 0
   interrupts = 0
   childCloses = 0
   turns = codexTurnLifecycleFake(
@@ -135,6 +162,10 @@ beforeEach(async () => {
         if (method === 'turn/start') {
           answers += 1
           return turns.routes['turn/start']()
+        }
+        if (method === 'turn/steer') {
+          steers += 1
+          return turns.routes['turn/steer'](params)
         }
         if (method === 'turn/interrupt') {
           interrupts += 1
@@ -207,8 +238,9 @@ describe('a Codex send its turn ended without taking it', () => {
     turns.start()
     turns.echo(opening)
     const followUp = await send('and check the tests')
-    // Steered: Codex answers with the running turn, and fires no second turn/started.
-    await vi.waitFor(() => expect(answers).toBe(2))
+    // Steered into the running turn by name, which fires no second turn/started.
+    await vi.waitFor(() => expect(steers).toBe(1))
+    expect(answers).toBe(1)
 
     await stop('turn-1')
 
@@ -219,6 +251,54 @@ describe('a Codex send its turn ended without taking it', () => {
     expect(verdictOf(after.submissions, opening)).toBe('accepted')
     expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
     expect(after.owesWork).toBe(false)
+  })
+})
+
+describe("a queued card's Send-now while a Codex turn runs", () => {
+  async function runningTurn(): Promise<void> {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+  }
+
+  it('goes into that turn as turn/steer, and the turn settles it when Codex echoes it', async () => {
+    await runningTurn()
+
+    const { messageId, sent } = await queueThenSendNow('and check the tests')
+
+    await vi.waitFor(() => expect(steers).toBe(1))
+    expect(answers).toBe(1)
+    const handedOver = (await settled()).submissions.find((entry) => entry.clientMessageId === sent)
+    expect(handedOver).toMatchObject({ queuedMessageId: messageId, dispatchState: 'pending' })
+    turns.echo(sent)
+    turns.end('completed')
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).toBe('accepted')
+    )
+    expect((await settled()).owesWork).toBe(false)
+  })
+
+  it('is withdrawn when a Stop ends that turn, on a Codex that names a steered start falsely', async () => {
+    // Before 0.148, a steered turn/start answers with an id no turn opens or ends under,
+    // so only the steer's own answer names the turn whose end settles the send.
+    turns = codexTurnLifecycleFake(
+      THREAD,
+      () => (method, params) => handlers?.onNotification?.(method, params),
+      { legacyStartAnswers: true }
+    )
+    await runningTurn()
+
+    const { sent } = await queueThenSendNow('and check the tests')
+    await vi.waitFor(() => expect(steers + answers).toBe(2))
+
+    await stop('turn-1')
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    )
+    expect(steers).toBe(1)
   })
 })
 

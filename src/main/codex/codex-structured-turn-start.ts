@@ -16,12 +16,12 @@ import {
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 
 // Writing a Codex turn and learning which message landed where, which are not
-// the same event. `turn/start` answers as soon as Codex owns the message, but a
-// message issued while a turn is running is COALESCED into that turn: the same
-// turn id comes back, no second `turn/started` fires, and the user message is
-// echoed only when the running turn reaches it. So the response proves
-// admission and nothing about identity, which the echo settles later. The turn
-// it names is kept with the send, so that turn's end can settle it.
+// the same event. The answer proves admission and nothing about identity, which
+// the echo settles later; the turn it names is kept with the send, so that
+// turn's end can settle it. A message sent while a turn is running goes in as
+// `turn/steer` naming that turn, so the answer names the turn that carries it.
+// `turn/start` would also steer it, with no second `turn/started`, but a Codex
+// before 0.148 answers that with an id no turn ever opens or ends under.
 
 /** Keys Codex accepts as per-turn overrides. An unlisted key would otherwise
  *  become an arbitrary client-controlled `turn/start` parameter. Permission posture is owned by
@@ -47,6 +47,7 @@ export type CodexTurnHost = {
   reportedOptions?: { model?: string }
   fastModeTierByModel: ReadonlyMap<string, string>
   dispatchEchoes: CodexDispatchEchoes
+  activeTurnIds?: ReadonlySet<string>
 }
 
 function turnInputFor(body: AgentJournalMessageItem): Record<string, unknown>[] {
@@ -91,6 +92,36 @@ function codexTurnOptions(host: CodexTurnHost): Record<string, string> {
 }
 
 /**
+ * Steers a send into the turn Codex last reported running. Null when Codex refused the steer,
+ * which it does before taking any input: that turn ended or changed, it cannot be steered, or
+ * this Codex has no `turn/steer`. Per-turn options ride on the next `turn/start`.
+ */
+async function steerCodexTurn(
+  host: CodexTurnHost,
+  expectedTurnId: string,
+  input: { clientMessageId: string; body: AgentJournalMessageItem; timeoutMs?: number }
+): Promise<{ turnId: string } | null> {
+  try {
+    const answer = await host.connection.request(
+      'turn/steer',
+      {
+        threadId: host.threadId,
+        expectedTurnId,
+        clientUserMessageId: input.clientMessageId,
+        input: turnInputFor(input.body)
+      },
+      { timeoutMs: input.timeoutMs }
+    )
+    return { turnId: readCodexTurnId(answer) ?? expectedTurnId }
+  } catch (error) {
+    if (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error)) {
+      return null
+    }
+    throw error
+  }
+}
+
+/**
  * Hands one submission to Codex. False means the bounded correlation window
  * refused it before the write; otherwise resolves with the turn Codex answered
  * it into, or null when the answer named none.
@@ -109,6 +140,11 @@ export async function startCodexTurn(
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
     return false
   }
+  const runningTurnId = [...(host.activeTurnIds ?? [])].at(-1)
+  const steered = runningTurnId ? await steerCodexTurn(host, runningTurnId, input) : null
+  if (steered) {
+    return steered
+  }
   const answer = await host.connection.request(
     'turn/start',
     {
@@ -126,7 +162,7 @@ export async function startCodexTurn(
  * One submission's outcome as the wire must read it: admitted means Codex owns
  * the message and its identity settles on the echo, rejected is Codex answering
  * and declining. Elapsed time is never evidence here, because the wait a
- * coalesced send would face is bounded only by the running turn.
+ * steered send would face is bounded only by the running turn.
  */
 export async function dispatchCodexTurn(
   session: CodexTurnHost,
