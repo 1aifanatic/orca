@@ -9,6 +9,7 @@ import {
   utimesSync,
   writeFileSync
 } from 'node:fs'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -171,7 +172,7 @@ posixOnly('gcRemoteNodeRuntimeStore (real shell)', () => {
     writeFileSync(join(versionDir('orcad-0.1.0+aaa'), '.runtime-node'), `${sha('c')}\n`)
     writeFileSync(join(versionDir('relay-0.1.0+aaa'), `${RUNTIME_REF_NODE_PREFIX}${sha('d')}`), '')
     running = spawn(join(running_, 'bin', 'node'), [], { stdio: 'ignore' })
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    await once(running, 'spawn')
 
     const result = await gcRemoteNodeRuntimeStore(conn, host, home, { currentPins: [sha('a')] })
 
@@ -198,7 +199,7 @@ posixOnly('gcRemoteNodeRuntimeStore (real shell)', () => {
     symlinkSync(home, alias)
     try {
       running = spawn(join(held, 'bin', 'node'), [], { stdio: 'ignore' })
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await once(running, 'spawn')
 
       const result = await gcRemoteNodeRuntimeStore(conn, host, alias, { currentPins: [sha('a')] })
 
