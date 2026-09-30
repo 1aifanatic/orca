@@ -201,4 +201,28 @@ describe('real-home user hook trust rebasing', () => {
       )
     }
   )
+
+  // Why: Codex's own writes spell the key path quoted (#22592); a missed spelling here leaves a stale table.
+  it.skipIf(process.platform === 'win32')(
+    'moves a block in Codex quoted spelling verbatim, leaving no second table behind',
+    () => {
+      const orca = command('orca-hook')
+      const user = command('user-hook')
+      const userBody = 'enabled = false\ntrusted_hash = "sha256:written-by-codex"'
+      const unrelated = ['model = "user-model"', '', '["hooks"."state"]', ''].join('\n')
+      writeFileSync(
+        configPath,
+        `${unrelated}\n["hooks"."state"."${hooksPath}:stop:1:0"]\n${userBody}\n`
+      )
+
+      mutate({ Stop: [{ hooks: [orca] }, { hooks: [user] }] }, { Stop: [{ hooks: [user] }] })
+
+      const after = readFileSync(configPath, 'utf-8')
+      expect(after).toBe(`${unrelated}\n[hooks.state."${hooksPath}:stop:0:0"]\n${userBody}\n`)
+      expect(readHookTrustEntries(configPath).get(computeTrustKey(stopEntry(0, user)))).toEqual({
+        trustedHash: 'sha256:written-by-codex',
+        enabled: false
+      })
+    }
+  )
 })
