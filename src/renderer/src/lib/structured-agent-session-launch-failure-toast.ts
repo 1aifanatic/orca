@@ -13,7 +13,11 @@ export function trackStructuredLaunchFailureToast(
   launchResult: Promise<StructuredAgentLaunchReceipt>
 ): void {
   void launchResult.catch(async (error) => {
-    if (error instanceof StructuredAgentSessionLaunchCancelledError) {
+    // The terminal a declining paired server opens instead carries its own notice.
+    if (
+      error instanceof StructuredAgentSessionLaunchCancelledError ||
+      (error instanceof Error && 'opensTerminal' in error && error.opensTerminal === true)
+    ) {
       return
     }
     const agentLabel = structuredAgentLabel(agent)

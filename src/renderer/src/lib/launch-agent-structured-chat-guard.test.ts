@@ -140,12 +140,18 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 }))
 vi.mock('@/lib/launch-structured-agent-session', () => {
   class StructuredAgentSessionCreateRefusalError extends Error {}
+  class StructuredAgentSessionHostDeclinedError extends StructuredAgentSessionCreateRefusalError {}
+  class StructuredAgentSessionHostUnreachableError extends StructuredAgentSessionCreateRefusalError {}
+  class StructuredAgentSessionOwnerUnresolvedError extends Error {}
   return {
     createStructuredAgentSessionLaunchIntent: mockCreateStructuredCodexSessionLaunchIntent,
     abandonStructuredAgentSessionLaunchIntent: mockAbandonStructuredAgentSessionLaunchIntent,
     retryStructuredAgentSessionLaunchIntent: mockRetryStructuredAgentSessionLaunchIntent,
     launchStructuredAgentSession: mockLaunchStructuredCodexSession,
-    StructuredAgentSessionCreateRefusalError
+    StructuredAgentSessionCreateRefusalError,
+    StructuredAgentSessionHostDeclinedError,
+    StructuredAgentSessionHostUnreachableError,
+    StructuredAgentSessionOwnerUnresolvedError
   }
 })
 vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({

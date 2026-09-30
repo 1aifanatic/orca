@@ -17657,6 +17657,8 @@
       },
       "structuredSessionLaunchFailed": "{{value0}} チャットを開けませんでした",
       "structuredSessionLaunchFailedDescription": "Orca は構造化された {{value0}} チャットを開けませんでした。詳細についてはログを参照してください。",
+      "structuredSessionHostDeclined": "{{value0}} をターミナルで開きました",
+      "structuredSessionHostDeclinedDescription": "このサーバーはこのワークスペースで {{value0}} チャットを実行できません。",
       "subagents": {
         "state": {
           "completed": "完成した",

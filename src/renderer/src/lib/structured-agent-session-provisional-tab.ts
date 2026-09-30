@@ -11,6 +11,7 @@ import type {
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import { replaceUnstartedStructuredChat } from '@/lib/structured-agent-session-unstarted-launch'
 
 export type StructuredAgentSessionProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
 
@@ -77,17 +78,26 @@ export function beginStructuredAgentSessionProvisionalLaunch(args: {
       handle.cancel()
       return null
     }
-    return {
-      ...handle,
-      tab: openStructuredAgentSessionProvisionalTab({
-        worktreeId,
-        executionHostId: handle.executionHostId,
-        sessionId: handle.sessionId,
-        agent: args.plan.agent,
-        ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
-        ...(args.activate !== undefined ? { activate: args.activate } : {})
-      })
-    }
+    const tab = openStructuredAgentSessionProvisionalTab({
+      worktreeId,
+      executionHostId: handle.executionHostId,
+      sessionId: handle.sessionId,
+      agent: args.plan.agent,
+      ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
+      ...(args.activate !== undefined ? { activate: args.activate } : {})
+    })
+    void handle.settlement.then((settlement) => {
+      if (settlement.kind === 'failed') {
+        replaceUnstartedStructuredChat({
+          plan: args.plan,
+          worktreeId,
+          tabId: tab.id,
+          sessionId: handle.sessionId,
+          error: settlement.error
+        })
+      }
+    })
+    return { ...handle, tab }
   } catch (error) {
     // Why: a launch without its owning surface would strand a late publication.
     handle.cancel()

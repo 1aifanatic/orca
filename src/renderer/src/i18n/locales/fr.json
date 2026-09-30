@@ -17721,6 +17721,8 @@
       },
       "structuredSessionLaunchFailed": "Impossible d'ouvrir le chat {{value0}}",
       "structuredSessionLaunchFailedDescription": "Orca n'a pas pu ouvrir une discussion structurée {{value0}}. Consultez les journaux pour plus de détails.",
+      "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
+      "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",
       "subagents": {
         "state": {
           "completed": "complété",

@@ -9,6 +9,8 @@ import {
   retryStructuredAgentSessionLaunchIntent,
   StructuredAgentSessionCreateRefusalError,
   StructuredAgentSessionCreateUnknownOutcomeError,
+  StructuredAgentSessionHostDeclinedError,
+  StructuredAgentSessionHostUnreachableError,
   StructuredAgentSessionOwnerUnresolvedError
 } from './launch-structured-agent-session'
 
@@ -230,15 +232,34 @@ describe('structured agent session launch', () => {
     }
   )
 
-  it('keeps an unanswered create support probe recoverable', async () => {
+  // createSupport only reads, so a host that could not be asked holds no session to reconcile.
+  it('fails an unanswered create support probe before anything is created', async () => {
     vi.mocked(callStructuredAgentSession).mockRejectedValue(new Error('runtime unreachable'))
 
     const intent = createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
 
     await expect(launchStructuredAgentSession(intent)).rejects.toBeInstanceOf(
-      StructuredAgentSessionCreateUnknownOutcomeError
+      StructuredAgentSessionHostUnreachableError
     )
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
+  })
+
+  it('opens a terminal only for a paired server that declines, not for this machine', async () => {
+    vi.mocked(callStructuredAgentSession).mockResolvedValue({ supported: false, reason: 'wsl' })
+
+    const paired = launchStructuredAgentSession(
+      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'runtime:server-1')
+    )
+    await expect(paired).rejects.toBeInstanceOf(StructuredAgentSessionHostDeclinedError)
+    await expect(paired).rejects.toMatchObject({ opensTerminal: true })
+    const local = launchStructuredAgentSession(
+      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'local')
+    )
+    await expect(local).rejects.toMatchObject({ opensTerminal: false })
+    expect(vi.mocked(callStructuredAgentSession).mock.calls.map(([, method]) => method)).toEqual([
+      'agentSession.createSupport',
+      'agentSession.createSupport'
+    ])
   })
 
   /** A worktree is not resolvable for a beat after createWorktree resolves, so the probe fails with
@@ -302,7 +323,7 @@ describe('structured agent session launch', () => {
       launchStructuredAgentSession(
         createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
       )
-    ).rejects.toBeInstanceOf(StructuredAgentSessionCreateUnknownOutcomeError)
+    ).rejects.toBeInstanceOf(StructuredAgentSessionHostUnreachableError)
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 
@@ -316,7 +337,7 @@ describe('structured agent session launch', () => {
       launchStructuredAgentSession(
         createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
       )
-    ).rejects.toBeInstanceOf(StructuredAgentSessionCreateUnknownOutcomeError)
+    ).rejects.toBeInstanceOf(StructuredAgentSessionHostUnreachableError)
     expect(callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 

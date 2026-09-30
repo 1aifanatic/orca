@@ -17657,6 +17657,8 @@
       },
       "structuredSessionLaunchFailed": "{{value0}} 채팅을 열 수 없습니다.",
       "structuredSessionLaunchFailedDescription": "Orca는 구조화된 {{value0}} 채팅을 열 수 없습니다. 자세한 내용은 로그를 참조하세요.",
+      "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
+      "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",
       "subagents": {
         "state": {
           "completed": "완전한",

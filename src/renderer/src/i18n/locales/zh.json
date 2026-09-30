@@ -17622,6 +17622,8 @@
       },
       "structuredSessionLaunchFailed": "无法打开 {{value0}} 聊天",
       "structuredSessionLaunchFailedDescription": "Orca 无法打开结构化 {{value0}} 聊天。有关详细信息，请参阅日志。",
+      "structuredSessionHostDeclined": "已在终端中打开 {{value0}}",
+      "structuredSessionHostDeclinedDescription": "此服务器无法在此工作区中运行 {{value0}} 聊天。",
       "subagents": {
         "state": {
           "completed": "已完成",

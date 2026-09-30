@@ -12,10 +12,7 @@ import {
 import { resolveStructuredLaunchSeedOptions } from '../../../shared/native-chat-session-option-defaults'
 import { hasRuntimeRpcErrorCode } from '../../../shared/runtime-rpc-error-code'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../shared/agent-session-definitive-refusal'
-import {
-  readAgentSessionRefusalReference,
-  type AgentSessionRefusalReference
-} from '../../../shared/agent-session-wire-refusals'
+import { readAgentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
 import { readAgentSessionErrorRefusal } from '../../../shared/agent-session-write-failure'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
@@ -33,6 +30,22 @@ import {
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import {
+  StructuredAgentSessionCreateError,
+  StructuredAgentSessionCreateRefusalError,
+  StructuredAgentSessionCreateUnknownOutcomeError,
+  StructuredAgentSessionHostDeclinedError,
+  StructuredAgentSessionHostUnreachableError,
+  StructuredAgentSessionOwnerUnresolvedError
+} from '@/lib/structured-agent-session-launch-errors'
+
+export {
+  StructuredAgentSessionCreateRefusalError,
+  StructuredAgentSessionCreateUnknownOutcomeError,
+  StructuredAgentSessionHostDeclinedError,
+  StructuredAgentSessionHostUnreachableError,
+  StructuredAgentSessionOwnerUnresolvedError
+}
 
 export type StructuredAgentSessionLaunchIntent = {
   sessionId: string
@@ -57,53 +70,6 @@ function launchSeedOptions(
     agent
   )
   return seedOptions ? { seedOptions } : {}
-}
-
-class StructuredAgentSessionCreateError extends Error {
-  constructor(
-    message: string,
-    /** The wire refusal code, or the RPC error code when the create never reached a handler. */
-    readonly code: string,
-    /** The host's refusal as a reader may word it; absent from an older host or a local failure. */
-    readonly refusal?: AgentSessionRefusalReference
-  ) {
-    super(message)
-  }
-}
-
-/**
- * The host proved it created nothing. The class itself is the verdict:
- * `launchStructuredAgentSession` is the only place that decides it against the shared allowlist.
- */
-export class StructuredAgentSessionCreateRefusalError extends StructuredAgentSessionCreateError {
-  constructor(
-    message: string,
-    code: string = 'structured_agent_session_unsupported',
-    refusal?: AgentSessionRefusalReference
-  ) {
-    super(message, code, refusal)
-    this.name = 'StructuredAgentSessionCreateRefusalError'
-  }
-}
-
-/**
- * Refused with a code that does not prove the session is absent. A sibling opened here would sit
- * beside a session the host may already hold, so this deliberately is NOT a refusal error: it flows
- * down the same path as a lost reply, which replays the intent and reconciles.
- */
-export class StructuredAgentSessionCreateUnknownOutcomeError extends StructuredAgentSessionCreateError {
-  constructor(message: string, code: string, refusal?: AgentSessionRefusalReference) {
-    super(message, code, refusal)
-    this.name = 'StructuredAgentSessionCreateUnknownOutcomeError'
-  }
-}
-
-/** Orca cannot name the one host that owns the workspace, so no chat is started anywhere. */
-export class StructuredAgentSessionOwnerUnresolvedError extends Error {
-  constructor(worktreeId: string) {
-    super(`No single runtime owns workspace ${worktreeId}`)
-    this.name = 'StructuredAgentSessionOwnerUnresolvedError'
-  }
 }
 
 function structuredAgentSessionOwnerTarget(
@@ -275,9 +241,8 @@ function runtimeErrorCode(error: unknown): string {
  * Whether the executing host supports creating this session — retrying only while the host cannot
  * yet resolve the worktree.
  *
- * "Could not answer" and "answered no" are different states and only the second is a verdict.
- * The unknown branch remains on the chat surface for reconciliation instead of becoming a
- * terminal fallback.
+ * "Could not answer" and "answered no" are different states, but neither leaves a session behind:
+ * createSupport only reads, so both settle before anything is sent to create.
  */
 async function hostSupportsCreate(intent: StructuredAgentSessionLaunchIntent): Promise<boolean> {
   for (let attempt = 0; ; attempt += 1) {
@@ -302,10 +267,9 @@ async function hostSupportsCreate(intent: StructuredAgentSessionLaunchIntent): P
       if (isDefinitiveAgentSessionCreateRefusal(code)) {
         return false
       }
-      throw new StructuredAgentSessionCreateUnknownOutcomeError(
+      throw new StructuredAgentSessionHostUnreachableError(
         error instanceof Error ? error.message : String(error),
-        code,
-        readAgentSessionErrorRefusal(error)
+        code
       )
     }
   }
@@ -318,12 +282,16 @@ async function hostSupportsCreate(intent: StructuredAgentSessionLaunchIntent): P
  * unresolvable-selector retry above along with the probe.
  */
 async function requireHostCreateSupport(intent: StructuredAgentSessionLaunchIntent): Promise<void> {
-  if (!(await hostSupportsCreate(intent))) {
+  let supported: boolean
+  try {
+    supported = await hostSupportsCreate(intent)
+  } catch (error) {
     abandonStructuredAgentSessionLaunchIntent(intent)
-    throw new StructuredAgentSessionCreateRefusalError(
-      'structured_agent_session_unsupported',
-      'structured_agent_session_unsupported'
-    )
+    throw error
+  }
+  if (!supported) {
+    abandonStructuredAgentSessionLaunchIntent(intent)
+    throw new StructuredAgentSessionHostDeclinedError(intent.executionHostId)
   }
 }
 

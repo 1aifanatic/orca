@@ -17809,6 +17809,8 @@
       "launchPromptNotDelivered": "Not delivered — check the terminal",
       "structuredSessionLaunchFailed": "Could not open {{value0}} chat",
       "structuredSessionLaunchFailedDescription": "Orca could not open a structured {{value0}} chat. See the logs for details.",
+      "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
+      "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
       "subagents": {
         "state": {
           "completed": "completed",
