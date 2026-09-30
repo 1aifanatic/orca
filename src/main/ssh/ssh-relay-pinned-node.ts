@@ -26,7 +26,11 @@ import {
   type SshTarget
 } from '../../shared/ssh-types'
 import { materializeOrcadArtifact } from './orcad-artifact-materializer'
-import { resolveOrcadDeploymentTargetFacts, type GlibcVersion } from './orcad-deployment-target'
+import {
+  resolveOrcadDeploymentTargetFacts,
+  UnidentifiedHostLibcError,
+  type GlibcVersion
+} from './orcad-deployment-target'
 import { remoteNodeRuntimeDir } from './orcad-remote-node-runtime'
 import { fileSha256, materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 import type { SshConnection } from './ssh-connection'
@@ -223,11 +227,12 @@ export async function planPinnedNodeRelay(options: {
   try {
     facts = await resolveOrcadDeploymentTargetFacts({ conn: options.conn, host, signal })
   } catch (error) {
-    signal?.throwIfAborted()
-    return logPinnedRelayFallback(
-      'target_unresolved',
-      error instanceof Error ? error.message : String(error)
-    )
+    // Why only an answered probe: a lost channel says nothing about the host, and descending
+    // would launch a second daemon beside a running pinned one, stranding its sessions.
+    if (!(error instanceof UnidentifiedHostLibcError)) {
+      throw error
+    }
+    return logPinnedRelayFallback('target_unresolved', error.message)
   }
   const { target, glibc } = facts
   const cached = refusals.get(refusalKey(options.targetId, target))
