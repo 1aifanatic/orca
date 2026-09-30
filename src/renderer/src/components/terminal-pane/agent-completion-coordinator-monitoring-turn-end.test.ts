@@ -282,11 +282,39 @@ describe('completion notification when a lead turn ends into monitoring', () => 
       }
     })
 
-    it("announces Claude's own notification turn once when it ends by itself", () => {
+    // The capture's write order: the end line is on disk before the notification turn's prompt hook.
+    it("announces Claude's own notification turn once when the end line comes first", () => {
+      const dir = mkdtempSync(join(tmpdir(), 'orca-completion-clear-'))
+      try {
+        const { listener, cleared, start, afterClear, observe, dispatchCompletion } =
+          clearedWithShell(dir)
+        appendFileSync(cleared, taskEndLine(TASK, LAUNCH_ID, 'completed'))
+        const settled = watchRow(listener, start)
+        if (!settled) {
+          throw new Error('the watch published no row')
+        }
+        expect(settled.payload.state).toBe('done')
+        observe(settled.payload)
+        expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+        observe(
+          afterClear({
+            hook_event_name: 'UserPromptSubmit',
+            prompt: taskNotification(TASK, LAUNCH_ID, 'completed')
+          }).payload
+        )
+        observe(afterClear({ hook_event_name: 'Stop', background_tasks: [] }).payload)
+
+        expect(dispatchCompletion).toHaveBeenCalledTimes(2)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    // Also reached: Orca may handle the prompt's hook before the watch reads the end line.
+    it("announces Claude's own notification turn once when its prompt comes first", () => {
       const dir = mkdtempSync(join(tmpdir(), 'orca-completion-clear-'))
       try {
         const { listener, cleared, afterClear, observe, dispatchCompletion } = clearedWithShell(dir)
-        // The capture: the notification turn opens just before the end line.
         const opened = afterClear({
           hook_event_name: 'UserPromptSubmit',
           prompt: taskNotification(TASK, LAUNCH_ID, 'completed')

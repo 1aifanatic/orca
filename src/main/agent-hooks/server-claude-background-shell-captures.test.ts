@@ -356,7 +356,8 @@ describe('/clear while a background shell runs (captured, 2.1.285)', () => {
   const records = loadCapture('claude-background-shell-clear-hooks')
   const completed = queueLine(records, 'queue-operation-enqueue')
 
-  it('keeps the shell across the session change and settles on its end line in the new transcript', async () => {
+  /** Replays up to the /clear, and checks the shell is kept across the session change. */
+  async function clearedWithShell() {
     const server = await startServer()
     const dir = temporaryDir()
     const first = join(dir, 'first.jsonl')
@@ -386,22 +387,41 @@ describe('/clear while a background shell runs (captured, 2.1.285)', () => {
       workingMode: 'monitoring',
       mainAgent: { state: 'done' }
     })
-    // Still the tail of the turn that launched the shell, so its end is not a new turn.
+    // Still the tail of the last turn that ended, so the shell's end is not a new turn.
     expect(row(server).turnCompletedAt).toBe(monitoring.turnCompletedAt)
     expect(watch(server)).toMatchObject({ filePath: cleared, awaitingFile: true })
 
     // Hand-built: stands for the new file's first rows, which the fixture does not keep.
     writeFileSync(cleared, '{"type":"mode"}\n')
-    // The capture: Claude's notification turn opens (47.504 s) just before the end line (47.551 s).
+    expect(completed.file).toBe(String(hookAt(records, 8).payload.transcript_path).split('/').pop())
+    return { server, cleared, replay, monitoring }
+  }
+
+  // The capture's write order: the end line is stamped 07:51:30.885Z, and the notification turn's
+  // UserPromptSubmit hook (started 30.951Z) read the file at 6233 bytes, the end of the enqueue and
+  // dequeue lines. The fixture's `t` for a transcript line is the rig's later poll time.
+  it('settles on the end line in the new transcript before the notification turn opens', async () => {
+    const { server, cleared, replay, monitoring } = await clearedWithShell()
+    appendFileSync(cleared, `${completed.lines[0]}\n`)
+    await vi.waitFor(() => expect(row(server).state).toBe('done'), { timeout: 3_000 })
+    expect(row(server)).toMatchObject({ mainAgent: { state: 'done' } })
+    expect(row(server).turnCompletedAt).toBe(monitoring.turnCompletedAt)
+
     await replay([9])
     expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
-    expect(completed.file).toBe(String(hookAt(records, 8).payload.transcript_path).split('/').pop())
-    expect(hookAt(records, 9).t).toBeLessThan(completed.t)
-    writeCaptured(records, completed, cleared)
+    await replay([10])
+    expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+  })
+
+  // Also reached: Orca may handle the prompt's hook before the watch's next tick reads the line.
+  it('retires the shell inside the notification turn when its prompt is handled first', async () => {
+    const { server, cleared, replay } = await clearedWithShell()
+    await replay([9])
+    expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+    appendFileSync(cleared, `${completed.lines[0]}\n`)
     await vi.waitFor(() => expect(storedShellFact(server)).toBe(false), { timeout: 3_000 })
     expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
 
-    // That turn ends with an empty inventory.
     await replay([10])
     expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
   })

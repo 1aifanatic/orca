@@ -260,8 +260,9 @@ reader does not mistake them for drift:
   `resume` `SessionStart` clears the record with the pane's children and crons,
   since a new process can never end its predecessor's tasks. `/clear` keeps it:
   the shell survives and reports its end in the new session's transcript, and
-  the pane stays on the tail of the turn that launched it, keeping that turn's
-  verdict and turn stamp so the shell's end is not announced as a new turn. The
+  the pane stays on the tail of the last turn that ended, keeping that turn's
+  verdict and turn stamp so the shell's end is not announced as a new turn (not
+  yet after an Esc, which Orca does not infer, so that turn never ended). The
   pane's process ending, its PTY exiting and the relay stopping clear it with
   the rest of the pane. The desktop keeps no copy for a relayed pane; it reads
   the row's `claudeRunningNonAgentTask`, which the relay restates on every row.

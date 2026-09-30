@@ -116,9 +116,9 @@ export function normalizeClaudeEvent(
       state.claudeNonAgentWorkByPaneKey.delete(paneKey)
     }
     const previousLead = state.claudeLeadStateByPaneKey.get(paneKey)
-    // Why: a shell that outlives /clear keeps the pane on the tail of the turn that launched it, so
-    // that turn's verdict and stamp stay and its end is not announced as a new turn. Otherwise a new
-    // session's main agent starts its own clock, not the old session's last Stop.
+    // Why: a shell that outlives /clear keeps the pane on the tail of the last turn that ended, so
+    // that turn's verdict and stamp stay and the shell's end is not announced as a new turn.
+    // Otherwise a new session's main agent starts its own clock, not the old session's last Stop.
     const record =
       keepsTasks && previousLead?.state === 'done' && claudePaneHasNonAgentWork(state, paneKey)
         ? previousLead
