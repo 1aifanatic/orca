@@ -1,6 +1,7 @@
 import { selectAgentPresence, type AgentProcessPresence } from '../../shared/agent-process-presence'
 import {
   detectAgentStatusFromTitle,
+  isClaudeManagementTitle,
   isOpenCodeNativeTitle,
   isQuarterCircleSpinnerOnlyAgentTitle,
   isShellProcess,
@@ -69,13 +70,6 @@ export class RuntimeTerminalAgentStatusQuery {
     const explicitStatus = this.deps.getExplicitStatus(handle)
     const lifecycle = this.deps.getLifecycleStatus(ptyId)
     const presence = selectAgentPresence(this.deps.getAgentPresence?.(handle))
-    if (presence !== undefined) {
-      return {
-        handle,
-        isRunningAgent: presence !== null,
-        status: presence === null ? null : (explicitStatus?.status ?? lifecycle?.status ?? null)
-      }
-    }
     const blockedByWaitText = detectTerminalWaitBlockedReason(terminal.waitText)
     const liveTitleClearsBlockedText =
       terminal.titleStatusIsLive &&
@@ -103,12 +97,17 @@ export class RuntimeTerminalAgentStatusQuery {
     ) {
       return { handle, isRunningAgent: true, status: 'permission' }
     }
+    // Presence answers only whether an agent owns the pane; the permission evidence above still wins.
+    if (presence === null) {
+      return { handle, isRunningAgent: false, status: null }
+    }
     if (explicitStatus) {
-      // Why: permission titles can linger after hooks report the agent resumed.
-      // Fresh hook state is tighter, but current shell/management evidence wins.
-      const isRunningAgent =
-        !terminalTitleBlocksExplicitAgentStatus(terminal.title) &&
-        !(await this.terminalHasShellForegroundProcess(handle, ptyId))
+      // Why: permission titles can linger after hooks report the agent resumed. Fresh hook state is
+      // tighter, but current shell/management evidence wins; a live owner answers for the shell.
+      const isRunningAgent = presence
+        ? !(terminal.title !== null && isClaudeManagementTitle(terminal.title))
+        : !terminalTitleBlocksExplicitAgentStatus(terminal.title) &&
+          !(await this.terminalHasShellForegroundProcess(handle, ptyId))
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
       return {
         handle,

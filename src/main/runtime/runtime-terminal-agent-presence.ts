@@ -5,6 +5,7 @@ import {
   recognizeAgentProcess
 } from '../../shared/agent-process-recognition'
 import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
+import type { TuiAgent } from '../../shared/tui-agent'
 import { isKnownReadyPromptPreview } from './terminal-wait-detection'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
@@ -52,14 +53,14 @@ export class RuntimeTerminalAgentPresence {
     if (this.deps.isLiveStructuredAgent?.(handle)) {
       return true
     }
-    const presence = selectAgentPresence(this.deps.getAgentPresence?.(handle))
-    if (presence !== undefined) {
-      return presence !== null
+    const owner = selectAgentPresence(this.deps.getAgentPresence?.(handle))
+    if (owner === null) {
+      return false
     }
     try {
       const pty = this.deps.getLivePty(handle)
       if (pty) {
-        return await this.isPtyRunning(pty, this.deps.getPrimaryLeaf(pty.ptyId), options)
+        return await this.isPtyRunning(pty, this.deps.getPrimaryLeaf(pty.ptyId), options, owner)
       }
       const leaf = this.deps.getLiveLeaf(handle)
       const trackedPty = leaf.ptyId ? this.deps.getTrackedPty(leaf.ptyId) : null
@@ -92,12 +93,15 @@ export class RuntimeTerminalAgentPresence {
       if (!leaf.ptyId) {
         return false
       }
+      const suppressClaude =
+        paneClassification === 'management' || tabClassification === 'management'
+      if (owner) {
+        return !(suppressClaude && owner === 'claude')
+      }
       const foreground = await this.readForegroundProcess(leaf.ptyId, options)
       if (!foreground) {
         return false
       }
-      const suppressClaude =
-        paneClassification === 'management' || tabClassification === 'management'
       if (suppressClaude && isExpectedAgentProcess(foreground, 'claude')) {
         return false
       }
@@ -115,7 +119,8 @@ export class RuntimeTerminalAgentPresence {
   private async isPtyRunning(
     pty: RuntimePtyWorktreeRecord,
     leaf: RuntimeLeafRecord | null,
-    options: RuntimeTerminalAgentPresenceOptions
+    options: RuntimeTerminalAgentPresenceOptions,
+    owner: TuiAgent | undefined
   ): Promise<boolean> {
     const leafTitle = leaf
       ? getLatestAgentCandidateTitle(
@@ -155,14 +160,18 @@ export class RuntimeTerminalAgentPresence {
     ) {
       return true
     }
-    const foreground = await this.readForegroundProcess(pty.ptyId, options)
-    if (!foreground) {
-      return false
-    }
     const suppressClaude =
       leafTitle !== null
         ? leafClassification === 'management'
         : managementClassification === 'management'
+    // Why: a live identified owner stands in for the foreground read, never for a management screen.
+    if (owner) {
+      return !(suppressClaude && owner === 'claude')
+    }
+    const foreground = await this.readForegroundProcess(pty.ptyId, options)
+    if (!foreground) {
+      return false
+    }
     if (suppressClaude && isExpectedAgentProcess(foreground, 'claude')) {
       return false
     }
