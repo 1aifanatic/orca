@@ -149,25 +149,12 @@ describe('CodexRuntimeHomeService', () => {
       getRuntimeCodexHomePath(),
       getSystemCodexHomePath()
     ])
-    service.setRealHomeLaneGate(() => false)
-    expect(service.getSelectedHostCodexHomeRoute()).toBe('shared-home')
-    expect(service.getHostCodexHomePathsForSessionDiscovery()).toEqual([getRuntimeCodexHomePath()])
     const markerPath = join(
       testState.userDataDir,
       'codex-session-backfill',
       'backfill-complete.json'
     )
     mkdirSync(join(testState.userDataDir, 'codex-session-backfill'), { recursive: true })
-    writeFileSync(markerPath, '{}\n', 'utf-8')
-    expect(service.prepareForCodexLaunch()).toBe(getRuntimeCodexHomePath())
-    expect(
-      hasCompletedCodexSessionBackfillMarker(markerPath, join(getSystemCodexHomePath(), 'sessions'))
-    ).toBe(false)
-    expect(service.beginHostSystemDefaultSessionMigrationLaunch(getRuntimeCodexHomePath())).toBe(
-      true
-    )
-    service.finishHostSystemDefaultSessionMigrationPass()
-    service.setRealHomeLaneGate(() => true)
     const perSpawnCustomHome = join(testState.fakeHomeDir, 'per-spawn-custom-codex-home')
     writeFileSync(markerPath, '{}\n', 'utf-8')
     expect(service.isHostSystemDefaultRealHome({ CODEX_HOME: perSpawnCustomHome })).toBe(false)
@@ -354,7 +341,6 @@ describe('CodexRuntimeHomeService', () => {
 
     const service = new CodexRuntimeHomeService(store as never)
 
-    service.setRealHomeLaneGate(() => true)
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(oldSystemAuth)
     expect(readFileSync(join(getRuntimeCodexHomePath(), 'config.toml'), 'utf-8')).toContain(
       'stale-provider'
@@ -376,7 +362,6 @@ describe('CodexRuntimeHomeService', () => {
 
     setShellStartupEnvProbeSupportedForTest(true)
     const restartedService = new CodexRuntimeHomeService(store as never)
-    restartedService.setRealHomeLaneGate(() => true)
 
     expect(restartedService.prepareForCodexLaunch()).toBeNull()
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(managedAuth)

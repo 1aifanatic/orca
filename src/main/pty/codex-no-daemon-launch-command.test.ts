@@ -100,3 +100,73 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch', () => {
     ).resolves.toBe('codex --no-daemon --yolo')
   })
 })
+
+describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook flag', () => {
+  let dir: string
+  let codexHome: string
+  const hookFlags = { flag: 'hooks={Stop=[]}', codexVersion: 'codex-cli 9.9.9' }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-launch-'))
+    codexHome = join(dir, 'codex-home')
+    mkdirSync(codexHome)
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  function writeVersionedCodex(version: string): string {
+    const path = join(dir, 'bin', 'codex')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(
+      path,
+      `#!/bin/sh\nif [ "$1" = --version ]; then echo '${version}'; exit 0; fi\nprintf '%s' 'Usage: codex'\n`
+    )
+    chmodSync(path, 0o755)
+    return path
+  }
+
+  function plan(command: string) {
+    return planCodexNoDaemonLaunch({
+      command,
+      executesOnThisHost: true,
+      shellOverride: undefined,
+      env: {},
+      cwd: dir,
+      hookFlags,
+      codexHomePath: codexHome
+    })
+  }
+
+  it('carries the flag after a path-named codex of the derived version', async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    await expect(plan(`${codex} resume --last`)).resolves.toBe(
+      `${codex} -c 'hooks={Stop=[]}' resume --last`
+    )
+  })
+
+  it('never carries the flag to a path-named codex of another version', async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.10')
+    await expect(plan(`${codex} resume --last`)).resolves.toBe(`${codex} resume --last`)
+  })
+
+  it('carries nothing into a home that still holds an Orca file entry', async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    writeFileSync(
+      join(codexHome, 'hooks.json'),
+      '{"hooks":{"Stop":[{"hooks":[{"command":"codex-hook.sh"}]}]}}'
+    )
+    await expect(plan(`${codex} resume --last`)).resolves.toBe(`${codex} resume --last`)
+  })
+
+  it('leaves a bare codex to the shell function, which carries the flag itself', () => {
+    writeVersionedCodex('codex-cli 9.9.9')
+    expect(plan('codex resume --last')).toBeNull()
+  })
+
+  it('still carries the flag for a shared-server subcommand, which keeps no --no-daemon', async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    await expect(plan(`${codex} agents`)).resolves.toBe(`${codex} -c 'hooks={Stop=[]}' agents`)
+  })
+})

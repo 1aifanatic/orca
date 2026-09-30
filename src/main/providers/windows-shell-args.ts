@@ -13,6 +13,7 @@ import {
   getPowerShellOsc133Bootstrap
 } from '../powershell-osc133-bootstrap'
 import { quoteStartupArg } from '../../shared/tui-agent-startup-shell'
+import { CODEX_CMD_HOOK_FLAG_MACRO_COMMAND } from '../codex/codex-cmd-hook-flag-gate'
 
 /** cmd.exe's own documented ceiling; callers that go through sshd budget below it. */
 export const CMD_EXE_COMMAND_LINE_MAX_CHARS = 8191
@@ -89,7 +90,11 @@ function getCmdShellArgStartupCommand(command?: string): string | null {
   if (command.includes('"')) {
     return null
   }
-  const commandArg = `${CMD_UTF8_SETUP_COMMAND} & ${command}`
+  // Why: only a typed line reaches the codex doskey macro that carries Orca's status hook.
+  if (/^codex(\s|$)/i.test(command)) {
+    return null
+  }
+  const commandArg = `${CMD_UTF8_SETUP_COMMAND} & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & ${command}`
   if (commandArg.length > CMD_EXE_COMMAND_LINE_MAX_CHARS) {
     return null
   }
@@ -167,7 +172,8 @@ export function normalizeWindowsTerminalCwd(cwd: string): string {
 
 /** Build the argv + effective cwd for a Windows shell launch.
  *
- *  - cmd.exe: `/K chcp 65001 > nul` so multi-byte CJK output renders correctly.
+ *  - cmd.exe: `/K chcp 65001 > nul` so multi-byte CJK output renders correctly,
+ *    then the codex doskey macro (a no-op without Orca's hook flag).
  *  - powershell.exe / pwsh.exe: dot-source $PROFILE and force UTF-8 I/O so
  *    oh-my-posh / starship / PSReadLine keep working. `-NoExit` alone would
  *    skip the profile.
@@ -189,6 +195,7 @@ export function resolveWindowsShellLaunchArgs(
     const shellArgStartupCommand = getCmdShellArgStartupCommand(startupCommand)
     const startupCommands = [
       CMD_UTF8_SETUP_COMMAND,
+      CODEX_CMD_HOOK_FLAG_MACRO_COMMAND,
       ...(codexLaunchPreflightCommand ? [CMD_CODEX_LAUNCH_PREFLIGHT] : []),
       ...(shellArgStartupCommand ? [shellArgStartupCommand] : [])
     ]

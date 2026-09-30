@@ -495,7 +495,6 @@ describe('CodexRuntimeHomeService', () => {
     expect(existsSync(getRuntimeCodexAuthPath())).toBe(false)
 
     setShellStartupEnvProbeSupportedForTest(true)
-    service.setRealHomeLaneGate(() => true)
     writeFileSync(getSystemCodexAuthPath(), reloginAuth, 'utf-8')
     service.reconcileLegacySharedHomeForRetainedPanes()
 

@@ -1,9 +1,18 @@
-// Orca's `codex` shell function for every shell family: runs launch prep and adds
-// --no-daemon. Pure text, so any host that writes a shell script can embed it.
+// Orca's `codex` shell function for every shell family: runs launch prep, adds
+// --no-daemon, and carries Orca's status hook as a session flag. Pure text, so
+// any host that writes a shell script can embed it.
 // Why --no-daemon: Codex 0.156+ otherwise shares one server per CODEX_HOME that runs every tab's
 // hooks with the first tab's Orca env and dies with it (#22873). These args need that server or exit 2.
 export const CODEX_SHARED_SERVER_ARGS = ['agents', 'queue', '--no-daemon', '--remote'] as const
 const CODEX_SHARED_SERVER_ARG_PATTERN = `^(${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=.*)$`
+// Why a version gate: the flag approves the hook with the hash one Codex version
+// computed, and a binary that hashes it differently would open its review screen.
+// Why skip beside a file entry: an older Orca's entry in this home already posts status.
+export const ORCA_CODEX_HOOK_CONFIG_ENV = 'ORCA_CODEX_HOOK_CONFIG'
+export const ORCA_CODEX_HOOK_VERSION_ENV = 'ORCA_CODEX_HOOK_VERSION'
+/** Every Orca build's hook entry names this script stem; see codex-hook-identity. */
+export const ORCA_CODEX_HOOK_FILE_ENTRY_MARKER = 'codex-hook.'
+const ORCA_CODEX_HOOK_FILE_ENTRY_MARKER_QUOTED = `'${ORCA_CODEX_HOOK_FILE_ENTRY_MARKER}'`
 
 export function getPosixCodexShellLaunchPreflight(): string {
   return `# Why: a typed alias expands inside the shell, after pane launch prep.
@@ -24,6 +33,10 @@ if [[ -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
     for __orca_codex_arg in "$@"; do
       case "$__orca_codex_arg" in ${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=*) __orca_codex_isolate=0 ;; esac
     done
+    if [[ -n "\${ORCA_CODEX_HOOK_CONFIG:-}" && "$(command codex --version 2>/dev/null </dev/null)" == "\${ORCA_CODEX_HOOK_VERSION:-}" ]] &&
+      ! command grep -qF ${ORCA_CODEX_HOOK_FILE_ENTRY_MARKER_QUOTED} "\${CODEX_HOME:-$HOME/.codex}/hooks.json" 2>/dev/null; then
+      set -- -c "\${ORCA_CODEX_HOOK_CONFIG}" "$@"
+    fi
     # Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
     if [[ "$__orca_codex_isolate" != 0 ]]; then
       case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) set -- --no-daemon "$@" ;; esac
@@ -44,6 +57,15 @@ if test "$__orca_codex_type" = file
   function codex
     if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
+    end
+    if test -n "$ORCA_CODEX_HOOK_CONFIG"
+      set -l orca_codex_home $CODEX_HOME
+      test -n "$orca_codex_home"; or set orca_codex_home $HOME/.codex
+      # Why a variable: fish before 3.4 has no quoted command substitution.
+      set -l orca_codex_version (command codex --version 2>/dev/null </dev/null | string collect)
+      if test "$orca_codex_version" = "$ORCA_CODEX_HOOK_VERSION"; and not command grep -qF ${ORCA_CODEX_HOOK_FILE_ENTRY_MARKER_QUOTED} $orca_codex_home/hooks.json 2>/dev/null
+        set argv -c $ORCA_CODEX_HOOK_CONFIG $argv
+      end
     end
     if test "$ORCA_CODEX_ISOLATE" != 0; and not string match -qr -- '${CODEX_SHARED_SERVER_ARG_PATTERN}' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
       set argv --no-daemon $argv
@@ -73,10 +95,23 @@ if ($orcaCodexCommand -and
             } catch {
             }
         }
+        if ($env:ORCA_CODEX_HOOK_CONFIG) {
+            try {
+                $orcaCodexVersion = ((& $orcaCodexExecutable.Source --version 2>$null) -join ' ').Trim()
+                $orcaCodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+                $orcaCodexHooks = Join-Path $orcaCodexHome 'hooks.json'
+                $orcaCodexFileEntry = (Test-Path -LiteralPath $orcaCodexHooks) -and
+                    (Select-String -LiteralPath $orcaCodexHooks -SimpleMatch '${ORCA_CODEX_HOOK_FILE_ENTRY_MARKER}' -Quiet)
+                if ($orcaCodexVersion -eq $env:ORCA_CODEX_HOOK_VERSION -and -not $orcaCodexFileEntry) {
+                    $orcaCodexFlags = @('-c', $env:ORCA_CODEX_HOOK_CONFIG)
+                }
+            } catch {
+            }
+        }
         if ($env:ORCA_CODEX_ISOLATE -ne '0' -and -not (@($args) -cmatch '${CODEX_SHARED_SERVER_ARG_PATTERN}')) {
             try {
                 if ((& $orcaCodexExecutable.Source --help 2>$null) -match '--no-daemon') {
-                    $orcaCodexFlags = @('--no-daemon')
+                    $orcaCodexFlags = @('--no-daemon') + $orcaCodexFlags
                 }
             } catch {
             }

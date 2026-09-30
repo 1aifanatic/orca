@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type * as osModule from 'node:os'
+import type * as codexHookSessionTrustModule from '../codex/codex-hook-session-trust'
 
 let isolatedUserDataDir = ''
 let previousUserDataPath: string | undefined
@@ -34,9 +35,16 @@ const { homedirMock } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>()
 }))
 
-vi.mock('../codex/codex-hook-trust-grant', () => ({
-  grantManagedCodexHookTrust: async () => ({ lane: 'fallback', reason: 'unsupported' })
-}))
+// Why: deriving the session flag's trust spawns the real codex binary; the script is what's under test.
+vi.mock('../codex/codex-hook-session-trust', async (importOriginal) => {
+  const actual = await importOriginal<typeof codexHookSessionTrustModule>()
+  const flags = { flag: 'hooks=[]', codexVersion: 'codex-cli 0.0.0-test' }
+  return {
+    ...actual,
+    getCodexHookSessionFlags: () => flags,
+    refreshCodexHookSessionFlags: async () => flags
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -155,7 +163,7 @@ const LOCAL_INSTALLERS = [
   { agent: 'antigravity', install: () => new AntigravityHookService().install() },
   { agent: 'claude', install: () => new ClaudeHookService().install() },
   { agent: 'openclaude', install: () => openClaudeHookService.install() },
-  { agent: 'codex', install: () => new CodexHookService().install() },
+  { agent: 'codex', install: () => new CodexHookService().installSessionFlags() },
   { agent: 'command-code', install: () => new CommandCodeHookService().install() },
   { agent: 'copilot', install: () => new CopilotHookService().install() },
   { agent: 'cursor', install: () => new CursorHookService().install() },
@@ -246,9 +254,8 @@ async function generatePosixScripts(): Promise<Map<string, string>> {
   return scripts
 }
 
-// Why: the Codex installer awaits an app-server trust-grant session, so the
-// override has to stay pinned across the await instead of being restored by a
-// synchronous `finally` while the install is still running.
+// Why: the Codex installer is async, so the override has to stay pinned across
+// the await instead of being restored by a synchronous `finally` while it runs.
 async function withPlatform<T>(platform: NodeJS.Platform, run: () => T | Promise<T>): Promise<T> {
   const original = Object.getOwnPropertyDescriptor(process, 'platform')
   Object.defineProperty(process, 'platform', { configurable: true, value: platform })

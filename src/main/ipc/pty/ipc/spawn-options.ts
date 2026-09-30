@@ -25,6 +25,7 @@ import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-qu
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import { withCodexTerminalServerIsolationEnv } from '../../../../shared/codex-terminal-server-isolation'
 import { planCodexNoDaemonLaunch } from '../../../pty/codex-no-daemon-launch-command'
+import { getCodexHookSessionFlagsForSettings } from '../../../codex/codex-hook-session-trust'
 import type { PtyIpcSpawnState } from './spawn-state'
 import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
@@ -88,7 +89,9 @@ export async function buildPtyIpcSpawnOptions(
     shellOverride: ctx.effectiveShellOverride,
     env: ctx.spawnEnv,
     envToDelete: ctx.combinedEnvToDelete,
-    cwd: ctx.cwd
+    cwd: ctx.cwd,
+    hookFlags: getCodexHookSessionFlagsForSettings(ctx.deps.getSettings?.()),
+    codexHomePath: ctx.selectedCodexHomePath
   })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand
   if (launchCommand !== undefined) {

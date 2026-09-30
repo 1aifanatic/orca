@@ -44,7 +44,7 @@ export type ManagedAgentHookStatusReader = readonly [HookInstallAgent, () => Age
 export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[] = [
   ['claude', (options) => claudeHookService.install({ claudeVersion: options?.cliVersion })],
   ['openclaude', () => openClaudeHookService.install()],
-  ['codex', () => codexHookService.install()],
+  ['codex', () => codexHookService.installSessionFlags()],
   ['gemini', () => geminiHookService.install()],
   ['qoder', () => qoderHookService.install()],
   ['codebuddy', () => codebuddyHookService.install()],

@@ -1,19 +1,26 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { wrapPosixHookCommand } from '../agent-hooks/installer-utils'
 import { upsertHookTrustEntriesInContent } from './config-toml-trust'
+import type * as CodexHookSessionTrust from './codex-hook-session-trust'
 import {
   hookTrustHeader,
   isCodexManagedCommand,
   setupCodexHookHomes
 } from './hook-service-test-harness'
 
-const { getPathMock, homedirMock } = vi.hoisted(() => ({
-  getPathMock: vi.fn<(name: string) => string>(),
-  homedirMock: vi.fn<() => string>()
-}))
+const { getPathMock, homedirMock, sessionFlags } = vi.hoisted(() => {
+  const sessionFlags: { current: { flag: string; codexVersion: string } | null } = {
+    current: null
+  }
+  return {
+    getPathMock: vi.fn<(name: string) => string>(),
+    homedirMock: vi.fn<() => string>(),
+    sessionFlags
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -29,9 +36,23 @@ vi.mock('os', async (importOriginal) => {
   }
 })
 
-import { CodexHookService } from './hook-service'
+// Why: deriving the flag spawns `codex app-server`; these suites cover only the file sweeps around it.
+vi.mock('./codex-hook-session-trust', async (importOriginal) => ({
+  ...(await importOriginal<typeof CodexHookSessionTrust>()),
+  getCodexHookSessionFlags: () => sessionFlags.current,
+  refreshCodexHookSessionFlags: async () => {
+    sessionFlags.current = { flag: 'hooks={}', codexVersion: 'codex-cli 0.0.0-test' }
+    return sessionFlags.current
+  }
+}))
+
+import { CodexHookService, getCodexManagedHookInstallMaterial } from './hook-service'
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
+
+beforeEach(() => {
+  sessionFlags.current = null
+})
 
 const LEGACY_ORCA_PROFILE_LINES = [
   '# BEGIN ORCA AGENT STATUS HOOKS',
@@ -64,9 +85,9 @@ function currentManagedHookCommand(): string {
 }
 
 describe('CodexHookService', () => {
-  // Why: every Orca on this HOME writes the same current entry; an install for a
-  // managed account (launch prep for any pane) used to strip it and its trust.
-  it('keeps the shared current entry and its trust while removing a retired form', async () => {
+  // Why: every pane launch refreshes a managed home, so that lane must never
+  // touch ~/.codex, not even to strip a retired form.
+  it('leaves ~/.codex byte-identical while refreshing a managed home from it', async () => {
     const systemCodexHome = join(homes.tmpHome, '.codex')
     const systemHooksPath = join(systemCodexHome, 'hooks.json')
     const currentCommand = currentManagedHookCommand()
@@ -102,17 +123,73 @@ describe('CodexHookService', () => {
       'utf-8'
     )
 
-    expect((await new CodexHookService().install()).state).toBe('installed')
+    const hooksBefore = readFileSync(systemHooksPath, 'utf-8')
+    const tomlBefore = readFileSync(join(systemCodexHome, 'config.toml'), 'utf-8')
+
+    expect((await new CodexHookService().refreshRuntimeUserHooks()).state).toBe('not_installed')
+
+    expect(readFileSync(systemHooksPath, 'utf-8')).toBe(hooksBefore)
+    expect(readFileSync(join(systemCodexHome, 'config.toml'), 'utf-8')).toBe(tomlBefore)
+    const runtimeHooks = JSON.parse(
+      readFileSync(join(homes.userDataDir, 'codex-runtime-home', 'home', 'hooks.json'), 'utf-8')
+    ) as { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
+    expect(runtimeHooks.hooks.Stop).toEqual([
+      { hooks: [{ type: 'command', command: 'user-hook' }] }
+    ])
+    expect(runtimeHooks.hooks.SessionStart).toBeUndefined()
+  })
+
+  // Why: Orca's hook rides each launch as a session flag, so app start strips
+  // every Orca form from ~/.codex, current and retired, with its trust.
+  it('removes the current entry and a retired form with their trust at app start', async () => {
+    const systemCodexHome = join(homes.tmpHome, '.codex')
+    const systemHooksPath = join(systemCodexHome, 'hooks.json')
+    const currentCommand = getCodexManagedHookInstallMaterial().command
+    mkdirSync(systemCodexHome, { recursive: true })
+    writeFileSync(
+      systemHooksPath,
+      `${JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              { hooks: [{ type: 'command', command: 'user-hook' }] },
+              { hooks: [{ type: 'command', command: currentCommand, timeout: 10 }] }
+            ],
+            SessionStart: [{ hooks: [{ type: 'command', command: legacyManagedHookCommand() }] }]
+          }
+        },
+        null,
+        2
+      )}\n`,
+      'utf-8'
+    )
+    const currentTrust = {
+      sourcePath: systemHooksPath,
+      eventLabel: 'stop' as const,
+      groupIndex: 1,
+      handlerIndex: 0,
+      command: currentCommand,
+      timeoutSec: 10
+    }
+    writeFileSync(
+      join(systemCodexHome, 'config.toml'),
+      upsertHookTrustEntriesInContent('model = "system-model"\n', [currentTrust]),
+      'utf-8'
+    )
+
+    expect((await new CodexHookService().installSessionFlags()).state).toBe('installed')
 
     const systemHooks = JSON.parse(readFileSync(systemHooksPath, 'utf-8')) as {
       hooks: Record<string, { hooks?: { command?: string }[] }[]>
     }
-    expect(systemHooks.hooks.Stop?.[1]?.hooks?.[0]?.command).toBe(currentCommand)
+    expect(systemHooks.hooks.Stop).toEqual([{ hooks: [{ type: 'command', command: 'user-hook' }] }])
     expect(systemHooks.hooks.SessionStart).toBeUndefined()
-    expect(readFileSync(join(systemCodexHome, 'config.toml'), 'utf-8')).toContain(':stop:1:0')
+    const systemToml = readFileSync(join(systemCodexHome, 'config.toml'), 'utf-8')
+    expect(systemToml).toContain('model = "system-model"')
+    expect(systemToml).not.toContain(':stop:1:0')
   })
 
-  it('removes legacy Orca-managed hooks from system ~/.codex during install', async () => {
+  it('removes legacy Orca-managed hooks from system ~/.codex at app start', async () => {
     const systemCodexHome = join(homes.tmpHome, '.codex')
     const systemHooksPath = join(systemCodexHome, 'hooks.json')
     const legacyCommand = legacyManagedHookCommand()
@@ -160,7 +237,7 @@ describe('CodexHookService', () => {
       'utf-8'
     )
 
-    expect((await new CodexHookService().install()).state).toBe('installed')
+    expect((await new CodexHookService().installSessionFlags()).state).toBe('installed')
 
     const systemHooks = JSON.parse(readFileSync(systemHooksPath, 'utf-8')) as {
       hooks: Record<string, { hooks?: { command?: string }[] }[]>
@@ -194,7 +271,7 @@ describe('CodexHookService', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     try {
-      expect((await new CodexHookService().install()).state).toBe('installed')
+      expect((await new CodexHookService().installSessionFlags()).state).toBe('installed')
 
       expect(warnSpy).not.toHaveBeenCalledWith(
         '[codex-hook-service] failed to clean legacy Codex hooks',
@@ -215,7 +292,7 @@ describe('CodexHookService', () => {
     mkdirSync(systemCodexHome, { recursive: true })
     writeFileSync(profilePath, LEGACY_ORCA_PROFILE_LINES.join('\n'), 'utf-8')
 
-    expect((await new CodexHookService().install()).state).toBe('installed')
+    expect((await new CodexHookService().installSessionFlags()).state).toBe('installed')
 
     expect(existsSync(profilePath)).toBe(false)
   })
@@ -230,7 +307,7 @@ describe('CodexHookService', () => {
       'utf-8'
     )
 
-    expect((await new CodexHookService().install()).state).toBe('installed')
+    expect((await new CodexHookService().installSessionFlags()).state).toBe('installed')
 
     const profileConfig = readFileSync(profilePath, 'utf-8')
     expect(profileConfig).toContain('model = "gpt-5.5"')
@@ -314,7 +391,7 @@ describe('CodexHookService', () => {
     expect(hooksConfig.hooks.Stop).toEqual([{ hooks: [{ type: 'command', command: 'user-hook' }] }])
   })
 
-  it('cleans duplicate Codex hook representations while keeping status hooks in runtime CODEX_HOME', async () => {
+  it('cleans duplicate Codex hook representations while mirroring only user hooks into runtime CODEX_HOME', async () => {
     const systemCodexHome = join(homes.tmpHome, '.codex')
     const systemHooksPath = join(systemCodexHome, 'hooks.json')
     const systemTomlPath = join(systemCodexHome, 'config.toml')
@@ -365,7 +442,7 @@ describe('CodexHookService', () => {
     writeFileSync(legacyProfilePath, LEGACY_ORCA_PROFILE_LINES.join('\n'), 'utf-8')
 
     const service = new CodexHookService()
-    expect((await service.install()).state).toBe('installed')
+    expect((await service.installSessionFlags()).state).toBe('installed')
 
     const managedCodexHome = join(homes.userDataDir, 'codex-runtime-home', 'home')
     const managedHooksPath = join(managedCodexHome, 'hooks.json')
@@ -376,17 +453,21 @@ describe('CodexHookService', () => {
       runtimeHooks.hooks.Stop?.flatMap(
         (definition) => definition.hooks?.map((hook) => hook.command ?? '') ?? []
       ) ?? []
-    expect(stopCommands).toContain(userCommand)
-    expect(stopCommands.some((command) => isCodexManagedCommand(command))).toBe(true)
+    expect(stopCommands).toEqual([userCommand])
     expect(
-      isCodexManagedCommand(runtimeHooks.hooks.PermissionRequest?.[0]?.hooks?.[0]?.command)
-    ).toBe(true)
+      Object.values(runtimeHooks.hooks).some((definitions) =>
+        definitions.some((definition) =>
+          definition.hooks?.some((hook) => isCodexManagedCommand(hook.command))
+        )
+      )
+    ).toBe(false)
 
     const runtimeToml = readFileSync(join(managedCodexHome, 'config.toml'), 'utf-8')
     expect(runtimeToml).toContain('[features]\nhooks = true')
     expect(runtimeToml).not.toContain('codex_hooks')
+    // Why: with no Orca entry ahead of it, the user's approved Stop hook is group 0.
     expect(runtimeToml).toContain(hookTrustHeader(`${managedHooksPath}:stop:0:0`))
-    expect(runtimeToml).toContain(hookTrustHeader(`${managedHooksPath}:permission_request:0:0`))
+    expect(runtimeToml).not.toContain(':permission_request:0:0')
 
     const systemHooks = JSON.parse(readFileSync(systemHooksPath, 'utf-8')) as {
       hooks: Record<string, { hooks?: { command?: string }[] }[]>

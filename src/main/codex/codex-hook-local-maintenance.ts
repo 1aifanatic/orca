@@ -10,7 +10,7 @@ import { upsertHookTrustEntries } from './config-toml-trust'
 import { getCodexConfigTomlPath, getConfigPath, writeCodexHooksJson } from './codex-hook-definition'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
-import { removeRealHomeCodexHookForOptOut } from './codex-real-home-hook-install'
+import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 import {
   removeRuntimeManagedHookTrustEntries,
   removeStaleRuntimeHookTrustEntries
@@ -35,8 +35,6 @@ export async function refreshCodexRuntimeUserHooksExclusively(
   promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
   const config = readHooksJson(configPath)
   if (!config) {
-    // Why: disabled launch prep once called remove(); preserve that legacy cleanup even when runtime hooks.json is malformed.
-    await cleanupLegacyManagedHookRepresentations()
     return {
       agent: 'codex',
       state: 'error',
@@ -84,8 +82,6 @@ export async function refreshCodexRuntimeUserHooksExclusively(
     }
   }
   snapshotCodexRuntimeHookTrustProvenance(runtimeHomePath)
-
-  await cleanupLegacyManagedHookRepresentations()
   return getStatus(runtimeHomePath)
 }
 
@@ -97,8 +93,8 @@ export async function removeCodexHooksExclusively(
   const config = readHooksJson(configPath)
   if (!config) {
     // Why: a malformed hooks.json shouldn't strand old hooks in ~/.codex or the legacy profile after disabling.
-    await removeRealHomeCodexHookForOptOut()
     await cleanupLegacyManagedHookRepresentations()
+    await removeRealHomeCodexHookEntries()
     return {
       agent: 'codex',
       state: 'error',
@@ -133,8 +129,9 @@ export async function removeCodexHooksExclusively(
 
   // Why here and nowhere automatic: the real-home entry is shared by every Orca
   // on this HOME, so only the user's explicit opt-out may strip it.
-  await removeRealHomeCodexHookForOptOut()
+  // Why the retired-form sweep first: it finds their trust through the entries the removal strips.
   await cleanupLegacyManagedHookRepresentations()
+  await removeRealHomeCodexHookEntries()
 
   return getStatus()
 }

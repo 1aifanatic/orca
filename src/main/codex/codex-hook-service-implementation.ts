@@ -4,16 +4,23 @@ import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-script-refresh'
+import { writeManagedScript } from '../agent-hooks/installer-utils'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getManagedScriptPath } from './codex-hook-definition'
-import { installCodexHooksExclusively } from './codex-hook-local-install'
+import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
+import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
+import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
+import {
+  clearCodexHookSessionFlags,
+  getCodexHookSessionFlags,
+  refreshCodexHookSessionFlags
+} from './codex-hook-session-trust'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
 } from './codex-hook-local-maintenance'
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
-import { getCodexHookStatusAfterInstall } from './codex-hook-status'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -27,11 +34,9 @@ import {
   type CodexWslRuntimeHookTarget,
   type WslCanonicalPathSettlement
 } from './codex-wsl-hook-install-plan'
-import type { CodexTrustEntry } from './config-toml-trust'
 
-/** Lane-scoped so the hooks-on install never joins the hooks-off refresh. */
-function launchPrepKey(lane: 'install' | 'refresh', runtimeHomePath: string): string {
-  return `${lane}\0${normalizeRuntimePathForComparison(runtimeHomePath)}`
+function launchPrepKey(runtimeHomePath: string): string {
+  return normalizeRuntimePathForComparison(runtimeHomePath)
 }
 
 export class CodexHookService {
@@ -159,11 +164,12 @@ export class CodexHookService {
     hooksEnabled: boolean
   ): Promise<AgentHookInstallStatus> {
     if (hooksEnabled) {
-      // Why: a managed account's launch home is its self-contained CODEX_HOME,
-      // so hooks/trust must install there rather than the shared mirror.
+      // Why: a WSL guest still gets Orca's entry installed and approved in its
+      // home; a native launch carries it as a session flag, so its home only
+      // mirrors the user's own hooks.
       return (
         (await this.installForRuntimeHomeSerialized(runtimeHomePath, target)) ??
-        (await this.installForLaunchPrep(runtimeHomePath ?? undefined))
+        (await this.refreshRuntimeUserHooksForLaunchPrep(runtimeHomePath ?? undefined))
       )
     }
     return (
@@ -181,59 +187,47 @@ export class CodexHookService {
     return wslPlan ? refreshWslRuntimeUserHooks(wslPlan) : null
   }
 
-  getStatus(runtimeHomePath: string = getOrcaManagedCodexHomePath()): AgentHookInstallStatus {
-    return this.getStatusAfterInstall(null, runtimeHomePath)
-  }
-
-  private getStatusAfterInstall(
-    recentGrantEntries: readonly CodexTrustEntry[] | null,
-    runtimeHomePath: string = getOrcaManagedCodexHomePath()
-  ): AgentHookInstallStatus {
-    return getCodexHookStatusAfterInstall(recentGrantEntries, runtimeHomePath)
-  }
-
-  // Why: runtimeHomePath defaults to the shared managed mirror, but a managed
-  // account launching against its own self-contained CODEX_HOME passes that
-  // per-account home so hooks.json/config.toml/trust land where codex reads.
-  install(
-    runtimeHomePath: string = getOrcaManagedCodexHomePath()
-  ): Promise<AgentHookInstallStatus> {
-    // Why: same lane as the grant it performs — see installManagedHooksIntoWslRuntime.
-    return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () =>
-      this.installExclusively(runtimeHomePath)
-    )
+  /** Native Codex's status hook is ready when launches have a flag to carry. */
+  getStatus(): AgentHookInstallStatus {
+    const flags = getCodexHookSessionFlags()
+    return {
+      agent: 'codex',
+      state: flags ? 'installed' : 'not_installed',
+      configPath: getManagedScriptPath(),
+      managedHooksPresent: flags !== null,
+      detail: flags
+        ? `Carried as a session flag for ${flags.codexVersion}`
+        : 'Codex has not reported its hook trust yet'
+    }
   }
 
   /**
-   * Launch prep runs on every local PTY spawn, and both lanes below serialize
-   * globally per Codex home, so activating a multi-pane worktree used to pay one
-   * full hook install per pane back to back (measured ~790ms for 7 panes, and a
-   * resumed Codex pane prepares twice). Spawns racing for the same home all want
-   * the same on-disk outcome, so they share one run — the same reason the WSL
-   * lane above shares `installForRuntimeHome`.
-   *
-   * Invalidation: `dedupeInFlightRun` drops the run the moment it settles, so the
-   * next launch re-reads hooks.json and the user's trust state. Never widen this
-   * into a time-based cache — the hooks setting, ~/.codex approvals and the
-   * managed script can all change between spawns, and only a fresh run sees them.
+   * App start and the setting turning on: deploys the hook script, removes
+   * Orca's entries from ~/.codex and the shared managed home, and asks Codex
+   * for the flag's trust. The only ~/.codex writes are those removals.
    */
-  installForLaunchPrep(runtimeHomePath?: string): Promise<AgentHookInstallStatus> {
-    const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
-    return dedupeInFlightRun(this.launchPrepInFlight, launchPrepKey('install', homePath), () =>
-      this.install(homePath)
-    )
+  async installSessionFlags(): Promise<AgentHookInstallStatus> {
+    writeManagedScript(getManagedScriptPath(), getManagedScript())
+    ensureCodexCmdHookFlagGate()
+    // Why the retired-form sweep first: it finds their trust through the entries
+    // it removes, and the removal below strips those entries too.
+    await cleanupLegacyManagedHookRepresentations()
+    await removeRealHomeCodexHookEntries()
+    await this.refreshRuntimeUserHooks()
+    await refreshCodexHookSessionFlags()
+    return this.getStatus()
   }
 
+  /**
+   * Launch prep runs on every local PTY spawn, and the refresh below serializes
+   * per Codex home, so spawns racing for the same home share one run.
+   * `dedupeInFlightRun` drops the run the moment it settles, so the next launch
+   * re-reads hooks.json and the user's trust state.
+   */
   refreshRuntimeUserHooksForLaunchPrep(runtimeHomePath?: string): Promise<AgentHookInstallStatus> {
     const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
-    return dedupeInFlightRun(this.launchPrepInFlight, launchPrepKey('refresh', homePath), () =>
+    return dedupeInFlightRun(this.launchPrepInFlight, launchPrepKey(homePath), () =>
       this.refreshRuntimeUserHooks(homePath)
-    )
-  }
-
-  private installExclusively(runtimeHomePath: string): Promise<AgentHookInstallStatus> {
-    return installCodexHooksExclusively(runtimeHomePath, (recentGrantEntries, homePath) =>
-      this.getStatusAfterInstall(recentGrantEntries, homePath)
     )
   }
 
@@ -256,9 +250,7 @@ export class CodexHookService {
   private refreshRuntimeUserHooksExclusively(
     runtimeHomePath: string
   ): Promise<AgentHookInstallStatus> {
-    return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, (homePath) =>
-      this.getStatus(homePath)
-    )
+    return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, () => this.getStatus())
   }
 
   remove(): Promise<AgentHookInstallStatus> {
@@ -268,6 +260,8 @@ export class CodexHookService {
   }
 
   private removeExclusively(): Promise<AgentHookInstallStatus> {
+    // Why first: status reports from the flags, and an opt-out means launches carry none.
+    clearCodexHookSessionFlags()
     return removeCodexHooksExclusively(() => this.getStatus())
   }
 }

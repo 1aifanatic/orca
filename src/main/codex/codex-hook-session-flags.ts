@@ -1,0 +1,97 @@
+import { MANAGED_HOOK_TIMEOUT_SECONDS } from '../agent-hooks/installer-utils'
+import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
+
+/**
+ * Orca's Codex status hook travels as one `-c hooks=<inline table>` session flag
+ * on each Codex launch, with Codex's own approval for it in the same table, so
+ * nothing is written to any Codex home. Codex keys a flag-defined hook to a
+ * synthetic `<session-flags>` source and reads its approval from the same
+ * layer (codex-rs hooks discovery + config_rules).
+ */
+
+/** Codex's key and hash per managed event label; a missing label carries no flag at all. */
+export type CodexHookSessionTrust = Readonly<Record<string, { key: string; trustedHash: string }>>
+
+/** TOML string spellings for one platform's argv path. */
+type TomlSpelling = {
+  string: (value: string) => string | null
+  /** Separator between tokens; Windows forces a space so every shell quotes the whole argument. */
+  gap: string
+}
+
+// Why JSON: a JSON string literal is a valid TOML basic string, and POSIX argv carries it verbatim.
+const POSIX_SPELLING: TomlSpelling = { string: (value) => JSON.stringify(value), gap: '' }
+
+// Why literal strings and no `"` or `%`: PowerShell 5.1 mangles embedded quotes in
+// native arguments, and npm's codex.cmd re-parses the line in cmd.exe, which
+// expands %VAR% and treats an unquoted `<`/`>` as a redirect. A value with a
+// space and none of those is wrapped in quotes whole by every Windows host.
+const WINDOWS_UNSAFE = /['"%\r\n]/
+const WINDOWS_SPELLING: TomlSpelling = {
+  string: (value) => (WINDOWS_UNSAFE.test(value) ? null : `'${value}'`),
+  gap: ' '
+}
+
+function spellingFor(platform: NodeJS.Platform): TomlSpelling {
+  return platform === 'win32' ? WINDOWS_SPELLING : POSIX_SPELLING
+}
+
+function renderHooksEntries(command: string, spelling: TomlSpelling): string[] | null {
+  const commandString = spelling.string(command)
+  if (commandString === null) {
+    return null
+  }
+  const g = spelling.gap
+  return CODEX_EVENTS.map(
+    (eventName) =>
+      `${eventName}${g}=${g}[{${g}hooks${g}=${g}[{${g}type${g}=${g}${spelling.string('command')},${g}command${g}=${g}${commandString},${g}timeout${g}=${g}${MANAGED_HOOK_TIMEOUT_SECONDS}${g}}]${g}}]`
+  )
+}
+
+function renderTable(entries: readonly string[], spelling: TomlSpelling): string {
+  const g = spelling.gap
+  return `{${g}${entries.join(`,${g}`)}${g}}`
+}
+
+/**
+ * The `-c` argument defining Orca's hook with no approval. Only the hash lookup
+ * uses it: Codex answers with the key and hash it gives each event. Null when
+ * the command cannot be carried safely on this platform.
+ */
+export function buildCodexHookDefinitionFlag(
+  command: string,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  const spelling = spellingFor(platform)
+  const entries = renderHooksEntries(command, spelling)
+  return entries ? `hooks=${renderTable(entries, spelling)}` : null
+}
+
+/**
+ * The `-c` argument a launch carries: Orca's hook plus Codex's approval of it.
+ * Null when any piece cannot be carried safely, so a launch then carries none:
+ * a hook without its approval would open Codex's review screen.
+ */
+export function buildCodexHookSessionFlag(
+  command: string,
+  trust: CodexHookSessionTrust,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  const spelling = spellingFor(platform)
+  const entries = renderHooksEntries(command, spelling)
+  if (!entries) {
+    return null
+  }
+  const g = spelling.gap
+  const states: string[] = []
+  for (const eventName of CODEX_EVENTS) {
+    const eventTrust = trust[CODEX_EVENT_LABEL[eventName]]
+    const key = eventTrust ? spelling.string(eventTrust.key) : null
+    const hash = eventTrust ? spelling.string(eventTrust.trustedHash) : null
+    if (key === null || hash === null) {
+      return null
+    }
+    states.push(`${key}${g}=${g}{${g}trusted_hash${g}=${g}${hash}${g}}`)
+  }
+  return `hooks=${renderTable([...entries, `state${g}=${g}${renderTable(states, spelling)}`], spelling)}`
+}

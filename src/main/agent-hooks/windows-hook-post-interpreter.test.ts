@@ -5,8 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type * as osModule from 'node:os'
+import type * as codexHookSessionTrustModule from '../codex/codex-hook-session-trust'
 
 let isolatedUserDataDir = ''
 let previousUserDataPath: string | undefined
@@ -15,9 +16,16 @@ const { homedirMock } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>()
 }))
 
-vi.mock('../codex/codex-hook-trust-grant', () => ({
-  grantManagedCodexHookTrust: async () => ({ lane: 'fallback', reason: 'unsupported' })
-}))
+// Why: deriving the session flag's trust spawns the real codex binary; the script is what's under test.
+vi.mock('../codex/codex-hook-session-trust', async (importOriginal) => {
+  const actual = await importOriginal<typeof codexHookSessionTrustModule>()
+  const flags = { flag: 'hooks=[]', codexVersion: 'codex-cli 0.0.0-test' }
+  return {
+    ...actual,
+    getCodexHookSessionFlags: () => flags,
+    refreshCodexHookSessionFlags: async () => flags
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -35,6 +43,7 @@ vi.mock('os', async (importOriginal) => {
 
 import { AntigravityHookService } from '../antigravity/hook-service'
 import { ClaudeHookService } from '../claude/hook-service'
+import { getCodexCmdHookFlagGatePath } from '../codex/codex-cmd-hook-flag-gate'
 import { CodexHookService } from '../codex/hook-service'
 import { CommandCodeHookService } from '../command-code/hook-service'
 import { CursorHookService } from '../cursor/hook-service'
@@ -51,7 +60,7 @@ const BATCH_SCRIPT_INSTALLERS = [
   { agent: 'antigravity', install: () => new AntigravityHookService().install() },
   { agent: 'claude', install: () => new ClaudeHookService().install() },
   { agent: 'openclaude', install: () => openClaudeHookService.install() },
-  { agent: 'codex', install: () => new CodexHookService().install() },
+  { agent: 'codex', install: () => new CodexHookService().installSessionFlags() },
   { agent: 'command-code', install: () => new CommandCodeHookService().install() },
   { agent: 'cursor', install: () => new CursorHookService().install() },
   { agent: 'devin', install: () => new DevinHookService().install() },
@@ -60,9 +69,8 @@ const BATCH_SCRIPT_INSTALLERS = [
   { agent: 'grok', install: () => new GrokHookService().install() }
 ] as const
 
-// Why: the Codex installer awaits an app-server trust-grant session, so the
-// override has to stay pinned across the await instead of being restored by a
-// synchronous `finally` while the install is still running.
+// Why: the Codex installer is async, so the override has to stay pinned across
+// the await instead of being restored by a synchronous `finally` while it runs.
 async function withPlatform<T>(platform: NodeJS.Platform, run: () => T | Promise<T>): Promise<T> {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
   Object.defineProperty(process, 'platform', { configurable: true, value: platform })
@@ -128,10 +136,15 @@ describe('Windows managed hook post interpreter', () => {
     // Why: `%~dp0` marks an event wrapper that only sets env and delegates to the core script.
     const isWrapper = (body: string): boolean => body.includes('%~dp0')
     const posts = (body: string): boolean => body.includes('127.0.0.1:%ORCA_AGENT_HOOK_PORT%')
+    // Why: the cmd pane's Codex flag gate is called at launch, not per hook event, so it posts nothing.
+    const gateName = basename(getCodexCmdHookFlagGatePath())
+    expect(scripts.map((s) => s.name)).toContain(gateName)
 
     // Why: name the script that stopped posting rather than failing on a bare count.
     expect(
-      scripts.filter((s) => !isWrapper(s.body) && !posts(s.body)).map((s) => s.name),
+      scripts
+        .filter((s) => s.name !== gateName && !isWrapper(s.body) && !posts(s.body))
+        .map((s) => s.name),
       'every non-wrapper script must post to the hook port'
     ).toEqual([])
 
