@@ -208,9 +208,11 @@ async function printCliVersionReport(): Promise<void> {
     loadRuntimeClientClass()
   ])
   // Why: undefined keeps the ORCA_PAIRING_CODE / ORCA_ENVIRONMENT fallback, so the server half
-  // describes the runtime a plain command would reach.
-  const client = new RuntimeClientClass(undefined, 2_000)
-  const report = await buildCliVersionReport(async () => (await client.getCliStatus()).result)
+  // describes the runtime a plain command would reach. Constructed inside the probe so a stale
+  // selector reports as an unreachable server instead of losing the client half.
+  const report = await buildCliVersionReport(
+    async () => (await new RuntimeClientClass(undefined, 2_000).getCliStatus()).result
+  )
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   if (report.client.version === null) {
     process.exitCode = 1

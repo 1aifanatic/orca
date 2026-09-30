@@ -116,4 +116,25 @@ describe('standalone --version --json', () => {
       rmSync(userDataPath, { recursive: true, force: true })
     }
   })
+  it('keeps the client half when ORCA_ENVIRONMENT names no saved environment', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-version-report-'))
+    try {
+      vi.stubEnv('ORCA_USER_DATA_PATH', userDataPath)
+      vi.stubEnv('ORCA_PAIRING_CODE', undefined)
+      vi.stubEnv('ORCA_REMOTE_PAIRING', undefined)
+      vi.stubEnv('ORCA_ENVIRONMENT', 'missing-environment')
+      vi.stubEnv('ORCA_CLI_STANDALONE', '1')
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      try {
+        await main(['--version', '--json'])
+        const printed = JSON.parse(String(write.mock.calls[0]?.[0]))
+        expect(printed.client).toMatchObject({ version: '1.5.0', standalone: true })
+        expect(printed.server).toMatchObject({ reachable: false, error: expect.any(String) })
+      } finally {
+        write.mockRestore()
+      }
+    } finally {
+      rmSync(userDataPath, { recursive: true, force: true })
+    }
+  })
 })
