@@ -287,7 +287,7 @@ export class StructuredAgentSessionSinkQueue {
     }
   }
 
-  /** Writes already handed over still land; nothing submitted after this is admitted. */
+  /** Writes handed over before this runs still land; nothing submitted after it is admitted. */
   private fail = (error: unknown): void => {
     if (this.failure === null) {
       this.failure = { error }

@@ -478,8 +478,7 @@ describe('ClaudeSubagentRoster — through the real sink queue', () => {
       currentTurnScope: () => AGENT_JOURNAL_THREAD_SCOPE
     })
 
-    // The first append is in flight while the rest are submitted, so a publish
-    // sharing the row's coalescing key would evict them.
+    // The first append is in flight while the rest are submitted; each must still land.
     roster.observeSystemFrame(started({ task_id: 'task-1', description: 'One' }))
     roster.observeSystemFrame(started({ task_id: 'task-2', description: 'Two' }))
     roster.observeSystemFrame(

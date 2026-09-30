@@ -147,7 +147,7 @@ function createQueuedHarness(): {
 }
 
 describe('CodexSubagentRoster', () => {
-  it('does not let its own publish evict the still-queued roster append', () => {
+  it('lands the roster append its own publish was buffered beside', () => {
     const { roster, appended, drain } = createQueuedHarness()
 
     deliver(
@@ -696,8 +696,8 @@ describe('CodexSubagentRoster', () => {
         accepted: true
       })
       // The retry re-appends when the publish was the half that failed; the real
-      // queue coalesces those two by the group key into one journal write. What
-      // must not happen is the revision never being published at all.
+      // sink writes both, as revisions of the one group row. What must not happen
+      // is the revision never being published at all.
       expect(published).toHaveLength(1)
       const body = appended.at(-1)?.body
       expect(

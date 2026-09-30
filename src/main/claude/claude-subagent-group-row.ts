@@ -110,7 +110,5 @@ export function writeClaudeSubagentGroupRow(
   }
   group.lastSerialized = serialized
   sink.appendItem(group.identity, body, { turnScope: group.turnScope })
-  // Publish keeps the sink's own coalescing slot: sharing the row's key makes
-  // each queued publish evict the append it was meant to flush.
   sink.publish()
 }
