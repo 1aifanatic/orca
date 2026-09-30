@@ -173,6 +173,51 @@ describe('listing chat tabs at startup', () => {
     }
   )
 
+  it.each(['listAll', 'subscribeAll'] as const)(
+    'derives the /clear replacements once per %s, whatever the tab and worktree count',
+    async (method) => {
+      const ids = Array.from({ length: 9 }, (_, index) => `session-${index + 1}`)
+      for (const [index, sessionId] of ids.entries()) {
+        await restTestChat(rig, sessionId, { workspaceId: `workspace-${(index % 3) + 1}` })
+      }
+      await rig.crash()
+      await rig.boot()
+      const derived = vi.spyOn(rig.host, 'conversationReplacements')
+      const { runtime, listAll, subscribeAll } = restartedRuntime()
+      const answer = async () =>
+        method === 'listAll' ? listAll() : (await subscribeAll(() => undefined)).ids
+
+      // The first answer also restores the tabs; the second only lists them.
+      for (const _listing of [1, 2]) {
+        derived.mockClear()
+        expect((await answer()).toSorted()).toEqual(ids.toSorted())
+        expect(derived).toHaveBeenCalledOnce()
+        runtime.cleanupSubscriptionsForConnection('connection-1')
+      }
+    }
+  )
+
+  it('answers with a /clear committed after an earlier listing', async () => {
+    await restTestChat(rig, 'session-cleared')
+    await restTestChat(rig, 'session-fresh', { listed: false })
+    await rig.crash()
+    await rig.boot()
+    const { listAll } = restartedRuntime()
+    expect(await listAll()).toEqual(['session-cleared'])
+
+    const record = rig.store.getRecord('session-cleared')!
+    await rig.store.setConversationCommand('session-cleared', record.lease.runtimeFence, {
+      command: 'clear',
+      state: 'completed',
+      phase: 'committed',
+      operationId: 'clear-1',
+      callerKey: 'client-1',
+      replacementSessionId: 'session-fresh'
+    })
+
+    expect(await listAll()).toEqual(['session-fresh'])
+  })
+
   it('writes nothing to the record store while it lists', async () => {
     const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5']
     for (const sessionId of ids) {

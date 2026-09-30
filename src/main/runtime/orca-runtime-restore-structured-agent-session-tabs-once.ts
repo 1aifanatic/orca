@@ -6,6 +6,7 @@ import { replaceConversationInSnapshot } from './structured-conversation-tab-rep
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
 import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { seedStructuredAgentSessionTabIndex } from './structured-agent-session-tab-index-seed'
+import { currentConversationReplacements } from './structured-conversation-replacements-scope'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type {
   RuntimeMobileSessionAgentTab,
@@ -85,7 +86,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       restored.map((session) => session.sessionId)
     )
     // Past the seed, projecting records nothing.
-    for (const replacement of host?.conversationReplacements?.() ?? []) {
+    for (const replacement of currentConversationReplacements()) {
       this.replaceStructuredAgentSessionTab(replacement)
     }
     for (const session of restored) {

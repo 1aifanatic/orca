@@ -1,4 +1,5 @@
 import type { RpcContext } from '../core'
+import { withListingConversationReplacements } from '../../structured-conversation-replacements-scope'
 import {
   isStructuredNativeChatEnabled,
   supportsStructuredAgentSessions
@@ -32,14 +33,20 @@ export async function answerAfterStructuredTabRestore<T>(
   context: Pick<RpcContext, 'runtime' | 'clientKind' | 'clientCapabilities'>,
   answer: () => Promise<T>
 ): Promise<T> {
-  const restoring = restoreStructuredTabsIfSupported(context)
-  if (!restoring) {
-    return answer()
-  }
+  let restoring: Promise<void> | undefined
   try {
-    await restoring
-    return await answer()
+    // One listing, tab restore included, so the /clear replacements every snapshot it stores or
+    // answers applies are derived once for it, not once per tab and per worktree.
+    return await withListingConversationReplacements(async () => {
+      restoring = restoreStructuredTabsIfSupported(context)
+      if (restoring) {
+        await restoring
+      }
+      return answer()
+    })
   } finally {
-    context.runtime.startStructuredAgentSessionHistoryRestore?.()
+    if (restoring) {
+      context.runtime.startStructuredAgentSessionHistoryRestore?.()
+    }
   }
 }

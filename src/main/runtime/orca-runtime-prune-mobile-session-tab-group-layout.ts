@@ -23,8 +23,8 @@ import type {
 import { buildRuntimeMobileAgentStatus } from './runtime-mobile-agent-status-builder'
 import { FIRST_PANE_ID } from '../../shared/pane-key'
 import { isTerminalLeafId, makePaneKey, parsePaneKey } from '../../shared/stable-pane-id'
-import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
+import { currentConversationReplacements } from './structured-conversation-replacements-scope'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { structuredWorkerAgentStatus } from './orchestration/structured-worker-group-addressing'
 
@@ -78,7 +78,7 @@ export class OrcaRuntimeWithPruneMobileSessionTabGroupLayout extends OrcaRuntime
   protected toMobileSessionTabsResult(
     snapshot: RuntimeMobileSessionTabsSnapshot
   ): RuntimeMobileSessionTabsResult {
-    for (const replacement of getStructuredAgentSessionHost()?.conversationReplacements?.() ?? []) {
+    for (const replacement of currentConversationReplacements()) {
       snapshot = replaceConversationInSnapshot(snapshot, replacement)
     }
     return projectRuntimeMobileSessionTabs(snapshot, this.getMobileSessionProjectionHost())
