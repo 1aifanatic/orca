@@ -28,6 +28,7 @@ import {
   inspectWindowsProcessTreeAddon,
   nodeGypRebuildInvocation,
   stageWindowsProcessTreeNodeAddonApiHeaders,
+  windowsProcessTreeAddonHasRelayLauncher,
   WINDOWS_PROCESS_TREE_PACKAGE_DIR as PACKAGE_DIR
 } from './windows-process-tree-gyp-rebuild.mjs'
 
@@ -457,6 +458,12 @@ function main() {
         : 'node-gyp ignored --arch; a relay would get a binary its host cannot load.'
     throw new Error(
       `Built binary is ${describePeMachine(machine)}, expected 0x${PE_MACHINE[arch].toString(16)} for ${arch}. ${cause}`
+    )
+  }
+  if (!windowsProcessTreeAddonHasRelayLauncher(built)) {
+    throw new Error(
+      'The built addon does not export spawnOutsideJob. A relay would fall back to WMI, ' +
+        'which refuses to launch it for a standard user.'
     )
   }
 
