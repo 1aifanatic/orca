@@ -464,6 +464,16 @@ describe('pty:management IPC handlers', () => {
   })
 
   describe('killOne', () => {
+    async function killOne(args: {
+      sessionId: string
+      protocolVersion: number
+      incarnationId?: string
+    }): Promise<{ success: boolean }> {
+      const handlers = buildHandlerMap()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler map is untyped by construction; this channel's handler is the one registered above.
+      return (await handlers['pty:management:killOne']({}, args)) as { success: boolean }
+    }
+
     it('routes to the adapter whose protocolVersion owns the session', async () => {
       const current = makeAdapter(5, [makeSession('new-1')])
       const legacy = makeAdapter(3, [makeSession('old-1', { protocolVersion: 3 })])
@@ -471,11 +481,7 @@ describe('pty:management IPC handlers', () => {
       getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
       registerDaemonManagementHandlers()
 
-      const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne'](
-        {},
-        { sessionId: 'old-1', protocolVersion: 3 }
-      )) as { success: boolean }
+      const result = await killOne({ sessionId: 'old-1', protocolVersion: 3 })
 
       expect(result.success).toBe(true)
       expect(legacy.shutdown).toHaveBeenCalledWith('old-1', { immediate: true })
@@ -491,11 +497,11 @@ describe('pty:management IPC handlers', () => {
       getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
       registerDaemonManagementHandlers()
 
-      const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne'](
-        {},
-        { sessionId: 'dup', protocolVersion: 3, incarnationId: 'orphan' }
-      )) as { success: boolean }
+      const result = await killOne({
+        sessionId: 'dup',
+        protocolVersion: 3,
+        incarnationId: 'orphan'
+      })
 
       expect(result.success).toBe(true)
       expect(legacy.shutdown).toHaveBeenCalledWith('dup', { immediate: true })
@@ -508,11 +514,11 @@ describe('pty:management IPC handlers', () => {
       getDaemonProviderMock.mockReturnValue(await makeRouter(current))
       registerDaemonManagementHandlers()
 
-      const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne'](
-        {},
-        { sessionId: 'pane', protocolVersion: 5, incarnationId: 'clicked' }
-      )) as { success: boolean }
+      const result = await killOne({
+        sessionId: 'pane',
+        protocolVersion: 5,
+        incarnationId: 'clicked'
+      })
 
       expect(result.success).toBe(false)
       expect(current.shutdown).not.toHaveBeenCalled()
@@ -524,11 +530,7 @@ describe('pty:management IPC handlers', () => {
       getDaemonProviderMock.mockReturnValue(await makeRouter(current))
       registerDaemonManagementHandlers()
 
-      const handlers = buildHandlerMap()
-      const result = (await handlers['pty:management:killOne'](
-        {},
-        { sessionId: 'ghost', protocolVersion: 5 }
-      )) as { success: boolean }
+      const result = await killOne({ sessionId: 'ghost', protocolVersion: 5 })
 
       expect(result.success).toBe(false)
       expect(current.shutdown).not.toHaveBeenCalled()

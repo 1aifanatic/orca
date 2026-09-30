@@ -50,6 +50,7 @@ function createAdapter(
     []
   const identityChangeListeners: (() => void)[] = []
   const attached = new Set<string>()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the router reads only the adapter members this double implements.
   return {
     protocolVersion,
     supportsGitCredentialGuardHost: () =>
