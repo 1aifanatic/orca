@@ -175,11 +175,15 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       return read?.available ? read.process : null
     },
     readForegroundCommandLine: (ptyId) => readLocalPtyForegroundCommandLine(ptyId),
+    // Why after the chunk's facts: the renderer drops an exited agent's row on command-finished
+    // unless the row changed after it, so the run's Done must arrive after that fact.
     publish: (ptyId, payload, yieldsToHookSince) =>
-      this.emitTerminalAgentStatusEvents(
-        ptyId,
-        { payloads: [payload] },
-        { origin: 'process', yieldsToHookSince }
+      this.runAfterPendingTerminalSideEffectFacts(ptyId, () =>
+        this.emitTerminalAgentStatusEvents(
+          ptyId,
+          { payloads: [payload] },
+          { origin: 'process', yieldsToHookSince }
+        )
       ),
     now: () => Date.now()
   })

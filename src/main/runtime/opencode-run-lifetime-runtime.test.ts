@@ -17,10 +17,17 @@ const PANE_KEY = `tab-1:${LEAF_ID}`
 function createRuntime(): {
   runtime: OrcaRuntimeService
   statuses: RuntimeTerminalAgentStatusEvent[]
+  channelOrder: string[]
 } {
   const statuses: RuntimeTerminalAgentStatusEvent[] = []
+  const channelOrder: string[] = []
   const runtime = new OrcaRuntimeService(undefined, undefined, {
-    onTerminalAgentStatus: (event) => statuses.push(event)
+    onTerminalAgentStatus: (event) => {
+      statuses.push(event)
+      channelOrder.push(`status:${event.payload.state}`)
+    },
+    onTerminalSideEffects: (batch) =>
+      channelOrder.push(...batch.facts.map((fact) => `fact:${fact.kind}`))
   })
   runtime.setPtyController({
     spawn: vi.fn(),
@@ -43,7 +50,7 @@ function createRuntime(): {
       { tabId: 'tab-1', worktreeId: WORKTREE_ID, leafId: LEAF_ID, paneRuntimeId: 1, ptyId: 'pty-1' }
     ]
   })
-  return { runtime, statuses }
+  return { runtime, statuses, channelOrder }
 }
 
 const summary = (statuses: RuntimeTerminalAgentStatusEvent[]): string[] =>
@@ -76,13 +83,25 @@ describe('OpenCode run process lifetime in the runtime', () => {
     expect(statuses[0]?.yieldsToHookSince).toBe(statuses[1]?.yieldsToHookSince)
   })
 
+  // Why: the renderer drops an exited agent's row on command-finished unless it changed after.
+  it("publishes the run's Done after the command-finished fact of the same chunk", async () => {
+    const { runtime, channelOrder } = createRuntime()
+
+    runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
+    await vi.advanceTimersByTimeAsync(OPENCODE_RUN_SETTLE_MS)
+    runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
+
+    expect(channelOrder).toEqual(['status:working', 'fact:command-finished', 'status:done'])
+  })
+
   it('posts Done from the daemon fact when the pane finished while hidden', async () => {
-    const { runtime, statuses } = createRuntime()
+    const { runtime, statuses, channelOrder } = createRuntime()
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
     await vi.advanceTimersByTimeAsync(OPENCODE_RUN_SETTLE_MS)
     runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 130 })
 
+    expect(channelOrder.slice(-2)).toEqual(['fact:command-finished', 'status:done'])
     expect(summary(statuses)).toEqual([
       `${PANE_KEY}:working:process`,
       `${PANE_KEY}:done:interrupted:process`
