@@ -70,7 +70,7 @@ describe('Run coordinator Orca session address', () => {
     db = new OrchestrationDb(':memory:')
     insertSessionCoordinatedRun(db, 'run_session')
 
-    // The column holds the bare id; only the remembered address carries the session: prefix.
+    // The column holds the bare id; only the remembered address carries the orca_session_id: prefix.
     expect(db.getRunRaw('run_session')?.coordinator_orca_session_id).toBe(CHAT_SESSION_ID)
     expect(addressesFor(db, 'run_session')).toEqual([CHAT_ADDRESS])
     expect(parseOrcaSessionAddress(addressesFor(db, 'run_session')[0])).toBe(CHAT_SESSION_ID)
@@ -107,6 +107,26 @@ describe('Run coordinator Orca session address', () => {
 
     db = refillAfterReopen(db, path, 'run_unbound')
     expect(addressesFor(db, 'run_unbound')).toEqual([CHAT_ADDRESS])
+  })
+
+  it('recreates on open a coordinator trigger an older build compiled with another address prefix', () => {
+    const path = tempDbPath(tempRoots)
+    db = new OrchestrationDb(path)
+    const triggers = db.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE name LIKE 'trg_runs_remember_coordinator_%'`)
+      .all()
+      .map((row) => String(row.sql))
+    expect(triggers).toHaveLength(2)
+    db.db.exec(`
+      DROP TRIGGER trg_runs_remember_coordinator_insert;
+      DROP TRIGGER trg_runs_remember_coordinator_update;
+      ${triggers.map((sql) => `${sql.replaceAll("'orca_session_id:'", "'session:'")};`).join('\n')}
+    `)
+    db.close()
+
+    db = new OrchestrationDb(path)
+    insertSessionCoordinatedRun(db, 'run_after_upgrade')
+    expect(addressesFor(db, 'run_after_upgrade')).toEqual([CHAT_ADDRESS])
   })
 
   it('remembers a PTY coordinator written by insert, update and refill by exactly its handle', () => {

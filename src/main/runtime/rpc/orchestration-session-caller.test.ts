@@ -263,7 +263,7 @@ describe('orchestration session callers at the dispatch entry', () => {
         ok: false,
         error: {
           code: CODES.providerId,
-          message: expect.stringContaining(`This session's Orca id is ${SESSION_X}`),
+          message: expect.stringContaining(`This session's Orca session ID is ${SESSION_X}`),
           data: { orcaSessionId: SESSION_X, effectsApplied: false }
         }
       })
@@ -400,7 +400,7 @@ describe('orchestration session callers at the dispatch entry', () => {
       ).run
       expect(h.db.getRunRaw(idOf(run))?.coordinator_orca_session_id).toBe(SESSION_X)
 
-      const stranger = 'session:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
+      const stranger = 'orca_session_id:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
       const refused = await h.dispatch(
         orchestrationRequest(
           'orchestration.runCreate',
@@ -442,7 +442,7 @@ describe('orchestration session callers at the dispatch entry', () => {
         )
         expect(resultOf(listed)).toMatchObject({ runId })
 
-        const stranger = 'session:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
+        const stranger = 'orca_session_id:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
         const refused = await h.dispatch(
           orchestrationRequest(method, { run: runId, [param]: stranger }, { sessionId: SESSION_Y })
         )
