@@ -1,6 +1,6 @@
 # Ephemeral CI only. Preview ZIP or inbox capability binaries, always under a private service and accounts.
-# -HiddenTools: the private service's PATH drops every machine PATH entry holding one of these
-# executables and leads with logging shims for them, so SSH sessions have no host toolchain.
+# -HiddenTools: the private accounts are denied every machine PATH directory holding one of these
+# executables, and their own PATH carries logging shims for them, so SSH sessions have no host toolchain.
 # -HostCellProbe receives a context hashtable (accounts, port, keys, shim log) once provisioning passes.
 param([Parameter(Mandatory=$true)][string]$Receipt,[string]$Archive,[Parameter(Mandatory=$true)][ValidateSet('arm64','x64')][string]$Arch,[ValidateSet('preview','inbox')][string]$Server='preview',[scriptblock]$ProductionRouteProbe,[ValidateRange(1,4)][int]$Accounts=1,[string[]]$HiddenTools=@(),[scriptblock]$HostCellProbe)
 $ErrorActionPreference = 'Stop'
@@ -54,6 +54,7 @@ $report.root=$root
 $createdService=$false; $sid=$null; $ownedServerPid=$null
 # Not $accounts: PowerShell names are case-insensitive, so that would rebind the [int] -Accounts param.
 $ownedAccounts=[Collections.Generic.List[hashtable]]::new()
+$deniedToolDirs=[Collections.Generic.List[string]]::new()
 $sshDir=if($Server -eq 'inbox'){$inboxDir}else{Join-Path $root $target.folder}
 $sshdLog=Join-Path $root 'private-sshd.log'
 $serviceStartAttempt=$null
@@ -68,6 +69,10 @@ function Diagnostic-ExitStatuses([string]$Text) {
   $bounded=$Text.Substring(0,[Math]::Min($Text.Length,16384))
   $matches=[regex]::Matches($bounded,'(?im)\b(?:exit status|exit code|error(?: code)?)\s*[:=]?\s*(-?\d{1,10})\b')
   return @($matches | Select-Object -First 8 | ForEach-Object {[long]$_.Groups[1].Value})
+}
+# Ephemeral keys and accounts only: failing lines are what makes a refused login diagnosable.
+function Diagnostic-Excerpt([string]$Text) {
+  return @($Text -split '\r?\n' | Where-Object {$_ -match '(?i)error|fail|refus|denied|bad |invalid|not allowed|fatal|disconnect|userauth|pubkey|authorized'} | Select-Object -Last 40 | ForEach-Object {$_.Substring(0,[Math]::Min($_.Length,300))})
 }
 function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[switch]$AllowFailure) {
   Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-start')
@@ -85,7 +90,7 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
     $output=$stdout.GetAwaiter().GetResult();$errorText=$stderr.GetAwaiter().GetResult()
     if($output.Length+$errorText.Length -gt 1048576){throw 'Owned command output limit exceeded'}
     if([IO.Path]::GetFileName($Program) -eq 'ssh.exe'){
-      $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText);reportedExitStatuses=@(Diagnostic-ExitStatuses $errorText)}
+      $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText);reportedExitStatuses=@(Diagnostic-ExitStatuses $errorText);excerpt=@(Diagnostic-Excerpt $errorText)}
       Write-Stage 'ssh-client-result'
     }
     if([IO.Path]::GetFileName($Program) -eq 'sftp.exe'){
@@ -123,7 +128,7 @@ function Record-PrivateServiceDiagnostics([switch]$AfterStop) {
         $count=$file.Read($buffer,0,$buffer.Length)
         $text=[Text.Encoding]::UTF8.GetString($buffer,0,$count)
         $classes=@(Diagnostic-Categories $text)
-        $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;offset=$offset;errorClasses=$classes;reportedExitStatuses=@(Diagnostic-ExitStatuses $text)}
+        $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;offset=$offset;errorClasses=$classes;reportedExitStatuses=@(Diagnostic-ExitStatuses $text);excerpt=@(Diagnostic-Excerpt $text)}
       } finally {$file.Dispose()}
     } else {$report.privateLog=@{exists=$false}}
   } catch {$report.diagnosticCaptureFailures+=@{stage=$captureStage;afterStop=[bool]$AfterStop;hresult=$_.Exception.HResult;kind=$_.Exception.GetType().Name}}
@@ -281,9 +286,12 @@ LogLevel DEBUG1
     $machinePath=(Get-Item -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     $split=Split-HostToolchainPath $machinePath ($HiddenTools+@('node'))
     $kept=$split.kept;$hidden=$split.hidden
-    # Per-service Environment: only this private sshd and its sessions see the filtered PATH.
-    $servicePath=(@($shimDir)+$kept) -join ';'
-    New-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName" -Name Environment -PropertyType MultiString -Value @("PATH=$servicePath") -Force | Out-Null
+    # Why ACLs, not PATH: Win32-OpenSSH builds the session PATH from the machine and user registry
+    # values, ignoring the service environment and SetEnv. Deny ACEs name only the private accounts.
+    foreach($directory in $hidden){
+      Invoke-Bounded icacls.exe (@($directory.TrimEnd('\'),'/deny')+@($ownedAccounts | ForEach-Object {"*$($_.sid):(OI)(CI)RX"})) 120 | Out-Null
+      $deniedToolDirs.Add($directory)
+    }
     $report.hostToolchain=@{hiddenPathEntries=@($hidden);keptPathEntries=$kept.Count;shimmedTools=@($HiddenTools);unhideable=@('System32 and the WindowsApps user path stay: powershell.exe, cmd.exe and where.exe live there')}
     Write-Stage 'host-toolchain-hide-complete'
   }
@@ -320,6 +328,13 @@ LogLevel DEBUG1
     # The first logon created the profile; its path is where the relay store lands.
     $account.home=@(Get-CimInstance Win32_UserProfile | Where-Object SID -eq $account.sid | ForEach-Object LocalPath)[0]
     if(-not $account.home){throw 'Private account profile was not created by its SSH logon'}
+    if($shimDir){
+      # The session appends the user PATH to the machine PATH; the denied directories never match first.
+      $userEnvironment="Registry::HKEY_USERS\$($account.sid)\Environment"
+      if(-not (Test-Path -LiteralPath $userEnvironment)){throw 'Private account hive not loaded after its SSH logon'}
+      $userPath=(Get-Item -LiteralPath $userEnvironment).GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+      New-ItemProperty -LiteralPath $userEnvironment -Name Path -PropertyType ExpandString -Value ((@($shimDir)+@($userPath -split ';' | Where-Object {$_})) -join ';') -Force | Out-Null
+    }
     Write-Stage 'ssh-authentication-complete'
   }
   if($HiddenTools.Count){
@@ -408,6 +423,9 @@ LogLevel DEBUG1
     $report.childrenAfterStop=@($remaining | ForEach-Object {@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;created=$_.CreationDate.ToUniversalTime().ToString('o');image=[IO.Path]::GetFileName($_.ExecutablePath)}})
     Write-Stage 'cleanup-child-exit-complete'
     if($remaining.Count){throw 'Private SSH child processes remain; preserve files and discard ephemeral runner'}
+    Write-Stage 'cleanup-toolchain-acl-start'
+    foreach($directory in $deniedToolDirs){Invoke-Bounded icacls.exe (@($directory.TrimEnd('\'),'/remove:d')+@($ownedAccounts | ForEach-Object {"*$($_.sid)"})) 120 | Out-Null}
+    Write-Stage 'cleanup-toolchain-acl-complete'
     Write-Stage 'cleanup-user-profile-start' 
     $report.profileCleanup=@()
     foreach($account in $ownedAccounts){
