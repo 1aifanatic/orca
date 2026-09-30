@@ -10,6 +10,7 @@ import {
 } from '../agent-hooks/installer-utils'
 import { createOrcaOwnedCodexHookMatcher } from './codex-hook-identity'
 import {
+  computeTrustKey,
   normalizeCodexProjectPathForLookup,
   upsertHookTrustEntries,
   type CodexTrustEntry
@@ -21,6 +22,7 @@ import {
   writeCodexHooksJson
 } from './codex-hook-definition'
 import { grantManagedCodexHookTrust } from './codex-hook-trust-grant'
+import { relocateCodexHookTrust } from './codex-hook-trust-relocation'
 import { getManagedScript } from './codex-hook-script'
 import {
   removeStaleWslRuntimeManagedHookTrustEntries,
@@ -94,9 +96,17 @@ async function installManagedHooksIntoWslRuntimeExclusively(
     })
   }
 
+  const previousHooks = config.hooks ?? {}
   config.hooks = nextHooks
   writeManagedScript(plan.scriptPath, getManagedScript('posix'))
   writeCodexHooksJson(plan.configPath, nextHooks)
+  // Why: removing Orca's copies and prepending its entry move the user's hooks to new positional trust keys.
+  relocateCodexHookTrust(plan.tomlPath, {
+    sourcePath: plan.trustConfigPath,
+    before: previousHooks,
+    after: nextHooks,
+    keepKeys: trustEntries.map(computeTrustKey)
+  })
   try {
     // Why: same grant-then-fallback split as the host install — codex runs
     // inside the distro so the hash authority matches the codex the pane runs.
