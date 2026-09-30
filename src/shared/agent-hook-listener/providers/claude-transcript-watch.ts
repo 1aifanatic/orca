@@ -165,23 +165,23 @@ export function syncClaudeTranscriptCursor(
   const filePath = reported !== undefined ? claudeTranscriptWatchPath(reported) : current?.filePath
   if (current && current.filePath === filePath) {
     holding.forEach((name) => current.reasons.add(name))
-    if (retireClaudeTaskEndedBeforeLaunchHook(state, accepted, current)) {
-      current.unpublished = {}
+  } else if (!current && holding.length === 0) {
+    return false
+  } else {
+    // Why at the end: a resumed or forked session's file already holds rows written before arming.
+    const armed = filePath ? armClaudeTranscriptCursor(filePath) : undefined
+    if (!filePath || !armed) {
+      cursors.delete(paneKey)
+      return false
     }
-    return true
+    cursors.set(paneKey, {
+      ...armed,
+      filePath,
+      reasons: new Set([...(current?.reasons ?? []), ...holding])
+    })
   }
-  if (!current && holding.length === 0) {
-    return false
-  }
-  // Why at the end: a resumed or forked session's file already holds rows written before arming.
-  const armed = filePath ? armClaudeTranscriptCursor(filePath) : undefined
-  if (!filePath || !armed) {
-    cursors.delete(paneKey)
-    return false
-  }
-  const cursor = { ...armed, filePath, reasons: new Set([...(current?.reasons ?? []), ...holding]) }
-  cursors.set(paneKey, cursor)
-  if (retireClaudeTaskEndedBeforeLaunchHook(state, accepted, cursor)) {
+  const cursor = cursors.get(paneKey)
+  if (cursor && retireClaudeTaskEndedBeforeLaunchHook(state, accepted, cursor)) {
     cursor.unpublished = {}
   }
   return true

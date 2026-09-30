@@ -212,7 +212,11 @@ function inTranscriptDir(run: (transcript: string) => void): void {
   }
 }
 
-function launchEvent(state: HookListenerState, transcript: string, launch = LAUNCH) {
+function launchEvent(
+  state: HookListenerState,
+  transcript: string,
+  launch: Record<string, unknown> = LAUNCH
+) {
   const event = claudeEvent(state, {
     ...launch,
     session_id: '00000000-0000-4000-8000-0000000000d1',
