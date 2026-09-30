@@ -188,8 +188,9 @@ export class AgentSessionJournal {
 
   /**
    * Resolves once the chat's rows are in the host's database. A restore's open serves a chat still
-   * in its per-chat file from a read-only fold of it; the copy runs before the chat's first write,
-   * and a reader that needs rows (forward pages, catch-up) awaits it here.
+   * in its per-chat file from a read-only fold of it; the copy runs before the chat's first write.
+   * A reader that needs rows (forward pages, catch-up) and every mutation's open await it here, so
+   * each reads the fold after every earlier write.
    */
   whenImported(): Promise<void> {
     return this.queue.serialize(() => undefined)
