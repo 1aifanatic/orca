@@ -232,8 +232,7 @@ describe('performCancel for a pending prompt', () => {
 
     expect(flush).not.toHaveBeenCalled()
     expect(journal.snapshot().items.map((item) => item.body)).toEqual([
-      expect.objectContaining({ resolution: expect.objectContaining({ state: 'pending' }) }),
-      { kind: 'status', text: 'The provider had already finished this turn.' }
+      expect.objectContaining({ resolution: expect.objectContaining({ state: 'pending' }) })
     ])
   })
 

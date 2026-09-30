@@ -1,5 +1,5 @@
-// A Stop naming a turn that an earlier Stop already answered for adds no row, however late it
-// lands and from whichever client: the earlier Stop's note, on the turn in the journal, says so.
+// A Stop writes its one note only when it stopped something, keyed by the turn it stopped: a repeated
+// Stop, however late and from whichever client, rewrites that row or writes nothing.
 
 import { beforeEach, describe, expect, it, type Mock } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
@@ -24,7 +24,6 @@ import {
 import { startAgent } from './structured-agent-session-restart-interruption-test-harness'
 
 const REQUESTED = 'Cancellation requested.'
-const ALREADY_FINISHED = 'The provider had already finished this turn.'
 
 let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
@@ -58,8 +57,8 @@ async function statusRows(): Promise<string[]> {
   )
 }
 
-describe('a Stop of a turn an earlier Stop already answered for', () => {
-  it('answers quietly once the first Stop has settled, however late it arrives', async () => {
+describe('a Stop pressed again', () => {
+  it('writes nothing once the first Stop has settled, however late it arrives', async () => {
     await attach()
     await turn('running')
     expect(await stopTurn()).toMatchObject({ ok: true, value: { cancelled: true } })
@@ -81,7 +80,7 @@ describe('a Stop of a turn an earlier Stop already answered for', () => {
     expect(await statusRows()).toEqual([REQUESTED])
   })
 
-  it('stays quiet after a first Stop that found the turn already over', async () => {
+  it('writes nothing when neither Stop found anything to stop', async () => {
     await attach()
     await turn('running')
     await turn('completed')
@@ -89,10 +88,10 @@ describe('a Stop of a turn an earlier Stop already answered for', () => {
 
     await stopTurn()
     expect(await stopTurn()).toMatchObject({ ok: true, value: { cancelled: false } })
-    expect(await statusRows()).toEqual([ALREADY_FINISHED])
+    expect(await statusRows()).toEqual([])
   })
 
-  it('reads the earlier Stop from the journal, so a restarted host answers the same', async () => {
+  it('writes nothing more on a restarted host', async () => {
     const { root, store } = hostTestState()
     await attach()
     await turn('running')
@@ -120,14 +119,14 @@ describe('a Stop of a turn an earlier Stop already answered for', () => {
   })
 })
 
-describe('a Stop of a turn no earlier Stop answered for', () => {
-  it('still says the turn had already finished when it ended by itself', async () => {
+describe('a Stop of a turn that ended by itself', () => {
+  it('writes no row', async () => {
     await attach()
     await turn('running')
     await turn('completed')
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
     expect(await stopTurn()).toMatchObject({ ok: true, value: { cancelled: false } })
-    expect(await statusRows()).toEqual([ALREADY_FINISHED])
+    expect(await statusRows()).toEqual([])
   })
 })

@@ -28,7 +28,6 @@ import {
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
-const ALREADY_FINISHED = 'The provider had already finished this turn.'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -319,7 +318,7 @@ describe('a Stop that names no turn', () => {
 })
 
 describe('a Stop that names its turn, as an older client sends it', () => {
-  it('reaches the provider with that turn and keeps its not-cancelled note', async () => {
+  it('reaches the provider with that turn, and writes no row when it stopped nothing', async () => {
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
     expect(await stop('turn-1')).toMatchObject({
@@ -327,7 +326,7 @@ describe('a Stop that names its turn, as an older client sends it', () => {
       value: { turnId: 'turn-1', cancelled: false }
     })
     expect(cancelTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId: 'turn-1' }))
-    expect(await statusRows()).toEqual([ALREADY_FINISHED])
+    expect(await statusRows()).toEqual([])
   })
 
   async function queueOnHost(): Promise<{ id: string; release: () => void }> {

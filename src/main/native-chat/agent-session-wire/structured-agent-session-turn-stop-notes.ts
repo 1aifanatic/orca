@@ -1,35 +1,19 @@
-// A Stop's note sits on the turn it named. A later Stop of that turn reads the earlier note from the
-// journal, so a repeated press adds no row, however late and from whichever client it arrives.
+// A Stop's note sits on the turn it stopped, found by the turn's id whether it still runs or has
+// ended, and keyed by that turn, so a repeated Stop rewrites the one row instead of adding one.
 
 import type { AgentJournalTurnScope } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
 
 export const STOP_NOTE_CANCELLATION_REQUESTED = 'Cancellation requested.'
-export const STOP_NOTE_ALREADY_FINISHED = 'The provider had already finished this turn.'
 
-type TurnScope = Extract<AgentJournalTurnScope, { kind: 'turn' }>
-
-/** The turn `turnId` names, running or ended, and whether an earlier Stop's note on it already
- *  said the Stop took effect or found the turn over: all a later Stop of it could say. */
-export function structuredAgentSessionNamedTurnStop(
+/** The scope of the turn `turnId` names, running or ended; null when the journal has no such turn. */
+export function structuredAgentSessionNamedTurnScope(
   journal: Pick<AgentSessionJournal, 'snapshot'>,
   turnId: string
-): { turnScope: TurnScope; answered: boolean } | null {
-  const items = journal.snapshot().items
-  const turn = items.findLast((item) => readAgentJournalTurn(item.body)?.turnId === turnId)
-  if (!turn) {
-    return null
-  }
-  const answered = items.some(
-    (item) =>
-      item.turnScope?.kind === 'turn' &&
-      item.turnScope.turnItemId === turn.itemId &&
-      isStructuredAgentSessionStopNote(item.itemId) &&
-      item.body.kind === 'status' &&
-      (item.body.text === STOP_NOTE_CANCELLATION_REQUESTED ||
-        item.body.text === STOP_NOTE_ALREADY_FINISHED)
-  )
-  return { turnScope: { kind: 'turn', turnItemId: turn.itemId }, answered }
+): Extract<AgentJournalTurnScope, { kind: 'turn' }> | null {
+  const turn = journal
+    .snapshot()
+    .items.findLast((item) => readAgentJournalTurn(item.body)?.turnId === turnId)
+  return turn ? { kind: 'turn', turnItemId: turn.itemId } : null
 }

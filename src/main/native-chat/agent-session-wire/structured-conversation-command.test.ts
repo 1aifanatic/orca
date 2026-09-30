@@ -725,6 +725,19 @@ describe('a /clear pressed again after it committed', () => {
     await expectAnsweredWithTheCommittedClear(replacement!)
   })
 
+  it('refuses a second /clear pressed under a new id while the first is still running', async () => {
+    const [first, second] = await Promise.all([
+      host.conversationCommand(caller, commandParams('clear')),
+      host.conversationCommand(caller, commandParams('clear'))
+    ])
+    expect(first).toMatchObject({ ok: true })
+    expect(second).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCommandInFlight' } }
+    })
+    expect(replacementsOtherThanTheSource()).toHaveLength(1)
+  })
+
   it('still tells another window the conversation was cleared', async () => {
     expect((await host.conversationCommand(caller, commandParams('clear'))).ok).toBe(true)
     expect(
