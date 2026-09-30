@@ -172,6 +172,16 @@ describe('OpenCodeRunLifetimeStatus', () => {
     expect(states()).toEqual([])
   })
 
+  it('ends an armed run with Done when the next command starts without its 133;D', async () => {
+    const { lifetime, states } = setup()
+    lifetime.onCommandStarted('pty-1')
+    await settle()
+    lifetime.onCommandStarted('pty-1')
+    expect(states()).toEqual(['working', 'done'])
+    await settle()
+    expect(states()).toEqual(['working', 'done', 'working'])
+  })
+
   it('posts no Done for a pane torn down mid-run', async () => {
     const { lifetime, states } = setup()
     lifetime.onCommandStarted('pty-1')

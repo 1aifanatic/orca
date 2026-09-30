@@ -44,7 +44,8 @@ export class OpenCodeRunLifetimeStatus {
   constructor(private readonly deps: Dependencies) {}
 
   onCommandStarted(ptyId: string): void {
-    this.forgetPty(ptyId)
+    // Why: a new command proves the armed one ended even though its 133;D never arrived.
+    this.onCommandFinished(ptyId, null)
     if (!this.deps.isObservablePty(ptyId)) {
       return
     }
