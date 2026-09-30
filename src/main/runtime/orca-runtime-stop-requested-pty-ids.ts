@@ -24,6 +24,8 @@ import { RuntimeAgentOrchestrationProjection } from './runtime-agent-orchestrati
 import { RuntimeTerminalList } from './runtime-terminal-list'
 import { RuntimeManagedWorktreeQueries } from './runtime-managed-worktree-queries'
 import { RuntimePtyForegroundAgent } from './runtime-pty-foreground-agent'
+import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
+import { readLocalPtyForegroundCommandLine } from './local-pty-foreground-command-line'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
 import type { OrchestrationDb } from './orchestration/db'
 import { OrchestrationMailboxOwner } from './orchestration/mailbox-owner'
@@ -160,6 +162,26 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
         this.touchMobileSessionSnapshotsForPty(ptyId)
       }
     }
+  })
+
+  protected readonly openCodeRunLifetime = new OpenCodeRunLifetimeStatus({
+    isObservablePty: (ptyId) => {
+      const pty = this.ptysById.get(ptyId)
+      // Why: SSH and WSL foregrounds live on another host; Windows has no foreground process group.
+      return process.platform !== 'win32' && !!pty && !pty.connectionId && !pty.wslDistro
+    },
+    readForegroundProcessName: async (ptyId) => {
+      const read = await this.ptyForegroundAgent.read(ptyId)
+      return read?.available ? read.process : null
+    },
+    readForegroundCommandLine: (ptyId) => readLocalPtyForegroundCommandLine(ptyId),
+    publish: (ptyId, payload, yieldsToHookSince) =>
+      this.emitTerminalAgentStatusEvents(
+        ptyId,
+        { payloads: [payload] },
+        { origin: 'process', yieldsToHookSince }
+      ),
+    now: () => Date.now()
   })
 
   protected readonly terminalAgentStatus = new RuntimeTerminalAgentStatusQuery({

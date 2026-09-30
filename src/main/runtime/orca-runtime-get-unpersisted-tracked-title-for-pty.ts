@@ -143,7 +143,12 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
         onAgentExited: () => {
           this.confirmPtyAgentExit(ptyId)
         },
+        onCommandStarted: () => {
+          this.openCodeRunLifetime.onCommandStarted(ptyId)
+        },
         onCommandFinished: (exitCode: number | null) => {
+          // Why first: the run's Done must land before retirement fences the pane.
+          this.openCodeRunLifetime.onCommandFinished(ptyId, exitCode)
           this.retirePtyAgentLaunchAuthority(ptyId)
           this.recordTerminalSideEffectFact(ptyId, { kind: 'command-finished', exitCode })
         },
