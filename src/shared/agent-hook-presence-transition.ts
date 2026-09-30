@@ -9,8 +9,9 @@ export function transitionHookPresence(
   const recorded = previous?.agentPresence
   const owner = recorded && !recorded.ended && !previous?.providerSessionOnly ? recorded : undefined
   const sender = incoming.agentPresence?.process
-  // Why: SessionEnd, or an exit the execution host already proved (relay-forwarded).
-  const exit = incoming.hookEventName === 'SessionEnd' || incoming.agentPresence?.ended === true
+  // Why: only an admitted exit is marked ended (Claude's process-ending SessionEnd, or a host-proved
+  // exit); other agents' SessionEnd hooks are ordinary status updates.
+  const exit = incoming.agentPresence?.ended === true
   if (owner) {
     if (exit) {
       const fromOwner = owner.process && sender && isSameAgentProcess(owner.process, sender)
@@ -36,7 +37,7 @@ export function transitionHookPresence(
   ) {
     return undefined
   }
-  const agent = incoming.payload.agentType
+  const agent = incoming.agentPresence?.agent ?? incoming.payload.agentType
   if (!agent || agent === 'unknown') {
     return incoming.agentPresence ? { ...incoming, agentPresence: undefined } : incoming
   }

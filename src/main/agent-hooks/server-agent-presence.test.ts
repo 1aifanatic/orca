@@ -197,6 +197,25 @@ describe('host-owned hook presence', () => {
     expect(await server.checkAgentPresence(PANE)).toBeNull()
   })
 
+  it.each(['devin', 'qoder', 'codebuddy', 'copilot'])(
+    'settles %s to done on its own SessionEnd hook',
+    async (agent) => {
+      const server = await createServer()
+      const post = async (payload: Record<string, unknown>) => {
+        const response = await postHookEvent(
+          server,
+          buildBody({ session_id: `${agent}-a`, ...payload }),
+          `/hook/${agent}`
+        )
+        expect(response.status).toBe(204)
+      }
+      await post({ hook_event_name: 'UserPromptSubmit', prompt: 'do the task' })
+      expect(state(server)).toBe('working')
+      await post({ hook_event_name: 'SessionEnd', reason: 'prompt_input_exit' })
+      expect(state(server)).toBe('done')
+    }
+  )
+
   it('checks each pane once after replaying its spooled hooks', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'orca-presence-spool-'))
     const first = new AgentHookServer()

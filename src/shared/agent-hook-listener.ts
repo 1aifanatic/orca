@@ -173,7 +173,7 @@ export function normalizeHookPayload(
       connectionId: null,
       providerSession: providerSession ?? undefined,
       hookEventName: 'SessionEnd',
-      agentPresence,
+      agentPresence: { ...agentPresence, ended: true as const },
       payload
     }
   }
