@@ -427,7 +427,7 @@ describe('Last-status persistence', () => {
       const firstMtime = statSync(lastStatusPath()).mtimeMs
 
       // Why: clearPaneState on a paneKey not in the cache must not trigger a redundant write (clear bails when nothing was evicted).
-      server.clearPaneState(makePaneKey('non-existent', LEAF_5), 'ended')
+      server.clearPaneState(makePaneKey('non-existent', LEAF_5), 'released')
       server.flushStatusPersistSync()
       // Assert no rewrite happened: mtime unchanged after a forced sync flush.
       const secondMtime = statSync(lastStatusPath()).mtimeMs

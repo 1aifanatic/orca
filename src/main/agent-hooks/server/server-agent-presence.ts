@@ -36,8 +36,11 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
   /** Whether this pane's owner carries a process identity that its execution host can check. */
   hasVerifiableAgentProcess(paneKey: string): boolean {
     const row = this.state.lastStatusByPaneKey.get(this.resolvePaneKeyAlias(paneKey))
-    const presence = row?.agentPresence
-    return presence?.process !== undefined && !presence.ended && !isUncheckableAgentOwner(row)
+    // A pane with no row has no owner to check.
+    if (!row?.agentPresence?.process || row.agentPresence.ended) {
+      return false
+    }
+    return !isUncheckableAgentOwner(row)
   }
 
   /** `successor` is the live process whose hook raised the doubt; it inherits a proven-dead owner's pane. */
