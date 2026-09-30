@@ -9,17 +9,17 @@ import type {
   AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import type { JournalLoad } from './journal-open'
+import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
 import type { JournalRow } from './journal-row-schema'
 
 export type AgentSessionJournalOptions = {
   identity: AgentSessionJournalIdentity
-  journalDir: string
+  database: JournalHostDatabase
   now?: () => number
   mintEpoch?: () => string
-  /** A caller that already loaded the journal can avoid reading the same files again. */
-  loaded?: JournalLoad | null
+  /** A restore's open: see `AgentSessionJournal.whenImported`. */
+  deferPerSessionImport?: boolean
 }
 
 export type JournalReadSince =
@@ -70,6 +70,21 @@ export type JournalSubmissionInput = {
   fence: number
   /** The send is accepted now and handed over later, by a `dispatch{pending}` row. */
   handoverRecorded?: true
+  /** Stamped by `appendSubmission` from its consume; a caller-passed value must match it. */
+  queuedMessageId?: string
+  /** Who asked for this turn (`JournalSubmissionRow.origin`). */
+  origin?: 'client' | 'host'
+}
+
+/** A submission append that converts a queued draft, in one transaction. */
+export type JournalSubmissionConsume = {
+  messageId: string
+  expect: 'waiting' | 'returned'
+  /** The operation ledger's caller-scoped key; null for the host's own drain. */
+  settledByOp: string | null
+  /** The host process handing it off, stamped on the draft so a hand-off withdrawn back to
+   *  waiting belongs to the process that sent it, not the one that first wrote the card. */
+  hostInstance?: string
 }
 
 export type JournalItemAppendInput = {
