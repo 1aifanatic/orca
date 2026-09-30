@@ -25,6 +25,7 @@ type ListingInternals = {
   getKnownWorkspaceSessionWorktreeIds(): Set<string>
   hydrateHeadlessMobileSessionTabsFromWorkspaceSession(): Set<string>
   refreshMobileSessionPtyRecords(): Promise<Set<string> | null>
+  refreshMobileSessionPtyInventory(): Promise<null>
   ensureStructuredAgentSessionHost(): Promise<void>
 }
 
@@ -66,6 +67,11 @@ function restartedRuntime(workspaceSession: unknown = null) {
   internal.getKnownWorkspaceSessionWorktreeIds = () => new Set()
   internal.hydrateHeadlessMobileSessionTabsFromWorkspaceSession = () => new Set()
   internal.refreshMobileSessionPtyRecords = async () => new Set()
+  // The census an answer takes after the tab restore: daemon, git and SSH round trips in the app.
+  internal.refreshMobileSessionPtyInventory = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    return null
+  }
   internal.ensureStructuredAgentSessionHost = async () => {
     setStructuredAgentSessionHost(rig.host)
   }
@@ -80,11 +86,31 @@ function restartedRuntime(workspaceSession: unknown = null) {
     }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: listAll answers with the inventory shape its handler returns.
     const { snapshots } = response.result as { snapshots: RuntimeMobileSessionTabsResult[] }
-    return snapshots.flatMap((snapshot) =>
-      snapshot.tabs.flatMap((tab) => (tab.type === 'agent-session' ? [tab.sessionId] : []))
-    )
+    return chatIds(snapshots)
   }
-  return { runtime, listAll }
+  /** Mobile's stream: resolves with its first snapshots, and what had run when they were sent. */
+  const subscribeAll = (seen: () => unknown) =>
+    new Promise<{ ids: string[]; atAnswer: unknown }>((resolve, reject) => {
+      void dispatcher.dispatchStreaming(
+        { id: 'subscribe-all', authToken: 'tok', method: 'session.tabs.subscribeAll' },
+        (message) => {
+          const frame = JSON.parse(message)
+          if (!frame.ok) {
+            reject(new Error(JSON.stringify(frame.error)))
+          } else if (frame.result?.type === 'snapshots') {
+            resolve({ ids: chatIds(frame.result.snapshots), atAnswer: seen() })
+          }
+        },
+        { ...CONTEXT, connectionId: 'connection-1' }
+      )
+    })
+  return { runtime, listAll, subscribeAll }
+}
+
+function chatIds(snapshots: RuntimeMobileSessionTabsResult[]): string[] {
+  return snapshots.flatMap((snapshot) =>
+    snapshot.tabs.flatMap((tab) => (tab.type === 'agent-session' ? [tab.sessionId] : []))
+  )
 }
 
 /** Resolves with the answer, or with 'still waiting' once `ms` pass without one. */
@@ -121,22 +147,31 @@ describe('listing chat tabs at startup', () => {
     expect(opened).toBe(3)
   })
 
-  it('starts the history restore only after the list has answered', async () => {
-    for (const sessionId of ['session-1', 'session-2']) {
-      await restTestChat(rig, sessionId, { message: sessionId })
-    }
-    await rig.crash()
-    await rig.boot()
-    const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
-    const { listAll } = restartedRuntime()
+  it.each(['listAll', 'subscribeAll'] as const)(
+    'starts the history restore only after %s has answered, census and all',
+    async (method) => {
+      const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5']
+      for (const sessionId of ids) {
+        await restTestChat(rig, sessionId, { message: sessionId })
+      }
+      await rig.crash()
+      await rig.boot()
+      const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
+      const { runtime, listAll, subscribeAll } = restartedRuntime()
+      const seen = () => ({
+        started: restore.mock.calls.length,
+        opens: rig.adapter.historyFilePath.mock.calls.length
+      })
 
-    expect(await listAll()).toEqual(['session-1', 'session-2'])
-    // The caller has the answer before the pass has started, let alone opened a chat.
-    expect(restore).not.toHaveBeenCalled()
-    expect(rig.adapter.historyFilePath).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(rig.host.hasSession('session-2')).toBe(true))
-    expect(restore).toHaveBeenCalledOnce()
-  })
+      const answered =
+        method === 'listAll' ? { ids: await listAll(), atAnswer: seen() } : await subscribeAll(seen)
+
+      expect(answered).toEqual({ ids, atAnswer: { started: 0, opens: 0 } })
+      await vi.waitFor(() => ids.forEach((id) => expect(rig.host.hasSession(id)).toBe(true)))
+      expect(restore).toHaveBeenCalledOnce()
+      runtime.cleanupSubscriptionsForConnection('connection-1')
+    }
+  )
 
   it('writes nothing to the record store while it lists', async () => {
     const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5']

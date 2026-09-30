@@ -68,8 +68,35 @@ describe('the restore pass after the tab list', () => {
     expect(host.hasSession('session-1')).toBe(true)
   })
 
-  it('opens nothing more once the host is quitting', async () => {
+  it('does not open a chat it reached before quit began but opens after', async () => {
+    await restTestChat(rig, LAST, { message: 'asked' })
+    await rig.crash()
+    const host = await rig.boot()
+    const { runtimeState, lifetime } = host.collaboratorsForTests()
+    // Holds the chat between the pass reaching it and its open.
+    const settling = Promise.withResolvers<void>()
+    releaseHeld = settling.resolve
+    const resolveRecovery = runtimeState.resolveRecovery.bind(runtimeState)
+    const recovery = vi.spyOn(runtimeState, 'resolveRecovery').mockImplementation(async (id) => {
+      await settling.promise
+      return resolveRecovery(id)
+    })
+    const pass = host.restoreReadableSessions([LAST])
+    await vi.waitFor(() => expect(recovery).toHaveBeenCalled())
+
+    const teardown = host.flushAllStreamedEvents()
+    await vi.waitFor(() => expect(lifetime.isDisposed()).toBe(true))
+    settling.resolve()
+    await teardown
+    await pass
+
+    expect(restTestOpens(rig, LAST)).toBe(0)
+    expect(host.hasSession(LAST)).toBe(false)
+  })
+
+  it('opens nothing more, and settles no more leases, once the host is quitting', async () => {
     const { host, pass, release } = await bootWithHeldPass()
+    const recovery = vi.spyOn(host.collaboratorsForTests().runtimeState, 'resolveRecovery')
 
     const teardown = host.flushAllStreamedEvents()
     release()
@@ -78,5 +105,6 @@ describe('the restore pass after the tab list', () => {
 
     expect(restTestOpens(rig, LAST)).toBe(0)
     expect(host.hasSession(LAST)).toBe(false)
+    expect(recovery).not.toHaveBeenCalledWith(LAST)
   })
 })

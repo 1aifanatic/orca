@@ -83,7 +83,10 @@ describe('structured session cold restoration', () => {
     const second = runtime.restoreStructuredAgentSessionTabs()
     expect(second).toBe(first)
     await Promise.all([first, second])
-    // The history pass starts after the list's answer has gone out, never on its stack.
+    // The history pass is owed, not started: the caller that answers with the list starts it.
+    expect(restoreReadableSessions).not.toHaveBeenCalled()
+    runtime.startStructuredAgentSessionHistoryRestore()
+    runtime.startStructuredAgentSessionHistoryRestore()
     expect(restoreReadableSessions).not.toHaveBeenCalled()
     await new Promise((resolve) => setImmediate(resolve))
 
@@ -148,6 +151,7 @@ describe('structured session cold restoration', () => {
     } as never)
 
     await runtime.restoreStructuredAgentSessionTabs()
+    runtime.startStructuredAgentSessionHistoryRestore()
 
     await vi.waitFor(() =>
       expect(restoreReadableSessions).toHaveBeenCalledWith(['session-survives-rollback'])
@@ -204,6 +208,7 @@ describe('structured session cold restoration', () => {
     } as never)
 
     await runtime.restoreStructuredAgentSessionTabs()
+    runtime.startStructuredAgentSessionHistoryRestore()
 
     await vi.waitFor(() => expect(restoreReadableSessions).toHaveBeenCalledWith([]))
   })

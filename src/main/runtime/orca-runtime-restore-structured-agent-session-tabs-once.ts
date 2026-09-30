@@ -91,17 +91,17 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     for (const session of restored) {
       this.projectStructuredAgentSessionTab({ ...session, activate: false, notify: false })
     }
-    // After the list's answer has gone out: the pass's synchronous start would otherwise run on the
-    // listing's stack. Each chat's status row arrives as its history opens; one chat's failure
-    // leaves the others and the list alone.
-    setImmediate(() => {
-      void host?.restoreReadableSessions(listedIds).catch((error: unknown) => {
-        console.warn(
-          '[structured-agent-session] restoring chat history after listing failed',
-          error
-        )
-      })
-    })
+    // Each chat's status row arrives as its history opens; one chat's failure leaves the others and
+    // the list alone. Whoever answers with this list starts it, once that answer is out.
+    this.owedStructuredAgentSessionHistoryRestore = host
+      ? () =>
+          void host.restoreReadableSessions(listedIds).catch((error: unknown) => {
+            console.warn(
+              '[structured-agent-session] restoring chat history after listing failed',
+              error
+            )
+          })
+      : null
     const wasUnverifiable = this.structuredAgentSessionInventoryUnverifiable
     // No host means no one can say which chats exist; with none on disk, empty is the answer.
     this.structuredAgentSessionInventoryUnverifiable =
@@ -109,6 +109,16 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     // This restore published quietly; subscribers still hold the frames that said "cannot tell".
     if (wasUnverifiable && !this.structuredAgentSessionInventoryUnverifiable) {
       this.notifyMobileSessionTabSnapshots()
+    }
+  }
+
+  /** Starts the history restore the tab restore owes, once. On the next macrotask, so a caller that
+   *  starts it as it answers has sent that answer first. */
+  startStructuredAgentSessionHistoryRestore(): void {
+    const owed = this.owedStructuredAgentSessionHistoryRestore
+    this.owedStructuredAgentSessionHistoryRestore = null
+    if (owed) {
+      setImmediate(owed)
     }
   }
 

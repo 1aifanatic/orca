@@ -48,8 +48,8 @@ export type StructuredAgentSessionTab = {
 }
 
 /** Tabs from durable state alone: each requested id, once, in the order given, that has a record
- *  this host serves. Opens nothing: a chat whose history is missing or unreadable keeps its tab and
- *  explains itself when read. */
+ *  this host serves. Opens nothing: a chat whose history is unreadable keeps its tab and its read
+ *  says why; one whose history is missing keeps its tab and reads empty. */
 export function listPersistedSessionTabs(
   deps: {
     store: { getRecord: (sessionId: string) => AgentSessionRecord | null }

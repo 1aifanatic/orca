@@ -217,8 +217,10 @@ function startupRuntime(options: { afterInstall?: () => void; profileChats?: str
   }
 }
 
-/** The listing starts the history restore after its answer, without awaiting it; this joins it. */
-async function historyRestored(): Promise<void> {
+/** Starts the history restore the listing owes, as the caller that answers with it does, and joins
+ *  it. */
+async function historyRestored(runtime: OrcaRuntimeService): Promise<void> {
+  runtime.startStructuredAgentSessionHistoryRestore()
   await new Promise((resolve) => setImmediate(resolve))
   await getStructuredAgentSessionHost()!.restoreReadableSessions()
 }
@@ -263,7 +265,7 @@ describe('restoring the chat tabs open at quit', () => {
     })
 
     await expect(runtime.restoreStructuredAgentSessionTabs()).resolves.toBeUndefined()
-    await historyRestored()
+    await historyRestored(runtime)
 
     expect(published().map((tab) => tab.id)).toEqual([
       `agent-session:${CHAT_A}`,
@@ -306,7 +308,7 @@ describe('restoring the chat tabs open at quit', () => {
       await runtime.prepareStructuredAgentSessionStartupRestoration()
       const prepared = lock.refused
       await runtime.restoreStructuredAgentSessionTabs()
-      await historyRestored()
+      await historyRestored(runtime)
 
       expect(published()).toHaveLength(count)
       expect(prepared).toBe(1)
@@ -356,7 +358,7 @@ describe('restoring the chat tabs open at quit', () => {
       await runtime.prepareStructuredAgentSessionStartupRestoration()
       const prepared = lock.refused
       await runtime.restoreStructuredAgentSessionTabs()
-      await historyRestored()
+      await historyRestored(runtime)
 
       expect(published()).toHaveLength(2)
       expect(prepared).toBe(1)

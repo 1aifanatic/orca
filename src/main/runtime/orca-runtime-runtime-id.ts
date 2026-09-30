@@ -121,6 +121,9 @@ export class OrcaRuntimeWithRuntimeId {
 
   protected structuredAgentSessionTabRestorePromise: Promise<void> | null = null
 
+  // The history restore a tab restore owes, until a caller that answered with its list starts it.
+  protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
+
   // Whether the last tab restore ran with chats on disk but no host to list them.
   protected structuredAgentSessionInventoryUnverifiable = false
 
