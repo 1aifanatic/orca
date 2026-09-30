@@ -9,7 +9,7 @@ import {
 import { parseTomlKeyPath, parseTomlTableHeaderPath } from './config-toml-key-path'
 
 /**
- * Codex >= 0.157 auto-starts one shared app-server per CODEX_HOME that runs every
+ * Codex >= 0.156 auto-starts one shared app-server per CODEX_HOME that runs every
  * later session's hooks and tools with the first session's environment and dies
  * with it. Every home Orca owns carries `[features] daemon_auto_start = false`, so
  * launches that skip the `codex` shell function's `--no-daemon` (cmd.exe, scripts,
