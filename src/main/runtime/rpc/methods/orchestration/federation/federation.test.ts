@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RuntimeRpcResponse } from '../../../../../../shared/runtime-rpc-envelope'
 import {
   ORCHESTRATION_CONTRACT_VERSION,
   ORCHESTRATION_FEDERATION_CONTROL_MAIL_RUNTIME_CAPABILITY
@@ -55,14 +54,14 @@ describe('orchestration federation', () => {
             _meta: { runtimeId: workerRuntime.getRuntimeId() }
           }
         }
-        const response = (await workerDispatcher.dispatch({
+        const response = await workerDispatcher.dispatch({
           id: `remote_${method}`,
           authToken: 'run-home-device-token',
           method,
           params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
           orchestrationRequestId: envelope?.orchestrationRequestId
-        })) as RuntimeRpcResponse<unknown>
+        })
         if (method === 'orchestration.federationAck' && loseNextAckResponse) {
           loseNextAckResponse = false
           throw new Error('connection lost after acknowledgment')
