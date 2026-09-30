@@ -10,6 +10,7 @@ import type {
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
+import { adapterFor, fakeCodex, identityFor } from './codex-structured-session-adapter-fixture'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 
 const THREAD_ID = 'thread-abc'
@@ -47,9 +48,9 @@ function notification(method: string, params: unknown): CodexStructuredSessionEv
   return { type: 'notification', sessionId: 'session-1', threadId: THREAD_ID, method, params }
 }
 
-/** The frame the app server sends for a stream error it is about to retry. */
-function retrying(message: string, additionalDetails?: string) {
-  return notification('error', {
+/** The params the app server sends for a stream error it is about to retry. */
+function retryParams(message: string, additionalDetails?: string) {
+  return {
     threadId: THREAD_ID,
     turnId: TURN_ID,
     willRetry: true,
@@ -58,7 +59,11 @@ function retrying(message: string, additionalDetails?: string) {
       codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: 502 } },
       ...(additionalDetails !== undefined ? { additionalDetails } : {})
     }
-  })
+  }
+}
+
+function retrying(message: string, additionalDetails?: string) {
+  return notification('error', retryParams(message, additionalDetails))
 }
 
 function retryRows(rows: readonly Row[]): Row[] {
@@ -154,6 +159,31 @@ describe('a Codex stream error it is about to retry', () => {
       'Codex is retrying: Reconnecting... 2/5.',
       'Codex is retrying: Reconnecting... 1/5.'
     ])
+  })
+
+  it('is named for the acquisition that received it, so a reconnect writes new rows', async () => {
+    const codex = fakeCodex()
+    const adapter = adapterFor(codex)
+    const rows: Row[] = []
+    const events: StructuredAgentSessionEventSink = {
+      appendItem: (identity, body) => rows.push({ key: agentJournalItemKey(identity), body }),
+      appendTombstone: () => undefined,
+      publish: () => undefined
+    }
+    for (const fence of [7, 8]) {
+      await adapter.acquire({
+        identity: identityFor('session-1'),
+        fence,
+        spawnToken: `spawn-${fence}`,
+        events
+      })
+      codex.connections
+        .at(-1)
+        ?.handlers.onNotification?.('error', retryParams('Reconnecting... 1/5'))
+    }
+
+    expect(codex.connections).toHaveLength(2)
+    expect(retryRows(rows)).toHaveLength(2)
   })
 
   it('leaves the error Codex gives up on as the red row, and the turn fails, in a captured run', () => {
