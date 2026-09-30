@@ -13,8 +13,8 @@ export type PtyManagementSession = {
   createdAt: number
   protocolVersion: number
   incarnationId?: string
-  /** This app attached it, so it can back an open tab; a same-id copy in another version cannot. */
-  attached: boolean
+  /** The copy an open tab shows; a same-id copy in another version does not. */
+  backsTab: boolean
 }
 
 /**

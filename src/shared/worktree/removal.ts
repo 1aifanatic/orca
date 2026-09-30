@@ -186,5 +186,5 @@ export function describeUncheckedTerminalServices(
   services: readonly { protocolVersion: number }[]
 ): string {
   const versions = services.map((service) => service.protocolVersion).join(', ')
-  return `An older Orca terminal service (protocol ${versions}) did not answer, so any terminal it still runs for this workspace was not checked. Settings > Manage Sessions lists it once it answers.`
+  return `A version of Orca's terminal service (protocol ${versions}) did not answer, so any terminal it still runs for this workspace was not checked. Settings > Terminal > Manage Sessions in Orca on that host lists it once it answers.`
 }

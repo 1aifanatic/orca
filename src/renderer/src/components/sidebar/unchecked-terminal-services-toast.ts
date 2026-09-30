@@ -1,22 +1,48 @@
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
+import { useAppStore } from '@/store'
+import { openManageSessions } from '../settings/open-manage-sessions'
 import type { RemoveWorktreeResult } from '../../../../shared/worktree/create-types'
 
-/** Non-blocking note that a delete went ahead past an older terminal service that did not answer. */
-export function showUncheckedTerminalServicesToast(result: RemoveWorktreeResult | undefined): void {
+// Why one id: a batch delete past the same silent version must not stack one note per workspace.
+const UNCHECKED_TERMINAL_SERVICES_TOAST_ID = 'unchecked-terminal-services'
+
+/** Non-blocking note that a delete went ahead past a terminal-service version that did not answer. */
+export function showUncheckedTerminalServicesToast(
+  result: RemoveWorktreeResult | undefined,
+  opts: { onThisMachine: boolean }
+): void {
   if (!result?.uncheckedTerminalServices?.length) {
     return
   }
   toast.info(
     translate(
       'auto.components.sidebar.UncheckedTerminalServicesToast.5b1e0c7d2a',
-      'Workspace deleted. An older terminal service didn’t answer.'
+      'Workspace deleted. A version of the terminal service didn’t answer.'
     ),
     {
-      description: translate(
-        'auto.components.sidebar.UncheckedTerminalServicesToast.9c4f6a3e18',
-        'Any terminal it still runs for this workspace wasn’t checked. Settings › Manage Sessions shows it once it answers.'
-      )
+      id: UNCHECKED_TERMINAL_SERVICES_TOAST_ID,
+      // Why per host: this machine's Manage Sessions never lists a paired host's terminal service.
+      description: opts.onThisMachine
+        ? translate(
+            'auto.components.sidebar.UncheckedTerminalServicesToast.9c4f6a3e18',
+            'Any terminal it still runs for this workspace wasn’t checked. Manage Sessions lists it once it answers.'
+          )
+        : translate(
+            'auto.components.sidebar.UncheckedTerminalServicesToast.1d7e4b9f03',
+            'Any terminal it still runs for this workspace on the host that ran it wasn’t checked.'
+          ),
+      ...(opts.onThisMachine
+        ? {
+            action: {
+              label: translate(
+                'auto.components.settings.TerminalTccAttributionNotice.openManageSessions',
+                'Open Manage Sessions'
+              ),
+              onClick: () => openManageSessions(useAppStore.getState())
+            }
+          }
+        : {})
     }
   )
 }

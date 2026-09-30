@@ -134,11 +134,11 @@ export function renderSessionsPartialBanner(): React.JSX.Element {
       className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground"
       role="status"
     >
-      <AlertTriangle className="size-3 shrink-0 text-yellow-500" />
+      <AlertTriangle className="size-3 shrink-0 text-status-warning" />
       <span>
         {translate(
           'auto.components.status.bar.ResourceUsageStatusSegment.7a2e9c5b14',
-          'An older terminal service didn’t answer, so its sessions aren’t listed. They are not known to have stopped.'
+          'A version of the terminal service didn’t answer, so its sessions aren’t listed. They are not known to have stopped.'
         )}
       </span>
     </div>

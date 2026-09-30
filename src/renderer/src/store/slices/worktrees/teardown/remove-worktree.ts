@@ -265,7 +265,11 @@ export function createRemoveWorktree(
         target,
         suppressToast: options?.suppressPreservedBranchToast === true
       })
-      showUncheckedTerminalServicesToast(removalResult)
+      if (options?.suppressPreservedBranchToast !== true) {
+        showUncheckedTerminalServicesToast(removalResult, {
+          onThisMachine: target.kind === 'local'
+        })
+      }
       pruneHostedReviewLinkMutationGenerations([worktreeId])
       return completed
     } catch (err) {

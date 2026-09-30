@@ -19,7 +19,7 @@ function makeSession(overrides: Partial<PtyManagementSession> = {}): PtyManageme
     rows: 24,
     createdAt: 0,
     protocolVersion: 36,
-    attached: true,
+    backsTab: true,
     ...overrides
   }
 }
@@ -112,7 +112,7 @@ describe('manage-sessions-format', () => {
 
       expect(formatVisibleSessionCount([live])).toBe('2')
       expect(formatVisibleSessionCount([live, unreachable])).toBe('2+')
-      expect(formatVisibleSessionCount([unreachable])).toBe('0+')
+      expect(formatVisibleSessionCount([unreachable])).toBeNull()
     })
   })
 

@@ -107,6 +107,30 @@ describe('Manage Sessions Kill all across versions', () => {
 })
 
 describe('Manage Sessions listing', () => {
+  it('lets a restored tab that has not re-attached yet open from its saved copy', async () => {
+    vi.useRealTimers()
+    const current = version(36, [session('wt@@dup', 'copy'), session('wt@@solo', 'solo')])
+    const previous = version(35, [session('wt@@dup', 'orphan')])
+
+    const generations = await collectGenerations(
+      { adapters: [current, previous], current },
+      undefined,
+      new Set(['orphan'])
+    )
+
+    expect(
+      generations.flatMap((g) =>
+        g.contact === 'live'
+          ? g.sessions.map((s) => [s.sessionId, s.incarnationId, s.backsTab])
+          : []
+      )
+    ).toEqual([
+      ['wt@@dup', 'copy', false],
+      ['wt@@solo', 'solo', true],
+      ['wt@@dup', 'orphan', true]
+    ])
+  })
+
   it('marks only the copy this app attached, so only that row can open its tab', async () => {
     vi.useRealTimers()
     const current = version(36, [session('wt@@dup', 'copy')])
@@ -116,7 +140,7 @@ describe('Manage Sessions listing', () => {
 
     expect(
       generations.flatMap((g) =>
-        g.contact === 'live' ? g.sessions.map((s) => [g.protocolVersion, s.attached]) : []
+        g.contact === 'live' ? g.sessions.map((s) => [g.protocolVersion, s.backsTab]) : []
       )
     ).toEqual([
       [36, false],

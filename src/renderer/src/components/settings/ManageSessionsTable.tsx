@@ -40,6 +40,7 @@ export function ManageSessionsTable({
   const reportedCount = reportedSessions(generations).length
   const hasUnverifiable = generations.some((generation) => generation.contact === 'unverifiable')
   const shown = visibleGenerations(generations)
+  const visibleCount = formatVisibleSessionCount(generations)
   // Why: one generation is the ordinary case, and a header per group would be noise there.
   const showGenerationHeaders = shown.length > 1
   return (
@@ -48,8 +49,8 @@ export function ManageSessionsTable({
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
             {translate('auto.components.settings.ManageSessionsSection.a795a9552a', 'Sessions')}
-            {hasLoadedOnce ? (
-              <span className="ml-1 tabular-nums">({formatVisibleSessionCount(generations)})</span>
+            {hasLoadedOnce && visibleCount !== null ? (
+              <span className="ml-1 tabular-nums">({visibleCount})</span>
             ) : null}
           </span>
           <Button
@@ -148,11 +149,11 @@ export function ManageSessionsTable({
               />
             ))}
           </table>
-          {hasUnverifiable ? (
+          {hasUnverifiable && reportedCount > 0 ? (
             <p className="border-t border-border/50 px-3 py-2 text-[11px] text-muted-foreground">
               {translate(
                 'auto.components.settings.ManageSessionsTable.2790ddcc1d',
-                'At least {{value0}} — a version Orca couldn’t reach may hold more.',
+                '{{value0}} listed — a version Orca couldn’t reach may hold more sessions.',
                 { value0: reportedCount }
               )}
             </p>

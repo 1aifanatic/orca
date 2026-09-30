@@ -53,6 +53,7 @@ export async function removeUnregisteredWorktree(
   provider: SshGitProvider | null
 ): Promise<RemoveWorktreeResult> {
   const { mainWindow, store, runtime } = context
+  let unchecked: Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'> = {}
   const fsProvider = repo.connectionId ? getSshFilesystemProvider(repo.connectionId) : null
   const removalHome = resolveWorktreeRemovalHomeForHost(removalHostId)
   let canCleanOrphanedDirectory = false
@@ -122,7 +123,7 @@ export async function removeUnregisteredWorktree(
       const removalGate = await runtime.acquireFileWatcherRemoval(worktreePath)
       let removalCompleted = false
       try {
-        await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
+        unchecked = await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
           allowUnverifiedStop: args.allowUnverifiedPtyStop,
           store
         })
@@ -154,7 +155,7 @@ export async function removeUnregisteredWorktree(
       })
     )
     notifyWorktreesChanged(mainWindow, repoId)
-    return {}
+    return unchecked
   }
   if (!repo.connectionId) {
     const access = getLocalWorktreePathAccess(localWorktreeGitOptions)
@@ -178,7 +179,7 @@ export async function removeUnregisteredWorktree(
       const removalGate = await runtime.acquireFileWatcherRemoval(worktreePath)
       let removalCompleted = false
       try {
-        await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
+        unchecked = await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
           allowUnverifiedStop: args.allowUnverifiedPtyStop,
           store
         })
@@ -209,7 +210,7 @@ export async function removeUnregisteredWorktree(
       )
       invalidateAuthorizedRootsCache()
       notifyWorktreesChanged(mainWindow, repoId)
-      return {}
+      return unchecked
     }
   }
   if (await isAlreadyRemovedWorktreePath(repo, worktreePath, localWorktreeGitOptions)) {

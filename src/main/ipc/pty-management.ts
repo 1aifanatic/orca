@@ -56,7 +56,12 @@ function readCurrentDaemonIdentity(): DaemonEndpointIdentity | null {
   return provider ? getCurrentDaemonAdapter(provider).getDaemonIdentity() : null
 }
 
-export function registerDaemonManagementHandlers(): void {
+export function registerDaemonManagementHandlers(
+  deps: {
+    /** Incarnations saved tabs are bound to, from the workspace session main already holds. */
+    getSavedPaneIncarnationIds?: () => ReadonlySet<string>
+  } = {}
+): void {
   ipcMain.removeHandler('pty:management:listSessions')
   ipcMain.removeHandler('pty:management:killAll')
   ipcMain.removeHandler('pty:management:killOne')
@@ -101,7 +106,11 @@ export function registerDaemonManagementHandlers(): void {
   ipcMain.handle(
     'pty:management:listSessions',
     async (): Promise<{ generations: DaemonGenerationInventory[]; degraded: boolean }> => {
-      const generations = await collectGenerations(getDaemonAdapters())
+      const generations = await collectGenerations(
+        getDaemonAdapters(),
+        undefined,
+        deps.getSavedPaneIncarnationIds?.()
+      )
       return { generations, degraded: isDaemonDegraded() }
     }
   )

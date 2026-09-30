@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { PtyManagementGeneration, PtyManagementSession } from '../../../../preload/api-types'
 import { GenerationRows } from './ManageSessionsGenerationRows'
 
-function session(attached: boolean): PtyManagementSession {
+function session(backsTab: boolean): PtyManagementSession {
   return {
     sessionId: 'wt@@dup',
     state: 'running',
@@ -18,8 +18,8 @@ function session(attached: boolean): PtyManagementSession {
     cols: 80,
     rows: 24,
     createdAt: 0,
-    protocolVersion: attached ? 36 : 35,
-    attached
+    protocolVersion: backsTab ? 36 : 35,
+    backsTab
   }
 }
 
@@ -46,7 +46,7 @@ function renderGenerations(generations: PtyManagementGeneration[], onNavigate = 
 describe('Manage Sessions rows for the same id in two versions', () => {
   afterEach(() => cleanup())
 
-  it('lets only the copy this app attached open the tab', () => {
+  it('lets only the copy the tab shows open the tab', () => {
     const onNavigate = renderGenerations([
       { protocolVersion: 36, isCurrent: true, contact: 'live', sessions: [session(true)] },
       { protocolVersion: 35, isCurrent: false, contact: 'live', sessions: [session(false)] }

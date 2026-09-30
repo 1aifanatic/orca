@@ -60,8 +60,8 @@ function SessionRow({
   onRequestKill
 }: GenerationRowProps & { session: PtyManagementSession }): React.JSX.Element {
   const state = formatState(session)
-  // Why attached: a same-id copy in another version is not the process the open tab shows.
-  const tabId = session.attached ? (ptyIdToTabId.get(session.sessionId) ?? null) : null
+  // Why: a same-id copy in another version is not the process the open tab shows.
+  const tabId = session.backsTab ? (ptyIdToTabId.get(session.sessionId) ?? null) : null
   const rowClickable = tabId !== null
   return (
     <tr
@@ -113,7 +113,6 @@ function SessionRow({
             'Kill session {{value0}}',
             { value0: session.sessionId }
           )}
-          className="text-muted-foreground hover:text-destructive"
         >
           <X />
         </Button>

@@ -8,8 +8,8 @@ import { describeListingError } from '../providers/pty-process-source-listing'
 
 export type DaemonAdapterSet = { adapters: DaemonPtyAdapter[]; current: DaemonPtyAdapter | null }
 
-/** A listed session plus whether this app attached it, i.e. whether a tab can be backed by it. */
-export type ManagedDaemonSession = DaemonSessionInfo & { attached: boolean }
+/** A listed session plus whether it is the copy an open tab shows (see markTabBackedSessions). */
+export type ManagedDaemonSession = DaemonSessionInfo & { backsTab: boolean }
 
 /**
  * One daemon protocol generation and what this process actually knows about it, in the contact
@@ -25,14 +25,15 @@ export type DaemonGenerationInventory = { protocolVersion: number; isCurrent: bo
 /** Lists each generation under one user-facing deadline; a silent one never withholds the rest. */
 export async function collectGenerations(
   { adapters, current }: DaemonAdapterSet,
-  deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+  deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
+  savedPaneIncarnationIds: ReadonlySet<string> = new Set()
 ): Promise<DaemonGenerationInventory[]> {
   const listings = await listPerGeneration(
     adapters,
     (adapter) => adapter.readSessions({ deadlineMs }),
     deadlineMs
   )
-  return listings.map(({ source: adapter, ...listing }): DaemonGenerationInventory => {
+  const generations = listings.map(({ source: adapter, ...listing }): DaemonGenerationInventory => {
     const generation = { protocolVersion: adapter.protocolVersion, isCurrent: adapter === current }
     if (listing.contact === 'unverifiable') {
       return {
@@ -51,9 +52,34 @@ export async function collectGenerations(
       sessions: listing.items.map<ManagedDaemonSession>((s) => ({
         ...s,
         protocolVersion: adapter.protocolVersion,
-        // Why: only the adapter this app attached answers hasPty, so a same-id copy in another version reads false.
-        attached: adapter.hasPty(s.sessionId)
+        backsTab: adapter.hasPty(s.sessionId)
       }))
     }
   })
+  return markTabBackedSessions(generations, savedPaneIncarnationIds)
+}
+
+/**
+ * The copy an open tab shows is the one this app attached. Before a restored tab re-attaches no
+ * copy is attached, so the tab's saved incarnation names it, or the only listed copy of the id.
+ */
+function markTabBackedSessions(
+  generations: DaemonGenerationInventory[],
+  savedPaneIncarnationIds: ReadonlySet<string>
+): DaemonGenerationInventory[] {
+  const rows = generations.flatMap((g) => (g.contact === 'live' ? g.sessions : []))
+  const attachedIds = new Set(rows.filter((s) => s.backsTab).map((s) => s.sessionId))
+  const copiesById = new Map<string, number>()
+  for (const row of rows) {
+    copiesById.set(row.sessionId, (copiesById.get(row.sessionId) ?? 0) + 1)
+  }
+  for (const row of rows) {
+    if (!row.backsTab && !attachedIds.has(row.sessionId)) {
+      row.backsTab =
+        row.incarnationId !== undefined && savedPaneIncarnationIds.has(row.incarnationId)
+          ? true
+          : copiesById.get(row.sessionId) === 1
+    }
+  }
+  return generations
 }

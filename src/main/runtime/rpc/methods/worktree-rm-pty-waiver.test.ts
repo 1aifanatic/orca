@@ -100,7 +100,7 @@ describe('worktree.rm waivers travel on their own fields', () => {
         removed: true,
         uncheckedTerminalServices: [{ protocolVersion: 35 }],
         warning: expect.stringMatching(
-          /^orca\.yaml archive hook skipped\. An older Orca terminal service \(protocol 35\)/
+          /^orca\.yaml archive hook skipped\. A version of Orca's terminal service \(protocol 35\)/
         )
       }
     })

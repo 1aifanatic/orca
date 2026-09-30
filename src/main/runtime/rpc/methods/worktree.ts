@@ -253,7 +253,7 @@ export const WORKTREE_METHODS = [
         allowFailedArchiveHook: params.allowFailedArchiveHook === true,
         ...(resolvedHostId ? { hostId: resolvedHostId } : {})
       })
-      // Why the existing warning: CLI and mobile already print it; the structured field is additive.
+      // Why the existing warning: the CLI prints it (mobile reads no worktree.rm reply); the field is additive.
       const warning = [
         result.warning,
         result.uncheckedTerminalServices?.length

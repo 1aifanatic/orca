@@ -101,7 +101,10 @@ export function attachMainWindowServices(
     }
   )
   // Why: register after registerPtyHandlers so pty:management:* IPC re-installs on macOS re-activation (docs/daemon-staleness-ux.md §Phase 1).
-  registerDaemonManagementHandlers()
+  registerDaemonManagementHandlers({
+    getSavedPaneIncarnationIds: () =>
+      new Set(Object.values(store.getWorkspaceSession().terminalPtyIncarnationsByPaneKey ?? {}))
+  })
   // Why: don't enumerate repo paths in background GC — `git worktree list` can touch protected macOS folders and trigger access prompts.
   scheduleHistoryGc(async () => {
     return getKnownWorktreeIdsForHistoryGc(store)

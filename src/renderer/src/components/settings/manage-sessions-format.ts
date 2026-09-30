@@ -58,15 +58,16 @@ export function visibleGenerations(
   )
 }
 
-/** The total, marked as a lower bound whenever a generation could not be counted. */
-export function formatVisibleSessionCount(generations: PtyManagementGeneration[]): string {
+/** The total, marked as a lower bound while a generation could not be counted; null when nothing was. */
+export function formatVisibleSessionCount(generations: PtyManagementGeneration[]): string | null {
   const counted = generations.reduce(
     (total, generation) => total + (generation.contact === 'live' ? generation.sessions.length : 0),
     0
   )
-  return generations.some((generation) => generation.contact === 'unverifiable')
-    ? `${counted}+`
-    : String(counted)
+  if (!generations.some((generation) => generation.contact === 'unverifiable')) {
+    return String(counted)
+  }
+  return counted > 0 ? `${counted}+` : null
 }
 
 /** Flattens only what a generation actually reported; unreachable generations contribute nothing. */
