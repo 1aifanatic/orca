@@ -6,8 +6,10 @@
 
 import { AgentSessionJournalError } from './journal-write-guards'
 
-/** A write body. Synchronous: an await inside one would let a later write land first. */
-export type JournalWriteBody<T> = () => T extends PromiseLike<unknown> ? never : T
+/** What a write body returns: never a promise, since an await inside one would let a later write
+ *  land first. */
+export type JournalWriteResult<T> = T extends PromiseLike<unknown> ? never : T
+export type JournalWriteBody<T> = () => JournalWriteResult<T>
 
 /**
  * A write has landed in the fold when its call returns, except during an owed import, when it

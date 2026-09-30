@@ -43,7 +43,7 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
-import type { JournalWriteBody } from './journal-write-queue'
+import type { JournalWriteBody, JournalWriteResult } from './journal-write-queue'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
 export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
@@ -225,7 +225,7 @@ export class JournalQueuedMessages {
   /** One standalone draft-table transaction on the journal's queue; one that
    *  changed rows bumps the revision and notifies after COMMIT. */
   private transact<T>(
-    run: (db: Database.Database) => T,
+    run: (db: Database.Database) => JournalWriteResult<T>,
     changed: (result: T) => boolean
   ): Promise<T> {
     return this.deps.serialize(() => {
