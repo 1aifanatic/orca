@@ -82,12 +82,14 @@ export function useStructuredAgentSessionMutate(args: {
     async <T>(
       method: string,
       fingerprintMethod: string,
-      fields: Record<string, unknown>
+      fields: Record<string, unknown>,
+      /** The fence when the press happened, read before any await, so a write never retargets. */
+      pressedFence: number | null = stateRef.current.fence
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
-      if (!enabled || !enabledRef.current || stateRef.current.fence === null) {
+      if (!enabled || !enabledRef.current || pressedFence === null) {
         return { kind: 'dropped' }
       }
-      const targetFence = stateRef.current.fence
+      const targetFence = pressedFence
       const request = {}
       if (fingerprintMethod === 'agentSession.conversationCommand') {
         commandInFlight.current = request
@@ -157,11 +159,12 @@ export function useStructuredAgentSessionMutate(args: {
       fingerprintMethod: string,
       fields: Record<string, unknown>
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
+      const pressedFence = stateRef.current.fence
       if (
         !namesWhatItStops(fingerprintMethod, fields) ||
         (await supportsStructuredAgentSessionQuietRepeatedStop(target))
       ) {
-        return send<T>(method, fingerprintMethod, fields)
+        return send<T>(method, fingerprintMethod, fields, pressedFence)
       }
       // Temporary, for a host that predates the quiet repeated Stop: remove once none is supported.
       const key = `${sessionId}:${method}:${JSON.stringify(fields)}`
@@ -175,7 +178,7 @@ export function useStructuredAgentSessionMutate(args: {
               (outcome as StructuredAgentSessionWriteOutcome<T>)
         )
       }
-      const stopping = send<T>(method, fingerprintMethod, fields)
+      const stopping = send<T>(method, fingerprintMethod, fields, pressedFence)
       inFlightStops.current.set(key, stopping)
       // Gone once it settles, so the next press is a new Stop.
       void stopping.finally(() => {
@@ -185,7 +188,7 @@ export function useStructuredAgentSessionMutate(args: {
       })
       return stopping
     },
-    [send, sessionId, target]
+    [send, sessionId, stateRef, target]
   )
 
   const mutate = useCallback(

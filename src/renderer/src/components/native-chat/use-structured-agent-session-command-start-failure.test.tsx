@@ -308,6 +308,8 @@ describe('any other write across a fence move', () => {
     fence = 5
     rerender({ sessionId: 'session-1', transportEnabled: true })
     await act(async () => {
+      // The Stop reaches the host once the client knows the host's capabilities.
+      await vi.waitFor(() => expect(mocks.call).toHaveBeenCalled())
       answer({ ok: true, replayed: false, fence: 3, value: { cancelled: true } })
       await stopped
     })
@@ -323,6 +325,8 @@ describe('any other write across a fence move', () => {
       stopped = result.current.cancel('turn-1')
     })
     await act(async () => {
+      // The Stop reaches the host once the client knows the host's capabilities.
+      await vi.waitFor(() => expect(mocks.call).toHaveBeenCalled())
       answer({ ok: true, replayed: false, fence: 3, value: { cancelled: true } })
       await stopped
     })
