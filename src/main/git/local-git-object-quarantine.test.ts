@@ -1,8 +1,42 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as GitObjectQuarantineModule from '../../shared/git-object-quarantine'
+import type { GitObjectQuarantine, GitObjectsDirectory } from '../../shared/git-object-quarantine'
 import {
+  createLocalGitObjectQuarantine,
   localGitObjectQuarantineProcessEnv,
   localGitObjectsDirectory
 } from './local-git-object-quarantine'
+import {
+  resetWslLinkedWorktreeGitRoutingForTests,
+  seedWslLinkedWorktreeGitRoutingForTests
+} from './wsl-linked-worktree-git-routing'
+
+const { readRepoCommonDirFromGitMock } = vi.hoisted(() => ({
+  readRepoCommonDirFromGitMock: vi.fn()
+}))
+
+vi.mock('./worktree-list-reader', () => ({
+  readRepoCommonDirFromGit: readRepoCommonDirFromGitMock
+}))
+vi.mock('../../shared/git-object-quarantine', async (importOriginal) => ({
+  ...(await importOriginal<typeof GitObjectQuarantineModule>()),
+  // Why: hands the resolved objects dir straight to the command; these tests pin routing, not disk.
+  createGitObjectQuarantine: (
+    resolve: () => Promise<GitObjectsDirectory | undefined>
+  ): GitObjectQuarantine => ({
+    run: async (command) => {
+      const objects = await resolve()
+      return command(
+        objects
+          ? {
+              GIT_OBJECT_DIRECTORY: `${objects.gitPath}/scratch`,
+              GIT_ALTERNATE_OBJECT_DIRECTORIES: objects.gitPath
+            }
+          : undefined
+      )
+    }
+  })
+}))
 
 const QUARANTINE = {
   GIT_OBJECT_DIRECTORY: '/home/me/repo/.git/objects/tmp_objdir-orca-merge-tree-x',
@@ -59,5 +93,52 @@ describe('localGitObjectsDirectory', () => {
       hostPath: 'C:\\repo\\.git\\objects',
       gitPath: 'C:\\repo\\.git\\objects'
     })
+  })
+})
+
+describe('createLocalGitObjectQuarantine on a Windows host', () => {
+  const originalPlatform = process.platform
+
+  beforeEach(() => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    resetWslLinkedWorktreeGitRoutingForTests()
+    readRepoCommonDirFromGitMock.mockReset()
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
+    resetWslLinkedWorktreeGitRoutingForTests()
+  })
+
+  const envSeenBy = (repoPath: string, options: { wslDistro?: string } = {}) =>
+    createLocalGitObjectQuarantine(repoPath, options).run(async (env) => env)
+
+  it('takes the distro from a WSL repo path and hands WSL Git the variables through WSLENV', async () => {
+    readRepoCommonDirFromGitMock.mockResolvedValue('/home/me/repo/.git')
+
+    const env = await envSeenBy('\\\\wsl.localhost\\Ubuntu\\home\\me\\repo')
+
+    expect(env).toMatchObject({
+      GIT_OBJECT_DIRECTORY: '/home/me/repo/.git/objects/scratch',
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: '/home/me/repo/.git/objects'
+    })
+    expect(env?.WSLENV?.split(':')).toEqual(
+      expect.arrayContaining(['GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'])
+    )
+  })
+
+  it('hands WSL Git the drvfs spelling for a drive-path repo', async () => {
+    readRepoCommonDirFromGitMock.mockResolvedValue('C:\\repo\\.git')
+
+    const env = await envSeenBy('C:\\repo', { wslDistro: 'Ubuntu' })
+
+    expect(env?.GIT_OBJECT_DIRECTORY).toBe('/mnt/c/repo/.git/objects/scratch')
+  })
+
+  it('runs unquarantined when a WSL-authored linked worktree routes to Windows Git', async () => {
+    readRepoCommonDirFromGitMock.mockResolvedValue('/mnt/c/repo/.git')
+    seedWslLinkedWorktreeGitRoutingForTests('C:\\wt')
+
+    await expect(envSeenBy('C:\\wt', { wslDistro: 'Ubuntu' })).resolves.toBeUndefined()
   })
 })

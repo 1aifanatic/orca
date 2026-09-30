@@ -1,4 +1,7 @@
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import type * as NodeFsPromises from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Why these tests exist: the conflict-summary derivation used to re-run a
@@ -12,12 +15,18 @@ const gitExecFileAsyncMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../git/runner', () => ({ gitExecFileAsync: gitExecFileAsyncMock }))
 // Why: off Windows a WSL objects path is relative, so a real scratch dir would land in the cwd.
-vi.mock('node:fs/promises', async (importOriginal) => ({
-  ...(await importOriginal<typeof NodeFsPromises>()),
-  mkdtemp: async () => {
-    throw new Error('no object store in this test')
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return {
+    ...actual,
+    mkdtemp: async (prefix: string) => {
+      if (!isAbsolute(prefix)) {
+        throw new Error('no object store in this test')
+      }
+      return actual.mkdtemp(prefix)
+    }
   }
-}))
+})
 
 import { CONFLICT_SUMMARY_BASE_FETCH_WINDOW_MS } from './conflict-summary-cache'
 import { __resetPRConflictSummaryCachesForTests, getPRConflictSummary } from './conflict-summary'
@@ -382,5 +391,39 @@ describe('getPRConflictSummary caching', () => {
 
     expect(spawnCount('merge-base')).toBe(2)
     expect(spawnCount('merge-tree')).toBe(1)
+  })
+
+  it('runs the legacy merge-tree fallback against the scratch object store too', async () => {
+    const commonDir = join(
+      realpathSync(mkdtempSync(join(tmpdir(), 'orca-conflict-summary-'))),
+      '.git'
+    )
+    mkdirSync(join(commonDir, 'objects'), { recursive: true })
+    try {
+      mockGitDispatch({
+        [COMMON_DIR_COMMAND]: async () => ({ stdout: `${commonDir}\n` }),
+        'merge-tree': async (argv) => {
+          if (argv.includes('--merge-base')) {
+            throw Object.assign(new Error("error: unknown option `merge-base'"), { stderr: '' })
+          }
+          return { stdout: 'tree-oid\u0000src/conflict.ts\u0000' }
+        }
+      })
+
+      await expect(deriveSummary()).resolves.toEqual(expectedSummary)
+
+      const legacy = gitExecFileAsyncMock.mock.calls.find(
+        ([argv]) => argv[0] === 'merge-tree' && !argv.includes('--merge-base')
+      )
+      expect(legacy?.[1]?.env).toMatchObject({
+        GIT_OBJECT_DIRECTORY: expect.stringContaining(
+          join(commonDir, 'objects', 'tmp_objdir-orca-merge-tree-')
+        ),
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: join(commonDir, 'objects')
+      })
+      expect(readdirSync(join(commonDir, 'objects'))).toEqual([])
+    } finally {
+      rmSync(join(commonDir, '..'), { recursive: true, force: true })
+    }
   })
 })

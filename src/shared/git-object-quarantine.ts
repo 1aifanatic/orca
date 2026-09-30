@@ -1,6 +1,4 @@
-import { readlinkSync } from 'node:fs'
-import { lstat, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { hostname } from 'node:os'
+import { lstat, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from './cross-platform-path'
 import { removeTree } from './windows-transient-lock-removal'
@@ -33,28 +31,10 @@ export type GitObjectQuarantine = {
 // `git gc` expires stale `tmp_*` entries too.
 export const GIT_OBJECT_QUARANTINE_DIR_PREFIX = 'tmp_objdir-orca-merge-tree-'
 
-// Why a floor even for a dead owner: it covers pid spaces the owner record cannot tell apart.
-export const STALE_GIT_OBJECT_QUARANTINE_AGE_MS = 60 * 60 * 1000
+// Why two weeks: `git gc` expires its own `objects/tmp_*` dirs at that age, and no merge-tree runs that long.
+export const STALE_GIT_OBJECT_QUARANTINE_AGE_MS = 14 * 24 * 60 * 60 * 1000
 
-// Why a hard cap for every dir, live-looking owner included: a reused pid (a daemon, a shell)
-// would otherwise keep a leftover forever in a gc-off repo. Two weeks is `git gc`'s own expiry
-// for `objects/tmp_*` (gc.pruneExpire), and no merge-tree runs that long.
-export const MAX_GIT_OBJECT_QUARANTINE_AGE_MS = 14 * 24 * 60 * 60 * 1000
-
-// Why: Orca processes sharing a repo (a second instance, dev and release builds) sweep each
-// other's scratch dirs; only a provably dead owner makes one stale, as Git decides for gc.pid.
-export const GIT_OBJECT_QUARANTINE_OWNER_FILE = 'orca-owner.json'
-
-export type GitObjectQuarantineOwner = {
-  pid: number
-  hostname: string
-  platform: string
-  /** Linux only: a pid is meaningful only inside the pid namespace that issued it. */
-  pidNamespace?: string
-}
-
-const sweptObjectsDirectories = new Set<string>()
-let currentOwner: GitObjectQuarantineOwner | undefined
+const sweepsByObjectsDirectory = new Map<string, Promise<void>>()
 
 /** Decided by path syntax, not by platform: a Windows main process drives WSL Git. */
 export function pathApiForGitPath(value: string): typeof posix {
@@ -70,108 +50,32 @@ function alternateObjectDirectoriesValue(gitPath: string): string {
   return `"${gitPath.replace(/[\\"]/g, (char) => `\\${char}`)}"`
 }
 
-export function gitObjectQuarantineOwner(): GitObjectQuarantineOwner {
-  if (!currentOwner) {
-    let pidNamespace: string | undefined
-    if (process.platform === 'linux') {
-      try {
-        pidNamespace = readlinkSync('/proc/self/ns/pid')
-      } catch {}
-    }
-    currentOwner = {
-      pid: process.pid,
-      // Why platform too: a WSL distro takes the Windows hostname but has its own pids.
-      hostname: hostname(),
-      platform: process.platform,
-      ...(pidNamespace ? { pidNamespace } : {})
-    }
-  }
-  return currentOwner
-}
-
-async function readScratchOwner(scratch: string): Promise<GitObjectQuarantineOwner | undefined> {
-  const path = pathApiForGitPath(scratch)
-  try {
-    const parsed: unknown = JSON.parse(
-      await readFile(path.join(scratch, GIT_OBJECT_QUARANTINE_OWNER_FILE), 'utf8')
-    )
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'pid' in parsed &&
-      typeof parsed.pid === 'number' &&
-      Number.isSafeInteger(parsed.pid) &&
-      parsed.pid > 0 &&
-      'hostname' in parsed &&
-      typeof parsed.hostname === 'string' &&
-      'platform' in parsed &&
-      typeof parsed.platform === 'string'
-    ) {
-      const pidNamespace =
-        'pidNamespace' in parsed && typeof parsed.pidNamespace === 'string'
-          ? parsed.pidNamespace
-          : undefined
-      return {
-        pid: parsed.pid,
-        hostname: parsed.hostname,
-        platform: parsed.platform,
-        ...(pidNamespace ? { pidNamespace } : {})
-      }
-    }
-  } catch {}
-  return undefined
-}
-
-function sharesThisPidSpace(owner: GitObjectQuarantineOwner): boolean {
-  const self = gitObjectQuarantineOwner()
-  return (
-    owner.hostname === self.hostname &&
-    owner.platform === self.platform &&
-    owner.pidNamespace === self.pidNamespace
-  )
-}
-
-// Why only ESRCH: EPERM means the pid exists under another user, so a reused pid keeps the dir.
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return !(error instanceof Error && 'code' in error && error.code === 'ESRCH')
-  }
-}
-
-async function isStaleScratchDirectory(scratch: string, now: number): Promise<boolean> {
-  const modified = await stat(scratch).then(
-    (stats) => stats.mtimeMs,
-    () => undefined
-  )
-  if (modified === undefined || now - modified < STALE_GIT_OBJECT_QUARANTINE_AGE_MS) {
-    return false
-  }
-  if (now - modified >= MAX_GIT_OBJECT_QUARANTINE_AGE_MS) {
-    return true
-  }
-  const owner = await readScratchOwner(scratch)
-  return owner !== undefined && sharesThisPidSpace(owner) && !isProcessAlive(owner.pid)
-}
-
 async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
-  if (sweptObjectsDirectories.has(objectsHostPath)) {
-    return
-  }
-  sweptObjectsDirectories.add(objectsHostPath)
   const path = pathApiForGitPath(objectsHostPath)
   const entries = await readdir(objectsHostPath).catch(() => [])
-  const now = Date.now()
+  const cutoff = Date.now() - STALE_GIT_OBJECT_QUARANTINE_AGE_MS
   for (const entry of entries) {
     if (!entry.startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)) {
       continue
     }
     const scratch = path.join(objectsHostPath, entry)
-    if (await isStaleScratchDirectory(scratch, now)) {
+    const modified = await stat(scratch).then(
+      (stats) => stats.mtimeMs,
+      () => undefined
+    )
+    if (modified !== undefined && modified < cutoff) {
       await removeTree(scratch).catch(() => {})
     }
+  }
+}
+
+// Why not awaited: cleanup must not delay the user's check, and it only removes dirs far older than this run's.
+function startSweepOnce(objectsHostPath: string): void {
+  if (!sweepsByObjectsDirectory.has(objectsHostPath)) {
+    sweepsByObjectsDirectory.set(
+      objectsHostPath,
+      sweepStaleScratchDirectories(objectsHostPath).catch(() => {})
+    )
   }
 }
 
@@ -192,8 +96,10 @@ async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string
     if (!files.includes(`${packName}.idx`)) {
       continue
     }
+    // Why no `.keep`: an aborted lazy fetch can leave its transient one, and gc never repacks a kept pack.
+    const kept = files.filter((file) => !file.endsWith('.keep'))
     // Why `.idx` last: Git finds a pack through its index, so everything it names must already be in place.
-    const ordered = [...files.filter((file) => !file.endsWith('.idx')), `${packName}.idx`]
+    const ordered = [...kept.filter((file) => !file.endsWith('.idx')), `${packName}.idx`]
     const installed: string[] = []
     try {
       for (const file of ordered) {
@@ -234,18 +140,11 @@ export function createGitObjectQuarantine(
       const objects = await resolveOnce()
       let scratchHostPath: string | undefined
       if (objects) {
-        await sweepStaleScratchDirectories(objects.hostPath)
+        startSweepOnce(objects.hostPath)
         const path = pathApiForGitPath(objects.hostPath)
         scratchHostPath = await mkdtemp(
           path.join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
         ).catch(() => undefined)
-        if (scratchHostPath) {
-          // Why no fallback on failure: an ownerless dir is kept until the two-week cap.
-          await writeFile(
-            path.join(scratchHostPath, GIT_OBJECT_QUARANTINE_OWNER_FILE),
-            JSON.stringify(gitObjectQuarantineOwner())
-          ).catch(() => {})
-        }
       }
       if (!objects || !scratchHostPath) {
         // Why: bookkeeping must not block the user's action; run unquarantined.
@@ -262,7 +161,7 @@ export function createGitObjectQuarantine(
       } finally {
         await keepFetchedPacks(scratchHostPath, objects.hostPath)
         await removeTree(scratchHostPath).catch((error: unknown) => {
-          // Why: a later process sweeps it once this one has exited; the check's result still stands.
+          // Why: the stale sweep removes it later; the check's result still stands.
           console.warn(
             '[git-object-quarantine] could not remove scratch dir',
             scratchHostPath,
@@ -275,5 +174,9 @@ export function createGitObjectQuarantine(
 }
 
 export function _resetGitObjectQuarantineSweepForTests(): void {
-  sweptObjectsDirectories.clear()
+  sweepsByObjectsDirectory.clear()
+}
+
+export async function _settleGitObjectQuarantineSweepsForTests(): Promise<void> {
+  await Promise.all(sweepsByObjectsDirectory.values())
 }
