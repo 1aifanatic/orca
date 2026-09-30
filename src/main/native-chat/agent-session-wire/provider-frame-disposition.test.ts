@@ -4,6 +4,7 @@ import { CODEX_APP_SERVER_NOTIFICATION_METHODS } from '../../codex/codex-app-ser
 import { CLAUDE_STREAM_JSON_FRAME_KINDS } from './claude-stream-json-frame-schema'
 import {
   classifyProviderFrame,
+  hasTypedProviderFrameTranslator,
   isDeltaProviderFrameKind,
   PROVIDER_FRAME_CLASSIFICATIONS
 } from './provider-frame-disposition'
@@ -211,6 +212,21 @@ describe('typed translator coverage', () => {
         summary: 'Background command "Wait" failed with exit code 1'
       })
     ).toMatchObject({ classification: 'error-surface' })
+  })
+
+  it('covers the Codex thread status, which reports `systemError` beside the `error` row', () => {
+    const kind = 'notification:thread/status/changed'
+    const payload = { threadId: 'thread-1', status: { type: 'systemError' } }
+
+    expect(hasTypedProviderFrameTranslator('codex', kind)).toBe(true)
+    expect(
+      unhandledProviderFrameJournalItem('codex', kind, payload, DEFAULT_JOURNAL_PAYLOAD_LIMITS, {
+        coveredByTypedTranslator: true
+      })
+    ).toBeNull()
+    expect(unhandledProviderFrameJournalItem('codex', kind, payload)).toMatchObject({
+      classification: 'error-surface'
+    })
   })
 
   it('covers Claude only — the same method name on another provider still falls back', () => {

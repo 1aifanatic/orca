@@ -5,9 +5,6 @@
 
 import { codexThreadStoppedRunning, readCodexErrorWillRetry } from './codex-structured-thread-facts'
 
-/** Every arm of this frame is thread state; a fault's sentence arrives on `error`. */
-export const CODEX_THREAD_STATUS_METHOD = 'thread/status/changed'
-
 export type CodexProviderVerdict =
   /**
    * Codex ended this turn with a fault.
@@ -36,7 +33,7 @@ export function readCodexProviderVerdict(method: string, params: unknown): Codex
   if (method === 'error') {
     return readCodexErrorWillRetry(params) ? null : 'turn-failed'
   }
-  if (method === CODEX_THREAD_STATUS_METHOD) {
+  if (method === 'thread/status/changed') {
     return codexThreadStoppedRunning(params) ? 'thread-stopped-running' : null
   }
   return null
