@@ -13,7 +13,8 @@ import type {
   AgentSessionStatusEvent,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter
@@ -30,6 +31,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 export const REST_TEST_CALLER = { callerKey: 'client-1' }
 export const IDLE_MS = STRUCTURED_AGENT_SESSION_IDLE_MS
@@ -125,10 +127,7 @@ export async function createRestTestRig(
   const clock = { now: HOST_TEST_NOW }
   const statusEvents: AgentSessionStatusEvent[] = []
   const sink = { publish: vi.fn(), forget: vi.fn() }
-  let store = await AgentSessionRecordStore.open({
-    directory: join(root, 'store'),
-    hostId: 'local'
-  })
+  let store = await openTestAgentSessionRecordStore(root)
   const adapter: RestTestAdapter = {
     acquire: vi.fn(async ({ fence, spawnToken }) => ({
       acquisitionGeneration: `generation-${++generations}`,
@@ -159,7 +158,7 @@ export async function createRestTestRig(
         answerPrompt: async ({ commit }) => commit(),
         setOption: async () => undefined
       },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-a',
       probeOwner: async () => ({ outcome: 'pid-absent' }),
@@ -179,10 +178,7 @@ export async function createRestTestRig(
     sink,
     restart: async (overrides = {}) => {
       await rig.host.flushAllStreamedEvents().catch(() => undefined)
-      store = await AgentSessionRecordStore.open({
-        directory: join(root, 'store'),
-        hostId: 'local'
-      })
+      store = await openTestAgentSessionRecordStore(root)
       rig.store = store
       rig.host = hostFor(overrides)
       rig.host.subscribeStatus({ id: 'status', emit: (event) => statusEvents.push(event) })
