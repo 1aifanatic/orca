@@ -407,7 +407,7 @@ it('keeps a relayed waiting child visible when the main agent is cancelled', () 
 describe('a relayed idle-prompt Ctrl+C that killed a background agent (captured)', () => {
   const records = loadCapture('claude-idle-ctrl-c-bg-agent-hooks')
   const scan = records.find((record) => record.kind === 'transcript')
-  const killedLine = scan?.kind === 'transcript' ? scan.agents_killed_records[0] : undefined
+  const killedLine = scan?.kind === 'transcript' ? scan.lines[0] : undefined
   if (!killedLine) {
     throw new Error('the capture has no agents_killed line')
   }
@@ -528,6 +528,18 @@ describe('a relayed idle-prompt Ctrl+C that killed a background agent (captured)
       workingMode: 'monitoring',
       mainAgent: { state: 'done', outcome: 'cancellation' }
     })
+    expect(row(pane.desktop).subagents).toBeUndefined()
+  })
+
+  it('catches up on the relay before it normalizes the next hook', async () => {
+    const pane = await startSshPane(new AgentHookServer())
+    const transcript = transcriptFile()
+    await replay(pane, transcript, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    // Hand-built timing: the next typed prompt reaches the relay before any tick read the line.
+    vi.setSystemTime(killedAt + 120)
+    appendFileSync(transcript, `${killedLine}\n`)
+    await replay(pane, transcript, [11])
+    expect(row(pane.desktop)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
     expect(row(pane.desktop).subagents).toBeUndefined()
   })
 

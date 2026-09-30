@@ -2,6 +2,7 @@ import {
   reconcileRemoteCodexState,
   markCodexLeadTurnInterrupted
 } from '../../../shared/agent-hook-listener/providers/codex-state'
+import { markClaudeLeadTurnInterrupted } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
 import {
   resolveAgentStatusIdentity,
   shouldSuppressInheritedTerminalStatus
@@ -161,6 +162,18 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
         attachedPayload.payload.state === 'working'
       ) {
         markCodexLeadTurnInterrupted(this.state, attachedPayload.paneKey)
+      }
+      // Why: a local pane's listener already folded the held event into its record; restore the
+      // verdict the row keeps, or the Claude transcript watch restates the stale record once the
+      // latch window ends. A relayed pane's record lives on the relay.
+      if (
+        attachedPayload.payload.agentType === 'claude' &&
+        attachedPayload.payload.state === 'working' &&
+        attachedPayload.connectionId === null
+      ) {
+        markClaudeLeadTurnInterrupted(this.state, attachedPayload.paneKey, {
+          stateStartedAt: previous?.payload.mainAgent?.stateStartedAt
+        })
       }
       this.commitStatusRowMutation(rowBefore, previous)
       return previous

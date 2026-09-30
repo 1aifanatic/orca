@@ -124,6 +124,15 @@ export function updateClaudeRunningNonAgentTask(
   }
 }
 
+/** The shell fact every Claude row carries as `claudeRunningNonAgentTask`: a running shell or an
+ *  active session cron. The one stamp for every row the listener or its transcript watch builds. */
+export function claudeRunningNonAgentTask(state: HookListenerState, paneKey: string): boolean {
+  return (
+    state.claudeRunningNonAgentTaskPaneKeys.has(paneKey) ||
+    state.claudeActiveSessionCronPaneKeys.has(paneKey)
+  )
+}
+
 export type ClaudePaneStatusResolution = AgentLeadStatusResolution
 
 /** The only writer of the main agent record. The main agent's clock keeps continuity across
@@ -191,11 +200,14 @@ export function resolveClaudePaneStatus(
  *  and leave only when their inventory says so. */
 export function markClaudeLeadTurnInterrupted(
   state: HookListenerState,
-  paneKey: string
+  paneKey: string,
+  /** The published verdict's own clock, when restoring a verdict the store kept. */
+  verdict: { stateStartedAt?: number } = {}
 ): { state: AgentStatusState; workingMode?: AgentWorkingMode; mainAgent?: AgentMainAgentStatus } {
   const record = setClaudeMainAgentTurnState(state, paneKey, {
     state: 'done',
-    outcome: 'cancellation'
+    outcome: 'cancellation',
+    ...(verdict.stateStartedAt !== undefined ? { stateStartedAt: verdict.stateStartedAt } : {})
   })
   const resolved = resolveClaudePaneStatus(state, paneKey, record)
   const mainAgent = claudeMainAgentStatusForPayload(record)
