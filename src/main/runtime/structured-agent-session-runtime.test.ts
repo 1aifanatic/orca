@@ -54,35 +54,34 @@ const OWNER: AgentSessionProcessIdentity = {
 const deadProbe = () => vi.fn(async () => ({ outcome: 'pid-absent' }) as const)
 
 describe('structured agent-session store presence', () => {
-  it('stops after finding the durable primary store', () => {
+  it('stops after finding the chat journal database', () => {
     const fileExists = vi.fn(() => true)
 
     expect(hasPersistedStructuredAgentSessionStore('/profile', fileExists)).toBe(true)
     expect(fileExists).toHaveBeenCalledOnce()
-    expect(fileExists).toHaveBeenCalledWith(
-      join('/profile', 'agent-sessions', 'agent-sessions.json')
-    )
+    expect(fileExists).toHaveBeenCalledWith(join('/profile', 'agent-session-journal.db'))
   })
 
-  it('checks the durable backup when the primary store is absent', () => {
+  // A profile from before the records moved into the database still holds a chat to import.
+  it('checks the records file and its backup when the database is absent', () => {
     const fileExists = vi.fn((path: string) => path.endsWith('.bak'))
 
     expect(hasPersistedStructuredAgentSessionStore('/profile', fileExists)).toBe(true)
     expect(fileExists).toHaveBeenNthCalledWith(
-      1,
+      2,
       join('/profile', 'agent-sessions', 'agent-sessions.json')
     )
     expect(fileExists).toHaveBeenNthCalledWith(
-      2,
+      3,
       join('/profile', 'agent-sessions', 'agent-sessions.json.bak')
     )
   })
 
-  it('reports a fresh profile absent after two bounded presence checks', () => {
+  it('reports a fresh profile absent after three bounded presence checks', () => {
     const fileExists = vi.fn(() => false)
 
     expect(hasPersistedStructuredAgentSessionStore('/profile', fileExists)).toBe(false)
-    expect(fileExists).toHaveBeenCalledTimes(2)
+    expect(fileExists).toHaveBeenCalledTimes(3)
   })
 })
 

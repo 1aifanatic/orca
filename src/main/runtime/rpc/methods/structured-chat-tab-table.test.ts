@@ -3,7 +3,7 @@
  * the real structured host, the real runtime, and the real RPC handlers. Only the provider is faked.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +26,6 @@ import {
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
-import { agentSessionStorePath } from '../../agent-session-record-store-file'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
 import type { RpcDispatchStreamingOptions } from '../dispatcher-stream-options'
@@ -280,27 +279,6 @@ describe('a chat tab across /clear', () => {
       present: true,
       sessionIds: [replacement]
     })
-  })
-
-  it('gives a reopened cleared conversation the same id when an older build drops the table', async () => {
-    await createChat(HOST_TEST_SESSION)
-    const first = await clear(HOST_TEST_SESSION)
-    await call('agentSession.reveal', { sessionId: HOST_TEST_SESSION })
-    const current = await clear(first)
-    const reopenedTab = store.getSessionTabId(HOST_TEST_SESSION)
-    expect(reopenedTab).not.toBeNull()
-    await host.flushAllStreamedEvents()
-
-    // An older build rewrites the file from what it read, which drops the table.
-    const file = agentSessionStorePath(join(directory, 'store'))
-    const raw = JSON.parse(await readFile(file, 'utf-8'))
-    expect(raw.sessionTabs).toHaveLength(2)
-    delete raw.sessionTabs
-    await writeFile(file, JSON.stringify(raw))
-
-    await openHost()
-    expect(store.getSessionTabId(current)).toBe(SOURCE_TAB)
-    expect(store.getSessionTabId(HOST_TEST_SESSION)).toBe(reopenedTab)
   })
 })
 

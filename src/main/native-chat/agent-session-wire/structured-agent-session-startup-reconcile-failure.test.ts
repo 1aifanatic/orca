@@ -1,16 +1,17 @@
-// The lease reconcile is bookkeeping: a lock that gives up or a store this build may not write is
-// reported, and startup and every read carry on. Nothing is owed after it, because an unreconciled
-// lease grants no writer and the next send reconciles every lease again before it acts.
+// The lease reconcile is bookkeeping: a write that fails is reported, and startup and every read
+// carry on. Nothing is owed after it, because an unreconciled lease grants no writer and the next
+// send reconciles every lease again before it acts. Over records a newer Orca wrote, the reconcile
+// adjudicates in memory and writes nothing.
 
-import { cp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import type * as FileTransactionLock from '../../file-transaction-lock'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type * as AgentSessionRecordRows from '../../runtime/agent-session-record-rows'
 import {
-  AGENT_SESSION_STORE_SCHEMA_VERSION,
-  agentSessionStorePath
-} from '../../runtime/agent-session-record-store-file'
+  openTestAgentSessionRecordStore,
+  seedTestAgentSessionStoreFromNewerBuild
+} from '../../runtime/agent-session-record-store-test-harness'
+import { journalDatabasePath } from '../agent-session-journal/journal-host-database'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -30,34 +31,37 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
-const lock = vi.hoisted(() => ({ failing: false }))
+const writes = vi.hoisted(() => ({ failing: false }))
 
-vi.mock('../../file-transaction-lock', async (importOriginal) => {
-  const actual = await importOriginal<typeof FileTransactionLock>()
+vi.mock('../../runtime/agent-session-record-rows', async (importOriginal) => {
+  const actual = await importOriginal<typeof AgentSessionRecordRows>()
   return {
     ...actual,
-    withFileTransactionLock: (...args: Parameters<typeof actual.withFileTransactionLock>) =>
-      lock.failing
-        ? // What proper-lockfile throws once its retries give up.
-          Promise.reject(
-            Object.assign(new Error('Lock file is already being held'), { code: 'ELOCKED' })
-          )
-        : actual.withFileTransactionLock(...args)
+    writeAgentSessionStoreRows: (...args: Parameters<typeof actual.writeAgentSessionStoreRows>) => {
+      if (writes.failing) {
+        // What SQLite throws when the disk will not take the commit.
+        throw Object.assign(new Error('disk I/O error'), { code: 'ERR_SQLITE_ERROR', errcode: 10 })
+      }
+      return actual.writeAgentSessionStoreRows(...args)
+    }
   }
 })
+
+const IO_ERROR = expect.objectContaining({ message: 'disk I/O error' })
 
 const relaunchedRoots: string[] = []
 
 afterEach(async () => {
-  lock.failing = false
+  writes.failing = false
   await Promise.all(
     relaunchedRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))
   )
 })
 
-/** A host with one chat, relaunched over a copy of its files; `rewrite` edits the copied store. */
+/** A host with one chat, relaunched over a copy of its files; `newer` marks the copied records as
+ *  a newer Orca's. */
 async function relaunch(
-  rewrite?: (json: Record<string, unknown>) => void,
+  newer = false,
   probeOwner: StructuredAgentSessionHostDeps['probeOwner'] = async () => ({
     outcome: 'pid-absent'
   })
@@ -74,13 +78,10 @@ async function relaunch(
     filter: (source) => !source.includes('.lock')
   })
   const storeDirectory = join(relaunched, 'store')
-  if (rewrite) {
-    const path = agentSessionStorePath(storeDirectory)
-    const json = JSON.parse(await readFile(path, 'utf-8'))
-    rewrite(json)
-    await writeFile(path, JSON.stringify(json))
+  if (newer) {
+    await seedTestAgentSessionStoreFromNewerBuild(storeDirectory)
   }
-  const store = await AgentSessionRecordStore.open({ directory: storeDirectory, hostId: 'local' })
+  const store = await openTestAgentSessionRecordStore(storeDirectory)
   const onLeaseReconcileFailure = vi.fn()
   const host = new StructuredAgentSessionHost({
     store,
@@ -102,21 +103,21 @@ async function relaunch(
 it('reports a startup reconcile whose store write fails, and does not reject', async () => {
   const { host, store, onLeaseReconcileFailure } = await relaunch()
 
-  lock.failing = true
+  writes.failing = true
   await expect(host.reconcileRestartLeases()).resolves.toBeUndefined()
 
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
-  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(IO_ERROR)
   // Nothing was adjudicated, so the lease still grants no writer.
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
 })
 
 it('reconciles the chat on its next send once the store can be written again', async () => {
   const { host, store, onLeaseReconcileFailure } = await relaunch()
-  lock.failing = true
+  writes.failing = true
   await host.reconcileRestartLeases()
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
-  lock.failing = false
+  writes.failing = false
 
   const body = hostTestMessage('sent after a startup reconcile failed')
   await expect(
@@ -133,29 +134,27 @@ it('reconciles the chat on its next send once the store can be written again', a
   await host.flushAllStreamedEvents()
 })
 
-it('reports a store a newer Orca wrote without writing it, and does not reject', async () => {
-  const { host, store, storeDirectory, onLeaseReconcileFailure } = await relaunch((json) => {
-    json.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION + 1
-  })
+it('adjudicates records a newer Orca wrote in memory only, and writes nothing', async () => {
+  const { host, store, storeDirectory, onLeaseReconcileFailure } = await relaunch(true)
   expect(store.readOnly).toBe(true)
-  const path = agentSessionStorePath(storeDirectory)
+  const path = journalDatabasePath(storeDirectory)
   const bytes = await readFile(path)
   const files = await readdir(storeDirectory)
 
   await expect(host.reconcileRestartLeases()).resolves.toBeUndefined()
 
-  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
-  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(
-    expect.objectContaining({ message: 'agent_session_legacy_required' })
-  )
-  expect(store.listRecords().map((record) => record.sessionId)).toEqual([SESSION])
+  expect(onLeaseReconcileFailure).not.toHaveBeenCalled()
+  expect(store.getRecord(SESSION)?.lease).toMatchObject({
+    unreconciled: false,
+    claimStatus: 'released'
+  })
   expect(await readFile(path)).toEqual(bytes)
   expect(await readdir(storeDirectory)).toEqual(files)
 })
 
 it('restores a chat for reading while the reconcile keeps failing, and reports it once', async () => {
   const { host, store, onLeaseReconcileFailure } = await relaunch()
-  lock.failing = true
+  writes.failing = true
   await host.reconcileRestartLeases()
 
   await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
@@ -163,37 +162,35 @@ it('restores a chat for reading while the reconcile keeps failing, and reports i
   expect(host.hasSession(SESSION)).toBe(true)
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
-  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(IO_ERROR)
 })
 
-it('restores a chat for reading from a store a newer Orca wrote', async () => {
-  const { host, storeDirectory, onLeaseReconcileFailure } = await relaunch((json) => {
-    json.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION + 1
-  })
-  const path = agentSessionStorePath(storeDirectory)
+it('restores a chat for reading from records a newer Orca wrote', async () => {
+  const { host, storeDirectory, onLeaseReconcileFailure } = await relaunch(true)
+  const path = journalDatabasePath(storeDirectory)
   const bytes = await readFile(path)
 
   await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
 
   expect(host.hasSession(SESSION)).toBe(true)
-  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).not.toHaveBeenCalled()
   expect(await readFile(path)).toEqual(bytes)
 })
 
 // A chat whose owner could not be proven gone is left recovering; resolving that is the writer's.
 it('restores a chat for reading when resolving its recovery cannot write the store', async () => {
-  const { host, store, onLeaseReconcileFailure } = await relaunch(undefined, async () => ({
+  const { host, store, onLeaseReconcileFailure } = await relaunch(false, async () => ({
     outcome: 'indeterminate',
     reason: 'probe'
   }))
   await host.reconcileRestartLeases()
   expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
-  lock.failing = true
+  writes.failing = true
 
   await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
 
   expect(host.hasSession(SESSION)).toBe(true)
   expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
-  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(IO_ERROR)
 })

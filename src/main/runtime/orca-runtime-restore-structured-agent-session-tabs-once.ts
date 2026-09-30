@@ -92,9 +92,12 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       this.projectStructuredAgentSessionTab({ ...session, activate: false, notify: false })
     }
     const wasUnverifiable = this.structuredAgentSessionInventoryUnverifiable
-    // No host means no one can say which chats exist; with none on disk, empty is the answer.
+    // No host, or one still owed the records file's chats, means no one can say which chats exist;
+    // with none on disk, empty is the answer.
+    const importOwed =
+      typeof host?.legacyRecordImportOwed === 'function' && host.legacyRecordImportOwed()
     this.structuredAgentSessionInventoryUnverifiable =
-      !host && this.hasPersistedStructuredAgentSessionStore()
+      (!host || importOwed) && this.hasPersistedStructuredAgentSessionStore()
     // This restore published quietly; subscribers still hold the frames that said "cannot tell".
     if (wasUnverifiable && !this.structuredAgentSessionInventoryUnverifiable) {
       this.notifyMobileSessionTabSnapshots()

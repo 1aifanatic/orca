@@ -3,7 +3,7 @@
 
 import { readdir } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest'
-import { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -32,7 +32,8 @@ it('refuses a send as corrupt when SQLite reports damage, and still stops the ag
     code: 'ERR_SQLITE_ERROR',
     errcode: 11
   })
-  vi.spyOn(JournalHostDatabase.prototype, 'transaction').mockImplementation(() => {
+  // The chat's history database; this harness keeps the ownership rows in a database of their own.
+  vi.spyOn(openTestJournalHostDatabase(root), 'transaction').mockImplementation(() => {
     throw damaged
   })
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -57,5 +58,6 @@ it('refuses a send as corrupt when SQLite reports damage, and still stops the ag
     })
   ).rejects.toBe(damaged)
   expect(cancelTurn).toHaveBeenCalledTimes(1)
-  expect(await readdir(root, { recursive: true })).toEqual(files)
+  // A recovery-offer read still in flight holds its lock for a moment; nothing else may appear.
+  await vi.waitFor(async () => expect(await readdir(root, { recursive: true })).toEqual(files))
 })

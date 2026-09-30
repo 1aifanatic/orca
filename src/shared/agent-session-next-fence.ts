@@ -12,6 +12,8 @@
 
 import type { AgentSessionLease } from './agent-session-record'
 
-export function nextAgentSessionFence(lease: AgentSessionLease): number {
+export function nextAgentSessionFence(
+  lease: Pick<AgentSessionLease, 'runtimeFence' | 'minimumNextFence'>
+): number {
   return Math.max(lease.runtimeFence + 1, lease.minimumNextFence ?? 0)
 }

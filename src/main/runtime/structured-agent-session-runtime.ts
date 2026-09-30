@@ -43,6 +43,7 @@ import { AgentSessionRecordStore } from './agent-session-record-store'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { agentSessionStorePath } from './agent-session-record-store-file'
+import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
 import {
   createStructuredAgentSessionOwnerProbe,
   createStructuredAgentSessionOwnerProbes
@@ -58,15 +59,22 @@ import {
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
 
-/** Beside the journal database: one file adjudicates every session's lease. */
-const RECORD_STORE_DIR_NAME = 'agent-sessions'
+/** Where the records file lived before the records moved into the journal database; read once,
+ *  by that database's version-4 migration, and never written. */
+const LEGACY_RECORD_STORE_DIR_NAME = 'agent-sessions'
 
+/** Whether this profile ever held a structured chat: the journal database, or the records file a
+ *  profile from before it still carries. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
-  const filePath = agentSessionStorePath(join(stateDirectory, RECORD_STORE_DIR_NAME))
-  return fileExists(filePath) || fileExists(`${filePath}.bak`)
+  const filePath = agentSessionStorePath(join(stateDirectory, LEGACY_RECORD_STORE_DIR_NAME))
+  return (
+    fileExists(journalDatabasePath(stateDirectory)) ||
+    fileExists(filePath) ||
+    fileExists(`${filePath}.bak`)
+  )
 }
 
 export type StructuredAgentSessionRuntimeDeps = {
@@ -194,7 +202,15 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   if (typeof deps.resolveClaudeAuthPolicy !== 'function') {
     throw new Error(CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED)
   }
-  const journalDatabase = openStructuredAgentSessionJournalDatabase(deps.stateDirectory)
+  const journalDatabase = await openStructuredAgentSessionJournalDatabase({
+    stateDirectory: deps.stateDirectory,
+    legacyRecordsDirectory: join(deps.stateDirectory, LEGACY_RECORD_STORE_DIR_NAME),
+    hostId: deps.hostId,
+    onLegacyRecordImportReport: (report) =>
+      deps.onError
+        ? deps.onError({ scope: 'structured-agent-session-record-import', error: report })
+        : console.warn('[structured-agent-session] importing the chat records file', report)
+  })
   try {
     return await installOnJournal(deps, journalDatabase)
   } catch (error) {
@@ -210,10 +226,7 @@ async function installOnJournal(
 ): Promise<InstalledRuntime> {
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
-  const store = await AgentSessionRecordStore.open({
-    directory: join(deps.stateDirectory, RECORD_STORE_DIR_NAME),
-    hostId: deps.hostId
-  })
+  const store = AgentSessionRecordStore.open({ journalDatabase, hostId: deps.hostId })
   let host: StructuredAgentSessionHost | null = null
   const lifecycle = createStructuredAgentSessionLifecycleDelivery({
     handle: (event) => host?.handleAdapterEvent(event),
