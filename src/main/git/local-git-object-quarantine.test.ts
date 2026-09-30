@@ -39,6 +39,17 @@ describe('localGitObjectsDirectory', () => {
     })
   })
 
+  it('hands WSL Git the drvfs spelling of a drive-path common dir (Git < 2.31 prints it relative)', () => {
+    expect(localGitObjectsDirectory('C:\\repo\\.git', 'Ubuntu')).toEqual({
+      hostPath: 'C:\\repo\\.git\\objects',
+      gitPath: '/mnt/c/repo/.git/objects'
+    })
+    expect(localGitObjectsDirectory('/mnt/c/repo/.git', 'Ubuntu')).toEqual({
+      hostPath: 'C:\\repo\\.git\\objects',
+      gitPath: '/mnt/c/repo/.git/objects'
+    })
+  })
+
   it('uses one spelling for native Git', () => {
     expect(localGitObjectsDirectory('/Users/me/repo/.git', undefined)).toEqual({
       hostPath: '/Users/me/repo/.git/objects',

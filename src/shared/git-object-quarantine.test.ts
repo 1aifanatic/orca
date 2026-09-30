@@ -3,20 +3,44 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   utimesSync,
   writeFileSync
 } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import type * as NodeFsPromises from 'node:fs/promises'
+import { hostname, tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetGitObjectQuarantineSweepForTests,
   createGitObjectQuarantine,
   GIT_OBJECT_QUARANTINE_DIR_PREFIX,
+  GIT_OBJECT_QUARANTINE_OWNER_FILE,
+  gitObjectQuarantineOwner,
   STALE_GIT_OBJECT_QUARANTINE_AGE_MS,
-  type GitObjectQuarantineEnv
+  UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS,
+  type GitObjectQuarantineEnv,
+  type GitObjectQuarantineOwner
 } from './git-object-quarantine'
+
+const { failedRenameTargets } = vi.hoisted(() => ({ failedRenameTargets: new Set<string>() }))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return {
+    ...actual,
+    rename: async (from: string, to: string) => {
+      if (failedRenameTargets.has(basename(to))) {
+        throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
+      }
+      return actual.rename(from, to)
+    }
+  }
+})
+
+const EXITED_PID = 2_000_000_001
+const OTHER_USER_PID = 2_000_000_002
 
 describe('createGitObjectQuarantine', () => {
   let root: string
@@ -30,6 +54,8 @@ describe('createGitObjectQuarantine', () => {
   })
 
   afterEach(() => {
+    failedRenameTargets.clear()
+    vi.restoreAllMocks()
     rmSync(root, { recursive: true, force: true })
   })
 
@@ -158,27 +184,141 @@ describe('createGitObjectQuarantine', () => {
     expect(scratchDirs()).toEqual([])
   })
 
-  it('removes scratch dirs a crash stranded, once per objects dir, leaving recent ones and Git’s own', async () => {
-    const stale = join(objects, `${GIT_OBJECT_QUARANTINE_DIR_PREFIX}stale`)
-    const recent = join(objects, `${GIT_OBJECT_QUARANTINE_DIR_PREFIX}recent`)
-    const gitOwn = join(objects, 'tmp_objdir-incoming-old')
-    for (const dir of [stale, recent, gitOwn]) {
+  it('rolls back a pack whose index could not be moved, keeping the other packs', async () => {
+    failedRenameTargets.add('pack-abc1.idx')
+
+    await createGitObjectQuarantine(resolveNative()).run(async (env) => {
+      const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
+      mkdirSync(scratchPack)
+      for (const file of ['pack-abc1.pack', 'pack-abc1.idx', 'pack-def2.pack', 'pack-def2.idx']) {
+        writeFileSync(join(scratchPack, file), file)
+      }
+    })
+
+    expect(readdirSync(join(objects, 'pack')).sort()).toEqual(['pack-def2.idx', 'pack-def2.pack'])
+    expect(scratchDirs()).toEqual([])
+  })
+
+  it('leaves a pack the real store already has untouched', async () => {
+    writeFileSync(join(objects, 'pack', 'pack-abc1.pack'), 'installed')
+    writeFileSync(join(objects, 'pack', 'pack-abc1.idx'), 'installed')
+
+    await createGitObjectQuarantine(resolveNative()).run(async (env) => {
+      const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
+      mkdirSync(scratchPack)
+      writeFileSync(join(scratchPack, 'pack-abc1.pack'), 'refetched')
+      writeFileSync(join(scratchPack, 'pack-abc1.idx'), 'refetched')
+    })
+
+    expect(readFileSync(join(objects, 'pack', 'pack-abc1.pack'), 'utf8')).toBe('installed')
+    expect(readFileSync(join(objects, 'pack', 'pack-abc1.idx'), 'utf8')).toBe('installed')
+  })
+
+  it('records this process as the owner of its scratch dir', async () => {
+    let owner: unknown
+
+    await createGitObjectQuarantine(resolveNative()).run(async (env) => {
+      owner = JSON.parse(
+        readFileSync(
+          join(env?.GIT_OBJECT_DIRECTORY ?? '', GIT_OBJECT_QUARANTINE_OWNER_FILE),
+          'utf8'
+        )
+      )
+    })
+
+    expect(owner).toMatchObject({
+      pid: process.pid,
+      hostname: hostname(),
+      platform: process.platform
+    })
+  })
+
+  describe('stale scratch sweep', () => {
+    const HOUR = 60 * 60 * 1000
+    const self = (): GitObjectQuarantineOwner => gitObjectQuarantineOwner()
+    const scratch = (name: string): string =>
+      join(objects, `${GIT_OBJECT_QUARANTINE_DIR_PREFIX}${name}`)
+    const makeScratch = (
+      name: string,
+      ageMs: number,
+      owner?: GitObjectQuarantineOwner | string
+    ) => {
+      const dir = scratch(name)
       mkdirSync(dir)
+      if (owner !== undefined) {
+        writeFileSync(
+          join(dir, GIT_OBJECT_QUARANTINE_OWNER_FILE),
+          typeof owner === 'string' ? owner : JSON.stringify(owner)
+        )
+      }
+      const modified = (Date.now() - ageMs) / 1000
+      utimesSync(dir, modified, modified)
+      return dir
     }
-    const old = (Date.now() - STALE_GIT_OBJECT_QUARANTINE_AGE_MS - 60_000) / 1000
-    utimesSync(stale, old, old)
-    utimesSync(gitOwn, old, old)
 
-    const quarantine = createGitObjectQuarantine(resolveNative())
-    await quarantine.run(async () => {})
+    beforeEach(() => {
+      vi.spyOn(process, 'kill').mockImplementation((pid) => {
+        const code = pid === EXITED_PID ? 'ESRCH' : pid === OTHER_USER_PID ? 'EPERM' : undefined
+        if (code) {
+          throw Object.assign(new Error(`kill ${code}`), { code })
+        }
+        return true
+      })
+    })
 
-    expect(existsSync(stale)).toBe(false)
-    expect(existsSync(recent)).toBe(true)
-    expect(existsSync(gitOwn)).toBe(true)
+    const exited = (): GitObjectQuarantineOwner => ({ ...self(), pid: EXITED_PID })
+    const elsewhere = (): GitObjectQuarantineOwner => ({ ...self(), hostname: `not-${hostname()}` })
+    // Why the other platform: a WSL distro reports the Windows hostname but has its own pids.
+    const otherPidSpace = (): GitObjectQuarantineOwner => ({
+      ...exited(),
+      platform: process.platform === 'win32' ? 'linux' : 'win32'
+    })
+    const pastGitExpiry = UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS + HOUR
 
-    mkdirSync(stale)
-    utimesSync(stale, old, old)
-    await createGitObjectQuarantine(resolveNative()).run(async () => {})
-    expect(existsSync(stale)).toBe(true)
+    it.each<[string, boolean, number, () => GitObjectQuarantineOwner | string | undefined]>([
+      ['its owner on this host has exited', true, 2 * HOUR, exited],
+      ['its owner is this process', false, 2 * HOUR, self],
+      [
+        'its owner runs as another user',
+        false,
+        2 * HOUR,
+        () => ({ ...self(), pid: OTHER_USER_PID })
+      ],
+      ['its owner exited under an hour ago', false, STALE_GIT_OBJECT_QUARANTINE_AGE_MS / 2, exited],
+      [
+        'its owner is on another host',
+        false,
+        2 * 24 * HOUR,
+        () => ({ ...elsewhere(), pid: EXITED_PID })
+      ],
+      ['its owner shares the hostname but not the pid space', false, 2 * 24 * HOUR, otherPidSpace],
+      ['its owner is on another host and Git would expire it', true, pastGitExpiry, elsewhere],
+      ['it has no owner record', false, 2 * 24 * HOUR, () => undefined],
+      ['its owner record is unreadable', false, 2 * 24 * HOUR, () => '{"pid":'],
+      ['it has no owner record and Git would expire it', true, pastGitExpiry, () => undefined]
+    ])('when %s, removes it: %s', async (_label, removed, ageMs, owner) => {
+      const dir = makeScratch('candidate', ageMs, owner())
+
+      await createGitObjectQuarantine(resolveNative()).run(async () => {})
+
+      expect(existsSync(dir)).toBe(!removed)
+    })
+
+    it('sweeps once per objects dir and never touches Git’s own quarantine dirs', async () => {
+      const gitOwn = join(objects, 'tmp_objdir-incoming-old')
+      mkdirSync(gitOwn)
+      const old = (Date.now() - UNOWNED_GIT_OBJECT_QUARANTINE_AGE_MS - HOUR) / 1000
+      utimesSync(gitOwn, old, old)
+      const stranded = makeScratch('stranded', 2 * HOUR, exited())
+
+      await createGitObjectQuarantine(resolveNative()).run(async () => {})
+
+      expect(existsSync(stranded)).toBe(false)
+      expect(existsSync(gitOwn)).toBe(true)
+
+      makeScratch('stranded', 2 * HOUR, exited())
+      await createGitObjectQuarantine(resolveNative()).run(async () => {})
+      expect(existsSync(stranded)).toBe(true)
+    })
   })
 })

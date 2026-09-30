@@ -7,7 +7,7 @@ import {
   type GitObjectsDirectory
 } from '../../shared/git-object-quarantine'
 import { addWslEnvKeys } from '../../shared/wsl-env'
-import { isWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
+import { toLinuxPath, toWindowsWslPath } from '../../shared/wsl-paths'
 import { parseWslPath } from '../wsl'
 import { usesHostGitForWslLinkedWorktree } from './wsl-linked-worktree-git-routing'
 import { readRepoCommonDirFromGit } from './worktree-list-reader'
@@ -23,12 +23,14 @@ export function localGitObjectsDirectory(
   wslDistro: string | undefined
 ): GitObjectsDirectory {
   const hostCommonDir =
-    wslDistro && !isWslUncPath(commonDir) && !isWindowsAbsolutePathLike(commonDir)
+    wslDistro && !isWindowsAbsolutePathLike(commonDir)
       ? toWindowsWslPath(commonDir, wslDistro)
       : commonDir
+  // Why: Git < 2.31 prints a relative common dir, resolved against a `C:\` repo path; WSL Git needs `/mnt/c`.
+  const gitCommonDir = wslDistro ? toLinuxPath(commonDir) : commonDir
   return {
     hostPath: pathApiForGitPath(hostCommonDir).join(hostCommonDir, 'objects'),
-    gitPath: pathApiForGitPath(commonDir).join(commonDir, 'objects')
+    gitPath: pathApiForGitPath(gitCommonDir).join(gitCommonDir, 'objects')
   }
 }
 

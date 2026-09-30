@@ -1,3 +1,4 @@
+import type * as NodeFsPromises from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Why these tests exist: the conflict-summary derivation used to re-run a
@@ -10,6 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const gitExecFileAsyncMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../git/runner', () => ({ gitExecFileAsync: gitExecFileAsyncMock }))
+// Why: off Windows a WSL objects path is relative, so a real scratch dir would land in the cwd.
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof NodeFsPromises>()),
+  mkdtemp: async () => {
+    throw new Error('no object store in this test')
+  }
+}))
 
 import { CONFLICT_SUMMARY_BASE_FETCH_WINDOW_MS } from './conflict-summary-cache'
 import { __resetPRConflictSummaryCachesForTests, getPRConflictSummary } from './conflict-summary'
