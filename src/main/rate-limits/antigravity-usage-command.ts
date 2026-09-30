@@ -19,10 +19,11 @@ export const ANTIGRAVITY_USAGE_ARGS: readonly string[] = [
   // Why bound it inside agy too: the process timeout below kills a hung child, but agy's own
   // deadline lets it exit cleanly and print a diagnostic instead of dying mid-write.
   '--print-timeout',
-  '20s',
-  // Why: the probe must not inherit a workspace's plugin or skill surface — a slash command
-  // shadowed by a project skill would run something other than the quota read.
-  '--disable-slash-commands'
+  '20s'
+  // Do NOT add --disable-slash-commands here. It stops agy expanding `/usage` as a command, so the
+  // text is sent to the model as an ordinary prompt: the call then starts a conversation, spends
+  // quota, and on an account near its limit returns RESOURCE_EXHAUSTED (429) instead of a reading.
+  // Verified against agy 1.2.11 — the flag turned a free metadata read into a billed model turn.
 ]
 
 /**
