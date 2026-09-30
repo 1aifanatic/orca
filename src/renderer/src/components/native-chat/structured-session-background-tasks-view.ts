@@ -30,6 +30,9 @@ export type StructuredSessionBackgroundTasksView = {
   supportsStopAll: boolean
 }
 
+/** One shared empty list: a roster with no rows of a kind keeps the strip's memo on every render. */
+const NO_TASKS: AgentSessionBackgroundTask[] = []
+
 export function structuredSessionBackgroundTasksView(
   backgroundTasks: AgentSessionBackgroundTaskState | null | undefined,
   turnId: string | null
@@ -42,8 +45,8 @@ export function structuredSessionBackgroundTasksView(
   return {
     show: monitoring,
     isMonitoring: turnId === null && liveWork,
-    tasks: backgroundTasks?.tasks ?? [],
-    settledTasks: backgroundTasks?.settledTasks ?? [],
+    tasks: backgroundTasks?.tasks ?? NO_TASKS,
+    settledTasks: backgroundTasks?.settledTasks ?? NO_TASKS,
     ...(children ? { children } : {}),
     supportsStop: backgroundTasks?.supportsTaskStop === true,
     // Absent means the host predates the field and does accept an untargeted

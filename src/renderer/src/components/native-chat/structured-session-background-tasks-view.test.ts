@@ -31,6 +31,19 @@ describe('structuredSessionBackgroundTasksView', () => {
     expect(structuredSessionBackgroundTasksView(roster, 'turn-1').children).toBe(roster.children)
   })
 
+  it('keeps the same empty lists for a roster that omits one, so the strip memo holds', () => {
+    for (const roster of [
+      { state: 'monitoring' as const, tasks: [{ id: 'task-1', kind: 'agent' as const }] },
+      { state: 'monitoring' as const, settledTasks: [{ id: 'task-2', kind: 'agent' as const }] },
+      null
+    ]) {
+      const first = structuredSessionBackgroundTasksView(roster, null)
+      const again = structuredSessionBackgroundTasksView(roster, null)
+      expect(again.tasks).toBe(first.tasks)
+      expect(again.settledTasks).toBe(first.settledTasks)
+    }
+  })
+
   it('reads live work beneath an idle session as monitoring, and a running turn as its own', () => {
     const roster = {
       state: 'monitoring' as const,
