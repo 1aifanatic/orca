@@ -3,6 +3,7 @@ import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import { agentSessionFailureWords } from './agent-session-failure-words'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
+import { projectNativeChatTranscript } from './native-chat-transcript-projection'
 import type { NativeChatMessage } from './native-chat-types'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
@@ -41,10 +42,14 @@ function assistant(text: string, agentId?: string): AgentJournalRenderItem {
   return item({ kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }, agentId)
 }
 
-function drawn(items: AgentJournalRenderItem[]): string[] {
-  return projectStructuredAgentSessionMessages(items, [], []).map((message) =>
+function texts(messages: readonly NativeChatMessage[]): string[] {
+  return messages.map((message) =>
     message.blocks.map((block) => (block.type === 'text' ? block.text : block.type)).join('')
   )
+}
+
+function drawn(items: AgentJournalRenderItem[]): string[] {
+  return texts(projectStructuredAgentSessionMessages(items, [], []))
 }
 
 describe('a run of provider retry rows', () => {
@@ -55,7 +60,7 @@ describe('a run of provider retry rows', () => {
     ])
   })
 
-  it('is split by any other row drawn between two retries', () => {
+  it("is split by any other of the same agent's rows drawn between two retries", () => {
     const notice = item({ kind: 'status', tone: 'notice', text: 'Model changed' })
     expect(
       drawn([retry(1), retry(2), assistant('Partial answer'), retry(1), notice, retry(1)])
@@ -84,20 +89,27 @@ describe('a run of provider retry rows', () => {
     ])
   })
 
-  it("is not split by another agent's row, which is drawn apart from it", () => {
-    expect(
-      drawn([
-        retry(1),
-        assistant('Subagent ran the tests', 'subagent-1'),
-        retry(2),
-        retry(1, 'subagent-1'),
-        assistant('Still working'),
-        retry(2, 'subagent-1')
-      ])
-    ).toEqual([
-      'Subagent ran the tests',
+  it("is not split by another agent's row, which is drawn in that agent's own section", () => {
+    const { conversation, subagentRows } = projectNativeChatTranscript(
+      projectStructuredAgentSessionMessages(
+        [
+          retry(1),
+          assistant('Subagent ran the tests', 'subagent-1'),
+          retry(2),
+          retry(1, 'subagent-1'),
+          assistant('Still working'),
+          retry(2, 'subagent-1')
+        ],
+        [],
+        []
+      )
+    )
+    expect(texts(conversation)).toEqual([
       'Codex is retrying: Reconnecting... 2/5.',
-      'Still working',
+      'Still working'
+    ])
+    expect(texts((subagentRows.get('subagent-1') ?? []).map((row) => row.message))).toEqual([
+      'Subagent ran the tests',
       'Codex is retrying: Reconnecting... 2/5.'
     ])
   })

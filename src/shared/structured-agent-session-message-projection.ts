@@ -48,7 +48,7 @@ export function projectStructuredAgentSessionMessages(
     }
   }
   return [
-    // After the held sends leave, so a run is split only by what is drawn between its rows.
+    // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...collapseProviderRetryRuns(delivered),
     ...held,
     ...optimistic
