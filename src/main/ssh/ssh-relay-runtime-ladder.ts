@@ -21,7 +21,8 @@ export type CompatRelayRuntime = {
   id: string
   /** The host target this runtime serves, e.g. linux-x64-glibc for a glibc 2.17 build. */
   hostTarget: ServerTarget
-  glibcFloor: GlibcVersion
+  /** Null for a musl or darwin target, which has no glibc to compare. */
+  glibcFloor: GlibcVersion | null
 }
 
 /** Empty until a compat runtime ships; rung B is then chosen from this list alone. */
@@ -39,8 +40,8 @@ export function compatRelayRuntimeFor(
     catalog.find(
       (runtime) =>
         runtime.hostTarget === facts.target &&
-        facts.glibc !== null &&
-        !isGlibcBelow(facts.glibc, runtime.glibcFloor)
+        (runtime.glibcFloor === null ||
+          (facts.glibc !== null && !isGlibcBelow(facts.glibc, runtime.glibcFloor)))
     ) ?? null
   )
 }

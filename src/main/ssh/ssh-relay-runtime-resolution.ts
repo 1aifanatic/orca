@@ -11,7 +11,11 @@ import type {
 } from '../../shared/ssh-types'
 import type { TerminalUnavailableCause } from '../../shared/terminal-unavailable-cause'
 import type { OrcadDeploymentTargetFacts } from './orcad-deployment-target'
-import { isPinnedRuntimeRefusal, type RelayRuntimeFallbackReason } from './ssh-relay-pinned-node'
+import {
+  forgetPinnedRuntimeRefusal,
+  isPinnedRuntimeRefusal,
+  type RelayRuntimeFallbackReason
+} from './ssh-relay-pinned-node'
 import {
   remoteRuntimeUnavailableMessage,
   remoteRuntimeUnavailableReason,
@@ -97,6 +101,13 @@ export class RelayRuntimeLadderRun {
   }
 
   settle(rung: SshRemoteRuntimeRung): void {
+    // Why: C's self-test loaded addons from the same tree, which disproves a remembered noexec.
+    if (rung === 'C' && this.selfTest === 'passed' && this.pinnedRefusal === 'noexec') {
+      this.pinnedRefusal = null
+      if (this.facts) {
+        forgetPinnedRuntimeRefusal(this.targetId, this.facts.target)
+      }
+    }
     this.persist(rung)
     if (this.host) {
       trackSshRemoteRuntimeResolved(this.targetId, {
