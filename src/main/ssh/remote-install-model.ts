@@ -2,10 +2,10 @@
  * The two things Orca installs into `~/.orca-remote/`, and the rules that keep them from
  * touching each other.
  *
- * `docs/design/shipping-orcad.html` §06 settles that on-disk coexistence is permanent: the
- * relay is the dumb execution host for SSH-target users, orcad is the peer for paired
- * environments, and no plan item retires either. So `relay-<version>/` and `orcad-<version>/`
- * sit side by side forever, and the namespace has to be a parameter rather than a literal.
+ * Until the server model's two-step GC hand-over (`docs/reference/remote-server-install-model.md`),
+ * the relay is the dumb execution host for SSH-target users and orcad is the peer for paired
+ * environments. So `relay-<version>/` and `orcad-<version>/` sit side by side, and the namespace
+ * has to be a parameter rather than a literal.
  *
  * GC ownership is the trap that parameterization creates. Each model garbage-collects ONLY
  * its own directories — see `remoteInstallDirOwner`. Relay's regex happened to be narrow
@@ -105,10 +105,10 @@ export function remoteInstallListingRegexSource(model: RemoteInstallModel): stri
  * Which model owns a directory found in `~/.orca-remote/`, or null for anything neither
  * model created.
  *
- * This is the answer to §06 falsifier 1's first half: **the model that created a directory
- * owns it, and nothing else may delete it.** A relay GC pass that saw `orcad-0.1.0+abc`
- * would be looking at the live install of a peer whose lifecycle it has no view into — the
- * SSH-execution-boundary collapse in directory form.
+ * Until release N+1 of the GC hand-over in `docs/reference/remote-server-install-model.md`, **the
+ * model that created a directory owns it, and nothing else may delete it.** A relay GC pass that
+ * saw `orcad-0.1.0+abc` would be looking at the live install of a peer whose lifecycle it has no
+ * view into — the SSH-execution-boundary collapse in directory form.
  */
 export function remoteInstallDirOwner(dirName: string): RemoteInstallModelId | null {
   for (const model of REMOTE_INSTALL_MODELS) {

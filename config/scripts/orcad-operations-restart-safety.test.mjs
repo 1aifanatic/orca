@@ -36,6 +36,7 @@ describe('orcad operations restart safety', () => {
     expect(operationsProse).toContain('Orca does not yet provide an atomic census-and-stop fence')
   })
 
+  // Why: its tracked replacement is docs/reference/remote-server-install-model.md.
   it('does not refer to the unavailable shipping design', () => {
     expect(operationsGuide).not.toContain('docs/design/shipping-orcad.html')
   })

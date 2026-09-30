@@ -1,13 +1,13 @@
 /**
  * The pre-activation copy of shared profile state that makes rollback sound.
  *
- * `docs/design/shipping-orcad.html` §04's state-schema row asks for "backward-readable
- * migrations or a pre-activation snapshot". Only the second is available here, and not as a
- * preference: Orca's persisted state carries **no schema version**. Migrations are cohort
- * and shape heuristics that run on load and rewrite in place, and the load path rebuilds
- * `settings` and `ui` from known fields — so a newer build's nested additions are silently
- * dropped by an older one rather than rejected. There is nothing to compare and nothing that
- * fails loudly, which rules out proving backward-readability and leaves the snapshot.
+ * `docs/reference/remote-server-install-model.md` (§04) carries the state-schema row that asks for
+ * "backward-readable migrations or a pre-activation snapshot". Only the second is available here,
+ * and not as a preference: Orca's persisted state carries **no schema version**. Migrations are
+ * cohort and shape heuristics that run on load and rewrite in place, and the load path rebuilds
+ * `settings` and `ui` from known fields — so a newer build's nested additions are silently dropped
+ * by an older one rather than rejected. There is nothing to compare and nothing that fails loudly,
+ * which rules out proving backward-readability and leaves the snapshot.
  *
  * What is snapshotted is deliberately narrow. `<root>/daemon` is EXCLUDED: it holds the live
  * daemon's socket, PID record and auth token, and that daemon outlives every orcad restart

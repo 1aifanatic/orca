@@ -73,10 +73,10 @@ export type RemoteInstallGcOptions = {
 /**
  * Garbage-collect one model's old version directories.
  *
- * **GC ownership (design §06 falsifier 1):** a pass only ever sees, and only ever deletes,
- * directories belonging to `model`. The remote listing is scoped by prefix, and
- * `remoteInstallGcPermits` re-checks every candidate locally, so neither a widened glob nor
- * a hand-rolled listing can make one model delete the other's live install.
+ * **GC ownership (`docs/reference/remote-server-install-model.md`):** a pass only ever sees, and
+ * only ever deletes, directories belonging to `model`. The remote listing is scoped by prefix, and
+ * `remoteInstallGcPermits` re-checks every candidate locally, so neither a widened glob nor a
+ * hand-rolled listing can make one model delete the other's live install.
  */
 export async function gcOldRemoteInstallVersions(
   conn: SshConnection,

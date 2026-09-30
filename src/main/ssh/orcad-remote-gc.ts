@@ -1,13 +1,12 @@
 /**
- * orcad's garbage collection, and the half of §06 falsifier 1 that says who owns it.
+ * orcad's garbage collection, and who owns it (`docs/reference/remote-server-install-model.md`).
  *
- * **Each model GCs only its own namespace, permanently.** orcad removes `orcad-<v>/`
- * directories; the relay removes `relay-<v>/` directories; neither ever removes the other's,
- * and no plan item makes one the winner. That is not a migration compromise — the two models
- * serve different users on the same machine (SSH target vs paired peer), so there is no
- * moment at which one of them is entitled to clean up after the other. A pass that deleted
- * the sibling's tree would be reaching across the execution boundary the whole design exists
- * to keep intact.
+ * **Each model GCs only its own namespace.** orcad removes `orcad-<v>/` directories; the
+ * relay removes `relay-<v>/` directories; neither ever removes the other's. The two models
+ * serve different users on the same machine (SSH target vs paired peer), so neither is
+ * entitled to clean up after the other; only the converged server's migration sweep may,
+ * and only on an `exited` verdict. A pass that deleted the sibling's tree would be reaching
+ * across the execution boundary the whole design exists to keep intact.
  *
  * On top of the ownership rule, orcad pins three directories that are idle-looking but
  * load-bearing: the active version, the rollback target, and whichever version the LIVE

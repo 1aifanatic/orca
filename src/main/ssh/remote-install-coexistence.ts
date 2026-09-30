@@ -1,9 +1,9 @@
 /**
  * What a client does when it finds both a relay and an orcad installed on one host.
  *
- * `docs/design/shipping-orcad.html` §06 draws the line the boundary doc actually draws:
- * two *directories* on disk are fine and permanent; two *registered targets* for one
- * machine are forbidden, because that is what splits a machine's worktrees across two
+ * `docs/reference/remote-server-install-model.md` draws the line the boundary doc actually
+ * draws: two *directories* on disk are fine; two *registered targets* for one machine are
+ * forbidden, permanently, because that is what splits a machine's worktrees across two
  * identities (`docs/reference/ssh-execution-boundary.md`).
  *
  * So the model is never inferred from the filesystem. It is decided by how the user

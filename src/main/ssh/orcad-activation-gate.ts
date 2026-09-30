@@ -1,12 +1,11 @@
 /**
  * Whether a freshly launched orcad has earned the right to become the active one.
  *
- * The failure this exists to prevent is the one `docs/design/shipping-orcad.html` names
- * throughout: a deployment that reports success because a port opened. orcad answers RPC
- * from its own process, so "listening" stays true while the terminal daemon that owns every
- * terminal is dead — a green host that cannot run a single command. Activation therefore
- * reads the cross-process health payload the candidate published, not the exit code of the
- * command that started it.
+ * The failure this exists to prevent is the one `docs/reference/remote-server-install-model.md`
+ * names: a deployment that reports success because a port opened. orcad answers RPC from its own
+ * process, so "listening" stays true while the terminal daemon that owns every terminal is dead — a
+ * green host that cannot run a single command. Activation therefore reads the cross-process health
+ * payload the candidate published, not the exit code of the command that started it.
  *
  * A refusal here is not a failure to deploy. The bytes are installed and the previous
  * version is still active; nothing was lost. Activating on a bad verdict is what loses

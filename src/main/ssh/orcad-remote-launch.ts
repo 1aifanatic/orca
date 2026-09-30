@@ -1,11 +1,11 @@
 /**
  * Starting a candidate orcad on the host and reading back what it says about itself.
  *
- * This is the piece `docs/design/shipping-orcad.html` §02 marks **fork**, not reuse: the
- * relay launches detached and proves itself by printing an `ORCA-RELAY` sentinel, and orcad
- * has no such interface. It publishes a single `orca_server_ready` JSON line on stdout,
- * carrying the health payload activation is gated on — so the handshake here is "capture
- * that line", not "match a marker".
+ * This is the piece `docs/reference/remote-server-install-model.md` (§02) marks **fork**, not
+ * reuse: the relay launches detached and proves itself by printing an `ORCA-RELAY` sentinel, and
+ * orcad has no such interface. It publishes a single `orca_server_ready` JSON line on stdout,
+ * carrying the health payload activation is gated on — so the handshake here is "capture that
+ * line", not "match a marker".
  *
  * The candidate is launched detached with stdout redirected to a file inside its own version
  * directory. Reading readiness off the exec channel would mean holding the channel open for
