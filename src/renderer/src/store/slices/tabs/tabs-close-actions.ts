@@ -8,8 +8,6 @@ import {
   sanitizeRecentTabIds
 } from '../tab-group-state'
 import { buildActiveSurfacePatch } from './tabs-surface'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { beginStructuredAgentSessionTabClose } from '@/runtime/structured-agent-session-tab-retirement'
 import {
   hasStructuredAgentSessionLaunchCancellationTombstone,
@@ -17,7 +15,10 @@ import {
 } from '@/lib/structured-agent-session-launch-registry'
 import { structuredAgentSessionTabId } from '../../../../../shared/structured-agent-session-projection'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
-import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
+import {
+  structuredAgentSessionFocusOwner,
+  structuredAgentSessionTargetForWorktree
+} from '@/runtime/structured-agent-session-owner'
 
 export function createTabsCloseActions(
   set: TabsSliceSet,
@@ -52,17 +53,16 @@ export function createTabsCloseActions(
         const provisional =
           shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId) ||
           hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, tab.entityId)
+        const target = structuredAgentSessionTargetForWorktree(state, worktreeId)
         if (provisional) {
           clearWebSessionFocusIntentIfMatches(
-            { environmentId: LOCAL_STRUCTURED_SESSION_OWNER },
+            structuredAgentSessionFocusOwner(target),
             worktreeId,
             `agent-session:${tab.entityId}`
           )
         }
         beginStructuredAgentSessionTabClose({
-          target: getActiveRuntimeTarget({
-            activeRuntimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
-          }),
+          target,
           worktreeId,
           sessionId: tab.entityId,
           provisional

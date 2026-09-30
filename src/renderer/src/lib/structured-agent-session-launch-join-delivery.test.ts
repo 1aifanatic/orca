@@ -78,6 +78,7 @@ import { readOutbox } from '@/components/native-chat/structured-agent-session-ou
 function launchIntent(worktreeId: string, sessionId: string): StructuredAgentSessionLaunchIntent {
   return {
     worktreeId,
+    target: { kind: 'local' },
     sessionId,
     agent: 'codex',
     params: {

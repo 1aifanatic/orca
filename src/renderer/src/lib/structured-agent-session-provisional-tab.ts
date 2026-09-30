@@ -1,5 +1,4 @@
 import type { Tab } from '../../../shared/tab-types'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import { defaultAgentChatLabel } from '../../../shared/agent-session-chat-label'
 import { structuredAgentSessionTabId } from '../../../shared/structured-agent-session-projection'
 import type {
@@ -11,6 +10,7 @@ import type {
   StructuredAgentLaunchHooks
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
+import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 export type StructuredAgentSessionProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
 
@@ -40,7 +40,7 @@ export function openStructuredAgentSessionProvisionalTab(args: {
   const tab = state.createUnifiedTab(args.worktreeId, 'agent-session', {
     id: tabId,
     entityId: args.sessionId,
-    executionHostId: LOCAL_EXECUTION_HOST_ID,
+    executionHostId: getExecutionHostIdForWorktree(state, args.worktreeId),
     agentSessionAgent: args.agent,
     label: defaultAgentChatLabel(args.agent),
     ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),

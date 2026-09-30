@@ -16,7 +16,10 @@ import {
 } from '@/lib/structured-agent-session-launch-registry'
 import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
-import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
+import {
+  structuredAgentSessionFocusOwner,
+  structuredAgentSessionTargetForWorktree
+} from '@/runtime/structured-agent-session-owner'
 
 /** Builds a bulk cleanup patch and clears auxiliary warning records without requiring individual terminal teardown. */
 export function buildWorktreePurgeState(
@@ -38,7 +41,7 @@ export function buildWorktreePurgeState(
       markStructuredAgentSessionLaunchCancelledSilently(worktreeId, launch.intent.sessionId)
       discardStructuredAgentSessionLaunchOutbox(launch.intent.sessionId)
       clearWebSessionFocusIntentIfMatches(
-        { environmentId: LOCAL_STRUCTURED_SESSION_OWNER },
+        structuredAgentSessionFocusOwner(launch.intent.target),
         worktreeId,
         `agent-session:${launch.intent.sessionId}`
       )
@@ -55,7 +58,7 @@ export function buildWorktreePurgeState(
         markStructuredAgentSessionLaunchCancelledSilently(worktreeId, tab.entityId)
         discardStructuredAgentSessionLaunchOutbox(tab.entityId)
         clearWebSessionFocusIntentIfMatches(
-          { environmentId: LOCAL_STRUCTURED_SESSION_OWNER },
+          structuredAgentSessionFocusOwner(structuredAgentSessionTargetForWorktree(s, worktreeId)),
           worktreeId,
           `agent-session:${tab.entityId}`
         )

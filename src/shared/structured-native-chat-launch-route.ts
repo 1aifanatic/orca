@@ -9,6 +9,7 @@
  */
 
 import { isAgentSessionHandleProvider } from './agent-session-provider-handle'
+import { parseExecutionHostId } from './execution-host'
 import type { GlobalSettings } from './global-settings-types'
 import type { ProjectExecutionRuntimeResolution } from './project-execution-runtime'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from './protocol-version'
@@ -43,7 +44,8 @@ export type StructuredNativeChatSupport =
 export type StructuredNativeChatSupportInput = {
   agent: TuiAgent
   executionHostId: string
-  /** Capabilities of the host this launch would run on. `null` = not yet established. */
+  /** Capabilities of the host this launch would run on — a paired server's own, not this
+   *  machine's. `null` = not yet established. */
   hostCapabilities: readonly string[] | null
   /** Host-derived. Absent means the kind was never established, which is not evidence of any kind. */
   workspaceKind?: WorkspaceLaunchKind
@@ -74,7 +76,10 @@ export function prefersStructuredNativeChatByDefault(
 export function resolveStructuredNativeChatSupport(
   input: StructuredNativeChatSupportInput
 ): StructuredNativeChatSupport {
-  if (input.executionHostId !== 'local') {
+  // A paired Orca server runs structured sessions itself and answers for them below. An SSH host
+  // has no Orca runtime of its own to run one.
+  const host = parseExecutionHostId(input.executionHostId)
+  if (host?.kind !== 'local' && host?.kind !== 'runtime') {
     return { supported: false, blocker: 'remote-execution-host' }
   }
   if (input.reusesTerminal === true) {

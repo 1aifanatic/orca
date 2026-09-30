@@ -26,6 +26,7 @@ import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-initial-v
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
+import { readRuntimeEnvironmentCapabilitiesOrUnknown } from '@/runtime/runtime-rpc-client'
 
 export type ProspectiveWorkspaceKind = NonNullable<AgentLaunchRoutingInput['workspaceKind']>
 
@@ -75,6 +76,14 @@ function resolveExecutionHostId(store: AgentLaunchRouteStore, workspace: Prospec
   return workspace.executionHostId ?? LOCAL_EXECUTION_HOST_ID
 }
 
+/** The launch is decided on what the host that would run it supports, not on this machine. */
+function resolveHostCapabilities(executionHostId: string): readonly string[] | null {
+  const host = parseExecutionHostId(executionHostId)
+  return host?.kind === 'runtime'
+    ? readRuntimeEnvironmentCapabilitiesOrUnknown(host.environmentId)
+    : readLocalRuntimeCapabilitiesOrUnknown()
+}
+
 function resolveProjectRuntime(
   store: AgentLaunchRouteStore,
   workspace: ProspectiveWorkspace,
@@ -120,7 +129,7 @@ export function buildAgentLaunchRouteInput(
     agent,
     settings: store.settings,
     executionHostId,
-    hostCapabilities: readLocalRuntimeCapabilitiesOrUnknown(),
+    hostCapabilities: resolveHostCapabilities(executionHostId),
     workspaceKind: workspace.kind,
     projectRuntime: resolveProjectRuntime(store, workspace, executionHostId),
     promptDelivery: args.promptDelivery,

@@ -64,6 +64,7 @@ describe('structured launch cancellation retirement', () => {
       identity: `codex:${WORKTREE_ID}`,
       intent: {
         worktreeId: WORKTREE_ID,
+        target: { kind: 'local' },
         sessionId: SESSION_ID,
         agent: 'codex',
         params: {
@@ -125,6 +126,7 @@ describe('structured launch cancellation retirement', () => {
       identity: `codex:${WORKTREE_ID}`,
       intent: {
         worktreeId: WORKTREE_ID,
+        target: { kind: 'local' },
         sessionId: SESSION_ID,
         agent: 'codex',
         params: {

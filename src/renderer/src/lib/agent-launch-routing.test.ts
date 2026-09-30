@@ -90,11 +90,19 @@ describe('resolveAgentLaunchRoute', () => {
     expect(route({ requiresTuiLaunchCommand: true })).toBe('legacy-native-chat')
   })
 
-  it.each([
-    ['SSH', 'ssh:host-a'],
-    ['paired runtime', 'runtime:environment-a']
-  ])('preserves execution ownership on %s', (_name, executionHostId) => {
-    expect(route({ executionHostId })).toBe('legacy-native-chat')
+  it('keeps an SSH workspace terminal-backed, since no Orca runtime runs there', () => {
+    expect(route({ executionHostId: 'ssh:host-a' })).toBe('legacy-native-chat')
+  })
+
+  it('routes a paired server by its own capabilities', () => {
+    expect(route({ executionHostId: 'runtime:environment-a' })).toBe('structured-native-chat')
+    // The server has not answered yet, or answered without structured sessions.
+    expect(route({ executionHostId: 'runtime:environment-a', hostCapabilities: null })).toBe(
+      'legacy-native-chat'
+    )
+    expect(route({ executionHostId: 'runtime:environment-a', hostCapabilities: [] })).toBe(
+      'legacy-native-chat'
+    )
   })
 
   it.each(['git-worktree', 'folder'] as const)(

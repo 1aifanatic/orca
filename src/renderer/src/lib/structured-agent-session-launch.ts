@@ -219,6 +219,7 @@ function structuredAgentLaunchState(
       caller: addStructuredLaunchCaller({
         group: existing.callers,
         launchResult: existing.promise,
+        target: existing.intent.target,
         options: callerOptions,
         stagedEntry: stagedPrompt
       })
@@ -260,6 +261,7 @@ function structuredAgentLaunchState(
   const caller = addStructuredLaunchCaller({
     group: state.callers,
     launchResult: state.promise,
+    target: state.intent.target,
     options,
     stagedEntry: stagedPrompt
   })

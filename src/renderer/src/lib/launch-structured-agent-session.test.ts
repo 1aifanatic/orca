@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { useAppStore } from '@/store'
 import {
   createStructuredAgentSessionLaunchIntent,
   launchStructuredAgentSession,
@@ -77,6 +78,39 @@ describe('structured agent session launch', () => {
       })
     )
     expect(params).toBe(intent.params)
+  })
+
+  it('creates the session on the paired server that owns the workspace', async () => {
+    const initial = useAppStore.getState()
+    useAppStore.setState({
+      repos: [{ id: 'repo-remote', connectionId: null, executionHostId: 'runtime:server-1' }],
+      worktreesByRepo: {
+        'repo-remote': [
+          { id: 'remote-workspace', repoId: 'repo-remote', hostId: 'runtime:server-1' }
+        ]
+      }
+    } as unknown as Partial<ReturnType<typeof useAppStore.getState>>)
+    try {
+      vi.mocked(callStructuredAgentSession).mockImplementation(async (_target, method) =>
+        method === 'agentSession.createSupport'
+          ? { supported: true }
+          : { ok: true, replayed: false, value: { sessionId: 'claude_1', fence: 1 } }
+      )
+
+      const intent = createStructuredAgentSessionLaunchIntent('remote-workspace', 'claude')
+      await launchStructuredAgentSession(intent)
+
+      const server = { kind: 'environment', environmentId: 'server-1' }
+      expect(intent.target).toEqual(server)
+      expect(
+        vi.mocked(callStructuredAgentSession).mock.calls.map(([target, method]) => [target, method])
+      ).toEqual([
+        [server, 'agentSession.createSupport'],
+        [server, 'agentSession.create']
+      ])
+    } finally {
+      useAppStore.setState({ repos: initial.repos, worktreesByRepo: initial.worktreesByRepo })
+    }
   })
 
   it('names Claude as the create provider and in the session id', () => {

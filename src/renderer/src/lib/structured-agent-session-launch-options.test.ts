@@ -85,6 +85,7 @@ const SESSION_ID = 'session-1'
 function launchIntent(seedOptions?: Record<string, string>): StructuredAgentSessionLaunchIntent {
   return {
     worktreeId: WORKTREE_ID,
+    target: { kind: 'local' },
     sessionId: SESSION_ID,
     agent: 'codex',
     params: {

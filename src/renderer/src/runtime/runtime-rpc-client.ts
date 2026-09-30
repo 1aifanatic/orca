@@ -281,6 +281,16 @@ export async function getRuntimeEnvironmentStatus(
   return entry.status
 }
 
+/**
+ * A paired host's capabilities from its last status, which is only cached once it proved
+ * compatible; `null` when none has landed. For synchronous routing reads: the host still answers
+ * for itself before anything is created, so a list past its refresh window only picks the question.
+ */
+export const readRuntimeEnvironmentCapabilitiesOrUnknown = (
+  environmentId: string
+): readonly RuntimeCapability[] | null =>
+  runtimeCompatibilityChecks.get(environmentId.trim())?.status?.capabilities ?? null
+
 export async function runtimeEnvironmentSupportsCapability(
   environmentId: string,
   capability: RuntimeCapability,

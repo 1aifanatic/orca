@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => ({
   getConnectionIdFromState: vi.fn(),
   getLocalProjectExecutionRuntimeContext: vi.fn(),
   getLocalRepoProjectExecutionRuntimeContext: vi.fn(),
-  readLocalRuntimeCapabilitiesOrUnknown: vi.fn()
+  readLocalRuntimeCapabilitiesOrUnknown: vi.fn(),
+  readRuntimeEnvironmentCapabilitiesOrUnknown: vi.fn()
 }))
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
@@ -27,6 +28,9 @@ vi.mock('@/lib/local-preflight-context', () => ({
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: mocks.readLocalRuntimeCapabilitiesOrUnknown
+}))
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  readRuntimeEnvironmentCapabilitiesOrUnknown: mocks.readRuntimeEnvironmentCapabilitiesOrUnknown
 }))
 // Why: the planner is the only route consumer; its settle loop is out of scope here.
 vi.mock('@/lib/structured-agent-launch-settlement', () => ({
@@ -334,6 +338,24 @@ describe('buildAgentLaunchRouteInput', () => {
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
     })
     expect(input.hostCapabilities).toBeNull()
+  })
+
+  it("reads a paired server's own capabilities, not this machine's", () => {
+    mocks.getExecutionHostIdForWorktree.mockReturnValue('runtime:server-1')
+    mocks.readLocalRuntimeCapabilitiesOrUnknown.mockReturnValue([])
+    mocks.readRuntimeEnvironmentCapabilitiesOrUnknown.mockReturnValue([
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+    ])
+    const args: AgentLaunchRouteArgs = {
+      agent: 'claude',
+      workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
+    }
+
+    expect(buildAgentLaunchRouteInput(store(), args).hostCapabilities).toEqual([
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+    ])
+    expect(mocks.readRuntimeEnvironmentCapabilitiesOrUnknown).toHaveBeenCalledWith('server-1')
+    expect(routeFor(store(), args)).toBe('structured-native-chat')
   })
 })
 
