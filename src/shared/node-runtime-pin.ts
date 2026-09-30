@@ -151,9 +151,8 @@ export function isCompatServerTarget(target: string): target is CompatServerTarg
 
 /** The pinned asset for a default or compat target; undefined for anything else. */
 export function nodeRuntimeAsset(target: string): NodeRuntimeAsset | undefined {
-  const compat = COMPAT_SERVER_TARGETS.find((known) => known === target)
-  if (compat) {
-    return NODE_RUNTIME_COMPAT_ASSETS[compat]
+  if (isCompatServerTarget(target)) {
+    return NODE_RUNTIME_COMPAT_ASSETS[target]
   }
   const server = SERVER_TARGETS.find((known) => known === target)
   return server ? NODE_RUNTIME_ASSETS[server] : undefined
