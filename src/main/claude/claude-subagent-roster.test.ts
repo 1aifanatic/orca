@@ -462,7 +462,7 @@ describe('ClaudeSubagentRoster — through the real sink queue', () => {
       },
       appendTombstone: async () => ({ epoch: 'e', sequence: 0 })
     } as unknown as AgentSessionJournal
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     deferred.bind({
       journal,
       fence: 1,

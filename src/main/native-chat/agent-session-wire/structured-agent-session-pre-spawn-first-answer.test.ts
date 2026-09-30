@@ -157,7 +157,8 @@ describe('a create that fails before any process spawns', () => {
     }
     // What failed is kept for the log.
     expect(warn).toHaveBeenCalledWith(
-      '[agent-session] provider start failed:',
+      '[agent-session] provider-start failed',
+      expect.anything(),
       expect.objectContaining({ message: raw })
     )
   })

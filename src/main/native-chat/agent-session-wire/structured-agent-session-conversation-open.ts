@@ -23,10 +23,8 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
-import type {
-  StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession
-} from './structured-agent-session-host-types'
+import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type OpenedStructuredAgentSessionConversation = {
   session: StructuredAgentSessionHostSession
@@ -38,7 +36,6 @@ export type StructuredAgentSessionConversationOpenDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
   adapter: Pick<StructuredAgentSessionAdapter, 'historyFilePath'>
   journalDatabase: JournalHostDatabase
-  onEventSinkError?: StructuredAgentSessionHostDeps['onEventSinkError']
 }
 
 /** An acquisition's own open: its reserve cleared the record's death evidence, so it settles
@@ -104,13 +101,13 @@ export async function openStructuredAgentSessionConversationJournal(
     // one is only doubt, which provider history decides under a won lease.
     await opened.journal.markPendingSubmissionsUnknown(fence)
   } catch (error) {
-    deps.onEventSinkError?.({ sessionId, error })
+    reportAgentSessionFailure({ step: 'journal-open-pending-doubt', sessionId, error })
   }
   // No child in this process writes to a journal nobody had open, so whatever it shows running
   // belongs to a generation that is gone, whatever the lease still claims. Settled before any
   // reader or child sees it.
   if (!options.acquisition) {
-    await settleGoneGeneration(deps, record, opened.journal)
+    await settleGoneGeneration(record, opened.journal)
   }
   return {
     session: { journal: opened.journal, params, child: null },
@@ -130,12 +127,11 @@ export async function resettleOpenStructuredAgentSessionConversation(
 ): Promise<void> {
   const record = deps.store.getRecord(sessionId)
   if (session && record?.lease.deathEvidence) {
-    await settleGoneGeneration(deps, record, session.journal)
+    await settleGoneGeneration(record, session.journal)
   }
 }
 
 async function settleGoneGeneration(
-  deps: Pick<StructuredAgentSessionConversationOpenDeps, 'onEventSinkError'>,
   record: AgentSessionRecord,
   journal: AgentSessionJournal
 ): Promise<void> {
@@ -150,7 +146,11 @@ async function settleGoneGeneration(
     })
   } catch (error) {
     // Best effort: the next open or acquire re-derives it.
-    deps.onEventSinkError?.({ sessionId: record.sessionId, error })
+    reportAgentSessionFailure({
+      step: 'gone-generation-settlement',
+      sessionId: record.sessionId,
+      error
+    })
   }
 }
 

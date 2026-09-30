@@ -179,6 +179,7 @@ describe('claude journal translation — background task rows', () => {
       return appendItem(...args)
     })
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      onFailure: () => {},
       watermarks: {
         pauseQueuedOperations: 1,
         maxQueuedOperations: 4,
@@ -252,7 +253,7 @@ describe('claude journal translation — background task rows', () => {
 
   it('coalesces an unbound overflow patch and aliased final notification', async () => {
     const persisted = new Map<string, AgentJournalItemBody>()
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     const translator = createClaudeJournalTranslator({
       sink: deferred.sink,
       fallbackIdPrefix: 'test'
@@ -292,7 +293,7 @@ describe('claude journal translation — background task rows', () => {
 
   it('reconciles an aliased notification after a parentless overflow patch was persisted', async () => {
     const persisted = new Map<string, AgentJournalItemBody>()
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     deferred.bind(persistedTarget(persisted))
     const first = createClaudeJournalTranslator({ sink: deferred.sink, fallbackIdPrefix: 'first' })
     fillLiveTaskRows(first)
@@ -353,7 +354,7 @@ describe('claude journal translation — background task rows', () => {
 
   it('resolves a queued restart identity after the sink rebinds', async () => {
     const persisted = new Map<string, AgentJournalItemBody>()
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     deferred.bind(persistedTarget(persisted))
 
     const first = createClaudeJournalTranslator({ sink: deferred.sink, fallbackIdPrefix: 'first' })
@@ -371,7 +372,7 @@ describe('claude journal translation — background task rows', () => {
     first.dispose()
     await deferred.drained()
 
-    const restarted = createDeferredStructuredAgentSessionEventSink()
+    const restarted = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     const second = createClaudeJournalTranslator({
       sink: restarted.sink,
       fallbackIdPrefix: 'second'
@@ -397,7 +398,7 @@ describe('claude journal translation — background task rows', () => {
 
   it('keeps pending writes from distinct runs when a translator is recreated', async () => {
     const persisted = new Map<string, AgentJournalItemBody>()
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
 
     const first = createClaudeJournalTranslator({ sink: deferred.sink, fallbackIdPrefix: 'first' })
     spawnToolCall(first, 'toolu-first')

@@ -56,7 +56,7 @@ function goalFrame(goal: Record<string, unknown> = {}) {
 /** The host's own sink bound to a real journal. Its publish is what a subscriber
  *  receives: the page after the cursor it had caught up to. */
 function journalSink(journal: AgentSessionJournal) {
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   const published: AgentSessionHistoryPage[] = []
   let subscriberCursor: AgentJournalCursor | null = null
   deferred.bind({

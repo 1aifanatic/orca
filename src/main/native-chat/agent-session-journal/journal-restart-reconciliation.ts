@@ -23,6 +23,7 @@ import {
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from './journal-store'
 import { reconcileSubmissions, type ProviderHistoryWindow } from './journal-submission-reconciler'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /**
  * Only a text-only body can be compared against provider content. A submission
@@ -101,10 +102,11 @@ export async function reconcileJournalSubmissionsAgainstHistory(input: {
   })) {
     if (outcome.outcome === 'unknown') {
       // Narrowing failed: the submission stays unconfirmed, so record why.
-      console.warn('[journal-reconcile] submission left unconfirmed:', {
-        clientMessageId: outcome.clientMessageId,
-        reason: outcome.reason,
-        fence: input.fence
+      reportAgentSessionFailure({
+        step: 'restart-reconciliation',
+        sessionId: input.journal.snapshot().sessionId,
+        error: `submission left unconfirmed: ${outcome.reason}`,
+        detail: { clientMessageId: outcome.clientMessageId, fence: input.fence }
       })
       continue
     }

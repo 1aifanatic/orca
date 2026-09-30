@@ -45,7 +45,7 @@ export class StructuredAgentSessionSinkQueue {
   constructor(
     private readonly deps: {
       watermarks: StructuredAgentSessionSinkWatermarks
-      onError?: (error: unknown) => void
+      onFailure: (error: unknown) => void
       readingControl?: StructuredAgentSessionReadingControl
       onBackpressureChange?: (
         backpressured: boolean,
@@ -212,7 +212,7 @@ export class StructuredAgentSessionSinkQueue {
   private fail = (error: unknown): void => {
     if (this.failure === null) {
       this.failure = { error }
-      this.deps.onError?.(error)
+      this.deps.onFailure(error)
     }
     this.queue.length = 0
     this.queuedBytes = 0

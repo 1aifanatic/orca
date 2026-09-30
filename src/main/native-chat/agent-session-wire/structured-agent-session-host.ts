@@ -68,7 +68,6 @@ export class StructuredAgentSessionHost {
       this.subscribers.publish(sessionId, journal)
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
-    onDeliveryError: (sessionId, error) => this.deps.onEventSinkError?.({ sessionId, error }),
     onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
     now: () => this.now()
   })
@@ -156,8 +155,7 @@ export class StructuredAgentSessionHost {
         ),
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
-      now: () => this.now(),
-      onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
+      now: () => this.now()
     })
     this.restartResume = createStructuredAgentSessionRestartResume(
       deps,

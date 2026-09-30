@@ -25,6 +25,9 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -39,12 +42,11 @@ let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let spawnChild: StructuredAgentSessionAdapter['acquire']
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
-let hostErrors: unknown[]
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-send-recovery-'))
   resetHostTestOperationIds()
-  hostErrors = []
+  vi.mocked(reportAgentSessionFailure).mockClear()
   let generation = 0
   spawnChild = async ({ fence, spawnToken }) => ({
     process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
@@ -84,8 +86,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
-    now: () => NOW,
-    onEventSinkError: ({ error }) => hostErrors.push(error)
+    now: () => NOW
   })
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
 })
@@ -407,7 +408,6 @@ describe('a send with no live owner', () => {
     acquire.mockRejectedValue(
       new CodexAppServerRequestError('thread/resume', -32600, `thread/resume failed: ${said}`, said)
     )
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
     const id = await accept(sendParams('after the thread went away'))
 
@@ -426,11 +426,11 @@ describe('a send with no live owner', () => {
       "Codex couldn't restart. Send your message to try again."
     ])
     // Orca's own text is logged once where the start failed.
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-session] provider start failed:',
-      expect.objectContaining({ message: `thread/resume failed: ${said}` })
-    )
-    warn.mockRestore()
+    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+      step: 'provider-start',
+      sessionId: SESSION,
+      error: expect.objectContaining({ message: `thread/resume failed: ${said}` })
+    })
   })
 
   it('restarts again for a Retry under a new id, and replays a resend of the same id', async () => {
@@ -537,9 +537,11 @@ describe('a send with no live owner', () => {
       reason: "Orca ran into a problem, so this didn't go through. Try again.",
       rejection: { kind: 'hostFault' }
     })
-    expect(hostErrors).toContainEqual(
-      expect.objectContaining({ message: 'spawn-token mint failed' })
-    )
+    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+      step: 'delivery-loop',
+      sessionId: SESSION,
+      error: expect.objectContaining({ message: 'spawn-token mint failed' })
+    })
     expect(await errorStatuses()).toHaveLength(1)
   })
 

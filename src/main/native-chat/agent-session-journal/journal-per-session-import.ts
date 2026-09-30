@@ -54,6 +54,7 @@ import {
   readJournalRowsAfter,
   readJournalSessionEpoch
 } from './journal-row-table'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 const INSERT_ROW =
   'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
@@ -252,7 +253,7 @@ async function verifyCopiedJournal(
   )
   if (!loggedMismatches.has(`${sessionId}\n${want}\n${got}`)) {
     loggedMismatches.add(`${sessionId}\n${want}\n${got}`)
-    console.error(`[agent-session-journal] ${error.message}; ${input.legacyDirectory} is kept`)
+    reportAgentSessionFailure({ step: 'legacy-journal-import', sessionId, error })
   }
   throw journalOpenRefusalError(error)
 }

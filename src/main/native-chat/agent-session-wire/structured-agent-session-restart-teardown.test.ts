@@ -23,10 +23,14 @@ it.each(['beginTeardown', 'captureBeforeStop', 'recordMarkers'] as const)(
       await expect(host.flushAllStreamedEvents()).resolves.toBeUndefined()
       expect(operation).toHaveBeenCalledOnce()
       expect(warning).toHaveBeenCalledExactlyOnceWith(
-        {
-          beginTeardown: '[structured-agent-session] capturing recovery witnesses failed',
-          captureBeforeStop: '[structured-agent-session] capturing recovery witness failed',
-          recordMarkers: '[structured-agent-session] recording recovery capsule failed'
+        ...{
+          beginTeardown: ['[agent-session] recovery-witness-begin failed', {}, 'Error'],
+          captureBeforeStop: [
+            '[agent-session] recovery-witness-capture failed',
+            { sessionId: SESSION },
+            'Error'
+          ],
+          recordMarkers: ['[agent-session] recovery-capsule-record failed', {}, 'Error']
         }[method]
       )
       expect(warning.mock.calls.flat().map(String).join(' ')).not.toContain(failure.message)

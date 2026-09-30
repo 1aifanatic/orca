@@ -108,7 +108,9 @@ describe('structured agent-session host teardown', () => {
       await teardown
       expect(cleaned).toHaveBeenCalledTimes(4)
       expect(warning).toHaveBeenCalledWith(
-        '[structured-agent-session] recording recovery capsule failed'
+        '[agent-session] recovery-capsule-record failed',
+        {},
+        expect.any(String)
       )
       expect(vi.getTimerCount()).toBe(0)
     } finally {

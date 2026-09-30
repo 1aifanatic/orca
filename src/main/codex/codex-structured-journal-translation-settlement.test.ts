@@ -129,6 +129,7 @@ function deferredTarget(
 
 function hardWatermarkDeferred() {
   return createDeferredStructuredAgentSessionEventSink({
+    onFailure: () => {},
     watermarks: {
       pauseQueuedBytes: 1,
       maxQueuedBytes: 1,

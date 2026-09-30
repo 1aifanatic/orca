@@ -9,6 +9,9 @@ import {
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const NOW = 1_800_000_000_000
 const roots: string[] = []
@@ -144,7 +147,7 @@ describe('structured agent-session lease renewal', () => {
       }
       return records[0]!
     })
-    const onError = vi.fn()
+    vi.mocked(reportAgentSessionFailure).mockClear()
     const renewer = new StructuredAgentSessionLeaseRenewer({
       store: {
         listRecords: () => records,
@@ -155,15 +158,15 @@ describe('structured agent-session lease renewal', () => {
         outcome: 'identity-matched' as const,
         matchedOn: ['spawn-token' as const]
       }),
-      now: () => NOW + 10_000,
-      onError
+      now: () => NOW + 10_000
     })
 
     await renewer.renewNow()
 
     expect(renewLeases).toHaveBeenCalledOnce()
     expect(renewLease).toHaveBeenCalledTimes(2)
-    expect(onError).toHaveBeenCalledWith({
+    expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith({
+      step: 'lease-renewal',
       sessionId: 'session-b',
       error: expect.objectContaining({ message: 'agent_session_checkpoint_stale' })
     })
@@ -241,18 +244,18 @@ describe('structured agent-session lease renewal', () => {
 
   it('stops extending the lease when child proof is no longer sufficient', async () => {
     const store = await liveStore()
-    const onError = vi.fn()
+    vi.mocked(reportAgentSessionFailure).mockClear()
     const renewer = new StructuredAgentSessionLeaseRenewer({
       store,
       probe: async () => ({ outcome: 'indeterminate', reason: 'probe unavailable' }),
-      now: () => NOW + 10_000,
-      onError
+      now: () => NOW + 10_000
     })
 
     await renewer.renewNow()
 
     expect(store.getRecord('session-renewal')?.lease.lastRenewedAt).toBe(NOW)
-    expect(onError).toHaveBeenCalledWith({
+    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+      step: 'lease-renewal',
       sessionId: 'session-renewal',
       error: expect.any(Error)
     })

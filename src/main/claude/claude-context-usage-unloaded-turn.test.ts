@@ -56,7 +56,7 @@ async function openJournal(): Promise<AgentSessionJournal> {
 }
 
 function translate(journal: AgentSessionJournal) {
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   const translator = createClaudeJournalTranslator({ sink: deferred.sink, coalesceMs: 0 })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   const settle = async (): Promise<void> => {

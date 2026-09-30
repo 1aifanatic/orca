@@ -509,8 +509,9 @@ describe('open-time repair and retention', () => {
     try {
       const journal = await open()
       expect(warn).toHaveBeenCalledWith(
-        '[journal-open] queued-message repair skipped:',
-        expect.objectContaining({ error: 'SQLITE_FULL' })
+        '[agent-session] queued-repair failed',
+        expect.anything(),
+        expect.objectContaining({ message: 'SQLITE_FULL' })
       )
       await queueDraft(journal, 'draft-1')
       expect(journal.queuedMessages.list()).toHaveLength(1)

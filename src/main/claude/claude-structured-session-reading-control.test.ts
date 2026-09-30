@@ -212,6 +212,7 @@ describe('Claude structured reading control', () => {
     const persisted = new Map<string, AgentJournalItemBody>()
     const target = persistedTarget(persisted)
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      onFailure: () => {},
       watermarks: {
         pauseQueuedOperations: 1,
         maxQueuedOperations: 4,

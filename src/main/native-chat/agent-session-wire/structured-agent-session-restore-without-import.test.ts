@@ -216,7 +216,6 @@ type LifetimeHost = Parameters<typeof createStructuredAgentSessionConversationLi
 function conversations(): StructuredAgentSessionConversations {
   return new StructuredAgentSessionConversations({
     deliver: () => undefined,
-    onDeliveryError: () => undefined,
     now: () => clock
   })
 }

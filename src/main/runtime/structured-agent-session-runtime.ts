@@ -55,6 +55,7 @@ import { createStructuredAgentEnvironmentResolvers } from './structured-agent-sh
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import {
   modelCatalogHostDeps,
@@ -101,7 +102,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Which login-shell variables Codex and Claude children inherit; absent inherits all. */
   resolveShellEnvironmentPolicy?: () => NativeChatShellEnvironmentPolicy
   resolveCodexOverrides?: () => NodeJS.ProcessEnv
-  onError?: (input: { scope: string; error: unknown }) => void
   /** Every structured-session status projection, for host-side reactions such as the first-work
    *  workspace rename that CLI agents get from their hooks. */
   onSessionStatusChanged?: StructuredAgentSessionHostDeps['onSessionStatusChanged']
@@ -217,7 +217,6 @@ async function installOnJournal(
   let host: StructuredAgentSessionHost | null = null
   const lifecycle = createStructuredAgentSessionLifecycleDelivery({
     handle: (event) => host?.handleAdapterEvent(event),
-    ...(deps.onError ? { onError: deps.onError } : {}),
     // Claude publishes an observed exit only after its close ladder and transcript write; Codex
     // publishes inside its own exit callback and needs nothing.
     drainObservedExits: () => claude.drainObservedExits()
@@ -225,9 +224,10 @@ async function installOnJournal(
   const onDispatchSettledLate = (
     settlement: Parameters<StructuredAgentSessionHost['settleLateDispatch']>[0]
   ): void => {
-    void host?.settleLateDispatch(settlement).catch((error) =>
-      deps.onError?.({
-        scope: `structured-agent-session-late-settlement:${settlement.sessionId}`,
+    void host?.settleLateDispatch(settlement).catch((error: unknown) =>
+      reportAgentSessionFailure({
+        step: 'late-dispatch-settlement',
+        sessionId: settlement.sessionId,
         error
       })
     )
@@ -239,11 +239,8 @@ async function installOnJournal(
         sessionId,
         reason: DISPATCH_DOUBT_PROVIDER_IDLE
       })
-      .catch((error) =>
-        deps.onError?.({
-          scope: `structured-agent-session-unanswered-dispatch:${sessionId}`,
-          error
-        })
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'unanswered-dispatch-release', sessionId, error })
       )
   }
   const codex = new CodexStructuredSessionAdapter({
@@ -315,8 +312,6 @@ async function installOnJournal(
             await deps.resolveLaunchArgs!(provider)
         }
       : {}),
-    onEventSinkError: ({ sessionId, error }) =>
-      deps.onError?.({ scope: `structured-agent-session-journal:${sessionId}`, error }),
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),

@@ -32,8 +32,7 @@ export function wireStructuredAgentSessionQueuedMessages(
     flushStreamedEvents: (sessionId) => context().flushStreamedEvents(sessionId),
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(context().deps.store, sessionId),
-    wakeDelivery: (sessionId) => context().wakeDelivery(sessionId),
-    onError: (sessionId, error) => context().deps.onEventSinkError?.({ sessionId, error })
+    wakeDelivery: (sessionId) => context().wakeDelivery(sessionId)
   })
   return {
     drain,

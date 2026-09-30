@@ -13,6 +13,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
 import { rewindRefusal } from './structured-rewind-refusal'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export function persistRewindRecord(
   store: AgentSessionRecordStore,
@@ -52,10 +53,11 @@ async function settleUnsupportedClaudeRewind(
       outcome: { status: 'failed', code: refusal.code, rewindReason: 'unsupported' }
     })
   } catch (error) {
-    console.warn('[structured-rewind] pending Claude rewind was not settled:', {
+    reportAgentSessionFailure({
+      step: 'rewind-recovery',
       sessionId,
-      operationId: rewind.operationId,
-      error
+      error,
+      detail: { operationId: rewind.operationId }
     })
   }
 }

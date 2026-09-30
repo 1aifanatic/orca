@@ -31,7 +31,11 @@ describe('an operation whose agent start throws', () => {
         message: "The agent couldn't restart."
       }
     })
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('starting the agent'), cause)
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] operation-agent-start failed',
+      { sessionId: SESSION },
+      cause
+    )
     warn.mockRestore()
   })
 })

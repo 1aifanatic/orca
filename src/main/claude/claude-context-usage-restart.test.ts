@@ -112,7 +112,7 @@ async function openJournal(): Promise<AgentSessionJournal> {
 
 /** One acquisition: a fresh sink and translator over the session's journal. */
 function acquire(journal: AgentSessionJournal) {
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   const translator = createClaudeJournalTranslator({ sink: deferred.sink, coalesceMs: 0 })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   const answers: ((value: unknown) => void)[] = []

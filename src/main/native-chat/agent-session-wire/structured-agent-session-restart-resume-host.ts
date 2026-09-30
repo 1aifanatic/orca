@@ -44,6 +44,7 @@ import {
 import type { StructuredAgentSessionRestartResumeSurfaces } from './structured-agent-session-restart-resume-wiring'
 import { createStructuredAgentSessionRestartWitnesses } from './structured-agent-session-restart-witnesses'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 type LiveSession = StructuredAgentSessionRestartOfferSession
 
@@ -205,9 +206,9 @@ export function createStructuredAgentSessionRestartResume(
       if (deps.recoveryCapsule) {
         await enqueueRecoveryOperation(() =>
           deps.recoveryCapsule!.rollbackResume(operationId, surfaces.now())
-        ).catch(() => {
-          console.warn('[structured-agent-session] restart offer rollback failed')
-        })
+        ).catch((rollbackError: unknown) =>
+          reportAgentSessionFailure({ step: 'restart-offer-rollback', error: rollbackError })
+        )
       }
       throw error
     }
@@ -279,8 +280,8 @@ export function createStructuredAgentSessionRestartResume(
     try {
       remainingCandidates = await list()
       remainingFailures = await failures.list()
-    } catch {
-      console.warn('[structured-agent-session] restart offer refresh failed after action')
+    } catch (error) {
+      reportAgentSessionFailure({ step: 'restart-offer-refresh', error })
     }
     return {
       resumed,

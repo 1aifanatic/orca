@@ -54,7 +54,7 @@ async function statusRowsFor(frames: Record<string, unknown>[]) {
     now: () => 1_700_000_000_000,
     mintEpoch: () => 'epoch-1'
   })
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   deferred.bind({ journal, fence: 1, publish: vi.fn() })
   const translator = createClaudeJournalTranslator({ sink: deferred.sink, fallbackIdPrefix: '1' })
   for (const frame of frames) {

@@ -13,6 +13,9 @@ import {
   type StructuredAgentSessionUnexpectedExitContext,
   type StructuredAgentSessionUnexpectedExitSession
 } from './structured-agent-session-unexpected-exit'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const exitOutcome = (agent: string): string =>
   `${agent} stopped while this response was in progress. You can continue in this conversation.`
@@ -406,7 +409,7 @@ describe('provider-exit settlement', () => {
         })
       }
     }
-    const release = vi.fn()
+    vi.mocked(reportAgentSessionFailure).mockClear()
     const publishFence = vi.fn()
     const event = {
       type: 'ended' as const,
@@ -423,13 +426,15 @@ describe('provider-exit settlement', () => {
       flushLifecycle: async () => ({ ok: false, error: new Error('sink failed') }),
       publishFence,
       serialize: async (_sessionId, task) => task(),
-      now: () => 1,
-      onBarrierError: release
+      now: () => 1
     }
     await settleUnexpectedStructuredAgentSessionExit(context, event)
 
     expect(session.child).toBeNull()
     expect(publishFence).toHaveBeenCalledTimes(1)
-    expect(release).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(reportAgentSessionFailure).mock.calls.map(([report]) => report.step)).toEqual([
+      'provider-exit-barrier',
+      'dead-generation-settlement'
+    ])
   })
 })

@@ -137,7 +137,7 @@ async function openJournal(): Promise<AgentSessionJournal> {
 
 /** One provider process: a fresh sink and translator over the session's journal. */
 function acquire(journal: AgentSessionJournal) {
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   const translator = createClaudeJournalTranslator({ sink: deferred.sink, coalesceMs: 0 })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   const settle = async (): Promise<void> => {
@@ -190,7 +190,7 @@ const rosterIds = (journal: AgentSessionJournal): Set<string> =>
 /** An older build re-rostered a resumed child in the later turn's row, so two rows list it. */
 async function journalAnOlderBuildListedTwice(): Promise<AgentSessionJournal> {
   const journal = await openJournal()
-  const older = createDeferredStructuredAgentSessionEventSink()
+  const older = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   older.bind({ journal, fence: 1, publish: () => {} })
   const listed = (id: string, state: NativeChatSubagentEntry['state']) => ({
     id,

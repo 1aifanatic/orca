@@ -44,6 +44,7 @@ import {
 } from '../../observability/agent-session-instrumentation'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type AttachFlowInput = {
   store: AgentSessionRecordStore
@@ -206,7 +207,7 @@ export async function performAttach(
     const thrown = failed ? error : preSpawnFailureInWords(error, wording)
     if (failed || thrown !== error) {
       // The answer carries only its sentence, so what failed is kept here.
-      console.warn('[agent-session] provider start failed:', error)
+      reportAgentSessionFailure({ step: 'provider-start', sessionId, error })
     }
     return (
       failed ?? {

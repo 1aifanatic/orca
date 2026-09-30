@@ -69,7 +69,9 @@ it('reports a failed attribution note without an installed error sink or private
     const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
     expect(result.continued).toMatchObject([{ outcome: 'continued' }])
     expect(warning).toHaveBeenCalledExactlyOnceWith(
-      '[structured-agent-session] restart continuation attribution failed'
+      '[agent-session] restart-continuation-note failed',
+      { sessionId: SESSION },
+      'Error'
     )
   } finally {
     write.mockRestore()
@@ -335,8 +337,8 @@ it('fails closed on corrupt recovery storage while an ordinary send still works'
   await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
   // list; the action's read of offers and of failures; the post-action refresh of both. The send
   // cannot withdraw an offer it cannot read either, and says so.
-  const withdrawing = '[structured-agent-session] withdrawing a restart offer failed'
-  await vi.waitFor(() => expect(warning).toHaveBeenLastCalledWith(withdrawing))
+  const withdrawing = '[agent-session] restart-offer-withdraw failed'
+  await vi.waitFor(() => expect(warning.mock.lastCall?.[0]).toBe(withdrawing))
   expect(warning.mock.calls.filter(([message]) => message !== withdrawing)).toHaveLength(5)
   warning.mockRestore()
 })
@@ -451,7 +453,9 @@ it('logs teardown capsule publication failure and still releases the provider', 
     'agent_session_ownership_unknown'
   )
   expect(warning).toHaveBeenCalledWith(
-    '[structured-agent-session] recording recovery capsule failed'
+    '[agent-session] recovery-capsule-record failed',
+    {},
+    expect.any(String)
   )
   expect(warning.mock.calls.flat().map(String).join(' ')).not.toContain(previous.root)
   expect(previous.store.getRecord(SESSION)?.lease.claimStatus).toBe('released')

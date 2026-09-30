@@ -35,8 +35,7 @@ it('holds each slot from accept until handover or rejection, and frees it when t
       }
     },
     awaitSettlement: async () => ({ dispatchState: 'accepted' }),
-    note: async () => undefined,
-    onNoteFailed: () => undefined
+    note: async () => undefined
   })
   const sessions = Array.from({ length: 8 }, (_, index) => `session-${index}`)
   const outcomes = resumeStructuredAgentSessionsFromRestart(

@@ -127,6 +127,7 @@ function deferredTarget(
 
 function hardWatermarkDeferred() {
   return createDeferredStructuredAgentSessionEventSink({
+    onFailure: () => {},
     watermarks: {
       pauseQueuedBytes: 1,
       maxQueuedBytes: 1,
@@ -713,6 +714,7 @@ describe('codex journal translation', () => {
     const publishes: string[] = []
     const readingControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      onFailure: () => {},
       watermarks: {
         pauseQueuedBytes: 1,
         maxQueuedBytes: 1,

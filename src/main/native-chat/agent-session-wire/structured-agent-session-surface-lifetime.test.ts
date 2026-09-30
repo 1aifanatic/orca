@@ -41,6 +41,9 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
@@ -83,7 +86,6 @@ function openHost(
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
     idleSweep: { intervalMs: SWEEP_MS, idleMs: IDLE_MS },
     now: () => clock,
-    onEventSinkError: ({ error }) => hostErrors.push(error),
     statusSink,
     ...(probeOwner ? { probeOwner } : {})
   })
@@ -206,6 +208,9 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   sink = null
   hostErrors = []
+  vi.mocked(reportAgentSessionFailure).mockImplementation(({ error }) => {
+    hostErrors.push(error)
+  })
   clock = NOW
   statusSink = { publish: vi.fn(), forget: vi.fn() }
   let generation = 0

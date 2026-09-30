@@ -82,7 +82,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         cause: 'host-stop'
       }),
     closeConversation,
-    onError: (sessionId, error) => deps().onEventSinkError?.({ sessionId, error }),
     ...deps().idleSweep
   })
 

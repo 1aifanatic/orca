@@ -119,7 +119,6 @@ export type StructuredAgentSessionHostDeps = {
   idleSweep?: { intervalMs?: number; idleMs?: number }
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
-  onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
   /** Every status projection this host publishes. `replay` marks a re-projection of state the host
    *  already knew (restore, an arriving subscriber) rather than a fresh journal edge. */
   onSessionStatusChanged?: (

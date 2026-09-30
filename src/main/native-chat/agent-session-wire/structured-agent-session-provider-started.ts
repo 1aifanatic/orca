@@ -17,6 +17,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { nativeSessionOptionsFromReport } from './structured-agent-session-option-restoration'
 import { markProviderChildStarted } from './structured-agent-session-provider-child'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionProviderStartedContext = {
   deps: StructuredAgentSessionHostDeps
@@ -24,7 +25,6 @@ export type StructuredAgentSessionProviderStartedContext = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   publishStatus?: (sessionId: string) => void
-  onBarrierError: (sessionId: string, error: unknown) => void
 }
 
 export function settleStructuredAgentSessionProviderStarted(
@@ -46,7 +46,11 @@ export function settleStructuredAgentSessionProviderStarted(
     try {
       await persistStartedOptions(context, event)
     } catch (error) {
-      context.onBarrierError(event.sessionId, error)
+      reportAgentSessionFailure({
+        step: 'started-options-persist',
+        sessionId: event.sessionId,
+        error
+      })
     } finally {
       context.publishStatus?.(event.sessionId)
     }

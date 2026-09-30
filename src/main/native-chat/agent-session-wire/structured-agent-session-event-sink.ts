@@ -193,18 +193,17 @@ const DEFAULT_WATERMARKS: StructuredAgentSessionSinkWatermarks = {
   maxLifecycleQueuedOperations: 1_024
 }
 
-export function createDeferredStructuredAgentSessionEventSink(
-  deps: {
-    onError?: (error: unknown) => void
-    watermarks?: Partial<StructuredAgentSessionSinkWatermarks>
-    readingControl?: StructuredAgentSessionReadingControl
-    onBackpressureChange?: (backpressured: boolean, state: StructuredAgentSessionSinkState) => void
-  } = {}
-): DeferredStructuredAgentSessionEventSink {
+export function createDeferredStructuredAgentSessionEventSink(deps: {
+  /** The sink failed for good, or refused a lifecycle batch: what the provider writes is lost. */
+  onFailure: (error: unknown) => void
+  watermarks?: Partial<StructuredAgentSessionSinkWatermarks>
+  readingControl?: StructuredAgentSessionReadingControl
+  onBackpressureChange?: (backpressured: boolean, state: StructuredAgentSessionSinkState) => void
+}): DeferredStructuredAgentSessionEventSink {
   const watermarks = { ...DEFAULT_WATERMARKS, ...deps.watermarks }
   const queue = new StructuredAgentSessionSinkQueue({
     watermarks,
-    ...(deps.onError ? { onError: deps.onError } : {}),
+    onFailure: deps.onFailure,
     ...(deps.readingControl ? { readingControl: deps.readingControl } : {}),
     ...(deps.onBackpressureChange ? { onBackpressureChange: deps.onBackpressureChange } : {})
   })
@@ -280,7 +279,7 @@ export function createDeferredStructuredAgentSessionEventSink(
       appendLifecycleBatch: (settlementId, mutations, options = {}) => {
         const admission = appendLifecycleBatch(settlementId, mutations, options)
         if (!admission.accepted) {
-          deps.onError?.(
+          deps.onFailure(
             new Error(
               `lifecycle journal batch ${settlementId} rejected by sink ${admission.reason}`
             )

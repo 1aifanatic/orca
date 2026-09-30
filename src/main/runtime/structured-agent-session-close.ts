@@ -19,6 +19,7 @@ import {
   observeStructuredWorker,
   structuredSessionCloseSettled
 } from './structured-worker-authority'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
 
 export type StructuredAgentSessionCloseOutcome = {
   stopped: boolean
@@ -146,9 +147,6 @@ async function restorePersistedTabVisibility(
   try {
     await host.setSessionTabVisibility?.(sessionId, true, tabId)
   } catch (error) {
-    console.warn(
-      `[structured-session-close] could not restore the chat tab for ${sessionId} after a failed close`,
-      error
-    )
+    reportAgentSessionFailure({ step: 'tab-visibility-restore', sessionId, error })
   }
 }

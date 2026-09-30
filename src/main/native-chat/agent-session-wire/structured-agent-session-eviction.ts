@@ -24,6 +24,7 @@ import {
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionStopVerdict } from './structured-agent-session-host-types'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionEvictionContext = {
   sessionId: string
@@ -72,8 +73,12 @@ export const STRUCTURED_AGENT_SESSION_EVICTION_STEPS: readonly StructuredAgentSe
         await withTimeout<unknown>(context.eventSink.drained(), SNAPSHOT_DRAIN_TIMEOUT_MS, null)
         try {
           context.beforeProviderChildStop()
-        } catch {
-          console.warn('[structured-agent-session] capturing recovery witness failed')
+        } catch (error) {
+          reportAgentSessionFailure({
+            step: 'recovery-witness-capture',
+            sessionId: context.sessionId,
+            error
+          })
         }
       }
     },

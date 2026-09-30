@@ -38,6 +38,7 @@ import {
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -55,7 +56,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   conversationFence: (sessionId: string) => number
   /** Who the chat's failure sentences name. */
   failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  onError: (sessionId: string, error: unknown) => void
   record: (sessionId: string) => AgentSessionRecord | null
   flushStreamedEvents: (sessionId: string) => Promise<void>
   now: () => number
@@ -125,14 +125,18 @@ export class StructuredAgentSessionDeliveryLoop {
       }
     } catch (error) {
       // The error is Orca's own and goes to the log; the chat says only that Orca failed.
-      this.deps.onError(sessionId, error)
+      reportAgentSessionFailure({ step: 'delivery-loop', sessionId, error })
       const cause = { hostFault: true } as const
       await this.deps
         .serialize(sessionId, () => this.fail(sessionId, { startKey: null, cause }))
         .catch((failure: unknown) => {
           // Rows left queued are rejected by the next open, or by the next loop an accept wakes.
           this.running.delete(sessionId)
-          this.deps.onError(sessionId, failure)
+          reportAgentSessionFailure({
+            step: 'delivery-loop-failure-settlement',
+            sessionId,
+            error: failure
+          })
         })
     }
   }

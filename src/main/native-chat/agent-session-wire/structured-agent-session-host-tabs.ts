@@ -1,4 +1,5 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /**
  * Chat-tab visibility is the deletion funnel: every path that removes a chat as a user-facing
@@ -24,9 +25,11 @@ export function setStructuredAgentSessionTabVisibility(
   tabId?: string
 ): Promise<void> {
   if (!visible) {
-    void host.restartResume.dismiss([sessionId]).catch(() => {
-      console.warn('[structured-agent-session] forgetting recovery records on chat close failed')
-    })
+    void host.restartResume
+      .dismiss([sessionId])
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'recovery-records-forget', sessionId, error })
+      )
   }
   return host.deps.store.setSessionTabVisibility(sessionId, visible, tabId)
 }

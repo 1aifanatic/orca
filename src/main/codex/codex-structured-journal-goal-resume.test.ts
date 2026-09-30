@@ -34,7 +34,7 @@ function goalFrame(goal: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 function goalJournal(
-  options: Parameters<typeof createDeferredStructuredAgentSessionEventSink>[0] = {}
+  options: Partial<Parameters<typeof createDeferredStructuredAgentSessionEventSink>[0]> = {}
 ) {
   let rowSequence = 0
   let publishes = 0
@@ -43,7 +43,10 @@ function goalJournal(
   let visitedItems = 0
   const rows = new Map<string, AgentJournalRenderItem>()
   const writes: string[] = []
-  const deferred = createDeferredStructuredAgentSessionEventSink(options)
+  const deferred = createDeferredStructuredAgentSessionEventSink({
+    onFailure: () => {},
+    ...options
+  })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a fake journal exposing only the members the goal translator and deferred sink call.
   const journal = {
     get epoch() {

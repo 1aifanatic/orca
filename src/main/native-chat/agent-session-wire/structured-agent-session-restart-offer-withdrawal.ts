@@ -13,6 +13,7 @@ import type { AgentSessionResumeMarker } from '../../../shared/agent-session-res
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { isRestartContinuationOf } from './structured-agent-session-restart-continuation-envelope'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionRestartOfferWithdrawal = ReturnType<
   typeof createStructuredAgentSessionRestartOfferWithdrawal
@@ -84,9 +85,9 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
             startedFor === undefined ? false : isRestartContinuationOf(marker, startedFor)
           )
         )
-        .catch(() => {
-          console.warn('[structured-agent-session] withdrawing a restart offer failed')
-        })
+        .catch((error: unknown) =>
+          reportAgentSessionFailure({ step: 'restart-offer-withdraw', sessionId, error })
+        )
     }
   }
 }

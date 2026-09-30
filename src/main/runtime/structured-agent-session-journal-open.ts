@@ -3,6 +3,7 @@
 import { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { recordStructuredAgentSessionHostInstallRefusal } from './structured-agent-session-host-refusal'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
 
 // Every chat request retries a failed open, so each distinct failure is logged once, with its stack.
 let lastLoggedOpenFailure: string | null = null
@@ -16,7 +17,7 @@ function logOpenFailureOnce(error: unknown): void {
     return
   }
   lastLoggedOpenFailure = failure
-  console.warn('[structured-agent-session] opening the chat journal database failed', error)
+  reportAgentSessionFailure({ step: 'journal-database-open', error })
 }
 
 /** The journal database. A refusal is recorded for the gate and thrown to the caller; the next

@@ -2,6 +2,7 @@ import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** Only thrown while the provider dispatch is still unreachable. */
 export class AgentSessionPreDispatchError extends Error {
@@ -52,14 +53,19 @@ export async function runSettledAgentSessionMutation<TValue>(input: {
     if (input.plan.markUnknownBeforeRun && error instanceof AgentSessionPreDispatchError) {
       throw error
     }
+    const { sessionId } = input.envelope
     try {
       await settle({ status: 'unknown' })
-    } catch {
+    } catch (settleError) {
       // Bookkeeping must not replace the operation's proof of whether dispatch began.
-      console.warn('[structured-agent-session] operation uncertainty persistence failed')
+      reportAgentSessionFailure({
+        step: 'operation-uncertainty-persist',
+        sessionId,
+        error: settleError
+      })
     }
     if (outcome && !outcome.ok) {
-      console.warn('[structured-agent-session] refused operation settlement failed')
+      reportAgentSessionFailure({ step: 'refused-operation-settlement', sessionId, error })
       return outcome
     }
     throw error

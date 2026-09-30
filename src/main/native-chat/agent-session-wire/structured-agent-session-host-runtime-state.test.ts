@@ -13,6 +13,9 @@ import {
 } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const NOW = 1_800_000_000_000
 
@@ -70,7 +73,7 @@ function runtimeState(
     claimKeyId: 'key-1',
     probeOwner
   } as StructuredAgentSessionHostDeps
-  return new StructuredAgentSessionHostRuntimeState(deps)
+  return new StructuredAgentSessionHostRuntimeState(deps, () => {})
 }
 
 function liveRecord(): AgentSessionRecord {
@@ -129,7 +132,6 @@ describe('host runtime-state owner probe', () => {
 
   it('does not force-close a provider for transient lease probe errors', async () => {
     const onEventSinkFailure = vi.fn()
-    const onEventSinkError = vi.fn()
     const probeOwner = vi.fn(async () => {
       throw new Error('lease probe unavailable')
     })
@@ -143,8 +145,7 @@ describe('host runtime-state owner probe', () => {
       adapter: {},
       journalDatabase: openTestJournalHostDatabase(stateDirectory),
       claimKeyId: 'key-1',
-      probeOwner,
-      onEventSinkError
+      probeOwner
     } as unknown as StructuredAgentSessionHostDeps
     const state = new StructuredAgentSessionHostRuntimeState(deps, onEventSinkFailure)
 
@@ -152,7 +153,8 @@ describe('host runtime-state owner probe', () => {
       state as unknown as { leaseRenewer: { renewNow: () => Promise<void> } }
     ).leaseRenewer.renewNow()
 
-    expect(onEventSinkError).toHaveBeenCalledWith({
+    expect(reportAgentSessionFailure).toHaveBeenCalledWith({
+      step: 'lease-probe',
       sessionId: record.sessionId,
       error: expect.any(Error)
     })

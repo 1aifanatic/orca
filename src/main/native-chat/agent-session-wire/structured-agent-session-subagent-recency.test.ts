@@ -83,7 +83,7 @@ async function openSession() {
   })
   const events: AgentSessionStatusEvent[] = []
   feed.subscribe({ id: 'list-1', emit: (event) => events.push(event) })
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   deferred.bind({ journal, fence: 1, publish: () => feed.publish(SESSION, journal) })
   const drain = async (): Promise<void> => {
     expect(await deferred.drained()).toEqual({ ok: true })

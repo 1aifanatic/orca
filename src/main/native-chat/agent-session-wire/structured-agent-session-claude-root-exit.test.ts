@@ -122,7 +122,7 @@ describe('Claude root-exit stop', () => {
       journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1'
     }
-    const runtimeState = new StructuredAgentSessionHostRuntimeState(deps)
+    const runtimeState = new StructuredAgentSessionHostRuntimeState(deps, () => {})
 
     claude.connections[0]!.handlers.onExit?.(new Error('provider exited'))
     await expect(

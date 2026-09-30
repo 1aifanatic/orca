@@ -10,6 +10,9 @@ import {
   startStructuredAgentSessionContinuation,
   type StructuredAgentSessionContinuationDeps
 } from './structured-agent-session-restart-continuation'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 /** The whole continuation: handed over, then its verdict. */
 async function continueStructuredAgentSessionAfterRestart(
@@ -44,8 +47,7 @@ function dependencies(
           }
         : undefined
     ),
-    note: vi.fn(async () => undefined),
-    onNoteFailed: vi.fn()
+    note: vi.fn(async () => undefined)
   }
 }
 
@@ -59,6 +61,22 @@ it('reports an accepted continuation and records its note', async () => {
     outcome: 'continued'
   })
   expect(deps.note).toHaveBeenCalledOnce()
+})
+
+// Best effort, but never silent: a swallowed note is how this regressed unnoticed once already.
+it('reports a note it could not write without failing the continuation', async () => {
+  const deps = dependencies('accepted')
+  const failure = new Error('journal closed')
+  deps.note.mockRejectedValueOnce(failure)
+
+  await expect(
+    continueStructuredAgentSessionAfterRestart(deps, SESSION, marker(), 'operation-1')
+  ).resolves.toEqual({ sessionId: SESSION, outcome: 'continued' })
+  expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith({
+    step: 'restart-continuation-note',
+    sessionId: SESSION,
+    error: failure
+  })
 })
 
 const UNCONFIRMED = [SESSION, AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE, 'warning']

@@ -223,7 +223,7 @@ describe('codex turn lifecycle rows', () => {
       now: () => 9_000,
       stateDirectory: join(root, SESSION_ID)
     })
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
     const translator = createCodexJournalTranslator({
       sink: deferred.sink,
       sessionId: SESSION_ID,

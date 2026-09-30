@@ -30,6 +30,7 @@ import {
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -45,7 +46,7 @@ export type StructuredAgentSessionLifetimeContext = {
   }
 }
 
-type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkError'> & {
+type ConversationCloseDeps = {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
 }
 
@@ -62,7 +63,9 @@ export async function abandonQueuedStructuredAgentSessionMessages(
       structuredAgentSessionConversationFence(deps.store, sessionId),
       agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     )
-    .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+    .catch((error: unknown) =>
+      reportAgentSessionFailure({ step: 'queued-abandon', sessionId, error })
+    )
 }
 
 /** The wind-down this host owes for the session's child. A live child always owes one, whatever a
@@ -100,7 +103,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedProviderChildWindDown(session)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
-  let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -137,15 +139,11 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         verdict: { state: 'interrupted', completedAt: context.now() },
-        showUnexpectedExitOutcome: false,
-        onError: (id, error) => {
-          settlementError = error
-          context.deps.onEventSinkError?.({ sessionId: id, error })
-        }
+        showUnexpectedExitOutcome: false
       })
-      if (!settled) {
+      if (!settled.ok) {
         // Without the cause the log names the step and nothing else.
-        throw new Error('dead generation work settlement failed', { cause: settlementError })
+        throw new Error('dead generation work settlement failed', { cause: settled.error })
       }
     },
     releaseLease: async () => {

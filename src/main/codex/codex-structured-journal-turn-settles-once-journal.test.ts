@@ -39,7 +39,7 @@ async function session() {
     stateDirectory: root,
     now: () => 1_000
   })
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   cleanups.push(async () => {
     deferred.close()

@@ -24,6 +24,7 @@ import {
 } from './structured-agent-session-mutation-admission'
 import { rewindRefusal } from './structured-rewind-refusal'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** Why the record refuses any send right now, whoever owns it; null when a send may run. */
 export function structuredAgentSessionSendBlock(
@@ -64,7 +65,7 @@ export async function openConversationForWrite(
     }
     return { ok: false, refusal: AGENT_SESSION_NOT_ATTACHED }
   } catch (error) {
-    console.warn('[agent-session] opening the conversation for a write failed:', error)
+    reportAgentSessionFailure({ step: 'journal-open-write', sessionId: envelope.sessionId, error })
     return { ok: false, refusal: journalOpenRefusal(error) }
   }
 }

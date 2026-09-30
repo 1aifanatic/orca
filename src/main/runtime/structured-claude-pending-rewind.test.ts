@@ -24,6 +24,9 @@ import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+
+vi.mock('../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const caller = { callerKey: 'desktop' }
 const PROVIDER_SESSION_ID = claudeSessionIdForOrcaSession(HOST_TEST_SESSION)
@@ -173,7 +176,7 @@ describe('Claude rewind is unsupported', () => {
   )
 
   it('still attaches when settling the pending rewind fails, and logs it', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(reportAgentSessionFailure).mockClear()
     await seedPendingRewind('prepared')
     const transition = store.transitionHandoff.bind(store)
     vi.spyOn(store, 'transitionHandoff').mockImplementation((sessionId, apply) =>
@@ -189,9 +192,12 @@ describe('Claude rewind is unsupported', () => {
     await reattach()
 
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('prepared')
-    expect(warn).toHaveBeenCalledWith(
-      '[structured-rewind] pending Claude rewind was not settled:',
-      expect.objectContaining({ sessionId: HOST_TEST_SESSION, error: expect.any(Error) })
+    expect(reportAgentSessionFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: 'rewind-recovery',
+        sessionId: HOST_TEST_SESSION,
+        error: expect.any(Error)
+      })
     )
   })
 })

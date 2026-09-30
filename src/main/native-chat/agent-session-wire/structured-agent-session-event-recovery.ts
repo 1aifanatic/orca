@@ -10,6 +10,7 @@ import type {
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import { settleStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
 import { settleUnexpectedStructuredAgentSessionExit } from './structured-agent-session-unexpected-exit'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export class StructuredAgentSessionEventRecovery {
   private readonly sinkFailures = new Set<string>()
@@ -24,7 +25,6 @@ export class StructuredAgentSessionEventRecovery {
       publishStatus?: (sessionId: string) => void
       serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
       now: () => number
-      onBarrierError: (sessionId: string, error: unknown) => void
     }
   ) {}
 
@@ -58,7 +58,9 @@ export class StructuredAgentSessionEventRecovery {
         } as const
       })
       .then((event) => (event ? this.handle(event) : undefined))
-      .catch((recoveryError) => this.context.onBarrierError(sessionId, recoveryError))
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'sink-failure-recovery', sessionId, error })
+      )
       .finally(() => this.sinkFailures.delete(sessionId))
   }
 

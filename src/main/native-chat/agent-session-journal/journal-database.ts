@@ -9,6 +9,7 @@ import { hardenSqliteDatabaseFiles } from '../../sqlite/harden-database-files'
 import { createJournalTablesSql, JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -120,10 +121,7 @@ export function runJournalTransaction<T>(
       try {
         db.exec('ROLLBACK')
       } catch (rollbackError) {
-        console.warn(
-          '[agent-session-journal] rolling back a failed transaction failed',
-          rollbackError
-        )
+        reportAgentSessionFailure({ step: 'journal-rollback', error: rollbackError })
         onStranded()
       }
     }

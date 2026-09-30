@@ -41,6 +41,7 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 function invalid(message: string): {
   ok: false
@@ -127,10 +128,7 @@ export async function carryQueuedMessagesToClearReplacement(
       operationId: input.operationId
     })
   } catch (error) {
-    console.warn("[agent-session] /clear's queued-draft carry skipped:", {
-      sessionId: ctx.sessionId,
-      error: error instanceof Error ? error.message : String(error)
-    })
+    reportAgentSessionFailure({ step: 'clear-draft-carry', sessionId: ctx.sessionId, error })
   }
 }
 

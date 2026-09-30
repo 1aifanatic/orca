@@ -1,5 +1,6 @@
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /**
  * The host's open conversations. A journal handle becomes a conversation's when it is set here,
@@ -21,7 +22,6 @@ export class StructuredAgentSessionConversations extends Map<
   constructor(
     private readonly delivery: {
       deliver: (sessionId: string, journal: AgentSessionJournal) => void
-      onDeliveryError: (sessionId: string, error: unknown) => void
       /** A conversation became held: state that waited on it (queued drafts) re-derives. */
       onOpened?: (sessionId: string) => void
       now: () => number
@@ -46,7 +46,7 @@ export class StructuredAgentSessionConversations extends Map<
         try {
           this.delivery.deliver(sessionId, journal)
         } catch (error) {
-          this.delivery.onDeliveryError(sessionId, error)
+          reportAgentSessionFailure({ step: 'journal-delivery', sessionId, error })
         }
       })
     })

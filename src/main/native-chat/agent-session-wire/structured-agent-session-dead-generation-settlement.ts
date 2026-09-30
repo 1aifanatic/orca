@@ -35,6 +35,7 @@ import {
   exitedRootTurnScope,
   runningRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
@@ -102,6 +103,11 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
 }
 
+/** A failed settlement carries its error so a caller that throws can name the cause. */
+export type StructuredAgentSessionDeadGenerationSettlement =
+  | { ok: true }
+  | { ok: false; error: unknown }
+
 export async function settleStructuredAgentSessionDeadGeneration(input: {
   journal: DeadGenerationJournal
   sessionId: string
@@ -117,13 +123,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
-  onError?: (sessionId: string, error: unknown) => void
-}): Promise<boolean> {
+}): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
-      return true
+      return { ok: true }
     }
     // A queued message is the delivery loop's to settle: it was never handed to this child. A
     // child that never proved its start accepted nothing either — input is written only after it
@@ -189,10 +194,14 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         mutations: chunk.mutations
       })
     }
-    return true
+    return { ok: true }
   } catch (error) {
-    input.onError?.(input.sessionId, error)
-    return false
+    reportAgentSessionFailure({
+      step: 'dead-generation-settlement',
+      sessionId: input.sessionId,
+      error
+    })
+    return { ok: false, error }
   }
 }
 

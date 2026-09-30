@@ -11,6 +11,7 @@ import type {
   RuntimeMobileSessionTabsSnapshot
 } from '../../shared/runtime-types'
 import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
 
 /** The snapshot's tab for a structured session, matched by session id and by published tab id. */
 export function findStructuredAgentSessionTab(
@@ -74,6 +75,6 @@ export function retireSettledStructuredWorkerTab(
   try {
     runtime?.retireStructuredAgentSessionTabFromSnapshot?.(sessionId)
   } catch (error) {
-    console.warn('[orchestration] structured worker tab retirement failed', sessionId, error)
+    reportAgentSessionFailure({ step: 'worker-tab-retire', sessionId, error })
   }
 }

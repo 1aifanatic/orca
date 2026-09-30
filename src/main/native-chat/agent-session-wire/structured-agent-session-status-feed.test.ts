@@ -540,7 +540,7 @@ describe('StructuredAgentSessionStatusFeed', () => {
       const { feed } = feedFor(new Map([[SESSION, { journal }]]), null, (summary) =>
         seen.push(summary.status)
       )
-      const deferred = createDeferredStructuredAgentSessionEventSink()
+      const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
       if (agent === 'claude') {
         const translator = createClaudeJournalTranslator({ sink: deferred.sink })
         translator.handle({

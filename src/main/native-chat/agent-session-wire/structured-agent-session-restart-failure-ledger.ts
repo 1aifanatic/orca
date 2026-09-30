@@ -31,6 +31,7 @@ import {
   type StructuredAgentSessionResumeOutcome
 } from './structured-agent-session-restart-resume-runner'
 import { RESTART_CONTINUATION_SUPERSEDED } from './structured-agent-session-restart-continuation'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 type FailureCapsule = Pick<
   AgentSessionRecoveryCapsule,
@@ -86,9 +87,9 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
   const read = async (): Promise<AgentSessionResumeFailureRecord[]> => {
     try {
       return (await deps.capsule?.listFailed(deps.now())) ?? []
-    } catch {
+    } catch (error) {
       // Recovery is advisory; a malformed capsule must not make ordinary chat actions unusable.
-      console.warn('[structured-agent-session] reading recovery capsule failed')
+      reportAgentSessionFailure({ step: 'recovery-capsule-read', error })
       return []
     }
   }
@@ -175,23 +176,23 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     }
     await deps
       .enqueue(() => capsule.completeResume(operationId, completed, deps.now()))
-      .catch(() => {
-        console.warn('[structured-agent-session] restart offer completion failed')
-      })
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'restart-offer-complete', error })
+      )
     // Filed before the rollback so a failure the user must act on is never reopened as an offer
     // that would silently re-run it.
     await deps
       .enqueue(() => capsule.failResume(operationId, failures, deps.now()))
-      .catch(() => {
-        console.warn('[structured-agent-session] restart failure record failed')
-      })
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'restart-failure-record', error })
+      )
     // This only reopens rows still owned by this operation. Rows removed by completeResume stay
     // removed, even when the write of a later bookkeeping step fails.
     await deps
       .enqueue(() => capsule.rollbackResume(operationId, deps.now()))
-      .catch(() => {
-        console.warn('[structured-agent-session] restart offer rollback failed')
-      })
+      .catch((error: unknown) =>
+        reportAgentSessionFailure({ step: 'restart-offer-rollback', error })
+      )
   }
 
   return {

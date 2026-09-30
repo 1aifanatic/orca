@@ -4,14 +4,16 @@ import {
   AGENT_SESSION_LEASE_TTL_MS,
   type AgentSessionRecordStore
 } from '../../runtime/agent-session-record-store'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 const RENEW_INTERVAL_MS = Math.floor(AGENT_SESSION_LEASE_TTL_MS / 3)
 
 export class StructuredAgentSessionLeaseRenewer {
   private timer: ReturnType<typeof setInterval> | null = null
   private running = false
-  /** The tick in flight. Never rejects: the timer path reports renewal failures through `onError`,
-   *  and stopping must not turn one into a teardown failure as well. */
+  /** The tick in flight. Never rejects: the timer path reports renewal failures, and stopping must
+   *  not turn one into a teardown failure as well. Lease failures are transient: reported, never
+   *  a reason to force a provider down. */
   private inFlight: Promise<void> = Promise.resolve()
 
   constructor(
@@ -22,7 +24,6 @@ export class StructuredAgentSessionLeaseRenewer {
         records: readonly AgentSessionRecord[]
       ) => Promise<Map<string, AgentSessionOwnerProbe>>
       now: () => number
-      onError?: (input: { sessionId: string; error: unknown }) => void
       intervalMs?: number
     }
   ) {}
@@ -106,7 +107,11 @@ export class StructuredAgentSessionLeaseRenewer {
       if (result.status === 'rejected') {
         const renewal = renewals[index]
         if (renewal) {
-          this.input.onError?.({ sessionId: renewal.sessionId, error: result.reason })
+          reportAgentSessionFailure({
+            step: 'lease-renewal',
+            sessionId: renewal.sessionId,
+            error: result.reason
+          })
         }
       }
     })
@@ -126,13 +131,17 @@ export class StructuredAgentSessionLeaseRenewer {
         if (result.status === 'fulfilled') {
           probes.set(record.sessionId, result.value)
         } else {
-          this.input.onError?.({ sessionId: record.sessionId, error: result.reason })
+          reportAgentSessionFailure({
+            step: 'lease-probe',
+            sessionId: record.sessionId,
+            error: result.reason
+          })
         }
       }
       return probes
     } catch (error) {
       for (const record of records) {
-        this.input.onError?.({ sessionId: record.sessionId, error })
+        reportAgentSessionFailure({ step: 'lease-probe', sessionId: record.sessionId, error })
       }
       return new Map()
     }

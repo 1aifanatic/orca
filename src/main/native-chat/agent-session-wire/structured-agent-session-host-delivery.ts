@@ -21,6 +21,7 @@ import type {
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
@@ -70,7 +71,6 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         deps.store.getRecord(sessionId),
         sessions.get(sessionId)?.journal
       ),
-    onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error }),
     record: (sessionId) => deps.store.getRecord(sessionId),
     flushStreamedEvents: input.flushStreamedEvents,
     now: () => deps.now?.() ?? Date.now()
@@ -107,7 +107,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       })
       .catch((error: unknown) => {
         wakesQueued.delete(sessionId)
-        deps.onEventSinkError?.({ sessionId, error })
+        reportAgentSessionFailure({ step: 'delivery-wake', sessionId, error })
       })
   }
   // A chat open before its owner's death was proven revises what its open settled. Queued, never
@@ -120,7 +120,9 @@ export function createStructuredAgentSessionConversationDelivery(input: {
             resettleOpenStructuredAgentSessionConversation(deps, sessionId, sessions.get(sessionId))
           )
         )
-        .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+        .catch((error: unknown) =>
+          reportAgentSessionFailure({ step: 'death-evidence-resettle', sessionId, error })
+        )
     }
   })
   return {
@@ -151,6 +153,6 @@ async function settleInterruptedCommands(
   try {
     await recoverStructuredRewind(deps.store, sessionId, session.journal, fence)
   } catch (error) {
-    deps.onEventSinkError?.({ sessionId, error })
+    reportAgentSessionFailure({ step: 'rewind-recovery', sessionId, error })
   }
 }

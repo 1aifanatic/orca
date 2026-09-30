@@ -51,7 +51,7 @@ async function openJournal(root: string): Promise<AgentSessionJournal> {
 async function session() {
   const root = await mkdtemp(join(tmpdir(), 'orca-codex-children-'))
   let journal = await openJournal(root)
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink({ onFailure: () => {} })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   cleanups.push(async () => {
     deferred.close()

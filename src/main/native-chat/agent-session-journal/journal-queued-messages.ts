@@ -43,6 +43,7 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
 export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
@@ -305,12 +306,9 @@ export class JournalQueuedMessages {
   /** Bookkeeping at open: a failure is reported and retried at the next open,
    *  never allowed to fail opening the chat. */
   repairAndPruneAtOpen(): Promise<void> {
-    return this.repairAndPrune().catch((error: unknown) => {
-      console.warn('[journal-open] queued-message repair skipped:', {
-        sessionId: this.deps.sessionId,
-        error: error instanceof Error ? error.message : String(error)
-      })
-    })
+    return this.repairAndPrune().catch((error: unknown) =>
+      reportAgentSessionFailure({ step: 'queued-repair', sessionId: this.deps.sessionId, error })
+    )
   }
 
   /**

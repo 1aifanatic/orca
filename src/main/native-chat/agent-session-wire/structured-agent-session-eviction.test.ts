@@ -44,10 +44,13 @@ function context(): StructuredAgentSessionEvictionContext & { order: string[] } 
 }
 
 function runtimeState(): StructuredAgentSessionHostRuntimeState {
-  return new StructuredAgentSessionHostRuntimeState({
-    store: {} as never,
-    adapter: {} as never
-  } as never)
+  return new StructuredAgentSessionHostRuntimeState(
+    {
+      store: {} as never,
+      adapter: {} as never
+    } as never,
+    () => {}
+  )
 }
 
 describe('structured agent session eviction', () => {

@@ -380,7 +380,7 @@ describe('importing a per-chat journal', () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const database = openTestJournalHostDatabase(root)
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const input = {
       database,
       identity: IDENTITY,
@@ -402,7 +402,12 @@ describe('importing a per-chat journal', () => {
     ).toMatchObject({
       total: 0
     })
-    expect(errors).toHaveBeenCalledOnce()
+    // Refused on every open, logged once.
+    expect(
+      warnings.mock.calls.filter(
+        ([line]) => line === '[agent-session] legacy-journal-import failed'
+      )
+    ).toHaveLength(1)
     // A copy that reads back whole then imports it, over what the refused ones left.
     const journal = await openChat()
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
@@ -416,7 +421,7 @@ describe('importing a per-chat journal', () => {
     expect(rows.filter((row) => row.rowJson.includes('On it.'))).toHaveLength(1)
     await writeLegacyJournal(epoch, rows)
     const database = openTestJournalHostDatabase(root)
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const input = {
       database,
       identity: IDENTITY,
@@ -431,7 +436,12 @@ describe('importing a per-chat journal', () => {
 
     expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
     expect(readJournalSessionEpoch(database.db, IDENTITY.sessionId)).toBeNull()
-    expect(errors).toHaveBeenCalledOnce()
+    // Refused on every open, logged once.
+    expect(
+      warnings.mock.calls.filter(
+        ([line]) => line === '[agent-session] legacy-journal-import failed'
+      )
+    ).toHaveLength(1)
   })
 
   // T-R2B1: the copy committed and only the delete failed (a crash between them is the same). Rows appended since, a restart, and a

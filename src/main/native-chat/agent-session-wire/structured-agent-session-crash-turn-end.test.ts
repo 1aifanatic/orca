@@ -41,6 +41,9 @@ import {
   HOST_TEST_LOCATION as LOCATION,
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
+
+vi.mock('../../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 const PROVIDER_SESSION = 'provider-session-alpha-1'
 /** The tool call's row: the last thing the provider wrote before the crash. */
@@ -406,11 +409,10 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
 
   it('stays unverifiable when the revision cannot be written, and a later open revises it', async () => {
     let now = RELAUNCHED_AT
-    const onEventSinkError = vi.fn()
+    vi.mocked(reportAgentSessionFailure).mockClear()
     openHost({
       probeOwner: async () => ({ outcome: 'pid-absent' }),
-      now: () => now,
-      onEventSinkError
+      now: () => now
     })
     await host.history({ sessionId: SESSION, direction: 'tail' })
     const { journal } = host.collaboratorsForTests().sessions.get(SESSION)!
@@ -419,7 +421,9 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await host.reconcileRestartLeases()
     await drainSession()
 
-    expect(onEventSinkError).toHaveBeenCalledOnce()
+    expect(reportAgentSessionFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ step: 'gone-generation-settlement', sessionId: SESSION })
+    )
     expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
     // The proof is durable on the record, so the next open converges.
     now += STRUCTURED_AGENT_SESSION_IDLE_MS + 1

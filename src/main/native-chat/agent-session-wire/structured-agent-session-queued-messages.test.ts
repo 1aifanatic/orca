@@ -524,7 +524,11 @@ describe('Stop and Delete', () => {
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
-      expect(warned).toHaveBeenCalledWith(expect.stringContaining('queue pause'), expect.anything())
+      expect(warned).toHaveBeenCalledWith(
+        '[agent-session] stop-queue-pause failed',
+        expect.anything(),
+        expect.objectContaining({ message: 'disk full' })
+      )
     } finally {
       record.mockRestore()
       warned.mockRestore()

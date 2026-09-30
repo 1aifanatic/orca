@@ -25,6 +25,9 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+import { reportAgentSessionFailure } from '../observability/agent-session-failure'
+
+vi.mock('../observability/agent-session-failure', () => ({ reportAgentSessionFailure: vi.fn() }))
 
 let root: string
 
@@ -107,7 +110,8 @@ describe('a process whose journal will not open', () => {
     earlier.pragma('user_version = 2')
     earlier.close()
     const before = await digest(path)
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const reports = vi.mocked(reportAgentSessionFailure)
+    reports.mockClear()
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await expect(install()).rejects.toMatchObject({
@@ -118,8 +122,8 @@ describe('a process whose journal will not open', () => {
       reason: 'journalCorrupt',
       message: 'Unable to load this chat.'
     })
-    expect(warn).toHaveBeenCalledOnce()
-    const logged = String(warn.mock.calls[0]?.[1])
+    expect(reports).toHaveBeenCalledOnce()
+    const logged = String(reports.mock.calls[0]?.[0].error)
     expect(logged).toContain(path)
     expect(logged).toContain('unreleased development build')
     expect(logged).toContain('move the file aside')
@@ -143,8 +147,6 @@ describe('a process whose journal will not open', () => {
 })
 
 describe('logging a journal that will not open', () => {
-  const OPEN_FAILED = '[structured-agent-session] opening the chat journal database failed'
-
   async function writeJunkJournal(): Promise<void> {
     const path = journalDatabasePath(root)
     await rm(`${path}-wal`, { force: true })
@@ -154,8 +156,11 @@ describe('logging a journal that will not open', () => {
 
   // Every chat request retries the open; the same failure each time is one log, not one per request.
   it('logs a repeated failure once, with its stack, and again after an open succeeds', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const openFailureLogs = () => warn.mock.calls.filter(([message]) => message === OPEN_FAILED)
+    vi.mocked(reportAgentSessionFailure).mockClear()
+    const openFailureLogs = () =>
+      vi
+        .mocked(reportAgentSessionFailure)
+        .mock.calls.filter(([report]) => report.step === 'journal-database-open')
     await install()
     await stopStructuredAgentSessionRuntime()
     await writeJunkJournal()
@@ -166,8 +171,8 @@ describe('logging a journal that will not open', () => {
       })
     }
     expect(openFailureLogs()).toHaveLength(1)
-    expect(openFailureLogs()[0]?.[1]).toBeInstanceOf(Error)
-    expect(openFailureLogs()[0]?.[1]).toHaveProperty('stack', expect.stringContaining('\n'))
+    expect(openFailureLogs()[0]?.[0].error).toBeInstanceOf(Error)
+    expect(openFailureLogs()[0]?.[0].error).toHaveProperty('stack', expect.stringContaining('\n'))
 
     await unlink(journalDatabasePath(root))
     await install()

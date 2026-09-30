@@ -107,8 +107,9 @@ describe('draft bookkeeping inside a journal append', () => {
     expect(journal.submission('sub-draft-1')?.dispatchState).toBe('rejected')
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
     expect(warn).toHaveBeenCalledWith(
-      '[journal-append] row bookkeeping skipped:',
-      expect.objectContaining({ kind: 'dispatch' })
+      '[agent-session] journal-row-bookkeeping failed',
+      expect.objectContaining({ kind: 'dispatch' }),
+      expect.any(Error)
     )
     await journal.close()
     journal = await open()

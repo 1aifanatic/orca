@@ -13,6 +13,7 @@ import {
 } from '../../../shared/agent-session-wire-refusals'
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 import { AgentSessionJournalError } from './journal-write-guards'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 type JournalRefusalReason = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
 
@@ -111,7 +112,7 @@ export function journalOpenReadRefusal(error: unknown): AgentSessionRefusalError
   if (isAgentSessionRefusalError(error)) {
     return error
   }
-  return unreadableRefusal(error, journalRefusalReason(error), true)
+  return unreadableRefusal(error, journalRefusalReason(error), { log: true })
 }
 
 const MAX_LOGGED_SESSIONS = 256
@@ -134,7 +135,7 @@ export function createJournalOpenReadRefusals() {
       if (!repeat && (logged.has(sessionId) || logged.size < MAX_LOGGED_SESSIONS)) {
         logged.set(sessionId, failure)
       }
-      return unreadableRefusal(error, reason, !repeat)
+      return unreadableRefusal(error, reason, { log: !repeat, sessionId })
     },
     /** The session opened or closed: its next failure is news. */
     forget: (sessionId: string): void => {
@@ -146,10 +147,15 @@ export function createJournalOpenReadRefusals() {
 function unreadableRefusal(
   error: unknown,
   reason: JournalRefusalReason,
-  log: boolean
+  report: { log: boolean; sessionId?: string }
 ): AgentSessionRefusalError {
-  if (log) {
-    console.warn('[agent-session] opening the conversation for a read failed:', error)
+  if (report.log) {
+    reportAgentSessionFailure({
+      step: 'journal-open-read',
+      ...(report.sessionId === undefined ? {} : { sessionId: report.sessionId }),
+      error,
+      detail: { reason }
+    })
   }
   const code = 'agent_session_journal_unreadable'
   return new AgentSessionRefusalError(refuse(code, { reason }, code), { cause: error })

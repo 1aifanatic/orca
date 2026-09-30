@@ -32,6 +32,7 @@ import {
   structuredAgentSessionResumeOperationId,
   structuredAgentSessionResumeParams
 } from './structured-agent-session-resume-eligibility'
+import { reportAgentSessionFailure } from '../../observability/agent-session-failure'
 
 /** A resume answers with the attach's own refusal, verdict and all, so the asker can tell a lease
  *  someone else is settling from an owner that will not come back. */
@@ -79,7 +80,7 @@ export function ensureStructuredAgentSessionAgentForOperation(
 ): Promise<StructuredAgentSessionResumeOutcome> {
   return ensureStructuredAgentSessionAgent(context, sessionId).catch((error: unknown) => {
     // The error is Orca's own and goes to the log; the refusal says only that the start failed.
-    console.warn('[agent-session] starting the agent for an operation failed:', error)
+    reportAgentSessionFailure({ step: 'operation-agent-start', sessionId, error })
     return {
       ok: false,
       refusal: refuseUnclassified(

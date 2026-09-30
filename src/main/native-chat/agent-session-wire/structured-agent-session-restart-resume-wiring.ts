@@ -29,7 +29,6 @@ export type StructuredAgentSessionRestartResumeSurfaces = {
     sessionId: string,
     clientMessageId: string
   ) => Promise<{ value: AgentSessionSendResult } | undefined>
-  onNoteFailed: (sessionId: string, error: unknown) => void
   now: () => number
 }
 
@@ -76,8 +75,6 @@ export function structuredAgentSessionRestartResumeSurfaces(
         until: 'handed-over',
         budgetMs: MAX_TIMER_DELAY_MS
       }),
-    onNoteFailed: () =>
-      console.warn('[structured-agent-session] restart continuation attribution failed'),
     now
   }
 }
