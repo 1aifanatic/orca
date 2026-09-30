@@ -58,9 +58,13 @@ export function nextRelayRuntimeStep(
   ladder: readonly RelayRuntimeStep[],
   current: RelayRuntimeStep,
   reason: RelayRuntimeStepReason,
-  remembered = false
+  remembered = false,
+  windowsHost = false
 ): RelayRuntimeStep {
-  if ((reason === 'noexec' && !remembered) || (current === 'C' && reason === 'host_node_missing')) {
+  // Why not on Windows: there noexec is application control refusing node.exe under the profile,
+  // which the host's own node.exe (rung legacy) is not subject to.
+  const noexecDefeatsAll = reason === 'noexec' && !remembered && !windowsHost
+  if (noexecDefeatsAll || (current === 'C' && reason === 'host_node_missing')) {
     return 'D'
   }
   const index = ladder.indexOf(current)

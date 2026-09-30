@@ -26,6 +26,11 @@ describe('relay runtime ladder (design D6)', () => {
     expect(nextRelayRuntimeStep(ladder, 'C', 'noexec')).toBe('D')
   })
 
+  it('keeps descending on a Windows noexec, which is application control on node.exe alone', () => {
+    const ladder = relayRuntimeLadder('pinned-node')
+    expect(nextRelayRuntimeStep(ladder, 'A', 'noexec', false, true)).toBe('B')
+  })
+
   it('lets a remembered noexec skip only its own rung, so a remounted home is re-proved', () => {
     const ladder = relayRuntimeLadder('pinned-node')
     expect(nextRelayRuntimeStep(ladder, 'A', 'noexec', true)).toBe('B')

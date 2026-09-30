@@ -450,7 +450,13 @@ async function deployAndLaunchRelayInner(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${err.reason}): ${err.detail}`
         )
         run.refused(step, err.reason)
-        step = nextRelayRuntimeStep(ladder, step, err.reason, err.remembered)
+        step = nextRelayRuntimeStep(
+          ladder,
+          step,
+          err.reason,
+          err.remembered,
+          run.host !== null && isWindowsRemoteHost(run.host)
+        )
         run.enter(step)
         continue
       }
