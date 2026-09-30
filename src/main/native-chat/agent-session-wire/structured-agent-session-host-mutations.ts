@@ -46,7 +46,7 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import { runRecordedStop } from './structured-agent-session-queued-stop'
+import { runRecordedStop, stopReachesUnrecordedWork } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -206,7 +206,9 @@ export function cancelStructuredAgentSessionTurn(
             return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
           }
           // Before the interrupt, and before anything after it that ends the child.
-          await tookEffect()
+          if (withdrawn.length > 0 || (await stopReachesUnrecordedWork(ctx, params.turnId))) {
+            await tookEffect()
+          }
           return performCancel(
             { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
             {

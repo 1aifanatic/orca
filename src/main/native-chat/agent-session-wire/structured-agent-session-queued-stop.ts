@@ -13,6 +13,7 @@ import {
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
  *  waiting or returned. Pending/unknown/accepted deliveries stay outside it. */
@@ -26,7 +27,8 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  * command's stop, a kill after the interrupt), or, reaching no agent, once it withdrew something.
  * That writes the Stop's event, whatever the queue holds, so a card its interrupt later withdraws
  * comes back to waiting under the pause, and whatever ends the child finds the event already
- * written. A Stop that throws before then, or stops nothing, changed nothing and writes nothing.
+ * written. A Stop that throws before then, or stops nothing (`stopReachesUnrecordedWork`), changed
+ * nothing and writes nothing.
  * The drain cannot slip a card in between: the Stop runs on the drain's serialized lane.
  */
 export async function runRecordedStop<TValue>(
@@ -47,4 +49,34 @@ export async function runRecordedStop<TValue>(
       }
     )
   })
+}
+
+/**
+ * Whether a Stop reaching a running agent stops anything no Stop event records yet. Not when it
+ * names a turn already over (a late Stop from a phone), nor when it repeats the Stop still in force
+ * on the same turn with nothing handed over since: a card queued between the presses then sends
+ * normally, as after one Stop.
+ */
+export async function stopReachesUnrecordedWork(
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
+  namedTurnId: string | undefined
+): Promise<boolean> {
+  const live = ctx.journal.activeTurnId()
+  // No turn published yet while the agent works: the named one may still be opening.
+  if (
+    namedTurnId !== undefined &&
+    namedTurnId !== live &&
+    (live !== null || !(await isMainAgentWorkingOnceFlushed(ctx)))
+  ) {
+    return false
+  }
+  const inForce = ctx.journal.queuedMessages.userStopInForce()
+  return (
+    inForce === null ||
+    (inForce.event.turnId ?? null) !== live ||
+    // A steer handed over after that Stop comes back to waiting, so this Stop must hold it.
+    ctx.journal
+      .pendingSubmissions()
+      .some((entry) => (entry.acceptedSequence ?? Infinity) > inForce.sequence)
+  )
 }

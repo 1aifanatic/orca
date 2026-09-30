@@ -62,6 +62,14 @@ export function journalQueueStopHolds(
   )
 }
 
+/** The latest person's Stop while it still pauses, with where it was written; else null. */
+export function journalUserStopInForce(
+  marks: JournalQueuePauseMarks,
+  latestPersonTurnSequence: number
+): JournalQueuePauseMarks['userStop'] {
+  return journalQueueStopHolds(marks, latestPersonTurnSequence) ? marks.userStop : null
+}
+
 /** What a rewind's new epoch restates so its pauses read as they did: a lift of /clear's pause (a
  *  person's turn or a Resume happened), then the Stop still in force, in that order so the lift
  *  never ends the Stop. */
@@ -76,9 +84,7 @@ export function journalQueuePauseRestatement(
 ): JournalQueuePauseRestatement {
   return {
     lifted: latestPersonTurnSequence > 0 || marks.resumedSequence > 0,
-    liveStop: journalQueueStopHolds(marks, latestPersonTurnSequence)
-      ? (marks.userStop?.event ?? null)
-      : null
+    liveStop: journalUserStopInForce(marks, latestPersonTurnSequence)?.event ?? null
   }
 }
 

@@ -18,8 +18,10 @@ import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   deriveQueuePauses,
+  journalUserStopInForce,
   nextSendableQueuedCard,
-  type DerivedQueuePause
+  type DerivedQueuePause,
+  type JournalQueuePauseMarks
 } from './queued-message-pause'
 import {
   consumeQueuedMessageInTransaction,
@@ -142,6 +144,12 @@ export class JournalQueuedMessages {
   /** The queue's pauses in force, derived from the fold and the cards (`queued-message-pause.ts`). */
   pauses(hostInstance: string): DerivedQueuePause[] {
     return this.derivePauses(this.list(), hostInstance)
+  }
+
+  /** The person's Stop still pausing the queue, if any (`journalUserStopInForce`). */
+  userStopInForce(): JournalQueuePauseMarks['userStop'] {
+    const state = this.deps.state()
+    return journalUserStopInForce(state.queuePauseMarks, state.latestPersonTurnSequence)
   }
 
   private derivePauses(
