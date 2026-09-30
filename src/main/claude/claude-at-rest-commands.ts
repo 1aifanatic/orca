@@ -21,7 +21,7 @@ export type ClaudeAtRestCommandsDeps = {
 
 type Entry = {
   commands?: AgentSessionSlashCommand[]
-  /** When the answer kept (or the failure) landed. */
+  /** When the kept answer, or the last failure, landed. */
   scannedAt: number
   lastStartedAt: number
   inFlight: number
@@ -99,7 +99,8 @@ export class ClaudeAtRestCommandCatalog {
           }
         },
         (error: unknown) => {
-          newest()
+          // Waits out the window before trying again, but leaves room for an older scan's answer.
+          entry.scannedAt = this.now()
           console.warn('[claude] reading the at-rest `/` commands failed:', error)
         }
       )

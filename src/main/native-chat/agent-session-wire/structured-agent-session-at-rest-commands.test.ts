@@ -228,6 +228,46 @@ describe("a Claude chat whose Claude isn't running shows the `/` surface from it
     await vi.waitFor(() => expect(skills()).toEqual(['slow']))
   })
 
+  it('waits out the window from when a scan lands, even one that failed', async () => {
+    let calls = 0
+    let failNext = true
+    const catalog = new ClaudeAtRestCommandCatalog({
+      resolveWorkspacePath: async () => workspace,
+      now: () => clock,
+      discover: async (args) => {
+        calls += 1
+        // Each scan takes 15 s of the clock, longer than the window.
+        clock += 15_000
+        if (failNext) {
+          failNext = false
+          throw new Error('unreadable')
+        }
+        const { discoverSkills } = await import('../../skills/discovery')
+        return discoverSkills({ ...args, homeDir: join(directory, 'home'), refresh: true })
+      }
+    })
+    const record = store.getRecord(SESSION)!
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      catalog.read(record)
+      await vi.waitFor(() => expect(warned).toHaveBeenCalledOnce())
+      catalog.read(record)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(calls).toBe(1)
+      clock += CLAUDE_AT_REST_COMMANDS_TTL_MS
+      catalog.read(record)
+      await vi.waitFor(() =>
+        expect(namesOf(catalog.read(record) ?? null, 'skill')).toEqual(['review-pr'])
+      )
+      clock += CLAUDE_AT_REST_COMMANDS_TTL_MS - 1
+      catalog.read(record)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(calls).toBe(2)
+    } finally {
+      warned.mockRestore()
+    }
+  })
+
   it('after a relaunch, with nothing remembered from before it', async () => {
     await host.flushAllStreamedEvents()
     await openHost()
