@@ -27,8 +27,7 @@ function execFileText(command: string, args: string[]): Promise<string> {
   })
 }
 
-// Why: serve-sim >= 0.1.47 runs the helper as `<node> …/serve-sim.js <udid> … --exit-on-simulator-shutdown`;
-// the legacy `serve-sim-bin` shape stays so a helper left by a pre-update Orca is still found and killed.
+// Why: serve-sim >= 0.1.47 hosts the helper in node; keep serve-sim-bin so a pre-update helper is still reaped.
 function isServeSimHelperCommand(command: string): boolean {
   if (/(^|\/)serve-sim-bin(?:\s|$)/.test(command)) {
     return true

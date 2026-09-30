@@ -407,7 +407,6 @@ module.exports = {
     verifyPackagedPluginResources(resourcesDir)
     finalizePackagedRipgrep(resourcesDir)
     chmodUnixCliLaunchers(resourcesDir, context.electronPlatformName)
-    chmodMacServeSimHelpers(resourcesDir, context.electronPlatformName)
     for (const filename of readdirSync(resourcesDir)) {
       if (!filename.startsWith('agent-browser-')) {
         continue
@@ -715,29 +714,6 @@ function chmodUnixCliLaunchers(resourcesDir, electronPlatformName) {
     // Why: packaged Unix installs expose these extraResources as public shell
     // commands, and source/packager mode drift must not ship a non-executable CLI.
     chmodSync(launcherPath, 0o755)
-  }
-}
-
-function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
-  if (electronPlatformName !== 'darwin') {
-    return
-  }
-  // Mirrors SERVE_SIM_EXECUTABLE_RELATIVE_PATHS in src/main/emulator/serve-sim-package-executables.ts.
-  const helperRelativePaths = [
-    ['simax', 'serve-sim-ax-settings'],
-    ['simcam', 'serve-sim-camera-helper'],
-    ['simduo', 'serve-sim-duo-hid'],
-    ['simduo', 'serve-sim-duo-render']
-  ]
-  const helperPaths = ['serve-sim', join('node_modules', 'serve-sim')].flatMap((packageDir) =>
-    helperRelativePaths.map((relativePath) =>
-      join(resourcesDir, packageDir, 'dist', ...relativePath)
-    )
-  )
-  for (const helperPath of helperPaths) {
-    if (existsSync(helperPath)) {
-      chmodSync(helperPath, 0o755)
-    }
   }
 }
 
