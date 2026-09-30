@@ -53,6 +53,11 @@ if (args.includes('app-server')) {
   process.stderr.write("error: unrecognized subcommand 'app-server'\\n")
   process.exit(2)
 }
+// Why: Orca probes codex --help before each launch; answer it without counting a spawn.
+if (args.includes('--help')) {
+  process.stdout.write('Usage: codex [OPTIONS] [PROMPT]\\n')
+  process.exit(0)
+}
 append({ event: 'spawn', args })
 process.stdout.write('\\u001b]0;Codex Ready\\u0007OpenAI Codex\\nmodel: e2e\\ndirectory: e2e\\n')
 ${FAKE_AGENT_PASTE_END_SCANNER_SOURCE}
@@ -145,12 +150,12 @@ export function readCompletedWorkerLedger(): LifecycleEvent[] {
     .map((line) => JSON.parse(line) as LifecycleEvent)
 }
 
-export function readCompletedWorkerDispatchCapability(): string | null {
-  const input = readCompletedWorkerLedger()
+export function hasCompletedWorkerReceivedPreamble(): boolean {
+  return readCompletedWorkerLedger()
     .filter((event) => event.event === 'input')
     .map((event) => event.input ?? '')
     .join('')
-  return input.match(/--dispatch-capability\s+(\S+)/)?.[1] ?? null
+    .includes('--type worker_done')
 }
 
 export function runBuiltOrcaCli(

@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // The lifetime of a provider child, against the real host rather than a double.
 //
 // Two leaks meet here: a chat that closes without stopping its app-server, and a launch that
@@ -17,7 +18,8 @@ import type {
   AgentSessionMutationEnvelope,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
   AgentSessionAcquisitionRootExitObservedError,
   type StructuredAgentSessionAdapter
@@ -38,6 +40,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
@@ -75,7 +78,7 @@ function openHost(
   host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
     idleSweep: { intervalMs: SWEEP_MS, idleMs: IDLE_MS },
@@ -89,7 +92,7 @@ function openHost(
 /** A fresh app generation over the same durable store, with its owner proven gone. */
 async function reboot(): Promise<void> {
   await host.flushAllStreamedEvents()
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   openHost(async () => ({ outcome: 'pid-absent' }))
   acquire.mockClear()
   closeSession.mockClear()
@@ -121,7 +124,8 @@ function envelope(method: string, fields: Record<string, unknown>): AgentSession
 function emitTurnLifecycle(state: 'running' | 'completed', ordinal: number): void {
   sink?.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal },
-    { kind: 'status', text: state, turnLifecycle: { turnId: 'turn-1', state } }
+    { kind: 'status', text: state, turnLifecycle: { turnId: 'turn-1', state } },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
 }
 
@@ -157,7 +161,8 @@ async function failJournalSinkUntilReleased(): Promise<void> {
   vi.spyOn(session!.journal, 'appendItem').mockRejectedValueOnce(new Error('disk unavailable'))
   sink?.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 1 },
-    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'lost write' }] }
+    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'lost write' }] },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   await vi.waitFor(() => {
     expect(closeSession).toHaveBeenCalledWith(SESSION)
@@ -227,7 +232,7 @@ beforeEach(async () => {
       surface: 'rejection'
     })
   }))
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   openHost()
 })
 
@@ -396,7 +401,7 @@ describe('startup', () => {
     const beforeRestart = store.getRecord(SESSION)
     await abandonStructuredAgentSessionHost(host)
 
-    store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+    store = await openTestAgentSessionRecordStore(root)
     openHost(async () => ({ outcome: 'pid-absent' }))
     await host.restoreReadableSessions()
 
@@ -469,7 +474,8 @@ describe('a session closed and started again', () => {
     })
     sink?.appendItem(
       { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 1 },
-      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'back again' }] }
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'back again' }] },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     sink?.publish()
     await host.flushStreamedEvents(SESSION)
@@ -767,7 +773,9 @@ describe('an unexpected provider exit', () => {
       runtimeFence: exitedFence + 1,
       deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
     })
-    // Nothing retries the settlement; the journal writes again, and the next acquire re-derives it.
+    // The retry recording the exit queues is refused too; once the journal writes again, the next
+    // acquire re-derives it.
+    await host.collaboratorsForTests().serialize(SESSION, async () => {})
     refusing.mockRestore()
 
     dispatch.mockResolvedValueOnce({
@@ -795,7 +803,8 @@ describe('an unexpected provider exit', () => {
     expect(statuses).toContainEqual({
       kind: 'status',
       text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
-      failure: { kind: 'providerExited' }
+      failure: { kind: 'providerExited' },
+      tone: 'error'
     })
     expect(statuses.map((status) => status.text).join('\n')).not.toContain('provider exited')
   })

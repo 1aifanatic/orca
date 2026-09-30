@@ -25,7 +25,7 @@ type UnexpectedExitLifecycleEvent = StructuredAgentSessionEndedEvent & {
 export type StructuredAgentSessionUnexpectedExitSession = Pick<
   StructuredAgentSessionHostSession,
   'child' | 'lastEndedChild'
-> & { journal: DeadGenerationJournal & Pick<AgentSessionJournal, 'cursor'> }
+> & { journal: DeadGenerationJournal & Pick<AgentSessionJournal, 'cursor' | 'itemBody'> }
 
 export type StructuredAgentSessionUnexpectedExitContext<
   TSession extends StructuredAgentSessionUnexpectedExitSession = StructuredAgentSessionHostSession
@@ -106,7 +106,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
         stableSettlementId,
         verdict: { state: 'interrupted', completedAt: observedAt },
         exitedDuringStartup,
-        failureTextContext: structuredAgentSessionFailureWordsContext(record),
+        failureTextContext: structuredAgentSessionFailureWordsContext(record, session.journal),
         // A failed start always says why: no response was running to carry the reason.
         showUnexpectedExitOutcome:
           exitedDuringStartup ||
@@ -131,8 +131,8 @@ export async function settleUnexpectedStructuredAgentSessionExit<
           acquisitionGeneration: child.generation,
           now: context.now(),
           exitObservedAt: observedAt,
-          // Bare cause: whatever this settlement could not write is settled from it later, by the
-          // next acquire or read restore, and `exit-observed` already says the rest.
+          // Bare cause: whatever this settlement could not write is settled from it later (the
+          // settle recording it queues, or the next open or acquire); `exit-observed` says the rest.
           exitReason: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
         })
       } catch (error) {

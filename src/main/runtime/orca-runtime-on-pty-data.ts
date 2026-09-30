@@ -4,6 +4,7 @@ import type { TerminalOutputSourceRange } from '../../shared/terminal-output-sou
 import { advertisedUrlWatcher } from '../ports/advertised-url-watcher'
 import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
 import { normalizeTerminalChunk } from './terminal-ansi-normalization'
+import { observeTerminalCommandPaint } from './terminal-command-paint'
 import {
   appendCompletedTerminalTranscript,
   buildPreview,
@@ -91,6 +92,7 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       pty.lastOutputAt = at
       const normalized = normalizeTerminalChunk(data, pty.tailPendingAnsi)
       pty.tailPendingAnsi = normalized.pendingAnsi
+      observeTerminalCommandPaint(pty, data, normalized.text)
       const nextTail = appendNormalizedToTailBuffer(
         pty.tailBuffer,
         pty.tailPartialLine,
@@ -230,7 +232,8 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
         if (ptyRecord) {
           ptyRecord.lastExplicitAgentStatus = {
             state: latestAgentStatus.state,
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            sessionBoundary: latestAgentStatus.sessionBoundary
           }
         }
       }

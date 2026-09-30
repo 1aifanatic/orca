@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // A Codex rewind whose outcome only the provider can prove, found on a chat at rest: nothing on
 // screen will start the agent that settles it, so the next send does, and its message is kept.
 
@@ -7,7 +8,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter
@@ -23,6 +25,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const caller = { callerKey: 'desktop' }
 const KEPT = { provider: 'codex' as const, threadId: THREAD, turnId: 'kept', ordinal: 0 }
@@ -77,7 +80,7 @@ function openHost(): StructuredAgentSessionHost {
   return new StructuredAgentSessionHost({
     store,
     adapter: adapter(),
-    journalRoot: directory,
+    journalDatabase: openTestJournalHostDatabase(directory),
     claimKeyId: 'key',
     now: () => HOST_TEST_NOW,
     probeOwner: async () => ({ outcome: 'exit-observed' }),
@@ -104,10 +107,7 @@ beforeEach(async () => {
     }
   }))
   directory = await mkdtemp(join(tmpdir(), 'orca-rewind-rest-'))
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
+  store = await openTestAgentSessionRecordStore(directory)
   host = openHost()
 })
 
@@ -158,11 +158,12 @@ function sendParams(text: string) {
 async function interruptedRewindAtRest(): Promise<void> {
   expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
   const drop = { ...KEPT, turnId: 'drop' }
-  sink.appendItem(KEPT, hostTestMessage('verified history'))
-  sink.appendItem(drop, hostTestMessage('to be rewound'))
+  sink.appendItem(KEPT, hostTestMessage('verified history'), {
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  })
+  sink.appendItem(drop, hostTestMessage('to be rewound'), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
   await host.flushStreamedEvents(SESSION)
-  rewind.mockImplementation(async (input) => {
-    await input.onReverted?.()
+  rewind.mockImplementation(async () => {
     throw new Error('history unavailable')
   })
   const epoch = (await host.journalSnapshot(SESSION)).cursor.epoch
@@ -171,10 +172,7 @@ async function interruptedRewindAtRest(): Promise<void> {
   )
   expect(store.getRecord(SESSION)?.rewind).toMatchObject({ phase: 'prepared' })
   await host.flushAllStreamedEvents()
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
+  store = await openTestAgentSessionRecordStore(directory)
   host = openHost()
 }
 
@@ -205,14 +203,11 @@ describe('an interrupted Codex rewind on a chat at rest (R16)', () => {
 describe('a rewind asked of a chat at rest (P2-23)', () => {
   it('starts the agent first and answers with what the provider says', async () => {
     expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
-    sink.appendItem(KEPT, hostTestMessage('kept'))
+    sink.appendItem(KEPT, hostTestMessage('kept'), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     await host.flushStreamedEvents(SESSION)
     const epoch = (await host.journalSnapshot(SESSION)).cursor.epoch
     await host.flushAllStreamedEvents()
-    store = await AgentSessionRecordStore.open({
-      directory: join(directory, 'store'),
-      hostId: 'local'
-    })
+    store = await openTestAgentSessionRecordStore(directory)
     host = openHost()
     const before = acquires
     rewindSupport.mockReturnValue({ supported: false, reason: 'history-not-paginated' })
