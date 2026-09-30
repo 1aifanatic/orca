@@ -107,6 +107,22 @@ describe('Manage Sessions Kill all across versions', () => {
 })
 
 describe('Manage Sessions listing', () => {
+  it('opens no row when the tab’s own copy sits in a version that did not answer', async () => {
+    vi.useRealTimers()
+    const current = version(36, [session('wt@@dup', 'other-copy')])
+    const silent = version(35, [session('wt@@dup', 'tabs-own-copy')])
+    silent.silentAfterReads = 0
+
+    const generations = await collectGenerations(
+      { adapters: [current, silent], current },
+      Date.now() + 50,
+      new Map([['wt@@dup', 'tabs-own-copy']])
+    )
+
+    expect(generations.map((g) => g.contact)).toEqual(['live', 'unverifiable'])
+    expect(generations[0]?.contact === 'live' && generations[0].sessions[0]?.backsTab).toBe(false)
+  })
+
   it('lets a restored tab that has not re-attached yet open from its saved copy', async () => {
     vi.useRealTimers()
     const current = version(36, [session('wt@@dup', 'copy'), session('wt@@solo', 'solo')])
@@ -115,7 +131,7 @@ describe('Manage Sessions listing', () => {
     const generations = await collectGenerations(
       { adapters: [current, previous], current },
       undefined,
-      new Set(['orphan'])
+      new Map([['wt@@dup', 'orphan']])
     )
 
     expect(

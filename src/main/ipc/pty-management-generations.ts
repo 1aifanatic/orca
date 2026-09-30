@@ -26,7 +26,7 @@ export type DaemonGenerationInventory = { protocolVersion: number; isCurrent: bo
 export async function collectGenerations(
   { adapters, current }: DaemonAdapterSet,
   deadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
-  savedPaneIncarnationIds: ReadonlySet<string> = new Set()
+  savedIncarnationBySessionId: ReadonlyMap<string, string> = new Map()
 ): Promise<DaemonGenerationInventory[]> {
   const listings = await listPerGeneration(
     adapters,
@@ -56,16 +56,17 @@ export async function collectGenerations(
       }))
     }
   })
-  return markTabBackedSessions(generations, savedPaneIncarnationIds)
+  return markTabBackedSessions(generations, savedIncarnationBySessionId)
 }
 
 /**
  * The copy an open tab shows is the one this app attached. Before a restored tab re-attaches no
- * copy is attached, so the tab's saved incarnation names it, or the only listed copy of the id.
+ * copy is attached: the tab's saved incarnation for the id names it, and only when the tab saved
+ * none does the only listed copy count (its own copy may sit in a version that did not answer).
  */
 function markTabBackedSessions(
   generations: DaemonGenerationInventory[],
-  savedPaneIncarnationIds: ReadonlySet<string>
+  savedIncarnationBySessionId: ReadonlyMap<string, string>
 ): DaemonGenerationInventory[] {
   const rows = generations.flatMap((g) => (g.contact === 'live' ? g.sessions : []))
   const attachedIds = new Set(rows.filter((s) => s.backsTab).map((s) => s.sessionId))
@@ -75,10 +76,9 @@ function markTabBackedSessions(
   }
   for (const row of rows) {
     if (!row.backsTab && !attachedIds.has(row.sessionId)) {
+      const saved = savedIncarnationBySessionId.get(row.sessionId)
       row.backsTab =
-        row.incarnationId !== undefined && savedPaneIncarnationIds.has(row.incarnationId)
-          ? true
-          : copiesById.get(row.sessionId) === 1
+        saved !== undefined ? row.incarnationId === saved : copiesById.get(row.sessionId) === 1
     }
   }
   return generations

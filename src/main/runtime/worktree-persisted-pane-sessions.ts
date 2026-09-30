@@ -1,4 +1,5 @@
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import { parsePaneKey } from '../../shared/stable-pane-id'
 
 /**
  * Session ids this worktree's saved terminal tabs are bound to, read from the workspace session
@@ -29,4 +30,26 @@ export function persistedPaneSessionIdsForWorktree(
     }
   }
   return [...ids]
+}
+
+/** Each saved pane's session id with the incarnation the tab last recorded for it. */
+export function savedIncarnationBySessionId(
+  session:
+    | Pick<WorkspaceSessionState, 'terminalLayoutsByTabId' | 'terminalPtyIncarnationsByPaneKey'>
+    | null
+    | undefined
+): Map<string, string> {
+  const incarnations = new Map<string, string>()
+  for (const [paneKey, incarnationId] of Object.entries(
+    session?.terminalPtyIncarnationsByPaneKey ?? {}
+  )) {
+    const parsed = parsePaneKey(paneKey)
+    const ptyId = parsed
+      ? session?.terminalLayoutsByTabId?.[parsed.tabId]?.ptyIdsByLeafId?.[parsed.leafId]
+      : undefined
+    if (typeof ptyId === 'string' && ptyId.length > 0) {
+      incarnations.set(ptyId, incarnationId)
+    }
+  }
+  return incarnations
 }
