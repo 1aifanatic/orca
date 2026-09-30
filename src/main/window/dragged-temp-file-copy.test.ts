@@ -15,9 +15,9 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
-import type * as RuntimeImportLimits from './runtime-import-limits'
+import type * as RuntimeImportLimits from '../ipc/runtime-import-limits'
 
-vi.mock('./runtime-import-limits', async (importOriginal) => ({
+vi.mock('../ipc/runtime-import-limits', async (importOriginal) => ({
   ...(await importOriginal<typeof RuntimeImportLimits>()),
   REMOTE_IMPORT_MAX_FILE_BYTES: 10,
   REMOTE_IMPORT_MAX_TOTAL_BYTES: 16
@@ -26,6 +26,7 @@ vi.mock('./runtime-import-limits', async (importOriginal) => ({
 import {
   DRAG_TEMP_COPY_TTL_MS,
   materializeDragTempPaths,
+  mayNeedDragTempCopy,
   sweepExpiredDragTempCopies,
   type DragTempCopyEnvironment
 } from './dragged-temp-file-copy'
@@ -292,6 +293,33 @@ describe('materializeDragTempPaths', () => {
     expect(await readFile(importedPath(right), 'utf8')).toBe('x')
   })
 
+  it('reports a broken copy root as a storage failure, not a problem with the dropped file', async () => {
+    const source = await dragTempFile('shot.png', 'x')
+    await mkdir(dirname(env.copyRoot), { recursive: true })
+    await writeFile(env.copyRoot, 'not a directory')
+
+    const [result] = await materializeDragTempPaths([source], env)
+
+    expect(result).toMatchObject({ sourcePath: source, status: 'failed' })
+    expect(result.status === 'failed' && result.reason).toMatch(
+      /^Could not create Orca drop storage/
+    )
+  })
+
+  it.skipIf(!canChangePermissions)('refuses a copy root other users can read', async () => {
+    const source = await dragTempFile('shot.png', 'x')
+    await mkdir(env.copyRoot, { recursive: true })
+    await chmod(env.copyRoot, 0o755)
+
+    expect(await materializeDragTempPaths([source], env)).toEqual([
+      {
+        sourcePath: source,
+        status: 'failed',
+        reason: 'Orca drop storage is not a private directory'
+      }
+    ])
+  })
+
   it('stops on abort without leaving a copy behind', async () => {
     const source = await dragTempFile('shot.png', 'x')
     const controller = new AbortController()
@@ -301,6 +329,17 @@ describe('materializeDragTempPaths', () => {
       'renderer gone'
     )
     expect(await copyDirs()).toEqual([])
+  })
+})
+
+describe('mayNeedDragTempCopy', () => {
+  it('matches only files below a TemporaryItems/NSIRD_* directory on macOS', () => {
+    const drag = join('/', 'var', 'T', 'TemporaryItems', 'NSIRD_screencaptureui_1', 'a.png')
+
+    expect(mayNeedDragTempCopy(drag, 'darwin')).toBe(true)
+    expect(mayNeedDragTempCopy(drag, 'linux')).toBe(false)
+    expect(mayNeedDragTempCopy(dirname(drag), 'darwin')).toBe(false)
+    expect(mayNeedDragTempCopy(join('/', 'Users', 'me', 'Desktop', 'a.png'), 'darwin')).toBe(false)
   })
 })
 

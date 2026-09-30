@@ -1060,7 +1060,8 @@
         "nativeDropPathsTooLarge": "Drop path list is too large.",
         "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects.",
         "nativeDropUnresolvedPathsDescription": "Save them to disk first, then drop the saved files.",
-        "nativeDropUnresolvedPaths": "Orca couldn't read a path for the dropped files."
+        "nativeDropUnresolvedPaths": "Orca couldn't read a path for the dropped files.",
+        "nativeDropTempCopyFailed": "Orca couldn't copy {{value0}} dropped {{value1}}."
       },
       "useIpcEvents": {
         "0e3cf53060": "Browser tab {{value0}} not found",
@@ -3351,8 +3352,7 @@
                 "internalPathsTooLarge": "Drop path list is too large for a safe terminal paste.",
                 "b4cf68e889": "Skipped {{value0}} {{value1}}.",
                 "writeTimeout": "File drop cancelled: terminal did not accept the path before the safety timeout.",
-                "writeRejected": "File drop cancelled: terminal could not accept the path.",
-                "prepareFailed": "Could not prepare {{value0}} dropped {{value1}}."
+                "writeRejected": "File drop cancelled: terminal could not accept the path."
               }
             }
           },

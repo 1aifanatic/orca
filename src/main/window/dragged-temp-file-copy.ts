@@ -1,5 +1,5 @@
 import { constants, createWriteStream, type Stats } from 'node:fs'
-import { lstat, mkdir, mkdtemp, open, opendir, realpath, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, open, realpath, rm, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { ImportSkipReason } from '../../shared/filesystem-import-result-types'
@@ -7,7 +7,13 @@ import {
   formatByteCeiling,
   REMOTE_IMPORT_MAX_FILE_BYTES,
   REMOTE_IMPORT_MAX_TOTAL_BYTES
-} from './runtime-import-limits'
+} from '../ipc/runtime-import-limits'
+import {
+  ensureOwnedTempStagingRoot,
+  getOwnedTempStagingRoot,
+  isSafeOwnedDirectory,
+  sweepExpiredOwnedDirectories
+} from './owned-temp-staging-root'
 
 // Why: macOS screenshot thumbnails live in `$TMPDIR/TemporaryItems/NSIRD_*`,
 // which only processes attributed to Orca main may open. The detached PTY
@@ -19,9 +25,11 @@ const DRAG_PROVIDER_DIR_PREFIX = 'NSIRD_'
 const COPY_ROOT_NAME = 'orca-drops'
 const COPY_DIR_PREFIX = 'orca-drop-'
 const COPY_DIR_PATTERN = /^orca-drop-[A-Za-z0-9]{6}$/
-// Why: outlives macOS's ~3-day idle temp purge, so drafts and startup prompts
-// that read the copy lazily keep working, while still bounding a 2 GiB drop.
+// Why: drafts and startup prompts read the copy lazily, so keep it well past the
+// drop; the TTL bounds a large copy that stays in use, which macOS's idle purge skips.
 export const DRAG_TEMP_COPY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const SWEEP_FIRST_DELAY_MS = 30 * 1000
+const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 export type DragTempCopyEnvironment = {
   platform: NodeJS.Platform
@@ -31,14 +39,18 @@ export type DragTempCopyEnvironment = {
   copyRoot: string
 }
 
-export type LocalDropItemResult =
+export type DragTempCopyItemResult =
   | { sourcePath: string; status: 'imported'; destPath: string }
   | { sourcePath: string; status: 'skipped'; reason: ImportSkipReason }
   | { sourcePath: string; status: 'failed'; reason: string }
 
 export function getDragTempCopyRoot(appTempRoot: string): string {
-  const uidSuffix = typeof process.getuid === 'function' ? `-${process.getuid()}` : ''
-  return join(appTempRoot, `${COPY_ROOT_NAME}${uidSuffix}`)
+  return getOwnedTempStagingRoot(appTempRoot, COPY_ROOT_NAME)
+}
+
+/** Lexical check only: whether a path could be a drag-temp file worth inspecting. */
+export function mayNeedDragTempCopy(path: string, platform: NodeJS.Platform): boolean {
+  return platform === 'darwin' && hasDragTempMarker(resolve(path).split(sep))
 }
 
 /**
@@ -49,9 +61,9 @@ export async function materializeDragTempPaths(
   paths: readonly string[],
   env: DragTempCopyEnvironment,
   signal?: AbortSignal
-): Promise<LocalDropItemResult[]> {
-  const results: LocalDropItemResult[] = []
-  const completed = new Map<string, LocalDropItemResult>()
+): Promise<DragTempCopyItemResult[]> {
+  const results: DragTempCopyItemResult[] = []
+  const completed = new Map<string, DragTempCopyItemResult>()
   let remainingBytes = REMOTE_IMPORT_MAX_TOTAL_BYTES
   for (const sourcePath of paths) {
     signal?.throwIfAborted()
@@ -79,9 +91,9 @@ export async function materializeDragTempPath(
   remainingBytes: number,
   env: DragTempCopyEnvironment,
   signal?: AbortSignal
-): Promise<{ result: LocalDropItemResult; copiedBytes: number }> {
+): Promise<{ result: DragTempCopyItemResult; copiedBytes: number }> {
   const passThrough = { result: imported(sourcePath, sourcePath), copiedBytes: 0 }
-  if (env.platform !== 'darwin' || !hasDragTempMarker(resolve(sourcePath).split(sep))) {
+  if (!mayNeedDragTempCopy(sourcePath, env.platform)) {
     return passThrough
   }
   let copyDir: string | undefined
@@ -129,11 +141,12 @@ export async function materializeDragTempPath(
       }
       signal?.throwIfAborted()
 
-      copyDir = await mkdtemp(join(await ensureCopyRoot(env.copyRoot), COPY_DIR_PREFIX))
+      copyDir = await createCopyDirectory(env.copyRoot)
       const destPath = join(copyDir, basename(canonicalSource))
-      // Why: stream from the checked handle, capped at the inspected size;
-      // cp/ditto/COPYFILE_ALL would carry com.apple.macl along. An empty
-      // source gets its own branch: a read stream with `end: -1` throws.
+      // Why: stream from the checked handle, capped at the inspected size, so a
+      // swapped or growing source cannot slip through; unlike cp, ditto or
+      // clonefile it copies no xattrs. A read stream with `end: -1` throws, so
+      // an empty source gets its own branch.
       await (size === 0
         ? writeFile(destPath, '', { flag: 'wx', mode: 0o600 })
         : pipeline(
@@ -172,24 +185,35 @@ export async function sweepExpiredDragTempCopies(
     if (!isSafeOwnedDirectory(await lstat(copyRoot))) {
       return
     }
-    const dir = await opendir(copyRoot)
-    for await (const entry of dir) {
-      if (!entry.isDirectory() || !COPY_DIR_PATTERN.test(entry.name)) {
-        continue
-      }
-      const candidate = join(copyRoot, entry.name)
-      try {
-        const stats = await lstat(candidate)
-        if (isSafeOwnedDirectory(stats) && nowMs - stats.mtimeMs >= DRAG_TEMP_COPY_TTL_MS) {
-          await rm(candidate, { recursive: true, force: true })
-        }
-      } catch {
-        // Why: one stuck entry must not stop the rest of the sweep.
-      }
-    }
   } catch {
     // Missing or unreadable root: nothing of ours to sweep.
+    return
   }
+  await sweepExpiredOwnedDirectories(copyRoot, {
+    nowMs,
+    ttlMs: DRAG_TEMP_COPY_TTL_MS,
+    ownsEntry: (name) => COPY_DIR_PATTERN.test(name)
+  })
+}
+
+let sweepScheduled = false
+
+/** Sweep shortly after startup, then daily, so a long-running app still expires copies. */
+export function scheduleDragTempCopySweep(
+  getCopyRoot: () => string,
+  platform: NodeJS.Platform = process.platform
+): void {
+  if (sweepScheduled || platform !== 'darwin') {
+    return
+  }
+  sweepScheduled = true
+  const sweep = (): void => {
+    void Promise.resolve()
+      .then(() => sweepExpiredDragTempCopies(getCopyRoot()))
+      .catch(() => undefined)
+  }
+  setTimeout(sweep, SWEEP_FIRST_DELAY_MS).unref()
+  setInterval(sweep, SWEEP_INTERVAL_MS).unref()
 }
 
 // True when the segments hold `TemporaryItems/NSIRD_*/<entry>`: something below the provider dir.
@@ -221,22 +245,21 @@ function isPathWithin(root: string, candidate: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
-async function ensureCopyRoot(copyRoot: string): Promise<string> {
-  await mkdir(copyRoot, { recursive: true, mode: 0o700 })
-  if (!isSafeOwnedDirectory(await lstat(copyRoot))) {
-    throw new DropCopyError('Orca drop storage is not a private directory')
+async function createCopyDirectory(copyRoot: string): Promise<string> {
+  try {
+    if (!(await ensureOwnedTempStagingRoot(copyRoot))) {
+      throw new DropCopyError('Orca drop storage is not a private directory')
+    }
+    return await mkdtemp(join(copyRoot, COPY_DIR_PREFIX))
+  } catch (error) {
+    if (error instanceof DropCopyError) {
+      throw error
+    }
+    // Why: a storage fault must not read as a missing or unreadable dropped file.
+    throw new DropCopyError(
+      `Could not create Orca drop storage (${errorCode(error) ?? 'unknown error'})`
+    )
   }
-  return copyRoot
-}
-
-function isSafeOwnedDirectory(stats: Stats): boolean {
-  if (!stats.isDirectory() || stats.isSymbolicLink()) {
-    return false
-  }
-  if (typeof process.getuid !== 'function') {
-    return true
-  }
-  return stats.uid === process.getuid() && (stats.mode & 0o077) === 0
 }
 
 /** Same inode, size and mtime, where the filesystem reports an inode. */
@@ -249,13 +272,13 @@ function isSameSnapshot(a: Stats, b: Stats): boolean {
   )
 }
 
-function imported(sourcePath: string, destPath: string): LocalDropItemResult {
+function imported(sourcePath: string, destPath: string): DragTempCopyItemResult {
   return { sourcePath, status: 'imported', destPath }
 }
 
 class DropCopyError extends Error {}
 
-function classifyFailure(sourcePath: string, error: unknown): LocalDropItemResult {
+function classifyFailure(sourcePath: string, error: unknown): DragTempCopyItemResult {
   const code = errorCode(error)
   if (code === 'ENOENT') {
     return { sourcePath, status: 'skipped', reason: 'missing' }

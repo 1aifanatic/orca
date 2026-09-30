@@ -31,11 +31,7 @@ function installFsApi(): void {
   Object.assign(window, {
     api: {
       fs: {
-        resolveDroppedPathsForAgent: vi.fn(async ({ paths }: { paths: string[] }) => ({
-          resolvedPaths: paths,
-          skipped: [],
-          failed: []
-        })),
+        authorizeExternalPath: vi.fn(async () => {}),
         stat: vi.fn(async ({ filePath }: { filePath: string }) => {
           if (FAILING_PATHS.has(filePath)) {
             throw new Error(

@@ -115,6 +115,28 @@ describe('shouldUploadRemoteEditorFileDrop', () => {
     expect(JSON.stringify(message)).not.toContain('secret')
   })
 
+  it('explains drag-temp files main could not copy, using their shared reason', () => {
+    const rejection = { byteLength: 0, reason: 'temp-copy-failed', target: 'rejected' } as const
+    expect(
+      getNativeFileDropRejectionMessage({
+        ...rejection,
+        pathCount: 1,
+        commonReason: 'permission-denied'
+      })
+    ).toEqual({ description: 'Permission denied.', title: "Orca couldn't copy 1 dropped file." })
+    expect(
+      getNativeFileDropRejectionMessage({
+        ...rejection,
+        pathCount: 2,
+        commonReason: 'File is 3 GiB, over the 2 GiB per-file limit for dropped files'
+      }).description
+    ).toBe('File is 3 GiB, over the 2 GiB per-file limit for dropped files')
+    expect(getNativeFileDropRejectionMessage({ ...rejection, pathCount: 2 })).toEqual({
+      description: 'Save them to disk first, then drop the saved files.',
+      title: "Orca couldn't copy 2 dropped files."
+    })
+  })
+
   it('names the drop whose file items carried no readable path (#15782)', () => {
     expect(
       getNativeFileDropRejectionMessage({
