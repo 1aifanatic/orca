@@ -1,7 +1,5 @@
-import {
-  readWholeAgentSessionFailureFact,
-  type AgentSessionFailureFact
-} from './agent-session-failure'
+import type { AgentSessionFailureFact } from './agent-session-failure'
+import { readWholeAgentSessionFailureFact } from './agent-session-failure'
 import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-session-journal-types'
 import {
   parseAgentSessionWriteFailure,
