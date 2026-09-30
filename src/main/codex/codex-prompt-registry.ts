@@ -60,6 +60,7 @@ export class CodexPromptRegistry {
   private readonly boundPrompts = new Map<string, CodexPendingPrompt>()
   private readonly claims = new Map<CodexPendingPrompt, CodexPromptClaim>()
   private abandonedCommands: CodexAbandonedCommand[] = []
+  private abandonedAsyncAnswers: CodexPendingPrompt[] = []
 
   get sizes(): { prompts: number; journalBindings: number } {
     return { prompts: this.byAddress.size, journalBindings: this.journalItemIds.size }
@@ -246,6 +247,9 @@ export class CodexPromptRegistry {
       ) {
         this.abandonedCommands.push({ threadId: prompt.threadId, itemId: prompt.codexItemId })
       }
+      if (prompt.delivery === 'async' && prompt.answers.size > 0) {
+        this.abandonedAsyncAnswers.push(prompt)
+      }
     }
   }
 
@@ -259,12 +263,20 @@ export class CodexPromptRegistry {
     return taken
   }
 
+  /** Partly answered async asks a turn end closed, since the last call; their answers are unsent. */
+  takeAbandonedAsyncAnswers(): CodexPendingPrompt[] {
+    const taken = this.abandonedAsyncAnswers
+    this.abandonedAsyncAnswers = []
+    return taken
+  }
+
   clear(): void {
     this.byAddress.clear()
     this.journalItemIds.clear()
     this.boundPrompts.clear()
     this.claims.clear()
     this.abandonedCommands = []
+    this.abandonedAsyncAnswers = []
   }
 
   private address(threadId: string, promptKey: string): string {

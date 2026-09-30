@@ -287,6 +287,56 @@ describe('a Codex async question (request_user_input_async)', () => {
     ])
   })
 
+  async function answerColorOfTwo(): Promise<void> {
+    expect(await send('ask me two things')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))
+    turns.start()
+    notify('item/completed', {
+      threadId: THREAD,
+      turnId: 'turn-1',
+      item: {
+        ...ASYNC_QUESTION_ITEM,
+        questions: [
+          { title: 'Color?', options: ['Red', 'Blue'] },
+          { title: 'Size?', options: ['Small', 'Large'] }
+        ]
+      }
+    })
+    const [color] = await questionRows()
+    expect(await answer(color!, 'Blue')).toMatchObject({ ok: true })
+  }
+
+  const turnStartInputs = () =>
+    codex.connections[0]!.calls.filter((call) => call.method === 'turn/start').map(
+      (call) => call.params?.input
+    )
+
+  it('still delivers a card answer when Codex ends the turn on a partly answered ask', async () => {
+    await answerColorOfTwo()
+
+    turns.end('completed')
+
+    await vi.waitFor(() =>
+      expect(turnStartInputs()).toEqual([
+        [{ type: 'text', text: 'ask me two things' }],
+        [{ type: 'text', text: 'Color?: Blue' }]
+      ])
+    )
+    expect((await questionRows()).map((row) => row.body.resolution.state)).toEqual([
+      'resolved',
+      'cancelled'
+    ])
+  })
+
+  it('does not restart work a Stop ended to deliver a partly answered ask', async () => {
+    await answerColorOfTwo()
+
+    turns.end('interrupted')
+    await host.flushStreamedEvents(SESSION)
+
+    expect(turnStartInputs()).toEqual([[{ type: 'text', text: 'ask me two things' }]])
+  })
+
   it('keeps the blocking requestUserInput path for older Codex builds', async () => {
     expect(await send('ask me')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))

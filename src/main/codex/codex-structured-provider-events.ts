@@ -11,6 +11,7 @@ import type { CodexJournalTranslationAdmission } from './codex-structured-journa
 import * as codexRewind from './codex-structured-rewind'
 import type { CodexSession, CodexStructuredSessionEvent } from './codex-structured-session-state'
 import { readCodexThreadId } from './codex-structured-thread-facts'
+import { readCodexTurnEnd } from './codex-structured-turn-end-settlement'
 import { steerCodexTurn } from './codex-structured-turn-start'
 
 type EmitCodexEvent = (
@@ -50,12 +51,19 @@ export function translateCodexNotification(input: {
       steerCodexPartialAnswers(session, answered, input.requestTimeoutMs)
     }
   }
+  const abandoned = session.prompts.takeAbandonedAsyncAnswers()
+  // Codex 0.158 ends a turn on its own while an async ask waits; a Stop or failure is not resumed.
+  if (readCodexTurnEnd(method, params)?.status === 'completed') {
+    for (const answered of abandoned) {
+      steerCodexPartialAnswers(session, answered, input.requestTimeoutMs)
+    }
+  }
   const asked = readCodexAsyncQuestionRequest(threadId, method, params)
   return asked ? deliverCodexAsyncQuestion(sessionId, session, asked, input.emit) : admission
 }
 
 /** The journal already shows these card answers as resolved, so Codex must still receive them
- *  after the typed reply that closed the ask. */
+ *  after the typed reply or turn end that closed the ask. */
 function steerCodexPartialAnswers(
   session: CodexSession,
   prompt: CodexPendingPrompt,
