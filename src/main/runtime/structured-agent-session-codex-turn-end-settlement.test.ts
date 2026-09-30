@@ -17,6 +17,7 @@ import type {
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
 import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
+import type * as CodexTurnOpenWait from '../codex/codex-structured-turn-open-wait'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
@@ -33,6 +34,25 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+
+// The turns a send or Stop is waiting on to open, so a test knows the wait began.
+const openWaits = vi.hoisted(() => ({ turnIds: [] as string[] }))
+vi.mock('../codex/codex-structured-turn-open-wait', async (importOriginal) => {
+  const actual = await importOriginal<typeof CodexTurnOpenWait>()
+  return {
+    ...actual,
+    createCodexTurnOpenWaits: () => {
+      const waits = actual.createCodexTurnOpenWaits()
+      return {
+        ...waits,
+        wait: (turnId: string, withinMs: number) => {
+          openWaits.turnIds.push(turnId)
+          return waits.wait(turnId, withinMs)
+        }
+      }
+    }
+  }
+})
 
 const CALLER = { callerKey: 'codex-turn-end-test' }
 const MODEL = {
@@ -136,6 +156,7 @@ function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessage
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-turn-end-'))
+  openWaits.turnIds.length = 0
   answers = 0
   steers = 0
   interrupts = 0
@@ -312,13 +333,10 @@ describe('a second send made after Codex answered the first, before it opened th
     const opening = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     const followUp = await send('and check the tests')
-    await vi.waitFor(async () =>
-      expect(verdictOf((await settled()).submissions, followUp)).toBe('pending')
-    )
-    // Long enough for the follow-up to reach the adapter before Codex opens the first turn.
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    await vi.waitFor(() => expect(openWaits.turnIds).toEqual(['turn-1']))
     turns.start()
-    await vi.waitFor(() => expect(steers + answers).toBe(2))
+    await vi.waitFor(() => expect(steers).toBe(1))
+    expect(answers).toBe(1)
 
     await stop()
 

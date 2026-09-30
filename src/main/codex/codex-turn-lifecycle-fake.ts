@@ -24,6 +24,8 @@ export type CodexTurnLifecycleFake = {
   start: () => void
   /** Codex ends the picked or running turn on its own. */
   end: (status: 'completed' | 'interrupted' | 'failed', errorMessage?: string) => void
+  /** Codex fails the picked turn before starting it, which reports an `error` and no turn end. */
+  failUnopened: (message: string) => void
   /** Codex echoes a user message it recorded in the current turn. */
   echo: (clientId: string) => void
   readonly turnId: string | null
@@ -120,6 +122,15 @@ export function codexTurnLifecycleFake(
         throw new Error('no turn to end')
       }
       finish(turnId, status, errorMessage)
+    },
+    failUnopened: (message) => {
+      if (!picked || active) {
+        throw new Error('no unopened turn to fail')
+      }
+      const turnId = picked
+      picked = null
+      notify()('error', { threadId, turnId, error: { message }, willRetry: false })
+      notify()('thread/status/changed', { threadId, status: { type: 'systemError' } })
     },
     echo: (clientId) => {
       const turnId = active ?? picked ?? lastTurn

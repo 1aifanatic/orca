@@ -64,12 +64,13 @@ export function createCodexTurnOpenWaits(): CodexTurnOpenWaits {
 /**
  * The turn a Stop or a send names: the latest Codex reported started and not ended, or else the
  * one Codex answered a send into, once it opens. Null when none is running and that one ends, the
- * thread stops running or the child exits first, or the wait runs out.
+ * thread stops running or the child exits first, or the wait runs out; each such turn is waited
+ * for once.
  */
 export async function codexRunningOrOpeningTurn(session: {
   threadId: string
   activeTurnIds?: ReadonlySet<string>
-  dispatchEchoes: Pick<CodexDispatchEchoes, 'answeredUnopenedTurn'>
+  dispatchEchoes: Pick<CodexDispatchEchoes, 'answeredUnopenedTurn' | 'leftUnopened'>
   turnOpenWaits: Pick<CodexTurnOpenWaits, 'wait'>
 }): Promise<string | null> {
   const running = [...(session.activeTurnIds ?? [])].at(-1)
@@ -85,5 +86,11 @@ export async function codexRunningOrOpeningTurn(session: {
   }
   // Codex refuses an interrupt, and before 0.148 a steer, until it opens the turn.
   await session.turnOpenWaits.wait(answered, CODEX_TURN_OPEN_WAIT_MS)
-  return session.activeTurnIds?.has(answered) ? answered : null
+  if (session.activeTurnIds?.has(answered)) {
+    return answered
+  }
+  // Before 0.148 a turn that fails before it starts reports no end; one that opens later is still
+  // found running.
+  session.dispatchEchoes.leftUnopened(session.threadId, answered)
+  return null
 }

@@ -3,7 +3,7 @@
 // Codex refuses took no input, so the send steers a turn opened meanwhile, once, or else
 // falls back to `turn/start`. A send made before Codex opens an earlier send's turn waits for it.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CodexAppServerRequestError } from './codex-app-server-request-error'
 import {
   CodexAppServerTimeoutError,
@@ -21,6 +21,7 @@ import {
   type CodexTestRoute,
   type LateSettlement
 } from './codex-structured-dispatch-test-support'
+import { CODEX_TURN_OPEN_WAIT_MS } from './codex-structured-turn-open-wait'
 
 async function rig(routes: Record<string, CodexTestRoute>) {
   const codex = fakeCodexAppServer(routes)
@@ -208,5 +209,29 @@ describe('a Codex send made after Codex answered an earlier one, before it opene
 
     expect(await rig.sending).toEqual({ state: 'admitted' })
     expect(rig.methods()).toEqual(['thread/start', 'turn/start', 'turn/start'])
+  })
+})
+
+describe('a Codex send after a turn Codex answered and never opened', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('waits for that turn once, and never again', async () => {
+    const rig = await codexTurnLifecycleRig({ legacyStartAnswers: true })
+    expect(await rig.send('client-1')).toEqual({ state: 'admitted' })
+    // Before 0.148 a turn that fails before it starts reports only an `error`.
+    rig.turns.failUnopened('invalid turn settings')
+
+    vi.useFakeTimers()
+    const waited = rig.send('client-2')
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS)
+    expect(await waited).toEqual({ state: 'admitted' })
+    vi.useRealTimers()
+    rig.turns.start()
+    rig.turns.echo('client-2')
+    rig.turns.end('completed')
+
+    expect(await settledWithin(rig.send('client-3'))).toEqual({ state: 'admitted' })
   })
 })
