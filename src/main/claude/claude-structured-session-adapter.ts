@@ -227,6 +227,11 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.sessions.get(sessionId)?.commands.commands
+  readAtRestCommands: NonNullable<StructuredAgentSessionAdapter['readAtRestCommands']> = (record) =>
+    this.deps.atRestCommands?.read(record)
+  onAtRestCommandsChanged: NonNullable<StructuredAgentSessionAdapter['onAtRestCommandsChanged']> = (
+    listener
+  ) => this.deps.atRestCommands?.onChange(listener) ?? (() => undefined)
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     answerClaudeStructuredPrompt({ request, sessions: this.sessions })
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>

@@ -22,7 +22,8 @@ import type { AgentSessionProviderHandleLink } from '../../../shared/agent-sessi
 import type {
   AgentSessionAccountHome,
   AgentSessionExecutionLocation,
-  AgentSessionProcessIdentity
+  AgentSessionProcessIdentity,
+  AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import type {
   AgentSessionBackgroundTaskState,
@@ -336,6 +337,10 @@ export type StructuredAgentSessionAdapter = {
   /** The `/` surface the running provider reports for itself. Undefined when the
    *  provider never reports one, which is what keeps the client on its catalog. */
   readCommands?(sessionId: string): AgentSessionSlashCommand[] | undefined
+  /** The `/` surface of a chat whose agent is not running, read where the provider reads its own
+   *  on this host. Undefined until known; `onAtRestCommandsChanged` fires when it changes. */
+  readAtRestCommands?(record: AgentSessionRecord): AgentSessionSlashCommand[] | undefined
+  onAtRestCommandsChanged?(listener: () => void): () => void
   /** Claims the live callback, builds the provider reply, commits the journal CAS while that claim is
    *  held, then answers it. A reply that cannot be built throws `AgentSessionPromptAnswerRejectedError`
    *  before the commit. A prompt cancel claims the same callback, so only one operation can commit. */
