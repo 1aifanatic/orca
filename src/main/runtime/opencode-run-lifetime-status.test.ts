@@ -13,7 +13,7 @@ function setup(
     name?: string | null
     commandLine?: string | null
     observable?: boolean
-    statusEnabled?: boolean
+    enabledAgents?: readonly string[]
   } = {}
 ) {
   const published: Published[] = []
@@ -26,7 +26,8 @@ function setup(
   let clock = 1_000
   const lifetime = new OpenCodeRunLifetimeStatus({
     isObservablePty: () => options.observable ?? true,
-    isStatusEnabled: () => options.statusEnabled ?? true,
+    isStatusEnabled: (agent) =>
+      (options.enabledAgents ?? ['opencode', 'opencode2']).includes(agent),
     readForegroundProcessName,
     readForegroundCommandLine,
     publish: (ptyId, payload, yieldsToHookSince) =>
@@ -97,30 +98,42 @@ describe('OpenCodeRunLifetimeStatus', () => {
     expect(states()).toEqual([])
   })
 
-  it('re-reads a wrapper foreground on the shared ladder until OpenCode execs', async () => {
-    const { lifetime, states, readForegroundProcessName } = setup()
-    readForegroundProcessName.mockResolvedValueOnce('sleep')
-    lifetime.onCommandStarted('pty-1')
-    await settle()
-    expect(states()).toEqual([])
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_RETRY_DELAYS_MS[0])
-    expect(states()).toEqual(['working'])
-    expect(readForegroundProcessName).toHaveBeenCalledTimes(2)
+  it.each(['zsh', 'npx', '/usr/local/bin/node', 'bun.exe'])(
+    're-reads on the shared ladder while the foreground is %s, until OpenCode execs',
+    async (firstName) => {
+      const { lifetime, states, readForegroundProcessName } = setup()
+      readForegroundProcessName.mockResolvedValueOnce(firstName)
+      lifetime.onCommandStarted('pty-1')
+      await settle()
+      expect(states()).toEqual([])
+      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_RETRY_DELAYS_MS[0])
+      expect(states()).toEqual(['working'])
+      expect(readForegroundProcessName).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it('stops re-reading after the last rung for a shell or launcher that never becomes OpenCode', async () => {
+    for (const name of ['node', 'bash']) {
+      const { lifetime, readForegroundProcessName } = setup({ name })
+      lifetime.onCommandStarted('pty-1')
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(readForegroundProcessName).toHaveBeenCalledTimes(
+        1 + FOREGROUND_COMMAND_RETRY_DELAYS_MS.length
+      )
+    }
   })
 
-  it('stops re-reading at a shell and after the last rung', async () => {
-    const wrapper = setup({ name: 'node' })
-    wrapper.lifetime.onCommandStarted('pty-1')
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(wrapper.readForegroundProcessName).toHaveBeenCalledTimes(
-      1 + FOREGROUND_COMMAND_RETRY_DELAYS_MS.length
-    )
-    const shell = setup({ name: 'bash' })
-    shell.lifetime.onCommandStarted('pty-1')
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(shell.readForegroundProcessName).toHaveBeenCalledTimes(1)
-    expect([...wrapper.states(), ...shell.states()]).toEqual([])
-  })
+  // Why: another agent, an editor or a dev server never execs OpenCode as the pane's foreground.
+  it.each(['claude', 'codex', 'vim', 'sleep', 'python3'])(
+    'reads %s once and stops',
+    async (name) => {
+      const { lifetime, states, readForegroundProcessName } = setup({ name })
+      lifetime.onCommandStarted('pty-1')
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(readForegroundProcessName).toHaveBeenCalledTimes(1)
+      expect(states()).toEqual([])
+    }
+  )
 
   it('leaves the OpenCode TUI and its other subcommands to their own reporters', async () => {
     for (const commandLine of ['opencode', 'opencode serve', 'opencode attach http://x', null]) {
@@ -166,12 +179,19 @@ describe('OpenCodeRunLifetimeStatus', () => {
   })
 
   it('stays silent when OpenCode status is turned off for that agent', async () => {
-    const { lifetime, states, readForegroundCommandLine } = setup({ statusEnabled: false })
+    const { lifetime, states, readForegroundCommandLine } = setup({ enabledAgents: ['opencode2'] })
     lifetime.onCommandStarted('pty-1')
     await settle()
     lifetime.onCommandFinished('pty-1', 0)
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
+  })
+
+  it('sets no timer and reads nothing while status is off for both OpenCode agents', () => {
+    const { lifetime, readForegroundProcessName } = setup({ enabledAgents: [] })
+    lifetime.onCommandStarted('pty-1')
+    expect(vi.getTimerCount()).toBe(0)
+    expect(readForegroundProcessName).not.toHaveBeenCalled()
   })
 
   it('reads nothing for a pane whose foreground is on another host', async () => {

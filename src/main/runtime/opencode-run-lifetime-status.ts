@@ -12,6 +12,18 @@ import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
 import { isShellProcess } from '../../shared/shell-process-detection'
 
 const SIGINT_EXIT_CODE = 130
+// Launchers that can still exec OpenCode after the first read (`npx`/`bunx opencode-ai run`).
+const OPENCODE_LAUNCHERS = new Set(['node', 'bun', 'bunx', 'npx', 'npm', 'pnpm', 'pnpx', 'yarn'])
+
+// Why these only: a shell means the command has not exec'd yet, and a launcher may still exec
+// OpenCode; any other program (another agent, vim, a dev server) never becomes OpenCode.
+function mayStillBecomeOpenCode(processName: string): boolean {
+  if (recognizeAgentProcess(processName) !== null) {
+    return false
+  }
+  const base = (processName.split(/[\\/]/).pop() ?? '').toLowerCase().replace(/\.(exe|cmd)$/, '')
+  return isShellProcess(processName) || OPENCODE_LAUNCHERS.has(base)
+}
 
 type OpenCodeAgent = 'opencode' | 'opencode2'
 
@@ -48,7 +60,10 @@ export class OpenCodeRunLifetimeStatus {
   onCommandStarted(ptyId: string): void {
     // Why: a new command proves the armed one ended even though its 133;D never arrived.
     this.onCommandFinished(ptyId, null)
-    if (!this.deps.isObservablePty(ptyId)) {
+    if (
+      !this.deps.isObservablePty(ptyId) ||
+      (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
+    ) {
       return
     }
     const state: CommandState = {
@@ -110,9 +125,8 @@ export class OpenCodeRunLifetimeStatus {
         return
       }
       if (agent !== 'opencode' && agent !== 'opencode2') {
-        // Why: a wrapper, shim or `sleep 1; ...` can exec OpenCode after the first read.
         const retryDelay = FOREGROUND_COMMAND_RETRY_DELAYS_MS[retryIndex]
-        if (retryDelay !== undefined && !isShellProcess(name)) {
+        if (retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
           this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
         }
         return
