@@ -16,7 +16,11 @@ import type { JournalRow } from './journal-row-schema'
 import type { JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
-import { deriveQueuePause, queuePauseHolds, type DerivedQueuePause } from './queued-message-pause'
+import {
+  deriveQueuePause,
+  nextSendableQueuedCard,
+  type DerivedQueuePause
+} from './queued-message-pause'
 import {
   consumeQueuedMessageInTransaction,
   getQueuedMessage,
@@ -233,12 +237,11 @@ export class JournalQueuedMessages {
       throw new AgentSessionJournalError('journal_closed', 'consume crossed database handles')
     }
     if (input.yieldsToPause) {
-      // Judged here, on the same queue as every journal append, so a Stop row that landed
-      // after the drain chose this card still holds it.
+      // Judged here, on the same queue as every journal append, by the drain's own rule, so a
+      // Stop row that landed after the drain chose this card still holds it.
       const cards = listQueuedMessages(db, this.deps.sessionId)
       const pause = this.derivePause(cards, input.yieldsToPause.hostInstance)
-      const card = cards.find((entry) => entry.messageId === input.messageId)
-      if (pause && card && queuePauseHolds(pause, card)) {
+      if (nextSendableQueuedCard(pause, cards)?.messageId !== input.messageId) {
         throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
       }
     }

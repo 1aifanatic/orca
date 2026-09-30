@@ -308,7 +308,9 @@ export class AgentSessionJournal {
     )
   }
 
-  /** A person's Stop or Resume: the rows the queue's pause is derived from. */
+  /** A person's Stop or Resume: the rows the queue's pause is derived from. Carried by a
+   *  tombstone because a released host deletes the journal from the first row kind it does not
+   *  know (`journal-open.ts`, `journal-store-open.ts`); an unknown key it ignores. */
   appendQueuePauseMark(mark: JournalQueuePauseMark, fence: number): Promise<AgentJournalCursor> {
     return this.rowWriter.append(journalQueuePauseRowBuilder(() => this.state, mark, fence))
   }

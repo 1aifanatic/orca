@@ -30,7 +30,7 @@ import {
   structuredAgentSessionHostInstance,
   structuredQueuePause
 } from './structured-agent-session-queued-pause'
-import { queuePauseHolds } from '../agent-session-journal/queued-message-pause'
+import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -69,17 +69,7 @@ function oldestActionableQueuedMessage(
   if (!rows.some((row) => row.state === 'waiting')) {
     return null
   }
-  const pause = structuredQueuePause(journal)
-  for (const row of rows) {
-    if (row.state === 'returned' || (pause && queuePauseHolds(pause, row))) {
-      // A returned or paused card blocks everything after it until the user acts.
-      return null
-    }
-    if (row.state === 'waiting' && row.holdReason === null) {
-      return row
-    }
-  }
-  return null
+  return nextSendableQueuedCard(structuredQueuePause(journal), rows)
 }
 
 /**

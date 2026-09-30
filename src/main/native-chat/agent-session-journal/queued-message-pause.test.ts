@@ -297,6 +297,33 @@ describe('which cards a pause holds', () => {
     ])
   })
 
+  it("the queue's own consume refuses a newer card while an older one is held: nothing overtakes", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'held')
+    await journal.appendQueuePauseMark('stopped', 0)
+    await queueDraft(journal, 'newer')
+    await expect(
+      journal.appendSubmission(
+        {
+          clientMessageId: 'drain-newer',
+          origin: 'host',
+          payloadFingerprint: 'fp-newer',
+          body: message('newer'),
+          fence: 0,
+          handoverRecorded: true
+        },
+        {
+          messageId: 'newer',
+          expect: 'waiting',
+          settledByOp: null,
+          hostInstance: HOST,
+          yieldsToPause: { hostInstance: HOST }
+        }
+      )
+    ).rejects.toBeInstanceOf(QueuedMessageNotConsumableError)
+    expect(journal.queuedMessages.get('newer')?.state).toBe('waiting')
+  })
+
   it("'cleared' holds the carried cards, not one typed after them", async () => {
     const journal = await open()
     await queueDraft(journal, 'carried-1', 'source-session')

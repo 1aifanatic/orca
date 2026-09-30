@@ -113,6 +113,24 @@ export function queuePauseHolds(pause: DerivedQueuePause, card: QueueCard): bool
   )
 }
 
+/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
+ *  returned card or one the pause holds comes first. The queue never reorders, so a newer card
+ *  never overtakes a held one. The drain's pick and its consume both read this. */
+export function nextSendableQueuedCard<T extends QueueCard>(
+  pause: DerivedQueuePause | null,
+  cards: readonly T[]
+): T | null {
+  for (const card of cards) {
+    if (card.state === 'returned' || (pause && queuePauseHolds(pause, card))) {
+      return null
+    }
+    if (card.state === 'waiting' && card.holdReason === null) {
+      return card
+    }
+  }
+  return null
+}
+
 /** Whether Resume would send anything: a card the pause holds, not behind a returned card, which
  *  blocks everything after it until the user acts. Only then is the pause PUBLISHED, so its
  *  header never offers a Resume that sends nothing. */
