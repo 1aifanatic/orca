@@ -127,6 +127,35 @@ describe('a Codex stream error it is about to retry', () => {
     expect(publishes() - before).toBe(3)
   })
 
+  it('keeps every earlier row when a new connection in the same session retries', () => {
+    const rows: Row[] = []
+    const connect = (acquisitionId: string) => {
+      const translator = createCodexJournalTranslator({
+        sink: {
+          appendItem: (identity, body) => rows.push({ key: agentJournalItemKey(identity), body }),
+          appendTombstone: () => undefined,
+          publish: () => undefined
+        },
+        primaryThreadId: () => THREAD_ID,
+        acquisitionId
+      })
+      translator.handle(notification('turn/started', { turn: { id: TURN_ID } }))
+      return translator
+    }
+    const first = connect('generation-1')
+    first.handle(retrying('Reconnecting... 1/5'))
+    first.handle(retrying('Reconnecting... 2/5'))
+    const second = connect('generation-2')
+    second.handle(retrying('Reconnecting... 1/5'))
+
+    // Each write is a new row: nothing the first connection wrote is revised.
+    expect(retryRows(rows).map((row) => row.body.kind === 'status' && row.body.text)).toEqual([
+      'Codex is retrying: Reconnecting... 1/5.',
+      'Codex is retrying: Reconnecting... 2/5.',
+      'Codex is retrying: Reconnecting... 1/5.'
+    ])
+  })
+
   it('leaves the error Codex gives up on as the red row, and the turn fails, in a captured run', () => {
     const captured = readFileSync(
       join(__dirname, '__fixtures__', 'codex-app-server-turn-endings.jsonl'),

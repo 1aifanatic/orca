@@ -63,7 +63,10 @@ export class CodexJournalGenericFrames {
   private cancelSuppressionFlush: (() => void) | null = null
 
   constructor(
-    private readonly deps: Pick<CodexJournalTranslatorDeps, 'sink' | 'schedule' | 'coalesceMs'> & {
+    private readonly deps: Pick<
+      CodexJournalTranslatorDeps,
+      'sink' | 'schedule' | 'coalesceMs' | 'acquisitionId'
+    > & {
       attributionFor: CodexRowAttribution
     },
     private readonly activeTurn: (threadId: string) => string | null
@@ -114,7 +117,7 @@ export class CodexJournalGenericFrames {
     this.fallbackSequence += 1
     const identity = {
       provider: 'orca' as const,
-      clientMessageId: `provider-frame:codex:${this.fallbackSequence}`
+      clientMessageId: `provider-frame:codex:${this.deps.acquisitionId ?? 'acquisition'}:${this.fallbackSequence}`
     }
     const attribution = this.deps.attributionFor(threadId, frameTurnId)
     const admission = this.deps.sink.tryAppendItem
