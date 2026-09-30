@@ -180,7 +180,7 @@ describe('Claude structured Fast mode', () => {
     const { session, applyFlagSettings } = fastModeSession(undefined)
     session.options.set('fastMode', 'false')
 
-    await restoreClaudeStructuredSessionOptions(session, undefined)
+    await restoreClaudeStructuredSessionOptions(session, undefined, 'session-1')
 
     expect(session.options.get('fastMode')).toBe('false')
     expect(session.restoreSkippedOptions.has('fastMode')).toBe(false)
@@ -467,9 +467,16 @@ describe('Claude structured option restore under the request deadline', () => {
       ['effort', 'high'],
       ['permissionMode', 'plan']
     ])
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(restoreClaudeStructuredSessionOptions(session, 10)).resolves.toBeUndefined()
+    await expect(
+      restoreClaudeStructuredSessionOptions(session, 10, 'session-1')
+    ).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] claude-option-restore failed',
+      expect.objectContaining({ sessionId: 'session-1' }),
+      expect.any(ClaudeControlRequestTimeoutError)
+    )
 
     expect(Object.fromEntries(session.options)).toEqual({ model: 'sonnet', effort: 'high' })
     expect([...session.restoreSkippedOptions]).toEqual(['permissionMode'])

@@ -93,7 +93,6 @@ export const AGENT_SESSION_ERROR_STEPS = {
   'restart-continuation-send': 'kind',
   'restart-continuation-note': 'kind',
   // Chat tabs.
-  'session-close': 'full',
   'tab-visibility-restore': 'full',
   'worker-tab-retire': 'full'
 } as const satisfies Record<string, 'full' | 'kind'>

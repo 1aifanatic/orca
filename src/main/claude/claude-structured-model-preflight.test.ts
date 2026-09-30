@@ -63,7 +63,7 @@ describe('Claude model pre-flight against the catalog the CLI listed', () => {
     const { session, calls } = sessionWith([DEFAULT_ROW, SONNET])
     session.options.set('model', 'claude-opus-4-retired')
 
-    await restoreClaudeStructuredSessionOptions(session, undefined)
+    await restoreClaudeStructuredSessionOptions(session, undefined, 'session-1')
 
     expect(calls).toEqual(['list_models'])
     expect(session.options.has('model')).toBe(false)
@@ -123,7 +123,7 @@ describe('Claude model pre-flight against the catalog the CLI listed', () => {
     const { session, calls } = sessionWith([DEFAULT_ROW, SONNET])
     session.options.set('model', 'sonnet')
 
-    await restoreClaudeStructuredSessionOptions(session, undefined)
+    await restoreClaudeStructuredSessionOptions(session, undefined, 'session-1')
 
     expect(calls).toEqual(['list_models', 'set_model:sonnet'])
     expect(session.options.get('model')).toBe('sonnet')

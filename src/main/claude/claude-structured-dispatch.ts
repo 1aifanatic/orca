@@ -75,10 +75,12 @@ export function retireClaudeDispatchWaiters(session: ClaudeSession): void {
 /** The row keeps only the marker released clients hide; why the write failed belongs in the trace. */
 function claudeWriteFailureRejection(
   session: ClaudeSession,
+  sessionId: string | undefined,
   error: unknown
 ): AgentJournalDispatchRejection {
   traceAgentSessionError({
     step: 'claude-dispatch-write',
+    sessionId,
     error,
     detail: { providerSessionId: session.providerSessionId }
   })
@@ -88,6 +90,8 @@ function claudeWriteFailureRejection(
 export async function dispatchClaudeTurn(
   session: ClaudeSession,
   input: {
+    /** Orca's session, which a trace record is filed under. */
+    sessionId?: string
     clientMessageId?: string
     body: AgentJournalMessageItem
     requestedAt?: number
@@ -102,7 +106,10 @@ export async function dispatchClaudeTurn(
   } catch (error) {
     return {
       state: 'rejected',
-      ...claudeDispatchContentRejection(error, session.providerSessionId)
+      ...claudeDispatchContentRejection(error, {
+        sessionId: input.sessionId,
+        providerSessionId: session.providerSessionId
+      })
     }
   }
   if (session.dispatchWaiters.length >= MAX_ACTIVE_DISPATCH_WAITERS) {
@@ -156,7 +163,7 @@ export async function dispatchClaudeTurn(
       if (error instanceof AgentSessionPreDispatchError) {
         throw error
       }
-      return { state: 'rejected', ...claudeWriteFailureRejection(session, error) }
+      return { state: 'rejected', ...claudeWriteFailureRejection(session, input.sessionId, error) }
     }
     const waiter = replay.waiter
     if (waiter.settledUuid) {
@@ -174,7 +181,7 @@ export async function dispatchClaudeTurn(
       waiter.resolve(null)
       // The frame was never handed to the SDK's input pump, so this is not doubt:
       // the message provably did not happen, which is what `rejected` means.
-      return { state: 'rejected', ...claudeWriteFailureRejection(session, error) }
+      return { state: 'rejected', ...claudeWriteFailureRejection(session, input.sessionId, error) }
     }
     if (!waiter.retired) {
       retireWaiter(session, waiter)

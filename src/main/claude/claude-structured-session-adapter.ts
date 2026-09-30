@@ -191,7 +191,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
-    dispatchClaudeCommand(this.session(input.sessionId), input.command)
+    dispatchClaudeCommand(this.session(input.sessionId), input.command, input.sessionId)
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = (request) =>
     cancelClaudeStructuredTurn({

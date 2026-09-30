@@ -127,7 +127,10 @@ it.each([1, 2])(
     expect(result).toEqual(refusal)
     expect(run).toHaveBeenCalledOnce()
     expect(dispatch).not.toHaveBeenCalled()
-    expect(JSON.stringify(warning.mock.calls)).not.toContain('private unbounded disk detail')
+    expect(warning).toHaveBeenCalled()
+    expect(warning.mock.calls.flat().map(String).join(' ')).not.toContain(
+      'private unbounded disk detail'
+    )
   }
 )
 

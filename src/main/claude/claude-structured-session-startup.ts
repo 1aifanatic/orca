@@ -163,6 +163,7 @@ function claudeStartedReportedOptions(
 /** Applies startup facts to the published session and restores saved options; only then does the
  *  session take input. Any failure faults the session so the user sees why it never started. */
 export async function settleClaudeSessionStartup(input: {
+  sessionId: string
   session: ClaudeSession
   facts: Promise<ClaudeStartupFacts>
   isCurrent: () => boolean
@@ -185,7 +186,7 @@ export async function settleClaudeSessionStartup(input: {
       return
     }
     applyClaudeStartupFacts(session, facts)
-    await restoreClaudeStructuredSessionOptions(session, input.requestTimeoutMs)
+    await restoreClaudeStructuredSessionOptions(session, input.requestTimeoutMs, input.sessionId)
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.

@@ -50,7 +50,7 @@ export function claudeDispatchRejection(
  *  attachment it could not read. Never the provider. */
 export function claudeDispatchContentRejection(
   error: unknown,
-  providerSessionId: string
+  ids: { sessionId?: string; providerSessionId: string }
 ): AgentJournalDispatchRejection {
   if (error instanceof ClaudeDispatchContentError) {
     return claudeDispatchRejection(error.failure)
@@ -58,8 +58,9 @@ export function claudeDispatchContentRejection(
   // The row says only that it could not be read; why belongs in the trace.
   traceAgentSessionError({
     step: 'claude-attachment-read',
+    sessionId: ids.sessionId,
     error,
-    detail: { providerSessionId }
+    detail: { providerSessionId: ids.providerSessionId }
   })
   return claudeDispatchRejection(agentSessionFailureFact('attachmentUnreadable'))
 }

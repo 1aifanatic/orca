@@ -339,6 +339,32 @@ describe('a chat that closes', () => {
     expect(closeSession).toHaveBeenCalledOnce()
   })
 
+  it('records a failed stop-time settlement once, and still throws it as the cause', async () => {
+    await attach()
+    emitTurnLifecycle('running', 1)
+    await host.flushStreamedEvents(SESSION)
+    const refusal = new Error('settlement unavailable')
+    const refusing = vi
+      .spyOn(host['sessions'].get(SESSION)!.journal, 'appendLifecycleBatch')
+      .mockRejectedValue(refusal)
+    vi.mocked(traceAgentSessionError).mockClear()
+
+    const thrown: unknown = await host.close(SESSION).catch((error: unknown) => error)
+
+    expect(thrown).toMatchObject({ step: 'settle-dead-generation' })
+    const wrapper = thrown instanceof Error ? thrown.cause : undefined
+    expect(wrapper).toMatchObject({ message: 'dead generation work settlement failed' })
+    expect(wrapper instanceof Error ? wrapper.cause : undefined).toBe(refusal)
+    expect(
+      vi
+        .mocked(traceAgentSessionError)
+        .mock.calls.filter(([report]) => report.step === 'dead-generation-settlement')
+    ).toEqual([[{ step: 'dead-generation-settlement', sessionId: SESSION, error: refusal }]])
+
+    refusing.mockRestore()
+    await expect(host.close(SESSION)).resolves.toBeUndefined()
+  })
+
   it('settles and releases on the retry when a step after the child stopped aborts', async () => {
     await attach()
     dispatch.mockResolvedValueOnce({ state: 'admitted' })

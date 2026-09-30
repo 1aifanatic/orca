@@ -104,7 +104,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       } catch (error) {
         reportExitFailure('provider-exit-barrier', error)
       }
-      const settled = await retryUnexpectedExitSettlement({
+      await retryUnexpectedExitSettlement({
         event: unexpectedEvent,
         journal: session.journal,
         fence: child.fence,
@@ -121,9 +121,6 @@ export async function settleUnexpectedStructuredAgentSessionExit<
             observedAt
           )
       })
-      if (!settled.ok) {
-        reportExitFailure('dead-generation-settlement', settled.error)
-      }
     } finally {
       // Provider exit was positively observed, so release the owner even when
       // terminal settlement could not be durably accepted.

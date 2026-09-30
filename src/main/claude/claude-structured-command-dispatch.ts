@@ -10,7 +10,8 @@ import type { ClaudeSession } from './claude-structured-session-state'
  *  makes the command's turn the open one before the send, and that same result ends it. */
 export async function dispatchClaudeCommand(
   session: ClaudeSession,
-  command: StructuredAgentSessionCommandRun
+  command: StructuredAgentSessionCommandRun,
+  sessionId: string
 ): Promise<AgentSessionCommandAdmission> {
   const sentUuid = randomUUID()
   session.translator?.beginCommand({
@@ -20,6 +21,7 @@ export async function dispatchClaudeCommand(
   })
   try {
     const admission = await dispatchClaudeTurn(session, {
+      sessionId,
       clientMessageId: command.clientMessageId,
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: '/compact' }] },
       ...(command.running.requestedAt === undefined

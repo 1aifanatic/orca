@@ -158,6 +158,7 @@ describe('Claude structured dispatch attachment rejections', () => {
 
     await expect(
       dispatchClaudeTurn(session, {
+        sessionId: 'session-1',
         clientMessageId: 'client-1',
         body: userMessage([{ type: 'image-ref', path }])
       })
@@ -170,7 +171,7 @@ describe('Claude structured dispatch attachment rejections', () => {
     // The row drops the error, so the trace is the only place left to find why.
     expect(warn).toHaveBeenCalledWith(
       '[agent-session] claude-attachment-read failed',
-      { providerSessionId: session.providerSessionId },
+      { sessionId: 'session-1', providerSessionId: session.providerSessionId },
       expect.objectContaining({ code: 'ENOENT' })
     )
     warn.mockRestore()

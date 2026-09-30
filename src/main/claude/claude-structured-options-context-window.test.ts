@@ -66,7 +66,7 @@ describe('the context ring after a session option write', () => {
     const s = ringSession()
     s.session.options.set('model', 'opusplan')
     s.session.options.set('permissionMode', 'plan')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
+    await restoreClaudeStructuredSessionOptions(s.session, undefined, 'session-1')
     expect(s.setModel).toHaveBeenCalledWith('opusplan', { timeoutMs: undefined })
     expect(s.modelMayHaveChanged).not.toHaveBeenCalled()
   })
@@ -74,7 +74,7 @@ describe('the context ring after a session option write', () => {
   it('asks for the new window when a restore cannot put the stored model back', async () => {
     const s = ringSession([{ value: 'sonnet', displayName: 'Sonnet' }])
     s.session.options.set('model', 'retired-model')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
+    await restoreClaudeStructuredSessionOptions(s.session, undefined, 'session-1')
     expect(s.session.restoreSkippedOptions).toEqual(new Set(['model']))
     expect(s.modelMayHaveChanged).toHaveBeenCalledTimes(1)
   })
@@ -82,7 +82,7 @@ describe('the context ring after a session option write', () => {
   it('sizes a new session from the model its restore applied', async () => {
     const s = ringSession([{ value: 'opus[1m]', displayName: 'Opus (1M)' }])
     s.session.options.set('model', 'opus[1m]')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
+    await restoreClaudeStructuredSessionOptions(s.session, undefined, 'session-1')
     expect(s.respond('turn-a', 1_000)).toMatchObject({ windowTokens: 1_000_000, percentage: 10 })
   })
 
@@ -102,7 +102,7 @@ describe('the context ring after a session option write', () => {
 
     const skipped = ringSession([{ value: 'sonnet', displayName: 'Sonnet' }])
     skipped.session.options.set('model', 'retired-model[1m]')
-    await restoreClaudeStructuredSessionOptions(skipped.session, undefined)
+    await restoreClaudeStructuredSessionOptions(skipped.session, undefined, 'session-1')
     expect(skipped.respond('turn-a', 1_000)).toBeNull()
   })
 

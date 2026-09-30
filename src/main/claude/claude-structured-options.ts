@@ -251,7 +251,8 @@ export async function setClaudeStructuredOption(
 
 export async function restoreClaudeStructuredSessionOptions(
   session: ClaudeSession,
-  timeoutMs: number | undefined
+  timeoutMs: number | undefined,
+  sessionId: string
 ): Promise<void> {
   // Any write that was already in flight belongs to the previous acquisition
   // state and must not repopulate this map after restore starts.
@@ -271,6 +272,7 @@ export async function restoreClaudeStructuredSessionOptions(
       if (error instanceof ClaudeControlRequestTimeoutError) {
         traceAgentSessionError({
           step: 'claude-option-restore',
+          sessionId,
           error,
           detail: { option: key, providerSessionId: session.providerSessionId }
         })

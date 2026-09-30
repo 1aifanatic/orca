@@ -275,6 +275,7 @@ export async function acquireClaudeSession({
     session.startup.settled = Promise.race([
       session.startup.settled,
       settleClaudeSessionStartup({
+        sessionId,
         session,
         facts: readClaudeStartupFacts({
           connection,

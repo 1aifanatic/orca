@@ -406,7 +406,7 @@ describe('Claude structured dispatch image limits', () => {
     const body = userMessage([{ type: 'text', text: 'retry me' }])
 
     await expect(
-      dispatchClaudeTurn(session, { clientMessageId: 'client-1', body })
+      dispatchClaudeTurn(session, { sessionId: 'session-1', clientMessageId: 'client-1', body })
     ).resolves.toEqual({
       state: 'rejected',
       reason: 'provider_write_failed',
@@ -415,7 +415,7 @@ describe('Claude structured dispatch image limits', () => {
     // The row keeps only the marker; why the write failed goes to the trace.
     expect(warn).toHaveBeenCalledWith(
       '[agent-session] claude-dispatch-write failed',
-      { providerSessionId: session.providerSessionId },
+      { sessionId: 'session-1', providerSessionId: session.providerSessionId },
       expect.objectContaining({ message: expect.stringContaining('broken pipe') })
     )
     warn.mockRestore()

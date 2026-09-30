@@ -343,6 +343,38 @@ describe('held drafts', () => {
     })
     expect(await drafts()).toHaveLength(0)
   })
+  it('a hold that cannot be written after a failed conversion is reported once, and the failure still surfaces', async () => {
+    const working = await workingSend()
+    const queued = await send('conversion and hold both fail', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const append = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendSubmission')
+      .mockRejectedValueOnce(new Error('disk full'))
+    const holdError = new Error('hold write refused')
+    const hold = vi.spyOn(JournalQueuedMessages.prototype, 'hold').mockRejectedValueOnce(holdError)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const line = '[agent-session] queued-send-failure-hold failed'
+    const holdReports = () => warned.mock.calls.filter(([message]) => message === line)
+    try {
+      await settleAccepted(working, 'a')
+      await eventually(async () => expect(holdReports()).toHaveLength(1))
+      expect(holdReports()).toEqual([[line, { sessionId: SESSION }, holdError]])
+      // The conversion's own failure is still rethrown to the drain, which reports it.
+      await eventually(async () =>
+        expect(warned).toHaveBeenCalledWith(
+          '[agent-session] queued-drain failed',
+          { sessionId: SESSION },
+          expect.objectContaining({ message: 'disk full' })
+        )
+      )
+    } finally {
+      append.mockRestore()
+      hold.mockRestore()
+      warned.mockRestore()
+    }
+  })
 })
 
 describe('Stop and Delete', () => {

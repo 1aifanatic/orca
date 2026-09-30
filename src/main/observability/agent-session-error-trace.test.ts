@@ -124,13 +124,30 @@ describe('traceAgentSessionError', () => {
     )
   })
 
-  const kindOnlySteps = Object.entries(AGENT_SESSION_ERROR_STEPS)
-    .filter(([, recorded]) => recorded === 'kind')
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Object.entries of the step table yields only its keys.
-    .map(([step]) => step as AgentSessionErrorStep)
+  // Reclassifying a step edits this list, next to the reason in the step table.
+  const kindOnlySteps: readonly AgentSessionErrorStep[] = [
+    'operation-uncertainty-persist',
+    'refused-operation-settlement',
+    'recovery-capsule-read',
+    'recovery-capsule-record',
+    'recovery-witness-begin',
+    'recovery-witness-capture',
+    'recovery-records-forget',
+    'restart-offer-prune',
+    'restart-offer-withdraw',
+    'restart-offer-complete',
+    'restart-offer-rollback',
+    'restart-offer-refresh',
+    'restart-failure-record',
+    'restart-continuation-send',
+    'restart-continuation-note'
+  ]
 
-  it('has kind-only steps to check', () => {
-    expect(kindOnlySteps.length).toBeGreaterThan(0)
+  it('keeps exactly the pinned steps to the error kind', () => {
+    const tableKindSteps = Object.entries(AGENT_SESSION_ERROR_STEPS)
+      .filter(([, recorded]) => recorded === 'kind')
+      .map(([step]) => step)
+    expect(tableKindSteps.sort()).toEqual([...kindOnlySteps].sort())
   })
 
   it.each(kindOnlySteps)('keeps %s to the error kind, in the trace and on the console', (step) => {
@@ -138,9 +155,10 @@ describe('traceAgentSessionError', () => {
     const filePath = join(dir, 'main.trace.ndjson')
     const sink = createLocalFileSink({ filePath, flushBufferThreshold: 1 })
     setActiveSink(sink)
-    const sentinel = 'latest prompt: my private words'
-    // What a corrupt capsule's parse throws: V8 quotes the input in the message.
-    const error = new Error('outer', { cause: syntaxErrorQuoting(sentinel) })
+    // What a corrupt capsule's parse throws: V8 quotes the input's first 10 characters.
+    const quoting = syntaxErrorQuoting('my private words')
+    expect(String(quoting)).toContain('my private')
+    const error = new Error('outer', { cause: quoting })
 
     traceAgentSessionError({ step, sessionId: 'session-1', error })
     sink.flush()

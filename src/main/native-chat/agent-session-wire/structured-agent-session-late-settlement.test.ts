@@ -289,6 +289,40 @@ describe('settling a send the provider proves it received after the ack window',
     ])
   })
 
+  it('reports once when not even the doubt about a dispatch can be recorded', async () => {
+    const settleError = new Error('settlement write refused')
+    const doubtError = new Error('doubt write refused')
+    const resolveDispatch = journal().resolveDispatch.bind(journal())
+    const resolve = vi.spyOn(journal(), 'resolveDispatch').mockImplementation(async (input) => {
+      if (input.state === 'accepted') {
+        throw settleError
+      }
+      if (input.state === 'unknown') {
+        throw doubtError
+      }
+      return resolveDispatch(input)
+    })
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const line = '[agent-session] dispatch-doubt-record failed'
+    const doubtReports = () => warned.mock.calls.filter(([message]) => message === line)
+    try {
+      await host.send(CALLER, sendParams('an outcome nothing could record'))
+      await vi.waitFor(() => expect(doubtReports()).toHaveLength(1))
+      expect(doubtReports()).toEqual([[line, { sessionId: SESSION }, doubtError]])
+      // The settlement's own failure is still what the delivery loop reports.
+      await vi.waitFor(() =>
+        expect(warned).toHaveBeenCalledWith(
+          '[agent-session] delivery-loop failed',
+          { sessionId: SESSION },
+          settleError
+        )
+      )
+    } finally {
+      resolve.mockRestore()
+      warned.mockRestore()
+    }
+  })
+
   it('leaves an already accepted send alone', async () => {
     const params = sendParams('ordinary send')
     await host.send(CALLER, params)

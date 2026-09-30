@@ -244,7 +244,7 @@ describe('Claude effort against the model that must run it', () => {
     const { session } = sessionWith('high', calls, { model: 'sonnet', catalog: [SONNET] })
     session.options.set('effort', 'low')
 
-    await restoreClaudeStructuredSessionOptions(session, undefined)
+    await restoreClaudeStructuredSessionOptions(session, undefined, 'session-1')
 
     expect(session.options.get('effort')).toBe('low')
     expect(session.restoreSkippedOptions.has('effort')).toBe(false)
@@ -257,7 +257,7 @@ describe('Claude effort against the model that must run it', () => {
     session.options.set('model', 'haiku')
     session.options.set('effort', 'high')
 
-    await restoreClaudeStructuredSessionOptions(session, undefined)
+    await restoreClaudeStructuredSessionOptions(session, undefined, 'session-1')
 
     expect(session.options.has('effort')).toBe(false)
     expect(session.restoreSkippedOptions.has('effort')).toBe(true)
