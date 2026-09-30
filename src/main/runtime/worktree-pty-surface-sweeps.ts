@@ -57,9 +57,11 @@ export async function sweepProviderByPrefix(
   const rpcDeadline = teardownRpcDeadline(deadline)
   const sessions = provider.listProcessesBySource
     ? answeredAndLastKnown(
-        // Why capped: a silent version would otherwise spend the whole budget the stops need.
+        // Why capped for other versions only: a silent one would spend the budget the stops need,
+        // while a slow current one must still be listed and stopped.
         await provider.listProcessesBySource({
-          deadlineMs: Math.min(rpcDeadline, Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS)
+          deadlineMs: rpcDeadline,
+          nonCurrentDeadlineMs: Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
         }),
         worktreeId,
         opts

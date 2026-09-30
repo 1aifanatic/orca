@@ -36,18 +36,19 @@ export function withinDeadline<T>(work: Promise<T>, deadlineMs: number | undefin
   ]).finally(() => clearTimeout(timer))
 }
 
-/** Asks every source at once under one absolute deadline; one silent source never withholds the rest. */
+/** Asks every source at once, each under its absolute deadline; one silent source never withholds the rest. */
 export async function listPerGeneration<S, T>(
   sources: readonly S[],
   read: (source: S) => Promise<DaemonInventoryRead<T>>,
-  deadlineMs?: number
+  deadlineMs?: number | ((source: S) => number | undefined)
 ): Promise<GenerationListing<S, T>[]> {
   return await Promise.all(
     sources.map(async (source): Promise<GenerationListing<S, T>> => {
       let work: Promise<DaemonInventoryRead<T>> | undefined
       try {
         work = read(source)
-        return { source, ...(await withinDeadline(work, deadlineMs)) }
+        const deadline = typeof deadlineMs === 'function' ? deadlineMs(source) : deadlineMs
+        return { source, ...(await withinDeadline(work, deadline)) }
       } catch (error) {
         void work?.catch(() => {})
         return { source, contact: 'unverifiable', error }
@@ -59,8 +60,26 @@ export async function listPerGeneration<S, T>(
 type ProcessSource = {
   provider: IPtyProvider
   protocolVersion: number | null
+  deadlineMs: number | undefined
   read: () => Promise<DaemonInventoryRead<PtyProcessInfo>>
   activeIds: () => string[]
+}
+
+/** How long to wait: the caller's budget for the version spawning terminals, a cap for any other. */
+export type ProcessSourceListingDeadlines = {
+  deadlineMs?: number
+  /** Earlier bound for versions other than the current one; a slow current version never reads silent. */
+  nonCurrentDeadlineMs?: number
+}
+
+function sourceDeadline(isCurrent: boolean, opts: ProcessSourceListingDeadlines | undefined) {
+  const { deadlineMs, nonCurrentDeadlineMs } = opts ?? {}
+  if (isCurrent || nonCurrentDeadlineMs === undefined) {
+    return deadlineMs
+  }
+  return deadlineMs === undefined
+    ? nonCurrentDeadlineMs
+    : Math.min(deadlineMs, nonCurrentDeadlineMs)
 }
 
 /** Router and degraded provider: each source listed on its own, derived from held state. */
@@ -71,24 +90,38 @@ export async function listDaemonProcessesBySource(
     local?: IPtyProvider
   },
   routes: ReadonlyMap<string, IPtyProvider>,
-  opts?: { deadlineMs?: number }
+  opts?: ProcessSourceListingDeadlines
 ): Promise<PtyProcessSourceListing[]> {
   const { adapters, current, local } = sources
-  const entries: ProcessSource[] = adapters.map((adapter) => ({
-    provider: adapter,
-    protocolVersion: adapter.protocolVersion,
-    read: () => adapter.readProcesses(opts),
-    activeIds: () => adapter.getActiveSessionIds()
-  }))
+  const entries: ProcessSource[] = adapters.map((adapter) => {
+    const deadlineMs = sourceDeadline(adapter === current, opts)
+    return {
+      provider: adapter,
+      protocolVersion: adapter.protocolVersion,
+      deadlineMs,
+      read: () => adapter.readProcesses(deadlineMs === undefined ? undefined : { deadlineMs }),
+      activeIds: () => adapter.getActiveSessionIds()
+    }
+  })
   if (local) {
+    // Why uncapped: the in-process provider is where fresh terminals go while the daemon is degraded.
+    const deadlineMs = sourceDeadline(true, opts)
     entries.unshift({
       provider: local,
       protocolVersion: null,
-      read: async () => ({ contact: 'live', items: await local.listProcesses(opts) }),
+      deadlineMs,
+      read: async () => ({
+        contact: 'live',
+        items: await local.listProcesses(deadlineMs === undefined ? undefined : { deadlineMs })
+      }),
       activeIds: () => []
     })
   }
-  const listings = await listPerGeneration(entries, (entry) => entry.read(), opts?.deadlineMs)
+  const listings = await listPerGeneration(
+    entries,
+    (entry) => entry.read(),
+    (entry) => entry.deadlineMs
+  )
   return listings.map(({ source, ...listing }): PtyProcessSourceListing => {
     const identity = {
       protocolVersion: source.protocolVersion,

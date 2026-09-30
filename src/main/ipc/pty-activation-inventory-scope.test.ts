@@ -141,11 +141,12 @@ describe('scoped activation PTY inventory', () => {
   })
 
   it('lists the versions that answered and marks the inventory incomplete while one is silent', async () => {
+    let listBySource: ReturnType<typeof vi.fn> | undefined
     installDaemonTestProvider({
       listProcesses: vi.fn(async () => {
         throw new Error('Request listSessions timed out')
       }),
-      listProcessesBySource: vi.fn(async () => [
+      listProcessesBySource: (listBySource = vi.fn(async () => [
         {
           protocolVersion: 36,
           isCurrent: true,
@@ -159,7 +160,7 @@ describe('scoped activation PTY inventory', () => {
           error: new Error('Request listSessions timed out'),
           lastKnownIds: ['wt@@old']
         }
-      ])
+      ]))
     })
     installPtyInspectIpcHandlers({ getLocalPtyProviderStartupPromise: async () => {} })
 
@@ -178,5 +179,7 @@ describe('scoped activation PTY inventory', () => {
         { protocolVersion: 35, reason: 'Request listSessions timed out' }
       ])
     }
+    // The cap bounds only other versions; the current one keeps the caller's (unbounded) wait.
+    expect(listBySource).toHaveBeenCalledWith({ nonCurrentDeadlineMs: expect.any(Number) })
   })
 })

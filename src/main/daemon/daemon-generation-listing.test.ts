@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { IPtyProvider, PtyProcessInfo } from '../providers/types'
 import {
   answeredProcesses,
+  listAnsweredProcesses,
   requireCompleteProcessListing
 } from '../providers/pty-process-source-listing'
 import type { DaemonPtyAdapter } from './daemon-pty-adapter'
@@ -124,4 +125,34 @@ describe('listDaemonProcessesBySource', () => {
 
     expect(requireCompleteProcessListing(listings).map((entry) => entry.id)).toEqual(['wt@@new'])
   })
+})
+
+describe('a slow current version is never read as silent', () => {
+  const slow = <T>(ms: number, value: T): Promise<T> =>
+    new Promise((resolve) => setTimeout(() => resolve(value), ms))
+
+  function providerOf(current: DaemonPtyAdapter, previous: DaemonPtyAdapter): IPtyProvider {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: listAnsweredProcesses reads only listProcessesBySource.
+    return {
+      listProcessesBySource: (opts?: { deadlineMs?: number; nonCurrentDeadlineMs?: number }) =>
+        listDaemonProcessesBySource({ adapters: [current, previous], current }, new Map(), opts)
+    } as unknown as IPtyProvider
+  }
+
+  it('waits for the current version while the 3 s cap ends the previous one', async () => {
+    const current = adapter(36, () =>
+      slow(3_500, { contact: 'live' as const, items: [process('wt@@current')] })
+    )
+    const frozen = adapter(35, never)
+    const unverifiable: (number | null)[] = []
+
+    const answered = await listAnsweredProcesses(
+      providerOf(current, frozen),
+      (source) => unverifiable.push(source.protocolVersion),
+      Date.now() + 3_000
+    )
+
+    expect(answered.map((entry) => entry.id)).toEqual(['wt@@current'])
+    expect(unverifiable).toEqual([35])
+  }, 10_000)
 })

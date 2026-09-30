@@ -8,6 +8,8 @@ import { killAllProcessesForWorktree } from './worktree-teardown'
 import { WORKTREE_TEARDOWN_FORCE_HINT } from '../../shared/worktree/removal'
 import type { IPtyProvider } from '../providers/types'
 import type { PtyProcessSourceListing } from '../providers/pty-process-source-listing'
+import type { DaemonPtyAdapter } from '../daemon/daemon-pty-adapter'
+import { listDaemonProcessesBySource } from '../daemon/daemon-generation-listing'
 
 const WORKTREE = 'repo::/tmp/wt'
 
@@ -105,6 +107,50 @@ describe('workspace delete while an older terminal service does not answer', () 
 
     expect(result.uncheckedTerminalServices).toEqual([{ protocolVersion: 35 }])
   })
+
+  it('still stops a session of a current version that lists slower than the cap', async () => {
+    const orphan = `${WORKTREE}@@orphan`
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the listing reads only these adapter members.
+    const current = {
+      protocolVersion: 36,
+      readProcesses: () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve({ contact: 'live', items: [{ id: orphan, cwd: '', title: 'shell' }] }),
+            3_500
+          )
+        ),
+      getActiveSessionIds: () => []
+    } as unknown as DaemonPtyAdapter
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the listing reads only these adapter members.
+    const frozen = {
+      protocolVersion: 35,
+      readProcesses: () => new Promise(() => {}),
+      getActiveSessionIds: () => []
+    } as unknown as DaemonPtyAdapter
+    const shutdown = vi.fn(async () => {})
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: teardown reads only these provider members.
+    const provider = {
+      listProcessesBySource: (opts?: { deadlineMs?: number; nonCurrentDeadlineMs?: number }) =>
+        listDaemonProcessesBySource({ adapters: [current, frozen], current }, new Map(), opts),
+      shutdown,
+      confirmPtyStopped: vi.fn(async () => true),
+      listProcesses: vi.fn(async () => []),
+      onData: vi.fn(() => () => {}),
+      onReplay: vi.fn(() => () => {}),
+      onExit: vi.fn(() => () => {})
+    } as unknown as IPtyProvider
+
+    const result = await killAllProcessesForWorktree(WORKTREE, {
+      localProvider: provider,
+      requirePhysicalStop: true,
+      timeoutMs: 7_000
+    })
+
+    expect(shutdown).toHaveBeenCalledWith(orphan, expect.anything())
+    expect(result.providerStopped).toBe(1)
+    expect(result.uncheckedTerminalServices).toEqual([{ protocolVersion: 35 }])
+  }, 15_000)
 
   it('lets an explicit Force Delete through past that terminal', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

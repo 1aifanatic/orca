@@ -24,7 +24,10 @@ import {
   requireCompleteProcessListing,
   type PtyProcessSourceListing
 } from '../providers/pty-process-source-listing'
-import { listDaemonProcessesBySource } from './daemon-generation-listing'
+import {
+  listDaemonProcessesBySource,
+  type ProcessSourceListingDeadlines
+} from './daemon-generation-listing'
 import { DaemonStoppedSessionOwners } from './daemon-stopped-session-owners'
 
 export class DegradedDaemonPtyProvider implements IPtyProvider {
@@ -228,7 +231,9 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
     return requireCompleteProcessListing(await this.listProcessesBySource(opts))
   }
 
-  async listProcessesBySource(opts?: { deadlineMs?: number }): Promise<PtyProcessSourceListing[]> {
+  async listProcessesBySource(
+    opts?: ProcessSourceListingDeadlines
+  ): Promise<PtyProcessSourceListing[]> {
     const sources = {
       adapters: this.allDaemonAdapters(),
       current: this.current,

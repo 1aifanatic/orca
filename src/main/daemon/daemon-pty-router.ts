@@ -18,7 +18,10 @@ import {
   requireCompleteProcessListing,
   type PtyProcessSourceListing
 } from '../providers/pty-process-source-listing'
-import { listDaemonProcessesBySource } from './daemon-generation-listing'
+import {
+  listDaemonProcessesBySource,
+  type ProcessSourceListingDeadlines
+} from './daemon-generation-listing'
 import { reconcileAdaptersOnStartup } from './daemon-router-startup-reconcile'
 import { DaemonStoppedSessionOwners } from './daemon-stopped-session-owners'
 
@@ -234,7 +237,9 @@ export class DaemonPtyRouter implements IPtyProvider {
     return requireCompleteProcessListing(await this.listProcessesBySource(opts))
   }
 
-  async listProcessesBySource(opts?: { deadlineMs?: number }): Promise<PtyProcessSourceListing[]> {
+  async listProcessesBySource(
+    opts?: ProcessSourceListingDeadlines
+  ): Promise<PtyProcessSourceListing[]> {
     const sources = { adapters: this.allAdapters(), current: this.current }
     return await listDaemonProcessesBySource(sources, this.sessionAdapters, opts)
   }

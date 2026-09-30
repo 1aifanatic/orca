@@ -246,7 +246,11 @@ export type IPtyProvider = {
     includeForegroundProcessEvidence?: boolean
   }): Promise<PtyProcessInfo[]>
   /** Per-source listing for providers that merge several; only callers that can act on a partial answer use it. */
-  listProcessesBySource?: (opts?: { deadlineMs?: number }) => Promise<PtyProcessSourceListing[]>
+  listProcessesBySource?: (opts?: {
+    deadlineMs?: number
+    /** Earlier bound for versions other than the current one. */
+    nonCurrentDeadlineMs?: number
+  }) => Promise<PtyProcessSourceListing[]>
   getDefaultShell(): Promise<string>
   getProfiles(): Promise<{ name: string; path: string }[]>
   onData(callback: (payload: PtyDataEvent) => void): () => void

@@ -51,12 +51,13 @@ export function describeListingError(error: unknown): string {
 export async function listAnsweredProcesses(
   provider: IPtyProvider,
   onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void,
-  deadlineMs: number
+  nonCurrentDeadlineMs: number
 ): Promise<PtyProcessInfo[]> {
   if (!provider.listProcessesBySource) {
     return await provider.listProcesses()
   }
-  const listings = await provider.listProcessesBySource({ deadlineMs })
+  // Why no deadline for the current version: a slow one must not read as silent to the activation gate.
+  const listings = await provider.listProcessesBySource({ nonCurrentDeadlineMs })
   for (const listing of listings) {
     if (listing.contact === 'unverifiable') {
       onUnverifiable({
