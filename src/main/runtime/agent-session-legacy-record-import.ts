@@ -3,9 +3,9 @@
 // still uses them finds them as it left them.
 //
 // Never blocks the host. A file no read will make usable is reported, nothing is copied, and the
-// migration completes; the file stays for manual recovery. A read that can clear leaves the copy
-// owed, and every later launch retries it until one reads the file, finds it absent or unusable, or
-// the import is retired.
+// migration completes: the file is left untouched, but a later repair of it is never imported. A
+// read that can clear leaves the copy owed, and every later launch retries it until one reads the
+// file, finds it absent or unusable, or the import is retired.
 
 import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'

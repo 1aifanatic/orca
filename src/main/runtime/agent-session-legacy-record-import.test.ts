@@ -159,7 +159,7 @@ describe('copying the records file into the chat database', () => {
     expect(store.getRecord(BETA)).toBeNull()
   })
 
-  it('reports a file no read will make usable, copies nothing, and leaves it for recovery', async () => {
+  it('reports a file no read will make usable, copies nothing, and leaves it untouched', async () => {
     const adHoc = JSON.stringify({ ...legacyFile([record(ALPHA)]), schemaVersion: 1 })
     await writeLegacy(adHoc)
 
