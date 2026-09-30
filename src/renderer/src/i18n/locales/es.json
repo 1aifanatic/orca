@@ -14427,6 +14427,7 @@
             "done": "Completado",
             "idle": "Inactivo",
             "unverifiable": "Sin actualizaciones recientes",
+            "unconfirmed": "No se pudo confirmar",
             "permission": "Requiere atención"
           },
           "filtersSection": "Filtros",
@@ -14960,7 +14961,8 @@
         "hostFaultTryAgain": "Orca tuvo un problema, así que esto no se completó. Vuelva a intentarlo.",
         "hostStopped": "{{agent}} no terminó de iniciarse, así que Orca lo detuvo.",
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
-        "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando."
+        "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
+        "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
@@ -15078,7 +15080,9 @@
         "result": "Resultado"
       },
       "status": {
-        "responding": "El agente está respondiendo"
+        "responding": "El agente está respondiendo",
+        "interruptedAfter": "Interrumpido tras {{value0}}",
+        "failedAfter": "Falló tras {{value0}}"
       },
       "jumpToLatest": "Saltar a lo último",
       "toggle": {
@@ -15198,6 +15202,12 @@
           "gitlabMergeRequestNumber": "MR #{{value0}}",
           "githubPullRequestNumber": "PR #{{value0}}"
         }
+      },
+      "creation": {
+        "worktreeReadyToast": "El worktree {{name}} está listo",
+        "workspaceReadyToast": "El espacio de trabajo {{name}} está listo",
+        "goToWorktree": "Ir al worktree",
+        "goToWorkspace": "Ir al espacio de trabajo"
       }
     },
     "agentSessionContinuation": {
