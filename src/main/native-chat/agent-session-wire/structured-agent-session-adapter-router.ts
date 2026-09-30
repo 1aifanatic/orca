@@ -1,4 +1,5 @@
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
+import type { StructuredAgentSessionAtRestCommands } from './structured-agent-session-at-rest-commands'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionAccountHome,
@@ -121,16 +122,14 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.liveOwnerOrNull(sessionId)?.readCommands?.(sessionId)
 
-  readAtRestCommands: NonNullable<StructuredAgentSessionAdapter['readAtRestCommands']> = (record) =>
-    this.adapters[record.provider].readAtRestCommands?.(record)
-
-  onAtRestCommandsChanged: NonNullable<StructuredAgentSessionAdapter['onAtRestCommandsChanged']> = (
-    listener
-  ) => {
-    const stops = Object.values(this.adapters).flatMap((adapter) =>
-      adapter.onAtRestCommandsChanged ? [adapter.onAtRestCommandsChanged(listener)] : []
-    )
-    return () => stops.forEach((stop) => stop())
+  atRestCommands: StructuredAgentSessionAtRestCommands = {
+    read: (record) => this.adapters[record.provider].atRestCommands?.read(record),
+    onChange: (listener) => {
+      const stops = Object.values(this.adapters).flatMap((adapter) =>
+        adapter.atRestCommands ? [adapter.atRestCommands.onChange(listener)] : []
+      )
+      return () => stops.forEach((stop) => stop())
+    }
   }
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (input) =>

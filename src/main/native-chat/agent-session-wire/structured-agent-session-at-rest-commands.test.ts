@@ -58,8 +58,7 @@ function adapter(catalog: ClaudeAtRestCommandCatalog): StructuredAgentSessionAda
         handle: { provider: 'claude' as const, sessionId: CLAUDE_SESSION, leafUuid: null }
       }
     })),
-    readAtRestCommands: catalog.read,
-    onAtRestCommandsChanged: catalog.onChange,
+    atRestCommands: catalog,
     dispatch: vi.fn(async () => ({ state: 'unknown' as const, reason: 'test' })),
     cancelTurn: async () => ({ cancelled: true }),
     answerPrompt: async () => {},

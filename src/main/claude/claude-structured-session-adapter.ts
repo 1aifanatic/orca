@@ -63,6 +63,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   private readonly exitLifecycle: ClaudeExitLifecycle
 
   constructor(private readonly deps: ClaudeStructuredSessionAdapterDeps) {
+    this.atRestCommands = deps.atRestCommands
     this.exitLifecycle = {
       sessions: this.sessions,
       exits: this.exits,
@@ -229,11 +230,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.sessions.get(sessionId)?.commands.commands
-  readAtRestCommands: NonNullable<StructuredAgentSessionAdapter['readAtRestCommands']> = (record) =>
-    this.deps.atRestCommands?.read(record)
-  onAtRestCommandsChanged: NonNullable<StructuredAgentSessionAdapter['onAtRestCommandsChanged']> = (
-    listener
-  ) => this.deps.atRestCommands?.onChange(listener) ?? (() => undefined)
+  readonly atRestCommands: ClaudeStructuredSessionAdapterDeps['atRestCommands']
   holdsDispatch = (sessionId: string): boolean => {
     const session = this.sessions.get(sessionId)
     return session ? claudeHoldsDispatch(session) : false
