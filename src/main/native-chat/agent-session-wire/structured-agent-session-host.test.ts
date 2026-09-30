@@ -4,8 +4,8 @@ import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
-import { join } from 'node:path'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -27,6 +27,7 @@ import {
   HOST_TEST_THREAD as THREAD,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -133,7 +134,7 @@ describe('attach', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), acquire },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-a',
       now: () => NOW
@@ -559,11 +560,11 @@ describe('restart', () => {
     adapterOverrides: Partial<StructuredAgentSessionAdapter> = {},
     stopOwnerProcess?: StructuredAgentSessionHostDeps['stopOwnerProcess']
   ) {
-    store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+    store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), ...adapterOverrides },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-b',
       probeOwner,
