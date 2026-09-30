@@ -605,6 +605,32 @@ describe('mobile structured queued messages', () => {
       expect(requestOf('agentSession.queuedMessageSend').params.messageId).toBe('draft-1')
     })
 
+    it('each press of a card action carries its own id, even while an earlier press is unanswered', async () => {
+      const held = Promise.withResolvers<unknown>()
+      sendRequest.mockImplementation(async (method) =>
+        method === 'agentSession.queuedMessageSend' || method === 'agentSession.queuedMessageDelete'
+          ? held.promise
+          : method === 'agentSession.options'
+            ? ok({ models: [], current: {} })
+            : ok({})
+      )
+      await mountSession(CAPABLE)
+      const presses: Promise<boolean>[] = []
+      act(() => {
+        presses.push(hook!.queued.send('draft-1'), hook!.queued.send('draft-1'))
+        presses.push(hook!.queued.delete('draft-1'), hook!.queued.delete('draft-1'))
+      })
+      await act(async () => {
+        held.resolve(ok({}))
+        await Promise.all(presses)
+      })
+      for (const method of ['agentSession.queuedMessageSend', 'agentSession.queuedMessageDelete']) {
+        expect(requestOf(method, 1).envelope.clientOperationId).not.toBe(
+          requestOf(method, 0).envelope.clientOperationId
+        )
+      }
+    })
+
     it('Delete reads the union result: a dispatched draft was already sent', async () => {
       sendRequest.mockImplementation(async (method) => {
         if (method === 'agentSession.queuedMessageDelete') {
