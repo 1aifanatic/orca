@@ -10,6 +10,7 @@ import {
 } from './node-server-change-scope.mjs'
 import { nodeServerTestPaths } from './node-server-test-paths.mjs'
 import { ORCAD_CHILD_ENTRY_POINTS } from './orcad-entry-build.mjs'
+import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
 import { ORCAD_BUN_VERSION } from '../../src/shared/orcad-bun-runtime.ts'
 
 const temporaryDirs = []
@@ -177,5 +178,13 @@ it('runs the Bun and Node cross-runtime tests on Linux against pinned inputs', (
   }
   expect(steps.map((step) => step.run).join('\n')).toContain(
     "pnpm test:node-server --artifact ${{ runner.os == 'Linux' && '--cross-runtime' || '' }}"
+  )
+  const alpine = workflow.jobs.linux_musl.steps.find((step) =>
+    String(step.run).includes('docker run')
+  )
+  expect(alpine.run).toMatch(
+    new RegExp(
+      `node:${NODE_RUNTIME_PIN.version.replaceAll('.', '\\.')}-alpine@sha256:[0-9a-f]{64} `
+    )
   )
 })
