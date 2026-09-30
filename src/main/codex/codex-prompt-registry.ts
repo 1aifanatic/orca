@@ -29,6 +29,8 @@ export type CodexPendingPrompt = {
   questionIdAliases: ReadonlyMap<string, string>
   optionAnswers: ReadonlyMap<string, { questionId: string; answer: string }>
   answers: Map<string, string>
+  /** Codex asked without a server request; the answer goes back as a steered user message. */
+  delivery?: 'async'
 }
 
 export type CodexAbandonedCommand = { threadId: string; itemId: string }
@@ -67,11 +69,14 @@ export class CodexPromptRegistry {
     return this.retainedPromptBytes()
   }
 
-  register(request: {
-    id: number | string
-    method: string
-    params: unknown
-  }): CodexPendingPrompt | null {
+  register(
+    request: {
+      id: number | string
+      method: string
+      params: unknown
+    },
+    delivery?: 'async'
+  ): CodexPendingPrompt | null {
     const codexItemId = readString(request.params, 'itemId')
     const threadId = readString(request.params, 'threadId')
     if (!isCodexPromptMethod(request.method) || !codexItemId || !threadId) {
@@ -107,7 +112,8 @@ export class CodexPromptRegistry {
           ? new Map(questionIds.map((id) => [codexJournalPromptIdPart(id), id]))
           : new Map(),
       optionAnswers,
-      answers: new Map()
+      answers: new Map(),
+      ...(delivery ? { delivery } : {})
     }
     const promptBytes = codexPromptRegistryEntryBytes(prompt)
     if (promptBytes > MAX_CODEX_PROMPT_REGISTRY_BYTES) {
@@ -208,6 +214,18 @@ export class CodexPromptRegistry {
         this.journalItemIds.delete(journalItemId)
         this.boundPrompts.delete(journalItemId)
       }
+    }
+  }
+
+  /** A user message on the thread answered every async ask still open there. */
+  forgetAsync(threadId: string): void {
+    const prompts = new Set(
+      [...this.byAddress.values(), ...this.boundPrompts.values()].filter(
+        (prompt) => prompt.delivery === 'async' && prompt.threadId === threadId
+      )
+    )
+    for (const prompt of prompts) {
+      this.forget(prompt)
     }
   }
 

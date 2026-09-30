@@ -262,7 +262,11 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
   supportsThreadGoal = (): boolean => true
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
-    answerCodexStructuredPrompt({ request, sessions: this.sessions })
+    answerCodexStructuredPrompt({
+      request,
+      sessions: this.sessions,
+      requestTimeoutMs: this.deps.requestTimeoutMs
+    })
 
   async setOption(
     input: StructuredAgentSessionSetOptionInput

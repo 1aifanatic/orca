@@ -1,4 +1,10 @@
 import type { CodexAppServerServerRequest } from './codex-app-server-connection'
+import {
+  readCodexAsyncQuestionRequest,
+  readCodexUserMessageReply,
+  type CodexAsyncQuestionRequest
+} from './codex-async-user-input'
+import { CODEX_USER_INPUT_METHOD } from './codex-prompt-registry'
 import { disposeCodexServerRequest } from './codex-server-request-disposition'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
 import * as codexRewind from './codex-structured-rewind'
@@ -23,7 +29,7 @@ export function translateCodexNotification(input: {
   const { sessionId, session, method, params, observedAt, dispatchSequenceAtReceipt } = input
   codexRewind.observeCodexRewindActivity(session, method, params)
   session.turnOpenWaits.observe(session.threadId, method, params)
-  return deliverCodexNotification(
+  const admission = deliverCodexNotification(
     sessionId,
     session,
     method,
@@ -32,6 +38,46 @@ export function translateCodexNotification(input: {
     observedAt,
     dispatchSequenceAtReceipt
   )
+  if (!admission.accepted) {
+    return admission
+  }
+  const threadId = readCodexThreadId(params) ?? session.threadId
+  if (readCodexUserMessageReply(method, params)) {
+    session.prompts.forgetAsync(threadId)
+  }
+  const asked = readCodexAsyncQuestionRequest(threadId, method, params)
+  return asked ? deliverCodexAsyncQuestion(sessionId, session, asked, input.emit) : admission
+}
+
+/** Registers an async ask as a question prompt so it renders, and is answered, like a blocking one. */
+function deliverCodexAsyncQuestion(
+  sessionId: string,
+  session: CodexSession,
+  asked: CodexAsyncQuestionRequest,
+  emit: EmitCodexEvent
+): CodexJournalTranslationAdmission {
+  const prompt = session.prompts.register(
+    { id: asked.itemId, method: CODEX_USER_INPUT_METHOD, params: asked.params },
+    'async'
+  )
+  if (!prompt) {
+    // Unmodelable within bounds: the agent message row still shows the question.
+    return { accepted: true }
+  }
+  const admission = emit(session, {
+    type: 'prompt',
+    sessionId,
+    threadId: prompt.threadId,
+    method: CODEX_USER_INPUT_METHOD,
+    params: asked.params,
+    codexItemId: prompt.codexItemId,
+    promptKey: prompt.promptKey,
+    delivery: 'async'
+  })
+  if (!admission.accepted) {
+    session.prompts.forget(prompt)
+  }
+  return admission
 }
 
 export function deliverCodexNotification(
