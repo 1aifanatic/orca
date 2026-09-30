@@ -6,6 +6,8 @@
 import type { AgentChildWorkKind } from '../../agent-status-child-work'
 import type { ClaudeBackgroundNonAgentTask } from '../../claude-background-task-inventory'
 import { isClaudeBackgroundTaskStatusTerminal } from '../../claude-background-task-kind'
+import { readJsonlCursor } from '../../codex-rollout-jsonl-cursor'
+import type { AgentHookEventPayload } from '../listener-event'
 import type { HookListenerState } from '../listener-state'
 
 export type ClaudeNonAgentTask = {
@@ -173,4 +175,41 @@ export function retireClaudeNonAgentTaskFromQueueRow(
     isClaudeBackgroundTaskStatusTerminal(status) &&
     retireClaudeNonAgentTask(state, paneKey, taskId, toolUseId)
   )
+}
+
+/** Substring test for a line that can be a task's end row. Why both: a `prompt_snapshot`
+ *  attachment quotes the notification tag on every tool call. */
+export function mayBeClaudeTaskEndLine(line: string): boolean {
+  return line.includes('"type":"queue-operation"') && line.includes(TASK_NOTIFICATION_OPEN)
+}
+
+/** How far back a launch's end row is looked for: it can precede the launch's hook only by the
+ *  rows Claude writes around that one tool call. */
+const LAUNCH_END_LOOK_BACK_BYTES = 256 * 1024
+
+/** A task can end before Orca handles the hook that launched it, so its end row can sit behind
+ *  where the transcript watch reads from: a cursor armed at the file's end, or one the catch-up
+ *  before that hook read past. For an accepted launch hook, reads back once before `offset` for
+ *  that row; only the launch's exact id pair matches, so older rows are safe to read. Returns
+ *  whether a task was retired. */
+export function retireClaudeTaskEndedBeforeLaunchHook(
+  state: HookListenerState,
+  accepted: AgentHookEventPayload,
+  transcript: { filePath: string; offset: number }
+): boolean {
+  const { paneKey, toolUseId } = accepted
+  const tasks = state.claudeNonAgentWorkByPaneKey.get(paneKey)?.tasks.values() ?? []
+  if (
+    accepted.hookEventName !== 'PostToolUse' ||
+    !toolUseId ||
+    ![...tasks].some((task) => task.launchToolUseId === toolUseId)
+  ) {
+    return false
+  }
+  const offset = Math.max(0, transcript.offset - LAUNCH_END_LOOK_BACK_BYTES)
+  const rows = readJsonlCursor(
+    { filePath: transcript.filePath, offset, carry: '' },
+    (line) => line.includes(toolUseId) && mayBeClaudeTaskEndLine(line)
+  )
+  return rows?.some((row) => retireClaudeNonAgentTaskFromQueueRow(state, paneKey, row)) ?? false
 }

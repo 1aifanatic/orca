@@ -254,7 +254,9 @@ reader does not mistake them for drift:
   killed with its turn's Ctrl+C, or from `/tasks` while Claude idles), read by
   the transcript watch below and trusted only when both its task id and its
   tool-use id match the launch Orca recorded, since a prompt typed while Claude
-  is busy writes the same kind of line. A `startup` or `resume`
+  is busy writes the same kind of line. A task can end before Orca handles its
+  launching hook, so its line can precede where the watch reads from; accepting
+  the launch reads back a bounded tail once for that exact pair. A `startup` or `resume`
   `SessionStart` clears the record with the pane's children and crons, since a
   new process can never end its predecessor's tasks. `/clear` keeps it: the
   shell survives and reports its end in the new session's transcript, and the

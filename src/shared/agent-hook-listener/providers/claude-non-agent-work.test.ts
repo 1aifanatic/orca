@@ -201,23 +201,35 @@ describe('the task end line in the transcript', () => {
   })
 })
 
+function inTranscriptDir(run: (transcript: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-background-shell-watch-'))
+  try {
+    const transcript = join(dir, 'session.jsonl')
+    writeFileSync(transcript, '')
+    run(transcript)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+function launchEvent(state: HookListenerState, transcript: string, launch = LAUNCH) {
+  const event = claudeEvent(state, {
+    ...launch,
+    session_id: '00000000-0000-4000-8000-0000000000d1',
+    transcript_path: transcript
+  })
+  if (!event) {
+    throw new Error('listener produced no event')
+  }
+  return event
+}
+
 describe('watching for the end line', () => {
   it('parses only queue-operation lines that carry a notification, never the per-turn snapshot', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'orca-background-shell-watch-'))
-    try {
-      const transcript = join(dir, 'session.jsonl')
-      writeFileSync(transcript, '')
+    inTranscriptDir((transcript) => {
       const state = createHookListenerState()
       claudeEvent(state, { hook_event_name: 'UserPromptSubmit', prompt: 'start it' })
-      const event = claudeEvent(state, {
-        ...LAUNCH,
-        session_id: '00000000-0000-4000-8000-0000000000d1',
-        transcript_path: transcript
-      })
-      if (!event) {
-        throw new Error('listener produced no event')
-      }
-      expect(syncClaudeTranscriptCursor(state, event)).toBe(true)
+      expect(syncClaudeTranscriptCursor(state, launchEvent(state, transcript))).toBe(true)
       // Hand-built at the size of the per-turn prompt_snapshot attachment, which quotes the tag.
       const snapshot = JSON.stringify({
         type: 'attachment',
@@ -229,8 +241,38 @@ describe('watching for the end line', () => {
       expect(parse).toHaveBeenCalledTimes(1)
       parse.mockRestore()
       expect(claudePaneHasNonAgentWork(state, PANE)).toBe(false)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    })
+  })
+
+  // Hand-placed order: no capture has a task that ends before Orca handles its launch hook.
+  it('finds the end row of a task that ended before its launch hook, behind a cursor armed at the end', () => {
+    inTranscriptDir((transcript) => {
+      const state = createHookListenerState()
+      claudeEvent(state, { hook_event_name: 'UserPromptSubmit', prompt: 'start it' })
+      appendFileSync(transcript, `${JSON.stringify(endLine({ status: 'failed' }))}\n`)
+      const launch = launchEvent(state, transcript)
+      expect(launch.claudeRunningNonAgentTask).toBe(true)
+      expect(syncClaudeTranscriptCursor(state, launch)).toBe(true)
+      expect(claudePaneHasNonAgentWork(state, PANE)).toBe(false)
+      expect(state.claudeTranscriptCursorByPaneKey.get(PANE)?.unpublished).toEqual({})
+    })
+  })
+
+  it('finds it behind a cursor the catch-up before the launch hook already read past', () => {
+    inTranscriptDir((transcript) => {
+      const state = createHookListenerState()
+      claudeEvent(state, { hook_event_name: 'UserPromptSubmit', prompt: 'start it' })
+      const earlier = { ...LAUNCH, tool_response: { backgroundTaskId: 'bearlier1' } }
+      const first = launchEvent(state, transcript, { ...earlier, tool_use_id: 'toolu_earlier' })
+      expect(syncClaudeTranscriptCursor(state, first)).toBe(true)
+      appendFileSync(transcript, `${JSON.stringify(endLine({ status: 'failed' }))}\n`)
+      // The server's catch-up before normalizing the launch reads the row while no task matches it.
+      catchUpOnClaudeTranscript(state, PANE)
+      const launch = launchEvent(state, transcript)
+      expect(syncClaudeTranscriptCursor(state, launch)).toBe(true)
+      const tasks = state.claudeNonAgentWorkByPaneKey.get(PANE)?.tasks
+      expect(tasks?.has('bjomx789i')).toBe(false)
+      expect(tasks?.has('bearlier1')).toBe(true)
+    })
   })
 })

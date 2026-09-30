@@ -258,6 +258,33 @@ describe('a launch whose hook is still in flight at the Ctrl+C (captured hooks, 
   })
 })
 
+describe('a shell that ends before Orca handles its launch hook (captured hooks, hand-placed end line)', () => {
+  const records = loadCapture('claude-background-shell-ctrl-c-hooks')
+  const cancel = cancelLabelled(records, 'S1-ctrl-c-mid-essay')
+  const killedAtExit = queueLine(records, 'queue-operation-enqueue')
+
+  it('reads its end line from before the launch, so a Ctrl+C in that turn settles done', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    const replay = replayer(server, records, new Map([['*', transcript]]))
+    await replay([0, 1, 2])
+    // Hand-placed: the command ended within the hook's delivery latency (no capture has one).
+    appendFileSync(
+      transcript,
+      `${killedAtExit.lines[0].replace('<status>killed</status>', '<status>failed</status>')}\n`
+    )
+    await replay([3, 4, 5, 6])
+    vi.setSystemTime(captureEpoch(records) + cancel.t * 1000)
+    expect(pressCtrlC(server)).toBe(true)
+    expect(row(server)).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+    expect(server._getStateForTests().claudeNonAgentWorkByPaneKey.has(PANE)).toBe(false)
+  })
+})
+
 describe('a /tasks kill while Claude idles (captured, 2.1.284)', () => {
   const records = loadCapture('claude-background-shell-tasks-kill-idle-hooks')
   const killed = queueLine(records, 'queue-operation-enqueue')

@@ -23,7 +23,9 @@ import type { HookListenerState } from '../listener-state'
 import { buildClaudeCachedLeadStatusPayload } from './claude-lifecycle-events'
 import {
   claudePaneHasLaunchRecordedTask,
-  retireClaudeNonAgentTaskFromQueueRow
+  mayBeClaudeTaskEndLine,
+  retireClaudeNonAgentTaskFromQueueRow,
+  retireClaudeTaskEndedBeforeLaunchHook
 } from './claude-non-agent-work'
 import { claudeRunningNonAgentTask, clearClaudePendingWaitForAgent } from './claude-roster-state'
 
@@ -93,9 +95,7 @@ const CLAUDE_TRANSCRIPT_WATCH_REASONS = {
    *  SessionStart, pane teardown. */
   'recorded-task': {
     holds: claudePaneHasLaunchRecordedTask,
-    // Why both: a `prompt_snapshot` attachment quotes the notification tag on every tool call.
-    admits: (line) =>
-      line.includes('"type":"queue-operation"') && line.includes('<task-notification>'),
+    admits: mayBeClaudeTaskEndLine,
     apply: (state, paneKey, row) =>
       retireClaudeNonAgentTaskFromQueueRow(state, paneKey, row) ? {} : undefined
   }
@@ -165,6 +165,9 @@ export function syncClaudeTranscriptCursor(
   const filePath = reported !== undefined ? claudeTranscriptWatchPath(reported) : current?.filePath
   if (current && current.filePath === filePath) {
     holding.forEach((name) => current.reasons.add(name))
+    if (retireClaudeTaskEndedBeforeLaunchHook(state, accepted, current)) {
+      current.unpublished = {}
+    }
     return true
   }
   if (!current && holding.length === 0) {
@@ -176,11 +179,11 @@ export function syncClaudeTranscriptCursor(
     cursors.delete(paneKey)
     return false
   }
-  cursors.set(paneKey, {
-    ...armed,
-    filePath,
-    reasons: new Set([...(current?.reasons ?? []), ...holding])
-  })
+  const cursor = { ...armed, filePath, reasons: new Set([...(current?.reasons ?? []), ...holding]) }
+  cursors.set(paneKey, cursor)
+  if (retireClaudeTaskEndedBeforeLaunchHook(state, accepted, cursor)) {
+    cursor.unpublished = {}
+  }
   return true
 }
 
