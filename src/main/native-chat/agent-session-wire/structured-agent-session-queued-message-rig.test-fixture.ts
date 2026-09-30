@@ -36,8 +36,10 @@ export function eventually(assertion: () => void | Promise<void>): Promise<void>
 export type QueuedMessageTestRig = Awaited<ReturnType<typeof createQueuedMessageTestRig>>
 
 /** `restartable`: a child started for a chat whose chain already names a thread resumes it, so a
- *  chat whose child closed or died can start another. */
-export async function createQueuedMessageTestRig(options: { restartable?: true } = {}) {
+ *  chat whose child closed or died can start another. `starting`: every child stays starting. */
+export async function createQueuedMessageTestRig(
+  options: { restartable?: true; starting?: true } = {}
+) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
   // Admitted: the message is written and unanswered, so the session owes work
@@ -56,6 +58,9 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
   const cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']> = vi.fn(async () => ({
     cancelled: true
   }))
+  const closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>> = vi.fn(
+    async () => true
+  )
   let events: StructuredAgentSessionEventSink | undefined
   const store = await openTestAgentSessionRecordStore(root)
   const makeHost = () =>
@@ -75,6 +80,7 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
               spawnToken
             },
             acquisitionGeneration: 'generation-1',
+            ...(options.starting ? { providerChildPhase: 'starting' as const } : {}),
             link: {
               linkId: `link-${fence}`,
               handle: { provider: 'codex' as const, threadId: THREAD },
@@ -86,7 +92,7 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
         },
         dispatch,
         awaitStarted,
-        closeSession: vi.fn(async () => true),
+        closeSession,
         releaseAcquisition: vi.fn(async () => true),
         compact,
         cancelTurn,
@@ -293,6 +299,7 @@ export async function createQueuedMessageTestRig(options: { restartable?: true }
     },
     dispatch,
     cancelTurn,
+    closeSession,
     awaitStarted,
     compact,
     finishCompact,
