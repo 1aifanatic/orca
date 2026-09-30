@@ -36,7 +36,7 @@ let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
 let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
-let closeSession: Mock<StructuredAgentSessionAdapter['closeSession']>
+let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
 /** Codex's answer by default: its Stop keeps the child. */
 let stopEndsSession: boolean
 let events: StructuredAgentSessionEventSink | undefined
