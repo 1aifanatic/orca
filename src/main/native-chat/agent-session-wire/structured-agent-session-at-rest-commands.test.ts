@@ -166,7 +166,37 @@ describe("a Claude chat whose Claude isn't running shows the `/` surface from it
     const replacement = cleared.ok ? cleared.value.replacementSessionId! : ''
     const menu = await menuOf(replacement)
     expect(namesOf(menu, 'skill')).toEqual(['review-pr'])
-    expect(namesOf(menu, 'command')).toContain('deploy')
+    // Everything the menu offered before a list existed, then what the folders add.
+    expect(namesOf(menu, 'command')).toEqual(['model', 'effort', 'clear', 'compact', 'deploy'])
+  })
+
+  it('scans again once a scan has hung past its limit', async () => {
+    let calls = 0
+    const catalog = new ClaudeAtRestCommandCatalog({
+      resolveWorkspacePath: async () => workspace,
+      now: () => clock,
+      discover: async (args) => {
+        calls += 1
+        if (calls === 1) {
+          return new Promise(() => {})
+        }
+        const { discoverSkills } = await import('../../skills/discovery')
+        return discoverSkills({ ...args, homeDir: join(directory, 'home'), refresh: true })
+      }
+    })
+    const record = store.getRecord(SESSION)!
+    expect(catalog.read(record)).toBeUndefined()
+    await vi.waitFor(() => expect(calls).toBe(1))
+    clock += CLAUDE_AT_REST_COMMANDS_TTL_MS
+    catalog.read(record)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(calls).toBe(1)
+    clock += 30_000
+    catalog.read(record)
+    await vi.waitFor(() =>
+      expect(namesOf(catalog.read(record) ?? null, 'skill')).toEqual(['review-pr'])
+    )
+    expect(calls).toBe(2)
   })
 
   it('after a relaunch, with nothing remembered from before it', async () => {

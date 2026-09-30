@@ -1,13 +1,15 @@
 import { join } from 'node:path'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionSlashCommand } from '../../shared/agent-session-wire'
-import { getTextDrivenNativeChatCommands } from '../../shared/native-chat-agent-profiles'
+import { structuredSlashCommands } from '../../shared/structured-agent-session-composer'
 import { discoverSkills } from '../skills/discovery'
 import { scanClaudeCommandFolders } from './claude-command-folder-scan'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
 
 /** How long one scan answers for a workspace and account before the next read scans again. */
 export const CLAUDE_AT_REST_COMMANDS_TTL_MS = 10_000
+/** A scan still unanswered this long is given up on, so a hung folder can't freeze the menu. */
+const SCAN_ABANDONED_MS = 30_000
 
 export type ClaudeAtRestCommandsDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
@@ -18,13 +20,14 @@ export type ClaudeAtRestCommandsDeps = {
 type Entry = {
   commands?: AgentSessionSlashCommand[]
   scannedAt: number
-  scanning: boolean
+  /** When the scan in flight began; only its answer is kept. */
+  scanStartedAt: number | null
 }
 
 /**
  * The `/` surface of a Claude chat whose Claude is not running, read from the folders Claude reads
  * its own from on the host that runs it: the account's and the workspace's command folders and
- * skills, beside the built-in commands Orca knows Claude has. Nothing until the first scan lands;
+ * skills, beside the commands the chat's menu always offers. Nothing until the first scan lands;
  * `onChange` fires when a scan finds something different.
  */
 export class ClaudeAtRestCommandCatalog {
@@ -41,10 +44,15 @@ export class ClaudeAtRestCommandCatalog {
     const key = JSON.stringify([record.location.workspaceId, record.accountHome.path])
     let entry = this.entries.get(key)
     if (!entry) {
-      entry = { scannedAt: Number.NEGATIVE_INFINITY, scanning: false }
+      entry = { scannedAt: Number.NEGATIVE_INFINITY, scanStartedAt: null }
       this.entries.set(key, entry)
     }
-    if (!entry.scanning && this.now() - entry.scannedAt >= CLAUDE_AT_REST_COMMANDS_TTL_MS) {
+    const now = this.now()
+    const idle =
+      entry.scanStartedAt === null
+        ? now - entry.scannedAt >= CLAUDE_AT_REST_COMMANDS_TTL_MS
+        : now - entry.scanStartedAt >= SCAN_ABANDONED_MS
+    if (idle) {
       this.scanInto(entry, record)
     }
     return entry.commands
@@ -56,11 +64,13 @@ export class ClaudeAtRestCommandCatalog {
   }
 
   private scanInto(entry: Entry, record: AgentSessionRecord): void {
-    entry.scanning = true
+    const startedAt = this.now()
+    entry.scanStartedAt = startedAt
+    const current = () => entry.scanStartedAt === startedAt
     void this.scan(record)
       .then(
         (commands) => {
-          if (JSON.stringify(commands) === JSON.stringify(entry.commands)) {
+          if (!current() || JSON.stringify(commands) === JSON.stringify(entry.commands)) {
             return
           }
           entry.commands = commands
@@ -71,8 +81,10 @@ export class ClaudeAtRestCommandCatalog {
         (error: unknown) => console.warn('[claude] reading the at-rest `/` commands failed:', error)
       )
       .finally(() => {
-        entry.scanning = false
-        entry.scannedAt = this.now()
+        if (current()) {
+          entry.scanStartedAt = null
+          entry.scannedAt = this.now()
+        }
       })
   }
 
@@ -87,7 +99,8 @@ export class ClaudeAtRestCommandCatalog {
         providerRootOverrides: { claude: join(account, 'skills') }
       })
     ])
-    const builtIn = getTextDrivenNativeChatCommands('claude').map(
+    // What the menu offers a Claude chat at rest without a list, so reading one loses none of it.
+    const builtIn = structuredSlashCommands(['clear', 'compact'], 'claude').map(
       (command): AgentSessionSlashCommand => ({
         name: command.name,
         kind: 'command',
