@@ -37,8 +37,17 @@ import {
 } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import { isShellProcess } from '../../shared/shell-process-detection'
-import { isExpectedAgentProcess } from '../../shared/agent-process-recognition'
+import {
+  isExpectedAgentProcess,
+  recognizeAgentProcess
+} from '../../shared/agent-process-recognition'
+import type { LaunchedAgentForeground } from './runtime-worktree-startup-readiness'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+
+/** A login shell is reported as `-zsh`. */
+function isLaunchShell(processName: string): boolean {
+  return isShellProcess(processName.replace(/^-/, ''))
+}
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -214,8 +223,8 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         timeoutMs,
         requireComposerMarker,
         signal: stop.signal,
-        agentOwnsTerminal: (ownerPtyId) => this.launchedAgentOwnsTerminal(ownerPtyId, agent),
-        accept: async (readyPtyId) => {
+        readAgentForeground: (ownerPtyId) => this.readLaunchedAgentForeground(ownerPtyId, agent),
+        accept: (readyPtyId) => {
           const pty = this.ptysById.get(readyPtyId)
           const hold = pty
             ? readFreshComposerHold(
@@ -227,8 +236,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
             sawDialog = true
             stop.abort()
           }
-          // Asked again here: an agent that exited hands the terminal, and its prompt, back.
-          return hold === null && (await this.launchedAgentOwnsTerminal(readyPtyId, agent))
+          return hold === null
         }
       }
     )
@@ -244,27 +252,35 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
 
   /**
    * Whether the agent a launch started, rather than the shell that ran its launch line, is in the
-   * terminal's foreground. Not only the expected name: macOS reports the native Claude by its
+   * terminal's foreground. Any non-shell process counts: macOS reports the native Claude by its
    * version (`2.1.258`), and a runtime such as node can front an agent.
    *
-   * Why a fresh scan: for its first 5 s the daemon's cached read names the launch agent whenever a
-   * shell is in front, so before the launch line runs and after an agent exits it answered the
-   * agent (measured on a zsh pane: cached `copilot`, scan `zsh`).
+   * Why a scan only for the agent's own name or a shell: for its first 5 s the daemon's cached read
+   * names the launch agent whenever a shell is in front (measured on a zsh pane: cached `copilot`,
+   * scan `zsh`), so any other non-shell name it gives is the process itself.
    */
-  async launchedAgentOwnsTerminal(ptyId: string, agent: TuiAgent): Promise<boolean> {
+  async readLaunchedAgentForeground(
+    ptyId: string,
+    agent: TuiAgent
+  ): Promise<LaunchedAgentForeground> {
     const controller = this.ptyController
-    const foreground =
-      (controller?.confirmForegroundProcess
-        ? await controller.confirmForegroundProcess(ptyId)
-        : await controller?.getForegroundProcess(ptyId)) ?? null
-    if (!foreground) {
-      return false
+    if (!controller) {
+      return 'unknown'
     }
-    return (
-      isExpectedAgentProcess(foreground, TUI_AGENT_CONFIG[agent].expectedProcess) ||
-      // A login shell is reported as `-zsh`.
-      !isShellProcess(foreground.replace(/^-/, ''))
-    )
+    const cached = (await controller.getForegroundProcess(ptyId)) ?? null
+    if (cached && !isLaunchShell(cached) && recognizeAgentProcess(cached)?.agent !== agent) {
+      return 'agent'
+    }
+    const foreground = controller.confirmForegroundProcess
+      ? await controller.confirmForegroundProcess(ptyId)
+      : cached
+    if (!foreground) {
+      return 'unknown'
+    }
+    return isLaunchShell(foreground) &&
+      !isExpectedAgentProcess(foreground, TUI_AGENT_CONFIG[agent].expectedProcess)
+      ? 'shell'
+      : 'agent'
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {

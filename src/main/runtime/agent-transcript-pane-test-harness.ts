@@ -22,6 +22,7 @@ export type TranscriptPaneOptions = {
   size?: { cols: number; rows: number }
   /** What a fresh process-table scan finds, where it differs from the cached foreground read. */
   confirmedForegroundProcess?: string | null
+  onForegroundScan?: () => void
 }
 
 export async function createTranscriptPane(
@@ -51,7 +52,12 @@ export async function createTranscriptPane(
         : Promise.resolve(options.foregroundProcess)
     },
     ...(options.confirmedForegroundProcess !== undefined
-      ? { confirmForegroundProcess: async () => options.confirmedForegroundProcess ?? null }
+      ? {
+          confirmForegroundProcess: async () => {
+            options.onForegroundScan?.()
+            return options.confirmedForegroundProcess ?? null
+          }
+        }
       : {})
   })
   const terminal = await runtime.createTerminal(`id:${TRANSCRIPT_PANE_WORKTREE_ID}`, {

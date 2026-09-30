@@ -10,7 +10,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { waitForWorktreeStartupDraft } from './runtime-worktree-startup-readiness'
+import {
+  waitForWorktreeStartupDraft,
+  type LaunchedAgentForeground
+} from './runtime-worktree-startup-readiness'
 
 const QUIET_WINDOW_MS = 1_500
 
@@ -31,9 +34,12 @@ function shellPromptAfterCommandExits(): string {
   return zsh.slice(zsh.indexOf('\n', zsh.indexOf('\x1b[?2004l')) + 1)
 }
 
-function launchedPane() {
+type Foreground = LaunchedAgentForeground
+
+function launchedPane(options: { readForeground?: (name: string) => Foreground } = {}) {
   let listener = (_data: string): void => {}
   let foreground = 'zsh'
+  const reads: Foreground[] = []
   const host = {
     getPtyId: () => 'pty-1',
     getForegroundProcess: async () => foreground,
@@ -46,14 +52,21 @@ function launchedPane() {
     readRecentOutput: () => undefined,
     write: vi.fn()
   }
+  const readForeground =
+    options.readForeground ?? ((name: string): Foreground => (name === 'zsh' ? 'shell' : 'agent'))
   const ready = waitForWorktreeStartupDraft(host, 'term-1', 'claude', {
     timeoutMs: 30_000,
-    agentOwnsTerminal: async () => foreground !== 'zsh'
+    readAgentForeground: async () => {
+      const read = readForeground(foreground)
+      reads.push(read)
+      return read
+    }
   })
   const settled = vi.fn()
   void ready.then(settled)
   return {
     settled,
+    reads,
     emit: (data: string) => listener(data),
     setForeground: (name: string) => {
       foreground = name
@@ -95,5 +108,49 @@ describe('a launched agent’s ready signal, after the shell that ran it', () =>
     await vi.advanceTimersByTimeAsync(30_000)
 
     expect(pane.settled).toHaveBeenCalledWith(null)
+  })
+
+  // Why: a quiet agent never signals again, so a fired signal must outlive a foreground read that
+  // could not answer yet. Dropping it left Claude idle until the 8 s fallback.
+  it('keeps a fired signal until the agent is seen in front, rather than dropping it', async () => {
+    vi.useFakeTimers()
+    let unanswered = 2
+    const pane = launchedPane({
+      readForeground: (name) => (name === 'zsh' ? 'shell' : unanswered-- > 0 ? 'unknown' : 'agent')
+    })
+
+    pane.emit(shellRunsLaunchLine())
+    pane.setForeground('2.1.285')
+    pane.emit(readFixture('claude-dialog-trust-workspace-answered'))
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS + 2 * 250 + 50)
+
+    expect(pane.settled).toHaveBeenCalledWith('pty-1')
+  })
+
+  it('settles a Claude that is in front the moment its signal fires, with one foreground read', async () => {
+    vi.useFakeTimers()
+    const pane = launchedPane()
+
+    pane.emit(shellRunsLaunchLine())
+    pane.setForeground('2.1.285')
+    pane.emit(readFixture('claude-dialog-trust-workspace-answered'))
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS)
+
+    expect(pane.settled).toHaveBeenCalledWith('pty-1')
+    // The shell handed over in the stream, so nothing was read before the signal.
+    expect(pane.reads).toEqual(['agent'])
+  })
+
+  it('asks who is in front when the shell never enables bracketed paste to hand over', async () => {
+    vi.useFakeTimers()
+    const pane = launchedPane()
+
+    pane.emit('$ claude\r\n')
+    pane.setForeground('2.1.285')
+    await vi.advanceTimersByTimeAsync(300)
+    pane.emit(readFixture('claude-dialog-trust-workspace-answered'))
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS)
+
+    expect(pane.settled).toHaveBeenCalledWith('pty-1')
   })
 })

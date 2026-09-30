@@ -81,17 +81,17 @@ describe('launch readiness for a freshly launched Claude', () => {
   })
 })
 
-describe('whether a launched Claude, not its shell, owns the terminal', () => {
+describe('who is in front of a launched agent’s terminal', () => {
   it.each([
-    ['claude', true],
+    ['claude', 'agent'],
     // macOS reports the native Claude by its version.
-    ['2.1.285', true],
-    ['node', true],
-    ['zsh', false],
-    ['-zsh', false],
-    ['bash', false],
-    [null, false]
-  ])('foreground %s: %s', async (foregroundProcess, owns) => {
+    ['2.1.285', 'agent'],
+    ['node', 'agent'],
+    ['zsh', 'shell'],
+    ['-zsh', 'shell'],
+    ['bash', 'shell'],
+    [null, 'unknown']
+  ])('foreground %s: %s', async (foregroundProcess, foreground) => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Claude Code',
       foregroundProcess,
@@ -99,19 +99,20 @@ describe('whether a launched Claude, not its shell, owns the terminal', () => {
       data: ''
     })
 
-    await expect(runtime.launchedAgentOwnsTerminal(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-      owns
-    )
+    await expect(
+      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+    ).resolves.toBe(foreground)
   })
 
   // Measured on a zsh pane with the daemon's foreground tracker: for its first 5 s the cached read
   // names the launch agent while zsh is in front, before the launch line runs and after an agent
   // that exited; a fresh process-table scan answers `zsh`, and names a script agent by its command.
   it.each([
-    ['before the launch line runs', 'copilot', 'zsh', false],
-    ['after the agent exited', 'copilot', 'zsh', false],
-    ['while a script agent runs', 'bash', 'copilot', true]
-  ])('%s: cached %s, scanned %s, owns %s', async (_moment, cached, scanned, owns) => {
+    ['before the launch line runs', 'copilot', 'zsh', 'shell'],
+    ['after the agent exited', 'copilot', 'zsh', 'shell'],
+    ['while a script agent runs', 'bash', 'copilot', 'agent'],
+    ['while the scan cannot answer', 'copilot', null, 'unknown']
+  ])('%s: cached %s, scanned %s, reads %s', async (_moment, cached, scanned, foreground) => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'copilot',
       foregroundProcess: cached,
@@ -121,7 +122,26 @@ describe('whether a launched Claude, not its shell, owns the terminal', () => {
     })
 
     await expect(
-      runtime.launchedAgentOwnsTerminal(TRANSCRIPT_PANE_PTY_ID, 'copilot')
-    ).resolves.toBe(owns)
+      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
+    ).resolves.toBe(foreground)
+  })
+
+  // Why no scan: the scan is the slow read, and a native Claude names itself by its version, which
+  // the cached read gives straight away.
+  it('takes a non-shell name other than the agent’s own at once, without a process scan', async () => {
+    const scan = vi.fn()
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'Claude Code',
+      foregroundProcess: '2.1.285',
+      confirmedForegroundProcess: 'zsh',
+      onForegroundScan: scan,
+      launchAgent: 'claude',
+      data: ''
+    })
+
+    await expect(
+      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+    ).resolves.toBe('agent')
+    expect(scan).not.toHaveBeenCalled()
   })
 })

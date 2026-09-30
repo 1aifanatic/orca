@@ -16,8 +16,8 @@ const BRACKETED_PASTE_QUIET_MS = 1500
 // Why: an interactive shell turns bracketed paste on at its prompt and off when it runs the typed
 // command (`zsh-prompt-runs-command.txt`), so a 2004 before the last `?2004l` is the shell's.
 const DECRST_BRACKETED_PASTE = '\x1b[?2004l'
-// Each check is a process-table scan; this pace keeps an 8 s wait to a few dozen of them.
-const AGENT_OWNERSHIP_POLL_MS = 250
+// A foreground read can cost a process-table scan; this pace keeps an 8 s wait to a few dozen.
+const AGENT_FOREGROUND_RETRY_MS = 250
 /** Output held until the agent owns the terminal; the ready signal reads only its recent tail. */
 const PRE_OWNERSHIP_OUTPUT_CHARS = 64 * 1024
 
@@ -94,6 +94,9 @@ export async function waitForWorktreeStartupFollowup(
   return null
 }
 
+/** Who is in the terminal's foreground: the launched agent, the shell, or it could not be read. */
+export type LaunchedAgentForeground = 'agent' | 'shell' | 'unknown'
+
 export type StartupDraftReadinessOptions = {
   timeoutMs?: number
   requireComposerMarker?: boolean
@@ -102,12 +105,13 @@ export type StartupDraftReadinessOptions = {
    *  scan continues, so the agent's next marker or quiet window asks again. */
   accept?: (ptyId: string) => boolean | Promise<boolean>
   /**
-   * Whether the launched agent, not the shell, owns the terminal. Until it does, output is held
-   * rather than scanned, and once it does only what followed the shell's hand-off counts: the
-   * shell's own prompt enables bracketed paste too, and read as the agent's it pasted into an
-   * agent still starting, or into the shell after the agent exited.
+   * Who owns the terminal. With it, output is held rather than scanned until the shell hands the
+   * terminal over (its `?2004l`), or failing that until the agent is seen in front, and only what
+   * followed the hand-off counts: the shell's own prompt enables bracketed paste too. A ready
+   * signal then settles only once the agent is seen in front; it is kept, not dropped, while that
+   * is not yet so, since an idle agent may never signal again.
    */
-  agentOwnsTerminal?: (ptyId: string) => Promise<boolean>
+  readAgentForeground?: (ptyId: string) => Promise<LaunchedAgentForeground>
 }
 
 /** The output after the shell last turned bracketed paste off to run a command. */
@@ -128,14 +132,17 @@ export function waitForWorktreeStartupDraft(
   }
   const signal =
     TUI_AGENT_CONFIG[agent].draftPasteReadySignal ?? 'render-quiet-after-bracketed-paste'
+  const readAgentForeground = options.readAgentForeground
   return new Promise((resolve) => {
     let settled = false
     const scanner = createDraftPasteReadyScanner(signal)
     let quietTimer: NodeJS.Timeout | null = null
     let hardTimer: NodeJS.Timeout | null = null
-    let ownershipTimer: NodeJS.Timeout | null = null
+    let foregroundTimer: NodeJS.Timeout | null = null
     let unsubscribe: (() => void) | null = null
-    let heldOutput: string | null = options.agentOwnsTerminal ? '' : null
+    let heldOutput: string | null = readAgentForeground ? '' : null
+    let checking = false
+    let checkAgain = false
     const onAbort = (): void => finish(null)
     const finish = (value: string | null): void => {
       if (settled) {
@@ -148,25 +155,62 @@ export function waitForWorktreeStartupDraft(
       if (hardTimer) {
         clearTimeout(hardTimer)
       }
-      if (ownershipTimer) {
-        clearTimeout(ownershipTimer)
+      if (foregroundTimer) {
+        clearTimeout(foregroundTimer)
       }
       unsubscribe?.()
       options.signal?.removeEventListener('abort', onAbort)
       resolve(value)
     }
-    const finishIfAccepted = (): void => {
-      if (!options.accept) {
-        return finish(ptyId)
+    const retryForeground = (check: () => void): void => {
+      if (foregroundTimer) {
+        clearTimeout(foregroundTimer)
       }
-      void Promise.resolve(options.accept(ptyId)).then(
-        (accepted) => {
-          if (accepted) {
-            finish(ptyId)
-          }
-        },
-        () => {}
-      )
+      foregroundTimer = setTimeout(check, AGENT_FOREGROUND_RETRY_MS)
+    }
+    /** Settles a fired signal once its screen is clear and the agent is in front. */
+    const settleSignal = async (): Promise<void> => {
+      if (checking) {
+        checkAgain = true
+        return
+      }
+      checking = true
+      try {
+        if (options.accept && !(await options.accept(ptyId))) {
+          return
+        }
+        const foreground = readAgentForeground ? await readAgentForeground(ptyId) : 'agent'
+        if (foreground === 'agent') {
+          finish(ptyId)
+        } else if (!settled) {
+          retryForeground(() => void settleSignal())
+        }
+      } catch {
+        if (!settled) {
+          retryForeground(() => void settleSignal())
+        }
+      } finally {
+        checking = false
+        if (checkAgain && !settled) {
+          checkAgain = false
+          void settleSignal()
+        }
+      }
+    }
+    const onSignal = (): void => {
+      void settleSignal()
+    }
+    const release = (): void => {
+      const held = heldOutput ?? ''
+      heldOutput = null
+      if (foregroundTimer) {
+        clearTimeout(foregroundTimer)
+        foregroundTimer = null
+      }
+      const fromAgent = outputSinceShellHandoff(held)
+      if (fromAgent) {
+        observe(fromAgent)
+      }
     }
     const observe = (data: string): void => {
       if (settled) {
@@ -174,17 +218,20 @@ export function waitForWorktreeStartupDraft(
       }
       if (heldOutput !== null) {
         heldOutput = (heldOutput + data).slice(-PRE_OWNERSHIP_OUTPUT_CHARS)
+        if (data.includes(DECRST_BRACKETED_PASTE)) {
+          release()
+        }
         return
       }
       const result = scanner.observe(data)
       if (result.ready) {
-        return finishIfAccepted()
+        return onSignal()
       }
       if (result.armQuietTimer && !options.requireComposerMarker) {
         if (quietTimer) {
           clearTimeout(quietTimer)
         }
-        quietTimer = setTimeout(finishIfAccepted, BRACKETED_PASTE_QUIET_MS)
+        quietTimer = setTimeout(onSignal, BRACKETED_PASTE_QUIET_MS)
       }
     }
     options.signal?.addEventListener('abort', onAbort)
@@ -197,28 +244,23 @@ export function waitForWorktreeStartupDraft(
     if (replay) {
       observe(replay)
     }
-    const agentOwnsTerminal = options.agentOwnsTerminal
-    if (agentOwnsTerminal) {
-      const checkOwnership = (): void => {
-        void agentOwnsTerminal(ptyId)
-          .catch(() => false)
-          .then((owns) => {
-            if (settled) {
+    // A shell that never enables bracketed paste never hands over in the stream; ask who is in front.
+    if (readAgentForeground && heldOutput !== null) {
+      const checkHandoff = (): void => {
+        void readAgentForeground(ptyId)
+          .catch((): LaunchedAgentForeground => 'unknown')
+          .then((foreground) => {
+            if (settled || heldOutput === null) {
               return
             }
-            if (!owns) {
-              ownershipTimer = setTimeout(checkOwnership, AGENT_OWNERSHIP_POLL_MS)
-              return
-            }
-            const held = heldOutput ?? ''
-            heldOutput = null
-            const fromAgent = outputSinceShellHandoff(held)
-            if (fromAgent) {
-              observe(fromAgent)
+            if (foreground === 'agent') {
+              release()
+            } else {
+              retryForeground(checkHandoff)
             }
           })
       }
-      checkOwnership()
+      retryForeground(checkHandoff)
     }
   })
 }
