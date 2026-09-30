@@ -215,7 +215,7 @@ export type RemoveWorktreeResult = {
   preservedBranch?: PreservedWorktreeBranch
   /** Present only when a FAILED archive hook was explicitly waived for this removal (#19334). */
   archiveHookOverride?: ArchiveHookOverride
-  /** Older terminal-service versions that did not answer, so their terminals here went unchecked. */
+  /** Terminal-service versions that did not answer, so their terminals here went unchecked. */
   uncheckedTerminalServices?: { protocolVersion: number }[]
 }
 

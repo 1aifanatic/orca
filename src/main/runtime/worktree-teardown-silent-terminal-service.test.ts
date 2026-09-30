@@ -49,7 +49,7 @@ function providerWithSilentVersion(current: string[], silent: string[]): IPtyPro
   } as unknown as IPtyProvider
 }
 
-describe('workspace delete while an older terminal service does not answer', () => {
+describe('workspace delete while a terminal-service version does not answer', () => {
   beforeEach(() => {
     listRegisteredPtysMock.mockReset().mockReturnValue([])
   })

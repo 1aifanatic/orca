@@ -86,7 +86,7 @@ describe('worktree.rm waivers travel on their own fields', () => {
     )
   })
 
-  it('words an unchecked older terminal service into the warning CLI and mobile already print', async () => {
+  it('words an unchecked terminal-service version into the warning the CLI prints', async () => {
     const runtime = makeRuntime()
     vi.mocked(runtime.removeManagedWorktree).mockResolvedValue({
       warning: 'orca.yaml archive hook skipped.',

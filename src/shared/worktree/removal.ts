@@ -181,7 +181,7 @@ export function toWorktreeRemovalTarget(
   return { id: worktree.id, executionHostId: worktree.hostId ?? null }
 }
 
-/** CLI/mobile wording for a delete that went ahead past an older terminal service that did not answer. */
+/** CLI wording for a delete that went ahead past a terminal-service version that did not answer. */
 export function describeUncheckedTerminalServices(
   services: readonly { protocolVersion: number }[]
 ): string {
