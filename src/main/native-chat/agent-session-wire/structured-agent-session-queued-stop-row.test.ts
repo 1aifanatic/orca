@@ -1,7 +1,7 @@
 // Stop writes one journal row before it interrupts, and the queue's pause is derived from it:
 // through the real host, the cards queued before a Stop wait, a card queued after it sends
-// normally but never ahead of them, a withdrawn card comes back under it, a crash keeps it, and
-// no stored pause is ever written.
+// normally but never ahead of them, a withdrawn card comes back under it, a crash keeps it, it
+// never hides a restart's pause, and no stored pause is ever written.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -19,7 +19,7 @@ import {
   QUEUED_RIG_CALLER,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
-import { structuredQueuePause } from './structured-agent-session-queued-pause'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
 
@@ -87,7 +87,7 @@ describe("Stop's row", () => {
     await rig.workingSend()
     let pausedAtInterrupt: unknown = 'not interrupted'
     rig.cancelTurn.mockImplementationOnce(async () => {
-      pausedAtInterrupt = structuredQueuePause(journal())?.reason ?? null
+      pausedAtInterrupt = structuredQueuePauses(journal())[0]?.reason ?? null
       return { cancelled: true }
     })
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
@@ -185,6 +185,34 @@ describe("Stop's row", () => {
   })
 })
 
+describe("a Stop never hides a restart's pause", () => {
+  it('a card queued after a Stop over an empty queue, before a restart, waits restarted', async () => {
+    const working = await rig.workingSend()
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    const mail = await mailTurn()
+    const typed = await queuedDraft('typed during the mail turn')
+    await rig.restartHostProcess()
+    await rig.settleAccepted(mail, 'mail')
+    await expectHeld('restarted', typed)
+  })
+
+  it("a card queued during the queue's own send after a Stop, before a restart, waits restarted", async () => {
+    const working = await rig.workingSend()
+    await rig.stop()
+    const correction = await queuedDraft('typed while the interrupt lands')
+    await rig.settleAccepted(working, 'stopped')
+    // The queue's own send is not a person's turn: the Stop stays in force, holding nothing.
+    await eventually(async () =>
+      expect((await rig.handoff(correction))?.handedOverAt).toBeDefined()
+    )
+    const typed = await queuedDraft('typed during that send')
+    await rig.restartHostProcess()
+    await rig.settleAccepted(await rig.handoffId(correction), 'correction')
+    await expectHeld('restarted', typed)
+  })
+})
+
 describe("a /clear's carried cards", () => {
   function clear() {
     const fields = { command: 'clear' as const }
@@ -234,7 +262,7 @@ describe("a /clear's carried cards", () => {
       providerIdentity: { provider: 'codex', threadId: 'thread-1', turnId: 'turn-hi', ordinal: 0 }
     })
     expect(journal(replacementId).queuedMessages.list()[0]?.messageId).toBe(carried)
-    expect(structuredQueuePause(journal(replacementId))).toBeNull()
+    expect(structuredQueuePauses(journal(replacementId))).toEqual([])
   })
 })
 

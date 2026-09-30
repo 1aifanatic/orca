@@ -23,9 +23,9 @@ export function rotateStructuredAgentSessionHostInstanceForTests(): string {
 
 type PauseJournal = Pick<AgentSessionJournal, 'queuedMessages'>
 
-/** The queue's pause, derived; null when the queue sends on its own. */
-export function structuredQueuePause(journal: PauseJournal): DerivedQueuePause | null {
-  return journal.queuedMessages.pause(hostInstance)
+/** The queue's pauses in force, derived; none when the queue sends on its own. */
+export function structuredQueuePauses(journal: PauseJournal): DerivedQueuePause[] {
+  return journal.queuedMessages.pauses(hostInstance)
 }
 
 /**
@@ -59,7 +59,7 @@ export async function resumeStructuredQueue(
   journal: Pick<AgentSessionJournal, 'queuedMessages' | 'appendQueuePauseMark'>,
   fence: number
 ): Promise<boolean> {
-  if (structuredQueuePause(journal) === null) {
+  if (structuredQueuePauses(journal).length === 0) {
     return false
   }
   await journal.appendQueuePauseMark('resumed', fence)

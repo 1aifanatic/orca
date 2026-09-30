@@ -20,7 +20,12 @@ import { QueuedMessageNotConsumableError } from './journal-queued-messages'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { parseJournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
-import { queuePauseHolds } from './queued-message-pause'
+import {
+  deriveQueuePauses,
+  nextSendableQueuedCard,
+  queuePauseHolding,
+  resumableQueuePause
+} from './queued-message-pause'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
@@ -90,16 +95,16 @@ function acceptTurn(journal: AgentSessionJournal, id: string) {
 }
 
 function reason(journal: AgentSessionJournal): string | null {
-  return journal.queuedMessages.pause(HOST)?.reason ?? null
+  return journal.queuedMessages.pauses(HOST)[0]?.reason ?? null
 }
 
-/** Each card, and whether the queue's pause holds it. */
+/** Each card, and whether a pause in force holds it. */
 function held(journal: AgentSessionJournal): [string, boolean][] {
-  const pause = journal.queuedMessages.pause(HOST)
+  const pauses = journal.queuedMessages.pauses(HOST)
   return journal.queuedMessages
     .list()
     .filter((card) => card.state === 'waiting')
-    .map((card) => [card.messageId, pause !== null && queuePauseHolds(pause, card)])
+    .map((card) => [card.messageId, queuePauseHolding(pauses, card) !== undefined])
 }
 
 /** Tables that could store a pause: none, the journal rows are the only record. */
@@ -375,5 +380,69 @@ describe("a restart's pause", () => {
     const revision = journal.queuedMessages.revision()
     expect(await journal.queuedMessages.adopt(HOST)).toBe(false)
     expect(journal.queuedMessages.revision()).toBe(revision)
+  })
+})
+
+describe('several pauses in force', () => {
+  type Card = Parameters<typeof queuePauseHolding>[1] & { messageId: string }
+  const DEAD = 'proc-0'
+
+  function card(messageId: string, queuedAfter: number, fields: Partial<Card> = {}): Card {
+    const queuedAt = { epoch: 'epoch-1', sequence: queuedAfter + 1 }
+    const base = { state: 'waiting', holdReason: null, hostInstance: HOST, carriedFrom: null }
+    return { messageId, ...base, queuedAt, ...fields }
+  }
+
+  /** A Stop at sequence 5 unless `stopped` is 0; no person's turn or Resume since. */
+  function pausesOver(cards: readonly Card[], stopped = 5) {
+    return deriveQueuePauses({
+      epoch: 'epoch-1',
+      marks: { stoppedSequence: stopped, resumedSequence: 0 },
+      latestPersonTurnSequence: 0,
+      cards,
+      hostInstance: HOST,
+      restartEnded: false
+    })
+  }
+
+  function holding(cards: readonly Card[], stopped?: number): [string, string | null][] {
+    const pauses = pausesOver(cards, stopped)
+    return cards.map((each) => [each.messageId, queuePauseHolding(pauses, each)?.reason ?? null])
+  }
+
+  it("a Stop that holds nothing never hides a restart's: a dead process's card queued after it waits", () => {
+    const after = card('after', 5, { hostInstance: DEAD })
+    expect(pausesOver([after]).map((pause) => pause.reason)).toEqual(['stopped', 'restarted'])
+    expect(holding([after])).toEqual([['after', 'restarted']])
+    expect(nextSendableQueuedCard(pausesOver([after]), [after])).toBeNull()
+    expect(resumableQueuePause(pausesOver([after]), [after])?.reason).toBe('restarted')
+    // Written by this process, nothing holds it: a card queued after a Stop sends normally.
+    const live = card('after', 5)
+    expect(nextSendableQueuedCard(pausesOver([live]), [live])).toBe(live)
+  })
+
+  it("a card names the first pause holding it, and the header names the first held card's", () => {
+    const cards = [
+      card('before', 3, { hostInstance: DEAD }),
+      card('after', 5, { hostInstance: DEAD })
+    ]
+    expect(holding(cards)).toEqual([
+      ['before', 'stopped'],
+      ['after', 'restarted']
+    ])
+    expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
+  })
+
+  it("a /clear's pause that holds nothing never hides a restart's", () => {
+    const cards = [
+      card('carried', 1, { carriedFrom: 'source-session', holdReason: 'send_failed' }),
+      card('typed', 2, { hostInstance: DEAD })
+    ]
+    expect(pausesOver(cards, 0).map((pause) => pause.reason)).toEqual(['cleared', 'restarted'])
+    expect(holding(cards, 0)).toEqual([
+      ['carried', null],
+      ['typed', 'restarted']
+    ])
+    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)).toBeNull()
   })
 })

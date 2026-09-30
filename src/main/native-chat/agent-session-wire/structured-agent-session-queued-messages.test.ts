@@ -16,7 +16,7 @@ import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   rotateStructuredAgentSessionHostInstanceForTests,
-  structuredQueuePause
+  structuredQueuePauses
 } from './structured-agent-session-queued-pause'
 import {
   createQueuedMessageTestRig,
@@ -681,7 +681,7 @@ describe('/clear', () => {
     }
     expect(await drafts(replacementId)).toHaveLength(0)
     const journal = host.collaboratorsForTests().sessions.get(replacementId)?.journal
-    expect(journal && structuredQueuePause(journal)).toBeNull()
+    expect(journal && structuredQueuePauses(journal)).toEqual([])
   })
 
   it('a returned card carries over as a plain waiting draft on the paused replacement', async () => {

@@ -28,7 +28,7 @@ import type { QueuedMessageRow } from '../agent-session-journal/queued-message-t
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
   structuredAgentSessionHostInstance,
-  structuredQueuePause
+  structuredQueuePauses
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 
@@ -69,7 +69,7 @@ function oldestActionableQueuedMessage(
   if (!rows.some((row) => row.state === 'waiting')) {
     return null
   }
-  return nextSendableQueuedCard(structuredQueuePause(journal), rows)
+  return nextSendableQueuedCard(structuredQueuePauses(journal), rows)
 }
 
 /**

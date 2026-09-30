@@ -1,5 +1,5 @@
-// The queue's pause: a pure function of the journal fold and the cards, never a stored flag, so
-// nothing has to retire it. Which cards it holds is `queuePauseHolds`. Paused when:
+// The queue's pauses: a pure function of the journal fold and the cards, never a stored flag, so
+// nothing has to retire them. Each holds its own cards (`queuePauseHolding`). In force when:
 //   - 'stopped': the latest Stop row has no later Resume row, and no turn a person asked for was
 //     sent after it and accepted. A later Stop is simply the latest.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
@@ -57,7 +57,8 @@ export function journalQueueStopHolds(
   return marks.stoppedSequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
 }
 
-export function deriveQueuePause(input: {
+/** Every pause in force, in the order a card held by several names its reason. */
+export function deriveQueuePauses(input: {
   /** The journal's epoch: sequences compare only within one. */
   epoch: string
   marks: JournalQueuePauseMarks
@@ -66,21 +67,22 @@ export function deriveQueuePause(input: {
   hostInstance: string
   /** A person's turn started since this conversation opened. */
   restartEnded: boolean
-}): DerivedQueuePause | null {
+}): DerivedQueuePause[] {
   const { epoch, marks, latestPersonTurnSequence } = input
+  const pauses: DerivedQueuePause[] = []
   if (journalQueueStopHolds(marks, latestPersonTurnSequence)) {
-    return { reason: 'stopped', since: { epoch, sequence: marks.stoppedSequence } }
+    pauses.push({ reason: 'stopped', since: { epoch, sequence: marks.stoppedSequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
   const carried = waiting.filter((card) => card.carriedFrom !== null)
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
-    return { reason: 'cleared', since: null }
+    pauses.push({ reason: 'cleared', since: null })
   }
   if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
     // The process that wrote a card is gone: every card waits, whenever it was written.
-    return { reason: 'restarted', since: null }
+    pauses.push({ reason: 'restarted', since: null })
   }
-  return null
+  return pauses
 }
 
 /** Queued before the pause began: for /clear, a card it carried; for a restart, every card. For a
@@ -104,24 +106,28 @@ function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
 // drain stops at the first one. true instead holds every waiting card, whenever it was queued.
 const PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT = false
 
-/** THE rule for which cards a pause holds: the drain, its consume, and publication all read it. */
-export function queuePauseHolds(pause: DerivedQueuePause, card: QueueCard): boolean {
-  return (
-    card.state === 'waiting' &&
-    card.holdReason === null &&
-    (PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
-  )
+/** THE rule for which cards are held: by ANY pause in force, named by the first that holds it, so
+ *  a Stop's that holds nothing never hides a restart's. The drain, its consume, and publication
+ *  all read it. */
+export function queuePauseHolding(
+  pauses: readonly DerivedQueuePause[],
+  card: QueueCard
+): DerivedQueuePause | undefined {
+  if (card.state !== 'waiting' || card.holdReason !== null) {
+    return undefined
+  }
+  return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
 }
 
 /** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
- *  returned card or one the pause holds comes first. The queue never reorders, so a newer card
- *  never overtakes a held one. The drain's pick and its consume both read this. */
+ *  returned card or a held one comes first. The queue never reorders, so a newer card never
+ *  overtakes a held one. The drain's pick and its consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
-  pause: DerivedQueuePause | null,
+  pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
   for (const card of cards) {
-    if (card.state === 'returned' || (pause && queuePauseHolds(pause, card))) {
+    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
       return null
     }
     if (card.state === 'waiting' && card.holdReason === null) {
@@ -131,20 +137,21 @@ export function nextSendableQueuedCard<T extends QueueCard>(
   return null
 }
 
-/** Whether Resume would send anything: a card the pause holds, not behind a returned card, which
- *  blocks everything after it until the user acts. Only then is the pause PUBLISHED, so its
- *  header never offers a Resume that sends nothing. */
-export function queuePauseHoldsResumableCard(
-  pause: DerivedQueuePause,
+/** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
+ *  card, which blocks everything after it until the user acts. None otherwise, so its header
+ *  never offers a Resume that sends nothing. */
+export function resumableQueuePause(
+  pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]
-): boolean {
+): DerivedQueuePause | null {
   for (const card of cards) {
     if (card.state === 'returned') {
-      return false
+      return null
     }
-    if (queuePauseHolds(pause, card)) {
-      return true
+    const holding = queuePauseHolding(pauses, card)
+    if (holding) {
+      return holding
     }
   }
-  return false
+  return null
 }

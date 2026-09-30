@@ -17,7 +17,7 @@ import type { JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
-  deriveQueuePause,
+  deriveQueuePauses,
   nextSendableQueuedCard,
   type DerivedQueuePause
 } from './queued-message-pause'
@@ -139,17 +139,17 @@ export class JournalQueuedMessages {
     ).then(() => undefined)
   }
 
-  /** The queue's pause, derived from the fold and the cards (`queued-message-pause.ts`). */
-  pause(hostInstance: string): DerivedQueuePause | null {
-    return this.derivePause(this.list(), hostInstance)
+  /** The queue's pauses in force, derived from the fold and the cards (`queued-message-pause.ts`). */
+  pauses(hostInstance: string): DerivedQueuePause[] {
+    return this.derivePauses(this.list(), hostInstance)
   }
 
-  private derivePause(
+  private derivePauses(
     cards: readonly QueuedMessageRow[],
     hostInstance: string
-  ): DerivedQueuePause | null {
+  ): DerivedQueuePause[] {
     const state = this.deps.state()
-    return deriveQueuePause({
+    return deriveQueuePauses({
       epoch: state.epoch,
       marks: state.queuePauseMarks,
       latestPersonTurnSequence: state.latestPersonTurnSequence,
@@ -240,8 +240,8 @@ export class JournalQueuedMessages {
       // Judged here, on the same queue as every journal append, by the drain's own rule, so a
       // Stop row that landed after the drain chose this card still holds it.
       const cards = listQueuedMessages(db, this.deps.sessionId)
-      const pause = this.derivePause(cards, input.yieldsToPause.hostInstance)
-      if (nextSendableQueuedCard(pause, cards)?.messageId !== input.messageId) {
+      const pauses = this.derivePauses(cards, input.yieldsToPause.hostInstance)
+      if (nextSendableQueuedCard(pauses, cards)?.messageId !== input.messageId) {
         throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
       }
     }

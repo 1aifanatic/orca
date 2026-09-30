@@ -19,7 +19,7 @@ import { sameQueuePause } from './structured-agent-session-queued-publication'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   structuredAgentSessionHostInstance,
-  structuredQueuePause
+  structuredQueuePauses
 } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
@@ -189,18 +189,18 @@ describe('the pause read', () => {
     }
     const scan = vi.spyOn(journal, 'submissions')
     // Read on every publish, per subscriber: it must not walk the submissions.
-    expect(structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
+    expect(structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
     expect(scan).not.toHaveBeenCalled()
     scan.mockRestore()
     const mail = rig.send('coordinator mail', undefined, { internal: true })
     await mail.result
     await rig.settleAccepted(mail.id, 'mail')
     // Orca's own turn lifts nothing; a person's does.
-    expect(structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
+    expect(structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
     const next = rig.send('user starts a new turn')
     await next.result
     await rig.settleAccepted(next.id, 'next')
-    expect(structuredQueuePause(journal)).toBeNull()
+    expect(structuredQueuePauses(journal)).toEqual([])
     await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 })
@@ -233,7 +233,7 @@ describe('a card queued after a Stop is a new instruction', () => {
     await rig.settleAccepted(mail.id, 'mail')
     await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    expect(journal && structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
+    expect(journal && structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
   })
 
   it("deleting the last paused card hides the pause; a person's next turn is what ends it", async () => {
@@ -268,7 +268,7 @@ describe('a pause only over cards Resume could send', () => {
     await rig.settleAccepted(next, 'stopped')
     expect(await rig.queuePause()).toBeNull()
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    expect(journal && structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
+    expect(journal && structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
   })
 
   it('a returned card blocking the paused cards hides the pause but keeps it; deleting that card shows it again, and only Resume sends', async () => {
@@ -293,7 +293,7 @@ describe('a pause only over cards Resume could send', () => {
     }
     // Resume would send nothing past the returned card, so no header offers it; the pause stays.
     expect(await rig.queuePause()).toBeNull()
-    expect(structuredQueuePause(journal)).toMatchObject({ reason: 'stopped' })
+    expect(structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
     // Deleting the blocking card shows the pause again: the card behind it does not send unasked.
     expect(await rig.deleteQueued(refusedId)).toMatchObject({ ok: true, value: { deleted: true } })
     await expectPaused(behindId)
@@ -385,7 +385,7 @@ describe('a card handed off after a restart', () => {
       'resumed',
       structuredAgentSessionConversationFence(rig.store, HOST_TEST_SESSION)
     )
-    expect(structuredQueuePause(journal)).toBeNull()
+    expect(structuredQueuePauses(journal)).toEqual([])
   })
 })
 
