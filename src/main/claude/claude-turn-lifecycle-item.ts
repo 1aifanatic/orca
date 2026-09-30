@@ -8,6 +8,7 @@ import { agentJournalTurnBody } from '../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionAppendOptions } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { claudeResultOutcome } from './claude-result-outcome'
+import type { ClaudeCommandTurn } from './claude-command-turn'
 
 export type ClaudeCurrentTurn = {
   sessionId: string
@@ -19,6 +20,13 @@ export type ClaudeCurrentTurn = {
   /** Provider key of the user echo, or the lifecycle row itself when provider
    *  output opened a turn with no user row to receive its timing. */
   userItemId: string
+  /** Present when the turn is the host's record of a conversation command. */
+  command?: ClaudeCommandTurn
+}
+
+/** The row a turn's lifecycle lives on: the host's record for a command, else the lane's own. */
+export function claudeCurrentTurnIdentity(turn: ClaudeCurrentTurn): AgentJournalItemIdentity {
+  return turn.command?.identity ?? claudeTurnLifecycleIdentity(turn.sessionId, turn.turnId)
 }
 
 export type ClaudeTurnEnd = {
@@ -86,7 +94,7 @@ export function claudeTurnLifecycleItem(
   // already carried, because both are built from the same open turn.
   const requested = requestedAt === undefined ? {} : { requestedAt }
   return {
-    identity: claudeTurnLifecycleIdentity(sessionId, turnId),
+    identity: claudeCurrentTurnIdentity(turn),
     body: agentJournalTurnBody(
       end
         ? {

@@ -4,11 +4,16 @@
 // hands its close, and the host's fallback settles any turn no adapter did, through one mapping.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalTurnLifecycle } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalTurnLifecycle
+} from '../../../shared/agent-session-journal-types'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
+import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
 import {
@@ -66,17 +71,22 @@ beforeEach(() => {
                 1_500
               )
             : providerEnd
-        events?.appendItem(CUT_TURN, {
-          kind: 'turn',
-          turnId: 'cut-turn',
-          startedAt: 1_000,
-          requestedAt: 1_000,
-          ...end
-        })
+        events?.appendItem(
+          CUT_TURN,
+          {
+            kind: 'turn',
+            turnId: 'cut-turn',
+            startedAt: 1_000,
+            requestedAt: 1_000,
+            ...end
+          },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
         return true
       }
     },
-    journalRoot: state.root,
+    journalDatabase: openTestJournalHostDatabase(state.root),
+    recoveryCapsule: new AgentSessionRecoveryCapsule(state.root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
     now: () => HOST_TEST_NOW
@@ -93,15 +103,20 @@ async function runningTurn(): Promise<AgentSessionStatusEvent[]> {
   }
   events.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'cut-turn', ordinal: 0 },
-    { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'long job' }] }
+    { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'long job' }] },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
-  events.appendItem(CUT_TURN, {
-    kind: 'turn',
-    turnId: 'cut-turn',
-    state: 'running',
-    startedAt: 1_000,
-    requestedAt: 1_000
-  })
+  events.appendItem(
+    CUT_TURN,
+    {
+      kind: 'turn',
+      turnId: 'cut-turn',
+      state: 'running',
+      startedAt: 1_000,
+      requestedAt: 1_000
+    },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
   await host.flushStreamedEvents(SESSION)
   const statuses: AgentSessionStatusEvent[] = []
   host.subscribeStatus({ id: 'list', emit: (event) => statuses.push(event) })
@@ -178,14 +193,18 @@ describe('a turn cut short by closing its provider', () => {
     await attach()
     const events = hostTestState().acquire.mock.calls[0]?.[0].events
     // An earlier death the user already saw as Interrupted, then closed.
-    events?.appendItem(CUT_TURN, {
-      kind: 'turn',
-      turnId: 'cut-turn',
-      state: 'interrupted',
-      startedAt: 1_000,
-      requestedAt: 1_000,
-      completedAt: 1_200
-    })
+    events?.appendItem(
+      CUT_TURN,
+      {
+        kind: 'turn',
+        turnId: 'cut-turn',
+        state: 'interrupted',
+        startedAt: 1_000,
+        requestedAt: 1_000,
+        completedAt: 1_200
+      },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
     await host.flushStreamedEvents(SESSION)
 
     await host.close(SESSION, 'user-close')

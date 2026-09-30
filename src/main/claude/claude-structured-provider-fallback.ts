@@ -1,3 +1,4 @@
+import type { AgentJournalTurnScope } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import {
   boundInlineText,
@@ -16,7 +17,7 @@ import {
 } from './claude-structured-item-translation'
 import { claudeResultOutcome } from './claude-result-outcome'
 import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { rootClaudeRowStamp, type ClaudeRowStamp } from './claude-provisional-row-corrections'
+import type { ClaudeRowStamp } from './claude-provisional-row-corrections'
 import {
   CLAUDE_API_RETRY_FRAME_KIND,
   claudeApiRetryRowBody,
@@ -111,7 +112,9 @@ export function isModeledClaudeContent(value: unknown): boolean {
 
 export function createClaudeProviderFrameFallback(
   sink: StructuredAgentSessionEventSink,
-  acquisitionId: string
+  acquisitionId: string,
+  /** The frame's turn — the open one once `beforeAppend` ran — or the conversation. */
+  turnScope: () => AgentJournalTurnScope
 ): {
   /** `displayText` leads the row when Claude knows the sentence the frame itself does not name. */
   append: (
@@ -141,7 +144,7 @@ export function createClaudeProviderFrameFallback(
           clientMessageId: `provider-retry:claude:${acquisitionId}:${retryRun(retrying)}`
         } as const
         const body = claudeApiRetryRowBody(retrying)
-        sink.appendItem(identity, body, (stamp ?? rootClaudeRowStamp)(identity, body))
+        sink.appendItem(identity, body, stamp?.(identity, body) ?? { turnScope: turnScope() })
         sink.publish()
         return true
       }
@@ -164,7 +167,7 @@ export function createClaudeProviderFrameFallback(
         clientMessageId: `provider-frame:claude:${acquisitionId}:${sequence}`
       } as const
       const body = bounded ? { ...translated.body, text: bounded } : translated.body
-      sink.appendItem(identity, body, (stamp ?? rootClaudeRowStamp)(identity, body))
+      sink.appendItem(identity, body, stamp?.(identity, body) ?? { turnScope: turnScope() })
       sink.publish()
       return true
     }

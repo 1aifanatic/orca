@@ -7,6 +7,7 @@ import type { ClaudeChildToolQueries } from './claude-child-tool-queries'
 import type { ClaudeContextReportPart, ClaudeContextReportTarget } from './claude-context-facts'
 import type { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
 import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+import type { ClaudeCommandStart } from './claude-command-turn'
 
 export type ClaudeJournalTranslator = {
   handle: (event: ClaudeStructuredSessionEvent) => void
@@ -19,6 +20,18 @@ export type ClaudeJournalTranslator = {
   recordTurnStop: (turnId: string, cause: StructuredAgentSessionStopCause) => boolean
   /** The provider refused the stop. */
   withdrawTurnStop: (turnId: string) => void
+  /** The open turn's id while it is a conversation command's. */
+  readonly commandTurnId: string | null
+  /** Makes the host's command turn the open one until the command's result ends it. */
+  beginCommand: (start: ClaudeCommandStart) => void
+  /** The command was never sent. */
+  forgetCommand: (turnId: string) => void
+  /** Orca asked Claude to stop the command `turnId` names. */
+  commandInterruptRequested: (turnId: string) => void
+  /** True while a turn is open and the provider's current request cycle has
+   *  done root work since its init — the state in which the CLI folds an
+   *  arriving send into the turn. */
+  readonly openTurnInLiveProviderCycle: boolean
   flush: () => void
   childToolOwner?: ClaudeChildToolQueries['childToolOwner']
   childActivity?: ClaudeChildToolQueries['childActivity']

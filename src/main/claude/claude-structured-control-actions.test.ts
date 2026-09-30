@@ -243,6 +243,7 @@ describe('answerClaudePrompt', () => {
     const resolvePrompt = vi.fn()
     session.translator = {
       handle: vi.fn(),
+      openTurnInLiveProviderCycle: false,
       journalPrompts: {
         cancel: vi.fn(() => ({ accepted: true as const })),
         resolve: resolvePrompt
@@ -250,6 +251,10 @@ describe('answerClaudePrompt', () => {
       currentTurnId: null,
       recordTurnStop: () => true,
       withdrawTurnStop: () => {},
+      commandTurnId: null,
+      beginCommand: vi.fn(),
+      forgetCommand: vi.fn(),
+      commandInterruptRequested: vi.fn(),
       flush: vi.fn(),
       contextActivity: 0,
       markContextActivity: vi.fn(),

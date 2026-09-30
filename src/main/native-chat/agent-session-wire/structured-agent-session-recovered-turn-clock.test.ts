@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 // A turn that was running when its host went away ends when recovery settles it. That settlement is
 // the edge the user needs to see — their work stopped — so the session reads as newly done then,
 // with what the host observed of the end as its verdict, and nothing along the way may call it a
@@ -17,7 +18,7 @@ import {
   agentVerdictDisplayMark
 } from '../../../shared/agent-main-agent-verdict'
 import { AgentHookServer, _internals } from '../../agent-hooks/server'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   settleStaleStructuredAgentSessionState,
@@ -59,17 +60,17 @@ async function sessionWithRunningTurn() {
       providerHandle: { kind: 'codex', threadId: THREAD }
     },
     now: () => clock,
-    journalDir: join(root, SESSION)
+    stateDirectory: join(root, SESSION)
   })
   await journal.appendItem(
     { provider: 'orca', clientMessageId: 'prompt-1' },
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'long job' }] },
-    { fence: 1 }
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   await journal.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 9 },
     { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: TURN_STARTED },
-    { fence: 1 }
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   const server = new AgentHookServer()
   const sessions = new Map([[SESSION, indexedStatusFeedSession({ journal })]])
@@ -221,7 +222,7 @@ describe('a turn recovery settled after its host went away', () => {
         startedAt: TURN_STARTED,
         completedAt: EXIT_OBSERVED
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     session.publish()
 

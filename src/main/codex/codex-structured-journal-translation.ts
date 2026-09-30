@@ -39,8 +39,17 @@ export {
 export function createCodexJournalTranslator(
   deps: CodexJournalTranslatorDeps
 ): CodexJournalTranslator {
-  const { activeTurns, subagents, linkageFor, genericFrames, items, compactions, goals, prompts } =
-    createCodexJournalTranslatorWriters(deps)
+  const {
+    activeTurns,
+    commands,
+    subagents,
+    attributionFor,
+    genericFrames,
+    items,
+    compactions,
+    goals,
+    prompts
+  } = createCodexJournalTranslatorWriters(deps)
   const flushStreams = (): CodexJournalTranslationAdmission =>
     items.streams.flush() ? CODEX_JOURNAL_ADMITTED : { accepted: false, reason: 'backpressure' }
   let readActivity = createCodexProviderActivityReader()
@@ -59,7 +68,8 @@ export function createCodexJournalTranslator(
     ...(deps.clearPromptTurn ? { clearPromptTurn: deps.clearPromptTurn } : {}),
     flushSuppression: () => genericFrames.flush(),
     resetActivity,
-    linkageFor,
+    attributionFor,
+    commands,
     ...(deps.now ? { now: deps.now } : {})
   })
   let primaryThreadStoppedRunning = false
@@ -154,15 +164,17 @@ export function createCodexJournalTranslator(
           // The host saw the child go, not what Codex made of the turn: the verdict is only what
           // the host's own cause says, a user's stop of this chat or else news.
           settledTurnLifecycle: (threadId, turnId) =>
-            turnBoundaries.settled(
-              threadId,
-              turnId,
-              turnVerdictForChildEnd(
-                childEndCauseOfEndedEvent(event),
-                event.observedAt ?? deps.now?.() ?? Date.now()
-              )
-            ),
-          linkageFor
+            turnBoundaries.ownsRecord(threadId, turnId)
+              ? turnBoundaries.settled(
+                  threadId,
+                  turnId,
+                  turnVerdictForChildEnd(
+                    childEndCauseOfEndedEvent(event),
+                    event.observedAt ?? deps.now?.() ?? Date.now()
+                  )
+                )
+              : null,
+          attributionFor
         })
         if (!admission.accepted) {
           return admission
@@ -261,8 +273,14 @@ export function createCodexJournalTranslator(
         event.params,
         event.threadId
       )
+      if (unhandled.accepted && event.method === 'error') {
+        commands.errorShown(event.params)
+      }
       return publishActivity(event, unhandled)
     },
+    beginCommand: (command) => commands.begin(command),
+    forgetCommand: (turnId) => commands.forget(turnId),
+    commandProviderTurnId: (turnId) => commands.providerTurnId(turnId),
     cancelPrompt: (journalItemId) => prompts.cancel(journalItemId),
     resolvePrompt: (journalItemId) => prompts.resolve(journalItemId),
     flush: () => {

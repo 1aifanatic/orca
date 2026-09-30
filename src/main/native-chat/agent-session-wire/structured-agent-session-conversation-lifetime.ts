@@ -43,6 +43,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   const { sessions, serialize } = host
   const deps = () => host.context().deps
   const readRefusals = createJournalOpenReadRefusals()
+  // The owed copy fails as an open does: the reader gets the classified refusal, never its text.
+  const whenImported = (sessionId: string, session: StructuredAgentSessionHostSession) =>
+    session.journal.whenImported().catch((error: unknown) => {
+      throw readRefusals.refusal(sessionId, error)
+    })
   const stopAgent = (sessionId: string, cause: StructuredAgentSessionStopCause) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
 
@@ -100,6 +105,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
       const open = sessions.get(sessionId)
       if (open) {
+        // Restore left its per-chat file uncopied; a reader gets the chat from the one database.
+        // Awaited only then: an open conversation otherwise answers in the same turn.
+        if (open.journal.importPending) {
+          await whenImported(sessionId, open)
+        }
         readRefusals.forget(sessionId)
         return open
       }
@@ -126,6 +136,10 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           throw agentSessionRefusalError('agent_session_identity_required', {
             reason: 'recordMissing'
           })
+        }
+        // Restore may have opened it while this waited.
+        if (session.journal.importPending) {
+          await whenImported(sessionId, session)
         }
         readRefusals.forget(sessionId)
         return session

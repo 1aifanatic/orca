@@ -1,10 +1,8 @@
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudePromptClaim } from './claude-structured-prompt-replies'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
-import {
-  settleCancelledClaudeDispatchWaiters,
-  type ClaudeLateDispatchSettlement
-} from './claude-structured-dispatch'
+import { settleCancelledClaudeDispatchWaiters } from './claude-structured-dispatch'
+import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 

@@ -7,6 +7,7 @@
 // single place that answers "does this message take a slot?", and it answers it
 // with the same derivation the row itself renders from.
 
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import {
   isBackgroundTaskBlock,
   isSubagentGroupBlock,
@@ -16,6 +17,8 @@ import {
 import { agentJournalItemSubagentId } from '../../../../shared/agent-session-journal-producer'
 import { nativeChatSubagentLabel } from '../../../../shared/native-chat-subagent-attribution'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../../shared/native-chat-turn-membership'
+import { nativeChatTurnBarRows } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
@@ -44,6 +47,9 @@ export type NativeChatTranscriptSlot = {
   receipt: NativeChatResolvedPrompt | undefined
   /** Turn timing shown under this row, already filtered to "should render". */
   status: NativeChatTurnStatus | undefined
+  /** The bar renders above the row: this turn has no user bubble of its own
+   *  (provider-opened), so its bar sits at the turn's position instead. */
+  statusAbove?: boolean
   /** This row is behind its turn's folded status row: it draws no prose and no
    *  tool activity, only work that outlives the turn. */
   folded: boolean
@@ -60,15 +66,15 @@ export type NativeChatTranscriptSlot = {
 export type NativeChatTranscriptSlotsInput = {
   messages: readonly NativeChatMessage[]
   turnKeys: readonly (string | undefined)[]
-  latestUserIndex: number
-  currentTurnKey: string | undefined
+  /** The live turn (`nativeChatTurnMembership`): its bar carries the running clock and its rows
+   *  stay live. Undefined when no row has opened one. */
+  liveTurnKey: string | undefined
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
   turnStatuses: {
     active: NativeChatTurnStatus | null
     completedByTurn: Readonly<Record<string, NativeChatTurnStatus>>
   }
   turnDiffs: ReadonlyMap<string, NativeChatTurnDiff>
-  showTurnStatus: boolean
   /** Turns the reader opened. Everything else with a duration stays folded. */
   expandedTurnKeys: ReadonlySet<string>
   isWorking: boolean
@@ -84,12 +90,10 @@ export function buildNativeChatTranscriptSlots(
   const {
     messages,
     turnKeys,
-    latestUserIndex,
-    currentTurnKey,
+    liveTurnKey,
     receipts,
     turnStatuses,
     turnDiffs,
-    showTurnStatus,
     expandedTurnKeys,
     isWorking,
     lifecycleWorking,
@@ -108,6 +112,12 @@ export function buildNativeChatTranscriptSlots(
       // and its plain-text twin is then the only record the spawn happened.
       outlivesTurn: message.blocks.some(
         (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
+      ),
+      reportsFailure: message.blocks.some(
+        (block) => block.type === 'text' && block.tone === 'error'
+      ),
+      reportsCompaction: message.blocks.some(
+        (block) => block.type === 'text' && block.presentation === 'compaction'
       ),
       ...(agentId === null ? {} : { agentId })
     }
@@ -135,30 +145,40 @@ export function buildNativeChatTranscriptSlots(
     }
   }
   const settledTurnKeys = new Set(
-    showTurnStatus
-      ? Object.entries(turnStatuses.completedByTurn)
-          .filter(([, status]) => status.workedSeconds != null)
-          .map(([turnKey]) => turnKey)
-      : []
+    Object.entries(turnStatuses.completedByTurn)
+      .filter(([, status]) => status.workedSeconds != null)
+      .map(([turnKey]) => turnKey)
   )
   const { foldedRows, foldableTurnKeys } = nativeChatTurnFold({
     rows: foldRows,
     settledTurnKeys,
     expandedTurnKeys
   })
+  const bars = nativeChatTurnBarRows(messages, turnKeys)
+  // A turn's rows need not be contiguous (another turn's prompt can land among
+  // them), so its rollup goes under its last row, not every run boundary.
+  const lastRowByTurn = new Map<string, number>()
+  turnKeys.forEach((turnKey, index) => {
+    if (turnKey !== undefined) {
+      lastRowByTurn.set(turnKey, index)
+    }
+  })
   const slots: NativeChatTranscriptSlot[] = []
   for (const [index, message] of messages.entries()) {
     const turnKey = turnKeys[index]
     const receipt = receipts.get(message.id)
+    const bar = turnKey === undefined ? undefined : bars.get(turnKey)
+    // A turn's bar draws at its first row, so a message folded into it (a steer) carries none.
     const candidateStatus =
-      index === latestUserIndex
-        ? turnStatuses.active
-        : message.role === 'user' && turnKey
-          ? turnStatuses.completedByTurn[turnKey]
-          : undefined
+      turnKey === undefined || bar?.index !== index
+        ? undefined
+        : turnKey === liveTurnKey
+          ? turnStatuses.active
+          : turnStatuses.completedByTurn[turnKey]
     // The live turn's bar carries its running clock; it settles in place.
-    const status = showTurnStatus ? (candidateStatus ?? undefined) : undefined
-    const turnDiff = turnKey && turnKeys[index + 1] !== turnKey ? turnDiffs.get(turnKey) : undefined
+    const status = candidateStatus ?? undefined
+    const turnDiff =
+      turnKey && lastRowByTurn.get(turnKey) === index ? turnDiffs.get(turnKey) : undefined
     const folded = foldedRows.has(index)
     // Skipping a folded row entirely is what keeps windowing honest: a counted
     // index the row declines to draw reserves estimated height for nothing and
@@ -172,12 +192,15 @@ export function buildNativeChatTranscriptSlots(
     slots.push({
       message,
       turnKey,
+      // Liveness is the owning turn's, not the newest prompt's: a running turn's
+      // rows stay live while a newer message waits behind it.
       activeTurnIsWorking:
-        (currentTurnKey ? turnKey === currentTurnKey : turnKey === undefined) &&
+        (liveTurnKey ? turnKey === liveTurnKey : turnKey === undefined) &&
         (isWorking || lifecycleWorking),
       trailingRun: trailingRunIndexes.has(index),
       receipt,
       status: status ?? undefined,
+      statusAbove: bar?.above === true && status !== undefined,
       folded,
       turnFolds: turnKey !== undefined && foldableTurnKeys.has(turnKey),
       turnDiff,
@@ -205,4 +228,20 @@ export function nativeChatSlotIndexOf(
     return -1
   }
   return slots.findIndex((slot) => slot.message.id === messageId)
+}
+
+/** Splits off the slots of messages waiting behind the live turn: they draw after its live
+ *  activity, not inside it. */
+export function splitNativeChatSlotsWaitingBehindLiveTurn(
+  slots: readonly NativeChatTranscriptSlot[],
+  journalItems: readonly AgentJournalRenderItem[] | undefined
+): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
+  const waiting = nativeChatMessagesWaitingBehindLiveTurn(
+    slots.map((slot) => slot.message),
+    journalItems
+  )
+  return {
+    slots: slots.filter((slot) => !waiting.has(slot.message.id)),
+    waitingSlots: slots.filter((slot) => waiting.has(slot.message.id))
+  }
 }

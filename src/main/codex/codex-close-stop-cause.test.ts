@@ -1,6 +1,7 @@
 // Closing a Codex child settles its open turn in the adapter, with the cause the host handed the
 // close. Only a stop the user aimed at this chat reads as their cancellation.
 
+import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -68,6 +69,7 @@ function sessionWithRunningTurn() {
     reportedOptions: {},
     fastModeTierByModel: new Map(),
     dispatchEchoes: createCodexDispatchEchoes(),
+    turnOpenWaits: createCodexTurnOpenWaits(),
     translator
   }
   return { sessions: new Map([['session-1', session]]), session, turnBodies }
