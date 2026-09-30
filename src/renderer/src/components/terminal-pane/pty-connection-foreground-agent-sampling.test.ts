@@ -525,6 +525,59 @@ describe('connectPanePty', () => {
       expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, cacheKey)).toBe('csi-u')
     })
 
+    it("keeps this session's process read when a parked pane re-attaches to the same agent", async () => {
+      vi.useFakeTimers()
+      const ptyId = 'pty-parked-reattach-keeps-read'
+      const tabId = `tab-${ptyId}`
+      const cacheKey = makePaneKey(tabId, LEAF_1)
+      mockStoreState.tabsByWorktree = { 'wt-1': [{ id: tabId, ptyId }] }
+      mockStoreState.paneForegroundAgentByPaneKey[cacheKey] = {
+        agent: 'codex',
+        agentEvidence: 'process-read',
+        routingTrusted: true,
+        shellForeground: false
+      }
+
+      await connectRestoredPaneForForegroundSampling({
+        ptyId,
+        tabId,
+        isVisibleRef: { current: false },
+        launchAgent: 'codex'
+      })
+
+      expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
+        agent: 'codex',
+        agentEvidence: 'process-read',
+        shellForeground: false
+      })
+    })
+
+    it('seeds a launch record when the prior read named a different agent', async () => {
+      vi.useFakeTimers()
+      const ptyId = 'pty-parked-reattach-other-agent'
+      const tabId = `tab-${ptyId}`
+      const cacheKey = makePaneKey(tabId, LEAF_1)
+      mockStoreState.tabsByWorktree = { 'wt-1': [{ id: tabId, ptyId }] }
+      mockStoreState.paneForegroundAgentByPaneKey[cacheKey] = {
+        agent: 'claude',
+        agentEvidence: 'process-read',
+        shellForeground: false
+      }
+
+      await connectRestoredPaneForForegroundSampling({
+        ptyId,
+        tabId,
+        isVisibleRef: { current: false },
+        launchAgent: 'codex'
+      })
+
+      expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
+        agent: 'codex',
+        agentEvidence: 'launch-record',
+        shellForeground: false
+      })
+    })
+
     it('retires stale daemon launch identity when warm reattach finds the shell', async () => {
       vi.useFakeTimers()
       vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('powershell.exe')
