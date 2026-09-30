@@ -11,7 +11,7 @@ import {
   type LocalBaseBranchRefs
 } from '../shared/worktree/local-base-branch-fast-forward'
 
-// Why: the host owns this; one run per branch here also coalesces creates from every client of this relay.
+// Why: the host owns this; one run per branch at a time here also serializes creates from every client of this relay.
 const runPerLocalBaseBranch = createCoalescingKeyedRunner<LocalBaseBranchFastForwardOutcome>()
 
 export async function refreshLocalBaseRefForWorktreeCreateOp(
@@ -21,7 +21,7 @@ export async function refreshLocalBaseRefForWorktreeCreateOp(
 ): Promise<LocalBaseBranchFastForwardOutcome> {
   const refs = await readLocalBaseBranchRefs(git, params)
   const host = relayLocalBaseBranchGit(git, capabilities)
-  return runPerLocalBaseBranch(`${refs.repoPath}\0${refs.fullRef}`, () =>
+  return runPerLocalBaseBranch(`${refs.repoPath}\0${refs.fullRef}`, refs.remoteTrackingRef, () =>
     fastForwardLocalBaseBranch(host, refs)
   )
 }

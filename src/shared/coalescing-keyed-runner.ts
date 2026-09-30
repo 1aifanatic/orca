@@ -1,39 +1,59 @@
-export type CoalescingKeyedRunner<T> = (key: string, work: () => Promise<T>) => Promise<T>
+export type CoalescingKeyedRunner<T> = (
+  key: string,
+  shareKey: string,
+  work: () => Promise<T>
+) => Promise<T>
 
-type Slot<T> = {
-  running: Promise<T>
-  trailing?: Promise<T>
-  trailingWork?: () => Promise<T>
+type QueuedRun<T> = {
+  shareKey: string
+  work: () => Promise<T>
+  start: () => void
+  result: Promise<T>
 }
 
 /**
- * At most one run per key at a time. Callers that arrive while a run is in flight share one
- * trailing run, started when it settles with the latest caller's `work`, so a burst of any size
- * costs at most two runs and the last one reflects the newest request.
+ * At most one run per key at a time, in arrival order. A caller joins a queued, not yet started
+ * run with the same `shareKey`, which then uses the latest joiner's `work`; otherwise it queues a
+ * new run. So every result comes from a run of the caller's own `shareKey`, and a burst costs at
+ * most one run per distinct `shareKey` beyond the one in flight.
  */
 export function createCoalescingKeyedRunner<T>(): CoalescingKeyedRunner<T> {
-  const slots = new Map<string, Slot<T>>()
+  const queues = new Map<string, QueuedRun<T>[]>()
 
-  const launch = (key: string, work: () => Promise<T>): Promise<T> => {
-    const slot: Slot<T> = { running: Promise.resolve().then(work) }
-    slots.set(key, slot)
-    void settled(slot.running).then(() => {
-      if (slots.get(key) === slot && !slot.trailing) {
-        slots.delete(key)
-      }
-    })
-    return slot.running
-  }
-
-  return (key, work) => {
-    const slot = slots.get(key)
-    if (!slot) {
-      return launch(key, work)
+  const drain = async (key: string, queue: QueuedRun<T>[]): Promise<void> => {
+    for (let run = queue.shift(); run; run = queue.shift()) {
+      run.start()
+      await settled(run.result)
     }
-    slot.trailingWork = work
-    slot.trailing ??= settled(slot.running).then(() => launch(key, slot.trailingWork ?? work))
-    return slot.trailing
+    queues.delete(key)
   }
+
+  return (key, shareKey, work) => {
+    const queue = queues.get(key)
+    const joinable = queue?.find((run) => run.shareKey === shareKey)
+    if (joinable) {
+      joinable.work = work
+      return joinable.result
+    }
+    const run = createQueuedRun(shareKey, work)
+    if (queue) {
+      queue.push(run)
+    } else {
+      const fresh = [run]
+      queues.set(key, fresh)
+      void drain(key, fresh)
+    }
+    return run.result
+  }
+}
+
+function createQueuedRun<T>(shareKey: string, work: () => Promise<T>): QueuedRun<T> {
+  let start!: () => void
+  const started = new Promise<void>((resolve) => {
+    start = resolve
+  })
+  const run: QueuedRun<T> = { shareKey, work, start, result: started.then(() => run.work()) }
+  return run
 }
 
 function settled(promise: Promise<unknown>): Promise<void> {

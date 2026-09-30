@@ -154,7 +154,7 @@ export async function fastForwardLocalBaseBranch(
         )
         return
       }
-      // Why: merge fast-forwards whatever HEAD is, so confirm the owner still has this branch out.
+      // Why: merge moves whatever HEAD is; this narrows, but cannot close, a branch-switch window, which the post-move check reports as a warning.
       const { stdout: head } = await git.exec(['symbolic-ref', '-q', 'HEAD'], ownerWorktreePath)
       if (head.trim() !== fullRef) {
         throw new Error(`${fullRef} is no longer checked out at ${ownerWorktreePath}`)

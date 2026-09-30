@@ -20,8 +20,8 @@ import type { AddWorktreeOptions, GitWorktreeExecOptions } from './worktree-oper
 // a create stops waiting and reports nothing, while the one in-flight refresh keeps its checkout.
 export const LOCAL_BASE_REF_REFRESH_WAIT_MS = 30_000
 
-// Why: two creates racing to move the same checkout collide on index.lock; one owned run per
-// branch, joined by later creates, leaves nothing to race.
+// Why: two runs moving one checkout at once collide on index.lock and misread each other's half-done
+// merge; one run per branch at a time, shared only by creates toward the same target, leaves nothing to race.
 const runPerLocalBaseBranch = createCoalescingKeyedRunner<LocalBaseBranchFastForwardOutcome>()
 
 export function parseRemoteTrackingLocalBaseRef(
@@ -72,7 +72,7 @@ export async function refreshLocalBaseRefForWorktreeCreate(
   const git = localBaseBranchGit(options)
   const outcome = await waitAtMost(
     // Why: the run can outlive this create's wait, so it clears git read caches itself when it moves main.
-    runPerLocalBaseBranch(key, () =>
+    runPerLocalBaseBranch(key, remoteTrackingRef, () =>
       runWithGitReadCacheInvalidation(() =>
         fastForwardLocalBaseBranch(git, { repoPath, fullRef: parsed.fullRef, remoteTrackingRef })
       )

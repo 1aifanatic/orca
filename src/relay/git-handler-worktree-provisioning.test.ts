@@ -20,7 +20,8 @@ import {
 import {
   createGitHandlerRelay,
   createGitTempDir,
-  removeGitTempDir
+  removeGitTempDir,
+  type GitSpyTarget
 } from './git-handler-test-harness'
 
 describe('GitHandler', () => {
@@ -334,6 +335,111 @@ describe('GitHandler', () => {
       // The joiner's follow-up run finds local already at the target.
       await expect(second).resolves.toEqual({ status: 'nothing_to_do' })
       expect(gitMock.mock.calls.filter(([args]) => args.includes('merge'))).toHaveLength(1)
+    })
+
+    // A fork on the real host: the checked-out branch behind origin/main, one commit behind upstream/main.
+    function initForkRepo(): { branchRef: string; upstreamSha: string } {
+      const { branchRef, localSha, remoteSha } = initBehindRepo()
+      execFileSync('git', ['checkout', '-q', '-b', 'fork-upstream', remoteSha], { cwd: tmpDir })
+      writeFileSync(path.join(tmpDir, 'base.txt'), 'upstream')
+      gitCommit(tmpDir, 'upstream update')
+      const upstreamSha = revParse('HEAD')
+      execFileSync('git', ['checkout', '-q', '-'], { cwd: tmpDir })
+      execFileSync('git', ['update-ref', 'refs/remotes/upstream/main', upstreamSha], {
+        cwd: tmpDir
+      })
+      execFileSync('git', ['branch', '-q', '-D', 'fork-upstream'], { cwd: tmpDir })
+      expect(revParse('HEAD')).toBe(localSha)
+      return { branchRef, upstreamSha }
+    }
+
+    /** Sends refreshes in order, each reaching the relay's per-branch queue while the first merge is held. */
+    async function refreshWhileFirstMergeHeld(branchRef: string, remotes: string[]) {
+      const { dispatcher: relay, handler } = createGitHandlerRelay()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: GitHandler really has this private git runner; the spy wraps the real one.
+      const target = handler as unknown as GitSpyTarget
+      const realGit = target.git.bind(handler)
+      let releaseMerge!: () => void
+      const mergeHeld = new Promise<void>((resolve) => (releaseMerge = resolve))
+      let merges = 0
+      let activeMerges = 0
+      let maxConcurrentMerges = 0
+      let refFormatChecks = 0
+      vi.spyOn(target, 'git').mockImplementation(async (args, cwd, opts) => {
+        if (args.includes('check-ref-format')) {
+          const result = await realGit(args, cwd, opts)
+          refFormatChecks += 1
+          return result
+        }
+        if (!args.includes('merge')) {
+          return realGit(args, cwd, opts)
+        }
+        merges += 1
+        activeMerges += 1
+        maxConcurrentMerges = Math.max(maxConcurrentMerges, activeMerges)
+        try {
+          if (merges === 1) {
+            await mergeHeld
+          }
+          return await realGit(args, cwd, opts)
+        } finally {
+          activeMerges -= 1
+        }
+      })
+
+      const results: Promise<unknown>[] = []
+      for (const [index, remote] of remotes.entries()) {
+        results.push(
+          relay.callRequest('git.refreshLocalBaseRefForWorktreeCreate', {
+            repoPath: tmpDir,
+            fullRef: branchRef,
+            remoteTrackingRef: `refs/remotes/${remote}/main`
+          })
+        )
+        if (index === 0) {
+          await vi.waitFor(() => expect(merges).toBe(1))
+        } else {
+          await vi.waitFor(() => expect(refFormatChecks).toBe(2 * (index + 1)))
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+      }
+      releaseMerge()
+      return { results: await Promise.all(results), maxConcurrentMerges: () => maxConcurrentMerges }
+    }
+
+    it('moves the branch to a target a later client asked for from another remote', async () => {
+      const { branchRef, upstreamSha } = initForkRepo()
+
+      const { results, maxConcurrentMerges } = await refreshWhileFirstMergeHeld(branchRef, [
+        'origin',
+        'upstream',
+        'origin'
+      ])
+
+      const owner = reportedWorktreePath(tmpDir)
+      expect(results.slice(0, 2)).toEqual([
+        { status: 'updated', ownerWorktreePath: owner },
+        { status: 'updated', ownerWorktreePath: owner }
+      ])
+      expect(revParse('HEAD')).toBe(upstreamSha)
+      expect(maxConcurrentMerges()).toBe(1)
+    })
+
+    it('never answers a client with the outcome of another remote target', async () => {
+      const { branchRef, upstreamSha } = initForkRepo()
+
+      const { results, maxConcurrentMerges } = await refreshWhileFirstMergeHeld(branchRef, [
+        'upstream',
+        'upstream',
+        'origin'
+      ])
+
+      expect(results.slice(0, 2)).toEqual([
+        { status: 'updated', ownerWorktreePath: reportedWorktreePath(tmpDir) },
+        { status: 'nothing_to_do' }
+      ])
+      expect(revParse('HEAD')).toBe(upstreamSha)
+      expect(maxConcurrentMerges()).toBe(1)
     })
 
     it('reports an error without mutating when worktree ownership cannot be listed', async () => {

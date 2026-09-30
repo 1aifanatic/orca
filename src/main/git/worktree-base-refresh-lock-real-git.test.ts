@@ -54,26 +54,55 @@ function isOwnerFastForward(args: readonly string[]): boolean {
 /** Counts owner fast-forwards; `onFailure` runs after each failed one, before it is reported. */
 function spyOnFastForwards(onFailure: () => Promise<void> | void = () => {}): {
   merges: () => number
+  maxConcurrent: () => number
 } {
   const original = gitRunner.gitExecFileAsync
   let merges = 0
+  let active = 0
+  let maxConcurrent = 0
   vi.spyOn(gitRunner, 'gitExecFileAsync').mockImplementation(async (args, options) => {
     if (!isOwnerFastForward(args)) {
       return original(args, options)
     }
     merges += 1
+    active += 1
+    maxConcurrent = Math.max(maxConcurrent, active)
     try {
       return await original(args, options)
     } catch (error) {
       await onFailure()
       throw error
+    } finally {
+      active -= 1
     }
   })
-  return { merges: () => merges }
+  return { merges: () => merges, maxConcurrent: () => maxConcurrent }
 }
 
-function refresh(repoPath: string) {
-  return refreshLocalBaseRefForWorktreeCreate(repoPath, 'origin/main', 'refs/remotes/origin/main')
+function refresh(repoPath: string, remote: 'origin' | 'upstream' = 'origin') {
+  return refreshLocalBaseRefForWorktreeCreate(
+    repoPath,
+    `${remote}/main`,
+    `refs/remotes/${remote}/main`
+  )
+}
+
+// A fork: checked-out `main` behind `origin/main`, which is one commit behind `upstream/main`.
+async function createForkRepo(): Promise<{
+  repoPath: string
+  originOid: string
+  upstreamOid: string
+}> {
+  const { repoPath, lockPath, remoteOid: originOid } = await createBehindRepoWithIndexLock()
+  await rm(lockPath, { force: true })
+  git(repoPath, ['checkout', '--quiet', '-b', 'fork-upstream', originOid])
+  await writeFile(join(repoPath, 'version.txt'), 'three\n')
+  git(repoPath, ['commit', '--quiet', '-am', 'three'])
+  const upstreamOid = git(repoPath, ['rev-parse', 'HEAD'])
+  git(repoPath, ['checkout', '--quiet', 'main'])
+  git(repoPath, ['update-ref', 'refs/remotes/upstream/main', upstreamOid])
+  git(repoPath, ['branch', '--quiet', '-D', 'fork-upstream'])
+  return { repoPath, originOid, upstreamOid }
 }
 
 beforeEach(() => {
@@ -140,5 +169,40 @@ describe('concurrent local base refreshes of one repo with real Git', () => {
     expect(spy.merges()).toBe(1)
     expect(warn).not.toHaveBeenCalled()
     expect(git(repoPath, ['rev-parse', 'main'])).toBe(remoteOid)
+  })
+})
+
+describe('concurrent local base refreshes toward different remotes with real Git', () => {
+  it('moves local to a target a later create from another remote asked for', async () => {
+    const { repoPath, upstreamOid } = await createForkRepo()
+    const spy = spyOnFastForwards()
+
+    const results = await Promise.all([
+      refresh(repoPath, 'origin'),
+      refresh(repoPath, 'upstream'),
+      refresh(repoPath, 'origin')
+    ])
+
+    expect(results[0]).toMatchObject({ baseRef: 'origin/main', status: 'updated' })
+    expect(results[1]).toMatchObject({ baseRef: 'upstream/main', status: 'updated' })
+    expect(git(repoPath, ['rev-parse', 'main'])).toBe(upstreamOid)
+    expect(spy.maxConcurrent()).toBe(1)
+  })
+
+  it('never answers a create with the outcome of another remote target', async () => {
+    const { repoPath, upstreamOid } = await createForkRepo()
+    const spy = spyOnFastForwards()
+
+    const results = await Promise.all([
+      refresh(repoPath, 'upstream'),
+      refresh(repoPath, 'upstream'),
+      refresh(repoPath, 'origin')
+    ])
+
+    expect(results[0]).toMatchObject({ baseRef: 'upstream/main', status: 'updated' })
+    // Local already equals upstream/main, so the second upstream create has nothing to report.
+    expect(results[1]).toBeUndefined()
+    expect(git(repoPath, ['rev-parse', 'main'])).toBe(upstreamOid)
+    expect(spy.maxConcurrent()).toBe(1)
   })
 })
