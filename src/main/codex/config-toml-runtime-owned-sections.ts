@@ -13,8 +13,7 @@ import {
   getCodexExplicitHomeHookSourcePath,
   normalizeCodexProjectPathForLookup,
   normalizeCodexProjectPathForRevocationLookup,
-  parseCodexProjectHeaderPath,
-  parseTrustKey
+  parseCodexProjectHeaderPath
 } from './config-toml-trust'
 
 export type TomlSection = {
@@ -107,11 +106,14 @@ export function isRuntimeHookTrustTomlSection(header: string): boolean {
   return !!table && !table.isArray && table.segments[0] === 'hooks' && table.segments[1] === 'state'
 }
 
+// Why: Codex's `{source}:{event}:{group}:{handler}` for any label, incl. session_end/interrupt.
+const CODEX_HOOK_TRUST_KEY = /^(.+):[a-z_]+:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
+
 // Why: user-layer keys name the home's own hooks.json/config.toml; plugin/project keys don't.
 export function classifyHookTrustKey(key: string, homeDir: string): 'home-scoped' | 'shared' {
-  const sourcePath = parseTrustKey(key)?.sourcePath
+  const sourcePath = CODEX_HOOK_TRUST_KEY.exec(key)?.[1]
   if (sourcePath === undefined) {
-    // Why: every key Codex writes parses; carry nothing we cannot attribute.
+    // Why: Codex never writes another key shape; carry nothing we cannot attribute.
     return 'home-scoped'
   }
   const homeFiles = ['hooks.json', 'config.toml'].flatMap((file) => {

@@ -143,6 +143,54 @@ describe('carrying plain-Codex hook trust into the managed Codex home', () => {
     }
   )
 
+  // Why: Codex >=0.145 adds session_end and >=0.150 interrupt, which Orca's own parser rejects.
+  it.each(
+    ['session_end', 'interrupt'].flatMap((event) =>
+      [
+        ['plugin', `demo@mkt:hooks/hooks.json:${event}:0:0`],
+        ['project', `/repo/.codex/hooks.json:${event}:0:0`]
+      ].flatMap(([kind, key]) => [
+        [event, kind, 'bare parent', key, bareParent] as const,
+        [event, kind, 'fully quoted', key, fullyQuoted] as const
+      ])
+    )
+  )('carries %s %s hook trust in the %s spelling', (_event, _kind, _spelling, key, spell) => {
+    const block = trustBlock(spell(key), 'sha256:newer-event')
+    writeSystemConfig([block])
+
+    mirror()
+    const runtimeConfig = mirror()
+
+    expect(runtimeConfig).toContain(block)
+    expect(countHookTrustTables(runtimeConfig, key)).toBe(1)
+    expectNoDuplicateTables(runtimeConfig)
+  })
+
+  it.each(['session_end', 'interrupt'])('leaves out user-layer %s trust', (event) => {
+    const key = `${join(systemCodexHome(), 'hooks.json')}:${event}:0:0`
+    writeSystemConfig([trustBlock(fullyQuoted(key), 'sha256:user-hook')])
+
+    expect(mirror()).not.toContain('sha256:user-hook')
+  })
+
+  it.each([
+    'not-a-hook-key',
+    '/repo/.codex/hooks.json:stop:0',
+    '/repo/.codex/hooks.json:stop:01:0',
+    '/repo/.codex/hooks.json:Stop:0:0',
+    ':stop:0:0'
+  ])('does not carry the unattributable key %s', (key) => {
+    writeSystemConfig([
+      trustBlock(bareParent(key), 'sha256:unattributable'),
+      trustBlock(fullyQuoted(PLUGIN_KEY), 'sha256:plugin')
+    ])
+
+    const runtimeConfig = mirror()
+
+    expect(runtimeConfig).toContain('sha256:plugin')
+    expect(runtimeConfig).not.toContain('sha256:unattributable')
+  })
+
   it.each([
     ['hooks.json', bareParent],
     ['hooks.json', fullyQuoted],
