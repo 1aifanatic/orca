@@ -163,7 +163,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await host.flushAllStreamedEvents()
   await journals.closeAll()
-  await rm(root, { recursive: true, force: true })
+  // A recovery-offer read a host still has in flight holds its lock directory for a moment.
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
 })
 
 /** A restarted process swaps the store and the host under the same directories.
