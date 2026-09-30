@@ -13,14 +13,19 @@ function isLaunchShell(processName: string): boolean {
 }
 
 /**
- * Whether a shell, rather than the agent a launch started, is proven to be in the terminal's
- * foreground: the launch line has not run yet, or the agent exited. A read that fails or cannot
- * tell proves nothing, so it never delays a launch.
+ * Whether the pane's own shell, rather than the agent a launch started, is proven to be in the
+ * terminal's foreground: the launch line has not run yet, or the agent exited. A read that fails or
+ * cannot tell proves nothing, so it never delays a launch.
  *
- * On macOS and Linux a fresh foreground read that names a shell proves it. The host's
- * shell-foreground check cannot: the terminal daemon answers it from its recovery state, which a
- * plain exit leaves unset. Windows takes only that check, since its scan names the pane's shell for
- * any agent it cannot recognize (an npm agent running as `node.exe`), so a daemon pane there proves
+ * On macOS and Linux it is decided by identity, not by name: the host's process inspection reports
+ * the terminal's foreground process group, and the pane's shell is in front only when that group is
+ * the shell's own. A wrapper script's bash, or a conda hook, runs as its own job, so it is not the
+ * pane's shell even though it is named like one.
+ *
+ * Windows has no foreground process group, and its scan names the pane's shell for any agent it
+ * cannot recognize (an npm agent running as `node.exe`), so it takes only the host's
+ * shell-foreground check (the shell alone in the pane's job). A daemon pane answers that from its
+ * recovery state, which a plain exit leaves unset, and an SSH pane has none, so there it proves
  * nothing.
  *
  * Why no check for a non-shell name other than the agent's own: for its first 5 s the daemon's
@@ -32,7 +37,10 @@ function isLaunchShell(processName: string): boolean {
 export async function isShellInFrontOfLaunchedAgent(
   controller: Pick<
     RuntimePtyController,
-    'getForegroundProcess' | 'confirmForegroundProcess' | 'confirmShellForeground'
+    | 'getForegroundProcess'
+    | 'inspectProcess'
+    | 'confirmForegroundProcess'
+    | 'confirmShellForeground'
   > | null,
   host: { remote: boolean; windows: boolean },
   ptyId: string,
@@ -46,18 +54,27 @@ export async function isShellInFrontOfLaunchedAgent(
     if (cached && !isLaunchShell(cached) && recognizeAgentProcess(cached)?.agent !== agent) {
       return false
     }
-    // Why the cached name for SSH: the relay reads its foreground live, with no startup bootstrap
-    // to see past, and offers neither a scan nor a shell-foreground check. A Windows relay names the
-    // pane's shell for an agent it cannot recognize, so there the name proves nothing.
-    if (host.remote) {
-      return !host.windows && isShellName(cached, agent)
-    }
     if (host.windows) {
+      // An SSH pane has no such check, so on a Windows relay nothing proves a shell.
       return (await controller.confirmShellForeground?.(ptyId)) ?? false
     }
-    const foreground = controller.confirmForegroundProcess
-      ? await controller.confirmForegroundProcess(ptyId)
-      : cached
+    const evidence = (await controller.inspectProcess?.(ptyId))?.foregroundProcessEvidence
+    if (evidence) {
+      // Why also no agent in the group: a shell without job control runs its commands in its own.
+      return (
+        evidence.verdict === 'live' &&
+        evidence.fence.platform === 'posix' &&
+        evidence.fence.foregroundPgid === evidence.fence.shellPid &&
+        evidence.processName === null
+      )
+    }
+    // A host that predates the evidence (an older daemon or relay, or a pane outside the daemon)
+    // falls back to the name, which reads a wrapper script's bash as the shell. A relay's cached
+    // name is read live, and it has no scan.
+    const foreground =
+      !host.remote && controller.confirmForegroundProcess
+        ? await controller.confirmForegroundProcess(ptyId)
+        : cached
     return isShellName(foreground, agent)
   } catch {
     return false

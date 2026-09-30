@@ -12,6 +12,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import { waitForLaunchedAgentComposer } from './launched-agent-composer-readiness'
+import { resolveRemoteForegroundEvidence } from '../providers/agent-foreground-process'
+import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -242,6 +244,148 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
       expect(proof).not.toHaveBeenCalled()
     }
   )
+
+  describe('macOS and Linux: by the shell’s identity, from the host’s process inspection', () => {
+    beforeEach(() => setPlatform('darwin'))
+
+    // Captured with `ps -axo pid=,ppid=,pgid=,tpgid=,stat=,tty=,lstart=,command=` on a pty running
+    // `zsh -f -i` (macOS 26): first while it ran `bash -c 'sleep 4; :'`, then back at its prompt.
+    const zsh = (tpgid: number, stat: string): ProcessTableRow => ({
+      pid: 20894,
+      ppid: 20891,
+      pgid: 20894,
+      tpgid,
+      stat,
+      tty: 'ttys000',
+      startTime: 'Wed Sep 30 09:18:50 2026',
+      command: '/bin/zsh -f -i'
+    })
+    const wrapperRunning: ProcessTableRow[] = [
+      zsh(20996, 'Ss'),
+      {
+        pid: 20996,
+        ppid: 20894,
+        pgid: 20996,
+        tpgid: 20996,
+        stat: 'S+',
+        tty: 'ttys000',
+        startTime: 'Wed Sep 30 09:18:52 2026',
+        command: 'bash -c sleep 4; :'
+      },
+      {
+        pid: 20997,
+        ppid: 20996,
+        pgid: 20996,
+        tpgid: 20996,
+        stat: 'S+',
+        tty: 'ttys000',
+        startTime: 'Wed Sep 30 09:18:52 2026',
+        command: 'sleep 4'
+      }
+    ]
+    const zshAtPrompt: ProcessTableRow[] = [zsh(20894, 'Ss+')]
+    const inspect = (rows: ProcessTableRow[]) => ({
+      foregroundProcess: 'zsh',
+      hasChildProcesses: rows.length > 1,
+      foregroundProcessEvidence: resolveRemoteForegroundEvidence(
+        { rootPid: 20894, fallbackProcess: 'zsh' },
+        {
+          ptyId: TRANSCRIPT_PANE_PTY_ID,
+          ptyIncarnationId: 'inc-1',
+          authorityGeneration: 'gen-1',
+          observationEpoch: 1,
+          capturedAgeMs: 0,
+          platform: 'darwin'
+        },
+        rows
+      )
+    })
+
+    it.each([
+      // A wrapper script's bash runs as its own job: named like a shell, but not the pane's shell.
+      ['a bash wrapper under zsh', wrapperRunning, false],
+      ['zsh back at its prompt', zshAtPrompt, true]
+    ] as const)('%s: shell in front %s, without a name scan', async (_label, rows, shell) => {
+      const inspection = inspect([...rows])
+      // Presence precondition: the captured rows are a live observation, not an unreadable one.
+      expect(inspection.foregroundProcessEvidence).toMatchObject({ verdict: 'live' })
+      const scan = vi.fn()
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'bash',
+        processInspection: inspection,
+        confirmedForegroundProcess: 'bash',
+        onForegroundScan: scan,
+        launchAgent: 'copilot',
+        data: ''
+      })
+
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
+        shell
+      )
+      expect(scan).not.toHaveBeenCalled()
+    })
+
+    it('SSH: takes the relay’s inspection the same way', async () => {
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'bash',
+        processInspection: inspect([...wrapperRunning]),
+        connectionId: 'ssh-1',
+        launchAgent: 'copilot',
+        data: ''
+      })
+
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
+        false
+      )
+    })
+
+    it('a recognized agent in the shell’s own group is not the shell (no job control)', async () => {
+      const rows: ProcessTableRow[] = [
+        zsh(20894, 'Ss+'),
+        {
+          pid: 21000,
+          ppid: 20894,
+          pgid: 20894,
+          tpgid: 20894,
+          stat: 'S+',
+          tty: 'ttys000',
+          startTime: 'Wed Sep 30 09:18:52 2026',
+          command: 'codex'
+        }
+      ]
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Codex',
+        foregroundProcess: 'codex',
+        processInspection: inspect(rows),
+        launchAgent: 'codex',
+        data: ''
+      })
+
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'codex')).resolves.toBe(
+        false
+      )
+    })
+
+    it('an inspection that cannot observe proves nothing, and falls back to no name', async () => {
+      const scan = vi.fn()
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'zsh',
+        processInspection: inspect([]),
+        confirmedForegroundProcess: 'zsh',
+        onForegroundScan: scan,
+        launchAgent: 'claude',
+        data: ''
+      })
+
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+        false
+      )
+      expect(scan).not.toHaveBeenCalled()
+    })
+  })
 
   // Why: a Windows relay names the pane's shell for an agent its scan cannot recognize (node.exe).
   it('SSH to a Windows host: the relay’s shell name proves nothing', async () => {

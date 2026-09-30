@@ -2,6 +2,7 @@
 import { vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 
 const TRANSCRIPT_PANE_LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const TRANSCRIPT_PANE_TAB_ID = 'tab-1'
@@ -25,6 +26,9 @@ export type TranscriptPaneOptions = {
   /** What a fresh foreground scan finds, where it differs from the cached foreground read. */
   confirmedForegroundProcess?: string | null
   onForegroundScan?: () => void
+  /** What the host's process inspection answers; absent for a host without one. */
+  processInspection?: PtyProcessInspection
+  onProcessInspection?: () => void
   /** What the host's shell-foreground check answers: the spawned shell holds the foreground. */
   shellForegroundProven?: boolean
   onShellForegroundProof?: () => void
@@ -35,22 +39,21 @@ export async function createTranscriptPane(
   runtimeDeps?: ConstructorParameters<typeof OrcaRuntimeService>[2]
 ): Promise<{ runtime: OrcaRuntimeService; handle: string }> {
   const runtime = new OrcaRuntimeService(null, undefined, runtimeDeps)
+  // The runtime reads a remote pane's host OS from its worktree path.
+  const worktreeId = options.remoteWindowsHost
+    ? 'repo-1::C:\\repo\\app'
+    : TRANSCRIPT_PANE_WORKTREE_ID
   const internals = runtime as unknown as {
     resolveTerminalWorkspaceLaunchScope: (selector: string) => Promise<unknown>
   }
-  if (options.remoteWindowsHost) {
-    vi.spyOn(
-      runtime as unknown as { pathFlavorForPty: () => 'posix' | 'win32' },
-      'pathFlavorForPty'
-    ).mockReturnValue('win32')
-  }
   vi.spyOn(internals, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
-    id: TRANSCRIPT_PANE_WORKTREE_ID,
+    id: worktreeId,
     path: '/repo/app',
     connectionId: options.connectionId ?? null,
     repo: null,
     folderWorkspace: null
   })
+  const processInspection = options.processInspection
   runtime.setPtyController({
     spawn: vi.fn().mockResolvedValue({ id: TRANSCRIPT_PANE_PTY_ID, incarnationId: 'inc-1' }),
     write: () => true,
@@ -70,6 +73,14 @@ export async function createTranscriptPane(
           }
         }
       : {}),
+    ...(processInspection
+      ? {
+          inspectProcess: async () => {
+            options.onProcessInspection?.()
+            return processInspection
+          }
+        }
+      : {}),
     ...(options.shellForegroundProven !== undefined
       ? {
           confirmShellForeground: async () => {
@@ -79,7 +90,7 @@ export async function createTranscriptPane(
         }
       : {})
   })
-  const terminal = await runtime.createTerminal(`id:${TRANSCRIPT_PANE_WORKTREE_ID}`, {
+  const terminal = await runtime.createTerminal(`id:${worktreeId}`, {
     tabId: TRANSCRIPT_PANE_TAB_ID,
     leafId: TRANSCRIPT_PANE_LEAF_ID,
     title: 'Terminal'
@@ -89,7 +100,7 @@ export async function createTranscriptPane(
     tabs: [
       {
         tabId: TRANSCRIPT_PANE_TAB_ID,
-        worktreeId: TRANSCRIPT_PANE_WORKTREE_ID,
+        worktreeId,
         title: 'Terminal',
         activeLeafId: TRANSCRIPT_PANE_LEAF_ID,
         layout: null
@@ -98,7 +109,7 @@ export async function createTranscriptPane(
     leaves: [
       {
         tabId: TRANSCRIPT_PANE_TAB_ID,
-        worktreeId: TRANSCRIPT_PANE_WORKTREE_ID,
+        worktreeId,
         leafId: TRANSCRIPT_PANE_LEAF_ID,
         paneRuntimeId: 1,
         ptyId: TRANSCRIPT_PANE_PTY_ID,
@@ -107,17 +118,12 @@ export async function createTranscriptPane(
     ]
   })
   if (options.launchAgent) {
-    runtime.registerPty(
-      TRANSCRIPT_PANE_PTY_ID,
-      TRANSCRIPT_PANE_WORKTREE_ID,
-      options.connectionId ?? null,
-      {
-        tabId: TRANSCRIPT_PANE_TAB_ID,
-        leafId: TRANSCRIPT_PANE_LEAF_ID,
-        incarnationId: 'inc-1',
-        agentLaunchAuthority: { launchToken: 'transcript-launch', launchAgent: options.launchAgent }
-      }
-    )
+    runtime.registerPty(TRANSCRIPT_PANE_PTY_ID, worktreeId, options.connectionId ?? null, {
+      tabId: TRANSCRIPT_PANE_TAB_ID,
+      leafId: TRANSCRIPT_PANE_LEAF_ID,
+      incarnationId: 'inc-1',
+      agentLaunchAuthority: { launchToken: 'transcript-launch', launchAgent: options.launchAgent }
+    })
   }
   // Why the guard: a restore seed is only applied to a never-written record, so the restore
   // cases must not write an empty chunk first.
