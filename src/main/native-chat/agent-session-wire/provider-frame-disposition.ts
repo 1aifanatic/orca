@@ -170,7 +170,7 @@ export const PROVIDER_FRAME_CLASSIFICATIONS = {
  * roster have always required.
  */
 const TYPED_TRANSLATOR_KINDS: ReadonlyMap<string, ReadonlySet<string>> = new Map<
-  string,
+  keyof ProviderFrameClassificationTable,
   ReadonlySet<string>
 >([
   [
