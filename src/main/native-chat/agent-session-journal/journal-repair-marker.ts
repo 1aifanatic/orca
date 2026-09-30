@@ -16,6 +16,7 @@
 import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
 import { deleteJournalRowSuffix } from './journal-row-table'
+import { deleteJournalSessionState } from './journal-session-state'
 
 const SELECT_REPAIR = 'SELECT epoch, content_from FROM journal_repairs WHERE session_id = ?'
 const UPSERT_REPAIR = `INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at)
@@ -60,6 +61,8 @@ export function deleteJournalRepairedSuffix(input: {
   return input.database.transaction((db) => {
     const deleted = deleteJournalRowSuffix(db, input.sessionId, input.epoch, input.fromSeq)
     db.prepare(UPSERT_REPAIR).run(input.sessionId, input.epoch, input.contentFrom, input.now)
+    // It described the dropped suffix; the open that follows re-derives it.
+    deleteJournalSessionState(db, input.sessionId)
     return deleted
   })
 }

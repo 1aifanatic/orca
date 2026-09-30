@@ -25,16 +25,14 @@ import {
   newestStructuredAgentSessionTurnBySequence
 } from '../../../shared/structured-agent-session-live-turn'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
-import { readJournalSince } from './journal-cursor'
 import type { JournalHostDatabase } from './journal-host-database'
-import { readJournalRowsAfterCursor, type JournalLoad } from './journal-open'
+import type { JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
   rejectJournalQueuedSubmissions
 } from './journal-pending-submission-recovery'
 import {
-  applyJournalRow,
   createJournalReducerState,
   renderJournalState,
   resolveJournalItemId,
@@ -81,12 +79,17 @@ export class AgentSessionJournal {
   private openedCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
+  private onStranded: (() => void) | null = null
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
   private readonly epochController: JournalEpochController
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly restore: () => Promise<void>
+  /** Rewrites the chat's stored state if it does not describe this fold. Bookkeeping: never
+   *  fails the open that calls it. */
+  readonly ensureSessionState: () => void
+  readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
 
@@ -117,10 +120,16 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      commit: (row) => {
-        applyJournalRow(this.state, row)
-        this.onCommitted?.()
+      replaceState: (state) => {
+        this.state = state
       },
+      strand: () => {
+        this.queue.markClosed()
+        this.onStranded?.()
+      },
+      openedCorrupt: () => this.openedCorrupt,
+      currentFence: options.currentFence ?? (() => undefined),
+      importPending: () => this.queue.owing,
       setOpenedCorrupt: (corrupt) => {
         this.openedCorrupt = corrupt
       },
@@ -138,6 +147,8 @@ export class AgentSessionJournal {
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
     this.queuedMessages = collaborators.queuedMessages
     this.restore = collaborators.restore
+    this.ensureSessionState = collaborators.ensureSessionState
+    this.readSince = collaborators.readSince
   }
 
   get isReadOnly(): boolean {
@@ -184,6 +195,11 @@ export class AgentSessionJournal {
    *  without its writer saying so. One listener: a later call replaces it. It must not throw. */
   observeCommits(listener: () => void): void {
     this.onCommitted = listener
+  }
+
+  /** Told once this handle closed itself because its connection was stranded mid-append. */
+  observeStranded(listener: () => void): void {
+    this.onStranded = listener
   }
 
   /**
@@ -251,6 +267,9 @@ export class AgentSessionJournal {
   /** Includes revisions and completion tombstones, whose timestamps disappear from render items. */
   lastActivityAt = (): number => this.state.lastActivityAt
 
+  /** The highest fence any row carries: a writer that revises what an earlier one left. */
+  highestFence = (): number => this.state.highestFence
+
   /** Fence of the writer that created the item, while it is in the timeline. */
   itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
 
@@ -267,25 +286,6 @@ export class AgentSessionJournal {
     this.state.receipts.get(clientMessageId) ?? null
 
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
-
-  readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
-    return readJournalSince(
-      {
-        state: this.state,
-        rowsAfter: (afterSequence) =>
-          readJournalRowsAfterCursor(
-            this.database.db,
-            this.identity.sessionId,
-            this.state.epoch,
-            afterSequence,
-            limit
-          ),
-        readOnly: this.readOnly
-      },
-      cursor,
-      () => this.cursor()
-    )
-  }
 
   /** Upsert by stable identity. The revision is assigned here so a caller
    *  cannot accidentally publish a revision the reducer will drop. */

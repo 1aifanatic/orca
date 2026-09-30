@@ -51,6 +51,11 @@ export class JournalHostDatabase {
     return this.connection === null
   }
 
+  /** A ROLLBACK failed: the connection may still hold rows that never committed. */
+  get isStranded(): boolean {
+    return this.stranded
+  }
+
   get db(): Database.Database {
     const connection = this.connection
     if (!connection) {

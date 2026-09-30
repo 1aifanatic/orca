@@ -337,6 +337,13 @@ export async function initializeMainProcessRuntimeLaunch(
     await shellPathReady
     bindTerminalRuntimeStartupServices(Promise.resolve(startTerminalRuntimeStartupServices()))
   }
+  // The host seeds its chats' statuses and settles crashed ones itself, so a window, a remote
+  // client or neither sees the same state. Behind the barriers the renderer's own call awaits.
+  void Promise.all([state.firstWindowStartupServicesReady, state.managedWslCliStartupBarrierReady])
+    .then(() => runtime.prepareStructuredAgentSessionStartupRestoration())
+    .catch((error: unknown) => {
+      console.warn('[structured-agent-session] startup restoration failed', error)
+    })
   app.on('activate', options.handleMacAppActivation)
   if (serveOptions) {
     await launchServeMode(runtime, runtimeRpc, serveOptions)

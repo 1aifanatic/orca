@@ -4,7 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
-import { closeTestJournalHostDatabases } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  closeTestJournalHostDatabases,
+  openTestJournalHostDatabase
+} from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createRestTestRig,
@@ -107,6 +110,11 @@ function restartedRuntime(workspaceSession: unknown = null) {
   return { runtime, listAll, subscribeAll }
 }
 
+/** The files an older build left: no chat has stored state, so each is re-derived by its open. */
+function forgetStoredChatState(): void {
+  openTestJournalHostDatabase(rig.root).db.exec('DELETE FROM journal_session_state')
+}
+
 function chatIds(snapshots: RuntimeMobileSessionTabsResult[]): string[] {
   return snapshots.flatMap((snapshot) =>
     snapshot.tabs.flatMap((tab) => (tab.type === 'agent-session' ? [tab.sessionId] : []))
@@ -129,6 +137,7 @@ describe('listing chat tabs at startup', () => {
     }
     await rig.crash()
     await rig.boot()
+    forgetStoredChatState()
     const opens = Promise.withResolvers<void>()
     releaseHeld = opens.resolve
     let opened = 0
@@ -156,6 +165,7 @@ describe('listing chat tabs at startup', () => {
       }
       await rig.crash()
       await rig.boot()
+      forgetStoredChatState()
       const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
       const { runtime, listAll, subscribeAll } = restartedRuntime()
       const seen = () => ({
@@ -295,6 +305,7 @@ describe('listing chat tabs at startup', () => {
     }
     await rig.crash()
     await rig.boot()
+    forgetStoredChatState()
     rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
       if (failing.includes(sessionId)) {
         throw new Error('EACCES: permission denied')

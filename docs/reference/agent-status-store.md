@@ -125,11 +125,15 @@ forgot the row would strand a permanently working-looking agent.
 
 Two rules the ingest must keep:
 
-- **Never persist a structured row.** The journal is the durable truth for a
-  structured session and the host republishes on restore. A structured row in
-  `last-status.json` would hydrate as `restoredUnconfirmed` and then fight the
-  live republish. The serializer skips rows carrying `structuredHost`, and
-  hydrate drops any such row found on disk. Applying one therefore also skips
+- **Never persist a structured row in the store.** The chat journal database
+  is the durable truth for a structured session. Each chat's status is stored
+  there beside its journal (`journal_session_state`), written in the same
+  transaction as the journal rows it describes and trusted only at the
+  journal's tip. At host startup the host republishes those rows into the store
+  without opening the chat. A structured row in `last-status.json` would
+  hydrate as `restoredUnconfirmed` and fight that republish, so the serializer
+  still skips rows carrying `structuredHost`, and hydrate still drops any found
+  on disk. Applying one therefore also skips
   the persist schedule: the walk and stringify could only reproduce the file
   that is already on disk, once per debounce window for every streaming chat.
 - **Never let it fight a hook row.** A structured session has no PTY, so no

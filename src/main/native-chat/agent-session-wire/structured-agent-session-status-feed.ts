@@ -7,26 +7,27 @@
 //
 // The last projection is kept after the session's provider child is evicted: an idle session is
 // still idle without a process, and a renderer that reloads must not lose every settled row until
-// each chat is reopened. Restart is the one boundary that forgets, and restoring readable sessions
-// republishes them.
+// each chat is reopened. At startup, a settled chat's row is seeded from the state stored beside its
+// journal (journal-session-state.ts) without opening it; a chat that owes work is settled by its
+// open, which publishes as any open does.
 
-import { agentProviderSessionsEqual } from '../../../shared/agent-session-resume'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
-import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
-import { AGENT_MODEL_MAX_LENGTH } from '../../../shared/agent-status-types'
-import {
-  agentSessionBackgroundTasksEqual,
-  type AgentSessionBackgroundTaskState,
-  type AgentSessionStatusEvent,
-  type AgentSessionStatusSummary
+import type {
+  AgentSessionBackgroundTaskState,
+  AgentSessionStatusEvent,
+  AgentSessionStatusSummary
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
-import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
-import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
+import {
+  projectStructuredAgentSessionStatusState,
+  type StructuredAgentSessionStatusProjection
+} from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
-import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
+import {
+  structuredAgentSessionStatusSummary,
+  structuredAgentSessionSummariesEqual
+} from './structured-agent-session-status-summary'
 import {
   StructuredAgentSessionStatusOwnership,
   type StructuredAgentSessionStatusSink
@@ -64,47 +65,6 @@ export type StructuredAgentSessionStatusFeedDeps = {
   readBackgroundTasks?: (sessionId: string) => AgentSessionBackgroundTaskState | null | undefined
   /** The session's agent proved a start: its row's phase became `ready`. */
   onAgentStarted?: (sessionId: string) => void
-}
-
-function summariesEqual(a: AgentSessionStatusSummary, b: AgentSessionStatusSummary): boolean {
-  return (
-    a.workspaceId === b.workspaceId &&
-    a.agent === b.agent &&
-    a.status === b.status &&
-    a.hostExecutionOwned === b.hostExecutionOwned &&
-    a.hostExecutionPhase === b.hostExecutionPhase &&
-    a.hostExecutionChild?.generation === b.hostExecutionChild?.generation &&
-    a.hostExecutionChild?.fence === b.hostExecutionChild?.fence &&
-    a.rewindBlockedReason === b.rewindBlockedReason &&
-    // A moved state clock changes ranking; row activity alone, including a subagent's, does not.
-    // An idle state the journal cannot date still republishes, since readers date it by `updatedAt`,
-    // and so does one live child work holds open: readers take each publish as its evidence.
-    a.statusStartedAt === b.statusStartedAt &&
-    (a.status !== 'idle' ||
-      a.updatedAt === b.updatedAt ||
-      (a.statusStartedAt !== undefined && !isIdleHeldOpenByChildWork(b))) &&
-    a.latestPrompt === b.latestPrompt &&
-    a.model === b.model &&
-    a.toolName === b.toolName &&
-    a.toolInput === b.toolInput &&
-    a.lastAssistantMessage === b.lastAssistantMessage &&
-    a.turnOutcome === b.turnOutcome &&
-    agentSessionBackgroundTasksEqual(a.backgroundTasks, b.backgroundTasks) &&
-    agentProviderSessionsEqual(undefined, a.providerSession, b.providerSession)
-  )
-}
-
-function isIdleHeldOpenByChildWork(summary: AgentSessionStatusSummary): boolean {
-  return (
-    summary.status === 'idle' &&
-    isAgentStatusHeldOpenByChildWork(
-      structuredAgentSessionAgentStatus({
-        status: summary.status,
-        backgroundTasks: summary.backgroundTasks,
-        turnOutcome: summary.turnOutcome
-      })
-    )
-  )
 }
 
 /** Wire the host's own deps into a feed; keeps the host at one call site.
@@ -236,22 +196,34 @@ export class StructuredAgentSessionStatusFeed {
     if (!session) {
       return
     }
-    const summary = this.summaryFor(sessionId, session, journal ?? session.journal)
+    this.publishSummary(
+      this.summaryFor(sessionId, session, journal ?? session.journal),
+      session.params.location,
+      { replay: options?.replay === true }
+    )
+  }
+
+  private publishSummary(
+    summary: AgentSessionStatusSummary,
+    location: AgentSessionRecord['location'],
+    options: { replay: boolean }
+  ): void {
+    const { sessionId } = summary
     const previous = this.published.get(sessionId)
-    if (previous && summariesEqual(previous, summary)) {
-      if (!this.ownership.matchesLocation(sessionId, session.params.location)) {
-        this.sink(summary, session.params.location)
+    if (previous && structuredAgentSessionSummariesEqual(previous, summary)) {
+      if (!this.ownership.matchesLocation(sessionId, location)) {
+        this.sink(summary, location)
       }
       return
     }
     this.published.set(sessionId, summary)
-    this.sink(summary, session.params.location)
+    this.sink(summary, location)
     this.broadcast({ type: 'status', session: summary })
     if (summary.hostExecutionPhase === 'ready' && previous?.hostExecutionPhase !== 'ready') {
       this.deps.onAgentStarted?.(sessionId)
     }
     try {
-      this.deps.onStatusChanged?.(summary, { replay: options?.replay === true })
+      this.deps.onStatusChanged?.(summary, options)
     } catch (error) {
       // An observer must never cost the subscribers their status event.
       console.warn('[structured-session-status] status observer failed', error)
@@ -264,37 +236,45 @@ export class StructuredAgentSessionStatusFeed {
     journal: AgentSessionJournal
   ): AgentSessionStatusSummary {
     const record = this.deps.getRecord(sessionId)
-    const { summary: projected } = this.projectionFor(journal, record)
-    const providerSession = structuredAgentSessionProviderSessionMetadata(record)
-    // The journal has no model: the record's acknowledged options are where a mid-session
-    // switch lands, so the row follows whichever is in force.
-    const model = normalizeOptionalField(record?.options?.model, AGENT_MODEL_MAX_LENGTH)
-    // Usage is dropped here on purpose: a `task_progress` tick would otherwise fail the
-    // equality check and re-broadcast a full summary to every remote subscriber for a
-    // number no session list renders. Tokens stay live on the background-task channel.
-    const backgroundTasks = this.deps
-      .readBackgroundTasks?.(sessionId)
-      ?.tasks?.map(({ totalTokens: _totalTokens, ...task }) => task)
-    return {
+    return structuredAgentSessionStatusSummary({
       sessionId,
-      workspaceId: session.params.location.workspaceId,
-      agent: session.params.provider,
-      ...(session.child
-        ? {
-            hostExecutionOwned: true as const,
-            hostExecutionPhase: session.child.phase,
-            hostExecutionChild: { generation: session.child.generation, fence: session.child.fence }
-          }
-        : {}),
-      ...projected,
-      ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
-        ? { rewindBlockedReason: 'outcome-unknown' as const }
-        : {}),
-      ...(model ? { model } : {}),
-      ...(backgroundTasks && backgroundTasks.length > 0 ? { backgroundTasks } : {}),
-      ...(providerSession ? { providerSession } : {}),
-      updatedAt: journal.lastActivityAt() || this.deps.now()
+      params: session.params,
+      record,
+      child: session.child,
+      projected: this.projectionFor(journal, record).summary,
+      backgroundTasks: this.deps.readBackgroundTasks?.(sessionId),
+      lastActivityAt: journal.lastActivityAt(),
+      now: this.deps.now
+    })
+  }
+
+  /**
+   * A chat's row from the state stored beside its journal, for one this host has not opened: the
+   * same builder an open's publish uses, so the open later finds it equal and sends nothing. A
+   * replay, as a restore's publish is.
+   */
+  seed(
+    record: AgentSessionRecord,
+    stored: { projected: StructuredAgentSessionStatusProjection; lastActivityAt: number }
+  ): void {
+    const { sessionId } = record
+    if (this.deps.sessions.has(sessionId)) {
+      return
     }
+    const params = { location: record.location, provider: record.provider }
+    this.publishSummary(
+      structuredAgentSessionStatusSummary({
+        sessionId,
+        params,
+        record,
+        projected: stored.projected,
+        backgroundTasks: this.deps.readBackgroundTasks?.(sessionId),
+        lastActivityAt: stored.lastActivityAt,
+        now: this.deps.now
+      }),
+      params.location,
+      { replay: true }
+    )
   }
 
   /** Child-work evidence for a session this feed publishes; a failing sink costs nothing else. */

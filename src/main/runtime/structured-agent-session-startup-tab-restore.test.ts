@@ -312,7 +312,8 @@ describe('restoring the chat tabs open at quit', () => {
 
       expect(published()).toHaveLength(count)
       expect(prepared).toBe(1)
-      expect(lock.refused - prepared).toBe(1)
+      // Every chat's stored state answers it, so the background restore opens none and takes no lock.
+      expect(lock.refused - prepared).toBe(0)
     }
   )
 
@@ -362,8 +363,8 @@ describe('restoring the chat tabs open at quit', () => {
 
       expect(published()).toHaveLength(2)
       expect(prepared).toBe(1)
-      // The restore's lease check and the seed.
-      expect(lock.refused - prepared).toBe(2)
+      // The seed alone: stored state answers both chats, so the background restore takes no lock.
+      expect(lock.refused - prepared).toBe(1)
     })
 
     it('still lists the chats when that write fails, and leaves the index absent', async () => {

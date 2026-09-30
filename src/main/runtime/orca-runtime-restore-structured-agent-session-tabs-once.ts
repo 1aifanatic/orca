@@ -4,9 +4,7 @@ import { OrcaRuntimeWithGetStructuredAgentSessionCreateSupport } from './orca-ru
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
-import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { seedStructuredAgentSessionTabIndex } from './structured-agent-session-tab-index-seed'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type {
   RuntimeMobileSessionAgentTab,
   RuntimeMobileSessionTabsSnapshot,
@@ -53,15 +51,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   protected async restoreStructuredAgentSessionTabsOnce(): Promise<void> {
     await this.prepareStructuredAgentSessionStartupRestoration()
     const host = getStructuredAgentSessionHost()
-    const persistedVisibleIndex =
-      typeof host?.getPersistedVisibleSessionTabIndex === 'function'
-        ? host.getPersistedVisibleSessionTabIndex()
-        : { present: false, sessionIds: [] }
-    const listedIds = persistedVisibleIndex.present
-      ? persistedVisibleIndex.sessionIds
-      : collectSavedStructuredAgentSessionIds(
-          this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
-        )
+    const listedIds = this.listedStructuredAgentSessionIds(host)
     for (const worktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId, {
         allowAttachedWindow: true,
@@ -94,11 +84,13 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     for (const session of restored) {
       this.projectStructuredAgentSessionTab({ ...session, ...quiet })
     }
-    // Each chat's status row arrives as its history opens; one chat's failure leaves the others and
-    // the list alone. Whoever answers with this list starts it, once that answer is out.
+    // Startup already seeded every settled chat's row and is settling the ones that owe work; this
+    // opens only what stored state could not answer (a stale row, a per-chat file not yet copied, a
+    // draft to drain). Whoever answers with this list starts it, once that answer is out.
+    const background = this.structuredAgentSessionBackgroundRestoreIds ?? listedIds
     this.owedStructuredAgentSessionHistoryRestore = host
       ? () =>
-          void host.restoreReadableSessions(listedIds).catch((error: unknown) => {
+          void host.restoreReadableSessions(background).catch((error: unknown) => {
             console.warn(
               '[structured-agent-session] restoring chat history after listing failed',
               error

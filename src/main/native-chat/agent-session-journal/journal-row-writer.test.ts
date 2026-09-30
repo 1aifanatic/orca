@@ -68,10 +68,12 @@ describe('journal row writer', () => {
       readOnly: () => readOnly,
       highestFence: () => 0,
       nextSequence: () => sequence,
-      commit: (committed) => {
+      apply: (committed) => {
         committedRows.push(committed)
         sequence = committed.seq + 1
-      }
+      },
+      committed: () => undefined,
+      recoverFold: () => undefined
     })
     return { writer, committedRows }
   }

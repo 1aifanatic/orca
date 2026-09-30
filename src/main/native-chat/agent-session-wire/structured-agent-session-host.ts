@@ -142,7 +142,8 @@ export class StructuredAgentSessionHost {
       isDisposed: () => this.lifetime.isDisposed(),
       // Site 10: cannot overwrite a live entry — the restorer returns early on
       // `hasSession` inside the same serialized step as this `set`.
-      onReadable: this.conversationDelivery.adoptOpened
+      onReadable: this.conversationDelivery.adoptOpened,
+      seedStatus: this.clientDelivery.seedStatus
     })
     this.eventRecovery = new StructuredAgentSessionEventRecovery({
       deps,
@@ -235,6 +236,9 @@ export class StructuredAgentSessionHost {
 
   restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
     this.restore.restoreReadableSessions(sessionIds)
+  // Startup, from each chat's stored state: see `structured-agent-session-startup-state`.
+  seedStoredStatuses = (ids: readonly string[]) => this.restore.seedStoredStatuses(ids)
+  settleOwedSessions = (ids: readonly string[]) => this.restore.settleOwedSessions(ids)
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>

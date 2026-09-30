@@ -10,6 +10,7 @@ import {
   resolveStructuredAgentSessionAdoptionForCreate
 } from './structured-agent-session-create-adoption'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -28,6 +29,8 @@ import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spa
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   // The history restore a tab restore owes, until a caller that answered with its list starts it.
   protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
+  // Listed chats startup could not answer from stored state; null until it has run.
+  protected structuredAgentSessionBackgroundRestoreIds: string[] | null = null
 
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
@@ -274,7 +277,38 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       this.ensureStructuredAgentSessionHost()
     )
     await this.refreshMobileSessionPtyRecords()
-    await getStructuredAgentSessionHost()?.reconcileRestartLeases()
+    const host = getStructuredAgentSessionHost()
+    // Death evidence the lease check writes must exist before the settle takes its verdicts. A
+    // failed check leaves them `unverifiable`, which is safe, so the steps below still run.
+    let leaseFailure: { error: unknown } | null = null
+    try {
+      await host?.reconcileRestartLeases()
+    } catch (error) {
+      leaseFailure = { error }
+    }
+    if (typeof host?.seedStoredStatuses === 'function') {
+      const listedIds = this.listedStructuredAgentSessionIds(host)
+      this.structuredAgentSessionBackgroundRestoreIds = host.seedStoredStatuses(listedIds)
+      // Un-awaited: nothing waits on a crashed chat's settle, and it never rejects.
+      void host.settleOwedSessions(listedIds)
+    }
+    if (leaseFailure) {
+      throw leaseFailure.error
+    }
+  }
+
+  /** The chats with a tab: the host's persisted tab index, or before it existed, the saved
+   *  workspace session's. */
+  protected listedStructuredAgentSessionIds(host): string[] {
+    const persistedVisibleIndex =
+      typeof host?.getPersistedVisibleSessionTabIndex === 'function'
+        ? host.getPersistedVisibleSessionTabIndex()
+        : { present: false, sessionIds: [] }
+    return persistedVisibleIndex.present
+      ? persistedVisibleIndex.sessionIds
+      : collectSavedStructuredAgentSessionIds(
+          this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+        )
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {

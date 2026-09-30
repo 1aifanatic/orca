@@ -50,6 +50,14 @@ export class StructuredAgentSessionConversations extends Map<
         }
       })
     })
+    // A handle that closed itself mid-append no longer matches the disk: the next use reopens it.
+    // One with a child is left to that child's own sink-failure recovery.
+    journal.observeStranded?.(() => {
+      const current = this.get(sessionId)
+      if (current?.journal === journal && !current.child) {
+        this.delete(sessionId)
+      }
+    })
     this.activity.set(sessionId, this.delivery.now())
     const adopted = super.set(sessionId, session)
     this.delivery.onOpened?.(sessionId)
