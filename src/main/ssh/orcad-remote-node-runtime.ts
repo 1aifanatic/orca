@@ -278,8 +278,10 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
       await run(`mkdir -p ${shellEscape(stageDir)}`, { signal })
     }
     await remoteStep(() => uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal }))
-    const promote = (): Promise<string> =>
-      exec(
+    let promoteRan = false
+    const promote = (): Promise<string> => {
+      promoteRan = true
+      return exec(
         conn,
         host,
         windows
@@ -287,28 +289,27 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
           : promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token }),
         { signal, ...(windows ? { timeoutMs: WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS } : {}) }
       )
-    // Why no store lock on Windows: store GC skips Windows hosts, and each lock step is a powershell.exe.
+    }
+    // Why the lock on Windows too: store GC collects there as well (design D5).
     const promoted = await remoteStep(() =>
-      windows
-        ? promote()
-        : withRuntimeStoreLock(
-            conn,
-            host,
-            remoteDirname(runtimeDir, host),
-            // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
-            async () =>
-              (
-                await exec(conn, host, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), {
-                  signal
-                })
-              ).trim() === REMOTE_NODE_RUNTIME_READY
-                ? REMOTE_NODE_RUNTIME_READY
-                : promote(),
-            signal
-          )
+      withRuntimeStoreLock(
+        conn,
+        host,
+        remoteDirname(runtimeDir, host),
+        // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
+        async () =>
+          (
+            await exec(conn, host, probeRemoteNodeRuntimeCommand(host, runtimeDir, target), {
+              signal
+            })
+          ).trim() === REMOTE_NODE_RUNTIME_READY
+            ? REMOTE_NODE_RUNTIME_READY
+            : promote(),
+        signal
+      )
     )
     // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
-    hostRemovedStage = windows
+    hostRemovedStage = windows && promoteRan
     assertRemoteNodeRuntimePromoted(promoted)
     return { executable, transfer: 'uploaded' }
   } catch (error) {
