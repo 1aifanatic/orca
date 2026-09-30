@@ -142,4 +142,22 @@ describe('paired host presence', () => {
     expect(unidentified?.connectionId).toBeNull()
     expect(unidentified?.worktreeId).toBeUndefined()
   })
+
+  it('releases a live owner when a newer snapshot shows the pane without status', () => {
+    const state = makeState()
+    const live = { ...state, ...applyWebSessionTabsSnapshot(state, snapshot(false), ENV, NOW) }
+    const paneKey = Object.keys(live.agentPresenceByPaneKey ?? {})[0]
+    expect(live.agentPresenceByPaneKey?.[paneKey]?.presence.process).toBeDefined()
+    const bare = snapshot(false, {}, 2)
+    const tab = bare.tabs[0]
+    if (tab?.type !== 'terminal') {
+      throw new Error('missing terminal')
+    }
+    const { agentStatus: _dropped, ...withoutStatus } = tab
+    const next = {
+      ...live,
+      ...applyWebSessionTabsSnapshot(live, { ...bare, tabs: [withoutStatus] }, ENV, NOW + 1)
+    }
+    expect(next.agentPresenceByPaneKey?.[paneKey]).toBeUndefined()
+  })
 })

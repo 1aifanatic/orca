@@ -22,6 +22,7 @@ import {
   isMirroredAgentPaneKeyForTabs,
   batchAgentPaneKeysForTabs,
   remapHostAgentStatus,
+  toMirroredPaneKey,
   updateBatchAgentPaneKey
 } from './agent-status-primitives'
 import {
@@ -108,6 +109,13 @@ export function buildMirroredAgentStatusPatch(
       ?.get(surface.leafId)
     const hostEntry = remapHostAgentStatus(surface, retainedSurface)
     if (!hostEntry) {
+      // Why: snapshots arrive version-ordered, so a pane published without status no longer has an owner here.
+      const paneKey = toMirroredPaneKey(surface, retainedSurface?.leafId)
+      if (paneKey && nextPresenceByPaneKey[paneKey]?.connectionId === environmentId) {
+        const { [paneKey]: _released, ...remaining } = nextPresenceByPaneKey
+        nextPresenceByPaneKey = remaining
+        presenceChanged = true
+      }
       continue
     }
     const presence = readAgentProcessPresence(hostEntry.agentPresence)
