@@ -4,6 +4,7 @@ import {
   ensureRemoteOrcadNodeRuntime,
   remoteNodeRuntimeDir,
   remoteNodeRuntimePresentCommand,
+  RemoteNodeRuntimeSecurityModifiedError,
   RemoteNodeRuntimeSelfTestError,
   REMOTE_NODE_RUNTIME_READY
 } from './orcad-remote-node-runtime'
@@ -25,7 +26,12 @@ import {
   classifyPinnedRuntimeFailure,
   runPinnedRuntimeSelfTest
 } from './ssh-relay-runtime-self-test'
-import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
+import {
+  isWindowsRemoteHost,
+  joinRemotePath,
+  remoteDirname,
+  type RemoteHostPlatform
+} from './ssh-remote-platform'
 
 type PinnedInstallContext = {
   conn: SshConnection
@@ -67,7 +73,8 @@ export async function ensurePinnedRelayRuntime(
   if (relayAlreadyInstalled) {
     const runtimeDir = remoteNodeRuntimeDir(host, remoteRelayDir, plan.target)
     const present = await execCommand(conn, remoteNodeRuntimePresentCommand(host, runtimeDir), {
-      signal
+      signal,
+      wrapCommand: !isWindowsRemoteHost(host)
     })
     if (present.trim() === REMOTE_NODE_RUNTIME_READY) {
       if (run && run.runtimeTransfer === 'none') {
@@ -91,6 +98,9 @@ export async function ensurePinnedRelayRuntime(
   } catch (error) {
     if (error instanceof PinnedRelayFallbackError) {
       refuse(context, error)
+    }
+    if (error instanceof RemoteNodeRuntimeSecurityModifiedError) {
+      refuse(context, new PinnedRelayFallbackError('security_software', error.detail))
     }
     if (error instanceof RemoteNodeRuntimeSelfTestError) {
       const refusal = classifyPinnedRuntimeFailure(error.exitStatus, error.output)
@@ -130,8 +140,8 @@ async function confirmPinnedRuntimeHeld(
 /** Runs after the payload is promoted and before `.install-complete`, so a refused dir never completes. */
 export async function verifyPinnedRelayInstall(context: PinnedInstallContext): Promise<void> {
   const { conn, host, remoteRelayDir, plan, signal } = context
-  // A host-Node rung (C) runs no store runtime, so there is nothing for the store GC to take.
-  if (plan.kind === 'pinned-node') {
+  // Rung C runs no store runtime, and store GC skips Windows: neither has a runtime GC can take.
+  if (plan.kind === 'pinned-node' && !isWindowsRemoteHost(host)) {
     await confirmPinnedRuntimeHeld({ ...context, plan })
   }
   const spawnHelpers = orcadNodePtyNativeArtifacts(plan.target).filter((artifact) =>
@@ -150,7 +160,8 @@ export async function verifyPinnedRelayInstall(context: PinnedInstallContext): P
     )
   }
   const nodePath = prebuiltRelayNodePath(context)
-  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal, 2, {
+  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal, {
+    host,
     expectPinnedVersion: plan.kind === 'pinned-node'
   })
   if (context.run && verdict.verdict !== 'unverifiable') {
