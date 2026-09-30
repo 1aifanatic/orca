@@ -18,9 +18,11 @@ function isLaunchShell(processName: string): boolean {
  * foreground: the launch line has not run yet, or the agent exited. A read that fails or cannot
  * tell proves nothing, so it never delays a launch.
  *
- * Locally the proof is the host's own shell-foreground check (the spawned shell holds the
- * foreground: `ps` on POSIX, job membership on Windows), not a process name: Windows names the
- * shell for any agent it cannot recognize, such as an npm agent running as `node.exe`.
+ * On macOS and Linux a fresh foreground read that names a shell proves it. The host's
+ * shell-foreground check cannot: the terminal daemon answers it from its recovery state, which a
+ * plain exit leaves unset. Windows takes only that check, since its scan names the pane's shell for
+ * any agent it cannot recognize (an npm agent running as `node.exe`), so a daemon pane there proves
+ * nothing.
  *
  * Why no check for a non-shell name other than the agent's own: for its first 5 s the daemon's
  * cached read names the launch agent whenever a shell is in front (measured on a zsh pane: cached
@@ -29,7 +31,10 @@ function isLaunchShell(processName: string): boolean {
  * agent.
  */
 export async function isShellInFrontOfLaunchedAgent(
-  controller: Pick<RuntimePtyController, 'getForegroundProcess' | 'confirmShellForeground'> | null,
+  controller: Pick<
+    RuntimePtyController,
+    'getForegroundProcess' | 'confirmForegroundProcess' | 'confirmShellForeground'
+  > | null,
   pty: Pick<RuntimePtyWorktreeRecord, 'connectionId'> | undefined,
   ptyId: string,
   agent: TuiAgent
@@ -42,17 +47,27 @@ export async function isShellInFrontOfLaunchedAgent(
     if (cached && !isLaunchShell(cached) && recognizeAgentProcess(cached)?.agent !== agent) {
       return false
     }
-    // Why the name for SSH: the relay reads its foreground live, with no startup bootstrap to see
-    // past, and offers no shell-foreground proof; the controller answers false for one.
+    // Why the cached name for SSH: the relay reads its foreground live, with no startup bootstrap
+    // to see past, and offers neither a scan nor a shell-foreground check.
     if (pty?.connectionId) {
-      return (
-        !!cached &&
-        isLaunchShell(cached) &&
-        !isExpectedAgentProcess(cached, TUI_AGENT_CONFIG[agent].expectedProcess)
-      )
+      return isShellName(cached, agent)
     }
-    return (await controller.confirmShellForeground?.(ptyId)) ?? false
+    if (process.platform === 'win32') {
+      return (await controller.confirmShellForeground?.(ptyId)) ?? false
+    }
+    const foreground = controller.confirmForegroundProcess
+      ? await controller.confirmForegroundProcess(ptyId)
+      : cached
+    return isShellName(foreground, agent)
   } catch {
     return false
   }
+}
+
+function isShellName(processName: string | null, agent: TuiAgent): boolean {
+  return (
+    !!processName &&
+    isLaunchShell(processName) &&
+    !isExpectedAgentProcess(processName, TUI_AGENT_CONFIG[agent].expectedProcess)
+  )
 }
