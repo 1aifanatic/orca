@@ -370,8 +370,10 @@ Runtime-store GC (`src/main/ssh/remote-node-runtime-store-windows.ts`) reads the
 store in one PowerShell invocation. It learns which runtimes are in use from a
 single `Get-CimInstance Win32_Process` query, filtered on an image path under
 `runtimes\`. It never matches on the image name, so another program's node.exe
-holds nothing. If the query fails, no process check has run and the pass keeps
-everything. Windows itself also refuses to delete a running image, which is a
+holds nothing. WMI refuses a standard user's SSH logon, so a refusal falls back to
+`Get-Process`, which reads the image path of the account's own processes — the
+only ones running from its store. If both fail, no process check has run and the
+pass keeps everything. Windows itself also refuses to delete a running image, which is a
 second safeguard.
 
 ### SSH hosts: starting the relay outside the session
