@@ -37,6 +37,14 @@ function quotePosixPath(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`
 }
 
+// Why: a quoted `~` is literal, so the home prefix stays outside the quotes to expand.
+function posixCdTarget(path: string): string {
+  if (path === '~') {
+    return '~'
+  }
+  return path.startsWith('~/') ? `~/${quotePosixPath(path.slice(2))}` : quotePosixPath(path)
+}
+
 export function plainSshTerminalNotice(mode: SshPlainSshMode): string {
   return `\x1b[2m[Orca] Plain SSH terminal: ${mode.message}\x1b[0m\r\n`
 }
@@ -95,7 +103,7 @@ export class SshPlainShellPtyProvider implements IPtyProvider {
     this.emitData(id, shell, plainSshTerminalNotice(this.mode))
     if (opts.cwd && this.posixHost) {
       // Why: a shell channel has no cwd request; a leading space keeps it out of most histories.
-      channel.write(` cd -- ${quotePosixPath(opts.cwd)}\n`)
+      channel.write(` cd -- ${posixCdTarget(opts.cwd)}\n`)
     }
     if (opts.command && opts.commandDelivery === 'provider') {
       channel.write(`${opts.command}\n`)

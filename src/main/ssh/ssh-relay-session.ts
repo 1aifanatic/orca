@@ -554,7 +554,11 @@ export class SshRelaySession {
     this.lastGraceTimeSeconds = graceTimeSeconds
 
     try {
-      const deployed = await this.deployRelayOrEnterPlainSsh(conn, graceTimeSeconds)
+      const deployed = await this.deployRelayOrEnterPlainSsh(
+        conn,
+        graceTimeSeconds,
+        () => this._state === 'deploying'
+      )
       if (!deployed) {
         return
       }
@@ -717,7 +721,11 @@ export class SshRelaySession {
     this.teardownProviders('connection_lost')
 
     try {
-      const deployed = await this.deployRelayOrEnterPlainSsh(conn, graceTimeSeconds)
+      const deployed = await this.deployRelayOrEnterPlainSsh(
+        conn,
+        graceTimeSeconds,
+        () => this.abortController === abortController && !abortController.signal.aborted
+      )
       if (!deployed) {
         return
       }
@@ -1034,7 +1042,8 @@ export class SshRelaySession {
 
   private async deployRelayOrEnterPlainSsh(
     conn: SshConnection,
-    graceTimeSeconds: number | undefined
+    graceTimeSeconds: number | undefined,
+    isAttemptCurrent: () => boolean
   ): Promise<Awaited<ReturnType<typeof deployAndLaunchRelay>> | null> {
     try {
       return await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
@@ -1044,10 +1053,12 @@ export class SshRelaySession {
         !(err instanceof RemoteRuntimeUnavailableError) ||
         conn.usesSystemSshTransport?.() === true ||
         this.isDisposed() ||
-        this.abortController?.signal.aborted
+        !isAttemptCurrent()
       ) {
         throw err
       }
+      // Why: a superseded attempt's session must not stay registered beside this one.
+      this.leavePlainSshMode()
       this.plainSsh = SshPlainSshModeSession.enter({
         targetId: this.targetId,
         connection: conn,

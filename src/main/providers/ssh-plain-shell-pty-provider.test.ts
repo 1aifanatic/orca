@@ -54,6 +54,14 @@ describe('SshPlainShellPtyProvider', () => {
     expect(channels[0]?.writes).toEqual([` cd -- '/srv/it'\\''s'\n`])
   })
 
+  it('keeps a home-relative cwd expandable by leaving the tilde unquoted', async () => {
+    const { provider, channels } = createProvider()
+    await provider.spawn({ cols: 80, rows: 24, cwd: "~/it's" })
+    await provider.spawn({ cols: 80, rows: 24, cwd: '~' })
+    expect(channels[0]?.writes).toEqual([` cd -- ~/'it'\\''s'\n`])
+    expect(channels[1]?.writes).toEqual([' cd -- ~\n'])
+  })
+
   it('does not type a POSIX cd into a Windows host shell', async () => {
     const { provider, channels } = createProvider({ posixHost: false })
     await provider.spawn({ cols: 80, rows: 24, cwd: 'C:\\work' })

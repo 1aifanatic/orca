@@ -52,17 +52,19 @@ export class SshPlainSshModeSession {
     const { targetId, connection } = args
     const mode = plainSshModeFromRuntimeUnavailable(args.error)
     const generation = allocateSshPtyProviderGeneration()
+    const windowsHost = args.error.data.host.platform === 'win32'
     const ptyProvider = new SshPlainShellPtyProvider(
       targetId,
       (pty) => connection.shell(pty),
       mode,
-      args.error.data.host.platform !== 'win32',
+      !windowsHost,
       generation
     )
     const fsProvider = new SshSftpFilesystemProvider(
       targetId,
       (options) => connection.sftp(options),
-      mode
+      mode,
+      windowsHost
     )
     const session = new SshPlainSshModeSession(targetId, mode, ptyProvider, fsProvider)
     ptyProvider.onData((payload) => {
@@ -95,6 +97,10 @@ export class SshPlainSshModeSession {
     registerSshPtyProvider(targetId, ptyProvider)
     registerSshFilesystemProvider(targetId, fsProvider)
     return session
+  }
+
+  probeTransport(timeoutMs: number): Promise<boolean> {
+    return this.left ? Promise.resolve(false) : this.fsProvider.probeTransport(timeoutMs)
   }
 
   /** Transport gone or session torn down: open shells stay unverifiable, never exited. */

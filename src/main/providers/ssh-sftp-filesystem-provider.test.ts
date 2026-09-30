@@ -2,6 +2,13 @@ import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import type { SFTPWrapper } from 'ssh2'
 import { SshSftpFilesystemProvider, toSftpPath } from './ssh-sftp-filesystem-provider'
+import { downloadFolderViaSftp } from './ssh-filesystem-download'
+import type * as SshFilesystemDownload from './ssh-filesystem-download'
+
+vi.mock('./ssh-filesystem-download', async (importOriginal) => ({
+  ...(await importOriginal<typeof SshFilesystemDownload>()),
+  downloadFolderViaSftp: vi.fn(async () => {})
+}))
 
 type Node = { kind: 'file'; content: Buffer } | { kind: 'dir' } | { kind: 'link'; target: string }
 type Callback = (err: Error | null, value?: unknown) => void
@@ -215,6 +222,31 @@ describe('SshSftpFilesystemProvider', () => {
     await expect(provider.listFiles()).rejects.toThrow('Quick Open')
     await expect(provider.copy()).rejects.toThrow('Copying files')
     await expect(provider.supportsQuickOpenSearch()).resolves.toBe(false)
+  })
+
+  it('downloads folders over SFTP with the host path style', async () => {
+    const { createSftp } = createProvider()
+    const windowsProvider = new SshSftpFilesystemProvider('target-1', createSftp, MODE, true)
+    const signal = new AbortController().signal
+    await windowsProvider.downloadFolder('~/proj', '/tmp/dest', { signal })
+    expect(downloadFolderViaSftp).toHaveBeenCalledWith(createSftp, 'proj', '/tmp/dest', {
+      signal,
+      windowsRemotePaths: true
+    })
+  })
+
+  it('probes the transport with one SFTP round trip and times out a silent one', async () => {
+    const { provider, sftp } = createProvider()
+    await expect(provider.probeTransport(1_000)).resolves.toBe(true)
+    sftp.realpath = () => {}
+    vi.useFakeTimers()
+    try {
+      const probe = provider.probeTransport(5_000)
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(probe).resolves.toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reopens SFTP after the channel closes and ends it on dispose', async () => {

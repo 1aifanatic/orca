@@ -12,7 +12,12 @@ import type { SearchResult } from '../../shared/code-search-types'
 import type { DirEntry } from '../../shared/filesystem-entry-types'
 import type { SshPlainSshMode } from '../../shared/ssh-types'
 import { PlainSshUnsupportedError } from '../ssh/ssh-plain-ssh-mode'
-import { downloadFileViaSftp, type SftpFactory } from './ssh-filesystem-download'
+import {
+  downloadFileViaSftp,
+  downloadFolderViaSftp,
+  type FolderDownloadOptions,
+  type SftpFactory
+} from './ssh-filesystem-download'
 import {
   fileStatFromSftpStats,
   lstatViaSftp,
@@ -64,7 +69,8 @@ export class SshSftpFilesystemProvider implements IFilesystemProvider {
   constructor(
     private readonly connectionId: string,
     private readonly createSftp: SftpFactory,
-    private readonly mode: SshPlainSshMode
+    private readonly mode: SshPlainSshMode,
+    private readonly windowsRemotePaths = false
   ) {}
 
   getConnectionId(): string {
@@ -103,6 +109,25 @@ export class SshSftpFilesystemProvider implements IFilesystemProvider {
       this.sftpPromise = opening
     }
     return this.sftpPromise
+  }
+
+  /** Round-trips one SFTP request; a silent transport times out as not alive. */
+  async probeTransport(timeoutMs: number): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs)
+    })
+    try {
+      return await Promise.race([
+        this.realpath('.').then(
+          () => true,
+          () => false
+        ),
+        timeout
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private async run<T>(op: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
@@ -178,6 +203,18 @@ export class SshSftpFilesystemProvider implements IFilesystemProvider {
 
   async downloadFile(sourcePath: string, destinationPath: string): Promise<void> {
     await downloadFileViaSftp(this.createSftp, toSftpPath(sourcePath), destinationPath)
+  }
+
+  // Why: the connect broadcast advertises folder download for every ssh2 target, plain SSH included.
+  async downloadFolder(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FolderDownloadOptions
+  ): Promise<void> {
+    await downloadFolderViaSftp(this.createSftp, toSftpPath(sourcePath), destinationPath, {
+      signal: options?.signal,
+      windowsRemotePaths: this.windowsRemotePaths
+    })
   }
 
   async writeFile(filePath: string, content: string): Promise<void> {

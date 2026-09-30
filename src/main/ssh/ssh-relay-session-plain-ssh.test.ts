@@ -77,7 +77,6 @@ function createConnection(systemSsh = false) {
     shell: vi.fn(async () => channel as unknown as ClientChannel),
     sftp: vi.fn()
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The session only calls these members in plain SSH mode.
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Plain SSH mode only calls usesSystemSshTransport, shell and sftp on the connection.
   return { conn: conn as unknown as SshConnection, channel, shell: conn.shell }
 }
@@ -172,6 +171,32 @@ describe('SshRelaySession plain SSH mode (runtime rung D)', () => {
     )
     await expect(provider.probePtyLiveness(id)).resolves.toBeNull()
     expect(getSshPlainSshMode('target-1')).toBeUndefined()
+  })
+
+  it('lets only the current reconnect enter plain SSH mode', async () => {
+    const { session } = createSession()
+    const onReady = vi.fn()
+    session.setOnReady(onReady)
+    const { conn } = createConnection()
+    await session.establish(conn)
+    onReady.mockClear()
+    vi.mocked(pty.registerSshPtyProvider).mockClear()
+
+    let rejectStale: (error: Error) => void = () => {}
+    vi.mocked(deployAndLaunchRelay).mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectStale = reject))
+    )
+    const stale = session.reconnect(conn)
+    await vi.waitFor(() => expect(deployAndLaunchRelay).toHaveBeenCalledTimes(2))
+    const current = session.reconnect(conn)
+    await current
+    rejectStale(runtimeUnavailable())
+    await stale
+
+    expect(onReady).toHaveBeenCalledTimes(1)
+    expect(pty.registerSshPtyProvider).toHaveBeenCalledTimes(1)
+    expect(session.getPlainSshSession()).not.toBeNull()
+    session.detach()
   })
 
   it('still fails the connect on system SSH, which has no shell or SFTP channel', async () => {
