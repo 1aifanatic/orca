@@ -63,7 +63,7 @@ describe('relay process presence', () => {
         expect(response.status).toBe(204)
       }
       await post('SessionStart', 'a')
-      expect(forward.mock.lastCall?.[0].agentPresence?.process.pid).toBe(4001)
+      expect(forward.mock.lastCall?.[0].agentPresence?.process?.pid).toBe(4001)
       expect(probe).not.toHaveBeenCalled()
       const retryHost = retryHosts[0]
       const original = retryHost.state.lastStatusByPaneKey.get(paneKey)
