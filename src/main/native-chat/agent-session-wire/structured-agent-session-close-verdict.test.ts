@@ -243,6 +243,10 @@ describe('a turn cut short by closing its provider', () => {
     expect(statuses.findLast((event) => event.type === 'status')).toMatchObject({
       session: { status: 'idle', turnOutcome: 'interruption' }
     })
+    const { settled } = await settledTurn()
+    expect(
+      settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
+    ).toMatchObject({ key: 'failedAfter' })
   })
 
   it("keeps the user's cancellation when a close aborts after the provider settled, then retries", async () => {

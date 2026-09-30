@@ -17,6 +17,8 @@ import {
   agentTurnEndedOnPurpose,
   agentVerdictDisplayMark
 } from '../../../shared/agent-main-agent-verdict'
+import { formatNativeChatTurnStatusLabel } from '../../../shared/native-chat-turn-status'
+import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { AgentHookServer, _internals } from '../../agent-hooks/server'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -24,7 +26,11 @@ import {
   settleStaleStructuredAgentSessionState,
   settleStructuredAgentSessionDeadGeneration
 } from './structured-agent-session-dead-generation-settlement'
-import type { StructuredAgentSessionTurnVerdict } from './structured-agent-session-stale-turn-verdict'
+import {
+  childEndCauseOfEndedEvent,
+  turnVerdictForChildEnd,
+  type StructuredAgentSessionTurnVerdict
+} from './structured-agent-session-stale-turn-verdict'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
 import { StructuredAgentSessionTurnCompletionFeed } from './structured-agent-session-turn-completion-feed'
@@ -176,6 +182,55 @@ describe('a turn recovery settled after its host went away', () => {
       expect(row && agentTurnEndedOnPurpose(row)).toBe(false)
       // The dot and the OS notification come only from a completion event, and none is sent.
       expect(session.completionEvents).toEqual([])
+    }
+  )
+
+  // The chat's turn bar and the tab's mark read one verdict: a turn nobody stopped failed, and
+  // must never show the done tick of a finished turn.
+  it.each([
+    [
+      'a restart',
+      (journal: AgentSessionJournal) =>
+        settleDeadGeneration(journal, { state: 'interrupted', completedAt: EXIT_OBSERVED })
+    ],
+    [
+      'quitting Orca',
+      // A quit evicts the child, and its adapter settles the open turn through the one mapping.
+      (journal: AgentSessionJournal) =>
+        journal.appendItem(
+          { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 9 },
+          {
+            kind: 'turn',
+            turnId: 'turn-1',
+            startedAt: TURN_STARTED,
+            ...turnVerdictForChildEnd(
+              childEndCauseOfEndedEvent({
+                type: 'ended',
+                cause: 'requested-close',
+                stopCause: 'evict'
+              }),
+              EXIT_OBSERVED
+            )
+          },
+          { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+    ]
+  ] as const)(
+    'reads Failed after N, marked failed, for a turn cut off by %s',
+    async (_label, cut) => {
+      const session = await sessionWithRunningTurn()
+      session.recoverAt(RECOVERED)
+      await cut(session.journal)
+      session.publish()
+
+      const [row] = session.server.getStatusSnapshot()
+      expect(row && agentVerdictDisplayMark(row)).toBe('failed')
+      const [settled] = [
+        ...selectStructuredAgentSettledTurns(session.journal.snapshot().items).values()
+      ]
+      expect(settled && formatNativeChatTurnStatusLabel({ elapsedSeconds: 0, ...settled })).toBe(
+        'Failed after 1s'
+      )
     }
   )
 
