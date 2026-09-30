@@ -30,6 +30,11 @@ beforeEach(() => {
 })
 
 const STREAMED = 'Looking at the tests first.'
+const LATER_DELTAS = [
+  'ing at the failing tests first,',
+  ' then the fix that should make them pass.'
+]
+const LONGER = `Look${LATER_DELTAS.join('')}`
 
 type Stream = { openTurn: () => void; streamText: (text: string) => void }
 
@@ -54,7 +59,10 @@ function heldWindow() {
   }
 }
 
-function codexStream(sink: StructuredAgentSessionEventSink, schedule: Schedule): Stream {
+function codexStream(
+  sink: StructuredAgentSessionEventSink,
+  schedule: Schedule
+): Stream & { completeText: (text: string) => void } {
   const translator = createCodexJournalTranslator({
     sink,
     sessionId: SESSION,
@@ -74,7 +82,9 @@ function codexStream(sink: StructuredAgentSessionEventSink, schedule: Schedule):
       notify('turn/started', {})
       notify('item/started', { item: { type: 'agentMessage', id: 'reply', text: '' } })
     },
-    streamText: (text) => notify('item/agentMessage/delta', { itemId: 'reply', delta: text })
+    streamText: (text) => notify('item/agentMessage/delta', { itemId: 'reply', delta: text }),
+    completeText: (text) =>
+      notify('item/completed', { item: { type: 'agentMessage', id: 'reply', text } })
   }
 }
 
@@ -123,31 +133,73 @@ function describeRow(body: AgentJournalItemBody): string {
   return body.kind
 }
 
+async function streaming<TStream extends Stream>(
+  stream: (sink: StructuredAgentSessionEventSink, schedule: Schedule) => TStream
+) {
+  await attach()
+  const window = heldWindow()
+  const provider = stream(acquire.mock.calls.at(-1)![0].events!, window.schedule)
+  provider.openTurn()
+  const journal: AgentSessionJournal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  return { window, provider, journal }
+}
+
+async function stopTurn(journal: AgentSessionJournal): Promise<void> {
+  const turnId = journal.activeTurnId()
+  expect(turnId).not.toBeNull()
+  const stopped = await host.cancel(CALLER, {
+    envelope: envelope('agentSession.cancel', { turnId }),
+    turnId: turnId!
+  })
+  expect(stopped).toMatchObject({ ok: true, value: { cancelled: true } })
+}
+
+function rowsOf(journal: AgentSessionJournal): string[] {
+  return journal
+    .snapshot()
+    .items.map((item) => describeRow(item.body))
+    .filter((row) => row !== 'turn')
+}
+
 describe.each([
   ['Codex', codexStream],
   ['Claude', claudeStream]
 ])('%s text streamed inside the coalescing window', (_provider, stream) => {
   it('lands ahead of the note of a Stop issued in that window', async () => {
-    await attach()
-    const window = heldWindow()
-    const provider = stream(acquire.mock.calls.at(-1)![0].events!, window.schedule)
-    provider.openTurn()
+    const { window, provider, journal } = await streaming(stream)
     provider.streamText(STREAMED)
-    const journal: AgentSessionJournal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
-    const turnId = journal.activeTurnId()
-    expect(turnId).not.toBeNull()
 
-    const stopped = await host.cancel(CALLER, {
-      envelope: envelope('agentSession.cancel', { turnId }),
-      turnId: turnId!
-    })
-    expect(stopped).toMatchObject({ ok: true, value: { cancelled: true } })
+    await stopTurn(journal)
     window.close()
 
-    const rows = journal
-      .snapshot()
-      .items.map((item) => describeRow(item.body))
-      .filter((row) => row !== 'turn')
-    expect(rows).toEqual([`text: ${STREAMED}`, 'note: Cancellation requested.'])
+    expect(rowsOf(journal)).toEqual([`text: ${STREAMED}`, 'note: Cancellation requested.'])
+  })
+
+  it('is rewritten in place, above the note, when the window closes after the Stop', async () => {
+    const { window, provider, journal } = await streaming(stream)
+    provider.streamText('Look')
+    for (const delta of LATER_DELTAS) {
+      provider.streamText(delta)
+    }
+    expect(rowsOf(journal)).toEqual(['text: Look'])
+
+    await stopTurn(journal)
+    window.close()
+
+    expect(rowsOf(journal)).toEqual([`text: ${LONGER}`, 'note: Cancellation requested.'])
+  })
+})
+
+describe('Codex text completed inside the coalescing window', () => {
+  it('lands its final body on the row its first delta made, above a later Stop note', async () => {
+    const { window, provider, journal } = await streaming(codexStream)
+    provider.streamText('Look')
+    provider.streamText('ing at the failing')
+    provider.completeText(LONGER)
+
+    await stopTurn(journal)
+    window.close()
+
+    expect(rowsOf(journal)).toEqual([`text: ${LONGER}`, 'note: Cancellation requested.'])
   })
 })
