@@ -50,6 +50,24 @@ async function runningTurn(): Promise<AgentSessionJournal> {
   return journal
 }
 
+/** A child the adapter published before proving its startup, so a Stop ends the start. */
+async function startingChild(): Promise<{ journal: AgentSessionJournal; closeSession: Mock }> {
+  const acquired = acquire.getMockImplementation()!
+  acquire.mockImplementationOnce(async (input) => ({
+    ...(await acquired(input)),
+    providerChildPhase: 'starting' as const
+  }))
+  const closeSession = vi.fn(async () => true)
+  Object.assign(host.deps.adapter, { closeSession })
+  await attach()
+  const session = host.collaboratorsForTests().sessions.get(SESSION)
+  if (!session) {
+    throw new Error('no open session')
+  }
+  expect(session.child?.phase).toBe('starting')
+  return { journal: session.journal, closeSession }
+}
+
 function stop(fields: { turnId?: string }) {
   return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
 }
@@ -118,6 +136,39 @@ describe.each([
       expect.objectContaining({ error: MALFORMED })
     )
   })
+
+  it.each([
+    ['withdrawing the queued sends', "Stop's withdrawal skipped:"],
+    ['recording its queue pause', "Stop's queue pause skipped:"]
+  ] as const)(
+    'ends a starting child before %s settles, then reports its failure',
+    async (step, warning) => {
+      const { journal, closeSession } = await startingChild()
+      const order: string[] = []
+      const held = Promise.withResolvers<never>()
+      if (step === 'withdrawing the queued sends') {
+        vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(() => held.promise)
+      } else {
+        vi.spyOn(journal.queuedMessages, 'recordPause').mockImplementation(() => held.promise)
+      }
+      closeSession.mockImplementation(async () => {
+        order.push('stop')
+        return true
+      })
+
+      const stopping = stop(fields)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      order.push('write fails')
+      held.reject(new Error(MALFORMED))
+
+      expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
+      expect(order).toEqual(['stop', 'write fails'])
+      expect(warned).toHaveBeenCalledWith(
+        `[agent-session] ${warning}`,
+        expect.objectContaining({ error: MALFORMED })
+      )
+    }
+  )
 
   // The open pays an import owed before the Stop, so the work falls owed at the Stop's first write:
   // the one moment the Stop's own writes can wait behind it.
