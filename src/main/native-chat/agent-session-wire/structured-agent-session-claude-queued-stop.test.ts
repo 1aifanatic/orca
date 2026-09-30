@@ -367,5 +367,11 @@ it('a card sent now into the running turn comes back paused when Stop withdraws 
       sends: [{ origin: 'client', state: 'rejected', reason: DISPATCH_REJECTED_CANCELLED }]
     })
   }, 5_000)
+  // A drain ignoring the pause re-sends only after the stopped turn ends: watch past that.
+  await eventually(async () => expect(await liveTurnId()).toBeNull())
+  await new Promise((resolve) => setTimeout(resolve, 2_500))
   expect(connection.sent).toHaveLength(2)
-}, 15_000)
+  expect(await sends()).toEqual([
+    { origin: 'client', state: 'rejected', reason: DISPATCH_REJECTED_CANCELLED }
+  ])
+}, 20_000)

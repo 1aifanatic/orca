@@ -383,7 +383,7 @@ describe("a restart's pause", () => {
   })
 })
 
-describe('several pauses in force', () => {
+describe('which cards the pauses in force hold', () => {
   type Card = Parameters<typeof queuePauseHolding>[1] & { messageId: string }
   const DEAD = 'proc-0'
 
@@ -409,6 +409,20 @@ describe('several pauses in force', () => {
     const pauses = pausesOver(cards, stopped)
     return cards.map((each) => [each.messageId, queuePauseHolding(pauses, each)?.reason ?? null])
   }
+
+  it('a Stop holds a card with no recorded position, and one queued before a rewind', () => {
+    const cards = [
+      card('unrecorded', 5, { queuedAt: null }),
+      // Later in its own epoch than the Stop is in this one: only the epoch says it came first.
+      card('before-rewind', 5, { queuedAt: { epoch: 'epoch-0', sequence: 9 } }),
+      card('after', 5)
+    ]
+    expect(holding(cards)).toEqual([
+      ['unrecorded', 'stopped'],
+      ['before-rewind', 'stopped'],
+      ['after', null]
+    ])
+  })
 
   it("a Stop that holds nothing never hides a restart's: a dead process's card queued after it waits", () => {
     const after = card('after', 5, { hostInstance: DEAD })

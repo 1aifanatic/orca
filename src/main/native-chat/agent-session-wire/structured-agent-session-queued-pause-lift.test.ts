@@ -244,10 +244,18 @@ describe('a card queued after a Stop is a new instruction', () => {
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.deleteQueued(only)).toMatchObject({ ok: true, value: { deleted: true } })
     expect(await rig.queuePause()).toBeNull()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    // Hidden, not ended: with nothing to hold, no card can show the lift, so read the Stop itself.
+    expect(structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
     const next = await rig.workingSend()
     const later = await queuedDraft('typed during the next turn')
-    // That send is a person's turn after the Stop: once it starts, the queue sends again.
+    expect(structuredQueuePauses(journal)).toMatchObject([{ reason: 'stopped' }])
+    // That send is a person's turn after the Stop: once it starts, the Stop is over.
     await rig.settleAccepted(next, 'next')
+    expect(structuredQueuePauses(journal)).toEqual([])
     await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
   })
 })

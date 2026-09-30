@@ -292,8 +292,12 @@ describe('a queued card sent now into the turn a Stop ends', () => {
         }),
       { timeout: 5_000 }
     )
+    // A drain ignoring the pause re-sends only after the stopped turn ends: watch past that.
+    await vi.waitFor(() => expect(turns.turnId).toBeNull())
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
     expect(answers).toBe(2)
-  })
+    expect(await sends(cardId)).toEqual([{ origin: 'client', verdict: 'withdrawn' }])
+  }, 20_000)
 })
 
 describe('a Stop sent after Codex answered a cold send, before it opened the turn', () => {
