@@ -408,12 +408,12 @@ It is not a substitute for reading the diff. Five facts bound it, all learned th
 - **It was blind to a stream close with no frame behind it.** Deleting `unsubscribeStream()` from
   `mobile-notifications.ts`'s cleanup — the local close, not the `notifications.unsubscribe` RPC
   beside it — survived all 810 tests. Neither unsubscribe builder in `rpc-client-stream-registry.ts`
-  knows `notifications.subscribe`, so closing that stream writes nothing to the wire: what the
-  mutant leaks is a live subscription record, and the leak stayed invisible until a cutover replayed
+  knew `notifications.subscribe` then, so closing that stream wrote nothing to the wire: what the
+  mutant leaked was a live subscription record, and the leak stayed invisible until a cutover replayed
   it. `notifications-desktop-stream-closed` stops the stream and then cuts over, where the leak
   becomes a second `notifications.subscribe` payload — one hand-written scenario per builder-less
   method, which is a rule nobody enforces. The teardown observation below closes the class: the same
-  mutant now fails seven goldens rather than that one, and a family whose method does build an
+  mutant then failed seven goldens rather than that one, and a family whose method does build an
   unsubscribe (`nativeChat.subscribe`, `runtime.clientEvents.subscribe`) is pinned by that payload
   at unmount as well.
 

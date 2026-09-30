@@ -30,10 +30,8 @@ export type RpcSubscriptionCoverage =
 export type RpcSubscriptionRelease =
   /** The transport releases it by the id from the current `ready`. */
   | 'ready-id'
-  /** The transport builds the unsubscribe from the subscribe params. */
+  /** The transport builds the unsubscribe from the subscribe params and request id. */
   | 'params'
-  /** The phone sends no release; the host drops it when the connection closes. */
-  | 'connection-close'
 
 export type RpcSubscriptionSite = {
   readonly file: string
