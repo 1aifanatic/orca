@@ -451,6 +451,52 @@ describe('a send the CLI started, then cancelled', () => {
   )
 })
 
+// batch-lead's client-C is a steer: written while A's turn runs, queued, then started as its own
+// turn once A completed. Its queued-while-Stopped case is interrupt-lost's client-B, above.
+describe('a steer a Stop interrupts after it started', () => {
+  it('is released as doubt, never withdrawn, when the Stop lands before its echo', async () => {
+    const steer = capturedUuid('batch-lead', 'client-C')
+    let started = false
+    let routes: ControlPoint['routes'] | undefined
+    const replay = await replayCapture('batch-lead', {
+      atControl: async (point) => {
+        routes = point.routes
+        point.deliverInFlight()
+      },
+      // The Stop lands between the steer's start and its echo: nothing after its start arrives.
+      omitFrame: () => started,
+      afterFrame: (frame) => {
+        started ||= isLifecycleFrame(frame, 'started') && frame.command_uuid === steer
+        return []
+      }
+    })
+    const uuid = replay.liveUuid('client-C')
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(true)
+
+    // Answered as interrupt-lost's was, with nothing left queued; then that capture's tail for a
+    // started command a Stop ended (its result dropped: one naming the steer would accept it).
+    routes!.interrupt = () => ({ still_queued: [], cancelled: [] })
+    await replay.adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })
+    for (const frame of [
+      {
+        type: 'command_lifecycle',
+        command_uuid: uuid,
+        state: 'cancelled',
+        uuid: 'steer-cancelled'
+      },
+      { type: 'system', subtype: 'session_state_changed', state: 'idle', uuid: 'steer-idle' }
+    ]) {
+      replay.connection.handlers.onMessage?.({ ...frame, session_id: PROVIDER_SESSION_ID })
+    }
+
+    expect(replay.connection.calls.filter((call) => call.subtype === 'interrupt')).toEqual([
+      { subtype: 'interrupt', params: { cancelQueued: true } }
+    ])
+    expect(replay.settlementsFor('client-C')).toEqual([ENDED_IN_DOUBT])
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
+  })
+})
+
 describe('a send the CLI ended before starting it', () => {
   it.each([
     // The CLI ended its session with the send still queued.
