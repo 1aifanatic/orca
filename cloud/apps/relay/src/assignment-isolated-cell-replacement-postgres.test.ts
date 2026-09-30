@@ -859,4 +859,34 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
       await longHold()
     }
   }, 30_000)
+  it('never waits on the assignment row while its retry holds the pinned cell row', async () => {
+    await resetFleet()
+    const identity = hostIdentity(923)
+    const first = await stores[0]!.assign(identity, 'us-central1')
+    // No control lease, so the sticky re-grant needs the cell row itself.
+    expect(
+      await stores[0]!.releaseActivity(identity, `control-pending:${first.assignmentEpoch}`)
+    ).toBe(true)
+    // The first attempt finds the cell row busy and retries cell row first.
+    const releaseCell = await holdCellRows([first.cellId])
+    const regrant = stores[1]!.assign(identity, 'us-central1').then(
+      () => 'granted',
+      (error: unknown) => error
+    )
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    // The row the retry reaches next, held the way this host's release holds it.
+    const releaseAssignment = await holdRows(
+      `SELECT user_id FROM relay_assignments WHERE user_id = ? AND relay_host_id = ?`,
+      [identity.userId, identity.relayHostId]
+    )
+    try {
+      await releaseCell()
+      const cellFreedAt = performance.now()
+      expect(await regrant).toBeInstanceOf(RelayAssignmentRowBusyError)
+      // NOWAIT once the cell row is held: nowhere near the 1s bounded wait.
+      expect(performance.now() - cellFreedAt).toBeLessThan(300)
+    } finally {
+      await releaseAssignment()
+    }
+  }, 30_000)
 })

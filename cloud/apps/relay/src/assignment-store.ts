@@ -790,7 +790,10 @@ export class RelayAssignmentStore {
       // its own release, and a refusal costs it the client's 5 s assign gate. On
       // a live general cell that release is short, so a bounded wait is cheap.
       // A roll, drain or dead cell keeps its release queued, so refuse at once.
+      // Never while holding the cell row: that reverses the lock order against
+      // this host's own release, which holds its row and wants the cell's.
       const pinIsLiveGeneral =
+        lockedCells === undefined &&
         pinnedCellId !== undefined &&
         unlockedAdmission?.state === 'general' &&
         (await this.cellIsLive(transaction, pinnedCellId, now))
