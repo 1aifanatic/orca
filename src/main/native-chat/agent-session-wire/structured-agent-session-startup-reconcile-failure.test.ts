@@ -90,7 +90,7 @@ async function relaunch(
     mintSpawnToken: () => 'spawn-next',
     probeOwner,
     stopOwnerProcess: () => {
-      throw new Error('a read must not stop an owner')
+      throw new Error('an owner not proven alive must not be stopped')
     },
     now: () => NOW,
     onLeaseReconcileFailure
@@ -193,7 +193,7 @@ it('restores a chat for reading from records a newer Orca wrote', async () => {
   expect(await readFile(path)).toEqual(bytes)
 })
 
-// A chat whose owner could not be proven gone is left recovering; resolving that is the writer's.
+// A chat whose owner could not be proven gone is left recovering; the next attach or send retries it.
 it('restores a chat for reading when resolving its recovery cannot write the store', async () => {
   const { host, store, onLeaseReconcileFailure } = await relaunch(false, async () => ({
     outcome: 'indeterminate',

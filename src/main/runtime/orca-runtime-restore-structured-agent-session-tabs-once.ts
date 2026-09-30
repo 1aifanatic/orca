@@ -84,7 +84,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       targets,
       restored.map((session) => session.sessionId)
     )
-    // The store already lists every tab projected here, so the restore writes nothing else.
+    // Past the seed, projecting records nothing.
     for (const replacement of host?.conversationReplacements?.() ?? []) {
       this.replaceStructuredAgentSessionTab(replacement)
     }

@@ -72,15 +72,22 @@ async function restoreOneStructuredAgentSessionReadUnderSerialize(
 export async function restoreStructuredAgentSessionsOnRestart(
   input: StructuredAgentSessionReadRestoreDeps & { records: AgentSessionRecord[] }
 ): Promise<void> {
-  // Once bookkeeping fails in this pass, trying again per chat only waits on the same store again.
-  let bookkeepingFailed = false
+  const [first] = input.records
+  if (!first) {
+    return
+  }
+  // One check for the pass. Each chat checks again while it holds, since another writer can mark
+  // leases unreconciled mid-pass; after the first failure, retrying per chat only waits on the
+  // same store again, and the next attach or send settles those chats instead.
+  let settled = await input.reconcile(first.sessionId)
   const settleLeases = async (sessionId: string): Promise<void> => {
-    if (bookkeepingFailed) {
-      return
-    }
     // A session latched in recovery exits here at startup, without waiting for a client.
-    const settled = (await input.reconcile(sessionId)) && (await input.resolveRecovery(sessionId))
-    bookkeepingFailed ||= !settled
+    if (
+      settled &&
+      !((await input.reconcile(sessionId)) && (await input.resolveRecovery(sessionId)))
+    ) {
+      settled = false
+    }
   }
   await mapWithConcurrency(input.records, JOURNAL_RESTORE_CONCURRENCY, async ({ sessionId }) => {
     // A journal open is synchronous SQLite: without a macrotask per chat the restore is one long task.

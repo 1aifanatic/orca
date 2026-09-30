@@ -296,8 +296,9 @@ describe('restoring the chat tabs open at quit', () => {
     }
   )
 
-  it('costs two failed writes in all while the store keeps failing, however many chats are open', async () => {
-    const chats = Array.from({ length: 8 }, (_, index) => `chat-${index}-000${index}`)
+  // Each failed write stands for one refused commit.
+  it.each([1, 4, 8])('fails one write per startup step with %i chats open', async (count) => {
+    const chats = Array.from({ length: count }, (_, index) => `chat-${index}-000${index}`)
     const records = chats.map((sessionId) => chatRecord(sessionId))
     await seedProfile(records, { visible: chats })
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -308,11 +309,12 @@ describe('restoring the chat tabs open at quit', () => {
     })
 
     await runtime.prepareStructuredAgentSessionStartupRestoration()
+    const prepared = writes.refused
     await runtime.restoreStructuredAgentSessionTabs()
 
-    expect(published()).toHaveLength(8)
-    // One for the startup reconcile, one for the restore's; the restore writes no tab.
-    expect(writes.refused).toBe(2)
+    expect(published()).toHaveLength(count)
+    expect(prepared).toBe(1)
+    expect(writes.refused - prepared).toBe(1)
   })
 
   describe('on a legacy profile, with no tab index yet', () => {
@@ -341,7 +343,28 @@ describe('restoring the chat tabs open at quit', () => {
       expect(tabWrites.visibility).not.toHaveBeenCalled()
     })
 
-    it('still lists the chats when that write fails, and leaves the index to seed again', async () => {
+    it('fails one write more, for that one write', async () => {
+      const records = legacyChats()
+      await seedProfile(records)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime, published } = startupRuntime({
+        profileChats: [CHAT_A, CHAT_B],
+        afterInstall: () => {
+          writes.failing = true
+        }
+      })
+
+      await runtime.prepareStructuredAgentSessionStartupRestoration()
+      const prepared = writes.refused
+      await runtime.restoreStructuredAgentSessionTabs()
+
+      expect(published()).toHaveLength(2)
+      expect(prepared).toBe(1)
+      // The restore's lease check and the seed.
+      expect(writes.refused - prepared).toBe(2)
+    })
+
+    it('still lists the chats when that write fails, and leaves the index absent', async () => {
       const records = legacyChats()
       await seedProfile(records)
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)

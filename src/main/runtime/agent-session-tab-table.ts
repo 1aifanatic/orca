@@ -131,7 +131,6 @@ export function setAgentSessionTabVisibility(
   }
 }
 
-/** Shows each session that still has a record. */
 export function showAgentSessionTabs(
   state: AgentSessionStoreState,
   sessionIds: readonly string[]
