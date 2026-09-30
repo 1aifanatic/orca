@@ -3,11 +3,7 @@ import { toast } from 'sonner'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { translate } from '@/i18n/i18n'
 
-/**
- * Copies the chat's orchestration address (`session:<id>`), the one other agents message it by,
- * resolved when selected because `/clear` keeps the conversation's address, not the live id.
- * Distinct from "Copy Session ID", which copies the provider's id and changes on `/clear`.
- */
+/** Copies the host's address for this chat: `session:<root>`, or a structured worker's handle. */
 export function NativeChatCopyAddressMenuItem({
   resolveAddress
 }: {
