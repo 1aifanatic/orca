@@ -61,6 +61,7 @@ describe('completion from the recorded process owner', () => {
 
     feed.set({ ...owner, ended: true })
     feed.set({ ...owner, ended: true })
+    await vi.advanceTimersByTimeAsync(0)
     expect(dispatchCompletion).toHaveBeenCalledTimes(1)
     expect(dispatchCompletion).toHaveBeenCalledWith(
       'claude',
@@ -139,5 +140,27 @@ describe('completion from the recorded process owner', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(inspectProcess).toHaveBeenCalled()
     coordinator.dispose()
+  })
+
+  it('reports no finished task when the terminal goes away with its owner', async () => {
+    const feed = presenceFeed(owner)
+    const dispatchCompletion = vi.fn()
+    const coordinator = createAgentCompletionCoordinator({
+      paneKey: 'tab:leaf',
+      getPtyId: () => 'pty',
+      getSettings: () => null,
+      isLive: () => true,
+      getAgentPresence: feed.get,
+      subscribeAgentPresence: feed.subscribe,
+      inspectProcess: vi.fn(async () => processResult(null, false)),
+      dispatchCompletion
+    })
+    coordinator.startProcessTracking()
+    coordinator.observeTitle('⠋ Claude working')
+    feed.set({ ...owner, ended: true })
+    // The PTY exit that follows the host's teardown disposes the pane.
+    coordinator.dispose()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(dispatchCompletion).not.toHaveBeenCalled()
   })
 })
