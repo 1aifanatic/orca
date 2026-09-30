@@ -410,8 +410,7 @@ export function NativeChatResolvedView({
           onStop={stopAgent}
           onOptimisticSend={onOptimisticSend}
           onOptimisticSendCanceled={delivery.cancel}
-          onOptimisticSendRejected={delivery.reject}
-          onOptimisticSendUnconfirmed={delivery.holdUnconfirmed}
+          optimisticSendOutcome={delivery}
           onSlashCommand={onSlashCommand}
           onSwitchToTerminal={onSwitchToTerminal}
           readTerminalScreen={readTerminalScreen}

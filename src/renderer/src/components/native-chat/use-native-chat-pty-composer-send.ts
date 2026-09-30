@@ -18,6 +18,7 @@ import { isSlashCommandDraft } from '../../../../shared/native-chat-slash-comman
 import type { NativeChatPickerState } from './use-native-chat-picker-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
+import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-types'
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
@@ -31,8 +32,7 @@ export function useNativeChatPtyComposerSend(args: {
   resolveTarget: () => NativeChatResolvedTarget | null
   classifySend: NativeChatPickerState['classifySend']
   onOptimisticSend?: (text: string, imagePaths?: string[]) => string | undefined
-  onOptimisticSendRejected?: (pendingId: string) => void
-  onOptimisticSendUnconfirmed?: (pendingId: string) => void
+  optimisticSendOutcome?: NativeChatOptimisticSendOutcome
   onSlashCommand?: (command: string) => void
   sessionOptionsSurface: NativeChatPtySessionOptionsSurface | null
   terminalTabId: string
@@ -72,12 +72,12 @@ export function useNativeChatPtyComposerSend(args: {
             ...launchSendOptions,
             onWriteRejected: () => {
               if (pendingId) {
-                args.onOptimisticSendRejected?.(pendingId)
+                args.optimisticSendOutcome?.reject(pendingId)
               }
             },
             onWriteUnconfirmed: () => {
               if (pendingId) {
-                args.onOptimisticSendUnconfirmed?.(pendingId)
+                args.optimisticSendOutcome?.holdUnconfirmed(pendingId)
               }
             }
           }
