@@ -8,8 +8,10 @@ import { supportsClaudeStructuredLocation } from './claude-structured-location-s
 
 /** How long one scan answers for a workspace and account before the next read scans again. */
 export const CLAUDE_AT_REST_COMMANDS_TTL_MS = 10_000
-/** A scan still unanswered this long is given up on, so a hung folder can't freeze the menu. */
-const SCAN_ABANDONED_MS = 30_000
+/** A scan still unanswered this long no longer holds the next one off, so a hung folder can't
+ *  freeze the menu. At most two run at once, so a folder that stays hung holds no more. */
+const SCAN_OVERDUE_MS = 30_000
+const MAX_SCANS_IN_FLIGHT = 2
 
 export type ClaudeAtRestCommandsDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
@@ -19,9 +21,13 @@ export type ClaudeAtRestCommandsDeps = {
 
 type Entry = {
   commands?: AgentSessionSlashCommand[]
+  /** When the answer kept (or the failure) landed. */
   scannedAt: number
-  /** When the scan in flight began; only its answer is kept. */
-  scanStartedAt: number | null
+  lastStartedAt: number
+  inFlight: number
+  /** Numbers each scan, so only an answer newer than the one kept replaces it. */
+  started: number
+  kept: number
 }
 
 /**
@@ -44,15 +50,21 @@ export class ClaudeAtRestCommandCatalog {
     const key = JSON.stringify([record.location.workspaceId, record.accountHome.path])
     let entry = this.entries.get(key)
     if (!entry) {
-      entry = { scannedAt: Number.NEGATIVE_INFINITY, scanStartedAt: null }
+      entry = {
+        scannedAt: Number.NEGATIVE_INFINITY,
+        lastStartedAt: Number.NEGATIVE_INFINITY,
+        inFlight: 0,
+        started: 0,
+        kept: 0
+      }
       this.entries.set(key, entry)
     }
     const now = this.now()
-    const idle =
-      entry.scanStartedAt === null
+    const due =
+      entry.inFlight === 0
         ? now - entry.scannedAt >= CLAUDE_AT_REST_COMMANDS_TTL_MS
-        : now - entry.scanStartedAt >= SCAN_ABANDONED_MS
-    if (idle) {
+        : entry.inFlight < MAX_SCANS_IN_FLIGHT && now - entry.lastStartedAt >= SCAN_OVERDUE_MS
+    if (due) {
       this.scanInto(entry, record)
     }
     return entry.commands
@@ -64,13 +76,21 @@ export class ClaudeAtRestCommandCatalog {
   }
 
   private scanInto(entry: Entry, record: AgentSessionRecord): void {
-    const startedAt = this.now()
-    entry.scanStartedAt = startedAt
-    const current = () => entry.scanStartedAt === startedAt
+    const scan = ++entry.started
+    entry.lastStartedAt = this.now()
+    entry.inFlight += 1
+    const newest = () => {
+      if (scan < entry.kept) {
+        return false
+      }
+      entry.kept = scan
+      entry.scannedAt = this.now()
+      return true
+    }
     void this.scan(record)
       .then(
         (commands) => {
-          if (!current() || JSON.stringify(commands) === JSON.stringify(entry.commands)) {
+          if (!newest() || JSON.stringify(commands) === JSON.stringify(entry.commands)) {
             return
           }
           entry.commands = commands
@@ -78,13 +98,13 @@ export class ClaudeAtRestCommandCatalog {
             listener()
           }
         },
-        (error: unknown) => console.warn('[claude] reading the at-rest `/` commands failed:', error)
+        (error: unknown) => {
+          newest()
+          console.warn('[claude] reading the at-rest `/` commands failed:', error)
+        }
       )
       .finally(() => {
-        if (current()) {
-          entry.scanStartedAt = null
-          entry.scannedAt = this.now()
-        }
+        entry.inFlight -= 1
       })
   }
 

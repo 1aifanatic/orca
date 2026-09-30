@@ -170,33 +170,62 @@ describe("a Claude chat whose Claude isn't running shows the `/` surface from it
     expect(namesOf(menu, 'command')).toEqual(['model', 'effort', 'clear', 'compact', 'deploy'])
   })
 
-  it('scans again once a scan has hung past its limit', async () => {
-    let calls = 0
+  it('keeps a slow scan once it answers, never a staler one after a newer, and runs at most two', async () => {
+    const pending: ((skills: string[]) => void)[] = []
     const catalog = new ClaudeAtRestCommandCatalog({
       resolveWorkspacePath: async () => workspace,
       now: () => clock,
-      discover: async (args) => {
-        calls += 1
-        if (calls === 1) {
-          return new Promise(() => {})
-        }
-        const { discoverSkills } = await import('../../skills/discovery')
-        return discoverSkills({ ...args, homeDir: join(directory, 'home'), refresh: true })
-      }
+      discover: () =>
+        new Promise((resolve) => {
+          pending.push((names) =>
+            resolve({
+              skills: names.map((name) => ({
+                id: name,
+                name,
+                description: null,
+                providers: ['claude'],
+                sourceKind: 'repo',
+                sourceLabel: 'repo',
+                rootPath: workspace,
+                directoryPath: workspace,
+                skillFilePath: workspace,
+                installed: true,
+                updatedAt: null
+              })),
+              sources: [],
+              scannedAt: clock
+            })
+          )
+        })
     })
     const record = store.getRecord(SESSION)!
-    expect(catalog.read(record)).toBeUndefined()
-    await vi.waitFor(() => expect(calls).toBe(1))
-    clock += CLAUDE_AT_REST_COMMANDS_TTL_MS
+    const skills = () => namesOf(catalog.read(record) ?? null, 'skill')
+    const changed = vi.fn()
+    catalog.onChange(changed)
     catalog.read(record)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(calls).toBe(1)
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    // Overdue: a second scan starts beside the first; a third never does while both run.
     clock += 30_000
     catalog.read(record)
-    await vi.waitFor(() =>
-      expect(namesOf(catalog.read(record) ?? null, 'skill')).toEqual(['review-pr'])
-    )
-    expect(calls).toBe(2)
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    clock += 30_000
+    catalog.read(record)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(pending).toHaveLength(2)
+    // The second answers first; the first, older one landing after it changes nothing.
+    pending[1](['newer'])
+    await vi.waitFor(() => expect(skills()).toEqual(['newer']))
+    pending[0](['older'])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(skills()).toEqual(['newer'])
+    expect(changed).toHaveBeenCalledTimes(1)
+    // A slow scan is not thrown away: the next one, however long it takes, is kept.
+    clock += CLAUDE_AT_REST_COMMANDS_TTL_MS
+    catalog.read(record)
+    await vi.waitFor(() => expect(pending).toHaveLength(3))
+    clock += 35_000
+    pending[2](['slow'])
+    await vi.waitFor(() => expect(skills()).toEqual(['slow']))
   })
 
   it('after a relaunch, with nothing remembered from before it', async () => {
