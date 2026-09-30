@@ -242,6 +242,9 @@ export async function attachStablePaneOwner(
     })
   } catch (error) {
     if (error instanceof TerminalSessionOwnerUnverifiedError) {
+      console.warn(
+        `[daemon] Keeping pane session ${owner.ptyId} unverified: no daemon proved its owner`
+      )
       throw new Error('terminal_pane_owner_unverified')
     }
     // A daemon endpoint proven gone already arrives as TerminalHostGoneError (daemon-endpoint-verdict).

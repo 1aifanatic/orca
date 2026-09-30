@@ -189,8 +189,13 @@ describe('startup census of previous daemon versions the app could not reach', (
     stalledEndpoints.always.add(getDaemonSocketPath(runtimeDir, LEGACY))
 
     const provider = await startApp(runtimeDir)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     await expect(restorePane(provider, saved)).rejects.toThrow('terminal_pane_owner_unverified')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`pane session ${saved.id} unverified`)
+    )
+    warn.mockRestore()
     // No second copy of the agent in the current daemon, and the original is untouched.
     expect(spawnsOf(PROTOCOL_VERSION)).toHaveLength(0)
     expect(spawnsOf(LEGACY)[0]?.killed).toBe(false)
