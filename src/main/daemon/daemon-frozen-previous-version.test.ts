@@ -12,6 +12,7 @@ import { stopAndWaitPtyFromRuntimeController } from '../ipc/pty/runtime/kill'
 import { collectGenerations } from '../ipc/pty-management-generations'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { killAllProcessesForWorktree, teardownRpcDeadline } from '../runtime/worktree-teardown'
+import { persistedPaneSessionIdsForWorktree } from '../runtime/worktree-persisted-pane-sessions'
 import { WORKTREE_TEARDOWN_FORCE_HINT } from '../../shared/worktree/removal'
 import type { DaemonFileLog } from './daemon-file-log'
 import { createLegacyDaemonAdapters } from './daemon-legacy-adapters'
@@ -231,9 +232,9 @@ describe.skipIf(process.platform === 'win32')(
     }, 30_000)
 
     it('refuses with the Force Delete hint when the frozen version holds a terminal of the workspace', async () => {
+      // No tab and no runtime id: only the id the frozen version was routed before the freeze.
       await expect(
         killAllProcessesForWorktree('wt-old', {
-          runtime: runtimeKnowing(['wt-old@@aaaa0001']),
           localProvider: router,
           requirePhysicalStop: true,
           timeoutMs: 6_000
@@ -258,12 +259,25 @@ describe.skipIf(process.platform === 'win32')(
         ).find((listing) => listing.protocolVersion === LEGACY)
         expect(silent?.contact === 'unverifiable' && silent.lastKnownIds).toEqual([])
 
+        // The tab's reattach failed, so only its saved binding in the workspace session names the id.
+        const savedSession = {
+          tabsByWorktree: {
+            'wt-unv': [{ id: 'tab-unv', worktreeId: 'wt-unv', ptyId: 'wt-unv@@dddd0004' }]
+          },
+          terminalLayoutsByTabId: {
+            'tab-unv': { ptyIdsByLeafId: { 'leaf-1': 'wt-unv@@dddd0004' } }
+          }
+        }
         await expect(
           killAllProcessesForWorktree('wt-unv', {
-            runtime: runtimeKnowing(['wt-unv@@dddd0004']),
             localProvider: restarted,
             requirePhysicalStop: true,
-            timeoutMs: 6_000
+            timeoutMs: 6_000,
+            persistedPaneSessionIds: persistedPaneSessionIdsForWorktree(
+              // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the reader uses only tab id, worktreeId, ptyId and layout ptyIdsByLeafId.
+              savedSession as unknown as Parameters<typeof persistedPaneSessionIdsForWorktree>[0],
+              'wt-unv'
+            )
           })
         ).rejects.toThrow(WORKTREE_TEARDOWN_FORCE_HINT)
 

@@ -35,8 +35,12 @@ export async function sweepProviderByPrefix(
     stop: () => Promise<boolean>
   ) => Promise<{ stopped: boolean; owner: boolean }>,
   onPtyStopped?: (ptyId: string) => void,
-  failClosed = false,
-  onUncheckedSource?: (protocolVersion: number | null) => void
+  opts: {
+    failClosed?: boolean
+    onUncheckedSource?: (protocolVersion: number | null) => void
+    /** Ids this worktree's saved tabs are bound to; evidence for a version that did not answer. */
+    persistedPaneSessionIds?: readonly string[]
+  } = {}
 ): Promise<number> {
   const prefix = `${worktreeId}@@`
   // Why (#10252): the cwd fallback only proves ownership when the filesystem path
@@ -53,10 +57,10 @@ export async function sweepProviderByPrefix(
   const sessions = provider.listProcessesBySource
     ? answeredAndLastKnown(
         await provider.listProcessesBySource({ deadlineMs: rpcDeadline }),
-        prefix,
-        onUncheckedSource
+        worktreeId,
+        opts
       )
-    : failClosed
+    : opts.failClosed
       ? await provider.listProcesses({ deadlineMs: rpcDeadline })
       : await provider.listProcesses({ deadlineMs: rpcDeadline }).catch(() => [])
   const ownedSessions = sessions.filter((session) => {
@@ -101,27 +105,39 @@ export async function sweepProviderByPrefix(
 }
 
 /**
- * What answered, plus this worktree's ids a silent version was last known to hold. Those go down
- * the per-id stop, whose owner cannot answer, so the delete refuses as for a known live PTY; a
- * silent version holding none of them is reported instead of refusing.
+ * What answered, plus this worktree's ids a silent version may hold: the ids it was last known to
+ * hold (routes and attached ids) and the ids the worktree's saved tabs are bound to that no answered
+ * version listed. Those go down the per-id stop, whose owner cannot answer, so the delete refuses as
+ * for a known live PTY; a silent version with no such evidence is reported instead.
  */
 function answeredAndLastKnown(
   listings: readonly PtyProcessSourceListing[],
-  prefix: string,
-  onUncheckedSource: ((protocolVersion: number | null) => void) | undefined
-): Pick<PtyProcessInfo, 'id' | 'cwd' | 'worktreeId'>[] {
-  const lastKnown: { id: string; cwd: string }[] = []
-  for (const listing of listings) {
-    if (listing.contact !== 'unverifiable') {
-      continue
-    }
-    const owned = listing.lastKnownIds.filter((id) => id.startsWith(prefix))
-    if (owned.length === 0) {
-      onUncheckedSource?.(listing.protocolVersion)
-    }
-    lastKnown.push(...owned.map((id) => ({ id, cwd: '' })))
+  worktreeId: string,
+  opts: {
+    onUncheckedSource?: (protocolVersion: number | null) => void
+    persistedPaneSessionIds?: readonly string[]
   }
-  return [...answeredProcesses(listings), ...lastKnown]
+): Pick<PtyProcessInfo, 'id' | 'cwd' | 'worktreeId'>[] {
+  const prefix = `${worktreeId}@@`
+  const answered = answeredProcesses(listings)
+  const silent = listings.filter((listing) => listing.contact === 'unverifiable')
+  if (silent.length === 0) {
+    return answered
+  }
+  const answeredIds = new Set(answered.map((session) => session.id))
+  const evidence = new Set(
+    (opts.persistedPaneSessionIds ?? []).filter((id) => !answeredIds.has(id))
+  )
+  for (const listing of silent) {
+    const owned = listing.lastKnownIds.filter((id) => id.startsWith(prefix))
+    if (owned.length === 0 && evidence.size === 0) {
+      opts.onUncheckedSource?.(listing.protocolVersion)
+    }
+    for (const id of owned) {
+      evidence.add(id)
+    }
+  }
+  return [...answered, ...[...evidence].map((id) => ({ id, cwd: '', worktreeId }))]
 }
 
 export async function sweepRegistryForWorktree(

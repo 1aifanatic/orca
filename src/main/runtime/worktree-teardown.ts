@@ -50,6 +50,8 @@ export type WorktreeTeardownDeps = {
   allowUnverifiedStop?: boolean
   includeProviderInventory?: boolean
   includeLocalRegistry?: boolean
+  /** Ids this worktree's saved tabs are bound to (persistedPaneSessionIdsForWorktree). */
+  persistedPaneSessionIds?: readonly string[]
   /**
    * Close structured agent sessions best-effort, for a destructive removal that does NOT require
    * PTY-stop proof — the folder-workspace paths, which sweep and kill PTYs the same way.
@@ -184,8 +186,14 @@ export async function killAllProcessesForWorktree(
               deadline,
               stopPty,
               deps.onPtyStopped,
-              deps.requirePhysicalStop,
-              (protocolVersion) => protocolVersion !== null && unchecked.add(protocolVersion)
+              {
+                failClosed: deps.requirePhysicalStop,
+                onUncheckedSource: (protocolVersion) =>
+                  protocolVersion !== null && unchecked.add(protocolVersion),
+                ...(deps.persistedPaneSessionIds
+                  ? { persistedPaneSessionIds: deps.persistedPaneSessionIds }
+                  : {})
+              }
             )
           ),
           0,

@@ -79,6 +79,33 @@ describe('workspace delete while an older terminal service does not answer', () 
     expect(provider.shutdown).toHaveBeenCalledWith(`${WORKTREE}@@old`, expect.anything())
   })
 
+  it('refuses when a saved tab of this workspace is bound to an id no answered version listed', async () => {
+    const provider = providerWithSilentVersion([`${WORKTREE}@@a`], [])
+
+    await expect(
+      killAllProcessesForWorktree(WORKTREE, {
+        localProvider: provider,
+        requirePhysicalStop: true,
+        timeoutMs: 1_000,
+        persistedPaneSessionIds: [`${WORKTREE}@@a`, 'restored-owner-unverified']
+      })
+    ).rejects.toThrow(WORKTREE_TEARDOWN_FORCE_HINT)
+    expect(provider.shutdown).toHaveBeenCalledWith('restored-owner-unverified', expect.anything())
+  })
+
+  it('does not count a saved binding the answering version already listed', async () => {
+    const provider = providerWithSilentVersion([`${WORKTREE}@@a`], [])
+
+    const result = await killAllProcessesForWorktree(WORKTREE, {
+      localProvider: provider,
+      requirePhysicalStop: true,
+      timeoutMs: 1_000,
+      persistedPaneSessionIds: [`${WORKTREE}@@a`]
+    })
+
+    expect(result.uncheckedTerminalServices).toEqual([{ protocolVersion: 35 }])
+  })
+
   it('lets an explicit Force Delete through past that terminal', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const provider = providerWithSilentVersion([], [`${WORKTREE}@@old`])

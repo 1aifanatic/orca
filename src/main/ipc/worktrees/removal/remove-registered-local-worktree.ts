@@ -114,7 +114,8 @@ export async function removeRegisteredLocalWorktree(
     // Linked-path deletion is destructive too, so PTYs must release every handle before Windows or WSL filesystem cleanup starts.
     await withWorktreeRemoveStageSpan('pty_sweep', 'local', async () => {
       unchecked = await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
-        allowUnverifiedStop: args.allowUnverifiedPtyStop
+        allowUnverifiedStop: args.allowUnverifiedPtyStop,
+        store
       })
     })
 

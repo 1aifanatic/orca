@@ -123,7 +123,8 @@ export async function removeUnregisteredWorktree(
       let removalCompleted = false
       try {
         await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
-          allowUnverifiedStop: args.allowUnverifiedPtyStop
+          allowUnverifiedStop: args.allowUnverifiedPtyStop,
+          store
         })
         await removeLocalWorktreePath(worktreePath, localWorktreeGitOptions)
         removalCompleted = true
@@ -178,7 +179,8 @@ export async function removeUnregisteredWorktree(
       let removalCompleted = false
       try {
         await stopPtysForDestructiveWorktreeRemoval(runtime, args.worktreeId, {
-          allowUnverifiedStop: args.allowUnverifiedPtyStop
+          allowUnverifiedStop: args.allowUnverifiedPtyStop,
+          store
         })
         await removeLocalWorktreePath(worktreePath, localWorktreeGitOptions)
         removalCompleted = true
