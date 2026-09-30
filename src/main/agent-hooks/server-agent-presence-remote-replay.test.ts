@@ -42,9 +42,14 @@ function claudeHook(
     { worktreeId: 'folder-1', agentProcess: JSON.stringify(agentProcess) }
   )
 }
+class InspectableServer extends AgentHookServer {
+  storedRow(paneKey: string) {
+    return this.state.lastStatusByPaneKey.get(paneKey)
+  }
+}
 async function setup() {
   let connected = true
-  const main = new AgentHookServer()
+  const main = new InspectableServer()
   const frames: AgentHookRelayEnvelope[] = []
   const dir = mkdtempSync(join(tmpdir(), 'remote-replay-'))
   dirs.push(dir)
@@ -130,6 +135,12 @@ describe('execution host presence replay', () => {
       state: 'working',
       agentPresence: replacement
     })
+  })
+  it('keeps host provenance off the stored row', async () => {
+    const { main, relayHook } = await setup()
+    await relayHook('SessionStart', 'a', owner.process)
+    expect(main.storedRow(PANE)?.agentPresence).toMatchObject(owner)
+    expect(main.storedRow(PANE)).not.toHaveProperty('agentPresenceFromExecutionHost')
   })
   it('retains the ordering of a connected exit when an older live frame replays', async () => {
     const { main, relay, relayHook, frames } = await setup()

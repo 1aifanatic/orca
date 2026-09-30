@@ -44,12 +44,16 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     if (!transitioned) {
       return undefined
     }
-    const { authorityRestartId, ...payload } = { ...incoming, ...transitioned }
+    // Host provenance describes this admission, never the stored row.
+    const { authorityRestartId, agentPresenceFromExecutionHost, ...payload } = {
+      ...incoming,
+      ...transitioned
+    }
     if (!this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }
     // Why: the execution host already replaced this owner; the mirrored row is a dead process's, not a parent turn.
-    const hostOwner = payload.agentPresenceFromExecutionHost && payload.agentPresence?.process
+    const hostOwner = agentPresenceFromExecutionHost && payload.agentPresence?.process
     const replacesStaleOwner = Boolean(
       hostOwner &&
       stored?.agentPresence?.process &&
