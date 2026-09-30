@@ -36,6 +36,7 @@ import { useStructuredAgentSessionContextUsage } from './use-structured-agent-se
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
+import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
@@ -68,13 +69,21 @@ export function useStructuredAgentSession(args: {
     target,
     transportEnabled = true
   } = args
-  const { state, loadingOlder, olderHistoryGeneration, loadOlder, mutate, write, providerVisible } =
-    useStructuredAgentSessionTransport({
-      sessionId,
-      target,
-      isVisible,
-      enabled: transportEnabled
-    })
+  const {
+    state,
+    stateRef,
+    loadingOlder,
+    olderHistoryGeneration,
+    loadOlder,
+    mutate,
+    write,
+    providerVisible
+  } = useStructuredAgentSessionTransport({
+    sessionId,
+    target,
+    isVisible,
+    enabled: transportEnabled
+  })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
@@ -195,6 +204,7 @@ export function useStructuredAgentSession(args: {
           transportState.backgroundTasks.isMonitoring ||
           outbox.length
         ),
+        startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
         send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',

@@ -60,6 +60,7 @@ async function sent(
     agentName: structuredAgentLabel(provider),
     pending: { current: false },
     blocked: false,
+    startFailures: () => [],
     send: async () => ({ kind: 'done', value: result })
   })
 }

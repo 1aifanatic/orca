@@ -2,10 +2,14 @@ import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
 } from '../../../../shared/agent-session-conversation-command'
-import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import {
+  readWholeAgentSessionFailureFact,
+  type AgentSessionFailureFact
+} from '../../../../shared/agent-session-failure'
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { translate } from '@/i18n/i18n'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
+import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
 export async function sendStructuredConversationCommand(input: {
@@ -14,6 +18,8 @@ export async function sendStructuredConversationCommand(input: {
   agentName: string
   pending: { current: boolean }
   blocked: boolean
+  /** What the chat's loaded start-failure rows state, read when the reply lands. */
+  startFailures: () => readonly AgentSessionFailureFact[]
   send: (
     command: AgentSessionConversationCommand
   ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
@@ -33,13 +39,21 @@ export async function sendStructuredConversationCommand(input: {
     if (outcome.kind === 'not-done') {
       return { accepted: false, error: outcome.notice }
     }
-    // Answered for a fence this pane no longer shows, such as the one a failed start replaced;
-    // the chat's own rows say what happened.
+    // Answered after the pane closed or moved to another chat: there is no one here to tell.
     if (outcome.kind === 'dropped') {
       return { accepted: false, error: null }
     }
-    const error = conversationCommandFailureText(outcome.value, input.agentName)
-    return { accepted: outcome.value.state === 'completed' && !error, error }
+    const { value } = outcome
+    // The chat's own start failed and its loaded row already says why, as for a message that start
+    // rejected. A /clear's failed start is its new chat's, whose row this pane never shows.
+    if (
+      value.command !== 'clear' &&
+      agentSessionFailureStatedByStartRow(value.failure, input.startFailures())
+    ) {
+      return { accepted: false, error: null }
+    }
+    const error = conversationCommandFailureText(value, input.agentName)
+    return { accepted: value.state === 'completed' && !error, error }
   } finally {
     input.pending.current = false
   }
