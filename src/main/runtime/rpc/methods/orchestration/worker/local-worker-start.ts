@@ -210,7 +210,7 @@ export async function startLocalWorker(args: {
       }
     }
     const terminalAuthority = requireWorkerAuthority(runtime, terminalHandle)
-    const capability = db.prepareStartingWorkerAuthority({
+    db.prepareStartingWorkerAuthority({
       dispatchId: started.dispatch.id,
       handle: terminalHandle,
       ...terminalAuthority,
@@ -230,7 +230,6 @@ export async function startLocalWorker(args: {
       structuredSession,
       terminalHandle,
       coordinatorHandle: params.from,
-      dispatchCapability: capability,
       devMode: params.devMode,
       requestId: orchestrationMutation?.requestId ?? started.dispatch.id,
       launchedTerminal: !params.terminal,

@@ -27,7 +27,6 @@ export async function deliverWorkerDispatchPreamble(args: {
   taskId: string
   taskSpec: string
   coordinatorHandle: string
-  dispatchCapability: string
   devMode: boolean | undefined
   requestId: string
   /** This start launched the agent, so its first Enter can race the composer. */
@@ -47,7 +46,6 @@ export async function deliverWorkerDispatchPreamble(args: {
     taskSpec: args.taskSpec,
     coordinatorHandle: args.coordinatorHandle,
     workerHandle: terminalHandle,
-    dispatchCapability: args.dispatchCapability,
     devMode: args.devMode,
     cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
   })

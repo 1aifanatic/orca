@@ -238,7 +238,7 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
         if (!paneKey || !processIncarnation) {
           throw new Error('stable_pane_required')
         }
-        const capability = db.prepareRemoteAttachmentAuthority({
+        db.prepareRemoteAttachmentAuthority({
           dispatchId: params.dispatchId,
           paneKey,
           processIncarnation,
@@ -260,7 +260,6 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
           taskId: params.taskId,
           taskSpec: params.taskSpec,
           coordinatorHandle: 'Run home (relayed by Orca)',
-          dispatchCapability: capability,
           devMode: params.devMode,
           requestId: orchestrationMutation.requestId,
           launchedTerminal: !params.terminal
