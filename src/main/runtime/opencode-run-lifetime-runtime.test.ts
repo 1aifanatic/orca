@@ -79,7 +79,7 @@ describe('OpenCode run process lifetime in the runtime', () => {
     runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
 
     expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
-    expect(readCommandLineMock).toHaveBeenCalledWith('pty-1')
+    expect(readCommandLineMock).toHaveBeenCalledWith('pty-1', 'opencode')
     expect(statuses[0]?.yieldsToHookSince).toBe(statuses[1]?.yieldsToHookSince)
   })
 
@@ -118,5 +118,24 @@ describe('OpenCode run process lifetime in the runtime', () => {
 
     expect(statuses).toEqual([])
     expect(readCommandLineMock).not.toHaveBeenCalled()
+  })
+
+  it('reports a local Windows pane from its own foreground', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    try {
+      const { runtime, statuses } = createRuntime()
+      readCommandLineMock.mockResolvedValue('"C:\\Tools\\opencode.exe" run fix it')
+
+      runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
+      await vi.advanceTimersByTimeAsync(OPENCODE_RUN_SETTLE_MS)
+      runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 101)
+
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+    } finally {
+      if (platform) {
+        Object.defineProperty(process, 'platform', platform)
+      }
+    }
   })
 })

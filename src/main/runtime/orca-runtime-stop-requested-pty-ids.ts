@@ -167,14 +167,15 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
   protected readonly openCodeRunLifetime = new OpenCodeRunLifetimeStatus({
     isObservablePty: (ptyId) => {
       const pty = this.ptysById.get(ptyId)
-      // Why: SSH and WSL foregrounds live on another host; Windows has no foreground process group.
-      return process.platform !== 'win32' && !!pty && !pty.connectionId && !pty.wslDistro
+      // Why: SSH and WSL foregrounds live on another host or in the guest.
+      return !!pty && !pty.connectionId && !pty.wslDistro && !this.wslDistroByPtyId.has(ptyId)
     },
     readForegroundProcessName: async (ptyId) => {
       const read = await this.ptyForegroundAgent.read(ptyId)
       return read?.available ? read.process : null
     },
-    readForegroundCommandLine: (ptyId) => readLocalPtyForegroundCommandLine(ptyId),
+    readForegroundCommandLine: (ptyId, foregroundProcess) =>
+      readLocalPtyForegroundCommandLine(ptyId, foregroundProcess),
     // Why after the chunk's facts: the renderer drops an exited agent's row on command-finished
     // unless the row changed after it, so the run's Done must arrive after that fact.
     publish: (ptyId, payload, yieldsToHookSince) =>

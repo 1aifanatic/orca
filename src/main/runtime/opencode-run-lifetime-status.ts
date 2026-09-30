@@ -13,10 +13,10 @@ const SIGINT_EXIT_CODE = 130
 type OpenCodeAgent = 'opencode' | 'opencode2'
 
 type Dependencies = {
-  /** Local POSIX PTYs only: elsewhere the foreground cannot be read on this host. */
+  /** Local PTYs only: SSH and WSL foregrounds cannot be read on this host. */
   isObservablePty(ptyId: string): boolean
   readForegroundProcessName(ptyId: string): Promise<string | null>
-  readForegroundCommandLine(ptyId: string): Promise<string | null>
+  readForegroundCommandLine(ptyId: string, foregroundProcess: string): Promise<string | null>
   /** `yieldsToHookSince`: the store drops this write once a hook reported the pane since then. */
   publish(ptyId: string, payload: ParsedAgentStatusPayload, yieldsToHookSince: number): void
   now(): number
@@ -91,10 +91,16 @@ export class OpenCodeRunLifetimeStatus {
     try {
       const name = await this.deps.readForegroundProcessName(ptyId)
       const agent = recognizeAgentProcess(name)?.agent
-      if (!this.isCurrent(ptyId, state) || (agent !== 'opencode' && agent !== 'opencode2')) {
+      if (
+        !name ||
+        !this.isCurrent(ptyId, state) ||
+        (agent !== 'opencode' && agent !== 'opencode2')
+      ) {
         return
       }
-      const tokens = tokenizeCommandLine((await this.deps.readForegroundCommandLine(ptyId)) ?? '')
+      const tokens = tokenizeCommandLine(
+        (await this.deps.readForegroundCommandLine(ptyId, name)) ?? ''
+      )
       if (
         !this.isCurrent(ptyId, state) ||
         recognizeAgentProcess(tokens[0])?.agent !== agent ||
