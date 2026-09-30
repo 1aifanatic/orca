@@ -35,7 +35,9 @@ export function eventually(assertion: () => void | Promise<void>): Promise<void>
 
 export type QueuedMessageTestRig = Awaited<ReturnType<typeof createQueuedMessageTestRig>>
 
-export async function createQueuedMessageTestRig() {
+/** `restartable`: a child started for a chat whose chain already names a thread resumes it, so a
+ *  chat whose child closed or died can start another. */
+export async function createQueuedMessageTestRig(options: { restartable?: true } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
   // Admitted: the message is written and unanswered, so the session owes work
@@ -56,8 +58,11 @@ export async function createQueuedMessageTestRig() {
   const host = new StructuredAgentSessionHost({
     store,
     adapter: {
-      acquire: async ({ fence, spawnToken, events: sink }) => {
+      acquire: async ({ identity, fence, spawnToken, events: sink }) => {
         events = sink
+        const resumes =
+          options.restartable === true &&
+          (store.getRecord(identity.sessionId)?.providerHandleChain.length ?? 0) > 0
         return {
           process: {
             hostId: 'local',
@@ -69,7 +74,7 @@ export async function createQueuedMessageTestRig() {
           link: {
             linkId: `link-${fence}`,
             handle: { provider: 'codex' as const, threadId: THREAD },
-            origin: 'created' as const,
+            origin: resumes ? ('resumed' as const) : ('created' as const),
             mintedAtFence: fence,
             observedAt: NOW
           }
