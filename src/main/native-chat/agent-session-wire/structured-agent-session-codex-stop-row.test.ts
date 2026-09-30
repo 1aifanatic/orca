@@ -54,13 +54,7 @@ beforeEach(async () => {
   })
   host = new StructuredAgentSessionHost({
     store,
-    adapter: Object.assign(
-      adapterFor(codex, {}, [], {
-        // The process table could not be read, so the turn's processes are unproven either way.
-        terminateTurnProcesses: async () => false
-      }),
-      { supportsCreate: () => true }
-    ),
+    adapter: Object.assign(adapterFor(codex), { supportsCreate: () => true }),
     journalRoot: root,
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-1',
@@ -123,7 +117,7 @@ async function journalRows() {
   }
 }
 
-describe('a Codex Stop whose turn process sweep proves nothing', () => {
+describe('a Codex Stop that Codex answered', () => {
   it.each([
     ['names no turn', undefined],
     ['names its turn, as an older client sends it', 'turn-1']
