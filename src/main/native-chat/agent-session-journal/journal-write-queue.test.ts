@@ -144,10 +144,16 @@ describe('the journal write queue', () => {
   it('runs a write before it returns when nothing is owed or running', () => {
     const queue = new JournalWriteQueue('session-1')
     const ran: string[] = []
-    void queue.serialize(async () => {
+    void queue.serialize(() => {
       ran.push('write')
     })
     expect(ran).toEqual(['write'])
+  })
+
+  it('takes only a synchronous body', async () => {
+    const queue = new JournalWriteQueue('session-1')
+    // @ts-expect-error an await inside a write would let a later write land first
+    await queue.serialize(async () => undefined)
   })
 
   it('answers a write that throws with a rejection, never a throw', async () => {
@@ -157,7 +163,7 @@ describe('the journal write queue', () => {
     })
     await expect(failed).rejects.toThrow('disk I/O error')
     const ran: string[] = []
-    void queue.serialize(async () => {
+    void queue.serialize(() => {
       ran.push('next')
     })
     expect(ran).toEqual(['next'])
@@ -167,13 +173,13 @@ describe('the journal write queue', () => {
     const queue = new JournalWriteQueue('session-1')
     const ran: string[] = []
     let nested: Promise<void> | null = null
-    const outer = queue.serialize(async () => {
-      nested = queue.serialize(async () => {
+    const outer = queue.serialize(() => {
+      nested = queue.serialize(() => {
         ran.push('nested')
       })
       ran.push('outer')
     })
-    const after = queue.serialize(async () => {
+    const after = queue.serialize(() => {
       ran.push('after')
     })
     expect(ran).toEqual(['outer'])
@@ -189,12 +195,12 @@ describe('the journal write queue', () => {
       await owed.promise
       ran.push('owed')
     })
-    const first = queue.serialize(async () => {
+    const first = queue.serialize(() => {
       ran.push('first')
     })
     const read = queue.readInOrder(() => ran.push('read'))
     owed.resolve()
-    const second = queue.serialize(async () => {
+    const second = queue.serialize(() => {
       ran.push('second')
     })
     await Promise.all([first, read, second])
@@ -219,7 +225,7 @@ describe('a read in the journal write queue', () => {
     })
     void queue.readInOrder(() => ran.push('read before'))
     expect(ran).toEqual(['read before'])
-    const write = queue.serialize(async () => {
+    const write = queue.serialize(() => {
       ran.push('write')
     })
     const read = queue.readInOrder(() => ran.push('read after'))
@@ -230,7 +236,7 @@ describe('a read in the journal write queue', () => {
   it('runs behind a write that failed', async () => {
     const queue = new JournalWriteQueue('session-1')
     queue.owe(async () => undefined)
-    const failed = queue.serialize(async () => {
+    const failed = queue.serialize(() => {
       throw new Error('disk I/O error')
     })
     const read = queue.readInOrder(() => 'read')

@@ -6,14 +6,17 @@
 
 import { AgentSessionJournalError } from './journal-write-guards'
 
+/** A write body. Synchronous: an await inside one would let a later write land first. */
+export type JournalWriteBody<T> = () => T extends PromiseLike<unknown> ? never : T
+
 /**
  * A write has landed in the fold when its call returns, except during an owed import, when it
  * lands in queue order.
  *
  * A write finds the queue idle unless work is owed, a write is running, or writes wait in line;
- * then it runs before `serialize` returns. Every write body is synchronous (a transaction refuses
- * to await), so it has committed by then. Otherwise it joins the line: behind the owed import it
- * pays first, or behind the running write it was issued from, never nested inside it.
+ * then it runs before `serialize` returns. Every write body is synchronous (`JournalWriteBody`
+ * refuses a promise), so it has committed by then. Otherwise it joins the line: behind the owed
+ * import it pays first, or behind the running write it was issued from, never nested inside it.
  * Admission is checked at ENQUEUE and is permanent.
  */
 export class JournalWriteQueue {
@@ -32,7 +35,7 @@ export class JournalWriteQueue {
     this.closed = true
   }
 
-  serialize<T>(run: () => Promise<T>): Promise<T> {
+  serialize<T>(run: JournalWriteBody<T>): Promise<T> {
     if (this.closed) {
       return Promise.reject(this.closedError())
     }
@@ -48,8 +51,7 @@ export class JournalWriteQueue {
     if (this.closed) {
       return Promise.reject(this.closedError())
     }
-    const step = async (): Promise<T> => read()
-    return this.lineBusy ? this.join(step, false) : this.runNow(step)
+    return this.lineBusy ? this.join(read, false) : this.runNow(read)
   }
 
   private get lineBusy(): boolean {
@@ -85,7 +87,7 @@ export class JournalWriteQueue {
   }
 
   /** Runs before returning; a write issued from inside it joins the line behind it. */
-  private runNow<T>(run: () => Promise<T>): Promise<T> {
+  private runNow<T>(run: () => T): Promise<T> {
     let release: (settled: Promise<unknown>) => void = () => undefined
     this.writes = new Promise<unknown>((resolve) => {
       release = resolve
@@ -103,7 +105,7 @@ export class JournalWriteQueue {
     return result
   }
 
-  private join<T>(run: () => Promise<T>, paysOwed: boolean): Promise<T> {
+  private join<T>(run: () => T, paysOwed: boolean): Promise<T> {
     const started = paysOwed ? this.writes.then(this.payOwed).then(run) : this.writes.then(run)
     this.writes = started.catch(() => undefined)
     this.waiting++

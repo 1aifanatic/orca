@@ -43,6 +43,7 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
+import type { JournalWriteBody } from './journal-write-queue'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
 export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
@@ -51,7 +52,7 @@ export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
 export type JournalQueuedMessagesDeps = {
   sessionId: string
   now: () => number
-  serialize: <T>(run: () => Promise<T>) => Promise<T>
+  serialize: <T>(run: JournalWriteBody<T>) => Promise<T>
   database: () => JournalHostDatabase
   readOnly: () => boolean
   state: () => JournalReducerState
@@ -227,7 +228,7 @@ export class JournalQueuedMessages {
     run: (db: Database.Database) => T,
     changed: (result: T) => boolean
   ): Promise<T> {
-    return this.deps.serialize(async () => {
+    return this.deps.serialize(() => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
       const { result, retired } = this.deps.database().transaction((db) => ({
         result: run(db),

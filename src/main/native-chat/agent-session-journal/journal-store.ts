@@ -192,7 +192,7 @@ export class AgentSessionJournal {
    * and a reader that needs rows (forward pages, catch-up) awaits it here.
    */
   whenImported(): Promise<void> {
-    return this.queue.serialize(async () => undefined)
+    return this.queue.serialize(() => undefined)
   }
 
   get importPending(): boolean {
