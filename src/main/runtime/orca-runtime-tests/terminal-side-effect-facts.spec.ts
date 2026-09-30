@@ -516,24 +516,34 @@ describe('terminal side-effect fact channel', () => {
     }
   )
 
-  it('treats synchronous foreground read failures as unavailable', async () => {
-    const { runtime, batches } = createSideEffectRuntime()
-    syncSinglePty(runtime)
-    runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
-    const getForegroundProcess = vi.fn(() => {
-      throw new TypeError('getForegroundProcess is unavailable')
-    })
-    runtime.setPtyController({
-      write: () => true,
-      kill: () => true,
-      getForegroundProcess
-    })
+  it.each([
+    { presence: null, exited: true },
+    { presence: 'unverifiable' as const, exited: false }
+  ])(
+    'treats synchronous foreground read failures as unavailable (hook presence $presence)',
+    async ({ presence, exited }) => {
+      // Why: only a pane with an identified owner keeps its agent on silence; others keep today's exit.
+      const { runtime, batches } = createSideEffectRuntime(async () => presence)
+      syncSinglePty(runtime)
+      runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
+      const getForegroundProcess = vi.fn(() => {
+        throw new TypeError('getForegroundProcess is unavailable')
+      })
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess
+      })
 
-    runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 100)
+      runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 100)
 
-    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
-    expect(batches.flatMap((batch) => batch.facts)).not.toContainEqual({ kind: 'agent-exited' })
-  })
+      await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(
+        batches.flatMap((batch) => batch.facts).some((fact) => fact.kind === 'agent-exited')
+      ).toBe(exited)
+    }
+  )
 
   it('aligns a restored session and pre-response bytes to the provider sequence', async () => {
     const { runtime } = createSideEffectRuntime()

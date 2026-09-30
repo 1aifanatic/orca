@@ -97,9 +97,10 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (this.ptysById.get(ptyId) !== current || current?.incarnationId !== incarnation) {
         return
       }
-      // Why: an unanswered process check falls back to the foreground read, which itself never exits on silence.
+      // Why: without an identified owner (null) the foreground read keeps today's rules; with one
+      // whose process cannot be checked right now, silence from that read is never an exit.
       if (verdict === null || verdict === 'unverifiable') {
-        this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook)
+        this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook, verdict === 'unverifiable')
       } else if (verdict === 'exited' && !recoverCompletedHook) {
         this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
       } else if (verdict === 'live') {
@@ -139,7 +140,11 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     }
   }
 
-  private confirmLegacyPtyAgentExit(ptyId: string, recoverCompletedHook: boolean): void {
+  private confirmLegacyPtyAgentExit(
+    ptyId: string,
+    recoverCompletedHook: boolean,
+    keepOnSilence: boolean
+  ): void {
     const pty = this.ptysById.get(ptyId)
     const handle = this.handleByPtyId.get(ptyId)
     if (
@@ -153,7 +158,11 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     const titleObservedAt = pty?.lastOscTitleAt ?? null
     const foregroundRead = this.readPtyForegroundProcessFromController(ptyId, titleObservedAt ?? 0)
     if (!pty?.connected || !foregroundRead) {
-      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
+      if (keepOnSilence) {
+        this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
+      } else if (!recoverCompletedHook) {
+        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      }
       return
     }
     void foregroundRead.then((result) => {
@@ -193,14 +202,14 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         this.restoreDisprovedAgentExit(ptyId, confirmedStatus)
         return
       }
-      // Why: only an answered read naming a non-agent is an exit; silence is never one.
-      if (
-        !recoverCompletedHook &&
+      const answered =
         result.controller === this.ptyController &&
         result.available &&
         typeof result.process === 'string'
-      ) {
-        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      if (!keepOnSilence || answered) {
+        if (!recoverCompletedHook) {
+          this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+        }
       } else {
         this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
