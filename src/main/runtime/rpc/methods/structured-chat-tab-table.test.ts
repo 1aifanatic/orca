@@ -24,7 +24,8 @@ import {
   resetHostTestOperationIds
 } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
-import { AgentSessionRecordStore } from '../../agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import { agentSessionStorePath } from '../../agent-session-record-store-file'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
@@ -87,10 +88,7 @@ function providerAdapter(): StructuredAgentSessionAdapter {
 }
 
 async function openHost(): Promise<void> {
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
+  store = await openTestAgentSessionRecordStore(join(directory, 'store'))
   host = new StructuredAgentSessionHost({
     store,
     adapter: providerAdapter(),

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { abandonStructuredAgentSessionHost } from './structured-agent-session-host-test-abandon'
@@ -78,7 +79,7 @@ describe('structured session provider restore', () => {
     root = await mkdtemp(join(tmpdir(), 'orca-provider-restore-'))
     resetHostTestOperationIds()
     const storeDirectory = join(root, 'store')
-    const store = await AgentSessionRecordStore.open({ directory: storeDirectory, hostId: 'local' })
+    const store = await openTestAgentSessionRecordStore(storeDirectory)
     const host = createHost(store)
     const attached = await host.attach(
       { callerKey: 'client-1' },
@@ -91,10 +92,7 @@ describe('structured session provider restore', () => {
     )
     expect(attached).toMatchObject({ ok: true })
 
-    const reopenedStore = await AgentSessionRecordStore.open({
-      directory: storeDirectory,
-      hostId: 'local'
-    })
+    const reopenedStore = await openTestAgentSessionRecordStore(storeDirectory)
     const restarted = createHost(reopenedStore, async () => ({
       outcome: 'indeterminate',
       reason: 'read does not need ownership'

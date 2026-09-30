@@ -4,7 +4,7 @@
 import { cp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import {
   JournalImportMismatchError,
@@ -92,10 +92,7 @@ async function relaunchWithMismatchedCopy(): Promise<StructuredAgentSessionHost>
     recursive: true,
     filter: (source) => !source.includes('.lock')
   })
-  const store = await AgentSessionRecordStore.open({
-    directory: join(relaunched, 'store'),
-    hostId: 'local'
-  })
+  const store = await openTestAgentSessionRecordStore(join(relaunched, 'store'))
   const host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(),

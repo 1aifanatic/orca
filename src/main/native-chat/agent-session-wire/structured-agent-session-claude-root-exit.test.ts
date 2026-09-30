@@ -8,7 +8,7 @@ import {
   fakeClaude,
   identityFor
 } from '../../claude/claude-structured-session-test-support'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
   createTrackedJournalOpener,
   openTestJournalHostDatabase
@@ -31,7 +31,7 @@ describe('Claude root-exit stop', () => {
   it('releases a captured live claim after the provider root exits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-claude-root-exit-'))
     roots.push(root)
-    const store = await AgentSessionRecordStore.open({ directory: root, hostId: 'local' })
+    const store = await openTestAgentSessionRecordStore(root)
     const claude = fakeClaude({
       unprovenCloseVerdict: { root: 'exited', tree: 'unverifiable' }
     })

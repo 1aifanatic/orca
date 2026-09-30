@@ -10,7 +10,8 @@ import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { PersistedAgentSessionLease } from '../../../shared/agent-session-legacy-handoff-lease'
 import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -73,7 +74,7 @@ async function persistFromOlderBuild(lease: OlderBuildLease): Promise<void> {
   await host.flushAllStreamedEvents()
   // Over the attached owner: the older build's stage or terminal owner kept it from releasing.
   await writeOlderBuildLease(join(root, 'store'), SESSION, { ...attached, ...lease })
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(join(root, 'store'))
   acquire.mockClear()
   openHost()
 }
@@ -130,7 +131,7 @@ beforeEach(async () => {
       observedAt: NOW
     }
   }))
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(join(root, 'store'))
   openHost()
 })
 

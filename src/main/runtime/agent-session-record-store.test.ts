@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,7 +10,14 @@ import type {
   AgentSessionRecord
 } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
-import { AgentSessionRecordStore } from './agent-session-record-store'
+import type { PersistedAgentSessionRecord } from '../../shared/agent-session-legacy-handoff-lease'
+import type { AgentSessionRecordStore } from './agent-session-record-store'
+import {
+  editPersistedTestAgentSessionStore,
+  openTestAgentSessionRecordStore,
+  readPersistedTestAgentSessionStore,
+  seedTestAgentSessionStoreFromNewerBuild
+} from './agent-session-record-store-test-harness'
 import { AGENT_SESSION_CLAIM_KEY_RETENTION_MS } from './agent-session-claim-key-retention'
 import {
   agentSessionStorePath,
@@ -97,7 +104,7 @@ function handleLink(
 let directory: string
 
 async function open(hostId = 'local'): Promise<AgentSessionRecordStore> {
-  return AgentSessionRecordStore.open({ directory, hostId })
+  return openTestAgentSessionRecordStore(directory, { hostId })
 }
 
 /** Reserve, observe the spawn, prove the handle — the full path to an admitted writer. */
@@ -550,7 +557,7 @@ describe('restart reconciliation', () => {
 
     releaseProbe({ outcome: 'pid-absent' })
     expect(await reconciliation).toEqual(new Map())
-    const persisted = JSON.parse(await readFile(agentSessionStorePath(directory), 'utf-8'))
+    const persisted = await readPersistedTestAgentSessionStore(directory)
     expect(persisted.records['session-alpha'].lease).toMatchObject({
       runtimeFence: 3,
       claimStatus: 'live',
@@ -803,20 +810,20 @@ describe('claim keys, checkpoints, and unreadable rows', () => {
   it.each([
     [
       'invalid checkpoint',
-      (record: AgentSessionRecord) =>
+      (record: PersistedAgentSessionRecord) =>
         Object.assign(record.lease, { journalCheckpoint: { epoch: 'bad', sequence: 1 } })
     ],
     [
       'missing live proof',
-      (record: AgentSessionRecord) => Object.assign(record.lease, { provenHandleLinkId: null })
+      (record: PersistedAgentSessionRecord) =>
+        Object.assign(record.lease, { provenHandleLinkId: null })
     ]
   ])('quarantines a record with %s', async (_name, corrupt) => {
     const first = await open()
     await establishOwner(first)
-    const filePath = agentSessionStorePath(directory)
-    const raw = JSON.parse(await readFile(filePath, 'utf-8'))
-    corrupt(raw.records['session-alpha'])
-    await writeFile(filePath, JSON.stringify(raw))
+    await editPersistedTestAgentSessionStore(directory, (persisted) => {
+      corrupt(persisted.records['session-alpha'])
+    })
     expect((await open()).isSessionUnreadable('session-alpha')).toBe(true)
   })
 
@@ -863,11 +870,7 @@ describe('claim keys, checkpoints, and unreadable rows', () => {
   })
 
   it('refuses to write a store written by a newer schema', async () => {
-    const filePath = agentSessionStorePath(directory)
-    await writeFile(
-      filePath,
-      JSON.stringify({ schemaVersion: 99, hostId: 'local', records: {}, operations: {} })
-    )
+    await seedTestAgentSessionStoreFromNewerBuild(directory)
     const store = await open()
     expect(store.readOnly).toBe(true)
     await expect(store.reserveOwner(reserveRequest())).rejects.toThrow(

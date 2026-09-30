@@ -10,7 +10,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../shared/agent-session-lease-adjudication'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
-import { AgentSessionRecordStore } from './agent-session-record-store'
+import type { AgentSessionRecordStore } from './agent-session-record-store'
+import {
+  openTestAgentSessionRecordStore,
+  readPersistedTestAgentSessionStore
+} from './agent-session-record-store-test-harness'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
 
@@ -61,7 +65,7 @@ function reserveRequest(
 }
 
 async function open(): Promise<AgentSessionRecordStore> {
-  return AgentSessionRecordStore.open({ directory, hostId: 'local' })
+  return openTestAgentSessionRecordStore(directory)
 }
 
 describe('chat tab table', () => {
@@ -74,11 +78,11 @@ describe('chat tab table', () => {
     await store.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
     // A create that dies before its tab is shown leaves nothing to restore or release.
     expect(store.getSessionTabId('session-alpha')).toBeNull()
-    expect((await readFileJson()).sessionTabs).toBeUndefined()
+    expect((await readPersistedTestAgentSessionStore(directory)).sessionTabs).toBeUndefined()
 
     await store.setSessionTabVisibility('session-alpha', true, 'tab-alpha')
     expect(store.getSessionTabId('session-alpha')).toBe('tab-alpha')
-    const persisted = await readFileJson()
+    const persisted = await readPersistedTestAgentSessionStore(directory)
     expect(persisted.sessionTabs).toEqual([{ tabId: 'tab-alpha', sessionId: 'session-alpha' }])
     // Not copied onto the record: the table is the one place the id lives.
     expect(persisted.records['session-alpha']).not.toHaveProperty('surfaceTabId')

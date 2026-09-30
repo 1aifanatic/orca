@@ -5,7 +5,8 @@ import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { join } from 'node:path'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -560,7 +561,7 @@ describe('restart', () => {
     adapterOverrides: Partial<StructuredAgentSessionAdapter> = {},
     stopOwnerProcess?: StructuredAgentSessionHostDeps['stopOwnerProcess']
   ) {
-    store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+    store = await openTestAgentSessionRecordStore(join(root, 'store'))
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), ...adapterOverrides },
