@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { appRelaunchMock, recordDurableCrashBreadcrumbMock } = vi.hoisted(() => ({
-  appRelaunchMock: vi.fn(),
-  recordDurableCrashBreadcrumbMock: vi.fn()
-}))
+const { appRelaunchMock, recordDurableCrashBreadcrumbMock, recordMainSessionExitSyncMock } =
+  vi.hoisted(() => ({
+    appRelaunchMock: vi.fn(),
+    recordDurableCrashBreadcrumbMock: vi.fn(),
+    recordMainSessionExitSyncMock: vi.fn()
+  }))
 
 vi.mock('electron', () => ({ app: { relaunch: appRelaunchMock } }))
 vi.mock('./crash-reporting/durable-crash-breadcrumb', () => ({
   recordDurableCrashBreadcrumb: recordDurableCrashBreadcrumbMock
+}))
+vi.mock('./crash-reporting/main-session-exit-marker', () => ({
+  recordMainSessionExitSync: recordMainSessionExitSyncMock
 }))
 
 import { relaunchApp } from './app-relaunch'
@@ -16,6 +21,7 @@ import { _resetHydrateShellPathCache, _setLaunchPathForTests } from './startup/h
 beforeEach(() => {
   appRelaunchMock.mockReset()
   recordDurableCrashBreadcrumbMock.mockReset()
+  recordMainSessionExitSyncMock.mockReset()
 })
 
 const originalPath = process.env.PATH
@@ -41,6 +47,17 @@ describe('relaunchApp', () => {
     })
     expect(appRelaunchMock).toHaveBeenCalledOnce()
     expect(recordDurableCrashBreadcrumbMock.mock.invocationCallOrder[0]).toBeLessThan(
+      appRelaunchMock.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('records a clean relaunch exit before scheduling the replacement process', () => {
+    relaunchApp('renderer-request')
+
+    // Why before relaunch: most callers app.exit(0) next, which skips will-quit.
+    expect(recordMainSessionExitSyncMock).toHaveBeenCalledOnce()
+    expect(recordMainSessionExitSyncMock).toHaveBeenCalledWith('relaunch')
+    expect(recordMainSessionExitSyncMock.mock.invocationCallOrder[0]).toBeLessThan(
       appRelaunchMock.mock.invocationCallOrder[0]
     )
   })

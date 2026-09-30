@@ -6,6 +6,7 @@ import {
   beginMainSessionTracking,
   buildUncleanMainExitBreadcrumbData,
   noteMainSessionActivity,
+  recordProvisionalMainSessionExitSync,
   type PreviousUncleanMainSession
 } from './main-session-exit-marker'
 
@@ -37,4 +38,19 @@ export async function reportPreviousUncleanMainExit(): Promise<void> {
     'main_previous_session_unclean_exit',
     buildUncleanMainExitBreadcrumbData(previous, dump)
   )
+}
+
+type ShutdownNotifier = { on(event: 'shutdown', listener: () => void): unknown }
+
+/** Labels an OS shutdown that may end the process before will-quit. */
+export function installOsShutdownExitRecord(
+  monitor: ShutdownNotifier,
+  platform: NodeJS.Platform
+): void {
+  // Why not Windows: session-end labels OS teardown there and is already committed.
+  if (platform === 'win32') {
+    return
+  }
+  // Why provisional: macOS/logind announce shutdown while another app can still cancel it.
+  monitor.on('shutdown', () => recordProvisionalMainSessionExitSync('os-shutdown'))
 }

@@ -92,7 +92,9 @@ async function launch(): Promise<Launch> {
     dumpDirectory: dumpDir,
     previousUncleanSessionStartedAtMs: previous ? Date.parse(previous.startedAt) : undefined
   })
-  durable.recordDurableCrashBreadcrumb('main_process_lifecycle_started', { packaged: true })
+  durable.recordDurableCrashBreadcrumb('main_process_lifecycle_started', {
+    packaged: true
+  })
   await report.reportPreviousUncleanMainExit()
   await marker._awaitMainSessionWritesForTest()
   return {
@@ -140,14 +142,18 @@ describe('previous main-session unclean exit', () => {
   it('reports an unclean exit with no dump when Crashpad wrote nothing', async () => {
     await launch()
     const second = await launch()
-    expect(uncleanExitCrumb(second)?.data).toMatchObject({ crashpadDumpAfterStart: false })
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      crashpadDumpAfterStart: false
+    })
   })
 
   it('ignores dumps written before the previous launch started', async () => {
     const first = await launch()
     await writeDump('old.dmp', first.startedAtMs - 3_600_000, dumpWithProcessType('renderer'))
     const second = await launch()
-    expect(uncleanExitCrumb(second)?.data).toMatchObject({ crashpadDumpAfterStart: false })
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      crashpadDumpAfterStart: false
+    })
   })
 
   it.each(['quit', 'update-install'] as const)('treats a %s exit as clean', async (kind) => {
@@ -176,7 +182,79 @@ describe('previous main-session unclean exit', () => {
     const exitRecord = JSON.parse(
       await readFile(path.join(userData, first.marker.MAIN_SESSION_EXIT_FILE), 'utf-8')
     )
-    expect(exitRecord).toMatchObject({ launchId: first.launchId, kind: 'relaunch' })
+    expect(exitRecord).toMatchObject({
+      launchId: first.launchId,
+      kind: 'relaunch'
+    })
+  })
+
+  it('keeps an OS shutdown label when the committed quit follows it', async () => {
+    const first = await launch()
+    first.marker.recordProvisionalMainSessionExitSync('os-shutdown')
+    await first.marker.recordMainSessionExit('quit')
+    const { readFile } = await import('node:fs/promises')
+    const exitRecord = JSON.parse(
+      await readFile(path.join(userData, first.marker.MAIN_SESSION_EXIT_FILE), 'utf-8')
+    )
+    expect(exitRecord).toMatchObject({
+      launchId: first.launchId,
+      kind: 'os-shutdown'
+    })
+    const second = await launch()
+    expect(uncleanExitCrumb(second)).toBeUndefined()
+  })
+
+  it('reports a crash after an aborted OS shutdown as unclean', async () => {
+    const first = await launch()
+    first.marker.recordProvisionalMainSessionExitSync('os-shutdown')
+    first.marker.revokeProvisionalMainSessionExit()
+    const second = await launch()
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      previousLaunchId: first.launchId
+    })
+  })
+
+  it('revokes an OS shutdown record the process outlives', async () => {
+    const first = await launch()
+    vi.useFakeTimers()
+    try {
+      first.marker.recordProvisionalMainSessionExitSync('os-shutdown', 1_000)
+      vi.advanceTimersByTime(1_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    const second = await launch()
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      previousLaunchId: first.launchId
+    })
+  })
+
+  it('does not let an abort revoke a committed exit', async () => {
+    const first = await launch()
+    await first.marker.recordMainSessionExit('quit')
+    first.marker.revokeProvisionalMainSessionExit()
+    const second = await launch()
+    expect(uncleanExitCrumb(second)).toBeUndefined()
+  })
+
+  it('records OS shutdown provisionally on non-Windows only', async () => {
+    const first = await launch()
+    const report = await import('./main-unclean-exit-report')
+    const listeners: (() => void)[] = []
+    const monitor = {
+      on: vi.fn((_event: 'shutdown', listener: () => void) => listeners.push(listener))
+    }
+    report.installOsShutdownExitRecord(monitor, 'win32')
+    expect(monitor.on).not.toHaveBeenCalled()
+    report.installOsShutdownExitRecord(monitor, 'darwin')
+    expect(monitor.on).toHaveBeenCalledWith('shutdown', expect.any(Function))
+    listeners[0]?.()
+    // Provisional: an abort still makes a later death read as unclean.
+    first.marker.revokeProvisionalMainSessionExit()
+    const second = await launch()
+    expect(uncleanExitCrumb(second)?.data).toMatchObject({
+      previousLaunchId: first.launchId
+    })
   })
 
   it('reports nothing on a first launch', async () => {
@@ -190,7 +268,9 @@ describe('previous main-session unclean exit', () => {
     const second = await launch()
     expect(uncleanExitCrumb(second)).toBeUndefined()
     const third = await launch()
-    expect(uncleanExitCrumb(third)?.data).toMatchObject({ previousLaunchId: second.launchId })
+    expect(uncleanExitCrumb(third)?.data).toMatchObject({
+      previousLaunchId: second.launchId
+    })
   })
 
   it('ignores a corrupt launch record', async () => {

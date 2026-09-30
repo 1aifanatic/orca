@@ -40,6 +40,8 @@ let watcherShutdownPromise: Promise<void> | null = null
 const GROK_HOOK_CLEANUP_DEADLINE_MS = 2_000
 // Why 2s: long enough for a `pack-refs` child to take SIGTERM and unlink its lock.
 const REF_MAINTENANCE_QUIT_DEADLINE_MS = 2_000
+// Why 2s: a stalled profile mount must not hold the quit; a missed record only costs a false unclean report.
+const SESSION_EXIT_RECORD_DEADLINE_MS = 2_000
 
 function shutdownWatchersOnce(): Promise<void> {
   if (state.watcherShutdownDone) {
@@ -115,9 +117,6 @@ function installWillQuitHandler(): void {
     // Why: renderer guards can still cancel before this committed phase; `log stream` must survive those vetoes.
     stopTccPromptNotice()
     const updateQuitInProgress = isQuittingForUpdate()
-    const sessionExitRecord = recordMainSessionExit(
-      updateQuitInProgress ? 'update-install' : 'quit'
-    )
     if (updateQuitInProgress) {
       recordUpdaterLifecycle(
         'will_quit_cleanup_started',
@@ -271,7 +270,6 @@ function installWillQuitHandler(): void {
       { name: 'structured-agent-session', promise: structuredAgentSessionShutdown },
       { name: 'usage-cache', promise: usageCacheFlush },
       { name: 'stats', promise: statsFlush },
-      { name: 'session-exit-record', promise: sessionExitRecord },
       { name: 'state', promise: storeFlush }
     ])
       .then((pendingTeardowns) => {
@@ -284,6 +282,13 @@ function installWillQuitHandler(): void {
       .catch(() => {
         /* swallow — telemetry must never prevent app.quit() */
       })
+      // Why last: a native crash during teardown above must still read as unclean next launch.
+      .then(() =>
+        settleWithinMs(
+          recordMainSessionExit(updateQuitInProgress ? 'update-install' : 'quit'),
+          SESSION_EXIT_RECORD_DEADLINE_MS
+        )
+      )
       .then(() => {
         daemonDisconnectDone = true
         app.quit()

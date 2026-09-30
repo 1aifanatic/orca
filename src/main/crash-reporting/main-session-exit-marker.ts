@@ -5,7 +5,7 @@
 // Two files so the throttled activity write and the exit write never race over
 // one path: a stale activity rename cannot clobber an exit record.
 
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { CrashReportBreadcrumbData } from '../../shared/crash-reporting'
@@ -16,6 +16,8 @@ export const MAIN_SESSION_EXIT_FILE = 'main-session-exit.json'
 const SCHEMA_VERSION = 1
 // Bounds when an unmarked session died without a write per breadcrumb.
 const ACTIVITY_WRITE_INTERVAL_MS = 60_000
+// Why 5 min: outlasts systemd's 90s stop timeout and macOS logout, so only a cancelled shutdown revokes.
+export const PROVISIONAL_EXIT_REVOKE_MS = 5 * 60_000
 
 export type MainSessionExitKind =
   | 'quit'
@@ -62,7 +64,9 @@ type TrackingState = {
 }
 
 let tracking: TrackingState | null = null
-let exitRecorded = false
+// Why provisional: an OS shutdown notice can still be cancelled, so it must not latch like a committed quit.
+let recordedExit: { kind: MainSessionExitKind; provisional: boolean } | null = null
+let provisionalRevokeTimer: NodeJS.Timeout | null = null
 let launchWriteChain: Promise<void> = Promise.resolve()
 let lastActivityWriteAtMs = Number.NEGATIVE_INFINITY
 let activityTimer: NodeJS.Timeout | null = null
@@ -180,7 +184,8 @@ export function beginMainSessionTracking({
       appVersion
     }
   }
-  exitRecorded = false
+  recordedExit = null
+  clearProvisionalRevokeTimer()
   void enqueueLaunchWrite()
   if (
     !previous ||
@@ -198,9 +203,20 @@ export function beginMainSessionTracking({
   }
 }
 
+function isExitCommitted(): boolean {
+  return recordedExit !== null && !recordedExit.provisional
+}
+
+function clearProvisionalRevokeTimer(): void {
+  if (provisionalRevokeTimer) {
+    clearTimeout(provisionalRevokeTimer)
+    provisionalRevokeTimer = null
+  }
+}
+
 function flushActivity(): void {
   activityTimer = null
-  if (!tracking || exitRecorded) {
+  if (!tracking || isExitCommitted()) {
     return
   }
   lastActivityWriteAtMs = Date.now()
@@ -209,7 +225,7 @@ function flushActivity(): void {
 
 /** Throttled: keeps the launch record's last-activity time within one interval of death. */
 export function noteMainSessionActivity(createdAt: string): void {
-  if (!tracking || exitRecorded) {
+  if (!tracking || isExitCommitted()) {
     return
   }
   tracking.launch.lastBreadcrumbAt = createdAt
@@ -225,25 +241,31 @@ export function noteMainSessionActivity(createdAt: string): void {
   activityTimer.unref()
 }
 
+function buildExitRecord(kind: MainSessionExitKind): ExitRecord | null {
+  return tracking
+    ? {
+        schemaVersion: SCHEMA_VERSION,
+        launchId: tracking.launch.launchId,
+        kind,
+        exitedAt: new Date().toISOString()
+      }
+    : null
+}
+
 function takeExitRecord(kind: MainSessionExitKind): { path: string; record: ExitRecord } | null {
-  // Why first-wins: relaunch/session-end label the exit before the will-quit that may follow.
-  if (!tracking || exitRecorded) {
+  // Why first-wins: relaunch/session-end/shutdown label the exit before the will-quit that may follow.
+  if (!tracking || isExitCommitted()) {
     return null
   }
-  exitRecorded = true
+  const label = recordedExit?.kind ?? kind
+  recordedExit = { kind: label, provisional: false }
+  clearProvisionalRevokeTimer()
   if (activityTimer) {
     clearTimeout(activityTimer)
     activityTimer = null
   }
-  return {
-    path: tracking.exitPath,
-    record: {
-      schemaVersion: SCHEMA_VERSION,
-      launchId: tracking.launch.launchId,
-      kind,
-      exitedAt: new Date().toISOString()
-    }
-  }
+  const record = buildExitRecord(label)
+  return record ? { path: tracking.exitPath, record } : null
 }
 
 /** For committed quits that can await teardown (will-quit). */
@@ -257,6 +279,44 @@ export function recordMainSessionExitSync(kind: MainSessionExitKind): void {
   const exit = takeExitRecord(kind)
   if (exit) {
     writeJsonAtomicallySync(exit.path, exit.record)
+  }
+}
+
+/**
+ * For an exit notice that can still be cancelled (OS shutdown/logout request).
+ * Written now because the OS may end the process without will-quit; revoked if
+ * the quit is aborted or the process is still alive after the revoke window.
+ */
+export function recordProvisionalMainSessionExitSync(
+  kind: MainSessionExitKind,
+  revokeAfterMs: number = PROVISIONAL_EXIT_REVOKE_MS
+): void {
+  const state = tracking
+  if (!state || recordedExit) {
+    return
+  }
+  const record = buildExitRecord(kind)
+  if (!record) {
+    return
+  }
+  recordedExit = { kind, provisional: true }
+  writeJsonAtomicallySync(state.exitPath, record)
+  provisionalRevokeTimer = setTimeout(revokeProvisionalMainSessionExit, revokeAfterMs)
+  provisionalRevokeTimer.unref()
+}
+
+/** Call when a quit is aborted; a later crash in this launch must still read as unclean. */
+export function revokeProvisionalMainSessionExit(): void {
+  if (!tracking || !recordedExit?.provisional) {
+    return
+  }
+  clearProvisionalRevokeTimer()
+  recordedExit = null
+  try {
+    // Why sync: an async remove could land after a later committed exit write and erase it.
+    rmSync(tracking.exitPath, { force: true })
+  } catch {
+    // Best effort: a stale exit record only hides one unclean report.
   }
 }
 
@@ -286,8 +346,9 @@ export function _resetMainSessionTrackingForTest(): void {
   if (activityTimer) {
     clearTimeout(activityTimer)
   }
+  clearProvisionalRevokeTimer()
   tracking = null
-  exitRecorded = false
+  recordedExit = null
   launchWriteChain = Promise.resolve()
   lastActivityWriteAtMs = Number.NEGATIVE_INFINITY
   activityTimer = null
