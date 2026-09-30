@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
+  hostJoinsStops: vi.fn(async () => false),
   toastError: vi.fn(),
   operations: 0
 }))
@@ -14,7 +15,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.call
+  callStructuredAgentSession: mocks.call,
+  supportsStructuredAgentSessionStopJoin: mocks.hostJoinsStops
 }))
 
 vi.mock('./use-structured-agent-session-outbox', () => ({
@@ -74,6 +76,7 @@ function render() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.hostJoinsStops.mockResolvedValue(false)
   mocks.operations = 0
 })
 
@@ -178,21 +181,29 @@ describe('a conversation command typed again', () => {
   })
 })
 
-describe('a Stop pressed again', () => {
-  function heldStops() {
-    const answers: (() => void)[] = []
-    const ids: string[] = []
-    mocks.call.mockImplementation((_target, _method, params: Params) => {
-      ids.push(params.envelope.clientOperationId)
-      return new Promise((resolve) =>
-        answers.push(() => resolve({ ok: true, value: { turnId: 'turn-1', cancelled: true } }))
-      )
-    })
-    return { ids, answerAll: () => answers.splice(0).forEach((answer) => answer()) }
+/** A host that holds each Stop until the test answers the ones it was sent. */
+function heldStops() {
+  const answers: (() => void)[] = []
+  const ids: string[] = []
+  mocks.call.mockImplementation((_target, _method, params: Params) => {
+    ids.push(params.envelope.clientOperationId)
+    return new Promise((resolve) =>
+      answers.push(() => resolve({ ok: true, value: { turnId: 'turn-1', cancelled: true } }))
+    )
+  })
+  return {
+    ids,
+    answerWhenSent: async (count: number) => {
+      await vi.waitFor(() => expect(answers).toHaveLength(count))
+      answers.splice(0).forEach((answer) => answer())
+    }
   }
-  const stop = (current: ReturnType<typeof render>['current'], turnId = 'turn-1') =>
-    current.mutate('agentSession.cancel', 'agentSession.cancel', { turnId })
+}
 
+const stop = (current: ReturnType<typeof render>['current'], turnId = 'turn-1') =>
+  current.mutate('agentSession.cancel', 'agentSession.cancel', { turnId })
+
+describe('a Stop pressed again, against a host older than its Stop join', () => {
   it('joins the one still in flight instead of sending a second', async () => {
     const host = heldStops()
     const { current } = render()
@@ -204,7 +215,7 @@ describe('a Stop pressed again', () => {
       second = stop(current)
     })
     await act(async () => {
-      host.answerAll()
+      await host.answerWhenSent(1)
       await Promise.all([first, second])
     })
 
@@ -221,6 +232,7 @@ describe('a Stop pressed again', () => {
 
     await act(async () => {
       const pressed = [stop(current), stop(current)]
+      await vi.waitFor(() => expect(answers).toHaveLength(1))
       answers.splice(0).forEach((answer) => answer())
       await Promise.all(pressed)
     })
@@ -236,7 +248,7 @@ describe('a Stop pressed again', () => {
     for (let press = 0; press < 2; press += 1) {
       await act(async () => {
         const pressed = stop(current)
-        host.answerAll()
+        await host.answerWhenSent(1)
         await pressed
       })
     }
@@ -255,7 +267,7 @@ describe('a Stop pressed again', () => {
         current.mutate('agentSession.cancel', 'agentSession.cancel', {}),
         current.mutate('agentSession.cancel', 'agentSession.cancel', {})
       ]
-      host.answerAll()
+      await host.answerWhenSent(2)
       await Promise.all(pressed)
     })
 
@@ -268,10 +280,26 @@ describe('a Stop pressed again', () => {
 
     await act(async () => {
       const pressed = [stop(current, 'turn-1'), stop(current, 'turn-2')]
-      host.answerAll()
+      await host.answerWhenSent(2)
       await Promise.all(pressed)
     })
 
     expect(mocks.call).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('a Stop pressed again, against a host that joins it', () => {
+  it('sends every press under its own id, even while an earlier one is on its way', async () => {
+    mocks.hostJoinsStops.mockResolvedValue(true)
+    const host = heldStops()
+    const { current } = render()
+
+    await act(async () => {
+      const pressed = [stop(current), stop(current)]
+      await host.answerWhenSent(2)
+      await Promise.all(pressed)
+    })
+
+    expect(new Set(host.ids).size).toBe(2)
   })
 })

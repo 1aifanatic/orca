@@ -1,10 +1,11 @@
 // One structured-session mutation, fenced and idempotent.
 //
 // Every call is its own action with its own client operation id, so a press is never answered
-// from an earlier one. A Stop of a named turn or task pressed while an identical one is still in
-// flight joins it instead of stopping twice. Every result is discarded unless the runtime fence it
-// was issued against is still the current one. A write that did not happen is reported once, in
-// the person's words, by the caller that knows where to say it; nothing latches.
+// from an earlier one. The host joins a Stop of a named turn or task pressed while one is still on
+// its way; against an older host that does not, this client joins it instead of stopping twice.
+// Every result is discarded unless the runtime fence it was issued against is still the current
+// one. A write that did not happen is reported once, in the person's words, by the caller that
+// knows where to say it; nothing latches.
 
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
@@ -17,7 +18,10 @@ import {
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
-import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import {
+  callStructuredAgentSession,
+  supportsStructuredAgentSessionStopJoin
+} from '@/runtime/structured-agent-session-client'
 import { structuredSessionOperationId } from './use-structured-agent-session-outbox'
 import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
@@ -128,14 +132,18 @@ export function useStructuredAgentSessionMutate(args: {
   )
 
   const write = useCallback(
-    <T>(
+    async <T>(
       method: string,
       fingerprintMethod: string,
       fields: Record<string, unknown>
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
-      if (!namesWhatItStops(fingerprintMethod, fields)) {
+      if (
+        !namesWhatItStops(fingerprintMethod, fields) ||
+        (await supportsStructuredAgentSessionStopJoin(target))
+      ) {
         return send<T>(method, fingerprintMethod, fields)
       }
+      // Temporary, for a host older than its Stop join: remove once every supported host has it.
       const key = `${sessionId}:${method}:${JSON.stringify(fields)}`
       const joined = inFlightStops.current.get(key)
       if (joined) {
@@ -157,7 +165,7 @@ export function useStructuredAgentSessionMutate(args: {
       })
       return stopping
     },
-    [send, sessionId]
+    [send, sessionId, target]
   )
 
   const mutate = useCallback(

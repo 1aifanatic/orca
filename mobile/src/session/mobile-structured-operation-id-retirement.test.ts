@@ -49,13 +49,14 @@ function runningState(): StructuredAgentSessionState {
   return state as unknown as StructuredAgentSessionState
 }
 
-function cancelArgs(client: RpcClient) {
+function cancelArgs(client: RpcClient, hostJoinsStops: boolean | null = false) {
   return {
     client,
     sessionId: 'session-1',
     enabled: true,
     stateRef: { current: runningState() },
     promptCancelSupported: null,
+    hostJoinsStops,
     inFlight: new Map<string, Promise<boolean>>(),
     onSendError: vi.fn()
   }
@@ -156,7 +157,7 @@ describe('a phone Stop pressed again', () => {
     return { client, sent, answerAll: () => answers.splice(0).forEach((answer) => answer()) }
   }
 
-  it('joins the Stop of that turn still on its way instead of sending a second', async () => {
+  it('against a host older than its Stop join, joins the Stop of that turn still on its way', async () => {
     const host = heldStops()
     const args = cancelArgs(host.client)
 
@@ -181,6 +182,22 @@ describe('a phone Stop pressed again', () => {
     }
 
     expect(host.sent).toHaveLength(2)
+    expect(host.sent[1]).not.toBe(host.sent[0])
+    expect(args.inFlight.size).toBe(0)
+  })
+
+  it('against a host that joins Stops, sends every press under its own id', async () => {
+    const host = heldStops()
+    const args = cancelArgs(host.client, true)
+
+    const presses = [
+      requestMobileStructuredAgentSessionCancel(args),
+      requestMobileStructuredAgentSessionCancel(args)
+    ]
+    await vi.waitFor(() => expect(host.sent).toHaveLength(2))
+    host.answerAll()
+
+    expect(await Promise.all(presses)).toEqual([true, true])
     expect(host.sent[1]).not.toBe(host.sent[0])
     expect(args.inFlight.size).toBe(0)
   })

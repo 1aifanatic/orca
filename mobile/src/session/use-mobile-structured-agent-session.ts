@@ -97,9 +97,10 @@ export function useMobileStructuredAgentSession(args: {
   // Old host ⇒ exactly today's behavior: no delivery field, no cards, plain Stop.
   const queueCapable = hostSupport?.queuedMessages === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
+  const hostJoinsStops = hostSupport?.stopJoin ?? null
   const sessionKey = encodeNativeChatTranscriptIdentity([sourceIdentity, agent, sessionId])
   const commandPendingRef = useRef(false)
-  // A Stop of the turn one is already stopping joins it.
+  // Against a host older than its Stop join, a Stop of the turn one is already stopping joins it.
   const inFlightStopsRef = useRef(new Map<string, Promise<boolean>>())
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
   const { state, stateRef, queuedMessages, queuePause, loadingOlder, loadEarlier } =
@@ -194,6 +195,7 @@ export function useMobileStructuredAgentSession(args: {
       requestMobileStructuredAgentSessionCancel({
         client,
         enabled,
+        hostJoinsStops,
         inFlight: inFlightStopsRef.current,
         onSendError,
         prompt,
@@ -201,7 +203,7 @@ export function useMobileStructuredAgentSession(args: {
         sessionId,
         stateRef
       }),
-    [client, enabled, onSendError, promptCancelSupported, sessionId, stateRef]
+    [client, enabled, hostJoinsStops, onSendError, promptCancelSupported, sessionId, stateRef]
   )
 
   return {

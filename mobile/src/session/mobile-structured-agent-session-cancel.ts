@@ -28,7 +28,10 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   stateRef: { readonly current: StructuredAgentSessionState }
   promptCancelSupported: boolean | null
   prompt?: PromptIdentity
-  /** Stops still on their way, by what they stop; a press for the same one joins it. */
+  /** Whether the host joins a second Stop itself; null until the status probe answers. */
+  hostJoinsStops: boolean | null
+  /** Stops still on their way, by what they stop; against a host that does not join them, a
+   *  press for the same one joins it here. */
   inFlight: Map<string, Promise<boolean>>
   onSendError: (message: string) => void
 }): Promise<boolean> {
@@ -44,13 +47,18 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
     turnId,
     ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
   }
+  // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
+  const stop = () => sendStop({ client, sessionId, fence: current.fence, fields, onSendError })
+  if (args.hostJoinsStops === true) {
+    return stop()
+  }
+  // Temporary, for a host older than its Stop join: remove once every supported host has it.
   const key = `${sessionId}:agentSession.cancel:${JSON.stringify(fields)}`
   const joined = inFlight.get(key)
   if (joined) {
     return joined
   }
-  // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
-  const stopping = sendStop({ client, sessionId, fence: current.fence, fields, onSendError })
+  const stopping = stop()
   inFlight.set(key, stopping)
   // Gone once it settles, so the next press is a new Stop.
   void stopping.finally(() => {
