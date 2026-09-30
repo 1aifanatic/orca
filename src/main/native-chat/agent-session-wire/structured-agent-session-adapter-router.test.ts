@@ -167,6 +167,19 @@ describe('StructuredAgentSessionAdapterRouter optional lifecycle methods', () =>
   )
 })
 
+describe('StructuredAgentSessionAdapterRouter.stopEndsSession', () => {
+  it("answers for the session's live owner, and keeps the child with none", async () => {
+    const claude = adapterOf(vi.fn(async () => true))
+    claude.stopEndsSession = () => true
+    const codex = adapterOf(vi.fn(async () => false))
+    const router = new StructuredAgentSessionAdapterRouter({ claude, codex }, async () => {})
+
+    expect(router.stopEndsSession('session-1')).toBe(false)
+    await router.acquire({ identity: claudeIdentity('session-1'), fence: 1, spawnToken: 'spawn-1' })
+    expect(router.stopEndsSession('session-1')).toBe(true)
+  })
+})
+
 describe('StructuredAgentSessionAdapterRouter.closeAll', () => {
   it('refuses to acquire once the global close proof is published', async () => {
     const acquire = vi.fn(async ({ fence, spawnToken }) => acquisition(fence, spawnToken))
