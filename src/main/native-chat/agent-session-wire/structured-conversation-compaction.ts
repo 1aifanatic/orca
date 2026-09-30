@@ -34,6 +34,7 @@ import {
   type ConversationCommandParams
 } from './structured-conversation-command'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import { repeatedStructuredCompaction } from './structured-conversation-compaction-repeat'
 
 /**
  * `/compact` from a client that asks through the command RPC: accepted into the conversation like
@@ -134,6 +135,14 @@ function acceptStructuredConversationCommand(
     {
       ...plan,
       run: async (ctx) => {
+        // A press repeating this caller's last /compact is answered as that one is: at its handover.
+        const earlier = repeatedStructuredCompaction(
+          ctx.journal,
+          (id) => context.deps.store.getOperationRow(caller.callerKey, id) !== null
+        )
+        if (earlier) {
+          return { ok: true, value: { clientMessageId: earlier.clientMessageId } }
+        }
         const record = context.deps.store.getRecord(ctx.sessionId)
         const refusal =
           record &&
