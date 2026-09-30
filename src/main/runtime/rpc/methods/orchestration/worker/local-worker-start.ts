@@ -29,7 +29,7 @@ import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
-import { waitForLaunchedAgentComposer } from '../../../../launched-agent-composer-readiness'
+import { waitForWorkerStartComposer } from '../../../../launched-agent-composer-readiness'
 
 type WorkerStartMutation = {
   callerFingerprint: string
@@ -195,7 +195,7 @@ export async function startLocalWorker(args: {
             condition: 'tui-idle',
             timeoutMs: params.timeoutMs ?? 60_000
           })
-        : await waitForLaunchedAgentComposer(
+        : await waitForWorkerStartComposer(
             runtime,
             terminalHandle,
             agent,

@@ -1,7 +1,7 @@
 /**
  * The one answer to "has the agent Orca just launched opened its composer?", shared by every host
- * path that writes a first input into a fresh agent: `agent.launch`'s terminal prompt and an
- * orchestration worker's first dispatch.
+ * path that writes a first input into a fresh agent: `agent.launch`'s terminal prompt and, through
+ * `waitForWorkerStartComposer`, an orchestration worker's first dispatch.
  *
  * The signal is the one the desktop's own paste used: bracketed paste turned on (DECSET 2004) plus
  * the agent's `draftPasteReadySignal` (its composer marker, or a quiet render after 2004), read by
@@ -63,6 +63,39 @@ export function readFreshComposerHold(
 }
 
 /**
+ * A fresh orchestration worker's first dispatch. Marker agents wait for their marker, as a launch
+ * does; every other agent takes main's cue for this path, `tui-idle`, which settles on the agent's
+ * own ready title instead of a quiet window after it. That dispatch waits for the render to settle
+ * before Enter, so it never needed the desktop paste's later cue.
+ */
+export function waitForWorkerStartComposer(
+  runtime: LaunchedAgentReadinessRuntime,
+  handle: string,
+  agent: TuiAgent,
+  timeoutMs: number
+): Promise<RuntimeTerminalWait> {
+  if (COMPOSER_MARKER_READINESS_AGENTS.has(agent)) {
+    return waitForComposerMarker(runtime, handle, agent, timeoutMs)
+  }
+  return runtime.waitForTerminal(handle, {
+    condition: 'tui-idle',
+    timeoutMs,
+    launchReadiness: true
+  })
+}
+
+function waitForComposerMarker(
+  runtime: LaunchedAgentReadinessRuntime,
+  handle: string,
+  agent: TuiAgent,
+  timeoutMs: number
+): Promise<RuntimeTerminalWait> {
+  return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, {
+    requireComposerMarker: !INLINE_RENDERING_COMPOSER_AGENTS.has(agent)
+  })
+}
+
+/**
  * The composer signal's wait, then — if it did not settle within the desktop paste's budget, or a
  * startup dialog is up — the `tui-idle` wait for what is left of `timeoutMs`, whose result says
  * ready, blocked by a dialog, or not ready. Throws when that runs out too.
@@ -74,9 +107,7 @@ export async function waitForLaunchedAgentComposer(
   timeoutMs: number
 ): Promise<RuntimeTerminalWait> {
   if (COMPOSER_MARKER_READINESS_AGENTS.has(agent)) {
-    return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, {
-      requireComposerMarker: !INLINE_RENDERING_COMPOSER_AGENTS.has(agent)
-    })
+    return waitForComposerMarker(runtime, handle, agent, timeoutMs)
   }
   const startedAt = Date.now()
   try {

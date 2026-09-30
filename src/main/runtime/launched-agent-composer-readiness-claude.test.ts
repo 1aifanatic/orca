@@ -11,7 +11,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
-import { waitForLaunchedAgentComposer } from './launched-agent-composer-readiness'
+import {
+  waitForLaunchedAgentComposer,
+  waitForWorkerStartComposer
+} from './launched-agent-composer-readiness'
 import { resolveRemoteForegroundEvidence } from '../providers/agent-foreground-process'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 
@@ -98,6 +101,33 @@ describe('launch readiness for a freshly launched Claude', () => {
       satisfied: false,
       blockedReason: 'agent-trust-workspace'
     })
+  })
+})
+
+describe('a fresh orchestration worker start for Claude', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Main's worker start pasted on this cue; the launch's quiet window put the brief 1.6 s later.
+  it('settles on Claude’s ready title, before the launch paste’s quiet window', async () => {
+    const { data, size } = readCapture('claude-dialog-trust-workspace-answered')
+    const { runtime, handle } = await createTranscriptPane({
+      paneTitle: 'Claude Code',
+      foregroundProcess: 'claude',
+      launchAgent: 'claude',
+      size,
+      data: ''
+    })
+    vi.useFakeTimers()
+    const ready = waitForWorkerStartComposer(runtime, handle, 'claude', 60_000)
+    const settled = vi.fn()
+    ready.then(settled, settled)
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, data, Date.now())
+
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS / 2)
+    expect(settled).toHaveBeenCalled()
+    await expect(ready).resolves.toMatchObject({ satisfied: true })
   })
 })
 
