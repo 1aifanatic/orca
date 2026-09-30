@@ -44,14 +44,11 @@ describe('orchestration.send Dispatch authority', () => {
         handle === 'term_attacker' ? 'tab_attacker:leaf_attacker' : harness.coordinatorPaneKey
       )
       if (!legacyAuthority) {
-        ctx = {
-          runtime,
-          orchestrationCapability: db.mintDispatchCapability({
-            dispatchId: attacker.id,
-            paneKey: 'tab_attacker:leaf_attacker',
-            processIncarnation: 'runtime_test:term_attacker:1'
-          })
-        }
+        db.setDispatchConsumer({
+          dispatchId: attacker.id,
+          paneKey: 'tab_attacker:leaf_attacker',
+          processIncarnation: 'runtime_test:term_attacker:1'
+        })
       }
 
       const result = (await send({

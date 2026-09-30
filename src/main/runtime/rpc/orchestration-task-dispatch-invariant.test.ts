@@ -274,7 +274,7 @@ async function createCapableDispatch(
   harness: Harness,
   taskId: string,
   status: 'pending' | 'dispatched'
-): Promise<{ dispatch: { id: string }; capability: string }> {
+): Promise<{ dispatch: { id: string } }> {
   if (status === 'pending') {
     const dispatch = harness.db.createStartingWorkerDispatch({
       creator: { kind: 'system' },
@@ -282,7 +282,7 @@ async function createCapableDispatch(
       taskId,
       startOptions: {}
     }).dispatch
-    const capability = harness.db.prepareStartingWorkerAuthority({
+    harness.db.prepareStartingWorkerAuthority({
       dispatchId: dispatch.id,
       handle: WORKER_HANDLE,
       paneKey: WORKER_PANE,
@@ -292,29 +292,29 @@ async function createCapableDispatch(
       effects: [],
       terminalOwnership: 'external'
     })
-    return { dispatch, capability }
+    return { dispatch }
   }
   const dispatch = await dispatchTask(harness, taskId, WORKER_HANDLE)
-  const capability = harness.db.mintDispatchCapability({
+  harness.db.setDispatchConsumer({
     dispatchId: dispatch.id,
     paneKey: WORKER_PANE,
     processIncarnation: WORKER_PROCESS
   })
-  return { dispatch, capability }
+  return { dispatch }
 }
 
 function createSupervisedDispatch(
   harness: Harness,
   taskId: string,
   status: 'pending' | 'dispatched'
-): { dispatch: { id: string }; capability: string } {
+): { dispatch: { id: string } } {
   const dispatch = harness.db.createStartingWorkerDispatch({
     creator: { kind: 'system' },
     maxDepth: Number.MAX_SAFE_INTEGER,
     taskId,
     startOptions: {}
   }).dispatch
-  const capability = harness.db.prepareStartingWorkerAuthority({
+  harness.db.prepareStartingWorkerAuthority({
     dispatchId: dispatch.id,
     handle: WORKER_HANDLE,
     paneKey: WORKER_PANE,
@@ -327,7 +327,7 @@ function createSupervisedDispatch(
   if (status === 'dispatched') {
     harness.db.markWorkerDispatchReady(dispatch.id)
   }
-  return { dispatch, capability }
+  return { dispatch }
 }
 
 function updateTask(

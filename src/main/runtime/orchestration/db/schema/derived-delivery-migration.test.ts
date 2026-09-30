@@ -213,7 +213,7 @@ describe('derived delivery migration', () => {
         processIncarnation: 'worker:2'
       }
       if (consumerSource === 'dispatch') {
-        peer.mintDispatchCapability(authority)
+        peer.setDispatchConsumer(authority)
       } else {
         peer.prepareRemoteAttachmentAuthority({
           ...authority,

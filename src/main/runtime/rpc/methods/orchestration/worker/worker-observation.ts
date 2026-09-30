@@ -177,7 +177,8 @@ function exposeContextOnlyWorker(dispatch: DispatchContextRow) {
     dispatchId: dispatch.id,
     runtimeEpoch: null,
     state: 'unsupervised' as const,
-    stage: dispatch.capability_hash ? 'injected' : 'context_only',
+    // Why: only `dispatch --inject` attaches a consumer to a Dispatch that has no worker row.
+    stage: dispatch.consumer_generation > 0 ? 'injected' : 'context_only',
     worktreeId: null,
     agentTerminalHandle: dispatch.assignee_handle,
     setupState: 'not_applicable',

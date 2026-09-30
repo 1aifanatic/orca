@@ -207,7 +207,7 @@ describe('Run-bound lead mailbox boundaries', () => {
   })
 
   it('does not give a reused process the previous assignee mail', async () => {
-    state.db.mintDispatchCapability({
+    state.db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: LEAD,
       processIncarnation: 'old:pty:1'

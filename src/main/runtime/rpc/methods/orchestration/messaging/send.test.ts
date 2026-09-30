@@ -389,16 +389,21 @@ describe('orchestration RPC methods', () => {
       expect(runtime.notifyMessageArrived).toHaveBeenCalledWith(`run:${activeRunId}`, 'worker_done')
     })
 
-    it('ignores the Dispatch capability and requires the exact pane and process', async () => {
+    it('ignores a pre-upgrade capability hash and requires the exact pane and process', async () => {
       setup()
       const task = db.createTask({ spec: 'capability work' })
       const dispatch = createRootDispatch(db, task.id, 'term_worker', 'tab_worker:leaf_worker')
-      // A row minted before the upgrade keeps its hash; only pane and process decide.
-      db.mintDispatchCapability({
+      db.setDispatchConsumer({
         dispatchId: dispatch.id,
         paneKey: 'tab_worker:leaf_worker',
         processIncarnation: 'runtime_test:term_worker:1'
       })
+      // A row minted before the upgrade keeps its hash; only pane and process decide.
+      db.db
+        .prepare(
+          "UPDATE dispatch_contexts SET capability_hash = 'minted-before-upgrade' WHERE id = ?"
+        )
+        .run(dispatch.id)
       const payload = JSON.stringify({
         taskId: task.id,
         dispatchId: dispatch.id,
@@ -428,7 +433,6 @@ describe('orchestration RPC methods', () => {
       expect(db.getTask(task.id)?.status).toBe('dispatched')
 
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:1')
-      ctx = { runtime, orchestrationCapability: 'dcap_stale_from_an_old_preamble' }
       expect(await send()).toMatchObject({ lifecycle: { action: 'completed' } })
       expect(db.getTask(task.id)?.status).toBe('completed')
       expect(db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeTruthy()

@@ -13,7 +13,7 @@ function startWorker(spec: string): { taskId: string; dispatchId: string } {
     taskId: task.id,
     startOptions: {}
   })
-  db.mintDispatchCapability({
+  db.setDispatchConsumer({
     dispatchId: started.dispatch.id,
     paneKey: WORKER_PANE_KEY,
     processIncarnation: INCARNATION
@@ -120,6 +120,40 @@ describe('worker start settled by an unobserved prompt', () => {
     expect(db.getWorkerDispatch(dispatchId)).toMatchObject({
       state: 'failed',
       stage: 'dispatch_input'
+    })
+  })
+
+  it('keeps the identity its authority attached when a stalled start fails', () => {
+    db = new OrchestrationDb(':memory:')
+    const task = db.createTask({ runId: 'run_legacy_local', spec: 'stalled after authority' })
+    const started = db.createStartingWorkerDispatch({
+      creator: { kind: 'system' },
+      maxDepth: Number.MAX_SAFE_INTEGER,
+      taskId: task.id,
+      startOptions: {}
+    })
+    db.prepareStartingWorkerAuthority({
+      dispatchId: started.dispatch.id,
+      handle: 'term_worker',
+      paneKey: WORKER_PANE_KEY,
+      processIncarnation: INCARNATION,
+      worktreeId: 'repo::worker',
+      effects: [],
+      setupState: 'not_applicable',
+      terminalOwnership: 'created'
+    })
+    // The custody row can name another pane of the same PTY (#17741); it must not win.
+    db.db
+      .prepare('UPDATE worker_terminal_resources SET pane_key = ? WHERE owner_dispatch_id = ?')
+      .run('tab_custody:cccccccc-cccc-4ccc-8ccc-cccccccccccc', started.dispatch.id)
+
+    db.failWorkerStart(started.dispatch.id, 'dispatch_input', 'agent_prompt_stalled', {
+      retainCapability: true
+    })
+
+    expect(db.getDispatchContextById(started.dispatch.id)).toMatchObject({
+      assignee_pane_key: WORKER_PANE_KEY,
+      process_incarnation: INCARNATION
     })
   })
 })

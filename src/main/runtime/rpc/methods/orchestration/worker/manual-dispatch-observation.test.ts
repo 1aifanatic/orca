@@ -75,7 +75,7 @@ describe('manual Dispatch observation', () => {
       assignee_handle: 'term_worker',
       assignee_pane_key: workerPaneKey,
       process_incarnation: 'runtime_test:term_worker:1',
-      capability_hash: expect.any(String)
+      capability_hash: null
     })
 
     const workerShowMethod = eraseRpcMethods(ORCHESTRATION_METHODS).find(
@@ -126,7 +126,7 @@ describe('manual Dispatch observation', () => {
       'launch-hash',
       'runtime_test:term_worker:1'
     )
-    db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: 'tab_worker:leaf_worker',
       processIncarnation: 'runtime_test:term_worker:1'

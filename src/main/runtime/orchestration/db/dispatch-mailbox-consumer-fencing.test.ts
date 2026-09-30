@@ -54,7 +54,7 @@ describe('dispatch mailbox consumer fencing', () => {
 
   it('fences worker A once worker B re-attaches, and hands B the same unread mail', () => {
     const dispatch = dispatchWithMail(['first', 'second'])
-    db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: PANE_A,
       processIncarnation: 'runtime:pty-a:1'
@@ -63,7 +63,7 @@ describe('dispatch mailbox consumer fencing', () => {
     const deliveryA = openDelivery(dispatch.id, dispatch.runId, generationA)
     expect(deliveryA?.messages.map((message) => message.subject)).toEqual(['first', 'second'])
 
-    db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: PANE_B,
       processIncarnation: 'runtime:pty-b:1'
@@ -97,7 +97,7 @@ describe('dispatch mailbox consumer fencing', () => {
 
   it("leaves A's ack able to strand mail unread only when B never took over", () => {
     const dispatch = dispatchWithMail(['first'])
-    db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: PANE_A,
       processIncarnation: 'runtime:pty-a:1'

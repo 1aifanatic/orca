@@ -109,7 +109,7 @@ describe('worker-show interactive wait (STA-3714, STA-4513)', () => {
       'launch-hash', // A dispatch recorded against a process that has since been replaced.
       opts?.breakIdentity === true ? `${incarnation}:replaced` : incarnation
     )
-    db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey,
       processIncarnation: opts?.breakIdentity === true ? `${incarnation}:replaced` : incarnation

@@ -378,7 +378,7 @@ describe('durable orchestration mutation ledger', () => {
     })
     const task = db.createTask({ spec: 'ask', runId: run.id })
     const dispatch = createRootDispatch(db, task.id, 'term_worker', 'tab_worker:leaf_worker')
-    const capability = db.mintDispatchCapability({
+    db.setDispatchConsumer({
       dispatchId: dispatch.id,
       paneKey: 'tab_worker:leaf_worker',
       processIncarnation: 'runtime:pty:1'
@@ -388,7 +388,6 @@ describe('durable orchestration mutation ledger', () => {
       authToken: 'caller-token',
       method: 'orchestration.ask',
       params: { from: 'term_worker', question: 'Proceed?', timeoutMs: 60_000 },
-      orchestrationCapability: capability,
       orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
       orchestrationRequestId: 'mutation_ask'
     }

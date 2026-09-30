@@ -82,7 +82,7 @@ describe('Task/Dispatch invariant transactions', () => {
         deps: [task.id]
       })
       const dispatch = createRootDispatch(db, task.id, 'term_worker')
-      db.mintDispatchCapability({
+      db.setDispatchConsumer({
         dispatchId: dispatch.id,
         paneKey: 'tab_worker:leaf_worker',
         processIncarnation: 'worker:1'

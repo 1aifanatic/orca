@@ -136,13 +136,9 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         creator: resolveDispatchCreator(runtime, params.from, orchestrationCaller),
         maxDepth: runtime.getNestedWorkerMaxDepth()
       })
-      const dispatchCapability = params.inject
-        ? db.mintDispatchCapability({
-            dispatchId: ctx.id,
-            paneKey: assigneePaneKey as string,
-            processIncarnation: processIncarnation as string
-          })
-        : undefined
+      if (params.inject && assigneePaneKey && processIncarnation) {
+        db.setDispatchConsumer({ dispatchId: ctx.id, paneKey: assigneePaneKey, processIncarnation })
+      }
 
       // Why: built after ctx so dispatchId is the real ctx.id, letting heartbeats attribute liveness to a specific dispatch context, not just a task.
       const preamble = buildDispatchPreamble({
@@ -152,7 +148,6 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         taskSpec: task.spec,
         coordinatorHandle: params.from ?? 'coordinator',
         workerHandle: to,
-        dispatchCapability,
         devMode: params.devMode,
         cliCommand: runtime.getTerminalOrchestrationCliCommand(to)
       })

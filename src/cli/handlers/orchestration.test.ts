@@ -603,7 +603,7 @@ describe('orchestration timeout flag validation', () => {
     )
   })
 
-  it('prints the pending message ID and exact capability-bound resume command on timeout', async () => {
+  it('prints the pending message ID and a resume command that never echoes the capability', async () => {
     process.env.ORCA_TERMINAL_HANDLE = 'term_worker'
     process.env.ORCA_CLI_COMMAND = 'orca-dev'
     callMock.mockResolvedValue({
@@ -628,8 +628,7 @@ describe('orchestration timeout flag validation', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'ask timeout after 30000ms; question is still pending (messageId: msg_question). ' +
         'Resume waiting; do not ask again:\n' +
-        'orca-dev orchestration ask --from term_worker --dispatch-capability dcap_secret ' +
-        '--resume msg_question --timeout-ms 30000'
+        'orca-dev orchestration ask --from term_worker --resume msg_question --timeout-ms 30000'
     )
     expect(process.exitCode).toBe(1)
   })

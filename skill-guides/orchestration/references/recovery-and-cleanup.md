@@ -133,6 +133,14 @@ deletes the worktree, setup terminal, configured tabs, or unrelated processes.
 `worker-abandon` fences orchestration while accepting that resources may remain
 live; it performs no remote, process, or filesystem action.
 
+To cancel a Task, settle its worker with `worker-stop` or `worker-abandon`, then
+record the reason. A cancelled Task is `failed`, so its dependents stay blocked
+until a `--retry-of` replacement completes it:
+
+```text
+ORCA orchestration task-update --id <task_id> --status failed --result cancelled --json
+```
+
 ## Retain and release
 
 ```text
