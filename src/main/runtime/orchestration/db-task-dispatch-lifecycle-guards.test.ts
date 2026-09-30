@@ -715,14 +715,9 @@ function startWorker(database: OrchestrationDb, taskId: string, name: string): W
 }
 
 function expectCapability(database: OrchestrationDb, worker: WorkerFixture, valid: boolean): void {
-  expect(
-    database.verifyDispatchCapability({
-      dispatchId: worker.dispatchId,
-      capability: worker.capability,
-      paneKey: worker.paneKey,
-      processIncarnation: worker.processIncarnation
-    }).valid
-  ).toBe(valid)
+  expect(database.getDispatchContextById(worker.dispatchId)?.capability_revoked_at ?? null).toEqual(
+    valid ? null : expect.any(String)
+  )
 }
 
 function sqliteFor(database: OrchestrationDb): Database.Database {

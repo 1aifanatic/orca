@@ -339,8 +339,8 @@ describe('orchestration runtime update settlement', () => {
       result: {
         lifecycle: {
           action: 'rejected',
-          code: 'dispatch_capability_invalid',
-          reason: 'The caller is not the Dispatch pane.'
+          code: 'sender_not_assignee',
+          reason: `Dispatch ${harness.dispatchId} process incarnation is no longer current for its pane.`
         }
       }
     })
@@ -392,11 +392,12 @@ describe('orchestration runtime update settlement', () => {
     const attachment = {
       dispatch_id: 'dispatch-remote-retained',
       task_id: 'task-remote-retained',
+      state: 'ready',
       process_incarnation: CURRENT_COORDINATOR_PROCESS_INCARNATION
     }
     vi.spyOn(harness.db, 'findActiveRemoteAttachmentForPane').mockReturnValue(attachment as never)
-    const verifyAuthority = vi
-      .spyOn(harness.db, 'verifyRemoteAttachmentAuthority')
+    const processCurrent = vi
+      .spyOn(harness.db, 'isRemoteAttachmentProcessCurrent')
       .mockReturnValue(true)
     vi.spyOn(harness.db, 'enqueueFederationRelay').mockReturnValue({
       message_id: 'relay-retained-status',
@@ -422,9 +423,8 @@ describe('orchestration runtime update settlement', () => {
     expect(resultOf(response)).toMatchObject({
       relay: { dispatchId: attachment.dispatch_id, accepted: true }
     })
-    expect(verifyAuthority).toHaveBeenCalledWith({
+    expect(processCurrent).toHaveBeenCalledWith({
       dispatchId: attachment.dispatch_id,
-      capability: 'dcap_remote_retained',
       paneKey: CURRENT_COORDINATOR_PANE,
       processIncarnation: CURRENT_COORDINATOR_PROCESS_INCARNATION
     })

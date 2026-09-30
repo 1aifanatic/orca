@@ -8,6 +8,7 @@ import { legacyWorkerDeliveryContract } from '../routing'
 import { exposeMessage } from './mailbox-message-receipt'
 import { recordReceiptForPostCommitNudge } from './mutation-replay-nudge'
 import type { SendRecipientWarning } from './recipient-routing'
+import { workerStopInFlightReason } from './worker-report-admission'
 import type { z } from 'zod'
 
 type SendParamsInput = z.infer<typeof SendParams>
@@ -23,7 +24,6 @@ export function sendPointToPointMessage(args: {
   messageRunId: string | undefined
   senderPaneKey: string | undefined
   legacyCoordinatorRunId: string | undefined
-  orchestrationCapability: string | undefined
   resolveProcessIncarnation: () => string | undefined
   revalidateLegacyCoordinator: (() => string) | undefined
   recordMutationReceipt: ((receipt: unknown) => void) | undefined
@@ -40,7 +40,6 @@ export function sendPointToPointMessage(args: {
     messageRunId,
     senderPaneKey,
     legacyCoordinatorRunId,
-    orchestrationCapability,
     resolveProcessIncarnation,
     revalidateLegacyCoordinator,
     recordMutationReceipt,
@@ -76,7 +75,6 @@ export function sendPointToPointMessage(args: {
     })
     if (isDispatchMutationMessageType(msg.type)) {
       const taskId = parseMessageTaskId(params.payload)
-      const capabilityBacked = Boolean(dispatch?.capability_hash)
       const coordinatorMutation = msg.type === 'escalation' || msg.type === 'decision_gate'
       const authority = resolveLifecycleAuthority({
         db,
@@ -84,9 +82,7 @@ export function sendPointToPointMessage(args: {
         from,
         paneKey: senderPaneKey,
         processIncarnation,
-        capability: orchestrationCapability,
         taskId,
-        capabilityBacked,
         coordinatorMutation
       })
       if (!authority.valid) {
@@ -154,7 +150,7 @@ export function sendPointToPointMessage(args: {
 
 type LifecycleAuthority = {
   valid: boolean
-  code: 'sender_not_assignee' | 'task_dispatch_mismatch' | 'dispatch_capability_invalid'
+  code: 'sender_not_assignee' | 'task_dispatch_mismatch' | 'dispatch_inactive'
   reason: string
 }
 
@@ -164,22 +160,10 @@ function resolveLifecycleAuthority(args: {
   from: string
   paneKey: string | undefined
   processIncarnation: string | undefined
-  capability: string | undefined
   taskId: string | undefined
-  capabilityBacked: boolean
   coordinatorMutation: boolean
 }): LifecycleAuthority {
-  const {
-    db,
-    dispatch,
-    from,
-    paneKey,
-    processIncarnation,
-    capability,
-    taskId,
-    capabilityBacked,
-    coordinatorMutation
-  } = args
+  const { db, dispatch, from, paneKey, processIncarnation, taskId, coordinatorMutation } = args
   if (!dispatch) {
     return {
       valid: !coordinatorMutation,
@@ -194,18 +178,9 @@ function resolveLifecycleAuthority(args: {
       reason: `Task ${taskId} does not belong to Dispatch ${dispatch.id}.`
     }
   }
-  if (capabilityBacked) {
-    const authority = db.verifyDispatchCapability({
-      dispatchId: dispatch.id,
-      capability,
-      paneKey,
-      processIncarnation
-    })
-    return {
-      valid: authority.valid,
-      code: 'dispatch_capability_invalid',
-      reason: authority.valid ? '' : authority.reason
-    }
+  const stopping = workerStopInFlightReason(dispatch.id, db.getWorkerDispatch(dispatch.id)?.state)
+  if (stopping) {
+    return { valid: false, code: 'dispatch_inactive', reason: stopping }
   }
   if (dispatch.process_incarnation) {
     return {

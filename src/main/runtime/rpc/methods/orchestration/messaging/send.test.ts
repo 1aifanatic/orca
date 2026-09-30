@@ -389,86 +389,49 @@ describe('orchestration RPC methods', () => {
       expect(runtime.notifyMessageArrived).toHaveBeenCalledWith(`run:${activeRunId}`, 'worker_done')
     })
 
-    it('requires the minted capability, exact pane, and process incarnation', async () => {
+    it('ignores the Dispatch capability and requires the exact pane and process', async () => {
       setup()
       const task = db.createTask({ spec: 'capability work' })
       const dispatch = createRootDispatch(db, task.id, 'term_worker', 'tab_worker:leaf_worker')
-      const capability = db.mintDispatchCapability({
+      // A row minted before the upgrade keeps its hash; only pane and process decide.
+      db.mintDispatchCapability({
         dispatchId: dispatch.id,
         paneKey: 'tab_worker:leaf_worker',
         processIncarnation: 'runtime_test:term_worker:1'
       })
-      vi.spyOn(runtime, 'getTerminalPaneKey').mockImplementation((handle) =>
-        handle === 'term_worker' ? 'tab_worker:leaf_worker' : coordinatorPaneKey
-      )
       const payload = JSON.stringify({
         taskId: task.id,
         dispatchId: dispatch.id,
         outcome: 'succeeded'
       })
+      const send = () =>
+        call('orchestration.send', {
+          from: 'term_worker',
+          subject: 'Done',
+          type: 'worker_done',
+          payload
+        })
 
-      const rejected = (await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done',
-        type: 'worker_done',
-        payload
-      })) as { lifecycle: { code: string }; message: { subject: string } }
-      expect(rejected).toMatchObject({
-        lifecycle: { code: 'dispatch_capability_invalid' },
-        message: { subject: 'Rejected worker_done: Done' }
-      })
-      expect(db.getTask(task.id)?.status).toBe('dispatched')
-
-      ctx = { runtime, orchestrationCapability: 'dcap_wrong' }
-      const wrongToken = (await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done',
-        type: 'worker_done',
-        payload
-      })) as { lifecycle: { code: string } }
-      expect(wrongToken.lifecycle.code).toBe('dispatch_capability_invalid')
-
-      ctx = { runtime, orchestrationCapability: capability }
-      vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
+      vi.spyOn(runtime, 'getTerminalPaneKey').mockImplementation((handle) =>
         handle === 'term_worker' ? 'tab_foreign:leaf_foreign' : coordinatorPaneKey
       )
-      const wrongPane = (await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done',
-        type: 'worker_done',
-        payload
-      })) as { lifecycle: { code: string } }
-      expect(wrongPane.lifecycle.code).toBe('dispatch_capability_invalid')
+      expect(await send()).toMatchObject({
+        lifecycle: { code: 'sender_not_assignee' },
+        message: { subject: 'Rejected worker_done: Done' }
+      })
 
       vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
         handle === 'term_worker' ? 'tab_worker:leaf_worker' : coordinatorPaneKey
       )
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:2')
-      const wrongProcess = (await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done',
-        type: 'worker_done',
-        payload
-      })) as { lifecycle: { code: string } }
-      expect(wrongProcess.lifecycle.code).toBe('dispatch_capability_invalid')
+      expect(await send()).toMatchObject({ lifecycle: { code: 'sender_not_assignee' } })
+      expect(db.getTask(task.id)?.status).toBe('dispatched')
 
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:1')
-      await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done',
-        type: 'worker_done',
-        payload
-      })
+      ctx = { runtime, orchestrationCapability: 'dcap_stale_from_an_old_preamble' }
+      expect(await send()).toMatchObject({ lifecycle: { action: 'completed' } })
       expect(db.getTask(task.id)?.status).toBe('completed')
       expect(db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeTruthy()
-
-      const revoked = (await call('orchestration.send', {
-        from: 'term_worker',
-        subject: 'Done again',
-        type: 'worker_done',
-        payload
-      })) as { lifecycle: { code: string } }
-      expect(revoked.lifecycle.code).toBe('dispatch_capability_invalid')
     })
 
     it('does not wake waiters for a heartbeat suppressed at send time', async () => {
