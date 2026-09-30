@@ -23,21 +23,13 @@ const stalledEndpoints = vi.hoisted(() => ({ always: new Set<string>(), once: ne
 vi.mock('node:net', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeNet>()
   const { EventEmitter } = await import('node:events')
-  function connect(...args: unknown[]): unknown {
-    const target = args[0]
-    const path =
-      typeof target === 'string'
-        ? target
-        : typeof target === 'object' && target !== null && 'path' in target
-          ? target.path
-          : undefined
-    if (
-      typeof path === 'string' &&
-      (stalledEndpoints.always.has(path) || stalledEndpoints.once.delete(path))
-    ) {
+  // Daemon clients connect by socket path only (a string or `{ path }`).
+  function connect(target: string | NodeNet.IpcNetConnectOpts): unknown {
+    const path = typeof target === 'string' ? target : target.path
+    if (stalledEndpoints.always.has(path) || stalledEndpoints.once.delete(path)) {
       return Object.assign(new EventEmitter(), { destroy: () => {} })
     }
-    return Reflect.apply(actual.connect, actual, args)
+    return typeof target === 'string' ? actual.connect(target) : actual.connect(target)
   }
   return { ...actual, connect, default: { ...actual, connect } }
 })
