@@ -11,7 +11,7 @@ import {
 import { packagedNodeRuntimePath } from './build-orcad-node.mjs'
 import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
 import { currentTarget } from './server-build-target.mjs'
-import { runProcessSync } from './script-child-process.mjs'
+import { describeProcessFailure, runProcessSync } from './script-child-process.mjs'
 import {
   CROSS_RUNTIME_TEST_PATHS,
   nodeServerTestPaths,
@@ -65,7 +65,7 @@ if (artifact) {
     timeoutMs: 90_000
   })
   if (result.code !== 0 || result.timedOut || result.outputTruncated) {
-    throw new Error(`Bundled runtime readiness failed: ${result.stderr}`)
+    throw new Error(`Bundled runtime readiness failed: ${describeProcessFailure(result)}`)
   }
   const response = parseOrcadProfilePreflight(
     result.stdout,

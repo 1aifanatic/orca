@@ -180,7 +180,9 @@ export async function runPtySpawnHealthProbe(): Promise<void> {
       cols: 2,
       rows: 1,
       cwd,
-      env
+      env,
+      // Qualify the bundled ConPTY the daemon spawns with (native-pty-spawn.ts), not the OS one.
+      ...(process.platform === 'win32' ? { useConptyDll: true } : {})
     })
   } catch (err) {
     throw formatPtySpawnError(err, command.file, cwd)
@@ -196,7 +198,9 @@ export async function runPtySpawnHealthProbe(): Promise<void> {
       settled = true
       clearTimeout(timer)
       exitDisposable?.dispose()
-      if (opts?.kill) {
+      // Windows keeps the conout worker thread and pseudoconsole until kill(), even after the
+      // shell exits; left alive, they hold the probing process open.
+      if (opts?.kill || process.platform === 'win32') {
         try {
           proc.kill()
         } catch {

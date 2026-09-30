@@ -31,6 +31,7 @@ import { getRemoteHostPlatform } from './ssh-remote-platform'
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand: vi.fn() }))
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: All connection operations are mocked.
 const conn = {} as SshConnection
 const SHA = NODE_RUNTIME_ASSETS['linux-x64-glibc'].executableSha256
 const directories: string[] = []
