@@ -164,6 +164,11 @@ describe('verifyPackagedOrcadTemplate', () => {
         from: 'out/orcad-template',
         to: 'orcad-template'
       })
+      // electron-builder's copy filter drops a source's root node_modules, so it needs its own entry.
+      expect(builderConfig[platform].extraResources).toContainEqual({
+        from: 'out/orcad-template/node_modules',
+        to: 'orcad-template/node_modules'
+      })
       expect(
         builderConfig[platform].extraResources.some(
           (resource) =>

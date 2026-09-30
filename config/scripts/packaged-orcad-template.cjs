@@ -26,6 +26,11 @@ const { verifyPackagedOrcadTemplate } = require('./verify-packaged-orcad-templat
 
 const ORCAD_TEMPLATE_RESOURCE_DIR = 'orcad-template'
 const orcadTemplateExtraResource = { from: 'out/orcad-template', to: ORCAD_TEMPLATE_RESOURCE_DIR }
+// Why a second entry: electron-builder's copy filter always drops a source's root node_modules.
+const orcadTemplateNodeModulesExtraResource = {
+  from: `${orcadTemplateExtraResource.from}/node_modules`,
+  to: `${ORCAD_TEMPLATE_RESOURCE_DIR}/node_modules`
+}
 // Why the whole tree: codesign rejects its ELF/PE payloads, and the darwin ones are signed in
 // afterPack so their new hashes can be resealed into the manifest before the app is sealed.
 const orcadTemplateMacSignIgnore = ['/orcad-template/']
@@ -162,6 +167,7 @@ module.exports = {
   findOrcadTemplateMachOFiles,
   isOrcadTemplateRequired,
   orcadTemplateExtraResource,
+  orcadTemplateNodeModulesExtraResource,
   orcadTemplateMacSignIgnore,
   resealOrcadTemplateManifest,
   resealSignedWindowsApp
