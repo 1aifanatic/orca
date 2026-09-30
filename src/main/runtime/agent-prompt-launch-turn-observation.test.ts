@@ -39,7 +39,7 @@ vi.mock('../git/worktree', () => ({
 
 const RETRY_DELAY_MS = TUI_AGENT_CONFIG.opencode.submitRetryDelayMs ?? 0
 
-type HookRow = { state: 'done' | 'working'; stateStartedAt: number; prompt: string }
+type HookRow = { state: 'done' | 'working' | 'waiting'; stateStartedAt: number; prompt: string }
 
 /**
  * An OpenCode pane whose status plugin reports through the hook store. `onEnter` runs on each
@@ -177,6 +177,24 @@ describe('turn observation on a launched OpenCode worker first dispatch', () => 
       prompt: { provider: 'opencode', stages: ['input_accepted'] }
     })
     expect(enters()).toBe(2)
+  })
+
+  it('skips the retry Enter when OpenCode asks for permission after the first Enter', async () => {
+    vi.useFakeTimers()
+    const { sent, enters } = await createOpenCodePane((enter, hook) => {
+      if (enter === 1) {
+        setTimeout(() => {
+          hook.state = 'waiting'
+          hook.stateStartedAt = Date.now()
+        }, 100)
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await expect(sent).resolves.toMatchObject({
+      prompt: { provider: 'opencode', observation: 'permission' }
+    })
+    expect(enters()).toBe(1)
   })
 
   it('keeps the blind retry and an unsupported receipt with status hooks off', async () => {
