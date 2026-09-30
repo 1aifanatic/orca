@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -53,6 +53,8 @@ describe('OrcaRuntimeRpcServer required WebSocket port', () => {
       await expect(server.start()).rejects.toMatchObject({ code: 'EADDRINUSE' })
       expect(boundWsPort(server)).toBeNull()
       expect(readWsFallbackPort(userDataPath)).toBeUndefined()
+      // Why: the failed start must also release the Unix socket it opened first, or the endpoint leaks.
+      expect(readdirSync(userDataPath).filter((name) => name.endsWith('.sock'))).toEqual([])
     } finally {
       await server.stop()
     }
