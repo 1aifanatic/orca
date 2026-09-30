@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -214,6 +214,38 @@ describe.runIf(powerShell)('Windows runtime store commands (real PowerShell)', (
     expect([...(inventory?.referenced ?? [])]).toEqual([sha('a')])
     expect(inventory?.verifiedNewestFirst).toEqual([`node-${sha('b')}`, `node-${sha('a')}`])
   })
+
+  // Why Windows only: the hold comes from Win32_Process, which only Windows answers.
+  it.runIf(process.platform === 'win32')(
+    'holds a runtime whose node.exe is running, found by its image path',
+    { timeout: 120_000 },
+    async () => {
+      const remote = join(home, '.orca-remote')
+      const entry = join(remote, 'runtimes', `node-${sha('d')}`)
+      mkdirSync(entry, { recursive: true })
+      const exe = join(entry, 'node.exe')
+      copyFileSync(process.execPath, exe)
+      const child = spawn(exe, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+      try {
+        await new Promise((resolve, reject) => {
+          child.once('spawn', resolve)
+          child.once('error', reject)
+        })
+        const inventory = parseRuntimeStoreInventory(
+          run(windowsRuntimeStoreInventoryCommand(remote))
+        )
+        expect(inventory?.processCheckRan).toBe(true)
+        expect([...(inventory?.held ?? [])]).toEqual([sha('d')])
+      } finally {
+        // Why wait: Windows will not delete the temp store while its image is still running.
+        if (child.pid !== undefined && child.exitCode === null) {
+          const exited = new Promise((resolve) => child.once('exit', resolve))
+          child.kill()
+          await exited
+        }
+      }
+    }
+  )
 
   it('sweeps only stages nothing has written to within the stale rule', () => {
     const runtimes = join(home, 'runtimes')
