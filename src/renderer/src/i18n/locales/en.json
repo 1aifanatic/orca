@@ -7035,7 +7035,7 @@
           "5dae812f50": "Refresh",
           "52e640f3a0": "Refresh CLI status",
           "38edbb5721": "Shell command",
-          "6930feda9e": "Use Orca from your terminal to open the app, manage worktrees, and interact with Orca terminals.",
+          "outsideOrcaDescription": "Orca terminals already have `orca`. Turn this on to use `orca` from other terminals outside Orca.",
           "c5c0f2641d": "Orca CLI",
           "d77352f2df": "Failed to remove `{{value0}}` from PATH.",
           "af5540930c": "Removed `{{value0}}` from PATH.",
