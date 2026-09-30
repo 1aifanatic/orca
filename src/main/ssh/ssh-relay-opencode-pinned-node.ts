@@ -2,47 +2,31 @@ import { join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
-import { ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE } from '../../shared/orcad-artifacts'
 import type { SshConnection } from './ssh-connection'
 import { resolveOrcadDeploymentTargetFacts } from './orcad-deployment-target'
-import {
-  ensureRemoteOrcadNodeRuntime,
-  remoteNodeRuntimeDir,
-  type RemoteRuntimeStep
-} from './orcad-remote-node-runtime'
-import {
-  materializeCachedNodeRuntime,
-  materializeNodeRuntimeArchive
-} from './pinned-runtime-materializer'
-import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
-import {
-  parseOpenCodeRuntimeResult,
-  probeOpenCodeRuntimeCacheCommand
-} from './ssh-relay-opencode-runtime-commands'
+import { ensureRemoteOrcadNodeRuntime, type RemoteRuntimeStep } from './orcad-remote-node-runtime'
+import { materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
+import type { RemoteHostPlatform } from './ssh-remote-platform'
 import { pinnedRuntimeTargetForHost } from './ssh-relay-runtime-ladder'
 
 const DOWNLOAD_TIMEOUT_MS = 180_000
 const downloads = new Map<string, Promise<string>>()
 
-/** A verified local executable the caller still has to upload and promote on the host. */
-export type PinnedNodeVaultUpload = { localRuntime: string; expectedHash: string }
-
 /**
- * The pinned Node for hosts whose own Node cannot read OpenCode's database (design D4a).
- * POSIX hosts get it in the shared runtimes/ store; nothing here touches vault-sqlite/, which
- * old relays' references still name.
+ * The pinned Node for hosts whose own Node cannot read OpenCode's database (design D4a). Every
+ * host, Windows included, installs it into the shared runtimes/ store as the official archive
+ * with a `.verified` marker; nothing here touches vault-sqlite/, which old relays' references
+ * still name. `runtimeSha256` is the ref the relay dir must carry so store GC keeps it.
  */
 export async function preparePinnedNodeForVault(options: {
   conn: SshConnection
   host: RemoteHostPlatform
-  nodePath: string
   relayDir: string
   cacheRoot?: string
-  referencePath: string
   signal: AbortSignal
   exec: (command: string) => Promise<string>
   remote: RemoteRuntimeStep
-}): Promise<{ executable: string; upload?: PinnedNodeVaultUpload }> {
+}): Promise<{ executable: string; runtimeSha256: string }> {
   const { conn, host, signal, exec } = options
   const facts = await resolveOrcadDeploymentTargetFacts({ conn, host, signal, exec })
   // Why before any upload: below every runtime's glibc floor the self-test could only fail.
@@ -53,59 +37,27 @@ export async function preparePinnedNodeForVault(options: {
   }
   const cacheRoot =
     options.cacheRoot ?? join(getAppEnvironment().getPath('userData'), 'orcad-artifacts')
-  if (!isWindowsRemoteHost(host)) {
-    const { executable } = await ensureRemoteOrcadNodeRuntime({
-      conn,
-      host,
-      slotDir: options.relayDir,
-      target,
-      archivePath: () => cachedRuntime('archive', target, cacheRoot, signal),
-      signal,
-      remoteStep: options.remote
-    })
-    return { executable }
-  }
-  // Why a bare executable: Windows hosts get archive extraction with the upload path (design D5).
-  const expectedHash = pinnedNodeRuntimeAsset(target).executableSha256
-  const executable = joinRemotePath(
+  const { executable } = await ensureRemoteOrcadNodeRuntime({
+    conn,
     host,
-    remoteNodeRuntimeDir(host, options.relayDir, target),
-    ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE
-  )
-  const cached = parseOpenCodeRuntimeResult(
-    await exec(
-      probeOpenCodeRuntimeCacheCommand({
-        host,
-        nodePath: options.nodePath,
-        executable,
-        expectedHash,
-        reference: options.referencePath
-      })
-    )
-  )
-  if (cached.status === 'ready' && cached.executable) {
-    return { executable: cached.executable }
-  }
-  if (cached.status !== 'missing') {
-    throw new Error('The host did not confirm its SQLite runtime cache.')
-  }
-  const localRuntime = await cachedRuntime('executable', target, cacheRoot, signal)
-  signal.throwIfAborted()
-  return { executable, upload: { localRuntime, expectedHash } }
+    slotDir: options.relayDir,
+    target,
+    archivePath: () => cachedArchive(target, cacheRoot, signal),
+    signal,
+    remoteStep: options.remote
+  })
+  return { executable, runtimeSha256: pinnedNodeRuntimeAsset(target).executableSha256 }
 }
 
-function cachedRuntime(
-  kind: 'archive' | 'executable',
+function cachedArchive(
   target: NodeRuntimeTarget,
   cacheRoot: string,
   signal: AbortSignal
 ): Promise<string> {
-  const key = `${cacheRoot}\0${kind}\0${target}`
+  const key = `${cacheRoot}\0${target}`
   let pending = downloads.get(key)
   if (!pending) {
-    const materialize =
-      kind === 'archive' ? materializeNodeRuntimeArchive : materializeCachedNodeRuntime
-    pending = materialize(target, cacheRoot, {
+    pending = materializeNodeRuntimeArchive(target, cacheRoot, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
     }).finally(() => downloads.delete(key))
     downloads.set(key, pending)

@@ -106,7 +106,8 @@ import {
   recoverOneStaleRelayUploadStageCommand,
   relayUploadStagePromotionConfirmed,
   RELAY_UPLOAD_STAGE_POOL_NAME,
-  reserveRelayUploadStageCommand
+  reserveRelayUploadStageCommand,
+  type WindowsUploadStageIdentity
 } from './ssh-relay-upload-stage-commands'
 import {
   isWindowsRemoteHost,
@@ -581,9 +582,12 @@ async function deployAndLaunchRelayOnRuntime({
         run
       }
     : undefined
+  let uploadStageIdentity: WindowsUploadStageIdentity | undefined
   if (pinnedContext?.plan.kind === 'pinned-node') {
     onProgress?.('Checking Orca Node runtime...')
     await ensurePinnedRelayRuntime({ ...pinnedContext, plan: pinnedContext.plan }, alreadyInstalled)
+    // Why: once node.exe is verified, stage fencing reads file IDs through it, not Add-Type (D5).
+    uploadStageIdentity = { node: prebuiltRelayNodePath(pinnedContext) }
   }
 
   // Why: derive the home-relative suffix once — recomputing it by stripping the shell home breaks on a split namespace.
@@ -625,14 +629,24 @@ async function deployAndLaunchRelayOnRuntime({
     await execHostCommand(
       conn,
       hostPlatform,
-      recoverOneStaleRelayUploadStageCommand(hostPlatform, uploadStagePoolDir),
+      recoverOneStaleRelayUploadStageCommand(
+        hostPlatform,
+        uploadStagePoolDir,
+        undefined,
+        uploadStageIdentity
+      ),
       { signal: deploySignal }
     )
     const uploadStageOwner = createRelayInstallMarkerFileName()
     const reservation = await execHostCommand(
       conn,
       hostPlatform,
-      reserveRelayUploadStageCommand(hostPlatform, uploadStagePoolDir, uploadStageOwner),
+      reserveRelayUploadStageCommand(
+        hostPlatform,
+        uploadStagePoolDir,
+        uploadStageOwner,
+        uploadStageIdentity
+      ),
       { signal: deploySignal }
     )
     const uploadStage = parseReservedRelayUploadStage(
@@ -689,7 +703,8 @@ async function deployAndLaunchRelayOnRuntime({
               hostPlatform,
               uploadStage,
               uploadStageOwner,
-              remoteRelayDir
+              remoteRelayDir,
+              uploadStageIdentity
             ),
             { signal: deploySignal }
           )
@@ -739,7 +754,12 @@ async function deployAndLaunchRelayOnRuntime({
         await execHostCommand(
           conn,
           hostPlatform,
-          cleanupOwnedRelayUploadStageCommand(hostPlatform, uploadStage, uploadStageOwner)
+          cleanupOwnedRelayUploadStageCommand(
+            hostPlatform,
+            uploadStage,
+            uploadStageOwner,
+            uploadStageIdentity
+          )
         ).catch((error) => {
           if (isUnconfirmedSshCommandTermination(error)) {
             throw error
@@ -804,6 +824,7 @@ async function deployAndLaunchRelayOnRuntime({
       ripgrepSettled
         ? ensureRemoteOpenCodeRuntime(conn, hostPlatform, remoteHome, {
             nodePath: launched.nodePath,
+            verifiedNodePath: uploadStageIdentity?.node,
             relayDir: remoteRelayDir,
             signal: deploySignal
           })
@@ -823,7 +844,12 @@ async function deployAndLaunchRelayOnRuntime({
       execHostCommand(
         conn,
         hostPlatform,
-        recoverOneStaleRelayUploadStageCommand(hostPlatform, uploadStagePoolDir)
+        recoverOneStaleRelayUploadStageCommand(
+          hostPlatform,
+          uploadStagePoolDir,
+          undefined,
+          uploadStageIdentity
+        )
       )
         .catch((error) => {
           if (isUnconfirmedSshCommandTermination(error)) {
@@ -914,6 +940,7 @@ async function deployAndLaunchRelayOnRuntime({
       (signal) =>
         ensureRemoteOpenCodeRuntime(conn, hostPlatform, remoteHome, {
           nodePath: launched.nodePath,
+          verifiedNodePath: uploadStageIdentity?.node,
           relayDir: remoteRelayDir,
           signal
         })
