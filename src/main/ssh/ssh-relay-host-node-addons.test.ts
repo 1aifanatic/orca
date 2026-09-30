@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,6 @@ import {
   RELAY_RUNTIME_REF_PREFIX
 } from './ssh-relay-pinned-node'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
-import { readdirSync } from 'node:fs'
 
 const conn = {} as SshConnection
 const linux = getRemoteHostPlatform('linux-x64')
