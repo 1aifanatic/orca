@@ -127,4 +127,19 @@ describe('paired host presence', () => {
     expect(Object.values(next.tabsByWorktree).flat()).toHaveLength(0)
     expect(next.agentPresenceByPaneKey?.[paneKey]).toBeUndefined()
   })
+
+  it('keeps a host-local row local and leaves unidentified attribution to the host', () => {
+    const state = makeState()
+    const mirror = (row: Partial<AgentStatusEntry>) => {
+      const next = {
+        ...state,
+        ...applyWebSessionTabsSnapshot(state, snapshot(false, row), ENV, NOW)
+      }
+      return Object.values(next.agentStatusByPaneKey)[0]
+    }
+    expect(mirror({ connectionId: null })).toMatchObject({ connectionId: null, worktreeId: WT })
+    const unidentified = mirror({ connectionId: null, agentPresence: undefined })
+    expect(unidentified?.connectionId).toBeNull()
+    expect(unidentified?.worktreeId).toBeUndefined()
+  })
 })

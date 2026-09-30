@@ -148,12 +148,16 @@ export function buildMirroredAgentStatusPatch(
     }
     const existing =
       nextByPaneKey.get(hostEntry.paneKey) ?? state.agentStatusByPaneKey[hostEntry.paneKey]
+    // Why: an identified row must be owned here so its exit and retraction can clear it; other rows
+    // keep the host's own attribution.
+    const attributed =
+      presence?.process && hostEntry.worktreeId === undefined
+        ? { ...hostEntry, worktreeId }
+        : hostEntry
     const entry = withMirroredEvidenceReceipt(
-      {
-        ...hostEntry,
-        worktreeId: hostEntry.worktreeId ?? worktreeId,
-        connectionId: hostEntry.connectionId ?? environmentId
-      },
+      attributed.connectionId === undefined
+        ? { ...attributed, connectionId: environmentId }
+        : attributed,
       existing,
       now
     )
