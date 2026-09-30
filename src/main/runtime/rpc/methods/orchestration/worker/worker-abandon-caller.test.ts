@@ -45,16 +45,18 @@ describe('orchestration.workerAbandon', () => {
     return method.handler(method.params!.parse({ dispatch: dispatchId }), { runtime, ...ctx })
   }
 
-  it('records the calling terminal as the one who abandoned the worker', async () => {
+  it('never records an unverified terminal handle as the one who abandoned the worker', async () => {
     const dispatchId = readyWorker()
 
     await expect(
       abandon(dispatchId, { orchestrationCompatibilityEvidence: { terminalHandle: 'term_coord' } })
     ).resolves.toMatchObject({ state: 'abandoned', alreadySettled: false })
-    expect(db.getWorkerDispatch(dispatchId)?.last_error).toBe('Abandoned by term_coord.')
+    expect(db.getWorkerDispatch(dispatchId)?.last_error).toBe(
+      'Abandoned by an unidentified caller.'
+    )
   })
 
-  it('prefers the resolved Orca session over the terminal environment', async () => {
+  it('records the resolved Orca session as the one who abandoned the worker', async () => {
     const dispatchId = readyWorker()
     const orcaSessionId = parseOrcaSessionAddress('session:chat_1')!
     const session: OrchestrationSessionCaller = {

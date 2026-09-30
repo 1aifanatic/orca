@@ -54,11 +54,11 @@ describe('worker-abandon settles a stuck worker', () => {
       .run(dispatchId, resource.id)
   }
 
-  function expectAbandoned(dispatchId: string, taskId: string) {
+  function expectAbandoned(dispatchId: string, taskId: string, priorError?: string) {
     expect(db.getWorkerDispatch(dispatchId)).toMatchObject({
       state: 'abandoned',
       stage: 'abandoned',
-      last_error: 'Abandoned by term_coordinator.'
+      last_error: [priorError, 'Abandoned by term_coordinator.'].filter(Boolean).join(' ')
     })
     expect(db.getDispatchContextById(dispatchId)).toMatchObject({
       status: 'failed',
@@ -81,13 +81,18 @@ describe('worker-abandon settles a stuck worker', () => {
   it.each([
     [
       'stop_unknown',
+      'the terminal is external',
       (id: string) => {
         db.beginWorkerStop(id, THIS_RUNTIME)
-        db.markWorkerStopUnknown(id, 'the terminal is external; no terminal was closed')
+        db.markWorkerStopUnknown(id, 'the terminal is external')
       }
     ],
-    ['start_unknown', (id: string) => db.markWorkerStartUnknown(id, 'prompt', 'lost contact')]
-  ] as const)('settles a %s worker and records who abandoned it', (state, reach) => {
+    [
+      'start_unknown',
+      'lost contact',
+      (id: string) => db.markWorkerStartUnknown(id, 'prompt', 'lost contact')
+    ]
+  ] as const)('settles a %s worker and records who abandoned it', (state, priorError, reach) => {
     const { task, dispatch } = startWorker()
     if (state === 'stop_unknown') {
       db.markWorkerDispatchReady(dispatch.id)
@@ -97,7 +102,7 @@ describe('worker-abandon settles a stuck worker', () => {
     expect(db.abandonWorkerDispatch(dispatch.id, THIS_RUNTIME, 'term_coordinator')).toMatchObject({
       disposition: 'abandoned'
     })
-    expectAbandoned(dispatch.id, task.id)
+    expectAbandoned(dispatch.id, task.id, priorError)
   })
 
   it('says so when it cannot tell who abandoned the worker', () => {

@@ -199,12 +199,12 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
   defineMethod({
     name: 'orchestration.workerAbandon',
     params: WorkerDispatchParams,
-    handler: (params, { runtime, orchestrationCaller, orchestrationCompatibilityEvidence }) => {
+    handler: (params, { runtime, orchestrationCaller }) => {
       const abandoned = runtime.getOrchestrationDb().abandonWorkerDispatch(
         params.dispatch,
         runtime.getRuntimeId(),
-        // Display only: worker-abandon sends no --from, so the terminal handle is unverified caller env.
-        orchestrationCaller?.address ?? orchestrationCompatibilityEvidence?.terminalHandle
+        // Why: only a session caller is verified; terminal env could name anyone.
+        orchestrationCaller?.address
       )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {

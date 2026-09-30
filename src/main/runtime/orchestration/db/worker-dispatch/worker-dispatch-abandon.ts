@@ -56,7 +56,13 @@ export function abandonWorkerDispatch(
         to: 'abandoned',
         projection: {
           stage: 'abandoned',
-          last_error: `Abandoned by ${abandonedBy ?? 'an unidentified caller'}.`,
+          // Why: an unknown start or stop's diagnostic stays readable beside the attribution.
+          last_error: [
+            worker.last_error,
+            `Abandoned by ${abandonedBy ?? 'an unidentified caller'}.`
+          ]
+            .filter(Boolean)
+            .join(' '),
           updated_at: now
         }
       })
