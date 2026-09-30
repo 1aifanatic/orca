@@ -13,6 +13,7 @@ function setup(
     name?: string | null
     commandLine?: string | null
     observable?: boolean
+    statusEnabled?: boolean
   } = {}
 ) {
   const published: Published[] = []
@@ -25,6 +26,7 @@ function setup(
   let clock = 1_000
   const lifetime = new OpenCodeRunLifetimeStatus({
     isObservablePty: () => options.observable ?? true,
+    isStatusEnabled: () => options.statusEnabled ?? true,
     readForegroundProcessName,
     readForegroundCommandLine,
     publish: (ptyId, payload, yieldsToHookSince) =>
@@ -160,6 +162,15 @@ describe('OpenCodeRunLifetimeStatus', () => {
     lifetime.onCommandFinished('pty-1', 0)
     resolveName('opencode')
     await vi.runAllTimersAsync()
+    expect(states()).toEqual([])
+  })
+
+  it('stays silent when OpenCode status is turned off for that agent', async () => {
+    const { lifetime, states, readForegroundCommandLine } = setup({ statusEnabled: false })
+    lifetime.onCommandStarted('pty-1')
+    await settle()
+    lifetime.onCommandFinished('pty-1', 0)
+    expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
 

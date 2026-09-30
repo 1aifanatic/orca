@@ -18,6 +18,8 @@ type OpenCodeAgent = 'opencode' | 'opencode2'
 type Dependencies = {
   /** Local PTYs only: SSH and WSL foregrounds cannot be read on this host. */
   isObservablePty(ptyId: string): boolean
+  /** The per-agent status switch the plugin install honours (#23667). */
+  isStatusEnabled(agent: OpenCodeAgent): boolean
   readForegroundProcessName(ptyId: string): Promise<string | null>
   readForegroundCommandLine(ptyId: string, foregroundProcess: string): Promise<string | null>
   /** `yieldsToHookSince`: the store drops this write once a hook reported the pane since then. */
@@ -113,6 +115,9 @@ export class OpenCodeRunLifetimeStatus {
         if (retryDelay !== undefined && !isShellProcess(name)) {
           this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
         }
+        return
+      }
+      if (!this.deps.isStatusEnabled(agent)) {
         return
       }
       const tokens = tokenizeCommandLine(
