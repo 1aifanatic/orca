@@ -2,6 +2,15 @@ $ErrorActionPreference='Stop'
 $errors=$null;$tokens=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'prove-preview-openssh.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Fixture failed to parse'}
+# Script-scope assignments share one case-insensitive namespace with typed params: $accounts rebinds [int]$Accounts.
+foreach($script in @($ast,[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../invoke-pinned-relay-cells.ps1'),[ref]$null,[ref]$null))){
+  $params=@($script.ParamBlock.Parameters | ForEach-Object {$_.Name.VariablePath.UserPath})
+  $shadows=@($script.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.VariableExpressionAst]},$true) | Where-Object {
+    $parent=$_.Parent;while($parent -and $parent -isnot [Management.Automation.Language.FunctionDefinitionAst] -and $parent -isnot [Management.Automation.Language.ScriptBlockExpressionAst]){$parent=$parent.Parent}
+    -not $parent -and $_.Left.VariablePath.UserPath -in $params
+  } | ForEach-Object {$_.Left.VariablePath.UserPath})
+  if($shadows.Count){throw "Script-scope assignment rebinds a typed param: $($shadows -join ', ')"}
+}
 $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Diagnostic-ExitStatuses'},$true)
 . ([scriptblock]::Create($definition.Extent.Text))
 function Assert-Statuses([string]$Text,[long[]]$Expected){

@@ -52,7 +52,8 @@ New-Item -ItemType Directory -Path $root | Out-Null
 Write-Stage 'private-directory-create-complete'
 $report.root=$root
 $createdService=$false; $sid=$null; $ownedServerPid=$null
-$accounts=[Collections.Generic.List[hashtable]]::new()
+# Not $accounts: PowerShell names are case-insensitive, so that would rebind the [int] -Accounts param.
+$ownedAccounts=[Collections.Generic.List[hashtable]]::new()
 $sshDir=if($Server -eq 'inbox'){$inboxDir}else{Join-Path $root $target.folder}
 $sshdLog=Join-Path $root 'private-sshd.log'
 $serviceStartAttempt=$null
@@ -197,7 +198,7 @@ try {
     if(Get-LocalUser -Name $accountName -ErrorAction SilentlyContinue){throw 'Private username collision'}
     Write-Stage 'private-user-collision-query-complete'
     $account=@{name=$accountName;sid=$null;home=$null}
-    $accounts.Add($account)
+    $ownedAccounts.Add($account)
     Write-Stage 'private-user-create-start'
     $user=New-LocalUser -Name $accountName -Password $password -AccountNeverExpires -PasswordNeverExpires -Description 'Ephemeral Orca SSH qualification'
     Write-Stage 'private-user-create-complete'
@@ -206,13 +207,13 @@ try {
     Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
     Write-Stage 'private-user-group-complete'
   }
-  $sid=$accounts[0].sid
+  $sid=$ownedAccounts[0].sid
   # No administrator membership or real runner auth files; DefaultShell is restored at cleanup.
-  Invoke-Bounded icacls.exe (@($root,'/inheritance:r','/grant:r','*S-1-5-18:(OI)(CI)F','*S-1-5-32-544:(OI)(CI)F')+@($accounts | ForEach-Object {"*$($_.sid):(RX)"})) | Out-Null
+  Invoke-Bounded icacls.exe (@($root,'/inheritance:r','/grant:r','*S-1-5-18:(OI)(CI)F','*S-1-5-32-544:(OI)(CI)F')+@($ownedAccounts | ForEach-Object {"*$($_.sid):(RX)"})) | Out-Null
   # /T visits files too: grant direct rights instead of directory-only inheritance flags.
   $runnerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   # Never rewrite System32 ACLs; only the private preview copy is re-permissioned.
-  if($Server -eq 'preview'){Invoke-Bounded icacls.exe (@($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($runnerSid):F")+@($accounts | ForEach-Object {"*$($_.sid):RX"})+@('/T')) | Out-Null}
+  if($Server -eq 'preview'){Invoke-Bounded icacls.exe (@($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($runnerSid):F")+@($ownedAccounts | ForEach-Object {"*$($_.sid):RX"})+@('/T')) | Out-Null}
   $report.nativeAcl=@{directory=(Get-Acl -LiteralPath $sshDir).Sddl;keygen=(Get-Acl -LiteralPath $keygen).Sddl}
   Write-Stage 'native-acl-recorded'
   $hostKey=Join-Path $root 'host_key';$clientKey=Join-Path $root 'client_key'
@@ -229,7 +230,7 @@ try {
   $report.hostKeyAcl=(Get-Acl -LiteralPath $hostKey).Sddl
   $authorized=Join-Path $root 'authorized_keys'
   Copy-Item -LiteralPath "$clientKey.pub" -Destination $authorized
-  Invoke-Bounded icacls.exe (@($authorized,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F')+@($accounts | ForEach-Object {"*$($_.sid):R"})) | Out-Null
+  Invoke-Bounded icacls.exe (@($authorized,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F')+@($ownedAccounts | ForEach-Object {"*$($_.sid):R"})) | Out-Null
   $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
   $config=Join-Path $root 'sshd_config'
   $hostPosix=$hostKey.Replace('\','/');$authPosix=$authorized.Replace('\','/');$pidPosix=(Join-Path $root 'sshd.pid').Replace('\','/')
@@ -275,8 +276,8 @@ LogLevel DEBUG1
       # Name only: arguments may hold cmd metacharacters that would break the redirection.
       "@>>`"$toolLog`" echo %~n0`r`n@exit /b 127`r`n" | Set-Content -LiteralPath (Join-Path $shimDir "$tool.cmd") -Encoding ascii -NoNewline
     }
-    Invoke-Bounded icacls.exe (@($shimDir,'/grant')+@($accounts | ForEach-Object {"*$($_.sid):(OI)(CI)RX"})) | Out-Null
-    Invoke-Bounded icacls.exe (@($toolLogDir,'/grant')+@($accounts | ForEach-Object {"*$($_.sid):(OI)(CI)M"})) | Out-Null
+    Invoke-Bounded icacls.exe (@($shimDir,'/grant')+@($ownedAccounts | ForEach-Object {"*$($_.sid):(OI)(CI)RX"})) | Out-Null
+    Invoke-Bounded icacls.exe (@($toolLogDir,'/grant')+@($ownedAccounts | ForEach-Object {"*$($_.sid):(OI)(CI)M"})) | Out-Null
     $machinePath=(Get-Item -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     $split=Split-HostToolchainPath $machinePath ($HiddenTools+@('node'))
     $kept=$split.kept;$hidden=$split.hidden
@@ -305,7 +306,7 @@ LogLevel DEBUG1
   function Get-PrivateSshArgs([string]$Account){@('-v','-F','NUL','-T','-p',[string]$port,'-i',$clientKey,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ConnectTimeout=5',"$Account@127.0.0.1")}
   $sshArgs=Get-PrivateSshArgs $name
   $report.sshFirstLoginBudgetSeconds=60
-  foreach($account in $accounts){
+  foreach($account in $ownedAccounts){
     $deadline=[DateTime]::UtcNow.AddSeconds(75);$probe=$null
     Write-Stage 'ssh-authentication-start'
     do {
@@ -338,7 +339,7 @@ LogLevel DEBUG1
   $listeners=@(Get-NetTCPConnection -State Listen -LocalPort $port)
   Write-Stage 'listener-identity-complete'
   if(-not $listeners -or @($listeners|Where-Object {$_.LocalAddress -ne '127.0.0.1' -or $_.OwningProcess -ne $ownedServerPid}).Count){throw 'Listener escaped private loopback owner'}
-  $report.observations=@{serverMachine=(Machine $sshd);clientMachine=(Machine $ssh);publisherVerified=$true;serviceAccount='LocalSystem';dedicatedUser=$true;dedicatedAccounts=$accounts.Count;pinnedHostKey=$true;stockCmdDispatch=$true;loopbackOnly=$true;port=$port;servicePid=$ownedServerPid}
+  $report.observations=@{serverMachine=(Machine $sshd);clientMachine=(Machine $ssh);publisherVerified=$true;serviceAccount='LocalSystem';dedicatedUser=$true;dedicatedAccounts=$ownedAccounts.Count;pinnedHostKey=$true;stockCmdDispatch=$true;loopbackOnly=$true;port=$port;servicePid=$ownedServerPid}
   if ($ProductionRouteProbe -or $HostCellProbe) {
     Write-Stage 'sftp-preflight-start'
     $sftpBatch=Join-Path $root 'sftp-probe.txt'
@@ -357,7 +358,7 @@ LogLevel DEBUG1
     }
     if($HostCellProbe){
       Write-Stage 'host-cell-probe-start'
-      & $HostCellProbe @{accounts=@($accounts | ForEach-Object {@{name=$_.name;home=$_.home}});port=$port;identityFile=$clientKey;knownHosts=$known;forbiddenToolLog=$toolLog;sshExe=$ssh;sshdLog=$sshdLog}
+      & $HostCellProbe @{accounts=@($ownedAccounts | ForEach-Object {@{name=$_.name;home=$_.home}});port=$port;identityFile=$clientKey;knownHosts=$known;forbiddenToolLog=$toolLog;sshExe=$ssh;sshdLog=$sshdLog}
       $report.hostCellProbe='passed'
       Write-Stage 'host-cell-probe-complete'
     }
@@ -409,7 +410,7 @@ LogLevel DEBUG1
     if($remaining.Count){throw 'Private SSH child processes remain; preserve files and discard ephemeral runner'}
     Write-Stage 'cleanup-user-profile-start' 
     $report.profileCleanup=@()
-    foreach($account in $accounts){
+    foreach($account in $ownedAccounts){
       if(-not $account.sid){continue}
       $profileWait=[Diagnostics.Stopwatch]::StartNew()
       do {
@@ -426,7 +427,7 @@ LogLevel DEBUG1
     }
     Write-Stage 'cleanup-user-profile-complete'
     Write-Stage 'cleanup-user-start'
-    foreach($account in $accounts){
+    foreach($account in $ownedAccounts){
       if(Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue){Remove-LocalUser -Name $account.name}
       if(Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue){throw 'Private account still exists'}
     }
