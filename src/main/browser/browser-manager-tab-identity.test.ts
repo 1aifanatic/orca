@@ -117,17 +117,7 @@ function failDeviceMetrics(handle: ViewportGuestHandle): void {
 }
 
 function debuggerDetachHandler(handle: ViewportGuestHandle): () => void {
-  const debuggerApi = handle.guest.debugger
-  const on =
-    debuggerApi && typeof debuggerApi === 'object' && 'on' in debuggerApi ? debuggerApi.on : null
-  if (!vi.isMockFunction(on)) {
-    throw new Error('Expected a mocked debugger.on')
-  }
-  const handler: unknown = on.mock.calls.findLast(([event]) => event === 'detach')?.[1]
-  if (typeof handler !== 'function') {
-    throw new Error('Expected a debugger detach handler')
-  }
-  return () => handler()
+  return () => handle.simulateDebuggerDetach()
 }
 
 async function observe(
@@ -301,7 +291,7 @@ describe('tab identity ownership', () => {
 
     opened.handle.debuggerSendCommand.mockResolvedValue(undefined)
     await expect(browserManager.setViewportOverride(opened.tab, PRESETS.mobile)).resolves.toBe(true)
-    expect((await observe(opened, 'https://example.org/')).requestIdentity.kind).toBe('mobile')
+    expect((await observe(opened, 'https://example.org/')).requestIdentity?.kind).toBe('mobile')
   })
 
   it.each(['desktop', 'none'] as const)(
@@ -319,11 +309,11 @@ describe('tab identity ownership', () => {
       )
       const failed = await observe(opened, ORDINARY_URL)
       expect(failed.presented).toContain('iPhone')
-      expect(failed.requestIdentity.kind).toBe('mobile')
+      expect(failed.requestIdentity?.kind).toBe('mobile')
       navigate('https://example.org/')
       const reloaded = await observe(opened, 'https://example.org/')
       expect(reloaded.presented).toContain('iPhone')
-      expect(reloaded.requestIdentity.kind).toBe('mobile')
+      expect(reloaded.requestIdentity?.kind).toBe('mobile')
     }
   )
 
