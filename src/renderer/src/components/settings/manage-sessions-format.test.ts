@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { PtyManagementGeneration, PtyManagementSession } from '../../../../preload/api-types'
 import {
-  formatGenerationSessionCount,
   formatState,
-  formatVisibleSessionCount
+  formatVisibleSessionCount,
+  generationSessionCount,
+  visibleGenerations
 } from './manage-sessions-format'
 
 function makeSession(overrides: Partial<PtyManagementSession> = {}): PtyManagementSession {
@@ -18,6 +19,7 @@ function makeSession(overrides: Partial<PtyManagementSession> = {}): PtyManageme
     rows: 24,
     createdAt: 0,
     protocolVersion: 36,
+    attached: true,
     ...overrides
   }
 }
@@ -33,9 +35,7 @@ describe('manage-sessions-format', () => {
         detail: 'legacy socket dead'
       }
 
-      expect(formatGenerationSessionCount(unreachable)).toBe('unverifiable')
-      expect(formatGenerationSessionCount(unreachable)).not.toBe('0')
-      expect(formatGenerationSessionCount(unreachable)).not.toBe('exited')
+      expect(generationSessionCount(unreachable)).toBeNull()
     })
 
     it('counts a reachable generation exactly, including a genuinely empty one', () => {
@@ -52,8 +52,47 @@ describe('manage-sessions-format', () => {
         sessions: []
       }
 
-      expect(formatGenerationSessionCount(live)).toBe('1')
-      expect(formatGenerationSessionCount(empty)).toBe('0')
+      expect(generationSessionCount(live)).toBe(1)
+      expect(generationSessionCount(empty)).toBe(0)
+    })
+
+    it('hides a previous version with nothing to act on, and keeps the current one', () => {
+      const current: PtyManagementGeneration = {
+        protocolVersion: 36,
+        isCurrent: true,
+        contact: 'live',
+        sessions: []
+      }
+      const exited: PtyManagementGeneration = {
+        protocolVersion: 35,
+        isCurrent: false,
+        contact: 'exited'
+      }
+      const emptied: PtyManagementGeneration = {
+        protocolVersion: 34,
+        isCurrent: false,
+        contact: 'live',
+        sessions: []
+      }
+      const silent: PtyManagementGeneration = {
+        protocolVersion: 33,
+        isCurrent: false,
+        contact: 'unverifiable',
+        reason: 'listing-failed',
+        detail: null
+      }
+      const holding: PtyManagementGeneration = {
+        protocolVersion: 32,
+        isCurrent: false,
+        contact: 'live',
+        sessions: [makeSession()]
+      }
+
+      expect(
+        visibleGenerations([current, exited, emptied, silent, holding]).map(
+          (g) => g.protocolVersion
+        )
+      ).toEqual([36, 33, 32])
     })
 
     it('marks the total as a lower bound while any generation is unverifiable', () => {

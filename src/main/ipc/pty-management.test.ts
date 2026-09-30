@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonSessionInfo } from '../daemon/types'
 import type { DaemonGenerationInventory } from './pty-management'
+import type { DaemonKillAllResult } from './pty-management-kill-all'
 
 // Mirrors DaemonFolderAccessResetResult; declared here so the mock is not typed by the module it
 // replaces.
@@ -147,6 +148,7 @@ type MockAdapter = {
   protocolVersion: number
   listSessions: ReturnType<typeof vi.fn>
   readSessions: ReturnType<typeof vi.fn>
+  hasPty: ReturnType<typeof vi.fn>
   shutdown: ReturnType<typeof vi.fn>
   getDaemonIdentity: ReturnType<typeof vi.fn>
 }
@@ -168,6 +170,7 @@ function makeAdapter(
       contact: 'live' as const,
       items: await adapter.listSessions()
     })),
+    hasPty: vi.fn(() => false),
     shutdown: vi.fn(shutdownImpl ?? (async () => {})),
     getDaemonIdentity: vi.fn(() => ({ pid: 1530, startedAtMs: 1_700_000, launchNonce: 'n1' }))
   }
@@ -402,12 +405,9 @@ describe('pty:management IPC handlers', () => {
     async function runKillAllWithPolls(
       handler: (event: unknown, args?: unknown) => unknown,
       pollCount: number = 65
-    ): Promise<{ killedCount: number; remainingCount: number; killedSessionIds: string[] }> {
-      const resultPromise = handler({}) as Promise<{
-        killedCount: number
-        remainingCount: number
-        killedSessionIds: string[]
-      }>
+    ): Promise<DaemonKillAllResult> {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the killAll handler resolves DaemonKillAllResult; the mock map erases it.
+      const resultPromise = handler({}) as Promise<DaemonKillAllResult>
       // Why: advance the loop's sleeps one at a time. Between each sleep the
       // handler awaits collectSessions (a microtask), so we need to flush
       // pending microtasks before advancing the next timer.
@@ -455,6 +455,8 @@ describe('pty:management IPC handlers', () => {
       expect(result).toEqual({
         killedCount: 3,
         remainingCount: 0,
+        unverifiedCount: 0,
+        unreachedVersionCount: 0,
         killedSessionIds: ['new-1', 'new-2', 'old-1']
       })
       // Each initial session receives exactly one shutdown — no retries.
@@ -483,7 +485,13 @@ describe('pty:management IPC handlers', () => {
       const handlers = buildHandlerMap()
       const result = await runKillAllWithPolls(handlers['pty:management:killAll'])
 
-      expect(result).toEqual({ killedCount: 0, remainingCount: 1, killedSessionIds: [] })
+      expect(result).toEqual({
+        killedCount: 0,
+        remainingCount: 1,
+        unverifiedCount: 0,
+        unreachedVersionCount: 0,
+        killedSessionIds: []
+      })
       // One shutdown fired — no per-session retry. Initial-snapshot
       // accounting means the stuck session is counted once.
       expect(current.shutdown).toHaveBeenCalledTimes(1)
@@ -520,6 +528,8 @@ describe('pty:management IPC handlers', () => {
       expect(result).toEqual({
         killedCount: 2,
         remainingCount: 0,
+        unverifiedCount: 0,
+        unreachedVersionCount: 0,
         killedSessionIds: ['a', 'b']
       })
     })
@@ -558,6 +568,8 @@ describe('pty:management IPC handlers', () => {
       expect(result).toEqual({
         killedCount: 1,
         remainingCount: 1,
+        unverifiedCount: 0,
+        unreachedVersionCount: 0,
         killedSessionIds: ['b']
       })
     })
@@ -568,10 +580,13 @@ describe('pty:management IPC handlers', () => {
       sessionId: string
       protocolVersion: number
       incarnationId?: string
-    }): Promise<{ success: boolean }> {
+    }): Promise<{ success: boolean; reason?: string }> {
       const handlers = buildHandlerMap()
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler map is untyped by construction; this channel's handler is the one registered above.
-      return (await handlers['pty:management:killOne']({}, args)) as { success: boolean }
+      return (await handlers['pty:management:killOne']({}, args)) as {
+        success: boolean
+        reason?: string
+      }
     }
 
     it('routes to the adapter whose protocolVersion owns the session', async () => {
@@ -622,6 +637,22 @@ describe('pty:management IPC handlers', () => {
 
       expect(result.success).toBe(false)
       expect(current.shutdown).not.toHaveBeenCalled()
+    })
+
+    it('reports lost contact with the version as unverifiable, not as already gone', async () => {
+      const current = makeAdapter(5, [makeSession('new-1')])
+      const legacy = makeAdapter(3, [makeSession('old-1', { protocolVersion: 3 })])
+      legacy.readSessions = vi.fn(async () => {
+        throw new Error('Request listSessions timed out')
+      })
+      const { registerDaemonManagementHandlers } = await importFresh()
+      getDaemonProviderMock.mockReturnValue(await makeRouter(current, [legacy]))
+      registerDaemonManagementHandlers()
+
+      const result = await killOne({ sessionId: 'old-1', protocolVersion: 3 })
+
+      expect(result).toEqual({ success: false, reason: 'unverifiable' })
+      expect(legacy.shutdown).not.toHaveBeenCalled()
     })
 
     it('returns success=false for unknown sessionId', async () => {

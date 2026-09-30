@@ -143,7 +143,7 @@ export function ManageSessionsSection(): React.JSX.Element {
       setBusyKind('killOne')
       mutationInFlight.current = true
       try {
-        const { success } = await window.api.pty.management.killOne({
+        const { success, reason } = await window.api.pty.management.killOne({
           sessionId: session.sessionId,
           protocolVersion: session.protocolVersion,
           ...(session.incarnationId ? { incarnationId: session.incarnationId } : {})
@@ -153,6 +153,14 @@ export function ManageSessionsSection(): React.JSX.Element {
             translate(
               'auto.components.settings.ManageSessionsSection.bfba05dccd',
               'Killed session.'
+            )
+          )
+        } else if (reason === 'unverifiable') {
+          // Why not "may already be gone": losing contact is not evidence the session ended.
+          toast.error(
+            translate(
+              'auto.components.settings.ManageSessionsSection.6e1b9d4c07',
+              'Orca couldn’t reach that version of the terminal service; the session may still be running.'
             )
           )
         } else {

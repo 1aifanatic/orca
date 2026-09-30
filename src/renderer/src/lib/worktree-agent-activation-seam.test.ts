@@ -106,6 +106,8 @@ function stubInventory(args?: {
   livePtyId?: string
   /** Host that could not produce a complete census for the workspace it was asked about. */
   unverifiableCensus?: boolean
+  /** A daemon version that did not answer the PTY listing. */
+  partialPtyListing?: boolean
 }): {
   runtimeCall: ReturnType<typeof vi.fn>
   listSessions: ReturnType<typeof vi.fn>
@@ -142,7 +144,7 @@ function stubInventory(args?: {
     }
     throw new Error(`Unexpected runtime method: ${method}`)
   })
-  const listSessions = vi.fn(async () =>
+  const listSessions = vi.fn(async (_scope?: unknown) =>
     args?.livePtyId
       ? [
           {
@@ -154,7 +156,15 @@ function stubInventory(args?: {
         ]
       : []
   )
-  vi.stubGlobal('window', { api: { runtime: { call: runtimeCall }, pty: { listSessions } } })
+  // Why a wrapper: cases script the session array; the channel adds completeness around it.
+  const pty = {
+    listSessions: async (scope?: unknown) => ({
+      sessions: await listSessions(scope),
+      complete: args?.partialPtyListing !== true,
+      unverifiable: []
+    })
+  }
+  vi.stubGlobal('window', { api: { runtime: { call: runtimeCall }, pty } })
   return { runtimeCall, listSessions }
 }
 
@@ -233,6 +243,17 @@ describe('worktree agent activation seam', () => {
     const tabs = useAppStore.getState().tabsByWorktree[worktree.id] ?? []
     expect(tabs).toHaveLength(1)
     expect(tabs[0]?.ptyId).toBeNull()
+  })
+
+  it('blocks instead of seeding while a terminal-service version did not answer', async () => {
+    const worktree = makeWorktree()
+    useAppStore.setState(baseState())
+    stubInventory({ partialPtyListing: true })
+
+    activateAndRevealWorktree(worktree.id)
+    await expect(waitForWorktreeAgentActivationGateForTests(worktree.id)).resolves.toBe('blocked')
+
+    expect(useAppStore.getState().tabsByWorktree[worktree.id] ?? []).toHaveLength(0)
   })
 
   it('re-seeds an explicitly activated workspace with a closed terminal tombstone', async () => {

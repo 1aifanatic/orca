@@ -15,6 +15,17 @@ export type PtySessionListScope = { connectionId: string | null }
  * One row of `pty:listSessions`. Shared so the main handler, both preload surfaces, and the
  * renderer cannot drift on which evidence the UI is allowed to see.
  */
+/**
+ * `pty:listSessions`: the sessions that were listed, never a silently shortened list. `complete`
+ * is false while a background terminal-service version did not answer; its sessions are missing
+ * from `sessions`, not known to have ended.
+ */
+export type PtySessionListing = {
+  sessions: PtyListedSession[]
+  complete: boolean
+  unverifiable: { protocolVersion: number | null; reason: string }[]
+}
+
 export type PtyListedSession = {
   id: string
   cwd: string

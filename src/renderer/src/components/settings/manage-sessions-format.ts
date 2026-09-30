@@ -36,14 +36,26 @@ export function formatState(session: PtyManagementSession): string {
 }
 
 /**
- * What the generation's session slot reads. An unreachable generation reads `unverifiable`
- * rather than `0`, because a count we could not take is not a count of zero
- * (docs/reference/ssh-execution-boundary.md).
+ * A generation's session count, or null when it could not be counted: a count we could not take
+ * is not a count of zero (docs/reference/ssh-execution-boundary.md). The caller words the null.
  */
-export function formatGenerationSessionCount(generation: PtyManagementGeneration): string {
-  return generation.contact === 'unverifiable'
-    ? 'unverifiable'
-    : String(generation.contact === 'live' ? generation.sessions.length : 0)
+export function generationSessionCount(generation: PtyManagementGeneration): number | null {
+  if (generation.contact === 'unverifiable') {
+    return null
+  }
+  return generation.contact === 'live' ? generation.sessions.length : 0
+}
+
+/** The current version always; a previous one only while it has sessions or could not answer. */
+export function visibleGenerations(
+  generations: PtyManagementGeneration[]
+): PtyManagementGeneration[] {
+  return generations.filter(
+    (generation) =>
+      generation.isCurrent ||
+      generation.contact === 'unverifiable' ||
+      (generation.contact === 'live' && generation.sessions.length > 0)
+  )
 }
 
 /** The total, marked as a lower bound whenever a generation could not be counted. */

@@ -1,4 +1,5 @@
 import type { PtyProcessInfo } from './pty-process-info'
+import type { IPtyProvider } from './pty-provider-contract'
 
 /**
  * One process source's answer to a listing: a daemon protocol version, or (`protocolVersion`
@@ -44,4 +45,24 @@ export function answeredProcesses(listings: readonly PtyProcessSourceListing[]):
 
 export function describeListingError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Lists what answered, reporting each silent source; a single-source provider lists as before. */
+export async function listAnsweredProcesses(
+  provider: IPtyProvider,
+  onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void
+): Promise<PtyProcessInfo[]> {
+  if (!provider.listProcessesBySource) {
+    return await provider.listProcesses()
+  }
+  const listings = await provider.listProcessesBySource()
+  for (const listing of listings) {
+    if (listing.contact === 'unverifiable') {
+      onUnverifiable({
+        protocolVersion: listing.protocolVersion,
+        reason: describeListingError(listing.error)
+      })
+    }
+  }
+  return answeredProcesses(listings)
 }

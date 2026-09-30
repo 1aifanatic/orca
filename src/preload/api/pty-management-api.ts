@@ -13,6 +13,8 @@ export type PtyManagementSession = {
   createdAt: number
   protocolVersion: number
   incarnationId?: string
+  /** This app attached it, so it can back an open tab; a same-id copy in another version cannot. */
+  attached: boolean
 }
 
 /**
@@ -66,9 +68,13 @@ export type PtyManagementApi = {
   killAll: () => Promise<{
     killedCount: number
     remainingCount: number
+    unverifiedCount?: number
+    unreachedVersionCount?: number
     killedSessionIds?: string[]
   }>
-  killOne: (args: PtyManagementSessionIdentity) => Promise<{ success: boolean }>
+  killOne: (
+    args: PtyManagementSessionIdentity
+  ) => Promise<{ success: boolean; reason?: 'unverifiable' }>
   restart: () => Promise<{ success: boolean }>
   macTccAttribution: () => Promise<{
     health: PtyManagementMacTccAttributionHealth
