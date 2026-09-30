@@ -45,17 +45,20 @@ function claudeEvent(state: HookListenerState, payload: Record<string, unknown>)
   return normalizeHookPayload(state, 'claude', { paneKey: PANE, payload }, 'production')
 }
 
-/** The line shape Claude writes when a task ends (captured in claude-background-shell-*). */
-function endLine(
-  fields: { taskId?: string; toolUseId?: string; status?: string } = {},
-  operation = 'enqueue'
-): Record<string, unknown> {
+type EndFields = { taskId?: string; toolUseId?: string; status?: string }
+
+function notification(fields: EndFields = {}): string {
   const { taskId = 'bjomx789i', toolUseId = LAUNCH.tool_use_id, status = 'killed' } = fields
+  return `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<status>${status}</status>\n<summary>Task "Sleep" was stopped by the user</summary>\n</task-notification>`
+}
+
+/** The line shape Claude writes when a task ends (captured in claude-background-shell-*). */
+function endLine(fields: EndFields = {}, operation = 'enqueue'): Record<string, unknown> {
   return {
     type: 'queue-operation',
     operation,
     timestamp: '2026-09-29T05:24:58.227Z',
-    content: `<task-notification>\n<task-id>${taskId}</task-id>\n<tool-use-id>${toolUseId}</tool-use-id>\n<status>${status}</status>\n<summary>Task "Sleep" was stopped by the user</summary>\n</task-notification>`
+    content: notification(fields)
   }
 }
 
@@ -159,7 +162,7 @@ describe('the task end line in the transcript', () => {
     const matched = endLine()
     // Captured (r3-typed-run1): a prompt typed while Claude is busy writes this row shape.
     const typed = { ...matched, content: 'Capture step 2: reply with exactly the word QUEUED.' }
-    const twice = { ...matched, content: `${matched.content}\n${matched.content}` }
+    const twice = { ...matched, content: `${notification()}\n${notification()}` }
     for (const line of [
       typed,
       endLine({ status: 'running' }),
