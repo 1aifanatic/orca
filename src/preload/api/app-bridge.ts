@@ -47,6 +47,13 @@ export const appApi = {
     ipcRenderer.invoke('app:awaitGitEnvironmentStartupBarrier'),
   prepareTerminalStartupRestoration: (): Promise<void> =>
     ipcRenderer.invoke('app:prepareTerminalStartupRestoration'),
+  hasStructuredAgentSessionHost: (): Promise<boolean> =>
+    ipcRenderer.invoke('app:hasStructuredAgentSessionHost'),
+  onStructuredAgentSessionHostInstalled: (callback: () => void): (() => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('app:structuredAgentSessionHostInstalled', listener)
+    return () => ipcRenderer.removeListener('app:structuredAgentSessionHostInstalled', listener)
+  },
   recoverLegacyWorkerTerminalsForRendererStartup: (): Promise<void> =>
     ipcRenderer.invoke('app:recoverLegacyWorkerTerminalsForRendererStartup'),
   startupDiagnostic: (event: string, details?: Record<string, unknown>): Promise<void> =>
