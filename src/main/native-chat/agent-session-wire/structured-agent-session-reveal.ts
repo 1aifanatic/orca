@@ -15,7 +15,10 @@ import { agentSessionRefusalError } from '../../../shared/agent-session-wire-ref
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
 import { StructuredAgentSessionRestartRestoreGate } from './structured-agent-session-restart-restore-gate'
-import { createReaderReconcile } from './structured-agent-session-restart-reconcile'
+import {
+  createReaderReconcile,
+  reportEachFailureOnce
+} from './structured-agent-session-restart-reconcile'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionReveal
@@ -54,23 +57,36 @@ export async function revealStructuredAgentSession(
 }
 
 /** The host's startup readable-restore sweep: reconcile, resolve, then open each chat's journal.
- *  Its reconcile is a reader's, which never fails a read or startup; startup runs the same one. */
+ *  Its lease bookkeeping is a reader's, which never fails a read or startup; startup shares it. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
-    'openDeps' | 'supportsRecord' | 'reconcile'
-  > & { reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null> }
+    'openDeps' | 'supportsRecord' | 'reconcile' | 'resolveRecovery'
+  > & {
+    reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+    resolveRecovery: (sessionId: string) => Promise<unknown>
+  }
 ): {
   reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
 } {
-  const { reconcileLeases, ...rest } = wiring
-  const reconcile = createReaderReconcile(reconcileLeases, deps.onLeaseReconcileFailure)
+  const { reconcileLeases, resolveRecovery, ...rest } = wiring
+  const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
+  const reconcile = createReaderReconcile(reconcileLeases, failures)
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,
     supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
     reconcile,
+    // The next attach or send resolves recovery again, strictly, before it acts.
+    resolveRecovery: (sessionId) =>
+      resolveRecovery(sessionId).then(
+        () => true,
+        (error: unknown) => {
+          failures.report(error)
+          return false
+        }
+      ),
     ...rest
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()

@@ -233,7 +233,7 @@ async function restore(sessionIds: readonly string[]) {
     openDeps: deps,
     records: sessionIds.map(recordFor),
     reconcile: async () => true,
-    resolveRecovery: async () => undefined,
+    resolveRecovery: async () => true,
     serialize: async (_sessionId, task) => task(),
     hasSession: (sessionId) => sessions.has(sessionId),
     onReadable: (sessionId, opened) => {

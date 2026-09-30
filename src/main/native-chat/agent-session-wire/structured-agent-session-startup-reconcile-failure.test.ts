@@ -11,7 +11,10 @@ import {
   AGENT_SESSION_STORE_SCHEMA_VERSION,
   agentSessionStorePath
 } from '../../runtime/agent-session-record-store-file'
-import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import {
+  StructuredAgentSessionHost,
+  type StructuredAgentSessionHostDeps
+} from './structured-agent-session-host'
 import {
   adapter,
   attach,
@@ -53,7 +56,12 @@ afterEach(async () => {
 })
 
 /** A host with one chat, relaunched over a copy of its files; `rewrite` edits the copied store. */
-async function relaunch(rewrite?: (json: Record<string, unknown>) => void) {
+async function relaunch(
+  rewrite?: (json: Record<string, unknown>) => void,
+  probeOwner: StructuredAgentSessionHostDeps['probeOwner'] = async () => ({
+    outcome: 'pid-absent'
+  })
+) {
   const dying = hostTestState()
   await attach()
   // An empty renewal queues behind every record write, so they are on disk.
@@ -80,7 +88,10 @@ async function relaunch(rewrite?: (json: Record<string, unknown>) => void) {
     journalDatabase: openTestJournalHostDatabase(relaunched),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-next',
-    probeOwner: async () => ({ outcome: 'pid-absent' }),
+    probeOwner,
+    stopOwnerProcess: () => {
+      throw new Error('a read must not stop an owner')
+    },
     now: () => NOW,
     onLeaseReconcileFailure
   })
@@ -167,4 +178,22 @@ it('restores a chat for reading from a store a newer Orca wrote', async () => {
   expect(host.hasSession(SESSION)).toBe(true)
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
   expect(await readFile(path)).toEqual(bytes)
+})
+
+// A chat whose owner could not be proven gone is left recovering; resolving that is the writer's.
+it('restores a chat for reading when resolving its recovery cannot write the store', async () => {
+  const { host, store, onLeaseReconcileFailure } = await relaunch(undefined, async () => ({
+    outcome: 'indeterminate',
+    reason: 'probe'
+  }))
+  await host.reconcileRestartLeases()
+  expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
+  lock.failing = true
+
+  await expect(host.restoreReadableSessions([SESSION])).resolves.toBeUndefined()
+
+  expect(host.hasSession(SESSION)).toBe(true)
+  expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
+  expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
+  expect(onLeaseReconcileFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'ELOCKED' }))
 })
