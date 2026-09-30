@@ -16,16 +16,41 @@ export type AgentPresenceRecord = {
 
 export type AgentPresenceByPaneKey = Readonly<Record<string, AgentPresenceRecord>>
 
+/** Every owner-carrying hook republishes the same owner; only a changed one is news. */
+function samePresenceRecord(previous: AgentPresenceRecord, next: AgentPresenceRecord): boolean {
+  const a = previous.presence
+  const b = next.presence
+  return (
+    a.agent === b.agent &&
+    a.ended === b.ended &&
+    (a.process && b.process ? isSameAgentProcess(a.process, b.process) : a.process === b.process) &&
+    previous.connectionId === next.connectionId &&
+    previous.worktreeId === next.worktreeId
+  )
+}
+
 export function createAgentPresenceActions(
   runtime: AgentStatusRuntime
-): Pick<AgentStatusSlice, 'recordAgentPresence' | 'releaseAgentPresence'> {
+): Pick<
+  AgentStatusSlice,
+  'recordAgentPresence' | 'releaseAgentPresence' | 'retireEndedAgentPresence'
+> {
+  const dropRecord = (paneKey: string): void => {
+    runtime.set((state) => ({
+      agentPresenceByPaneKey: removePaneKeys(state.agentPresenceByPaneKey, new Set([paneKey])),
+      agentStatusEpoch: state.agentStatusEpoch + 1,
+      sortEpoch: state.sortEpoch + 1
+    }))
+    runtime.runAfterCommit(() => publishAgentPresence(paneKey, undefined))
+  }
   return {
     recordAgentPresence: (paneKey, record) => {
       const previous = runtime.get().agentPresenceByPaneKey[paneKey]
       if (
-        previous?.connectionId === record.connectionId &&
         previous &&
-        previous.receivedAt > record.receivedAt
+        (samePresenceRecord(previous, record) ||
+          (previous.connectionId === record.connectionId &&
+            previous.receivedAt > record.receivedAt))
       ) {
         return
       }
@@ -36,10 +61,9 @@ export function createAgentPresenceActions(
           sortEpoch: state.sortEpoch + 1
         }
       })
+      // Why no row removal: the host's pane clear follows an owner exit and keeps main's rule that
+      // a finished row, with its read state, outlives the agent.
       const ended = Boolean(record.presence.process && record.presence.ended)
-      if (ended) {
-        runtime.get().removeAgentStatus(paneKey)
-      }
       runtime.runAfterCommit(() => {
         if (runtime.get().agentPresenceByPaneKey[paneKey] !== record) {
           return
@@ -50,18 +74,19 @@ export function createAgentPresenceActions(
         publishAgentPresence(paneKey, record.presence)
       })
     },
+    retireEndedAgentPresence: (paneKey) => {
+      const presence = runtime.get().agentPresenceByPaneKey[paneKey]?.presence
+      if (presence?.process && presence.ended) {
+        dropRecord(paneKey)
+      }
+    },
     releaseAgentPresence: (paneKey, process) => {
       const current = runtime.get().agentPresenceByPaneKey[paneKey]?.presence.process
       // Why: a release names one process, so it can never drop a replacement's record.
       if (!current || !isSameAgentProcess(current, process)) {
         return
       }
-      runtime.set((state) => ({
-        agentPresenceByPaneKey: removePaneKeys(state.agentPresenceByPaneKey, new Set([paneKey])),
-        agentStatusEpoch: state.agentStatusEpoch + 1,
-        sortEpoch: state.sortEpoch + 1
-      }))
-      runtime.runAfterCommit(() => publishAgentPresence(paneKey, undefined))
+      dropRecord(paneKey)
     }
   }
 }

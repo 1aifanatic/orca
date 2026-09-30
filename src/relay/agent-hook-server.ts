@@ -1,8 +1,11 @@
 import { createRelayAgentPresenceObservation } from './relay-agent-presence-observation'
 import { handleRelayHookRequest } from './agent-hook-request'
-import { transitionHookPresence } from '../shared/agent-hook-presence-transition'
+import {
+  ownerDoubtFromHook,
+  transitionHookPresence
+} from '../shared/agent-hook-presence-transition'
 import { RelayAgentPresence } from './relay-agent-presence'
-import { isSameAgentProcess } from '../shared/agent-process-presence'
+import type { AgentProcessPresence } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -224,17 +227,18 @@ export class RelayAgentHookServer {
     return replayable.length
   }
 
-  checkAgentPresence(paneKey: string): Promise<void> {
+  checkAgentPresence(paneKey: string, successor?: AgentProcessPresence): Promise<void> {
     const row = this.state.lastStatusByPaneKey.get(paneKey)
     const meta = this.lastEnvelopeMetaByPaneKey.get(paneKey)
     return this.presenceChecks.check(
       row,
       () => this.state.lastStatusByPaneKey.get(paneKey),
-      (event) => {
+      (event, handover) => {
         if (meta) {
-          this.applyEvent(event, meta.source, meta.env, meta.version)
+          this.applyEvent(event, meta.source, meta.env, meta.version, { ownerProvenDead: handover })
         }
-      }
+      },
+      successor
     )
   }
 
@@ -280,11 +284,12 @@ export class RelayAgentHookServer {
     source: AgentHookSource,
     env?: string,
     version?: string,
-    options: { isReplay?: boolean; checkPresence?: boolean } = {}
+    options: { isReplay?: boolean; checkPresence?: boolean; ownerProvenDead?: boolean } = {}
   ): AgentHookEventPayload | undefined {
     const transitioned = transitionHookPresence(
       incoming,
-      this.state.lastStatusByPaneKey.get(incoming.paneKey)
+      this.state.lastStatusByPaneKey.get(incoming.paneKey),
+      { ownerProvenDead: options.ownerProvenDead }
     )
     if (!transitioned) {
       return undefined
@@ -313,18 +318,13 @@ export class RelayAgentHookServer {
     }
     this.lastEnvelopeMetaByPaneKey.delete(event.paneKey)
     this.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
-    this.forward(buildRelayHookEnvelope(event, source, env, version, options))
-    const sender = incoming.agentPresence?.process
-    const owner = event.agentPresence
+    this.forward(
+      buildRelayHookEnvelope(event, source, env, version, { isReplay: options.isReplay })
+    )
     // Why: a live hook proves its own process alive; only another process's hook casts doubt on the owner.
-    if (
-      options.checkPresence !== false &&
-      sender &&
-      owner?.process &&
-      !owner.ended &&
-      !isSameAgentProcess(sender, owner.process)
-    ) {
-      void this.checkAgentPresence(event.paneKey)
+    const doubt = options.checkPresence === false ? undefined : ownerDoubtFromHook(incoming, event)
+    if (doubt) {
+      void this.checkAgentPresence(event.paneKey, doubt.successor)
     }
     // Why: retries compare against the cached row by identity, so they must hold that exact row.
     return this.state.lastStatusByPaneKey.get(event.paneKey)

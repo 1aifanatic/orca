@@ -208,19 +208,12 @@ describe('desktop owner publication', () => {
     expect(server.getStatusSnapshot()).toEqual([])
     expect(JSON.parse(server.serializedStatus()).entries).toEqual({})
   })
-  it('publishes a terminal exit for an owner retained by earlier provider cleanup', async () => {
+  it('releases an owner retained by earlier provider cleanup when its terminal exits', () => {
     const server = createServer()
     server.publish()
     server.clearPaneState(PANE, 'unverified')
     server.reconcileEndedProcessForPaneKeys([PANE], { kind: 'terminal-ended' })
-    await expect(server.checkAgentPresence(PANE, owner.process)).resolves.toBe('exited')
-    expect(server.getStatusSnapshot()).toEqual([
-      expect.objectContaining({
-        providerSessionOnly: true,
-        agentPresence: { ...owner, ended: true }
-      })
-    ])
-    server.dropStatusEntriesByTabPrefix('tab-1')
+    expect(server.getStatusSnapshot()).toEqual([])
     expect(JSON.parse(server.serializedStatus()).entries).toEqual({})
   })
 })

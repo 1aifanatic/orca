@@ -141,4 +141,23 @@ describe('useTabAgent with host presence', () => {
     expect(latest).toBeNull()
     expect(clearTabLaunchAgent).toHaveBeenCalledWith('tab-1')
   })
+
+  it('shows a later hookless Claude once the shell is back in the exited owner pane', async () => {
+    splitLayout()
+    useAppStore.setState({
+      agentPresenceByPaneKey: {
+        [FOCUSED]: { presence: { ...claude, ended: true }, receivedAt: 1 }
+      },
+      paneForegroundAgentByPaneKey: {
+        [FOCUSED]: { agent: 'claude', agentEvidence: 'process-read', shellForeground: false }
+      }
+    })
+    const root = await render({ ...tab, title: 'orca' })
+    expect(latest).toBeNull()
+    await act(async () => {
+      useAppStore.getState().retireEndedAgentPresence(FOCUSED)
+    })
+    await render({ ...tab, title: 'orca' }, root)
+    expect(latest).toBe('claude')
+  })
 })

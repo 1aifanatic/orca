@@ -244,15 +244,28 @@ describe('resolveNativeChatLeafRoute', () => {
       })
     ).toEqual({ chatLeafId: null, exitChat: false })
   })
-  it('keeps a startup request unbound until owner evidence arrives', () => {
+  it('keeps a launch request unbound until the launched agent is detected', () => {
     expect(
       resolveNativeChatLeafRoute({
         isChatViewMode: true,
         chatLeafId: null,
         activeLeafId: 'new-pane',
         chatLeafStillMounted: false,
-        activeLeafIsEligible: false
+        activeLeafIsEligible: false,
+        launchPending: true
       })
     ).toEqual({ chatLeafId: null, exitChat: false })
+  })
+
+  it('returns an ineligible request with no pending launch to the terminal, as before', () => {
+    expect(
+      resolveNativeChatLeafRoute({
+        isChatViewMode: true,
+        chatLeafId: null,
+        activeLeafId: 'exited-agent-pane',
+        chatLeafStillMounted: false,
+        activeLeafIsEligible: false
+      })
+    ).toEqual({ chatLeafId: null, exitChat: true })
   })
 })

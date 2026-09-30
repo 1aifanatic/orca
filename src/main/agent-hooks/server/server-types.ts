@@ -115,9 +115,8 @@ export type AgentPresenceReleaseListener = (release: AgentPresenceReleaseIpcPayl
 export type PaneOwnerDisposition =
   /** This host cannot tell whether the owner ended (lost SSH/relay contact, a remote PTY handle). */
   | 'unverified'
-  /** The pane's local terminal is gone, so its owner ended with it. */
-  | 'ended'
-  /** The pane itself is gone (tab close, authority retirement, workspace removal). */
+  /** The pane or its local terminal is gone (terminal exit, tab close, retirement, workspace
+   *  removal); the owner record goes with it, so no projection reports it as an agent exit. */
   | 'released'
   /** The agent exited but its terminal survives, so resume identity stays usable in place. */
   | 'agent-exited'

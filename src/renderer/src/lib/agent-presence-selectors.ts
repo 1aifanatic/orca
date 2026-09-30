@@ -10,6 +10,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentPresenceByPaneKey, AgentPresenceRecord } from '@/store/slices/agent-presence'
 
 export {
+  evidenceAfterEndedAgent,
   paneEvidenceAgent,
   paneEvidenceCounts,
   selectLiveOwnerAgent,

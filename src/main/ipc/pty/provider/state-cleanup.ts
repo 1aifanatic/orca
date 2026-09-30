@@ -79,7 +79,7 @@ export function clearProviderPtyState(
   advertisedUrlWatcher.unbindPty(id)
   clearMigrationUnsupportedPty(id)
   // Why: a local PTY takes its agent with it; a disconnect or remote handle proves nothing.
-  const owner = opts.preserveAgentSessionOwners || ptyOwnership.get(id) ? 'unverified' : 'ended'
+  const owner = opts.preserveAgentSessionOwners || ptyOwnership.get(id) ? 'unverified' : 'released'
   agentHookServer.clearPaneKeyAliasesForPty(id, owner, {
     shouldClearStablePaneKey: (stablePaneKey) => {
       // Why: when this PTY never rebuilt ptyPaneKey after restart, alias ownership is our only proof — don't erase a newer PTY that now owns the same stable paneKey.
