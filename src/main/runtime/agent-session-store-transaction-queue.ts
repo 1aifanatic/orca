@@ -3,12 +3,14 @@ import type { AgentSessionLease, AgentSessionRecord } from '../../shared/agent-s
 import { raiseAgentSessionFencesAfterBackupRecovery } from './agent-session-backup-recovery-fence'
 import {
   AGENT_SESSION_STORE_SCHEMA_VERSION,
+  agentSessionStorePath,
   agentSessionStoreRevision,
   loadAgentSessionStore,
   saveAgentSessionStore,
   type AgentSessionStoreState,
   type LoadedAgentSessionStore
 } from './agent-session-record-store-file'
+import { loadProtectedAgentSessionStore } from './agent-session-record-store-security'
 import { withFileTransactionLock } from '../file-transaction-lock'
 
 /** Latch fields older builds wrote. Nothing reads them, and dropping them keeps a lease this build
@@ -82,6 +84,28 @@ export class AgentSessionStoreTransactionQueue {
     private needsRewrite: boolean
   ) {
     this.diskRecoveredFromBackup = recoveredFromBackup
+  }
+
+  static async open(directory: string, hostId: string): Promise<AgentSessionStoreTransactionQueue> {
+    const filePath = agentSessionStorePath(directory)
+    const loaded = await loadProtectedAgentSessionStore(filePath, hostId)
+    // Why: every persisted lease is unreconciled until this host adjudicates it, so a restart
+    // grants no writer on the strength of what the previous process wrote.
+    const diskRevision = agentSessionStoreRevision(loaded.state)
+    // The normalized legacy leases reach disk with this store's first transaction rather than a
+    // write here: a rewrite at open would read as an external change to any other holder of the
+    // file mid-restart.
+    markLoadedLeasesUnreconciled(loaded.state)
+    const transactions = AgentSessionStoreTransactionQueue.fromLoadedStore(
+      filePath,
+      hostId,
+      { ...loaded, needsRewrite: loaded.needsRewrite || loaded.legacyHandoffLeasesNormalized },
+      diskRevision
+    )
+    if (loaded.needsRewrite && !loaded.readOnly && !loaded.recoveredFromBackup) {
+      await transactions.persistLoadedRewrite()
+    }
+    return transactions
   }
 
   static fromLoadedStore(
@@ -184,8 +208,4 @@ export class AgentSessionStoreTransactionQueue {
     this.diskRevision = diskRevision
     this.needsRewrite = loaded.needsRewrite
   }
-}
-
-export function markAgentSessionStoreLeasesUnreconciled(state: AgentSessionStoreState): void {
-  markLoadedLeasesUnreconciled(state)
 }

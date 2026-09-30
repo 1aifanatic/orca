@@ -65,17 +65,9 @@ import {
   type AgentSessionReserveRequest,
   type AgentSessionReserveResult
 } from './agent-session-reservation-admission'
-import {
-  agentSessionStoreRevision,
-  agentSessionStorePath,
-  type AgentSessionStoreState
-} from './agent-session-record-store-file'
+import type { AgentSessionStoreState } from './agent-session-record-store-file'
 import { setAgentSessionTabVisibility, showAgentSessionTabs } from './agent-session-tab-table'
-import { loadProtectedAgentSessionStore } from './agent-session-record-store-security'
-import {
-  AgentSessionStoreTransactionQueue,
-  markAgentSessionStoreLeasesUnreconciled
-} from './agent-session-store-transaction-queue'
+import { AgentSessionStoreTransactionQueue } from './agent-session-store-transaction-queue'
 
 export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
@@ -86,25 +78,9 @@ export class AgentSessionRecordStore {
   private constructor(private readonly transactions: AgentSessionStoreTransactionQueue) {}
 
   static async open(args: { directory: string; hostId: string }): Promise<AgentSessionRecordStore> {
-    const filePath = agentSessionStorePath(args.directory)
-    const loaded = await loadProtectedAgentSessionStore(filePath, args.hostId)
-    // Why: every persisted lease is unreconciled until this host adjudicates it, so a restart
-    // grants no writer on the strength of what the previous process wrote.
-    const diskRevision = agentSessionStoreRevision(loaded.state)
-    // The normalized legacy leases reach disk with this store's first transaction rather than a
-    // write here: a rewrite at open would read as an external change to any other holder of the
-    // file mid-restart.
-    markAgentSessionStoreLeasesUnreconciled(loaded.state)
-    const transactions = AgentSessionStoreTransactionQueue.fromLoadedStore(
-      filePath,
-      args.hostId,
-      { ...loaded, needsRewrite: loaded.needsRewrite || loaded.legacyHandoffLeasesNormalized },
-      diskRevision
+    return new AgentSessionRecordStore(
+      await AgentSessionStoreTransactionQueue.open(args.directory, args.hostId)
     )
-    if (loaded.needsRewrite && !loaded.readOnly && !loaded.recoveredFromBackup) {
-      await transactions.persistLoadedRewrite()
-    }
-    return new AgentSessionRecordStore(transactions)
   }
 
   private get state(): AgentSessionStoreState {
