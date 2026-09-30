@@ -1,7 +1,7 @@
 import type { AgentStatusEntry, AgentType } from '../../../../shared/agent-status-types'
 import type { PaneForegroundAgentEntry } from '../../store/slices/pane-foreground-agent'
 import type { AgentPresenceByPaneKey } from '../../store/slices/agent-presence'
-import { selectAgentPresence } from '../../lib/tab-agent-from-signals'
+import { paneEvidenceCounts, selectLiveOwnerAgent } from '../../lib/agent-presence-selectors'
 
 export type TerminalTabAgentTypeState = Record<string, AgentStatusEntry>
 export type TerminalTabAgentTypesByLeaf = Readonly<Record<string, AgentType>>
@@ -91,21 +91,18 @@ export function createTerminalTabAgentTypeSelector(
       }
 
       for (const [paneKey, record] of Object.entries(presence)) {
-        const owner = selectAgentPresence(record.presence)
-        if (owner === undefined) {
-          continue
-        }
         const separator = paneKey.indexOf(':')
-        if (separator <= 0) {
+        if (separator <= 0 || !record.presence.process) {
           continue
         }
         const entryTabId = paneKey.slice(0, separator)
         const leafId = paneKey.slice(separator + 1)
         const byLeaf = nextByTabId.get(entryTabId) ?? {}
-        if (owner === null) {
-          delete byLeaf[leafId]
-        } else {
+        const owner = selectLiveOwnerAgent(record.presence)
+        if (owner) {
           byLeaf[leafId] = owner
+        } else if (!paneEvidenceCounts(record.presence, byLeaf[leafId])) {
+          delete byLeaf[leafId]
         }
         nextByTabId.set(entryTabId, byLeaf)
       }

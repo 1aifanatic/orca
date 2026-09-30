@@ -6,6 +6,7 @@ import { isClaudeAgent } from '../../../../shared/agent-detection'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { useAppStore } from '@/store'
 import { applyLegacyUnidentifiedAgentSignal } from '@/lib/legacy-unidentified-agent-presence'
+import { requestAgentOwnerCheck } from '@/lib/agent-owner-check'
 import { createTerminalGitHubPRLinkDetector } from '../../../../shared/terminal-github-pr-link-detector'
 import {
   AGENT_TASK_COMPLETE_NOTIFICATION_GRACE_MS,
@@ -182,9 +183,7 @@ export function startParkedTerminalByteWatcher(
     onAgentExited: (): void => {
       const state = useAppStore.getState()
       const presence = state.agentPresenceByPaneKey?.[paneKey]?.presence
-      if (presence?.process) {
-        window.api?.agentStatus?.reconcileEndedProcess?.(paneKey)
-      }
+      requestAgentOwnerCheck(paneKey, presence)
       applyLegacyUnidentifiedAgentSignal(presence, () =>
         state.setCacheTimerStartedAt(paneKey, null)
       )

@@ -41,6 +41,7 @@ export {
   type AgentSubagentState
 } from './agent-status-subagent-snapshot'
 export type {
+  AgentPresenceReleaseIpcPayload,
   AgentStatusCacheIdentity,
   AgentStatusClearIpcPayload,
   AgentStatusIpcPayload,

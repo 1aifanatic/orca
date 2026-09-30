@@ -1,4 +1,4 @@
-import { selectTabAgentPresence } from './agent-presence-selectors'
+import { selectFocusedPanePresence } from './agent-presence-selectors'
 import { describe, expect, it } from 'vitest'
 import { resolveTabAgentFromSignals } from './tab-agent-from-signals'
 
@@ -35,7 +35,7 @@ describe('host ownership takes precedence over desktop signals', () => {
       resolveTabAgentFromSignals({ ...signals, agentPresence: { agent: 'claude' } })
     ).toBeNull()
   })
-  it('uses a surviving split owner and keeps ended evidence while the layout hydrates', () => {
+  it('reads only the focused pane, and the only record while the layout hydrates', () => {
     const focused = 'tab:11111111-1111-4111-8111-111111111111'
     const sibling = 'tab:22222222-2222-4222-8222-222222222222'
     const ended = { ...agentPresence, ended: true } as const
@@ -43,7 +43,8 @@ describe('host ownership takes precedence over desktop signals', () => {
       [focused]: { presence: ended, receivedAt: 1 },
       [sibling]: { presence: agentPresence, receivedAt: 2 }
     }
-    expect(selectTabAgentPresence(records, 'tab', focused)).toBe(agentPresence)
-    expect(selectTabAgentPresence({ [focused]: records[focused] }, 'tab', null)).toBe(ended)
+    expect(selectFocusedPanePresence(records, 'tab', focused)).toBe(ended)
+    expect(selectFocusedPanePresence(records, 'tab', null)).toBeUndefined()
+    expect(selectFocusedPanePresence({ [focused]: records[focused] }, 'tab', null)).toBe(ended)
   })
 })

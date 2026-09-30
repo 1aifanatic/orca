@@ -16,9 +16,10 @@ import {
   type AgentStatusEntry,
   type MigrationUnsupportedPtyEntry
 } from '../../../../shared/agent-status-types'
-import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import { makePaneKey, parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
-import { selectAgentPresencesForTab } from '@/lib/agent-presence-selectors'
+import { paneEvidenceCounts } from '@/lib/agent-presence-selectors'
+import { resolveAgentTypeFromTerminalTitle } from './worktree-title-derived-agent-rows'
 
 /**
  * Ordinal class for the "Smart" sort. Lower number = more attention-demanding.
@@ -281,20 +282,7 @@ export function collectTabPaneInputs(
   const hookLeafIds = new Set<string>()
   // Stale hooks still suppress one-shot permission titles, matching worktree and tab status dots.
   const permissionHookLeafIds = new Set<string>()
-  for (const [paneKey, record] of Object.entries(
-    selectAgentPresencesForTab(sources.agentPresenceByPaneKey, tab.id)
-  )) {
-    const leafId = leafIdFromPaneKey(paneKey)
-    if (leafId && record.presence.process) {
-      hookLeafIds.add(leafId)
-      permissionHookLeafIds.add(leafId)
-    }
-  }
   for (const entry of sources.entriesByTabId.get(tab.id) ?? []) {
-    const owner = sources.agentPresenceByPaneKey?.[entry.paneKey]?.presence
-    if (owner?.process && owner.ended) {
-      continue
-    }
     panes.push({ kind: 'hook', entry, hasLivePty })
     const leafId = leafIdFromPaneKey(entry.paneKey)
     if (leafId !== null) {
@@ -322,7 +310,14 @@ export function collectTabPaneInputs(
     const coveredLeafIds = isSyntheticAgentPermissionTitle(tab.title)
       ? permissionHookLeafIds
       : hookLeafIds
-    if (coveredLeafIds.size === 0) {
+    const activeLeafId = sources.terminalLayoutsByTabId?.[tab.id]?.activeLeafId
+    const presence = activeLeafId
+      ? sources.agentPresenceByPaneKey?.[makePaneKey(tab.id, activeLeafId)]?.presence
+      : undefined
+    if (
+      coveredLeafIds.size === 0 &&
+      paneEvidenceCounts(presence, resolveAgentTypeFromTerminalTitle(tab.title))
+    ) {
       // Why: unmounted tabs (restored-but-unvisited) expose only the legacy tab title.
       panes.push({
         kind: 'title',
@@ -344,6 +339,13 @@ export function collectTabPaneInputs(
     const hasSingleUnmappedHook =
       leafId === null && coveredLeafIds.size === 1 && paneTitleEntries.length === 1
     if ((leafId !== null && coveredLeafIds.has(leafId)) || hasSingleUnmappedHook) {
+      continue
+    }
+    const presence =
+      leafId === null
+        ? undefined
+        : sources.agentPresenceByPaneKey?.[makePaneKey(tab.id, leafId)]?.presence
+    if (!paneEvidenceCounts(presence, resolveAgentTypeFromTerminalTitle(title))) {
       continue
     }
     panes.push({ kind: 'title', status: classifyTitleActivity(title), worktreeLastActivityAt })
@@ -389,10 +391,6 @@ export function buildAttentionByWorktree(
     // Why: hook stamps can precede tab mirroring; once mirrored, live tab ownership wins so both worktrees aren't promoted.
     const panes: PaneInput[] = (byAttributedWorktree.get(worktree.id) ?? [])
       .filter((entry) => {
-        const owner = agentPresenceByPaneKey?.[entry.paneKey]?.presence
-        if (owner?.process && owner.ended) {
-          return false
-        }
         const parsed = parsePaneKey(entry.paneKey)
         return parsed !== null && !mirroredTabIds.has(parsed.tabId)
       })

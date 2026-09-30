@@ -3,10 +3,12 @@ import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/
 import {
   isSameAgentProcess,
   type AgentProcessIdentity,
+  type AgentProcessPresence,
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
 import { AgentHookServerPresenceDiscovery } from './server-agent-presence-discovery'
+import type { EnrichedAgentHookEventPayload } from './server-types'
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerPresenceDiscovery {
   private readonly presenceChecks = new WeakMap<
@@ -19,7 +21,13 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerPresen
     const sender = event.agentPresence?.process
     const owner = row.agentPresence
     if (sender && owner?.process && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
-      void this.checkAgentPresence(row.paneKey)
+      const agent = event.agentPresence?.agent ?? event.payload.agentType
+      // Why: a sender with no agent type cannot own a pane, so it only rechecks the owner.
+      void this.checkAgentPresence(
+        row.paneKey,
+        undefined,
+        agent && agent !== 'unknown' ? { agent, process: sender } : undefined
+      )
     }
   }
 
@@ -31,9 +39,11 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerPresen
     return presence?.process !== undefined && !presence.ended
   }
 
+  /** `successor` is the live process whose hook raised the doubt; it inherits a proven-dead owner's pane. */
   checkAgentPresence(
     paneKey: string,
-    expectedProcess?: AgentProcessIdentity
+    expectedProcess?: AgentProcessIdentity,
+    successor?: AgentProcessPresence
   ): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
@@ -46,30 +56,43 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerPresen
         return Promise.resolve('exited')
       }
     }
+    const presence = row?.agentPresence
+    const owner = presence?.process
     // Why: an ended owner already published its exit, and an owner no hook identified cannot be checked.
-    if (!row?.agentPresence?.process || row.agentPresence.ended) {
+    if (!row || !presence || !owner || presence.ended) {
       return Promise.resolve(null)
     }
     if (row.connectionId !== null) {
       return Promise.resolve('unverifiable')
     }
     const pending = this.presenceChecks.get(row)
-    if (pending) {
+    if (pending && !successor) {
       return pending
     }
-    const presence = row.agentPresence
-    const check = probeAgentProcessPresence(presence.process, readHostAgentProcess)
+    const check = probeAgentProcessPresence(owner, readHostAgentProcess)
       .then((verdict) => {
+        // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.
+        const current = this.state.lastStatusByPaneKey.get(resolved) as
+          | EnrichedAgentHookEventPayload
+          | undefined
+        const currentOwner = current?.agentPresence
         if (
-          this.state.lastStatusByPaneKey.get(resolved) !== row ||
-          row.agentPresence !== presence
+          !current ||
+          !currentOwner?.process ||
+          !isSameAgentProcess(currentOwner.process, owner)
         ) {
           return 'unverifiable' as const
         }
-        if (verdict === 'exited') {
+        if (verdict !== 'exited' || currentOwner.ended) {
+          return verdict
+        }
+        if (successor) {
+          this.adoptPaneOwner(current, successor)
+        } else {
           this.reconcileEndedProcessForPaneKeys([resolved], {
-            preserveResumeIdentity: true,
-            endedPresence: { ...presence, ended: true }
+            kind: 'owner-exited',
+            presence: { ...presence, ended: true }
           })
         }
         return verdict
@@ -81,5 +104,19 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerPresen
       })
     this.presenceChecks.set(row, check)
     return check
+  }
+
+  /** The row already carries the successor's own status; only the recorded owner was stale. */
+  private adoptPaneOwner(
+    current: EnrichedAgentHookEventPayload,
+    successor: AgentProcessPresence
+  ): void {
+    const adopted: EnrichedAgentHookEventPayload = { ...current, agentPresence: successor }
+    if (!this.writeLegacyStatusRow(adopted)) {
+      return
+    }
+    this.commitStatusRowMutation(current, adopted)
+    this.scheduleStatusPersist()
+    this.emitEnrichedStatus(adopted)
   }
 }

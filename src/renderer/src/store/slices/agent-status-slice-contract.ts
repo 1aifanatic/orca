@@ -1,4 +1,5 @@
 import type { AgentPresenceByPaneKey, AgentPresenceRecord } from './agent-presence'
+import type { AgentProcessIdentity } from '../../../../shared/agent-process-presence'
 import type {
   AgentLaunchConfigRegistryEntry,
   AgentLaunchConfigRegistrationMetadata,
@@ -34,6 +35,8 @@ export type AgentStatusSlice = {
   /** Host ownership mirror; survives turn dismissal and transport loss, never persisted here. */
   agentPresenceByPaneKey: AgentPresenceByPaneKey
   recordAgentPresence: (paneKey: string, record: AgentPresenceRecord) => void
+  /** The host dropped this exact owner's record without an exit. */
+  releaseAgentPresence: (paneKey: string, process: AgentProcessIdentity) => void
   /** Explicit agent status entries keyed by `${tabId}:${leafId}`; real-time only, not persisted. */
   agentStatusByPaneKey: Record<string, AgentStatusEntry>
   /** Main-synced dispatch metadata for live panes that may only have title-derived status in the renderer. */

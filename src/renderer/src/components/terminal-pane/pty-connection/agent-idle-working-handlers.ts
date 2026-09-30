@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store'
 import { applyLegacyUnidentifiedAgentSignal } from '@/lib/legacy-unidentified-agent-presence'
+import { requestAgentOwnerCheck } from '@/lib/agent-owner-check'
 import { getWorktreeMapFromState } from '@/store/selectors'
 import { parseWorkspaceKey } from '../../../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../../shared/constants'
@@ -34,9 +35,7 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
   }
   session.onAgentExited = (): void => {
     const presence = useAppStore.getState().agentPresenceByPaneKey?.[session.cacheKey]?.presence
-    if (presence?.process) {
-      window.api?.agentStatus?.reconcileEndedProcess?.(session.cacheKey)
-    }
+    requestAgentOwnerCheck(session.cacheKey, presence)
     applyLegacyUnidentifiedAgentSignal(presence, () => {
       session.deps.onAgentExitedRef.current(session.pane.leafId)
       session.deps.setCacheTimerStartedAt(session.cacheKey, null)

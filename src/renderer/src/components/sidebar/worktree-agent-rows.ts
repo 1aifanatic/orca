@@ -2,7 +2,7 @@ import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
 import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
 import type { RetainedAgentEntry } from '@/store/slices/agent-status'
 import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
-import { selectAgentPresence } from '@/lib/tab-agent-from-signals'
+import { paneEvidenceCounts, selectLiveOwnerAgent } from '@/lib/agent-presence-selectors'
 import {
   AGENT_STATUS_STALE_AFTER_MS,
   type AgentStatusEntry,
@@ -177,12 +177,6 @@ export function buildWorktreeAgentRows(args: {
     const explicitEntries = entriesByTabId.get(tab.id) ?? []
     const hasLivePty = tabHasLivePty(ptyIdsByTabId, tab.id)
     for (const entry of explicitEntries) {
-      if (
-        args.agentPresenceByPaneKey?.[entry.paneKey]?.presence.process &&
-        args.agentPresenceByPaneKey[entry.paneKey].presence.ended
-      ) {
-        continue
-      }
       const rowEntry = entryWithRuntimeOrchestration(entry, args.runtimeAgentOrchestrationByPaneKey)
       const isFresh = isExplicitAgentStatusFresh(rowEntry, args.now, AGENT_STATUS_STALE_AFTER_MS)
       const shouldDecay =
@@ -196,7 +190,7 @@ export function buildWorktreeAgentRows(args: {
         entry: rowEntry,
         tab,
         agentType:
-          selectAgentPresence(args.agentPresenceByPaneKey?.[entry.paneKey]?.presence) ??
+          selectLiveOwnerAgent(args.agentPresenceByPaneKey?.[entry.paneKey]?.presence) ??
           resolveRowAgentType(rowEntry, tab),
         rowSource: 'live',
         state: shouldDecay ? resolveDecayedAgentRowState(rowEntry, hasLivePty) : rowEntry.state,
@@ -216,24 +210,17 @@ export function buildWorktreeAgentRows(args: {
     seenPaneKeys
   })
 
-  const titleCoveredPaneKeys = new Set(seenPaneKeys)
-  for (const [paneKey, record] of Object.entries(args.agentPresenceByPaneKey ?? {})) {
-    if (record.presence.process) {
-      titleCoveredPaneKeys.add(paneKey)
-    }
-  }
-  rows.push(...buildTitleDerivedAgentRows({ ...args, seenPaneKeys: titleCoveredPaneKeys }))
+  // Why: an exited owner's leftover title or process read is history; another agent's still counts.
+  rows.push(
+    ...buildTitleDerivedAgentRows({ ...args, seenPaneKeys }).filter((row) =>
+      paneEvidenceCounts(args.agentPresenceByPaneKey?.[row.paneKey]?.presence, row.agentType)
+    )
+  )
 
   // Why: orchestration workers can be attributed to a worktree by main before
   // their tab is present in this renderer. Keep those live rows visible in the
   // worktree card instead of waiting for tab membership that may never arrive.
   for (const entry of args.entries) {
-    if (
-      args.agentPresenceByPaneKey?.[entry.paneKey]?.presence.process &&
-      args.agentPresenceByPaneKey[entry.paneKey].presence.ended
-    ) {
-      continue
-    }
     if (seenPaneKeys.has(entry.paneKey)) {
       continue
     }

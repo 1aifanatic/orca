@@ -1,4 +1,4 @@
-import { selectTabAgentPresence } from './agent-presence-selectors'
+import { selectFocusedPanePresence } from './agent-presence-selectors'
 import type { RetainedAgentEntry } from '@/store/slices/agent-status'
 import type { AgentPresenceByPaneKey } from '@/store/slices/agent-presence'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
@@ -73,7 +73,7 @@ export function resolveOpenTabOccupantAgent({
     : Boolean(explicitTitleAgent || siblingHookAgent)
 
   return resolveTabAgentFromSignals({
-    agentPresence: selectTabAgentPresence(agentPresenceByPaneKey, tabId, focusedPaneKey),
+    agentPresence: selectFocusedPanePresence(agentPresenceByPaneKey, tabId, focusedPaneKey),
     hasObservedAgentSignal: Boolean(
       hookAgent || focusedCompletedHookAgent || processAgent || fallbackAgentSignal
     ),

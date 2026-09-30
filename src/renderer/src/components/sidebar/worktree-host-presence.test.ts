@@ -2,93 +2,116 @@ import { collectTabPaneInputs, resolveAttention } from './smart-attention'
 import { describe, expect, it } from 'vitest'
 import { makeTab } from '@/store/slices/store-test-helpers'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
-import { selectWorktreeAgentActivitySummary } from './worktree-agent-activity-summary'
 import { getWorktreeStatus } from '@/lib/worktree-status'
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+import { resolveTerminalTabActivityStatus } from '../tab-bar/terminal-tab-activity-status'
 
 const leafId = '11111111-1111-4111-8111-111111111111'
 const paneKey = `tab-1:${leafId}`
-const tab = makeTab({
-  id: 'tab-1',
-  worktreeId: 'folder-1',
-  title: '✳ Claude Code',
-  launchAgent: 'claude'
+const claude = {
+  agent: 'claude',
+  process: { pid: 4001, platform: 'linux', startTime: 'boot:123' }
+} as const
+const presenceOf = (ended: boolean) => ({
+  [paneKey]: { presence: ended ? { ...claude, ended: true as const } : claude, receivedAt: 20 }
 })
-const agentPresenceByPaneKey = {
-  [paneKey]: {
-    presence: {
-      agent: 'claude',
-      process: { pid: 4001, platform: 'linux', startTime: 'boot:123' },
-      ended: true
-    },
-    receivedAt: 20
-  }
-} as const
-const entry = {
-  paneKey,
-  agentType: 'claude',
-  state: 'working',
-  prompt: 'work',
-  updatedAt: Date.now(),
-  stateStartedAt: Date.now(),
-  stateHistory: []
-} as const
 const terminalLayoutsByTabId = {
   'tab-1': { root: { type: 'leaf', leafId }, activeLeafId: leafId, expandedLeafId: null }
 } as const
+const ptyIdsByTabId = { 'tab-1': ['pty-1'] }
+const tabTitled = (title: string, launchAgent: 'claude' | undefined = 'claude') =>
+  makeTab({ id: 'tab-1', worktreeId: 'folder-1', title, launchAgent })
+
+function rows(title: string, ended: boolean, foregroundAgent?: 'codex') {
+  return buildWorktreeAgentRows({
+    tabs: [tabTitled(title)],
+    entries: [],
+    retained: [],
+    agentPresenceByPaneKey: presenceOf(ended),
+    ptyIdsByTabId,
+    terminalLayoutsByTabId,
+    ...(foregroundAgent
+      ? {
+          paneForegroundAgentByPaneKey: {
+            [paneKey]: {
+              agent: foregroundAgent,
+              agentEvidence: 'process-read' as const,
+              shellForeground: false
+            }
+          }
+        }
+      : {}),
+    now: Date.now()
+  }).map((row) => [row.agentType, row.state])
+}
+
+function attentionClass(title: string, ended: boolean): number {
+  const tab = tabTitled(title)
+  const inputs = collectTabPaneInputs(
+    tab,
+    Date.now(),
+    {
+      entriesByTabId: new Map(),
+      agentPresenceByPaneKey: presenceOf(ended),
+      ptyIdsByTabId,
+      runtimePaneTitlesByTabId: {},
+      terminalLayoutsByTabId
+    },
+    Date.now()
+  )
+  return resolveAttention(inputs, Date.now()).cls
+}
 
 describe('workspace host exit publication', () => {
-  it('clears a live sidebar row immediately and suppresses its stale title without a shell prompt', () => {
-    expect(
-      buildWorktreeAgentRows({
-        tabs: [tab],
-        entries: [{ ...entry, stateHistory: [] }],
-        retained: [],
-        agentPresenceByPaneKey,
-        ptyIdsByTabId: { 'tab-1': ['pty-1'] },
-        terminalLayoutsByTabId,
-        now: Date.now()
-      })
-    ).toEqual([])
+  it('drops the exited owner title row without a shell prompt', () => {
+    expect(rows('⠋ Claude Code', true)).toEqual([])
   })
-  it('stops the workspace activity signal even when the PTY and spinner title remain', () => {
-    const summary = selectWorktreeAgentActivitySummary(
-      {
-        tabsByWorktree: { 'folder-1': [tab] },
-        agentStatusByPaneKey: { [paneKey]: { ...entry, stateHistory: [] } },
-        agentPresenceByPaneKey,
-        agentStatusEpoch: 1,
-        retainedAgentsByPaneKey: {},
-        migrationUnsupportedByPtyId: {}
-      },
-      'folder-1'
-    )
-    expect(summary.hasLiveWorking).toBe(false)
-    expect(
+
+  it('stops the workspace activity signal while the exited owner title remains', () => {
+    const status = (ended: boolean) =>
       getWorktreeStatus(
-        [tab],
+        [tabTitled('⠋ Claude Code')],
         [],
-        { 'tab-1': ['pty-1'] },
+        ptyIdsByTabId,
         {},
         {
-          agentStatusPaneIdsByTabId: summary.agentStatusPaneIdsByTabId,
-          terminalLayoutsByTabId
+          terminalLayoutsByTabId,
+          agentPresenceByPaneKey: presenceOf(ended)
         }
       )
-    ).toBe('active')
+    expect(status(false)).toBe('working')
+    expect(status(true)).toBe('active')
   })
-  it('removes ended owners from smart attention despite a stale spinner title', () => {
-    const inputs = collectTabPaneInputs(
-      tab,
-      Date.now(),
-      {
-        entriesByTabId: new Map([[tab.id, [{ ...entry, stateHistory: [] }]]]),
-        agentPresenceByPaneKey,
-        ptyIdsByTabId: { [tab.id]: ['pty-1'] },
-        runtimePaneTitlesByTabId: {},
-        terminalLayoutsByTabId
-      },
-      Date.now()
-    )
-    expect(resolveAttention(inputs, Date.now()).cls).toBe(5)
+
+  it('removes the exited owner from smart attention despite its stale spinner title', () => {
+    expect(attentionClass('⠋ Claude Code', true)).toBe(5)
+  })
+
+  it('still shows a later agent in a pane whose identified owner exited', () => {
+    expect(rows('⠋ Codex', true)).toEqual([['codex', 'working']])
+    expect(rows('orca', true, 'codex')).toEqual([['codex', 'idle']])
+    expect(attentionClass('⠋ Codex', true)).toBe(attentionClass('⠋ Codex', false))
+  })
+
+  it('lets a live owner whose hook went quiet still read working from its title', () => {
+    const stale: AgentStatusEntry = {
+      paneKey,
+      agentType: 'claude',
+      state: 'working',
+      prompt: 'work',
+      updatedAt: 1,
+      stateStartedAt: 1,
+      stateHistory: []
+    }
+    expect(
+      resolveTerminalTabActivityStatus({
+        tab: tabTitled('⠋ Claude Code'),
+        agentStatusByPaneKey: { [paneKey]: stale },
+        agentStatusEpoch: 1,
+        ptyIdsByTabId,
+        terminalLayout: terminalLayoutsByTabId['tab-1'],
+        agentPresenceByPaneKey: presenceOf(false)
+      })
+    ).toBe('working')
   })
 })

@@ -1,6 +1,7 @@
 import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
 import { ipcRenderer } from 'electron'
 import type {
+  AgentPresenceReleaseIpcPayload,
   AgentStatusCacheIdentity,
   AgentStatusClearIpcPayload,
   AgentStatusIpcPayload,
@@ -23,6 +24,12 @@ export const agentStatusApi = {
       callback(data)
     ipcRenderer.on('agentStatus:clear', listener)
     return () => ipcRenderer.removeListener('agentStatus:clear', listener)
+  },
+  onPresenceReleased: (callback: (data: AgentPresenceReleaseIpcPayload) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: AgentPresenceReleaseIpcPayload) =>
+      callback(data)
+    ipcRenderer.on('agentStatus:presenceReleased', listener)
+    return () => ipcRenderer.removeListener('agentStatus:presenceReleased', listener)
   },
   /** Pull cached hook statuses after renderer hydration, so startup replays aren't lost before tabs exist. */
   getSnapshot: (): Promise<AgentStatusIpcPayload[]> =>

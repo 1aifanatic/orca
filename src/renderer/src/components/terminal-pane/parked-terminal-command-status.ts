@@ -4,7 +4,11 @@
  * This ports the store-level subset of pty-connection's handlers; the pane-coupled parts
  * (foreground process-confirm ladder, key-intent interrupt inference) stay with the mounted pane.
  */
-import { applyLegacyCommandFinishedStatus } from '@/lib/legacy-unidentified-agent-presence'
+import {
+  applyLegacyCommandFinishedStatus,
+  isLegacyUnidentified
+} from '@/lib/legacy-unidentified-agent-presence'
+import { requestAgentOwnerCheck } from '@/lib/agent-owner-check'
 import { resolvePaneAgentOwner } from '../../../../shared/pane-agent-owner'
 import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
 import { isShellProcess } from '../../../../shared/shell-process-detection'
@@ -146,7 +150,7 @@ export function createParkedTerminalCommandStatusPolicy(options: {
     if (
       disposed ||
       state.paneForegroundAgentByPaneKey[paneKey] !== entry ||
-      state.agentPresenceByPaneKey?.[paneKey]?.presence.process
+      !isLegacyUnidentified(state.agentPresenceByPaneKey?.[paneKey]?.presence)
     ) {
       return
     }
@@ -164,8 +168,7 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       // `git checkout` in a parked worktree); nudge git UI now instead of waiting for a poll.
       dispatchTerminalCommandFinishedEvent(worktreeId, bestEffortExitCode)
       const state = useAppStore.getState()
-      if (state.agentPresenceByPaneKey?.[paneKey]?.presence.process) {
-        window.api?.agentStatus?.reconcileEndedProcess?.(paneKey)
+      if (requestAgentOwnerCheck(paneKey, state.agentPresenceByPaneKey?.[paneKey]?.presence)) {
         return
       }
       void retireForegroundAgentUnlessConfirmed()

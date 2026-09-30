@@ -543,14 +543,23 @@ describe('readInFlightCommandCodeTurn', () => {
       }
       mockStoreState.agentStatusByPaneKey[PANE_KEY] = makeStatusEntry()
       const reconcileEndedProcess = vi.fn()
+      const checkAgentPresence = vi.fn(async () => 'live' as const)
       const confirmForegroundProcess = vi.fn()
       vi.stubGlobal('window', {
-        api: { agentStatus: { reconcileEndedProcess }, pty: { confirmForegroundProcess } }
+        api: {
+          agentStatus: { reconcileEndedProcess, checkAgentPresence },
+          pty: { confirmForegroundProcess }
+        }
       })
       const policy = await createPolicy(ptyId)
       policy.onCommandFinished(0)
       await Promise.resolve()
-      expect(reconcileEndedProcess).toHaveBeenCalledWith(PANE_KEY)
+      expect(checkAgentPresence).toHaveBeenCalledWith(PANE_KEY, {
+        pid: 4001,
+        platform: 'linux',
+        startTime: 'birth'
+      })
+      expect(reconcileEndedProcess).not.toHaveBeenCalled()
       expect(confirmForegroundProcess).not.toHaveBeenCalled()
       expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
       expect(mockStoreState.setPaneForegroundAgent).not.toHaveBeenCalled()

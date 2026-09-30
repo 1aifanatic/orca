@@ -119,6 +119,12 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
     state.mainWindow?.webContents.send('agentStatus:clear', clear)
     getDashboardPopoutWindow()?.webContents.send('agentStatus:clear', clear)
   })
+  agentHookServer.setAgentPresenceReleaseListener((release) => {
+    if (state.mainWindow?.isDestroyed()) {
+      return
+    }
+    state.mainWindow?.webContents.send('agentStatus:presenceReleased', release)
+  })
   setMigrationUnsupportedPtyListener((event) => {
     if (state.mainWindow?.isDestroyed()) {
       return
@@ -137,6 +143,7 @@ export function clearMainWindowAgentStatusListeners(): void {
   // Why: detach the hook listener on close so the server never fires into destroyed webContents before reopen, and replay runs only on deliberate recreations.
   agentHookServer.setListener(null)
   agentHookServer.setPaneStatusClearListener(null)
+  agentHookServer.setAgentPresenceReleaseListener(null)
   setMigrationUnsupportedPtyListener(null)
   // Why: stop the spinner timer here — it would fire into destroyed webContents, and per-pane teardown may never run for restored-but-untorn panes.
   stopAllSyntheticTitleSpinners()

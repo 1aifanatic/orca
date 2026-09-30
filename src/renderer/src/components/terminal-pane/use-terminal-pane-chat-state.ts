@@ -1,8 +1,8 @@
 import { useAgentOwnerExit } from './use-agent-owner-exit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
-import { selectAgentPresence } from '@/lib/tab-agent-from-signals'
-import { selectAgentPresencesForTab } from '@/lib/agent-presence-selectors'
+import { isLegacyUnidentified } from '@/lib/legacy-unidentified-agent-presence'
+import { paneEvidenceAgent, selectAgentPresencesForTab } from '@/lib/agent-presence-selectors'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '../../store'
 import { getCachedTerminalTabForWorktree } from './terminal-tab-lookup'
@@ -129,12 +129,9 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
   )
   const isChatEligibleForLeaf = useCallback(
     (leafId: string | null): boolean => {
-      const owner = selectAgentPresence(
-        leafId ? agentPresenceByPaneKey[makePaneKey(tabId, leafId)]?.presence : undefined
-      )
-      if (owner === null) {
-        return false
-      }
+      const presence = leafId
+        ? agentPresenceByPaneKey[makePaneKey(tabId, leafId)]?.presence
+        : undefined
       const detectedAgent = leafId ? (tabAgentTypeByLeaf[leafId] ?? null) : null
       const launchAgent = nativeChatLaunchAgentForLeaf({
         launchAgent: terminalTab?.launchAgent,
@@ -145,9 +142,11 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
       return canToggleNativeChat({
         experimentalNativeChatEnabled: nativeChatEnabled,
         contentType: 'terminal',
-        launchAgent: detectedAgent ? null : launchAgent,
+        launchAgent: detectedAgent ? null : paneEvidenceAgent(presence, launchAgent),
         detectedAgent,
-        resolvedAgent: detectedAgent ? null : resolveTitleAgentForLeaf(leafId),
+        resolvedAgent: detectedAgent
+          ? null
+          : paneEvidenceAgent(presence, resolveTitleAgentForLeaf(leafId)),
         nativeChatTranscriptIsLocalReadable
       })
     },
@@ -196,10 +195,11 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
     [chatLeafId, isChatViewMode, setTabLayout, setTabViewMode, tabId, unifiedTabId, worktreeId]
   )
   const handleAgentExit = useCallback(
-    (leafId: string): void => {
+    (leafId: string, exit: 'exited' | 'legacy-unidentified' = 'legacy-unidentified'): void => {
       const presence =
         useAppStore.getState().agentPresenceByPaneKey[makePaneKey(tabId, leafId)]?.presence
-      if (presence?.process && !presence.ended) {
+      // Why: a terminal signal cannot end a live identified owner; only its host exit can.
+      if (exit === 'legacy-unidentified' && !isLegacyUnidentified(presence)) {
         return
       }
       if (leafId !== chatLeafId) {
@@ -214,7 +214,7 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
           activeLeafId,
           chatLeafStillMounted: panes.some((pane) => pane.leafId === chatLeafId),
           activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
-          chatLeafAgentExit: presence?.process ? 'exited' : 'legacy-unidentified'
+          chatLeafAgentExit: exit
         })
       )
     },

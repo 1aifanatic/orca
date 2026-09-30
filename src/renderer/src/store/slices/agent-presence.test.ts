@@ -55,4 +55,25 @@ describe('host process ownership mirror', () => {
     expect(store.getState().agentPresenceByPaneKey[paneKey]).toBeUndefined()
     expect(store.getState().agentPresenceByPaneKey['other:leaf']).toBeDefined()
   })
+
+  it('drops only the released owner, never a replacement', () => {
+    const store = createTestStore()
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    const replacement = { ...presence, process: { ...presence.process, pid: 4002 } }
+    store.getState().releaseAgentPresence(paneKey, replacement.process)
+    expect(store.getState().agentPresenceByPaneKey[paneKey]?.presence).toEqual(presence)
+    store.getState().releaseAgentPresence(paneKey, presence.process)
+    expect(store.getState().agentPresenceByPaneKey[paneKey]).toBeUndefined()
+  })
+
+  it('lets terminal and host clears remove a live owner row, as without presence', () => {
+    const store = createTestStore()
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    store
+      .getState()
+      .setAgentStatus(paneKey, { state: 'working', prompt: 'task', agentType: 'claude' })
+    store.getState().removeAgentStatus(paneKey)
+    expect(store.getState().agentStatusByPaneKey[paneKey]).toBeUndefined()
+    expect(store.getState().agentPresenceByPaneKey[paneKey]?.presence).toEqual(presence)
+  })
 })

@@ -1,4 +1,4 @@
-import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
+import { isSameAgentProcess } from '../../../shared/agent-process-presence'
 import {
   admitLegacyAgentStatus,
   deleteLegacyAgentStatus,
@@ -6,23 +6,105 @@ import {
 } from '../../../shared/agent-hook-listener/listener-state'
 import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
 import type { AgentStatusCacheIdentity } from '../../../shared/agent-status-types'
-import type { EnrichedAgentHookEventPayload } from './server-types'
+import type {
+  EndedProcessEvidence,
+  EnrichedAgentHookEventPayload,
+  PaneOwnerDisposition
+} from './server-types'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 
+/** A `providerSessionOnly` remnant carries no state claim, so it cannot gate a pane `working`. */
+function toRetainedRow(
+  entry: EnrichedAgentHookEventPayload | null | undefined
+): EnrichedAgentHookEventPayload | null {
+  if (
+    (!entry?.providerSession && !entry?.agentPresence?.process) ||
+    !entry.payload.agentType ||
+    entry.payload.agentType === 'unknown'
+  ) {
+    return null
+  }
+  const { launchToken: _launchToken, ...resumeIdentity } = entry
+  return { ...resumeIdentity, providerSessionOnly: true, retainedForLiveness: true }
+}
+
+/** What survives a pane cleanup: the process owner per the caller's evidence, else resume identity
+ *  when the terminal outlives its agent. */
+function rowAfterPaneCleanup(
+  entry: EnrichedAgentHookEventPayload | undefined,
+  disposition: PaneOwnerDisposition
+): EnrichedAgentHookEventPayload | undefined {
+  const presence = entry?.agentPresence
+  if (!entry || disposition === 'released') {
+    return undefined
+  }
+  if (!presence?.process) {
+    return disposition === 'agent-exited' ? (toRetainedRow(entry) ?? undefined) : undefined
+  }
+  const retained = toRetainedRow(entry) ?? undefined
+  if (!retained || disposition === 'unverified' || presence.ended) {
+    return retained
+  }
+  return {
+    ...retained,
+    agentPresence: { ...presence, ended: true },
+    receivedAt: Math.max(Date.now(), entry.receivedAt + 1)
+  }
+}
+
+function endedProcessDisposition(
+  previous: EnrichedAgentHookEventPayload | undefined,
+  evidence: EndedProcessEvidence
+): PaneOwnerDisposition | null {
+  const owner = previous?.agentPresence?.process
+  if (evidence.kind === 'terminal-ended') {
+    return 'ended'
+  }
+  if (!owner) {
+    return 'agent-exited'
+  }
+  // Why: only this host's proof about the recorded process may end it; legacy signals never do.
+  return evidence.kind === 'owner-exited' &&
+    evidence.presence.process &&
+    isSameAgentProcess(owner, evidence.presence.process)
+    ? 'agent-exited'
+    : null
+}
+
 export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFences {
-  /** Keep process ownership and resume identity without retaining a turn-state claim. */
   protected toRetainedProviderSessionRow(
     entry: EnrichedAgentHookEventPayload | null | undefined
   ): EnrichedAgentHookEventPayload | null {
-    if (
-      (!entry?.providerSession && !entry?.agentPresence?.process) ||
-      !entry.payload.agentType ||
-      entry.payload.agentType === 'unknown'
-    ) {
-      return null
+    return toRetainedRow(entry)
+  }
+
+  /** Commit what a pane cleanup keeps; the row write publishes any owner it drops. */
+  protected commitPaneRowAfterCleanup(
+    previous: EnrichedAgentHookEventPayload | undefined,
+    disposition: PaneOwnerDisposition
+  ): void {
+    const retained = rowAfterPaneCleanup(previous, disposition)
+    const owner = retained?.agentPresence
+    if (retained) {
+      admitLegacyAgentStatus(
+        this.state,
+        'main-status-cleanup',
+        retained,
+        AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+      )
     }
-    const { launchToken: _launchToken, ...resumeIdentity } = entry
-    return { ...resumeIdentity, providerSessionOnly: true, retainedForLiveness: true }
+    if (retained && owner?.process && disposition === 'ended' && !previous?.agentPresence?.ended) {
+      // Why: a torn-down terminal is not the agent finishing; renderers drop the owner as main
+      // dropped the row, so sleep keeps the user's view and raises no finished notice.
+      this.emitAgentPresenceReleased({ paneKey: retained.paneKey, process: owner.process })
+    } else if (
+      retained &&
+      owner?.process &&
+      (!previous?.providerSessionOnly || owner !== previous.agentPresence)
+    ) {
+      this.emitEnrichedStatus(retained)
+    }
+    this.commitStatusRowMutation(previous, retained)
   }
 
   /** Drop only the status row (user dismissal); do NOT wipe prompt/tool caches since the pane's agent may still be alive. Use clearPaneState for PTY-teardown. */
@@ -45,7 +127,6 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         retained,
         AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
       )
-      this.emitEnrichedStatus(retained)
     }
     this.commitStatusRowMutation(deleted, retained)
     this.scheduleStatusPersist()
@@ -114,13 +195,8 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
    *  so a dead pane is cleaned up identically however its keys were resolved. */
   reconcileEndedProcessForPaneKeys(
     paneKeys: Iterable<string>,
-    options?: {
-      endedPresence?: AgentProcessPresence
-      /** Keep resume metadata when the terminal outlives its agent; identified exits always retain their host fact. */
-      preserveResumeIdentity?: boolean
-    }
+    evidence: EndedProcessEvidence
   ): number {
-    // A certified PTY exit passes no resume identity; a surviving shell may opt into the remnant.
     let cleared = 0
     for (const paneKey of paneKeys) {
       const resolvedPaneKey = this.resolvePaneKeyAlias(paneKey)
@@ -131,36 +207,11 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const previous = this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
         | EnrichedAgentHookEventPayload
         | undefined
-      const endedPresence =
-        options?.endedPresence ??
-        (previous?.agentPresence?.process
-          ? { ...previous.agentPresence, ended: true as const }
-          : undefined)
-      const resumeRow =
-        options?.preserveResumeIdentity || endedPresence
-          ? this.toRetainedProviderSessionRow(previous)
-          : null
-      const retained =
-        resumeRow && endedPresence
-          ? {
-              ...resumeRow,
-              agentPresence: endedPresence,
-              receivedAt: Math.max(Date.now(), resumeRow.receivedAt + 1)
-            }
-          : resumeRow
-      this.clearPaneState(resolvedPaneKey, { emitStatusRowMutation: false })
-      if (retained) {
-        admitLegacyAgentStatus(
-          this.state,
-          'main-status-cleanup',
-          retained,
-          AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
-        )
-        this.scheduleStatusPersist()
-        this.notifyStatusChangeListeners()
-        this.emitEnrichedStatus(retained)
+      const disposition = endedProcessDisposition(previous, evidence)
+      if (!disposition) {
+        continue
       }
-      this.commitStatusRowMutation(previous, retained)
+      this.clearPaneState(resolvedPaneKey, disposition)
       cleared += 1
     }
     return cleared
@@ -196,8 +247,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const deleted = this.deleteStatusEntry(paneKey, { preserveAuthority: true })
       if (deleted) {
         statusChanged = true
-        const retained = this.retainProcessOwnerAfterCleanup(deleted)
-        this.commitStatusRowMutation(deleted, retained)
+        this.commitPaneRowAfterCleanup(deleted, 'unverified')
         if (deleted.payload.agentType === 'codex') {
           // Why: a replacement remote process may reuse the pane; don't merge it with the lost connection's children.
           this.state.codexSubagentRosterByPaneKey.delete(paneKey)
