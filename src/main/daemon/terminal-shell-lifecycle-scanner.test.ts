@@ -267,24 +267,6 @@ describe('TerminalShellLifecycleScanner', () => {
       expect(scanner.scan('\x07')).toEqual({})
     })
   })
-})
-
-describe('unclean trigger arming', () => {
-  it('fires at every D while the alternate screen stays up, and never once it is left', () => {
-    const scanner = new TerminalShellLifecycleScanner()
-    const prompt = '\x1b]133;C\x07ls\r\n\x1b]133;D;0\x07'
-
-    expect(scanner.scan('\x1b[?1049hTUI\x1b]133;D;137\x07').uncleanDeathTriggerEnd).toBeDefined()
-    // Refuted path: no reset scanned, so each later D re-asks — one may be the TUI's real death.
-    for (let index = 0; index < 5; index += 1) {
-      expect(scanner.scan(prompt).uncleanDeathTriggerEnd).toBeDefined()
-    }
-    expect(scanner.isAlternateScreenActive).toBe(true)
-
-    const left = scanner.scan(`\x1b[?1049l${prompt}`)
-    expect(left.uncleanDeathTriggerEnd).toBeUndefined()
-    expect(scanner.scan(prompt).uncleanDeathTriggerEnd).toBeUndefined()
-  })
 
   describe('shell command state', () => {
     it('is unmarked until the shell prints an OSC 133 marker', () => {
@@ -324,5 +306,23 @@ describe('unclean trigger arming', () => {
       expect(events.uncleanDeathTriggerEnd).toBeDefined()
       expect(scanner.shellCommand).toBe('at-prompt')
     })
+  })
+})
+
+describe('unclean trigger arming', () => {
+  it('fires at every D while the alternate screen stays up, and never once it is left', () => {
+    const scanner = new TerminalShellLifecycleScanner()
+    const prompt = '\x1b]133;C\x07ls\r\n\x1b]133;D;0\x07'
+
+    expect(scanner.scan('\x1b[?1049hTUI\x1b]133;D;137\x07').uncleanDeathTriggerEnd).toBeDefined()
+    // Refuted path: no reset scanned, so each later D re-asks — one may be the TUI's real death.
+    for (let index = 0; index < 5; index += 1) {
+      expect(scanner.scan(prompt).uncleanDeathTriggerEnd).toBeDefined()
+    }
+    expect(scanner.isAlternateScreenActive).toBe(true)
+
+    const left = scanner.scan(`\x1b[?1049l${prompt}`)
+    expect(left.uncleanDeathTriggerEnd).toBeUndefined()
+    expect(scanner.scan(prompt).uncleanDeathTriggerEnd).toBeUndefined()
   })
 })
