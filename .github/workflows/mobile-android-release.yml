@@ -85,11 +85,42 @@ jobs:
           echo "Mobile shell: $EXPO_PUBLIC_MOBILE_SHELL"
           cd android && ./gradlew assembleRelease
 
+      # Why: an install that fails with a missing certificate or a package-parse error is
+      # usually a download that died near the end, and the signature block sits in the last
+      # ~100 KB. Publishing the size and digest is what lets a reporter tell a truncated
+      # download apart from a bad build without anyone re-deriving them from the asset.
+      - name: Checksum the APK
+        id: apk
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(android/app/build/outputs/apk/release/*.apk)
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "Expected exactly one release APK, found ${#apks[@]}" >&2
+            exit 1
+          fi
+
+          apk="${apks[0]}"
+          bytes="$(wc -c < "$apk" | tr -d ' ')"
+          sha256="$(sha256sum "$apk" | cut -d ' ' -f 1)"
+          # A sibling file in `sha256sum -c` format, so verifying a download is one command
+          # and no retyped digest. The asset globs below match *.apk and skip it.
+          printf '%s  %s\n' "$sha256" "$(basename "$apk")" > "$apk.sha256"
+
+          {
+            echo "checksum=$apk.sha256"
+            echo "bytes=$bytes"
+            echo "sha256=$sha256"
+          } >> "$GITHUB_OUTPUT"
+          echo "APK is $bytes bytes, sha256 $sha256"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: orca-mobile-apk
-          path: mobile/android/app/build/outputs/apk/release/*.apk
+          path: |
+            mobile/android/app/build/outputs/apk/release/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk.sha256
 
       - name: Ensure GitHub release tag
         if: steps.release.outputs.publish_release == 'true' && !startsWith(github.ref, 'refs/tags/mobile-android-v')
@@ -117,7 +148,8 @@ jobs:
             gh release upload "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              android/app/build/outputs/apk/release/*.apk
+              android/app/build/outputs/apk/release/*.apk \
+              "${{ steps.apk.outputs.checksum }}"
           else
             # Why: release tags live on side branches, so GitHub's automatic
             # previous-tag detection reaches back several releases; that body
@@ -155,11 +187,18 @@ jobs:
               writeFileSync(file, truncateReleaseBody(readFileSync(file, "utf8")))
             '
 
+            # Why appended after the truncation above: the cap is what the body is allowed to
+            # lose, and the verification block is the part a reader needs most. printf rather
+            # than a heredoc because YAML block indentation would leak into the Markdown.
+            printf '\n### Verify your download\n\n- Size: `%s` bytes\n- SHA-256: `%s`\n\nA "no certificate" or "problem parsing the package" install failure is usually a truncated download — check the size first, then `sha256sum -c app-release.apk.sha256`.\n' \
+              '${{ steps.apk.outputs.bytes }}' '${{ steps.apk.outputs.sha256 }}' >> "$notes_file"
+
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Orca Mobile Android $tag" \
               --prerelease \
               --latest=false \
               --notes-file "$notes_file" \
-              android/app/build/outputs/apk/release/*.apk
+              android/app/build/outputs/apk/release/*.apk \
+              "${{ steps.apk.outputs.checksum }}"
           fi
