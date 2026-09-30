@@ -8,7 +8,9 @@ import {
 } from '../structured-worker-identity'
 import {
   ADDRESS_X,
+  ADDRESS_Y,
   createSessionCallerHarness,
+  idOf,
   orchestrationRequest,
   PROVIDER_ID_X,
   resultOf,
@@ -52,7 +54,7 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     })
   })
 
-  it('answers a structured worker with its session address, not the handle it was minted', async () => {
+  it('answers a structured worker with the one address its preamble and its mail show', async () => {
     const handle = mintStructuredWorkerHandle()
     structuredWorkerIdentities.register({
       handle,
@@ -63,14 +65,31 @@ describe('orchestration.callerShow: the caller learns its own address from the h
       worktreeId: 'wt_1',
       hostScope: { kind: 'local', hostId: 'local' }
     })
+    const asX = (method: string, params: Record<string, unknown>) =>
+      h.dispatch(orchestrationRequest(method, params, { sessionId: SESSION_X }))
+    const runId = idOf(resultOf(await asX('orchestration.runCreate', { objective: 'o' })).run)
+    const task = h.db.createTask({ runId, spec: 'work' })
 
-    const response = await h.dispatch(
-      callerShow({ sessionId: SESSION_Y, evidence: { terminalHandle: handle } })
+    const shown = resultOf(
+      await h.dispatch(callerShow({ sessionId: SESSION_Y, evidence: { terminalHandle: handle } }))
     )
+    const { preamble } = resultOf(
+      await asX('orchestration.dispatch', { task: task.id, to: ADDRESS_Y, dryRun: true })
+    )
+    await h.dispatch(
+      orchestrationRequest(
+        'orchestration.send',
+        { to: ADDRESS_X, subject: 'progress', type: 'status' },
+        { sessionId: SESSION_Y }
+      )
+    )
+    const checked = resultOf(await asX('orchestration.check', { all: true, format: true }))
 
-    expect(resultOf(response)).toEqual({
-      caller: { address: `session:${SESSION_Y}`, live: true }
-    })
+    expect(shown).toEqual({ caller: { address: handle, live: true } })
+    expect(preamble).toContain(`Your orchestration address is: ${handle}\n`)
+    expect(checked.messages).toEqual([expect.objectContaining({ from_handle: handle })])
+    expect(checked.formatted).toContain(`(${handle})`)
+    expect(JSON.stringify({ preamble, checked })).not.toContain(ADDRESS_Y)
   })
 
   it('refuses a session that is not running, with the same code every orchestration verb gets', async () => {

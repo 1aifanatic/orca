@@ -210,12 +210,12 @@ describe('every target param resolves both spellings of a party to one canonical
     expect(messages).toEqual([expect.objectContaining({ subject: 'z' })])
   })
 
-  it('sessionAddress: a chat is its session address, and a worker is the one it is taught', async () => {
+  it('sessionAddress: a chat is its session address, and a worker is its mailbox handle', async () => {
     expect(await as(undefined, 'orchestration.sessionAddress', { sessionId: SESSION_Z })).toEqual({
       address: ADDRESS_Z
     })
     expect(await as(undefined, 'orchestration.sessionAddress', { sessionId: SESSION_Y })).toEqual({
-      address: ADDRESS_Y
+      address: handle
     })
   })
 })

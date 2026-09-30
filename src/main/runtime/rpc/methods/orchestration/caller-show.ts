@@ -4,10 +4,7 @@ import type {
   OrchestrationSessionAddressResult
 } from '../../../../../shared/orchestration-caller-status'
 import type { OrchestrationCompatibilityEvidence } from '../../../../../shared/orchestration-compatibility-evidence'
-import {
-  formatOrcaSessionAddress,
-  isOrcaSessionId
-} from '../../../../../shared/orca-session-address'
+import { isOrcaSessionId } from '../../../../../shared/orca-session-address'
 import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../../../shared/orchestration-session-caller-codes'
 import { SessionAddressParams } from '../../../../../shared/rpc-contract/orchestration-params'
 import type { OrcaRuntimeService } from '../../../orca-runtime'
@@ -27,12 +24,7 @@ export const ORCHESTRATION_CALLER_METHODS = [
       { runtime, orchestrationCaller, orchestrationCompatibilityEvidence }
     ): OrchestrationCallerShowResult => {
       if (orchestrationCaller) {
-        return {
-          caller: {
-            address: formatOrcaSessionAddress(orchestrationCaller.orcaSessionId),
-            live: true
-          }
-        }
+        return { caller: { address: orchestrationCaller.address, live: true } }
       }
       return { caller: resolveTerminalCaller(runtime, orchestrationCompatibilityEvidence) }
     }
@@ -41,7 +33,7 @@ export const ORCHESTRATION_CALLER_METHODS = [
     name: 'orchestration.sessionAddress',
     params: SessionAddressParams,
     // Why host-side: the party resolver derives it from the session records, which only the host
-    // holds, exactly as it binds a verb acting as that session: the lineage root's address.
+    // holds, exactly as it binds a verb acting as that session: a chat's lineage root's address.
     handler: (params, { runtime }): OrchestrationSessionAddressResult => {
       if (!isOrcaSessionId(params.sessionId)) {
         throw new OrchestrationError(
@@ -51,7 +43,7 @@ export const ORCHESTRATION_CALLER_METHODS = [
         )
       }
       const party = resolveOrcaSessionParty(params.sessionId, runtime.getOrchestrationDb())
-      return { address: formatOrcaSessionAddress(party.orcaSessionId) }
+      return { address: party.address }
     }
   })
 ]

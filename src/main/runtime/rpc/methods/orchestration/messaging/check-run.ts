@@ -2,7 +2,8 @@ import type { MessageRow, MessageType, OrchestrationDb } from '../../../../orche
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { RpcContext } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
-import { exposeReadMessages, formatReadMessages } from './mailbox-message-receipt'
+import { formatMessageBanner } from '../../../../orchestration/formatter'
+import { exposeMessages } from './mailbox-message-receipt'
 import { interruptedAcknowledgedCheck } from '../routing'
 import { routeAllMailboxPages } from '../schemas'
 import { resolveRunScope } from '../runs/run-scope'
@@ -107,14 +108,14 @@ export async function checkRunMailbox(args: {
   if (params.all || (params.unread === false && !params.peek)) {
     const messages = db.getRunMailboxHistory(run.id, 100, typeFilter)
     const result = {
-      messages: exposeReadMessages(messages, db),
+      messages: exposeMessages(messages),
       count: messages.length,
       acknowledged: acknowledged ?? null
     }
     if (params.format || params.inject) {
       return {
         ...result,
-        formatted: formatReadMessages(messages, db),
+        formatted: messages.map(formatMessageBanner).join('\n\n'),
         runId: run.id
       }
     }
@@ -123,10 +124,12 @@ export async function checkRunMailbox(args: {
 
   const peekResult = (messages: MessageRow[]) => ({
     runId: run.id,
-    messages: exposeReadMessages(messages, db),
+    messages: exposeMessages(messages),
     count: messages.length,
     acknowledged: acknowledged ?? null,
-    ...(params.format || params.inject ? { formatted: formatReadMessages(messages, db) } : {})
+    ...(params.format || params.inject
+      ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
+      : {})
   })
   const readPeek = () => db.getUnreadRunMailbox(run.id, 100, typeFilter)
   const readDelivery = (wakeTypes?: MessageType[]) =>
@@ -140,7 +143,7 @@ export async function checkRunMailbox(args: {
     return {
       runId: run.id,
       deliveryId: current.delivery.id,
-      messages: exposeReadMessages(current.messages, db),
+      messages: exposeMessages(current.messages),
       count: current.messages.length,
       replayed: current.replayed,
       acknowledged: acknowledged ?? null,
@@ -148,7 +151,7 @@ export async function checkRunMailbox(args: {
       cancelled: false,
       connectionLost: false,
       ...(params.format || params.inject
-        ? { formatted: formatReadMessages(current.messages, db) }
+        ? { formatted: current.messages.map(formatMessageBanner).join('\n\n') }
         : {})
     }
   }
@@ -244,13 +247,15 @@ export async function checkRunMailbox(args: {
   return {
     runId: run.id,
     deliveryId: current?.delivery.id ?? null,
-    messages: exposeReadMessages(current?.messages ?? [], db),
+    messages: exposeMessages(current?.messages ?? []),
     count: current?.messages.length ?? 0,
     replayed: current?.replayed ?? false,
     acknowledged: acknowledged ?? null,
     timedOut: false,
     cancelled: false,
     connectionLost: false,
-    ...(params.format && current ? { formatted: formatReadMessages(current.messages, db) } : {})
+    ...(params.format && current
+      ? { formatted: current.messages.map(formatMessageBanner).join('\n\n') }
+      : {})
   }
 }

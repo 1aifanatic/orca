@@ -1,5 +1,6 @@
 import { defineMethod } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
+import type { OrchestrationDb } from '../../../../orchestration/db'
 import {
   buildDispatchPreamble,
   dispatchPreambleSendOptions
@@ -11,9 +12,11 @@ import {
   taskNotStartableError
 } from '../../../../orchestration/task-dispatch-refusal'
 import { resolveRunScope } from './run-scope'
-import { agentVisibleOrchestrationAddress } from '../../../../orchestration/structured-session-mail-address'
 import { DispatchParams, DispatchShowParams } from '../schemas'
-import { resolveDispatchAssigneeParty } from '../../../../orchestration/orchestration-party'
+import {
+  resolveDispatchAssigneeParty,
+  resolveOrchestrationParty
+} from '../../../../orchestration/orchestration-party'
 
 export const ORCHESTRATION_DISPATCH_METHODS = [
   defineMethod({
@@ -63,7 +66,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: 'ctx_dryrun',
           canDispatchSubWorkers: previewDepth < maxDepth,
           taskSpec: task.spec,
-          coordinatorHandle: agentVisibleOrchestrationAddress(params.from ?? 'coordinator', db),
+          coordinatorHandle: coordinatorAddress(params.from, db),
           workerHandle: assignee ?? 'worker',
           devMode: params.devMode,
           ...(assignee ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(assignee) } : {})
@@ -151,7 +154,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         dispatchId: ctx.id,
         canDispatchSubWorkers: ctx.depth < runtime.getNestedWorkerMaxDepth(),
         taskSpec: task.spec,
-        coordinatorHandle: agentVisibleOrchestrationAddress(params.from ?? 'coordinator', db),
+        coordinatorHandle: coordinatorAddress(params.from, db),
         workerHandle: to,
         dispatchCapability,
         devMode: params.devMode,
@@ -210,7 +213,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: ctx?.id ?? 'ctx_preview',
           canDispatchSubWorkers: (ctx?.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
           taskSpec: task.spec,
-          coordinatorHandle: agentVisibleOrchestrationAddress(params.from ?? 'coordinator', db),
+          coordinatorHandle: coordinatorAddress(params.from, db),
           workerHandle,
           devMode: params.devMode,
           ...(ctx ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(workerHandle) } : {})
@@ -222,3 +225,8 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
     }
   })
 ]
+
+/** The coordinator's mailbox address: a `session:` spelling of a `/clear`ed chat names its root. */
+function coordinatorAddress(from: string | undefined, db: OrchestrationDb): string {
+  return from ? resolveOrchestrationParty(from, db).address : 'coordinator'
+}

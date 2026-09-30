@@ -23,5 +23,5 @@ export type CliStatusCaller = OrchestrationCallerAddress | OrchestrationCallerRe
 
 export type OrchestrationCallerShowResult = { caller: OrchestrationCallerAddress | null }
 
-/** `orchestration.sessionAddress`: the `session:<id>` another agent reaches a session's chat at. */
+/** `orchestration.sessionAddress`: the address another agent reaches a session at. */
 export type OrchestrationSessionAddressResult = { address: string }

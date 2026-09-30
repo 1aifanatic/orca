@@ -211,12 +211,11 @@ describe('a worker cannot tell which mode it is running in', () => {
     expect(terminal.mode.mode).toBe('terminal')
     const structuredPreamble = structuredPreambles[0] as string
     const terminalPreamble = vi.mocked(runtime.sendTerminalAgentPrompt).mock.calls[0]?.[1] as string
-    expect(
-      normalizePreamble(structuredPreamble, 'session:sess_worker', structured.dispatchId)
-    ).toBe(normalizePreamble(terminalPreamble, TERMINAL_HANDLE, terminal.dispatchId))
-    // One agent-visible address: the minted handle is the mailbox key, never taught.
-    expect(structuredPreamble).not.toContain(STRUCTURED_HANDLE)
-    expect(structuredPreamble).toContain('Your orchestration address is: session:sess_worker\n')
+    expect(normalizePreamble(structuredPreamble, STRUCTURED_HANDLE, structured.dispatchId)).toBe(
+      normalizePreamble(terminalPreamble, TERMINAL_HANDLE, terminal.dispatchId)
+    )
+    // Each worker is taught its mailbox address, the one its mail and worker-list show.
+    expect(structuredPreamble).toContain(`Your orchestration address is: ${STRUCTURED_HANDLE}\n`)
     expect(terminalPreamble).toContain(`Your orchestration address is: ${TERMINAL_HANDLE}\n`)
     // The section the structured lane used to withhold, asserted by name so the equality above
     // cannot pass by both preambles losing it.
@@ -238,9 +237,9 @@ describe('a worker cannot tell which mode it is running in', () => {
 
     expect(result).toMatchObject({ state: 'ready' })
     expect(showTerminal).not.toHaveBeenCalled()
-    // Its sub-worker is told the coordinator's one address, not the handle it was minted.
+    // Its sub-worker is told the coordinator's mailbox address, the one its mail carries.
     expect(vi.mocked(runtime.sendTerminalAgentPrompt).mock.calls[0]?.[1]).toContain(
-      "Your coordinator's address is: session:sess_coord\n"
+      "Your coordinator's address is: structworker_coord\n"
     )
     expect(vi.mocked(runtime.sendTerminalAgentPrompt).mock.calls[0]?.[1]).toContain(
       '=== SUB-DISPATCH ==='

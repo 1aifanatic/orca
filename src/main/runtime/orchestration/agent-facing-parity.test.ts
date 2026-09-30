@@ -34,6 +34,8 @@ vi.mock('../rpc/methods/orchestration-structured-worker-session', () => ({
 const CHAT_SESSION = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 const CHAT_ADDRESS = `session:${CHAT_SESSION}`
 const TERMINAL_HANDLE = 'term_worker'
+// A structured worker's mailbox address: the handle it was minted.
+const CHAT_WORKER_HANDLE = 'structworker_1'
 // `skill-guides/orchestration.md` on main before chats could orchestrate.
 const MAIN_KERNEL_LINES = 197
 
@@ -91,9 +93,8 @@ async function renderPreamble(worker: 'chat' | 'terminal'): Promise<string> {
   const prompts: string[] = []
   await deliverWorkerDispatchPreamble({
     runtime: runtime(prompts),
-    db,
     structuredSession: worker === 'chat' ? structuredSession() : null,
-    terminalHandle: worker === 'chat' ? 'structworker_1' : TERMINAL_HANDLE,
+    terminalHandle: worker === 'chat' ? CHAT_WORKER_HANDLE : TERMINAL_HANDLE,
     dispatchId: 'ctx_1',
     dispatchDepth: 1,
     taskId: 'task_1',
@@ -137,8 +138,8 @@ describe('a chat agent and a terminal agent see the same text but for the addres
     const chat = await renderPreamble('chat')
     const terminal = await renderPreamble('terminal')
 
-    expect(chat).toContain(`Your orchestration address is: ${CHAT_ADDRESS}\n`)
-    expect(chat.split(CHAT_ADDRESS).join('<address>')).toBe(
+    expect(chat).toContain(`Your orchestration address is: ${CHAT_WORKER_HANDLE}\n`)
+    expect(chat.split(CHAT_WORKER_HANDLE).join('<address>')).toBe(
       terminal.split(TERMINAL_HANDLE).join('<address>')
     )
   })

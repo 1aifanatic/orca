@@ -1,7 +1,8 @@
 import type { MessageType, OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
-import { exposeReadMessages, formatReadMessages } from './mailbox-message-receipt'
+import { formatMessageBanner } from '../../../../orchestration/formatter'
+import { exposeMessages } from './mailbox-message-receipt'
 import { routeAllMailboxPages } from '../schemas'
 import { asDispatchFence, callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { interruptedAcknowledgedCheck } from '../routing'
@@ -213,10 +214,12 @@ export async function checkWorkerMailbox(args: {
     const messages = db.getAllMessagesForHandle(address, 100, typeFilter)
     return {
       ...mailboxIdentity,
-      messages: exposeReadMessages(messages, db),
+      messages: exposeMessages(messages),
       count: messages.length,
       acknowledged: acknowledged?.delivery.id ?? null,
-      ...(params.format || params.inject ? { formatted: formatReadMessages(messages, db) } : {})
+      ...(params.format || params.inject
+        ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
+        : {})
     }
   }
   if (params.peek) {
@@ -224,10 +227,12 @@ export async function checkWorkerMailbox(args: {
     if (messages.length > 0 || !params.wait) {
       return {
         ...mailboxIdentity,
-        messages: exposeReadMessages(messages, db),
+        messages: exposeMessages(messages),
         count: messages.length,
         acknowledged: acknowledged?.delivery.id ?? null,
-        ...(params.format || params.inject ? { formatted: formatReadMessages(messages, db) } : {})
+        ...(params.format || params.inject
+          ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
+          : {})
       }
     }
   } else {
@@ -236,7 +241,7 @@ export async function checkWorkerMailbox(args: {
       return {
         ...mailboxIdentity,
         deliveryId: current?.delivery.id ?? null,
-        messages: exposeReadMessages(current?.messages ?? [], db),
+        messages: exposeMessages(current?.messages ?? []),
         count: current?.messages.length ?? 0,
         replayed: current?.replayed ?? false,
         acknowledged: acknowledged?.delivery.id ?? null,
@@ -244,7 +249,7 @@ export async function checkWorkerMailbox(args: {
         cancelled: false,
         connectionLost: false,
         ...(params.format || params.inject
-          ? { formatted: formatReadMessages(current?.messages, db) }
+          ? { formatted: current?.messages.map(formatMessageBanner).join('\n\n') ?? '' }
           : {})
       }
     }
@@ -277,22 +282,24 @@ export async function checkWorkerMailbox(args: {
     const arrived = readPeek()
     return {
       ...mailboxIdentity,
-      messages: exposeReadMessages(arrived, db),
+      messages: exposeMessages(arrived),
       count: arrived.length,
       acknowledged: acknowledged?.delivery.id ?? null,
-      ...(params.format || params.inject ? { formatted: formatReadMessages(arrived, db) } : {})
+      ...(params.format || params.inject
+        ? { formatted: arrived.map(formatMessageBanner).join('\n\n') }
+        : {})
     }
   }
   const arrived = readDelivery(typeFilter)
   return {
     ...mailboxIdentity,
     deliveryId: arrived?.delivery.id ?? null,
-    messages: exposeReadMessages(arrived?.messages ?? [], db),
+    messages: exposeMessages(arrived?.messages ?? []),
     count: arrived?.messages.length ?? 0,
     replayed: arrived?.replayed ?? false,
     acknowledged: acknowledged?.delivery.id ?? null,
     ...(params.format || params.inject
-      ? { formatted: formatReadMessages(arrived?.messages, db) }
+      ? { formatted: arrived?.messages.map(formatMessageBanner).join('\n\n') ?? '' }
       : {})
   }
 }
