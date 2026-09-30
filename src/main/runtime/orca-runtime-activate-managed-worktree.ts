@@ -31,10 +31,7 @@ import {
 } from './runtime-worktree-startup-readiness'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
-import {
-  FRESH_COMPOSER_DIALOG_ERROR,
-  readFreshComposerHold
-} from './launched-agent-composer-readiness'
+import { readFreshComposerHold } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import {
@@ -214,7 +211,6 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
     const stop = new AbortController()
-    let sawDialog = false
     const ptyId = await waitForWorktreeStartupDraft(
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
@@ -233,7 +229,6 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
               )
             : null
           if (hold === 'dialog' && stopOnDialog) {
-            sawDialog = true
             stop.abort()
           }
           return hold === null
@@ -241,7 +236,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       }
     )
     if (!ptyId) {
-      throw new Error(sawDialog ? FRESH_COMPOSER_DIALOG_ERROR : 'timeout')
+      throw new Error(stop.signal.aborted ? 'agent_startup_dialog' : 'timeout')
     }
     this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
     if (!this.ptysById.get(ptyId)?.connected) {

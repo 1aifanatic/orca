@@ -38,9 +38,6 @@ const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode'
  */
 const INLINE_RENDERING_COMPOSER_AGENTS: ReadonlySet<TuiAgent> = new Set(['grok'])
 
-/** `waitForFreshWorkerComposer` stopped on a startup dialog rather than running out of time. */
-export const FRESH_COMPOSER_DIALOG_ERROR = 'agent_startup_dialog'
-
 export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
   'waitForTerminal' | 'waitForFreshWorkerComposer'
