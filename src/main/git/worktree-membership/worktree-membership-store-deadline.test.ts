@@ -125,6 +125,35 @@ describe('worktree membership model on a hung mount', () => {
     expect(stalledReads).toBeGreaterThan(0)
   })
 
+  it('keeps nothing of the readers that gave up on a hung derivation', async () => {
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    await readWorktreeMembership(repoPath)
+    const model = _getWorktreeMembershipModelForTests(repoPath)!
+    hang.prefix = join(repoPath, '.git')
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    const first = readWorktreeMembership(repoPath, { timeout: 1 })
+    await expect(first).rejects.toBeInstanceOf(WorktreeMembershipTimeoutError)
+    for (let reader = 0; reader < 50; reader++) {
+      now += MEMBERSHIP_REUSE_WINDOW_MS
+      await expect(readWorktreeMembership(repoPath, { timeout: 1 })).rejects.toBeInstanceOf(
+        WorktreeMembershipTimeoutError
+      )
+    }
+    expect(model.inFlight?.work.waiterCount).toBe(0)
+    expect(model.followUp?.waiterCount).toBe(0)
+  })
+
+  it('keeps nothing of the readers that gave up on a hung cold build', async () => {
+    hang.prefix = join(repoPath, '.git')
+    for (let reader = 0; reader < 50; reader++) {
+      await expect(readWorktreeMembership(repoPath, { timeout: 1 })).rejects.toBeInstanceOf(
+        WorktreeMembershipTimeoutError
+      )
+    }
+    expect(_getWorktreeMembershipModelForTests(repoPath)?.building?.work.waiterCount).toBe(0)
+  })
+
   it('fails a cold build by its deadline and joins it instead of building again', async () => {
     hang.prefix = join(repoPath, '.git')
     await expect(readWorktreeMembership(repoPath, { timeout: 50 })).rejects.toBeInstanceOf(

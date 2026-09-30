@@ -17,6 +17,7 @@ import {
   type MembershipDerivationStart,
   type WorktreeMembershipModel
 } from './worktree-membership-model'
+import { SharedDerivationWork } from './shared-derivation-work'
 
 export { MissingRepoPathError } from './worktree-membership-derivation'
 
@@ -46,49 +47,15 @@ export class WorktreeMembershipTimeoutError extends Error {
 
 const models = new Map<string, WorktreeMembershipModel>()
 
-function raceSignal<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (!signal) {
-    return work
-  }
-  if (signal.aborted) {
-    return Promise.reject(signal.reason)
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(signal.reason)
-    signal.addEventListener('abort', onAbort, { once: true })
-    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
-  })
-}
-
-/**
- * Rejects once `timeoutMs` passes; the work keeps running and still settles. Why: fs reads have no
- * deadline of their own, and on a hung mount they would hold every waiting read forever.
- */
-function boundByDeadline<T>(
-  work: Promise<T>,
-  timeoutMs: number,
-  onTimeout: () => Error
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(onTimeout()), timeoutMs)
-    work.then(resolve, reject).finally(() => clearTimeout(timer))
-  })
-}
-
-/** Awaits shared model work under this reader's own deadline and signal. */
+/** Waits on shared model work under this reader's own deadline and signal. */
 function awaitModelWork<T>(
   model: WorktreeMembershipModel,
-  work: Promise<T>,
+  work: SharedDerivationWork<T>,
   options: WorktreeMembershipReadOptions
 ): Promise<T> {
   // Zero is no deadline override, as the Git runner treats it.
   const waitMs = options.waitMs || options.timeout || WORKTREE_LIST_TIMEOUT_MS
-  const bounded = boundByDeadline(
-    work,
-    waitMs,
-    () => new WorktreeMembershipTimeoutError(model.repoPath)
-  )
-  return raceSignal(bounded, options.signal)
+  return work.wait(waitMs, () => new WorktreeMembershipTimeoutError(model.repoPath), options.signal)
 }
 
 /** The one reuse rule, for finished and in-flight derivations alike. */
@@ -137,14 +104,14 @@ function startModel(
       throw error
     }
   )
-  model.building = { generation: 0, startedAt, work }
+  model.building = { generation: 0, startedAt, work: new SharedDerivationWork(work) }
   return model
 }
 
 function startDerivation(
   model: WorktreeMembershipModel,
   options: WorktreeMembershipReadOptions
-): Promise<GitWorktreeInfo[]> {
+): SharedDerivationWork<GitWorktreeInfo[]> {
   const start = {
     generation: model.generation,
     startedAt: Date.now(),
@@ -165,12 +132,13 @@ function startDerivation(
       throw error
     })
     .finally(() => {
-      if (model.inFlight?.work === work) {
+      if (model.inFlight?.work === shared) {
         model.inFlight = null
       }
     })
-  model.inFlight = { generation: start.generation, startedAt: start.startedAt, work }
-  return work
+  const shared = new SharedDerivationWork(work)
+  model.inFlight = { generation: start.generation, startedAt: start.startedAt, work: shared }
+  return shared
 }
 
 function readModel(
@@ -181,6 +149,10 @@ function readModel(
   if (isReusable(model, model.validated, now)) {
     return Promise.resolve(model.rows)
   }
+  // A queued follow-up means the running derivation was already too old for an earlier reader.
+  if (model.followUp) {
+    return awaitModelWork(model, model.followUp, options)
+  }
   const inFlight = model.inFlight
   if (!inFlight) {
     return awaitModelWork(model, startDerivation(model, options), options)
@@ -190,15 +162,16 @@ function readModel(
   }
   // One derivation per model at a time, so a slow or hung disk never stacks fs work. A reader that
   // cannot reuse the running one shares the next, which starts after it arrived.
-  model.followUp ??= inFlight.work
+  const followUp = inFlight.work.promise
     .then(
       () => undefined,
       () => undefined
     )
     .then(() => {
       model.followUp = null
-      return startDerivation(model, options)
+      return startDerivation(model, options).promise
     })
+  model.followUp = new SharedDerivationWork(followUp)
   return awaitModelWork(model, model.followUp, options)
 }
 
