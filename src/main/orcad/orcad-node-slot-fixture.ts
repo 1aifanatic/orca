@@ -2,12 +2,15 @@
 import { existsSync } from 'node:fs'
 import { copyFile, link, mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { it } from 'vitest'
+import { runProcessSync } from '../../shared/child-process/run-process'
 import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
 import {
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_SERVER_TARGET_FILENAME,
   orcadNodeRuntimeRelativePath
 } from '../../shared/orcad-artifacts'
+import { ORCAD_BUN_VERSION } from '../../shared/orcad-bun-runtime'
 import { detectNativeHostAbi, nativeSlotName } from './native-host-abi'
 
 export function hostServerTarget(): ServerTarget {
@@ -36,6 +39,17 @@ export function locatePinnedNodeForTests(): string | null {
   )
 }
 
+/** Bun 1.4.2 (BUN_EXECUTABLE, else `bun` on PATH), the last runtime orcad shipped on, if any. */
+export function locateBunForTests(): string | null {
+  const candidate = process.env.BUN_EXECUTABLE ?? 'bun'
+  try {
+    const result = runProcessSync({ program: candidate, args: ['--version'], timeoutMs: 10_000 })
+    return result.code === 0 && result.stdout.trim() === ORCAD_BUN_VERSION ? candidate : null
+  } catch {
+    return null
+  }
+}
+
 /** Writes `<root>/slot/{.server-target,.runtime-node}` and links the runtime into `<root>/runtimes/`. */
 export async function writeNodeSlotFixture(
   root: string,
@@ -52,4 +66,27 @@ export async function writeNodeSlotFixture(
   // Why a hard link: the runtime is ~120 MB, and a copy per test would dominate the suite.
   await link(pinnedNode, runtime).catch(() => copyFile(pinnedNode, runtime))
   return { slotDir, runtime }
+}
+
+/** Comma-separated input groups a lane must have; set by run-node-server-tests.mjs. */
+export const ORCA_REQUIRED_TEST_INPUTS_ENV = 'ORCA_REQUIRED_TEST_INPUTS'
+export type RequiredTestInputGroup = 'artifact' | 'cross-runtime'
+
+/**
+ * True when a suite must skip for `missing` inputs. A lane that named `group` as required
+ * gets a failing test instead, so a missing input can never pass as a silent skip.
+ */
+export function skipForMissingInputs(
+  group: RequiredTestInputGroup,
+  missing: readonly string[]
+): boolean {
+  if (missing.length === 0) {
+    return false
+  }
+  if ((process.env[ORCA_REQUIRED_TEST_INPUTS_ENV] ?? '').split(',').includes(group)) {
+    it(`has its required ${group} inputs`, () => {
+      throw new Error(`Missing ${group} test inputs: ${missing.join('; ')}`)
+    })
+  }
+  return true
 }

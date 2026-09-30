@@ -54,7 +54,7 @@ const ALWAYS_PREFIXES = [
 ]
 
 export function discoverNodeServerTests(root = ROOT) {
-  const selectors = nodeServerTestPaths({ artifact: true })
+  const selectors = nodeServerTestPaths({ artifact: true, crossRuntime: true })
   return globSync(
     ['src/**/*.test.{ts,tsx}', 'config/scripts/**/*.test.{ts,mjs}', 'tests/e2e/**/*.unit.test.ts'],
     { cwd: root }
@@ -100,7 +100,7 @@ export async function classifyNodeServerChanges(changedFiles, collect = collectN
   if (changedFiles.length === 0) {
     return { shouldRun: true, reason: 'No complete changed-file evidence' }
   }
-  const selectors = nodeServerTestPaths({ artifact: true })
+  const selectors = nodeServerTestPaths({ artifact: true, crossRuntime: true })
   const forced = changedFiles.find(
     (file) =>
       ALWAYS_FILES.has(file) ||

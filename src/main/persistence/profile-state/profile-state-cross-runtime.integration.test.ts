@@ -7,25 +7,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runProcess, runProcessSync } from '../../../shared/child-process/run-process'
-import { ORCAD_BUN_VERSION } from '../../../shared/orcad-bun-runtime'
+import { runProcess } from '../../../shared/child-process/run-process'
 import {
   buildProfileStateCutoverFixture,
   canonicalProfileStateJson
 } from '../profile-state-cutover-fixture'
-import { locatePinnedNodeForTests } from '../../orcad/orcad-node-slot-fixture'
+import {
+  locateBunForTests,
+  locatePinnedNodeForTests,
+  skipForMissingInputs
+} from '../../orcad/orcad-node-slot-fixture'
 
-function locateBun(): string | null {
-  const candidate = process.env.BUN_EXECUTABLE ?? 'bun'
-  try {
-    const result = runProcessSync({ program: candidate, args: ['--version'], timeoutMs: 10_000 })
-    return result.code === 0 && result.stdout.trim() === ORCAD_BUN_VERSION ? candidate : null
-  } catch {
-    return null
-  }
-}
-
-const bun = locateBun()
+const bun = locateBunForTests()
 const node = locatePinnedNodeForTests()
 const directory = mkdtempSync(join(tmpdir(), 'orca-profile-cross-runtime-'))
 const entry = join(directory, 'cross-runtime.cjs')
@@ -101,7 +94,12 @@ async function run(
   return Object.fromEntries(Object.entries(parsed))
 }
 
-describe.skipIf(!bun || !node)('profile database across Bun 1.4.2 and the pinned Node', () => {
+const skip = skipForMissingInputs('cross-runtime', [
+  ...(bun ? [] : ['Bun 1.4.2 (BUN_EXECUTABLE or bun on PATH)']),
+  ...(node ? [] : ['the pinned Node (ORCA_PINNED_NODE or out/runtimes)'])
+])
+
+describe.skipIf(skip)('profile database across Bun 1.4.2 and the pinned Node', () => {
   it.each([
     ['Bun', 'Node'],
     ['Node', 'Bun']

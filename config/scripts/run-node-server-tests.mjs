@@ -12,18 +12,34 @@ import { packagedNodeRuntimePath } from './build-orcad-node.mjs'
 import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
 import { currentTarget } from './server-build-target.mjs'
 import { runProcessSync } from './script-child-process.mjs'
-import { nodeServerTestPaths } from './node-server-test-paths.mjs'
+import {
+  CROSS_RUNTIME_TEST_PATHS,
+  nodeServerTestPaths,
+  REQUIRED_TEST_INPUTS_ENV
+} from './node-server-test-paths.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const target = currentTarget()
 const artifact = process.argv.includes('--artifact')
-const testArgs = process.argv.slice(2).filter((arg) => arg !== '--artifact')
+// Lanes that provide Bun 1.4.2 and the last Bun orcad slot (design D7 upgrade and rollback).
+const crossRuntime = process.argv.includes('--cross-runtime')
+const testArgs = process.argv
+  .slice(2)
+  .filter((arg) => arg !== '--artifact' && arg !== '--cross-runtime')
 const packageDir = join(root, 'out', 'orcad')
 const runtimePath = artifact
   ? packagedNodeRuntimePath(packageDir, target)
   : await ensurePinnedNodeExecutable({ target })
-// Tests that launch the packaged runtime themselves find it here.
-const env = { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_PINNED_NODE: runtimePath }
+// Tests that launch the packaged runtime themselves find it here. A lane's named inputs are
+// required: their tests fail on a missing input instead of passing as a skip.
+const env = {
+  ...process.env,
+  ORCA_BACKGROUND_LAUNCH: '1',
+  ORCA_PINNED_NODE: runtimePath,
+  [REQUIRED_TEST_INPUTS_ENV]: [artifact && 'artifact', crossRuntime && 'cross-runtime']
+    .filter(Boolean)
+    .join(',')
+}
 
 function run(program, args) {
   const result = runProcessSync({
@@ -64,5 +80,13 @@ run(runtimePath, [
   'run',
   '--config',
   'config/vitest.config.ts',
-  ...(testArgs.length > 0 ? testArgs : nodeServerTestPaths({ artifact }))
+  ...(testArgs.length > 0 ? testArgs : defaultTestArgs())
 ])
+
+function defaultTestArgs() {
+  return [
+    ...nodeServerTestPaths({ artifact, crossRuntime }),
+    // A directory selector would otherwise pull them into lanes that lack their inputs.
+    ...(crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS.flatMap((path) => ['--exclude', path]))
+  ]
+}

@@ -10,6 +10,7 @@ import {
 } from './node-server-change-scope.mjs'
 import { nodeServerTestPaths } from './node-server-test-paths.mjs'
 import { ORCAD_CHILD_ENTRY_POINTS } from './orcad-entry-build.mjs'
+import { ORCAD_BUN_VERSION } from '../../src/shared/orcad-bun-runtime.ts'
 
 const temporaryDirs = []
 afterEach(() => {
@@ -157,4 +158,24 @@ it('keeps all ten platform jobs and runs them when detection is skipped or fails
     expect(job.if).toContain("needs.changes.outputs.should_run != 'false'")
     expect(job.strategy.matrix.os).toEqual(['ubuntu-22.04', 'ubuntu-24.04-arm'])
   }
+})
+
+it('runs the Bun and Node cross-runtime tests on Linux against pinned inputs', () => {
+  const workflow = parse(
+    readFileSync(new URL('../../.github/workflows/node-server-tests.yml', import.meta.url), 'utf8')
+  )
+  const steps = workflow.jobs.persistence.steps
+  const setupBun = steps.find((step) => String(step.uses).startsWith('oven-sh/setup-bun@'))
+  expect(setupBun.uses).toMatch(/^oven-sh\/setup-bun@[0-9a-f]{40}$/)
+  expect(setupBun.with['bun-version']).toBe(ORCAD_BUN_VERSION)
+  const build = steps.find((step) => String(step.run).includes('build-orcad-bun.mjs'))
+  expect(build.env.BUN_ORCAD_COMMIT).toMatch(/^[0-9a-f]{40}$/)
+  expect(build.run).toContain('ORCA_BUN_ORCAD_SLOT=')
+  expect(build.run).toContain('BUN_EXECUTABLE=')
+  for (const step of [setupBun, build]) {
+    expect(step.if).toBe("runner.os == 'Linux'")
+  }
+  expect(steps.map((step) => step.run).join('\n')).toContain(
+    "pnpm test:node-server --artifact ${{ runner.os == 'Linux' && '--cross-runtime' || '' }}"
+  )
 })

@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
-import { locatePinnedNodeForTests, writeNodeSlotFixture } from './orcad-node-slot-fixture'
+import {
+  locatePinnedNodeForTests,
+  skipForMissingInputs,
+  writeNodeSlotFixture
+} from './orcad-node-slot-fixture'
 
 const pinnedNode = locatePinnedNodeForTests()
 // Any Node other than the slot's runtime path plays the service unit's launcher.
@@ -18,7 +22,12 @@ let slotRuntime = ''
 const children = new Set<ReturnType<typeof spawnProcess>>()
 const runtimes = new Set<number>()
 
-describe.skipIf(!pinnedNode)('real pinned-Node launcher lifecycle', () => {
+const skip = skipForMissingInputs(
+  'artifact',
+  pinnedNode ? [] : ['the pinned Node (ORCA_PINNED_NODE or out/runtimes)']
+)
+
+describe.skipIf(skip)('real pinned-Node launcher lifecycle', () => {
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'orca-node-launcher-'))
     ;({ slotDir, runtime: slotRuntime } = await writeNodeSlotFixture(directory, pinnedNode!))

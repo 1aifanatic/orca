@@ -8,23 +8,26 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import { ORCAD_NODE_PTY_DIR } from '../../shared/orcad-artifacts'
 import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
-import { locatePinnedNodeForTests } from './orcad-node-slot-fixture'
+import { locatePinnedNodeForTests, skipForMissingInputs } from './orcad-node-slot-fixture'
 
 const packageDir = resolve('out/orcad')
 const pinnedNode = locatePinnedNodeForTests()
 
-describe.skipIf(!pinnedNode || !existsSync(join(packageDir, ORCAD_NODE_PTY_DIR)))(
-  'packaged node-pty under the pinned Node',
-  () => {
-    it('spawns, reattaches, delivers data and retires a shell from the shipped slot only', async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'orca-packaged-node-pty-'))
-      try {
-        const entry = join(directory, 'local-pty.cjs')
-        // Why a link and not NODE_PATH: the dynamic ESM import() ignores NODE_PATH.
-        await symlink(join(packageDir, 'node_modules'), join(directory, 'node_modules'), 'junction')
-        await build({
-          stdin: {
-            contents: `
+const skip = skipForMissingInputs('artifact', [
+  ...(pinnedNode ? [] : ['the pinned Node (ORCA_PINNED_NODE or out/runtimes)']),
+  ...(existsSync(join(packageDir, ORCAD_NODE_PTY_DIR)) ? [] : [`out/orcad/${ORCAD_NODE_PTY_DIR}`])
+])
+
+describe.skipIf(skip)('packaged node-pty under the pinned Node', () => {
+  it('spawns, reattaches, delivers data and retires a shell from the shipped slot only', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'orca-packaged-node-pty-'))
+    try {
+      const entry = join(directory, 'local-pty.cjs')
+      // Why a link and not NODE_PATH: the dynamic ESM import() ignores NODE_PATH.
+      await symlink(join(packageDir, 'node_modules'), join(directory, 'node_modules'), 'junction')
+      await build({
+        stdin: {
+          contents: `
               import { LocalPtyProvider } from './src/main/providers/local-pty-provider'
               import { setAppEnvironment } from './src/shared/app-environment'
               import { getCmdExePath } from './src/shared/windows-batch-spawn'
@@ -59,43 +62,42 @@ describe.skipIf(!pinnedNode || !existsSync(join(packageDir, ORCAD_NODE_PTY_DIR))
                 }))
               })().catch(error => { clearTimeout(deadline); provider.killAll(); console.error(error); process.exitCode = 1 })
             `,
-            resolveDir: process.cwd(),
-            loader: 'ts'
-          },
-          bundle: true,
-          platform: 'node',
-          format: 'cjs',
-          target: 'node18',
-          external: ['node-pty', 'electron', '@parcel/watcher', '*.node'],
-          outfile: entry,
-          logLevel: 'silent'
-        })
-        const result = await runProcess({
-          program: pinnedNode!,
-          args: [entry],
-          cwd: directory,
-          env: {
-            ...process.env,
-            ORCA_BACKGROUND_LAUNCH: '1',
-            ORCA_DISABLE_MACOS_LOGIN_SHELL: '1',
-            ORCA_USER_DATA_PATH: directory
-          },
-          timeoutMs: 15_000,
-          terminationBarrier: true
-        })
-        expect(result.code, result.stderr).toBe(0)
-        expect(JSON.parse(result.stdout)).toEqual({
-          version: NODE_RUNTIME_PIN.version,
-          code: 17,
-          output: true,
-          reattached: true,
-          retired: true
-        })
-      } finally {
-        // Unlink first so tree removal can never walk into the package it links to.
-        await unlink(join(directory, 'node_modules')).catch(() => {})
-        removeTreeSync(directory)
-      }
-    }, 20_000)
-  }
-)
+          resolveDir: process.cwd(),
+          loader: 'ts'
+        },
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        target: 'node18',
+        external: ['node-pty', 'electron', '@parcel/watcher', '*.node'],
+        outfile: entry,
+        logLevel: 'silent'
+      })
+      const result = await runProcess({
+        program: pinnedNode!,
+        args: [entry],
+        cwd: directory,
+        env: {
+          ...process.env,
+          ORCA_BACKGROUND_LAUNCH: '1',
+          ORCA_DISABLE_MACOS_LOGIN_SHELL: '1',
+          ORCA_USER_DATA_PATH: directory
+        },
+        timeoutMs: 15_000,
+        terminationBarrier: true
+      })
+      expect(result.code, result.stderr).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({
+        version: NODE_RUNTIME_PIN.version,
+        code: 17,
+        output: true,
+        reattached: true,
+        retired: true
+      })
+    } finally {
+      // Unlink first so tree removal can never walk into the package it links to.
+      await unlink(join(directory, 'node_modules')).catch(() => {})
+      removeTreeSync(directory)
+    }
+  }, 20_000)
+})
