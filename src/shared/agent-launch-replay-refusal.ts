@@ -6,7 +6,18 @@
  * client must not launch again on its own; `failed` means the host refused before starting anything.
  */
 
+import { AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE } from './agent-launch-pane-already-live'
+import { AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE } from './agent-launch-session-already-exists'
+
 export type AgentLaunchReplayRefusal = 'unsupported' | 'unknown' | 'failed'
+
+/** The pane or chat the launch reserved is already held. */
+export function isAgentLaunchReservationTakenRefusal(error: { code?: string }): boolean {
+  return (
+    error.code === AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE ||
+    error.code === AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE
+  )
+}
 
 /** An older host rejects the method rather than a field. */
 export function isAgentLaunchReplayUnsupportedRefusal(error: { code?: string }): boolean {
@@ -31,6 +42,11 @@ export function classifyAgentLaunchReplayRefusal(
     error.code === 'agent_session_operation_expired'
   ) {
     return 'unknown'
+  }
+  if (isAgentLaunchReservationTakenRefusal(error)) {
+    // A taken reservation proves nothing started only on the first send; after a replay the pane
+    // or chat holding it may be this launch's own.
+    return replayed ? 'unknown' : 'failed'
   }
   return 'failed'
 }

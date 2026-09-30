@@ -344,6 +344,17 @@ describe('launching a source-control button’s agent through the host', () => {
     expect((await launchSourceControlAgent(ARGS)).kind).toBe('unknown')
   })
 
+  // Why: after a replay, the pane or chat that holds the reservation may be this launch's own.
+  it('fails a taken reservation on the first send, but calls it unconfirmed after a replay', async () => {
+    mocks.callRuntimeRpc.mockRejectedValueOnce(rpcRefusal('agent_launch_pane_already_live'))
+    expect((await launchSourceControlAgent(ARGS)).kind).toBe('failed')
+
+    mocks.callRuntimeRpc
+      .mockRejectedValueOnce(new Error('socket closed'))
+      .mockRejectedValueOnce(rpcRefusal('agent_launch_session_already_exists'))
+    expect((await launchSourceControlAgent(ARGS)).kind).toBe('unknown')
+  })
+
   it('treats an operation the host no longer knows as unconfirmed', async () => {
     mocks.callRuntimeRpc.mockRejectedValue(rpcRefusal('agent_session_operation_unknown'))
 
