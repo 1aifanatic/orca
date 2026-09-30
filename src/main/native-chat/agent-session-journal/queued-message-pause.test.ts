@@ -112,6 +112,21 @@ function held(journal: AgentSessionJournal): [string, boolean][] {
     .map((card) => [card.messageId, queuePauseHolding(pauses, card) !== undefined])
 }
 
+/** The Stop events stored in the live epoch, oldest first. */
+function stopEvents(): unknown[] {
+  const db = new Database(journalDatabasePath(root), { readonly: true })
+  try {
+    return liveTestJournalRows(db, IDENTITY.sessionId).flatMap((stored) => {
+      const parsed = parseJournalRow(stored.rowJson)
+      return parsed.ok && parsed.row.kind === 'tombstone' && parsed.row.stopEvent
+        ? [parsed.row.stopEvent]
+        : []
+    })
+  } finally {
+    db.close()
+  }
+}
+
 /** Tables that could store a pause: none, the journal rows are the only record. */
 function pauseTables(): number {
   const db = new Database(journalDatabasePath(root), { readonly: true })
@@ -266,6 +281,40 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBe('stopped')
     await turn(journal, 'typed', 'client')
     await journal.replaceEpochItems('handle_forked', 0, [])
+    expect(reason(journal)).toBeNull()
+  })
+
+  it('the restated Stop is the same event: its reason, turn, caller and time', async () => {
+    const journal = await open()
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-7', caller: 'phone' }, 0)
+    const stopped = stopEvents()
+    await journal.replaceEpochItems('handle_forked', 0, [])
+    expect(stopEvents()).toEqual(stopped)
+    expect(stopped).toEqual([
+      { reason: 'user-stop', turnId: 'turn-7', caller: 'phone', at: expect.any(Number) }
+    ])
+  })
+
+  it.each([
+    ["a person's turn", (journal: AgentSessionJournal) => turn(journal, 'typed', 'client')],
+    ['a Resume', (journal: AgentSessionJournal) => journal.appendQueueResume(0)]
+  ])("a /clear pause %s already lifted stays lifted across a rewind", async (_name, lift) => {
+    const journal = await open()
+    await queueDraft(journal, 'carried', 'source-session')
+    await lift(journal)
+    expect(reason(journal)).toBeNull()
+    await journal.replaceEpochItems('handle_forked', 0, [])
+    expect(reason(journal)).toBeNull()
+  })
+
+  it('a lifted /clear pause and a later Stop are both restated, the Stop still in force', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'carried', 'source-session')
+    await turn(journal, 'typed', 'client')
+    await userStop(journal)
+    await journal.replaceEpochItems('handle_forked', 0, [])
+    expect(journal.queuedMessages.pauses(HOST).map((pause) => pause.reason)).toEqual(['stopped'])
+    await journal.appendQueueResume(0)
     expect(reason(journal)).toBeNull()
   })
 })
