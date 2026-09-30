@@ -232,7 +232,7 @@ async function restore(sessionIds: readonly string[]) {
   await restoreStructuredAgentSessionsOnRestart({
     openDeps: deps,
     records: sessionIds.map(recordFor),
-    reconcile: async () => null,
+    reconcile: async () => true,
     resolveRecovery: async () => undefined,
     serialize: async (_sessionId, task) => task(),
     hasSession: (sessionId) => sessions.has(sessionId),
