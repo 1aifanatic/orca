@@ -110,7 +110,7 @@ function fakes() {
       task: { id: 't1', spec: 'do the thing' }
     }),
     recordWorkerStage: () => {},
-    prepareStartingWorkerAuthority: () => 'capability'
+    prepareStartingWorkerAuthority: () => {}
   } as unknown as OrchestrationDb
   return { runtime, db, retireStructuredAgentSessionTabFromSnapshot }
 }
