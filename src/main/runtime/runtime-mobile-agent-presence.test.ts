@@ -101,11 +101,23 @@ describe('headless mobile owner projection', () => {
 
   it('carries a positive exit through the snapshot even with a stale launch hint', () => {
     const { setRows, tabFor } = projection()
-    setRows([ownerRow(true)])
-    expect(tabFor(capable)).toMatchObject({
+    setRows([
+      {
+        ...ownerRow(true),
+        model: 'claude-opus',
+        providerSession: { key: 'session_id', id: 'claude-session' }
+      }
+    ])
+    const tab = tabFor(capable)
+    expect(tab).toMatchObject({
       launchAgent: 'claude',
       agentStatus: { agentPresence: { agent: 'claude', process: processIdentity, ended: true } }
     })
+    // An exited owner is identity only; its session, model and type must not reach a successor.
+    const status = tab?.type === 'terminal' ? tab.agentStatus : undefined
+    expect(status).not.toHaveProperty('providerSession')
+    expect(status).not.toHaveProperty('model')
+    expect(status).not.toHaveProperty('agentType')
   })
 
   it('negotiates the full snapshot and never accepts client-published presence as host evidence', () => {

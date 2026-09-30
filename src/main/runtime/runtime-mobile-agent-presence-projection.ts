@@ -18,9 +18,7 @@ export function projectHostAgentPresenceStatus(
   if (!row?.agentPresence?.process) {
     return undefined
   }
-  return {
-    ...pickParsedAgentStatusPayload(row),
-    agentType: row.agentPresence.agent,
+  const identity = {
     agentPresence: row.agentPresence,
     paneKey: row.paneKey,
     updatedAt: row.receivedAt,
@@ -29,7 +27,16 @@ export function projectHostAgentPresenceStatus(
     ...(row.evidenceObservedAt !== undefined ? { evidenceObservedAt: row.evidenceObservedAt } : {}),
     ...(row.terminalHandle ? { terminalHandle: row.terminalHandle } : {}),
     ...(row.worktreeId ? { worktreeId: row.worktreeId } : {}),
-    ...(row.tabId ? { tabId: row.tabId } : {}),
+    ...(row.tabId ? { tabId: row.tabId } : {})
+  }
+  // Why: an exited owner is identity history; its session, model and type must not reach a successor.
+  if (row.agentPresence.ended) {
+    return { ...identity, state: row.state, prompt: '' }
+  }
+  return {
+    ...pickParsedAgentStatusPayload(row),
+    ...identity,
+    agentType: row.agentPresence.agent,
     ...(row.providerSession ? { providerSession: row.providerSession } : {})
   }
 }
