@@ -1,4 +1,5 @@
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import {
   abandonStructuredAgentSessionLaunchIntent,
@@ -67,6 +68,7 @@ type StructuredLaunchStateResult = {
 
 export type StructuredAgentLaunchResult = {
   sessionId: string
+  executionHostId: ExecutionHostId
   launchResult: Promise<StructuredAgentLaunchReceipt>
   promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
   isVisibilityUnknown: () => boolean
@@ -226,12 +228,12 @@ function structuredAgentLaunchState(
     }
   }
 
-  // Only pass the third argument when adopting: every ordinary launch keeps the two-argument call
-  // it has always made, so this change adds no trailing `undefined` for call-site assertions to
-  // absorb.
-  const intent = options.resumeFrom
-    ? createStructuredAgentSessionLaunchIntent(worktreeId, agent, options.resumeFrom)
-    : createStructuredAgentSessionLaunchIntent(worktreeId, agent)
+  const intent = createStructuredAgentSessionLaunchIntent(
+    worktreeId,
+    agent,
+    options.executionHostId,
+    options.resumeFrom
+  )
   const text = outboxPromptText(options)
   const stagedPrompt = text
     ? enqueueStructuredAgentSessionLaunchPrompt(intent.sessionId, text)
@@ -280,7 +282,7 @@ export function cancelStructuredAgentLaunch(worktreeId: string, sessionId: strin
   if (!state) {
     return false
   }
-  markStructuredAgentSessionLaunchCancelled(worktreeId, sessionId)
+  markStructuredAgentSessionLaunchCancelled(worktreeId, sessionId, state.intent.executionHostId)
   discardStructuredAgentSessionLaunchOutbox(state.intent.sessionId)
   launchDraft.clearStructuredAgentLaunchDraft(state.intent.sessionId)
   abandonStructuredAgentSessionLaunchIntent(state.intent)
@@ -296,6 +298,7 @@ export function startStructuredAgentLaunch(
   const { state, caller } = structuredAgentLaunchState(worktreeId, agent, options)
   return {
     sessionId: state.intent.sessionId,
+    executionHostId: state.intent.executionHostId,
     launchResult: state.promise,
     ...(caller.promptDeliveryResult ? { promptDeliveryResult: caller.promptDeliveryResult } : {}),
     isVisibilityUnknown: () => state.visibilityUnknown,

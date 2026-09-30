@@ -67,6 +67,7 @@ import { resetStructuredAgentLaunchRegistryForTests } from './structured-agent-s
 function launchIntent(worktreeId: string, sessionId: string): StructuredAgentSessionLaunchIntent {
   return {
     worktreeId,
+    executionHostId: 'local',
     target: { kind: 'local' },
     sessionId,
     agent: 'codex',

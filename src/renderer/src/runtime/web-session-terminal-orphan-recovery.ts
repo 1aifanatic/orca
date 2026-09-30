@@ -28,7 +28,7 @@ import {
   type TerminalOrphanRecoveryState
 } from './web-session-terminal-orphan-recovery-surface'
 import { resolveTerminalOrphanInventory } from './web-session-terminal-orphan-recovery-inventory'
-import { suppressCancelledStructuredSessionTabs } from './structured-agent-session-tab-retirement'
+import { acceptPairedHostStructuredSessions } from './structured-agent-session-tab-retirement'
 import { resolvePersistedTerminalSurfaces } from './web-session-terminal-orphan-recovery-pane'
 import {
   clearCachedSurfaceResolutions,
@@ -252,11 +252,11 @@ export function recoverWebSessionTerminalOrphansBeforeApply(
 ): Promise<RuntimeMobileSessionTabsResult | null> {
   const options = normalizeOptions(optionsOrCall)
   // Why: every host frame enters recovery here, so this is where a delta frame regains the proofs
-  // the host already sent this client (see the ledger for the negotiated contract), and where a
-  // chat this client cancelled before its create landed is retired on the host that published it.
-  const snapshot = suppressCancelledStructuredSessionTabs(
+  // the host already sent this client (see the ledger for the negotiated contract), and where its
+  // structured chats settle this client's launch bookkeeping.
+  const snapshot = acceptPairedHostStructuredSessions(
     mergeRetainedTerminalRetirementProofs(environmentId, frame),
-    { kind: 'environment', environmentId }
+    environmentId
   )
   const key = recoveryKey(
     environmentId,

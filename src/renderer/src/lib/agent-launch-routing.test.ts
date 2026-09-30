@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import {
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../shared/protocol-version'
 import {
   hasExplicitTuiLaunchCommand,
   resolveAgentLaunchRoute,
@@ -95,7 +98,16 @@ describe('resolveAgentLaunchRoute', () => {
   })
 
   it('routes a paired server by its own capabilities', () => {
-    expect(route({ executionHostId: 'runtime:environment-a' })).toBe('structured-native-chat')
+    const server = {
+      executionHostId: 'runtime:environment-a',
+      hostCapabilities: [
+        STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+        STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+      ]
+    }
+    expect(route(server)).toBe('structured-native-chat')
+    // A released server admits chats only with its own setting on, so it keeps the terminal.
+    expect(route({ executionHostId: 'runtime:environment-a' })).toBe('legacy-native-chat')
     // The server has not answered yet, or answered without structured sessions.
     expect(route({ executionHostId: 'runtime:environment-a', hostCapabilities: null })).toBe(
       'legacy-native-chat'

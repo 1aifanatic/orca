@@ -1,4 +1,5 @@
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/launch-structured-agent-session'
 import {
   cancelStructuredAgentLaunch,
@@ -29,6 +30,8 @@ export type StructuredAgentLaunchHooks = {
 
 export type StructuredAgentLaunchHandle = {
   sessionId: string
+  /** The host the chat is created on. */
+  executionHostId: ExecutionHostId
   settlement: Promise<StructuredAgentLaunchSettlement>
   promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
   cancel: () => void
@@ -97,6 +100,7 @@ export function beginStructuredAgentLaunchSettlement(
   const launch = startStructuredAgentLaunch(worktreeId, agent, options)
   return {
     sessionId: launch.sessionId,
+    executionHostId: launch.executionHostId,
     settlement: settleStartedStructuredAgentLaunch(worktreeId, launch, hooks),
     cancel: () => cancelStructuredAgentLaunch(worktreeId, launch.sessionId),
     ...(launch.promptDeliveryResult ? { promptDeliveryResult: launch.promptDeliveryResult } : {})

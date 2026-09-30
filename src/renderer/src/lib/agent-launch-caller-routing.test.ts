@@ -3,13 +3,15 @@
 // lives in agent-launch-caller-profiles-test-harness.ts.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import {
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../shared/protocol-version'
 import {
   callerProfileCases,
   type AgentLaunchCallerProfile
 } from './agent-launch-caller-profiles-test-harness'
 import { createLaunchFunnelStore, resetLaunchFunnelStore } from './agent-launch-funnel-test-harness'
-import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 
 const store = createLaunchFunnelStore()
 const mockIsWebRuntimeSessionActive = vi.fn(() => false)
@@ -17,7 +19,6 @@ const mockLaunchAgentInWebHostTab = vi.fn()
 const mockLaunchAgentInStructuredNewTab = vi.fn()
 const mockHostCapabilities = vi.fn<() => readonly string[] | null>(() => [])
 const mockExecutionHostId = vi.fn(() => 'local')
-const mockServerCapabilities = vi.fn<() => readonly string[] | null>(() => null)
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
 vi.mock('@/lib/new-workspace', () => ({ CLIENT_PLATFORM: 'darwin' }))
@@ -58,10 +59,14 @@ vi.mock('@/lib/launch-agent-in-new-tab-structured', () => ({
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => mockHostCapabilities()
 }))
-vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
-  ...(await importOriginal<typeof RuntimeRpcClientModule>()),
-  readRuntimeEnvironmentCapabilitiesOrUnknown: () => mockServerCapabilities()
-}))
+/** What the paired server that owns 'wt-1' last reported about itself. */
+function serverReports(capabilities: readonly string[] | null): void {
+  Object.assign(store, {
+    runtimeStatusByEnvironmentId: new Map(
+      capabilities ? [['web-runtime', { status: { capabilities } }]] : []
+    )
+  })
+}
 
 const CHAT_DEFAULT_SETTINGS = {
   experimentalNativeChat: true,
@@ -82,7 +87,7 @@ describe('agent launch caller routing', () => {
     resetLaunchFunnelStore(store)
     mockIsWebRuntimeSessionActive.mockReturnValue(false)
     mockExecutionHostId.mockReturnValue('local')
-    mockServerCapabilities.mockReturnValue(null)
+    serverReports(null)
     mockHostCapabilities.mockReturnValue([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY])
     mockLaunchAgentInStructuredNewTab.mockReturnValue({
       sessionId: 'session-1',
@@ -170,7 +175,10 @@ describe('agent launch caller routing', () => {
     mockExecutionHostId.mockReturnValue('runtime:web-runtime')
     // This machine could not host one; the server that owns the workspace can.
     mockHostCapabilities.mockReturnValue([])
-    mockServerCapabilities.mockReturnValue([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY])
+    serverReports([
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+      STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+    ])
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     const result = launchAgentInNewTab({ agent: 'claude', worktreeId: 'wt-1' })
@@ -184,7 +192,7 @@ describe('agent launch caller routing', () => {
     store.settings = { ...store.settings, ...CHAT_DEFAULT_SETTINGS }
     mockIsWebRuntimeSessionActive.mockReturnValue(true)
     mockExecutionHostId.mockReturnValue('runtime:web-runtime')
-    mockServerCapabilities.mockReturnValue([])
+    serverReports([])
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     const result = launchAgentInNewTab({ agent: 'claude', worktreeId: 'wt-1' })

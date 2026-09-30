@@ -17,7 +17,7 @@ import { structuredAgentSessionTabId } from '../../../../../shared/structured-ag
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import {
   structuredAgentSessionFocusOwner,
-  structuredAgentSessionTargetForWorktree
+  structuredAgentSessionTargetForTab
 } from '@/runtime/structured-agent-session-owner'
 
 export function createTabsCloseActions(
@@ -53,20 +53,25 @@ export function createTabsCloseActions(
         const provisional =
           shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId) ||
           hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, tab.entityId)
-        const target = structuredAgentSessionTargetForWorktree(state, worktreeId)
-        if (provisional) {
-          clearWebSessionFocusIntentIfMatches(
-            structuredAgentSessionFocusOwner(target),
+        const target = structuredAgentSessionTargetForTab(state, tab)
+        if (target) {
+          if (provisional) {
+            clearWebSessionFocusIntentIfMatches(
+              structuredAgentSessionFocusOwner(target),
+              worktreeId,
+              `agent-session:${tab.entityId}`
+            )
+          }
+          beginStructuredAgentSessionTabClose({
+            target,
             worktreeId,
-            `agent-session:${tab.entityId}`
-          )
+            sessionId: tab.entityId,
+            provisional
+          })
+        } else {
+          // Closing still removes the tab; no host can be named to stop its chat on.
+          console.warn('[structured-agent-session] close found no owning host', tab.entityId)
         }
-        beginStructuredAgentSessionTabClose({
-          target,
-          worktreeId,
-          sessionId: tab.entityId,
-          provisional
-        })
         get().clearNativeChatLaunchDraft(structuredAgentSessionTabId(tab.entityId))
       }
       // Why: on closing the active tab, walk the MRU stack to the previously-active tab; pickNextActiveTab falls back to the neighbor.

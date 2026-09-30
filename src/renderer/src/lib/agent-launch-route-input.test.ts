@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import {
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../shared/protocol-version'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
 import type * as ConnectionOwnerResolutionModule from './connection-owner-resolution'
 
@@ -9,8 +12,7 @@ const mocks = vi.hoisted(() => ({
   getConnectionIdFromState: vi.fn(),
   getLocalProjectExecutionRuntimeContext: vi.fn(),
   getLocalRepoProjectExecutionRuntimeContext: vi.fn(),
-  readLocalRuntimeCapabilitiesOrUnknown: vi.fn(),
-  readRuntimeEnvironmentCapabilitiesOrUnknown: vi.fn()
+  readLocalRuntimeCapabilitiesOrUnknown: vi.fn()
 }))
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
@@ -28,9 +30,6 @@ vi.mock('@/lib/local-preflight-context', () => ({
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: mocks.readLocalRuntimeCapabilitiesOrUnknown
-}))
-vi.mock('@/runtime/runtime-rpc-client', () => ({
-  readRuntimeEnvironmentCapabilitiesOrUnknown: mocks.readRuntimeEnvironmentCapabilitiesOrUnknown
 }))
 // Why: the planner is the only route consumer; its settle loop is out of scope here.
 vi.mock('@/lib/structured-agent-launch-settlement', () => ({
@@ -340,22 +339,85 @@ describe('buildAgentLaunchRouteInput', () => {
     expect(input.hostCapabilities).toBeNull()
   })
 
-  it("reads a paired server's own capabilities, not this machine's", () => {
-    mocks.getExecutionHostIdForWorktree.mockReturnValue('runtime:server-1')
-    mocks.readLocalRuntimeCapabilitiesOrUnknown.mockReturnValue([])
-    mocks.readRuntimeEnvironmentCapabilitiesOrUnknown.mockReturnValue([
-      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
-    ])
+  describe('a workspace on a paired server', () => {
+    const CURRENT_SERVER = [
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+      STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+    ]
     const args: AgentLaunchRouteArgs = {
       agent: 'claude',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
     }
+    // The store's host status is what a paired server last reported about itself.
+    const pairedStore = (
+      capabilities: readonly string[],
+      settings: Record<string, unknown> = STRUCTURED_SETTINGS
+    ): AgentLaunchRouteStore =>
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the slices the input reads are staged.
+      ({
+        settings,
+        runtimeStatusByEnvironmentId: new Map([['server-1', { status: { capabilities } }]])
+      }) as unknown as AgentLaunchRouteStore
 
-    expect(buildAgentLaunchRouteInput(store(), args).hostCapabilities).toEqual([
-      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
-    ])
-    expect(mocks.readRuntimeEnvironmentCapabilitiesOrUnknown).toHaveBeenCalledWith('server-1')
-    expect(routeFor(store(), args)).toBe('structured-native-chat')
+    beforeEach(() => {
+      mocks.getExecutionHostIdForWorktree.mockReturnValue('runtime:server-1')
+      mocks.readLocalRuntimeCapabilitiesOrUnknown.mockReturnValue([])
+    })
+
+    it("reads the server's own capabilities from its host status, not this machine's", () => {
+      expect(
+        buildAgentLaunchRouteInput(pairedStore(CURRENT_SERVER), args).hostCapabilities
+      ).toEqual(CURRENT_SERVER)
+      expect(routeFor(pairedStore(CURRENT_SERVER), args)).toBe('structured-native-chat')
+    })
+
+    it('treats a server that has not reported its status as unknown', () => {
+      expect(buildAgentLaunchRouteInput(store(), args).hostCapabilities).toBeNull()
+      expect(routeFor(store(), args)).toBe('legacy-native-chat')
+    })
+
+    // A released server advertises structured sessions but admits them only with its own chat
+    // setting on; a chat opened there could never start.
+    it('keeps the terminal on a server that predates client-chosen launch modes', () => {
+      expect(routeFor(pairedStore([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]), args)).toBe(
+        'legacy-native-chat'
+      )
+    })
+
+    // The override is this machine's; the server's createSupport applies its own.
+    it("does not apply this machine's launch command override to the server", () => {
+      const settings = { ...STRUCTURED_SETTINGS, agentCmdOverrides: { claude: 'claude-wrapper' } }
+      expect(
+        buildAgentLaunchRouteInput(pairedStore(CURRENT_SERVER, settings), args)
+          .requiresTuiLaunchCommand
+      ).toBe(false)
+      expect(routeFor(pairedStore(CURRENT_SERVER, settings), args)).toBe('structured-native-chat')
+    })
+  })
+
+  it('does not name a host for a workspace id two hosts publish', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the slices the input reads are staged.
+    const colliding = {
+      settings: STRUCTURED_SETTINGS,
+      activeWorktreeId: 'other',
+      worktreesByRepo: {
+        'repo-1': [
+          { id: 'wt-1', repoId: 'repo-1', hostId: 'local' },
+          { id: 'wt-1', repoId: 'repo-1', hostId: 'runtime:server-1' }
+        ]
+      }
+    } as unknown as AgentLaunchRouteStore
+    const input = buildAgentLaunchRouteInput(colliding, {
+      agent: 'claude',
+      workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
+    })
+    expect(input.hostCapabilities).toBeNull()
+    expect(
+      routeFor(colliding, {
+        agent: 'claude',
+        workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
+      })
+    ).toBe('legacy-native-chat')
   })
 })
 

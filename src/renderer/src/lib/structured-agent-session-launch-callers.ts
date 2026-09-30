@@ -3,6 +3,7 @@ import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-sess
 import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 
 export type StructuredAgentLaunchOptions = {
   prompt?: string
@@ -11,6 +12,8 @@ export type StructuredAgentLaunchOptions = {
   /** Adopt an existing provider conversation instead of starting a fresh one. Part of the launch's
    *  identity, not a preference — see `launchIdentity`. */
   resumeFrom?: StructuredAgentSessionResumeSource
+  /** The host the route decided on; read only by the caller that starts the launch. */
+  executionHostId?: ExecutionHostId
 }
 
 export type StructuredLaunchCaller = {

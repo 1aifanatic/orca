@@ -102,6 +102,7 @@ function launchIntent(
 ): StructuredAgentSessionLaunchIntent {
   return {
     worktreeId,
+    executionHostId: 'local',
     target: { kind: 'local' },
     sessionId,
     agent: 'codex',
@@ -327,8 +328,14 @@ describe('startStructuredAgentLaunch', () => {
     const codex = startStructuredAgentLaunch(worktreeId, 'codex')
     await flushLaunchSettlement()
 
-    expect(mocks.createIntent).toHaveBeenNthCalledWith(1, worktreeId, 'claude')
-    expect(mocks.createIntent).toHaveBeenNthCalledWith(2, worktreeId, 'codex')
+    expect(mocks.createIntent).toHaveBeenNthCalledWith(
+      1,
+      worktreeId,
+      'claude',
+      undefined,
+      undefined
+    )
+    expect(mocks.createIntent).toHaveBeenNthCalledWith(2, worktreeId, 'codex', undefined, undefined)
     expect(mocks.launch).toHaveBeenCalledTimes(2)
     expect(vi.mocked(mocks.launch).mock.calls.map(([intent]) => intent.params.agent)).toEqual([
       'claude',

@@ -26,16 +26,21 @@ import {
   resolveWebSessionVisibleTabId
 } from '@/runtime/web-session-focus-intent'
 import {
+  resolveStructuredAgentSessionOwner,
   structuredAgentSessionFocusOwner,
-  structuredAgentSessionTargetForWorktree
+  structuredAgentSessionTargetForHost
 } from '@/runtime/structured-agent-session-owner'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 
 export type StructuredAgentSessionLaunchIntent = {
   sessionId: string
   worktreeId: string
-  /** The runtime that owns the workspace, derived from it when the intent is built. */
+  /** The host that owns the chat, fixed when the launch begins and persisted with it: worktree ids
+   *  repeat across hosts, so it is never re-derived. */
+  executionHostId: ExecutionHostId
+  /** The runtime serving `executionHostId`. */
   target: RuntimeClientTarget
   agent: AgentSessionHandleProvider
   params: StructuredAgentSessionCreateParams
@@ -93,6 +98,25 @@ export class StructuredAgentSessionCreateUnknownOutcomeError extends StructuredA
   }
 }
 
+/** Orca cannot name the one host that owns the workspace, so no chat is started anywhere. */
+export class StructuredAgentSessionOwnerUnresolvedError extends Error {
+  constructor(worktreeId: string) {
+    super(`No single runtime owns workspace ${worktreeId}`)
+    this.name = 'StructuredAgentSessionOwnerUnresolvedError'
+  }
+}
+
+function structuredAgentSessionOwnerTarget(
+  worktreeId: string,
+  executionHostId: ExecutionHostId | null
+): { executionHostId: ExecutionHostId; target: RuntimeClientTarget } {
+  const target = structuredAgentSessionTargetForHost(executionHostId)
+  if (!executionHostId || !target) {
+    throw new StructuredAgentSessionOwnerUnresolvedError(worktreeId)
+  }
+  return { executionHostId, target }
+}
+
 const DEFINITIVE_CREATE_FAILURE_CODES = [
   'structured_agent_session_unsupported',
   'method_not_found'
@@ -114,25 +138,32 @@ function definitiveStructuredAgentSessionCreateErrorCode(error: unknown): string
   return null
 }
 
+/** `executionHostId` is the host the launch was routed to; absent, the catalog must name exactly
+ *  one, or the launch is refused rather than sent to whichever host a fallback picks. */
 export function createStructuredAgentSessionLaunchIntent(
   worktreeId: string,
   agent: AgentSessionHandleProvider,
+  executionHostId?: ExecutionHostId,
   resumeFrom?: StructuredAgentSessionResumeSource
 ): StructuredAgentSessionLaunchIntent {
+  const owner = structuredAgentSessionOwnerTarget(
+    worktreeId,
+    executionHostId ?? resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)
+  )
   const sessionId = createStructuredAgentSessionId(agent, createBrowserUuid)
-  return buildStructuredAgentSessionLaunchIntent(worktreeId, agent, sessionId, resumeFrom)
+  return buildStructuredAgentSessionLaunchIntent(worktreeId, owner, agent, sessionId, resumeFrom)
 }
 
 function buildStructuredAgentSessionLaunchIntent(
   worktreeId: string,
+  owner: Pick<StructuredAgentSessionLaunchIntent, 'executionHostId' | 'target'>,
   agent: AgentSessionHandleProvider,
   sessionId: string,
   resumeFrom?: StructuredAgentSessionResumeSource
 ): StructuredAgentSessionLaunchIntent {
   const state = useAppStore.getState()
-  const target = structuredAgentSessionTargetForWorktree(state, worktreeId)
   recordWebSessionFocusIntent(
-    structuredAgentSessionFocusOwner(target),
+    structuredAgentSessionFocusOwner(owner.target),
     worktreeId,
     `agent-session:${sessionId}`,
     undefined,
@@ -141,7 +172,8 @@ function buildStructuredAgentSessionLaunchIntent(
   return {
     sessionId,
     worktreeId,
-    target,
+    executionHostId: owner.executionHostId,
+    target: owner.target,
     agent,
     params: structuredAgentSessionCreateParams({
       sessionId,
@@ -160,6 +192,7 @@ export function retryStructuredAgentSessionLaunchIntent(
 ): StructuredAgentSessionLaunchIntent {
   return buildStructuredAgentSessionLaunchIntent(
     intent.worktreeId,
+    intent,
     intent.agent,
     intent.sessionId,
     intent.params.resumeFrom
@@ -169,6 +202,7 @@ export function retryStructuredAgentSessionLaunchIntent(
 /** Rebuild a reload-surviving intent with the caller's current worktree selector. */
 export function restoreStructuredAgentSessionLaunchIntent(args: {
   worktreeId: string
+  executionHostId: ExecutionHostId
   sessionId: string
   agent: AgentSessionHandleProvider
   clientOperationId: string
@@ -177,7 +211,7 @@ export function restoreStructuredAgentSessionLaunchIntent(args: {
   resumeFrom?: StructuredAgentSessionResumeSource
 }): StructuredAgentSessionLaunchIntent {
   const state = useAppStore.getState()
-  const target = structuredAgentSessionTargetForWorktree(state, args.worktreeId)
+  const { target } = structuredAgentSessionOwnerTarget(args.worktreeId, args.executionHostId)
   recordWebSessionFocusIntent(
     structuredAgentSessionFocusOwner(target),
     args.worktreeId,
@@ -188,6 +222,7 @@ export function restoreStructuredAgentSessionLaunchIntent(args: {
   return {
     sessionId: args.sessionId,
     worktreeId: args.worktreeId,
+    executionHostId: args.executionHostId,
     target,
     agent: args.agent,
     params: {

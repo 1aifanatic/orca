@@ -56,6 +56,7 @@ function structuredLaunchIntent(worktreeId: string, sessionId = 'codex-session-1
   return {
     sessionId,
     worktreeId,
+    executionHostId: 'local' as const,
     target: { kind: 'local' as const },
     params: {
       envelope: {
@@ -263,7 +264,12 @@ describe('structured chat adoption guard on the launch path', () => {
       kind: 'structured',
       sessionId: 'codex-session-1'
     })
-    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith('wt-1', 'codex')
+    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith(
+      'wt-1',
+      'codex',
+      'local',
+      undefined
+    )
     expect(mockLaunchStructuredCodexSession).toHaveBeenCalledWith(
       expect.objectContaining({ worktreeId: 'wt-1' })
     )
@@ -286,7 +292,12 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(result).toMatchObject({
       surface: { kind: 'local-agent-session', sessionId: 'codex-session-1' }
     })
-    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith('wt-1', 'codex')
+    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith(
+      'wt-1',
+      'codex',
+      'local',
+      undefined
+    )
     expect(mockCreateTab).not.toHaveBeenCalled()
   })
 
@@ -298,7 +309,12 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(result).toMatchObject({
       surface: { kind: 'local-agent-session', sessionId: 'codex-session-1' }
     })
-    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith('wt-1', 'claude')
+    expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledWith(
+      'wt-1',
+      'claude',
+      'local',
+      undefined
+    )
     expect(mockCreateTab).not.toHaveBeenCalled()
   })
 

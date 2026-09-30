@@ -1,6 +1,10 @@
 import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import { toast } from 'sonner'
+import { translate } from '@/i18n/i18n'
+import { StructuredAgentSessionOwnerUnresolvedError } from '@/lib/launch-structured-agent-session'
 import {
   buildAgentLaunchRouteInput,
   type AgentLaunchRouteArgs,
@@ -35,6 +39,8 @@ export type AgentSessionLaunchVerdict = {
   route: AgentLaunchRoute
   agent: TuiAgent
   worktreeId?: string
+  /** The host the structured route was decided for; the chat is created there. */
+  executionHostId?: ExecutionHostId
   prompt?: string
   promptDelivery?: NativeChatLaunchPromptDelivery
   resumeFrom?: StructuredAgentSessionResumeSource
@@ -70,7 +76,8 @@ function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): Structured
     ...(verdict.prompt !== undefined ? { prompt: verdict.prompt } : {}),
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
-    ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {})
+    ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {}),
+    ...(verdict.executionHostId ? { executionHostId: verdict.executionHostId } : {})
   }
 }
 
@@ -86,12 +93,26 @@ function beginStructuredPlanLaunch(
   if (!worktreeId) {
     throw new Error('A structured agent launch needs the workspace it targets.')
   }
-  return beginStructuredAgentLaunchSettlement(
-    worktreeId,
-    verdict.agent,
-    structuredLaunchOptions(verdict),
-    hooks
-  )
+  try {
+    return beginStructuredAgentLaunchSettlement(
+      worktreeId,
+      verdict.agent,
+      structuredLaunchOptions(verdict),
+      hooks
+    )
+  } catch (error) {
+    if (!(error instanceof StructuredAgentSessionOwnerUnresolvedError)) {
+      throw error
+    }
+    console.warn('[native-chat] structured launch refused', error)
+    toast.error(
+      translate(
+        'auto.store.slices.workspace.cleanup.hostUnresolved',
+        'Orca cannot tell which host owns this workspace. Refresh projects and review it again.'
+      )
+    )
+    return null
+  }
 }
 
 /** Re-enter with a verdict decided earlier; the route is data here and is never re-resolved. */
@@ -128,9 +149,14 @@ export function planAgentSessionLaunch(
   store: AgentLaunchRouteStore,
   request: AgentSessionLaunchRequest
 ): AgentSessionLaunchPlan {
+  const input = buildAgentLaunchRouteInput(store, request)
+  const route = resolveAgentLaunchRoute(input)
+  const executionHostId =
+    route === 'structured-native-chat' ? parseExecutionHostId(input.executionHostId)?.id : undefined
   return adoptAgentSessionLaunchVerdict({
-    route: resolveAgentLaunchRoute(buildAgentLaunchRouteInput(store, request)),
+    route,
     agent: request.agent,
+    ...(executionHostId ? { executionHostId } : {}),
     ...(request.workspace.worktreeId ? { worktreeId: request.workspace.worktreeId } : {}),
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.promptDelivery ? { promptDelivery: request.promptDelivery } : {}),

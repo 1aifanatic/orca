@@ -5,8 +5,11 @@ import { useAppStore } from '@/store'
 import {
   createStructuredAgentSessionLaunchIntent,
   launchStructuredAgentSession,
+  restoreStructuredAgentSessionLaunchIntent,
+  retryStructuredAgentSessionLaunchIntent,
   StructuredAgentSessionCreateRefusalError,
-  StructuredAgentSessionCreateUnknownOutcomeError
+  StructuredAgentSessionCreateUnknownOutcomeError,
+  StructuredAgentSessionOwnerUnresolvedError
 } from './launch-structured-agent-session'
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -111,6 +114,66 @@ describe('structured agent session launch', () => {
     } finally {
       useAppStore.setState({ repos: initial.repos, worktreesByRepo: initial.worktreesByRepo })
     }
+  })
+
+  describe('the host a chat is launched on', () => {
+    const SERVER = { kind: 'environment', environmentId: 'server-1' }
+    const initial = useAppStore.getState()
+    // `repoId::path` names a checkout on this machine and one on the paired server.
+    const stageCollidingWorkspace = (): void =>
+      useAppStore.setState({
+        activeWorktreeId: 'another-workspace',
+        worktreesByRepo: {
+          'repo-1': [
+            { id: 'repo-1::/work/app', repoId: 'repo-1', hostId: 'local' },
+            { id: 'repo-1::/work/app', repoId: 'repo-1', hostId: 'runtime:server-1' }
+          ]
+        }
+      } as unknown as Partial<ReturnType<typeof useAppStore.getState>>)
+    const restoreStore = (): void =>
+      useAppStore.setState({
+        activeWorktreeId: initial.activeWorktreeId,
+        worktreesByRepo: initial.worktreesByRepo
+      })
+
+    it('is the one the route chose, kept through a retry', () => {
+      stageCollidingWorkspace()
+      try {
+        const intent = createStructuredAgentSessionLaunchIntent(
+          'repo-1::/work/app',
+          'claude',
+          'runtime:server-1'
+        )
+        expect(intent.target).toEqual(SERVER)
+        expect(retryStructuredAgentSessionLaunchIntent(intent).target).toEqual(SERVER)
+      } finally {
+        restoreStore()
+      }
+    })
+
+    it('is refused rather than guessed when two hosts publish the workspace', () => {
+      stageCollidingWorkspace()
+      try {
+        expect(() =>
+          createStructuredAgentSessionLaunchIntent('repo-1::/work/app', 'claude')
+        ).toThrow(StructuredAgentSessionOwnerUnresolvedError)
+      } finally {
+        restoreStore()
+      }
+    })
+
+    it('comes back from the persisted launch after a reload', () => {
+      const intent = restoreStructuredAgentSessionLaunchIntent({
+        worktreeId: 'workspace-1',
+        executionHostId: 'runtime:server-1',
+        sessionId: 'claude_1',
+        agent: 'claude',
+        clientOperationId: 'op-1',
+        payloadFingerprint: 'fp-1',
+        expectedRuntimeFence: null
+      })
+      expect(intent.target).toEqual(SERVER)
+    })
   })
 
   it('names Claude as the create provider and in the session id', () => {

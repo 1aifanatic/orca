@@ -10,6 +10,7 @@ import { removeWorktreeVisitEntriesForTargets } from '@/lib/worktree-visit-recen
 import { forgetAmbiguousOwnerWarnings } from '../listing/worktree-owner-settings'
 import { forgetWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
 import {
+  getStructuredAgentSessionLaunchOwner,
   markStructuredAgentSessionLaunchCancelledSilently,
   shouldRetainStructuredAgentSessionLaunchTab,
   structuredLaunchStates
@@ -18,7 +19,7 @@ import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-c
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import {
   structuredAgentSessionFocusOwner,
-  structuredAgentSessionTargetForWorktree
+  structuredAgentSessionTargetForHost
 } from '@/runtime/structured-agent-session-owner'
 
 /** Builds a bulk cleanup patch and clears auxiliary warning records without requiring individual terminal teardown. */
@@ -38,7 +39,11 @@ export function buildWorktreePurgeState(
       worktreeIdSet.has(worktreeId) &&
       shouldRetainStructuredAgentSessionLaunchTab(worktreeId, launch.intent.sessionId)
     ) {
-      markStructuredAgentSessionLaunchCancelledSilently(worktreeId, launch.intent.sessionId)
+      markStructuredAgentSessionLaunchCancelledSilently(
+        worktreeId,
+        launch.intent.sessionId,
+        launch.intent.executionHostId
+      )
       discardStructuredAgentSessionLaunchOutbox(launch.intent.sessionId)
       clearWebSessionFocusIntentIfMatches(
         structuredAgentSessionFocusOwner(launch.intent.target),
@@ -50,15 +55,21 @@ export function buildWorktreePurgeState(
   }
   for (const worktreeId of worktreeIdSet) {
     for (const tab of s.unifiedTabsByWorktree[worktreeId] ?? []) {
+      // A retained launch here survived a reload, so its persisted record names its host.
+      const owner =
+        tab.contentType === 'agent-session' && !cancelledSessionIds.has(tab.entityId)
+          ? getStructuredAgentSessionLaunchOwner(tab.entityId)
+          : undefined
+      const target = structuredAgentSessionTargetForHost(owner)
       if (
-        tab.contentType === 'agent-session' &&
-        !cancelledSessionIds.has(tab.entityId) &&
+        owner &&
+        target &&
         shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId)
       ) {
-        markStructuredAgentSessionLaunchCancelledSilently(worktreeId, tab.entityId)
+        markStructuredAgentSessionLaunchCancelledSilently(worktreeId, tab.entityId, owner)
         discardStructuredAgentSessionLaunchOutbox(tab.entityId)
         clearWebSessionFocusIntentIfMatches(
-          structuredAgentSessionFocusOwner(structuredAgentSessionTargetForWorktree(s, worktreeId)),
+          structuredAgentSessionFocusOwner(target),
           worktreeId,
           `agent-session:${tab.entityId}`
         )

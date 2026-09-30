@@ -10,12 +10,14 @@ import type {
   StructuredAgentLaunchHooks
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
-import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 
 export type StructuredAgentSessionProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
 
 export function openStructuredAgentSessionProvisionalTab(args: {
   worktreeId: string
+  /** The host the chat is created on; every later operation on the tab reads it. */
+  executionHostId: ExecutionHostId
   sessionId: string
   agent: 'claude' | 'codex'
   targetGroupId?: string
@@ -40,7 +42,7 @@ export function openStructuredAgentSessionProvisionalTab(args: {
   const tab = state.createUnifiedTab(args.worktreeId, 'agent-session', {
     id: tabId,
     entityId: args.sessionId,
-    executionHostId: getExecutionHostIdForWorktree(state, args.worktreeId),
+    executionHostId: args.executionHostId,
     agentSessionAgent: args.agent,
     label: defaultAgentChatLabel(args.agent),
     ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
@@ -79,6 +81,7 @@ export function beginStructuredAgentSessionProvisionalLaunch(args: {
       ...handle,
       tab: openStructuredAgentSessionProvisionalTab({
         worktreeId,
+        executionHostId: handle.executionHostId,
         sessionId: handle.sessionId,
         agent: args.plan.agent,
         ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
