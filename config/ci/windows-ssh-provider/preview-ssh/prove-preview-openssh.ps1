@@ -187,12 +187,12 @@ try {
     Assert-GlobalServerDormant
     Write-Stage 'inbox-capability-complete'
     $verified=@()
-    foreach($name in @('sshd.exe','ssh.exe','ssh-keygen.exe','sftp.exe','sftp-server.exe')){
-      $path=Join-Path $sshDir $name
+    foreach($binary in @('sshd.exe','ssh.exe','ssh-keygen.exe','sftp.exe','sftp-server.exe')){
+      $path=Join-Path $sshDir $binary
       if((Machine $path) -ne $target.machine){throw "Inbox native input is not $Arch"}
       $signature=Get-AuthenticodeSignature -LiteralPath $path
       if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)'){throw 'Inbox native input Microsoft signature invalid'}
-      $verified+=@{name=$name;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();version=(Get-Item -LiteralPath $path).VersionInfo.FileVersion;machine=$target.machine;signature='Valid'}
+      $verified+=@{name=$binary;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();version=(Get-Item -LiteralPath $path).VersionInfo.FileVersion;machine=$target.machine;signature='Valid'}
     }
     $report.nativeInputs=$verified
   }
