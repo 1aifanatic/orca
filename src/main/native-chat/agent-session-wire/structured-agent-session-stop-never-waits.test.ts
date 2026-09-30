@@ -73,6 +73,8 @@ function stop(fields: { turnId?: string }) {
 }
 
 const MALFORMED = 'database disk image is malformed'
+/** The held write fails only once the interrupt went out; a Stop that awaited it times out here. */
+const INTERRUPT_WAIT = { timeout: 5_000 }
 
 describe.each([
   ['naming no turn', {}],
@@ -125,9 +127,12 @@ describe.each([
     })
 
     const stopping = stop(fields)
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    order.push('write fails')
-    held.reject(new Error(MALFORMED))
+    try {
+      await vi.waitFor(() => expect(cancelTurn).toHaveBeenCalledOnce(), INTERRUPT_WAIT)
+    } finally {
+      order.push('write fails')
+      held.reject(new Error(MALFORMED))
+    }
 
     expect(await stopping).toMatchObject({ ok: true })
     expect(order).toEqual(['interrupt', 'write fails'])
@@ -157,9 +162,12 @@ describe.each([
       })
 
       const stopping = stop(fields)
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      order.push('write fails')
-      held.reject(new Error(MALFORMED))
+      try {
+        await vi.waitFor(() => expect(closeSession).toHaveBeenCalledOnce(), INTERRUPT_WAIT)
+      } finally {
+        order.push('write fails')
+        held.reject(new Error(MALFORMED))
+      }
 
       expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
       expect(order).toEqual(['stop', 'write fails'])
