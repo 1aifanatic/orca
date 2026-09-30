@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises'
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
+import { parseWslPath } from '../../wsl'
 import type { GitWorktreeExecOptions } from '../worktree-operation-options'
 import { readRepoConfigFacts, resolveRepoCommonDirFromFiles } from './repo-admin-layout'
 import { WorktreeRowsNeedGit } from './worktree-membership-file-rows'
@@ -48,11 +49,13 @@ export async function createMembershipModel(
   const gitOptions = gitOptionsFor(options)
   const startedAt = Date.now()
   const facts = await readRepoConfigFacts(commonDir).catch(() => null)
-  const gitOnlyReason = options.wslDistro
-    ? 'WSL repo'
-    : facts === null
-      ? 'unreadable config'
-      : facts.gitOnlyReason
+  // Orca's runner treats a WSL UNC path as WSL even without the option; its rows need translating.
+  const gitOnlyReason =
+    options.wslDistro || parseWslPath(repoPath)
+      ? 'WSL repo'
+      : facts === null
+        ? 'unreadable config'
+        : facts.gitOnlyReason
   const model: WorktreeMembershipModel = {
     key,
     repoPath,

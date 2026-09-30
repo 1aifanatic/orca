@@ -3,6 +3,7 @@ import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import { resolveGitAdmissionTier } from '../command-runner/git-operation-executor'
 import { readTranslatedWorktreeGraph } from '../worktree-list-reader'
 import type { GitWorktreeExecOptions } from '../worktree-operation-options'
+import { parseWslPath } from '../../wsl'
 import { canonicalWorktreePath } from '../worktree-path-comparison'
 import { createMembershipModel, deriveMembershipModel } from './worktree-membership-derivation'
 import {
@@ -151,7 +152,7 @@ export async function readWorktreeMembership(
   dropIdleModels(Date.now())
   const key = membershipKey(repoPath, options.wslDistro)
   // A WSL path can read as absent while its distro is stopped, which is not a deleted repo.
-  if (!options.wslDistro) {
+  if (!options.wslDistro && !parseWslPath(repoPath)) {
     await stat(repoPath).catch((error: unknown) => {
       if (getErrorCode(error) === 'ENOENT') {
         models.delete(key)

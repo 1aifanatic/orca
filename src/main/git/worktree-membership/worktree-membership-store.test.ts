@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Runner from '../runner'
+import type * as Wsl from '../../wsl'
 import type * as FileValidation from './worktree-membership-file-validation'
 
 const runnerSpy = vi.hoisted(() => {
@@ -42,6 +43,16 @@ vi.mock('./worktree-membership-file-validation', async (importOriginal) => {
       await validationGate.release
       return actual.validateMembershipFromFiles(input)
     }
+  }
+})
+
+const wslPaths = vi.hoisted(() => new Set<string>())
+vi.mock('../../wsl', async (importOriginal) => {
+  const actual = await importOriginal<typeof Wsl>()
+  return {
+    ...actual,
+    parseWslPath: (path: string) =>
+      wslPaths.has(path) ? { distro: 'Ubuntu', linuxPath: path } : actual.parseWslPath(path)
   }
 })
 
@@ -104,6 +115,7 @@ beforeEach(async () => {
   runnerSpy.failWorktreeList = false
   validationGate.entered = null
   validationGate.release = null
+  wslPaths.clear()
 })
 
 afterEach(async () => {
@@ -151,6 +163,17 @@ describe('worktree membership model: spawns', () => {
     await expect(listWorktreesSharedStrictAllowingTrueEmpty(missing)).resolves.toEqual([])
     await expect(listWorktreesSharedStrict(missing)).rejects.toBeInstanceOf(MissingRepoPathError)
     expect(runnerSpy.calls).toEqual([])
+  })
+})
+
+describe('worktree membership model: layouts', () => {
+  it('leaves a WSL path to Git even when the caller names no distro', async () => {
+    wslPaths.add(repoPath)
+    await readWorktreeMembership(repoPath)
+    expect(_getWorktreeMembershipModelForTests(repoPath)?.source).toEqual({
+      kind: 'git',
+      reason: 'WSL repo'
+    })
   })
 })
 
