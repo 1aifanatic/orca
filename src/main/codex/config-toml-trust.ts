@@ -23,7 +23,6 @@ import { observe } from './codex-path-observation'
 import { parseCodexConfigToml } from './codex-config-toml-document'
 import {
   assertCodexConfigTomlParses,
-  clearCodexTrustWriteRefusalReport,
   CodexConfigTomlEditRefusedError
 } from './codex-config-toml-checked-edit'
 
@@ -114,7 +113,7 @@ export function upsertHookTrustEntries(
   entries: readonly CodexTrustEntry[]
 ): void {
   const existing = readTomlForMutation(configPath)
-  const updated = withTrustEdit(configPath, () =>
+  const updated = withConfigPath(configPath, () =>
     upsertHookTrustEntriesInContent(existing, entries)
   )
   if (updated !== existing) {
@@ -129,7 +128,7 @@ export function replaceHookTrustEntries(
   entries: readonly CodexTrustEntry[]
 ): void {
   const existing = readTomlForMutation(configPath)
-  const updated = withTrustEdit(configPath, () =>
+  const updated = withConfigPath(configPath, () =>
     upsertHookTrustEntriesInContent(
       removeHookTrustEntriesFromContent(existing, removeKeys),
       entries
@@ -156,7 +155,7 @@ export function setHookTrustEnabledStates(
     return
   }
   const existing = readTomlFile(configPath)
-  const updated = withTrustEdit(configPath, () => setHookTrustEnabledContent(existing, states))
+  const updated = withConfigPath(configPath, () => setHookTrustEnabledContent(existing, states))
   if (updated !== existing) {
     writeTomlConfigAtomically(configPath, updated)
   }
@@ -168,7 +167,7 @@ export function upsertProjectTrustLevel(
   trustLevel: CodexProjectTrustLevel
 ): void {
   const existing = readTomlForMutation(configPath)
-  const updated = withTrustEdit(configPath, () =>
+  const updated = withConfigPath(configPath, () =>
     upsertProjectTrustLevelInContent(existing, projectPath, trustLevel)
   )
   if (updated !== existing) {
@@ -219,19 +218,14 @@ function withConfigPath<T>(configPath: string, run: () => T): T {
   }
 }
 
-// Why: a trust edit that succeeds ends the refusal, so a later one is reported again.
-function withTrustEdit<T>(configPath: string, run: () => T): T {
-  const result = withConfigPath(configPath, run)
-  clearCodexTrustWriteRefusalReport(configPath)
-  return result
-}
-
 export function removeHookTrustEntries(configPath: string, keys: readonly string[]): void {
   if (!existsSync(configPath)) {
     return
   }
   const existing = readTomlFile(configPath)
-  const updated = withTrustEdit(configPath, () => removeHookTrustEntriesFromContent(existing, keys))
+  const updated = withConfigPath(configPath, () =>
+    removeHookTrustEntriesFromContent(existing, keys)
+  )
   if (updated !== existing) {
     writeTomlConfigAtomically(configPath, updated)
   }

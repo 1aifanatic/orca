@@ -12,9 +12,7 @@ import type {
 } from './runtime-worktree-agent-startup'
 import {
   buildWorktreeStartupForAgent,
-  buildWorktreeStartupForDraft,
-  markLocalWorktreeTrusted,
-  markRemoteWorktreeTrusted
+  buildWorktreeStartupForDraft
 } from './runtime-worktree-agent-startup'
 import type { AgentLaunchPreferences } from '../../shared/agent-session-host-authority'
 import type { Worktree } from '../../shared/worktree/types'
@@ -32,11 +30,6 @@ import {
 } from './runtime-worktree-startup-readiness'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
-import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
-import {
-  diagnoseAgentWorkspaceTrust,
-  type WorkspaceTrustDiagnosis
-} from './agent-workspace-trust-diagnosis'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -167,59 +160,6 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       getLaunchPlatform: () => this.getAgentLaunchPlatformForRepo(repo),
       toSessionOptions: (preferences) => this.toAgentSessionOptions(preferences)
     })
-  }
-
-  protected async markLocalWorkspaceTrustedForAgent(
-    agent: TuiAgent,
-    workspacePath: string
-  ): Promise<void> {
-    await markLocalWorktreeTrusted(agent, workspacePath)
-  }
-
-  protected async markWorkspaceTrustedForAgent(
-    agent: TuiAgent,
-    connectionId: string | null | undefined,
-    workspacePath: string
-  ): Promise<void> {
-    if (connectionId) {
-      await this.markRemoteWorkspaceTrustedForAgent(agent, connectionId, workspacePath)
-      return
-    }
-    await this.markLocalWorkspaceTrustedForAgent(agent, workspacePath)
-  }
-
-  /** For a worker stalled at the agent's trust screen: re-runs the launch's trust write for this host. */
-  async diagnoseWorkspaceTrustForAgent(
-    agent: TuiAgent,
-    connectionId: string | null | undefined,
-    workspacePath: string
-  ): Promise<WorkspaceTrustDiagnosis> {
-    return await diagnoseAgentWorkspaceTrust({
-      agent,
-      connectionId: connectionId ?? null,
-      workspacePath,
-      resolveCodexLaunchHome: async () => {
-        const resolveLaunchHome = this.resolveCodexStructuredLaunchHomeFn
-        if (!resolveLaunchHome) {
-          return null
-        }
-        return await resolveLaunchHome({
-          workspacePath,
-          launchEnv: resolveTuiAgentLaunchEnv(
-            'codex',
-            this.requireStore().getSettings().agentDefaultEnv
-          )
-        })
-      }
-    })
-  }
-
-  protected async markRemoteWorkspaceTrustedForAgent(
-    agent: TuiAgent,
-    connectionId: string,
-    workspacePath: string
-  ): Promise<void> {
-    await markRemoteWorktreeTrusted(agent, connectionId, workspacePath)
   }
 
   protected recordCreatedWorktreeLineage(

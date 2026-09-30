@@ -1,16 +1,13 @@
-import { createRequire } from 'node:module'
-
 export type TomlTable = Record<string, unknown>
 
-// Why: smol-toml's runtime is CommonJS-loadable but its only declarations are
-// ESM, which the CommonJS CLI build cannot import statically. Load it like the
-// other packaged runtime dependencies and type just the two members used.
+// Why: smol-toml's only declarations are ESM, which the CommonJS CLI build cannot
+// import statically, so type just the two members used. A literal require() (not
+// createRequire) lets the SSH relay's esbuild bundle inline it: relay hosts have no node_modules.
 type SmolToml = {
   parse: (source: string, options: { integersAsBigInt: 'asNeeded' }) => TomlTable
   TomlError: abstract new (...args: never[]) => Error & { line: number; column: number }
 }
-const requireFromMain = createRequire(__filename)
-const { parse, TomlError }: SmolToml = requireFromMain('smol-toml')
+const { parse, TomlError }: SmolToml = require('smol-toml')
 export type TomlKeyPath = readonly string[]
 
 export type CodexConfigTomlParse =

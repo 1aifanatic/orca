@@ -1,17 +1,13 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { writeFileAtomically } from './codex-accounts/fs-utils'
-import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
+import { upsertProjectTrustLevel } from './codex/config-toml-trust'
+import { CodexConfigTomlEditRefusedError } from './codex/codex-config-toml-checked-edit'
 import { runExclusivelyForCodexTrustConfig } from './codex/codex-trust-config-mutation-queue'
-import {
-  canonicalizeTrustPath,
-  resolveCodexProjectTrustRoot,
-  settleCodexProjectTrust,
-  writeCodexProjectTrust
-} from './codex/codex-project-trust-write'
+import type { TuiAgentConfig } from '../shared/tui-agent-config'
 
-export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity' | 'qoder'
+export type AgentTrustPreset = NonNullable<TuiAgentConfig['preflightTrust']>
 
 /**
  * Pre-mark a workspace as trusted for cursor-agent, GitHub Copilot CLI, or
@@ -43,7 +39,7 @@ export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity' | 
  * derived via the same util that resolves `~/.cursor/projects/<slug>`).
  */
 export function markCursorWorkspaceTrusted(workspacePath: string): void {
-  const absPath = canonicalizeTrustPath(workspacePath)
+  const absPath = canonicalize(workspacePath)
   const slug = cursorWorkspaceSlug(absPath)
   if (!slug) {
     return
@@ -73,7 +69,7 @@ export function markCursorWorkspaceTrusted(workspacePath: string): void {
  * copilotTokens, etc.) survive untouched.
  */
 export function markCopilotFolderTrusted(workspacePath: string): void {
-  const absPath = canonicalizeTrustPath(workspacePath)
+  const absPath = canonicalize(workspacePath)
   const configDir = join(homedir(), '.copilot')
   const configPath = join(configDir, 'config.json')
   let config: Record<string, unknown> = {}
@@ -93,7 +89,7 @@ export function markCopilotFolderTrusted(workspacePath: string): void {
   }
   const existing = Array.isArray(config.trustedFolders) ? (config.trustedFolders as unknown[]) : []
   const normalizedExisting = existing.map((entry) =>
-    typeof entry === 'string' ? canonicalizeTrustPath(entry) : null
+    typeof entry === 'string' ? canonicalize(entry) : null
   )
   if (normalizedExisting.includes(absPath)) {
     return
@@ -127,7 +123,7 @@ export function markCopilotFolderTrusted(workspacePath: string): void {
  * toolPermission, agentMode, …) survive untouched.
  */
 export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
-  const absPath = canonicalizeTrustPath(workspacePath)
+  const absPath = canonicalize(workspacePath)
   const configDir = join(homedir(), '.gemini', 'antigravity-cli')
   const configPath = join(configDir, 'settings.json')
   let config: Record<string, unknown> = {}
@@ -147,7 +143,7 @@ export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
   }
   const existing = Array.isArray(config.trustedWorkspaces) ? config.trustedWorkspaces : []
   const normalizedExisting = existing.map((entry) =>
-    typeof entry === 'string' ? canonicalizeTrustPath(entry) : null
+    typeof entry === 'string' ? canonicalize(entry) : null
   )
   if (normalizedExisting.includes(absPath)) {
     return
@@ -166,24 +162,66 @@ export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
  *
  * Verified against codex-rs/tui/src/onboarding/trust_directory.rs and
  * codex-rs/core/src/config/config_tests.rs in the Codex CLI source.
+ *
+ * `configFiles` names every config.toml the launched Codex may read, in the
+ * hook installer's lock order (an Orca-owned CODEX_HOME before the system one).
  */
-export async function markCodexProjectTrusted(workspacePath: string): Promise<void> {
-  const trustRoot = resolveCodexProjectTrustRoot(workspacePath)
-  const systemTomlPath = join(homedir(), '.codex', 'config.toml')
-  // Why: Orca-launched Codex runs with an Orca-owned CODEX_HOME, so the trust
-  // preset must also update the runtime config Codex will actually read.
-  const runtimeTomlPath = join(getOrcaManagedCodexHomePath(), 'config.toml')
+export function markCodexProjectTrusted(
+  workspacePath: string,
+  configFiles: readonly string[]
+): Promise<void> {
+  // Why: Codex checks the cwd's own entry before the repo root, so no git-layout logic is needed.
+  const absPath = canonicalize(workspacePath)
   // Why (#16441): hook installs now await a codex app-server grant, so an
   // unqueued write here can land inside their capture->restore window and be
   // reverted. Same runtime-before-system lock order the installer takes.
-  const results = await runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
-    runExclusivelyForCodexTrustConfig(systemTomlPath, async () => [
-      // Why (#23847): each home is written on its own, so a read-only or broken ~/.codex no longer skips the runtime home.
-      writeCodexProjectTrust(systemTomlPath, trustRoot),
-      writeCodexProjectTrust(runtimeTomlPath, trustRoot)
-    ])
+  const write = configFiles.reduceRight<() => Promise<void>>(
+    (inner, configFile) => () => runExclusivelyForCodexTrustConfig(configFile, inner),
+    async () => {
+      // Why: a config.toml Orca refuses to edit must not also leave Codex's other homes untrusted.
+      const failures: unknown[] = []
+      for (const configFile of configFiles) {
+        try {
+          upsertProjectTrustLevel(configFile, absPath, 'trusted')
+        } catch (error) {
+          // Why: an OS error names the atomic writer's temp file, which never exists for the user to fix.
+          failures.push(
+            error instanceof CodexConfigTomlEditRefusedError
+              ? error
+              : new Error(
+                  `could not write ${configFile}: ${error instanceof Error ? error.message : String(error)}`,
+                  { cause: error }
+                )
+          )
+        }
+      }
+      if (failures.length === 1) {
+        throw failures[0]
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures,
+          'Orca could not mark the project trusted in several Codex homes'
+        )
+      }
+    }
   )
-  settleCodexProjectTrust(workspacePath, results)
+  return write()
+}
+
+function canonicalize(p: string): string {
+  // Why: macOS reports `/tmp/x` and `/private/tmp/x` as the same inode, but
+  // both Cursor and Copilot's trust comparators run realpath() before the
+  // string compare. Mirror that so a worktree under a symlinked parent
+  // (orca caches realpath()'d worktree paths) matches the agent's lookup.
+  try {
+    if (existsSync(p)) {
+      return realpathSync.native(p)
+    }
+  } catch {
+    // Fall through to the raw input.
+  }
+  return p
 }
 
 function cursorWorkspaceSlug(absPath: string): string {

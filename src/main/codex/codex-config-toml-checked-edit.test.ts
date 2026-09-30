@@ -1,19 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { parse } from 'smol-toml'
 import {
   readHookTrustEntriesFromContent,
   removeHookTrustEntriesFromContent,
   upsertHookTrustEntriesInContent,
-  upsertProjectTrustLevel,
   upsertProjectTrustLevelInContent,
   type CodexTrustEntry
 } from './config-toml-trust'
 import {
-  clearCodexConfigTomlEditRefusalReport,
   CodexConfigTomlEditRefusedError,
+  refuseUnreadableCodexConfigResult,
   reportCodexConfigTomlEditRefusal,
   reportCodexTrustWriteRefusals
 } from './codex-config-toml-checked-edit'
@@ -320,7 +316,7 @@ describe('review follow-ups for the checked writer', () => {
   })
 })
 
-describe('refused trust writes are reported once per file', () => {
+describe('refused Codex config writes', () => {
   it('logs each refusal once, including inside an AggregateError, and returns other failures', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -340,19 +336,17 @@ describe('refused trust writes are reported once per file', () => {
       warn.mockRestore()
     }
   })
-})
 
-describe('Codex config reports about one file log once per kind', () => {
-  it('does not re-log interleaved trust, promotion, and mirror reports on every launch', () => {
+  it('logs each distinct refusal once across launches and a new message again', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const dir = mkdtempSync(join(tmpdir(), 'codex-report-once-'))
     try {
-      const systemPath = join(dir, 'system.toml')
-      const runtimePath = join(dir, 'runtime.toml')
-      const refusal = (configPath: string) =>
+      const systemPath = '/tmp/report-once-launches/system.toml'
+      const runtimePath = '/tmp/report-once-launches/runtime.toml'
+      const refusal = (configPath: string, line = 2) =>
         new CodexConfigTomlEditRefusedError({
           reason: 'input-invalid',
           detail: 'the file is not valid TOML',
+          line,
           configPath
         })
       for (let launch = 0; launch < 4; launch++) {
@@ -360,33 +354,52 @@ describe('Codex config reports about one file log once per kind', () => {
           new AggregateError([refusal(systemPath), refusal(runtimePath)], 'trust write failed')
         )
         reportCodexConfigTomlEditRefusal(refusal(systemPath), 'Skipped promoting Codex settings')
-        reportCodexConfigTomlEditRefusal(
-          refusal(runtimePath),
-          'Skipped writing a managed Codex config'
-        )
       }
-      const trustReports = () =>
-        warn.mock.calls.filter(([message]) => String(message).includes('trusted for Codex'))
-      expect(trustReports()).toHaveLength(2)
+      expect(warn).toHaveBeenCalledTimes(3)
+
+      reportCodexTrustWriteRefusals(refusal(systemPath, 7))
       expect(warn).toHaveBeenCalledTimes(4)
-
-      // A mirror pass that succeeds forgets mirror reports, not a trust refusal that still recurs.
-      clearCodexConfigTomlEditRefusalReport(runtimePath)
-      reportCodexTrustWriteRefusals(refusal(runtimePath))
-      reportCodexConfigTomlEditRefusal(
-        refusal(runtimePath),
-        'Skipped writing a managed Codex config'
-      )
-      expect(trustReports()).toHaveLength(2)
-      expect(warn).toHaveBeenCalledTimes(5)
-
-      writeFileSync(systemPath, 'model = "a"\n')
-      upsertProjectTrustLevel(systemPath, '/work/repo', 'trusted')
-      reportCodexTrustWriteRefusals(refusal(systemPath))
-      expect(trustReports()).toHaveLength(3)
+      expect(String(warn.mock.calls[3]?.[0])).toContain('(line 7)')
     } finally {
-      rmSync(dir, { recursive: true, force: true })
       warn.mockRestore()
     }
+  })
+})
+
+describe('a hook trust edit with nothing to write', () => {
+  const handBroken = 'model = "a"\nbroken = \n'
+
+  it('leaves a config Codex cannot parse as it is instead of refusing', () => {
+    expect(upsertHookTrustEntriesInContent(handBroken, [])).toBe(handBroken)
+    expect(
+      setHookTrustEnabledContent(handBroken, [{ key: '/rt/hooks.json:stop:0:0', enabled: false }])
+    ).toBe(handBroken)
+  })
+})
+
+describe('a whole-document mirror result', () => {
+  const unreadable = 'model = "a"\nmodel = "b"\n'
+  const refuse = (inputs: (string | null)[]) =>
+    refuseUnreadableCodexConfigResult({
+      configPath: '/tmp/mirror-result-probe/config.toml',
+      result: unreadable,
+      inputs,
+      context: 'Skipped mirroring the Codex config into a managed home'
+    })
+
+  it('is refused when every input parses, counting Orca-repairable duplicates as parsing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const orcaDuplicates =
+        '["projects"."/r"]\ntrust_level = "trusted"\n\n[projects."/r"]\ntrust_level = "trusted"\n'
+      expect(refuse(['model = "a"\n', null, orcaDuplicates])).toBe(true)
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('is written as before when an input was broken by hand', () => {
+    expect(refuse(['model = "a"\n', 'broken = \n'])).toBe(false)
   })
 })

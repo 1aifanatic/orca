@@ -8,7 +8,8 @@ import {
 } from './codex-config-toml-document'
 import {
   removedValuesSurviveIn,
-  repairOrcaCodexConfigDuplicatesWithRemovals
+  repairOrcaCodexConfigDuplicatesWithRemovals,
+  repairUnparseableCodexConfig
 } from './codex-config-toml-repair'
 import type { TomlAssignmentLine } from './codex-config-toml-structure'
 
@@ -156,7 +157,7 @@ export function applyCheckedCodexConfigTomlEdit(
   return result.content
 }
 
-/** For whole-document producers (the managed-home mirror): the result must at least parse. */
+/** For whole-document writers: the result must at least parse. */
 export function assertCodexConfigTomlParses(content: string): void {
   const parsed = parseCodexConfigToml(content)
   if (!parsed.ok) {
@@ -168,35 +169,69 @@ export function assertCodexConfigTomlParses(content: string): void {
   }
 }
 
-// Keyed by file, then by what Orca was doing, so interleaved reports about one file each log once.
-const reportedMessages = new Map<string, Map<string, string>>()
-const TRUST_WRITE_CONTEXT = 'Skipped marking a workspace trusted for Codex'
-
-/** Logs once per file, kind, and message, so a launch-time retry does not flood the log. */
-export function reportCodexConfigOnce(key: string, message: string, kind = ''): void {
-  let byKind = reportedMessages.get(key)
-  if (!byKind) {
-    byKind = new Map()
-    reportedMessages.set(key, byKind)
+/**
+ * For whole-document producers (the managed-home mirrors): true, and reported
+ * once, when `result` does not parse although every input does after Orca's own
+ * repair. An input the user broke by hand is mirrored as it is.
+ */
+export function refuseUnreadableCodexConfigResult(args: {
+  configPath: string
+  result: string
+  inputs: readonly (string | null)[]
+  context: string
+}): boolean {
+  const parsed = parseCodexConfigToml(args.result)
+  if (
+    parsed.ok ||
+    args.inputs.some(
+      (input) => input !== null && !parseCodexConfigToml(repairUnparseableCodexConfig(input)).ok
+    )
+  ) {
+    return false
   }
-  if (byKind.get(kind) === message) {
+  reportCodexConfigTomlEditRefusal(
+    new CodexConfigTomlEditRefusedError({
+      reason: 'result-invalid',
+      detail: `the result would not be valid TOML (${parsed.message}).`,
+      line: parsed.line,
+      configPath: args.configPath
+    }),
+    args.context
+  )
+  return true
+}
+
+const TRUST_WRITE_CONTEXT = 'Skipped marking a workspace trusted for Codex'
+const MAX_REPORTED_WARNINGS = 500
+const reportedWarnings = new Set<string>()
+
+/**
+ * Why: a refused write recurs on every launch and mirror pass until the user
+ * edits the file, so each distinct message about a file logs once per session.
+ */
+export function warnCodexConfigOnce(configPath: string, message: string): void {
+  const key = `${configPath}\n${message}`
+  if (reportedWarnings.has(key)) {
     return
   }
-  byKind.set(kind, message)
-  console.warn(`[codex-config] ${message}`)
+  if (reportedWarnings.size >= MAX_REPORTED_WARNINGS) {
+    const oldest = reportedWarnings.values().next()
+    if (!oldest.done) {
+      reportedWarnings.delete(oldest.value)
+    }
+  }
+  reportedWarnings.add(key)
+  console.warn(message)
 }
 
 export function reportCodexConfigTomlEditRefusal(
   error: CodexConfigTomlEditRefusedError,
   context: string
 ): void {
-  reportCodexConfigOnce(error.configPath ?? context, `${context}: ${error.message}`, context)
+  warnCodexConfigOnce(error.configPath ?? context, `[codex-config] ${context}: ${error.message}`)
 }
 
-/**
- * Why: a refused trust write recurs on every launch until the user fixes the
- * file, so it is reported once per file; returns the other failures for the caller.
- */
+/** Logs each refused trust write once and returns the other failures for the caller. */
 export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
   const failures = error instanceof AggregateError ? error.errors : [error]
   return failures.filter((failure) => {
@@ -206,19 +241,4 @@ export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
     reportCodexConfigTomlEditRefusal(failure, TRUST_WRITE_CONTEXT)
     return false
   })
-}
-
-/** Forgets mirror/write reports for a file; a trust refusal is only forgotten by a trust write that succeeds. */
-export function clearCodexConfigTomlEditRefusalReport(configPath: string): void {
-  const byKind = reportedMessages.get(configPath)
-  const trust = byKind?.get(TRUST_WRITE_CONTEXT)
-  if (trust === undefined) {
-    reportedMessages.delete(configPath)
-  } else {
-    reportedMessages.set(configPath, new Map([[TRUST_WRITE_CONTEXT, trust]]))
-  }
-}
-
-export function clearCodexTrustWriteRefusalReport(configPath: string): void {
-  reportedMessages.get(configPath)?.delete(TRUST_WRITE_CONTEXT)
 }

@@ -124,7 +124,6 @@
     "../src/main/codex/codex-config-toml-document.ts",
     "../src/main/codex/codex-config-toml-repair.ts",
     "../src/main/codex/codex-config-toml-structure.ts",
-    "../src/main/codex/codex-managed-config-validity.ts",
     "../src/main/codex/codex-config-path-reference-rewrite.ts",
     "../src/main/codex/codex-config-settings-preservation.ts",
     "../src/main/codex/codex-config-settings-removal.ts",

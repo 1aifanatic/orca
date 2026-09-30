@@ -4,7 +4,6 @@ import { isUnknownWorkerStartOutcome, type WorkerSetupReceipt } from './worker-t
 import type { OrchestrationWorkerLaunchReceipt } from './worker-launch-preferences'
 import type { WorkerStartModeReceipt } from '../../orchestration-worker-start-mode'
 import { isStructuredWorkerHandle } from '../../../../structured-worker-identity'
-import { WorkerStartTrustBlockedError } from './worker-start-trust-block'
 
 export function failWorkerStartWithReceipt(args: {
   db: OrchestrationDb
@@ -32,12 +31,6 @@ export function failWorkerStartWithReceipt(args: {
   const residual = unknown ? undefined : args.db.getWorkerTerminalResourceByOwner(args.dispatchId)
   const releasable =
     residual?.ownership_state === 'owned' && !isStructuredWorkerHandle(residual.terminal_handle)
-  const recovery = [
-    args.error instanceof WorkerStartTrustBlockedError ? args.error.recovery : null,
-    releasable
-      ? `This start created a terminal that never ran the Task. Close it with: orca orchestration worker-release --dispatch ${args.dispatchId}`
-      : null
-  ].filter((step) => step !== null)
   return {
     runId: args.runId,
     taskId: args.taskId,
@@ -51,7 +44,11 @@ export function failWorkerStartWithReceipt(args: {
     mode: args.mode,
     effects: JSON.parse(worker.effects) as unknown[],
     residualResources: JSON.parse(worker.residual_resources) as unknown[],
-    ...(recovery.length > 0 ? { recovery: recovery.join(' ') } : {}),
+    ...(releasable
+      ? {
+          recovery: `This start created a terminal that never ran the Task. Close it with: orca orchestration worker-release --dispatch ${args.dispatchId}`
+        }
+      : {}),
     ...(unknown
       ? {
           nextCommands: [

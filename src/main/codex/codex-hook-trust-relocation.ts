@@ -9,7 +9,7 @@ import {
   type CodexTrustEntry
 } from './config-toml-trust'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
-import { reportCodexConfigOnce } from './codex-config-toml-checked-edit'
+import { warnCodexConfigOnce } from './codex-config-toml-checked-edit'
 
 type HookPosition = {
   eventName: string
@@ -127,20 +127,18 @@ export function relocateCodexHookTrust(
       existing: readHookTrustEntries(tomlPath)
     })
     if (plan.refused.length > 0) {
-      reportCodexConfigOnce(
+      warnCodexConfigOnce(
         tomlPath,
-        `Left hook approvals at ${plan.refused.join(', ')} in ${tomlPath} as they were; Codex will ask to review those hooks.`,
-        'hook-trust-relocation'
+        `Left hook approvals at ${plan.refused.join(', ')} in ${tomlPath} as they were; Codex will ask to review those hooks.`
       )
     }
     if (plan.remove.length > 0 || plan.carry.length > 0) {
       replaceHookTrustEntries(tomlPath, plan.remove, plan.carry)
     }
   } catch (error) {
-    reportCodexConfigOnce(
+    warnCodexConfigOnce(
       tomlPath,
-      `Could not carry hook approvals in ${tomlPath} across Orca's hooks.json update: ${error instanceof Error ? error.message : String(error)}`,
-      'hook-trust-relocation'
+      `Could not carry hook approvals in ${tomlPath} across Orca's hooks.json update: ${error instanceof Error ? error.message : String(error)}`
     )
   }
 }
