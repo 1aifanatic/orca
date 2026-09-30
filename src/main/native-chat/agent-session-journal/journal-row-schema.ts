@@ -95,7 +95,14 @@ export type JournalStopEvent = {
 }
 
 /** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
-export function isJournalStopOrResumeRow(row: JournalRow): row is JournalTombstoneRow {
+/** A tombstone that carries a Stop event or a Resume mark instead of removing an item. */
+export type JournalStopOrResumeRow = JournalTombstoneRow &
+  (
+    | { stopEvent: NonNullable<JournalTombstoneRow['stopEvent']> }
+    | { queueResume: NonNullable<JournalTombstoneRow['queueResume']> }
+  )
+
+export function isJournalStopOrResumeRow(row: JournalRow): row is JournalStopOrResumeRow {
   return row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
 }
 
