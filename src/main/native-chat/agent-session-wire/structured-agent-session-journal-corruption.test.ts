@@ -11,6 +11,7 @@ import {
   attach,
   CALLER,
   envelope,
+  hostTestRecoveryCapsuleSettled,
   hostTestState
 } from './structured-agent-session-host-test-harness'
 import { hostTestMessage } from './structured-agent-session-host-test-data'
@@ -73,8 +74,9 @@ it('refuses a send as corrupt when SQLite reports damage, and still stops the ag
     sessionId: expect.any(String),
     error: 'database disk image is malformed'
   })
-  // A recovery-offer read still in flight holds its lock for a moment; nothing else may appear.
-  await vi.waitFor(async () => expect(await readdir(root, { recursive: true })).toEqual(files))
+  // The restart-offer withdrawal the attach started holds its lock until it ends.
+  await hostTestRecoveryCapsuleSettled()
+  expect(await readdir(root, { recursive: true })).toEqual(files)
 })
 
 it.each([
