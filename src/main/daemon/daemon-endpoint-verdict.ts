@@ -90,7 +90,7 @@ function recordedDaemonVerdict(pidPath: string | null): ProcessLivenessVerdict {
   try {
     contents = readFileSync(pidPath, 'utf8')
   } catch (error) {
-    // Why: a daemon removes its own record as it exits; every other remover first proves it gone.
+    // Why: the daemon deletes it on exit; older app builds also did so after a mere timeout.
     return hasErrorCode(error, 'ENOENT')
       ? { status: 'exited' }
       : { status: 'unverifiable', reason: 'the endpoint refused and its pid record is unreadable' }
