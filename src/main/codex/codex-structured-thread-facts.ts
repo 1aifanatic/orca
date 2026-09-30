@@ -73,6 +73,11 @@ export function readCodexErrorMessage(payload: unknown): string | null {
   return nonEmptyString(record(record(payload)?.error)?.message)
 }
 
+/** `error.additionalDetails`: what failed underneath, which Codex shows under its message. */
+export function readCodexErrorAdditionalDetails(payload: unknown): string | null {
+  return nonEmptyString(record(record(payload)?.error)?.additionalDetails)
+}
+
 /** `error.codexErrorInfo` is a bare variant (`"serverOverloaded"`) or one keyed to its fields
  *  (`{"responseStreamDisconnected":{"httpStatusCode":502}}`); read as the variant and its status. */
 export function readCodexErrorInfo(payload: unknown): { error: string; status?: unknown } | null {

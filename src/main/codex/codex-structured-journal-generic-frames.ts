@@ -1,4 +1,8 @@
-import { unhandledProviderFrameJournalItem } from '../native-chat/agent-session-wire/unhandled-provider-frame'
+import type { AgentJournalStatusItem } from '../../shared/agent-session-journal-types'
+import {
+  unhandledProviderFrameJournalItem,
+  type UnhandledProviderFrameJournalItem
+} from '../native-chat/agent-session-wire/unhandled-provider-frame'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type {
   CodexJournalTranslationAdmission,
@@ -75,9 +79,18 @@ export class CodexJournalGenericFrames {
     const translated = unhandledProviderFrameJournalItem('codex', kind, payload)
     // A frame the classifier declines is deliberately not journaled, which is success.
     // Failing admission here force-closes the provider through the retry queue.
-    if (!translated) {
-      return CODEX_JOURNAL_ADMITTED
+    return translated ? this.appendFrameRow(threadId, payload, translated) : CODEX_JOURNAL_ADMITTED
+  }
+
+  /** One frame's own row, under the identity every frame row gets, however it is worded. */
+  appendFrameRow(
+    threadId: string,
+    payload: unknown,
+    translated: {
+      body: AgentJournalStatusItem
+      classification: UnhandledProviderFrameJournalItem['classification']
     }
+  ): CodexJournalTranslationAdmission {
     const frameTurnId = readCodexTurnId(payload) ?? this.activeTurn(threadId)
     const turnId = frameTurnId ?? 'outside-turn'
     const bucket = this.bucketFor(threadId, turnId)

@@ -1,0 +1,92 @@
+import { describe, expect, it } from 'vitest'
+import type { AgentJournalRenderItem } from './agent-session-journal-types'
+import { agentSessionFailureWords } from './agent-session-failure-words'
+import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
+import type { NativeChatMessage } from './native-chat-types'
+import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+
+let sequence = 0
+
+function item(body: AgentJournalRenderItem['body'], agentId?: string): AgentJournalRenderItem {
+  sequence += 1
+  return {
+    itemId: `item-${sequence}`,
+    revision: 1,
+    sequence,
+    observedAt: sequence,
+    body,
+    ...(agentId ? { agentId } : {})
+  }
+}
+
+function retry(attempt: number, agentId?: string): AgentJournalRenderItem {
+  return item(
+    {
+      kind: 'status',
+      tone: 'warning',
+      ...agentSessionFailureWords(
+        {
+          kind: 'providerRetrying',
+          detail: { text: `Reconnecting... ${attempt}/5`, audience: 'person' }
+        },
+        { surface: 'row', agentName: 'Codex' }
+      )
+    },
+    agentId
+  )
+}
+
+function assistant(text: string): AgentJournalRenderItem {
+  return item({ kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] })
+}
+
+function drawn(items: AgentJournalRenderItem[]): string[] {
+  return projectStructuredAgentSessionMessages(items, [], []).map((message) =>
+    message.blocks.map((block) => (block.type === 'text' ? block.text : block.type)).join('')
+  )
+}
+
+describe('a run of provider retry rows', () => {
+  it('draws only its latest row', () => {
+    expect(drawn([assistant('Working'), retry(1), retry(2), retry(3)])).toEqual([
+      'Working',
+      'Codex is retrying: Reconnecting... 3/5.'
+    ])
+  })
+
+  it('is split by any other row drawn between two retries', () => {
+    const notice = item({ kind: 'status', tone: 'notice', text: 'Model changed' })
+    expect(
+      drawn([retry(1), retry(2), assistant('Partial answer'), retry(1), notice, retry(1)])
+    ).toEqual([
+      'Codex is retrying: Reconnecting... 2/5.',
+      'Partial answer',
+      'Codex is retrying: Reconnecting... 1/5.',
+      'Model changed',
+      'Codex is retrying: Reconnecting... 1/5.'
+    ])
+  })
+
+  it("keeps each agent's retries apart", () => {
+    expect(drawn([retry(1), retry(1, 'subagent-1'), retry(2, 'subagent-1')])).toEqual([
+      'Codex is retrying: Reconnecting... 1/5.',
+      'Codex is retrying: Reconnecting... 2/5.'
+    ])
+  })
+
+  it('is not split by a row that draws nothing', () => {
+    const turn = item({ kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1 })
+    expect(drawn([retry(1), turn, retry(2)])).toEqual(['Codex is retrying: Reconnecting... 2/5.'])
+  })
+
+  it("draws an older host's single revised row as it is", () => {
+    expect(drawn([retry(4)])).toEqual(['Codex is retrying: Reconnecting... 4/5.'])
+  })
+
+  it('hands back the same list when nothing retried', () => {
+    const messages: NativeChatMessage[] = [
+      { id: 'a', role: 'assistant', blocks: [], timestamp: 1, source: 'transcript' }
+    ]
+    expect(collapseProviderRetryRuns(messages, () => undefined)).toBe(messages)
+  })
+})

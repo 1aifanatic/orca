@@ -107,6 +107,11 @@ function quotingPersonDetail(lead: string, detail: ProviderDiagnostic | undefine
   return quoted ? `${lead}: ${quoted}.` : `${lead}.`
 }
 
+/** The provider's account of what failed goes on the line under the sentence, as it wrote it. */
+function withRetryCause(sentence: string, cause: string | undefined): string {
+  return cause ? `${sentence}\n${cause}` : sentence
+}
+
 /** What to do once the start can work, for a sentence that ends in it. */
 function retryStep({ command }: AgentSessionFailureWordsContext): string {
   return command === 'clear' ? 'run /clear again' : 'send your message again'
@@ -211,11 +216,14 @@ const FAILURE_SENTENCES = {
     `${agentName ?? 'The agent'} never finished starting, so Orca stopped it.`,
   // A provider that says how its retry is going, for a person, is quoted: that is the progress.
   providerRetrying: ({ agentName }, { retry, detail }) =>
-    detail?.audience === 'person'
-      ? quotingPersonDetail(`${agentName ?? 'The agent'} is retrying`, detail)
-      : retry?.error === 'rate_limit' || retry?.status === 429
-        ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
-        : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`
+    withRetryCause(
+      detail?.audience === 'person'
+        ? quotingPersonDetail(`${agentName ?? 'The agent'} is retrying`, detail)
+        : retry?.error === 'rate_limit' || retry?.status === 429
+          ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
+          : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`,
+      retry?.cause
+    )
 } satisfies Record<AgentSessionFailureKind, Sentence>
 
 /** The sentence a person reads for this fact on this surface; never a marker. */

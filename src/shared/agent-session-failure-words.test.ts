@@ -201,6 +201,22 @@ describe('the words written beside a failure fact', () => {
     expect(retrying({})).toBe('Codex hit a temporary problem and is retrying.')
   })
 
+  it("puts the provider's account of what failed on the retry row's second line", () => {
+    const retrying = (fact: Omit<AgentSessionFailureFact, 'kind'>) =>
+      agentSessionFailureSentence({ kind: 'providerRetrying', ...fact }, 'row', {
+        agentName: 'Codex'
+      })
+    expect(
+      retrying({
+        detail: { text: 'Reconnecting... 2/5', audience: 'person' },
+        retry: { cause: 'stream disconnected before completion' }
+      })
+    ).toBe('Codex is retrying: Reconnecting... 2/5.\nstream disconnected before completion')
+    expect(retrying({ retry: { status: 429, cause: 'Too many requests' } })).toBe(
+      'Codex is rate-limited and retrying.\nToo many requests'
+    )
+  })
+
   it('says which limit an attachment broke, in megabytes', () => {
     const sentence = (attachment: AgentSessionFailureFact['attachment']) =>
       agentSessionFailureSentence({ kind: 'attachmentInvalid', attachment }, 'rejection', {

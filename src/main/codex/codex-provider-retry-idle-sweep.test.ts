@@ -1,5 +1,5 @@
 // A Codex that keeps reconnecting is working, so the idle sweep must not stop it. Every retry
-// frame's publish is the activity the sweep reads, even though a run writes one row.
+// frame writes and publishes its own row, and that publish is the activity the sweep reads.
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -121,10 +121,15 @@ describe('a Codex reconnecting a dropped stream', () => {
     const retryRows = items.filter(
       (item) => item.body.kind === 'status' && item.body.failure?.kind === 'providerRetrying'
     )
-    expect(retryRows).toHaveLength(1)
-    expect(retryRows[0]?.body).toMatchObject({
-      failure: { detail: { text: 'Reconnecting... 5/5' } }
-    })
+    expect(retryRows.map((row) => row.body)).toEqual(
+      [1, 2, 3, 4, 5].map((attempt) =>
+        expect.objectContaining({
+          failure: expect.objectContaining({
+            detail: expect.objectContaining({ text: `Reconnecting... ${attempt}/5` })
+          })
+        })
+      )
+    )
 
     // Once the frames stop, the same clock does let the sweep close it.
     clock += STRUCTURED_AGENT_SESSION_IDLE_MS
