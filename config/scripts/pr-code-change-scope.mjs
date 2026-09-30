@@ -29,6 +29,7 @@ export const PR_CHECK_JOBS = [
   'mobile_web_app',
   'cross-version-wire',
   'managed_hook_node18',
+  'standalone_cli',
   'package',
   'package_windows'
 ]
@@ -203,6 +204,15 @@ const MANAGED_HOOK_PREFIXES = [
   'src/relay/',
   'src/shared/agent-hook',
   'src/main/agent-hooks/'
+]
+
+// The bundle's entry tree, its build and packer, the launcher it ships, and the smoke that runs it.
+const STANDALONE_CLI_PREFIXES = [
+  'src/cli/',
+  'config/scripts/build-standalone-cli',
+  'config/scripts/package-standalone-cli',
+  'config/scripts/smoke-standalone-cli-tarball',
+  'config/standalone-cli/'
 ]
 
 const NATIVE_RUNTIME_PREFIXES = [
@@ -487,6 +497,8 @@ function jobDetector(job) {
       return (files) => files.some((file) => matchesPrefix(file, CROSS_VERSION_WIRE_PREFIXES))
     case 'managed_hook_node18':
       return (files) => files.some((file) => matchesPrefix(file, MANAGED_HOOK_PREFIXES))
+    case 'standalone_cli':
+      return (files) => files.some((file) => matchesPrefix(file, STANDALONE_CLI_PREFIXES))
     case 'package':
       return (files) => files.some(isLinuxPackagePath)
     case 'package_windows':
