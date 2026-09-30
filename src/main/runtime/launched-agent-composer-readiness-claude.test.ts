@@ -76,8 +76,8 @@ describe('launch readiness for a freshly launched Claude', () => {
     const { ready, settled } = await launchAndStream(
       'claude-dialog-trust-workspace-answered',
       60_000,
-      // The runtime controller's scan answers null for an SSH relay, which has none.
-      { connectionId: 'ssh-1', confirmedForegroundProcess: null }
+      // The relay offers no shell proof; one that claimed a shell would refuse this signal.
+      { connectionId: 'ssh-1', shellForegroundProven: true }
     )
 
     await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS + 300)
@@ -101,19 +101,25 @@ describe('launch readiness for a freshly launched Claude', () => {
 
 describe('whether a shell is proven in front of a launched agent’s terminal', () => {
   it.each([
-    ['claude', false],
-    // macOS reports the native Claude by its version.
-    ['2.1.285', false],
-    ['node', false],
-    ['zsh', true],
-    ['-zsh', true],
-    ['bash', true],
-    // An unread foreground proves nothing.
-    [null, false]
-  ])('foreground %s: %s', async (foregroundProcess, shellInFront) => {
+    ['claude', true, true],
+    ['claude', false, false],
+    ['zsh', true, true],
+    ['-zsh', true, true],
+    ['bash', true, true],
+    // A bash-script agent: the pane's own shell is not the one in front.
+    ['bash', false, false],
+    // An unread foreground leaves it to the proof.
+    [null, true, true],
+    [null, false, false],
+    // Windows names the shell for an agent it cannot recognize (an npm agent as `node.exe`); only
+    // the shell alone in the pane's job proves one.
+    ['powershell.exe', false, false],
+    ['powershell.exe', true, true]
+  ])('foreground %s, shell proof %s: %s', async (foregroundProcess, proven, shellInFront) => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Claude Code',
       foregroundProcess,
+      shellForegroundProven: proven,
       launchAgent: 'claude',
       data: ''
     })
@@ -123,40 +129,52 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
     )
   })
 
+  it('proves nothing on a controller without a shell proof', async () => {
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'Claude Code',
+      foregroundProcess: 'zsh',
+      launchAgent: 'claude',
+      data: ''
+    })
+
+    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+      false
+    )
+  })
+
   // Measured on a zsh pane with the daemon's foreground tracker: for its first 5 s the cached read
-  // names the launch agent while zsh is in front, before the launch line runs and after an agent
-  // that exited; a fresh process-table scan answers `zsh`, and names a script agent by its command.
+  // names the launch agent while zsh is in front, so only the proof can tell.
   it.each([
-    ['before the launch line runs', 'copilot', 'zsh', true],
-    ['after the agent exited', 'copilot', 'zsh', true],
-    ['while a script agent runs', 'bash', 'copilot', false],
-    ['while the scan cannot answer', 'copilot', null, false]
-  ])('%s: cached %s, scanned %s, shell %s', async (_moment, cached, scanned, shellInFront) => {
+    ['a shell in front', true],
+    ['the agent in front', false]
+  ])('cached as the launch agent, with %s: asks the proof', async (_moment, proven) => {
+    const proof = vi.fn()
     const { runtime } = await createTranscriptPane({
       paneTitle: 'copilot',
-      foregroundProcess: cached,
-      confirmedForegroundProcess: scanned,
+      foregroundProcess: 'copilot',
+      shellForegroundProven: proven,
+      onShellForegroundProof: proof,
       launchAgent: 'copilot',
       data: ''
     })
 
     await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-      shellInFront
+      proven
     )
+    expect(proof).toHaveBeenCalledOnce()
   })
 
-  // The runtime controller answers every pane's scan, and null for an SSH relay that has none;
-  // taken as "cannot tell", a shell the relay names in front was never refused.
+  // The stub's proof always disagrees with the relay's name, so asking it would flip the answer.
   it.each([
     ['claude', false],
     ['bash', true]
-  ])('SSH: takes the relay’s own read %s (shell %s), without a scan', async (relayRead, shell) => {
-    const scan = vi.fn()
+  ])('SSH: takes the relay’s own read %s (shell %s), without a proof', async (relayRead, shell) => {
+    const proof = vi.fn()
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Claude Code',
       foregroundProcess: relayRead,
-      confirmedForegroundProcess: null,
-      onForegroundScan: scan,
+      shellForegroundProven: !shell,
+      onShellForegroundProof: proof,
       connectionId: 'ssh-1',
       launchAgent: 'claude',
       data: ''
@@ -165,25 +183,28 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
     await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
       shell
     )
-    expect(scan).not.toHaveBeenCalled()
+    expect(proof).not.toHaveBeenCalled()
   })
 
-  // Why no scan: the scan is the slow read, and a native Claude names itself by its version, which
+  // Why no proof: it runs a process scan, and a native Claude names itself by its version, which
   // the cached read gives straight away.
-  it('takes a non-shell name other than the agent’s own at once, without a process scan', async () => {
-    const scan = vi.fn()
-    const { runtime } = await createTranscriptPane({
-      paneTitle: 'Claude Code',
-      foregroundProcess: '2.1.285',
-      confirmedForegroundProcess: 'zsh',
-      onForegroundScan: scan,
-      launchAgent: 'claude',
-      data: ''
-    })
+  it.each(['2.1.285', 'node'])(
+    'takes the non-shell name %s, other than the agent’s own, at once, without a proof',
+    async (foregroundProcess) => {
+      const proof = vi.fn()
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Claude Code',
+        foregroundProcess,
+        shellForegroundProven: true,
+        onShellForegroundProof: proof,
+        launchAgent: 'claude',
+        data: ''
+      })
 
-    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-      false
-    )
-    expect(scan).not.toHaveBeenCalled()
-  })
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
+        false
+      )
+      expect(proof).not.toHaveBeenCalled()
+    }
+  )
 })

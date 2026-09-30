@@ -164,7 +164,7 @@ describe('a launched agent’s ready signal, after the shell that ran it', () =>
   })
 
   // A startup file's subprocess (a conda or pyenv hook) in front before the prompt proves nothing
-  // about the agent; the old hold took it as the agent and released the shell's prompt early.
+  // about the agent, so the shell's prompt after it must not settle the wait.
   it('does not settle while Claude is still silent after a startup-file subprocess ran', async () => {
     vi.useFakeTimers()
     const pane = launchedPane()
