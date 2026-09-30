@@ -125,13 +125,21 @@ export async function assertCell(
   expect(violations, `${cell.id}: ${violations.join('; ')}`).toEqual([])
 }
 
-/** Opens a PTY as the session owner and waits for the shell to evaluate what it was sent. */
+/** Resends the probe this often until the shell evaluates it; typeahead before a prompt can be dropped. */
+const TERMINAL_PROBE_RESEND_MS = 15_000
+
+/**
+ * Opens a PTY as the session owner and waits for the shell to evaluate what it was sent. Returns
+ * the multiplexer's disposer: until called, the session keeps answering relay keepalives, as the
+ * app does, so the relay never reaps it as silent while the connection is still up.
+ */
 export async function assertTerminalEchoes(
   deployed: RelayDeployResult,
   clientInstanceId: string,
   probe: TerminalProbe
-): Promise<void> {
+): Promise<() => void> {
   const mux = new SshChannelMultiplexer(deployed.transport)
+  let keepOpen = false
   try {
     // Why retry: the first connect's owner stays held for its grace period, and the app retries too.
     await retrySshOwnerRecoveryWhileBlocked(
@@ -154,16 +162,24 @@ export async function assertTerminalEchoes(
         ? spawned.id
         : ''
     expect(id).not.toBe('')
-    mux.notify('pty.data', { id, data: probe.input })
-    // Why 60s: a first Windows PowerShell start under ConPTY can take tens of seconds on CI.
-    const deadline = Date.now() + 60_000
+    // Why 90s: a first Windows PowerShell start under ConPTY can take tens of seconds on CI.
+    const deadline = Date.now() + 90_000
+    let nextSendAt = 0
     while (!(output.get(id) ?? '').includes(probe.expect) && Date.now() < deadline) {
+      if (Date.now() >= nextSendAt) {
+        mux.notify('pty.data', { id, data: probe.input })
+        nextSendAt = Date.now() + TERMINAL_PROBE_RESEND_MS
+      }
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
     expect(output.get(id) ?? '').toContain(probe.expect)
     await mux.request('pty.shutdown', { id })
+    keepOpen = true
+    return () => mux.dispose()
   } finally {
-    mux.dispose()
+    if (!keepOpen) {
+      mux.dispose()
+    }
   }
 }
 
@@ -254,8 +270,12 @@ export async function exerciseLaunchedCell(run: LaunchedCellRun): Promise<Launch
   }
   // Why one id for both connects: the app reconnects as the same client instance.
   const clientInstanceId = randomUUID()
-  await assertTerminalEchoes(first.deployed, clientInstanceId, terminal)
-  await assertGcKeepsInUseRuntime(firstConn, observer, first.deployed, layout)
+  const closeFirstSession = await assertTerminalEchoes(first.deployed, clientInstanceId, terminal)
+  try {
+    await assertGcKeepsInUseRuntime(firstConn, observer, first.deployed, layout)
+  } finally {
+    closeFirstSession()
+  }
   const before = await observer.fileStamp(layout.nodePath)
   await firstConn.disconnect()
 
@@ -269,7 +289,12 @@ export async function exerciseLaunchedCell(run: LaunchedCellRun): Promise<Launch
     if (!second.deployed) {
       throw new Error(`${cell.id} did not relaunch on the second connect`)
     }
-    await assertTerminalEchoes(second.deployed, clientInstanceId, terminal)
+    const closeSecondSession = await assertTerminalEchoes(
+      second.deployed,
+      clientInstanceId,
+      terminal
+    )
+    closeSecondSession()
   } finally {
     await secondConn.disconnect()
   }
