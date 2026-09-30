@@ -13,9 +13,9 @@ import {
 import { readRepoConfigFacts, type RepoConfigFacts } from './repo-admin-layout'
 import {
   adminEntryKey,
-  readPackedRefs,
+  createPackedRefLookup,
   UNREADABLE,
-  type Unreadable
+  type PackedRefLookup
 } from './worktree-admin-file-reads'
 import {
   compareWorktreePathsLikeGit,
@@ -109,18 +109,21 @@ export async function validateMembershipFromFiles(
 
   const packedStamp = await readAdminStatStamp({ path: join(commonDir, 'packed-refs') })
   const packedChanged = full || packedStamp === null || packedStamp !== previous?.packedStamp
-  let packedRefs = packedChanged ? null : (previous?.packedRefs ?? null)
-  let packedRead: Promise<Map<string, string> | Unreadable> | null = null
-  // Parsed only when a ref falls through to it, and only once per stamp.
-  const readPacked = (): Promise<Map<string, string> | Unreadable> =>
-    packedRefs
-      ? Promise.resolve(packedRefs)
-      : (packedRead ??= readPackedRefs(commonDir).then((refs) => {
-          if (refs !== UNREADABLE) {
-            packedRefs = refs
-          }
-          return refs
-        }))
+  // Why only the looked-up refs: a large repo's whole `packed-refs` map is megabytes per model. A
+  // name not looked up under this stamp yet parses the file again.
+  const packedRefs = new Map(packedChanged ? [] : (previous?.packedRefs ?? []))
+  const parsePacked = createPackedRefLookup(commonDir)
+  const packedRef: PackedRefLookup = async (ref) => {
+    const known = packedRefs.get(ref)
+    if (known !== undefined) {
+      return known
+    }
+    const oid = await parsePacked(ref)
+    if (oid !== UNREADABLE) {
+      packedRefs.set(ref, oid)
+    }
+    return oid
+  }
 
   const worktreesDir = join(commonDir, 'worktrees')
   const listingStamp = await readAdminStatStamp({ path: worktreesDir })
@@ -136,7 +139,7 @@ export async function validateMembershipFromFiles(
   const context: FileRowContext = {
     commonDir,
     facts,
-    packedRefs: readPacked,
+    packedRef,
     platform: process.platform
   }
   const packedMoved = (memo: DerivedRowMemo | undefined): boolean =>

@@ -7,6 +7,7 @@ import { getErrorCode } from '../worktree-operation-options'
 // membership model and the head-identity reader both go through these, so the two can never
 // disagree on what a HEAD, a loose ref or `packed-refs` means.
 
+// Git's SYMREF_MAXDEPTH. The HEAD read that named the first ref counts as one of them.
 const MAX_SYMREF_DEPTH = 5
 
 // Why: a watcher reports the admin dir name the OS gave it while readers use their own `readdir`
@@ -46,9 +47,7 @@ export function parsePackedRefs(content: string): Map<string, string> {
   return refs
 }
 
-export async function readPackedRefs(
-  commonDirPath: string
-): Promise<Map<string, string> | Unreadable> {
+async function readPackedRefs(commonDirPath: string): Promise<Map<string, string> | Unreadable> {
   const content = await readTrimmedAdminFile(join(commonDirPath, 'packed-refs'))
   if (content === UNREADABLE) {
     return UNREADABLE
@@ -99,14 +98,27 @@ export type ResolvedRef =
   /** Not resolvable by these rules (bad name, garbage content, chain too deep). */
   | { ref: null; oid: null }
 
+/** The oid `packed-refs` records for a ref, null when it records none. */
+export type PackedRefLookup = (ref: string) => Promise<string | null | Unreadable>
+
+/** Looks refs up in one parse of `packed-refs`, read on the first lookup. */
+export function createPackedRefLookup(commonDirPath: string): PackedRefLookup {
+  let packed: Promise<Map<string, string> | Unreadable> | null = null
+  return async (ref) => {
+    const refs = await (packed ??= readPackedRefs(commonDirPath))
+    return refs === UNREADABLE ? UNREADABLE : (refs.get(ref) ?? null)
+  }
+}
+
+/** Resolves the ref a HEAD names. */
 export async function resolveRefToOid(
   commonDirPath: string,
   ref: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>,
+  packedRef: PackedRefLookup,
   trace?: RefResolutionTrace
 ): Promise<ResolvedRef | Unreadable> {
   let current = ref
-  for (let depth = 0; depth < MAX_SYMREF_DEPTH; depth++) {
+  for (let depth = 1; depth < MAX_SYMREF_DEPTH; depth++) {
     if (!isSafeRefName(current)) {
       return { ref: null, oid: null }
     }
@@ -121,10 +133,8 @@ export async function resolveRefToOid(
       if (trace) {
         trace.usedPackedRefs = true
       }
-      const packed = await packedRefs()
-      return packed === UNREADABLE
-        ? UNREADABLE
-        : { ref: current, oid: asObjectId(packed.get(current)) }
+      const packed = await packedRef(current)
+      return packed === UNREADABLE ? UNREADABLE : { ref: current, oid: asObjectId(packed) }
     }
     const parsed = parseRefFileContent(loose)
     if ('symref' in parsed) {

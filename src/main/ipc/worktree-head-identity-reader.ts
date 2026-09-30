@@ -9,10 +9,11 @@ import {
 } from './worktree-head-identity-scope'
 import {
   parseRefFileContent,
-  readPackedRefs,
+  createPackedRefLookup,
   readTrimmedAdminFile as readTrimmedFile,
   resolveRefToOid,
   UNREADABLE,
+  type PackedRefLookup,
   type Unreadable
 } from '../git/worktree-membership/worktree-admin-file-reads'
 
@@ -65,7 +66,7 @@ async function readHeadIdentity(
   commonDirPath: string,
   headFilePath: string,
   worktreePath: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>,
+  packedRef: PackedRefLookup,
   resolved: ResolvedRefOids
 ): Promise<WorktreeHeadIdentity | null | Unreadable> {
   const head = await readTrimmedFile(headFilePath)
@@ -77,7 +78,7 @@ async function readHeadIdentity(
   }
   const parsed = parseRefFileContent(head)
   if ('symref' in parsed) {
-    const resolution = await resolveRefToOid(commonDirPath, parsed.symref, packedRefs)
+    const resolution = await resolveRefToOid(commonDirPath, parsed.symref, packedRef)
     // Only definite outcomes are replayed onto siblings; an unknown must not
     // evict every other worktree that shares this branch.
     if (resolution === UNREADABLE) {
@@ -97,7 +98,7 @@ async function readHeadIdentity(
 async function readLinkedEntryIdentity(
   commonDirPath: string,
   entryName: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>,
+  packedRef: PackedRefLookup,
   resolved: ResolvedRefOids
 ): Promise<WorktreeHeadIdentity | null | Unreadable> {
   const entryPath = join(commonDirPath, 'worktrees', entryName)
@@ -115,7 +116,7 @@ async function readLinkedEntryIdentity(
     commonDirPath,
     join(entryPath, 'HEAD'),
     dirname(gitdirAbsolute),
-    packedRefs,
+    packedRef,
     resolved
   )
 }
@@ -191,9 +192,7 @@ export async function readGitCommonHeadIdentities(
   cache: WorktreeHeadIdentityCache = createWorktreeHeadIdentityCache(),
   scope: WorktreeHeadIdentityScope = FULL_HEAD_IDENTITY_SCOPE
 ): Promise<GitCommonHeadIdentityRead> {
-  let packedRefsPromise: Promise<Map<string, string> | Unreadable> | null = null
-  const packedRefs = (): Promise<Map<string, string> | Unreadable> =>
-    (packedRefsPromise ??= readPackedRefs(commonDirPath))
+  const packedRef = createPackedRefLookup(commonDirPath)
   const resolved: ResolvedRefOids = new Map()
 
   // Only the standard `<checkout>/.git` layout maps a common dir back to its
@@ -205,7 +204,7 @@ export async function readGitCommonHeadIdentities(
       commonDirPath,
       join(commonDirPath, 'HEAD'),
       dirname(commonDirPath),
-      packedRefs,
+      packedRef,
       resolved
     )
     cache.primaryUnverified = primary === UNREADABLE
@@ -268,7 +267,7 @@ export async function readGitCommonHeadIdentities(
   // Bounded fan-out so a burst cannot flood the libuv threadpool; publication
   // order comes from `entryNames` below, not from completion order.
   const reads = await mapWithConcurrency(staleNames, HEAD_IDENTITY_READ_CONCURRENCY, (name) =>
-    readLinkedEntryIdentity(commonDirPath, name, packedRefs, resolved)
+    readLinkedEntryIdentity(commonDirPath, name, packedRef, resolved)
   )
   staleNames.forEach((name, index) => {
     const identity = reads[index]

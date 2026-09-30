@@ -68,7 +68,8 @@ export type FileDerivationState = {
   facts: RepoConfigFacts
   configStamp: string | null
   packedStamp: string | null
-  packedRefs: Map<string, string> | null
+  /** Only the refs rows looked up in `packed-refs` under `packedStamp`; null when none recorded. */
+  packedRefs: Map<string, string | null>
   listingStamp: string | null
   entryNames: string[] | null
   entries: Map<string, DerivedRowMemo>

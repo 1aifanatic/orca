@@ -9,8 +9,8 @@ import {
   readTrimmedAdminFile,
   resolveRefToOid,
   UNREADABLE,
-  type RefResolutionTrace,
-  type Unreadable
+  type PackedRefLookup,
+  type RefResolutionTrace
 } from './worktree-admin-file-reads'
 import { getErrorCode } from '../worktree-operation-options'
 
@@ -33,7 +33,7 @@ export const PRUNABLE_REASON = 'gitdir file points to non-existent location'
 export type FileRowContext = {
   commonDir: string
   facts: RepoConfigFacts
-  packedRefs: () => Promise<Map<string, string> | Unreadable>
+  packedRef: PackedRefLookup
   platform: NodeJS.Platform
 }
 
@@ -81,6 +81,18 @@ async function readRawAdminFile(path: string): Promise<string | null> {
   }
 }
 
+async function isSymbolicLink(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSymbolicLink()
+  } catch (error) {
+    const code = getErrorCode(error)
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      return false
+    }
+    throw new WorktreeRowsNeedGit(`unreadable ${path}`, true)
+  }
+}
+
 async function pathExistsNoFollow(path: string): Promise<boolean> {
   try {
     await lstat(path)
@@ -100,6 +112,10 @@ type HeadFields = { head: string; branch: string; trace: RefResolutionTrace }
 async function readHeadFields(context: FileRowContext, headPath: string): Promise<HeadFields> {
   const trace: RefResolutionTrace = { looseRefPaths: [], usedPackedRefs: false }
   const zeroId = '0'.repeat(context.facts.objectIdLength)
+  // Git reads a symlinked HEAD (`core.preferSymlinkRefs`) as a symref to the link's target name.
+  if (await isSymbolicLink(headPath)) {
+    throw new WorktreeRowsNeedGit(`symlinked HEAD ${headPath}`, false)
+  }
   const content = await readTrimmedAdminFile(headPath)
   if (content === UNREADABLE) {
     throw new WorktreeRowsNeedGit(`unreadable ${headPath}`, true)
@@ -117,12 +133,7 @@ async function readHeadFields(context: FileRowContext, headPath: string): Promis
   if (!isGitRefNameFormat(parsed.symref) || PER_WORKTREE_REF.test(parsed.symref)) {
     throw new WorktreeRowsNeedGit(`HEAD names ${parsed.symref}`, false)
   }
-  const resolved = await resolveRefToOid(
-    context.commonDir,
-    parsed.symref,
-    context.packedRefs,
-    trace
-  )
+  const resolved = await resolveRefToOid(context.commonDir, parsed.symref, context.packedRef, trace)
   if (resolved === UNREADABLE) {
     throw new WorktreeRowsNeedGit(`unreadable ref ${parsed.symref}`, true)
   }
