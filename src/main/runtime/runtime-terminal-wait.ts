@@ -47,8 +47,7 @@ type RuntimeTerminalWaitDependencies = TuiIdleEvidenceSource & {
   startVisibleReadProbe(
     waiter: TerminalWaiter,
     waiterTimeoutMs: number,
-    agent: TuiAgent | null,
-    hasOutputClock: boolean
+    agent: TuiAgent | null
   ): void
 }
 
@@ -148,12 +147,7 @@ export class RuntimeTerminalWait {
             this.polls.startPty(waiter, live.pty, verdict)
             const paneAgent = this.deps.getPaneAgent(live.pty.ptyId)
             if (shouldProbeVisibleScreen(paneAgent, live.pty, livePtyWaitText)) {
-              this.deps.startVisibleReadProbe(
-                waiter,
-                effectiveTimeoutMs,
-                paneAgent,
-                live.pty.lastOutputAt !== null
-              )
+              this.deps.startVisibleReadProbe(waiter, effectiveTimeoutMs, paneAgent)
             }
           }
         }
@@ -244,12 +238,7 @@ export class RuntimeTerminalWait {
             this.polls.startLeaf(waiter, live.leaf, verdict)
             const paneAgent = this.deps.getPaneAgent(live.leaf.ptyId)
             if (shouldProbeVisibleScreen(paneAgent, live.leaf, liveLeafWaitText)) {
-              this.deps.startVisibleReadProbe(
-                waiter,
-                effectiveTimeoutMs,
-                paneAgent,
-                live.leaf.lastOutputAt !== null
-              )
+              this.deps.startVisibleReadProbe(waiter, effectiveTimeoutMs, paneAgent)
             }
           }
         }

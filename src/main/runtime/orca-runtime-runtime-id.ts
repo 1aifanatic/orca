@@ -376,8 +376,8 @@ export class OrcaRuntimeWithRuntimeId {
       defaultTimeoutMs: TUI_IDLE_DEFAULT_TIMEOUT_MS,
       getLivePty: (handle) => this.getLivePtyForHandle(handle),
       getLiveLeaf: (handle) => this.getLiveLeafForHandle(handle),
-      startVisibleReadProbe: (waiter, waiterTimeoutMs, agent, hasOutputClock) =>
-        this.startTuiIdleVisibleReadProbe(waiter, waiterTimeoutMs, agent, hasOutputClock)
+      startVisibleReadProbe: (waiter, waiterTimeoutMs, agent) =>
+        this.startTuiIdleVisibleReadProbe(waiter, waiterTimeoutMs, agent)
     },
     this.terminalWaiters,
     this.terminalIdlePolls

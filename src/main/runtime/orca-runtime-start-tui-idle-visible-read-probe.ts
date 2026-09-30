@@ -38,8 +38,7 @@ export class OrcaRuntimeWithStartTuiIdleVisibleReadProbe extends OrcaRuntimeWith
   protected startTuiIdleVisibleReadProbe(
     waiter: TerminalWaiter,
     waiterTimeoutMs: number,
-    agent: TuiAgent | null,
-    hasOutputClock: boolean
+    agent: TuiAgent | null
   ): void {
     const settleMarginMs = Math.min(
       TUI_IDLE_VISIBLE_PROBE_SETTLE_MARGIN_MS,
@@ -84,7 +83,11 @@ export class OrcaRuntimeWithStartTuiIdleVisibleReadProbe extends OrcaRuntimeWith
               snapshotText,
               agent,
               () => restoreProjectedComposerDraft(projection.tail, projection.draft),
-              hasOutputClock
+              // Why read now: output since the probe started makes the pane clocked.
+              (
+                this.getLivePtyForHandle(waiter.handle)?.pty ??
+                this.getLiveLeafForHandle(waiter.handle).leaf
+              ).lastOutputAt !== null
             )
           : isKnownReadyPromptSettled(snapshotText)
         if (!blockedReason && !ready) {
