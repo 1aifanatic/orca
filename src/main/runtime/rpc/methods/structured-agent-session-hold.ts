@@ -8,7 +8,7 @@
 import { defineMethod } from '../core'
 import {
   requireInstalledStructuredHost,
-  requireStructuredHost
+  requireStructuredCleanupHost
 } from './structured-agent-session-gate'
 import { HoldParams } from './structured-agent-session-schemas'
 
@@ -25,7 +25,7 @@ export const STRUCTURED_AGENT_SESSION_HOLD_METHODS = [
     name: 'agentSession.release',
     params: HoldParams,
     handler: async (_params, ctx) => {
-      requireStructuredHost(ctx)
+      requireStructuredCleanupHost(ctx)
       return { released: true as const }
     }
   })

@@ -14,7 +14,11 @@ import type { StructuredAgentSessionHost } from '../../../native-chat/agent-sess
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { RpcContext } from '../core'
 import { structuredAgentSessionHostRefusal } from '../../structured-agent-session-host-refusal'
-import { supportsStructuredAgentSessions } from './structured-agent-session-policy'
+import {
+  createSupportFollowsHostSetting,
+  isStructuredNativeChatEnabled,
+  supportsStructuredAgentSessions
+} from './structured-agent-session-policy'
 
 /**
  * In-process callers are the same build as the host, so they carry no negotiated
@@ -32,7 +36,32 @@ export function requireStructuredCapability(ctx: RpcContext): void {
   }
 }
 
+/**
+ * `agentSession.createSupport` alone also reads the host setting, for a client that leaves the
+ * launch mode to the host; it gets the refusal it got before, which it reads as "open a terminal".
+ */
+export function requireStructuredCreateSupportAdmission(ctx: RpcContext): void {
+  requireStructuredCapability(ctx)
+  if (createSupportFollowsHostSetting(ctx) && !isStructuredNativeChatEnabled(ctx.runtime)) {
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'clientCapabilityMissing'
+    })
+  }
+}
+
 export function requireStructuredHost(ctx: RpcContext): StructuredAgentSessionHost {
+  requireStructuredCapability(ctx)
+  return requireHostOrRefusal()
+}
+
+/**
+ * The gate for methods that stop or retire work the caller already owns: close, cancel,
+ * unsubscribe and release. It asks only what no caller can do without (the wire capability and a
+ * host), never an admission condition: refusing a close strands a live provider child its own
+ * owner can no longer shut down. It is `requireStructuredHost` today; keep it apart so a condition
+ * added there for new work never reaches these.
+ */
+export function requireStructuredCleanupHost(ctx: RpcContext): StructuredAgentSessionHost {
   requireStructuredCapability(ctx)
   return requireHostOrRefusal()
 }
