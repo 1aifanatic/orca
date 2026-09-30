@@ -369,7 +369,7 @@ describe('restoring the chat tabs open at quit', () => {
       expect(lock.refused - prepared).toBe(2)
     })
 
-    it('still lists the chats when that write fails, and leaves the index to seed again', async () => {
+    it('still lists the chats when that write fails, and leaves the index absent', async () => {
       const records = legacyChats()
       const { path } = await seedStore(records)
       await seedHistory(records)

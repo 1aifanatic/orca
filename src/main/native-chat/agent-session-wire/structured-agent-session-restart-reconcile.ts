@@ -45,8 +45,9 @@ export function createRestartReconciler(deps: {
   }
 }
 
-/** Reports each distinct failure once, until `clear` says the bookkeeping settled again. Every read
- *  re-runs a failing reconcile, so without this a failing store would log on every chat list. */
+/** Reports each distinct failure once, until `clear` says the bookkeeping settled again: the
+ *  startup check, the restore pass and a restore retried after a failed journal open would each
+ *  log the same store failure. */
 export type ReaderBookkeepingFailures = {
   report: (failure: unknown) => void
   clear: () => void
