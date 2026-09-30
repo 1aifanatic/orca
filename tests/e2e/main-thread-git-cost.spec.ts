@@ -183,7 +183,8 @@ async function startMainProfiler(electronApp: {
     const inspector = process.getBuiltinModule('node:inspector')
     const session = new inspector.Session()
     session.connect()
-    const post = (method: string, params?: object): Promise<Record<string, unknown>> =>
+    type InspectorParams = { interval?: number }
+    const post = (method: string, params?: InspectorParams): Promise<Record<string, unknown>> =>
       new Promise((resolve, reject) => {
         session.post(method, params, (error, result) =>
           // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: node:inspector types the callback payload as unknown; every Profiler reply is an object.
@@ -209,7 +210,7 @@ async function stopMainProfiler(
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shape startMainProfiler stored on this same global, in this same process.
     const handle = scope.__orcaGitCostProfiler as {
       session: { disconnect: () => void }
-      post: (method: string, params?: object) => Promise<Record<string, unknown>>
+      post: (method: string, params?: { interval?: number }) => Promise<Record<string, unknown>>
       startedAt: number
     }
     const { profile } = await handle.post('Profiler.stop')
