@@ -166,6 +166,8 @@ jobs:
       matrix:
         # Orca ships only an x64 installer; ARM users run it emulated.
         runner: [windows-2022, windows-11-arm]
+        # The release uninstaller predates the Bun host; the candidate's is the path we control.
+        lane: [rollback-uninstall, candidate-uninstall]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
@@ -194,17 +196,17 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Evidence oracle failed'}
           node "$dir/prepare.mjs" "$env:RUNNER_TEMP/tools"
           if($LASTEXITCODE -ne 0){throw 'Tool preparation failed'}
-      - name: Release -> candidate -> release lifecycle and release uninstall
+      - name: Release -> candidate lifecycle and ${{ matrix.lane }}
         timeout-minutes: 45
         run: |
           $t="$env:RUNNER_TEMP/tools"
-          node "$t/run-release-upgrade.mjs" "--release=$env:RUNNER_TEMP/release" "--candidate=$env:RUNNER_TEMP/candidate" "--rpc=$t/qualification-rpc.cjs" "--retire=$t/daemon-retire.cjs" "--receipt=$env:RUNNER_TEMP/result/release-upgrade-receipt.json"
+          node "$t/run-release-upgrade.mjs" "--release=$env:RUNNER_TEMP/release" "--candidate=$env:RUNNER_TEMP/candidate" "--rpc=$t/qualification-rpc.cjs" "--retire=$t/daemon-retire.cjs" "--lane=${{ matrix.lane }}" "--receipt=$env:RUNNER_TEMP/result/release-upgrade-receipt.json"
           if($LASTEXITCODE -ne 0){throw 'Release upgrade qualification failed'}
       - name: Retain receipts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: windows-release-upgrade-result-${{ matrix.runner }}-${{ github.run_id }}
+          name: windows-release-upgrade-result-${{ matrix.runner }}-${{ matrix.lane }}-${{ github.run_id }}
           retention-days: 7
           if-no-files-found: warn
           path: |

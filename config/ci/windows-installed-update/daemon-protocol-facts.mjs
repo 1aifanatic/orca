@@ -27,6 +27,17 @@ export function canAttach(reader, owner) {
   )
 }
 
+/** What any candidate must declare for sessions to cross in each direction with `release`. */
+export function crossingRequirements(release) {
+  const accepted = [...release.previousProtocolVersions, release.protocolVersion]
+  return {
+    upgrade: `candidate speaks ${release.protocolVersion} or lists ${release.protocolVersion} as previous`,
+    rollback: `candidate speaks one of ${Math.min(...accepted)}..${Math.max(...accepted)} (the release's own or previous list)`,
+    // Only an owner the release already speaks can survive a rollback, so a newer-protocol candidate cannot.
+    bothDirections: `candidate speaks ${release.protocolVersion}, or speaks an older release-listed version and lists ${release.protocolVersion} as previous`
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [input, output] = process.argv.slice(2)
   assert.ok(input && output, 'input and output paths required')

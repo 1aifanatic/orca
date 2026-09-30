@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { canAttach } from './daemon-protocol-facts.mjs'
+import { canAttach, crossingRequirements } from './daemon-protocol-facts.mjs'
 import { hashFile } from './installed-layout.mjs'
 
 const [releaseDir, candidateDir, releaseSha256, candidateSource, output] = process.argv.slice(2)
@@ -38,7 +38,8 @@ const summary = {
   candidate,
   candidateProtocol,
   candidateReachesReleaseOwned: canAttach(candidateProtocol, release.daemonProtocol),
-  releaseReachesCandidateOwned: canAttach(release.daemonProtocol, candidateProtocol)
+  releaseReachesCandidateOwned: canAttach(release.daemonProtocol, candidateProtocol),
+  crossingRequirements: crossingRequirements(release.daemonProtocol)
 }
 writeFileSync(output, `${JSON.stringify(summary, null, 2)}\n`)
 console.log(

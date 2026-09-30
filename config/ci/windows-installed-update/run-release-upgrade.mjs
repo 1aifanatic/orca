@@ -1,9 +1,10 @@
-/** Released Electron-hosted daemon -> Bun candidate -> released rollback, then the release's uninstall. */
+/** Released Electron-hosted daemon -> Bun candidate, then either candidate uninstall or rollback + release uninstall. */
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   writeFileSync
 } from 'node:fs'
@@ -11,10 +12,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runProcess } from '../../../src/shared/child-process/run-process.ts'
-import { canAttach } from './daemon-protocol-facts.mjs'
+import { canAttach, crossingRequirements } from './daemon-protocol-facts.mjs'
 import { ELECTRON_DAEMON_IDENTITY_FILES, hashFile } from './installed-layout.mjs'
 import {
   authenticode,
+  cli,
   identify,
   nodeTool,
   processTable,
@@ -47,6 +49,10 @@ const required = (key) => {
   }
   return resolve(value)
 }
+const lane = args.get('--lane')
+if (!['rollback-uninstall', 'candidate-uninstall'].includes(lane ?? '')) {
+  throw new Error('Required: --lane=rollback-uninstall|candidate-uninstall')
+}
 if (
   process.platform !== 'win32' ||
   process.env.GITHUB_ACTIONS !== 'true' ||
@@ -76,7 +82,11 @@ const profile = join(root, 'profile')
 const env = serveEnvironment(profile, localAppData)
 const receipt = {
   scope: 'signed public release -> unsigned Bun candidate via NsisUpdater argv; headless serve',
+  lane,
   status: 'running',
+  // Strict failures that later stages were allowed to run past; the verdict is still FAIL.
+  mode: 'diagnostic-continue',
+  firstFailure: null,
   release: {
     tag: release.tag,
     version: release.version,
@@ -89,11 +99,11 @@ const receipt = {
     bunSha256: candidate.bunSha256
   },
   protocols,
-  // Source-derived expectations: what each build's legacy discovery can reach.
   designAttach: {
     candidateReachesReleaseOwned: canAttach(protocols.candidate, protocols.release),
     releaseReachesCandidateOwned: canAttach(protocols.release, protocols.candidate)
   },
+  crossingRequirements: crossingRequirements(protocols.release),
   installs: [],
   stages: [],
   checks: [],
@@ -108,11 +118,22 @@ let serve = null
 let installLocation = null
 let releaseIdentity = null
 const owned = { daemons: [], shells: [] }
+function record(name, ok, detail, continued) {
+  receipt.checks.push({ name, ok, ...(continued && !ok ? { continued: true } : {}), ...detail })
+  if (!ok) {
+    receipt.firstFailure ??= name
+  }
+}
 function check(name, ok, detail = {}) {
-  receipt.checks.push({ name, ok, ...detail })
+  record(name, ok, detail, false)
   if (!ok) {
     throw new Error(`Check failed: ${name}`)
   }
+}
+/** A strict assertion whose failure is recorded, after which the run keeps collecting evidence. */
+function expectThenContinue(name, ok, detail = {}) {
+  record(name, ok, detail, true)
+  return ok
 }
 const terminals = createWorkspaceTerminals({
   root,
@@ -128,9 +149,9 @@ function plant(path) {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, 'keep\n')
 }
-function sentinelsPresent(when, names = Object.keys(sentinels)) {
-  for (const name of names) {
-    check(`sentinel ${name} ${when}`, existsSync(sentinels[name]))
+function sentinelsPresent(when) {
+  for (const [name, path] of Object.entries(sentinels)) {
+    check(`sentinel ${name} ${when}`, existsSync(path))
   }
 }
 async function installRelease(extra) {
@@ -153,29 +174,34 @@ async function installRelease(extra) {
   receipt.installs.push({ label: 'release', ...result })
 }
 async function installCandidate() {
-  const installer = join(inputs.candidate, 'orca-windows-setup.exe')
-  const result = await runInstaller(installer, ['--updated'], candidate, candidate.identity)
+  const result = await runInstaller(
+    join(inputs.candidate, 'orca-windows-setup.exe'),
+    ['--updated'],
+    candidate,
+    candidate.identity
+  )
   installLocation = result.location
   receipt.installs.push({ label: 'candidate', ...result })
 }
-function readPidRecord(protocolVersion) {
-  const path = join(profile, 'daemon', `daemon-v${protocolVersion}.pid`)
+function endpointFiles(protocolVersion) {
+  const base = join(profile, 'daemon', `daemon-v${protocolVersion}`)
+  let pid = null
   try {
-    return JSON.parse(readFileSync(path, 'utf8'))
+    pid = JSON.parse(readFileSync(`${base}.pid`, 'utf8'))
   } catch {
-    return null
+    // Absent or unreadable is recorded as null.
   }
+  return { pid, token: existsSync(`${base}.token`) }
 }
 async function electronOwner(stage) {
-  const record = readPidRecord(protocols.release.protocolVersion)
+  const { pid: record } = endpointFiles(protocols.release.protocolVersion)
   check(`${stage}: release daemon pid record present`, Number.isSafeInteger(record?.pid))
   check(
     `${stage}: release daemon reports the release version`,
     record.appVersion === release.version,
     { appVersion: record.appVersion }
   )
-  const table = await processTable()
-  const row = table?.find((candidateRow) => candidateRow.pid === record.pid)
+  const row = (await processTable())?.find((candidateRow) => candidateRow.pid === record.pid)
   check(
     `${stage}: release daemon runs the relocated Electron host`,
     isRelocatedElectronDaemon(row, legacyHost),
@@ -189,7 +215,9 @@ async function electronOwner(stage) {
     created: row.created,
     exe: row.exe
   }
-  owned.daemons.push(owner)
+  if (!owned.daemons.some((known) => sameProcess(known, owner))) {
+    owned.daemons.push(owner)
+  }
   return owner
 }
 async function bunOwner(stage) {
@@ -220,16 +248,24 @@ async function expectOwnedBy(stage, item, owner) {
     { owner: owner.pid, shell: item.shell.pid }
   )
 }
-// A session the running app cannot route is a finding; name it instead of timing out anonymously.
 async function reach(stage, item, owner, attachable) {
   try {
-    return await terminals.observe(item)
+    await terminals.observe(item)
+    return expectThenContinue(
+      `${stage}: ${owner.kind}-owned session reachable after the transition`,
+      true
+    )
   } catch (error) {
-    check(`${stage}: ${owner.kind}-owned session reachable after the transition`, false, {
-      error: error.message,
-      designAttachable: attachable,
-      ownerLive: processVerdict(await processTable(), owner)
-    })
+    return expectThenContinue(
+      `${stage}: ${owner.kind}-owned session reachable after the transition`,
+      false,
+      {
+        error: error.message,
+        designAttachable: attachable,
+        ownerVerdict: processVerdict(await processTable(), owner),
+        shellVerdict: processVerdict(await processTable(), item.shell)
+      }
+    )
   }
 }
 async function preserved(stage, owners, items) {
@@ -254,6 +290,81 @@ async function waitAbsent(path, timeoutMs = 60_000) {
   }
   return !existsSync(path)
 }
+// Why: the release owner's endpoint must be proven live, not inferred, before calling its sessions orphaned.
+async function orphanEvidence(owner, worktrees) {
+  const files = endpointFiles(protocols.release.protocolVersion)
+  let endpoint = null
+  try {
+    endpoint = (
+      await nodeTool(
+        tools.rpc,
+        ['identity', profile, String(protocols.release.protocolVersion)],
+        env
+      )
+    ).identity
+  } catch (error) {
+    endpoint = { error: error.message }
+  }
+  const listed = {}
+  for (const workspace of Object.values(worktrees)) {
+    try {
+      const result = await cli(serve, env, ['terminal', 'list', '--worktree', workspace])
+      listed[workspace] = (result?.terminals ?? []).map((entry) => entry.handle)
+    } catch (error) {
+      listed[workspace] = { error: error.message }
+    }
+  }
+  return {
+    releaseProtocol: protocols.release.protocolVersion,
+    candidateProtocol: protocols.candidate.protocolVersion,
+    candidateProbesUpTo: Math.max(...protocols.candidate.previousProtocolVersions),
+    pidRecord: files.pid,
+    tokenPresent: files.token,
+    endpointAnswers: endpoint,
+    endpointIsOwner: endpoint?.pid === owner.pid,
+    ownerVerdict: processVerdict(await processTable(), owner),
+    candidateListsHandles: listed
+  }
+}
+async function uninstallFindings(owners, items) {
+  await stopServe(serve)
+  serve = null
+  await preserved('before uninstall', owners, items)
+  const location = installLocation
+  const uninstall = await runUninstaller()
+  installLocation = null
+  const verdicts = []
+  for (const identity of [...owners, ...items.map((item) => item.shell)]) {
+    const verdict = await waitVerdict(identity, 'exited', 60_000)
+    verdicts.push({ kind: identity.kind ?? 'shell', pid: identity.pid, verdict })
+    expectThenContinue(
+      `uninstall ends ${identity.kind ?? 'shell'} ${identity.pid}`,
+      verdict === 'exited'
+    )
+  }
+  const table = await processTable()
+  check('post-uninstall process table verifiable', Boolean(table))
+  const survivors = processesUnder(table, [location, legacyRoot, hostRoot]).map((row) => ({
+    pid: row.pid,
+    name: row.name,
+    exe: row.exe
+  }))
+  const remainingDirs = [location, legacyRoot, hostRoot, managedRoot]
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, entries: readdirSync(path).slice(0, 20) }))
+  receipt.uninstall = { lane, ...uninstall, verdicts, survivors, remainingDirs }
+  expectThenContinue(
+    'no process runs from install dir or either daemon host',
+    survivors.length === 0
+  )
+  expectThenContinue('legacy Electron host root removed', !existsSync(legacyRoot))
+  expectThenContinue('managed runtime namespace removed', !existsSync(hostRoot))
+  check('unrelated LOCALAPPDATA content untouched', existsSync(sentinels.unrelated))
+  check(
+    'folder workspace contents untouched',
+    readFileSync(join(root, 'folder', 'keep.txt'), 'utf8') === 'keep\n'
+  )
+}
 
 try {
   const preexisting = [hostRoot, legacyRoot, join(localAppData, 'Programs', 'Orca')].filter(
@@ -262,7 +373,6 @@ try {
   check('runner has no prior Orca install or daemon host', preexisting.length === 0)
   plant(sentinels.unrelated)
 
-  // Release: the Electron-hosted daemon users run today.
   await installRelease([])
   serve = await startServe(installLocation, profile, env)
   const worktrees = await terminals.seedWorkspaces()
@@ -278,7 +388,6 @@ try {
   plant(sentinels.hostSibling)
   receipt.stages.push({ stage: 'release', owner: released, shells: live.map((item) => item.shell) })
 
-  // Upgrade with release-owned sessions live.
   await stopServe(serve)
   serve = null
   await preserved('release serve stopped', [released], live)
@@ -290,8 +399,20 @@ try {
   )
   sentinelsPresent('after candidate install')
   serve = await startServe(installLocation, profile, env)
+  const reachable = []
   for (const item of live) {
-    await reach('candidate', item, released, receipt.designAttach.candidateReachesReleaseOwned)
+    if (
+      await reach('candidate', item, released, receipt.designAttach.candidateReachesReleaseOwned)
+    ) {
+      reachable.push(item)
+    }
+  }
+  const orphaned = live.filter((item) => !reachable.includes(item))
+  if (orphaned.length > 0) {
+    receipt.stages.push({
+      stage: 'candidate orphaned release sessions',
+      evidence: await orphanEvidence(released, worktrees)
+    })
   }
   // daemon-pty-router.ts: fresh sessions always route to the current daemon.
   const fresh = await terminals.terminal(worktrees.git)
@@ -300,80 +421,85 @@ try {
   await expectOwnedBy('candidate fresh admission', fresh, bunFirst)
   await preserved('candidate fresh admission', [released], live)
   await terminals.close(fresh)
-  receipt.stages.push({ stage: 'candidate with release-owned sessions', released, bun: bunFirst })
 
-  // Drain: both owners retire once idle and unattached (daemon-server-lifecycle.ts).
-  for (const item of live) {
+  // Drain: an owner retires once idle and unattached (daemon-server-lifecycle.ts).
+  for (const item of reachable) {
     await terminals.close(item)
   }
-  receipt.stages.push({ stage: 'candidate drain', remaining: await terminals.closeAll(worktrees) })
+  try {
+    receipt.stages.push({
+      stage: 'candidate drain',
+      remaining: await terminals.closeAll(worktrees)
+    })
+  } catch (error) {
+    expectThenContinue('candidate drain: every workspace terminal closes', false, {
+      error: error.message
+    })
+  }
   await stopServe(serve)
   serve = null
-  for (const owner of [released, bunFirst]) {
-    check(
-      `candidate drain: ${owner.kind} owner exited`,
-      (await waitVerdict(owner, 'exited', 60_000)) === 'exited'
-    )
-  }
+  check(
+    'candidate drain: idle Bun owner exited',
+    (await waitVerdict(bunFirst, 'exited', 60_000)) === 'exited'
+  )
+  const releaseRetired = (await waitVerdict(released, 'exited', 60_000)) === 'exited'
+  expectThenContinue('candidate drain: release owner retired', releaseRetired, {
+    orphanedSessions: orphaned.length
+  })
   serve = await startServe(installLocation, profile, env)
   const bunLive = await terminals.terminal(worktrees.folder)
   await terminals.observe(bunLive, true)
   const bunOwned = await bunOwner('candidate after drain')
   check('candidate after drain: owner is a new process', !sameProcess(bunOwned, bunFirst))
   await expectOwnedBy('candidate after drain', bunLive, bunOwned)
-  // daemon-host-relocation.ts pruneOldDaemonHosts reclaims unowned legacy host versions.
-  check('drained release host reclaimed', await waitAbsent(legacyHost))
+  // daemon-host-relocation.ts pruneOldDaemonHosts reclaims legacy hosts no live pid record pins.
+  expectThenContinue('drained release host reclaimed', await waitAbsent(legacyHost), {
+    releaseOwnerRetired: releaseRetired
+  })
   sentinelsPresent('after drain')
+  const stillReleaseOwned = releaseRetired ? [] : orphaned
 
-  // Rollback to the release with a candidate-owned session live.
-  await stopServe(serve)
-  serve = null
-  await preserved('candidate serve stopped', [bunOwned], [bunLive])
-  await installRelease(['--updated'])
-  await preserved('release reinstalled', [bunOwned], [bunLive])
-  check(
-    'rollback keeps the running Bun generation',
-    existsSync(join(managedRoot, bunOwned.generation, 'bun-runtime.exe'))
-  )
-  sentinelsPresent('after rollback install')
-  serve = await startServe(installLocation, profile, env)
-  await reach('rollback', bunLive, bunOwned, receipt.designAttach.releaseReachesCandidateOwned)
-  const rollbackFresh = await terminals.terminal(worktrees.git)
-  await terminals.observe(rollbackFresh, true)
-  const releasedAgain = await electronOwner('rollback fresh admission')
-  await expectOwnedBy('rollback fresh admission', rollbackFresh, releasedAgain)
-  await preserved('rollback fresh admission', [bunOwned], [bunLive])
-  receipt.stages.push({ stage: 'rollback', bun: bunOwned, released: releasedAgain })
-
-  // The release's own uninstaller, with both owners live.
-  await stopServe(serve)
-  serve = null
-  await preserved('before uninstall', [bunOwned, releasedAgain], [bunLive, rollbackFresh])
-  const location = installLocation
-  receipt.uninstall = await runUninstaller()
-  installLocation = null
-  for (const [name, identity] of [
-    ['release daemon', releasedAgain],
-    ['release shell', rollbackFresh.shell],
-    ['Bun daemon', bunOwned],
-    ['Bun shell', bunLive.shell]
-  ]) {
-    check(`uninstall ends ${name}`, (await waitVerdict(identity, 'exited', 60_000)) === 'exited')
+  if (lane === 'candidate-uninstall') {
+    await uninstallFindings(
+      [bunOwned, ...(releaseRetired ? [] : [released])],
+      [bunLive, ...stillReleaseOwned]
+    )
+  } else {
+    await stopServe(serve)
+    serve = null
+    await preserved('candidate serve stopped', [bunOwned], [bunLive])
+    await installRelease(['--updated'])
+    await preserved('release reinstalled', [bunOwned], [bunLive])
+    check(
+      'rollback keeps the running Bun generation',
+      existsSync(join(managedRoot, bunOwned.generation, 'bun-runtime.exe'))
+    )
+    sentinelsPresent('after rollback install')
+    serve = await startServe(installLocation, profile, env)
+    await reach('rollback', bunLive, bunOwned, receipt.designAttach.releaseReachesCandidateOwned)
+    // A same-version, still-healthy release owner is adopted again (daemon-replacement-preflight.ts).
+    for (const item of stillReleaseOwned) {
+      await reach('rollback (release-owned)', item, released, true)
+    }
+    const rollbackFresh = await terminals.terminal(worktrees.git)
+    await terminals.observe(rollbackFresh, true)
+    const current = await electronOwner('rollback fresh admission')
+    if (!releaseRetired) {
+      expectThenContinue(
+        'rollback fresh admission joins the surviving release owner',
+        sameProcess(current, released)
+      )
+    }
+    await expectOwnedBy('rollback fresh admission', rollbackFresh, current)
+    receipt.stages.push({ stage: 'rollback', bun: bunOwned, release: current })
+    const owners = [
+      bunOwned,
+      current,
+      ...(releaseRetired || sameProcess(current, released) ? [] : [released])
+    ]
+    await uninstallFindings(owners, [bunLive, rollbackFresh, ...stillReleaseOwned])
   }
-  const table = await processTable()
-  check('post-uninstall process table verifiable', Boolean(table))
-  check(
-    'no process runs from install dir or either daemon host',
-    processesUnder(table, [location, legacyRoot, hostRoot]).length === 0
-  )
-  check('legacy Electron host root removed', !existsSync(legacyRoot))
-  check('managed runtime namespace removed', !existsSync(hostRoot))
-  check('unrelated LOCALAPPDATA content untouched', existsSync(sentinels.unrelated))
-  check(
-    'folder workspace contents untouched',
-    readFileSync(join(root, 'folder', 'keep.txt'), 'utf8') === 'keep\n'
-  )
-  receipt.status = 'passed'
+  receipt.status = receipt.firstFailure ? 'failed' : 'passed'
 } catch (error) {
   receipt.status = 'failed'
   receipt.error = error instanceof Error ? error.message : String(error)
@@ -403,7 +529,7 @@ try {
         program: join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
         args: ['/PID', String(owner.pid), '/T', '/F']
       })
-      receipt.cleanup.push(`stopped surviving ${owner.kind} owner`)
+      receipt.cleanup.push(`stopped surviving ${owner.kind} owner ${owner.pid}`)
     }
     table = await processTable()
     const survivors = [...owned.daemons, ...owned.shells].filter(
