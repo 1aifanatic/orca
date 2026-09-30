@@ -1,4 +1,3 @@
-import type { AgentProcessPresence } from './agent-process-presence'
 import type { AgentStatusState, AgentType, AgentWorkingMode } from './agent-status-types'
 import type { AgentMainAgentStatus } from './main-agent-status'
 import type { BaseRefSearchResult, Repo } from './repo-types'
@@ -12,7 +11,6 @@ import type { RuntimeListingHostScope } from './runtime-listing-host-scope'
 import type { GitWorktreeInfo, Worktree } from './worktree/types'
 
 export type RuntimeWorktreeAgentRow = {
-  agentPresence?: AgentProcessPresence
   paneKey: string
   parentPaneKey: string | null
   state: AgentStatusState

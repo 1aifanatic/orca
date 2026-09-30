@@ -46,7 +46,6 @@ export function collectRuntimeWorktreePtyAgentSources(args: {
       agentType: entry.agentPresence?.process
         ? entry.agentPresence.agent
         : (entry.agentType ?? null),
-      ...(entry.agentPresence ? { agentPresence: entry.agentPresence } : {}),
       prompt: entry.prompt,
       lastAssistantMessage: entry.lastAssistantMessage ?? null,
       toolName: entry.toolName ?? null,
