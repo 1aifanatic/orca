@@ -1,5 +1,7 @@
-import { app } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { join } from 'node:path'
+import { reportPreviousUncleanMainExit } from '../crash-reporting/main-unclean-exit-report'
+import { recordMainSessionExitSync } from '../crash-reporting/main-session-exit-marker'
 import { AgentAwakeService } from '../agent-awake-service'
 import { normalizeComputerAwakeMode } from '../../shared/computer-awake-mode'
 import { registerSystemResumeBroadcast } from '../system-resume-broadcast'
@@ -101,6 +103,13 @@ export function initializeMainProcessObservers(): void {
     packaged: app.isPackaged,
     platform: process.platform
   })
+  void reportPreviousUncleanMainExit().catch((error) =>
+    console.warn('[crash-reporting] previous-session exit report failed:', error)
+  )
+  // Why: Windows labels OS teardown via session-end; elsewhere an OS shutdown can end the process before will-quit.
+  if (process.platform !== 'win32') {
+    powerMonitor.on('shutdown', () => recordMainSessionExitSync('os-shutdown'))
+  }
   state.skillTransactionRecovery = recoverPendingSkillTransactions(
     join(app.getPath('userData'), 'skill-installs')
   )

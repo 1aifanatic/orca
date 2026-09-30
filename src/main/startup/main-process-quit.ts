@@ -31,6 +31,7 @@ import { shouldQuitWhenAllWindowsClosed } from './window-all-closed-quit-policy'
 import { mainProcessState as state } from './main-process-state'
 import { isDevParentShutdownRequested } from './configure-process'
 import { getCanonicalUserDataPath } from '../persistence'
+import { recordMainSessionExit } from '../crash-reporting/main-session-exit-marker'
 
 // Why: will-quit fires twice — first pass preventDefaults and runs teardown; second pass exits.
 let daemonDisconnectDone = false
@@ -114,6 +115,9 @@ function installWillQuitHandler(): void {
     // Why: renderer guards can still cancel before this committed phase; `log stream` must survive those vetoes.
     stopTccPromptNotice()
     const updateQuitInProgress = isQuittingForUpdate()
+    const sessionExitRecord = recordMainSessionExit(
+      updateQuitInProgress ? 'update-install' : 'quit'
+    )
     if (updateQuitInProgress) {
       recordUpdaterLifecycle(
         'will_quit_cleanup_started',
@@ -267,6 +271,7 @@ function installWillQuitHandler(): void {
       { name: 'structured-agent-session', promise: structuredAgentSessionShutdown },
       { name: 'usage-cache', promise: usageCacheFlush },
       { name: 'stats', promise: statsFlush },
+      { name: 'session-exit-record', promise: sessionExitRecord },
       { name: 'state', promise: storeFlush }
     ])
       .then((pendingTeardowns) => {
