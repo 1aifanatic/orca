@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { appMock, recordUpdaterLifecycleMock } = vi.hoisted(() => ({
+const { appMock, recordUpdaterLifecycleMock, recordMainSessionExitSyncMock } = vi.hoisted(() => ({
   appMock: { exit: vi.fn() },
-  recordUpdaterLifecycleMock: vi.fn()
+  recordUpdaterLifecycleMock: vi.fn(),
+  recordMainSessionExitSyncMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({ app: appMock }))
 vi.mock('./updater-lifecycle-diagnostics', () => ({
   recordUpdaterLifecycle: recordUpdaterLifecycleMock
+}))
+vi.mock('./crash-reporting/main-session-exit-marker', () => ({
+  recordMainSessionExitSync: recordMainSessionExitSyncMock
 }))
 
 import {
@@ -21,6 +25,7 @@ describe('update install exit watchdog', () => {
     vi.useFakeTimers()
     appMock.exit.mockClear()
     recordUpdaterLifecycleMock.mockClear()
+    recordMainSessionExitSyncMock.mockClear()
   })
 
   afterEach(() => {
@@ -43,6 +48,18 @@ describe('update install exit watchdog', () => {
     )
   })
 
+  it('records an update-install exit before forcing exit so the next launch is not flagged unclean', () => {
+    armUpdateInstallExitWatchdog()
+    vi.advanceTimersByTime(UPDATE_INSTALL_EXIT_TIMEOUT_MS - 1)
+    expect(recordMainSessionExitSyncMock).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1)
+    expect(recordMainSessionExitSyncMock).toHaveBeenCalledExactlyOnceWith('update-install')
+    expect(recordMainSessionExitSyncMock.mock.invocationCallOrder[0]).toBeLessThan(
+      appMock.exit.mock.invocationCallOrder[0]
+    )
+  })
+
   it('re-arming does not extend the original deadline', () => {
     armUpdateInstallExitWatchdog()
     vi.advanceTimersByTime(UPDATE_INSTALL_EXIT_TIMEOUT_MS - 1)
@@ -59,6 +76,7 @@ describe('update install exit watchdog', () => {
 
     vi.advanceTimersByTime(UPDATE_INSTALL_EXIT_TIMEOUT_MS * 2)
     expect(appMock.exit).not.toHaveBeenCalled()
+    expect(recordMainSessionExitSyncMock).not.toHaveBeenCalled()
   })
 
   it('can be armed again after a disarm (install recovery then retry)', () => {

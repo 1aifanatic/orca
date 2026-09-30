@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { recordMainSessionExitSync } from './crash-reporting/main-session-exit-marker'
 import { recordUpdaterLifecycle } from './updater-lifecycle-diagnostics'
 
 // Why 20s: comfortably above a healthy shutdown (renderer buffer capture,
@@ -33,6 +34,9 @@ export function armUpdateInstallExitWatchdog(timeoutMs = UPDATE_INSTALL_EXIT_TIM
         message: `Shutdown did not finish within ${timeoutMs}ms of committing the update install; forcing exit so the installer can relaunch`
       }
     )
+    // Why: app.exit skips will-quit, whose exit record lands only after the
+    // teardown this watchdog is cutting short; without it the next launch reports an unclean exit.
+    recordMainSessionExitSync('update-install')
     // Why exit(0): the quit is already committed and cleanup is wedged, not
     // failed — a clean code keeps ShipIt/launchd on the normal relaunch path.
     app.exit(0)
