@@ -17461,6 +17461,7 @@
         "pastedImageLabel": "Image collée",
         "imagePasteFailed": "Échec du collage de l'image.",
         "worktreeNotReady": "Worktree pas encore prêt — réessayez dans un instant.",
+        "pasteUnavailable": "Impossible de coller — ce chat n'accepte pas de saisie pour le moment.",
         "uploadingAttachments": "Envoi de {{value0}} fichier(s) vers le distant…",
         "model": "Modèle",
         "effort": "Effort",
@@ -17739,8 +17740,7 @@
         "ranOne": "A exécuté 1 sous-agent",
         "ranN": "Ran les sous-agents {{value0}}",
         "tokens": "Jetons {{value0}}",
-        "unnamed": "Sous-agent",
-        "writtenBy": "Écrit par le sous-agent {{value0}}"
+        "unnamed": "Sous-agent"
       },
       "conversationCommand": {
         "pendingWork": "Attendez la fin du travail et des messages en attente avant d'utiliser cette commande.",
@@ -17777,6 +17777,9 @@
         "title": "Contexte",
         "estimated": "Estimation basée sur la dernière réponse."
       },
+      "dismissDeliveryNotice": "Ignorer",
+      "messageNotSent": "Message non envoyé",
+      "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",
         "editAlreadySent": "Déjà envoyé — votre texte reste dans la zone de saisie.",

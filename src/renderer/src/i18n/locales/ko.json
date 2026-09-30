@@ -17382,6 +17382,7 @@
         "pastedImageLabel": "붙여넣은 이미지",
         "imagePasteFailed": "이미지 붙여넣기 실패.",
         "worktreeNotReady": "워크트리가 준비되지 않았습니다 — 잠시 후 다시 시도하세요.",
+        "pasteUnavailable": "붙여넣을 수 없습니다 — 이 채팅은 지금 입력을 받을 수 없습니다.",
         "uploadingAttachments": "{{value0}}개 파일을 원격으로 업로드 중…",
         "model": "모델",
         "effort": "추론 수준",
@@ -17675,8 +17676,7 @@
         "ranOne": "하위 에이전트 1개 실행",
         "ranN": "{{value0}} 하위 에이전트를 실행했습니다.",
         "tokens": "{{value0}} 토큰",
-        "unnamed": "하위 에이전트",
-        "writtenBy": "하위 에이전트 {{value0}}의 출력"
+        "unnamed": "하위 에이전트"
       },
       "conversationCommand": {
         "pendingWork": "이 명령을 사용하기 전에 보류 중인 작업과 메시지가 완료될 때까지 기다리십시오.",
@@ -17713,6 +17713,9 @@
         "title": "컨텍스트",
         "estimated": "마지막 응답 기준 추정치입니다."
       },
+      "dismissDeliveryNotice": "닫기",
+      "messageNotSent": "메시지가 전송되지 않음",
+      "deliveryUnconfirmed": "전달 확인 안 됨 — 다시 시도하기 전에 채팅을 확인하세요",
       "queuedMessages": {
         "alreadySent": "이 메시지는 이미 전송되었습니다.",
         "editAlreadySent": "이미 전송되었습니다 — 텍스트는 입력창에 남아 있습니다.",
