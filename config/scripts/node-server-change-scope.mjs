@@ -21,7 +21,6 @@ const BUILD_SCRIPTS = [
   'config/scripts/build-windows-process-tree-relay-addon.mjs',
   'config/scripts/run-node-server-tests.mjs',
   'config/vitest.config.ts',
-  'config/vitest.node-server.config.ts',
   'config/scripts/happy-dom-offscreen-canvas.ts',
   'config/scripts/happy-dom-mutation-observer-retention.ts',
   'config/scripts/vitest-host-ports-setup.ts',
