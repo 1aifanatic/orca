@@ -37,8 +37,8 @@ function retry(attempt: number, agentId?: string): AgentJournalRenderItem {
   )
 }
 
-function assistant(text: string): AgentJournalRenderItem {
-  return item({ kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] })
+function assistant(text: string, agentId?: string): AgentJournalRenderItem {
+  return item({ kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }, agentId)
 }
 
 function drawn(items: AgentJournalRenderItem[]): string[] {
@@ -77,20 +77,28 @@ describe('a run of provider retry rows', () => {
 
   it('draws one row per agent when agents retrying at once interleave', () => {
     expect(
+      drawn([retry(1), retry(1, 'subagent-1'), retry(2), retry(2, 'subagent-1'), retry(3)])
+    ).toEqual([
+      'Codex is retrying: Reconnecting... 2/5.',
+      'Codex is retrying: Reconnecting... 3/5.'
+    ])
+  })
+
+  it("is not split by another agent's row, which is drawn apart from it", () => {
+    expect(
       drawn([
         retry(1),
-        retry(1, 'subagent-1'),
+        assistant('Subagent ran the tests', 'subagent-1'),
         retry(2),
-        retry(2, 'subagent-1'),
-        retry(3),
-        assistant('Back'),
-        retry(1, 'subagent-1')
+        retry(1, 'subagent-1'),
+        assistant('Still working'),
+        retry(2, 'subagent-1')
       ])
     ).toEqual([
-      'Codex is retrying: Reconnecting... 3/5.',
+      'Subagent ran the tests',
       'Codex is retrying: Reconnecting... 2/5.',
-      'Back',
-      'Codex is retrying: Reconnecting... 1/5.'
+      'Still working',
+      'Codex is retrying: Reconnecting... 2/5.'
     ])
   })
 
