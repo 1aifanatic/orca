@@ -392,12 +392,17 @@ describe('/clear while a background shell runs (captured, 2.1.285)', () => {
 
     // Hand-built: stands for the new file's first rows, which the fixture does not keep.
     writeFileSync(cleared, '{"type":"mode"}\n')
+    // The capture: Claude's notification turn opens (47.504 s) just before the end line (47.551 s).
+    await replay([9])
+    expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
     expect(completed.file).toBe(String(hookAt(records, 8).payload.transcript_path).split('/').pop())
+    expect(hookAt(records, 9).t).toBeLessThan(completed.t)
     writeCaptured(records, completed, cleared)
-    await vi.waitFor(() => expect(row(server).state).toBe('done'), { timeout: 3_000 })
+    await vi.waitFor(() => expect(storedShellFact(server)).toBe(false), { timeout: 3_000 })
+    expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
 
-    // Claude's notification turn in the new session ends with an empty inventory.
-    await replay([9, 10])
+    // That turn ends with an empty inventory.
+    await replay([10])
     expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
   })
 })
