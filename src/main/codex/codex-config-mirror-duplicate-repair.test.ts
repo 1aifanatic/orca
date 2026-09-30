@@ -155,6 +155,30 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     })
   })
 
+  it.each([
+    ['dotted keys under [projects]', '[projects]\n"/repo".trust_level = "untrusted"\n'],
+    ['root dotted keys', 'projects."/repo".trust_level = "untrusted"\n']
+  ])(
+    'drops managed trust for a project ~/.codex defines through a sub-table and %s',
+    (_shape, dotted) => {
+      const systemConfig = `model = "m"\n${dotted}\n[projects."/repo".extra]\nx = 1\n`
+      writeFileSync(getSystemConfigPath(), systemConfig, 'utf-8')
+      mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
+      writeFileSync(
+        getRuntimeConfigPath(),
+        'model = "m"\n\n[projects."/repo"]\ntrust_level = "trusted"\n',
+        'utf-8'
+      )
+
+      syncSystemConfigIntoManagedCodexHome()
+
+      expect(parse(readFileSync(getRuntimeConfigPath(), 'utf-8'))).toEqual({
+        model: 'm',
+        projects: { '/repo': { trust_level: 'untrusted', extra: { x: 1 } } }
+      })
+    }
+  )
+
   it('collapses Orca\u2019s own duplicate hook tables, so managed-only trust survives', () => {
     writeFileSync(getSystemConfigPath(), 'model = "m"\n', 'utf-8')
     mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })

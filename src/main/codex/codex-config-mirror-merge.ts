@@ -93,31 +93,40 @@ function getProjectsDefinedOutsideTables(config: string): ReadonlySet<string> {
   if (!projects) {
     return new Set()
   }
-  const tableProjects = new Set(
-    getTomlSections(config).flatMap((section) => {
-      const projectPath = getProjectTablePath(section.header)
-      return projectPath === null ? [] : [projectKey(projectPath)]
-    })
-  )
+  const headerProjects = new Set<string>()
+  const subTableKeys = new Map<string, Set<string>>()
+  for (const { header } of getTomlSections(config)) {
+    if (!mayNameTomlKeys(header, ['projects'])) {
+      continue
+    }
+    const projectPath = parseProjectTomlHeaderPath(header)
+    if (projectPath !== null) {
+      headerProjects.add(projectKey(projectPath))
+      continue
+    }
+    const [root, subProjectPath, subKey] = parseTomlTableHeaderPath(header)?.segments ?? []
+    if (root === 'projects' && subProjectPath !== undefined && subKey !== undefined) {
+      const key = projectKey(subProjectPath)
+      subTableKeys.set(key, (subTableKeys.get(key) ?? new Set()).add(subKey))
+    }
+  }
+  // Why: a sub-table header such as `[projects."/a".extra]` defines `/a` as a
+  // table only when no dotted or inline key also sets a value under `/a`.
   return new Set(
-    Object.keys(projects)
-      .map(projectKey)
-      .filter((key) => !tableProjects.has(key))
+    Object.entries(projects)
+      .filter(([projectPath, value]) => {
+        const key = projectKey(projectPath)
+        const project = getTomlTable(value)
+        const subKeys = subTableKeys.get(key)
+        return (
+          !headerProjects.has(key) &&
+          !(project && subKeys && Object.keys(project).every((name) => subKeys.has(name)))
+        )
+      })
+      .map(([projectPath]) => projectKey(projectPath))
   )
 }
 
 function projectKey(projectPath: string): string {
   return `project:${normalizeCodexProjectPathForLookup(projectPath)}`
-}
-
-// Why: a sub-table header such as `[projects."/a".extra]` also defines `/a` as a table.
-function getProjectTablePath(header: string): string | null {
-  const projectPath = parseProjectTomlHeaderPath(header)
-  if (projectPath !== null || !mayNameTomlKeys(header, ['projects'])) {
-    return projectPath
-  }
-  const table = parseTomlTableHeaderPath(header)
-  return table?.segments[0] === 'projects' && table.segments.length > 2
-    ? (table.segments[1] ?? null)
-    : null
 }
