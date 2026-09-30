@@ -159,6 +159,7 @@ describe('connectPanePty process-exit retirement', () => {
       restoredPtyIdByLeafId: { [LEAF_1]: ptyId },
       isVisibleRef: { current: visible }
     })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: connectPanePty returns the pane binding, which exposes sampleForegroundAgentOnFocus.
     const binding = connectPanePty(
       createPane(1) as never,
       createManager(1) as never,
