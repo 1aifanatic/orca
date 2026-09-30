@@ -1,3 +1,5 @@
+import type { ActiveTabDockSide } from './tab-strip-slot-geometry'
+
 export type TabStripScrollMetrics = {
   hasOverflow: boolean
   canScrollStart: boolean
@@ -55,7 +57,7 @@ export function computeTabStripThumbLayout(
 /** `dockedSide` skips that edge's fade, which would otherwise wash out the active tab docked there. */
 export function getTabStripScrollMaskClassName(
   metrics: Pick<TabStripScrollMetrics, 'canScrollStart' | 'canScrollEnd' | 'hasOverflow'>,
-  dockedSide: 'start' | 'end' | null = null
+  dockedSide: ActiveTabDockSide | null = null
 ): string {
   if (!metrics.hasOverflow) {
     return ''

@@ -149,7 +149,7 @@ export default function BrowserTab({
   // Why: defer activation to pointer-up so dragging the tab (reorder / move into
   // another pane / split) does not switch the active tab mid-gesture.
   const { onPointerDown: onTabPointerDown } = useTabStripPointerActivation({ onActivate })
-  const slotProps = useTabStripSlotProps(isActive)
+  const slotProps = useTabStripSlotProps(tab.id, isActive)
 
   const tabRoot = (
     <div

@@ -230,7 +230,7 @@ export default function EditorFileTab({
     onActivate,
     disabled: isRenaming
   })
-  const slotProps = useTabStripSlotProps(isActive)
+  const slotProps = useTabStripSlotProps(file.tabId ?? file.id, isActive)
 
   const tabRoot = (
     <div

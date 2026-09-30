@@ -21,8 +21,9 @@ export function getDropIndicatorClasses(dropIndicator: DropIndicator): string {
 // marker layered on top. Full `foreground`: a muted bar was lost among many
 // look-alike tabs. z-20 keeps it above the bg lift and the unread amber wash.
 // Horizontal inset is 0 (not -1px): negative insets on the last tab bleed
-// into the strip's scrollWidth, so clicking between active tabs flips the strip between "fits exactly" and "overflows by 1px", which jitters
-// every tab by 1px because the browser preserves scrollLeft near the end.
+// into the strip's scrollWidth, so clicking between active tabs flips the
+// strip between "fits exactly" and "overflows by 1px", which jitters every
+// tab by 1px because the browser preserves scrollLeft near the end.
 export const ACTIVE_TAB_INDICATOR_CLASSES =
   'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-foreground z-20'
 

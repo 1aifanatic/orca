@@ -79,19 +79,21 @@ function restoreStripLayout(): void {
   }
 }
 
+const NO_HOSTED_ROWS: string[] = []
+
+/** `hostedRows` render like client-hosted browser rows: a strip slot with no `data-tab-id`. */
 function Strip({
   tabs,
   active,
-  tabCount = tabs.length
+  hostedRows = NO_HOSTED_ROWS
 }: {
   tabs: string[]
   active: string
-  tabCount?: number
+  hostedRows?: string[]
 }): React.JSX.Element {
   const navigation = useTabStripOverflowNavigation({
     activeVisibleTabId: active,
-    layoutKey: tabs.join(','),
-    tabCount,
+    layoutKey: [...tabs, ...hostedRows].join(','),
     worktreeId: 'wt-1'
   })
   return (
@@ -104,9 +106,12 @@ function Strip({
         <div
           key={id}
           data-tab-id={id}
-          data-tab-strip-slot=""
+          data-tab-strip-slot={id}
           data-active-tab-dock={id === active ? '' : undefined}
         />
+      ))}
+      {hostedRows.map((id) => (
+        <div key={id} data-tab-strip-slot={id} />
       ))}
     </div>
   )
@@ -125,7 +130,8 @@ function mountScrolled(active: string, scrollLeft: number) {
 }
 
 function tabX(strip: HTMLElement, id: string): number {
-  return strip.querySelector<HTMLElement>(`[data-tab-id="${id}"]`)!.getBoundingClientRect().left
+  return strip.querySelector<HTMLElement>(`[data-tab-strip-slot="${id}"]`)!.getBoundingClientRect()
+    .left
 }
 
 describe('tab strip scroll when tabs are added', () => {
@@ -163,19 +169,19 @@ describe('tab strip scroll when tabs are added', () => {
   })
 
   it('reveals a client-hosted row appended past the end', () => {
-    const { strip, rerender } = mountScrolled('J', 700)
-    rerender(<Strip tabs={[...TABS, 'remote']} active="J" tabCount={TABS.length + 1} />)
+    const { strip, rerender } = mountScrolled('E', 300)
+    rerender(<Strip tabs={TABS} hostedRows={['remote']} active="E" />)
     expect(strip.scrollLeft).toBe(800)
-    expect(tabX(strip, 'J')).toBe(100)
     expect(tabX(strip, 'remote')).toBe(200)
+    expect(strip.dataset.dock).toBe('start')
   })
 
-  it('reveals a newly replaced row even when the strip count stays the same', () => {
+  it('reveals a tab that replaces another even when the strip count stays the same', () => {
     const { strip, rerender } = mountScrolled('B', 0)
-    rerender(<Strip tabs={['A', 'B', ...TABS.slice(3), 'remote']} active="B" />)
+    rerender(<Strip tabs={['A', 'B', ...TABS.slice(3), 'N']} active="B" />)
     expect(strip.scrollLeft).toBe(700)
     expect(tabX(strip, 'B')).toBe(0)
-    expect(tabX(strip, 'remote')).toBe(200)
+    expect(tabX(strip, 'N')).toBe(200)
   })
 
   it('does not scroll for a background tab while the pointer is over the strip', () => {
@@ -202,6 +208,30 @@ describe('tab strip scroll when tabs are added', () => {
     expect(tabX(strip, 'N')).toBe(0)
     expect(tabX(strip, 'F')).toBe(200)
     expect(strip.dataset.dock).toBe('end')
+  })
+})
+
+describe('tab strip scroll when tabs are closed', () => {
+  beforeEach(installStripLayout)
+  afterEach(() => {
+    cleanup()
+    restoreStripLayout()
+  })
+
+  it('keeps the strip still when closing the active tab switches to a far tab', () => {
+    const { strip, rerender } = mountScrolled('E', 300)
+    rerender(<Strip tabs={TABS.filter((id) => id !== 'E')} active="A" />)
+    expect(strip.scrollLeft).toBe(300)
+    expect(strip.dataset.dock).toBe('start')
+  })
+
+  it('still reveals a later tab switch after a close', () => {
+    const { strip, rerender } = mountScrolled('E', 300)
+    const remaining = TABS.filter((id) => id !== 'E')
+    rerender(<Strip tabs={remaining} active="A" />)
+    rerender(<Strip tabs={remaining} active="J" />)
+    expect(strip.scrollLeft).toBe(600)
+    expect(tabX(strip, 'I')).toBe(100)
   })
 })
 

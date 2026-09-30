@@ -13,11 +13,11 @@ import {
   type TabStripScrollAnchor
 } from './tab-strip-scroll-anchor'
 import {
-  findOffscreenOpenedTab,
-  getActiveTabDock,
+  findOffscreenOpenedTabStripSlot,
+  findTabStripSlot,
   getActiveTabDockSide,
-  readTabStripTabIds,
-  revealTabStripElement,
+  readTabStripSlotIds,
+  revealTabStripSlot,
   type ActiveTabDockSide
 } from './tab-strip-slot-geometry'
 
@@ -55,12 +55,10 @@ const EMPTY_TAB_STRIP_OVERFLOW_STATE: TabStripScrollMetrics = {
 export function useTabStripOverflowNavigation({
   activeVisibleTabId,
   layoutKey,
-  tabCount,
   worktreeId
 }: {
   activeVisibleTabId: string | null
   layoutKey: string
-  tabCount: number
   worktreeId: string
 }): {
   tabStripRef: RefObject<HTMLDivElement | null>
@@ -69,8 +67,9 @@ export function useTabStripOverflowNavigation({
   scrollTabStrip: (direction: 'start' | 'end', behavior?: ScrollBehavior) => void
 } {
   const tabStripRef = useRef<HTMLDivElement>(null)
-  const prevStripLenRef = useRef<{ worktreeId: string; len: number } | null>(null)
+  const prevStripRef = useRef<{ worktreeId: string; tabIds: ReadonlySet<string> } | null>(null)
   const stickToEndRef = useRef(false)
+  const tabClosedThisCommitRef = useRef(false)
   const activeTabIdRef = useRef<string | null>(null)
   const scrollAnchorRef = useRef<{
     activeTabId: string | null
@@ -80,7 +79,6 @@ export function useTabStripOverflowNavigation({
     EMPTY_TAB_STRIP_OVERFLOW_STATE
   )
   const [activeTabDockSide, setActiveTabDockSide] = useState<ActiveTabDockSide | null>(null)
-  const knownTabIdsRef = useRef<ReadonlySet<string> | null>(null)
   const updateTabStripOverflowState = useCallback((): void => {
     const el = tabStripRef.current
     if (!el) {
@@ -166,28 +164,21 @@ export function useTabStripOverflowNavigation({
 
   useLayoutEffect(() => {
     const strip = tabStripRef.current
-    const prev = prevStripLenRef.current
     if (!strip) {
-      prevStripLenRef.current = { worktreeId, len: tabCount }
-      knownTabIdsRef.current = null
+      prevStripRef.current = null
       return
     }
+    const prev = prevStripRef.current
+    const tabIds = readTabStripSlotIds(strip)
+    prevStripRef.current = { worktreeId, tabIds }
     if (!prev || prev.worktreeId !== worktreeId) {
-      prevStripLenRef.current = { worktreeId, len: tabCount }
-      knownTabIdsRef.current = readTabStripTabIds(strip)
       updateTabStripOverflowState()
       return
     }
     const pointerGestureActive = isTabStripPointerGestureActive()
-    const recorded = scrollAnchorRef.current
-    // Compare identities so a replacement is revealed even when the strip count is unchanged.
-    const offscreenOpenedTab =
-      recorded?.activeTabId === activeTabIdRef.current &&
-      knownTabIdsRef.current &&
-      !pointerGestureActive &&
-      !strip.matches(':hover')
-        ? findOffscreenOpenedTab(strip, knownTabIdsRef.current, activeTabIdRef.current)
-        : null
+    // Why identities, not a count: a tab that replaces another opens without the strip growing.
+    const tabOpened = [...tabIds].some((id) => !prev.tabIds.has(id))
+    tabClosedThisCommitRef.current = !tabOpened && [...prev.tabIds].some((id) => !tabIds.has(id))
     const scrollToEnd = (stick: boolean): void => {
       const el = tabStripRef.current
       if (!el) {
@@ -199,12 +190,20 @@ export function useTabStripOverflowNavigation({
       }
       updateTabStripOverflowState()
     }
-    if (tabCount > prev.len && !pointerGestureActive) {
+    const recorded = scrollAnchorRef.current
+    if (tabOpened && !pointerGestureActive) {
       if (recorded?.activeTabId === activeTabIdRef.current) {
         // Why: insertions around the viewed tab keep its on-screen x, the way VS Code and Chrome
         // leave it still; only a tab that lands out of view scrolls, and the active tab docks.
         if (recorded.anchor) {
           restoreTabStripScrollAnchor(strip, recorded.anchor)
+        }
+        // Why not under the pointer: the tab it is over would slide away before the click lands.
+        const offscreenOpened = strip.matches(':hover')
+          ? undefined
+          : findOffscreenOpenedTabStripSlot(strip, prev.tabIds)
+        if (offscreenOpened) {
+          revealTabStripSlot(strip, offscreenOpened)
         }
         stickToEndRef.current = isTabStripScrolledToEnd(strip)
       } else if (isLastTabStripTab(strip, activeTabIdRef.current)) {
@@ -214,18 +213,17 @@ export function useTabStripOverflowNavigation({
       // A foreground tab opened mid-strip is revealed by the active-tab effect below.
     } else if (stickToEndRef.current && !pointerGestureActive) {
       scrollToEnd(false)
-      requestAnimationFrame(() => scrollToEnd(false))
+      // Why re-check: a reveal later in this commit may have scrolled away from the end.
+      requestAnimationFrame(() => {
+        if (stickToEndRef.current) {
+          scrollToEnd(false)
+        }
+      })
     }
-    if (offscreenOpenedTab) {
-      revealTabStripElement(strip, offscreenOpenedTab, getActiveTabDock(strip))
-      stickToEndRef.current = isTabStripScrolledToEnd(strip)
-    }
-    knownTabIdsRef.current = readTabStripTabIds(strip)
-    prevStripLenRef.current = { worktreeId, len: tabCount }
     updateTabStripOverflowState()
     requestAnimationFrame(updateTabStripOverflowState)
     recordScrollAnchor()
-  }, [layoutKey, recordScrollAnchor, tabCount, updateTabStripOverflowState, worktreeId])
+  }, [layoutKey, recordScrollAnchor, updateTabStripOverflowState, worktreeId])
 
   useLayoutEffect(() => {
     const strip = tabStripRef.current
@@ -233,31 +231,30 @@ export function useTabStripOverflowNavigation({
       recordScrollAnchor()
       return
     }
-    const activeTab = strip.querySelector<HTMLElement>(
-      `[data-tab-id="${CSS.escape(activeVisibleTabId)}"]`
-    )
-    if (!activeTab) {
+    const activeSlot = findTabStripSlot(strip, activeVisibleTabId)
+    if (!activeSlot) {
       recordScrollAnchor()
       return
     }
-    if (isTabStripPointerGestureActive()) {
-      // Why: active-tab preview changes during a tab press must not move the
-      // strip under a stationary pointer before the release decides click/drag.
+    // Why hold still: active-tab preview changes during a tab press must not move the strip under
+    // a stationary pointer before the release decides click/drag. After a close, the next tab can
+    // be far back in recent history; chasing it throws the strip around, and it docks into view.
+    if (isTabStripPointerGestureActive() || tabClosedThisCommitRef.current) {
       requestAnimationFrame(updateTabStripOverflowState)
       recordScrollAnchor()
       return
     }
-    revealTabStripElement(strip, activeTab)
+    revealTabStripSlot(strip, activeSlot)
     // Why: the scroll event lands after the resize observer, which would re-pin a stale end stick over this reveal.
     stickToEndRef.current = isTabStripScrolledToEnd(strip)
     requestAnimationFrame(updateTabStripOverflowState)
     recordScrollAnchor()
   }, [activeVisibleTabId, recordScrollAnchor, updateTabStripOverflowState])
 
-  return {
-    tabStripRef,
-    tabStripOverflowState,
-    activeTabDockSide,
-    scrollTabStrip
-  }
+  // Why every render: the close flag belongs to the commit that set it, not a later tab switch.
+  useLayoutEffect(() => {
+    tabClosedThisCommitRef.current = false
+  })
+
+  return { tabStripRef, tabStripOverflowState, activeTabDockSide, scrollTabStrip }
 }

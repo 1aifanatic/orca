@@ -2,10 +2,10 @@ import { cn } from '@/lib/utils'
 import { useTabDragActive } from '../tab-group/tab-drag-context'
 import { TAB_CONTAINER_WIDTH_CLASSES } from './tab-width-rules'
 
-export type TabStripSlotProps = {
+type TabStripSlotProps = {
   className: string
-  'data-tab-strip-slot': ''
-  'data-active-tab-dock'?: ''
+  'data-tab-strip-slot': string
+  'data-active-tab-dock': '' | undefined
 }
 
 /**
@@ -13,12 +13,12 @@ export type TabStripSlotProps = {
  * instead of scrolling out of view. Why not during a drag: drop targets come from on-screen
  * rects, and a docked tab overlaps its neighbour.
  */
-export function useTabStripSlotProps(isActive: boolean): TabStripSlotProps {
+export function useTabStripSlotProps(tabId: string, isActive: boolean): TabStripSlotProps {
   const isTabDragActive = useTabDragActive()
   const docks = isActive && !isTabDragActive
   return {
     className: cn(TAB_CONTAINER_WIDTH_CLASSES, docks && 'sticky inset-x-0 z-10'),
-    'data-tab-strip-slot': '',
-    ...(docks ? { 'data-active-tab-dock': '' } : {})
+    'data-tab-strip-slot': tabId,
+    'data-active-tab-dock': docks ? '' : undefined
   }
 }

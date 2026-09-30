@@ -174,7 +174,7 @@ export default function SortableTab({
     onActivate: handleActivate,
     disabled: isEditing
   })
-  const slotProps = useTabStripSlotProps(isActive)
+  const slotProps = useTabStripSlotProps(tab.id, isActive)
   const closeShortcut = useOptionalShortcutLabel('tab.close')
   const closeLabel = translate('auto.components.tab.bar.SortableTab.95db5f2f7d', 'Close tab')
   const tabTitle = tab.customTitle ?? tab.title

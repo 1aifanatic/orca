@@ -52,7 +52,6 @@ function TabBarInner(props: TabBarProps): React.JSX.Element {
     generatedTabTitlesEnabled: runtime.generatedTabTitlesEnabled,
     statusByRelativePath: runtime.statusByRelativePath
   })
-  const clientHostedBrowserRows = props.clientHostedBrowserRows ?? []
   const togglePinned = (item: TabBarItem): void => {
     // pinTab/unpinTab mirror the change to the host for remote-server tabs.
     if (item.isPinned) {
@@ -67,10 +66,10 @@ function TabBarInner(props: TabBarProps): React.JSX.Element {
   }
   const tabStripNavigation = useTabStripOverflowNavigation({
     activeVisibleTabId: itemProjection.activeVisibleTabId,
-    layoutKey: `${itemProjection.tabStripLayoutKey}|${clientHostedBrowserRows
-      .map((row) => row.browserPageId)
-      .join(',')}`,
-    tabCount: itemProjection.orderedItems.length + clientHostedBrowserRows.length,
+    layoutKey: [
+      itemProjection.tabStripLayoutKey,
+      ...(props.clientHostedBrowserRows ?? []).map((row) => row.browserPageId)
+    ].join('|'),
     worktreeId
   })
   const tabStripDragScroll = useTabStripDragScrollHandlers(tabStripNavigation.scrollTabStrip, {
