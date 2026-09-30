@@ -1,6 +1,8 @@
 import type { ClaudeStatusLineRateLimits } from '../../../shared/claude-statusline-rate-limits'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
+import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
 import type {
+  AgentPresenceReleaseIpcPayload,
   AgentStatusClearIpcPayload,
   AgentStatusState
 } from '../../../shared/agent-status-types'
@@ -107,6 +109,27 @@ export type AgentHookStatusRowMutation = {
 export type StatusRowMutationListener = (mutation: AgentHookStatusRowMutation) => void
 export type PaneStatusClearListener = (clear: AgentStatusClearIpcPayload) => void
 export type StatusDropListener = (paneKey: string) => void
+export type AgentPresenceReleaseListener = (release: AgentPresenceReleaseIpcPayload) => void
+
+/** What a pane cleanup caller knows about the recorded process owner. */
+export type PaneOwnerDisposition =
+  /** This host cannot tell whether the owner ended (lost SSH/relay contact, a remote PTY handle). */
+  | 'unverified'
+  /** The pane's local terminal is gone, so its owner ended with it. */
+  | 'ended'
+  /** The pane itself is gone (tab close, authority retirement, workspace removal). */
+  | 'released'
+  /** The agent exited but its terminal survives, so resume identity stays usable in place. */
+  | 'agent-exited'
+
+/** What a caller proved before retiring a pane's live claims. */
+export type EndedProcessEvidence =
+  /** The pane's terminal process is gone; an identified owner ended with it. */
+  | { kind: 'terminal-ended' }
+  /** This host proved the recorded owner's own process exited; the terminal may survive. */
+  | { kind: 'owner-exited'; presence: AgentProcessPresence }
+  /** Temporary until step 3: a confirmed shell foreground ends only rows without process identity. */
+  | { kind: 'legacy-shell-foreground' }
 export type PaneKeyAliasPersistenceListener = (entries: LegacyPaneKeyAliasEntry[]) => void
 
 export type PaneKeyAliasEntry = {

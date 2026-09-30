@@ -579,7 +579,7 @@ describe('AgentHookServer listener replay', () => {
         )
       })
 
-      server.clearPaneState(PANE)
+      server.clearPaneState(PANE, 'ended')
       const listener = vi.fn()
       server.setListener(listener)
 

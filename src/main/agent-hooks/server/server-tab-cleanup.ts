@@ -1,7 +1,9 @@
 import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
+import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { worktreeIdsEqual } from '../../../shared/worktree/id'
 import { paneCacheKeyMatchesTab } from './server-status-identity'
 import { AgentHookServerCleanup } from './server-cleanup'
-import type { EnrichedAgentHookEventPayload } from './server-types'
+import type { EnrichedAgentHookEventPayload, PaneOwnerDisposition } from './server-types'
 
 export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
   /** Drop every status/cache claim attributable to a closed tab prefix. */
@@ -100,7 +102,21 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
     }
   }
 
-  clearPaneState(paneKey: string, options?: { emitStatusRowMutation?: boolean }): void {
+  /** Drop the rows of every tab a removed workspace owned, as closing those tabs would. */
+  dropStatusEntriesForWorktree(worktreeId: string): void {
+    const tabIds = new Set<string>()
+    for (const [paneKey, row] of this.state.lastStatusByPaneKey) {
+      const tabId = parsePaneKey(paneKey)?.tabId
+      if (tabId && row.worktreeId && worktreeIdsEqual(row.worktreeId, worktreeId)) {
+        tabIds.add(tabId)
+      }
+    }
+    for (const tabId of tabIds) {
+      this.dropStatusEntriesByTabPrefix(tabId)
+    }
+  }
+
+  clearPaneState(paneKey: string, owner: PaneOwnerDisposition): void {
     const resolvedPaneKey = this.resolvePaneKeyAlias(paneKey)
     const paneKeys = new Set([paneKey, resolvedPaneKey])
     // Why: only persist when a status entry was actually evicted; dropping prompt/tool caches doesn't change the file.
@@ -136,10 +152,7 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
     if (clearedAlias) {
       this.notifyPaneKeyAliasPersistenceListener()
     }
-    if (options?.emitStatusRowMutation !== false) {
-      const retained = this.retainProcessOwnerAfterCleanup(previousStatus)
-      this.commitStatusRowMutation(previousStatus, retained)
-    }
+    this.commitPaneRowAfterCleanup(previousStatus, owner)
     if (hadStatus || authorityChanged) {
       this.runtimeObservedStatusPaneKeys.delete(resolvedPaneKey)
       this.scheduleStatusPersist()

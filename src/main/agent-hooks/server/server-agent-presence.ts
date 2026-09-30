@@ -2,9 +2,11 @@ import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/
 import {
   isSameAgentProcess,
   type AgentProcessIdentity,
+  type AgentProcessPresence,
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
+import type { EnrichedAgentHookEventPayload } from './server-types'
 import { AgentHookServerLifecycle } from './server-lifecycle'
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
@@ -18,7 +20,8 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     const sender = event.agentPresence?.process
     const owner = row.agentPresence
     if (sender && owner?.process && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
-      void this.checkAgentPresence(row.paneKey)
+      const agent = event.agentPresence?.agent ?? event.payload.agentType
+      void this.checkAgentPresence(row.paneKey, undefined, { agent, process: sender })
     }
   }
 
@@ -30,9 +33,11 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     return presence?.process !== undefined && !presence.ended
   }
 
+  /** `successor` is the live process whose hook raised the doubt; it inherits a proven-dead owner's pane. */
   checkAgentPresence(
     paneKey: string,
-    expectedProcess?: AgentProcessIdentity
+    expectedProcess?: AgentProcessIdentity,
+    successor?: AgentProcessPresence
   ): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
@@ -53,22 +58,31 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       return Promise.resolve('unverifiable')
     }
     const pending = this.presenceChecks.get(row)
-    if (pending) {
+    if (pending && !successor) {
       return pending
     }
     const presence = row.agentPresence
-    const check = probeAgentProcessPresence(presence.process)
+    const owner = presence.process
+    const check = probeAgentProcessPresence(owner)
       .then((verdict) => {
-        if (
-          this.state.lastStatusByPaneKey.get(resolved) !== row ||
-          row.agentPresence !== presence
-        ) {
+        // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.
+        const current = this.state.lastStatusByPaneKey.get(resolved) as
+          | EnrichedAgentHookEventPayload
+          | undefined
+        const currentOwner = current?.agentPresence
+        if (!currentOwner?.process || !isSameAgentProcess(currentOwner.process, owner)) {
           return 'unverifiable' as const
         }
-        if (verdict === 'exited') {
+        if (verdict !== 'exited' || currentOwner.ended) {
+          return verdict
+        }
+        if (successor) {
+          this.adoptPaneOwner(current, successor)
+        } else {
           this.reconcileEndedProcessForPaneKeys([resolved], {
-            preserveResumeIdentity: true,
-            endedPresence: { ...presence, ended: true }
+            kind: 'owner-exited',
+            presence: { ...presence, ended: true }
           })
         }
         return verdict
@@ -80,5 +94,19 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       })
     this.presenceChecks.set(row, check)
     return check
+  }
+
+  /** The row already carries the successor's own status; only the recorded owner was stale. */
+  private adoptPaneOwner(
+    current: EnrichedAgentHookEventPayload,
+    successor: AgentProcessPresence
+  ): void {
+    const adopted: EnrichedAgentHookEventPayload = { ...current, agentPresence: successor }
+    if (!this.writeLegacyStatusRow(adopted)) {
+      return
+    }
+    this.commitStatusRowMutation(current, adopted)
+    this.scheduleStatusPersist()
+    this.emitEnrichedStatus(adopted)
   }
 }

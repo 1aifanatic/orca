@@ -154,10 +154,10 @@ describe('desktop owner publication', () => {
       })
     }
   )
-  it('can still check the recorded owner after provider cleanup without guessing process death', async () => {
+  it('can still check the recorded owner after an unverified cleanup without guessing process death', async () => {
     const server = createServer()
     server.publish()
-    server.clearPaneState(PANE)
+    server.clearPaneState(PANE, 'unverified')
     vi.mocked(probeAgentProcessPresence).mockResolvedValueOnce('exited')
     await expect(server.checkAgentPresence(PANE, owner.process)).resolves.toBe('exited')
     expect(server.getStatusSnapshot()).toEqual([
@@ -172,8 +172,8 @@ describe('desktop owner publication', () => {
       server.registerPaneKeyAlias('tab-1:0', PANE, 'pty-1')
       server.publish()
       server.publish({ agentPresence: ended ? { ...owner, ended: true } : owner })
-      server.clearPaneKeyAliasesForPty('pty-1')
-      server.clearPaneState(PANE)
+      server.clearPaneKeyAliasesForPty('pty-1', 'unverified')
+      server.clearPaneState(PANE, 'unverified')
       expect(server.getStatusSnapshot()).toEqual([
         expect.objectContaining({
           providerSessionOnly: true,
@@ -188,8 +188,8 @@ describe('desktop owner publication', () => {
     const server = createServer()
     server.publish({ connectionId: 'ssh-a' })
     for (let i = 0; i < 3; i++) {
-      server.clearStatusEntriesForConnection('ssh-a')
-      server.clearPaneState(PANE)
+      // What clearPtyOwnershipForConnection -> clearProviderPtyState passes for a lost transport.
+      server.clearPaneState(PANE, 'unverified')
       expect(server.getStatusSnapshot()).toHaveLength(1)
       expect(Object.keys(JSON.parse(server.serializedStatus()).entries)).toEqual([PANE])
     }
@@ -203,7 +203,7 @@ describe('desktop owner publication', () => {
     const server = createServer()
     server.publish()
     server.publish({ agentPresence: { ...owner, ended: true } })
-    server.clearPaneState(PANE)
+    server.clearPaneState(PANE, 'unverified')
     server.dropStatusEntriesByTabPrefix('tab-1')
     expect(server.getStatusSnapshot()).toEqual([])
     expect(JSON.parse(server.serializedStatus()).entries).toEqual({})
@@ -211,8 +211,8 @@ describe('desktop owner publication', () => {
   it('publishes a terminal exit for an owner retained by earlier provider cleanup', async () => {
     const server = createServer()
     server.publish()
-    server.clearPaneState(PANE)
-    server.reconcileEndedProcessForPaneKeys([PANE])
+    server.clearPaneState(PANE, 'unverified')
+    server.reconcileEndedProcessForPaneKeys([PANE], { kind: 'terminal-ended' })
     await expect(server.checkAgentPresence(PANE, owner.process)).resolves.toBe('exited')
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({
