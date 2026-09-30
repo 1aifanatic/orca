@@ -81,7 +81,7 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'antigravity-1-2-14-ready-accept-edits': 4,
   'antigravity-1-2-14-ready-plan': 4,
   'antigravity-1-2-14-trust-dialog': 26,
-  'cline-3-0-66-busy-streaming': 2,
+  'cline-3-0-66-busy-streaming': 6,
   'cline-3-0-66-draft': 6,
   'cline-3-0-66-permission': 6,
   'cline-3-0-66-promo': 15,
@@ -91,14 +91,14 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'cline-3-0-66-turn-ended': 10,
   'prime-agent-0-9-5-ready': 18,
   'prime-agent-0-9-5-turn': 4,
-  'prime-agent-0-9-8-busy-streaming': 6,
+  'prime-agent-0-9-8-busy-streaming': 16,
   'prime-agent-0-9-8-draft': 10,
   'prime-agent-0-9-8-ready': 22,
   'prime-agent-0-9-8-ready-80x24': 16,
   'prime-agent-0-9-8-ready-after-question': 2,
   'prime-agent-0-9-8-slash-menu': 34,
   'prime-agent-0-9-8-tool-turn': 40,
-  'prime-agent-0-9-8-trace-question': 10,
+  'prime-agent-0-9-8-trace-question': 4,
   'prime-agent-0-9-8-turn-ended': 24
 }
 

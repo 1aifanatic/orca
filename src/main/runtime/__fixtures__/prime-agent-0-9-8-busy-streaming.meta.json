@@ -10,6 +10,6 @@
   ],
   "cols": 120,
   "rows": 40,
-  "note": "prime-agent 0.9.8, macOS, OpenRouter inclusionai/ling-3.0-flash-sante:free, isolated HOME, one turn, recording stopped while the turn was still running",
+  "note": "prime-agent 0.9.8, macOS, OpenRouter inclusionai/ling-3.0-flash-sante:free, isolated HOME, one turn, recording stopped while the turn was still running. Truncated 1449775 -> 20903 bytes, after the first Writing frame with the answer streaming.",
   "exitCode": 129
 }

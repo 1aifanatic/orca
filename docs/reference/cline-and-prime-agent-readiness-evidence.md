@@ -74,4 +74,12 @@ reappears in a fresh one). `prime-agent-0-9-5-*.txt` are 120x35 captures from PR
   animation repaint continuously, and an idle Prime is silent.
 - **No permission prompt exists to capture.** With default settings Prime ran the tool call without
   asking.
+- **Why the Prime captures are large.** Prime does no cell diffing. Each synchronized frame
+  (`ESC[?2026h`…`ESC[?2026l`) erases and rewrites every row it touches, so a streaming turn costs
+  about 4 KB per spinner tick or token (337 frames, 8,593 `ESC[2K` in 1.45 MB). The first-launch
+  welcome animates a full-screen dotted background with a colour code per glyph, about 10 KB a
+  frame at roughly ten frames a second. `busy-streaming` and `trace-question` are truncated to the
+  first frame that shows the screen their tests need (see each `.meta.json`).
+  `ready-after-question` cannot be: the animation precedes the answer, and truncation only drops
+  the end.
 - 0.9.4's `← agents/resume` layout is not supported; the rule needs 0.9.5 or later.
