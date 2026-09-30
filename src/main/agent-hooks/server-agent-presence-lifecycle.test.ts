@@ -154,12 +154,12 @@ describe('host owner lifecycle', () => {
 
   it.each(['silent death', 'dismissal', 'unverified cleanup'])(
     'hands the pane to the process whose hook proved the old owner dead (%s)',
-    async (shape) => {
+    async (howOwnerWasLeft) => {
       const server = createServer()
       server.publish()
-      if (shape === 'dismissal') {
+      if (howOwnerWasLeft === 'dismissal') {
         server.dropStatusEntry(PANE)
-      } else if (shape === 'unverified cleanup') {
+      } else if (howOwnerWasLeft === 'unverified cleanup') {
         server.clearPaneState(PANE, 'unverified')
       }
       const live = vi.fn()
