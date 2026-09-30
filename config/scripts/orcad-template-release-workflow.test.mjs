@@ -108,6 +108,42 @@ describe('orcad template release wiring (design D2)', () => {
     expect(releaseMac.permissions.actions).toBe('read')
   })
 
+  it('ships the template in adhoc builds, built from the one vetted commit', () => {
+    const adhoc = readWorkflow('adhoc-mac-build.yml')
+    expect(adhoc.jobs['orcad-template']).toMatchObject({
+      needs: 'vet-ref',
+      uses: './.github/workflows/node-server-tests.yml',
+      with: { ref: '${{ needs.vet-ref.outputs.sha }}', build_template: true }
+    })
+    const mac = adhoc.jobs['build-adhoc-mac']
+    expect(mac.needs).toEqual(['vet-ref', 'orcad-template'])
+    const download = stepIndex(
+      mac.steps,
+      (step) => step.name === 'Download the orcad deployment template'
+    )
+    const publish = stepIndex(mac.steps, (step) => step.name === 'Publish adhoc macOS artifacts')
+    expect(publish).toBeGreaterThan(download)
+    expect(mac.steps[publish].env.ORCA_REQUIRE_ORCAD_TEMPLATE).toBe('1')
+    expect(adhoc.jobs['build-adhoc-win'].with.orcad_template).toBe(true)
+
+    const win = readWorkflow('dev-channel-win-build.yml')
+    expect(win.on.workflow_call.inputs.orcad_template).toMatchObject({
+      type: 'boolean',
+      default: false
+    })
+    const winSteps = win.jobs['build-win'].steps
+    const winDownload = stepIndex(
+      winSteps,
+      (step) => step.name === 'Download the orcad deployment template'
+    )
+    expect(winSteps[winDownload].if).toBe('inputs.orcad_template')
+    const winPublish = stepIndex(winSteps, (step) => step.name === 'Publish Windows artifacts')
+    expect(winPublish).toBeGreaterThan(winDownload)
+    expect(winSteps[winPublish].env.ORCA_REQUIRE_ORCAD_TEMPLATE).toBe(
+      "${{ inputs.orcad_template && '1' || '' }}"
+    )
+  })
+
   it('signs only Windows template binaries and reseals the manifest before the installer rebuild', () => {
     const steps = releaseCut.jobs.build.steps
     const stage = steps.find((step) => step.id === 'stage-inner')

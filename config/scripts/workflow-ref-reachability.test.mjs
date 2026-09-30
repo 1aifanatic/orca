@@ -10,9 +10,11 @@ const readWorkflow = (name) => parse(readFileSync(`.github/workflows/${name}.yml
 const windowsVet = readWorkflow('dev-channel-win-build').jobs['build-win'].steps.find(
   (step) => step.id === 'vetted'
 )
-const macSteps = readWorkflow('adhoc-mac-build').jobs['build-adhoc-mac'].steps
-const macVet = macSteps.find((step) => step.id === 'vetted')
-const macCheckout = macSteps.find((step) => step.name === 'Checkout the requested ref')
+const adhocJobs = readWorkflow('adhoc-mac-build').jobs
+const macVet = adhocJobs['vet-ref'].steps.find((step) => step.id === 'vetted')
+const macCheckout = adhocJobs['build-adhoc-mac'].steps.find(
+  (step) => step.name === 'Checkout the requested ref'
+)
 const directory = mkdtempSync(join(tmpdir(), 'workflow-ref-reachability-'))
 const repository = join(directory, 'remote.git')
 const identity = {

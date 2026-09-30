@@ -81,28 +81,13 @@ env:
   ADHOC_RETAIN_DAYS: 30
 
 jobs:
-  build-adhoc-mac:
+  # Its own job so the orcad template and the packaged app are built from the one vetted SHA.
+  vet-ref:
     if: github.repository == 'stablyai/orca'
-    # Why an environment: it gives the signing/notary/App secrets somewhere to
-    # live that a stale copy of this workflow on an old branch cannot reach.
-    # Referencing it is a no-op until repo settings give it teeth; the intended
-    # follow-up is to move MAC_CERTS, MAC_CERTS_PASSWORD, APPLE_ID,
-    # APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, HOURLY_RELEASE_APP_ID, and
-    # HOURLY_RELEASE_APP_PRIVATE_KEY into it, then pin its deployment branch
-    # policy to main so only main's copy of this file can read them.
-    environment: adhoc-mac-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.adhoc.outputs.version }}
-      head_sha: ${{ steps.adhoc.outputs.head_sha }}
-      published: ${{ steps.publish_live.outcome == 'success' && 'true' || 'false' }}
-    runs-on: blacksmith-6vcpu-macos-15
-    # Why 150: it must exceed the worst case the retry budgets below can produce
-    # (install 3x10 + publish 2x45 = 120, plus ~25 for checkout/build/verify), or
-    # the job is killed mid-retry and no cleanup step runs at all.
-    timeout-minutes: 150
-    env:
-      NODE_OPTIONS: --max-old-space-size=4096
+      sha: ${{ steps.vetted.outputs.sha }}
     steps:
       # Why vet before checkout: everything after this step runs the checked-out
       # code with release signing credentials in reach. Branches and tags of this
@@ -158,6 +143,41 @@ jobs:
           echo "Vetted $REQUESTED_REF -> $sha"
           echo "sha=$sha" >>"$GITHUB_OUTPUT"
 
+  # Design D2: the pinned-Node relay deploys from the packaged orcad template, merged from the
+  # node-server lanes exactly as release-cut builds it. Without it the relay cannot run.
+  orcad-template:
+    needs: vet-ref
+    permissions:
+      contents: read
+    uses: ./.github/workflows/node-server-tests.yml
+    with:
+      ref: ${{ needs.vet-ref.outputs.sha }}
+      build_template: true
+
+  build-adhoc-mac:
+    needs: [vet-ref, orcad-template]
+    if: github.repository == 'stablyai/orca'
+    # Why an environment: it gives the signing/notary/App secrets somewhere to
+    # live that a stale copy of this workflow on an old branch cannot reach.
+    # Referencing it is a no-op until repo settings give it teeth; the intended
+    # follow-up is to move MAC_CERTS, MAC_CERTS_PASSWORD, APPLE_ID,
+    # APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, HOURLY_RELEASE_APP_ID, and
+    # HOURLY_RELEASE_APP_PRIVATE_KEY into it, then pin its deployment branch
+    # policy to main so only main's copy of this file can read them.
+    environment: adhoc-mac-build
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.adhoc.outputs.version }}
+      head_sha: ${{ steps.adhoc.outputs.head_sha }}
+      published: ${{ steps.publish_live.outcome == 'success' && 'true' || 'false' }}
+    runs-on: blacksmith-6vcpu-macos-15
+    # Why 150: it must exceed the worst case the retry budgets below can produce
+    # (install 3x10 + publish 2x45 = 120, plus ~25 for checkout/build/verify), or
+    # the job is killed mid-retry and no cleanup step runs at all.
+    timeout-minutes: 150
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
       - name: Checkout the requested ref
         uses: actions/checkout@v6
         with:
@@ -165,7 +185,7 @@ jobs:
           # build code that has not landed, and the workflow definition itself
           # always comes from the dispatch ref — naming the branch here instead
           # applies main's current copy of this file to an arbitrary branch.
-          ref: ${{ steps.vetted.outputs.sha }}
+          ref: ${{ needs.vet-ref.outputs.sha }}
           # Version helpers only read HEAD; published versions come from the release API.
           fetch-depth: 1
           # This job only reads stablyai/orca and never pushes; every write goes
@@ -268,6 +288,13 @@ jobs:
           # silent, which is correct for unvetted branch artifacts.
           ORCA_DIAGNOSTICS_TOKEN_URL: https://www.onorca.dev/diagnostics/token
 
+      # After the app build so nothing that cleans out/ can drop it; electron-builder ships it.
+      - name: Download the orcad deployment template
+        uses: actions/download-artifact@v8
+        with:
+          name: orcad-template
+          path: out/orcad-template
+
       # Why the token is minted here and not at the top: installation tokens live
       # one hour, everything before this point writes nothing, and the notary round
       # trip inside the publish step can be tens of minutes. Minting after the build
@@ -340,6 +367,8 @@ jobs:
           # Why: electron-builder's github publisher targets the repo named in the
           # config; the token must therefore carry write access to orca-adhoc.
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          # beforePack and afterPack fail the package when the template is absent.
+          ORCA_REQUIRE_ORCAD_TEMPLATE: '1'
           ORCA_ADHOC_BUILD_VERSION: ${{ steps.adhoc.outputs.version }}
           ORCA_BUILD_COMMIT: ${{ steps.adhoc.outputs.commit }}
           CSC_LINK: ${{ secrets.MAC_CERTS }}
@@ -490,3 +519,4 @@ jobs:
       tag: ${{ needs.build-adhoc-mac.outputs.tag }}
       ref: ${{ needs.build-adhoc-mac.outputs.head_sha }}
       version: ${{ needs.build-adhoc-mac.outputs.version }}
+      orcad_template: true
