@@ -37,6 +37,8 @@ export type AgentStatusSlice = {
   recordAgentPresence: (paneKey: string, record: AgentPresenceRecord) => void
   /** The host dropped this exact owner's record without an exit. */
   releaseAgentPresence: (paneKey: string, process: AgentProcessIdentity) => void
+  /** A shell back in the foreground or a new command ends an exited owner's history. */
+  retireEndedAgentPresence: (paneKey: string) => void
   /** Explicit agent status entries keyed by `${tabId}:${leafId}`; real-time only, not persisted. */
   agentStatusByPaneKey: Record<string, AgentStatusEntry>
   /** Main-synced dispatch metadata for live panes that may only have title-derived status in the renderer. */

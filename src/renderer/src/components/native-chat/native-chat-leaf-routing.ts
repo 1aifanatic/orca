@@ -91,6 +91,8 @@ export function resolveNativeChatLeafRoute(args: {
   chatLeafStillMounted: boolean
   activeLeafIsEligible: boolean
   chatLeafAgentExit?: 'exited' | 'legacy-unidentified'
+  /** Orca launched an agent that has not yet exited; its evidence may still be hydrating. */
+  launchPending?: boolean
 }): NativeChatLeafRoute {
   const agentExit = args.chatLeafAgentExit
   if (!args.isChatViewMode) {
@@ -115,8 +117,9 @@ export function resolveNativeChatLeafRoute(args: {
   if (args.activeLeafIsEligible && (!agentExit || args.activeLeafId !== args.chatLeafId)) {
     return { chatLeafId: args.activeLeafId, exitChat: false }
   }
-  if (!args.chatLeafId && !agentExit) {
-    // Host and agent evidence can hydrate after the pane; keep the request unbound until eligible.
+  if (!args.chatLeafId && !agentExit && args.launchPending) {
+    // Why launch only: evidence for a launched agent can hydrate after the pane; any other request
+    // would stay armed with no way to end but flipping the pane into Chat later, unasked.
     return { chatLeafId: null, exitChat: false }
   }
   // Why: removing the owning leaf or confirming its agent exited must not leave

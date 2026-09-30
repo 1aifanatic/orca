@@ -99,6 +99,7 @@ export type StoreState = {
   consumePendingSnapshot: ReturnType<typeof vi.fn>
   runtimePaneTitlesByTabId: Record<string, Record<number, string>>
   agentPresenceByPaneKey: AgentPresenceByPaneKey
+  retireEndedAgentPresence: ReturnType<typeof vi.fn>
   agentStatusByPaneKey: Record<string, unknown>
   retainedAgentsByPaneKey: Record<string, { agentType: AgentType }>
   paneForegroundAgentByPaneKey: Record<string, PaneForegroundAgentEntry>

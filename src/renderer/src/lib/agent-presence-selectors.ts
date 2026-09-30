@@ -65,17 +65,33 @@ export function paneEvidenceCounts(
   presence: AgentProcessPresence | undefined,
   agent: string | null | undefined
 ): boolean {
-  if (!presence?.process || !presence.ended) {
-    return true
-  }
-  return Boolean(agent) && agent !== 'unknown' && agent !== presence.agent
+  return countsAfterEndedAgent(endedOwnerAgent(presence), agent)
 }
 
 export function paneEvidenceAgent<T extends string>(
   presence: AgentProcessPresence | undefined,
   agent: T | null | undefined
 ): T | null {
-  return agent && paneEvidenceCounts(presence, agent) ? agent : null
+  return evidenceAfterEndedAgent(endedOwnerAgent(presence), agent)
+}
+
+/** The same rule when only the exited owner's agent is at hand (the tab strip's projection). */
+export function evidenceAfterEndedAgent<T extends string>(
+  endedAgent: string | undefined,
+  agent: T | null | undefined
+): T | null {
+  return agent && countsAfterEndedAgent(endedAgent, agent) ? agent : null
+}
+
+function endedOwnerAgent(presence: AgentProcessPresence | undefined): string | undefined {
+  return presence?.process && presence.ended ? presence.agent : undefined
+}
+
+function countsAfterEndedAgent(
+  endedAgent: string | undefined,
+  agent: string | null | undefined
+): boolean {
+  return endedAgent === undefined || (Boolean(agent) && agent !== 'unknown' && agent !== endedAgent)
 }
 
 type PaneEvidenceSignals = {

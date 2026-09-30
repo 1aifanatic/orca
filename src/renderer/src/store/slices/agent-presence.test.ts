@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createTestStore } from './store-test-helpers'
+import { observeAgentPresence } from '@/lib/agent-presence-transitions'
 
 const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
 const presence = {
@@ -75,5 +76,53 @@ describe('host process ownership mirror', () => {
     store.getState().removeAgentStatus(paneKey)
     expect(store.getState().agentStatusByPaneKey[paneKey]).toBeUndefined()
     expect(store.getState().agentPresenceByPaneKey[paneKey]?.presence).toEqual(presence)
+  })
+
+  it('ignores a republished owner: no store write, epoch bump or listener call', () => {
+    const store = createTestStore()
+    const listener = vi.fn()
+    const stop = observeAgentPresence(paneKey, listener)
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    const recorded = store.getState()
+    for (let i = 11; i < 21; i += 1) {
+      store.getState().recordAgentPresence(paneKey, {
+        presence: { ...presence, process: { ...presence.process } },
+        receivedAt: i,
+        connectionId: null
+      })
+    }
+    expect(store.getState().agentPresenceByPaneKey).toBe(recorded.agentPresenceByPaneKey)
+    expect(store.getState().agentStatusEpoch).toBe(recorded.agentStatusEpoch)
+    expect(store.getState().sortEpoch).toBe(recorded.sortEpoch)
+    expect(listener).toHaveBeenCalledTimes(1)
+    stop()
+  })
+
+  it('keeps a finished row and its read state when the owner exits in a live terminal', () => {
+    const store = createTestStore()
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    store.getState().setAgentStatus(paneKey, { state: 'done', prompt: 'task', agentType: 'claude' })
+    store.setState({ acknowledgedAgentsByPaneKey: { [paneKey]: Date.now() } })
+    store.getState().recordAgentPresence(paneKey, {
+      presence: { ...presence, ended: true },
+      receivedAt: 11,
+      connectionId: null
+    })
+    expect(store.getState().agentStatusByPaneKey[paneKey]?.state).toBe('done')
+    expect(store.getState().acknowledgedAgentsByPaneKey[paneKey]).toBeDefined()
+  })
+
+  it('ends an exited owner history on the pane event that proves the shell is back', () => {
+    const store = createTestStore()
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    store.getState().retireEndedAgentPresence(paneKey)
+    expect(store.getState().agentPresenceByPaneKey[paneKey]?.presence).toEqual(presence)
+    store.getState().recordAgentPresence(paneKey, {
+      presence: { ...presence, ended: true },
+      receivedAt: 11,
+      connectionId: null
+    })
+    store.getState().retireEndedAgentPresence(paneKey)
+    expect(store.getState().agentPresenceByPaneKey[paneKey]).toBeUndefined()
   })
 })
