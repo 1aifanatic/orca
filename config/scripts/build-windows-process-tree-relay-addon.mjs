@@ -126,6 +126,21 @@ function assertPatchApplied() {
       )
     }
   }
+  // Without the launcher a standard-user SSH host cannot start a relay that outlives the session.
+  const requiredLauncherSources = [
+    ['binding.gyp', '"src/process_launch.cc"'],
+    ['src/addon.cc', 'exports.Set("spawnOutsideJob"'],
+    ['src/process_launch.cc', 'CREATE_BREAKAWAY_FROM_JOB']
+  ]
+  for (const [relativePath, expected] of requiredLauncherSources) {
+    const filePath = join(PACKAGE_DIR, relativePath)
+    if (!existsSync(filePath) || !readFileSync(filePath, 'utf8').includes(expected)) {
+      throw new Error(
+        `${relativePath} does not contain the relay launcher patch (${expected}). ` +
+          'Run pnpm install before building the relay addon.'
+      )
+    }
+  }
 }
 
 function repairCreationTimeSources() {
