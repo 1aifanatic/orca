@@ -1,5 +1,10 @@
 export const ORCAD_BUN_VERSION = '1.4.2'
 
+export const ORCAD_BUN_RUNTIME_IDENTITY = {
+  runtime: 'bun',
+  runtimeVersion: ORCAD_BUN_VERSION
+} as const
+
 export const ORCAD_BUN_TARGETS = [
   'darwin-arm64',
   'darwin-x64',
