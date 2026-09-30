@@ -266,5 +266,9 @@ export function insertAgentSessionStoreRowsIfAbsent(
       SESSION_TABS_RECORDED,
       '1'
     )
+  } else {
+    // An index a chat created while the import was owed recorded holds none of the file's chats:
+    // "never recorded" sends restore to the profile's tabs, which hold them all.
+    db.prepare('DELETE FROM agent_session_store_meta WHERE key = ?').run(SESSION_TABS_RECORDED)
   }
 }

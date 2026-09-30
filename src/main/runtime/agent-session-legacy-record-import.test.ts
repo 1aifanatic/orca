@@ -376,6 +376,27 @@ describe('the tab index from before the table', () => {
     expect(store.listVisibleSessionIds()).toEqual([ALPHA, 'clear-two'])
   })
 
+  it('leaves the index unrecorded when only a chat created while the copy was owed recorded one', async () => {
+    await mkdir(legacyPath(), { recursive: true })
+    const owed = await install()
+    owed.database.db
+      .prepare('INSERT INTO agent_session_records (session_id, record_json) VALUES (?, ?)')
+      .run(BETA, JSON.stringify(record(BETA)))
+    await AgentSessionRecordStore.open({
+      journalDatabase: owed.database,
+      hostId: 'local'
+    }).setSessionTabVisibility(BETA, true)
+    owed.database.close()
+    await rm(legacyPath(), { recursive: true })
+    await writeLegacy(legacyFile([record(ALPHA)]))
+
+    const { database, store } = await install()
+
+    expect(journalPragmaNumber(database.db, 'user_version')).toBe(4)
+    expect(store.listRecords().map(({ sessionId }) => sessionId)).toEqual([BETA, ALPHA])
+    expect(store.getVisibleSessionTabIndex().present).toBe(false)
+  })
+
   it('reads a recorded table, never the record field', async () => {
     await writeLegacy(
       legacyFile([{ ...record(ALPHA), surfaceTabId: 'tab-stale' }], {
