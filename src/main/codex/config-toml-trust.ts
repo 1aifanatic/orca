@@ -23,7 +23,6 @@ import { observe } from './codex-path-observation'
 import { parseCodexConfigToml } from './codex-config-toml-document'
 import {
   assertCodexConfigTomlParses,
-  clearCodexTrustWriteRefusalReport,
   CodexConfigTomlEditRefusedError
 } from './codex-config-toml-checked-edit'
 
@@ -114,7 +113,7 @@ export function upsertHookTrustEntries(
   entries: readonly CodexTrustEntry[]
 ): void {
   const existing = readTomlForMutation(configPath)
-  const updated = withTrustEdit(configPath, existing, () =>
+  const updated = withConfigPath(configPath, () =>
     upsertHookTrustEntriesInContent(existing, entries)
   )
   if (updated !== existing) {
@@ -138,9 +137,7 @@ export function setHookTrustEnabledStates(
     return
   }
   const existing = readTomlFile(configPath)
-  const updated = withTrustEdit(configPath, existing, () =>
-    setHookTrustEnabledContent(existing, states)
-  )
+  const updated = withConfigPath(configPath, () => setHookTrustEnabledContent(existing, states))
   if (updated !== existing) {
     writeTomlConfigAtomically(configPath, updated)
   }
@@ -152,7 +149,7 @@ export function upsertProjectTrustLevel(
   trustLevel: CodexProjectTrustLevel
 ): void {
   const existing = readTomlForMutation(configPath)
-  const updated = withTrustEdit(configPath, existing, () =>
+  const updated = withConfigPath(configPath, () =>
     upsertProjectTrustLevelInContent(existing, projectPath, trustLevel)
   )
   if (updated !== existing) {
@@ -203,21 +200,12 @@ function withConfigPath<T>(configPath: string, run: () => T): T {
   }
 }
 
-// Why: a trust write that lands ends the refusal, so a later one is reported again; a no-op proves nothing.
-function withTrustEdit(configPath: string, existing: string, run: () => string): string {
-  const result = withConfigPath(configPath, run)
-  if (result !== existing) {
-    clearCodexTrustWriteRefusalReport(configPath)
-  }
-  return result
-}
-
 export function removeHookTrustEntries(configPath: string, keys: readonly string[]): void {
   if (!existsSync(configPath)) {
     return
   }
   const existing = readTomlFile(configPath)
-  const updated = withTrustEdit(configPath, existing, () =>
+  const updated = withConfigPath(configPath, () =>
     removeHookTrustEntriesFromContent(existing, keys)
   )
   if (updated !== existing) {

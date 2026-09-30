@@ -251,9 +251,9 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
     expect(fsProvider.writeFile).not.toHaveBeenCalled()
   })
 
-  it('reports a remote trust refusal again after a remote trust write lands', async () => {
+  it('logs a recurring remote trust refusal once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let remoteConfig = '[a]\nx = 1\n[a]\ny = 2\n'
+    const remoteConfig = '[a]\nx = 1\n[a]\ny = 2\n'
     const fsProvider = makeFsProvider({
       readFile: vi.fn(async () => ({ content: remoteConfig, isBinary: false }))
     })
@@ -268,12 +268,7 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
       await attempt()
       await attempt()
       expect(warn).toHaveBeenCalledTimes(1)
-      remoteConfig = 'model = "m"\n'
-      await attempt()
-      expect(fsProvider.writeFile).toHaveBeenCalledTimes(1)
-      remoteConfig = '[a]\nx = 1\n[a]\ny = 2\n'
-      await attempt()
-      expect(warn).toHaveBeenCalledTimes(2)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('/home/u/.codex/config.toml')
     } finally {
       warn.mockRestore()
     }

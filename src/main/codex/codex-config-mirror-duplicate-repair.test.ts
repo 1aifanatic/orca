@@ -301,14 +301,6 @@ describe('a ~/.codex the user broke by hand is mirrored as before', () => {
         mcp_servers: { mine: { command: 'm' } },
         projects: { '/sub': { trust_level: 'trusted' } }
       })
-
-      // The promotion ended that stall, so the next one is reported again.
-      writeFileSync(rtPath, readFileSync(rtPath, 'utf8').replace('model = "B"', 'model = "C"'))
-      writeFileSync(sysPath, brokenSource.replace('model = "A"', 'model = "B"'))
-      syncSystemConfigIntoManagedCodexHome(homes)
-      expect(
-        warn.mock.calls.flat().filter((line) => String(line).includes('Skipped promoting'))
-      ).toHaveLength(2)
     } finally {
       warn.mockRestore()
     }

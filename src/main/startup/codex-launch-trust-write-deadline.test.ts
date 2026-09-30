@@ -15,7 +15,9 @@ const mocks = vi.hoisted(() => ({
   isHostSystemDefaultRealHome: vi.fn(() => false),
   getHostCodexHomePathsForSessionDiscovery: vi.fn((): string[] => []),
   resolveSelectedHostAccountCodexHomePathForResume: vi.fn(() => null),
-  prepareRuntimeHomeForLaunch: vi.fn(async (): Promise<{ state: string }> => ({ state: 'ok' })),
+  prepareRuntimeHomeForLaunch: vi.fn(
+    async (): Promise<{ state: string; configPath?: string; detail?: string }> => ({ state: 'ok' })
+  ),
   installForLaunchPrep: vi.fn(async () => {}),
   refreshRuntimeUserHooksForLaunchPrep: vi.fn(async () => {}),
   ensureRealHomeCodexHookState: vi.fn(async () => {}),
@@ -66,8 +68,6 @@ vi.mock('./main-process-state', () => ({
 }))
 
 import { AGENT_TRUST_WRITE_DEADLINE_MS } from '../agent-trust-write-deadline'
-import { CodexConfigTomlEditRefusedError } from '../codex/codex-config-toml-checked-edit'
-import { reportCodexHookTrustWriteFailure } from '../codex/codex-hook-trust-write-failure'
 import { prepareCodexRuntimeHomeForLaunch } from './codex-launch-preparation'
 import { prepareCodexSessionResumeForLaunch } from './codex-session-resume-launch'
 
@@ -207,30 +207,28 @@ describe('Codex launch-prep trust writes', () => {
     expect(mocks.markCodexProjectTrusted).toHaveBeenCalledTimes(1)
   })
 
-  it('does not re-log a refused hook trust write that was already reported once', async () => {
-    const refused = reportCodexHookTrustWriteFailure(
-      new CodexConfigTomlEditRefusedError({
-        reason: 'input-invalid',
-        detail: 'the file is not valid TOML',
-        configPath: '/tmp/launch-hook-trust-probe/config.toml'
-      }),
-      {
-        agent: 'codex',
-        state: 'error',
-        configPath: '/tmp/launch-hook-trust-probe/hooks.json',
-        managedHooksPresent: true,
-        detail: 'Hooks installed but trust entries could not be written'
-      }
-    )
+  it('logs a repeated hook status error once and a new one again', async () => {
+    const detail =
+      'Hooks installed but trust entries could not be written: Orca left /tmp/launch-hook-trust-probe/config.toml unchanged (line 2): the file is not valid TOML.'
+    const refused = {
+      state: 'error',
+      configPath: '/tmp/launch-hook-trust-probe/hooks.json',
+      detail
+    }
     mocks.prepareRuntimeHomeForLaunch.mockResolvedValue(refused)
     warn.mockClear()
     for (let launch = 0; launch < 3; launch++) {
       await prepareCodexRuntimeHomeForLaunch()
     }
-    expect(warn).not.toHaveBeenCalled()
-
-    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ ...refused })
-    await prepareCodexRuntimeHomeForLaunch()
+    expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0]?.[0])).toContain('[codex-hook-service]')
+    expect(String(warn.mock.calls[0]?.[0])).toContain('(line 2)')
+
+    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({
+      ...refused,
+      detail: detail.replace('line 2', 'line 5')
+    })
+    await prepareCodexRuntimeHomeForLaunch()
+    expect(warn).toHaveBeenCalledTimes(2)
   })
 })

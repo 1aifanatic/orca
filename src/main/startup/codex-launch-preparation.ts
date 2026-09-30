@@ -3,9 +3,11 @@ import type { CodexHomeLaunchContext } from '../ipc/pty'
 import type { CodexAccountSelectionTarget } from '../codex-accounts/runtime-selection'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
-import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
+import {
+  reportCodexTrustWriteRefusals,
+  warnCodexConfigOnce
+} from '../codex/codex-config-toml-checked-edit'
 import { codexHookService } from '../codex/hook-service'
-import { isReportedCodexHookTrustWriteRefusal } from '../codex/codex-hook-trust-write-failure'
 import { getDefaultWslDistro } from '../wsl'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
@@ -90,10 +92,11 @@ export async function prepareCodexRuntimeHomeForLaunch(
       hookTarget,
       hooksEnabled
     )
-    if (status.state === 'error' && !isReportedCodexHookTrustWriteRefusal(status)) {
-      console.warn(
-        `[codex-hook-service] failed to ${hooksEnabled ? 'refresh' : 'refresh user'} runtime hooks before launch`,
-        status.detail
+    if (status.state === 'error') {
+      // Why: a refused trust write returns the same detail on every launch until the user fixes the file.
+      warnCodexConfigOnce(
+        status.configPath,
+        `[codex-hook-service] failed to ${hooksEnabled ? 'refresh' : 'refresh user'} runtime hooks before launch: ${status.detail}`
       )
     }
   } catch (error) {

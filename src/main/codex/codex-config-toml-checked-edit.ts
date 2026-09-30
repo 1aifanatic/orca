@@ -187,7 +187,6 @@ export function refuseUnreadableCodexConfigResult(args: {
       (input) => input !== null && !parseCodexConfigToml(repairUnparseableCodexConfig(input)).ok
     )
   ) {
-    clearCodexConfigTomlEditRefusalReport(args.configPath)
     return false
   }
   reportCodexConfigTomlEditRefusal(
@@ -202,71 +201,44 @@ export function refuseUnreadableCodexConfigResult(args: {
   return true
 }
 
-// Keyed by file, then by what Orca was doing, so interleaved reports about one file each log once.
-const reportedMessages = new Map<string, Map<string, string>>()
 const TRUST_WRITE_CONTEXT = 'Skipped marking a workspace trusted for Codex'
-const HOOK_TRUST_WRITE_CONTEXT = 'Skipped writing Codex hook trust'
-const TRUST_WRITE_KINDS: ReadonlySet<string> = new Set([
-  TRUST_WRITE_CONTEXT,
-  HOOK_TRUST_WRITE_CONTEXT
-])
+const MAX_REPORTED_WARNINGS = 500
+const reportedWarnings = new Set<string>()
 
-/** Logs once per file, kind, and message, so a launch-time retry does not flood the log. */
-function reportCodexConfigOnce(key: string, message: string, kind = ''): void {
-  let byKind = reportedMessages.get(key)
-  if (!byKind) {
-    byKind = new Map()
-    reportedMessages.set(key, byKind)
-  }
-  if (byKind.get(kind) === message) {
+/**
+ * Why: a refused write recurs on every launch and mirror pass until the user
+ * edits the file, so each distinct message about a file logs once per session.
+ */
+export function warnCodexConfigOnce(configPath: string, message: string): void {
+  const key = `${configPath}\n${message}`
+  if (reportedWarnings.has(key)) {
     return
   }
-  byKind.set(kind, message)
-  console.warn(`[codex-config] ${message}`)
+  if (reportedWarnings.size >= MAX_REPORTED_WARNINGS) {
+    const oldest = reportedWarnings.values().next()
+    if (!oldest.done) {
+      reportedWarnings.delete(oldest.value)
+    }
+  }
+  reportedWarnings.add(key)
+  console.warn(message)
 }
 
 export function reportCodexConfigTomlEditRefusal(
   error: CodexConfigTomlEditRefusedError,
   context: string
 ): void {
-  reportCodexConfigOnce(error.configPath ?? context, `${context}: ${error.message}`, context)
+  warnCodexConfigOnce(error.configPath ?? context, `[codex-config] ${context}: ${error.message}`)
 }
 
-/**
- * Why: a refused trust write recurs on every launch until the user fixes the
- * file, so it is reported once per file; returns the other failures for the caller.
- */
+/** Logs each refused trust write once and returns the other failures for the caller. */
 export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
-  return reportTrustWriteRefusals(error, TRUST_WRITE_CONTEXT)
-}
-
-export function reportCodexHookTrustWriteRefusals(error: unknown): unknown[] {
-  return reportTrustWriteRefusals(error, HOOK_TRUST_WRITE_CONTEXT)
-}
-
-function reportTrustWriteRefusals(error: unknown, context: string): unknown[] {
   const failures = error instanceof AggregateError ? error.errors : [error]
   return failures.filter((failure) => {
     if (!(failure instanceof CodexConfigTomlEditRefusedError)) {
       return true
     }
-    reportCodexConfigTomlEditRefusal(failure, context)
+    reportCodexConfigTomlEditRefusal(failure, TRUST_WRITE_CONTEXT)
     return false
   })
-}
-
-/** Forgets mirror/write reports for a file; a trust refusal is only forgotten by a trust write that succeeds. */
-export function clearCodexConfigTomlEditRefusalReport(configPath: string): void {
-  const byKind = reportedMessages.get(configPath)
-  for (const kind of byKind?.keys() ?? []) {
-    if (!TRUST_WRITE_KINDS.has(kind)) {
-      byKind?.delete(kind)
-    }
-  }
-}
-
-export function clearCodexTrustWriteRefusalReport(configPath: string): void {
-  for (const kind of TRUST_WRITE_KINDS) {
-    reportedMessages.get(configPath)?.delete(kind)
-  }
 }

@@ -29,7 +29,6 @@ vi.mock('os', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
-import { isReportedCodexHookTrustWriteRefusal } from './codex-hook-trust-write-failure'
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
 
@@ -599,22 +598,10 @@ describe('hook trust against a ~/.codex config the user broke by hand', () => {
     expect(status.state).not.toBe('error')
   })
 
-  it('logs a refused managed trust write once, not on every launch', async () => {
+  it('reports a refused managed trust write in the install status', async () => {
     seedHandBrokenSystemConfig()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const service = new CodexHookService()
-      for (let launch = 0; launch < 3; launch++) {
-        const status = await service.install()
-        expect(status.state).toBe('error')
-        expect(isReportedCodexHookTrustWriteRefusal(status)).toBe(true)
-      }
-      const hookTrustReports = warn.mock.calls.filter(([message]) =>
-        String(message).includes('Skipped writing Codex hook trust')
-      )
-      expect(hookTrustReports).toHaveLength(1)
-    } finally {
-      warn.mockRestore()
-    }
+    const status = await new CodexHookService().install()
+    expect(status.state).toBe('error')
+    expect(status.detail).toContain('config.toml unchanged')
   })
 })

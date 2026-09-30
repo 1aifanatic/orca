@@ -13,10 +13,7 @@ import { readCodexSettingsBaseline } from './config-settings-baseline'
 import { getCodexConfigSyncStatus, reportCodexConfigSyncOutcome } from './config-sync-stall'
 import { preserveRuntimeConflictValues } from './codex-config-settings-preservation'
 import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
-import {
-  clearCodexConfigTomlEditRefusalReport,
-  refuseUnreadableCodexConfigResult
-} from './codex-config-toml-checked-edit'
+import { refuseUnreadableCodexConfigResult } from './codex-config-toml-checked-edit'
 import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
 import {
   prepareSystemConfigForFreshRuntimeMirror,
@@ -250,7 +247,6 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     }
     writeFileAtomically(runtimeConfigPath, nextRuntimeConfig)
   }
-  clearCodexConfigTomlEditRefusalReport(runtimeConfigPath)
   return {
     status: 'mirrored',
     preservedConflictKeys: preserved.keys,
