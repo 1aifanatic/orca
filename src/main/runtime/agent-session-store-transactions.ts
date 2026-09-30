@@ -9,10 +9,7 @@
 
 import type Database from '../sqlite/sync-database'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
-import {
-  classifyJournalOpenFailure,
-  journalOpenRefusalError
-} from '../native-chat/agent-session-journal/journal-open-failure'
+import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { AgentSessionJournalError } from '../native-chat/agent-session-journal/journal-write-guards'
 import type { AgentSessionStoreState } from './agent-session-record-store-file'
 import { writeAgentSessionStoreRows } from './agent-session-record-rows'
@@ -132,14 +129,7 @@ export class AgentSessionStoreTransactions {
     const staged = this.stage(apply)
     const writes = staged.writes
     if (writes && !readOnly) {
-      try {
-        this.journalDatabase.transaction((db) => writeAgentSessionStoreRows(db, writes))
-      } catch (error) {
-        // Damage SQLite proves is the chat database's: the refusal a journal write gives for it.
-        throw classifyJournalOpenFailure(error) === 'journalCorrupt'
-          ? journalOpenRefusalError(error)
-          : error
-      }
+      this.journalDatabase.transaction((db) => writeAgentSessionStoreRows(db, writes))
     }
     staged.adopt()
     return staged.result

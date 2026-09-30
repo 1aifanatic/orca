@@ -134,3 +134,28 @@ it('logs the failure when the host has no error sink', async () => {
     expect.objectContaining({ message: 'disk I/O error' })
   )
 })
+
+// Closing a chat tab drops it from the restore index, which a newer Orca's records refuse: the
+// close is reported and goes on, since bookkeeping never keeps a tab open.
+it('closes a chat tab over records a newer Orca wrote, reporting the index it cannot write', async () => {
+  const { sessionId } = await seedChat({ newer: true })
+  const runtime = startupRuntime(vi.fn())
+  await runtime.prepareStructuredAgentSessionStartupRestoration()
+  const host = getStructuredAgentSessionHost()
+  const close = vi.spyOn(host!, 'close')
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime's own protected close path, reached with the one field it reads.
+  const internal = runtime as unknown as {
+    closeStructuredAgentSessionTab(tab: { sessionId: string }): Promise<void>
+  }
+
+  await expect(internal.closeStructuredAgentSessionTab({ sessionId })).resolves.toBeUndefined()
+
+  expect(warn).toHaveBeenCalledWith(
+    '[structured-agent-session] recording a closed chat tab failed',
+    expect.objectContaining({
+      refusal: expect.objectContaining({ details: { reason: 'journalWrittenByNewerOrca' } })
+    })
+  )
+  expect(close).toHaveBeenCalledWith(sessionId)
+})

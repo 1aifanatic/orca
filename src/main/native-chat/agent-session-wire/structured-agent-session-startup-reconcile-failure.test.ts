@@ -11,6 +11,7 @@ import {
   seedTestAgentSessionStoreFromNewerBuild
 } from '../../runtime/agent-session-record-store-test-harness'
 import { journalDatabasePath } from '../agent-session-journal/journal-host-database'
+import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../agent-session-journal/journal-open-failure'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -161,6 +162,23 @@ it('restores a chat for reading while the reconcile keeps failing, and reports i
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
   expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
   expect(onLeaseReconcileFailure).toHaveBeenCalledWith(IO_ERROR)
+})
+
+it('refuses a send over records a newer Orca wrote with the update words', async () => {
+  const { host } = await relaunch(true)
+  await host.reconcileRestartLeases()
+
+  const body = hostTestMessage('sent to a chat a newer Orca saved')
+  await expect(
+    host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  ).resolves.toMatchObject({
+    ok: false,
+    refusal: {
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalWrittenByNewerOrca' },
+      message: JOURNAL_NEWER_SCHEMA_MESSAGE
+    }
+  })
 })
 
 it('restores a chat for reading from records a newer Orca wrote', async () => {
