@@ -14,6 +14,10 @@ import type {
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import type {
+  AgentJournalDispatchState,
+  AgentJournalTurnItem
+} from '../../shared/agent-session-journal-types'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -25,6 +29,11 @@ import {
   liveTestJournalRows,
   openTestJournalHostDatabase
 } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  parseJournalRow,
+  type JournalLifecycleMutation,
+  type JournalRow
+} from '../native-chat/agent-session-journal/journal-row-schema'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
@@ -73,37 +82,32 @@ async function send(text: string): Promise<string> {
   return sent.value.clientMessageId
 }
 
-/** One field of a stored row's JSON, read without trusting its shape. */
-function field(value: unknown, ...path: string[]): unknown {
-  let current = value
-  for (const key of path) {
-    current =
-      typeof current === 'object' && current !== null ? Reflect.get(current, key) : undefined
-  }
-  return current
-}
+/** A stored row, or one mutation of a lifecycle batch: what a settlement or a frame lands as. */
+type JournalEntry = JournalRow | JournalLifecycleMutation
 
 /** The sequence of the first row that `matches`, or of the lifecycle batch carrying it. */
-function seqOf(matches: (row: unknown) => boolean): number | undefined {
+function seqOf(matches: (entry: JournalEntry) => boolean): number | undefined {
   return liveTestJournalRows(openTestJournalHostDatabase(root).db, SESSION).find((stored) => {
-    const row: unknown = JSON.parse(stored.rowJson)
-    const mutations = field(row, 'mutations')
+    const parsed = parseJournalRow(stored.rowJson)
+    if (!parsed.ok) {
+      return false
+    }
+    const { row } = parsed
     return (
       matches(row) ||
-      (field(row, 'kind') === 'lifecycle-batch' &&
-        Array.isArray(mutations) &&
-        mutations.some((mutation) => matches(mutation)))
+      (row.kind === 'lifecycle-batch' && row.mutations.some((mutation) => matches(mutation)))
     )
   })?.seq
 }
 
-const dispatchRow = (clientMessageId: string, state: string) => (row: unknown) =>
-  field(row, 'kind') === 'dispatch' &&
-  field(row, 'clientMessageId') === clientMessageId &&
-  field(row, 'state') === state
+const dispatchRow =
+  (clientMessageId: string, state: AgentJournalDispatchState) => (entry: JournalEntry) =>
+    entry.kind === 'dispatch' && entry.clientMessageId === clientMessageId && entry.state === state
 
-const turnRow = (row: unknown): boolean =>
-  field(row, 'kind') === 'item' && field(row, 'body', 'kind') === 'turn'
+/** The turn lifecycle an item row or mutation carries, if it carries one. */
+function turnOf(entry: JournalEntry): AgentJournalTurnItem | null {
+  return entry.kind === 'item' && entry.body.kind === 'turn' ? entry.body : null
+}
 
 /** An assistant reply Codex finishes in the same read as the frame under test. */
 function streamedReplyAhead(): void {
@@ -185,7 +189,10 @@ describe('a settlement Codex proves keeps its place behind the frame that proved
 
     await vi.waitFor(() => expect(seqOf(dispatchRow(sent, 'rejected'))).toBeDefined())
     await host.flushStreamedEvents(SESSION)
-    const ended = seqOf((row) => turnRow(row) && field(row, 'body', 'state') !== 'running')
+    const ended = seqOf((entry) => {
+      const turn = turnOf(entry)
+      return turn !== null && turn.state !== 'running'
+    })
     expect(ended).toBeDefined()
     expect(seqOf(dispatchRow(sent, 'rejected'))).toBeGreaterThan(ended!)
   })
@@ -201,9 +208,7 @@ describe('a settlement Codex proves keeps its place behind the frame that proved
     await vi.waitFor(() => expect(seqOf(dispatchRow(sent, 'accepted'))).toBeDefined())
     await host.flushStreamedEvents(SESSION)
     // The echo reconciles into the send's own bubble: its row is the turn now naming that send.
-    const echoed = seqOf(
-      (row) => turnRow(row) && field(row, 'body', 'userItemId') === `orca:${sent}`
-    )
+    const echoed = seqOf((entry) => turnOf(entry)?.userItemId === `orca:${sent}`)
     expect(echoed).toBeDefined()
     expect(seqOf(dispatchRow(sent, 'accepted'))).toBeGreaterThan(echoed!)
   })
