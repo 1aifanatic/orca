@@ -1,4 +1,5 @@
 import { transitionHookPresence } from '../../../shared/agent-hook-presence-transition'
+import { isSameAgentProcess } from '../../../shared/agent-process-presence'
 import {
   reconcileRemoteCodexState,
   markCodexLeadTurnInterrupted
@@ -31,10 +32,12 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     // Why: a relay already chose the live owner on its own host; re-deciding against a record it
     // replaced would pin the pane to an owner this desktop can never check. Exits still need our fence.
     const relayOwner = incoming.connectionId !== null ? incoming.agentPresence : undefined
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
+    const stored = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
+      | EnrichedAgentHookEventPayload
+      | undefined
     const transitioned =
-      relayOwner?.process && !relayOwner.ended
-        ? incoming
-        : transitionHookPresence(incoming, this.state.lastStatusByPaneKey.get(incoming.paneKey))
+      relayOwner?.process && !relayOwner.ended ? incoming : transitionHookPresence(incoming, stored)
     if (!transitioned) {
       return undefined
     }
@@ -42,7 +45,14 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     if (!this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }
-    if (payload.agentPresence?.ended) {
+    // Why: the execution host already replaced this owner; the mirrored row is a dead process's, not a parent turn.
+    const hostOwner = payload.agentPresenceFromExecutionHost && payload.agentPresence?.process
+    const replacesStaleOwner = Boolean(
+      hostOwner &&
+      stored?.agentPresence?.process &&
+      !isSameAgentProcess(stored.agentPresence.process, hostOwner)
+    )
+    if (payload.agentPresence?.ended && !replacesStaleOwner) {
       this.reconcileEndedProcessForPaneKeys([payload.paneKey], {
         kind: 'owner-exited',
         presence: payload.agentPresence
@@ -53,15 +63,12 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       // Why: the prompt boundary is authoritative even when text is unchanged; its next OSC working row must not inherit the prior cron/background turn stamp.
       this.activeHookTurnCompletedAtByPaneKey.delete(payload.paneKey)
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-    const previous = this.state.lastStatusByPaneKey.get(payload.paneKey) as
-      | EnrichedAgentHookEventPayload
-      | undefined
-    const rowBefore = mutationBefore ?? previous
+    const previous = replacesStaleOwner ? undefined : stored
+    const rowBefore = mutationBefore ?? stored
     const terminalHandle =
       payload.terminalHandle ??
-      (previous?.terminalHandle && this.sameTerminalOwner(previous, payload)
-        ? previous.terminalHandle
+      (stored?.terminalHandle && this.sameTerminalOwner(stored, payload)
+        ? stored.terminalHandle
         : undefined)
     const terminalOwnedPayload =
       terminalHandle === payload.terminalHandle ? payload : { ...payload, terminalHandle }
@@ -74,7 +81,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       ? this.connectionTimestampWatermarkById.get(terminalOwnedPayload.connectionId)
       : undefined
     // Why: renderer ordering rejects older rows; live evidence must sort after reconnect clears and restored rows across clock rollback.
-    const restoredStatusWatermark = previous?.restoredUnconfirmed ? previous.receivedAt : undefined
+    const restoredStatusWatermark = stored?.restoredUnconfirmed ? stored.receivedAt : undefined
     const now = Math.max(
       Date.now(),
       (connectionClearWatermark ?? -1) + 1,

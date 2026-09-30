@@ -111,6 +111,26 @@ describe('execution host presence replay', () => {
       expect(main.getStatusSnapshot()[0]?.agentPresence?.ended).toBe(ended ? true : undefined)
     }
   )
+  it('shows the replacement when the old owner was waiting on permission at disconnect', async () => {
+    const { main, relay, relayHook, connect } = await setup()
+    await relayHook('SessionStart', 'a', owner.process)
+    await relayHook('PermissionRequest', 'a', owner.process, { tool_name: 'Bash' })
+    expect(main.getStatusSnapshot()[0]).toMatchObject({ state: 'waiting' })
+    connect(false)
+    main.clearStatusEntriesForConnection('ssh-1')
+    probe.mockResolvedValue('exited')
+    await relay.checkAgentPresence(PANE)
+    probe.mockResolvedValue('live')
+    await relayHook('SessionStart', 'b', replacement.process)
+    await relayHook('PreToolUse', 'b', replacement.process, { tool_name: 'Read' })
+    connect(true)
+    relay.replayCachedPayloadsForPanes()
+    // The dead owner's permission prompt must not hold the new agent's turn.
+    expect(main.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      agentPresence: replacement
+    })
+  })
   it('retains the ordering of a connected exit when an older live frame replays', async () => {
     const { main, relay, relayHook, frames } = await setup()
     await relayHook('SessionStart', 'a', owner.process)
