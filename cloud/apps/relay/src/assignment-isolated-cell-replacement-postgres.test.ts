@@ -1,7 +1,7 @@
 import { ASSIGNMENT_LIMITS } from '@orca-cloud/relay-contract'
 import { createHash } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { RelayAssignmentStore } from './assignment-store.js'
+import { RelayAssignmentRowBusyError, RelayAssignmentStore } from './assignment-store.js'
 import {
   encodeMembership,
   type CellAdmissionMembership,
@@ -115,16 +115,20 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
   // Holds the named relay_cells rows in another session until released, the
   // way a release from a far cell holds its row across a round trip.
   async function holdCellRows(cellIds: string[]): Promise<() => Promise<void>> {
+    return await holdRows(
+      `SELECT cell_id FROM relay_cells WHERE cell_id IN (${cellIds.map(() => '?').join(', ')})
+       ORDER BY cell_id ASC`,
+      cellIds
+    )
+  }
+
+  async function holdRows(sql: string, params: unknown[]): Promise<() => Promise<void>> {
     let release!: () => void
     const released = new Promise<void>((resolve) => (release = resolve))
     let held!: () => void
     const acquired = new Promise<void>((resolve) => (held = resolve))
     const holder = databases[3]!.transaction(async (transaction) => {
-      await transaction.queryLocked(
-        `SELECT cell_id FROM relay_cells WHERE cell_id IN (${cellIds.map(() => '?').join(', ')})
-         ORDER BY cell_id ASC`,
-        cellIds
-      )
+      await transaction.queryLocked(sql, params)
       held()
       await released
     })
@@ -797,6 +801,37 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
       assignmentEpoch: epoch + 1
     })
     expect(await counters(identity)).toEqual({ controls: 2, splices: 0 })
+    await expectReservationAccounting()
+  }, 30_000)
+  it('refuses at once while the host’s own release holds its assignment row', async () => {
+    await resetFleet()
+    const { identity, epoch } = await seedDriftedHost(921, { controls: 1, unbackedSourceUnits: 0 })
+    // Placed after the isolate, so it sits on a target and takes the sticky path.
+    const pinned = hostIdentity(920)
+    const pinnedGrant = await stores[0]!.assign(pinned, 'us-central1')
+    expect(TARGETS.map(({ id }) => id)).toContain(pinnedGrant.cellId)
+    // Both a sticky re-grant and an isolated re-placement meet the held row.
+    for (const [host, expectedEpoch] of [
+      [pinned, pinnedGrant.assignmentEpoch],
+      [identity, epoch]
+    ] as const) {
+      const release = await holdRows(
+        `SELECT user_id FROM relay_assignments WHERE user_id = ? AND relay_host_id = ?`,
+        [host.userId, host.relayHostId]
+      )
+      try {
+        const startedAt = performance.now()
+        await expect(stores[1]!.assign(host, 'us-central1')).rejects.toBeInstanceOf(
+          RelayAssignmentRowBusyError
+        )
+        // No wait on the row: far under the 1s lock timeout a release can hold it.
+        expect(performance.now() - startedAt).toBeLessThan(500)
+      } finally {
+        await release()
+      }
+      expect((await stores[0]!.resolve(host))?.assignmentEpoch).toBe(expectedEpoch)
+    }
+    expect((await stores[1]!.assign(identity, 'us-central1')).assignmentEpoch).toBe(epoch + 1)
     await expectReservationAccounting()
   }, 30_000)
 })
