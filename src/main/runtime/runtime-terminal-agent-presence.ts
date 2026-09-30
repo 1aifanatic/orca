@@ -10,7 +10,7 @@ import {
   isExpectedAgentProcess,
   recognizeAgentProcess
 } from '../../shared/agent-process-recognition'
-import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
+import { isOpenCodeNativeTitle, isShellProcess } from '../../shared/agent-detection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isKnownReadyPromptPreview } from './terminal-wait-detection'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
@@ -108,24 +108,7 @@ export class RuntimeTerminalAgentPresence {
       }
       const suppressClaude =
         paneClassification === 'management' || tabClassification === 'management'
-      const owner = selectLiveOwnerAgent(presence)
-      if (owner) {
-        return !(suppressClaude && owner === 'claude')
-      }
-      const foreground = await this.readForegroundProcess(leaf.ptyId, options)
-      if (!foreground) {
-        return false
-      }
-      if (suppressClaude && isExpectedAgentProcess(foreground, 'claude')) {
-        return false
-      }
-      return await this.isRecognizedForegroundAgentProcess(
-        leaf.ptyId,
-        foreground,
-        suppressClaude,
-        options.retryForegroundWrappers !== false,
-        presence
-      )
+      return await this.isForegroundAgent(leaf.ptyId, presence, suppressClaude, options)
     } catch {
       return false
     }
@@ -186,12 +169,23 @@ export class RuntimeTerminalAgentPresence {
       leafTitle !== null
         ? leafClassification === 'management'
         : managementClassification === 'management'
-    // Why: a live identified owner stands in for the foreground read, never for a management screen.
+    return await this.isForegroundAgent(pty.ptyId, presence, suppressClaude, options)
+  }
+
+  /** Presence proves the agent exists; the foreground read still decides who holds the keyboard. */
+  private async isForegroundAgent(
+    ptyId: string,
+    presence: AgentProcessPresence | undefined,
+    suppressClaude: boolean,
+    options: RuntimeTerminalAgentPresenceOptions
+  ): Promise<boolean> {
+    const foreground = await this.readForegroundProcess(ptyId, options).catch(() => null)
     const owner = selectLiveOwnerAgent(presence)
-    if (owner) {
+    // Why: a live owner answers only when the read cannot (unavailable, or a name like wsl.exe);
+    // a shell in front, as after Ctrl-Z, still owns the keyboard. Never over a management screen.
+    if (owner && !(foreground && isShellProcess(foreground))) {
       return !(suppressClaude && owner === 'claude')
     }
-    const foreground = await this.readForegroundProcess(pty.ptyId, options)
     if (!foreground) {
       return false
     }
@@ -199,7 +193,7 @@ export class RuntimeTerminalAgentPresence {
       return false
     }
     return await this.isRecognizedForegroundAgentProcess(
-      pty.ptyId,
+      ptyId,
       foreground,
       suppressClaude,
       options.retryForegroundWrappers !== false,

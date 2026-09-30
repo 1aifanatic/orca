@@ -105,11 +105,12 @@ export class RuntimeTerminalAgentStatusQuery {
     const owner = selectLiveOwnerAgent(presence)
     if (explicitStatus) {
       // Why: permission titles can linger after hooks report the agent resumed. Fresh hook state is
-      // tighter, but current shell/management evidence wins; a live owner answers for the shell.
-      const isRunningAgent = owner
-        ? !(terminal.title !== null && isClaudeManagementTitle(terminal.title))
-        : !terminalTitleBlocksExplicitAgentStatus(terminal.title) &&
-          !(await this.terminalHasShellForegroundProcess(handle, ptyId))
+      // tighter, but current shell/management evidence wins; a live owner overrides only a shell title.
+      const titleBlocks = owner
+        ? terminal.title !== null && isClaudeManagementTitle(terminal.title)
+        : terminalTitleBlocksExplicitAgentStatus(terminal.title)
+      const isRunningAgent =
+        !titleBlocks && !(await this.terminalHasShellForegroundProcess(handle, ptyId))
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
       return {
         handle,

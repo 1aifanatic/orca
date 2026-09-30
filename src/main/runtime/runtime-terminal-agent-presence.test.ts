@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
 import { RuntimeTerminalAgentPresence } from './runtime-terminal-agent-presence'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
+import type { OrcaRuntimeService } from './orca-runtime'
+import { assertTerminalAgentSendable } from './rpc/terminal-agent-send-guard'
 import type { AgentProcessPresence } from '../../shared/agent-process-presence'
 
 const CURSOR_APPROVAL = readFileSync(
@@ -54,7 +57,7 @@ function leaf(title: string): RuntimeLeafRecord {
 function terminal(args: {
   presence: AgentProcessPresence | undefined
   title: string
-  foreground: string
+  foreground: string | null
   waitText?: string
   explicit?: 'working'
   titleStatus?: 'working'
@@ -68,9 +71,15 @@ function terminal(args: {
     getTabTitle: () => null,
     getForegroundProcess: async () => args.foreground
   })
+  const controller: RuntimePtyController = {
+    write: () => false,
+    kill: () => false,
+    getForegroundProcess: async () => args.foreground,
+    confirmForegroundProcess: async () => args.foreground
+  }
   const query = new RuntimeTerminalAgentStatusQuery({
     getAgentPresence: () => args.presence,
-    getController: () => null,
+    getController: () => controller,
     getLivePty: () => null,
     getLiveLeaf: () => ({ leaf: leaf(args.title) }),
     getPrimaryLeaf: () => null,
@@ -93,16 +102,57 @@ function terminal(args: {
 
 describe('headless terminal presence', () => {
   it.each([false, true])('uses host presence under a shell title (ended=%s)', async (ended) => {
-    const { query } = terminal({
+    const { presence, query } = terminal({
       presence: owner('claude', ended),
       title: 'zsh',
-      foreground: 'zsh'
+      foreground: 'claude',
+      explicit: 'working'
     })
+    expect(await presence.isRunning('terminal')).toBe(!ended)
     expect(await query.getStatus('terminal')).toEqual({
       handle: 'terminal',
       isRunningAgent: !ended,
-      status: null
+      status: ended ? null : 'working'
     })
+  })
+
+  it('answers for an owner whose foreground read is unavailable', async () => {
+    const { presence, query } = terminal({
+      presence: owner('claude'),
+      title: 'zsh',
+      foreground: null
+    })
+    expect(await presence.isRunning('terminal')).toBe(true)
+    expect(await query.getStatus('terminal')).toMatchObject({ isRunningAgent: true })
+  })
+
+  it('refuses to send into the shell in front of a suspended owner', async () => {
+    // Ctrl-Z leaves the owner alive (the probe reads a stopped process as unverifiable).
+    for (const explicit of ['working', undefined] as const) {
+      const { presence, query } = terminal({
+        presence: owner('claude'),
+        title: 'user@host: ~/repo',
+        foreground: 'bash',
+        explicit
+      })
+      expect(await presence.isRunning('terminal')).toBe(false)
+      expect(await query.getStatus('terminal')).toEqual({
+        handle: 'terminal',
+        isRunningAgent: false,
+        status: null
+      })
+      const runtime: Pick<OrcaRuntimeService, 'getTerminalAgentStatus'> = {
+        getTerminalAgentStatus: (handle) => query.getStatus(handle)
+      }
+      await expect(
+        assertTerminalAgentSendable({
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the guard reads only getTerminalAgentStatus.
+          runtime: runtime as OrcaRuntimeService,
+          handle: 'terminal',
+          assertWritable: () => {}
+        })
+      ).rejects.toThrow('terminal_guard_no_agent')
+    }
   })
 
   it('keeps the approval-menu permission ahead of an identified owner', async () => {
