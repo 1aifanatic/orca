@@ -281,11 +281,10 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           await timeRendererStartupStep('recover-legacy-worker-terminals-post-reconnect', () =>
             window.api.app.recoverLegacyWorkerTerminalsForRendererStartup()
           )
-          if (useAppStore.getState().settings?.experimentalStructuredNativeChat === true) {
-            await timeRendererStartupStep('project-structured-session-tabs', () =>
-              restoreLocalStructuredSessionTabsOnce()
-            )
-          }
+          // Existing chats come back whatever the chat setting says; it picks only new launches.
+          await timeRendererStartupStep('project-structured-session-tabs', () =>
+            restoreLocalStructuredSessionTabsOnce()
+          )
           if (cancelled) {
             return
           }
