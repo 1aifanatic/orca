@@ -87,14 +87,23 @@ export async function waitForWorktreeStartupFollowup(
   return null
 }
 
+export type StartupDraftReadinessOptions = {
+  timeoutMs?: number
+  requireComposerMarker?: boolean
+  signal?: AbortSignal
+  /** Vetoes a ready signal whose screen still holds something the input must not answer; the
+   *  scan continues, so the agent's next marker or quiet window asks again. */
+  accept?: (ptyId: string) => boolean
+}
+
 export function waitForWorktreeStartupDraft(
   host: WorktreeStartupReadinessHost,
   handle: string,
   agent: TuiAgent,
-  options: { timeoutMs?: number; requireComposerMarker?: boolean } = {}
+  options: StartupDraftReadinessOptions = {}
 ): Promise<string | null> {
   const ptyId = host.getPtyId(handle)
-  if (!ptyId) {
+  if (!ptyId || options.signal?.aborted) {
     return Promise.resolve(null)
   }
   const signal =
@@ -105,6 +114,7 @@ export function waitForWorktreeStartupDraft(
     let quietTimer: NodeJS.Timeout | null = null
     let hardTimer: NodeJS.Timeout | null = null
     let unsubscribe: (() => void) | null = null
+    const onAbort = (): void => finish(null)
     const finish = (value: string | null): void => {
       if (settled) {
         return
@@ -117,7 +127,13 @@ export function waitForWorktreeStartupDraft(
         clearTimeout(hardTimer)
       }
       unsubscribe?.()
+      options.signal?.removeEventListener('abort', onAbort)
       resolve(value)
+    }
+    const finishIfAccepted = (): void => {
+      if (!options.accept || options.accept(ptyId)) {
+        finish(ptyId)
+      }
     }
     const observe = (data: string): void => {
       if (settled) {
@@ -125,15 +141,16 @@ export function waitForWorktreeStartupDraft(
       }
       const result = scanner.observe(data)
       if (result.ready) {
-        return finish(ptyId)
+        return finishIfAccepted()
       }
       if (result.armQuietTimer && !options.requireComposerMarker) {
         if (quietTimer) {
           clearTimeout(quietTimer)
         }
-        quietTimer = setTimeout(() => finish(ptyId), BRACKETED_PASTE_QUIET_MS)
+        quietTimer = setTimeout(finishIfAccepted, BRACKETED_PASTE_QUIET_MS)
       }
     }
+    options.signal?.addEventListener('abort', onAbort)
     unsubscribe = host.subscribeToData(ptyId, observe)
     hardTimer = setTimeout(
       () => finish(null),

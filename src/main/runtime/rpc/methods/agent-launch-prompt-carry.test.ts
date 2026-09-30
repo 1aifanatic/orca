@@ -20,13 +20,19 @@ const SUBMIT = { text: 'fix the failing checks\nlog tail follows', delivery: 'su
 
 function withPromptWriter(runtime: AgentLaunchRuntimeStub) {
   const waitForTerminal = vi.fn(async () => ({ satisfied: true, status: 'idle' }))
+  // The idle evidence settles these launches; the composer signal never fires.
+  const waitForFreshWorkerComposer = vi.fn(() => new Promise<void>(() => {}))
   const sendTerminalAgentPrompt = vi.fn(async () => ({
     handle: 'term_1',
     accepted: true,
     bytesWritten: 1
   }))
   return {
-    runtime: Object.assign(runtime, { waitForTerminal, sendTerminalAgentPrompt }),
+    runtime: Object.assign(runtime, {
+      waitForTerminal,
+      waitForFreshWorkerComposer,
+      sendTerminalAgentPrompt
+    }),
     sendTerminalAgentPrompt
   }
 }

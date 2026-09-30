@@ -30,6 +30,8 @@ import {
 } from './runtime-worktree-startup-readiness'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
+import { isFreshComposerClear } from './launched-agent-composer-readiness'
+import { buildTerminalWaitText } from './terminal-wait-tail-state'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -184,7 +186,10 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     handle: string,
     agent: TuiAgent,
     timeoutMs: number,
-    { requireComposerMarker = true }: { requireComposerMarker?: boolean } = {}
+    {
+      requireComposerMarker = true,
+      signal
+    }: { requireComposerMarker?: boolean; signal?: AbortSignal } = {}
   ): Promise<void> {
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
@@ -192,7 +197,21 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
       agent,
-      { timeoutMs, requireComposerMarker }
+      {
+        timeoutMs,
+        requireComposerMarker,
+        signal,
+        accept: (readyPtyId) => {
+          const pty = this.ptysById.get(readyPtyId)
+          return (
+            !pty ||
+            isFreshComposerClear(
+              buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
+              this.readLiveTerminalScreenLines(readyPtyId)
+            )
+          )
+        }
+      }
     )
     if (!ptyId) {
       throw new Error('timeout')

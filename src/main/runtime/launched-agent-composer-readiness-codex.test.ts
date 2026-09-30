@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTranscriptPane } from './agent-transcript-pane-test-harness'
+import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import { readRuntimeFixture } from './agent-transcript-replay-test-harness'
 import { waitForLaunchedAgentComposer } from './launched-agent-composer-readiness'
 
@@ -38,18 +38,20 @@ describe('launch readiness for a freshly launched Codex', () => {
     expect(data).toContain('GPT-6-Astra default')
     expect(data).not.toMatch(/48;2;30;30;30m[⠀-⣿]/)
     const { runtime, handle } = await launchedCodexPane(data)
+    // Undefined: the composer signal (`›` after bracketed paste) settled it, before `tui-idle`.
     await expect(
       waitForLaunchedAgentComposer(runtime, handle, 'codex', 8_000)
-    ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
+    ).resolves.toBeUndefined()
   }, 15_000)
 
   it('codex-0157-plain-ready: reads the live chat as ready, so the prompt is pasted', async () => {
     const { runtime, handle } = await launchedCodexPane(
       readRuntimeFixture('codex-0157-plain-ready')
     )
+    // Undefined: the composer signal (`›` after bracketed paste) settled it, before `tui-idle`.
     await expect(
       waitForLaunchedAgentComposer(runtime, handle, 'codex', 8_000)
-    ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
+    ).resolves.toBeUndefined()
   }, 15_000)
 
   it.each([
@@ -64,6 +66,28 @@ describe('launch readiness for a freshly launched Codex', () => {
       await expect(
         waitForLaunchedAgentComposer(runtime, handle, 'codex', 2_500)
       ).resolves.toMatchObject({ satisfied: false, blockedReason: reason })
+    },
+    15_000
+  )
+
+  // Why streamed: live, the dialog's `›` selector arrives after bracketed paste and fires the
+  // composer signal before `tui-idle` next looks, so only the screen check keeps it from pasting.
+  it.each([
+    'codex-0157-update-available-dialog',
+    'codex-0158-update-available-dialog',
+    'codex-0158-hooks-review-dialog',
+    'codex-0158-model-retired-dialog',
+    'codex-0158-model-announcement-dialog'
+  ])(
+    '%s streamed in after the launch: never reads the dialog as the composer',
+    async (fixture) => {
+      const data = readRuntimeFixture(fixture)
+      // Presence precondition: the dialog draws Codex's composer glyph after bracketed paste.
+      expect(data.slice(data.indexOf('\x1b[?2004h'))).toContain('›')
+      const { runtime, handle } = await launchedCodexPane('')
+      const ready = waitForLaunchedAgentComposer(runtime, handle, 'codex', 2_500)
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, data, Date.now())
+      await expect(ready).resolves.toMatchObject({ satisfied: false })
     },
     15_000
   )

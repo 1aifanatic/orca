@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import { GROK_STARTUP_PTY_TRACE } from '../../shared/__fixtures__/grok-startup-pty-trace'
 import type { GrokStartupTraceChunk } from '../../shared/__fixtures__/grok-startup-pty-trace'
 import { GROK_INLINE_STARTUP_PTY_TRACE } from '../../shared/__fixtures__/grok-inline-startup-pty-trace'
@@ -17,7 +18,10 @@ function replayRuntime() {
       handle: string,
       agent: TuiAgent,
       timeoutMs: number,
-      { requireComposerMarker = true }: { requireComposerMarker?: boolean } = {}
+      {
+        requireComposerMarker = true,
+        signal
+      }: { requireComposerMarker?: boolean; signal?: AbortSignal } = {}
     ): Promise<void> => {
       const ptyId = await waitForWorktreeStartupDraft(
         {
@@ -34,15 +38,27 @@ function replayRuntime() {
         },
         handle,
         agent,
-        { timeoutMs, requireComposerMarker }
+        { timeoutMs, requireComposerMarker, signal }
       )
       if (!ptyId) {
         throw new Error('timeout')
       }
     }
   )
+  /** The `tui-idle` floor: pending until a test settles it, and it records its stop signal. */
+  let idleSignal: AbortSignal | undefined
+  let settleIdle = (_wait: RuntimeTerminalWait): void => {}
+  const waitForTerminal = vi.fn(
+    (_handle: string, options?: { signal?: AbortSignal }): Promise<RuntimeTerminalWait> => {
+      idleSignal = options?.signal
+      return new Promise((resolve, reject) => {
+        settleIdle = resolve
+        options?.signal?.addEventListener('abort', () => reject(new Error('request_aborted')))
+      })
+    }
+  )
   const runtime: LaunchedAgentReadinessRuntime = {
-    waitForTerminal: vi.fn(),
+    waitForTerminal,
     waitForFreshWorkerComposer
   }
   const play = async (trace: GrokStartupTraceChunk[]): Promise<void> => {
@@ -53,7 +69,13 @@ function replayRuntime() {
       listener(chunk.data ?? 'x'.repeat(chunk.bytes ?? 0))
     }
   }
-  return { runtime, play }
+  return {
+    runtime,
+    play,
+    feed: (data: string) => listener(data),
+    idleStopped: () => idleSignal?.aborted === true,
+    settleIdle: (wait: RuntimeTerminalWait) => settleIdle(wait)
+  }
 }
 
 describe('launched grok composer readiness', () => {
@@ -90,5 +112,44 @@ describe('launched grok composer readiness', () => {
     })
     await vi.advanceTimersByTimeAsync(1_000)
     await expect(ready).rejects.toThrow('timeout')
+  })
+})
+
+describe('launched composer readiness for agents the idle evidence can also read', () => {
+  afterEach(() => vi.useRealTimers())
+
+  const IDLE_READY: RuntimeTerminalWait = {
+    handle: 'term-1',
+    condition: 'tui-idle',
+    satisfied: true,
+    status: 'running',
+    exitCode: null
+  }
+
+  it('pastes on the quiet window after bracketed paste, as the desktop did, and stops the idle wait', async () => {
+    vi.useFakeTimers()
+    const h = replayRuntime()
+    const ready = waitForLaunchedAgentComposer(h.runtime, 'term-1', 'claude', 60_000)
+    const settled = vi.fn()
+    void ready.then(settled, settled)
+    h.feed('\x1b[?2004h\x1b[?25l welcome to claude code \x1b[?25h')
+
+    await vi.advanceTimersByTimeAsync(1_400)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(settled).toHaveBeenCalledWith(undefined)
+    expect(h.idleStopped()).toBe(true)
+  })
+
+  it('settles on the idle evidence where bracketed paste never arrives, as under Windows ConPTY', async () => {
+    vi.useFakeTimers()
+    const h = replayRuntime()
+    const ready = waitForLaunchedAgentComposer(h.runtime, 'term-1', 'claude', 60_000)
+    h.feed('\x1b[?25l welcome to claude code \x1b[?25h')
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    h.settleIdle(IDLE_READY)
+
+    await expect(ready).resolves.toEqual(IDLE_READY)
   })
 })
