@@ -100,4 +100,52 @@ describe.skipIf(process.platform === 'win32')('RuntimeClient local compat gate',
     await expect(client.call('repo.list')).rejects.toMatchObject({ code: 'incompatible_runtime' })
     expect(methods).toEqual(['status.get'])
   })
+
+  it('reports both protocol windows from a compatible local runtime', async () => {
+    process.env.ORCA_CLI_STANDALONE = '1'
+    const { userDataPath } = await startLocalRuntime({
+      runtimeId: 'runtime-1',
+      graphStatus: 'ready',
+      runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION,
+      minCompatibleRuntimeClientVersion: 2
+    })
+
+    const status = await new RuntimeClient(userDataPath, 1_000, null, null).getCliStatus()
+
+    expect(status.result.runtime).toMatchObject({
+      reachable: true,
+      runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION,
+      minCompatibleRuntimeClientVersion: 2
+    })
+  })
+
+  it('refuses local status from a runtime that requires a newer standalone CLI', async () => {
+    process.env.ORCA_CLI_STANDALONE = '1'
+    const { userDataPath } = await startLocalRuntime({
+      runtimeId: 'runtime-1',
+      graphStatus: 'ready',
+      runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION + 1,
+      minCompatibleRuntimeClientVersion: RUNTIME_PROTOCOL_VERSION + 1
+    })
+
+    const status = new RuntimeClient(userDataPath, 1_000, null, null).getCliStatus()
+
+    await expect(status).rejects.toMatchObject({
+      code: 'incompatible_runtime',
+      message: expect.stringContaining('Update the standalone Orca CLI')
+    })
+  })
+
+  it('keeps desktop local status diagnostic for the same runtime', async () => {
+    const { userDataPath } = await startLocalRuntime({
+      runtimeId: 'runtime-1',
+      graphStatus: 'ready',
+      runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION + 1,
+      minCompatibleRuntimeClientVersion: RUNTIME_PROTOCOL_VERSION + 1
+    })
+
+    const status = await new RuntimeClient(userDataPath, 1_000, null, null).getCliStatus()
+
+    expect(status.result.runtime.reachable).toBe(true)
+  })
 })

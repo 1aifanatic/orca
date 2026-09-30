@@ -9,6 +9,7 @@ import {
   validateCommandAndFlags
 } from './args'
 import { readOrcaCliVersion } from './cli-version'
+import { isVersionRequest } from './cli-version-arguments'
 import { dispatch } from './dispatch'
 import {
   assertEnvironmentSelectorResolvable,
@@ -68,7 +69,12 @@ export async function main(
   cwd = resolveInvocationCwd()
 ): Promise<void> {
   // Why: version audits use the bundled launcher; Electron intercepts direct binary version flags.
-  if (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')) {
+  const versionRequest = isVersionRequest(argv)
+  if (versionRequest?.json) {
+    await printCliVersionReport()
+    return
+  }
+  if (versionRequest) {
     const version = readOrcaCliVersion()
     if (!version) {
       process.stderr.write('Could not determine the Orca version for this build.\n')
@@ -192,6 +198,21 @@ export async function main(
       commandPath: parsed.commandPath,
       ...(typeof worktreeSelector === 'string' ? { worktreeSelector } : {})
     })
+    process.exitCode = 1
+  }
+}
+
+async function printCliVersionReport(): Promise<void> {
+  const [{ buildCliVersionReport }, RuntimeClientClass] = await Promise.all([
+    import('./cli-version-report.js'),
+    loadRuntimeClientClass()
+  ])
+  // Why: undefined keeps the ORCA_PAIRING_CODE / ORCA_ENVIRONMENT fallback, so the server half
+  // describes the runtime a plain command would reach.
+  const client = new RuntimeClientClass(undefined, 2_000)
+  const report = await buildCliVersionReport(async () => (await client.getCliStatus()).result)
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
+  if (report.client.version === null) {
     process.exitCode = 1
   }
 }

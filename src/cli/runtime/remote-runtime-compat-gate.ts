@@ -7,6 +7,7 @@ import {
 import type { RuntimeOrchestrationEnvelope } from '../../shared/runtime-rpc-envelope'
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import { markEnvironmentUsed } from './environments'
+import { isStandaloneCli, STANDALONE_CLI_UPDATE_ADVICE } from '../standalone-cli-mode'
 import { RuntimeClientError, RuntimeRpcFailureError, type RuntimeRpcResponse } from './types'
 import type {
   sendWebSocketRequest,
@@ -85,7 +86,13 @@ export class RemoteRuntimeCompatGate {
         status.minCompatibleRuntimeClientVersion ?? status.minCompatibleMobileVersion
     })
     if (verdict.kind === 'blocked') {
-      throw new RuntimeClientError('incompatible_runtime', describeRuntimeCompatBlock(verdict))
+      throw new RuntimeClientError(
+        'incompatible_runtime',
+        describeRuntimeCompatBlock(
+          verdict,
+          isStandaloneCli() ? STANDALONE_CLI_UPDATE_ADVICE : undefined
+        )
+      )
     }
     this.checked = true
   }
