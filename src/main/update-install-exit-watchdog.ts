@@ -25,6 +25,11 @@ export function armUpdateInstallExitWatchdog(timeoutMs = UPDATE_INSTALL_EXIT_TIM
   if (exitTimer) {
     return
   }
+  // Why: the NSIS installer, already spawned, force-kills this process ~1.3s
+  // later — before will-quit's record lands — so that kill is the expected end.
+  if (process.platform === 'win32') {
+    recordMainSessionExitSync('update-install')
+  }
   exitTimer = setTimeout(() => {
     recordUpdaterLifecycle(
       'install_exit_watchdog_fired',
