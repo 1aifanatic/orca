@@ -262,6 +262,17 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
   })
 
+  it('ends at startup once its repo is removed from Orca, leaving the files', async () => {
+    await failRemoval()
+    _resetPendingWorktreeRemovalsForTests()
+
+    await loadWorktreeRemovalRecords(join(directory, 'profile'), (repoId) => repoId !== 'repo-1')
+
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
+    expect(await readdir(checkout)).toEqual(['node_modules'])
+  })
+
   it('ends at the next listing once a different checkout takes the path', async () => {
     await failRemoval()
     await mkdir(join(checkout, '.git'))

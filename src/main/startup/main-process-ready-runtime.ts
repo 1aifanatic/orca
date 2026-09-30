@@ -45,7 +45,9 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
     throw new Error('Store must be initialized before ready services')
   }
   // Why before any listing: a delete a quit or crash interrupted must show as Deleting from first paint.
-  await loadWorktreeRemovalRecords(store.getProfileStorageDirectory())
+  await loadWorktreeRemovalRecords(store.getProfileStorageDirectory(), (repoId) =>
+    Boolean(store.getRepo(repoId))
+  )
   initializeMainProcessObservers()
   initializeMainProcessAccountServices()
   const runtime = initializeMainProcessRuntime()

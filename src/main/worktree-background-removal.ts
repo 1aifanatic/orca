@@ -42,12 +42,16 @@ const startupFencesByWorktreeId = new Map<string, WatcherRemovalGate>()
  * Loads removals a quit or crash interrupted, so listings mark them before the first paint and
  * session restore cannot open a terminal or watcher in a half-deleted checkout before the resume.
  */
-export async function loadWorktreeRemovalRecords(directory: string): Promise<void> {
+export async function loadWorktreeRemovalRecords(
+  directory: string,
+  hasRepo: (repoId: string) => boolean = () => true
+): Promise<void> {
   setWorktreeRemovalRecordsDirectory(directory)
   let droppedFailure = false
   for (const record of await readWorktreeRemovalRecords(directory)) {
     if (record.failure) {
-      if (await worktreeCheckoutExists(record.worktreePath)) {
+      // Why the repo: only its listing shows the row, so nothing else could end a removed repo's.
+      if (hasRepo(record.repoId) && (await worktreeCheckoutExists(record.worktreePath))) {
         failedWorktreeRemovals.set(record.worktreeId, record)
       } else {
         droppedFailure = true
