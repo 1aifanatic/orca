@@ -44,6 +44,7 @@ async function commitIn(worktreePath: string, name: string): Promise<string> {
 }
 
 async function scan(): Promise<{ fresh: boolean; head: string | undefined }> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a local scan reads only the metadata-expectation capture off the store.
   const result = await listDetectedGitWorktrees(store as never, repo)
   return {
     fresh: result.fresh,

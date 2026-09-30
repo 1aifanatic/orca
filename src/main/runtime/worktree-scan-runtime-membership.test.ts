@@ -28,7 +28,7 @@ vi.mock('../providers/ssh-git-dispatch', () => ({
   requireSshGitProvider: (connectionId: string) => getSshGitProviderMock(connectionId)
 }))
 
-const worktreeListCwds = vi.hoisted(() => [] as string[])
+const worktreeListCwds = vi.hoisted((): string[] => [])
 vi.mock('../git/runner', async (importOriginal) => {
   const actual = await importOriginal<typeof Runner>()
   return {
@@ -139,7 +139,10 @@ describe('runtime fleet scan over membership models', () => {
       { id: 'git-only', path: gitOnly.repoPath },
       { id: 'ssh', path: sshPath, connectionId: 'remote-1' }
     ])
-    const runtime = new OrcaRuntimeService(store as never) as unknown as RuntimeInternals
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns the repo, meta and settings reads a fleet scan makes; the rest of Store is unreached.
+    const service = new OrcaRuntimeService(store as never)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both members exist on the runtime; they are protected, not absent.
+    const runtime = service as unknown as RuntimeInternals
     let now = Date.now()
     vi.spyOn(Date, 'now').mockImplementation(() => now)
 
