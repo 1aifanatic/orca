@@ -10,6 +10,7 @@ import {
   NODE_RUNTIME_PIN,
   SERVER_TARGETS
 } from '../../src/shared/node-runtime-pin.ts'
+import { nodeDistArchiveName } from './update-node-runtime-pin.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const ASSET_SOURCES = new Set(['official', 'unofficial'])
@@ -86,8 +87,9 @@ export function findNodeRuntimePinProblems({ pin, assets, targets, packageJson, 
     if (!ASSET_SOURCES.has(asset.source)) {
       problems.push(`${target}: source must be official or unofficial, got ${asset.source}`)
     }
-    if (!asset.archive?.startsWith(`node-v${pin.version}-`)) {
-      problems.push(`${target}: archive ${asset.archive} is not for ${pin.version}`)
+    const expectedArchive = nodeDistArchiveName(pin.version, target)
+    if (asset.archive !== expectedArchive) {
+      problems.push(`${target}: archive ${asset.archive} is not ${expectedArchive}`)
     }
     if (!SHA256.test(asset.archiveSha256 ?? '')) {
       problems.push(`${target}: archiveSha256 is not a 64-character hex SHA-256`)

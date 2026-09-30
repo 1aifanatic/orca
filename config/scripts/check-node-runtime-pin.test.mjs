@@ -107,10 +107,17 @@ describe('findNodeRuntimePinProblems', () => {
     expect(findNodeRuntimePinProblems(input)).toEqual([
       'NODE_RUNTIME_PIN.headers.sha256 is not a 64-character hex SHA-256',
       'linux-x64-glibc: source must be official or unofficial, got mirror',
-      'linux-x64-glibc: archive node-v24.20.0-linux-x64.tar.gz is not for 24.21.0',
+      'linux-x64-glibc: archive node-v24.20.0-linux-x64.tar.gz is not node-v24.21.0-linux-x64.tar.gz',
       'linux-x64-glibc: archiveSha256 is not a 64-character hex SHA-256',
       'linux-x64-glibc: executableSha256 is not a 64-character hex SHA-256',
       'linux-x64-glibc: executableSize must be a positive integer'
+    ])
+  })
+  it("rejects another target's archive", () => {
+    const input = validInput()
+    input.assets['win32-x64'].archive = 'node-v24.21.0-win-arm64.zip'
+    expect(findNodeRuntimePinProblems(input)).toEqual([
+      'win32-x64: archive node-v24.21.0-win-arm64.zip is not node-v24.21.0-win-x64.zip'
     ])
   })
 })
