@@ -168,14 +168,14 @@ describe('NativeChatResumeStatusSegment', () => {
     ])
   })
 
-  it('hides when the feature is disabled or the host offers nothing', async () => {
+  it('hides when no chat exists and the setting is off, or the host offers nothing', async () => {
     rpc.mockResolvedValue({ sessions: candidates })
     useAppStore.setState({
       settings: { ...getDefaultSettings(''), experimentalStructuredNativeChat: false }
     })
     await mount()
     expect(screen.queryByRole('button')).toBeNull()
-    // Nothing is even asked of the host while the feature is off.
+    // A machine with no structured chat and the setting off asks the host nothing.
     expect(rpc).not.toHaveBeenCalled()
 
     cleanup()
@@ -185,6 +185,35 @@ describe('NativeChatResumeStatusSegment', () => {
     })
     await mount()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  // The setting picks what new agents open as; chats that already exist keep their offer.
+  it('offers to continue existing chats while the setting is off', async () => {
+    rpc.mockResolvedValue({ sessions: candidates })
+    useAppStore.setState({
+      settings: { ...getDefaultSettings(''), experimentalStructuredNativeChat: false },
+      unifiedTabsByWorktree: {
+        'wt-1': [
+          {
+            id: 'agent-session:claude_1',
+            entityId: 'claude_1',
+            groupId: 'group-1',
+            worktreeId: 'wt-1',
+            contentType: 'agent-session',
+            agentSessionAgent: 'claude',
+            label: 'Claude Chat',
+            customLabel: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 1
+          }
+        ]
+      }
+    })
+    await mount()
+
+    expect(rpc).toHaveBeenCalledWith(expect.anything(), 'agentSession.restartResumable')
+    expect(screen.getByRole('button')).toBeTruthy()
   })
 
   it('renders a compact count in icon-only mode', async () => {
