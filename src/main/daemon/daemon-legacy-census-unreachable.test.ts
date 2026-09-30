@@ -271,6 +271,25 @@ describe('startup census of previous daemon versions the app could not reach', (
     })
   })
 
+  it('closes a tab no one reattached this run by its saved identity while a version is unreachable', async () => {
+    const runtimeDir = await setUp([LEGACY])
+    const saved = await seedSession(runtimeDir, PROTOCOL_VERSION)
+    stalledEndpoints.always.add(getDaemonSocketPath(runtimeDir, LEGACY))
+    const provider = await startApp(runtimeDir)
+
+    // Without the saved identity the silent version could hold the same id, so nothing is killed.
+    await expect(provider.shutdown(saved.id, { immediate: true })).rejects.toSatisfy(
+      (error) => !isPtyAlreadyGoneError(error)
+    )
+    expect(spawnsOf(PROTOCOL_VERSION)[0]?.killed).toBe(false)
+
+    await provider.shutdown(saved.id, {
+      immediate: true,
+      expectedIncarnationId: saved.incarnationId
+    })
+    expect(spawnsOf(PROTOCOL_VERSION)[0]?.killed).toBe(true)
+  })
+
   it('still reports a session absent from every version that answered', async () => {
     const runtimeDir = await setUp([LEGACY])
     const saved = await seedSession(runtimeDir, LEGACY)

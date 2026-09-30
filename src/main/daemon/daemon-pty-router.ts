@@ -121,11 +121,8 @@ export class DaemonPtyRouter implements IPtyProvider {
     this.adapterFor(id).setPtyBackgrounded(id, background)
   }
 
-  async shutdown(
-    id: string,
-    opts: { immediate?: boolean; keepHistory?: boolean; deadlineMs?: number }
-  ): Promise<void> {
-    const adapter = await this.ownerFor(id)
+  async shutdown(id: string, opts: Parameters<IPtyProvider['shutdown']>[1]): Promise<void> {
+    const adapter = await this.ownerFor(id, opts.expectedIncarnationId)
     const migrateHistory = shouldHandoffDaemonHistory(opts.keepHistory, adapter, this.current)
     await adapter.shutdown(id, opts)
     if (!opts.keepHistory || migrateHistory) {
@@ -347,12 +344,16 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   // Why no fallback to the current daemon: it answers "not found" for another version's id, which
   // a tab close reads as already gone, leaving the real session running with no tab.
-  private async ownerFor(sessionId: string): Promise<DaemonPtyAdapter> {
+  private async ownerFor(
+    sessionId: string,
+    expectedIncarnationId?: string
+  ): Promise<DaemonPtyAdapter> {
     const known = this.knownOwnerFor(sessionId)
     if (known) {
       return known
     }
-    const resolution = await this.ownerResolver.resolve(sessionId)
+    // Why the saved identity: it names the owner even while another version cannot list.
+    const resolution = await this.ownerResolver.resolve(sessionId, expectedIncarnationId)
     if (resolution.kind === 'owner') {
       return resolution.provider
     }

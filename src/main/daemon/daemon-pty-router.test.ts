@@ -22,6 +22,7 @@ type AdapterMock = DaemonPtyAdapter & {
   emitExit: (id: string, code: number, incarnationId?: string) => void
   emitIdentityChange: () => void
   triggerWriteUnavailable: (id: string) => void
+  attachSession: (id: string) => void
 }
 
 const LARGE_RECONCILE_SESSION_COUNT = 150_000
@@ -48,6 +49,7 @@ function createAdapter(
   const exitListeners: ((payload: { id: string; code: number; incarnationId?: string }) => void)[] =
     []
   const identityChangeListeners: (() => void)[] = []
+  const attached = new Set<string>()
   return {
     protocolVersion,
     supportsGitCredentialGuardHost: () =>
@@ -63,6 +65,7 @@ function createAdapter(
     spawn: vi.fn(async (opts: PtySpawnOptions): Promise<PtySpawnResult> => {
       const id = opts.sessionId ?? `${label}-new`
       sessions.push(id)
+      attached.add(id)
       return { id }
     }),
     listProcesses: vi.fn(async () =>
@@ -72,7 +75,8 @@ function createAdapter(
         title: label
       }))
     ),
-    hasPty: vi.fn((id: string) => sessions.includes(id)),
+    // Why attached-only: a real adapter answers only for sessions spawned or attached this run.
+    hasPty: vi.fn((id: string) => attached.has(id) && sessions.includes(id)),
     probePtyLiveness: vi.fn(async (id: string) => sessions.includes(id)),
     write: vi.fn((id: string, data: string) => {
       writes.push({ id, data })
@@ -175,6 +179,9 @@ function createAdapter(
       for (const listener of writeUnavailableListeners) {
         listener({ id })
       }
+    },
+    attachSession: (id: string) => {
+      attached.add(id)
     },
     _writes: writes
   } as unknown as AdapterMock
@@ -552,6 +559,7 @@ describe('DaemonPtyRouter', () => {
     const router = new DaemonPtyRouter({ current, legacy: [legacy] })
 
     await router.discoverLegacySessions()
+    legacy.attachSession('legacy-session')
     expect(router.hasPty('legacy-session')).toBe(true)
 
     await router.shutdown('legacy-session', { keepHistory: true })
