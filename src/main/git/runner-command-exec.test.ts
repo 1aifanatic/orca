@@ -142,7 +142,8 @@ describe('commandExecFileAsync Windows command shims', () => {
         timeout: 1000
       })
       const rejection = expect(promise).rejects.toThrow('C:\\tools\\pnpm.cmd timed out.')
-      await vi.advanceTimersByTimeAsync(1000)
+      // The deadline is judged one loop turn later, which fake timers put 1ms on.
+      await vi.advanceTimersByTimeAsync(1001)
 
       await rejection
       expect(spawnMock).toHaveBeenCalledWith(
@@ -229,7 +230,8 @@ describe('runner execFile timeout handling', () => {
       timeout: 1000
     })
     const rejection = expect(promise).rejects.toThrow(/git(?:\.exe)? timed out\./i)
-    await vi.advanceTimersByTimeAsync(1000)
+    // The deadline is judged one loop turn later, which fake timers put 1ms on.
+    await vi.advanceTimersByTimeAsync(1001)
 
     await rejection
     expect(child.kill).toHaveBeenCalled()
@@ -310,7 +312,8 @@ describe('runner execFile timeout handling', () => {
       const rejection = expect(promise).rejects.toThrow('gh timed out.')
       await vi.advanceTimersByTimeAsync(30_000)
       expect(spawnMock.mock.calls[0][2].detached).toBe(true)
-      await vi.advanceTimersByTimeAsync(2_000)
+      // +1: the deadline is judged one loop turn later, 1ms under fake timers.
+      await vi.advanceTimersByTimeAsync(2_001)
 
       await rejection
       expect(processKill).toHaveBeenCalledWith(-1234, undefined)
@@ -329,7 +332,8 @@ describe('runner execFile timeout handling', () => {
       })
       const rejection = expect(promise).rejects.toThrow('glab timed out.')
       await vi.advanceTimersByTimeAsync(30_000)
-      await vi.advanceTimersByTimeAsync(2_000)
+      // +1: the deadline is judged one loop turn later, 1ms under fake timers.
+      await vi.advanceTimersByTimeAsync(2_001)
 
       await rejection
       expect(processKill).toHaveBeenCalledWith(-1234, undefined)
@@ -401,7 +405,8 @@ describe('runner execFile timeout handling', () => {
       await vi.advanceTimersByTimeAsync(1233)
       expect(processKill).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(1)
-      await vi.advanceTimersByTimeAsync(2_000)
+      // +1: the deadline is judged one loop turn later, 1ms under fake timers.
+      await vi.advanceTimersByTimeAsync(2_001)
 
       await rejection
       expect(processKill).toHaveBeenCalledWith(-1234, undefined)
