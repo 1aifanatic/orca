@@ -17,6 +17,7 @@ import { readJournalSessionState } from '../agent-session-journal/journal-sessio
 import {
   CORPUS_DEATH_EVIDENCE,
   CORPUS_FENCE,
+  CORPUS_OWES_WORK,
   JOURNAL_SESSION_STATE_CASES,
   JOURNAL_SESSION_STATE_CORPUS
 } from '../agent-session-journal/journal-session-state-test-corpus'
@@ -79,6 +80,8 @@ describe('the stored flag and the plan agree (T4)', () => {
     const deathEvidence = CORPUS_DEATH_EVIDENCE[evidenceName] ?? null
     const record: OpenSettlementRecordFacts = { sessionId, fence: CORPUS_FENCE, deathEvidence }
 
+    // Pinned per case, so agreement between the flag and the plan cannot hide both being wrong.
+    expect(storedFacts(sessionId).owesWork).toBe(CORPUS_OWES_WORK[name])
     const plan = planOpenSettlement(journal, record, { settlesRosters: true })
     const selected = owesOnOpen(storedFacts(sessionId), deathEvidence)
     expect(selected).toBe(!openSettlementPlanIsEmpty(plan))

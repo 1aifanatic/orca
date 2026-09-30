@@ -67,7 +67,7 @@ async function settledTurn(journal: AgentSessionJournal, turnId: string): Promis
   })
 }
 
-function roster(state: 'working' | 'done'): AgentJournalItemBody {
+function roster(state: 'working' | 'completed'): AgentJournalItemBody {
   return {
     kind: 'message',
     role: 'system',
@@ -167,11 +167,28 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
   },
   'settled roster': async (journal: AgentSessionJournal) => {
     await settledTurn(journal, 'turn-1')
-    await item(journal, { provider: 'orca', clientMessageId: 'roster-1' }, roster('done'))
+    await item(journal, { provider: 'orca', clientMessageId: 'roster-1' }, roster('completed'))
   }
 } satisfies Record<string, (journal: AgentSessionJournal) => Promise<void>>
 
 export type JournalSessionStateCase = keyof typeof JOURNAL_SESSION_STATE_CORPUS
+
+/** Whether each case owes its open work whatever the record says: what the flag must read. */
+export const CORPUS_OWES_WORK: Record<JournalSessionStateCase, boolean> = {
+  empty: false,
+  settled: false,
+  'older turn running beside a newer one': true,
+  'working subagent roster': true,
+  'live background task': true,
+  'pending prompt': true,
+  'running tool': true,
+  'pending send': true,
+  'unknown send': true,
+  'queued leftover': true,
+  // Owed only to death evidence naming its writer.
+  'unverifiable turn': false,
+  'settled roster': false
+}
 
 export const JOURNAL_SESSION_STATE_CASES = Object.keys(JOURNAL_SESSION_STATE_CORPUS).filter(
   (name): name is JournalSessionStateCase => name in JOURNAL_SESSION_STATE_CORPUS
