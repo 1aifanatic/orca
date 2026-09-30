@@ -973,13 +973,16 @@ export class RelayAssignmentStore {
       let strandedReassignment = false
       let isolatedIncumbent: CellRow | undefined
       let isolatedTarget: CellRow | undefined
-      // Set when the placement leaves the old cell's row alone: its leases stay,
-      // and each one's own release or expiry takes its units back off it.
+      // Set when only the target rows are locked. The old cell's row is never
+      // written then, so its counter must already equal its leases' units.
       let sourceRowSkipped = false
       if (existing && !dormant && inventoryScope !== 'all') {
         // Unlocked on purpose: this only chooses which rows to lock. A restore
         // racing it lets one host move off a cell that no longer needed it.
-        if (await this.isolatedIncumbentMayMove(transaction, identity, existing, now)) {
+        if (
+          requestUnits(existing) === leaseRequestUnits(activityLeases) &&
+          (await this.isolatedIncumbentMayMove(transaction, identity, existing, now))
+        ) {
           const source = await this.unlockedCell(transaction, text(existing, 'cell_id'))
           retryScope = 'isolated'
           lockedCells ??= await this.lockIsolatedReplacementCells(
@@ -1150,17 +1153,25 @@ export class RelayAssignmentStore {
           })
         )
       }
-      const previousUnits = existing ? requestUnits(existing) : 0
+      // Units come off the cell that holds them. A lease this placement deletes
+      // frees its units on its own cell; a lease it keeps stays counted until
+      // its own release or expiry. Only units no lease backs are charged to
+      // the old cell, which is locked whenever there are any.
+      const deletesLeases = forcedDeadReassignment || strandedReassignment
+      const keptLeases = deletesLeases ? [] : activityLeases
       if (existing) {
-        // A zero delta is a no-op, and the old row may not be locked here.
-        if (!sourceRowSkipped && previousUnits > 0) {
-          await this.adjustCellReservation(transaction, text(existing, 'cell_id'), -previousUnits)
+        const unbackedUnits = requestUnits(existing) - leaseRequestUnits(activityLeases)
+        if (unbackedUnits > 0) {
+          await this.adjustCellReservation(transaction, text(existing, 'cell_id'), -unbackedUnits)
         }
-        if (forcedDeadReassignment || strandedReassignment) {
+        if (deletesLeases) {
           // A fenced/dead incarnation cannot own drainable work, and a
           // stranded host's only leases are the unclaimed grant artifacts of
           // its own loop. Removing them prevents late expiry from
           // decrementing the replacement.
+          for (const [cellId, units] of leaseUnitsByCell(activityLeases)) {
+            await this.adjustCellReservation(transaction, cellId, -units)
+          }
           await transaction.query(
             `DELETE FROM relay_assignment_activity_leases
              WHERE user_id = ? AND relay_host_id = ?`,
@@ -1170,60 +1181,46 @@ export class RelayAssignmentStore {
       }
       await this.adjustCellReservation(transaction, target.cellId, 1)
       const assignmentEpoch = existing ? integer(existing, 'assignment_epoch') + 1 : 1
+      // Counters follow the leases the host still holds, plus the new control.
+      const counts = activityCounts(keptLeases)
+      counts.control += 1
       const leaseExpiresAt = now + ASSIGNMENT_LIMITS.activityLeaseMs
-      if (sourceRowSkipped) {
-        // The old cell's leases still count here until each is released, so
-        // keep the counters and add the new control. Resetting them let those
-        // releases take the new cell's control off the count.
-        await transaction.query(
-          `UPDATE relay_assignments SET cell_id = ?, assignment_epoch = ?,
-             lease_expires_at = CASE WHEN lease_expires_at > ? THEN lease_expires_at ELSE ? END,
-             last_activity_at = ?, reserved_controls = reserved_controls + 1
-           WHERE user_id = ? AND relay_host_id = ?`,
-          [
-            target.cellId,
-            assignmentEpoch,
+      await transaction.query(
+        `INSERT INTO relay_assignments
+         (user_id, relay_host_id, cell_id, assignment_epoch, lease_expires_at,
+          last_activity_at, reserved_controls, reserved_splices, reserved_invites,
+          pending_installs, pending_confirmations, migration_leases)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (user_id, relay_host_id) DO UPDATE SET
+           cell_id = excluded.cell_id,
+           assignment_epoch = excluded.assignment_epoch,
+           lease_expires_at = excluded.lease_expires_at,
+           last_activity_at = excluded.last_activity_at,
+           reserved_controls = excluded.reserved_controls,
+           reserved_splices = excluded.reserved_splices,
+           reserved_invites = excluded.reserved_invites,
+           pending_installs = excluded.pending_installs,
+           pending_confirmations = excluded.pending_confirmations,
+           migration_leases = excluded.migration_leases`,
+        [
+          identity.userId,
+          identity.relayHostId,
+          target.cellId,
+          assignmentEpoch,
+          // Not before a kept lease expires: aggregate expiry keys off this.
+          Math.max(
             leaseExpiresAt,
-            leaseExpiresAt,
-            now,
-            identity.userId,
-            identity.relayHostId
-          ]
-        )
-      } else {
-        await transaction.query(
-          `INSERT INTO relay_assignments
-           (user_id, relay_host_id, cell_id, assignment_epoch, lease_expires_at,
-            last_activity_at, reserved_controls, reserved_splices, reserved_invites,
-            pending_installs, pending_confirmations, migration_leases)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_id, relay_host_id) DO UPDATE SET
-             cell_id = excluded.cell_id,
-             assignment_epoch = excluded.assignment_epoch,
-             lease_expires_at = excluded.lease_expires_at,
-             last_activity_at = excluded.last_activity_at,
-             reserved_controls = excluded.reserved_controls,
-             reserved_splices = excluded.reserved_splices,
-             reserved_invites = excluded.reserved_invites,
-             pending_installs = excluded.pending_installs,
-             pending_confirmations = excluded.pending_confirmations,
-             migration_leases = excluded.migration_leases`,
-          [
-            identity.userId,
-            identity.relayHostId,
-            target.cellId,
-            assignmentEpoch,
-            leaseExpiresAt,
-            now,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0
-          ]
-        )
-      }
+            ...keptLeases.map((lease) => integer(lease, 'expires_at'))
+          ),
+          now,
+          counts.control,
+          counts.splice,
+          counts.invite,
+          counts.install,
+          counts.confirmation,
+          counts.migration
+        ]
+      )
       if (existing) {
         await this.releaseSupersededControlConnectionReservations(
           transaction,
@@ -7136,10 +7133,17 @@ export class RelayAssignmentStore {
     const now = this.now()
     try {
       return await this.database.transaction(async (transaction) => {
+        // Only counters no lease backs. A host's leases can sit on more than
+        // one cell, and the lease sweep takes each one's units off its own.
         const expired = await transaction.queryLocked(
           `SELECT * FROM relay_assignments WHERE lease_expires_at <= ? AND
            (reserved_controls > 0 OR reserved_splices > 0 OR reserved_invites > 0 OR
             pending_installs > 0 OR pending_confirmations > 0 OR migration_leases > 0)
+           AND NOT EXISTS (
+             SELECT 1 FROM relay_assignment_activity_leases lease
+             WHERE lease.user_id = relay_assignments.user_id
+               AND lease.relay_host_id = relay_assignments.relay_host_id
+           )
            AND NOT EXISTS (
              SELECT 1 FROM relay_region_rehome_attempts rehome
              WHERE rehome.user_id = relay_assignments.user_id
@@ -8347,6 +8351,19 @@ function activityCounts(rows: SqlRow[]): Record<AssignmentActivityKind, number> 
   const counts = emptyActivityCounts()
   for (const row of rows) counts[activityKind(row)]++
   return counts
+}
+
+function leaseRequestUnits(rows: SqlRow[]): number {
+  return rows.reduce((total, row) => total + integer(row, 'request_units'), 0)
+}
+
+function leaseUnitsByCell(rows: SqlRow[]): Map<string, number> {
+  const units = new Map<string, number>()
+  for (const row of rows) {
+    const cellId = text(row, 'cell_id')
+    units.set(cellId, (units.get(cellId) ?? 0) + integer(row, 'request_units'))
+  }
+  return units
 }
 
 function activityUnitsForCell(rows: SqlRow[], cellId: string): number {

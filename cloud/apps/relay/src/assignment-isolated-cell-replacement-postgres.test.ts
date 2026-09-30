@@ -588,4 +588,81 @@ describePostgres('PostgreSQL re-placement off a cell isolated for a roll', () =>
     }
     await expectReservationAccounting()
   }, 30_000)
+  // Moves a seeded host onto TARGETS[0] next to another host whose splice there
+  // outlives the test, so an over-charge shows instead of clamping at zero.
+  async function seedMovedHostBesideNeighbour(index: number): Promise<{
+    identity: { userId: string; relayHostId: string }
+    neighbour: { userId: string; relayHostId: string }
+  }> {
+    const { identity } = await seedActiveHostOnIsolatedSource(index)
+    await applySelector({ [TARGETS[1]!.id]: 'migration-only' })
+    const neighbour = hostIdentity(index + 50)
+    expect((await stores[0]!.assign(neighbour, 'us-central1')).cellId).toBe(TARGETS[0]!.id)
+    await stores[0]!.acquireActivity(neighbour, {
+      activityId: 'splice:neighbour',
+      kind: 'splice',
+      cellId: TARGETS[0]!.id,
+      expiresAt: NOW + 10 * 60 * 60_000
+    })
+    expect((await stores[1]!.assign(identity, 'us-central1')).cellId).toBe(TARGETS[0]!.id)
+    expect(await counters(identity)).toEqual({ controls: 2, splices: 1 })
+    await expectReservationAccounting()
+    return { identity, neighbour }
+  }
+
+  it('leaves a host with leases on two cells to the lease sweep', async () => {
+    await resetFleet()
+    const { identity } = await seedMovedHostBesideNeighbour(915)
+    // Past every lease but the neighbour's splice.
+    const later = new RelayAssignmentStore(databases[0]!, () => NOW + 60 * 60_000, {
+      requireLiveCells: true,
+      heartbeatTtlMs: 45_000
+    })
+    try {
+      // Aggregate expiry first, with the source's leases still present: the
+      // order a lease sweep skipped on a busy row leaves behind.
+      await later.releaseExpiredActivity()
+      expect(await counters(identity)).toEqual({ controls: 2, splices: 1 })
+      await expectReservationAccounting()
+      await later.releaseExpiredActivityLeases()
+      await later.releaseExpiredActivity()
+      expect(await counters(identity)).toEqual({ controls: 0, splices: 0 })
+      expect(await reservedRequests(ISOLATED.id)).toBe(0)
+      // Only the neighbour's splice is left on the target.
+      expect(await reservedRequests(TARGETS[0]!.id)).toBe(2)
+      await expectReservationAccounting()
+    } finally {
+      await applySelector({ [TARGETS[1]!.id]: 'general' })
+    }
+  }, 30_000)
+
+  it('frees the source leases on their own cell when the target dies', async () => {
+    await resetFleet()
+    const { identity } = await seedMovedHostBesideNeighbour(916)
+    // The roll finishes, then the target stops heartbeating before the source
+    // has released the host. Uncapped, so no fence is needed to move off it.
+    await applySelector({ [ISOLATED.id]: 'general' })
+    await databases[0]!.query(`UPDATE relay_cell_runtime SET ready = 0 WHERE cell_id = ?`, [
+      TARGETS[0]!.id
+    ])
+    await databases[0]!.query(`DELETE FROM relay_cell_connection_limits WHERE cell_id = ?`, [
+      TARGETS[0]!.id
+    ])
+    try {
+      const moved = await stores[1]!.assign(identity, 'us-central1')
+      expect(moved.cellId).toBe(ISOLATED.id)
+      expect(await counters(identity)).toEqual({ controls: 1, splices: 0 })
+      // The deleted source leases took their units with them; a late release
+      // from the source finds nothing and charges nothing.
+      expect(await stores[0]!.releaseActivity(identity, `control:${ISOLATED.id}:1`)).toBe(false)
+      expect(await reservedRequests(ISOLATED.id)).toBe(1)
+      expect(await reservedRequests(TARGETS[0]!.id)).toBe(3)
+      await expectReservationAccounting()
+    } finally {
+      // Re-registers the connection limit, then the heartbeat restores ready.
+      await stores[0]!.reconcileCells(CELLS, false)
+      await heartbeatAll()
+      await applySelector({ [TARGETS[1]!.id]: 'general' })
+    }
+  }, 30_000)
 })
