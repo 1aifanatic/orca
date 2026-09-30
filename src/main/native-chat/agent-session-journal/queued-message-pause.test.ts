@@ -284,6 +284,18 @@ describe("the queue's pause, derived from the journal", () => {
     expect(reason(journal)).toBeNull()
   })
 
+  it("only a person's Stop pauses: a host's, a close's or an unknown reason holds nothing", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    for (const reason of ['user-close', 'host-stop', 'evict'] as const) {
+      await journal.appendStopEvent({ reason }, 0)
+    }
+    // A newer build's reason this one does not know.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: deliberately outside the type, as a newer build could write it.
+    await journal.appendStopEvent({ reason: 'future-reason' as 'evict' }, 0)
+    expect(reason(journal)).toBeNull()
+  })
+
   it('the restated Stop is the same event: its reason, turn, caller and time', async () => {
     const journal = await open()
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-7', caller: 'phone' }, 0)
