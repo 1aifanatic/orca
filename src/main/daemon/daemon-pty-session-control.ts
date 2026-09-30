@@ -51,11 +51,8 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
   }
 
   async probePtyLiveness(id: string, opts?: { deadlineMs?: number }): Promise<boolean | null> {
-    // Why the floor: a daemon draining a kill can take a moment; the caller's longer deadline wins.
-    const timeoutMs = Math.max(
-      LIVENESS_PROBE_TIMEOUT_MS,
-      remainingDaemonRequestTimeoutMs(opts?.deadlineMs) ?? 0
-    )
+    // Why the caller's deadline exactly: overrunning it can fail the caller's own budget.
+    const timeoutMs = remainingDaemonRequestTimeoutMs(opts?.deadlineMs) ?? LIVENESS_PROBE_TIMEOUT_MS
     try {
       if (!this.getSizeUnsupported && this.protocolVersion >= GET_SIZE_PROTOCOL_VERSION) {
         try {

@@ -74,6 +74,18 @@ describe('DaemonStoppedSessionOwners', () => {
     await expect(owners.confirm('wt@@b', async () => false, Date.now() + 20)).resolves.toBeNull()
   })
 
+  it('answers within the caller deadline even when the owner is slow', async () => {
+    const owners = new DaemonStoppedSessionOwners<IPtyProvider>()
+    owners.record(
+      'wt@@slow',
+      owner(() => new Promise((resolve) => setTimeout(() => resolve(false), 1_500)))
+    )
+    const started = Date.now()
+
+    await expect(owners.confirm('wt@@slow', async () => false, started + 100)).resolves.toBeNull()
+    expect(Date.now() - started).toBeLessThan(400)
+  })
+
   it('falls back to the provider-wide probe once a new session reuses the id', async () => {
     const owners = new DaemonStoppedSessionOwners<IPtyProvider>()
     owners.record(

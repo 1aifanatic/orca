@@ -1,6 +1,5 @@
 import type { IPtyProvider } from '../providers/types'
 import { withinDeadline } from './daemon-generation-listing'
-import { LIVENESS_PROBE_TIMEOUT_MS } from './daemon-pty-session-control'
 
 const MAX_STOPPED_SESSION_OWNERS = 512
 
@@ -12,7 +11,7 @@ const MAX_STOPPED_SESSION_OWNERS = 512
 export class DaemonStoppedSessionOwners<T extends IPtyProvider> {
   private readonly owners = new Map<string, T>()
 
-  /** No owner (or no id) clears the entry, so a stale owner can never answer for a new session. */
+  /** Spawn passes no owner to clear the entry, so a stale owner never answers for a new session. */
   record(sessionId: string | undefined, owner: T | undefined): void {
     if (sessionId === undefined) {
       return
@@ -45,21 +44,13 @@ export class DaemonStoppedSessionOwners<T extends IPtyProvider> {
     deadlineMs?: number
   ): Promise<boolean | null> {
     const owner = this.owners.get(sessionId)
-    // Why the floor: matches the owner probe's own minimum, so a tight caller deadline cannot cut it short.
-    const boundMs =
-      deadlineMs === undefined
-        ? undefined
-        : Math.max(deadlineMs, Date.now() + LIVENESS_PROBE_TIMEOUT_MS)
     const probe = owner
       ? owner.probePtyLiveness
-        ? owner.probePtyLiveness(
-            sessionId,
-            boundMs === undefined ? undefined : { deadlineMs: boundMs }
-          )
+        ? owner.probePtyLiveness(sessionId, deadlineMs === undefined ? undefined : { deadlineMs })
         : Promise.resolve(owner.hasPty?.(sessionId) ?? null)
       : probeWithoutOwner()
     try {
-      const live = await withinDeadline(probe, boundMs)
+      const live = await withinDeadline(probe, deadlineMs)
       return live === null ? null : !live
     } catch {
       return null
