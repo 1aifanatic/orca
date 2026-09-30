@@ -90,8 +90,7 @@ export function readClaudeBackgroundTaskLaunch(
   if (response.status !== 'async_launched' || response.taskId === undefined) {
     return undefined
   }
-  // Temporary: the table calls `in_process_teammate` unknown, so a teammate launch naming a
-  // `taskId` (uncaptured) is recorded until the next inventory; the table fix is its own change.
+  // Temporary: a teammate launch (uncaptured) reads unknown until the table calls it an agent.
   const kind = classifyClaudeBackgroundTaskKind(response.taskType)
   return isAgentChildWorkKind(kind) ? undefined : { taskId: response.taskId, kind }
 }
@@ -175,10 +174,10 @@ function readTaskNotificationField(body: string, field: string): string | undefi
  *  task ends, even while Claude idles and sends no hook: a shell however it ended (finished, killed
  *  with its turn's Ctrl+C or from /tasks: r1-s1, r1-s9, r3-tasks-run1), a workflow only when it
  *  completes (r6-w1, r6-w2; one stopped or paused from /tasks writes nothing, r6-w3, r7-w6b, so it
- *  leaves on the next inventory). A prompt typed while Claude
- *  is busy writes the same row with only its text (r3-typed-run1), so the row carries no provenance
- *  of its own: it retires a task only when it is exactly one terminal notification naming both the
- *  task id and the tool call Orca recorded at launch, which Claude mints fresh for each launch.
+ *  leaves on the next inventory). A prompt typed while Claude is busy writes the same row with
+ *  only its text (r3-typed-run1), so the row carries no provenance of its own: it retires a task
+ *  only when it is exactly one terminal notification naming both the task id and the tool call
+ *  Orca recorded at launch, which Claude mints fresh for each launch.
  *  Returns whether a task was retired. */
 export function retireClaudeNonAgentTaskFromQueueRow(
   state: HookListenerState,
