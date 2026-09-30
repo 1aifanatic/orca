@@ -150,6 +150,7 @@ function guard(
   if (!descriptor || typeof original !== 'function') {
     return
   }
+  const target = original
   function guarded(this: unknown, ...args: unknown[]): unknown {
     try {
       if (!name.startsWith('open') || opensForWrite(args[1] ?? 'r')) {
@@ -163,7 +164,7 @@ function guard(
       }
       throw error
     }
-    return original.apply(this, args)
+    return target.apply(this, args)
   }
   Object.defineProperty(api, name, { ...descriptor, value: guarded })
 }
