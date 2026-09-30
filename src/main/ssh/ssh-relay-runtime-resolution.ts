@@ -107,7 +107,11 @@ export class RelayRuntimeLadderRun {
 
   settle(rung: SshRemoteRuntimeRung): void {
     // Why: C's self-test loaded addons from the same tree, which disproves a remembered noexec.
-    if (rung === 'C' && this.selfTest === 'passed' && this.pinnedRefusal === 'noexec') {
+    // Why also at D on a replayed noexec: nothing connects there, so the next connect re-proves A
+    // instead of the message's "allow exec" advice being unfixable.
+    const disproved = rung === 'C' && this.selfTest === 'passed'
+    const replayedAtD = rung === 'D' && this.noexecRemembered
+    if ((disproved || replayedAtD) && this.pinnedRefusal === 'noexec') {
       this.pinnedRefusal = null
       if (this.facts) {
         forgetPinnedRuntimeRefusal(this.targetId, this.facts.target)
