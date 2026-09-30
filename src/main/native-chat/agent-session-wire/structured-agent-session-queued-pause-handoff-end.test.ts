@@ -27,10 +27,9 @@ async function queuedDraft(text: string, sessionId = HOST_TEST_SESSION): Promise
   if (!queued.ok || !('queued' in queued.value)) {
     throw new Error('expected a queued receipt')
   }
-  expect(
-    (await rig.drafts(sessionId)).some((card) => card.messageId === queued.value.queued.messageId)
-  )
-  return queued.value.queued.messageId
+  const { messageId } = queued.value.queued
+  expect((await rig.drafts(sessionId)).some((card) => card.messageId === messageId)).toBe(true)
+  return messageId
 }
 
 /** The stored Stop fact, read from the open conversation (opened by a history read if closed). */

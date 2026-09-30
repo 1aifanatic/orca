@@ -60,7 +60,9 @@ export function mayReturnToWaiting(
       return true
     }
     return (
-      consumedSubmissionWasRejected(current) && rejectedDraftSettlement(current).state === 'waiting'
+      current !== undefined &&
+      consumedSubmissionWasRejected(current) &&
+      rejectedDraftSettlement(current).state === 'waiting'
     )
   }
 }
