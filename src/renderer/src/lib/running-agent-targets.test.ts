@@ -7,6 +7,7 @@ import { makePaneKey } from '../../../shared/stable-pane-id'
 import { structuredAgentSessionPaneKey } from '../../../shared/structured-agent-session-projection'
 import {
   deriveRunningAgentSendTargets,
+  deriveStatuslessStructuredAgentSendTargets,
   resolveRunningAgentSendTarget,
   runningAgentMessageTarget,
   type RunningAgentTargetState
@@ -528,9 +529,13 @@ describe('running agent send targets', () => {
       }
     }
 
-    it('lists an open chat before its first turn, addressed by session', () => {
+    it('lists a chat with a status entry, addressed by session', () => {
+      const chatEntry = entry(chatPaneKey, 'done')
       const targets = deriveRunningAgentSendTargets(
-        state({ unifiedTabsByWorktree: { [WORKTREE_ID]: [workspaceTab({})] } }),
+        state({
+          agentStatusByPaneKey: { [chatPaneKey]: chatEntry },
+          unifiedTabsByWorktree: { [WORKTREE_ID]: [workspaceTab({})] }
+        }),
         WORKTREE_ID,
         NOW
       )
@@ -543,7 +548,7 @@ describe('running agent send targets', () => {
           sessionId: SESSION_ID,
           agentType: 'claude',
           title: 'Claude Chat',
-          entry: null,
+          entry: chatEntry,
           status: 'eligible'
         }
       ])
@@ -551,6 +556,24 @@ describe('running agent send targets', () => {
         kind: 'structured-session',
         sessionId: SESSION_ID
       })
+    })
+
+    it('lists a chat before its first turn only as a status-less target, which has no sidebar row', () => {
+      const chatState = state({ unifiedTabsByWorktree: { [WORKTREE_ID]: [workspaceTab({})] } })
+
+      expect(deriveRunningAgentSendTargets(chatState, WORKTREE_ID, NOW)).toEqual([])
+      expect(deriveStatuslessStructuredAgentSendTargets(chatState, WORKTREE_ID)).toEqual([
+        {
+          kind: 'structured-session',
+          paneKey: chatPaneKey,
+          tabId: CHAT_TAB_ID,
+          sessionId: SESSION_ID,
+          agentType: 'claude',
+          title: 'Claude Chat',
+          entry: null,
+          status: 'eligible'
+        }
+      ])
     })
 
     it('disables a chat whose agent is waiting on an approval', () => {
@@ -569,7 +592,7 @@ describe('running agent send targets', () => {
     })
 
     it('skips other workspace tabs and chats in other worktrees', () => {
-      const targets = deriveRunningAgentSendTargets(
+      const targets = deriveStatuslessStructuredAgentSendTargets(
         state({
           unifiedTabsByWorktree: {
             [WORKTREE_ID]: [
@@ -579,8 +602,7 @@ describe('running agent send targets', () => {
             [OTHER_WORKTREE_ID]: [workspaceTab({ worktreeId: OTHER_WORKTREE_ID })]
           }
         }),
-        WORKTREE_ID,
-        NOW
+        WORKTREE_ID
       )
 
       expect(targets).toEqual([])

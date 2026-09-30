@@ -43,7 +43,8 @@ export type StructuredAgentSendTarget = RunningAgentSendTargetEligibility & {
   sessionId: string
   agentType: AgentType
   title: string
-  /** Absent until the chat's first turn: the host publishes no status before one. */
+  /** Null before the chat's first turn (the host publishes no status before one); only the
+   *  notes menu lists such chats, as the sidebar has no row for them. */
   entry: AgentStatusEntry | null
 }
 
@@ -68,8 +69,16 @@ export function deriveRunningAgentSendTargets(
 ): RunningAgentSendTarget[] {
   return [
     ...deriveTerminalAgentSendTargets(state, worktreeId, now),
-    ...deriveStructuredAgentSendTargets(state, worktreeId)
+    ...deriveStructuredAgentSendTargets(state, worktreeId, 'with-status')
   ]
+}
+
+/** Chats of the worktree that have not had their first turn yet, so no status entry exists. */
+export function deriveStatuslessStructuredAgentSendTargets(
+  state: RunningAgentTargetState,
+  worktreeId: string
+): StructuredAgentSendTarget[] {
+  return deriveStructuredAgentSendTargets(state, worktreeId, 'without-status')
 }
 
 function deriveTerminalAgentSendTargets(
@@ -152,11 +161,13 @@ function deriveTerminalAgentSendTargets(
   return targets
 }
 
-// Why: a structured chat is a workspace tab with no PTY, so it is listed from the tab itself —
-// including a fresh chat the host has published no status for yet.
+// Why: a structured chat is a workspace tab with no PTY, so it is listed from the tab itself.
+// Chats without status stay out of the shared list, like status-less terminals: every sidebar
+// consumer of it (reveal, force-visible, row pills) needs a row to point at.
 function deriveStructuredAgentSendTargets(
   state: RunningAgentTargetState,
-  worktreeId: string
+  worktreeId: string,
+  status: 'with-status' | 'without-status'
 ): StructuredAgentSendTarget[] {
   const targets: StructuredAgentSendTarget[] = []
   for (const tab of state.unifiedTabsByWorktree[worktreeId] ?? []) {
@@ -165,6 +176,9 @@ function deriveStructuredAgentSendTargets(
     }
     const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
     const entry = state.agentStatusByPaneKey[paneKey] ?? null
+    if ((entry !== null) !== (status === 'with-status')) {
+      continue
+    }
     const disabledReason =
       entry?.state === 'blocked' || entry?.state === 'waiting'
         ? 'Agent needs permission'
@@ -175,6 +189,7 @@ function deriveStructuredAgentSendTargets(
       tabId: tab.id,
       sessionId: tab.entityId,
       agentType: tab.agentSessionAgent,
+      // Why: false matches the tab strip, which labels a chat tab customLabel ?? label.
       title: resolveUnifiedTabLabel(tab, false),
       entry,
       status: disabledReason ? 'disabled' : 'eligible',

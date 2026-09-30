@@ -6,6 +6,7 @@ import {
 } from '../../../shared/agent-status-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../shared/terminal-tab-types'
 import { makePaneKey } from '../../../shared/stable-pane-id'
+import { structuredAgentSessionPaneKey } from '../../../shared/structured-agent-session-projection'
 import {
   deriveNotesSendAgentTargets,
   type NotesSendAgentTargetState
@@ -700,6 +701,44 @@ describe('notes send agent targets', () => {
 
     expect(targets).toEqual([
       expect.objectContaining({ paneKey, agentType: 'opencode', status: 'eligible' })
+    ])
+  })
+
+  it('lists a chat before its first turn, which the shared sidebar targets leave out', () => {
+    const chatTabId = 'structured-agent-session-claude_1'
+    const targets = deriveNotesSendAgentTargets(
+      state({
+        unifiedTabsByWorktree: {
+          [WORKTREE_ID]: [
+            {
+              id: chatTabId,
+              entityId: 'claude_1',
+              groupId: 'group-1',
+              worktreeId: WORKTREE_ID,
+              contentType: 'agent-session',
+              agentSessionAgent: 'claude',
+              label: 'Claude Chat',
+              customLabel: null,
+              color: null,
+              sortOrder: 0,
+              createdAt: 1
+            }
+          ]
+        }
+      }),
+      WORKTREE_ID,
+      NOW
+    )
+
+    expect(targets).toEqual([
+      {
+        paneKey: structuredAgentSessionPaneKey(chatTabId, 'claude_1'),
+        tabId: chatTabId,
+        messageTarget: { kind: 'structured-session', sessionId: 'claude_1' },
+        agentType: 'claude',
+        tabTitle: 'Claude Chat',
+        status: 'eligible'
+      }
     ])
   })
 })

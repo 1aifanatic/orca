@@ -10,6 +10,7 @@ import {
 } from './runtime-pane-title-leaf-id'
 import {
   deriveRunningAgentSendTargets,
+  deriveStatuslessStructuredAgentSendTargets,
   runningAgentMessageTarget,
   type RunningAgentSendTarget,
   type RunningAgentTargetState
@@ -64,15 +65,19 @@ function detectTitleHintPaneEvidence(
  *
  * The title hint gates discoverability only. The runtime independently checks
  * current hook/process evidence before any guarded write.
+ *
+ * A chat before its first turn has no status either; it is added here too, since
+ * its composer already takes messages.
  */
 export function deriveNotesSendAgentTargets(
   state: NotesSendAgentTargetState,
   worktreeId: string,
   now = Date.now()
 ): NotesSendAgentTarget[] {
-  const targets: NotesSendAgentTarget[] = deriveRunningAgentSendTargets(state, worktreeId, now).map(
-    toNotesSendAgentTarget
-  )
+  const targets: NotesSendAgentTarget[] = [
+    ...deriveRunningAgentSendTargets(state, worktreeId, now),
+    ...deriveStatuslessStructuredAgentSendTargets(state, worktreeId)
+  ].map(toNotesSendAgentTarget)
 
   for (const tab of state.tabsByWorktree[worktreeId] ?? []) {
     const titleHintTarget = deriveTitleHintAgentTarget(state, tab)

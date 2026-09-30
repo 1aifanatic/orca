@@ -215,7 +215,8 @@ export function discardStructuredAgentSessionLaunchOutbox(sessionId: string): vo
 export function mutateStructuredAgentSessionLaunchPrompt(
   sessionId: string,
   clientMessageId: string,
-  update: StructuredAgentSessionLaunchPromptMutation
+  update: StructuredAgentSessionLaunchPromptMutation,
+  options: { onlyIfSaved?: boolean } = {}
 ): boolean {
   let matched = false
   const next = getStructuredAgentSessionOutbox(sessionId).flatMap((entry) => {
@@ -229,7 +230,7 @@ export function mutateStructuredAgentSessionLaunchPrompt(
     )
     return replacement ? [replacement] : []
   })
-  return matched && commitStructuredAgentSessionOutbox(sessionId, next)
+  return matched && commitStructuredAgentSessionOutbox(sessionId, next, options)
 }
 
 export type StructuredAgentSessionLaunchPromptMutation = (

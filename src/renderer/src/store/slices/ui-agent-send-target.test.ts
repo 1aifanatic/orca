@@ -310,13 +310,15 @@ describe('createUISlice agent send target mode', () => {
     expect(store.getState().agentSendPopoverTargetMode).toBeNull()
   })
 
-  it('sends to a structured chat by its session, not a terminal', async () => {
-    const store = createAgentSendStore()
-    const chatTabId = 'structured-agent-session-claude_1'
-    const chatPaneKey = structuredAgentSessionPaneKey(chatTabId, 'claude_1')
-    const onPromptDelivered = vi.fn()
+  const chatTabId = 'structured-agent-session-claude_1'
+  const chatPaneKey = structuredAgentSessionPaneKey(chatTabId, 'claude_1')
+
+  function seedChatState(
+    store: StoreApi<AppState>,
+    agentStatusByPaneKey: AppState['agentStatusByPaneKey']
+  ): void {
     store.setState({
-      agentStatusByPaneKey: {},
+      agentStatusByPaneKey,
       tabsByWorktree: {},
       terminalLayoutsByTabId: {},
       ptyIdsByTabId: {},
@@ -336,6 +338,40 @@ describe('createUISlice agent send target mode', () => {
             createdAt: Date.now()
           }
         ]
+      }
+    })
+  }
+
+  it('does not reveal the sidebar for a chat before its first turn, which has no row there', () => {
+    const store = createAgentSendStore()
+    seedChatState(store, {})
+
+    store.getState().openAgentSendPopoverTargetMode({
+      id: 'send-1',
+      worktreeId,
+      source: 'diff-notes',
+      prompt: 'Review this',
+      label: 'All unsent notes',
+      launchSource: 'notes_send'
+    })
+
+    expect(store.getState().agentSendPopoverTargetMode?.eligiblePaneKeys).toEqual([])
+    expect(store.getState().pendingRevealWorktree).toBeNull()
+  })
+
+  it('sends to a structured chat by its session, not a terminal', async () => {
+    const store = createAgentSendStore()
+    const onPromptDelivered = vi.fn()
+    const now = Date.now()
+    seedChatState(store, {
+      [chatPaneKey]: {
+        state: 'done',
+        prompt: 'previous',
+        updatedAt: now,
+        stateStartedAt: now,
+        agentType: 'claude',
+        paneKey: chatPaneKey,
+        stateHistory: []
       }
     })
     store.getState().openAgentSendPopoverTargetMode({

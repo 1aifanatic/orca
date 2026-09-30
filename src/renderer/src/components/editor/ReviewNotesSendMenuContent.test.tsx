@@ -1,4 +1,5 @@
 import React from 'react'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry, AgentStatusState } from '../../../../shared/agent-status-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -156,15 +157,16 @@ vi.mock('@/lib/focus-terminal-tab-surface', () => ({
   focusTerminalTabSurface: vi.fn()
 }))
 
-vi.mock('sonner', () => ({
-  toast: {
-    dismiss: vi.fn(),
-    error: vi.fn(),
-    loading: vi.fn(() => 'toast-id'),
-    message: harness.toastMessage,
-    success: vi.fn()
+// Why: real sonner state, so tests see which toast type a settled toast ends up with.
+vi.mock('sonner', async () => {
+  const actual = await vi.importActual<typeof import('sonner')>('sonner') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()
+  const realMessage = actual.toast.message
+  const message: typeof realMessage = (...args) => {
+    harness.toastMessage(...args)
+    return realMessage(...args)
   }
-}))
+  return { ...actual, toast: Object.assign(actual.toast, { message }) }
+})
 
 function agentEntry(
   paneKey: string,
@@ -651,7 +653,11 @@ describe('ReviewNotesSendMenuContent', () => {
 
     expect(onPromptDelivered).not.toHaveBeenCalled()
     expect(harness.track).not.toHaveBeenCalled()
-    expect(harness.toastMessage).toHaveBeenCalledWith('selected:not-ready', { id: 'toast-id' })
+    // Why: a failure must replace the 'Sending notes...' loading toast, not keep its spinner.
+    const settled = toast
+      .getToasts()
+      .find((entry) => 'title' in entry && entry.title === 'selected:not-ready')
+    expect(settled && 'type' in settled ? settled.type : undefined).toBe('info')
   })
 
   it('keeps selected-target thrown send errors undelivered', async () => {

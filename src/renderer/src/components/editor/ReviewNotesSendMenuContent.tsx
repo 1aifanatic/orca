@@ -128,7 +128,8 @@ export function ReviewNotesSendMenuContent({
             return
           }
 
-          toast.message(
+          // Why: a typed call is required; toast.message on the loading id keeps its spinner forever.
+          toast.info(
             activeAgentNotesSendFailureMessage(result.status, {
               explicitTarget: options.explicitTarget,
               code: result.code
