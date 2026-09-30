@@ -10,8 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentHookServer } from './server'
 import { _internals } from './server'
 import { PANE } from './server.test-fixtures'
-import { cancelLabelled, hookAt, loadCapture } from './claude-cancel-capture.test-fixture'
-import type { CapturedRecord } from './claude-cancel-capture.test-fixture'
+import {
+  cancelLabelled,
+  hookAt,
+  hookSupersedesCancel,
+  loadCapture,
+  type CapturedRecord
+} from './claude-cancel-capture.test-fixture'
 import {
   captureEpoch,
   cleanUpCaptureReplays,
@@ -69,6 +74,65 @@ function keyAt(records: CapturedRecord[], label: string): number {
 
 const MONITORING = { state: 'working', workingMode: 'monitoring' } as const
 const CANCELLED = { mainAgent: { state: 'done', outcome: 'cancellation' } } as const
+
+// W8, the case this change is for: after a Ctrl+C in the launch turn nothing but the workflow's own
+// record says it runs while its script waits between agents.
+describe('Ctrl+C in the turn that launched a workflow whose script waits between agents (captured, 2.1.285)', () => {
+  const records = loadCapture('claude-background-workflow-script-wait-ctrl-c-hooks')
+  const cancel = cancelLabelled(records, 'W8-ctrl-c-after-launch')
+  const notice = queueLine(records, 'interrupt-notice')
+  const completed = queueLine(records, 'queue-operation-enqueue')
+
+  it('monitors through the 60 s wait with no agent, instead of reading done', async () => {
+    const server = await startServer()
+    const transcript = transcriptFile()
+    const replay = replayer(server, records, new Map([['*', transcript]]))
+    // Hook order by the capture's clock: the launch result lands 11 ms before agent 1 starts.
+    await replay([0, 1, 2, 4, 3, 5])
+    expect(recordedTasks(server)?.get('w1mq9q8uo')).toEqual({
+      kind: 'workflow',
+      launchToolUseId: 'toolu_01TQmzzuafz2UhRsCBJgZWEe'
+    })
+
+    // The capture: no hook inside the renderer's settle window, so it infers the Ctrl+C.
+    expect(cancel).toMatchObject({ interrupted_painted: true })
+    expect(hookSupersedesCancel(records, cancel)).toBe(false)
+    vi.setSystemTime(captureEpoch(records) + cancel.t * 1000)
+    expect(pressCtrlC(server)).toBe(true)
+    appendFileSync(transcript, `${notice.lines[0]}\n`)
+    await replay([6, 7, 8])
+    expect(row(server)).toMatchObject({ state: 'working', ...CANCELLED })
+
+    // Agent 1 stops; agent 2 starts 60.1 s later, with no hook or main-transcript line between.
+    await replay([9])
+    expect(rosterSize(server)).toBe(0)
+    expect(row(server)).toMatchObject({ ...MONITORING, ...CANCELLED })
+    expect(row(server).interrupted).toBeUndefined()
+    expect(hookAt(records, 10).t - hookAt(records, 9).t).toBeGreaterThan(60)
+    vi.setSystemTime(captureEpoch(records) + (hookAt(records, 10).t - 1) * 1000)
+    // Hand-built: a line no reason reads, so a caught-up offset proves a tick ran late in the wait.
+    appendFileSync(transcript, '{"type":"mode"}\n')
+    await watchCaughtUp(server, transcript)
+    expect(row(server)).toMatchObject({ ...MONITORING, ...CANCELLED })
+
+    await replay([10, 11])
+    expect(row(server)).toMatchObject({ state: 'working', ...CANCELLED })
+    expect(row(server).workingMode).not.toBe('monitoring')
+    await replay([12, 13, 14])
+    expect(row(server)).toMatchObject({ ...MONITORING, ...CANCELLED })
+
+    // By Claude's own stamps the end line (18:43:23.636Z) precedes the report turn's prompt hook
+    // by 41 ms.
+    writeCaptured(records, completed, transcript)
+    await vi.waitFor(() => expect(row(server).state).toBe('done'), { timeout: 3_000 })
+    expect(row(server)).toMatchObject({ interrupted: true, ...CANCELLED })
+    expect(recordedTasks(server)).toBeUndefined()
+    await replay([15])
+    expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+    await replay([16, 17, 18])
+    expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+  })
+})
 
 describe('Ctrl+C in the turn that launched a background workflow (captured, 2.1.285)', () => {
   const records = loadCapture('claude-background-workflow-ctrl-c-hooks')
