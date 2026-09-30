@@ -136,6 +136,26 @@ describe('verifyPackagedOrcadTemplate', () => {
     )
   })
 
+  it('verifies a partial template only against the targets it was built for', async () => {
+    const fixture = await createFixture()
+    const kept = ['linux-x64-glibc', 'linux-x64-musl']
+    const manifestPath = join(fixture.templateDir, ORCAD_TEMPLATE_MANIFEST_FILENAME)
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    for (const target of Object.keys(manifest.targets).filter((name) => !kept.includes(name))) {
+      delete manifest.targets[target]
+      await rm(join(fixture.templateDir, ORCAD_TEMPLATE_TARGETS_DIR, target), { recursive: true })
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest))
+
+    expect(() => verifyPackagedOrcadTemplate(fixture.root, kept)).not.toThrow()
+    expect(() => verifyPackagedOrcadTemplate(fixture.root)).toThrow(
+      'target manifest inventory mismatch'
+    )
+    expect(() => verifyPackagedOrcadTemplate(fixture.root, ['linux-x64-glibc'])).toThrow(
+      'target manifest inventory mismatch'
+    )
+  })
+
   // Design D2 reverses the old "unused, excluded" contract: SSH relays and managed orcad deploys
   // materialize their slot from process.resourcesPath/orcad-template, so every desktop OS ships it.
   it('ships the deployment template as a resource on every desktop OS, never its runtimes', async () => {

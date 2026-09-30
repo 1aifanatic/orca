@@ -142,7 +142,8 @@ function verifyTarget(templateDir, target, value) {
   requireExactNames(listFiles(targetDir), inventory, `${target} file inventory`)
 }
 
-function verifyPackagedOrcadTemplate(resourcesDir) {
+/** `targets` narrows the inventory for a CI-only partial template; packaging checks them all. */
+function verifyPackagedOrcadTemplate(resourcesDir, targets = ORCAD_TEMPLATE_TARGETS) {
   const templateDir = join(resourcesDir, 'orcad-template')
   const manifest = requireRecord(readManifest(templateDir), 'manifest')
   if (manifest.schemaVersion !== TEMPLATE_SCHEMA_VERSION) {
@@ -161,18 +162,20 @@ function verifyPackagedOrcadTemplate(resourcesDir) {
     )
   }
 
-  const targets = requireRecord(manifest.targets, 'targets')
+  const manifestTargets = requireRecord(manifest.targets, 'targets')
   // Compat targets (design D6 rung B) are optional: a build without the compat slot omits them.
-  const compatTargets = COMPAT_SERVER_TARGETS.filter((target) => Object.hasOwn(targets, target))
-  const expectedTargets = [...ORCAD_TEMPLATE_TARGETS, ...compatTargets]
-  requireExactNames(Object.keys(targets), expectedTargets, 'target manifest inventory')
+  const compatTargets = COMPAT_SERVER_TARGETS.filter((target) =>
+    Object.hasOwn(manifestTargets, target)
+  )
+  const expectedTargets = [...targets, ...compatTargets]
+  requireExactNames(Object.keys(manifestTargets), expectedTargets, 'target manifest inventory')
   requireExactNames(
     readdirSync(join(templateDir, ORCAD_TEMPLATE_TARGETS_DIR)),
     expectedTargets,
     'target directory inventory'
   )
   for (const target of expectedTargets) {
-    verifyTarget(templateDir, target, targets[target])
+    verifyTarget(templateDir, target, manifestTargets[target])
   }
   console.log(
     `[verify-packaged-orcad-template] OK — verified ${expectedTargets.length} Node targets`
