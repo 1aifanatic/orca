@@ -7,14 +7,17 @@ import * as path from 'node:path'
 import { RelayReconnectListener } from './relay-reconnect-listener'
 import { RelaySocketOwnership } from './relay-socket-ownership'
 import { encodeHandshakeFrame, FrameDecoder, RELAY_VERSION } from './protocol'
-import type { RelayDispatcher } from './dispatcher'
+import { RelayDispatcher } from './dispatcher'
 import type { PtyConsumerCloseCause } from '../shared/pty-consumer-session-contract'
 
 describe.skipIf(process.platform === 'win32')('reconnect listener peer end', () => {
   let dir: string
   let ownership: RelaySocketOwnership | null = null
+  let dispatcher: RelayDispatcher | null = null
 
   afterEach(async () => {
+    dispatcher?.dispose()
+    dispatcher = null
     ownership?.closeAndCleanup()
     ownership = null
     await rm(dir, { recursive: true, force: true }).catch(() => {})
@@ -27,11 +30,9 @@ describe.skipIf(process.platform === 'win32')('reconnect listener peer end', () 
     const sockPath = path.join(dir, 'relay.sock')
     ownership = new RelaySocketOwnership(sockPath)
     const detached: PtyConsumerCloseCause[] = []
-    const dispatcher = {
-      attachClient: () => 1,
-      detachClient: (_id: number, cause: PtyConsumerCloseCause) => detached.push(cause),
-      feedClient: () => {}
-    } as unknown as RelayDispatcher
+    const relay = new RelayDispatcher(() => true)
+    dispatcher = relay
+    relay.onClientDetached((_id, cause) => detached.push(cause))
     const listen = ownership.listen.bind(ownership)
     const atServerEnd: { destroyed: boolean; detached: PtyConsumerCloseCause[] }[] = []
     ownership.listen = (onConnection) =>
@@ -42,7 +43,7 @@ describe.skipIf(process.platform === 'win32')('reconnect listener peer end', () 
           atServerEnd.push({ destroyed: socket.destroyed, detached: [...detached] })
         )
       })
-    const listener = new RelayReconnectListener(dispatcher, ownership, RELAY_VERSION, undefined, {
+    const listener = new RelayReconnectListener(relay, ownership, RELAY_VERSION, undefined, {
       detachPrimaryInput: () => {},
       cancelGrace: () => {},
       onLastClientClosed: () => {}
