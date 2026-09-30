@@ -17,10 +17,10 @@ function isLaunchShell(processName: string): boolean {
  * terminal's foreground: the launch line has not run yet, or the agent exited. A read that fails or
  * cannot tell proves nothing, so it never delays a launch.
  *
- * On macOS and Linux it is decided by identity, not by name: the host's process inspection reports
- * the terminal's foreground process group, and the pane's shell is in front only when that group is
- * the shell's own. A wrapper script's bash, or a conda hook, runs as its own job, so it is not the
- * pane's shell even though it is named like one.
+ * On macOS and Linux identity decides first: the host's process inspection reports the terminal's
+ * foreground process group, and the pane's shell can be in front only when that group is the
+ * shell's own. A wrapper script's bash, or a conda hook, runs as its own job, so it is not the
+ * pane's shell even though it is named like one. A fresh read must then also name a shell.
  *
  * Windows has no foreground process group, and its scan names the pane's shell for any agent it
  * cannot recognize (an npm agent running as `node.exe`), so it takes only the host's
@@ -59,18 +59,20 @@ export async function isShellInFrontOfLaunchedAgent(
       return (await controller.confirmShellForeground?.(ptyId)) ?? false
     }
     const evidence = (await controller.inspectProcess?.(ptyId))?.foregroundProcessEvidence
-    if (evidence) {
-      // Why also no agent in the group: a shell without job control runs its commands in its own.
-      return (
+    if (
+      evidence &&
+      !(
         evidence.verdict === 'live' &&
         evidence.fence.platform === 'posix' &&
-        evidence.fence.foregroundPgid === evidence.fence.shellPid &&
-        evidence.processName === null
+        evidence.fence.foregroundPgid === evidence.fence.shellPid
       )
+    ) {
+      return false
     }
+    // Why the name too: a shell without job control runs its commands in its own group.
     // A host that predates the evidence (an older daemon or relay, or a pane outside the daemon)
-    // falls back to the name, which reads a wrapper script's bash as the shell. A relay's cached
-    // name is read live, and it has no scan.
+    // has only the name, which reads a wrapper script's bash as the shell. A relay's cached name is
+    // read live, and it has no scan.
     const foreground =
       !host.remote && controller.confirmForegroundProcess
         ? await controller.confirmForegroundProcess(ptyId)

@@ -303,18 +303,18 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
 
     it.each([
       // A wrapper script's bash runs as its own job: named like a shell, but not the pane's shell.
-      ['a bash wrapper under zsh', wrapperRunning, false],
-      ['zsh back at its prompt', zshAtPrompt, true]
-    ] as const)('%s: shell in front %s, without a name scan', async (_label, rows, shell) => {
+      ['a bash wrapper under zsh is not the shell', wrapperRunning, 'bash', false, false],
+      ['zsh back at its prompt is the shell', zshAtPrompt, 'zsh', true, true]
+    ] as const)('%s', async (_label, rows, foregroundName, shell, scanned) => {
       const inspection = inspect([...rows])
       // Presence precondition: the captured rows are a live observation, not an unreadable one.
       expect(inspection.foregroundProcessEvidence).toMatchObject({ verdict: 'live' })
       const scan = vi.fn()
       const { runtime } = await createTranscriptPane({
         paneTitle: 'Terminal',
-        foregroundProcess: 'bash',
+        foregroundProcess: foregroundName,
         processInspection: inspection,
-        confirmedForegroundProcess: 'bash',
+        confirmedForegroundProcess: foregroundName,
         onForegroundScan: scan,
         launchAgent: 'copilot',
         data: ''
@@ -323,7 +323,7 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
       await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
         shell
       )
-      expect(scan).not.toHaveBeenCalled()
+      expect(scan).toHaveBeenCalledTimes(scanned ? 1 : 0)
     })
 
     it('SSH: takes the relay’s inspection the same way', async () => {
@@ -341,29 +341,18 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
       )
     })
 
-    it('a recognized agent in the shell’s own group is not the shell (no job control)', async () => {
-      const rows: ProcessTableRow[] = [
-        zsh(20894, 'Ss+'),
-        {
-          pid: 21000,
-          ppid: 20894,
-          pgid: 20894,
-          tpgid: 20894,
-          stat: 'S+',
-          tty: 'ttys000',
-          startTime: 'Wed Sep 30 09:18:52 2026',
-          command: 'codex'
-        }
-      ]
+    it('an agent in the shell’s own group (a shell without job control) is not the shell', async () => {
       const { runtime } = await createTranscriptPane({
-        paneTitle: 'Codex',
-        foregroundProcess: 'codex',
-        processInspection: inspect(rows),
-        launchAgent: 'codex',
+        paneTitle: 'Copilot',
+        // node-pty names the group's leader, which is the shell itself here.
+        foregroundProcess: 'zsh',
+        processInspection: inspect([...zshAtPrompt]),
+        confirmedForegroundProcess: 'node',
+        launchAgent: 'copilot',
         data: ''
       })
 
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'codex')).resolves.toBe(
+      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
         false
       )
     })
