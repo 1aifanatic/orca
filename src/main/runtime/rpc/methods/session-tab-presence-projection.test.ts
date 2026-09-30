@@ -1,4 +1,5 @@
 import { UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH } from '../../../../shared/runtime-types'
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
@@ -18,7 +19,22 @@ const status = {
     ended: true
   }
 } as const
-function snapshot(covered: boolean): RuntimeMobileSessionTabsResult {
+const published: AgentStatusEntry = {
+  state: 'working',
+  prompt: 'second task',
+  paneKey: 'tab:leaf',
+  updatedAt: 30,
+  stateStartedAt: 20,
+  turnStartedAt: 20,
+  agentType: 'claude',
+  lastCompletedAssistantMessage: 'first answer',
+  orchestration: { taskId: 'task-1', dispatchId: 'dispatch-1', taskTitle: 'Refactor' },
+  stateHistory: [{ state: 'done', prompt: 'first task', startedAt: 10 }]
+}
+function snapshot(
+  covered: boolean,
+  agentStatus?: AgentStatusEntry
+): RuntimeMobileSessionTabsResult {
   const tab = {
     type: 'terminal',
     id: 'tab::leaf',
@@ -28,6 +44,7 @@ function snapshot(covered: boolean): RuntimeMobileSessionTabsResult {
     isActive: true,
     status: 'pending-handle',
     terminal: null,
+    ...(agentStatus ? { agentStatus } : {}),
     ...(covered ? { [HOST_AGENT_PRESENCE_STATUS]: status } : {})
   } as const
   return {
@@ -62,6 +79,16 @@ describe('connection scoped presence projection', () => {
     projectSessionTabPresenceForClient(snapshot(true), capable)
     expect(projectSessionTabPresenceForClient(snapshot(true), undefined).tabs).toEqual(
       snapshot(false).tabs
+    )
+  })
+  it('adds host presence to the published status instead of replacing it', () => {
+    const capable = [AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY]
+    expect(projectSessionTabPresenceForClient(snapshot(true, published), capable).tabs[0]).toEqual({
+      ...snapshot(false, published).tabs[0],
+      agentStatus: { ...published, agentPresence: status.agentPresence }
+    })
+    expect(projectSessionTabPresenceForClient(snapshot(true, published), []).tabs).toEqual(
+      snapshot(false, published).tabs
     )
   })
 })

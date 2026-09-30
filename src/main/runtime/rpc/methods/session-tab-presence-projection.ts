@@ -23,7 +23,15 @@ export function projectSessionTabPresenceForClient(
         return legacy
       }
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This private symbol is minted only by projectHostAgentPresenceStatus; JSON cannot supply it.
-      return { ...legacy, agentStatus: status as AgentStatusEntry }
+      const hostStatus = status as AgentStatusEntry
+      // Why: presence is an identity fact; the published row keeps its history, labels and title
+      // corrections. The host row stands in only when a pane published no status at all.
+      return {
+        ...legacy,
+        agentStatus: legacy.agentStatus
+          ? { ...legacy.agentStatus, agentPresence: hostStatus.agentPresence }
+          : hostStatus
+      }
     })
   }
 }

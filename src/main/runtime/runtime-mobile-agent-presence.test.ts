@@ -127,8 +127,9 @@ describe('headless mobile owner projection', () => {
       ...spoofedAuthority
     })
     setRows([row])
+    // The published row keeps its own fields; only the host's presence replaces the client's.
     expect(tabFor(capable)).toMatchObject({
-      agentStatus: { agentPresence: row.agentPresence, updatedAt: 10, stateStartedAt: 5 }
+      agentStatus: { agentPresence: row.agentPresence, updatedAt: 99999, stateStartedAt: 99999 }
     })
     expect(tabFor([])).not.toHaveProperty('agentStatus.agentPresence')
     setRows([])
