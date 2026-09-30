@@ -13,10 +13,7 @@ import {
   supportsPosixShellStartupCommand
 } from '../pty/posix-shell-startup-command'
 import { resolvePathEnvKey } from '../pty/windows-environment-path'
-import {
-  keepsConfiguredShellUnwrapped,
-  selectShellStartupFeatures
-} from '../shell-startup-features'
+import { selectShellStartupFeatures } from '../shell-startup-features'
 import {
   injectHistoryEnv,
   injectWslFishHistoryEnv,
@@ -28,7 +25,7 @@ import { dropInheritedOrcaHistFile } from '../worktree-history-file-path'
 import { promoteAgentTeamsShimPath } from './local-pty-launch-helpers'
 import type { LocalPtyLaunchPlan } from './local-pty-launch-plan'
 import type { LocalPtyProviderOptions } from './local-pty-provider-types'
-import { getShellLaunchConfig, UNWRAPPED } from './local-pty-shell-ready'
+import { getShellLaunchConfig } from './local-pty-shell-ready'
 import { finalizeWindowsLocalPtySpawnEnvironment } from './local-pty-windows-spawn-environment'
 import type { PtySpawnOptions } from './types'
 
@@ -117,18 +114,19 @@ export function finalizeLocalPtySpawnEnvironment(args: {
       // hook, never written into the PTY, so there is no early write to double-echo.
       const waitsForShellReady =
         Boolean(spawn.command) && (!isCodexStartupCommand || codexRequiresShellReady)
-      const features = selectShellStartupFeatures({
-        shellPath: shell,
-        env,
-        hasStartupCommand: Boolean(spawn.command),
-        waitsForShellReady,
-        // Why identical: the identity marker exists so the readiness
-        // handshake can bind output to the right shell PID.
-        emitsStartupIdentity: waitsForShellReady
-      })
-      return keepsConfiguredShellUnwrapped(features, spawn)
-        ? UNWRAPPED
-        : getShellLaunchConfig(shell, features, wrapperStartupCommand)
+      return getShellLaunchConfig(
+        shell,
+        selectShellStartupFeatures({
+          shellPath: shell,
+          env,
+          hasStartupCommand: Boolean(spawn.command),
+          waitsForShellReady,
+          // Why identical: the identity marker exists so the readiness
+          // handshake can bind output to the right shell PID.
+          emitsStartupIdentity: waitsForShellReady
+        }),
+        wrapperStartupCommand
+      )
     }
     const shellLaunch = plan.getFallbackShellReadyConfig(plan.shellPath)
     Object.assign(env, shellLaunch.env)

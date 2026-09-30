@@ -187,15 +187,12 @@ describePosix('local PTY shell-ready launch config', () => {
     expect(init).toContain('functions -e __orca_shell_ready_marker')
   })
 
-  it('wraps a markerless fish spawn for the codex function only', async () => {
+  it('keeps markerless fish spawns unwrapped', async () => {
     const { getMarkerlessShellLaunchConfig } = await importFreshLocalPtyShellReady()
 
     const config = getMarkerlessShellLaunchConfig('/opt/homebrew/bin/fish')
 
-    expect(config.args?.slice(0, 2)).toEqual(['-l', '-C'])
-    expect(config.args?.[2]).toContain('function codex')
-    expect(config.args?.[2]).not.toContain('orca-shell-ready')
-    expect(config.supportsReadyMarker).toBe(false)
+    expect(config).toEqual({ args: null, env: {}, supportsReadyMarker: false })
   })
 
   it('falls back to HOME for ORCA_ORIG_ZDOTDIR when inherited ZDOTDIR points at a wrapper dir', async () => {

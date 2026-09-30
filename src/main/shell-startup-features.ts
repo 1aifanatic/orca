@@ -91,23 +91,6 @@ export function selectShellStartupFeatures(input: ShellStartupFeatureInput): She
   return features
 }
 
-/**
- * True when a pane stays exactly the user's shell: a plain tab launched on the
- * user's configured shell args, with no feature Orca must enable. Everything
- * else is wrapped, which is what defines the codex function in plain tabs.
- */
-export function keepsConfiguredShellUnwrapped(
-  features: readonly ShellStartupFeature[],
-  launch: { command?: string; launchAgent?: string; terminalShellArgs?: readonly string[] }
-): boolean {
-  return (
-    features.length === 0 &&
-    !launch.command &&
-    !launch.launchAgent &&
-    launch.terminalShellArgs !== undefined
-  )
-}
-
 export function encodeShellStartupFeatures(features: readonly ShellStartupFeature[]): string {
   return features.join(',')
 }

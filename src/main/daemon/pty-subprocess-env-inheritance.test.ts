@@ -256,8 +256,9 @@ describe('createPtySubprocess', () => {
 
   it.each([
     // ORCA_HISTFILE is exported into every pane, so a daemon started from an
-    // Orca pane inherits one. Left in place it re-scopes the pane to another
-    // worktree's history file (#11146) and selects `history` on its presence.
+    // Orca pane inherits one. Left in place it BOTH re-scopes the pane to
+    // another worktree's history file (#11146) and wraps a zsh pane nothing
+    // asked to wrap, since `history` is selected on its presence.
     ['drops an inherited Orca ORCA_HISTFILE', undefined, undefined],
     [
       'keeps the path this spawn injected',
@@ -288,8 +289,9 @@ describe('createPtySubprocess', () => {
 
     const env = spawnMock.mock.calls.at(-1)?.[2].env
     expect(env.ORCA_HISTFILE).toBe(expected)
-    // Why '' and not absent: every zsh pane is wrapped for the codex function.
-    expect(env.ORCA_SHELL_FEATURES).toBe(expected === undefined ? '' : 'history')
+    // The wrapping consequence: no inherited value may point a pane at Orca's
+    // ZDOTDIR that the client scoped no history for.
+    expect(env.ORCA_SHELL_FEATURES).toBe(expected === undefined ? undefined : 'history')
   })
 
   it('does not inherit ELECTRON_RUN_AS_NODE from the daemon process env', async () => {

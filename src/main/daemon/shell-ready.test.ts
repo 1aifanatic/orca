@@ -224,15 +224,12 @@ describePosix('daemon shell-ready launch config', () => {
     expect(init).toContain('functions -e __orca_shell_ready_marker')
   })
 
-  it('wraps a markerless fish spawn for the codex function only', async () => {
+  it('keeps markerless fish spawns unwrapped', async () => {
     const { getMarkerlessShellLaunchConfig } = await importFreshShellReady()
 
     const config = getMarkerlessShellLaunchConfig('/opt/homebrew/bin/fish')
 
-    expect(config.args?.slice(0, 2)).toEqual(['-l', '-C'])
-    expect(config.args?.[2]).toContain('function codex')
-    expect(config.args?.[2]).not.toContain('orca-shell-ready')
-    expect(config.supportsReadyMarker).toBe(false)
+    expect(config).toEqual({ args: null, env: {}, supportsReadyMarker: false })
   })
 
   itWithFish(

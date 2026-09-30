@@ -26,10 +26,7 @@ import {
   resolveWindowsShellLaunchArgs
 } from '../../providers/windows-shell-args'
 import { resolveUnixShellPath } from '../../providers/local-pty-utils'
-import {
-  keepsConfiguredShellUnwrapped,
-  selectShellStartupFeatures
-} from '../../shell-startup-features'
+import { selectShellStartupFeatures } from '../../shell-startup-features'
 import { parseWslPath } from '../../wsl'
 import { addWslEnvKeys } from '../../wsl-env'
 import {
@@ -201,19 +198,22 @@ export function createPtyShellLaunchPlan(
           shellPath
         }))
     delete env.ORCA_SHELL_FEATURES
-    const features = selectShellStartupFeatures({
+    const shellLaunch = getShellLaunchConfig(
       shellPath,
-      env,
-      hasStartupCommand: Boolean(opts.command),
-      waitsForShellReady,
-      emitsStartupIdentity: waitsForShellReady
-    })
-    const shellLaunch = keepsConfiguredShellUnwrapped(features, opts)
-      ? null
-      : getShellLaunchConfig(shellPath, features)
-    Object.assign(env, shellLaunch?.env)
-    shellArgs = (!opts.command && !opts.launchAgent ? opts.terminalShellArgs : undefined) ??
-      shellLaunch?.args ?? ['-l']
+      selectShellStartupFeatures({
+        shellPath,
+        env,
+        hasStartupCommand: Boolean(opts.command),
+        waitsForShellReady,
+        emitsStartupIdentity: waitsForShellReady
+      }),
+      { hasStartupCommand: Boolean(opts.command) }
+    )
+    Object.assign(env, shellLaunch.env)
+    shellArgs =
+      !opts.command && !opts.launchAgent && opts.terminalShellArgs !== undefined
+        ? opts.terminalShellArgs
+        : (shellLaunch.args ?? ['-l'])
   }
 
   seedPowerlevel10kWizardEnv(env, { envToDelete: opts.envToDelete })
