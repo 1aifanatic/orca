@@ -81,8 +81,8 @@ function resolveExecutionHostId(store: AgentLaunchRouteStore, workspace: Prospec
 }
 
 /** The launch is decided on what the host that would run it supports, not on this machine. */
-function resolveHostCapabilities(
-  store: AgentLaunchRouteStore,
+export function resolveHostCapabilities(
+  store: Pick<AgentLaunchRouteStore, 'runtimeStatusByEnvironmentId'>,
   executionHostId: string
 ): readonly string[] | null {
   const host = parseExecutionHostId(executionHostId)
