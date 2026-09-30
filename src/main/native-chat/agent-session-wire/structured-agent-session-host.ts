@@ -10,7 +10,10 @@ import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
+import {
+  createRestartReconciler,
+  reconcileLeasesAtStartup
+} from './structured-agent-session-restart-reconcile'
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
@@ -228,12 +231,8 @@ export class StructuredAgentSessionHost {
     }
   }
 
-  reconcileRestartLeases = async (): Promise<void> => {
-    const refusal = await this.reconcileLeases('startup')
-    if (refusal) {
-      throw new Error(refusal.code)
-    }
-  }
+  reconcileRestartLeases = (): Promise<void> =>
+    reconcileLeasesAtStartup(this.reconcileLeases, this.deps.onStartupReconcileFailure)
 
   restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
     this.restore.restoreReadableSessions(sessionIds)

@@ -45,6 +45,22 @@ export function createRestartReconciler(deps: {
   }
 }
 
+/** Startup never fails on this verdict: a lease left unreconciled grants no writer, and the next
+ *  attach, send or read of that chat reconciles it again. So a failure is reported, never owed. */
+export async function reconcileLeasesAtStartup(
+  reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
+  onFailure: ((failure: unknown) => void) | undefined
+): Promise<void> {
+  try {
+    const refusal = await reconcile('startup')
+    if (refusal) {
+      onFailure?.(refusal)
+    }
+  } catch (error) {
+    onFailure?.(error)
+  }
+}
+
 async function reconcileCurrentLeases(deps: {
   store: AgentSessionRecordStore
   probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>

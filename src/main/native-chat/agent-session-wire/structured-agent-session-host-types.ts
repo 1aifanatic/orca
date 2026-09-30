@@ -120,6 +120,9 @@ export type StructuredAgentSessionHostDeps = {
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
+  /** A startup reconcile that refused or threw. Startup carries on: every attach, send and read
+   *  reconciles its own chat again. */
+  onStartupReconcileFailure?: (failure: unknown) => void
   /** Every status projection this host publishes. `replay` marks a re-projection of state the host
    *  already knew (restore, an arriving subscriber) rather than a fresh journal edge. */
   onSessionStatusChanged?: (
