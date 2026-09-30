@@ -147,6 +147,7 @@
     "../src/main/codex/codex-hook-trust-cleanup.ts",
     "../src/main/codex/codex-hook-trust-grant.ts",
     "../src/main/codex/codex-hook-trust-queue.ts",
+    "../src/main/codex/codex-hook-trust-relocation.ts",
     "../src/main/codex/codex-hook-user-mirroring.ts",
     "../src/main/codex/codex-hook-wsl-runtime.ts",
     "../src/main/codex/codex-managed-trust-reconciliation.ts",
