@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  persistedPaneSessionIdsForWorktree,
-  savedIncarnationBySessionId
-} from './worktree-persisted-pane-sessions'
+import { persistedPaneSessionIdsForWorktree } from './worktree-persisted-pane-sessions'
 
 describe('persistedPaneSessionIdsForWorktree', () => {
   it('collects every saved pane binding of the worktree, and only of that worktree', () => {
@@ -29,20 +26,5 @@ describe('persistedPaneSessionIdsForWorktree', () => {
       ).sort()
     ).toEqual(['repo::/a@@one', 'repo::/a@@restored', 'repo::/a@@split'])
     expect(persistedPaneSessionIdsForWorktree(null, 'repo::/a')).toEqual([])
-  })
-
-  it('maps each saved pane session id to the incarnation its tab recorded', () => {
-    const leaf = '00000000-0000-4000-8000-000000000001'
-    const session = {
-      terminalLayoutsByTabId: { t1: { ptyIdsByLeafId: { [leaf]: 'repo::/a@@one' } } },
-      terminalPtyIncarnationsByPaneKey: { [`t1:${leaf}`]: 'inc-1', 'not-a-pane-key': 'inc-2' }
-    }
-
-    expect(
-      savedIncarnationBySessionId(
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the reader uses only layout ptyIdsByLeafId and the pane-key incarnation map.
-        session as unknown as Parameters<typeof savedIncarnationBySessionId>[0]
-      )
-    ).toEqual(new Map([['repo::/a@@one', 'inc-1']]))
   })
 })

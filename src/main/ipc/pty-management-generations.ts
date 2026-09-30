@@ -35,7 +35,7 @@ export function generationDeadline(
 export async function collectGenerations(
   { adapters, current }: DaemonAdapterSet,
   nonCurrentDeadlineMs = Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
-  savedIncarnationBySessionId: ReadonlyMap<string, string> = new Map()
+  savedIncarnationFor: (sessionId: string) => string | undefined = () => undefined
 ): Promise<DaemonGenerationInventory[]> {
   const deadlineFor = (adapter: DaemonPtyAdapter): number | undefined =>
     generationDeadline(adapter, current, nonCurrentDeadlineMs)
@@ -70,7 +70,7 @@ export async function collectGenerations(
       }))
     }
   })
-  return markTabBackedSessions(generations, savedIncarnationBySessionId)
+  return markTabBackedSessions(generations, savedIncarnationFor)
 }
 
 /**
@@ -80,7 +80,7 @@ export async function collectGenerations(
  */
 function markTabBackedSessions(
   generations: DaemonGenerationInventory[],
-  savedIncarnationBySessionId: ReadonlyMap<string, string>
+  savedIncarnationFor: (sessionId: string) => string | undefined
 ): DaemonGenerationInventory[] {
   const rows = generations.flatMap((g) => (g.contact === 'live' ? g.sessions : []))
   const attachedIds = new Set(rows.filter((s) => s.backsTab).map((s) => s.sessionId))
@@ -90,7 +90,7 @@ function markTabBackedSessions(
   }
   for (const row of rows) {
     if (!row.backsTab && !attachedIds.has(row.sessionId)) {
-      const saved = savedIncarnationBySessionId.get(row.sessionId)
+      const saved = savedIncarnationFor(row.sessionId)
       row.backsTab =
         saved !== undefined ? row.incarnationId === saved : copiesById.get(row.sessionId) === 1
     }

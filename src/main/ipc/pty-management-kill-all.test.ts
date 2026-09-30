@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonPtyAdapter } from '../daemon/daemon-pty-adapter'
 import type { SessionInfo } from '../daemon/types'
 import { collectGenerations } from './pty-management-generations'
+import { savedPaneIncarnation } from './pty/provider/local-pty-shutdown-identity'
 import { killAllDaemonSessions, type DaemonKillAllResult } from './pty-management-kill-all'
 
 function session(sessionId: string, incarnationId: string): SessionInfo {
@@ -107,6 +108,31 @@ describe('Manage Sessions Kill all across versions', () => {
 })
 
 describe('Manage Sessions listing', () => {
+  it('treats two saved panes naming different incarnations as no saved incarnation', async () => {
+    vi.useRealTimers()
+    const current = version(36, [session('wt@@dup', 'copy')])
+    const previous = version(35, [session('wt@@dup', 'orphan')])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: savedPaneIncarnation reads only tabs, layout bindings and pane-keyed incarnations.
+    const saved = {
+      tabsByWorktree: { wt: [{ id: 't1' }, { id: 't2' }] },
+      terminalLayoutsByTabId: {
+        t1: { ptyIdsByLeafId: { l1: 'wt@@dup' } },
+        t2: { ptyIdsByLeafId: { l2: 'wt@@dup' } }
+      },
+      terminalPtyIncarnationsByPaneKey: { 't1:l1': 'copy', 't2:l2': 'orphan' }
+    } as unknown as Parameters<typeof savedPaneIncarnation>[0]
+
+    const generations = await collectGenerations(
+      { adapters: [current, previous], current },
+      undefined,
+      (id) => savedPaneIncarnation(saved, id)
+    )
+
+    expect(
+      generations.flatMap((g) => (g.contact === 'live' ? g.sessions.map((s) => s.backsTab) : []))
+    ).toEqual([false, false])
+  })
+
   it('never shows a slow current version as unreachable because of the cap', async () => {
     vi.useRealTimers()
     const current = version(36, [session('wt@@a', 'a1')])
@@ -136,7 +162,7 @@ describe('Manage Sessions listing', () => {
     const generations = await collectGenerations(
       { adapters: [current, silent], current },
       Date.now() + 50,
-      new Map([['wt@@dup', 'tabs-own-copy']])
+      (id: string) => (id === 'wt@@dup' ? 'tabs-own-copy' : undefined)
     )
 
     expect(generations.map((g) => g.contact)).toEqual(['live', 'unverifiable'])
@@ -151,7 +177,7 @@ describe('Manage Sessions listing', () => {
     const generations = await collectGenerations(
       { adapters: [current, previous], current },
       undefined,
-      new Map([['wt@@dup', 'orphan']])
+      (id: string) => (id === 'wt@@dup' ? 'orphan' : undefined)
     )
 
     expect(
