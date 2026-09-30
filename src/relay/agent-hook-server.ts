@@ -233,7 +233,12 @@ export class RelayAgentHookServer {
       () => this.state.lastStatusByPaneKey.get(paneKey),
       (event, handover) => {
         if (meta) {
-          this.applyEvent(event, meta.source, meta.env, meta.version, { ownerProvenDead: handover })
+          // Why replay: a handover restates the successor's last hook under its own identity;
+          // hosts must not apply that hook a second time.
+          this.applyEvent(event, meta.source, meta.env, meta.version, {
+            ownerProvenDead: handover,
+            isReplay: handover
+          })
         }
       },
       successor
