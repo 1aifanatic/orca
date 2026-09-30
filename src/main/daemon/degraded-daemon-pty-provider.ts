@@ -153,7 +153,9 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   ): Promise<void> {
     // Why not providerFor: its default local route would confirm an id the local provider never held.
     const owner = this.sessionProviders.get(id) ?? this.findProviderForExistingSession(id)
-    this.stoppedOwners.record(id, owner ?? undefined)
+    if (owner) {
+      this.stoppedOwners.record(id, owner)
+    }
     await this.providerFor(id).shutdown(id, opts)
     if (!opts.keepHistory) {
       this.sessionProviders.delete(id)

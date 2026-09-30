@@ -142,7 +142,7 @@ export type IPtyProvider = {
   attach(id: string): Promise<Pick<PtySpawnResult, 'providerSequence'> | void>
   hasPty?: (id: string) => boolean
   /** Exact provider readback: false only when the provider answered that the PTY is absent. */
-  probePtyLiveness?: (id: string) => Promise<boolean | null>
+  probePtyLiveness?: (id: string, opts?: { deadlineMs?: number }) => Promise<boolean | null>
   /** After a stop: true once the owner that stopped it no longer holds it; null when it cannot say. */
   confirmPtyStopped?: (id: string, opts?: { deadlineMs?: number }) => Promise<boolean | null>
   write(id: string, data: string): boolean | void

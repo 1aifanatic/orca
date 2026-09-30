@@ -23,7 +23,17 @@ function version(protocolVersion: number, sessions: Set<string>, frozen = false)
     hasPty: (id: string) => sessions.has(id),
     shutdown: vi.fn(async (id: string) => (frozen ? hang() : void sessions.delete(id))),
     probePtyLiveness: vi.fn(async (id: string) => (frozen ? null : sessions.has(id))),
-    listProcesses: vi.fn(async () => (frozen ? hang() : [...sessions].map((id) => ({ id })))),
+    // Why honour the deadline: a real adapter's listing gives up at the caller's deadline.
+    listProcesses: vi.fn(async (opts?: { deadlineMs?: number }) => {
+      if (!frozen) {
+        return [...sessions].map((id) => ({ id }))
+      }
+      if (opts?.deadlineMs === undefined) {
+        return await hang()
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, opts.deadlineMs - Date.now())))
+      throw new Error('timed out')
+    }),
     readProcesses: vi.fn(),
     getActiveSessionIds: () => [...sessions],
     onData: () => () => {},
@@ -86,6 +96,19 @@ describe('DaemonPtyRouter stop confirmation while a previous version is frozen',
 
     await expect(router.confirmPtyStopped('wt@@new')).resolves.toBe(true)
     expect(frozen.listProcesses).not.toHaveBeenCalled()
+  })
+
+  it('keeps the owner an earlier stop recorded when a later stop cannot find one', async () => {
+    const frozen = version(35, new Set(['wt@@old']), true)
+    const current = version(36, new Set())
+    const router = new DaemonPtyRouter({ current, legacy: [frozen] })
+    await router.spawn({ sessionId: 'wt@@new', cols: 80, rows: 24 })
+    await router.shutdown('wt@@new', { immediate: true })
+
+    // The id is gone from its owner and the frozen version cannot be asked, so no owner is found.
+    await expect(router.shutdown('wt@@new', { immediate: true })).rejects.toThrow()
+
+    await expect(router.confirmPtyStopped('wt@@new')).resolves.toBe(true)
   })
 
   it('never confirms a stop of a session the frozen version owns', async () => {

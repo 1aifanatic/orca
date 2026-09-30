@@ -139,8 +139,8 @@ export class DaemonPtyRouter implements IPtyProvider {
   }
 
   async shutdown(id: string, opts: Parameters<IPtyProvider['shutdown']>[1]): Promise<void> {
-    this.stoppedOwners.record(id, undefined)
     const adapter = await this.ownerFor(id, opts.expectedIncarnationId)
+    // Why only once known: a failed lookup must not erase the owner an earlier stop recorded.
     this.stoppedOwners.record(id, adapter)
     const migrateHistory = shouldHandoffDaemonHistory(opts.keepHistory, adapter, this.current)
     await adapter.shutdown(id, opts)

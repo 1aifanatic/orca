@@ -1,5 +1,6 @@
 import type { IPtyProvider } from '../providers/types'
 import { withinDeadline } from './daemon-generation-listing'
+import { LIVENESS_PROBE_TIMEOUT_MS } from './daemon-pty-session-control'
 
 const MAX_STOPPED_SESSION_OWNERS = 512
 
@@ -44,13 +45,21 @@ export class DaemonStoppedSessionOwners<T extends IPtyProvider> {
     deadlineMs?: number
   ): Promise<boolean | null> {
     const owner = this.owners.get(sessionId)
+    // Why the floor: matches the owner probe's own minimum, so a tight caller deadline cannot cut it short.
+    const boundMs =
+      deadlineMs === undefined
+        ? undefined
+        : Math.max(deadlineMs, Date.now() + LIVENESS_PROBE_TIMEOUT_MS)
     const probe = owner
       ? owner.probePtyLiveness
-        ? owner.probePtyLiveness(sessionId)
+        ? owner.probePtyLiveness(
+            sessionId,
+            boundMs === undefined ? undefined : { deadlineMs: boundMs }
+          )
         : Promise.resolve(owner.hasPty?.(sessionId) ?? null)
       : probeWithoutOwner()
     try {
-      const live = await withinDeadline(probe, deadlineMs)
+      const live = await withinDeadline(probe, boundMs)
       return live === null ? null : !live
     } catch {
       return null

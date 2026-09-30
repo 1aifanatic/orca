@@ -20,7 +20,8 @@ export const WORKTREE_TEARDOWN_VERIFY_GRACE_MS = 2_000
 export type UnstoppedPtyVerdict = PtyLivenessVerdict
 
 /**
- * Re-lists the provider's processes to decide what a failed stop RPC actually
+ * Asks each failed stop's owner (daemon providers) or re-lists the provider's processes
+ * (single-source providers) to decide what a failed stop RPC actually
  * meant. The three verdicts stay distinct on purpose: "we could not ask" is not
  * evidence that a PTY survived, and callers word their errors differently.
  *
