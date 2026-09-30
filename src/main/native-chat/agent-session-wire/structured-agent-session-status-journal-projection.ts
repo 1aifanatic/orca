@@ -63,7 +63,7 @@ export class StructuredAgentSessionJournalProjections {
         acceptedSend: snapshot
           ? newestAcceptedSend(
               cursor.epoch,
-              snapshot.submissions,
+              snapshot?.submissions ?? [],
               (queuedMessageId) => draftQueuedAt(journal, queuedMessageId),
               previous?.acceptedSend ?? undefined
             )
