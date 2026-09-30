@@ -5,9 +5,9 @@
 // foreground fan-out is running work while the turn is still open. It stays
 // mounted through a running turn — turn state is not a filter on the rows,
 // because the producers publish only tasks they still have live evidence for.
-// A host that publishes its child records also keeps a finished child listed,
-// with how it ended, until the user's next turn. Only an idle session with
-// live work lets the strip animate or speak for itself.
+// A host that publishes its child records sends the running ones only, and no
+// roster once none runs, so the strip hides. Only an idle session with live
+// work lets the strip animate or speak for itself.
 
 import type {
   AgentSessionBackgroundTask,
@@ -40,7 +40,7 @@ export function structuredSessionBackgroundTasksView(
   const monitoring = backgroundTasks?.state === 'monitoring'
   // Decoded once where the frame entered the client's state, so its identity holds between frames.
   const children = monitoring ? backgroundTasks.children : undefined
-  // A roster of finished children is shown, but nothing in it is running.
+  // Only running children arrive; a roster with none holds nothing open either way.
   const liveWork = children ? agentChildWorkLiveness(children) !== null : monitoring
   return {
     show: monitoring,

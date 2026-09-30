@@ -4,10 +4,7 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import {
-  newestAcceptedSend,
-  type StructuredAcceptedSend
-} from './structured-agent-session-status-child-work'
+import { newestAcceptedSendKey } from './structured-agent-session-status-child-work'
 
 export type StructuredAgentSessionStatusState = ReturnType<
   typeof projectStructuredAgentSessionStatusState
@@ -20,7 +17,7 @@ export type StructuredAgentSessionJournalProjection = {
   fence: number | undefined
   state: StructuredAgentSessionStatusState
   /** Null for an unreadable journal, which says nothing about the user's turns. */
-  acceptedSend: StructuredAcceptedSend | null
+  acceptedSendKey: string | null
 }
 
 export class StructuredAgentSessionJournalProjections {
@@ -39,8 +36,7 @@ export class StructuredAgentSessionJournalProjections {
     const readOnly = journal.isReadOnly
     // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
     const fence = record?.lease.runtimeFence
-    const previous = this.byJournal.get(journal)
-    let projection = previous
+    let projection = this.byJournal.get(journal)
     if (
       !projection ||
       projection.epoch !== cursor.epoch ||
@@ -60,26 +56,12 @@ export class StructuredAgentSessionJournalProjections {
           snapshot?.submissions ?? [],
           fence
         ),
-        acceptedSend: snapshot
-          ? newestAcceptedSend(
-              cursor.epoch,
-              snapshot?.submissions ?? [],
-              (queuedMessageId) => draftQueuedAt(journal, queuedMessageId),
-              previous?.acceptedSend ?? undefined
-            )
+        acceptedSendKey: snapshot
+          ? newestAcceptedSendKey(cursor.epoch, snapshot.submissions ?? [])
           : null
       }
       this.byJournal.set(journal, projection)
     }
     return projection
-  }
-}
-
-/** A draft table that cannot answer leaves the send's own time. */
-function draftQueuedAt(journal: AgentSessionJournal, queuedMessageId: string): number | undefined {
-  try {
-    return journal.queuedMessages.get(queuedMessageId)?.createdAt
-  } catch {
-    return undefined
   }
 }

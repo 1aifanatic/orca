@@ -131,10 +131,9 @@ describe('conversation command admission reads the strip’s child records', () 
 
     records = [devServer({ state: 'done', membership: 'settled', outcome: 'succeeded' })]
     state.host.publishChildWorkEvidence(HOST_TEST_SESSION, [])
-    // Still listed, as finished: a finished row blocks nothing.
-    expect(stripRows()).toEqual([
-      { description: 'npm run dev', membership: 'settled', stoppable: true, providerId: 'task-dev' }
-    ])
+    // Finished: the strip hides (it lists running children only), and the record blocks nothing.
+    expect(strip.at(-1)).toBeNull()
+    expect(stripRows()).toEqual([])
     expect(await state.host.conversationCommand(CALLER, compactParams())).toMatchObject({
       ok: true
     })

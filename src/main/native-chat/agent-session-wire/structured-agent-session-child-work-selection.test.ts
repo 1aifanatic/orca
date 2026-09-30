@@ -1,14 +1,9 @@
-// What each surface lists of a session's child records: the sidebar its running children, the
-// chat's strip every running child and then the newest finished ones, up to 100 rows.
+// What the sidebar and the chat's strip list of a session's child records: running children only,
+// by one rule. A finished child is in the transcript, not in either list.
 
 import { describe, expect, it } from 'vitest'
-import { buildAgentChildRowModels } from '../../../shared/agent-child-row-model'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import {
-  STRUCTURED_STRIP_CHILD_WORK_LIMIT as LIMIT,
-  structuredSidebarChildWork,
-  structuredStripChildWork
-} from '../../../shared/agent-child-work-listing'
+import { structuredRunningChildWork } from '../../../shared/agent-child-work-listing'
 import {
   attach,
   hostTestState,
@@ -42,7 +37,7 @@ function finished(id: string, settledAt: number): AgentChildWorkView {
 
 const ids = (views: readonly AgentChildWorkView[]) => views.map((view) => view.id)
 
-describe('the sidebar lists running children only', () => {
+describe('the sidebar and the strip list running children only', () => {
   it('drops finished and failed children, and keeps a finished one whose shell still runs', () => {
     const failed = { ...finished('failed', 5), outcome: 'failed' as const }
     const views = [
@@ -52,73 +47,26 @@ describe('the sidebar lists running children only', () => {
       finished('owner', 3),
       running('shell', { kind: 'command', parentChildWorkId: 'owner' })
     ]
-    expect(ids(structuredSidebarChildWork(views))).toEqual(['working', 'owner', 'shell'])
+    expect(ids(structuredRunningChildWork(views))).toEqual(['working', 'owner', 'shell'])
   })
 })
 
-describe('the strip lists running children, then the newest finished, up to 100 rows', () => {
-  it('renders every row it keeps: a child whose owner the budget cut belongs to the main agent', () => {
-    const views = [
-      ...Array.from({ length: LIMIT - 2 }, (_, index) => running(`run-${index}`)),
-      finished('owner', 10),
-      { ...finished('nested', 200), parentChildWorkId: 'owner' },
-      finished('newest', 300)
-    ]
-    const strip = structuredStripChildWork(views)
-    expect(strip).toHaveLength(LIMIT)
-    expect(ids(strip)).not.toContain('owner')
-    expect(strip.find((view) => view.id === 'nested')).not.toHaveProperty('parentChildWorkId')
-    const rows = buildAgentChildRowModels(strip, {
-      parentEvidenceFresh: true,
-      transportObservation: 'live',
-      parentObservedAt: 1,
-      hostClockOffsetMs: 0
-    })
-    const rendered = (models: typeof rows): string[] =>
-      models.flatMap((model) => [model.id, ...rendered(model.owned)])
-    expect(rendered(rows)).toHaveLength(LIMIT)
-  })
-
-  it('lists every child while they fit', () => {
-    const views = [running('a'), finished('b', 2), finished('c', 3)]
-    expect(ids(structuredStripChildWork(views))).toEqual(['a', 'b', 'c'])
-  })
-
-  it('keeps every running child and the newest finished ones, in the order the store holds them', () => {
-    const finishedViews = Array.from({ length: 150 }, (_, index) =>
-      finished(`done-${index}`, 1_000 + index)
-    )
-    const runningViews = Array.from({ length: 10 }, (_, index) => running(`run-${index}`))
-    const listed = structuredStripChildWork([...finishedViews, ...runningViews])
-    expect(listed).toHaveLength(LIMIT)
-    // The 90 newest finished children (settled latest), then the running ones, as the store orders.
-    expect(ids(listed)).toEqual([
-      ...Array.from({ length: 90 }, (_, index) => `done-${index + 60}`),
-      ...ids(runningViews)
-    ])
-  })
-
-  it('shows every running child when more than 100 run, and no finished one', () => {
-    const runningViews = Array.from({ length: 120 }, (_, index) => running(`run-${index}`))
-    const listed = structuredStripChildWork([finished('done', 5), ...runningViews])
-    expect(ids(listed)).toEqual(ids(runningViews))
-  })
-})
-
-describe("the host's strip channel and summary list what these pick", () => {
-  it('sends the strip the bounded roster and the sidebar the running children', async () => {
-    const records = [
-      ...Array.from({ length: 150 }, (_, index) => finished(`done-${index}`, 1_000 + index)),
-      running('run')
+describe("the host's strip channel and summary list the same running children", () => {
+  it('sends both the running children, and the strip nothing once none runs', async () => {
+    let records = [
+      finished('done', 5),
+      running('run'),
+      finished('owner', 6),
+      running('shell', { kind: 'command', parentChildWorkId: 'owner' })
     ]
     serveHostTestChildWork(() => records)
     await attach()
     const { host } = hostTestState()
-    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
-    const children = page.ok ? (page.page.backgroundTasks?.children ?? []) : []
-    expect(children).toHaveLength(LIMIT)
-    expect(children.at(-1)?.id).toBe('run')
-    expect(children[0]?.id).toBe('done-51')
+    const strip = async () => {
+      const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+      return page.ok ? page.page.backgroundTasks : undefined
+    }
+    expect(ids((await strip())?.children ?? [])).toEqual(['run', 'owner', 'shell'])
     const summaries: string[][] = []
     host.subscribeStatus({
       id: 'list',
@@ -128,6 +76,10 @@ describe("the host's strip channel and summary list what these pick", () => {
         }
       }
     })
-    expect(summaries.at(-1)).toEqual(['run'])
+    expect(summaries.at(-1)).toEqual(['run', 'owner', 'shell'])
+
+    // Nothing runs: no strip at all (a host that holds no provider says nothing).
+    records = [finished('done', 5), finished('run', 7)]
+    expect(await strip()).toBeUndefined()
   })
 })

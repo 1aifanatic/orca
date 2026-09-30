@@ -189,7 +189,7 @@ function stripRows(container: HTMLElement): RenderedRow[] {
     .map((item) => readRow(item, ' · '))
 }
 
-function Surfaces(props: { roster: AgentSessionBackgroundTaskState }): React.JSX.Element {
+function Surfaces(props: { roster: AgentSessionBackgroundTaskState | null }): React.JSX.Element {
   return (
     <TooltipProvider>
       <StructuredAgentSessionStatusBridge />
@@ -325,5 +325,25 @@ describe('the switch: both surfaces read the host child records', () => {
     const stale = { dot: 'No recent update', lead: 'Audit a', trail: 'No update in 2m' }
     expect(sidebarRows()).toEqual([stale])
     expect(stripRows(container)).toEqual([stale])
+  })
+
+  it('hides the strip and the sidebar rows once nothing runs, on a new host and an older one', async () => {
+    const { container, rerender } = await mountWith([view('a')])
+    expect(stripRows(container)).toHaveLength(1)
+    const strip = () => container.querySelector('[data-native-chat-background-tasks]')
+
+    // The child finishes: the host sends no running children, so no roster and no summary rows.
+    rerender(<Surfaces roster={null} />)
+    act(() => feed()({ type: 'status', session: summary({ children: undefined }) }))
+    expect(strip()).toBeNull()
+    expect(sidebarRows()).toEqual([])
+
+    // An older host sends its own task list, and clears it the same way.
+    rerender(
+      <Surfaces roster={{ state: 'monitoring', tasks: [{ id: 'task-1', kind: 'command' }] }} />
+    )
+    expect(strip()).not.toBeNull()
+    rerender(<Surfaces roster={null} />)
+    expect(strip()).toBeNull()
   })
 })

@@ -3,9 +3,8 @@
 // The store holds the only current record per child; evidence patches it. A child settles on its
 // own ending, or `unknown` when its session ends while it is still live; work with nothing to
 // report once it stops is removed instead. Settled children stay until the user's next turn (the
-// next send the provider accepts, if they finished before the user wrote it) or the host drops the
-// parent's row. It owns only the records its own producer admitted, and never claims an outcome
-// the evidence did not report.
+// next send the provider accepts) or the host drops the parent's row. It owns only the records its
+// own producer admitted, and never claims an outcome the evidence did not report.
 
 import type { AgentChildWorkAdmission } from './agent-status-child-work-admission'
 import { settledOwnersOfLiveWork } from './agent-status-child-work-liveness'
@@ -121,10 +120,9 @@ function applyRemoved(ctx: ReconcileContext, edge: AgentChildWorkRemovedEvidence
   removeChildren(ctx, [existing.childWorkId])
 }
 
-/** Settled children the user has seen finish before `actedAt`, less any that still owns live work
- *  at any depth: those stay so that work keeps every owner, by the same rule the surfaces list
- *  them by. Both clocks are the host's: admission stamps `settledAt`. */
-function removableSettled(ctx: ReconcileContext, actedAt: number | undefined): string[] {
+/** Settled children, less any that still owns live work at any depth: those stay so that work
+ *  keeps every owner, by the same rule the surfaces list them by. */
+function removableSettled(ctx: ReconcileContext): string[] {
   const owned = ownedStructuredChildWork(ctx)
   const owners = settledOwnersOfLiveWork(
     owned.map((record) => ({
@@ -134,12 +132,7 @@ function removableSettled(ctx: ReconcileContext, actedAt: number | undefined): s
     }))
   )
   return owned
-    .filter(
-      (record) =>
-        record.membership === 'settled' &&
-        !owners.has(record.childWorkId) &&
-        (actedAt === undefined || (record.settledAt ?? record.observedAt) <= actedAt)
-    )
+    .filter((record) => record.membership === 'settled' && !owners.has(record.childWorkId))
     .map((record) => record.childWorkId)
 }
 
@@ -165,7 +158,7 @@ export function reconcileAgentChildWorkEvidence(
     } else if (edge.type === 'removed') {
       applyRemoved(ctx, edge)
     } else if (edge.type === 'turn-started') {
-      removeChildren(ctx, removableSettled(ctx, edge.actedAt))
+      removeChildren(ctx, removableSettled(ctx))
     } else {
       settleLive(ctx, edge.observedAt)
     }

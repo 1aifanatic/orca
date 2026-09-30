@@ -9,7 +9,7 @@ import { reconcileAgentChildWorkEvidence } from './agent-status-child-work-recon
 import { STRUCTURED_CHILD_WORK_MAX_LIVE } from './agent-status-child-work-evidence-admission'
 import { createAgentStatusStore, type AgentStatusStore } from './agent-status-store'
 import { projectAgentChildWorkViews } from './agent-status-child-work-view'
-import { structuredSidebarChildWork, structuredStripChildWork } from './agent-child-work-listing'
+import { structuredRunningChildWork } from './agent-child-work-listing'
 import { makeStructuredAgentStatusSubject } from './agent-status-subject'
 
 const parent = makeStructuredAgentStatusSubject(
@@ -493,18 +493,14 @@ describe('structured child-work reconciliation', () => {
         all.flatMap((record) => store.getAliasesForChild(record.childWorkId))
       )
       return {
-        sidebar: structuredSidebarChildWork(views).map((view) => view.description),
-        strip: structuredStripChildWork(views).map((view) => view.description)
+        running: structuredRunningChildWork(views).map((view) => view.description)
       }
     }
-    expect(surfaces().sidebar).toEqual(['Task top', 'Task nested', 'Task shell'])
+    expect(surfaces().running).toEqual(['Task top', 'Task nested', 'Task shell'])
 
     expect(apply({ type: 'turn-started', observedAt: 200 })).toMatchObject({ removed: 0 })
     expect(tree()).toEqual(before)
-    expect(surfaces()).toEqual({
-      sidebar: ['Task top', 'Task nested', 'Task shell'],
-      strip: ['Task top', 'Task nested', 'Task shell']
-    })
+    expect(surfaces()).toEqual({ running: ['Task top', 'Task nested', 'Task shell'] })
   })
 
   it("lets the child's own ending replace an acknowledged Stop's, and nothing else replace its own", () => {
@@ -545,26 +541,5 @@ describe('structured child-work reconciliation', () => {
     ])
     // Once the child reported its ending, a later acknowledged Stop changes nothing either.
     expect(apply(ended('same', 'failed', 103, stopped))).toMatchObject({ settled: 0 })
-  })
-
-  it('at the next turn keeps a child that finished after the user wrote that send', () => {
-    const { store, apply } = harness()
-    const ended = (id: string, observedAt: number): AgentChildWorkEvidence => ({
-      type: 'ended',
-      observedAt,
-      handle: { idKind: 'task_id', id },
-      outcome: 'succeeded'
-    })
-    apply(live(child('before')), live(child('after')))
-    apply(ended('before', 110), ended('after', 130))
-    expect(apply({ type: 'turn-started', observedAt: 140, actedAt: 120 })).toMatchObject({
-      removed: 1
-    })
-    expect(records(store).map((record) => record.description)).toEqual(['Task after'])
-    // The user's next send, written after it finished, retires it.
-    expect(apply({ type: 'turn-started', observedAt: 160, actedAt: 150 })).toMatchObject({
-      removed: 1
-    })
-    expect(records(store)).toEqual([])
   })
 })

@@ -12,7 +12,7 @@ import {
   agentChildRunStateFor,
   type AgentChildDisplayState
 } from '../../../../shared/agent-status-child-work-display'
-import { worktreeSidebarListsChild } from '../../../../shared/agent-child-work-listing'
+import { agentChildWorkIsRunning } from '../../../../shared/agent-child-work-listing'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 
 /** Row-identity key for an in-process subagent child row. The NUL separator
@@ -108,12 +108,12 @@ export function buildSubagentChildRows(args: {
       ? buildAgentChildRowModels(parentEntry.children, context)
       : buildLegacyAgentChildRowModels(parentEntry.subagents ?? [], context)
   // Shells and monitors show through their owner's dot; the sidebar lists running agents only, from
-  // every source. A finished one stays in the chat's strip.
+  // every source, by the same rule as the chat's strip.
   return flattenAgentChildRowModels(rows)
     .filter(
       (row) =>
         row.kind === 'agent' &&
-        worktreeSidebarListsChild({ settled: row.settled, ownsLiveWork: ownsLiveWork(row) })
+        agentChildWorkIsRunning({ settled: row.settled, ownsLiveWork: ownsLiveWork(row) })
     )
     .map((row) => childDashboardRow(row, parentEntry, args.tab))
 }

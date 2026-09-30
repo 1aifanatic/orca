@@ -1,8 +1,11 @@
-// The worktree sidebar lists running children only, whichever source it reads them from; the chat's
-// strip keeps the finished ones.
+// The worktree sidebar and the chat's strip list running children only, by one rule, whichever
+// source they read them from. An older host's own task roster reaches the strip as it always did.
 
 import { describe, expect, it } from 'vitest'
-import { worktreeSidebarListsChild } from '../../../../shared/agent-child-work-listing'
+import {
+  agentChildWorkIsRunning,
+  structuredRunningChildWork
+} from '../../../../shared/agent-child-work-listing'
 import { buildLegacyTaskRowModels } from '../../../../shared/agent-child-row-model'
 import type { AgentChildWorkView } from '../../../../shared/agent-status-child-work-view'
 import type { AgentStatusEntry, AgentSubagentSnapshot } from '../../../../shared/agent-status-types'
@@ -65,11 +68,12 @@ const sidebarNames = (entry: AgentStatusEntry) =>
   )
 
 describe('the worktree sidebar lists running children only', () => {
-  it("drops a chat session's finished child, which the strip keeps", () => {
+  it("drops a chat session's finished child from the sidebar and the strip alike", () => {
     const children = [view('a'), finished('b')]
     expect(sidebarNames(parent({ children }))).toEqual(['child a'])
-    const [agents] = buildBackgroundTaskGroupsFromViews(children)
-    expect(agents.tasks.map((entry) => entry.row.name)).toEqual(['child a', 'child b'])
+    const [agents] = buildBackgroundTaskGroupsFromViews(structuredRunningChildWork(children))
+    expect(agents.tasks.map((entry) => entry.row.name)).toEqual(['child a'])
+    expect(structuredRunningChildWork([finished('b')])).toEqual([])
   })
 
   it('keeps a finished child whose shell still runs: it reads monitoring', () => {
@@ -104,7 +108,7 @@ describe('the worktree sidebar lists running children only', () => {
     expect(sidebarNames(parent({ subagents: [] }))).toEqual([])
   })
 
-  it("applies the one rule to a finished child from an older host's task roster, which the strip keeps", () => {
+  it("applies the one rule to a finished child from an older host's task roster, which that host's strip still lists", () => {
     const tasks = [
       { id: 'live', kind: 'agent' as const, description: 'Live task', state: 'working' as const }
     ]
@@ -112,7 +116,7 @@ describe('the worktree sidebar lists running children only', () => {
     const rows = buildLegacyTaskRowModels(tasks, settledTasks)
     expect(
       rows
-        .filter((row) => worktreeSidebarListsChild({ settled: row.settled, ownsLiveWork: false }))
+        .filter((row) => agentChildWorkIsRunning({ settled: row.settled, ownsLiveWork: false }))
         .map((row) => row.name)
     ).toEqual(['Live task'])
     const [agents] = buildBackgroundTaskGroups(tasks, settledTasks)

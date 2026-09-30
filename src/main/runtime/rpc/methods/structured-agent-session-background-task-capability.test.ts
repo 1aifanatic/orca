@@ -211,23 +211,6 @@ describe('child views at the RPC boundary', () => {
     return call('agentSession.history', { sessionId: SESSION, direction: 'tail' }, client)
   }
 
-  it('hands a reader that predates views no strip for a roster of finished children', async () => {
-    const finishedOnly: AgentSessionBackgroundTaskState = {
-      state: 'monitoring',
-      supportsTaskStop: true,
-      settledTasks: [SETTLED_ROW],
-      children: [view('settled')]
-    }
-    expect(await historyFor(finishedOnly, PRE_VIEWS_CLIENT)).toMatchObject({
-      ok: true,
-      result: { page: { backgroundTasks: null } }
-    })
-    expect(await historyFor(finishedOnly, CURRENT_CLIENT)).toMatchObject({
-      ok: true,
-      result: { page: { backgroundTasks: finishedOnly } }
-    })
-  })
-
   it('hands a reader that predates views its live roster, without the views', async () => {
     const mixed: AgentSessionBackgroundTaskState = {
       state: 'monitoring',
