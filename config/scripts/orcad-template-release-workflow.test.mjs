@@ -48,6 +48,15 @@ describe('orcad template release wiring (design D2)', () => {
       }
     }
 
+    // The addon build script imports TypeScript, which the lane's later Node 18 check cannot load.
+    const persistence = nodeServer.jobs.persistence.steps
+    const addons = stepIndex(
+      persistence,
+      (step) => step.name === 'Build the Windows process-table addons for the desktop template'
+    )
+    const node18 = stepIndex(persistence, (step) => step.with?.['node-version'] === '18')
+    expect(addons).toBeLessThan(node18)
+
     const template = nodeServer.jobs.desktop_template
     expect(template.needs).toEqual(LANES)
     for (const lane of LANES) {
