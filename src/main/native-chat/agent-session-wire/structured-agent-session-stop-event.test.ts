@@ -90,14 +90,14 @@ describe("a Stop's event", () => {
     })
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     release()
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await rig.handoff(held)).toBeUndefined()
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(rig.cancelTurn).not.toHaveBeenCalled()
     expect(rig.closeSession).toHaveBeenCalledTimes(1)
     expect(atEnd).toEqual([
       { reason: 'user-stop', caller: QUEUED_RIG_CALLER.callerKey, at: expect.any(Number) }
     ])
-    expect(rig.cancelTurn).not.toHaveBeenCalled()
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.handoff(held)).toBeUndefined()
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
   })
 
   it('is written by an idle Stop only when it withdrew a send', async () => {
@@ -125,7 +125,7 @@ describe("a Stop's event", () => {
     // Stop and the drain share one serialized lane, so this interleaving is forced: a pause
     // written after the drain chose the card must still hold it in the claim's transaction.
     vi.spyOn(open, 'appendSubmission').mockImplementation(async (input, consume) => {
-      if (consume?.yieldsToPause && !injected) {
+      if (input.origin === 'host' && consume?.messageId === draftId && !injected) {
         injected = true
         await open.appendStopEvent({ reason: 'user-stop' }, input.fence)
       }

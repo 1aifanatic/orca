@@ -237,8 +237,9 @@ export class JournalQueuedMessages {
       throw new AgentSessionJournalError('journal_closed', 'consume crossed database handles')
     }
     if (input.yieldsToPause) {
-      // Judged here, on the same queue as every journal append, by the drain's own rule, so a
-      // Stop row that landed after the drain chose this card still holds it.
+      // Judged again here, by the drain's own rule. Today a Stop cannot land between the drain's
+      // pick and this claim (both run on the session's serialized lane, held across the send), so
+      // this guards any pause-relevant row written off that lane from overtaking a held card.
       const cards = listQueuedMessages(db, this.deps.sessionId)
       const pauses = this.derivePauses(cards, input.yieldsToPause.hostInstance)
       if (nextSendableQueuedCard(pauses, cards)?.messageId !== input.messageId) {
