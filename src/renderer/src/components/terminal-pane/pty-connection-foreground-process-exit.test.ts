@@ -143,7 +143,10 @@ describe('connectPanePty process-exit retirement', () => {
     await restoreTerminalTestGlobals()
   })
 
-  async function connectRestoredPane(ptyId: string, visible: boolean): Promise<string> {
+  async function connectRestoredPane(
+    ptyId: string,
+    visible: boolean
+  ): Promise<{ cacheKey: string; binding: { sampleForegroundAgentOnFocus: () => void } }> {
     const { connectPanePty } = await import('./pty-connection')
     const tabId = `tab-${ptyId}`
     const transport = createMockTransport(ptyId)
@@ -156,10 +159,14 @@ describe('connectPanePty process-exit retirement', () => {
       restoredPtyIdByLeafId: { [LEAF_1]: ptyId },
       isVisibleRef: { current: visible }
     })
-    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    const binding = connectPanePty(
+      createPane(1) as never,
+      createManager(1) as never,
+      deps as never
+    ) as unknown as { sampleForegroundAgentOnFocus: () => void }
     await vi.advanceTimersByTimeAsync(20)
     await flushAsyncTicks(20)
-    return makePaneKey(tabId, LEAF_1)
+    return { cacheKey: makePaneKey(tabId, LEAF_1), binding }
   }
 
   it('retires a hand-typed Codex read in a pane without command marks once it exits', async () => {
@@ -170,7 +177,7 @@ describe('connectPanePty process-exit retirement', () => {
     vi.mocked(window.api.pty.getForegroundProcess).mockImplementation(async () => foreground)
     vi.mocked(window.api.pty.hasChildProcesses).mockImplementation(async () => children)
 
-    const cacheKey = await connectRestoredPane(ptyId, true)
+    const { cacheKey, binding } = await connectRestoredPane(ptyId, true)
     await vi.advanceTimersByTimeAsync(3_000)
     expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toMatchObject({
       agent: 'codex',
@@ -183,8 +190,18 @@ describe('connectPanePty process-exit retirement', () => {
 
     expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
       agent: null,
-      shellForeground: true
+      shellForeground: false
     })
     expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(cacheKey)
+
+    // Codex typed again in the same unmarked pane: the next sample must identify it.
+    foreground = 'codex'
+    children = true
+    binding.sampleForegroundAgentOnFocus()
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toMatchObject({
+      agent: 'codex',
+      agentEvidence: 'process-read'
+    })
   })
 })

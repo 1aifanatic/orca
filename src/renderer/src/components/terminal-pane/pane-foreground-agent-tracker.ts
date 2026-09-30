@@ -373,11 +373,13 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       const hadVisibleRead = hasPendingRead()
       cancelPendingRead()
       clearAgentEvidence()
-      deps.publish({ agent: null, shellForeground: true })
-      deps.onConfirmedShellForeground?.('process-exit')
+      // Why not shellForeground: a pane without command marks gets no command start to lift that
+      // latch, so it would block the Enter sample that identifies the next agent typed there.
+      deps.publish({ agent: null, shellForeground: false })
       if (hadVisibleRead) {
         deps.onVisibleForegroundSettled?.('shell')
       }
+      deps.onConfirmedShellForeground?.('process-exit')
     },
     dispose() {
       const hadReadAtDispose = hasPendingRead()

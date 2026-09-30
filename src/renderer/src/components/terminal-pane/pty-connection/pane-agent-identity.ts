@@ -186,6 +186,11 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       // replay guard keeps xterm's auto-replies from leaking to the shell.
       session.writeInputModeGround(CONFIRMED_SHELL_MODE_RESET)
       // Why: no 133;D backs these proofs, so a deferred command-finished drop keeps its own read.
+      if (reason === 'process-exit') {
+        // Why: reopen the one-shot visible sample so the next agent typed here is identified.
+        session.visibleForegroundSamplePending = false
+        session.visibleForegroundSampleSettled = false
+      }
       if (reason === 'visible-pty' || reason === 'process-exit') {
         state.clearAgentLaunchConfig(session.cacheKey)
         return

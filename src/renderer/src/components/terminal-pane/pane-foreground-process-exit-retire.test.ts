@@ -82,7 +82,7 @@ describe('process monitor retires a latched foreground read', () => {
     pane.setForeground('zsh', false)
     await vi.advanceTimersByTimeAsync(5_000)
 
-    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: true })
+    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: false })
     expect(pane.onConfirmedShellForeground).toHaveBeenCalledWith('process-exit')
     expect(sidebarAgent('', pane.getEntry())).toBeNull()
     expect(sidebarAgent('user@host: ~/repo', pane.getEntry())).toBeNull()
