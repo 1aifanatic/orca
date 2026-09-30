@@ -1,0 +1,216 @@
+name: Isolated Windows release-to-Bun upgrade diagnostic
+# Public release (Electron-hosted daemon) -> Bun candidate -> release rollback, then the release's uninstall.
+on:
+  push:
+    branches: [OrcaWin/np-installed-windows-update-diagnostic]
+    paths:
+      - '.github/workflows/windows-release-upgrade.yml'
+      - 'config/ci/windows-installed-update/**'
+  workflow_dispatch:
+    inputs:
+      candidate_source:
+        description: Candidate commit to package with the admitted Bun
+        required: false
+        default: 593f9bb9bdda23dcee0af72f08cfc4c3c2ceaf3b
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: release-upgrade-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  RELEASE_TAG: v1.4.217
+  RELEASE_COMMIT: 11d97896628d90c4990365127812667b00e28c82
+  RELEASE_SHA256: 669fbc3bc4cebc231345b4e47d32cf3e206018691273001d54ea307521c2eabe
+  CANDIDATE_SOURCE: ${{ inputs.candidate_source || '593f9bb9bdda23dcee0af72f08cfc4c3c2ceaf3b' }}
+  PRODUCER_RUN: '36620077577'
+  SSH_TOOLS_SHA: 1242f3c4c850a7c6c5e6798c573c99a292751e7d
+jobs:
+  release:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-windows-update-diagnostic'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with: { native-runtime: none }
+      - name: Download, pin and signature-check the public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir="$env:RUNNER_TEMP/download"
+          gh release download $env:RELEASE_TAG -R stablyai/orca -p orca-windows-setup.exe -D $dir
+          if($LASTEXITCODE -ne 0){throw 'Release download failed'}
+          git fetch --quiet --depth=1 origin "refs/tags/$($env:RELEASE_TAG):refs/tags/$($env:RELEASE_TAG)"
+          if($LASTEXITCODE -ne 0){throw 'Release tag fetch failed'}
+          if((git rev-parse "$($env:RELEASE_TAG)^{commit}").Trim() -ne $env:RELEASE_COMMIT){throw 'Release tag moved'}
+          git show "$($env:RELEASE_COMMIT):src/main/daemon/daemon-protocol-version.ts" | Out-File -Encoding utf8NoBOM "$env:RUNNER_TEMP/release-protocol.ts"
+          if($LASTEXITCODE -ne 0){throw 'Release protocol source unavailable'}
+          node config/ci/windows-installed-update/admit-release.mjs --installer "$dir/orca-windows-setup.exe" --sha256 $env:RELEASE_SHA256 --tag $env:RELEASE_TAG --commit $env:RELEASE_COMMIT --protocol-source "$env:RUNNER_TEMP/release-protocol.ts" --output "$env:RUNNER_TEMP/release"
+          if($LASTEXITCODE -ne 0){throw 'Release admission failed'}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-release-installer
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+  windows_watcher:
+    needs: release
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: ${{ inputs.candidate_source || '593f9bb9bdda23dcee0af72f08cfc4c3c2ceaf3b' }}
+      artifact_prefix: windows-watcher-release-upgrade
+  candidate:
+    needs: windows_watcher
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_BUILD_COMMIT: ${{ inputs.candidate_source || '593f9bb9bdda23dcee0af72f08cfc4c3c2ceaf3b' }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.CANDIDATE_SOURCE }}
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .build/harness
+          sparse-checkout: config/ci/windows-installed-update
+          persist-credentials: false
+      - name: Derive a version newer than the release
+        run: |
+          if((git rev-parse HEAD).Trim() -ne $env:CANDIDATE_SOURCE){throw 'Candidate checkout mismatch'}
+          $parts=$env:RELEASE_TAG.TrimStart('v').Split('.')
+          if($parts.Count -ne 3){throw "Unexpected release tag $env:RELEASE_TAG"}
+          "ORCA_LOCAL_BUILD_VERSION=$($parts[0]).$($parts[1]).$([int]$parts[2]+1)-winqual.${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SSH_TOOLS_SHA }}
+          path: .build/ssh-provider-tools
+          sparse-checkout: config/ci/windows-ssh-provider
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          name: full-offline-patched-bun
+          path: .build/producer
+      - name: Retain real producer run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/stablyai/orca/actions/runs/$env:PRODUCER_RUN" | Out-File -Encoding utf8NoBOM .build/producer/producer-run.json
+          if($LASTEXITCODE -ne 0){throw 'Producer identity lookup failed'}
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          if($LASTEXITCODE -ne 0){throw 'Dependency install failed'}
+      - uses: ./.github/actions/install-mobile-dependencies
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+        with:
+          artifact_prefix: windows-watcher-release-upgrade
+      - name: Admit candidate Bun and apply the pin overlay
+        run: |
+          $dir='.build/harness/config/ci/windows-installed-update'
+          New-Item -ItemType Directory -Force .build/receipts | Out-Null
+          node "$dir/admit-candidate.mjs" .build/ssh-provider-tools/config/ci/windows-ssh-provider .build/producer . $env:PRODUCER_RUN .build/receipts/admission.json
+          if($LASTEXITCODE -ne 0){throw 'Candidate admission failed'}
+          node "$dir/apply-candidate-overlay.mjs" . .build/receipts/admission.json .build/receipts/overlay.json
+          if($LASTEXITCODE -ne 0){throw 'Candidate overlay failed'}
+      - name: Build and package the unsigned candidate
+        env:
+          ORCA_REQUIRE_RELAY_NATIVE_ADDONS: x64
+        run: |
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
+          if($LASTEXITCODE -ne 0){throw 'Relay addon build failed'}
+          pnpm build:release
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          if($LASTEXITCODE -ne 0){throw 'Native runtime preparation failed'}
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win nsis --x64 --publish never
+          if($LASTEXITCODE -ne 0){throw 'Packaging failed'}
+      - name: Receipt the candidate and its daemon protocol
+        run: |
+          $dir='.build/harness/config/ci/windows-installed-update'
+          node "$dir/receipt-package.mjs" --label B --arch x64 --version $env:ORCA_LOCAL_BUILD_VERSION --source $env:CANDIDATE_SOURCE --dist dist --output "$env:RUNNER_TEMP/package" --admission .build/receipts/admission.json --overlay .build/receipts/overlay.json
+          if($LASTEXITCODE -ne 0){throw 'Package receipt failed'}
+          node "$dir/daemon-protocol-facts.mjs" src/main/daemon/daemon-protocol-version.ts "$env:RUNNER_TEMP/package/daemon-protocol.json"
+          if($LASTEXITCODE -ne 0){throw 'Candidate protocol facts failed'}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-release-upgrade-candidate
+          path: ${{ runner.temp }}/package/*
+          if-no-files-found: error
+          retention-days: 7
+  qualify:
+    needs: [release, candidate]
+    strategy:
+      fail-fast: false
+      matrix:
+        # Orca ships only an x64 installer; ARM users run it emulated.
+        runner: [windows-2022, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with: { name: windows-release-installer, path: '${{ runner.temp }}/release' }
+      - uses: actions/download-artifact@v8
+        with: { name: windows-release-upgrade-candidate, path: '${{ runner.temp }}/candidate' }
+      - uses: ./.github/actions/install-node-dependencies
+        with: { native-runtime: none }
+      - name: Admit inputs and check the evidence oracle offline
+        run: |
+          $dir='config/ci/windows-installed-update'
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/result" | Out-Null
+          node "$dir/verify-release-inputs.mjs" "$env:RUNNER_TEMP/release" "$env:RUNNER_TEMP/candidate" $env:RELEASE_SHA256 $env:CANDIDATE_SOURCE "$env:RUNNER_TEMP/result/inputs.json"
+          if($LASTEXITCODE -ne 0){throw 'Input admission failed'}
+          node "$dir/evidence-oracle.check.mjs"
+          if($LASTEXITCODE -ne 0){throw 'Evidence oracle failed'}
+          node "$dir/prepare.mjs" "$env:RUNNER_TEMP/tools"
+          if($LASTEXITCODE -ne 0){throw 'Tool preparation failed'}
+      - name: Release -> candidate -> release lifecycle and release uninstall
+        timeout-minutes: 45
+        run: |
+          $t="$env:RUNNER_TEMP/tools"
+          node "$t/run-release-upgrade.mjs" "--release=$env:RUNNER_TEMP/release" "--candidate=$env:RUNNER_TEMP/candidate" "--rpc=$t/qualification-rpc.cjs" "--retire=$t/daemon-retire.cjs" "--receipt=$env:RUNNER_TEMP/result/release-upgrade-receipt.json"
+          if($LASTEXITCODE -ne 0){throw 'Release upgrade qualification failed'}
+      - name: Retain receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-release-upgrade-result-${{ matrix.runner }}-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/result/
+            ${{ runner.temp }}/release/release-receipt.json
+            ${{ runner.temp }}/candidate/build-receipt.json
+            ${{ runner.temp }}/candidate/daemon-protocol.json
+            ${{ runner.temp }}/candidate/admission.json
+            ${{ runner.temp }}/candidate/overlay.json

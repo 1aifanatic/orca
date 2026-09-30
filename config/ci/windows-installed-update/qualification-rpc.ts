@@ -4,11 +4,17 @@ import { RuntimeClient } from '../../../src/cli/runtime/client'
 import { DaemonClient } from '../../../src/main/daemon/client'
 import { getDaemonSocketPath, getDaemonTokenPath } from '../../../src/main/daemon/daemon-spawner'
 
-async function identity(profile: string): Promise<void> {
+// An explicit protocol targets another build's endpoint; the default is this source's own.
+async function identity(profile: string, protocol?: string): Promise<void> {
   const runtimeDir = join(profile, 'daemon')
+  const protocolVersion = protocol ? Number(protocol) : undefined
+  if (protocolVersion !== undefined && !Number.isSafeInteger(protocolVersion)) {
+    throw new Error('invalid_protocol_version')
+  }
   const client = new DaemonClient({
-    socketPath: getDaemonSocketPath(runtimeDir),
-    tokenPath: getDaemonTokenPath(runtimeDir)
+    socketPath: getDaemonSocketPath(runtimeDir, protocolVersion),
+    tokenPath: getDaemonTokenPath(runtimeDir, protocolVersion),
+    ...(protocolVersion === undefined ? {} : { protocolVersion })
   })
   try {
     // The probe must not keep the owner alive across transitions.
@@ -37,14 +43,14 @@ async function registerFolder(profile: string, path: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const [mode, profile, path] = process.argv.slice(2)
+  const [mode, profile, operand] = process.argv.slice(2)
   if (!profile) {
     throw new Error('explicit_disposable_profile_required')
   }
   if (mode === 'identity') {
-    await identity(profile)
+    await identity(profile, operand)
   } else if (mode === 'folder') {
-    await registerFolder(profile, path ?? '')
+    await registerFolder(profile, operand ?? '')
   } else {
     throw new Error('unknown_mode')
   }

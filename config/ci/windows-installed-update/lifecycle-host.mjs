@@ -69,7 +69,8 @@ function uninstallerDirectory(quiet) {
 }
 
 /** `extra` mirrors electron-updater's NsisUpdater argv; a fresh install passes none. */
-export async function runInstaller(installer, extra, receipt, expectedIdentity) {
+// A null identity admits the first install of `receipt.version` and returns what it installed.
+export async function runInstaller(installer, extra, receipt, expectedIdentity, identityFiles) {
   const args = [...extra, '/S']
   const started = Date.now()
   const result = await runProcess({ program: installer, args, timeoutMs: 600_000 })
@@ -86,14 +87,18 @@ export async function runInstaller(installer, extra, receipt, expectedIdentity) 
       last.executable = existsSync(join(entry.location, 'Orca.exe'))
     }
     if (last.executable) {
-      const installed = await hashIdentity(entry.location)
-      if (JSON.stringify(installed) === JSON.stringify(expectedIdentity)) {
+      const installed = await hashIdentity(entry.location, identityFiles)
+      if (
+        expectedIdentity === null ||
+        JSON.stringify(installed) === JSON.stringify(expectedIdentity)
+      ) {
         return {
           args,
           location: entry.location,
           version: entry.version,
           elapsedMs: Date.now() - started,
-          identityMatched: true
+          identity: installed,
+          identityMatched: expectedIdentity !== null
         }
       }
       last.identityMismatch = Object.keys(expectedIdentity).filter(
@@ -129,6 +134,17 @@ export async function runUninstaller() {
     await delay(1_000)
   }
   throw new Error('Uninstall did not complete')
+}
+
+export async function authenticode(path) {
+  const literal = path.replaceAll("'", "''")
+  const result = await powershell(
+    `$s=Get-AuthenticodeSignature -LiteralPath '${literal}'; ConvertTo-Json -Compress -InputObject @{status=[string]$s.Status;subject=[string]$s.SignerCertificate.Subject;thumbprint=[string]$s.SignerCertificate.Thumbprint}`
+  )
+  if (result.code !== 0) {
+    throw new Error('Authenticode query failed')
+  }
+  return JSON.parse(result.stdout.trim())
 }
 
 export async function availablePort() {

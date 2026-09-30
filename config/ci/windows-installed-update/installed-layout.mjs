@@ -13,6 +13,15 @@ export const IDENTITY_FILES = {
   daemonEntry: 'resources/terminal-daemon/daemon-entry.js'
 }
 
+// Released Electron-hosted daemon builds ship no Bun runtime; their entry is forked from app.asar.unpacked.
+export const ELECTRON_DAEMON_IDENTITY_FILES = {
+  executable: 'Orca.exe',
+  appAsar: 'resources/app.asar',
+  cliPackage: 'resources/app.asar.unpacked/out/package.json',
+  cliLauncher: 'resources/bin/orca.exe',
+  daemonEntry: 'resources/app.asar.unpacked/out/main/daemon-entry.js'
+}
+
 export async function hashFile(path) {
   const digest = createHash('sha256')
   for await (const chunk of createReadStream(path)) {
@@ -21,9 +30,9 @@ export async function hashFile(path) {
   return digest.digest('hex')
 }
 
-export async function hashIdentity(appRoot) {
+export async function hashIdentity(appRoot, files = IDENTITY_FILES) {
   const hashes = {}
-  for (const [field, relative] of Object.entries(IDENTITY_FILES)) {
+  for (const [field, relative] of Object.entries(files)) {
     hashes[field] = await hashFile(join(appRoot, ...relative.split('/')))
   }
   return hashes

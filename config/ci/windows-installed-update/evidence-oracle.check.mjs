@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import {
   generationOfImage,
+  isRelocatedElectronDaemon,
   isUnder,
   parseProcessTable,
   processIdentity,
@@ -87,6 +88,27 @@ assert.ok(!isUnder(managed, managed), 'the root itself is not inside itself')
 assert.deepEqual(
   processesUnder(table, [managed]).map((row) => row.pid),
   [10]
+)
+const legacyHost = 'C:\\Users\\r\\AppData\\Local\\Orca\\daemon-host\\1.4.217'
+const legacyRow = {
+  exe: `${legacyHost}\\Orca.exe`,
+  command: `"${legacyHost}\\Orca.exe" "${legacyHost}\\resources\\app.asar.unpacked\\out\\main\\daemon-entry.js" --socket x`
+}
+assert.ok(isRelocatedElectronDaemon(legacyRow, legacyHost))
+assert.ok(
+  !isRelocatedElectronDaemon({ ...legacyRow, exe: 'C:\\Programs\\Orca\\Orca.exe' }, legacyHost),
+  'install-dir fork is not the relocated host'
+)
+assert.ok(
+  !isRelocatedElectronDaemon(
+    { ...legacyRow, command: `"${legacyHost}\\Orca.exe" --type=renderer` },
+    legacyHost
+  ),
+  'an app process from the host copy is not the daemon'
+)
+assert.ok(
+  !isRelocatedElectronDaemon(legacyRow, `${legacyHost}.1`),
+  'another version host is not this owner'
 )
 console.log(
   'Evidence oracle: snapshot integrity, pid-reuse, unverifiable and generation parsing checks passed'

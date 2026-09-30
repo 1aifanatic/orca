@@ -137,3 +137,15 @@ export function descendantsOf(table, pid) {
 }
 export const ptyHostCount = (table, owner) =>
   table.filter((row) => row.ppid === owner.pid && /^bun-runtime\.exe$/iu.test(row.name)).length
+
+/** An Electron-hosted daemon runs the relocated Orca.exe copy with that copy's daemon-entry.js. */
+export function isRelocatedElectronDaemon(row, hostDir) {
+  const image = `${normalized(hostDir)}\\orca.exe`
+  const command = row?.command ? normalized(row.command) : ''
+  return (
+    Boolean(row?.exe) &&
+    normalized(row.exe) === image &&
+    command.includes(`${normalized(hostDir)}\\`) &&
+    /daemon-entry\.js/u.test(command)
+  )
+}

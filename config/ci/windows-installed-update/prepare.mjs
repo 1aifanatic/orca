@@ -7,6 +7,7 @@ const output = resolve(process.argv[2] ?? '')
 const root = resolve(import.meta.dirname, '../../..')
 for (const [name, entry, format] of [
   ['run-installed.mjs', join(import.meta.dirname, 'run-installed.mjs'), 'esm'],
+  ['run-release-upgrade.mjs', join(import.meta.dirname, 'run-release-upgrade.mjs'), 'esm'],
   ['qualification-rpc.cjs', join(import.meta.dirname, 'qualification-rpc.ts'), 'cjs'],
   ['daemon-retire.cjs', join(root, 'config/scripts/runtime-serve-smoke-daemon.ts'), 'cjs']
 ]) {
