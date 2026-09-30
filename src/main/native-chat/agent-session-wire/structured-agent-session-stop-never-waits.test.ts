@@ -88,6 +88,37 @@ describe.each([
     )
   })
 
+  // Held, then failing: the interrupt goes out while the write is still pending, not after it settles.
+  it.each([
+    ['withdrawing the queued sends', "Stop's withdrawal skipped:"],
+    ['recording its queue pause', "Stop's queue pause skipped:"]
+  ] as const)('interrupts before %s settles, then reports its failure', async (step, warning) => {
+    const journal = await runningTurn()
+    const order: string[] = []
+    const held = Promise.withResolvers<never>()
+    if (step === 'withdrawing the queued sends') {
+      vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(() => held.promise)
+    } else {
+      vi.spyOn(journal.queuedMessages, 'recordPause').mockImplementation(() => held.promise)
+    }
+    cancelTurn.mockImplementation(async () => {
+      order.push('interrupt')
+      return { cancelled: true }
+    })
+
+    const stopping = stop(fields)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    order.push('write fails')
+    held.reject(new Error(MALFORMED))
+
+    expect(await stopping).toMatchObject({ ok: true })
+    expect(order).toEqual(['interrupt', 'write fails'])
+    expect(warned).toHaveBeenCalledWith(
+      `[agent-session] ${warning}`,
+      expect.objectContaining({ error: MALFORMED })
+    )
+  })
+
   // The open pays an import owed before the Stop, so the work falls owed at the Stop's first write:
   // the one moment the Stop's own writes can wait behind it.
   it('interrupts before owed work its writes wait behind is paid', async () => {
