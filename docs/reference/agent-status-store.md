@@ -282,7 +282,8 @@ How the main agent's turn ended is not a fold input. A cancel is a verdict on
 the main agent, carried as `mainAgent.outcome: 'cancellation'` (and, for
 readers that predate `mainAgent`, as the row's `interrupted` flag on a `done`
 row); it never retires a shell, scheduled check or subagent the turn left
-running. That work leaves the row only on Claude's own record of its end, so a
+running. That work leaves the row on Claude's own record of its end or when the
+pane's Claude process is replaced or ends (see above), never on a cancel, so a
 cancelled turn with a still-running shell reads
 `monitoring` in every lane, and the parity table in
 `src/shared/main-agent-status-parity.test.ts` drives that story through all of

@@ -19,8 +19,8 @@ export type ClaudeNonAgentTask = {
 /** Replaced whole on every write, never mutated, so a snapshot of it is a reference. */
 export type ClaudeNonAgentWork = {
   tasks: ReadonlyMap<string, ClaudeNonAgentTask>
-  /** Running work Claude reported without an id or a type, or past the id cap; only an inventory
-   *  clears it. */
+  /** Running work Claude reported without an id or a type, or past the id cap; of Claude's own
+   *  records, only an inventory clears it. */
   hasUnnamedRunning: boolean
 }
 

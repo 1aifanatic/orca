@@ -143,7 +143,7 @@ describe('a Claude cancel with a background shell (captured)', () => {
     }
   })
 
-  it("lets the shell leave only on Claude's own record of its end, and then settles to done", async () => {
+  it("keeps the shell past the cancel until Claude's own record of its end, then settles to done", async () => {
     const server = await startServer()
     try {
       for (const index of [0, 1, 2, 3, 4, 5, 6]) {

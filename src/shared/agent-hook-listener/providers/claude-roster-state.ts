@@ -40,8 +40,9 @@ const CLAUDE_SESSION_OWNER_EVENTS: ReadonlySet<string> = new Set([
  *
  *  Voids only what the replaced session provably owned. Deliberately NOT voided:
  *  - `claudeNonAgentWorkByPaneKey`: a background shell is an OS process that survives /clear
- *    (capture r3-clear-run1), and Claude writes its end into the new session's transcript. Only
- *    Claude's own end record, a fresh inventory or a certified process death may retire it.
+ *    (capture r3-clear-run1), and Claude writes its end into the new session's transcript. Claude's
+ *    own end record, a fresh inventory, a new process's SessionStart or a certified process death
+ *    retires it.
  *  - `confirmedTeammate` roster rows: persistent in-process teammates a lead replacement can't end.
  *  - `claudeLeadStateByPaneKey`: the caller's own fold overwrites it anyway. */
 export function voidClaimsOfReplacedClaudeSession(
@@ -181,7 +182,7 @@ export function resolveClaudePaneStatus(
  *  Stop would be. This is the primary source of `mainAgent.outcome: 'cancellation'` in the CLI
  *  lane, and the record is what keeps a later child lifecycle event from resurrecting the
  *  cancelled main agent. Nothing here retires a shell, cron or subagent: they outlive the cancel
- *  and leave only on Claude's own record of their end. */
+ *  and leave on Claude's own record of their end, or when the process is replaced or ends. */
 export function markClaudeLeadTurnInterrupted(
   state: HookListenerState,
   paneKey: string
