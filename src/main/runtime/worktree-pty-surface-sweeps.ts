@@ -6,7 +6,11 @@
  * provider's session list, and the local pty-registry.
  */
 
-import type { IPtyProvider } from '../providers/types'
+import type { IPtyProvider, PtyProcessInfo } from '../providers/types'
+import {
+  answeredProcesses,
+  type PtyProcessSourceListing
+} from '../providers/pty-process-source-listing'
 import { listRegisteredPtys } from '../memory/pty-registry'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import { splitWorktreeId, splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
@@ -31,7 +35,8 @@ export async function sweepProviderByPrefix(
     stop: () => Promise<boolean>
   ) => Promise<{ stopped: boolean; owner: boolean }>,
   onPtyStopped?: (ptyId: string) => void,
-  failClosed = false
+  failClosed = false,
+  onUncheckedSource?: (protocolVersion: number | null) => void
 ): Promise<number> {
   const prefix = `${worktreeId}@@`
   // Why (#10252): the cwd fallback only proves ownership when the filesystem path
@@ -45,9 +50,15 @@ export async function sweepProviderByPrefix(
       ? fullWorktreePath
       : undefined
   const rpcDeadline = teardownRpcDeadline(deadline)
-  const sessions = failClosed
-    ? await provider.listProcesses({ deadlineMs: rpcDeadline })
-    : await provider.listProcesses({ deadlineMs: rpcDeadline }).catch(() => [])
+  const sessions = provider.listProcessesBySource
+    ? answeredAndLastKnown(
+        await provider.listProcessesBySource({ deadlineMs: rpcDeadline }),
+        prefix,
+        onUncheckedSource
+      )
+    : failClosed
+      ? await provider.listProcesses({ deadlineMs: rpcDeadline })
+      : await provider.listProcesses({ deadlineMs: rpcDeadline }).catch(() => [])
   const ownedSessions = sessions.filter((session) => {
     // Why: older daemon/relay process rows may omit cwd; their established ID
     // and authoritative worktree ownership must remain usable during teardown.
@@ -87,6 +98,30 @@ export async function sweepProviderByPrefix(
     }
   )
   return stopped.reduce<number>((count, value) => count + value, 0)
+}
+
+/**
+ * What answered, plus this worktree's ids a silent version was last known to hold. Those go down
+ * the per-id stop, whose owner cannot answer, so the delete refuses as for a known live PTY; a
+ * silent version holding none of them is reported instead of refusing.
+ */
+function answeredAndLastKnown(
+  listings: readonly PtyProcessSourceListing[],
+  prefix: string,
+  onUncheckedSource: ((protocolVersion: number | null) => void) | undefined
+): Pick<PtyProcessInfo, 'id' | 'cwd' | 'worktreeId'>[] {
+  const lastKnown: { id: string; cwd: string }[] = []
+  for (const listing of listings) {
+    if (listing.contact !== 'unverifiable') {
+      continue
+    }
+    const owned = listing.lastKnownIds.filter((id) => id.startsWith(prefix))
+    if (owned.length === 0) {
+      onUncheckedSource?.(listing.protocolVersion)
+    }
+    lastKnown.push(...owned.map((id) => ({ id, cwd: '' })))
+  }
+  return [...answeredProcesses(listings), ...lastKnown]
 }
 
 export async function sweepRegistryForWorktree(

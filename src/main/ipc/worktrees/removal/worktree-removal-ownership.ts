@@ -5,6 +5,7 @@ import type { Store } from '../../../persistence/loading-store/store'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { Repo } from '../../../../shared/repo-types'
+import type { RemoveWorktreeResult } from '../../../../shared/worktree/create-types'
 import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../../../worktree-removal-repo-owner'
 import { getRepoIdFromWorktreeId } from '../../../../shared/worktree/id'
 import { advertisedUrlWatcher } from '../../../ports/advertised-url-watcher'
@@ -19,7 +20,7 @@ export async function stopPtysForDestructiveWorktreeRemoval(
   runtime: OrcaRuntimeService,
   worktreeId: string,
   options: { connectionId?: string; allowUnverifiedStop?: boolean } = {}
-): Promise<void> {
+): Promise<Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'>> {
   const { connectionId, allowUnverifiedStop } = options
   const provider = connectionId ? getSshPtyProvider(connectionId) : getLocalPtyProvider()
   if (!provider) {
@@ -53,6 +54,8 @@ export async function stopPtysForDestructiveWorktreeRemoval(
       `[worktree-teardown] ${worktreeId} killed runtime=${teardownResult.runtimeStopped} provider=${teardownResult.providerStopped} registry=${teardownResult.registryStopped} structured=${structuredStopped}`
     )
   }
+  const unchecked = teardownResult.uncheckedTerminalServices
+  return unchecked ? { uncheckedTerminalServices: unchecked } : {}
 }
 
 // Why: the worktree's own persisted host outranks the repo fallback; teardown and metadata purge must resolve the same owner

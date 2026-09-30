@@ -67,6 +67,8 @@ export type WorktreeTeardownResult = {
   registryStopped: number
   /** Structured agent sessions this teardown closed; absent when it closed none. */
   structuredStopped?: number
+  /** Terminal service versions that did not answer and held no known terminal of this worktree. */
+  uncheckedTerminalServices?: { protocolVersion: number }[]
 }
 
 export const WORKTREE_PROCESS_SWEEP_TIMEOUT_MS = 10_000
@@ -118,6 +120,7 @@ export async function killAllProcessesForWorktree(
   // would then report a timeout for a stop they never attempted. It is joined below, ahead of the
   // PTY verdict, so a structured refusal still outranks one.
   const structuredSweep = sweepStructuredSessions(worktreeId, deps, deadline, sweeps)
+  const unchecked = new Set<number>()
   void structuredSweep.catch(() => undefined)
   const stopAttempts = new Map<string, Promise<boolean>>()
   const stopPty = (
@@ -181,7 +184,8 @@ export async function killAllProcessesForWorktree(
               deadline,
               stopPty,
               deps.onPtyStopped,
-              deps.requirePhysicalStop
+              deps.requirePhysicalStop,
+              (protocolVersion) => protocolVersion !== null && unchecked.add(protocolVersion)
             )
           ),
           0,
@@ -304,7 +308,12 @@ export async function killAllProcessesForWorktree(
     runtimeStopped: runtimeResult.stopped,
     providerStopped,
     registryStopped,
-    ...(structuredStopped > 0 ? { structuredStopped } : {})
+    ...(structuredStopped > 0 ? { structuredStopped } : {}),
+    ...(unchecked.size > 0
+      ? {
+          uncheckedTerminalServices: [...unchecked].map((protocolVersion) => ({ protocolVersion }))
+        }
+      : {})
   }
 }
 

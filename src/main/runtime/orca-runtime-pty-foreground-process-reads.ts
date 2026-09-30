@@ -11,6 +11,7 @@ import type { ExecutionHostId } from '../../shared/execution-host'
 import { LOCAL_EXECUTION_HOST_ID, getRepoExecutionHostId } from '../../shared/execution-host'
 import type { IPtyProvider } from '../providers/types'
 import { killAllProcessesForWorktree } from './worktree-teardown'
+import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import type { MemorySnapshot, StatsSummary } from '../../shared/process-stats-types'
 import { collectMemorySnapshot } from '../memory/collector'
@@ -129,7 +130,7 @@ export class OrcaRuntimeWithPtyForegroundProcessReads extends OrcaRuntimeWithSta
   protected async stopPtysForDestructiveWorktreeRemoval(
     worktreeId: string,
     options: { connectionId?: string; allowUnverifiedStop?: boolean } = {}
-  ): Promise<void> {
+  ): Promise<Pick<RemoveWorktreeResult, 'uncheckedTerminalServices'>> {
     const { connectionId, allowUnverifiedStop } = options
     const provider = connectionId ? this.getSshProviderFn?.(connectionId) : this.getLocalProvider()
     if (!provider) {
@@ -162,6 +163,8 @@ export class OrcaRuntimeWithPtyForegroundProcessReads extends OrcaRuntimeWithSta
         `[worktree-teardown] ${worktreeId} killed runtime=${teardownResult.runtimeStopped} provider=${teardownResult.providerStopped} registry=${teardownResult.registryStopped} structured=${structuredStopped}`
       )
     }
+    const unchecked = teardownResult.uncheckedTerminalServices
+    return unchecked ? { uncheckedTerminalServices: unchecked } : {}
   }
 
   getStatsSummary(): StatsSummary | null {

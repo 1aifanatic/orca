@@ -5090,6 +5090,10 @@
         }
       },
       "sidebar": {
+        "UncheckedTerminalServicesToast": {
+          "5b1e0c7d2a": "Workspace deleted. An older terminal service didn’t answer.",
+          "9c4f6a3e18": "Any terminal it still runs for this workspace wasn’t checked. Settings › Manage Sessions shows it once it answers."
+        },
         "local": {
           "base": {
             "ref": {
