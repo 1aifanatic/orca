@@ -14,7 +14,8 @@ import {
   CLAUDE_AT_REST_COMMANDS_TTL_MS,
   ClaudeAtRestCommandCatalog
 } from '../../claude/claude-at-rest-commands'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -81,10 +82,7 @@ function catalogFor(workspacePath: string): ClaudeAtRestCommandCatalog {
 }
 
 async function openHost(catalog = catalogFor(workspace)): Promise<void> {
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
+  store = await openTestAgentSessionRecordStore(directory)
   host = new StructuredAgentSessionHost({
     store,
     adapter: adapter(catalog),
