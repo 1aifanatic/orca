@@ -190,7 +190,7 @@ describe('a press sent again', () => {
         turnId: 'background-tasks',
         scope: 'background-tasks' as const
       })
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
 
     // No agent owns the chat, so the host turns the Stop away as not ready.
     expect(await stop(1)).toMatchObject({ ok: false })

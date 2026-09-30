@@ -704,7 +704,7 @@ describe('a /clear pressed again after it committed', () => {
     const replacement = first.ok ? first.value.replacementSessionId! : ''
     expect(replacement).toBeTruthy()
     // What the RPC handler does once the first answer is out.
-    await host.close(HOST_TEST_SESSION)
+    await host.close(HOST_TEST_SESSION, 'user-close')
     await expectAnsweredWithTheCommittedClear(replacement)
   })
 

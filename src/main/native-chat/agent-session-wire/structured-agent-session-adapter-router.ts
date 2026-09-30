@@ -1,10 +1,14 @@
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
+import type { StructuredAgentSessionAtRestCommands } from './structured-agent-session-at-rest-commands'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionAccountHome,
   AgentSessionExecutionLocation
 } from '../../../shared/agent-session-record'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionAdapter,
+  StructuredAgentSessionStopCause
+} from './structured-agent-session-adapter'
 
 type RoutedAgent = 'claude' | 'codex'
 type SessionRoute = { adapter: StructuredAgentSessionAdapter; state: 'live' | 'stopped' }
@@ -112,19 +116,20 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     sessionId
   ) => this.liveOwnerOrNull(sessionId)?.backgroundTaskState?.(sessionId)
 
+  holdsDispatch = (sessionId: string): boolean =>
+    this.liveOwnerOrNull(sessionId)?.holdsDispatch?.(sessionId) ?? false
+
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.liveOwnerOrNull(sessionId)?.readCommands?.(sessionId)
 
-  readAtRestCommands: NonNullable<StructuredAgentSessionAdapter['readAtRestCommands']> = (record) =>
-    this.adapters[record.provider].readAtRestCommands?.(record)
-
-  onAtRestCommandsChanged: NonNullable<StructuredAgentSessionAdapter['onAtRestCommandsChanged']> = (
-    listener
-  ) => {
-    const stops = Object.values(this.adapters).flatMap((adapter) =>
-      adapter.onAtRestCommandsChanged ? [adapter.onAtRestCommandsChanged(listener)] : []
-    )
-    return () => stops.forEach((stop) => stop())
+  atRestCommands: StructuredAgentSessionAtRestCommands = {
+    read: (record) => this.adapters[record.provider].atRestCommands?.read(record),
+    onChange: (listener) => {
+      const stops = Object.values(this.adapters).flatMap((adapter) =>
+        adapter.atRestCommands ? [adapter.atRestCommands.onChange(listener)] : []
+      )
+      return () => stops.forEach((stop) => stop())
+    }
   }
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (input) =>
@@ -157,20 +162,21 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     accountHome: AgentSessionAccountHome
   }) => this.requireAgent(input.identity).providerHistoryWindow?.(input) ?? Promise.resolve(null)
 
-  closeSession = (sessionId: string): Promise<boolean> =>
-    this.stopSession(sessionId, (adapter) => adapter.closeSession)
+  closeSession = (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> =>
+    this.stopSession(sessionId, (adapter) => adapter.closeSession, cause)
 
   forceCloseSession = (sessionId: string): Promise<boolean> =>
     this.stopSession(sessionId, (adapter) => adapter.forceCloseSession ?? adapter.closeSession)
 
-  disposeSession = (sessionId: string): Promise<boolean> =>
-    this.stopSession(sessionId, (adapter) => adapter.disposeSession ?? adapter.closeSession)
+  disposeSession = (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> =>
+    this.stopSession(sessionId, (adapter) => adapter.disposeSession ?? adapter.closeSession, cause)
 
   private async stopSession(
     sessionId: string,
     selectStop: (
       adapter: StructuredAgentSessionAdapter
-    ) => NonNullable<StructuredAgentSessionAdapter['closeSession']> | undefined
+    ) => NonNullable<StructuredAgentSessionAdapter['closeSession']> | undefined,
+    cause?: StructuredAgentSessionStopCause
   ): Promise<boolean> {
     const route = this.routes.get(sessionId)
     if (!route) {
@@ -183,7 +189,7 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
       return true
     }
     const stop = selectStop(route.adapter)
-    const stopped = await stop?.call(route.adapter, sessionId)
+    const stopped = await stop?.call(route.adapter, sessionId, cause)
     if (stopped === true) {
       route.state = 'stopped'
       return true

@@ -60,7 +60,7 @@ export class StructuredAgentSessionClientDelivery {
   /** Re-sends the `/` surface whenever the provider's at-rest one changes. */
   watchAtRestCommands(adapter: StructuredAgentSessionHostDeps['adapter']): void {
     this.stopAtRestCommandUpdates =
-      adapter.onAtRestCommandsChanged?.(() => this.subscribers.republishCommands()) ??
+      adapter.atRestCommands?.onChange(() => this.subscribers.republishCommands()) ??
       (() => undefined)
   }
 
@@ -72,7 +72,7 @@ export class StructuredAgentSessionClientDelivery {
       return live
     }
     const record = store.getRecord(sessionId)
-    return record ? adapter.readAtRestCommands?.(record) : undefined
+    return record ? adapter.atRestCommands?.read(record) : undefined
   }
 
   publishStatus = (sessionId: string): void => this.statusFeed.publish(sessionId)

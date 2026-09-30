@@ -4,8 +4,9 @@
 // from an earlier one. The host answers a second Stop of a named turn or task quietly; against an
 // older host that does not, this client joins one still on its way instead of stopping twice.
 // Every result is discarded unless the runtime fence it was issued against is still the current
-// one. A write that did not happen is reported once, in the person's words, by the caller that
-// knows where to say it; nothing latches.
+// one, except the reply to the conversation command a pane still waits on, since that command may
+// move the fence itself. A write that did not happen is reported once, in the person's words, by
+// the caller that knows where to say it; nothing latches.
 
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
@@ -68,10 +69,14 @@ export function useStructuredAgentSessionMutate(args: {
     new Map<string, Promise<StructuredAgentSessionWriteOutcome<unknown>>>()
   )
   const enabledRef = useRef(enabled)
+  // The conversation command this pane still waits on; only its reply may outlive a fence move. A
+  // newer command replaces it, and disabling the pane forgets it.
+  const commandInFlight = useRef<object | null>(null)
   useEffect(() => {
     // Why: update the gate after commit so render stays free of ref mutations.
     enabledRef.current = enabled
-  }, [enabled])
+    commandInFlight.current = null
+  }, [enabled, sessionId])
 
   const send = useCallback(
     async <T>(
@@ -83,6 +88,21 @@ export function useStructuredAgentSessionMutate(args: {
         return { kind: 'dropped' }
       }
       const targetFence = stateRef.current.fence
+      const request = {}
+      if (fingerprintMethod === 'agentSession.conversationCommand') {
+        commandInFlight.current = request
+      }
+      // Whether this call's answer is still for what the pane shows. Another fence's result is about
+      // a runtime the pane replaced; a conversation command may itself start or stop the agent,
+      // moving the fence under its own reply, so that reply is kept while this pane still waits on
+      // it. Called once, when the call settles.
+      const settlesHere = (): boolean => {
+        const waitedOn = commandInFlight.current === request
+        if (waitedOn) {
+          commandInFlight.current = null
+        }
+        return enabledRef.current && (stateRef.current.fence === targetFence || waitedOn)
+      }
       let result: AgentSessionMutationResult<T>
       try {
         result = await callStructuredAgentSession<AgentSessionMutationResult<T>>(target, method, {
@@ -99,7 +119,7 @@ export function useStructuredAgentSessionMutate(args: {
           ...fields
         })
       } catch (error) {
-        return enabledRef.current && stateRef.current.fence === targetFence
+        return settlesHere()
           ? {
               kind: 'not-done',
               notice: agentSessionWriteFailureText(
@@ -113,7 +133,7 @@ export function useStructuredAgentSessionMutate(args: {
           : { kind: 'dropped' }
       }
       if (!result.ok) {
-        return enabledRef.current && stateRef.current.fence === targetFence
+        return settlesHere()
           ? {
               kind: 'not-done',
               notice: agentSessionWriteFailureText(
@@ -123,7 +143,7 @@ export function useStructuredAgentSessionMutate(args: {
             }
           : { kind: 'dropped' }
       }
-      if (!enabledRef.current || stateRef.current.fence !== targetFence) {
+      if (!settlesHere()) {
         return { kind: 'dropped' }
       }
       return { kind: 'done', value: result.value }
