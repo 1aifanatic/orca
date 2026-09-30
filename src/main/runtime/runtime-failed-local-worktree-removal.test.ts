@@ -13,6 +13,8 @@ import type { Repo } from '../../shared/repo-types'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
 import type { Store } from '../persistence'
 import type * as HostTreeRemoval from '../host-tree-removal'
+import type * as GitFileRestore from '../git/worktree-git-file-restore'
+import { restoreMissingWorktreeGitFile } from '../git/worktree-git-file-restore'
 import { removeHostTree } from '../host-tree-removal'
 import { listWorktreesStrict, removeWorktree } from '../git/worktree'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
@@ -42,6 +44,10 @@ import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-
 vi.mock('../project-runtime-git-options', () => ({
   getLocalProjectWorktreeGitOptions: () => ({})
 }))
+vi.mock('../git/worktree-git-file-restore', async (importOriginal) => {
+  const actual = await importOriginal<typeof GitFileRestore>()
+  return { ...actual, restoreMissingWorktreeGitFile: vi.fn(actual.restoreMissingWorktreeGitFile) }
+})
 vi.mock('../host-tree-removal', async (importOriginal) => {
   const actual = await importOriginal<typeof HostTreeRemoval>()
   return { ...actual, removeHostTree: vi.fn(actual.removeHostTree) }
@@ -100,7 +106,12 @@ function jobHost(purged: string[], stopPtys = vi.fn(async () => {})) {
 }
 
 /** A delete a quit interrupted, finished at the next start, where Git fails on the locked file. */
-async function failStartupFinish(): Promise<unknown> {
+function failStartupFinish(): Promise<unknown> {
+  return finishAtStartup([])
+}
+
+/** Resumes a recorded delete of the checkout as the next start does; resolves with its error. */
+async function finishAtStartup(purged: string[]): Promise<unknown> {
   const record: WorktreeRemovalRecord = {
     worktreeId,
     repoId: repo.id,
@@ -116,7 +127,7 @@ async function failStartupFinish(): Promise<unknown> {
   await loadWorktreeRemovalRecords(recordsDir)
   const joined = waitForPendingWorktreeRemoval(worktreeId)!
   resumeInterruptedWorktreeRemovals((interrupted) =>
-    interruptedLocalWorktreeRemovalJob(interrupted, jobHost([]))
+    interruptedLocalWorktreeRemovalJob(interrupted, jobHost(purged))
   )
   const error = await joined.then(
     () => undefined,
@@ -362,5 +373,21 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     await _settlePendingWorktreeRemovalsForTests()
     expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
+  })
+
+  it('at startup, still deletes the recorded checkout when its missing .git cannot be restored', async () => {
+    await setImmutable(false)
+    // Git deleted `.git` first and the link cannot be written back, so Git cannot remove it.
+    await rm(join(worktreePath, '.git'))
+    vi.mocked(restoreMissingWorktreeGitFile).mockResolvedValueOnce(false)
+    const purged: string[] = []
+
+    expect(await finishAtStartup(purged)).toBeUndefined()
+
+    expect(removeHostTree).toHaveBeenCalledWith(worktreePath)
+    expect(existsSync(worktreePath)).toBe(false)
+    expect(await isRegistered(worktreePath)).toBe(false)
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
+    expect(purged).toEqual([worktreeId])
   })
 })

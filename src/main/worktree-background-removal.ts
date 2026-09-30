@@ -161,7 +161,8 @@ export function startBackgroundWorktreeRemoval(
 
 /**
  * Delete on a failed delete's leftover that Git's current listing still does not register: runs the
- * recorded removal again, with the choices the user made the first time. Undefined when none.
+ * recorded removal again, with the choices the user made the first time, or joins the one another
+ * request started while this one listed Git. Undefined when neither.
  */
 export function retryFailedWorktreeRemoval(
   worktreeId: string,
@@ -173,7 +174,7 @@ export function retryFailedWorktreeRemoval(
       ? failedWorktreeRemovals.get(worktreeId)
       : undefined
   if (!failed) {
-    return undefined
+    return waitForPendingWorktreeRemoval(worktreeId, hostId)
   }
   const { failure: _failure, ...record } = failed
   const settlement = addPendingRemoval(record)

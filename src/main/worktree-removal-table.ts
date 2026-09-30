@@ -56,7 +56,7 @@ export function forgetFailedWorktreeRemoval(worktreeId: string): void {
 /**
  * Delete's choice for a workspace whose earlier delete failed, from Git's listing taken now: a
  * checkout Git registers at the path again is a new one, so the failed record is dropped and the
- * normal delete runs; while Git does not, `retry` runs the recorded removal. True when it did.
+ * normal delete runs; while Git does not, `retry` runs or joins the recorded removal. True then.
  */
 export function retryFailedRemovalUnlessRegistered(
   worktreeId: string,

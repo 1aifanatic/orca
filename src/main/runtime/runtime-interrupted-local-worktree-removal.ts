@@ -184,7 +184,10 @@ async function finishInterruptedLocalWorktreeRemoval(
       repo.path,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null,
-      () => assertUnregisteredRemovalLeftover(repo.path, record.worktreePath, localOptions),
+      // Why only unregistered: a registered checkout here was just proven to be the recorded one.
+      deletable
+        ? async () => {}
+        : () => assertUnregisteredRemovalLeftover(repo.path, record.worktreePath, localOptions),
       localOptions
     )
     removed = true

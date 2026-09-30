@@ -18,7 +18,8 @@ import { createWorktreeRemovalRuntime } from '../orca-runtime-test-scenario-buil
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
-  loadWorktreeRemovalRecords
+  loadWorktreeRemovalRecords,
+  retryFailedWorktreeRemoval
 } from '../../worktree-background-removal'
 import {
   readWorktreeRemovalRecords,
@@ -107,6 +108,27 @@ describe('runtime Delete on a failed delete’s leftover', () => {
     expect(removeWorktree).toHaveBeenCalledWith(TEST_REPO_PATH, leftover, false, expect.anything())
     expect(existsSync(join(leftover, 'node_modules'))).toBe(true)
     expect(await readWorktreeRemovalRecords(directory)).toEqual([])
+  })
+
+  it('joins a retry another client started while this Delete listed Git', async () => {
+    const otherClientsRetry = vi.fn(async () => ({}))
+    vi.mocked(listWorktreesStrict).mockImplementationOnce(async () => {
+      void retryFailedWorktreeRemoval(leftoverId, 'local', () => ({
+        run: otherClientsRetry,
+        publish: () => {}
+      }))
+      return []
+    })
+    const runtime = createWorktreeRemovalRuntime()
+
+    await expect(
+      runtime.removeManagedWorktree(`id:${leftoverId}`, { waitForBackgroundRemoval: true })
+    ).resolves.toEqual({})
+
+    expect(otherClientsRetry).toHaveBeenCalledTimes(1)
+    // Only the joined retry ran: the leftover is still there because its stub deleted nothing.
+    expect(existsSync(join(leftover, 'node_modules'))).toBe(true)
+    expect(removeWorktree).not.toHaveBeenCalled()
   })
 
   it('replies to a waiting client once the retry finishes', async () => {

@@ -19,6 +19,7 @@ import type * as WorktreeRemovalLeftover from '../worktree-removal-leftover'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
+  retryFailedWorktreeRemoval,
   startBackgroundWorktreeRemoval
 } from '../worktree-background-removal'
 
@@ -207,6 +208,29 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
 
     expect(await listFeature()).toMatchObject({ removalError: 'EPERM again' })
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
+  })
+
+  it('joins a retry another client started while this Delete listed Git', async () => {
+    await failAfterGitDroppedIt()
+    const [main] = mockKnownFeatureWorktree()
+    listWorktreesMock.mockResolvedValue([main])
+    const otherClientsRetry = vi.fn(async () => ({}))
+    listWorktreesMock.mockImplementationOnce(async () => {
+      // Another client's Delete takes the failed record during this Delete's `git worktree list`.
+      void retryFailedWorktreeRemoval(featureId, 'local', () => ({
+        run: otherClientsRetry,
+        publish: () => {}
+      }))
+      return [main]
+    })
+
+    await expect(remove({ worktreeId: featureId })).resolves.not.toHaveProperty('removing')
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(otherClientsRetry).toHaveBeenCalledTimes(1)
+    // Neither a second retry nor the delete for leftovers without a record ran.
+    expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
+    expect(removeWorktreeMock).not.toHaveBeenCalled()
   })
 
   it('Delete takes the normal delete once Git registers a checkout at the path again', async () => {
