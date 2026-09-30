@@ -67,13 +67,20 @@ afterEach(() => {
 it('draws one row for a run of provider retries, with what failed on its second line', async () => {
   let listener: ((value: unknown) => void) | null = null
   let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
-  const client = {
-    sendRequest: vi.fn(async () => ({ ok: true, result: {}, _meta: { runtimeId: 'runtime-1' } })),
-    subscribe: vi.fn((_method: string, _params: unknown, onData: (value: unknown) => void) => {
+  const client: RpcClient = {
+    sendRequest: async () => ({ ok: true, result: {}, _meta: { runtimeId: 'runtime-1' } }),
+    subscribe: (_method, _params, onData) => {
       listener = onData
-      return vi.fn()
-    })
-  } as unknown as RpcClient
+      return () => {}
+    },
+    updateTerminalSubscriptionViewport: () => {},
+    getState: () => 'connected',
+    getReconnectAttempt: () => 0,
+    getLastConnectedAt: () => null,
+    onStateChange: () => () => {},
+    notifyForeground: () => {},
+    close: () => {}
+  }
   function Harness(): null {
     hook = useMobileStructuredAgentSession({
       client,
@@ -82,8 +89,9 @@ it('draws one row for a run of provider retries, with what failed on its second 
       enabled: true,
       connected: true,
       agent: 'codex',
+      hostSupport: null,
       onSendError: vi.fn()
-    } as never)
+    })
     return null
   }
 

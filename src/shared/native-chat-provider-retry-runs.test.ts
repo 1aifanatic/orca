@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import { agentSessionFailureWords } from './agent-session-failure-words'
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
@@ -77,6 +78,31 @@ describe('a run of provider retry rows', () => {
   it('is not split by a row that draws nothing', () => {
     const turn = item({ kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1 })
     expect(drawn([retry(1), turn, retry(2)])).toEqual(['Codex is retrying: Reconnecting... 2/5.'])
+  })
+
+  it('is not split by a queued send, which is drawn after the conversation', () => {
+    const queued = item({ kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Next' }] })
+    const messages = projectStructuredAgentSessionMessages(
+      [retry(1), { ...queued, itemId: agentJournalSubmissionKey('queued-1') }, retry(2)],
+      [],
+      [
+        {
+          clientMessageId: 'queued-1',
+          fence: 1,
+          payloadFingerprint: 'queued-1',
+          dispatchState: 'pending',
+          providerItemId: null,
+          reason: null,
+          submittedAt: 1,
+          resolvedAt: null,
+          handoverRecorded: true
+        }
+      ]
+    )
+    expect(messages.map((message) => [message.id, message.queued ?? false])).toEqual([
+      [expect.stringMatching(/^item-/), false],
+      [agentJournalSubmissionKey('queued-1'), true]
+    ])
   })
 
   it("draws an older host's single revised row as it is", () => {

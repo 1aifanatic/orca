@@ -38,7 +38,9 @@ export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusI
   const retry = readProviderRetry({
     ...readCodexErrorInfo(payload),
     // Details that only repeat the message would print the same words twice.
-    ...(additionalDetails?.trim() !== message?.trim() ? { cause: additionalDetails } : {})
+    ...(additionalDetails && additionalDetails.trim() !== message?.trim()
+      ? { cause: additionalDetails }
+      : {})
   })
   const words = agentSessionFailureWords(
     agentSessionFailureFact('providerRetrying', {

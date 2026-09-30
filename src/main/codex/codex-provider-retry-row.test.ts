@@ -1,5 +1,7 @@
 // A Codex stream error it is about to retry is a warning row per attempt, never a red row: the
 // journal keeps every attempt, and the transcript draws only the latest of a run.
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type {
   AgentJournalItemBody,
@@ -12,6 +14,7 @@ import type { CodexStructuredSessionEvent } from './codex-structured-session-ada
 
 const THREAD_ID = 'thread-abc'
 const TURN_ID = 'turn-1'
+const CAPTURED_THREAD = '00000000-0000-7000-8000-000000000012'
 
 type Row = { key: string; body: AgentJournalItemBody }
 
@@ -124,29 +127,48 @@ describe('a Codex stream error it is about to retry', () => {
     expect(publishes() - before).toBe(3)
   })
 
-  it('leaves an error Codex will not retry as the red row that fails the turn', () => {
-    const { translator, rows } = harness()
-    translator.handle(retrying('Reconnecting... 5/5'))
-
-    translator.handle(
-      notification('error', {
-        threadId: THREAD_ID,
-        turnId: TURN_ID,
-        willRetry: false,
-        error: { message: 'stream disconnected before completion' }
-      })
+  it('leaves the error Codex gives up on as the red row, and the turn fails, in a captured run', () => {
+    const captured = readFileSync(
+      join(__dirname, '__fixtures__', 'codex-app-server-turn-endings.jsonl'),
+      'utf8'
     )
-
-    expect(reduced(rows).map((row) => row.body)).toContainEqual(
-      expect.objectContaining({
-        kind: 'status',
-        tone: 'error',
-        text: 'stream disconnected before completion'
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line): { case: string; method: string; params: unknown } => JSON.parse(line))
+      .filter((frame) => frame.case === '0.141.0-conn-refused')
+    const rows: Row[] = []
+    const translator = createCodexJournalTranslator({
+      sink: {
+        appendItem: (identity, body) => rows.push({ key: agentJournalItemKey(identity), body }),
+        appendTombstone: () => undefined,
+        publish: () => undefined
+      },
+      primaryThreadId: () => CAPTURED_THREAD
+    })
+    for (const frame of captured) {
+      translator.handle({
+        type: 'notification',
+        sessionId: 'session-1',
+        threadId: CAPTURED_THREAD,
+        method: frame.method,
+        params: frame.params
       })
+    }
+
+    const cause =
+      'stream disconnected before completion: error sending request for url (http://127.0.0.1:9/v1/responses)'
+    const errorFrameRows = reduced(rows).flatMap((row) =>
+      row.body.kind === 'status' && row.body.providerFrame?.kind === 'notification:error'
+        ? [{ tone: row.body.tone, text: row.body.text }]
+        : []
     )
+    expect(errorFrameRows).toEqual([
+      { tone: 'warning', text: `Codex is retrying: Reconnecting... 1/2.\n${cause}` },
+      { tone: 'warning', text: `Codex is retrying: Reconnecting... 2/2.\n${cause}` },
+      { tone: 'error', text: cause }
+    ])
     expect(reduced(rows).map((row) => row.body)).toContainEqual(
       expect.objectContaining({ kind: 'turn', state: 'completed', outcome: 'failure' })
     )
-    expect(retryRows(rows)).toHaveLength(1)
   })
 })
