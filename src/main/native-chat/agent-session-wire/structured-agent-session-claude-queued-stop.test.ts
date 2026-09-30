@@ -111,7 +111,7 @@ function eventually(assertion: () => unknown): Promise<unknown> {
 }
 
 function envelope(
-  method: 'agentSession.send' | 'agentSession.cancel',
+  method: 'agentSession.send' | 'agentSession.cancel' | 'agentSession.queuedMessageSend',
   fields: Record<string, unknown>
 ) {
   return {
@@ -315,4 +315,56 @@ it('withdraws a host-queued follow-up but leaves a newer turn running when the S
     item.body.kind === 'status' ? [item.body.text] : []
   )
   expect(rows).toContain('The provider had already finished this turn.')
+}, 15_000)
+
+it('a card sent now into the running turn comes back paused when Stop withdraws it, and is not sent again', async () => {
+  const connection = claude.connections[0]!
+  const turnId = await openFirstTurn(connection)
+  const body = hostTestMessage('And then this.')
+  const delivery = 'queue-if-active' as const
+  const queuedSend = await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body, delivery }),
+    body,
+    delivery,
+    userSend: true
+  })
+  if (!queuedSend.ok || !('queued' in queuedSend.value)) {
+    throw new Error('expected a queued receipt')
+  }
+  const cardId = queuedSend.value.queued.messageId
+  const sentNow = await host.queuedMessageSend(CALLER, {
+    envelope: envelope('agentSession.queuedMessageSend', { messageId: cardId }),
+    messageId: cardId
+  })
+  expect(sentNow).toMatchObject({ ok: true })
+  // Folded into the running turn: Claude holds it until that turn ends.
+  await eventually(() => expect(connection.sent).toHaveLength(2))
+  queued.push(String(connection.sent.at(-1)!.uuid))
+  const sends = async () =>
+    (await host.journalSnapshot(SESSION)).submissions
+      .filter((entry) => entry.queuedMessageId === cardId)
+      .map((entry) => ({ origin: entry.origin, state: entry.dispatchState, reason: entry.reason }))
+  await eventually(async () => expect((await sends())[0]?.state).toBe('pending'))
+
+  expect(await stop(turnId)).toMatchObject({ ok: true, value: { cancelled: true } })
+  connection.handlers.onMessage?.({
+    type: 'result',
+    subtype: 'error_during_execution',
+    session_id: PROVIDER_SESSION_ID,
+    uuid: 'interrupted-result'
+  })
+
+  await eventually(async () => {
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect({
+      pause: page.ok ? (page.page.queuePause ?? null) : 'history refused',
+      cards: page.ok ? (page.page.queuedMessages ?? []).map((card) => card.state) : [],
+      sends: await sends()
+    }).toEqual({
+      pause: { reason: 'stopped' },
+      cards: ['waiting'],
+      sends: [{ origin: 'client', state: 'rejected', reason: DISPATCH_REJECTED_CANCELLED }]
+    })
+  })
+  expect(connection.sent).toHaveLength(2)
 }, 15_000)

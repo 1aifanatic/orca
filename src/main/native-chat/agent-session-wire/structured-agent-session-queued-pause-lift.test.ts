@@ -231,6 +231,29 @@ describe('a pause is over the cards it paused', () => {
     await eventually(async () => expect(await rig.handoff(correction)).toBeDefined())
   })
 
+  it('a Stop over a card sent now into the turn holds it until the agent takes it; then a card typed later drains', async () => {
+    const working = await rig.workingSend()
+    const sentId = await queuedDraft('sent now into the turn')
+    await rig.sendNow(sentId)
+    await handedOver(sentId)
+    await rig.stop()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    // Recorded over the unanswered hand-off, which the Stop may yet withdraw; nothing to publish.
+    expect(journal?.queuedMessages.pause()).toMatchObject({ reason: 'stopped' })
+    expect(await rig.queuePause()).toBeNull()
+    await rig.settleAccepted(await rig.handoffId(sentId), 'sent-now')
+    expect(journal?.queuedMessages.pause()).toBeNull()
+    await rig.settleAccepted(working, 'stopped')
+    const mail = rig.send('coordinator mail', undefined, { internal: true })
+    await mail.result
+    await eventually(async () =>
+      expect((await rig.submission(mail.id))?.handedOverAt).toBeDefined()
+    )
+    const later = await queuedDraft('typed during the mail turn')
+    await rig.settleAccepted(mail.id, 'mail')
+    await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
+  })
+
   it('deleting the last paused card ends the pause, so a card typed later is not held by it', async () => {
     const working = await rig.workingSend()
     const only = await queuedDraft('paused, then deleted')

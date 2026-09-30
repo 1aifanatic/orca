@@ -25,10 +25,11 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  * once it withdrew something — and only over cards it then holds back. The Stop
  * calls `tookEffect` there. A Stop that throws before then changed nothing and
  * recorded nothing, so there is nothing to undo; one that fails after it keeps
- * the pause, since the interrupt may have landed. A draft whose hand-off the
- * Stop withdrew is back to waiting in its own place, under this same pause. The
- * drain cannot slip a draft in between: it runs on the same serialized lane as
- * the Stop.
+ * the pause, since the interrupt may have landed. A hand-off still unanswered
+ * counts as held, so a draft the interrupt withdraws later — at the provider's turn
+ * end — is back to waiting in its own place, under this same pause; accepted
+ * instead, the pause retires in that write. The drain cannot slip a draft in
+ * between: it runs on the same serialized lane as the Stop.
  */
 export async function runStopWithQueuePause<TValue>(
   ctx: AgentSessionTurnContext,

@@ -13,6 +13,7 @@ import {
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
+import type { JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
@@ -37,7 +38,7 @@ import {
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
-  owedBackToWaiting,
+  mayReturnToWaiting,
   queuedMessageSettlementOwed,
   settleOwedQueuedMessages,
   settleQueuedMessagesForRow
@@ -173,10 +174,10 @@ export class JournalQueuedMessages {
   }
 
   /** What `queuePauseHoldsBack` judges a pause by, from this journal's submissions. */
-  private pauseScope() {
+  private pauseScope(row?: JournalRow) {
     return {
       sessionId: this.deps.sessionId,
-      owedToWaiting: owedBackToWaiting(this.deps.state().submissions)
+      mayReturnToWaiting: mayReturnToWaiting(this.deps.state().submissions, row)
     }
   }
 
@@ -252,14 +253,15 @@ export class JournalQueuedMessages {
       row,
       now: this.deps.now()
     })
-    this.changeRevision += retireQueuePauseIfNothingHeld(db, this.pauseScope())
+    this.changeRevision += retireQueuePauseIfNothingHeld(db, this.pauseScope(row))
   }
 
   /** The in-transaction consume for `appendSubmission`; a false compare-and-set
    *  throws so the whole append — draft transition AND submission row — rolls back. */
   consumeInTransaction(
     db: Database.Database,
-    input: JournalSubmissionConsume & { consumedAs: string }
+    input: JournalSubmissionConsume & { consumedAs: string },
+    row: JournalRow
   ): void {
     const { db: own } = this.deps.database()
     if (own !== db) {
@@ -274,7 +276,7 @@ export class JournalQueuedMessages {
     if (!consumed) {
       throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
     }
-    retireQueuePauseIfNothingHeld(db, this.pauseScope())
+    retireQueuePauseIfNothingHeld(db, this.pauseScope(row))
     this.changeRevision++
   }
 
@@ -348,8 +350,8 @@ export function queuedMessageConsumeHook(
   queuedMessages: JournalQueuedMessages,
   consumedAs: string,
   consume: JournalSubmissionConsume
-): (db: Database.Database) => void {
-  return (db) => queuedMessages.consumeInTransaction(db, { ...consume, consumedAs })
+): JournalRowTransactionHook {
+  return (db, row) => queuedMessages.consumeInTransaction(db, { ...consume, consumedAs }, row)
 }
 
 export class QueuedMessageNotConsumableError extends Error {

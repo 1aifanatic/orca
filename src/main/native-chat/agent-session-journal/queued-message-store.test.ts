@@ -732,6 +732,40 @@ describe("the queue's Stop fact", () => {
     expect(journal.queuedMessages.pause()).not.toBeNull()
   })
 
+  it('holds a card sent now while its hand-off is unanswered; the write accepting it retires the pause', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'draft-1')
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(true)
+    // Send-now: the last waiting card is handed off, which a Stop may yet withdraw.
+    await consumeDraft(journal, 'draft-1')
+    expect(journal.queuedMessages.pause()).not.toBeNull()
+    await journal.resolveDispatch({
+      clientMessageId: 'sub-draft-1',
+      state: 'accepted',
+      providerIdentity: { provider: 'claude', sessionId: 'native-1', uuid: 'echo-1' },
+      fence: 0
+    })
+    expect(journal.queuedMessages.pause()).toBeNull()
+    await journal.close()
+    journal = await open()
+    expect(journal.queuedMessages.pause()).toBeNull()
+  })
+
+  it("records over a hand-off still unanswered, so the Stop's withdrawal lands it back under the pause", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(true)
+    await journal.resolveDispatch({
+      clientMessageId: 'sub-draft-1',
+      state: 'rejected',
+      ...STOP_WITHDRAWAL,
+      fence: 0
+    })
+    expect(journal.queuedMessages.get('draft-1')?.state).toBe('waiting')
+    expect(journal.queuedMessages.pause()).not.toBeNull()
+  })
+
   it('a hand-off whose return to waiting is still owed (its hook skipped) keeps the pause', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-sent')

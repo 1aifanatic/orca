@@ -8,6 +8,7 @@ import type Database from '../../sqlite/sync-database'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import {
   consumedSubmissionWasRejected,
+  journalDispatchRowApplies,
   journalDispatchRowNewlyRejects,
   rejectedDraftSettlement
 } from './journal-dispatch-settlement'
@@ -36,16 +37,30 @@ export function queuedMessageSettlementOwed(
   )
 }
 
-/** A dispatched draft's consumed submission settled so that the draft is owed a
- *  return to waiting (a withdrawal, not a refusal): what a queue pause must still
- *  count as a card it holds back while that settlement is owed. */
-export function owedBackToWaiting(submissions: Submissions): (consumedRef: string) => boolean {
+/** A dispatched draft's hand-off can still send it back to waiting: unanswered, so a Stop may
+ *  yet withdraw it, or withdrawn with that return still owed. What a queue pause holds back
+ *  besides waiting cards. `row`, the journal row this transaction appends, counts as applied,
+ *  so the write that settles the last such hand-off is the one that retires the pause. */
+export function mayReturnToWaiting(
+  submissions: Submissions,
+  row?: JournalRow
+): (consumedRef: string) => boolean {
   return (consumedRef) => {
+    if (row?.kind === 'submission' && row.clientMessageId === consumedRef) {
+      return true
+    }
     const submission = submissions.get(consumedRef)
+    const current =
+      row?.kind === 'dispatch' &&
+      row.clientMessageId === consumedRef &&
+      journalDispatchRowApplies(submission)
+        ? { dispatchState: row.state, reason: row.reason, rejection: row.rejection }
+        : submission
+    if (current?.dispatchState === 'pending') {
+      return true
+    }
     return (
-      submission !== undefined &&
-      consumedSubmissionWasRejected(submission) &&
-      rejectedDraftSettlement(submission).state === 'waiting'
+      consumedSubmissionWasRejected(current) && rejectedDraftSettlement(current).state === 'waiting'
     )
   }
 }

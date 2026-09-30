@@ -82,7 +82,7 @@ export function clearQueuePause(
 type QueueCardState = { state: string; holdReason: string | null }
 
 /** A card a pause holds back: waiting, with no hold of its own, wherever it sits.
- *  While one exists — or a hand-off still owed a return to waiting
+ *  While one exists — or a hand-off that may still return to waiting
  *  (`queuePauseHoldsBack`) — the pause is KEPT: a Stop records it, and it is
  *  retired only once none remains, so deleting a returned card that blocks such
  *  cards leaves them paused rather than sending them unasked. */
@@ -108,12 +108,12 @@ export function hasResumableQueuedMessage(rows: readonly QueueCardState[]): bool
 
 /** What a queue pause holds back, judged inside the caller's transaction: a waiting
  *  card with no hold of its own (`isPausableQueuedMessage`, in SQL), or a dispatched
- *  one whose settlement back to waiting is still owed — its hook was skipped, so the
- *  row has not caught up with its rejected submission, which only the journal's
- *  submissions can tell (`owedToWaiting`). */
+ *  one its hand-off may still send back to waiting — unanswered, so the Stop that
+ *  recorded the pause may yet withdraw it, or withdrawn with that return still owed.
+ *  Only the journal's submissions can tell (`mayReturnToWaiting`). */
 export function queuePauseHoldsBack(
   db: Database.Database,
-  input: { sessionId: string; owedToWaiting: (consumedRef: string) => boolean }
+  input: { sessionId: string; mayReturnToWaiting: (consumedRef: string) => boolean }
 ): boolean {
   const pausable = db
     .prepare(
@@ -136,7 +136,7 @@ export function queuePauseHoldsBack(
         row !== null &&
         'consumed_as' in row &&
         typeof row.consumed_as === 'string' &&
-        input.owedToWaiting(row.consumed_as)
+        input.mayReturnToWaiting(row.consumed_as)
     )
 }
 
@@ -145,7 +145,7 @@ export function queuePauseHoldsBack(
  *  it can never outlive them and catch a card typed long after. */
 export function retireQueuePauseIfNothingHeld(
   db: Database.Database,
-  input: { sessionId: string; owedToWaiting: (consumedRef: string) => boolean }
+  input: { sessionId: string; mayReturnToWaiting: (consumedRef: string) => boolean }
 ): number {
   // Runs on every appended journal row: with no pause recorded there is nothing to judge.
   const recorded = db
