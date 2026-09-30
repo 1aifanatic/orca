@@ -7,7 +7,6 @@
 // a BEGIN, which `runJournalTransaction` does not support. The queue also keeps the FIFO order and
 // the async boundary every awaiting caller was written against.
 
-import type Database from '../sqlite/sync-database'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { AgentSessionJournalError } from '../native-chat/agent-session-journal/journal-write-guards'
@@ -103,22 +102,6 @@ export class AgentSessionStoreTransactions {
     const run = this.queue.then(() => this.commit(apply, options.inMemoryWhenReadOnly === true))
     this.queue = run.catch(() => {})
     return run
-  }
-
-  /**
-   * The same synchronous body for a caller already inside a journal transaction on `db`, so a
-   * record change can commit with the journal rows it belongs with. Call `adopt` only after that
-   * transaction commits.
-   */
-  applyInTransaction<T>(
-    db: Database.Database,
-    apply: (draft: AgentSessionStoreState) => T
-  ): { result: T; adopt: () => void } {
-    const staged = this.stage(apply)
-    if (staged.writes) {
-      writeAgentSessionStoreRows(db, staged.writes)
-    }
-    return { result: staged.result, adopt: staged.adopt }
   }
 
   private commit<T>(apply: (draft: AgentSessionStoreState) => T, inMemoryWhenReadOnly: boolean): T {
