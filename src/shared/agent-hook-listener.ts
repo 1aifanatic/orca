@@ -137,17 +137,19 @@ export function normalizeHookPayload(
     }
   }
 
-  const rootPresenceEvent =
-    (source === 'claude' || source === 'codex') &&
+  // Why: presence needs the agent's own process; without it the hook cannot speak for liveness.
+  const agentProcess =
+    source === 'claude' ? readAgentProcessIdentity(record.agentProcess) : undefined
+  const agentPresence = agentProcess ? { process: agentProcess } : undefined
+  const sessionEndReason = readString(hookPayloadRecord, 'reason')
+  if (
+    eventName === 'SessionEnd' &&
+    agentPresence &&
     !readString(hookPayloadRecord, 'agent_id') &&
-    providerSession
-  const agentPresence = rootPresenceEvent
-    ? {
-        sessionId: providerSession.id,
-        process: source === 'claude' ? readAgentProcessIdentity(record.agentProcess) : undefined
-      }
-    : undefined
-  if (source === 'claude' && eventName === 'SessionEnd' && agentPresence) {
+    // Why: /clear and /resume switch sessions inside the same running process.
+    sessionEndReason !== 'clear' &&
+    sessionEndReason !== 'resume'
+  ) {
     const payload =
       previousStatus?.payload ??
       normalizeAgentStatusPayload({ state: 'done', prompt: '', agentType: source })
@@ -163,7 +165,6 @@ export function normalizeHookPayload(
       connectionId: null,
       providerSession: providerSession ?? undefined,
       hookEventName: 'SessionEnd',
-      hookSessionEndReason: readString(hookPayloadRecord, 'reason'),
       agentPresence,
       payload
     }

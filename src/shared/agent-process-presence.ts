@@ -4,12 +4,10 @@ export type AgentProcessIdentity = {
   startTime: string
 }
 
-/** Hook presence is independent of whether the last turn finished. */
+/** The pane's agent process, owned from its first identified hook until it ends. */
 export type AgentProcessPresence = {
-  sessionId: string
-  process?: AgentProcessIdentity
+  process: AgentProcessIdentity
   ended?: true
-  sessionSwitch?: true
 }
 
 export type AgentProcessVerdict = 'live' | 'unverifiable' | 'exited'
@@ -45,22 +43,19 @@ export function readAgentProcessIdentity(value: unknown): AgentProcessIdentity |
 }
 
 export function readAgentProcessPresence(value: unknown): AgentProcessPresence | undefined {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    !('sessionId' in value) ||
-    typeof value.sessionId !== 'string' ||
-    !value.sessionId ||
-    value.sessionId.length > 512
-  ) {
+  if (!value || typeof value !== 'object' || !('process' in value)) {
+    return undefined
+  }
+  const process = readAgentProcessIdentity(value.process)
+  if (!process) {
     return undefined
   }
   return {
-    sessionId: value.sessionId,
-    process: 'process' in value ? readAgentProcessIdentity(value.process) : undefined,
-    ...('ended' in value && value.ended === true ? { ended: true as const } : {}),
-    ...('sessionSwitch' in value && value.sessionSwitch === true
-      ? { sessionSwitch: true as const }
-      : {})
+    process,
+    ...('ended' in value && value.ended === true ? { ended: true as const } : {})
   }
+}
+
+export function isSameAgentProcess(a: AgentProcessIdentity, b: AgentProcessIdentity): boolean {
+  return a.pid === b.pid && a.platform === b.platform && a.startTime === b.startTime
 }

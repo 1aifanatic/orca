@@ -79,7 +79,6 @@ export type AgentHookRelayEnvelope = {
   source: AgentHookSource
   paneKey: string
   agentPresence?: AgentProcessPresence
-  hookSessionEndReason?: string
   /** Ephemeral Orca launch identity stamped into the PTY env for this process. */
   launchToken?: string
   tabId?: string

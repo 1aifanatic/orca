@@ -44,7 +44,7 @@ describe('relay process presence', () => {
     try {
       await server.start()
       const { port, token } = server.getCoordinates()
-      const post = async (event: string, session: string, reason?: string) => {
+      const post = async (event: string, session: string, reason?: string, pid = 4001) => {
         const response = await fetch(`http://127.0.0.1:${port}/hook/claude`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Orca-Agent-Hook-Token': token },
@@ -52,15 +52,19 @@ describe('relay process presence', () => {
             paneKey,
             tabId: 'tab-1',
             worktreeId: 'wt-1',
+            agentProcess: JSON.stringify({
+              pid,
+              platform: process.platform,
+              startTime: `birth-${pid}`
+            }),
             payload: { hook_event_name: event, session_id: session, source: 'startup', reason }
           })
         })
         expect(response.status).toBe(204)
       }
       await post('SessionStart', 'a')
-      expect(forward.mock.lastCall?.[0].agentPresence?.sessionId).toBe('a')
-      expect(probe).toHaveBeenCalledOnce()
-      probe.mockClear()
+      expect(forward.mock.lastCall?.[0].agentPresence?.process.pid).toBe(4001)
+      expect(probe).not.toHaveBeenCalled()
       const retryHost = retryHosts[0]
       const original = retryHost.state.lastStatusByPaneKey.get(paneKey)
       if (!original) {
@@ -77,10 +81,9 @@ describe('relay process presence', () => {
       await server.checkAgentPresence(paneKey)
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBeUndefined()
       await post('SessionEnd', 'a', 'resume')
-      expect(forward.mock.lastCall?.[0].agentPresence?.sessionSwitch).toBe(true)
       await post('SessionStart', 'b')
-      await post('SessionEnd', 'a', 'prompt_input_exit')
-      expect(forward.mock.lastCall?.[0].agentPresence?.sessionId).toBe('b')
+      await post('SessionEnd', 'nested', 'other', 4002)
+      expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBeUndefined()
       probe.mockResolvedValue('exited')
       await server.checkAgentPresence(paneKey)
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBe(true)

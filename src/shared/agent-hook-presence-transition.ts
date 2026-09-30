@@ -1,16 +1,12 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
-import type { AgentProcessIdentity } from './agent-process-presence'
+import { isSameAgentProcess } from './agent-process-presence'
 
 function claimsAgent(event: AgentHookEventPayload): boolean {
   const agentType = event.payload.agentType
   return agentType !== undefined && agentType !== 'unknown'
 }
 
-function isOtherProcess(a: AgentProcessIdentity, b: AgentProcessIdentity): boolean {
-  return a.pid !== b.pid || a.platform !== b.platform || a.startTime !== b.startTime
-}
-
-/** Apply lifecycle evidence only to the session that supplied it. */
+/** The pane's presence belongs to one agent process; only that process's evidence changes it. */
 export function transitionHookPresence(
   incoming: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined
@@ -23,53 +19,26 @@ export function transitionHookPresence(
   ) {
     return incoming
   }
+  const owner = previous?.agentPresence
   const next = incoming.agentPresence
-  const prior = previous?.agentPresence
-  if (!next && prior?.ended) {
-    return undefined
-  }
   if (!next) {
-    return prior ? { ...incoming, agentPresence: prior } : incoming
+    // Why: evidence without an identity can neither extend nor revive the owner's presence.
+    return { ...incoming, agentPresence: owner && !owner.ended ? owner : undefined }
   }
-  const retired = prior?.ended || prior?.sessionSwitch
-  if (incoming.hookEventName === 'SessionEnd') {
-    if (!prior || prior.sessionId !== next.sessionId || retired) {
+  const fromOwner = owner !== undefined && isSameAgentProcess(owner.process, next.process)
+  // Why: SessionEnd, or an exit the execution host already proved (relay-forwarded).
+  if (incoming.hookEventName === 'SessionEnd' || next.ended) {
+    if (!owner || !fromOwner || owner.ended) {
       return undefined
     }
-    const switching =
-      incoming.hookSessionEndReason === 'clear' || incoming.hookSessionEndReason === 'resume'
-    return {
-      ...incoming,
-      payload: previous.payload,
-      providerSession: switching ? undefined : incoming.providerSession,
-      agentPresence: { ...prior, ...(switching ? { sessionSwitch: true } : { ended: true }) }
-    }
+    return { ...incoming, payload: previous.payload, agentPresence: { ...owner, ended: true } }
   }
-  if (!prior) {
-    return incoming
+  if (fromOwner) {
+    return owner.ended ? undefined : { ...incoming, agentPresence: owner }
   }
-  if (retired) {
-    // Why: a late event from the retired session must not revive it; any other session replaces it.
-    if (prior.sessionId === next.sessionId && incoming.hookEventName !== 'SessionStart') {
-      return undefined
-    }
-    const process = next.process ?? (prior.sessionSwitch ? prior.process : undefined)
-    return { ...incoming, agentPresence: { ...next, process } }
+  if (owner && !owner.ended) {
+    // Why: nested agents inherit ORCA_PANE_KEY; another process's hooks update status, not ownership.
+    return { ...incoming, agentPresence: owner }
   }
-  if (
-    prior.sessionId !== next.sessionId &&
-    prior.process &&
-    next.process &&
-    isOtherProcess(prior.process, next.process)
-  ) {
-    // Why: nested agents inherit ORCA_PANE_KEY; their sessions must not own the pane's presence.
-    return { ...incoming, agentPresence: prior }
-  }
-  return {
-    ...incoming,
-    agentPresence: {
-      ...next,
-      process: next.process ?? (prior.sessionId === next.sessionId ? prior.process : undefined)
-    }
-  }
+  return incoming
 }

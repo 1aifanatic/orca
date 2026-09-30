@@ -1,5 +1,8 @@
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
-import type { AgentProcessVerdict } from '../../../shared/agent-process-presence'
+import {
+  isSameAgentProcess,
+  type AgentProcessVerdict
+} from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
 import { AgentHookServerLifecycle } from './server-lifecycle'
 
@@ -9,14 +12,21 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     Promise<AgentProcessVerdict | null>
   >()
 
+  /** A live hook proves its own process alive; only another process's hook casts doubt on the owner. */
+  checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {
+    const sender = event.agentPresence?.process
+    const owner = row.agentPresence
+    if (sender && owner && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
+      void this.checkAgentPresence(row.paneKey)
+    }
+  }
+
   checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
-    if (!row?.agentPresence) {
+    // Why: an ended owner already published its exit; whatever runs in the pane now is not it.
+    if (!row?.agentPresence || row.agentPresence.ended) {
       return Promise.resolve(null)
-    }
-    if (row.agentPresence.ended) {
-      return Promise.resolve('exited')
     }
     if (row.connectionId !== null) {
       return Promise.resolve('unverifiable')

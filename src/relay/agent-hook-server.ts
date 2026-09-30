@@ -1,6 +1,7 @@
 import { handleRelayHookRequest } from './agent-hook-request'
 import { transitionHookPresence } from '../shared/agent-hook-presence-transition'
 import { RelayAgentPresence } from './relay-agent-presence'
+import { isSameAgentProcess } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -313,7 +314,16 @@ export class RelayAgentHookServer {
     this.lastEnvelopeMetaByPaneKey.delete(event.paneKey)
     this.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
     this.forward(buildRelayHookEnvelope(event, source, env, version, options))
-    if (options.checkPresence !== false && event.agentPresence && !event.agentPresence.ended) {
+    const sender = incoming.agentPresence?.process
+    const owner = event.agentPresence
+    // Why: a live hook proves its own process alive; only another process's hook casts doubt on the owner.
+    if (
+      options.checkPresence !== false &&
+      sender &&
+      owner &&
+      !owner.ended &&
+      !isSameAgentProcess(sender, owner.process)
+    ) {
       void this.checkAgentPresence(event.paneKey)
     }
   }

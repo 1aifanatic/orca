@@ -42,10 +42,10 @@ async function hook(
   event: string,
   session = 'session-a',
   reason?: string,
-  pid?: number
+  pid: number | null = 4001
 ): Promise<void> {
   const agentProcess =
-    pid === undefined
+    pid === null
       ? undefined
       : JSON.stringify({ pid, platform: process.platform, startTime: `birth-${pid}` })
   const response = await postHookEvent(
@@ -82,53 +82,60 @@ describe('host-owned hook presence', () => {
     expect(visible(server)).toBe(false)
   })
 
-  it.each(['clear', 'resume'])(
-    'keeps process presence through %s and rejects the previous session goodbye',
-    async (reason) => {
-      const server = await createServer()
-      await hook(server, 'SessionStart')
-      await hook(server, 'SessionEnd', 'session-a', reason)
-      expect(visible(server)).toBe(true)
-      await hook(server, 'SessionStart', 'session-b')
-      await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
-      expect(visible(server)).toBe(true)
-      await hook(server, 'SessionEnd', 'session-b', 'prompt_input_exit')
-      expect(visible(server)).toBe(false)
-    }
-  )
-
-  it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {
+  it.each(['clear', 'resume'])('keeps the running process present through %s', async (reason) => {
     const server = await createServer()
-    await hook(server, 'SessionStart', 'outer', undefined, 4001)
-    await hook(server, 'UserPromptSubmit', 'outer', undefined, 4001)
-    await hook(server, 'SessionStart', 'nested', undefined, 4002)
-    await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
-    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    await hook(server, 'SessionStart')
+    await hook(server, 'SessionEnd', 'session-a', reason)
     expect(visible(server)).toBe(true)
-    await hook(server, 'PostToolUse', 'outer', undefined, 4001)
+    await hook(server, 'UserPromptSubmit', 'session-b')
     expect(state(server)).toBe('working')
-    await hook(server, 'SessionEnd', 'outer', 'other', 4001)
+    await hook(server, 'SessionEnd', 'session-b', 'prompt_input_exit')
     expect(visible(server)).toBe(false)
   })
 
-  it('lets the next session replace a switched one even if its SessionStart was lost', async () => {
-    const server = await createServer()
-    await hook(server, 'SessionStart', 'session-a', undefined, 4001)
-    await hook(server, 'SessionEnd', 'session-a', 'clear', 4001)
-    await hook(server, 'Stop', 'session-a', undefined, 4001)
-    await hook(server, 'UserPromptSubmit', 'session-b', undefined, 4001)
-    expect(state(server)).toBe('working')
-    await hook(server, 'SessionEnd', 'session-b', 'other', 4001)
-    expect(visible(server)).toBe(false)
-  })
-
-  it('does not resurrect an ended session on a late Stop', async () => {
+  it('does not resurrect an ended process on a late Stop', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
     await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
     await hook(server, 'Stop')
     expect(visible(server)).toBe(false)
   })
+
+  it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart', 'outer')
+    await hook(server, 'UserPromptSubmit', 'outer')
+    await hook(server, 'SessionStart', 'nested', undefined, 4002)
+    await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
+    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    expect(visible(server)).toBe(true)
+    await hook(server, 'PostToolUse', 'outer')
+    expect(state(server)).toBe('working')
+    await hook(server, 'SessionEnd', 'outer', 'other')
+    expect(visible(server)).toBe(false)
+  })
+
+  it('never ends a pane from a SessionEnd without a process identity', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart', 'outer', undefined, null)
+    await hook(server, 'UserPromptSubmit', 'outer', undefined, null)
+    await hook(server, 'SessionStart', 'nested', undefined, null)
+    await hook(server, 'SessionEnd', 'nested', 'other', null)
+    expect(visible(server)).toBe(true)
+    await hook(server, 'PostToolUse', 'outer', undefined, null)
+    expect(state(server)).toBe('working')
+  })
+
+  it('lets an unidentified agent keep reporting after an identified nested agent ends', async () => {
+    const server = await createServer()
+    await hook(server, 'UserPromptSubmit', 'outer', undefined, null)
+    await hook(server, 'SessionStart', 'nested', undefined, 4002)
+    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    await hook(server, 'PostToolUse', 'outer', undefined, null)
+    expect(state(server)).toBe('working')
+    expect(await server.checkAgentPresence(PANE)).toBeNull()
+  })
+
   it('keeps unanswered reads and clears only a positive process exit', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
@@ -137,12 +144,12 @@ describe('host-owned hook presence', () => {
     probe.mockResolvedValue('exited')
     expect(await server.checkAgentPresence(PANE)).toBe('exited')
     expect(visible(server)).toBe(false)
+    expect(await server.checkAgentPresence(PANE)).toBeNull()
   })
 
-  it('does not apply a delayed process exit to a replacement session', async () => {
+  it('does not apply a delayed process exit to a relaunched agent', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
-    await server.checkAgentPresence(PANE)
     let finish: (value: 'exited') => void = () => {}
     probe.mockImplementationOnce(
       () =>
@@ -151,16 +158,10 @@ describe('host-owned hook presence', () => {
         })
     )
     const pending = server.checkAgentPresence(PANE)
-    await hook(server, 'SessionStart', 'replacement')
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    await hook(server, 'SessionStart', 'relaunch', undefined, 4002)
     finish('exited')
     expect(await pending).toBe('unverifiable')
-    expect(visible(server)).toBe(true)
-  })
-  it('admits an explicit same-session resume when no PID was available', async () => {
-    const server = await createServer()
-    await hook(server, 'SessionStart')
-    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
-    await hook(server, 'SessionStart')
     expect(visible(server)).toBe(true)
   })
 
@@ -174,7 +175,6 @@ describe('host-owned hook presence', () => {
       hookEventName: 'SessionStart',
       providerSession: { provider: 'claude', id: 'remote-session' },
       agentPresence: {
-        sessionId: 'remote-session',
         process: { pid: process.pid, platform: process.platform, startTime: 'remote-birth' }
       },
       payload: { state: 'working', prompt: 'remote task', agentType: 'claude' }
@@ -194,11 +194,11 @@ describe('host-owned hook presence', () => {
     )
     expect(visible(server)).toBe(false)
   })
-  it('checks real hooks but never a transcript retry status write', async () => {
+
+  it('probes the owner only when another process reports, never on its own hooks or retries', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
-    expect(probe).toHaveBeenCalledOnce()
-    probe.mockClear()
+    await hook(server, 'UserPromptSubmit')
     probe.mockResolvedValue('exited')
     server.applyTranscriptUpdate()
     await Promise.resolve()
@@ -207,8 +207,10 @@ describe('host-owned hook presence', () => {
     ).toBe('late transcript result')
     expect(probe).not.toHaveBeenCalled()
     expect(visible(server)).toBe(true)
-    await hook(server, 'Stop')
-    expect(probe).toHaveBeenCalledOnce()
-    expect(visible(server)).toBe(false)
+    await hook(server, 'SessionStart', 'relaunch', undefined, 4002)
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(visible(server)).toBe(false))
+    await hook(server, 'UserPromptSubmit', 'relaunch', undefined, 4002)
+    expect(state(server)).toBe('working')
   })
 })

@@ -6,7 +6,6 @@ import type { AgentProviderSessionMetadata } from '../agent-session-resume'
 export type AgentHookEventPayload = {
   paneKey: string
   agentPresence?: AgentProcessPresence
-  hookSessionEndReason?: string
   /** Authenticated hook route that produced this event. */
   source?: AgentHookSource
   /** Ephemeral Orca launch identity stamped into the PTY env for this process. */
