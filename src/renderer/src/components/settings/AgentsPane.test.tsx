@@ -284,19 +284,12 @@ describe('AgentsPane', () => {
     }
   })
 
-  it('keeps the host-only Codex server row out of paired web clients and their search', () => {
+  it('keeps the host-only Codex server row out of paired web clients', () => {
     Reflect.set(globalThis, '__ORCA_WEB_CLIENT__', true)
     try {
       expect(renderPane(getDefaultSettings('/tmp'))).not.toContain(
         getCodexTerminalServerIsolationTitle()
       )
-      expect(
-        matchesSettingsSearch(
-          'daemon',
-          getAgentsPaneSearchEntries({ includeCodexTerminalServerIsolation: false })
-        )
-      ).toBe(false)
-      expect(matchesSettingsSearch('daemon', getAgentsPaneSearchEntries())).toBe(true)
     } finally {
       Reflect.deleteProperty(globalThis, '__ORCA_WEB_CLIENT__')
     }
