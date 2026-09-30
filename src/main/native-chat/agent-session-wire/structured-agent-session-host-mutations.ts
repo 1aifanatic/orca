@@ -177,7 +177,7 @@ export function cancelStructuredAgentSessionTurn(
       run: (ctx) =>
         runStopWithQueuePause(ctx, async (tookEffect) => {
           // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
-          // Issued, not awaited: the interrupt never waits on bookkeeping, nor on an owed import.
+          // Issued, not awaited: the interrupt never waits on bookkeeping. (The open paid any owed import.)
           const withdrew = withdrawQueuedForStop(ctx, () =>
             ctx.journal.rejectQueuedSubmissions(
               ctx.fence,

@@ -512,8 +512,13 @@ describe('a failed Stop', () => {
         ? Promise.reject(new Error('disk full'))
         : append(identity, body, options)
     )
+    // Owed from the Stop's first write, after the open paid any import: its writes wait behind it.
     const owed = Promise.withResolvers<void>()
-    journal['queue'].owe(() => owed.promise)
+    const withdraw = journal.rejectQueuedSubmissions.bind(journal)
+    vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation((...args) => {
+      journal['queue'].owe(() => owed.promise)
+      return withdraw(...args)
+    })
     const stopping = rig.stop()
     await eventually(() => expect(rig.host.deps.adapter.cancelTurn).toHaveBeenCalledOnce())
     owed.resolve()

@@ -13,8 +13,8 @@ import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
-/** Whether the fold reads working. Every write has landed by its call's return, so a Stop reads
- *  it without waiting on the write queue. */
+/** Whether the fold reads working. Every write has landed by its call's return, and the open paid
+ *  any owed import, so a Stop reads it without waiting on the write queue. */
 export function isMainAgentWorking(
   ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence'>
 ): boolean {
