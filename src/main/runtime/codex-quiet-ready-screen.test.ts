@@ -357,7 +357,7 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
   )
 })
 
-describe('never less ready than origin/main', () => {
+describe('reading the live screen never removes quiet-lane readiness', () => {
   const records = [
     { lastAgentStatus: null, lastOutputAt: 0, lastOscTitle: null },
     { lastAgentStatus: 'idle' as const, lastOutputAt: 0, lastOscTitle: 'codex' },
@@ -384,7 +384,7 @@ describe('never less ready than origin/main', () => {
               const before = evaluateTuiIdle({
                 ...base,
                 record,
-                // Why a withheld screen: that leaves exactly main's Muse lane, the only widening.
+                // Why a withheld screen: isolates what the live screen adds to the quiet lane.
                 readQuietReadyBodyEvidence: () =>
                   isQuietReadyScreenBody(frame.waitText, agent, () => null)
               })
