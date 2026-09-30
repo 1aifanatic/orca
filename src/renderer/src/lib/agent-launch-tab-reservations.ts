@@ -1,10 +1,11 @@
 /**
  * Where a host-created agent tab goes, recorded by the caller before it asks the host to launch.
  *
- * The host reveal is the only tab creator, and it knows nothing about placement: which tab group the
- * user launched from, and that the tab takes focus. The caller mints the tab id (the `paneKey` it
- * sends), records its placement here under that id, and the reveal reads it when the tab arrives.
- * Placement never crosses the wire.
+ * The host creates the tab and knows nothing about placement: which tab group the user launched
+ * from, and that the tab takes focus. The caller mints every id the tab can arrive under (the
+ * terminal's `paneKey` tab, the chat's session tab) and records one placement under all of them;
+ * the terminal reveal and the chat mirror each read it by the id they see. Placement never crosses
+ * the wire.
  *
  * Renderer memory only, and every entry dies: the reveal consumes it, the caller releases it once
  * the launch settles either way, and an entry nobody consumed or released expires. A window reload
@@ -34,20 +35,29 @@ function sweepExpired(now: number): void {
   }
 }
 
-/** Records the placement and returns its release, which is safe to call after the reveal took it. */
+function deleteEntry(entry: Entry): void {
+  for (const [tabId, candidate] of reservations) {
+    if (candidate === entry) {
+      reservations.delete(tabId)
+    }
+  }
+}
+
+/**
+ * Records the placement under every tab id the launch may arrive as, and returns its release,
+ * which is safe to call after the reveal took it.
+ */
 export function reserveAgentLaunchTab(
-  tabId: string,
+  tabIds: string | readonly string[],
   reservation: AgentLaunchTabReservation,
   now = Date.now()
 ): () => void {
   sweepExpired(now)
   const entry: Entry = { reservation, expiresAt: now + AGENT_LAUNCH_TAB_RESERVATION_TTL_MS }
-  reservations.set(tabId, entry)
-  return () => {
-    if (reservations.get(tabId) === entry) {
-      reservations.delete(tabId)
-    }
+  for (const tabId of typeof tabIds === 'string' ? [tabIds] : tabIds) {
+    reservations.set(tabId, entry)
   }
+  return () => deleteEntry(entry)
 }
 
 /**
@@ -67,14 +77,7 @@ export function claimAgentLaunchTabReservation(
   if (!entry || entry.reservation.worktreeId !== worktreeId) {
     return null
   }
-  return {
-    reservation: entry.reservation,
-    consume: () => {
-      if (reservations.get(tabId) === entry) {
-        reservations.delete(tabId)
-      }
-    }
-  }
+  return { reservation: entry.reservation, consume: () => deleteEntry(entry) }
 }
 
 /**
@@ -88,7 +91,7 @@ export function agentLaunchReservedGroupIds(
 ): ReadonlySet<string> {
   sweepExpired(now)
   const groupIds = new Set<string>()
-  for (const { reservation } of reservations.values()) {
+  for (const { reservation } of new Set(reservations.values())) {
     if (reservation.worktreeId === worktreeId && reservation.groupId) {
       groupIds.add(reservation.groupId)
     }
@@ -97,5 +100,5 @@ export function agentLaunchReservedGroupIds(
 }
 
 export function agentLaunchTabReservationCountForTests(): number {
-  return reservations.size
+  return new Set(reservations.values()).size
 }

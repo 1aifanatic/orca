@@ -3,9 +3,10 @@
  *
  * The caller mints the pane (and, for Claude or Codex, the chat session) before it asks, because
  * the host decides whether the launch runs as a terminal or a chat and reveals the tab before the
- * reply, which can wait up to a minute on the prompt. The local host's reveal reads a reservation;
- * a paired host's tab arrives through the session-tabs mirror, which places a tab only by a
- * recorded placement and focuses one only by a recorded focus intent.
+ * reply, which can wait up to a minute on the prompt. One reservation under both ids holds the
+ * group: the local terminal reveal reads it by the pane's tab id, and the session-tabs mirror reads
+ * it by the chat's tab id. A paired host's terminal is placed by a recorded placement, and the
+ * mirror focuses a tab only by a recorded focus intent.
  */
 
 import { useAppStore } from '@/store'
@@ -46,6 +47,11 @@ function chatHostTabId(sessionId: string): string {
   return `agent-session:${sessionId}`
 }
 
+/** Every id the launch's tab can arrive as: the terminal's pane tab, or the chat's session tab. */
+function launchTabIds(tabId: string, sessionId: string | undefined): string[] {
+  return sessionId ? [tabId, chatHostTabId(sessionId)] : [tabId]
+}
+
 export function placeAgentLaunchTab(args: AgentLaunchTabPlacementArgs): AgentLaunchTabPlacement {
   return args.target.kind === 'local'
     ? placeLocalLaunchTab(args)
@@ -53,13 +59,12 @@ export function placeAgentLaunchTab(args: AgentLaunchTabPlacementArgs): AgentLau
 }
 
 function placeLocalLaunchTab(args: AgentLaunchTabPlacementArgs): AgentLaunchTabPlacement {
-  const release = reserveAgentLaunchTab(args.tabId, {
+  const release = reserveAgentLaunchTab(launchTabIds(args.tabId, args.sessionId), {
     worktreeId: args.worktreeId,
     ...(args.groupId ? { groupId: args.groupId } : {}),
     onRevealed: args.onRevealed
   })
-  // Why: a chat the host starts arrives through the session-tabs mirror, which focuses only a tab
-  // the client asked for; the terminal reveal reads the reservation instead.
+  // Why: the mirror focuses only a tab the client asked for; the terminal reveal focuses its own.
   const owner = { environmentId: LOCAL_STRUCTURED_SESSION_OWNER }
   const chatTabId = args.sessionId ? chatHostTabId(args.sessionId) : null
   if (chatTabId) {
@@ -86,7 +91,7 @@ function placePairedLaunchTab(
   environmentId: string
 ): AgentLaunchTabPlacement {
   const owner = { environmentId }
-  const { worktreeId, tabId, leafId, groupId } = args
+  const { worktreeId, tabId, leafId, groupId, sessionId } = args
   const visibleTabId = resolveWebSessionVisibleTabId(useAppStore.getState(), worktreeId)
   // The mirror holds one focus intent per workspace, so it names the terminal, the slow surface;
   // a chat answers fast and takes the intent over on the reply.
@@ -96,7 +101,7 @@ function placePairedLaunchTab(
   if (groupId) {
     // Held as a local launch holds it: a workspace reveal before the send reconciles tabs, which
     // drops an empty split nothing holds, and the tab would then arrive in another group.
-    releaseGroup = reserveAgentLaunchTab(tabId, { worktreeId, groupId })
+    releaseGroup = reserveAgentLaunchTab(launchTabIds(tabId, sessionId), { worktreeId, groupId })
     recordWebSessionTerminalPlacement({ ...placement, groupId })
     // Consumed once the tab materializes: a record left for the prompt's wait would yank a tab
     // the user drags back into this group.

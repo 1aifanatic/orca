@@ -172,6 +172,22 @@ describe('launching a source-control button’s agent through the host', () => {
     expect(placement).toMatchObject({ worktreeId: 'wt-1', groupId: 'group-2' })
   })
 
+  // Why: a chat the host starts arrives through the tab mirror under its session tab, not the pane's.
+  it('reserves the same group under the chat’s tab, so a chat the host starts lands there too', async () => {
+    let chatPlacement: AgentLaunchTabReservation | null = null
+    mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
+      chatPlacement =
+        claimAgentLaunchTabReservation(`agent-session:${String(params.sessionId)}`, 'wt-1')
+          ?.reservation ?? null
+      return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    })
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(chatPlacement).toMatchObject({ worktreeId: 'wt-1', groupId: 'group-2' })
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+  })
+
   it('sends the view mode the button would have opened the tab in, so the host reveals it that way', async () => {
     mocks.state = {
       ...mocks.state,
@@ -463,6 +479,22 @@ describe('a launch on a paired host', () => {
       groupId: 'group-2',
       activate: true
     })
+  })
+
+  it('holds the focused group under the chat’s tab too while the terminal has not appeared', async () => {
+    mocks.settleTerminalPlacement.mockReturnValue(new Promise<void>(() => {}))
+    let chatPlacement: AgentLaunchTabReservation | null = null
+    mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
+      chatPlacement =
+        claimAgentLaunchTabReservation(`agent-session:${String(params.sessionId)}`, 'wt-1')
+          ?.reservation ?? null
+      return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    })
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(chatPlacement).toMatchObject({ worktreeId: 'wt-1', groupId: 'group-2' })
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
   })
 
   // Why: Fix checks reveals its workspace first, and that reconcile drops an empty split nothing holds.

@@ -82,6 +82,16 @@ describe('a launch tab reservation', () => {
     expect(agentLaunchTabReservationCountForTests()).toBe(1)
   })
 
+  it('is one placement under every id the tab may arrive as, and dies as one', () => {
+    releases.push(reserveAgentLaunchTab(['tab-1', 'agent-session:chat-1'], PLACEMENT, 0))
+
+    expect(agentLaunchTabReservationCountForTests()).toBe(1)
+    expect(reveal('agent-session:chat-1', 'wt-1', 1)).toEqual(PLACEMENT)
+    // The launch arrived as a chat, so its terminal id holds nothing now.
+    expect(reveal('tab-1', 'wt-1', 2)).toBeNull()
+    expect(agentLaunchReservedGroupIds('wt-1', 3)).toEqual(new Set())
+  })
+
   it('keeps protecting its group from a claim until the reveal consumes it', () => {
     reserve('tab-1')
     const claim = claimAgentLaunchTabReservation('tab-1', 'wt-1', 1)
