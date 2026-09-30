@@ -36,6 +36,7 @@ const ADAPTER_FAILURE_TEXT =
   'Codex is not signed in for the selected account. Sign in, then send your message again.'
 // The exit's reason is Orca's log text; the row says only that the start stopped.
 const EXIT_TEXT = 'Codex stopped before it finished starting. Send your message to try again.'
+const COMPACT_EXIT_TEXT = 'Codex stopped before it finished starting. Run /compact again.'
 // The first child (generation-1) is lost at setup; the send starts generation-2.
 const START_ROW = agentJournalItemKey({
   provider: 'orca',
@@ -53,6 +54,7 @@ let generation = 0
 let settleStart: (failure: SubmissionRejectionFact | undefined) => void = () => {}
 let awaitStarted = vi.fn<() => Promise<SubmissionRejectionFact | undefined>>()
 let dispatch = vi.fn<() => Promise<{ state: 'admitted' }>>()
+let compact = vi.fn<() => Promise<{ state: 'admitted' }>>()
 let frames: AgentSessionSubscribeEvent[] = []
 
 function exitBeforeProof(): Promise<void> {
@@ -89,6 +91,27 @@ async function sendQueued(text: string): Promise<string> {
   return sent.ok ? sent.value.clientMessageId : ''
 }
 
+/** A /compact sent through the command RPC, whose answer waits for its handover. */
+async function sendCompact(): Promise<{ id: string; answered: Promise<unknown> }> {
+  const fields = { command: 'compact' }
+  const answered = host.conversationCommand(CALLER, {
+    envelope: {
+      sessionId: SESSION,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId: SESSION,
+        fields
+      })
+    },
+    command: 'compact'
+  })
+  await eventually(() => expect(awaitStarted).toHaveBeenCalledOnce())
+  const waiting = (await host.journalSnapshot(SESSION)).submissions.at(-1)
+  return { id: waiting?.clientMessageId ?? '', answered }
+}
+
 async function submission(clientMessageId: string) {
   return (await host.journalSnapshot(SESSION)).submissions.find(
     (entry) => entry.clientMessageId === clientMessageId
@@ -121,6 +144,7 @@ beforeEach(async () => {
     () => new Promise<SubmissionRejectionFact | undefined>((resolve) => (settleStart = resolve))
   )
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
+  compact = vi.fn(async () => ({ state: 'admitted' as const }))
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   host = new StructuredAgentSessionHost({
     store,
@@ -141,6 +165,7 @@ beforeEach(async () => {
       releaseAcquisition: vi.fn(async () => true),
       closeSession: vi.fn(async () => true),
       dispatch,
+      compact,
       cancelTurn: vi.fn(async () => ({ cancelled: true })),
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
@@ -242,5 +267,95 @@ describe('a start whose child cannot take the message it was handed', () => {
     expect(publishedStartRows()).toEqual([firstRejected?.reason])
     // One start failed, so one handover tried it.
     expect(dispatch).toHaveBeenCalledOnce()
+  })
+})
+
+// A /compact the start was carrying is handed over like any message, as a command: a child that
+// cannot take it failed its start for the command and for every message waiting behind it.
+describe('a waiting /compact whose child cannot take it', () => {
+  function resultRows(items: { itemId: string }[]): string[] {
+    return items.flatMap((item) => (item.itemId.includes('command-result:') ? [item.itemId] : []))
+  }
+
+  it('rejects it and the message behind it naming the one start row, whichever report lands first', async () => {
+    const { id: waiting, answered } = await sendCompact()
+    const behind = await sendQueued('behind')
+    compact.mockImplementation(() => {
+      throw new Error(`no live claude stream-json session for ${SESSION}`)
+    })
+    awaitStarted.mockImplementation(async () => undefined)
+
+    settleStart(undefined)
+    await eventually(async () =>
+      expect(await submission(waiting)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    expect(await submission(waiting)).toMatchObject({ rejectedByStartKey: 'generation-2' })
+    await eventually(async () =>
+      expect(await submission(behind)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    await exitBeforeProof()
+    await host.flushStreamedEvents(SESSION)
+
+    const { items } = await host.journalSnapshot(SESSION)
+    const rejected = await submission(waiting)
+    expect(rejected).toMatchObject({
+      rejection: { kind: 'startFailed' },
+      rejectedByStartKey: 'generation-2'
+    })
+    expect(await submission(behind)).toMatchObject({
+      reason: rejected?.reason,
+      rejectedByStartKey: 'generation-2'
+    })
+    expect(await startRows()).toEqual([rejected?.reason])
+    expect(publishedStartRows()).toEqual([rejected?.reason])
+    // The start's row is the command's one row: no result row repeats it.
+    expect(resultRows(items)).toEqual([])
+    // The command's turn ended with its start, not left running to hold the queue.
+    expect(items.some((item) => item.body.kind === 'turn' && item.body.state === 'running')).toBe(
+      false
+    )
+    expect(compact).toHaveBeenCalledOnce()
+    await answered
+  })
+
+  it('leaves the row to the loop when the exit lands while the command still waits', async () => {
+    const { id: waiting, answered } = await sendCompact()
+
+    await exitBeforeProof()
+    settleStart(undefined)
+    await eventually(async () =>
+      expect(await submission(waiting)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    await host.flushStreamedEvents(SESSION)
+
+    const { items } = await host.journalSnapshot(SESSION)
+    expect(await submission(waiting)).toMatchObject({
+      reason: COMPACT_EXIT_TEXT,
+      rejectedByStartKey: 'generation-2'
+    })
+    expect(publishedStartRows()).toEqual([COMPACT_EXIT_TEXT])
+    expect(resultRows(items)).toEqual([])
+    expect(compact).not.toHaveBeenCalled()
+    await answered
+  })
+
+  it("keeps the exit's row when the child exits after it took the command", async () => {
+    const { id: waiting, answered } = await sendCompact()
+    awaitStarted.mockImplementation(async () => undefined)
+
+    settleStart(undefined)
+    await eventually(() => expect(compact).toHaveBeenCalledOnce())
+    await answered
+    await exitBeforeProof()
+    await host.flushStreamedEvents(SESSION)
+
+    const { items } = await host.journalSnapshot(SESSION)
+    const rejected = await submission(waiting)
+    expect(rejected).toMatchObject({
+      dispatchState: 'rejected',
+      rejectedByStartKey: 'generation-2'
+    })
+    expect(publishedStartRows()).toEqual([rejected?.reason])
+    expect(resultRows(items)).toEqual([])
   })
 })

@@ -25,6 +25,7 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity,
   type AgentJournalMessageItem,
+  type AgentJournalStatusItem,
   type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
@@ -41,7 +42,6 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 
 export const STRUCTURED_AGENT_SESSION_COMPACT_COMMAND = 'compact'
@@ -157,12 +157,14 @@ export type StructuredAgentSessionCommandHandoverContext = {
   now: () => number
 }
 
-/** Refuses the command, or opens its turn and sends it. */
+/** Refuses the command, or opens its turn and sends it. Returns the cause when the child's start
+ *  failed at the handover, leaving the command pending for the caller to record that start's
+ *  failure for it and everything queued behind it. */
 export async function handOverStructuredAgentSessionCommand(
   ctx: StructuredAgentSessionCommandHandoverContext,
   submission: AgentJournalSubmission,
   body: AgentJournalMessageItem
-): Promise<void> {
+): Promise<{ error: unknown } | null> {
   const { clientMessageId } = submission
   // Provider frames already received decide whether a turn is running.
   await ctx.flushStreamedEvents()
@@ -174,7 +176,7 @@ export async function handOverStructuredAgentSessionCommand(
       ...agentSessionFailureWords(blocked, { ...ctx.failureTextContext, surface: 'rejection' }),
       fence: ctx.fence
     })
-    return
+    return null
   }
   const turn = structuredAgentSessionCommandTurn(clientMessageId)
   await ctx.journal.resolveDispatch({
@@ -204,20 +206,16 @@ export async function handOverStructuredAgentSessionCommand(
       command: { clientMessageId, ...turn, running }
     })
   } catch (error) {
-    // A child that had not proven its start took nothing, so the command provably did not run. Any
-    // other throw is a lost reply: the command may have run.
-    const unsent =
-      ctx.providerChildPhase?.() === 'starting'
-        ? {
-            state: 'rejected' as const,
-            ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
-          }
-        : {
-            state: 'unknown' as const,
-            reason: error instanceof Error ? error.message : String(error)
-          }
-    await settleUnsentCommand(ctx, clientMessageId, unsent)
-    return
+    // A child that had not proven its start took nothing: its start failed. Any other throw is a
+    // lost reply: the command may have run.
+    if (ctx.providerChildPhase?.() === 'starting') {
+      return { error }
+    }
+    await settleUnsentCommand(ctx, clientMessageId, {
+      state: 'unknown',
+      reason: error instanceof Error ? error.message : String(error)
+    })
+    return null
   }
   if (admission.state === 'rejected') {
     // The provider refused the compaction itself: its row reads as the compaction failing.
@@ -231,6 +229,7 @@ export async function handOverStructuredAgentSessionCommand(
     // An unknown write leaves the turn to the provider's end or the child's: it may have run.
     await ctx.journal.resolveDispatch({ clientMessageId, ...admission, fence: ctx.fence })
   }
+  return null
 }
 
 /** Where the turn a handed-over submission runs in starts counting: its handover, so time spent
@@ -257,27 +256,51 @@ async function settleUnsentCommand(
   /** What the result row reports, when it is not the rejection's own fact. */
   rowFailure?: AgentSessionFailureFact
 ): Promise<void> {
+  await ctx.journal.resolveDispatch({ clientMessageId, ...unsent, fence: ctx.fence })
+  await endUnsentCommandTurn(
+    ctx,
+    clientMessageId,
+    unsent.state === 'rejected'
+      ? {
+          kind: 'status',
+          ...agentSessionFailureWords(rowFailure ?? unsent.rejection, {
+            ...ctx.failureTextContext,
+            surface: 'row'
+          }),
+          tone: 'error'
+        }
+      : null
+  )
+}
+
+/** A command whose start failed at its handover, once that start's writer has rejected it: its
+ *  turn ends failed, and the start's row is its one row. */
+export async function endStructuredAgentSessionCommandStartFailure(
+  ctx: Pick<StructuredAgentSessionCommandHandoverContext, 'journal' | 'fence' | 'now'>,
+  clientMessageId: string
+): Promise<void> {
+  await endUnsentCommandTurn(ctx, clientMessageId, 'failed')
+}
+
+/** Ends the command's turn if it still runs: failed when the command was refused (`result` is its
+ *  row, if it has one of its own), else unverifiable. */
+async function endUnsentCommandTurn(
+  ctx: Pick<StructuredAgentSessionCommandHandoverContext, 'journal' | 'fence' | 'now'>,
+  clientMessageId: string,
+  result: AgentJournalStatusItem | 'failed' | null
+): Promise<void> {
   const turn = structuredAgentSessionCommandTurn(clientMessageId)
   const running = readAgentJournalTurn(ctx.journal.itemBody(turn.itemId) ?? undefined)
-  await ctx.journal.resolveDispatch({ clientMessageId, ...unsent, fence: ctx.fence })
   if (running?.state !== 'running') {
     return
   }
-  const refused = unsent.state === 'rejected'
   const mutations: JournalLifecycleMutationInput[] = [
-    ...(refused
+    ...(result && result !== 'failed'
       ? [
           {
             kind: 'item' as const,
             identity: turn.resultIdentity,
-            body: {
-              kind: 'status' as const,
-              ...agentSessionFailureWords(rowFailure ?? unsent.rejection, {
-                ...ctx.failureTextContext,
-                surface: 'row'
-              }),
-              tone: 'error' as const
-            },
+            body: result,
             turnScope: { kind: 'turn' as const, turnItemId: turn.itemId }
           }
         ]
@@ -287,7 +310,7 @@ async function settleUnsentCommand(
       identity: turn.identity,
       body: agentJournalTurnBody({
         ...running,
-        ...(refused
+        ...(result
           ? { state: 'completed', outcome: 'failure', completedAt: ctx.now() }
           : { state: 'unverifiable' })
       }),

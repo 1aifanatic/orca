@@ -37,7 +37,10 @@ import {
 } from './structured-agent-session-start-failure-row'
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
-import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import {
+  endStructuredAgentSessionCommandStartFailure,
+  structuredAgentSessionCommandRunning
+} from './structured-agent-session-command-turn'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -252,6 +255,17 @@ export class StructuredAgentSessionDeliveryLoop {
         },
         handedOver
       )
+      if (handedOver) {
+        // A command opens its own turn at handover; the start's row answers it, so the turn ends.
+        await endStructuredAgentSessionCommandStartFailure(
+          {
+            journal: session.journal,
+            fence: this.deps.conversationFence(sessionId),
+            now: this.deps.now
+          },
+          handedOver
+        )
+      }
     }
     return this.stop(sessionId)
   }

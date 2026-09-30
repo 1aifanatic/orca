@@ -185,8 +185,7 @@ export async function handOverSubmission(
     return null
   }
   if (body.command) {
-    await handOverStructuredAgentSessionCommand(ctx, submission, body)
-    return null
+    return handOverStructuredAgentSessionCommand(ctx, submission, body)
   }
   // The message joins the turn running at handover, a steer, or opens its own.
   await ctx.journal.resolveDispatch({
