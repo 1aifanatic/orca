@@ -93,37 +93,49 @@ function getProjectsDefinedOutsideTables(config: string): ReadonlySet<string> {
   if (!projects) {
     return new Set()
   }
-  const headerProjects = new Set<string>()
-  const subTableKeys = new Map<string, Set<string>>()
+  // Header paths below each project, JSON-encoded; `[]` is the project's own header.
+  const headerPaths = new Map<string, Set<string>>()
   for (const { header } of getTomlSections(config)) {
     if (!mayNameTomlKeys(header, ['projects'])) {
       continue
     }
     const projectPath = parseProjectTomlHeaderPath(header)
-    if (projectPath !== null) {
-      headerProjects.add(projectKey(projectPath))
-      continue
-    }
-    const [root, subProjectPath, subKey] = parseTomlTableHeaderPath(header)?.segments ?? []
-    if (root === 'projects' && subProjectPath !== undefined && subKey !== undefined) {
+    const [root, subProjectPath, ...rest] =
+      projectPath === null
+        ? (parseTomlTableHeaderPath(header)?.segments ?? [])
+        : ['projects', projectPath]
+    if (root === 'projects' && subProjectPath !== undefined) {
       const key = projectKey(subProjectPath)
-      subTableKeys.set(key, (subTableKeys.get(key) ?? new Set()).add(subKey))
+      headerPaths.set(key, (headerPaths.get(key) ?? new Set()).add(JSON.stringify(rest)))
     }
   }
-  // Why: a sub-table header such as `[projects."/a".extra]` defines `/a` as a
-  // table only when no dotted or inline key also sets a value under `/a`.
   return new Set(
     Object.entries(projects)
-      .filter(([projectPath, value]) => {
-        const key = projectKey(projectPath)
-        const project = getTomlTable(value)
-        const subKeys = subTableKeys.get(key)
-        return (
-          !headerProjects.has(key) &&
-          !(project && subKeys && Object.keys(project).every((name) => subKeys.has(name)))
-        )
-      })
+      .filter(
+        ([projectPath, value]) =>
+          !isDefinedByHeaders(value, [], headerPaths.get(projectKey(projectPath)) ?? new Set())
+      )
       .map(([projectPath]) => projectKey(projectPath))
+  )
+}
+
+// Why: `[projects."/a".extra]` defines `/a` as a table only when no dotted or
+// inline key sets a value anywhere under `/a` outside a header.
+function isDefinedByHeaders(
+  value: unknown,
+  path: readonly string[],
+  headerPaths: ReadonlySet<string>
+): boolean {
+  if (headerPaths.has(JSON.stringify(path))) {
+    return true
+  }
+  const table = getTomlTable(value)
+  return (
+    table !== null &&
+    Object.keys(table).length > 0 &&
+    Object.entries(table).every(([name, child]) =>
+      isDefinedByHeaders(child, [...path, name], headerPaths)
+    )
   )
 }
 

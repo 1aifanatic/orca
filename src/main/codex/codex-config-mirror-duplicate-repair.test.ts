@@ -179,6 +179,54 @@ describe('managed-home mirror never writes a config Codex cannot read (#22592)',
     }
   )
 
+  it.each([
+    ['[projects]', '[projects]\n"/repo".extra.q = 1\n'],
+    ['the root', 'projects."/repo".extra.q = 1\n']
+  ])(
+    'drops managed trust when a dotted key under %s creates the parent of a deeper sub-table',
+    (_shape, dotted) => {
+      writeFileSync(
+        getSystemConfigPath(),
+        `model = "m"\n${dotted}\n[projects."/repo".extra.deep]\nz = 1\n`,
+        'utf-8'
+      )
+      mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
+      writeFileSync(
+        getRuntimeConfigPath(),
+        'model = "m"\n\n[projects."/repo"]\ntrust_level = "trusted"\n',
+        'utf-8'
+      )
+
+      syncSystemConfigIntoManagedCodexHome()
+
+      expect(parse(readFileSync(getRuntimeConfigPath(), 'utf-8'))).toEqual({
+        model: 'm',
+        projects: { '/repo': { extra: { q: 1, deep: { z: 1 } } } }
+      })
+    }
+  )
+
+  it('keeps managed trust for a project ~/.codex defines only through a deeper sub-table', () => {
+    writeFileSync(
+      getSystemConfigPath(),
+      'model = "m"\n\n[projects."/repo".extra.deep]\nz = 1\n',
+      'utf-8'
+    )
+    mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
+    writeFileSync(
+      getRuntimeConfigPath(),
+      'model = "m"\n\n[projects."/repo"]\ntrust_level = "trusted"\n',
+      'utf-8'
+    )
+
+    syncSystemConfigIntoManagedCodexHome()
+
+    expect(parse(readFileSync(getRuntimeConfigPath(), 'utf-8'))).toEqual({
+      model: 'm',
+      projects: { '/repo': { extra: { deep: { z: 1 } }, trust_level: 'trusted' } }
+    })
+  })
+
   it('collapses Orca\u2019s own duplicate hook tables, so managed-only trust survives', () => {
     writeFileSync(getSystemConfigPath(), 'model = "m"\n', 'utf-8')
     mkdirSync(join(userDataDir, 'codex-runtime-home', 'home'), { recursive: true })
