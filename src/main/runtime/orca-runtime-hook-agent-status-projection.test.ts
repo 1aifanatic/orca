@@ -567,3 +567,34 @@ describe('hook-driven session tabs republish (#11761)', () => {
     unsubscribe()
   })
 })
+
+it('uses the same host owner for headless terminal identity and running-agent queries', async () => {
+  const rows = [
+    hookRow({
+      state: 'done',
+      prompt: '',
+      toolName: undefined,
+      interactivePrompt: undefined,
+      agentPresence: {
+        agent: 'claude',
+        process: { pid: 42, platform: 'linux', startTime: 'boot:42' }
+      }
+    })
+  ]
+  const runtime = await createRuntimeWithHookRows(rows)
+  observePaneTitle(runtime, 'zsh')
+  const terminal = (await runtime.listTerminals()).terminals[0]
+  expect(terminal.agentIdentity).toBe('claude')
+  await expect(runtime.isTerminalRunningAgent(terminal.handle)).resolves.toBe(true)
+  const owner = rows[0].agentPresence
+  if (!owner) {
+    throw new Error('missing fixture owner')
+  }
+  rows[0] = { ...rows[0], providerSessionOnly: true, agentPresence: { ...owner, ended: true } }
+  expect((await runtime.listTerminals()).terminals[0].agentIdentity).toBeUndefined()
+  await expect(runtime.isTerminalRunningAgent(terminal.handle)).resolves.toBe(false)
+  await expect(runtime.getTerminalAgentStatus(terminal.handle)).resolves.toMatchObject({
+    isRunningAgent: false,
+    status: null
+  })
+})

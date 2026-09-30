@@ -42,6 +42,7 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
   protected readonly ptyExitListenersByPtyId = new Map<string, Set<() => void>>()
 
   protected readonly terminalAgentPresence = new RuntimeTerminalAgentPresence({
+    getAgentPresence: (handle) => this.getRecordedAgentPresence(handle),
     isLiveStructuredAgent: (handle) =>
       Boolean(resolveStructuredWorkerAuthority(handle, this._orchestrationDb)),
     getLivePty: (handle) => this.getLivePtyForHandle(handle)?.pty ?? null,
@@ -162,12 +163,29 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     }
   })
 
+  protected getRecordedAgentPresence(handle: string) {
+    try {
+      const ptyId =
+        this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
+      if (!ptyId) {
+        return undefined
+      }
+      const rows = Array.from(this.collectAgentStatusPaneKeysForPty(ptyId)).flatMap(
+        (paneKey) => this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []
+      )
+      return rows.sort((a, b) => b.receivedAt - a.receivedAt)[0]?.agentPresence
+    } catch {
+      return undefined
+    }
+  }
+
   protected readonly terminalAgentStatus = new RuntimeTerminalAgentStatusQuery({
     getController: () => this.ptyController,
     getLivePty: (handle) => this.getLivePtyForHandle(handle),
     getLiveLeaf: (handle) => this.getLiveLeafForHandle(handle),
     getPrimaryLeaf: (ptyId) => this.getPrimaryLeafForPty(ptyId),
     getTabTitle: (tabId) => this.tabs.get(tabId)?.title ?? null,
+    getAgentPresence: (handle) => this.getRecordedAgentPresence(handle),
     getExplicitStatus: (handle) => this.getFreshExplicitAgentStatusForHandle(handle),
     getLifecycleStatus: (ptyId) => this.agentPromptLifecycleByPtyId.get(ptyId),
     isRunning: (handle) => this.isTerminalRunningAgent(handle)

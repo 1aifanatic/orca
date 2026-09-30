@@ -1,0 +1,67 @@
+import { UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH } from '../../../../shared/runtime-types'
+import { describe, expect, it } from 'vitest'
+import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
+import { AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { HOST_AGENT_PRESENCE_STATUS } from '../../runtime-mobile-agent-presence-projection'
+import { projectSessionTabPresenceForClient } from './session-tab-presence-projection'
+
+const status = {
+  state: 'done',
+  prompt: '',
+  paneKey: 'tab:leaf',
+  updatedAt: 10,
+  stateStartedAt: 10,
+  stateHistory: [],
+  agentPresence: {
+    agent: 'claude',
+    process: { pid: 42, platform: 'linux', startTime: 'boot:42' },
+    ended: true
+  }
+} as const
+function snapshot(covered: boolean): RuntimeMobileSessionTabsResult {
+  const tab = {
+    type: 'terminal',
+    id: 'tab::leaf',
+    parentTabId: 'tab',
+    leafId: 'leaf',
+    title: 'zsh',
+    isActive: true,
+    status: 'pending-handle',
+    terminal: null,
+    ...(covered ? { [HOST_AGENT_PRESENCE_STATUS]: status } : {})
+  } as const
+  return {
+    publicationEpoch: UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH,
+    snapshotVersion: 1,
+    activeGroupId: null,
+    worktree: 'folder',
+    activeTabId: tab.id,
+    activeTabType: 'terminal',
+    tabs: [tab]
+  }
+}
+describe('connection scoped presence projection', () => {
+  it('keeps old clients on the exact legacy row', () => {
+    expect(projectSessionTabPresenceForClient(snapshot(true), []).tabs).toEqual(
+      snapshot(false).tabs
+    )
+    expect(JSON.stringify(snapshot(true))).not.toContain('agentPresence')
+  })
+  it('publishes an ended owner to a capable connection', () => {
+    expect(
+      projectSessionTabPresenceForClient(snapshot(true), [
+        AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY
+      ]).tabs[0]
+    ).toMatchObject({ agentStatus: status })
+  })
+  it('does not cover an unidentified row or retain another connection’s capability', () => {
+    const capable = [AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY]
+    expect(projectSessionTabPresenceForClient(snapshot(false), capable).tabs).toEqual(
+      snapshot(false).tabs
+    )
+    projectSessionTabPresenceForClient(snapshot(true), capable)
+    expect(projectSessionTabPresenceForClient(snapshot(true), undefined).tabs).toEqual(
+      snapshot(false).tabs
+    )
+  })
+})

@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { selectAgentPresence } from '../../shared/agent-process-presence'
 import { OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness } from './orca-runtime-refresh-floating-workspace-pty-liveness'
 import { writeOrchestrationPointerWithSettlement } from './orchestration/mailbox-pointer-pty-write'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
@@ -93,9 +94,14 @@ export class OrcaRuntimeWithWriteOrchestrationPointerPty extends OrcaRuntimeWith
     title: string | null,
     paneKey: string | null
   ): { agentIdentity?: TuiAgent } {
-    const hookRow = paneKey
-      ? selectRuntimeHookAgentRowForPane(this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? [])
-      : null
+    const rows = paneKey ? (this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []) : []
+    const presence = selectAgentPresence(
+      [...rows].sort((a, b) => b.receivedAt - a.receivedAt)[0]?.agentPresence
+    )
+    if (presence !== undefined) {
+      return presence === null ? {} : { agentIdentity: presence }
+    }
+    const hookRow = selectRuntimeHookAgentRowForPane(rows)
     const hookAgent = isTuiAgent(hookRow?.agentType) ? hookRow.agentType : null
     const agentIdentity = resolvePublishedPaneAgentIdentity({
       hookAgent,

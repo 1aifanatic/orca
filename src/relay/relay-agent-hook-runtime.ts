@@ -1,3 +1,4 @@
+import { discoverLocalAgentPresence } from '../main/providers/agent-presence-discovery'
 import type { RelayDispatcher } from './dispatcher'
 import type { PtyEnvAugmenter, PtyHandler } from './pty-handler'
 import { RelayAgentHookServer } from './agent-hook-server'
@@ -65,7 +66,15 @@ export class RelayAgentHookRuntime {
 
   private registerPtyEnvironment(): void {
     this.ptyHandler.setAgentPresenceTrigger((paneKey) => {
-      void this.hookServer.checkAgentPresence(paneKey)
+      const target = this.ptyHandler.getAgentPresenceDiscoveryTarget(paneKey)
+      const capture = target
+        ? this.hookServer.discoverAgentPresence({
+            ...target,
+            paneKey,
+            discover: () => discoverLocalAgentPresence(target.rootProcessId)
+          })
+        : Promise.resolve()
+      void capture.then(() => this.hookServer.checkAgentPresence(paneKey))
     })
     this.ptyHandler.addEnvAugmenter(() => this.hookServer.buildPtyEnv())
     this.ptyHandler.addEnvAugmenter((context) => this.buildPluginEnvironment(context))

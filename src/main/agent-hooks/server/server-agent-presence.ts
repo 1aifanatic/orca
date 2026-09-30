@@ -1,3 +1,4 @@
+import { readHostAgentProcess } from '../../providers/agent-process-presence-probe'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import {
   isSameAgentProcess,
@@ -5,9 +6,9 @@ import {
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
-import { AgentHookServerLifecycle } from './server-lifecycle'
+import { AgentHookServerPresenceDiscovery } from './server-agent-presence-discovery'
 
-export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
+export abstract class AgentHookServerAgentPresence extends AgentHookServerPresenceDiscovery {
   private readonly presenceChecks = new WeakMap<
     AgentHookEventPayload,
     Promise<AgentProcessVerdict | null>
@@ -57,7 +58,7 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       return pending
     }
     const presence = row.agentPresence
-    const check = probeAgentProcessPresence(presence.process)
+    const check = probeAgentProcessPresence(presence.process, readHostAgentProcess)
       .then((verdict) => {
         if (
           this.state.lastStatusByPaneKey.get(resolved) !== row ||

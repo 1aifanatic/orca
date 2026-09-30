@@ -1,0 +1,35 @@
+import {
+  pickParsedAgentStatusPayload,
+  type AgentStatusEntry,
+  type AgentStatusIpcPayload
+} from '../../shared/agent-status-types'
+
+// Derived alongside the legacy projection; symbols cannot enter JSON or client publications.
+export const HOST_AGENT_PRESENCE_STATUS = Symbol('host-agent-presence-status')
+
+export function projectHostAgentPresenceStatus(
+  rows: readonly AgentStatusIpcPayload[]
+): AgentStatusEntry | undefined {
+  const row = rows.reduce<AgentStatusIpcPayload | undefined>(
+    (latest, candidate) =>
+      !latest || candidate.receivedAt > latest.receivedAt ? candidate : latest,
+    undefined
+  )
+  if (!row?.agentPresence?.process) {
+    return undefined
+  }
+  return {
+    ...pickParsedAgentStatusPayload(row),
+    agentType: row.agentPresence.agent,
+    agentPresence: row.agentPresence,
+    paneKey: row.paneKey,
+    updatedAt: row.receivedAt,
+    stateStartedAt: row.stateStartedAt ?? row.receivedAt,
+    stateHistory: [],
+    ...(row.evidenceObservedAt !== undefined ? { evidenceObservedAt: row.evidenceObservedAt } : {}),
+    ...(row.terminalHandle ? { terminalHandle: row.terminalHandle } : {}),
+    ...(row.worktreeId ? { worktreeId: row.worktreeId } : {}),
+    ...(row.tabId ? { tabId: row.tabId } : {}),
+    ...(row.providerSession ? { providerSession: row.providerSession } : {})
+  }
+}

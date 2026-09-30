@@ -1,3 +1,4 @@
+import { projectHostAgentPresenceStatus } from './runtime-mobile-agent-presence-projection'
 import {
   normalizeCompatibleAgentStatusEntryForOwner,
   normalizeCompatibleAgentTitleForOwner
@@ -30,9 +31,16 @@ export function buildRuntimeMobileAgentStatus(
   terminalHandle: string | null,
   retained: RuntimeAgentRowSnapshot | null,
   getHookRowsForPane: (paneKey: string) => AgentStatusIpcPayload[],
-  host: RuntimeMobileAgentStatusHost
+  host: RuntimeMobileAgentStatusHost,
+  includeAgentPresence = true
 ): { agentStatus: AgentStatusEntry } | Record<string, never> {
   const paneKey = host.getPaneKey(tab)
+  if (includeAgentPresence) {
+    const status = projectHostAgentPresenceStatus(getHookRowsForPane(paneKey))
+    if (status) {
+      return { agentStatus: status }
+    }
+  }
   // Why: neither the live-status projection nor a title-derived status carries a
   // provider session — only the full hook payload does, and headless serve has no
   // renderer to publish `tab.agentStatus`. Without it mobile native chat has no

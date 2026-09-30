@@ -235,6 +235,7 @@ async function startOrcadRuntime(
       publishChildWork: (subject, evidence, provider) =>
         agentHookServer.ingestStructuredChildWork(subject, evidence, provider)
     },
+    discoverHookAgentPresence: (request) => agentHookServer.discoverAgentPresence(request),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys),

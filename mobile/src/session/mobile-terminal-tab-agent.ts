@@ -1,3 +1,4 @@
+import { selectAgentPresence } from '../../../src/shared/agent-process-presence'
 import { stripLeadingAgentTitleDecorationOrEmpty } from '../../../src/shared/agent-title-decoration'
 import { resolveExplicitTerminalTitleAgentType } from '../../../src/shared/terminal-title-agent-type'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
@@ -17,7 +18,10 @@ import type { MobileSessionTab } from './mobile-session-route-types'
  */
 type MobileTerminalTabAgentIdentity = {
   title: string
-  agentStatus?: { agentType?: AgentStatusEntry['agentType'] | null } | null
+  agentStatus?: {
+    agentType?: AgentStatusEntry['agentType'] | null
+    agentPresence?: AgentStatusEntry['agentPresence']
+  } | null
   launchAgent?: TuiAgent | null
 }
 
@@ -25,6 +29,10 @@ type MobileTerminalTabAgentIdentity = {
 export function resolveMobileTerminalTabOwnedAgentId(
   tab: MobileTerminalTabAgentIdentity
 ): string | null {
+  const presence = selectAgentPresence(tab.agentStatus?.agentPresence)
+  if (presence !== undefined) {
+    return presence
+  }
   const hookAgentType = tab.agentStatus?.agentType?.trim()
   if (hookAgentType && hookAgentType !== 'unknown') {
     return hookAgentType
@@ -38,6 +46,10 @@ export function resolveMobileTerminalTabOwnedAgentId(
 export function resolveMobileTerminalTabAgentId(
   tab: MobileTerminalTabAgentIdentity
 ): string | null {
+  const presence = selectAgentPresence(tab.agentStatus?.agentPresence)
+  if (presence !== undefined) {
+    return presence
+  }
   const ownedAgent = resolveMobileTerminalTabOwnedAgentId(tab)
   if (ownedAgent) {
     return ownedAgent

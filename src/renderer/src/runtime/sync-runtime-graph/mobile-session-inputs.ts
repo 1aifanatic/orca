@@ -77,7 +77,9 @@ export function buildMobileSessionAgentStatusByWorktree(
       bucket = new Map()
       byWorktreeId.set(worktreeId, bucket)
     }
-    bucket.set(paneKey, agentStatusByPaneKey[paneKey])
+    // The execution host projects presence; renderer publications carry turn presentation only.
+    const { agentPresence: _hostPresence, ...status } = agentStatusByPaneKey[paneKey]
+    bucket.set(paneKey, status)
   }
   return byWorktreeId
 }

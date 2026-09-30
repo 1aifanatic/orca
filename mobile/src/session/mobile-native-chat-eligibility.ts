@@ -1,3 +1,4 @@
+import { selectAgentPresence } from '../../../src/shared/agent-process-presence'
 import { isAgentSessionHandleProvider } from '../../../src/shared/agent-session-provider-handle'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import { isRuntimeOwnedSshTargetId } from '../../../src/shared/execution-host'
@@ -58,7 +59,11 @@ export function resolveMobileNativeChat(
   if (tab.type !== 'terminal') {
     return null
   }
-  const liveAgent = tab.agentStatus?.agentType ?? null
+  const presence = selectAgentPresence(tab.agentStatus?.agentPresence)
+  if (presence === null) {
+    return null
+  }
+  const liveAgent = presence ?? tab.agentStatus?.agentType ?? null
   const agent = liveAgent
     ? isNativeChatSupportedAgent(liveAgent)
       ? liveAgent

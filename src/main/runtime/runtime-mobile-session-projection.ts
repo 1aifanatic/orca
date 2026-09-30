@@ -1,4 +1,8 @@
 import {
+  HOST_AGENT_PRESENCE_STATUS,
+  projectHostAgentPresenceStatus
+} from './runtime-mobile-agent-presence-projection'
+import {
   normalizeCompatibleAgentStatusEntryForOwner,
   normalizeCompatibleAgentTitleForOwner,
   resolveCompatibleAgentTypeForOwner
@@ -270,8 +274,11 @@ export function projectRuntimeMobileSessionTabs(
     const projectedStatusEntry = projectedAgentStatus.agentStatus as
       | (AgentStatusEntry & { turnCompletedAt?: number })
       | undefined
-    const { turnCompletedAt: projectedTurnCompletedAt, ...clientStatusFields } =
-      projectedStatusEntry ?? {}
+    const {
+      turnCompletedAt: projectedTurnCompletedAt,
+      agentPresence: _clientPresence,
+      ...clientStatusFields
+    } = projectedStatusEntry ?? {}
     const rawTurnCompletedAt =
       hookAgentStatus?.live?.payload.turnCompletedAt ??
       selectRuntimeHookAgentRowForPane(getHookRowsForPane(paneKey)).live?.payload.turnCompletedAt ??
@@ -283,8 +290,10 @@ export function projectRuntimeMobileSessionTabs(
     const clientAgentStatus: { agentStatus?: AgentStatusEntry } = projectedStatusEntry
       ? { agentStatus: clientStatusFields as AgentStatusEntry }
       : {}
+    const presenceStatus = projectHostAgentPresenceStatus(getHookRowsForPane(paneKey))
     tabs.push({
-      type: 'terminal',
+      ...(presenceStatus ? { [HOST_AGENT_PRESENCE_STATUS]: presenceStatus } : {}),
+      type: 'terminal' as const,
       id: tab.id,
       parentTabId: tab.parentTabId,
       leafId: tab.leafId,

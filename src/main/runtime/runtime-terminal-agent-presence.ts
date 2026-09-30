@@ -1,3 +1,4 @@
+import { selectAgentPresence, type AgentProcessPresence } from '../../shared/agent-process-presence'
 import {
   isAgentForegroundWrapperProcess,
   isExpectedAgentProcess,
@@ -20,6 +21,7 @@ const WRAPPER_RETRY_INTERVAL_MS = 150
 const WRAPPER_RETRY_TIMEOUT_MS = 6_500
 
 type RuntimeTerminalAgentPresenceDependencies = {
+  getAgentPresence?(handle: string): AgentProcessPresence | undefined
   /** A structured agent session of this runtime; it has no pane, so no PTY probe can see it. */
   isLiveStructuredAgent?(handle: string): boolean
   getLivePty(handle: string): RuntimePtyWorktreeRecord | null
@@ -49,6 +51,10 @@ export class RuntimeTerminalAgentPresence {
     // A structured session IS the agent; there is no foreground process to recognise.
     if (this.deps.isLiveStructuredAgent?.(handle)) {
       return true
+    }
+    const presence = selectAgentPresence(this.deps.getAgentPresence?.(handle))
+    if (presence !== undefined) {
+      return presence !== null
     }
     try {
       const pty = this.deps.getLivePty(handle)

@@ -48,9 +48,15 @@ export function remapHostAgentStatus(
     hookAgent: surface.agentStatus.agentType
   })
   return {
-    ...normalizeCompatibleAgentStatusEntryForOwner(surface.agentStatus, ownerRecord?.agent, {
-      ownerIsLaunch: ownerRecord?.ownerIsLaunch === true
-    }),
+    ...normalizeCompatibleAgentStatusEntryForOwner(
+      surface.agentStatus,
+      surface.agentStatus.agentPresence?.process
+        ? surface.agentStatus.agentPresence.agent
+        : ownerRecord?.agent,
+      {
+        ownerIsLaunch: ownerRecord?.ownerIsLaunch === true
+      }
+    ),
     paneKey,
     tabId: toWebTerminalSurfaceTabId(surface.parentTabId)
   }

@@ -1,3 +1,4 @@
+import { selectAgentPresence, type AgentProcessPresence } from '../../shared/agent-process-presence'
 import {
   detectAgentStatusFromTitle,
   isOpenCodeNativeTitle,
@@ -26,6 +27,7 @@ export type RuntimeTerminalAgentStatusSnapshot = {
 }
 
 type Dependencies = {
+  getAgentPresence?(handle: string): AgentProcessPresence | undefined
   getController(): RuntimePtyController | null
   getLivePty(handle: string): { pty: RuntimePtyWorktreeRecord } | null
   getLiveLeaf(handle: string): { leaf: RuntimeLeafRecord }
@@ -66,6 +68,14 @@ export class RuntimeTerminalAgentStatusQuery {
     const terminal = this.getSnapshot(handle, ptyId)
     const explicitStatus = this.deps.getExplicitStatus(handle)
     const lifecycle = this.deps.getLifecycleStatus(ptyId)
+    const presence = selectAgentPresence(this.deps.getAgentPresence?.(handle))
+    if (presence !== undefined) {
+      return {
+        handle,
+        isRunningAgent: presence !== null,
+        status: presence === null ? null : (explicitStatus?.status ?? lifecycle?.status ?? null)
+      }
+    }
     const blockedByWaitText = detectTerminalWaitBlockedReason(terminal.waitText)
     const liveTitleClearsBlockedText =
       terminal.titleStatusIsLive &&

@@ -1,8 +1,10 @@
+import type { AgentProcessPresence } from '../../shared/agent-process-presence'
 import type { StructuredHostStatus } from '../../shared/agent-hook-listener/listener-event'
 import type { ParsedAgentStatusPayload } from '../../shared/agent-status-types'
 import type { AgentMainAgentStatus } from '../../shared/main-agent-status'
 
 export type RuntimeWorktreeAgentSource = {
+  agentPresence?: AgentProcessPresence
   paneKey: string
   ptyId?: string
   tabId?: string

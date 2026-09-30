@@ -1,18 +1,12 @@
 import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
-import { isTuiAgent } from '../../../shared/tui-agent-config'
+import { selectAgentPresence } from '../../../shared/agent-process-presence'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import {
   resolveLegacyLaunchedAgentExitEvidence,
   resolveLegacyTabAgentFromSignals
 } from './legacy-unidentified-agent-presence'
 
-/** Undefined means this host has not published a process identity. */
-export function selectAgentPresence(presence?: AgentProcessPresence): TuiAgent | null | undefined {
-  if (!presence?.process) {
-    return undefined
-  }
-  return !presence.ended && isTuiAgent(presence.agent) ? presence.agent : null
-}
+export { selectAgentPresence } from '../../../shared/agent-process-presence'
 
 export function resolveTabAgentFromSignals(
   args: Parameters<typeof resolveLegacyTabAgentFromSignals>[0] & {
