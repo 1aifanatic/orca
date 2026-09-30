@@ -24,6 +24,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const ALREADY_FINISHED = 'The provider had already finished this turn.'
@@ -78,7 +79,7 @@ beforeEach(async () => {
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
     },
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-1',
     now: () => NOW
@@ -227,11 +228,12 @@ describe('a Stop that names no turn', () => {
     expect(await statusRows()).toEqual(["Codex didn't stop: no active turn to interrupt."])
   })
 
-  it('says the Stop is unconfirmed, not that nothing ran, when the provider took it', async () => {
+  it('says the Stop is unconfirmed, not that nothing ran, when the provider never answered it', async () => {
     const { id, result } = send('hello')
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
-    cancelTurn.mockResolvedValueOnce({ cancelled: false, unconfirmed: true })
+    // Codex answers an interrupt as the turn ends, so a turn that never ends leaves it unanswered.
+    cancelTurn.mockRejectedValueOnce(new Error('codex app-server turn/interrupt exceeded 30000ms'))
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
@@ -360,16 +362,5 @@ describe('a Stop that names its turn, as an older client sends it', () => {
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
     expect(await statusRows()).toEqual([])
-  })
-
-  it('does not report success when the provider left the interrupt unconfirmed', async () => {
-    const queued = await queueOnHost()
-    cancelTurn.mockResolvedValueOnce({ cancelled: false, unconfirmed: true })
-
-    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: false } })
-    queued.release()
-
-    expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
-    expect(await statusRows()).toEqual(['Cancellation was not confirmed.'])
   })
 })

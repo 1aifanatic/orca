@@ -91,24 +91,11 @@ export async function performCancel(
             ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
           })
     cancelled = outcome.cancelled
-    if (
-      !cancelled &&
-      input.withdrewQueued &&
-      !outcome.unconfirmed &&
-      !(await isMainAgentWorkingOnceFlushed(ctx))
-    ) {
+    if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
       cancelled = true
       note = null
-    } else if (!cancelled && outcome.unconfirmed) {
-      // Before the named-turn row: the provider took the interrupt, so the turn may still run.
-      note = {
-        kind: 'status',
-        ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), {
-          surface: 'row'
-        })
-      }
     } else if (!cancelled && input.turnId !== undefined) {
       note = { kind: 'status', text: 'The provider had already finished this turn.' }
     } else if (!cancelled && input.prompt) {
