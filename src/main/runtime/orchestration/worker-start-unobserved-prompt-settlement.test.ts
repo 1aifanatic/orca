@@ -24,7 +24,7 @@ function startWorker(spec: string): { taskId: string; dispatchId: string } {
 describe('worker start settled by an unobserved prompt', () => {
   afterEach(() => db?.close())
 
-  it('keeps the capability and lets the worker report correct the record', () => {
+  it('lets the worker report correct the record', () => {
     db = new OrchestrationDb(':memory:')
     const { taskId, dispatchId } = startWorker('run to completion')
 

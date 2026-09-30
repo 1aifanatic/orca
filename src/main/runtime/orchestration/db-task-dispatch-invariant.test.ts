@@ -109,7 +109,6 @@ describe('Task/Dispatch invariant transactions', () => {
         completed_at: null,
         capability_revoked_at: null
       })
-      expect(db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeNull()
       expect(db.getTask(dependent.id)?.status).toBe('pending')
     }
   )
@@ -436,7 +435,6 @@ describe('Task/Dispatch invariant transactions', () => {
         capability_revoked_at: null
       })
       expect(db.getWorkerDispatch(started.dispatch.id)?.state).toBe('starting')
-      expect(db.getDispatchContextById(started.dispatch.id)?.capability_revoked_at).toBeNull()
     }
   )
 

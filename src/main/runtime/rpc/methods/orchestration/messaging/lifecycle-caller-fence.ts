@@ -1,12 +1,15 @@
 import type { OrchestrationCompatibilityEvidence } from '../../../../../../shared/orchestration-compatibility-evidence'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
+import type { OrchestrationDb } from '../../../../orchestration/db'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { isEquivalentPaneKey } from '../../../../orchestration/db/pane-key-match'
 
 /**
  * Refuses a worker report or question sent from another orchestration party's terminal: a Run
  * coordinator or the assignee of a different Dispatch. Env that names no live pane on this host
- * (stale, foreign, scrubbed, absent) proves nothing, so tmux servers, teammates and old CLIs pass.
+ * (stale, foreign, scrubbed, absent), or a live pane that is no party, proves nothing and passes.
+ * Accepted limit: a tmux server keeps the env of the pane that started it, so a worker inside a tmux
+ * server started from a live coordinator or worker pane is refused.
  */
 export function assertLifecycleCallerIsNotAnotherParty(
   runtime: OrcaRuntimeService,
@@ -30,10 +33,14 @@ export function assertLifecycleCallerIsNotAnotherParty(
     return
   }
   const db = runtime.getOrchestrationDb()
+  const callerDispatchId = ownedDispatchId(db, callerHandle, callerPaneKey)
+  // Why: a stale --from handle can hide the worker's own terminal; only a different party is refused.
+  if (callerDispatchId && callerDispatchId === ownedDispatchId(db, args.from, args.fromPaneKey)) {
+    return
+  }
   const party = db.getCurrentRunForPane(callerPaneKey)
     ? 'a Run coordinator'
-    : db.getActiveDispatchForIdentity(callerHandle, callerPaneKey) ||
-        db.findActiveRemoteAttachmentForPane(callerPaneKey)
+    : callerDispatchId
       ? 'a Dispatch worker'
       : undefined
   if (party) {
@@ -43,4 +50,15 @@ export function assertLifecycleCallerIsNotAnotherParty(
       { effectsApplied: false }
     )
   }
+}
+
+function ownedDispatchId(
+  db: OrchestrationDb,
+  handle: string,
+  paneKey: string | undefined
+): string | undefined {
+  return (
+    db.getActiveDispatchForIdentity(handle, paneKey)?.id ??
+    (paneKey ? db.findActiveRemoteAttachmentForPane(paneKey)?.dispatch_id : undefined)
+  )
 }

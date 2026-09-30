@@ -107,7 +107,6 @@ describe('Task/Dispatch state invariant', () => {
       dispatchCompletedAt: expect.any(String),
       capabilityRevokedAt: expect.any(String)
     })
-    expect(harness.db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeTruthy()
 
     const laterTask = harness.db.createTask({ spec: 'later assignment', runId: harness.runId })
     await expect(dispatchTask(harness, laterTask.id, WORKER_HANDLE)).resolves.toMatchObject({
@@ -149,7 +148,6 @@ describe('Task/Dispatch state invariant', () => {
         ownershipState: 'owned',
         releaseState: 'not_requested'
       })
-      expect(harness.db.getDispatchContextById(dispatch.id)?.capability_revoked_at).toBeNull()
     }
   )
 

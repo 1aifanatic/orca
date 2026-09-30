@@ -1,9 +1,10 @@
 import type { z } from 'zod'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
+import type { WorkerDispatchState } from '../../../../orchestration/types'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { clampOrchestrationAskTimeoutMs } from '../../../../../../shared/orchestration-ask-timeout'
 import type { AskParams } from '../schemas'
-import { assertWorkerCanReport } from './worker-report-admission'
+import { assertWorkerCanReport } from '../../../../orchestration/worker-report-admission'
 
 export async function askRemoteRunHome(args: {
   params: z.infer<typeof AskParams>
@@ -14,7 +15,7 @@ export async function askRemoteRunHome(args: {
   paneKey: string
   dispatchId: string
   taskId: string
-  workerState: string
+  workerState: WorkerDispatchState
 }): Promise<unknown> {
   const db = args.runtime.getOrchestrationDb()
   const timeoutMs = clampOrchestrationAskTimeoutMs(args.params.timeoutMs)

@@ -5,6 +5,11 @@ import { settleActiveDispatchesForTask } from './dispatch-completion'
 import { getActiveDispatchForTask } from './task-dispatch-reconciliation'
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
 import { runLifecycleWriteTransaction } from '../lifecycle-write-transaction-runner'
+import {
+  isWorkerStateIn,
+  SETTLEABLE_WORKER_STATES,
+  UNPROVEN_WORKER_STATES
+} from '../../worker-report-admission'
 
 type WorkerReportObservation = {
   id: string
@@ -105,9 +110,7 @@ export function settleWorkerReportInTransaction(
     recordAcceptedReportFact(this, params)
     return { action: 'settled', outcome: params.outcome, duplicate: true }
   }
-  // Why: an unknown start or stop is unverifiable, not exited; the worker's own report outranks it.
-  const unprovenWorker =
-    reportingWorker?.state === 'start_unknown' || reportingWorker?.state === 'stop_unknown'
+  const unprovenWorker = isWorkerStateIn(UNPROVEN_WORKER_STATES, reportingWorker?.state)
   const reconnectingWorker =
     (dispatch.status === 'pending' || dispatch.status === 'dispatched') &&
     task.status === 'blocked' &&
@@ -245,7 +248,7 @@ export function settleWorkerReportInTransaction(
     transitionLifecycleWithDb(this.db, {
       entity: 'worker',
       id: params.dispatchId,
-      from: reportingStart ? 'starting' : ['start_unknown', 'stop_unknown'],
+      from: reportingStart ? 'starting' : UNPROVEN_WORKER_STATES,
       to: 'ready',
       projection: { last_error: null }
     })
@@ -261,10 +264,7 @@ export function settleWorkerReportInTransaction(
       entity: 'worker',
       id: params.dispatchId,
       // An unknown worker's success report reconnects through 'ready' above; only failure settles here.
-      from:
-        params.outcome === 'succeeded'
-          ? 'ready'
-          : ['ready', 'start_unknown', 'stop_unknown', 'starting'],
+      from: params.outcome === 'succeeded' ? 'ready' : [...SETTLEABLE_WORKER_STATES, 'starting'],
       to: params.outcome === 'succeeded' ? 'succeeded' : 'failed',
       projection: { stage: 'settled', updated_at: new Date().toISOString() }
     })

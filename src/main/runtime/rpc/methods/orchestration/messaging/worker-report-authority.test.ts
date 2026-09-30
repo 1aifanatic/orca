@@ -7,7 +7,7 @@ import { createOrchestrationRpcHarness } from '../rpc-test-harness'
 
 const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const OTHER_WORKER_PANE = 'tab_other:cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const TMUX_PANE = 'tab_tmux:dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const NON_PARTY_PANE = 'tab_teammate:dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const WORKER_PROCESS = 'runtime_test:term_worker:1'
 
 describe('worker report authority without a Dispatch capability', () => {
@@ -15,17 +15,18 @@ describe('worker report authority without a Dispatch capability', () => {
   let db: OrchestrationDb
   let runtime: OrcaRuntimeService
   let ctx: RpcContext
+  let panes: Record<string, string>
 
   afterEach(() => harness.cleanup())
 
   function setup(): void {
     ;({ db, runtime } = harness.setup())
     ctx = { runtime }
-    const panes: Record<string, string> = {
+    panes = {
       term_coord: harness.coordinatorPaneKey,
       term_worker: WORKER_PANE,
       term_other: OTHER_WORKER_PANE,
-      term_tmux: TMUX_PANE
+      term_teammate: NON_PARTY_PANE
     }
     vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) => panes[handle] ?? null)
     vi.spyOn(runtime, 'getTerminalHandleForPaneKey').mockImplementation(
@@ -109,7 +110,7 @@ describe('worker report authority without a Dispatch capability', () => {
       ['its own pane', { paneKey: WORKER_PANE, terminalHandle: 'term_stale_after_remint' }],
       ["another Orca's pane", { paneKey: 'tab_elsewhere:eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' }],
       ['a stale handle', { terminalHandle: 'term_gone' }],
-      ['a live pane that is no orchestration party (tmux, teammate)', { paneKey: TMUX_PANE }]
+      ['a live pane that is no orchestration party', { paneKey: NON_PARTY_PANE }]
     ])('accepts a report whose env names %s', async (_case, evidence) => {
       setup()
       const worker = startWorker('worker', WORKER_PANE)
@@ -118,6 +119,17 @@ describe('worker report authority without a Dispatch capability', () => {
         lifecycle: { action: 'completed' }
       })
       expect(db.getTask(worker.taskId)?.status).toBe('completed')
+    })
+
+    it("does not fence the worker's own terminal when its --from handle went stale", async () => {
+      setup()
+      const worker = startWorker('worker', WORKER_PANE)
+      panes = { ...panes, term_worker_reminted: WORKER_PANE }
+      delete panes.term_worker
+
+      expect(await workerDone(worker, { paneKey: WORKER_PANE })).toMatchObject({
+        lifecycle: { action: 'rejected', code: 'worker_identity_changed' }
+      })
     })
   })
 
@@ -163,7 +175,9 @@ describe('worker report authority without a Dispatch capability', () => {
       db.markWorkerStopUnknown(worker.dispatchId, 'tab not owned by Orca')
       vi.mocked(runtime.getTerminalProcessIncarnation).mockReturnValue('runtime_test:term_worker:2')
 
-      expect(await workerDone(worker)).toMatchObject({ lifecycle: { code: 'sender_not_assignee' } })
+      expect(await workerDone(worker)).toMatchObject({
+        lifecycle: { code: 'worker_identity_changed' }
+      })
       await expect(ask()).rejects.toMatchObject({ code: 'worker_identity_changed' })
     })
   })
