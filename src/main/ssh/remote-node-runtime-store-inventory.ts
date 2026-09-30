@@ -77,16 +77,17 @@ export function runtimeStoreInventoryCommand(host: RemoteHostPlatform, remoteHom
     `  order=$(ls -1t -- "$@") || { printf '%s\\n' ${REFS_ERR}; exit 0; }`,
     `  printf '%s\\n' "$order" | while IFS= read -r v; do v=\${v%/.verified}; printf 'VERIFIED %s\\n' "\${v##*/}"; done`,
     'fi',
-    // Process checks only add holds, so an unmatched `grep` is not an error.
+    // Process checks only add holds, so an unmatched `grep` is not an error. Why not "$rt/":
+    // /proc exe and argv may name the store through another spelling of a symlinked home.
     'if ps_out=$(ps -e -o args= 2>/dev/null); then',
     "  printf 'PROCESS_CHECK ps\\n'",
-    '  printf \'%s\\n\' "$ps_out" | grep -F -- "$rt/" | sed \'s/^/HOLD /\'',
+    `  printf '%s\\n' "$ps_out" | grep -F -- /${ORCAD_RUNTIMES_DIRNAME}/ | sed 's/^/HOLD /'`,
     'fi',
     'if [ -n "$(readlink /proc/self/exe 2>/dev/null)" ]; then',
     "  printf 'PROCESS_CHECK proc\\n'",
     '  for p in /proc/[0-9]*/exe; do',
     '    t=$(readlink "$p" 2>/dev/null) || continue',
-    `    case "$t" in "$rt"/*) printf 'HOLD %s\\n' "$t";; esac`,
+    `    case "$t" in */${ORCAD_RUNTIMES_DIRNAME}/*) printf 'HOLD %s\\n' "$t";; esac`,
     '  done',
     'fi',
     `printf '%s\\n' ${INVENTORY_OK}`

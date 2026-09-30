@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync
 } from 'node:fs'
@@ -186,6 +187,26 @@ posixOnly('gcRemoteNodeRuntimeStore (real shell)', () => {
     // D10 two-step: legacy dirs are reported, never deleted by this pass.
     expect(existsSync(join(root, 'orcad-0.1.0+aaa'))).toBe(true)
     expect(existsSync(join(root, 'relay-0.1.0+aaa'))).toBe(true)
+  })
+
+  it('holds a runtime a process runs through another spelling of a symlinked home', async () => {
+    runtime('a')
+    runtime('b')
+    const held = runtime('e')
+    const alias = mkdtempSync(join(tmpdir(), 'runtime-store-alias-'))
+    rmSync(alias, { recursive: true })
+    symlinkSync(home, alias)
+    try {
+      running = spawn(join(held, 'bin', 'node'), [], { stdio: 'ignore' })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+
+      const result = await gcRemoteNodeRuntimeStore(conn, host, alias, { currentPins: [sha('a')] })
+
+      expect(result).toMatchObject({ state: 'collected', removed: [] })
+      expect(existsSync(join(held, 'bin', 'node'))).toBe(true)
+    } finally {
+      rmSync(alias, { force: true })
+    }
   })
 
   it('keeps every runtime when a reference marker cannot be attributed', async () => {
