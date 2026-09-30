@@ -54,8 +54,8 @@ export async function runRecordedStop<TValue>(
 /**
  * Whether a Stop reaching a running agent stops anything no Stop event records yet. Not when it
  * names a turn already over (a late Stop from a phone), nor when it repeats the Stop still in force
- * on the same turn with nothing handed over since: a card queued between the presses then sends
- * normally, as after one Stop.
+ * with nothing sent since, on the same turn or one that opened after a Stop pressed before any
+ * turn showed: a card queued between the presses then sends normally, as after one Stop.
  */
 export async function stopReachesUnrecordedWork(
   ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
@@ -71,12 +71,18 @@ export async function stopReachesUnrecordedWork(
     return false
   }
   const inForce = ctx.journal.queuedMessages.userStopInForce()
-  return (
-    inForce === null ||
-    (inForce.event.turnId ?? null) !== live ||
-    // A steer handed over after that Stop comes back to waiting, so this Stop must hold it.
-    ctx.journal
-      .pendingSubmissions()
-      .some((entry) => (entry.acceptedSequence ?? Infinity) > inForce.sequence)
-  )
+  if (inForce === null) {
+    return true
+  }
+  // Sent after that Stop and not refused, even if its fate is unknown: this interrupt may send it
+  // back to waiting, so this Stop must hold it. A send with no sequence is an older host's.
+  const sentSince = ctx.journal
+    .submissions()
+    .some(
+      (entry) =>
+        entry.dispatchState !== 'rejected' &&
+        entry.acceptedSequence !== undefined &&
+        entry.acceptedSequence > inForce.sequence
+    )
+  return sentSince || (inForce.event.turnId !== undefined && inForce.event.turnId !== live)
 }

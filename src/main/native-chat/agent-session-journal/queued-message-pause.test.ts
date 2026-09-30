@@ -308,7 +308,7 @@ describe("the queue's pause, derived from the journal", () => {
     }
   })
 
-  it("no Stop event after a person's Stop means no lift: an idle eviction writes none", async () => {
+  it("a person's Stop with no later Stop event is not lifted", async () => {
     const journal = await open()
     await queueDraft(journal, 'held')
     await userStop(journal)
