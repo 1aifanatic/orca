@@ -88,12 +88,17 @@ export async function createTranscriptPane(
     ]
   })
   if (options.launchAgent) {
-    runtime.registerPty(TRANSCRIPT_PANE_PTY_ID, TRANSCRIPT_PANE_WORKTREE_ID, null, {
-      tabId: TRANSCRIPT_PANE_TAB_ID,
-      leafId: TRANSCRIPT_PANE_LEAF_ID,
-      incarnationId: 'inc-1',
-      agentLaunchAuthority: { launchToken: 'transcript-launch', launchAgent: options.launchAgent }
-    })
+    runtime.registerPty(
+      TRANSCRIPT_PANE_PTY_ID,
+      TRANSCRIPT_PANE_WORKTREE_ID,
+      options.connectionId ?? null,
+      {
+        tabId: TRANSCRIPT_PANE_TAB_ID,
+        leafId: TRANSCRIPT_PANE_LEAF_ID,
+        incarnationId: 'inc-1',
+        agentLaunchAuthority: { launchToken: 'transcript-launch', launchAgent: options.launchAgent }
+      }
+    )
   }
   // Why the guard: a restore seed is only applied to a never-written record, so the restore
   // cases must not write an empty chunk first.

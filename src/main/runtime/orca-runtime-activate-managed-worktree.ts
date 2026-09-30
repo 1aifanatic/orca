@@ -271,9 +271,12 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     if (cached && !isLaunchShell(cached) && recognizeAgentProcess(cached)?.agent !== agent) {
       return 'agent'
     }
-    const foreground = controller.confirmForegroundProcess
-      ? await controller.confirmForegroundProcess(ptyId)
-      : cached
+    // Why not for SSH: the relay reads its foreground live, with no startup bootstrap to see past,
+    // and has no scan; the controller answers null for one, which would never settle.
+    const foreground =
+      controller.confirmForegroundProcess && !this.ptysById.get(ptyId)?.connectionId
+        ? await controller.confirmForegroundProcess(ptyId)
+        : cached
     if (!foreground) {
       return 'unknown'
     }

@@ -30,14 +30,19 @@ function readCapture(name: string): { data: string; size: { cols: number; rows: 
 }
 
 /** Starts the launch wait on an empty pane, then streams the capture in, as a live launch does. */
-async function launchAndStream(name: string, timeoutMs: number) {
+async function launchAndStream(
+  name: string,
+  timeoutMs: number,
+  pane: Partial<Parameters<typeof createTranscriptPane>[0]> = {}
+) {
   const { data, size } = readCapture(name)
   const { runtime, handle } = await createTranscriptPane({
     paneTitle: 'Claude Code',
     foregroundProcess: 'claude',
     launchAgent: 'claude',
     size,
-    data: ''
+    data: '',
+    ...pane
   })
   // Pane creation awaits real timers; the wait and its quiet window use the virtual clock.
   vi.useFakeTimers()
@@ -63,6 +68,19 @@ describe('launch readiness for a freshly launched Claude', () => {
     )
 
     await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS + 100)
+    expect(settled).toHaveBeenCalled()
+    await expect(ready).resolves.toMatchObject({ satisfied: true })
+  })
+
+  it('claude-dialog-trust-workspace-answered: over SSH, settles on the quiet window, not the 8 s fallback', async () => {
+    const { ready, settled } = await launchAndStream(
+      'claude-dialog-trust-workspace-answered',
+      60_000,
+      // The runtime controller's scan answers null for an SSH relay, which has none.
+      { connectionId: 'ssh-1', confirmedForegroundProcess: null }
+    )
+
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS + 300)
     expect(settled).toHaveBeenCalled()
     await expect(ready).resolves.toMatchObject({ satisfied: true })
   })
@@ -124,6 +142,29 @@ describe('who is in front of a launched agent’s terminal', () => {
     await expect(
       runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
     ).resolves.toBe(foreground)
+  })
+
+  // The runtime controller answers every pane's scan, and null for an SSH relay that has none;
+  // taken as "cannot tell", no SSH launch settled on its signal before the 8 s fallback.
+  it.each([
+    ['claude', 'agent'],
+    ['bash', 'shell']
+  ])('SSH: takes the relay’s own read %s as %s, without a scan', async (relayRead, foreground) => {
+    const scan = vi.fn()
+    const { runtime } = await createTranscriptPane({
+      paneTitle: 'Claude Code',
+      foregroundProcess: relayRead,
+      confirmedForegroundProcess: null,
+      onForegroundScan: scan,
+      connectionId: 'ssh-1',
+      launchAgent: 'claude',
+      data: ''
+    })
+
+    await expect(
+      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+    ).resolves.toBe(foreground)
+    expect(scan).not.toHaveBeenCalled()
   })
 
   // Why no scan: the scan is the slow read, and a native Claude names itself by its version, which
