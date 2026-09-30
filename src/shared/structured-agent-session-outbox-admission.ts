@@ -1,5 +1,6 @@
 // Which outbox entry goes out next, and which ones wait for the user.
 
+import type { AgentSessionWireRefusalCode } from './agent-session-wire'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 
 /** A send the user was told did not go through, with a Retry: only that Retry sends it again. Read
@@ -8,6 +9,27 @@ export function structuredAgentSessionEntryHeldForRetry(
   entry: StructuredAgentSessionOutboxEntry
 ): boolean {
   return entry.state === 'queued' && entry.lastFailure !== undefined
+}
+
+// What a host from before accepted sends refuses with while it restarts the chat's agent inside the
+// send (its restart failed, or met an owner still settling); a new owner is what answers them.
+const REFUSED_FOR_OWNER: ReadonlySet<AgentSessionWireRefusalCode> = new Set([
+  'agent_session_owner_restart_failed',
+  'agent_session_checkpoint_stale',
+  'agent_session_conflict',
+  'agent_session_ownership_unknown',
+  'execution_owner_reconciling'
+])
+
+/** On a host known to be older, a held message that host's next owner sends again. */
+export function structuredAgentSessionEntryWaitsForNewOwner(
+  entry: StructuredAgentSessionOutboxEntry
+): boolean {
+  return (
+    structuredAgentSessionEntryHeldForRetry(entry) &&
+    entry.lastFailure?.kind === 'refused' &&
+    REFUSED_FOR_OWNER.has(entry.lastFailure.code)
+  )
 }
 
 export type StructuredAgentSessionOutboxAdmission =

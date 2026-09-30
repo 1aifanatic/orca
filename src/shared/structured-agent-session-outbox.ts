@@ -161,6 +161,19 @@ export function stageStructuredAgentSessionOutboxEntryForSend(
   return { ...entry, state: 'dispatching', lastAttemptAt: now }
 }
 
+/** The host forgot this message's id, a day after it was made, and refuses it for good: only a new
+ *  id sends it. The id was kept because an earlier attempt under it may already be in the chat; a
+ *  first attempt's was replaced when it was refused. */
+export function structuredAgentSessionEntryIdExpired(
+  entry: StructuredAgentSessionOutboxEntry
+): boolean {
+  return (
+    entry.state === 'queued' &&
+    entry.lastFailure?.kind === 'refused' &&
+    entry.lastFailure.code === 'agent_session_operation_expired'
+  )
+}
+
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
   refusal: AgentSessionWriteRefusal,
@@ -237,7 +250,9 @@ export function reconcileStructuredAgentSessionOutbox(
       entry.retryAfterUnknownSubmittedAt !== -1 &&
       entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
     ) {
-      return [{ ...entry, state: 'unconfirmed' as const }]
+      // In doubt now, not failed: the probe's resend decides it, as for any unconfirmed send.
+      const { lastFailure: _superseded, ...inDoubt } = entry
+      return [{ ...inDoubt, state: 'unconfirmed' as const }]
     }
     return [entry]
   })

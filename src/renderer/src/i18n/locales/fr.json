@@ -17448,6 +17448,7 @@
         "notDoneCommand": "La commande n'a pas été exécutée.",
         "notDoneGoal": "L'objectif n'a pas été modifié.",
         "restartFailed": "L'agent n'a pas pu redémarrer.",
+        "resendsOnRestart": "Orca le renverra quand l'agent redémarrera.",
         "capacity": "Orca a reçu trop de requêtes au cours de la dernière journée.",
         "outcomeUnknown": "Orca n'a pas pu confirmer ce qui s'est passé. Vérifiez le chat.",
         "questionChanged": "Cette question a déjà reçu une réponse ou a changé.",

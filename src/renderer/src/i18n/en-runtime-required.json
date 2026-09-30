@@ -2858,6 +2858,7 @@
         "recordFailed": "Orca couldn't record it in this chat's history.",
         "recordUnreadable": "Orca couldn't read this chat's saved state.",
         "reopenChat": "Reopen the chat to check again.",
+        "resendsOnRestart": "Orca will send it again when the agent restarts.",
         "restartFailed": "The agent couldn't restart.",
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "settleEarlierMessage": "Wait for your earlier message to go through, or retry it.",

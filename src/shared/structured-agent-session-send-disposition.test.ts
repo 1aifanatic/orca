@@ -15,7 +15,6 @@ import { agentSessionWriteNoticeEnglish } from './agent-session-refusal-notice'
 import {
   disposeStructuredAgentSessionSendFailure,
   disposeStructuredAgentSessionSendResult,
-  STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE,
   structuredAgentSessionAttemptFailureParts
 } from './structured-agent-session-send-disposition'
 import {
@@ -370,7 +369,7 @@ describe('ambiguous operation refusals', () => {
     { ...entry, state: 'unconfirmed' as const, lastAttemptAt: 10 },
     { ...entry, state: 'queued' as const, lastAttemptAt: 10, retryAfterUnknownSubmittedAt: 10 }
   ])(
-    'never rotates $state operation after its host tombstone expires; gives its text back',
+    'never rotates $state operation after its host tombstone expires; holds it for its Retry',
     (ambiguous) => {
       const disposition = disposeStructuredAgentSessionSendResult({
         entries: [ambiguous],
@@ -385,12 +384,16 @@ describe('ambiguous operation refusals', () => {
         createOperationId: () => 'fresh-id'
       })
 
-      // No id can deliver it now: never a fresh one, and the kept one is refused for good.
-      expect(disposition.entries).toEqual([])
-      expect(disposition.returnedToComposer).toMatchObject([
-        { clientMessageId: entry.clientMessageId, state: 'queued' }
+      // An earlier attempt under the kept id may have landed, so no new id goes out on its own.
+      expect(disposition.entries).toMatchObject([
+        {
+          clientMessageId: entry.clientMessageId,
+          state: 'queued',
+          lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
+        }
       ])
-      expect(disposition.error).toBe(STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE)
+      expect(structuredAgentSessionEntryHeldForRetry(disposition.entries[0]!)).toBe(true)
+      expect(disposition.error).toBeNull()
     }
   )
 
@@ -406,7 +409,6 @@ describe('ambiguous operation refusals', () => {
     })
 
     expect(disposition.entries).toMatchObject([{ clientMessageId: 'fresh-id', state: 'rejected' }])
-    expect(disposition.returnedToComposer).toBeUndefined()
   })
 
   it('parks a recovered missing submission without polling forever', () => {

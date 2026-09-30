@@ -20,7 +20,7 @@ import {
   updateStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import { structuredAgentSessionEntryHeldForRetry } from '../../../../shared/structured-agent-session-outbox-admission'
+import { structuredAgentSessionEntryWaitsForNewOwner } from '../../../../shared/structured-agent-session-outbox-admission'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import {
   getStructuredAgentLaunchPromptDispatch,
@@ -76,13 +76,13 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
   )
 }
 
-/** An older host's new owner is its word that a send it refused may now land (see
- *  `useStructuredAgentSessionOutboxOwnerChange`), so what it refused goes out again, same id. */
+/** An older host's new owner is its word that a send it refused for want of one may now land (see
+ *  `useStructuredAgentSessionOutboxOwnerChange`), so that send goes out again, same id. */
 export function releaseStructuredAgentSessionRefusalsForNewOwner(
   entries: StructuredAgentSessionOutboxEntry[]
 ): StructuredAgentSessionOutboxEntry[] {
   return entries.map((entry) => {
-    if (!structuredAgentSessionEntryHeldForRetry(entry)) {
+    if (!structuredAgentSessionEntryWaitsForNewOwner(entry)) {
       return entry
     }
     const { lastFailure: _released, ...released } = entry
@@ -92,7 +92,8 @@ export function releaseStructuredAgentSessionRefusalsForNewOwner(
 
 export function dispatchStructuredAgentSessionOutboxEntry(args: {
   next: StructuredAgentSessionOutboxEntry
-  persisted: readonly StructuredAgentSessionOutboxEntry[]
+  /** The outbox to stage `next` in: this view's, so a hold only memory keeps survives it. */
+  entries: readonly StructuredAgentSessionOutboxEntry[]
   sessionId: string
   target: RuntimeClientTarget
   fence: number
@@ -108,18 +109,19 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
   const start = async (): Promise<boolean> => {
     args.inFlightIdRef.current = args.next.clientMessageId
     const staged = updateStructuredAgentSessionOutboxEntry(
-      args.persisted,
+      args.entries,
       args.next.clientMessageId,
       (entry) => stageStructuredAgentSessionOutboxEntryForSend(entry, Date.now())
     )
     if (!writeOutbox(args.sessionId, staged)) {
       args.inFlightIdRef.current = null
-      // Held for Retry in memory: the save that would record the hold is what failed.
+      // Held for Retry. Saved if storage takes this one write; otherwise only memory holds it.
       const held = updateStructuredAgentSessionOutboxEntry(
         args.outboxRef.current,
         args.next.clientMessageId,
         (entry) => ({ ...entry, lastFailure: { kind: 'failed' } })
       )
+      writeOutbox(args.sessionId, held)
       args.outboxRef.current = held
       args.setOutbox(held)
       args.setError('Message could not be saved to the outbox')

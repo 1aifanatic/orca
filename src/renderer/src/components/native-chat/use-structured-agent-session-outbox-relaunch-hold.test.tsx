@@ -24,7 +24,8 @@ import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
 } from './native-chat-draft-cache'
-import { STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE } from '../../../../shared/structured-agent-session-send-disposition'
+import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { writeOutbox } from './structured-agent-session-outbox-storage'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const SESSION = 'session-1'
@@ -290,6 +291,42 @@ describe('a message an older host refused, across a relaunch', () => {
   })
 })
 
+// A message left on its way out is in doubt after a relaunch, whatever an earlier attempt failed
+// with: the unconfirmed probe resends it under its id rather than holding it for a Retry.
+describe('a message in doubt that carries an earlier failure', () => {
+  afterEach(() => {
+    cleanup()
+    setLocalRuntimeCapabilitiesForTests(null)
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY])
+  })
+
+  it('is probed and sent again, not held', async () => {
+    // What an earlier build left: on its way out, beside a failure it never cleared.
+    const inDoubt = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: 'op-in-doubt',
+        sessionId: SESSION,
+        text: 'hello',
+        attachments: [],
+        queuedAt: 1
+      }),
+      state: 'dispatching' as const,
+      lastAttemptAt: 2,
+      lastFailure: { kind: 'refused' as const, code: 'execution_owner_reconciling' as const }
+    }
+    writeOutbox(SESSION, [inDoubt])
+    hostAccepts()
+    const { result } = mount()
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0), { timeout: 5000 })
+    expect(sentIds()).toEqual(['op-in-doubt'])
+  })
+})
+
 describe('a message whose send could not be saved before it went out', () => {
   afterEach(() => {
     cleanup()
@@ -328,11 +365,87 @@ describe('a message whose send could not be saved before it went out', () => {
     expect(sentIds()).not.toContain(firstId)
     expect(noticeFor(result.current, firstId)?.onRetry).toBeDefined()
   })
+
+  function failingWrites(failing: readonly number[]): void {
+    const save = localStorage.setItem.bind(localStorage)
+    let writes = 0
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
+      writes += 1
+      if (failing.includes(writes)) {
+        throw new Error('storage full')
+      }
+      save(key, value)
+    })
+  }
+
+  it('stays held when the message behind it goes out, though no save recorded the hold', async () => {
+    hostAccepts()
+    // Both messages save; the save marking the first on its way out, and the one recording its
+    // hold, fail; storage then works again for the second.
+    failingWrites([3, 4])
+    const detached: { fence: number | null } = { fence: null }
+    const { result, rerender } = renderHook(
+      ({ fence }: { fence: number | null }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: SESSION,
+          target: { kind: 'local' },
+          fence,
+          submissions: []
+        }),
+      { initialProps: detached }
+    )
+    act(() => expect(result.current.send('first')).toBe(true))
+    act(() => expect(result.current.send('second')).toBe(true))
+    const [firstId, secondId] = result.current.outbox.map((entry) => entry.clientMessageId)
+    rerender({ fence: 1 })
+    await waitFor(() => expect(result.current.outbox).toHaveLength(1))
+    await settle()
+    expect(sentIds()).toEqual([secondId])
+    expect(result.current.outbox[0]).toMatchObject({
+      clientMessageId: firstId,
+      lastFailure: { kind: 'failed' }
+    })
+    expect(noticeFor(result.current, firstId!)?.onRetry).toBeDefined()
+  })
+
+  it('stays held across a relaunch once storage takes the hold', async () => {
+    hostAccepts()
+    // The send saves; the save marking it on its way out fails; the hold's own save goes through.
+    failingWrites([2])
+    const before = mount()
+    act(() => expect(before.result.current.send('first')).toBe(true))
+    await waitFor(() =>
+      expect(before.result.current.error).toBe('Message could not be saved to the outbox')
+    )
+    const firstId = before.result.current.outbox[0]!.clientMessageId
+    before.unmount()
+    vi.restoreAllMocks()
+
+    const after = mount()
+    await settle()
+    expect(mocks.call).not.toHaveBeenCalled()
+    expect(noticeFor(after.result.current, firstId)?.onRetry).toBeDefined()
+  })
 })
 
-// A host forgets an operation id a day after it was made; after that the kept id is refused for
-// good, and a new one could deliver a message an earlier attempt already delivered.
-describe('a held message retried after its id expired', () => {
+// A host forgets an operation id a day after it was made and refuses it for good after that. An
+// earlier attempt under that id may already be in the chat, so the message stays a held row that
+// says so; only the user's Retry sends it, under a new id.
+describe('a held message whose id expired', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const EXPIRED_WORDS = "Orca couldn't confirm what happened. Check the chat."
+
+  function expired() {
+    return {
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_expired',
+        message: 'Operation expired.',
+        details: { reason: 'operationExpired' }
+      }
+    }
+  }
+
   afterEach(() => {
     cleanup()
     setLocalRuntimeCapabilitiesForTests(null)
@@ -345,16 +458,51 @@ describe('a held message retried after its id expired', () => {
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY])
   })
 
-  it('goes back to the composer with a notice, and is not sent again', async () => {
-    mocks.call.mockResolvedValueOnce(newerOrcaRefusal())
-    mocks.call.mockResolvedValue({
-      ok: false,
-      refusal: {
-        code: 'agent_session_operation_expired',
-        message: 'Operation expired.',
-        details: { reason: 'operationExpired' }
-      }
-    })
+  it('stays a row that says it may be in the chat; its Retry sends it under a new id', async () => {
+    mocks.call.mockResolvedValueOnce(newerOrcaRefusal()).mockResolvedValueOnce(expired())
+    const before = mount()
+    act(() => expect(before.result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(before.result.current.outbox[0]?.lastFailure).toBeDefined())
+    const keptId = sentIds()[0]!
+    act(() => before.result.current.retry(keptId))
+    await waitFor(() =>
+      expect(before.result.current.outbox[0]?.lastFailure).toMatchObject({
+        code: 'agent_session_operation_expired'
+      })
+    )
+    expect(before.result.current.error).toBeNull()
+    before.unmount()
+
+    hostAccepts()
+    const after = mount()
+    await settle()
+    expect(mocks.call).toHaveBeenCalledTimes(2)
+    const notice = noticeFor(after.result.current, keptId)
+    expect(notice?.text).toBe(EXPIRED_WORDS)
+    expect(notice?.onRetry).toBeDefined()
+
+    act(() => notice?.onRetry?.())
+    await waitFor(() => expect(after.result.current.outbox).toHaveLength(0))
+    expect(sentIds()).toHaveLength(3)
+    expect(sentIds()[2]).not.toBe(keptId)
+  })
+
+  it('stays in the chat, not the composer, when a relaunch resends it on its own', async () => {
+    // Quit mid-send two days ago: the first message was on its way, the second queued behind it.
+    const old = Date.now() - 2 * DAY
+    const inFlight = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: `${old}-${'1'.repeat(32)}`,
+        sessionId: SESSION,
+        text: 'first',
+        attachments: [],
+        queuedAt: old
+      }),
+      state: 'dispatching' as const,
+      lastAttemptAt: old
+    }
+    writeOutbox(SESSION, [inFlight])
+    mocks.call.mockResolvedValue(expired())
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
         sessionId: SESSION,
@@ -364,14 +512,18 @@ describe('a held message retried after its id expired', () => {
         composerScopeKey: 'pane-1'
       })
     )
-    act(() => expect(result.current.send('hello')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.lastFailure).toBeDefined())
-
-    act(() => result.current.retry(result.current.outbox[0]!.clientMessageId))
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('pane-1')).toBe('hello')
-    expect(result.current.error).toBe(STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE)
+    await waitFor(() => expect(mocks.call).toHaveBeenCalled(), { timeout: 5000 })
+    await waitFor(() =>
+      expect(result.current.outbox[0]?.lastFailure).toMatchObject({
+        code: 'agent_session_operation_expired'
+      })
+    )
     await settle()
-    expect(mocks.call).toHaveBeenCalledTimes(2)
+    expect(readNativeChatDraftCache('pane-1')).toBe('')
+    expect(result.current.outbox).toMatchObject([
+      { clientMessageId: inFlight.clientMessageId, state: 'queued' }
+    ])
+    expect(noticeFor(result.current, inFlight.clientMessageId)?.text).toBe(EXPIRED_WORDS)
+    expect(sentIds()).toEqual([inFlight.clientMessageId])
   })
 })

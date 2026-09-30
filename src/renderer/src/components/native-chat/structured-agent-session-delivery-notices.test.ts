@@ -167,17 +167,47 @@ describe('the notice on each message that did not go through', () => {
   })
 
   // Its Retry would put it back in the queue to wait unseen behind the stopped message.
-  it('keeps a rejected message its words but not its Retry while the queue is stopped', () => {
+  it('keeps a rejected message behind the stopped one its words but not its Retry', () => {
     const retry = vi.fn()
     for (const outbox of [
       [entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })],
-      [entry('rejected', { state: 'rejected' }), entry('held', { outlivedStop: true })]
+      [entry('held', { outlivedStop: true }), entry('rejected', { state: 'rejected' })]
     ]) {
       const notices = structuredAgentSessionDeliveryNotices(outbox, 'Claude', retry, [], [])
       expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
         text: 'Message was not sent.'
       })
     }
+  })
+
+  // Ahead of the stopped message, its Retry sends it at once, so the row offers it.
+  it.each([
+    ['in doubt', { state: 'unconfirmed' as const }],
+    ['outlived by a Stop', { outlivedStop: true as const }]
+  ])('gives a failed message ahead of one %s its Retry', (_label, patch) => {
+    const retry = vi.fn()
+    const notices = structuredAgentSessionDeliveryNotices(
+      [
+        entry('refused', {
+          lastAttemptAt: 1,
+          lastFailure: {
+            kind: 'refused',
+            code: 'agent_session_journal_unreadable',
+            details: { reason: 'journalWrittenByNewerOrca' }
+          }
+        }),
+        entry('rejected', { state: 'rejected' }),
+        entry('stuck', { lastAttemptAt: 2, ...patch })
+      ],
+      'Claude',
+      retry,
+      [],
+      []
+    )
+    for (const id of ['refused', 'rejected', 'stuck']) {
+      notices.get(agentJournalSubmissionKey(id))?.onRetry?.()
+    }
+    expect(retry.mock.calls).toEqual([['refused'], ['rejected'], ['stuck']])
   })
 
   // Beside its own Retry the resend step is the button; without one the words keep it.
@@ -195,7 +225,7 @@ describe('the notice on each message that did not go through', () => {
       [agentJournalSubmissionKey('first')]: 'Claude stopped before it finished starting.',
       [agentJournalSubmissionKey('second')]: 'Claude stopped before it finished starting.'
     })
-    expect(texts([startFailed('rejected'), entry('held', { outlivedStop: true })])).toMatchObject({
+    expect(texts([entry('held', { outlivedStop: true }), startFailed('rejected')])).toMatchObject({
       [agentJournalSubmissionKey('rejected')]:
         'Claude stopped before it finished starting. Send your message to try again.'
     })
@@ -363,6 +393,56 @@ describe('the notice on each message that did not go through', () => {
       [agentJournalSubmissionKey('recorded')]: reason,
       [agentJournalSubmissionKey('copied')]: copiedReason
     })
+  })
+
+  // An older host's next agent owner sends it again; the Retry stays in case none comes.
+  it('says a message an older host refused for want of an owner goes again on its restart', () => {
+    const outbox = [
+      entry('owner', {
+        lastAttemptAt: 1,
+        lastFailure: { kind: 'refused', code: 'agent_session_checkpoint_stale' }
+      }),
+      entry('journal', {
+        lastAttemptAt: 1,
+        lastFailure: { kind: 'refused', code: 'agent_session_journal_unreadable' }
+      })
+    ]
+    const retry = vi.fn()
+    const older = structuredAgentSessionDeliveryNotices(outbox, 'Claude', retry, [], [], true)
+    expect(older.get(agentJournalSubmissionKey('owner'))?.text).toBe(
+      'Your message was not sent. Orca will send it again when the agent restarts.'
+    )
+    expect(older.get(agentJournalSubmissionKey('owner'))?.onRetry).toBeDefined()
+    expect(older.get(agentJournalSubmissionKey('journal'))?.text).toBe(
+      "Orca couldn't read this chat's saved history. Your message was not sent."
+    )
+    expect(texts(outbox)[agentJournalSubmissionKey('owner')]).toBe('Your message was not sent.')
+  })
+
+  // An earlier attempt under the id may have landed, so the row never says it was not sent.
+  it('words a kept message whose id expired as an outcome Orca cannot confirm', () => {
+    const notices = structuredAgentSessionDeliveryNotices(
+      [
+        entry('expired', {
+          lastAttemptAt: 1,
+          lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
+        }),
+        entry('fresh', {
+          state: 'rejected',
+          lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
+        })
+      ],
+      'Claude',
+      vi.fn(),
+      [],
+      []
+    )
+    expect(notices.get(agentJournalSubmissionKey('expired'))).toMatchObject({
+      text: "Orca couldn't confirm what happened. Check the chat."
+    })
+    expect(notices.get(agentJournalSubmissionKey('expired'))?.onRetry).toBeDefined()
+    // A first attempt's id was replaced when it was refused, so nothing can have landed.
+    expect(notices.get(agentJournalSubmissionKey('fresh'))?.text).toBe('Your message was not sent.')
   })
 
   it('says nothing on a message that is only waiting its turn or on its way', () => {

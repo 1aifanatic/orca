@@ -57,9 +57,14 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
     const timer = setTimeout(
       () => {
         probeAttemptsRef.current = { id: probeId, attempts: attempts + 1 }
-        const next = outboxRef.current.map((entry) =>
-          entry.clientMessageId === probeId ? { ...entry, state: 'queued' as const } : entry
-        )
+        const next = outboxRef.current.map((entry) => {
+          if (entry.clientMessageId !== probeId) {
+            return entry
+          }
+          // A saved failure would hold it for a Retry instead of resending it.
+          const { lastFailure: _probed, ...probed } = entry
+          return { ...probed, state: 'queued' as const }
+        })
         outboxRef.current = next
         setOutbox(next)
         writeOutbox(sessionId, next)

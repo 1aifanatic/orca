@@ -76,4 +76,28 @@ describe('a message held for its Retry', () => {
     expect(landed?.state).toBe('dispatching')
     expect(landed?.lastFailure).toBeUndefined()
   })
+
+  // Any fresh word on where a message stands supersedes an earlier attempt's failure.
+  it('is in doubt, and holds the queue, once the host says it cannot tell whether it landed', () => {
+    const submission: AgentJournalSubmission = {
+      clientMessageId: 'held',
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'unknown',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 5,
+      resolvedAt: null
+    }
+    const reconciled = reconcileStructuredAgentSessionOutbox(
+      [entry('held', { lastAttemptAt: 2, lastFailure: REFUSED }), entry('next')],
+      [submission]
+    )
+    expect(reconciled[0]).toMatchObject({ state: 'unconfirmed' })
+    expect(reconciled[0]?.lastFailure).toBeUndefined()
+    expect(admitStructuredAgentSessionOutboxEntry(reconciled)).toMatchObject({
+      state: 'blocked',
+      entry: { clientMessageId: 'held' }
+    })
+  })
 })

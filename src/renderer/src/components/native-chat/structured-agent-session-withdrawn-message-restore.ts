@@ -10,15 +10,15 @@ import { appendNativeChatAttachmentCache } from './use-native-chat-composer-atta
  * Gives the sender back what a Stop withdrew: its text and images go into this pane's composer,
  * after whatever is there. Called before the entries leave storage, so a failure between the two
  * repeats the text rather than losing it. Only this client's outbox holds them, so no other viewer
- * gets them. False when no composer shows this session.
+ * gets them.
  */
 function restoreWithdrawnMessages(
   sessionId: string,
   composerScopeKey: string | undefined,
   withdrawn: readonly StructuredAgentSessionOutboxEntry[]
-): boolean {
-  if (!composerScopeKey) {
-    return false
+): void {
+  if (!composerScopeKey || withdrawn.length === 0) {
+    return
   }
   // What storage no longer holds was already given back by whichever view dropped it first.
   const held = new Set(
@@ -42,7 +42,6 @@ function restoreWithdrawnMessages(
       )
     )
   }
-  return true
 }
 
 export function useStructuredAgentSessionWithdrawnRestore(
@@ -57,8 +56,6 @@ export function useStructuredAgentSessionWithdrawnRestore(
   ) => void
   /** Entries a Stop took out of the outbox here, before the host held them. */
   byStop: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
-  /** Entries no send can deliver any more; false when no composer shows this session. */
-  toComposer: (entries: readonly StructuredAgentSessionOutboxEntry[]) => boolean
 } {
   return useMemo(
     () => ({
@@ -79,10 +76,7 @@ export function useStructuredAgentSessionWithdrawnRestore(
           entries.filter((entry) => withdrawn.has(entry.clientMessageId))
         )
       },
-      byStop: (entries) => {
-        restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
-      },
-      toComposer: (entries) => restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
+      byStop: (entries) => restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
     }),
     [composerScopeKey, sessionId]
   )

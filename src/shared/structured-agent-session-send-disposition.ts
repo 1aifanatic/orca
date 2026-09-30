@@ -34,12 +34,7 @@ export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
   error: string | null
-  /** Messages no send can deliver any more, whose text goes back to the composer. */
-  returnedToComposer?: StructuredAgentSessionOutboxEntry[]
 }
-
-export const STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE =
-  "This message can no longer be sent, so it's back in the message box. Check the chat before sending it again."
 
 type SendDispositionInput = {
   entries: readonly StructuredAgentSessionOutboxEntry[]
@@ -215,16 +210,6 @@ export function disposeStructuredAgentSessionSendRefusal(
         )
       : candidate
   )
-  // Expired is final for an id, and a kept id is one an earlier attempt may have delivered, so no
-  // Retry could go through and a new id could send it twice: the user decides, from the chat.
-  const kept = entries.find((entry) => entry.clientMessageId === input.entry.clientMessageId)
-  if (kept && input.refusal.code === 'agent_session_operation_expired') {
-    return {
-      entries: dropEntry(input),
-      error: STRUCTURED_AGENT_SESSION_EXPIRED_SEND_NOTICE,
-      returnedToComposer: [kept]
-    }
-  }
   return { entries, error: null }
 }
 

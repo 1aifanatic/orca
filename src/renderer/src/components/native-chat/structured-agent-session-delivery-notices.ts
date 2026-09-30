@@ -2,9 +2,10 @@
 //
 // Derived from the outbox on every render and never stored: each failed or held message carries
 // its own typed failure, so each row words its own reason. Read through the drain's own rule: while
-// the queue is stopped, only the message it stopped on has a Retry; another's would wait unseen
-// behind it. One waiting behind says nothing; a rejected or refused message holds nothing up, so it
-// keeps its words and gets its Retry once the queue moves.
+// the queue is stopped, the message it stopped on and any failed one ahead of it have a Retry, as
+// each would go out at once; one behind it would wait unseen. One waiting behind says nothing; a
+// rejected or refused message holds nothing up, so it keeps its words and gets its Retry once the
+// queue moves.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
@@ -23,10 +24,14 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import {
+  structuredAgentSessionEntryIdExpired,
+  type StructuredAgentSessionOutboxEntry
+} from '../../../../shared/structured-agent-session-outbox'
 import {
   admitStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionEntryHeldForRetry
+  structuredAgentSessionEntryHeldForRetry,
+  structuredAgentSessionEntryWaitsForNewOwner
 } from '../../../../shared/structured-agent-session-outbox-admission'
 import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
@@ -84,7 +89,8 @@ function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
   recorded: AgentJournalSubmission | undefined,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly AgentSessionFailureFact[],
+  resendsOnNewOwner: boolean
 ): string {
   // A send attempted before a Stop and then interrupted may already be with the host.
   const attemptedAcrossStop =
@@ -101,18 +107,25 @@ function deliveryNoticeText(
       'Message was not sent.'
     )
   }
+  // An earlier attempt under the id the host forgot may already be in the chat.
+  if (structuredAgentSessionEntryIdExpired(entry)) {
+    return agentSessionWriteNoticeText(['outcomeUnknown'])
+  }
   if (
     entry.state === 'rejected' &&
     agentSessionFailureStatedByStartRow(recorded?.rejection, startFailures)
   ) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
+  const parts = structuredAgentSessionAttemptFailureParts(
+    entry.lastFailure,
+    context,
+    readWholeAgentSessionFailureFact(recorded?.rejection)
+  )
   return agentSessionWriteNoticeText(
-    structuredAgentSessionAttemptFailureParts(
-      entry.lastFailure,
-      context,
-      readWholeAgentSessionFailureFact(recorded?.rejection)
-    )
+    resendsOnNewOwner && structuredAgentSessionEntryWaitsForNewOwner(entry)
+      ? [...parts, 'resendsOnRestart']
+      : parts
   )
 }
 
@@ -125,29 +138,33 @@ export function structuredAgentSessionDeliveryNotices(
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly AgentSessionFailureFact[],
+  /** The host is known to be older: what it refused for want of an owner goes out on its next. */
+  resendsOnNewOwner = false
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
+  const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
   const rejected = new Map(
     submissions
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => [submission.clientMessageId, submission])
   )
   const notices = new Map<string, NativeChatDeliveryNotice>()
-  for (const entry of outbox) {
+  for (const [index, entry] of outbox.entries()) {
     if (
       entry.state === 'rejected' ||
       structuredAgentSessionEntryHeldForRetry(entry) ||
       entry.clientMessageId === held
     ) {
       // Its own Retry is the step, so the words leave out sending again.
-      const retryControl = held === null || entry.clientMessageId === held
+      const retryControl = stalledFrom === -1 || index <= stalledFrom
       const text = deliveryNoticeText(
         entry,
         { agentName, retryControl },
         rejected.get(entry.clientMessageId),
-        startFailures
+        startFailures,
+        resendsOnNewOwner
       )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),

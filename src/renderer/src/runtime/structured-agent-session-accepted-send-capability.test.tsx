@@ -11,7 +11,7 @@ vi.mock('./runtime-rpc-client', () => ({
 }))
 
 import { setLocalRuntimeCapabilitiesForTests } from './local-runtime-capabilities'
-import { useStructuredAgentSessionHostAcceptsSend } from './structured-agent-session-accepted-send-capability'
+import { useStructuredAgentSessionHostAcceptedSendState } from './structured-agent-session-accepted-send-capability'
 
 afterEach(() => {
   setLocalRuntimeCapabilitiesForTests(null)
@@ -21,31 +21,41 @@ afterEach(() => {
 describe('whether a host accepts a send before any agent has it', () => {
   it('reads the local host from its advertised capabilities', () => {
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY])
-    const { result } = renderHook(() => useStructuredAgentSessionHostAcceptsSend({ kind: 'local' }))
-    expect(result.current).toBe(true)
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionHostAcceptedSendState({ kind: 'local' })
+    )
+    expect(result.current).toBe('supported')
   })
 
   it('treats a local host that does not advertise it as an older one', () => {
     setLocalRuntimeCapabilitiesForTests([])
-    const { result } = renderHook(() => useStructuredAgentSessionHostAcceptsSend({ kind: 'local' }))
-    expect(result.current).toBe(false)
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionHostAcceptedSendState({ kind: 'local' })
+    )
+    expect(result.current).toBe('unsupported')
   })
 
-  it('asks a remote host, and reads a failed probe as an older host', async () => {
+  it('asks a remote host, and reads a failed probe as not yet known', async () => {
     mocks.supports.mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('offline'))
     const accepts = renderHook(() =>
-      useStructuredAgentSessionHostAcceptsSend({ kind: 'environment', environmentId: 'env-1' })
+      useStructuredAgentSessionHostAcceptedSendState({
+        kind: 'environment',
+        environmentId: 'env-1'
+      })
     )
-    await waitFor(() => expect(accepts.result.current).toBe(true))
+    await waitFor(() => expect(accepts.result.current).toBe('supported'))
     expect(mocks.supports).toHaveBeenCalledWith(
       'env-1',
       AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY
     )
 
     const offline = renderHook(() =>
-      useStructuredAgentSessionHostAcceptsSend({ kind: 'environment', environmentId: 'env-2' })
+      useStructuredAgentSessionHostAcceptedSendState({
+        kind: 'environment',
+        environmentId: 'env-2'
+      })
     )
     await waitFor(() => expect(mocks.supports).toHaveBeenCalledTimes(2))
-    expect(offline.result.current).toBe(false)
+    expect(offline.result.current).toBe('unknown')
   })
 })
