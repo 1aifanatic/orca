@@ -90,7 +90,8 @@ function boundByDeadline<T>(
 }
 
 function readTimeoutMs(options: WorktreeMembershipReadOptions): number {
-  return options.timeout ?? WORKTREE_LIST_TIMEOUT_MS
+  // Zero is no deadline override, as the Git runner treats it.
+  return options.timeout || WORKTREE_LIST_TIMEOUT_MS
 }
 
 function dropIdleModels(now: number): void {
