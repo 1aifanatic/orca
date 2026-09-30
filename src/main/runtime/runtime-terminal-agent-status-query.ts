@@ -1,4 +1,8 @@
-import { selectAgentPresence, type AgentProcessPresence } from '../../shared/agent-process-presence'
+import type { AgentProcessPresence } from '../../shared/agent-process-presence'
+import {
+  selectLiveOwnerAgent,
+  withoutEndedOwnerTitle
+} from '../../shared/ended-agent-owner-evidence'
 import {
   detectAgentStatusFromTitle,
   isClaudeManagementTitle,
@@ -69,7 +73,7 @@ export class RuntimeTerminalAgentStatusQuery {
     const terminal = this.getSnapshot(handle, ptyId)
     const explicitStatus = this.deps.getExplicitStatus(handle)
     const lifecycle = this.deps.getLifecycleStatus(ptyId)
-    const presence = selectAgentPresence(this.deps.getAgentPresence?.(handle))
+    const presence = this.deps.getAgentPresence?.(handle)
     const blockedByWaitText = detectTerminalWaitBlockedReason(terminal.waitText)
     const liveTitleClearsBlockedText =
       terminal.titleStatusIsLive &&
@@ -98,13 +102,11 @@ export class RuntimeTerminalAgentStatusQuery {
       return { handle, isRunningAgent: true, status: 'permission' }
     }
     // Presence answers only whether an agent owns the pane; the permission evidence above still wins.
-    if (presence === null) {
-      return { handle, isRunningAgent: false, status: null }
-    }
+    const owner = selectLiveOwnerAgent(presence)
     if (explicitStatus) {
       // Why: permission titles can linger after hooks report the agent resumed. Fresh hook state is
       // tighter, but current shell/management evidence wins; a live owner answers for the shell.
-      const isRunningAgent = presence
+      const isRunningAgent = owner
         ? !(terminal.title !== null && isClaudeManagementTitle(terminal.title))
         : !terminalTitleBlocksExplicitAgentStatus(terminal.title) &&
           !(await this.terminalHasShellForegroundProcess(handle, ptyId))
@@ -115,7 +117,12 @@ export class RuntimeTerminalAgentStatusQuery {
         status: isRunningAgent ? explicitStatus.status : null
       }
     }
-    if (terminal.titleStatus) {
+    // An exited owner's own title is history; titles naming other agents still count.
+    const titleStatus =
+      withoutEndedOwnerTitle(terminal.title, presence) === terminal.title
+        ? terminal.titleStatus
+        : null
+    if (titleStatus) {
       // Why: an OpenCode marker and a lone quarter-circle spinner (STA-4028) are activity,
       // not identity, so resolve both through the identity/foreground evidence path.
       if (
@@ -127,10 +134,10 @@ export class RuntimeTerminalAgentStatusQuery {
         return {
           handle,
           isRunningAgent,
-          status: isRunningAgent ? terminal.titleStatus : null
+          status: isRunningAgent ? titleStatus : null
         }
       }
-      return { handle, isRunningAgent: true, status: terminal.titleStatus }
+      return { handle, isRunningAgent: true, status: titleStatus }
     }
 
     const isRunningAgent = await this.deps.isRunning(handle)

@@ -31,6 +31,12 @@ describe('host process presence on mobile', () => {
     expect(resolveMobileTerminalTabAgentId(tab(true))).toBeNull()
     expect(resolveMobileNativeChat(tab(true))).toBeNull()
   })
+  it('shows a hookless agent started after the owner exited, as it would without presence', () => {
+    const successor = { ...tab(true), title: 'aider' }
+    expect(resolveMobileTerminalTabAgentId(successor)).toBe('aider')
+    const withoutPresence = { ...successor, agentStatus: undefined, launchAgent: undefined }
+    expect(resolveMobileTerminalTabAgentId(withoutPresence)).toBe('aider')
+  })
   it('keeps old-host and unidentified rows on the legacy path', () => {
     const legacy = tab()
     delete legacy.agentStatus.agentPresence

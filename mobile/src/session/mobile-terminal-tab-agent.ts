@@ -1,4 +1,7 @@
-import { selectAgentPresence } from '../../../src/shared/agent-process-presence'
+import {
+  paneEvidenceAgent,
+  selectLiveOwnerAgent
+} from '../../../src/shared/ended-agent-owner-evidence'
 import { stripLeadingAgentTitleDecorationOrEmpty } from '../../../src/shared/agent-title-decoration'
 import { resolveExplicitTerminalTitleAgentType } from '../../../src/shared/terminal-title-agent-type'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
@@ -29,32 +32,30 @@ type MobileTerminalTabAgentIdentity = {
 export function resolveMobileTerminalTabOwnedAgentId(
   tab: MobileTerminalTabAgentIdentity
 ): string | null {
-  const presence = selectAgentPresence(tab.agentStatus?.agentPresence)
-  if (presence !== undefined) {
-    return presence
+  const presence = tab.agentStatus?.agentPresence
+  const owner = selectLiveOwnerAgent(presence)
+  if (owner) {
+    return owner
   }
-  const hookAgentType = tab.agentStatus?.agentType?.trim()
+  // Why: an exited owner's own hook row and launch intent are history; other agents still show.
+  const hookAgentType = paneEvidenceAgent(presence, tab.agentStatus?.agentType?.trim())
   if (hookAgentType && hookAgentType !== 'unknown') {
     return hookAgentType
   }
-  if (tab.launchAgent) {
-    return tab.launchAgent
-  }
-  return null
+  return paneEvidenceAgent(presence, tab.launchAgent)
 }
 
 export function resolveMobileTerminalTabAgentId(
   tab: MobileTerminalTabAgentIdentity
 ): string | null {
-  const presence = selectAgentPresence(tab.agentStatus?.agentPresence)
-  if (presence !== undefined) {
-    return presence
-  }
   const ownedAgent = resolveMobileTerminalTabOwnedAgentId(tab)
   if (ownedAgent) {
     return ownedAgent
   }
-  return resolveExplicitTerminalTitleAgentType(tab.title)
+  return paneEvidenceAgent(
+    tab.agentStatus?.agentPresence,
+    resolveExplicitTerminalTitleAgentType(tab.title)
+  )
 }
 
 export function getMobileSessionTabTitle(tab: MobileSessionTab): string {

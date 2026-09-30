@@ -57,6 +57,7 @@ function terminal(args: {
   foreground: string
   waitText?: string
   explicit?: 'working' | 'done'
+  titleStatus?: 'working'
 }) {
   const presence = new RuntimeTerminalAgentPresence({
     getAgentPresence: () => args.presence,
@@ -84,7 +85,7 @@ function terminal(args: {
     waitText: args.waitText ?? '',
     waitBlockedAt: args.waitText ? Date.now() : null,
     title: args.title,
-    titleStatus: null,
+    titleStatus: args.titleStatus ?? null,
     titleStatusIsLive: true
   })
   return { presence, query }
@@ -133,5 +134,35 @@ describe('headless terminal presence', () => {
       isRunningAgent: false,
       status: null
     })
+  })
+
+  it('shows a hookless agent started after the owner exited, as it would without presence', async () => {
+    for (const presence of [owner('claude', true), undefined]) {
+      const { presence: running, query } = terminal({
+        presence,
+        title: 'aider',
+        foreground: 'aider'
+      })
+      expect(await running.isRunning('terminal')).toBe(true)
+      expect(await query.getStatus('terminal')).toMatchObject({ isRunningAgent: true })
+    }
+  })
+
+  it('does not revive an exited owner from its own title or foreground process', async () => {
+    const evidence = {
+      title: '✳ Claude Code',
+      foreground: 'claude',
+      titleStatus: 'working'
+    } as const
+    const exited = terminal({ presence: owner('claude', true), ...evidence })
+    expect(await exited.presence.isRunning('terminal')).toBe(false)
+    expect(await exited.query.getStatus('terminal')).toEqual({
+      handle: 'terminal',
+      isRunningAgent: false,
+      status: null
+    })
+    // The same evidence without presence reads as a running Claude.
+    const legacy = terminal({ presence: undefined, ...evidence })
+    expect(await legacy.presence.isRunning('terminal')).toBe(true)
   })
 })

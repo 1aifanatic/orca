@@ -1,5 +1,3 @@
-import { isTuiAgent } from './tui-agent-config'
-import type { TuiAgent } from './tui-agent'
 import { AGENT_TYPE_MAX_LENGTH } from './agent-status-field-normalization'
 import type { AgentType } from './agent-status-types'
 
@@ -74,14 +72,6 @@ export function readAgentProcessPresence(value: unknown): AgentProcessPresence |
 
 export function isSameAgentProcess(a: AgentProcessIdentity, b: AgentProcessIdentity): boolean {
   return a.pid === b.pid && a.platform === b.platform && a.startTime === b.startTime
-}
-
-/** Undefined means this host has not published a process identity. */
-export function selectAgentPresence(presence?: AgentProcessPresence): TuiAgent | null | undefined {
-  if (!presence?.process) {
-    return undefined
-  }
-  return !presence.ended && isTuiAgent(presence.agent) ? presence.agent : null
 }
 
 export type AgentPresenceObservation = { epoch: string; sequence: number }

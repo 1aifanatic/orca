@@ -1,11 +1,20 @@
 import { shallow } from 'zustand/shallow'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
-import { resolveExplicitTerminalTitleAgentType } from '../../../shared/terminal-title-agent-type'
-import { isTuiAgent } from '../../../shared/tui-agent-config'
+import {
+  selectLiveOwnerAgent,
+  withoutEndedOwnerEvidence,
+  type PaneEvidenceSignals
+} from '../../../shared/ended-agent-owner-evidence'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentPresenceByPaneKey, AgentPresenceRecord } from '@/store/slices/agent-presence'
-import { isLegacyUnidentified } from './legacy-unidentified-agent-presence'
+
+export {
+  paneEvidenceAgent,
+  paneEvidenceCounts,
+  selectLiveOwnerAgent,
+  withoutEndedOwnerEvidence
+} from '../../../shared/ended-agent-owner-evidence'
 
 const EMPTY_PRESENCE: AgentPresenceByPaneKey = Object.freeze({})
 let previousPresence: AgentPresenceByPaneKey | undefined
@@ -50,59 +59,6 @@ export function selectFocusedPanePresence(
   }
   const only = Object.values(records)
   return only.length === 1 ? only[0].presence : undefined
-}
-
-/** A live identified owner decides its own pane; undefined leaves the pane to legacy signals. */
-export function selectLiveOwnerAgent(presence?: AgentProcessPresence): TuiAgent | undefined {
-  if (!presence || isLegacyUnidentified(presence)) {
-    return undefined
-  }
-  return isTuiAgent(presence.agent) ? presence.agent : undefined
-}
-
-/** After the identified owner exits, only evidence naming a different agent still describes the pane. */
-export function paneEvidenceCounts(
-  presence: AgentProcessPresence | undefined,
-  agent: string | null | undefined
-): boolean {
-  if (!presence?.process || !presence.ended) {
-    return true
-  }
-  return Boolean(agent) && agent !== 'unknown' && agent !== presence.agent
-}
-
-export function paneEvidenceAgent<T extends string>(
-  presence: AgentProcessPresence | undefined,
-  agent: T | null | undefined
-): T | null {
-  return agent && paneEvidenceCounts(presence, agent) ? agent : null
-}
-
-type PaneEvidenceSignals = {
-  title: string
-  hookAgent: TuiAgent | null
-  focusedCompletedHookAgent?: TuiAgent | null
-  processAgent?: TuiAgent | null
-  launchAgent?: TuiAgent
-}
-
-/** The signals a legacy resolver may still read once an ended owner's own evidence is set aside. */
-export function withoutEndedOwnerEvidence<T extends PaneEvidenceSignals>(
-  args: T,
-  presence: AgentProcessPresence | undefined
-): T {
-  if (!presence?.process || !presence.ended) {
-    return args
-  }
-  const titleAgent = resolveExplicitTerminalTitleAgentType(args.title)
-  return {
-    ...args,
-    title: titleAgent === presence.agent ? '' : args.title,
-    hookAgent: paneEvidenceAgent(presence, args.hookAgent),
-    focusedCompletedHookAgent: paneEvidenceAgent(presence, args.focusedCompletedHookAgent),
-    processAgent: paneEvidenceAgent(presence, args.processAgent),
-    launchAgent: paneEvidenceAgent(presence, args.launchAgent) ?? undefined
-  }
 }
 
 /** One per-pane rule for every identity reader: live owner, else legacy minus ended-owner evidence. */
