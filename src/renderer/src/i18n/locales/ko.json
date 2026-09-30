@@ -6171,6 +6171,8 @@
           "reconnectFailed": "재연결 실패",
           "forgetBody": "이 작업 공간을 Orca에서만 제거합니다. 파일, Git 워크트리, {{host}}의 브랜치는 그대로 유지됩니다.",
           "title": "Delete “{{name}}”?",
+          "removeTitle": "“{{name}}”을(를) Orca에서 제거할까요?",
+          "failedDeleteBody": "이 작업 공간을 Orca에서만 제거합니다. 남은 파일과 브랜치는 디스크에 그대로 유지됩니다.",
           "disconnectedBody": "이 워크트리의 SSH 호스트가 연결되어 있지 않습니다. 재연결하여 원격에서도 삭제하거나 Orca에서만 제거하세요.",
           "ghostBody": "{{host}}은(는) 더 이상 저장된 SSH 호스트가 아니므로 이 워크스페이스는 라이브 호스트에 연결되어 있지 않습니다. Orca에서 제거만 할 수 있으며, 원격의 파일과 브랜치는 그대로 유지됩니다.",
           "cancel": "취소",

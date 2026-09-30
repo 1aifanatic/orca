@@ -5341,6 +5341,8 @@
           "reconnectFailed": "Error de reconexión",
           "forgetBody": "Elimina este espacio de trabajo solo de Orca. Los archivos, el worktree de Git y las ramas en {{host}} permanecen intactos.",
           "title": "¿Eliminar “{{name}}”?",
+          "removeTitle": "¿Eliminar “{{name}}” de Orca?",
+          "failedDeleteBody": "Elimina este espacio de trabajo solo de Orca. Los archivos restantes y su rama se conservan en el disco.",
           "disconnectedBody": "El host SSH de este espacio de trabajo no está conectado. Reconéctalo para eliminarlo también en el remoto, o elimínalo solo de Orca.",
           "ghostBody": "{{host}} ya no es un host SSH guardado, por lo que este espacio de trabajo ya no está conectado a un host activo. Solo se puede eliminar de Orca — los archivos y ramas en el remoto permanecen intactos.",
           "cancel": "Cancelar",

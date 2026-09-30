@@ -145,7 +145,7 @@ export function createWorktreesApi(): NonNullable<Partial<PreloadApi>['worktrees
         worktreeRemovalReplyTimeoutMs(skipArchive !== true)
       )
     },
-    // Why: forget-locally clears a desktop workspace pinned to a dead SSH host; a paired web client has no such ghost state.
+    // Why: forget-locally clears records only the desktop's own main process holds; a paired web client has none.
     forgetLocal: () => {
       throw new Error('Forgetting a workspace is unavailable in paired web clients.')
     },

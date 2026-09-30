@@ -6307,6 +6307,8 @@
           "reconnectFailed": "Reconnection failed",
           "forgetBody": "Removes this workspace from Orca only. Files, the Git worktree, and branches on {{host}} are left untouched.",
           "title": "Delete “{{name}}”?",
+          "removeTitle": "Remove “{{name}}” from Orca?",
+          "failedDeleteBody": "Removes this workspace from Orca only. Its remaining files and its branch stay on disk.",
           "disconnectedBody": "The SSH host for this workspace is not connected. Reconnect to delete it on the remote too, or remove it from Orca only.",
           "ghostBody": "{{host}} is no longer a saved SSH host, so this workspace is no longer connected to a live host. It can only be removed from Orca — files and branches on the remote are left untouched.",
           "cancel": "Cancel",

@@ -6248,6 +6248,8 @@
           "reconnectFailed": "Échec de la reconnexion",
           "forgetBody": "Retire uniquement cet espace de travail d'Orca. Les fichiers, le worktree Git et les branches sur {{host}} restent intacts.",
           "title": "Supprimer « {{name}} » ?",
+          "removeTitle": "Retirer « {{name}} » d'Orca ?",
+          "failedDeleteBody": "Retire uniquement cet espace de travail d'Orca. Les fichiers restants et sa branche sont conservés sur le disque.",
           "disconnectedBody": "L'hôte SSH de cet espace de travail n'est pas connecté. Reconnectez-le pour le supprimer aussi à distance, ou retirez-le seulement d'Orca.",
           "ghostBody": "{{host}} n'est plus un hôte SSH enregistré ; cet espace de travail n'est donc plus connecté à un hôte actif. Il ne peut être que retiré d'Orca — les fichiers et branches distants restent intacts.",
           "cancel": "Annuler",

@@ -206,9 +206,11 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
   it('forget drops it from Orca without deleting anything', async () => {
     await failAfterGitDroppedIt()
 
-    await handlers['worktrees:forgetLocal'](null, { worktreeId: featureId })
+    // As the sidebar's Remove from Orca sends it for a local row.
+    await handlers['worktrees:forgetLocal'](null, { worktreeId: featureId, hostId: 'local' })
 
     expect(await listFeature()).toBeUndefined()
+    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(featureId, 'local')
     expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
     expect(removeWorktreeMock).not.toHaveBeenCalled()
   })
