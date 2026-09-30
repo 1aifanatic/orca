@@ -2,6 +2,7 @@
 // adapter. Codex answers a turn's interrupt as the turn aborts and sends the turn's end right after
 // the answer, so the end reaches Orca a moment after the Stop has its answer.
 
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,7 +56,7 @@ beforeEach(async () => {
   host = new StructuredAgentSessionHost({
     store,
     adapter: Object.assign(adapterFor(codex), { supportsCreate: () => true }),
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-1',
     now: () => NOW
