@@ -80,7 +80,7 @@ export type GitValidationResult = { state: GitDerivationState; rows: GitWorktree
 /**
  * Re-run Git only when a stat moved, the listing was marked dirty, or the floor is due. Stamps are
  * taken before Git runs. A dependency only the new rows name (a branch that just appeared) is
- * stamped after the listing; a write in that gap is left to the watcher's dirty mark and the floor.
+ * stamped after the listing; a write in that gap is left to Orca's mutation marks and the floor.
  */
 export async function validateMembershipFromGit(input: {
   repoPath: string

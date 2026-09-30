@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import { removeTree } from '../../../shared/windows-transient-lock-removal'
 import { clearGitCapabilityStateForTests } from '../git-capability-state'
@@ -16,11 +16,19 @@ import {
   _resetWorktreeMembershipModelsForTests,
   readWorktreeMembership
 } from './worktree-membership-store'
+import { MEMBERSHIP_REUSE_WINDOW_MS } from './worktree-membership-model'
 
 const execFileAsync = promisify(execFile)
 
 let scratchDir = ''
 let repoPath = ''
+let now = 0
+
+/** Past the reuse window, so the next read re-validates by stat with no mark. */
+function readAfterReuseWindow(path: string): ReturnType<typeof readWorktreeMembership> {
+  now += MEMBERSHIP_REUSE_WINDOW_MS
+  return readWorktreeMembership(path)
+}
 
 async function git(args: string[], cwd = repoPath): Promise<string> {
   const { stdout } = await execFileAsync('git', args, { cwd })
@@ -40,7 +48,7 @@ function comparable(rows: GitWorktreeInfo[]): GitWorktreeInfo[] {
 
 async function expectFileRowsMatchGit(): Promise<GitWorktreeInfo[]> {
   const fromGit = await listWorktreesStrict(repoPath, { includeCreatePreparations: true })
-  const { rows } = await readWorktreeMembership(repoPath, { fresh: true })
+  const { rows } = await readAfterReuseWindow(repoPath)
   expect(comparable(rows)).toEqual(comparable(fromGit))
   expect(_getWorktreeMembershipModelForTests(repoPath)?.source).toEqual({ kind: 'files' })
   return rows
@@ -58,9 +66,12 @@ beforeEach(async () => {
   await git(['add', '-A'])
   await git(['commit', '-qm', 'seed'])
   _resetWorktreeMembershipModelsForTests()
+  now = Date.now()
+  vi.spyOn(Date, 'now').mockImplementation(() => now)
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   _resetWorktreeMembershipModelsForTests()
   clearGitCapabilityStateForTests()
   await removeTree(scratchDir)
@@ -172,7 +183,7 @@ describe('worktree membership model against the real Git binary', () => {
     await git(['clone', '-q', '--bare', repoPath, bare], scratchDir)
     await git(['worktree', 'add', '-q', join(scratchDir, 'bare-wt'), 'main'], bare)
     const fromGit = await listWorktreesStrict(bare, { includeCreatePreparations: true })
-    const { rows } = await readWorktreeMembership(bare, { fresh: true })
+    const { rows } = await readAfterReuseWindow(bare)
     expect(comparable(rows)).toEqual(comparable(fromGit))
     expect(rows[0]?.isBare).toBe(true)
     expect(_getWorktreeMembershipModelForTests(bare)?.source).toEqual({ kind: 'files' })

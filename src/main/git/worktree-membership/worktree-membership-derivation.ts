@@ -1,6 +1,5 @@
 import { realpath, stat } from 'node:fs/promises'
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
-import { parseWslPath } from '../../wsl'
 import { getErrorCode, type GitWorktreeExecOptions } from '../worktree-operation-options'
 import { canonicalWorktreePath } from '../worktree-path-comparison'
 import { readRepoConfigFacts, resolveRepoCommonDirFromFiles } from './repo-admin-layout'
@@ -12,15 +11,14 @@ import {
   validateMembershipFromGit
 } from './worktree-membership-git-rows'
 import {
-  CLEAN_MEMBERSHIP_SCOPE,
-  FULL_MEMBERSHIP_SCOPE,
   MEMBERSHIP_FULL_DERIVE_FLOOR_MS,
   type FileDerivationState,
-  type MembershipDirtyScope,
+  type MembershipDerivationStart,
   type WorktreeMembershipModel
 } from './worktree-membership-model'
 
-// How a membership model is built (one Git baseline plus the parity check) and re-derived.
+// How a membership model is built (one Git baseline plus the parity check) and re-derived. Native
+// local repos only: WSL repos never get a model (a 9P stat can read an existing dir as absent).
 
 /** The registered repo path no longer exists: the true empty answer, reached with one stat. */
 export class MissingRepoPathError extends Error {
@@ -30,14 +28,7 @@ export class MissingRepoPathError extends Error {
   }
 }
 
-async function assertRepoPathPresent(
-  repoPath: string,
-  wslDistro: string | undefined
-): Promise<void> {
-  // A WSL path can read as absent while its distro is stopped, which is not a deleted repo.
-  if (wslDistro || parseWslPath(repoPath)) {
-    return
-  }
+async function assertRepoPathPresent(repoPath: string): Promise<void> {
   await stat(repoPath).catch((error: unknown) => {
     if (getErrorCode(error) === 'ENOENT') {
       throw new MissingRepoPathError(repoPath)
@@ -48,7 +39,6 @@ async function assertRepoPathPresent(
 export function gitOptionsFor(options: GitWorktreeExecOptions): GitWorktreeExecOptions {
   // A shared derivation must not be cancelled by one caller's signal; callers race it instead.
   return {
-    ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
     ...(options.timeout ? { timeout: options.timeout } : {}),
     ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
   }
@@ -60,66 +50,66 @@ function pinToGit(model: WorktreeMembershipModel, reason: string): void {
   console.warn(`[git/worktree-membership] using git worktree list for ${model.repoPath}: ${reason}`)
 }
 
-export async function createMembershipModel(
+/** A model with nothing derived yet; the store registers it before its first build starts. */
+export function createMembershipModelShell(
   key: string,
   repoPath: string,
-  options: GitWorktreeExecOptions
-): Promise<WorktreeMembershipModel | null> {
-  await assertRepoPathPresent(repoPath, options.wslDistro)
-  const commonDir = await resolveRepoCommonDirFromFiles(repoPath, options.wslDistro).catch(
-    () => null
-  )
-  if (!commonDir) {
-    return null
-  }
-  const commonDirKey = canonicalWorktreePath(await realpath(commonDir).catch(() => commonDir))
-  const gitOptions = gitOptionsFor(options)
-  const startedAt = Date.now()
-  const facts = await readRepoConfigFacts(commonDir).catch(() => null)
-  // Orca's runner treats a WSL UNC path as WSL even without the option; its rows need translating.
-  const gitOnlyReason =
-    options.wslDistro || parseWslPath(repoPath)
-      ? 'WSL repo'
-      : facts === null
-        ? 'unreadable config'
-        : facts.gitOnlyReason
-  const model: WorktreeMembershipModel = {
+  startedAt: number
+): WorktreeMembershipModel {
+  return {
     key,
     repoPath,
-    wslDistro: options.wslDistro,
-    commonDir,
-    commonDirKey,
+    commonDir: '',
+    commonDirKey: '',
     main: { path: repoPath, isBare: false },
     source: { kind: 'files' },
     files: null,
     git: { entryNames: null, listingStamp: null, signature: undefined },
     rows: [],
-    validatedAt: startedAt,
-    validatedGeneration: 0,
+    validated: { generation: 0, startedAt },
     fullDerivedAt: startedAt,
     lastReadAt: startedAt,
     generation: 0,
-    dirty: CLEAN_MEMBERSHIP_SCOPE,
+    listingOwed: false,
+    building: null,
     inFlight: new Map(),
     startedDerivations: 0,
     committedDerivation: 0,
-    stalledDerivations: 0
+    stalledWork: 0
   }
+}
+
+/**
+ * The model's first build, as generation 0's derivation. Resolves null when files cannot even
+ * locate the repo's common dir; the caller then leaves the repo to Git.
+ */
+export async function buildMembershipModel(
+  model: WorktreeMembershipModel,
+  options: GitWorktreeExecOptions
+): Promise<GitWorktreeInfo[] | null> {
+  await assertRepoPathPresent(model.repoPath)
+  const commonDir = await resolveRepoCommonDirFromFiles(model.repoPath).catch(() => null)
+  if (!commonDir) {
+    return null
+  }
+  model.commonDir = commonDir
+  model.commonDirKey = canonicalWorktreePath(await realpath(commonDir).catch(() => commonDir))
+  const gitOptions = gitOptionsFor(options)
+  const facts = await readRepoConfigFacts(commonDir).catch(() => null)
+  const gitOnlyReason = facts === null ? 'unreadable config' : facts.gitOnlyReason
   const adopted = gitOnlyReason ? null : await adoptFileRows(model, gitOptions)
   if (adopted) {
     model.main = adopted.main
     model.files = adopted.files
     model.rows = adopted.rows
-    model.validatedAt = adopted.derivedAt
-    model.fullDerivedAt = adopted.derivedAt
-    return model
+    return model.rows
   }
   if (gitOnlyReason) {
     model.source = { kind: 'git', reason: gitOnlyReason }
   }
-  // Pinned, or a transient read failure: a files model with no memo re-runs the parity next read.
+  // Pinned, or a transient read failure: a files model with no file state re-runs parity next read.
   const git = await validateMembershipFromGit({
-    repoPath,
+    repoPath: model.repoPath,
     commonDir,
     options: gitOptions,
     previous: model.git,
@@ -129,16 +119,15 @@ export async function createMembershipModel(
   model.git = git.state
   model.rows = git.rows
   if (gitOnlyReason) {
-    model.main = { path: git.rows[0]?.path ?? repoPath, isBare: git.rows[0]?.isBare ?? false }
+    model.main = { path: git.rows[0]?.path ?? model.repoPath, isBare: git.rows[0]?.isBare ?? false }
   }
-  return model
+  return model.rows
 }
 
 type FileAdoption = {
   main: WorktreeMembershipModel['main']
   files: FileDerivationState
   rows: GitWorktreeInfo[]
-  derivedAt: number
 }
 
 /**
@@ -161,12 +150,11 @@ async function adoptFileRows(
     }
     const main = { path: gitMain.path, isBare: gitMain.isBare }
     try {
-      const derivedAt = Date.now()
       const derived = await validateMembershipFromFiles({
         commonDir: model.commonDir,
         main,
         previous: null,
-        dirty: FULL_MEMBERSHIP_SCOPE,
+        listingOwed: true,
         full: true
       })
       mismatch = describeMembershipParityMismatch(
@@ -175,7 +163,7 @@ async function adoptFileRows(
         baseline.nulDelimited
       )
       if (!mismatch) {
-        return { main, files: derived.state, rows: derived.rows, derivedAt }
+        return { main, files: derived.state, rows: derived.rows }
       }
     } catch (error) {
       if (!(error instanceof WorktreeRowsNeedGit)) {
@@ -193,16 +181,15 @@ async function adoptFileRows(
 
 export async function deriveMembershipModel(
   model: WorktreeMembershipModel,
-  dirty: MembershipDirtyScope,
+  start: MembershipDerivationStart & { listingOwed: boolean },
   options: GitWorktreeExecOptions,
   derivation: number,
   dropModel: () => void
 ): Promise<GitWorktreeInfo[]> {
-  const startedAt = Date.now()
-  const startGeneration = model.generation
-  const full = dirty.all || startedAt - model.fullDerivedAt >= MEMBERSHIP_FULL_DERIVE_FLOOR_MS
-  // Only the newest derivation commits; an older one still answers its own callers. The memo is
-  // keyed to the generation this derivation started at, so rows predating a mark never re-open it.
+  const { startedAt, listingOwed } = start
+  const full = startedAt - model.fullDerivedAt >= MEMBERSHIP_FULL_DERIVE_FLOOR_MS
+  // Only the newest derivation commits; an older one still answers its own callers. What it
+  // records is when and at which generation it started, which is all reuse ever looks at.
   const commit = (
     rows: GitWorktreeInfo[],
     apply: () => void,
@@ -212,8 +199,7 @@ export async function deriveMembershipModel(
       model.committedDerivation = derivation
       apply()
       model.rows = rows
-      model.validatedAt = startedAt
-      model.validatedGeneration = startGeneration
+      model.validated = { generation: start.generation, startedAt }
       if (fullDerive) {
         model.fullDerivedAt = startedAt
       }
@@ -221,7 +207,7 @@ export async function deriveMembershipModel(
     return rows
   }
   try {
-    await assertRepoPathPresent(model.repoPath, model.wslDistro)
+    await assertRepoPathPresent(model.repoPath)
   } catch (error) {
     dropModel()
     throw error
@@ -256,7 +242,7 @@ export async function deriveMembershipModel(
         commonDir: model.commonDir,
         main: model.main,
         previous: model.files,
-        dirty,
+        listingOwed,
         full
       })
       return commit(result.rows, () => {
@@ -277,7 +263,7 @@ export async function deriveMembershipModel(
     options: gitOptionsFor(options),
     previous: model.git,
     previousRows: model.source.kind === 'git' && model.git.signature ? model.rows : null,
-    mustRun: full || dirty.listing
+    mustRun: full || listingOwed
   })
   return commit(result.rows, () => {
     model.git = result.state

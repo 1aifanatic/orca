@@ -1,4 +1,5 @@
 import type { GitWorktreeInfo } from '../../../shared/worktree/types'
+import { parseWslPath } from '../../wsl'
 import { resolveGitAdmissionTier } from '../command-runner/git-operation-executor'
 import { readTranslatedWorktreeGraph } from '../worktree-list-reader'
 import {
@@ -6,28 +7,25 @@ import {
   type GitWorktreeExecOptions
 } from '../worktree-operation-options'
 import { canonicalWorktreePath } from '../worktree-path-comparison'
-import { createMembershipModel, deriveMembershipModel } from './worktree-membership-derivation'
 import {
-  CLEAN_MEMBERSHIP_SCOPE,
-  isCleanMembershipScope,
-  LISTING_MEMBERSHIP_SCOPE,
+  buildMembershipModel,
+  createMembershipModelShell,
+  deriveMembershipModel
+} from './worktree-membership-derivation'
+import {
   MEMBERSHIP_IDLE_DROP_MS,
-  MEMBERSHIP_READ_MEMO_MS,
-  mergeMembershipScopes,
-  type MembershipDirtyScope,
+  MEMBERSHIP_REUSE_WINDOW_MS,
+  type MembershipDerivationStart,
   type WorktreeMembershipModel
 } from './worktree-membership-model'
 
 export { MissingRepoPathError } from './worktree-membership-derivation'
 
-// One worktree membership model per registered local repo, owned by the main process. Every
+// One worktree membership model per registered native local repo, owned by the main process. Every
 // listing reads it; it re-derives its own truth from disk by stat, so no watcher has to be alive
-// for it to be right. Watcher events and Orca's own mutations only let a read skip the 1 s memo.
+// for it to be right. Orca's own mutations bump its generation so no read reuses an older result.
 
-export type WorktreeMembershipReadOptions = GitWorktreeExecOptions & {
-  /** Bypass the memo and any older in-flight derivation: for callers that must be right now. */
-  fresh?: boolean
-}
+export type WorktreeMembershipReadOptions = GitWorktreeExecOptions
 
 export type WorktreeMembershipRead = {
   rows: GitWorktreeInfo[]
@@ -44,21 +42,8 @@ export class WorktreeMembershipTimeoutError extends Error {
   }
 }
 
-type MembershipMark = {
-  matches: (model: WorktreeMembershipModel) => boolean
-  scope: MembershipDirtyScope
-}
-
 const models = new Map<string, WorktreeMembershipModel>()
-// Marks that land while a model is being built are replayed onto it, or its memo would hide them.
-const modelCreations = new Map<
-  string,
-  { promise: Promise<WorktreeMembershipModel | null>; marks: MembershipMark[] }
->()
-
-function membershipKey(repoPath: string, wslDistro: string | undefined): string {
-  return `${canonicalWorktreePath(repoPath)}\0${wslDistro?.trim().toLowerCase() ?? ''}`
-}
+const stalledWork = new WeakSet<Promise<unknown>>()
 
 function raceSignal<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) {
@@ -94,143 +79,151 @@ function readTimeoutMs(options: WorktreeMembershipReadOptions): number {
   return options.timeout || WORKTREE_LIST_TIMEOUT_MS
 }
 
+/**
+ * Awaits shared fs work under this reader's own deadline. Work that outlives a deadline marks the
+ * model stalled until it settles, so no read queues another fs derivation behind it.
+ */
+function awaitModelWork<T>(
+  model: WorktreeMembershipModel,
+  work: Promise<T>,
+  options: WorktreeMembershipReadOptions
+): Promise<T> {
+  const bounded = boundByDeadline(work, readTimeoutMs(options), () => {
+    if (!stalledWork.has(work)) {
+      stalledWork.add(work)
+      model.stalledWork += 1
+      void work
+        .catch(() => {})
+        .finally(() => {
+          model.stalledWork -= 1
+        })
+    }
+    return new WorktreeMembershipTimeoutError(model.repoPath)
+  })
+  return raceSignal(bounded, options.signal)
+}
+
+/** The one reuse rule, for finished and in-flight derivations alike. */
+function isReusable(
+  model: WorktreeMembershipModel,
+  start: MembershipDerivationStart,
+  now: number
+): boolean {
+  return start.generation === model.generation && now - start.startedAt < MEMBERSHIP_REUSE_WINDOW_MS
+}
+
+function dropModel(model: WorktreeMembershipModel): void {
+  if (models.get(model.key) === model) {
+    models.delete(model.key)
+  }
+}
+
 function dropIdleModels(now: number): void {
   for (const [key, model] of models) {
-    if (now - model.lastReadAt >= MEMBERSHIP_IDLE_DROP_MS) {
+    if (model.building === null && now - model.lastReadAt >= MEMBERSHIP_IDLE_DROP_MS) {
       models.delete(key)
     }
   }
 }
 
+function startModel(
+  key: string,
+  repoPath: string,
+  options: WorktreeMembershipReadOptions
+): WorktreeMembershipModel {
+  const startedAt = Date.now()
+  const model = createMembershipModelShell(key, repoPath, startedAt)
+  // Registered before the build starts, so an Orca mark during the build bumps its generation.
+  models.set(key, model)
+  const work = buildMembershipModel(model, options).then(
+    (rows) => {
+      if (rows === null) {
+        dropModel(model)
+      }
+      model.building = null
+      return rows
+    },
+    (error: unknown) => {
+      dropModel(model)
+      model.building = null
+      throw error
+    }
+  )
+  model.building = { generation: 0, startedAt, work }
+  return model
+}
+
 function readModel(
   model: WorktreeMembershipModel,
-  options: WorktreeMembershipReadOptions
+  options: WorktreeMembershipReadOptions,
+  now: number
 ): Promise<GitWorktreeInfo[]> {
-  const now = Date.now()
-  model.lastReadAt = now
-  if (
-    !options.fresh &&
-    isCleanMembershipScope(model.dirty) &&
-    model.validatedGeneration === model.generation &&
-    now - model.validatedAt < MEMBERSHIP_READ_MEMO_MS
-  ) {
+  if (isReusable(model, model.validated, now)) {
     return Promise.resolve(model.rows)
   }
   // Why the tier: an interactive read joining a queued background derivation inherits its wait.
   const tier = resolveGitAdmissionTier(options.admissionTier)
   const joined = model.inFlight.get(tier)
-  if (!options.fresh && joined && joined.generation === model.generation) {
-    return joined.promise
+  if (joined && isReusable(model, joined, now)) {
+    return awaitModelWork(model, joined.work, options)
   }
-  // Another fs derivation behind a stalled one would only pin one more threadpool thread.
-  if (model.stalledDerivations > 0) {
+  if (model.stalledWork > 0) {
     return Promise.reject(new WorktreeMembershipTimeoutError(model.repoPath))
   }
-  const generation = model.generation
-  const dirty = model.dirty
-  model.dirty = CLEAN_MEMBERSHIP_SCOPE
+  const start = { generation: model.generation, startedAt: now, listingOwed: model.listingOwed }
+  model.listingOwed = false
   const derivation = ++model.startedDerivations
-  const work = deriveMembershipModel(model, dirty, options, derivation, () => {
-    if (models.get(model.key) === model) {
-      models.delete(model.key)
-    }
-  }).catch((error: unknown) => {
-    // A failed derivation proved nothing; what it was asked to re-read is still owed.
-    model.dirty = mergeMembershipScopes(model.dirty, dirty)
-    throw error
-  })
-  const promise = boundByDeadline(work, readTimeoutMs(options), () => {
-    model.stalledDerivations += 1
-    void work
-      .catch(() => {})
-      .finally(() => {
-        model.stalledDerivations -= 1
-      })
-    return new WorktreeMembershipTimeoutError(model.repoPath)
-  }).finally(() => {
-    if (model.inFlight.get(tier)?.promise === promise) {
-      model.inFlight.delete(tier)
-    }
-  })
-  if (!options.fresh) {
-    model.inFlight.set(tier, { generation, promise })
-  }
-  return promise
-}
-
-async function getOrCreateModel(
-  key: string,
-  repoPath: string,
-  options: WorktreeMembershipReadOptions
-): Promise<WorktreeMembershipModel | null> {
-  const existing = models.get(key)
-  if (existing) {
-    return existing
-  }
-  const pending = modelCreations.get(key)
-  if (pending) {
-    return pending.promise
-  }
-  const marks: MembershipMark[] = []
-  const work = createMembershipModel(key, repoPath, options)
-    .then((model) => {
-      if (model) {
-        for (const mark of marks) {
-          if (mark.matches(model)) {
-            markModel(model, mark.scope)
-          }
-        }
-        models.set(key, model)
-      }
-      return model
-    })
-    .finally(() => modelCreations.delete(key))
-  // A build past its deadline stays registered until it settles, so later reads join its
-  // rejection instead of starting another build on the same hung mount.
-  const promise = boundByDeadline(
-    work,
-    readTimeoutMs(options),
-    () => new WorktreeMembershipTimeoutError(repoPath)
+  const work: Promise<GitWorktreeInfo[]> = deriveMembershipModel(
+    model,
+    start,
+    options,
+    derivation,
+    () => dropModel(model)
   )
-  modelCreations.set(key, { promise, marks })
-  return promise
+    .catch((error: unknown) => {
+      // A failed derivation proved nothing; the listing re-read it was asked for is still owed.
+      model.listingOwed ||= start.listingOwed
+      throw error
+    })
+    .finally(() => {
+      if (model.inFlight.get(tier)?.work === work) {
+        model.inFlight.delete(tier)
+      }
+    })
+  model.inFlight.set(tier, { generation: start.generation, startedAt: now, work })
+  return awaitModelWork(model, work, options)
 }
 
 /**
- * Every worktree Git would list for a local repo, main first, create preparations included.
- * Rejects when the listing failed or outlived `options.timeout`; a missing native repo path
- * rejects with MissingRepoPathError after one stat and no Git.
+ * Every worktree Git would list for a native local repo, main first, create preparations included.
+ * Rejects when the listing failed or outlived `options.timeout`; a missing repo path rejects with
+ * MissingRepoPathError after one stat and no Git. WSL repos are always answered by Git.
  */
 export async function readWorktreeMembership(
   repoPath: string,
   options: WorktreeMembershipReadOptions = {}
 ): Promise<WorktreeMembershipRead> {
-  dropIdleModels(Date.now())
-  const key = membershipKey(repoPath, options.wslDistro)
-  const model = await raceSignal(getOrCreateModel(key, repoPath, options), options.signal)
-  if (!model) {
+  if (options.wslDistro || parseWslPath(repoPath)) {
     return { rows: await readTranslatedWorktreeGraph(repoPath, options), fromModel: false }
   }
-  return { rows: await raceSignal(readModel(model, options), options.signal), fromModel: true }
-}
-
-function markModel(model: WorktreeMembershipModel, scope: MembershipDirtyScope): void {
-  model.generation += 1
-  model.dirty = mergeMembershipScopes(model.dirty, scope)
-}
-
-function markModels(
-  matches: (model: WorktreeMembershipModel) => boolean,
-  scope: MembershipDirtyScope
-): void {
-  for (const model of models.values()) {
-    if (matches(model)) {
-      markModel(model, scope)
+  const now = Date.now()
+  dropIdleModels(now)
+  const key = canonicalWorktreePath(repoPath)
+  const model = models.get(key) ?? startModel(key, repoPath, options)
+  model.lastReadAt = now
+  const building = model.building
+  if (building) {
+    // Checked on arrival, as for any in-flight derivation: a later reader re-derives once it lands.
+    const reusable = isReusable(model, building, now)
+    const rows = await awaitModelWork(model, building.work, options)
+    if (rows === null) {
+      return { rows: await readTranslatedWorktreeGraph(repoPath, options), fromModel: false }
+    }
+    if (reusable) {
+      return { rows, fromModel: true }
     }
   }
-  for (const creation of modelCreations.values()) {
-    creation.marks.push({ matches, scope })
-  }
+  return { rows: await readModel(model, options, Date.now()), fromModel: true }
 }
 
 /** Orca changed this repo's worktrees (add, remove, move, prune, unlock) or was told they changed. */
@@ -238,33 +231,27 @@ export function markWorktreeMembershipDirty(repoPath: string): void {
   const repoKey = canonicalWorktreePath(repoPath)
   const isRepo = (model: WorktreeMembershipModel): boolean =>
     canonicalWorktreePath(model.repoPath) === repoKey
-  // Registered repos that share this repo's common dir share its worktrees.
+  // Registered repos sharing this repo's common dir share its worktrees. A model still building has
+  // no common dir yet, so it is marked too; that costs it one extra stat pass at most.
   const commonDirKeys = new Set(
     [...models.values()].filter(isRepo).map((model) => model.commonDirKey)
   )
   markModels(
-    (model) => isRepo(model) || commonDirKeys.has(model.commonDirKey),
-    LISTING_MEMBERSHIP_SCOPE
-  )
-}
-
-/** A watcher saw these admin entries of a Git common dir change. */
-export function markWorktreeMembershipCommonDirDirty(
-  commonDir: string,
-  scope: MembershipDirtyScope
-): void {
-  // Watchers name the common dir by its realpath; a repo registered through a symlink does not.
-  const commonDirKey = canonicalWorktreePath(commonDir)
-  markModels(
-    (model) =>
-      model.commonDirKey === commonDirKey ||
-      canonicalWorktreePath(model.commonDir) === commonDirKey,
-    scope
+    (model) => isRepo(model) || model.building !== null || commonDirKeys.has(model.commonDirKey)
   )
 }
 
 export function markAllWorktreeMembershipsDirty(): void {
-  markModels(() => true, LISTING_MEMBERSHIP_SCOPE)
+  markModels(() => true)
+}
+
+function markModels(matches: (model: WorktreeMembershipModel) => boolean): void {
+  for (const model of models.values()) {
+    if (matches(model)) {
+      model.generation += 1
+      model.listingOwed = true
+    }
+  }
 }
 
 /** Drop models of repos no longer registered; the next read of a re-added repo rebuilds one. */
@@ -282,17 +269,16 @@ export function retainWorktreeMembershipModels(registeredRepoPaths: readonly str
  * model leaves to Git (WSL, reftable, failed parity) keeps the upper caches' row TTLs instead.
  */
 export function isWorktreeMembershipModelBacked(repoPath: string, wslDistro?: string): boolean {
-  return models.get(membershipKey(repoPath, wslDistro))?.source.kind === 'files'
+  const model = wslDistro ? undefined : models.get(canonicalWorktreePath(repoPath))
+  return model?.building === null && model.source.kind === 'files'
 }
 
 export function _getWorktreeMembershipModelForTests(
-  repoPath: string,
-  wslDistro?: string
+  repoPath: string
 ): WorktreeMembershipModel | undefined {
-  return models.get(membershipKey(repoPath, wslDistro))
+  return models.get(canonicalWorktreePath(repoPath))
 }
 
 export function _resetWorktreeMembershipModelsForTests(): void {
   models.clear()
-  modelCreations.clear()
 }

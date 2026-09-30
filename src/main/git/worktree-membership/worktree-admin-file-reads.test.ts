@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readGitCommonHeadIdentities } from '../../ipc/worktree-head-identity-reader'
-import { CLEAN_MEMBERSHIP_SCOPE, FULL_MEMBERSHIP_SCOPE } from './worktree-membership-model'
 import { validateMembershipFromFiles } from './worktree-membership-file-validation'
 import { WorktreeRowsNeedGit } from './worktree-membership-file-rows'
 
@@ -52,7 +51,7 @@ function readRows(
     main: { path: dirname(commonDir), isBare: false },
     previous,
     // An incremental re-derive when given a previous state, as the model runs one.
-    dirty: previous ? CLEAN_MEMBERSHIP_SCOPE : FULL_MEMBERSHIP_SCOPE,
+    listingOwed: previous === null,
     full: previous === null
   })
 }
@@ -72,7 +71,7 @@ describe('shared admin-file rules', () => {
       commonDir,
       main: { path: dirname(commonDir), isBare: false },
       previous: null,
-      dirty: FULL_MEMBERSHIP_SCOPE,
+      listingOwed: true,
       full: true
     })
 

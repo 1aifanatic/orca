@@ -29,12 +29,10 @@ vi.mock('../runner', async (importOriginal) => {
 type HeldRead = { entered: () => void; release: Promise<void> }
 const validationGate = vi.hoisted(() => {
   const gate: {
-    entered: (() => void) | null
-    release: Promise<void> | null
     /** Each validation takes the next hold after reading, so it commits what it read before. */
     afterRead: HeldRead[]
     transientFailures: number
-  } = { entered: null, release: null, afterRead: [], transientFailures: 0 }
+  } = { afterRead: [], transientFailures: 0 }
   return gate
 })
 vi.mock('./worktree-membership-file-validation', async (importOriginal) => {
@@ -44,8 +42,6 @@ vi.mock('./worktree-membership-file-validation', async (importOriginal) => {
     validateMembershipFromFiles: async (
       input: Parameters<typeof actual.validateMembershipFromFiles>[0]
     ) => {
-      validationGate.entered?.()
-      await validationGate.release
       if (validationGate.transientFailures > 0) {
         validationGate.transientFailures -= 1
         throw new WorktreeRowsNeedGit('unreadable worktrees dir', true)
@@ -93,18 +89,15 @@ import {
   _resetWorktreeScanCacheForTests,
   bumpWorktreeScanGeneration
 } from '../worktree-scan-cache'
-import { adminEntryKey } from './worktree-admin-file-reads'
 import {
-  LISTING_MEMBERSHIP_SCOPE,
   MEMBERSHIP_FULL_DERIVE_FLOOR_MS,
   MEMBERSHIP_IDLE_DROP_MS,
-  MEMBERSHIP_READ_MEMO_MS
+  MEMBERSHIP_REUSE_WINDOW_MS
 } from './worktree-membership-model'
 import {
   _getWorktreeMembershipModelForTests,
   _resetWorktreeMembershipModelsForTests,
   isWorktreeMembershipModelBacked,
-  markWorktreeMembershipCommonDirDirty,
   markWorktreeMembershipDirty,
   MissingRepoPathError,
   readWorktreeMembership,
@@ -144,8 +137,6 @@ beforeEach(async () => {
   _resetWorktreeScanCacheForTests()
   runnerSpy.calls.length = 0
   runnerSpy.failWorktreeList = false
-  validationGate.entered = null
-  validationGate.release = null
   validationGate.afterRead.length = 0
   validationGate.transientFailures = 0
   wslPaths.clear()
@@ -170,12 +161,6 @@ describe('worktree membership model: spawns', () => {
       const head = await commitIn(linked, `burst-${round}`)
       bumpWorktreeScanGeneration(repoPath)
       markWorktreeMembershipDirty(repoPath)
-      markWorktreeMembershipCommonDirDirty(join(repoPath, '.git'), {
-        all: false,
-        listing: true,
-        primary: false,
-        entryKeys: new Set([adminEntryKey('linked')])
-      })
       const [detected, lenient, strict] = await Promise.all([
         listWorktreesSharedStrictAllowingTrueEmpty(repoPath),
         listWorktrees(repoPath),
@@ -200,13 +185,12 @@ describe('worktree membership model: spawns', () => {
 })
 
 describe('worktree membership model: layouts', () => {
-  it('leaves a WSL path to Git even when the caller names no distro', async () => {
+  it('builds no model for a WSL path, even when the caller names no distro', async () => {
     wslPaths.add(repoPath)
     await readWorktreeMembership(repoPath)
-    expect(_getWorktreeMembershipModelForTests(repoPath)?.source).toEqual({
-      kind: 'git',
-      reason: 'WSL repo'
-    })
+    await readWorktreeMembership(repoPath)
+    expect(_getWorktreeMembershipModelForTests(repoPath)).toBeUndefined()
+    expect(worktreeListSpawns()).toBe(2)
   })
 })
 
@@ -232,7 +216,7 @@ describe('worktree membership model: failure contracts', () => {
 })
 
 describe('worktree membership model: freshness', () => {
-  it('serves the memo inside a second, then sees an unreported change by stat', async () => {
+  it('reuses a result inside the reuse window, then sees an unreported change by stat', async () => {
     const linked = join(scratchDir, 'linked')
     await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
     let now = Date.now()
@@ -240,15 +224,15 @@ describe('worktree membership model: freshness', () => {
     const before = (await readWorktreeMembership(repoPath)).rows
     const head = await commitIn(linked, 'unreported')
 
-    const memo = (await readWorktreeMembership(repoPath)).rows
-    expect(memo).toBe(before)
+    now += MEMBERSHIP_REUSE_WINDOW_MS - 1
+    expect((await readWorktreeMembership(repoPath)).rows).toBe(before)
 
-    now += 1_000
+    now += 1
     const after = (await readWorktreeMembership(repoPath)).rows
     expect(after.find((row) => row.path === linked)?.head).toBe(head)
   })
 
-  it('never serves the memo to a reader that arrives while a change is being re-read', async () => {
+  it('never reuses a result for a reader that arrives after a mark', async () => {
     const linked = join(scratchDir, 'linked')
     await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
     vi.spyOn(Date, 'now').mockReturnValue(Date.now())
@@ -265,33 +249,19 @@ describe('worktree membership model: freshness', () => {
     }
   })
 
-  it('lets a fresh read bypass the memo', async () => {
-    const linked = join(scratchDir, 'linked')
-    await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
-    vi.spyOn(Date, 'now').mockReturnValue(Date.now())
-    await readWorktreeMembership(repoPath)
-    const head = await commitIn(linked, 'fresh')
-    const { rows } = await readWorktreeMembership(repoPath, { fresh: true })
-    expect(rows.find((row) => row.path === linked)?.head).toBe(head)
-  })
-
   it('does not lose a change marked while a derivation is running', async () => {
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
     await readWorktreeMembership(repoPath)
     const model = _getWorktreeMembershipModelForTests(repoPath)!
-    let release = (): void => {}
-    validationGate.release = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const entered = new Promise<void>((resolve) => {
-      validationGate.entered = resolve
-    })
-    const running = readWorktreeMembership(repoPath, { fresh: true })
-    await entered
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    const hold = holdNextValidation()
+    const running = readWorktreeMembership(repoPath)
+    await hold.entered
     markWorktreeMembershipDirty(repoPath)
-    validationGate.release = null
-    release()
+    hold.release()
     await running
-    expect(model.dirty.listing).toBe(true)
+    expect(model.listingOwed).toBe(true)
 
     const linked = join(scratchDir, 'late')
     await git(['worktree', 'add', '-q', linked, '-b', 'late'])
@@ -299,11 +269,11 @@ describe('worktree membership model: freshness', () => {
     expect(rows.map((row) => row.path)).toContain(linked)
   })
 
-  it('never lets a derivation that predates a mark re-open the memo', async () => {
+  it('never lets a derivation that predates a mark answer a later reader', async () => {
     let now = Date.now()
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     await readWorktreeMembership(repoPath)
-    now += MEMBERSHIP_READ_MEMO_MS
+    now += MEMBERSHIP_REUSE_WINDOW_MS
     // A background read has read the admin files; then a create lands and Orca marks it.
     const olderHold = holdNextValidation()
     const older = readWorktreeMembership(repoPath)
@@ -335,7 +305,7 @@ describe('worktree membership model: freshness', () => {
     markWorktreeMembershipDirty(repoPath)
     coldHold.release()
     await cold
-    now += 100
+    now += 1
     const { rows } = await readWorktreeMembership(repoPath)
     expect(rows.map((row) => row.path)).toContain(created)
   })
@@ -351,7 +321,7 @@ describe('worktree membership model: freshness', () => {
     expect(model.files).toBeNull()
     const coldListings = worktreeListSpawns()
 
-    now += MEMBERSHIP_READ_MEMO_MS
+    now += MEMBERSHIP_REUSE_WINDOW_MS
     const { rows } = await readWorktreeMembership(repoPath)
     // The parity baseline: file rows are adopted only once Git agreed with them.
     expect(worktreeListSpawns()).toBe(coldListings + 1)
@@ -359,15 +329,16 @@ describe('worktree membership model: freshness', () => {
     expect(rows.map((row) => row.path)).toContain(linked)
   })
 
-  it('lets a watcher mark reach a repo registered through a symlink', async () => {
+  it('sees an unmarked change one watcher debounce later, whatever path the repo is registered by', async () => {
     const registered = join(scratchDir, 'repo-link')
     await symlink(repoPath, registered, 'dir')
-    vi.spyOn(Date, 'now').mockReturnValue(Date.now())
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
     await readWorktreeMembership(registered)
     const created = join(scratchDir, 'created')
     await git(['worktree', 'add', '-q', created, '-b', 'created'])
-    // What the watcher passes: the common dir's realpath.
-    markWorktreeMembershipCommonDirDirty(join(repoPath, '.git'), LISTING_MEMBERSHIP_SCOPE)
+    // A watcher-driven read lands one 250 ms trailing debounce after the change, past the window.
+    now += 250
     const { rows } = await readWorktreeMembership(registered)
     expect(rows.map((row) => row.path)).toContain(created)
   })
@@ -387,35 +358,41 @@ describe('worktree membership model: freshness', () => {
   it('re-reads every entry once the floor is due', async () => {
     const linked = join(scratchDir, 'linked')
     await git(['worktree', 'add', '-q', linked, '-b', 'linked'])
-    await readWorktreeMembership(repoPath)
-    await readWorktreeMembership(repoPath, { fresh: true })
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const readAfterWindow = async (): Promise<void> => {
+      now += MEMBERSHIP_REUSE_WINDOW_MS
+      await readWorktreeMembership(repoPath)
+    }
+    await readAfterWindow()
+    await readAfterWindow()
     const model = _getWorktreeMembershipModelForTests(repoPath)!
     const settled = model.files!.entries.get('linked')
-    await readWorktreeMembership(repoPath, { fresh: true })
+    await readAfterWindow()
     expect(model.files!.entries.get('linked')).toBe(settled)
 
     model.fullDerivedAt -= MEMBERSHIP_FULL_DERIVE_FLOOR_MS
-    await readWorktreeMembership(repoPath, { fresh: true })
+    await readAfterWindow()
     expect(model.files!.entries.get('linked')).not.toBe(settled)
   })
 
-  it('re-reads only the entry a scope names', async () => {
+  it('re-reads only the entry whose files moved', async () => {
+    const b = join(scratchDir, 'b')
     await git(['worktree', 'add', '-q', join(scratchDir, 'a'), '-b', 'a'])
-    await git(['worktree', 'add', '-q', join(scratchDir, 'b'), '-b', 'b'])
+    await git(['worktree', 'add', '-q', b, '-b', 'b'])
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
     await readWorktreeMembership(repoPath)
-    await readWorktreeMembership(repoPath, { fresh: true })
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    await readWorktreeMembership(repoPath)
     const model = _getWorktreeMembershipModelForTests(repoPath)!
-    const [a, b] = [model.files!.entries.get('a'), model.files!.entries.get('b')]
+    const [aMemo, bMemo] = [model.files!.entries.get('a'), model.files!.entries.get('b')]
 
-    markWorktreeMembershipCommonDirDirty(join(repoPath, '.git'), {
-      all: false,
-      listing: false,
-      primary: false,
-      entryKeys: new Set([adminEntryKey('b')])
-    })
+    await commitIn(b, 'moved')
+    now += MEMBERSHIP_REUSE_WINDOW_MS
     await readWorktreeMembership(repoPath)
-    expect(model.files!.entries.get('a')).toBe(a)
-    expect(model.files!.entries.get('b')).not.toBe(b)
+    expect(model.files!.entries.get('a')).toBe(aMemo)
+    expect(model.files!.entries.get('b')).not.toBe(bMemo)
   })
 })
 

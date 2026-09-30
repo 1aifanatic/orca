@@ -29,9 +29,10 @@ export async function readAdminStatStamp(dependency: AdminStatDependency): Promi
 export type AdminStatSignature = readonly (string | null)[]
 
 export async function readAdminStatSignature(
-  dependencies: readonly AdminStatDependency[]
+  dependencies: readonly AdminStatDependency[],
+  concurrency = ADMIN_STAT_CONCURRENCY
 ): Promise<AdminStatSignature> {
-  return mapWithConcurrency(dependencies, ADMIN_STAT_CONCURRENCY, readAdminStatStamp)
+  return mapWithConcurrency(dependencies, concurrency, readAdminStatStamp)
 }
 
 export function isAdminStatSignatureUnchanged(

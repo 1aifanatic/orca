@@ -12,7 +12,6 @@ import {
 } from './admin-stat-signature'
 import { readRepoConfigFacts, type RepoConfigFacts } from './repo-admin-layout'
 import {
-  adminEntryKey,
   createPackedRefLookup,
   UNREADABLE,
   type PackedRefLookup
@@ -25,18 +24,15 @@ import {
   type DerivedFileRow,
   type FileRowContext
 } from './worktree-membership-file-rows'
-import type {
-  DerivedRowMemo,
-  FileDerivationState,
-  MembershipDirtyScope
-} from './worktree-membership-model'
+import type { DerivedRowMemo, FileDerivationState } from './worktree-membership-model'
 import { getErrorCode } from '../worktree-operation-options'
 
 export type FileValidationInput = {
   commonDir: string
   main: { path: string; isBare: boolean }
   previous: FileDerivationState | null
-  dirty: MembershipDirtyScope
+  /** Orca marked a worktree change: re-list the entries and re-read the main row. */
+  listingOwed: boolean
   /** Re-read every entry regardless of its signature (floor, cold start). */
   full: boolean
 }
@@ -77,7 +73,8 @@ async function revalidateRow(
   read: () => Promise<DerivedFileRow>
 ): Promise<DerivedRowMemo> {
   const dependencies = memo?.derived.dependencies ?? firstDependencies
-  const before = await readAdminStatSignature(dependencies)
+  // One at a time: the caller already runs ADMIN_STAT_CONCURRENCY entries at once.
+  const before = await readAdminStatSignature(dependencies, 1)
   if (memo && !forced && isAdminStatSignatureUnchanged(memo.signature, before)) {
     return memo
   }
@@ -94,7 +91,7 @@ async function revalidateRow(
 export async function validateMembershipFromFiles(
   input: FileValidationInput
 ): Promise<FileValidationResult> {
-  const { commonDir, previous, dirty } = input
+  const { commonDir, previous, listingOwed } = input
   const configStamp = await readAdminStatStamp({ path: join(commonDir, 'config') })
   let facts = previous?.facts
   if (!facts || input.full || configStamp === null || configStamp !== previous?.configStamp) {
@@ -105,7 +102,7 @@ export async function validateMembershipFromFiles(
   if (facts.gitOnlyReason) {
     throw new WorktreeRowsNeedGit(facts.gitOnlyReason, false)
   }
-  const full = input.full || !previous || dirty.all || !sameRowRules(facts, previous.facts)
+  const full = input.full || !previous || !sameRowRules(facts, previous.facts)
 
   const packedStamp = await readAdminStatStamp({ path: join(commonDir, 'packed-refs') })
   const packedChanged = full || packedStamp === null || packedStamp !== previous?.packedStamp
@@ -129,7 +126,7 @@ export async function validateMembershipFromFiles(
   const listingStamp = await readAdminStatStamp({ path: worktreesDir })
   const entryNames =
     full ||
-    dirty.listing ||
+    listingOwed ||
     !previous?.entryNames ||
     listingStamp === null ||
     listingStamp !== previous.listingStamp
@@ -149,7 +146,7 @@ export async function validateMembershipFromFiles(
     const entryDir = join(worktreesDir, name)
     return revalidateRow(
       memo,
-      dirty.entryKeys.has(adminEntryKey(name)) || packedMoved(memo),
+      packedMoved(memo),
       [{ path: entryDir }, { path: join(entryDir, 'gitdir') }, { path: join(entryDir, 'HEAD') }],
       () => readLinkedEntryRow(context, name)
     )
@@ -157,7 +154,7 @@ export async function validateMembershipFromFiles(
   const mainMemo = full ? undefined : (previous?.main ?? undefined)
   const main = await revalidateRow(
     mainMemo,
-    dirty.primary || packedMoved(mainMemo),
+    listingOwed || packedMoved(mainMemo),
     [{ path: commonDir }, { path: join(commonDir, 'HEAD') }],
     () => readMainRow(context, input.main)
   )

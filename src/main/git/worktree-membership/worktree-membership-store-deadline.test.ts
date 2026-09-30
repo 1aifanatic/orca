@@ -36,7 +36,7 @@ import {
   readWorktreeMembership,
   WorktreeMembershipTimeoutError
 } from './worktree-membership-store'
-import { MEMBERSHIP_READ_MEMO_MS } from './worktree-membership-model'
+import { MEMBERSHIP_REUSE_WINDOW_MS } from './worktree-membership-model'
 
 const execFileAsync = promisify(execFile)
 
@@ -74,7 +74,7 @@ describe('worktree membership model on a hung mount', () => {
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     await readWorktreeMembership(repoPath)
     hang.prefix = join(repoPath, '.git')
-    now += MEMBERSHIP_READ_MEMO_MS
+    now += MEMBERSHIP_REUSE_WINDOW_MS
 
     await expect(readWorktreeMembership(repoPath, { timeout: 50 })).rejects.toBeInstanceOf(
       WorktreeMembershipTimeoutError
@@ -101,7 +101,7 @@ describe('worktree membership model on a hung mount', () => {
     expect(hang.started).toBe(stalledReads)
   })
 
-  it('answers a read inside the memo without touching the disk', async () => {
+  it('answers a read inside the reuse window without touching the disk', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.now())
     const { rows } = await readWorktreeMembership(repoPath)
     hang.prefix = scratchDir
