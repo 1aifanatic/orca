@@ -1,6 +1,5 @@
-import { buildRelayHookEnvelope } from './agent-hook-envelope-build'
 import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listener-event'
-import type { AgentHookRelayEnvelope, AgentHookSource } from '../shared/agent-hook-relay'
+import type { AgentHookSource } from '../shared/agent-hook-relay'
 
 export type CachedPaneEnvelopeMeta = { source: AgentHookSource; env?: string; version?: string }
 
@@ -58,17 +57,4 @@ export function evictCachedPanesOverCap(
     }
     dropPane(oldest)
   }
-}
-
-export function replayCachedPanePresence(
-  input: Parameters<typeof selectReplayableCachedPanes>[0],
-  check: (paneKey: string) => Promise<void>,
-  forward: (event: AgentHookRelayEnvelope) => void
-): number {
-  const replayable = selectReplayableCachedPanes(input)
-  for (const { event, meta } of replayable) {
-    void check(event.paneKey)
-    forward(buildRelayHookEnvelope(event, meta.source, meta.env, meta.version, { isReplay: true }))
-  }
-  return replayable.length
 }

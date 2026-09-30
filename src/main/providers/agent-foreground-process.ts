@@ -1,6 +1,5 @@
-import { selectDiscoveredAgentOwner } from '../../shared/agent-process-presence-candidate'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
-import { resolveOuterWrapperForegroundIdentity } from '../../shared/foreground-wrapper-agent'
+import { resolveOuterWrapperForegroundProcess } from '../../shared/foreground-wrapper-agent'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 import {
   getFreshProcessTableSnapshot,
@@ -38,7 +37,7 @@ export type AgentForegroundProcessResolution = {
   /**
    * Windows: pid of the process a recognized name belongs to — a liveness
    * anchor callers may check against the pane's job. Absent when the name is a
-   * fallback or ambiguous.
+   * fallback, ambiguous, or resolved on POSIX (where `+` already marks it).
    */
   processId?: number
   /** Windows: the scan proved the caller's `anchorProcessId` is now a non-agent. */
@@ -167,18 +166,9 @@ export async function resolveAgentForegroundProcessWithAvailability(
     if (options.fresh && !getProcessTableIndex(rows).byPid.has(shellPid)) {
       return { available: false, processName: fallbackProcess }
     }
-    const foreground = resolveAgentForegroundIdentityFromPs(rows, shellPid)
-    const identity =
-      options.capturePresence && foreground
-        ? selectDiscoveredAgentOwner(
-            foreground.processId,
-            collectDescendantsFromIndex(getProcessTableIndex(rows), shellPid)
-          )
-        : foreground
     return {
       available: true,
-      processName: identity?.processName ?? fallbackProcess,
-      ...(identity ? { processId: identity.processId } : {})
+      processName: resolveAgentForegroundProcessFromPs(rows, shellPid) ?? fallbackProcess
     }
   } catch {
     // Why: a failed scan cannot prove fallback ownership; callers retain the last recognized agent.
@@ -190,13 +180,6 @@ export function resolveAgentForegroundProcessFromPs(
   rows: readonly ProcessTableRow[],
   shellPid: number
 ): string | null {
-  return resolveAgentForegroundIdentityFromPs(rows, shellPid)?.processName ?? null
-}
-
-export function resolveAgentForegroundIdentityFromPs(
-  rows: readonly ProcessTableRow[],
-  shellPid: number
-): { processName: string; processId: number } | null {
   // Memoized per snapshot identity, so the caller's own index build is reused.
   const index = getProcessTableIndex(rows)
   const shellRow = index.byPid.get(shellPid)
@@ -217,12 +200,8 @@ export function resolveAgentForegroundIdentityFromPs(
   const selected = selectForegroundProcessCandidate(foregroundCandidates, ancestryCandidates)
   if (selected) {
     // Why: return the outer wrapper (omp) rather than the deeper wrapped child
-    // (pi) of a shell→omp→pi tree — see resolveOuterWrapperForegroundIdentity.
-    return resolveOuterWrapperForegroundIdentity(
-      selected.recognized,
-      selected.candidate,
-      candidates
-    )
+    // (pi) of a shell→omp→pi tree — see resolveOuterWrapperForegroundProcess.
+    return resolveOuterWrapperForegroundProcess(selected.recognized, selected.candidate, candidates)
   }
   return null
 }

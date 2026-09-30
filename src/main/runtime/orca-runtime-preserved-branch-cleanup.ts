@@ -1,5 +1,4 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import type { AgentPresenceDiscoveryRequest } from '../agent-hooks/server/server-agent-presence-discovery'
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
 import { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import type { IPtyProvider } from '../providers/types'
@@ -90,10 +89,6 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | null
 
   protected readonly retireAgentHookCompatibilityAuthorityFn: ((paneKey: string) => void) | null
-
-  protected readonly discoverHookAgentPresenceFn:
-    | ((request: AgentPresenceDiscoveryRequest) => Promise<void>)
-    | null
 
   protected readonly checkHookAgentPresenceFn:
     | ((paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>)

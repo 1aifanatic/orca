@@ -1,4 +1,3 @@
-import { readHostAgentProcess } from '../../providers/agent-process-presence-probe'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import {
   isSameAgentProcess,
@@ -7,10 +6,10 @@ import {
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
-import { AgentHookServerPresenceDiscovery } from './server-agent-presence-discovery'
 import type { EnrichedAgentHookEventPayload } from './server-types'
+import { AgentHookServerLifecycle } from './server-lifecycle'
 
-export abstract class AgentHookServerAgentPresence extends AgentHookServerPresenceDiscovery {
+export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
   private readonly presenceChecks = new WeakMap<
     AgentHookEventPayload,
     Promise<AgentProcessVerdict | null>
@@ -69,7 +68,7 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerPresen
     if (pending && !successor) {
       return pending
     }
-    const check = probeAgentProcessPresence(owner, readHostAgentProcess)
+    const check = probeAgentProcessPresence(owner)
       .then((verdict) => {
         // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.

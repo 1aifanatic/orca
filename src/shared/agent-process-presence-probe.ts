@@ -72,7 +72,7 @@ export async function readAgentProcess(pid: number): Promise<AgentProcessObserva
   } catch {
     return { verdict: 'unverifiable' }
   }
-  // Windows callers inject the execution host's native single-process reader.
+  // Why: no Windows hook captures an identity yet, so there is nothing to compare against.
   return { verdict: 'unverifiable' }
 }
 
@@ -93,19 +93,4 @@ export async function probeAgentProcessPresence(
   }
   // Why: a suspended (Ctrl-Z) agent still exists but is not running in its terminal.
   return observed.stopped ? 'unverifiable' : 'live'
-}
-
-export function windowsAgentProcessReader(
-  readCreationTime: (pid: number) => number | null
-): (pid: number) => Promise<AgentProcessObservation> {
-  return async (pid) => {
-    try {
-      const birth = readCreationTime(pid)
-      return birth !== null && Number.isFinite(birth) && birth > 0
-        ? { verdict: 'live', startTime: String(birth), zombie: false }
-        : { verdict: 'unverifiable' }
-    } catch {
-      return { verdict: 'unverifiable' }
-    }
-  }
 }

@@ -719,25 +719,6 @@ export class PtyHandler {
 
   private agentPresenceTrigger: ((paneKey: string) => void) | null = null
 
-  getAgentPresenceDiscoveryTarget(paneKey: string) {
-    const managed = Array.from(this.ptys.values()).find((pty) => pty.paneKey === paneKey)
-    if (!managed || managed.disposed || managed.wslDistro || process.platform === 'win32') {
-      return undefined
-    }
-    const incarnation = managed.incarnationId
-    return {
-      rootProcessId: managed.pty.pid,
-      tabId: managed.tabId,
-      worktreeId: managed.worktreeId,
-      terminalHandle: managed.terminalHandle,
-      isCurrent: () =>
-        this.ptys.get(managed.id) === managed &&
-        !managed.disposed &&
-        managed.incarnationId === incarnation &&
-        managed.paneKey === paneKey
-    }
-  }
-
   setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
     this.agentPresenceTrigger = listener
   }

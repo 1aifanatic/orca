@@ -1,9 +1,8 @@
 import { createRelayAgentPresenceObservation } from './relay-agent-presence-observation'
-import { RelayAgentPresenceDiscovery } from './relay-agent-presence-discovery'
 import { handleRelayHookRequest } from './agent-hook-request'
 import { transitionHookPresence } from '../shared/agent-hook-presence-transition'
 import { RelayAgentPresence } from './relay-agent-presence'
-import { isSameAgentProcess, type AgentProcessPresence } from '../shared/agent-process-presence'
+import { isSameAgentProcess } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -15,7 +14,8 @@ import {
 import {
   clearAllListenerCaches,
   clearPaneCacheState,
-  createHookListenerState
+  createHookListenerState,
+  type HookListenerState
 } from '../shared/agent-hook-listener/listener-state'
 import { cacheRelayLegacyAgentStatus } from '../shared/agent-status-legacy-relay-cache'
 import {
@@ -42,7 +42,7 @@ import {
 import { buildRelayHookPtyEnv, defaultEndpointDir } from './agent-hook-endpoint-coordinates'
 import { buildRelayHookEnvelope, hookBodyEnv, hookBodyVersion } from './agent-hook-envelope-build'
 import { AgentHookResultRetryScheduler } from './agent-hook-result-retry-scheduler'
-import { MAX_CACHED_PANES, replayCachedPanePresence } from './agent-hook-cached-pane-status'
+import { MAX_CACHED_PANES, selectReplayableCachedPanes } from './agent-hook-cached-pane-status'
 
 export type RelayHookForward = (envelope: AgentHookRelayEnvelope) => void
 
@@ -76,7 +76,7 @@ export class RelayAgentHookServer {
   private endpointDir: string
   private endpointFilePath: string
   private endpointFileWritten = false
-  private state = createHookListenerState()
+  private state: HookListenerState = createHookListenerState()
   private transportInterference = createHookTransportInterferenceTracker((report) => {
     process.stderr.write(`${describeHookTransportInterference(report)}\n`)
   })
@@ -91,11 +91,6 @@ export class RelayAgentHookServer {
   private fixedToken: string | undefined
   private preferredPort: number
   private portFallbackApplied = false
-  private readonly presenceDiscoveries = new RelayAgentPresenceDiscovery(
-    (paneKey) => this.state.lastStatusByPaneKey.get(paneKey),
-    (event, source, captured) =>
-      this.applyEvent(event, source, this.env, ORCA_HOOK_PROTOCOL_VERSION, { captured })
-  )
   private readonly observePresence = createRelayAgentPresenceObservation()
   private readonly presenceChecks = new RelayAgentPresence()
   private retryScheduler: AgentHookResultRetryScheduler
@@ -206,7 +201,6 @@ export class RelayAgentHookServer {
     this.token = ''
     this.endpointFileWritten = false
     this.retryScheduler.clearAll()
-    this.presenceDiscoveries.clear()
     clearAllListenerCaches(this.state)
     this.lastEnvelopeMetaByPaneKey.clear()
   }
@@ -214,24 +208,27 @@ export class RelayAgentHookServer {
   /** Request-driven replay: re-forwards each cached paneKey payload as a fresh notification. Forwards are
    *  issued before the request handler returns, so the response trails all replayed notifications. */
   replayCachedPayloadsForPanes(): number {
-    return replayCachedPanePresence(
-      {
-        cachedByPaneKey: this.state.lastStatusByPaneKey,
-        metaByPaneKey: this.lastEnvelopeMetaByPaneKey,
-        isPaneSurfaceRetired: this.isPaneSurfaceRetired,
-        dropPane: (paneKey) => this.clearPaneState(paneKey)
-      },
-      (paneKey) => this.checkAgentPresence(paneKey),
-      this.forward
-    )
+    const cachedSnapshot = new Map(this.state.lastStatusByPaneKey)
+    const replayable = selectReplayableCachedPanes({
+      cachedByPaneKey: cachedSnapshot,
+      metaByPaneKey: this.lastEnvelopeMetaByPaneKey,
+      isPaneSurfaceRetired: this.isPaneSurfaceRetired,
+      dropPane: (paneKey) => this.clearPaneState(paneKey)
+    })
+    for (const { event, meta } of replayable) {
+      void this.checkAgentPresence(event.paneKey)
+      this.forward(
+        buildRelayHookEnvelope(event, meta.source, meta.env, meta.version, { isReplay: true })
+      )
+    }
+    return replayable.length
   }
 
-  discoverAgentPresence = this.presenceDiscoveries.discover.bind(this.presenceDiscoveries)
-
   checkAgentPresence(paneKey: string): Promise<void> {
+    const row = this.state.lastStatusByPaneKey.get(paneKey)
     const meta = this.lastEnvelopeMetaByPaneKey.get(paneKey)
     return this.presenceChecks.check(
-      this.state.lastStatusByPaneKey.get(paneKey),
+      row,
       () => this.state.lastStatusByPaneKey.get(paneKey),
       (event) => {
         if (meta) {
@@ -283,12 +280,11 @@ export class RelayAgentHookServer {
     source: AgentHookSource,
     env?: string,
     version?: string,
-    options: { isReplay?: boolean; checkPresence?: boolean; captured?: AgentProcessPresence } = {}
+    options: { isReplay?: boolean; checkPresence?: boolean } = {}
   ): AgentHookEventPayload | undefined {
     const transitioned = transitionHookPresence(
       incoming,
-      this.state.lastStatusByPaneKey.get(incoming.paneKey),
-      options.captured
+      this.state.lastStatusByPaneKey.get(incoming.paneKey)
     )
     if (!transitioned) {
       return undefined

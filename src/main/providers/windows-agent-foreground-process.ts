@@ -1,4 +1,3 @@
-import { projectDiscoveredAgentOwner } from '../../shared/agent-process-presence-candidate'
 import {
   isAgentForegroundWrapperProcess,
   isExpectedAgentProcess,
@@ -18,7 +17,6 @@ import {
 } from './windows-foreground-process-rows'
 
 export type AgentForegroundResolutionOptions = {
-  capturePresence?: boolean
   contextPaths?: readonly string[]
   /** Require a Windows process-table scan started after this request. */
   fresh?: boolean
@@ -26,8 +24,13 @@ export type AgentForegroundResolutionOptions = {
   forceProcessScan?: boolean
   /** Lazily proves which global descendants still belong to this ConPTY. */
   readWindowsConsoleAttachedProcessIds?: () => Promise<ReadonlySet<number> | null>
-  /** Detects PID reuse when the cached agent no longer matches. */
+  /**
+   * A caller's cached liveness anchor. When a scan row holds this pid but no
+   * longer recognizes as the cached agent, the pid was recycled by a different
+   * process (command lines are immutable): the resolution reports it foreign.
+   */
   anchorProcessId?: number
+  /** The cached agent name the anchor pid is supposed to prove. */
   anchorProcessName?: string
 }
 
@@ -118,11 +121,7 @@ export async function resolveWindowsAgentForegroundProcessWithAvailability(
         anchorRow.command !== anchorRow.name)
   return {
     available: true,
-    ...projectDiscoveredAgentOwner(
-      resolveWindowsForegroundIdentity(filteredCandidates, fallbackProcess, options.contextPaths),
-      filteredCandidates,
-      options.capturePresence
-    ),
+    ...resolveWindowsForegroundIdentity(filteredCandidates, fallbackProcess, options.contextPaths),
     ...(anchorPidForeign ? { anchorPidForeign: true } : {})
   }
 }
@@ -300,7 +299,9 @@ function candidateMatchesContextPath(
     return false
   }
   const haystack = normalizePathForCommandMatch(candidate.command)
-  return normalizedContextPaths.some((path) => commandLineContainsPath(haystack, path))
+  return normalizedContextPaths.some((contextPath) =>
+    commandLineContainsPath(haystack, contextPath)
+  )
 }
 
 function normalizePathForCommandMatch(value: string): string {

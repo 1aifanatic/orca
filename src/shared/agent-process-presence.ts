@@ -84,8 +84,6 @@ export function selectAgentPresence(presence?: AgentProcessPresence): TuiAgent |
   return !presence.ended && isTuiAgent(presence.agent) ? presence.agent : null
 }
 
-export const AGENT_PROCESS_CAPTURE_EVENT = 'AgentProcessCaptured'
-
 export type AgentPresenceObservation = { epoch: string; sequence: number }
 
 export function readAgentPresenceObservation(value: unknown): AgentPresenceObservation | undefined {

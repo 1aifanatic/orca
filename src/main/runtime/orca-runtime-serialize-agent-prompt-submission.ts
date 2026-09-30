@@ -1,5 +1,4 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { discoverRuntimeAgentPresence } from './runtime-agent-presence-discovery'
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
@@ -77,13 +76,6 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     if (!this.checkHookAgentPresenceFn) {
       return null
     }
-    await discoverRuntimeAgentPresence({
-      pty: this.ptysById.get(ptyId),
-      current: () => this.ptysById.get(ptyId),
-      issueHandle: (pty) => this.issuePtyHandle(pty),
-      provider: this.getLocalProviderFn,
-      admit: this.discoverHookAgentPresenceFn
-    })
     const verdicts = await Promise.all(
       Array.from(this.collectAgentStatusPaneKeysForPty(ptyId), (paneKey) =>
         this.checkHookAgentPresenceFn(paneKey)

@@ -1,11 +1,10 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
-import { isSameAgentProcess, type AgentProcessPresence } from './agent-process-presence'
+import { isSameAgentProcess } from './agent-process-presence'
 
 /** A pane has one owning agent; only the owner's own proven process can end it. */
 export function transitionHookPresence(
   incoming: AgentHookEventPayload,
-  previous: AgentHookEventPayload | undefined,
-  captured?: AgentProcessPresence
+  previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload | undefined {
   const recorded = previous?.agentPresence
   // Dismissing a turn does not release its identified process owner.
@@ -38,18 +37,9 @@ export function transitionHookPresence(
         ? {
             ...incoming,
             payload: previous?.payload ?? incoming.payload,
-            agentPresence: {
-              ...owner,
-              ...(incoming.agentPresenceFromExecutionHost && incoming.agentPresence?.observation
-                ? { observation: incoming.agentPresence.observation }
-                : {}),
-              ended: true
-            }
+            agentPresence: { ...owner, ended: true }
           }
         : undefined
-    }
-    if (!owner.process && captured?.process && !captured.ended && captured.agent === owner.agent) {
-      return { ...incoming, agentPresence: captured }
     }
     // Why: nested agents inherit ORCA_PANE_KEY; their hooks update status, never ownership.
     return incoming.agentPresence === owner ? incoming : { ...incoming, agentPresence: owner }
