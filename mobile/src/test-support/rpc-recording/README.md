@@ -658,9 +658,10 @@ timer has not run when `dispose()` returns, so reading the set first made a defe
 byte-identical to a stream nobody ever closed.
 
 Why it is not enough to watch the wire: closing a stream only writes a frame when its method has an
-unsubscribe builder. `notifications.subscribe` had none until the transport took over its release;
+unsubscribe builder. `notifications.subscribe` had none until the transport took over its release:
 deleting its cleanup's `unsubscribeStream()` used to fail one golden, the cutover scenario written
-for it, and the next builder-less method needs no scenario of its own.
+for it, and this observation made it fail seven, so the next builder-less method needs no scenario
+of its own.
 
 An empty set is not recorded, so the corpus stays quiet and a family that starts leaking gains a
 checkpoint. Five goldens report a non-empty set today, and all five are the same non-leak: the two
