@@ -79,6 +79,21 @@ export async function readRelayFileStreamMetadata(
   context: RequestContext,
   pumpOptions?: StreamPumpOptions
 ): Promise<StreamMetadata> {
+  const finish = registry.beginOperation()
+  try {
+    return await prepareRelayFileStream(filePath, dispatcher, registry, context, pumpOptions)
+  } finally {
+    finish()
+  }
+}
+
+async function prepareRelayFileStream(
+  filePath: string,
+  dispatcher: RelayDispatcher,
+  registry: RelayStreamRegistry,
+  context: RequestContext,
+  pumpOptions?: StreamPumpOptions
+): Promise<StreamMetadata> {
   const stats = await stat(filePath)
   const mimeType = IMAGE_MIME_TYPES[extname(filePath).toLowerCase()]
   const sizeLimit = mimeType ? MAX_PREVIEWABLE_BINARY_SIZE : MAX_TEXT_FILE_SIZE
@@ -100,7 +115,10 @@ export async function readRelayFileStreamMetadata(
   // Why: unlike the legacy single-shot path, streaming does not read the full
   // buffer before classifying content. Probe every unknown file so small binary
   // files do not get decoded as UTF-8 text over SSH.
-  if (!mimeType && (await isBinaryFilePrefix(filePath))) {
+  if (
+    !mimeType &&
+    (await isBinaryFilePrefix(filePath, (handle) => registry.releaseUnregisteredHandle(handle)))
+  ) {
     return { totalSize: 0, isBinary: true, empty: true }
   }
 
@@ -113,8 +131,13 @@ export async function readRelayFileStreamMetadata(
     handle = await open(filePath, 'r')
     streamId = registry.register(handle)
   } catch (err) {
-    await handle?.close()
-    releaseTerminalFrameSlot()
+    try {
+      if (handle) {
+        await registry.releaseUnregisteredHandle(handle)
+      }
+    } finally {
+      releaseTerminalFrameSlot()
+    }
     throw err
   }
 
@@ -124,6 +147,7 @@ export async function readRelayFileStreamMetadata(
   // setImmediate kicks the pump off the metadata-response task so the client
   // sees the response before the first chunk frame.
   const resolvedPumpOptions = pumpOptions ?? { paceWithAcks: false }
+  const finishPump = registry.beginOperation()
   setImmediate(() => {
     void pumpChunks(
       streamId,
@@ -134,6 +158,10 @@ export async function readRelayFileStreamMetadata(
       resolvedPumpOptions,
       releaseTerminalFrameSlot
     )
+      .catch((error: unknown) => {
+        process.stderr.write(`[relay] stream cleanup failed id=${streamId}: ${String(error)}\n`)
+      })
+      .finally(finishPump)
   })
 
   return {
@@ -261,6 +289,11 @@ async function pumpChunks(
           releaseTerminalFrameSlot
         )
       }
+      if (registry.isAborted(streamId)) {
+        endReason = 'aborted'
+      } else if (context.isStale()) {
+        endReason = 'stale'
+      }
       if (endReason === 'end') {
         publishTerminal('fs.streamEnd', { streamId })
         process.stderr.write(`[relay] stream end id=${streamId}\n`)
@@ -284,9 +317,12 @@ async function pumpChunks(
   } finally {
     // Why: the fd goes back first — a terminal frame that can never be delivered must not
     // strand it. Cancelled/stale streams publish nothing, so nothing else frees their slot.
-    await registry.release(streamId)
-    if (!slotReleaseDeferred) {
-      releaseTerminalFrameSlot()
+    try {
+      await registry.release(streamId)
+    } finally {
+      if (!slotReleaseDeferred) {
+        releaseTerminalFrameSlot()
+      }
     }
   }
 }
