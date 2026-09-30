@@ -17,7 +17,8 @@ import type {
   AgentSessionStatusEvent,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter
@@ -156,8 +157,7 @@ export async function createRestTestRig(
   const sink = { publish: vi.fn(), forget: vi.fn() }
   const probeOwner: RestTestRig['probeOwner'] = vi.fn(async () => ({ outcome: 'pid-absent' }))
   const unsupportedWorkspaceIds = new Set<string>()
-  const openStore = () =>
-    AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  const openStore = () => openTestAgentSessionRecordStore(root)
   let store = await openStore()
   const adapter: RestTestAdapter = {
     acquire: vi.fn(async ({ fence, spawnToken, identity }) => ({
