@@ -5,6 +5,7 @@
 // roster and a chat session's records alike); a finished child stays in the chat's strip, which
 // lists every running child and then the newest finished ones.
 
+import { settledOwnersOfLiveWork } from './agent-status-child-work-liveness'
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 
 /** The strip's row budget. Running children always show, even past it. */
@@ -19,25 +20,15 @@ export function worktreeSidebarListsChild(child: {
   return !child.settled || child.ownsLiveWork
 }
 
-/** Settled views that still own live work, through any depth of ownership. */
-function settledOwnersOfLiveWork(views: readonly AgentChildWorkView[]): Set<string> {
-  const byId = new Map(views.map((view) => [view.id, view]))
-  const owners = new Set<string>()
-  for (const view of views) {
-    if (view.membership !== 'live') {
-      continue
-    }
-    const seen = new Set([view.id])
-    let owner = view.parentChildWorkId ? byId.get(view.parentChildWorkId) : undefined
-    while (owner && !seen.has(owner.id)) {
-      seen.add(owner.id)
-      if (owner.membership === 'settled') {
-        owners.add(owner.id)
-      }
-      owner = owner.parentChildWorkId ? byId.get(owner.parentChildWorkId) : undefined
-    }
-  }
-  return owners
+/** Settled views that still own live work, by the rule the host's retention also reads. */
+function settledViewOwnersOfLiveWork(views: readonly AgentChildWorkView[]): Set<string> {
+  return settledOwnersOfLiveWork(
+    views.map((view) => ({
+      id: view.id,
+      membership: view.membership,
+      ...(view.parentChildWorkId ? { ownerId: view.parentChildWorkId } : {})
+    }))
+  )
 }
 
 function viewRuns(view: AgentChildWorkView, owners: ReadonlySet<string>): boolean {
@@ -51,7 +42,7 @@ function viewRuns(view: AgentChildWorkView, owners: ReadonlySet<string>): boolea
 export function structuredSidebarChildWork(
   views: readonly AgentChildWorkView[]
 ): AgentChildWorkView[] {
-  const owners = settledOwnersOfLiveWork(views)
+  const owners = settledViewOwnersOfLiveWork(views)
   return views.filter((view) => viewRuns(view, owners))
 }
 
@@ -63,7 +54,7 @@ export function structuredStripChildWork(
   if (views.length <= STRUCTURED_STRIP_CHILD_WORK_LIMIT) {
     return [...views]
   }
-  const owners = settledOwnersOfLiveWork(views)
+  const owners = settledViewOwnersOfLiveWork(views)
   const running = views.filter((view) => viewRuns(view, owners))
   const room = Math.max(0, STRUCTURED_STRIP_CHILD_WORK_LIMIT - running.length)
   const newestFinished = new Set(

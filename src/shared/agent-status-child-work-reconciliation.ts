@@ -2,11 +2,12 @@
 //
 // The store holds the only current record per child; evidence patches it. A child settles on its
 // own ending, or `unknown` when its session ends while it is still live; work with nothing to
-// report once it stops is removed instead. Settled children stay until the session's own next turn
-// starts or the host drops the parent's row. It owns only the records its own producer admitted,
-// and never claims an outcome the evidence did not report.
+// report once it stops is removed instead. Settled children stay until the user's next turn (the
+// next send the provider accepts) or the host drops the parent's row. It owns only the records its
+// own producer admitted, and never claims an outcome the evidence did not report.
 
 import type { AgentChildWorkAdmission } from './agent-status-child-work-admission'
+import { settledOwnersOfLiveWork } from './agent-status-child-work-liveness'
 import type {
   AgentChildWorkEndedEvidence,
   AgentChildWorkEvidence,
@@ -118,14 +119,16 @@ function applyRemoved(ctx: ReconcileContext, edge: AgentChildWorkRemovedEvidence
   removeChildren(ctx, [existing.childWorkId])
 }
 
-/** Settled children, less any that still owns live work: that one stays so its work keeps an
- *  owner. */
+/** Settled children, less any that still owns live work at any depth: those stay so that work
+ *  keeps every owner, by the same rule the surfaces list them by. */
 function removableSettled(ctx: ReconcileContext): string[] {
   const owned = ownedStructuredChildWork(ctx)
-  const owners = new Set(
-    owned.flatMap((record) =>
-      record.membership === 'live' && record.parentChildWorkId ? [record.parentChildWorkId] : []
-    )
+  const owners = settledOwnersOfLiveWork(
+    owned.map((record) => ({
+      id: record.childWorkId,
+      membership: record.membership,
+      ...(record.parentChildWorkId ? { ownerId: record.parentChildWorkId } : {})
+    }))
   )
   return owned
     .filter((record) => record.membership === 'settled' && !owners.has(record.childWorkId))

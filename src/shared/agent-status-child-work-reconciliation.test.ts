@@ -8,6 +8,8 @@ import type {
 import { reconcileAgentChildWorkEvidence } from './agent-status-child-work-reconciliation'
 import { STRUCTURED_CHILD_WORK_MAX_LIVE } from './agent-status-child-work-evidence-admission'
 import { createAgentStatusStore, type AgentStatusStore } from './agent-status-store'
+import { projectAgentChildWorkViews } from './agent-status-child-work-view'
+import { structuredSidebarChildWork, structuredStripChildWork } from './agent-child-work-listing'
 import { makeStructuredAgentStatusSubject } from './agent-status-subject'
 
 const parent = makeStructuredAgentStatusSubject(
@@ -452,5 +454,56 @@ describe('structured child-work reconciliation', () => {
       'Task shell',
       'Task running'
     ])
+  })
+
+  it('keeps every finished owner above live work at the next turn, however deep', () => {
+    const { store, apply } = harness()
+    const ended = (id: string, observedAt: number): AgentChildWorkEvidence => ({
+      type: 'ended',
+      observedAt,
+      handle: { idKind: 'task_id', id },
+      outcome: 'succeeded'
+    })
+    // A settled agent owns a settled agent that owns a live command.
+    apply(
+      live(child('top')),
+      live(child('nested', { ownerId: 'top' })),
+      live(child('shell', { kind: 'command', ownerId: 'nested' })),
+      ended('nested', 101),
+      ended('top', 102)
+    )
+    const tree = () => {
+      const all = records(store)
+      return all.map((record) => [
+        record.description,
+        record.membership,
+        all.find((owner) => owner.childWorkId === record.parentChildWorkId)?.description ?? null
+      ])
+    }
+    const before = tree()
+    expect(before).toEqual([
+      ['Task top', 'settled', null],
+      ['Task nested', 'settled', 'Task top'],
+      ['Task shell', 'live', 'Task nested']
+    ])
+    const surfaces = () => {
+      const all = records(store)
+      const views = projectAgentChildWorkViews(
+        all,
+        all.flatMap((record) => store.getAliasesForChild(record.childWorkId))
+      )
+      return {
+        sidebar: structuredSidebarChildWork(views).map((view) => view.description),
+        strip: structuredStripChildWork(views).map((view) => view.description)
+      }
+    }
+    expect(surfaces().sidebar).toEqual(['Task top', 'Task nested', 'Task shell'])
+
+    expect(apply({ type: 'turn-started', observedAt: 200 })).toMatchObject({ removed: 0 })
+    expect(tree()).toEqual(before)
+    expect(surfaces()).toEqual({
+      sidebar: ['Task top', 'Task nested', 'Task shell'],
+      strip: ['Task top', 'Task nested', 'Task shell']
+    })
   })
 })
