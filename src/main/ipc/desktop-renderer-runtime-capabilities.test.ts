@@ -22,6 +22,7 @@ import {
 } from '../../shared/protocol-version'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import { supportsAgentLaunch } from '../runtime/rpc/methods/agent-launch'
+import { createSupportFollowsHostSetting } from '../runtime/rpc/methods/structured-agent-session-policy'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from './desktop-renderer-runtime-capabilities'
 
 /** Advertised to a remote host and deliberately NOT to main: each would change local behaviour or
@@ -68,6 +69,17 @@ describe('desktop renderer runtime client capabilities', () => {
         )
       })
     ).toBe(false)
+  })
+
+  // The desktop routes a launch on its own settings; a host that answered createSupport with its
+  // own setting would turn a chat the user asked for into a failed launch.
+  it.each([
+    ['a paired host', ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES],
+    ['its own main process', DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES]
+  ] as const)('tells %s that it picks each launch mode itself', (_host, clientCapabilities) => {
+    expect(createSupportFollowsHostSetting({ clientKind: 'runtime', clientCapabilities })).toBe(
+      false
+    )
   })
 
   it('diverges from the remote Electron list only where a decision was recorded', () => {
