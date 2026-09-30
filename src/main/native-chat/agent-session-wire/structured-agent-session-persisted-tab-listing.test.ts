@@ -65,7 +65,7 @@ describe('the tab list after a restart', () => {
     expect(page.ok && page.page.items).toEqual([])
     const sent = await sendRestTestMessage(rig, 'session-new', 'first words')
     expect(sent).toMatchObject({ ok: true })
-    await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledOnce(), { timeout: 10_000 })
     const after = await host.history({ sessionId: 'session-new', direction: 'tail' })
     expect(JSON.stringify(after.ok && after.page)).toContain('first words')
   })

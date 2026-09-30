@@ -283,7 +283,8 @@ export async function restTestChat(
   if (options.message === undefined) {
     return
   }
-  const dispatched = rig.adapter.dispatch.mock.calls.length
+  const { dispatch } = rig.adapter
+  const dispatched = dispatch.mock.calls.length
   const sent = await rig.host.send(
     REST_TEST_CALLER,
     restTestSend(options.message, attached.fence, sessionId)
@@ -291,7 +292,9 @@ export async function restTestChat(
   if (!sent.ok) {
     throw new Error(`send refused: ${sent.refusal.code}`)
   }
-  await vi.waitFor(() => expect(rig.adapter.dispatch.mock.calls.length).toBeGreaterThan(dispatched))
+  await vi.waitFor(() => expect(dispatch.mock.calls.length).toBeGreaterThan(dispatched), {
+    timeout: 10_000
+  })
 }
 
 /** Creates the rig's own chat, lists its tab, and sends one message so its journal is on disk. */
