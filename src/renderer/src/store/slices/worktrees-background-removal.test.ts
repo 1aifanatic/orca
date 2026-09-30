@@ -248,12 +248,12 @@ describe('removing a worktree the host deletes in the background', () => {
   it('reports the host error for a lost reply when the host lists the failed delete', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     seedRow(store)
-    store.setState({
-      fetchWorktrees: vi.fn(async () => {
-        seedRow(store, { removalError: 'Operation not permitted' })
-        return true
-      })
+    const refresh = vi.fn()
+    refresh.mockImplementation(async () => {
+      seedRow(store, { removalError: 'Operation not permitted' })
+      return true
     })
+    store.setState({ fetchWorktrees: refresh })
     mockApi.worktrees.remove.mockRejectedValue(new Error('Request timed out: worktree.rm'))
 
     await expect(

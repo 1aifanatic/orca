@@ -104,7 +104,7 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(record).toMatchObject({ worktreeId, failure: { message: GIT_ERROR } })
     expect(waitForPendingWorktreeRemoval(worktreeId)).toBeUndefined()
     // Not marked removing and not left out for older clients: it is a row they can delete again.
-    const rows = [{ id: worktreeId }]
+    const rows: { id: string; hostId?: undefined }[] = [{ id: worktreeId }]
     expect(
       projectPendingWorktreeRemovals(
         rows,
