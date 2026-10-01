@@ -39,6 +39,7 @@ import type {
   SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-stop-cause'
+import type { StructuredAgentSessionAdapterStop } from './structured-agent-session-adapter-stop'
 export type {
   StructuredAgentSessionChildEndCause,
   StructuredAgentSessionStopCause
@@ -249,7 +250,7 @@ export type AgentSessionCancelOutcome = {
   refusal?: { detail?: ProviderDiagnostic }
 }
 
-export type StructuredAgentSessionAdapter = {
+export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & {
   /** Provider-aware capability check for hosts that route more than one adapter. */
   supportsCreate?(location: AgentSessionExecutionLocation, agent: string): boolean
   /** Provider/runtime support, kept here so remote enablement changes adapter data, not UI logic. */
@@ -318,14 +319,6 @@ export type StructuredAgentSessionAdapter = {
      *  interrupt is issued. Absent for direct callers with no journal. */
     resolveLiveTurnId?: () => string | null
   }): Promise<AgentSessionCancelOutcome>
-  /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
-   *  turn that is no longer live and the cancel answered that it did not take it; the next send
-   *  resumes the conversation. Absent or false keeps the child after a Stop. */
-  stopEndsSession?(sessionId: string): boolean
-  /** What a Stop that ends the session waits on before it ends the child: resolves at once when
-   *  `turnId` is not the provider's open turn, else when it ends or the provider's grace, counted
-   *  from `stoppedAt` (when the interrupt went out), runs out. */
-  awaitStoppedTurnEnd?(sessionId: string, turnId: string, stoppedAt: number): Promise<void>
   /** Changes the provider thread's goal. `rejected` is the provider refusing the
    *  change; a throw leaves its effect unknown. Absent where no goal exists. */
   changeThreadGoal?(input: {

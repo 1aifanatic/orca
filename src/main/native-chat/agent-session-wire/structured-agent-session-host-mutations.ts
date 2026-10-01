@@ -49,6 +49,7 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
+import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -156,7 +157,7 @@ export function cancelStructuredAgentSessionTurn(
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  if (params.scope || params.prompt) {
+  if (params.scope) {
     return mutateStructuredAgentSession(
       context,
       caller,
@@ -171,54 +172,62 @@ export function cancelStructuredAgentSessionTurn(
   })
   // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
   let windDown: StructuredAgentSessionStopWindDown | undefined
+  // Stop's queue step, the same for every client: once the Stop takes effect the queue is paused.
+  // The cards stay published; nothing is withdrawn and no text ever rides the answer.
+  const stop = (ctx: Parameters<typeof plan.run>[0]) =>
+    runStopWithQueuePause(ctx, async (tookEffect) => {
+      // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
+      const withdrawn = await ctx.journal.rejectQueuedSubmissions(
+        ctx.fence,
+        agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
+      )
+      const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
+      const child = context.sessions.get(ctx.sessionId)?.child
+      if (child?.phase === 'starting') {
+        // A start that may never land is the one thing here Stop has to end; the chat stays.
+        await tookEffect()
+        await context.stopAgent(ctx.sessionId)
+        return { ok: true, value: { ...named, cancelled: true } }
+      }
+      // A Stop naming no turn ends nothing more unless the session reads working, by the rule
+      // every session list and the chat's own Stop read it.
+      const inFlight = params.turnId !== undefined || (await isMainAgentWorkingOnceFlushed(ctx))
+      const record = context.deps.store.getRecord(ctx.sessionId)
+      if (!child || !inFlight) {
+        if (withdrawn.length > 0) {
+          await tookEffect()
+        }
+        return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+      }
+      await tookEffect()
+      return performCancel(
+        { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
+        {
+          clientOperationId: params.envelope.clientOperationId,
+          ...named,
+          stopChild: () => context.stopAgent(params.envelope.sessionId),
+          endSession: (owed) => {
+            windDown = owed
+          },
+          withdrewQueued: withdrawn.length > 0
+        }
+      )
+    })
+  const { prompt } = params
   const stopped = mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
     {
       ...plan,
-      // Stop's queue step, the same for every client: once the Stop takes effect
-      // the queue is paused. The cards stay published; nothing is withdrawn and no
-      // text ever rides the answer.
       run: (ctx) =>
-        runStopWithQueuePause(ctx, async (tookEffect) => {
-          // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
-          const withdrawn = await ctx.journal.rejectQueuedSubmissions(
-            ctx.fence,
-            agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
-          )
-          const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
-          const child = context.sessions.get(ctx.sessionId)?.child
-          if (child?.phase === 'starting') {
-            // A start that may never land is the one thing here Stop has to end; the chat stays.
-            await tookEffect()
-            await context.stopAgent(ctx.sessionId)
-            return { ok: true, value: { ...named, cancelled: true } }
-          }
-          // A Stop naming no turn ends nothing more unless the session reads working, by the rule
-          // every session list and the chat's own Stop read it.
-          const inFlight = params.turnId !== undefined || (await isMainAgentWorkingOnceFlushed(ctx))
-          const record = context.deps.store.getRecord(ctx.sessionId)
-          if (!child || !inFlight) {
-            if (withdrawn.length > 0) {
-              await tookEffect()
-            }
-            return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
-          }
-          await tookEffect()
-          return performCancel(
-            { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
-            {
-              clientOperationId: params.envelope.clientOperationId,
-              ...named,
-              stopChild: () => context.stopAgent(params.envelope.sessionId),
-              endSession: (owed) => {
-                windDown = owed
-              },
-              withdrewQueued: withdrawn.length > 0
-            }
-          )
-        })
+        prompt
+          ? cancelStructuredAgentSessionPrompt(
+              ctx,
+              { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
+              { stop: () => stop(ctx), interrupt: () => cancelPlan(params).run(ctx) }
+            )
+          : stop(ctx)
     },
     openForWrite(context, params.envelope)
   )

@@ -39,10 +39,10 @@ import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session
 import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-window'
 import { drainClaudeChildWork } from './claude-child-work-evidence'
 import {
-  admitClaudePromptCancellation,
   answerClaudeStructuredPrompt,
   cancelClaudeStructuredTurn
 } from './claude-structured-prompt-ownership'
+import { claudePromptCancelAnswer } from './claude-structured-prompt-replies'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 export type {
@@ -182,12 +182,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
 
   bindPromptItemId(sessionId: string, journalItemId: string, promptKey: string): void {
-    const session = this.sessions.get(sessionId)
-    session?.prompts.bindJournalItemId(
-      journalItemId,
-      promptKey,
-      session.translator?.currentTurnId ?? null
-    )
+    this.sessions.get(sessionId)?.prompts.bindJournalItemId(journalItemId, promptKey)
   }
 
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
@@ -200,7 +195,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     cancelClaudeStructuredTurn({
       request,
       sessions: this.sessions,
-      admitPromptCancellation: admitClaudePromptCancellation,
       onDispatchSettledLate: (settlement) =>
         this.deps.onDispatchSettledLate?.({ sessionId: request.sessionId, ...settlement }),
       ...(this.deps.requestTimeoutMs === undefined ? {} : { timeoutMs: this.deps.requestTimeoutMs })
@@ -209,6 +203,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   // CLI running, and a refused one leaves the turn running.
   stopEndsSession = (): boolean => true
   awaitStoppedTurnEnd = claudeStoppedTurnEndWait(this.sessions)
+  promptCancelAnswer = claudePromptCancelAnswer
   stopBackgroundTasks: StructuredAgentSessionAdapter['stopBackgroundTasks'] = (input) => {
     const session = this.session(input.sessionId)
     const acquisitionGeneration = session.acquisitionGeneration

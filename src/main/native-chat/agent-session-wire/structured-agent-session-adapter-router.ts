@@ -124,6 +124,11 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   awaitStoppedTurnEnd = async (sessionId: string, turnId: string, stoppedAt: number) =>
     this.liveOwnerOrNull(sessionId)?.awaitStoppedTurnEnd?.(sessionId, turnId, stoppedAt)
 
+  promptCancelAnswer: NonNullable<StructuredAgentSessionAdapter['promptCancelAnswer']> = (
+    sessionId,
+    kind
+  ) => this.liveOwnerOrNull(sessionId)?.promptCancelAnswer?.(sessionId, kind)
+
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.liveOwnerOrNull(sessionId)?.readCommands?.(sessionId)
 

@@ -22,6 +22,7 @@ import {
   PROVIDER_SESSION_ID,
   type FakeConnection
 } from '../../claude/claude-structured-session-test-support'
+import { invokeCanUseTool } from '../../claude/claude-can-use-tool-test-support'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { structuredClaudeLifecycleEvent } from '../../runtime/structured-claude-runtime-adapter'
@@ -550,4 +551,98 @@ it('keeps a second Stop pressed while the first ends the child quiet', async () 
   expect(connection.calls.filter((call) => call.subtype === 'interrupt')).toHaveLength(1)
   expect(await statusTexts()).toEqual(['Cancellation requested.'])
   expect(sinkErrors).toEqual([])
+})
+
+/** Claude asks on the open turn; returns its answer and the card the journal shows for it. */
+async function ask(
+  connection: FakeConnection,
+  toolName: string,
+  input: Record<string, unknown>
+): Promise<{
+  answered: ReturnType<typeof invokeCanUseTool>
+  card: { itemId: string; expectedRevision: number }
+}> {
+  const answered = invokeCanUseTool(connection, toolName, 'permission-1', 'tool-1', { input })
+  const card = await eventually(async () => {
+    await host.flushStreamedEvents(SESSION)
+    const item = (await host.journalSnapshot(SESSION)).items.find(
+      (entry) => entry.body.kind === 'approval' || entry.body.kind === 'question'
+    )
+    expect(item).toBeDefined()
+    return { itemId: item!.itemId, expectedRevision: item!.revision }
+  })
+  return { answered, card }
+}
+
+function cancelCard(turnId: string, prompt: { itemId: string; expectedRevision: number }) {
+  const fields = { turnId, prompt }
+  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
+}
+
+async function cardResolution(itemId: string): Promise<unknown> {
+  await host.flushStreamedEvents(SESSION)
+  const body = (await host.journalSnapshot(SESSION)).items.find(
+    (item) => item.itemId === itemId
+  )?.body
+  return body?.kind === 'approval' || body?.kind === 'question' ? body.resolution : undefined
+}
+
+it("answers an approval card's Cancel as its Deny, and the turn and child go on", async () => {
+  const connection = claude.connections[0]!
+  const turnId = await openTurn(connection)
+  const { answered, card } = await ask(connection, 'Bash', { command: 'rm -rf build' })
+
+  await expect(cancelCard(turnId, card)).resolves.toMatchObject({
+    ok: true,
+    value: { turnId, cancelled: true }
+  })
+  await laneDrained()
+
+  const reply = await answered.promise
+  expect(reply).toMatchObject({ behavior: 'deny', message: 'User denied this action.' })
+  expect(reply).not.toHaveProperty('interrupt')
+  expect(await cardResolution(card.itemId)).toMatchObject({
+    state: 'resolved',
+    selectedOptionId: 'deny'
+  })
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
+  expect(connection.closed).toBe(false)
+  expect(activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)).toBe(
+    turnId
+  )
+  expect(await statusTexts()).toEqual([])
+})
+
+it("ends a question card's Cancel the way the chat's Stop does, and the next send resumes", async () => {
+  const connection = claude.connections[0]!
+  const turnId = await openTurn(connection)
+  const { card } = await ask(connection, 'AskUserQuestion', {
+    questions: [
+      {
+        question: 'Which branch?',
+        header: 'Branch',
+        multiSelect: false,
+        options: [{ label: 'main' }, { label: 'dev' }]
+      }
+    ]
+  })
+
+  await expect(cancelCard(turnId, card)).resolves.toMatchObject({
+    ok: true,
+    value: { turnId, cancelled: true }
+  })
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
+  frame(connection, INTERRUPTED_RESULT)
+  await laneDrained()
+
+  expect(connection.closed).toBe(true)
+  expect(await turnOutcome()).toBe('cancellation')
+  expect(await cardResolution(card.itemId)).not.toMatchObject({ state: 'pending' })
+  expect(await statusTexts()).toEqual(['Cancellation requested.'])
+  await send('Carry on.')
+  await eventually(() => {
+    const started = claude.connections.at(-1)!
+    expect(started).not.toBe(connection)
+    expect(wrote(started, 'Carry on.')).toBe(true)
+  })
 })

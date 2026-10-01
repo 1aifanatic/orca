@@ -3,6 +3,7 @@ import type {
   AgentSessionPromptResponse,
   AgentSessionQuestionAnswer
 } from '../../shared/agent-session-question-answer'
+import type { AgentSessionPromptCancelAnswer } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
 import {
   claudePromptQuestions,
   isClaudePromptRecord,
@@ -20,6 +21,15 @@ export {
 
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
 export type ClaudeApprovalDecision = (typeof CLAUDE_APPROVAL_DECISIONS)[number]
+
+/** A card's own Cancel: an approval is denied as its Deny option denies it, and a question ends the
+ *  way the chat's Stop does. Neither interrupts the turn and leaves the child running. */
+export function claudePromptCancelAnswer(
+  _sessionId: string,
+  kind: 'approval' | 'question'
+): AgentSessionPromptCancelAnswer {
+  return kind === 'approval' ? { kind: 'option', optionId: 'deny' } : { kind: 'stop' }
+}
 
 function isClaudeApprovalDecision(optionId: string): optionId is ClaudeApprovalDecision {
   return CLAUDE_APPROVAL_DECISIONS.some((decision) => decision === optionId)

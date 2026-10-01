@@ -93,10 +93,9 @@ function sessionHoldingTurn(turnId: string | null): ReturnType<typeof sessionFor
   session.translator = {
     handle: vi.fn(),
     openTurnInLiveProviderCycle: false,
-    journalPrompts: { cancel: vi.fn(), resolve: vi.fn() },
+    journalPrompts: { resolve: vi.fn() },
     currentTurnId: turnId,
     recordTurnStop: () => true,
-    withdrawTurnStop: () => {},
     commandTurnId: null,
     beginCommand: vi.fn(),
     forgetCommand: vi.fn(),
@@ -133,8 +132,7 @@ function cancellationOf(
 ): Promise<{ cancelled: boolean }> {
   return cancelClaudeStructuredTurn({
     request,
-    sessions: new Map([['session-1', session]]),
-    admitPromptCancellation: () => true
+    sessions: new Map([['session-1', session]])
   })
 }
 
