@@ -26,7 +26,7 @@ const CALLER = { callerKey: 'client-1' }
 let root: string
 let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
-let closeSession: Mock<StructuredAgentSessionAdapter['closeSession']>
+let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
 let fence: number
 let clock: number
 
