@@ -7,7 +7,12 @@ import {
   pendingAgentSessionOperationRow,
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
-import { isAgentSessionOptions, type AgentSessionRecord } from '../../shared/agent-session-record'
+import { agentSessionLeaseOwnerVerdict } from '../../shared/agent-session-lease-adjudication'
+import {
+  agentSessionExecutionLocationsEqual,
+  isAgentSessionOptions,
+  type AgentSessionRecord
+} from '../../shared/agent-session-record'
 import { isAgentSessionLaunchArgs } from '../../shared/agent-session-launch-args'
 import { isAgentSessionSurfaceTabId } from '../../shared/agent-session-surface-tab-id'
 import {
@@ -64,12 +69,22 @@ export function commitAgentSessionAtRestCreate(
   if (state.unreadableRecords.has(request.sessionId)) {
     throw agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' })
   }
-  if (state.records.has(request.sessionId)) {
+  const existing = state.records.get(request.sessionId)
+  if (existing && !refoundable(existing, request)) {
     throw agentSessionRefusalError('agent_session_conflict', { reason: 'sessionExists' })
   }
   assertAdoptedConversationUnowned(state, request)
   assertReservedTabUnheld(state, request)
-  const record = foundAgentSessionRecord(request, request, request.adoptedHandleLink)
+  const founded = foundAgentSessionRecord(request, request, request.adoptedHandleLink)
+  // Refounded keeps what the chat already has (its name) and its fence: a fence never moves back.
+  const record = existing
+    ? {
+        ...existing,
+        ...founded,
+        createdAt: existing.createdAt,
+        lease: { ...founded.lease, runtimeFence: existing.lease.runtimeFence }
+      }
+    : founded
   const operationRow: AgentSessionOperationRow = {
     ...pendingAgentSessionOperationRow({ ...request.operation, now: request.now }),
     outcome: { status: 'succeeded', sessionId: request.sessionId }
@@ -80,6 +95,27 @@ export function commitAgentSessionAtRestCreate(
     operationRow
   )
   return { record, operationRow, replayed: false }
+}
+
+/**
+ * A record a create may found again at rest: its agent never bound a conversation and its last
+ * start is proven gone, so founding it again is founding it fresh. An older host left exactly this
+ * when the start it ran at create failed, and the client's relaunch of that chat (same session id,
+ * new operation) must get a chat, not `sessionExists` on every message.
+ */
+function refoundable(
+  existing: AgentSessionRecord,
+  request: AgentSessionAtRestCreateRequest
+): boolean {
+  return (
+    !request.adoptedHandleLink &&
+    existing.providerHandleChain.length === 0 &&
+    agentSessionLeaseOwnerVerdict(existing.lease) === 'exited' &&
+    agentSessionExecutionLocationsEqual(existing.location, request.location) &&
+    existing.provider === request.provider &&
+    existing.accountHome.variable === request.accountHome.variable &&
+    existing.accountHome.path === request.accountHome.path
+  )
 }
 
 /**

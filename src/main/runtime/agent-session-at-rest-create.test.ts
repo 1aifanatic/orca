@@ -164,6 +164,87 @@ describe('a create at rest', () => {
   })
 })
 
+/** What a create on an older host left when the start it ran at create failed: released at the
+ *  fence that start reserved, its exit proven, no conversation bound. */
+function failedCreateFromOlderHost(
+  overrides: Partial<AgentSessionRecord> = {}
+): AgentSessionRecord {
+  return {
+    ...agentSessionRecordFixture(
+      agentSessionLeaseFixture({
+        sessionId: SESSION,
+        runtimeKind: 'native',
+        runtimeFence: 2,
+        provenHandleLinkId: null,
+        ownerProcess: null,
+        reservedSpawnToken: null,
+        claimStatus: 'released',
+        deathEvidence: { kind: 'exit-observed', detail: 'the create failed', observedAt: 1 }
+      })
+    ),
+    location: LOCATION,
+    accountHome: ACCOUNT_HOME,
+    providerHandleChain: [],
+    conversationName: 'Fix the flaky test',
+    ...overrides
+  }
+}
+
+describe('a create over a record an older host left after its start failed', () => {
+  it('founds it again at rest, at its own fence, keeping its name', () => {
+    const existing = failedCreateFromOlderHost()
+    const state = storeState([existing])
+
+    const { record, replayed } = commitAgentSessionAtRestCreate(state, createRequest())
+
+    expect(replayed).toBe(false)
+    expect(record).toMatchObject({
+      providerHandleChain: [],
+      conversationName: 'Fix the flaky test',
+      createdAt: existing.createdAt
+    })
+    expect(record.lease).toMatchObject({
+      runtimeFence: 2,
+      claimStatus: 'released',
+      handoffStage: null,
+      deathEvidence: null
+    })
+  })
+
+  it('refuses one that bound a conversation, may still run, or is another identity', () => {
+    const exited = failedCreateFromOlderHost().lease
+    const records = [
+      failedCreateFromOlderHost({ providerHandleChain: [adoptedLink({ mintedAtFence: 2 })] }),
+      failedCreateFromOlderHost({
+        lease: { ...exited, claimStatus: 'reserved', handoffStage: 'recovering' }
+      }),
+      // Released so a send can start over, but nothing proved the attempt gone.
+      failedCreateFromOlderHost({ lease: { ...exited, deathEvidence: null } }),
+      failedCreateFromOlderHost({
+        accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude-work' }
+      })
+    ]
+    for (const record of records) {
+      expect(() => commitAgentSessionAtRestCreate(storeState([record]), createRequest())).toThrow(
+        expect.objectContaining({
+          refusal: expect.objectContaining({ details: { reason: 'sessionExists' } })
+        })
+      )
+    }
+    // An adoption never takes over a record: it names a conversation of its own.
+    expect(() =>
+      commitAgentSessionAtRestCreate(
+        storeState([failedCreateFromOlderHost()]),
+        createRequest({ adoptedHandleLink: adoptedLink() })
+      )
+    ).toThrow(
+      expect.objectContaining({
+        refusal: expect.objectContaining({ details: { reason: 'sessionExists' } })
+      })
+    )
+  })
+})
+
 describe('an adopting create at rest', () => {
   it('seeds the chain with the adopted link alone, at the record fence its first start moves', () => {
     const link = adoptedLink()
