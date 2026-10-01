@@ -7,8 +7,7 @@ import {
 } from '../../shared/process-table-index'
 import { getProcessTableSnapshot } from '../../shared/process-table-snapshot-reader'
 import { readWindowsProcessTable } from '../windows/windows-process-table'
-import { isShellStartupEnvProbeSupported } from '../pty/shell-startup-env'
-import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from './codex-home-paths'
+import { getSystemCodexHomePath } from './codex-home-paths'
 import { getCodexPaneAccount } from './codex-pane-account-registry'
 import { probeCodexSharedServer } from './codex-shared-server-probe'
 
@@ -52,22 +51,16 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
       return customHome ?? getSystemCodexHomePath()
     case 'custom-home':
       return customHome ?? null
+    // Why: an unnamed home (managed account, WSL, pre-route record) skips the
+    // warning rather than probing the wrong server. Orca's mirror (shared-home)
+    // is now only a fallback lane and a retired pre-upgrade home refreshed from
+    // ~/.codex, so a fix written there would not stick.
     case 'shared-home':
-      // Why: off Windows the mirror is retired and never promoted, so a fix there would be reverted.
-      return isShellStartupEnvProbeSupported() ? null : resolveOrcaManagedCodexHomePath()
-    // Why: an unnamed home (managed account, WSL, pre-route record) skips the warning rather than probing the wrong server.
     case 'account-home':
     case 'wsl-home':
     case undefined:
       return null
   }
-}
-
-/** Whether the pane's home is Orca's mirror, whose settings reach ~/.codex only through promotion. */
-export function isCodexPaneOnOrcaMirrorHome(ptyId: string): boolean {
-  return (
-    getCodexPaneAccount(ptyId)?.homeRoute === 'shared-home' && resolveCodexPaneHome(ptyId) !== null
-  )
 }
 
 /** Whether the Codex running in this local pane is a client of Codex's shared server. */
