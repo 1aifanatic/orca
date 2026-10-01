@@ -7,7 +7,6 @@ import {
 import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
 import { isShellProcess } from '../../shared/shell-process-detection'
-import type { ShellCommandState } from '../../shared/shell-command-state'
 
 const SIGINT_EXIT_CODE = 130
 // Launchers that can still exec OpenCode after the first read (`npx`/`bunx opencode-ai run`).
@@ -42,8 +41,6 @@ type CommandState = {
   startedAt: number
   timer: ReturnType<typeof setTimeout> | null
   armed: OpenCodeAgent | null
-  /** False for a reattach check: a command already running needs no wait for its exec. */
-  retryUntilExec: boolean
 }
 
 /**
@@ -60,23 +57,20 @@ export class OpenCodeRunLifetimeStatus {
   onCommandStarted(ptyId: string): void {
     // Why: a new command proves the armed one ended even though its 133;D never arrived.
     this.onCommandFinished(ptyId, null)
-    this.track(ptyId, true)
-  }
-
-  /**
-   * Main attached to a surviving PTY (a pane mount or remote viewer), possibly after missing its
-   * 133;C, e.g. across an Orca restart. `shellCommand` is the host's own 133 state at the attach.
-   */
-  onReattached(ptyId: string, shellCommand: ShellCommandState | undefined): void {
-    // Why: only a shell mid-command will print the 133;D that ends an armed run.
-    if (shellCommand !== 'running') {
+    if (
+      !this.deps.isObservablePty(ptyId) ||
+      (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
+    ) {
       return
     }
-    // Why: main already holds this command's state, from its markers or an earlier attach.
-    if (this.commands.has(ptyId)) {
-      return
+    const state: CommandState = {
+      generation: ++this.nextGeneration,
+      startedAt: this.deps.now(),
+      timer: null,
+      armed: null
     }
-    this.track(ptyId, false)
+    this.commands.set(ptyId, state)
+    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
   }
 
   onCommandFinished(ptyId: string, exitCode: number | null): void {
@@ -94,24 +88,6 @@ export class OpenCodeRunLifetimeStatus {
     if (payload) {
       this.deps.publish(ptyId, payload, state.startedAt)
     }
-  }
-
-  private track(ptyId: string, retryUntilExec: boolean): void {
-    if (
-      !this.deps.isObservablePty(ptyId) ||
-      (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
-    ) {
-      return
-    }
-    const state: CommandState = {
-      generation: ++this.nextGeneration,
-      startedAt: this.deps.now(),
-      timer: null,
-      armed: null,
-      retryUntilExec
-    }
-    this.commands.set(ptyId, state)
-    this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
   }
 
   forgetPty(ptyId: string): void {
@@ -147,7 +123,7 @@ export class OpenCodeRunLifetimeStatus {
       }
       if (agent !== 'opencode' && agent !== 'opencode2') {
         const retryDelay = FOREGROUND_COMMAND_READS.retryDelaysMs[retryIndex]
-        if (state.retryUntilExec && retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
+        if (retryDelay !== undefined && mayStillBecomeOpenCode(name)) {
           this.scheduleInspect(ptyId, state, retryDelay, retryIndex + 1)
         }
         return

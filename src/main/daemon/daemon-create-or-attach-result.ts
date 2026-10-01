@@ -2,7 +2,6 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { ShellReadyState, TerminalSnapshot } from './types'
 import type { AgentSessionClaimedSpawnResult } from '../../shared/agent-session-host-authority'
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
-import type { ShellCommandState } from '../../shared/shell-command-state'
 
 export type DaemonCreateOrAttachResult = {
   isNew: boolean
@@ -21,12 +20,6 @@ export type DaemonCreateOrAttachResult = {
    * path proves nothing about the daemon's (#17696). Omitted by daemons predating this field.
    */
   cwdReadableByDaemon?: boolean
-  /**
-   * The session's OSC 133 state at the moment this reply attached to an existing session, so any
-   * later command finish reaches the attaching client. Omitted for a new session and by daemons
-   * predating protocol v39.
-   */
-  shellCommand?: ShellCommandState
 }
 
 export function getDaemonSessionResultMetadata(session: {

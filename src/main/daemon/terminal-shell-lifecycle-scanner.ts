@@ -1,5 +1,4 @@
 import { buildProcessBoundaryGround } from '../../shared/terminal-mode-reset-profiles'
-import type { ShellCommandState } from '../../shared/shell-command-state'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 import { TerminalArmedInputModes } from './terminal-armed-input-modes'
 
@@ -56,7 +55,6 @@ export class TerminalShellLifecycleScanner {
   private generationState = 0
   private altActive = false
   private commandEnteredAlternateScreen = false
-  private shellCommandState: ShellCommandState = 'unmarked'
   private readonly inputModes = new TerminalArmedInputModes()
 
   get owner(): TerminalOwner | undefined {
@@ -69,10 +67,6 @@ export class TerminalShellLifecycleScanner {
 
   get isAlternateScreenActive(): boolean {
     return this.altActive
-  }
-
-  get shellCommand(): ShellCommandState {
-    return this.shellCommandState
   }
 
   trySetOwner(generation: number): boolean {
@@ -130,20 +124,17 @@ export class TerminalShellLifecycleScanner {
       if (oscPayload !== undefined) {
         const marker = oscPayload[0]
         if (marker === 'C') {
-          this.shellCommandState = 'running'
           this.revoke()
           this.inputModes.markCommandStart()
           this.commandEnteredAlternateScreen = false
           continue
         }
         if (marker === 'A') {
-          this.shellCommandState = 'at-prompt'
           this.inputModes.markPrompt()
         }
         if (marker !== 'D') {
           continue
         }
-        this.shellCommandState = 'at-prompt'
         // An alternate screen or a command's input mode still up at command-finished
         // means the app died without its own teardown; the caller must repair first.
         // Every D re-asks: a refuted one may be a nested shell's while the app lives.

@@ -9,7 +9,6 @@ import type {
 } from '../../shared/agent-session-host-authority'
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
-import type { ShellCommandState } from '../../shared/shell-command-state'
 
 export type CreateOrAttachOptions = {
   sessionId: string
@@ -58,6 +57,4 @@ export type CreateOrAttachResult = {
   agentSessionEnsure?: AgentSessionClaimedSpawnResult
   /** Daemon-process verdict on the spawn cwd; only set on a fresh spawn that was given a cwd. */
   cwdReadableByDaemon?: boolean
-  /** Set only when attaching an existing session, read atomically with the attach. */
-  shellCommand?: ShellCommandState
 }

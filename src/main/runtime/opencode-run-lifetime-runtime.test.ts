@@ -14,12 +14,11 @@ const WORKTREE_ID = 'repo::/worktree'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = `tab-1:${LEAF_ID}`
 
-function createRuntime(foregroundProcess = 'opencode'): {
+function createRuntime(): {
   runtime: OrcaRuntimeService
   statuses: RuntimeTerminalAgentStatusEvent[]
   channelOrder: string[]
   getForegroundProcess: ReturnType<typeof vi.fn>
-  attach: ReturnType<typeof vi.fn>
 } {
   const statuses: RuntimeTerminalAgentStatusEvent[] = []
   const channelOrder: string[] = []
@@ -31,18 +30,12 @@ function createRuntime(foregroundProcess = 'opencode'): {
     onTerminalSideEffects: (batch) =>
       channelOrder.push(...batch.facts.map((fact) => `fact:${fact.kind}`))
   })
-  const getForegroundProcess = vi.fn(async () => foregroundProcess)
-  // Stands in for the IPC controller: a daemon attach reports the session's 133 state.
-  const attach = vi.fn(async (ptyId: string) => {
-    runtime.noteTerminalProviderReattach(ptyId, 'running')
-    return true
-  })
+  const getForegroundProcess = vi.fn(async () => 'opencode')
   runtime.setPtyController({
     spawn: vi.fn(),
     write: () => true,
     kill: () => true,
-    getForegroundProcess,
-    attach
+    getForegroundProcess
   })
   runtime.attachWindow(1)
   runtime.syncWindowGraph(1, {
@@ -59,16 +52,7 @@ function createRuntime(foregroundProcess = 'opencode'): {
       { tabId: 'tab-1', worktreeId: WORKTREE_ID, leafId: LEAF_ID, paneRuntimeId: 1, ptyId: 'pty-1' }
     ]
   })
-  return { runtime, statuses, channelOrder, getForegroundProcess, attach }
-}
-
-/** A surviving daemon session main learned from inventory after a restart; no pane mounted it. */
-function recordUnattachedPty(runtime: OrcaRuntimeService): void {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: recordPtyWorktree is protected; inventory adoption after a restart reaches it the same way.
-  const internals = runtime as unknown as {
-    recordPtyWorktree: (ptyId: string, worktreeId: string, state: Record<string, unknown>) => void
-  }
-  internals.recordPtyWorktree('pty-1', WORKTREE_ID, { connected: true })
+  return { runtime, statuses, channelOrder, getForegroundProcess }
 }
 
 const summary = (statuses: RuntimeTerminalAgentStatusEvent[]): string[] =>
@@ -195,109 +179,6 @@ describe('OpenCode run process lifetime in the runtime', () => {
       runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
 
       expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
-    })
-  })
-
-  // E.g. an Orca restart: the run printed its 133;C before this main process was listening.
-  describe('a run already in flight when main attaches its surviving pane', () => {
-    it('posts Working from one foreground check at reattach and Done at its 133;D', async () => {
-      const { runtime, statuses } = createRuntime()
-      runtime.registerPty('pty-1', WORKTREE_ID)
-
-      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true, shellCommand: 'running' })
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
-
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
-    })
-
-    it('treats an adopted agent session as a reattach', async () => {
-      const { runtime, statuses } = createRuntime()
-      runtime.registerPty('pty-1', WORKTREE_ID)
-
-      runtime.noteTerminalSpawnCommit({
-        id: 'pty-1',
-        agentSessionEnsure: { disposition: 'adopted' },
-        shellCommand: 'running'
-      })
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
-    })
-
-    it('checks nothing for a freshly spawned or split pane', async () => {
-      const { runtime, getForegroundProcess } = createRuntime()
-      runtime.registerPty('pty-1', WORKTREE_ID)
-
-      runtime.noteTerminalSpawnCommit({ id: 'pty-1', shellCommand: 'running' })
-      runtime.noteTerminalSpawnCommit(
-        { id: 'pty-1', isReattach: true, shellCommand: 'running' },
-        { sourcePtyId: 'x' }
-      )
-      await vi.advanceTimersByTimeAsync(60_000)
-
-      expect(getForegroundProcess).not.toHaveBeenCalled()
-    })
-
-    it.each(['at-prompt', 'unmarked', undefined] as const)(
-      'checks nothing when the daemon reports the shell as %s',
-      async (shellCommand) => {
-        const { runtime, statuses, getForegroundProcess } = createRuntime()
-        runtime.registerPty('pty-1', WORKTREE_ID)
-
-        runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true, shellCommand })
-        await vi.advanceTimersByTimeAsync(60_000)
-
-        expect(getForegroundProcess).not.toHaveBeenCalled()
-        expect(statuses).toEqual([])
-      }
-    )
-
-    it('posts Working when a remote viewer is the first to attach the pane', async () => {
-      const { runtime, statuses, attach } = createRuntime()
-      recordUnattachedPty(runtime)
-
-      runtime.registerRemoteTerminalViewSubscriber('pty-1')
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
-
-      expect(attach).toHaveBeenCalledWith('pty-1')
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
-    })
-
-    it('posts one Working when a desktop mount follows a remote attach', async () => {
-      const { runtime, statuses, attach } = createRuntime()
-      recordUnattachedPty(runtime)
-
-      runtime.registerRemoteTerminalViewSubscriber('pty-1')
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-      expect(attach).toHaveBeenCalledTimes(1)
-      runtime.registerPty('pty-1', WORKTREE_ID)
-      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true, shellCommand: 'running' })
-      await vi.advanceTimersByTimeAsync(60_000)
-
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
-    })
-
-    it('checks a running non-OpenCode command once and never again', async () => {
-      const { runtime, statuses, getForegroundProcess } = createRuntime('zsh')
-      runtime.registerPty('pty-1', WORKTREE_ID)
-
-      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true, shellCommand: 'running' })
-      await vi.advanceTimersByTimeAsync(60_000)
-
-      expect(getForegroundProcess).toHaveBeenCalledTimes(1)
-      expect(statuses).toEqual([])
-    })
-
-    it('stays silent for a reattached SSH pane', async () => {
-      const { runtime, getForegroundProcess } = createRuntime()
-      runtime.registerPty('pty-1', WORKTREE_ID, 'ssh-conn-1')
-
-      runtime.noteTerminalSpawnCommit({ id: 'pty-1', isReattach: true, shellCommand: 'running' })
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-
-      expect(getForegroundProcess).not.toHaveBeenCalled()
     })
   })
 })

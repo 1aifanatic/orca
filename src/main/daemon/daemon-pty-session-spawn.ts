@@ -23,7 +23,6 @@ import { resolveUnixShellPath } from '../providers/local-pty-utils'
 import type { PtySpawnOptions, PtySpawnResult } from '../providers/types'
 import { injectHistoryEnv, injectWslFishHistoryEnv, logHistoryInjection } from '../terminal-history'
 import { addWslEnvKeys } from '../wsl-env'
-import { parseShellCommandState } from '../../shared/shell-command-state'
 
 export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
   async spawn(opts: PtySpawnOptions): Promise<PtySpawnResult> {
@@ -262,10 +261,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
         daemonIdentity: this.client.getDaemonIdentity()
       })
     }
-    const spawned = await this.finishSpawn(context, result)
-    // Why this reply only: finishSpawn re-requests solely for a fresh session, which carries none.
-    const shellCommand = parseShellCommandState(result.shellCommand)
-    return shellCommand && !spawned.exitedBeforeSpawnReply ? { ...spawned, shellCommand } : spawned
+    return this.finishSpawn(context, result)
   }
 
   protected resultForExitBeforeSpawnReply(

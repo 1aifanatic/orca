@@ -75,7 +75,6 @@ export async function createOrAttachTerminalSession(
       snapshot,
       pid: existing.pid,
       shellState: existing.shellState,
-      shellCommand: existing.recoveryBarrier.getShellCommand(),
       incarnationId: existing.incarnationId,
       ...getDaemonSessionResultMetadata(existing),
       attachToken: token

@@ -4,7 +4,6 @@ import type { AgentSessionClaimedSpawnResult } from '../../shared/agent-session-
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 import type { PtySourceReceivingActivation } from '../../shared/pty-source-receiving-activation'
 import type { TerminalOwner } from '../../shared/terminal-owner'
-import type { ShellCommandState } from '../../shared/shell-command-state'
 
 export type PtySpawnResult = {
   agentSessionEnsure?: AgentSessionClaimedSpawnResult
@@ -63,8 +62,6 @@ export type PtySpawnResult = {
   snapshotTerminalOwner?: TerminalOwner
   /** True when the spawn reattached to an existing daemon session. */
   isReattach?: boolean
-  /** The daemon session's OSC 133 state at this attach; absent when the provider cannot say. */
-  shellCommand?: ShellCommandState
   /** Grid the PTY is proven to be at once this spawn settled. Only providers whose attach
    *  applies the requested size set it; daemon/relay attach leave the live grid alone, so main
    *  must not read the requested dims back as a measurement (see `resolveCommittedPtySize`). */

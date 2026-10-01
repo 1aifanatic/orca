@@ -26,10 +26,6 @@ import { RuntimeManagedWorktreeQueries } from './runtime-managed-worktree-querie
 import { RuntimePtyForegroundAgent } from './runtime-pty-foreground-agent'
 import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
 import { readLocalPtyForegroundCommandLine } from './local-pty-foreground-command-line'
-import type { TerminalSpawnCommit } from './terminal-run-facts'
-import type { PtySpawnResult } from '../providers/types'
-import type { ShellCommandState } from '../../shared/shell-command-state'
-import { spawnCommitBindingOrigin } from '../persistence/loading-store/pty-binding-span'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import { RuntimeTerminalAgentStatusQuery } from './runtime-terminal-agent-status-query'
 import type { OrchestrationDb } from './orchestration/db'
@@ -195,21 +191,6 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       ),
     now: () => Date.now()
   })
-
-  noteTerminalSpawnCommit(
-    commit: TerminalSpawnCommit & Pick<PtySpawnResult, 'shellCommand'>,
-    expectedSourceBinding?: unknown
-  ): void {
-    super.noteTerminalSpawnCommit(commit, expectedSourceBinding)
-    if (spawnCommitBindingOrigin(commit, expectedSourceBinding) === 'reattach') {
-      this.noteTerminalProviderReattach(commit.id, commit.shellCommand)
-    }
-  }
-
-  /** Main's provider attached to a surviving session's stream: a pane mount or a remote viewer. */
-  noteTerminalProviderReattach(ptyId: string, shellCommand: ShellCommandState | undefined): void {
-    this.openCodeRunLifetime.onReattached(ptyId, shellCommand)
-  }
 
   protected readonly terminalAgentStatus = new RuntimeTerminalAgentStatusQuery({
     getController: () => this.ptyController,
