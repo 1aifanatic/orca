@@ -99,6 +99,17 @@ describe('agent state rules schema', () => {
       ruleFile({
         anchors: [anchor({ region: 'text', find: { lastOf: 'Cursor' } }, { state: 'idle' })]
       })
+    ],
+    [
+      'an uppercase anchor contains term',
+      ruleFile({
+        anchors: [
+          anchor(
+            { region: 'text', find: { lastOf: 'x' }, after: { contains: 'Run' } },
+            { state: 'idle' }
+          )
+        ]
+      })
     ]
   ])('rejects %s', (_label, file) => {
     expect(() => parseAgentStateRuleFiles([file])).toThrow()
