@@ -95,7 +95,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | null
 
   protected readonly reconcileAgentStatusForEndedProcessFn:
-    | ((paneKeys: Iterable<string>) => void)
+    | ((paneKeys: Iterable<string>, options?: { preserveResumeIdentity?: boolean }) => void)
     | null
 
   protected readonly canRecoverPersistentLocalPtysFn: () => boolean

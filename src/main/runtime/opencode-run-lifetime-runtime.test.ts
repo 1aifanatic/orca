@@ -9,6 +9,7 @@ vi.mock('./local-pty-foreground-command-line', () => ({
 import { OrcaRuntimeService } from './orca-runtime'
 import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle'
 import type { RuntimeTerminalAgentStatusEvent } from './runtime-terminal-contracts'
+import { makeAgentStatusStoreWiring } from './agent-status-store-wiring.test-fixture'
 
 const WORKTREE_ID = 'repo::/worktree'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
@@ -18,13 +19,23 @@ function createRuntime(): {
   runtime: OrcaRuntimeService
   statuses: RuntimeTerminalAgentStatusEvent[]
   channelOrder: string[]
+  statusStore: ReturnType<typeof makeAgentStatusStoreWiring>['statusStore']
 } {
   const statuses: RuntimeTerminalAgentStatusEvent[] = []
   const channelOrder: string[] = []
+  // Why the real store: it is what the sidebar, `worktree ps` and mobile all read.
+  const wiring = makeAgentStatusStoreWiring()
+  wiring.statusStore.subscribePaneStatusClear((clear) =>
+    channelOrder.push(`clear:${'paneKey' in clear ? clear.paneKey : ''}`)
+  )
   const runtime = new OrcaRuntimeService(undefined, undefined, {
+    ...wiring.deps,
+    retireAgentHookCompatibilityAuthority: (paneKey) =>
+      wiring.statusStore.retirePaneAuthority(paneKey),
     onTerminalAgentStatus: (event) => {
       statuses.push(event)
       channelOrder.push(`status:${event.payload.state}`)
+      wiring.deps.onTerminalAgentStatus(event)
     },
     onTerminalSideEffects: (batch) =>
       channelOrder.push(...batch.facts.map((fact) => `fact:${fact.kind}`))
@@ -50,14 +61,17 @@ function createRuntime(): {
       { tabId: 'tab-1', worktreeId: WORKTREE_ID, leafId: LEAF_ID, paneRuntimeId: 1, ptyId: 'pty-1' }
     ]
   })
-  return { runtime, statuses, channelOrder }
+  return { runtime, statuses, channelOrder, statusStore: wiring.statusStore }
 }
 
+const hostRows = (statusStore: ReturnType<typeof createRuntime>['statusStore']): string[] =>
+  statusStore
+    .getStatusSnapshot()
+    .filter((row) => row.paneKey === PANE_KEY && row.providerSessionOnly !== true)
+    .map((row) => row.state)
+
 const summary = (statuses: RuntimeTerminalAgentStatusEvent[]): string[] =>
-  statuses.map(
-    (event) =>
-      `${event.paneKey}:${event.payload.state}${event.payload.interrupted ? ':interrupted' : ''}:${event.origin}`
-  )
+  statuses.map((event) => `${event.paneKey}:${event.payload.state}:${event.origin}`)
 
 // `opencode run` typed in a pane: the pane's own command boundaries and foreground drive its row.
 describe('OpenCode run process lifetime in the runtime', () => {
@@ -71,41 +85,15 @@ describe('OpenCode run process lifetime in the runtime', () => {
     vi.useRealTimers()
   })
 
-  it('posts Working after the command starts and Done when it finishes, on its own pane', async () => {
+  it('posts Working after the command starts, on its own pane, and no status when it finishes', async () => {
     const { runtime, statuses } = createRuntime()
 
     runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
 
-    expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+    expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
     expect(readCommandLineMock).toHaveBeenCalledWith('pty-1', 'opencode')
-    expect(statuses[0]?.yieldsToHookSince).toBe(statuses[1]?.yieldsToHookSince)
-  })
-
-  // Why: the renderer drops an exited agent's row on command-finished unless it changed after.
-  it("publishes the run's Done after the command-finished fact of the same chunk", async () => {
-    const { runtime, channelOrder } = createRuntime()
-
-    runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-    runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
-
-    expect(channelOrder).toEqual(['status:working', 'fact:command-finished', 'status:done'])
-  })
-
-  it('posts Done from the daemon fact when the pane finished while hidden', async () => {
-    const { runtime, statuses, channelOrder } = createRuntime()
-
-    runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
-    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-    runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 130 })
-
-    expect(channelOrder.slice(-2)).toEqual(['fact:command-finished', 'status:done'])
-    expect(summary(statuses)).toEqual([
-      `${PANE_KEY}:working:process`,
-      `${PANE_KEY}:done:interrupted:process`
-    ])
   })
 
   it('stays silent for an SSH pane', async () => {
@@ -131,11 +119,111 @@ describe('OpenCode run process lifetime in the runtime', () => {
       await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
       runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 101)
 
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
     } finally {
       if (platform) {
         Object.defineProperty(process, 'platform', platform)
       }
     }
+  })
+})
+
+// Why: Done means a live TUI finished its turn. Once `opencode run` exits nothing runs in the pane,
+// so its row must leave the host store every reader subscribes to, as any exited agent's does.
+describe('OpenCode run exit in the host status store', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    readCommandLineMock.mockReset()
+    readCommandLineMock.mockResolvedValue('opencode run fix the bug')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function startRun(): Promise<ReturnType<typeof createRuntime>> {
+    const wired = createRuntime()
+    wired.runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+    expect(hostRows(wired.statusStore)).toEqual(['working'])
+    return wired
+  }
+
+  it.each([
+    ['exits', 0],
+    ['is interrupted with Ctrl+C', 130]
+  ])('clears the row of a visible pane whose run %s', async (_label, exitCode) => {
+    const { runtime, statusStore, channelOrder } = await startRun()
+
+    runtime.onPtyData('pty-1', `done\x1b]133;D;${exitCode}\x07`, 101)
+
+    expect(hostRows(statusStore)).toEqual([])
+    expect(channelOrder).not.toContain('status:done')
+    expect(channelOrder.slice(-2)).toEqual([`clear:${PANE_KEY}`, 'fact:command-finished'])
+  })
+
+  it.each([
+    ['exits', 0],
+    ['is interrupted with Ctrl+C', 130]
+  ])('clears the row of a hidden pane whose run %s', async (_label, exitCode) => {
+    const { runtime, statusStore, channelOrder } = await startRun()
+
+    runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode })
+
+    expect(hostRows(statusStore)).toEqual([])
+    expect(channelOrder).not.toContain('status:done')
+    expect(channelOrder.slice(-2)).toEqual([`clear:${PANE_KEY}`, 'fact:command-finished'])
+  })
+
+  // Why: a terminal-list refresh marks live panes as restored launch authority, and retiring that
+  // authority on command-finished deletes the pane's rows without telling the renderer.
+  it.each([
+    ['visible', 'chunk'],
+    ['hidden', 'daemon fact']
+  ])('clears the %s pane on the renderer too when a refresh had marked it', async (_l, path) => {
+    const { runtime, statusStore, channelOrder } = await startRun()
+    runtime['restoredOrchestrationAuthorityByPtyId'].set('pty-1', {
+      ptyId: 'pty-1',
+      worktreeId: WORKTREE_ID,
+      terminalHandle: 'term-1',
+      paneKey: PANE_KEY,
+      processIncarnation: 'pty-1:1',
+      hostScope: { kind: 'local', hostId: 'local' }
+    })
+
+    if (path === 'chunk') {
+      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
+    } else {
+      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 0 })
+    }
+
+    expect(hostRows(statusStore)).toEqual([])
+    expect(channelOrder).toContain(`clear:${PANE_KEY}`)
+  })
+
+  it('clears the row when the next command starts without the run’s command-finished', async () => {
+    const { runtime, statusStore, channelOrder } = await startRun()
+    readCommandLineMock.mockResolvedValue('ls')
+
+    runtime.onPtyData('pty-1', '\x1b]133;C\x07', 101)
+
+    expect(hostRows(statusStore)).toEqual([])
+    expect(channelOrder).toContain(`clear:${PANE_KEY}`)
+  })
+
+  it('leaves the row of a pane whose foreground was never `opencode run` to its own agent', async () => {
+    readCommandLineMock.mockResolvedValue('opencode')
+    const { runtime, statusStore } = createRuntime()
+    runtime.onPtyData(
+      'pty-1',
+      '\x1b]9999;{"state":"done","prompt":"ship it","agentType":"opencode"}\x07',
+      99
+    )
+    runtime.onPtyData('pty-1', '\x1b]133;C\x07', 100)
+    await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
+
+    runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 0 })
+
+    expect(hostRows(statusStore)).toEqual(['done'])
   })
 })

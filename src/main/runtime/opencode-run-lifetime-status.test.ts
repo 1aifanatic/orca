@@ -14,6 +14,7 @@ function setup(
   } = {}
 ) {
   const published: Published[] = []
+  const events: string[] = []
   const readForegroundProcessName = vi.fn(async () =>
     options.name === undefined ? 'opencode' : options.name
   )
@@ -27,15 +28,24 @@ function setup(
       (options.enabledAgents ?? ['opencode', 'opencode2']).includes(agent),
     readForegroundProcessName,
     readForegroundCommandLine,
-    publish: (ptyId, payload, yieldsToHookSince) =>
-      published.push({ ptyId, payload, yieldsToHookSince }),
+    publish: (ptyId, payload, yieldsToHookSince) => {
+      published.push({ ptyId, payload, yieldsToHookSince })
+      events.push(`${ptyId}:${payload.state}`)
+    },
+    clearEndedRun: (ptyId) => events.push(`${ptyId}:cleared`),
     now: () => clock++
   })
+  // pty-1's writes and clears in order, without the pane prefix.
   const states = (): string[] =>
-    published.map(({ payload }) =>
-      payload.interrupted ? `${payload.state}:interrupted` : payload.state
-    )
-  return { lifetime, published, states, readForegroundProcessName, readForegroundCommandLine }
+    events.filter((event) => event.startsWith('pty-1:')).map((event) => event.slice(6))
+  return {
+    lifetime,
+    published,
+    events,
+    states,
+    readForegroundProcessName,
+    readForegroundCommandLine
+  }
 }
 
 async function settle(): Promise<void> {
@@ -51,18 +61,18 @@ describe('OpenCodeRunLifetimeStatus', () => {
     vi.useRealTimers()
   })
 
-  it('shows Working while `opencode run` holds the foreground and Done when it exits', async () => {
+  it('shows Working while `opencode run` holds the foreground and clears it when it exits', async () => {
     const { lifetime, published, states } = setup()
     lifetime.onCommandStarted('pty-1')
     expect(states()).toEqual([])
     await settle()
     expect(states()).toEqual(['working'])
-    lifetime.onCommandFinished('pty-1', 0)
-    expect(states()).toEqual(['working', 'done'])
-    expect(published.map((entry) => entry.ptyId)).toEqual(['pty-1', 'pty-1'])
-    expect(published.map((entry) => entry.payload.agentType)).toEqual(['opencode', 'opencode'])
-    // Both writes yield to a hook that reports after this command started.
-    expect(new Set(published.map((entry) => entry.yieldsToHookSince))).toEqual(new Set([1_000]))
+    lifetime.onCommandFinished('pty-1')
+    // Why no Done: Done means a live TUI finished its turn; the run's process has exited.
+    expect(states()).toEqual(['working', 'cleared'])
+    expect(published.map((entry) => entry.payload.agentType)).toEqual(['opencode'])
+    // The write yields to a hook that reports after this command started.
+    expect(published[0]?.yieldsToHookSince).toBe(1_000)
   })
 
   it('reports `opencode2 run` as OpenCode 2', async () => {
@@ -75,22 +85,23 @@ describe('OpenCodeRunLifetimeStatus', () => {
     expect(published[0]?.payload.agentType).toBe('opencode2')
   })
 
-  it('marks a Ctrl-C exit as interrupted and any other exit as a plain Done', async () => {
+  it('clears each run once, so a second run in the pane shows Working again', async () => {
     const { lifetime, states } = setup()
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 130)
+    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1')
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 1)
-    expect(states()).toEqual(['working', 'done:interrupted', 'working', 'done'])
+    lifetime.onCommandFinished('pty-1')
+    expect(states()).toEqual(['working', 'cleared', 'working', 'cleared'])
   })
 
   it('reads no argv unless the foreground process is OpenCode', async () => {
     const { lifetime, states, readForegroundCommandLine } = setup({ name: 'npm' })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
@@ -137,7 +148,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
       const { lifetime, states } = setup({ commandLine })
       lifetime.onCommandStarted('pty-1')
       await settle()
-      lifetime.onCommandFinished('pty-1', 0)
+      lifetime.onCommandFinished('pty-1')
       expect(states()).toEqual([])
     }
   })
@@ -152,7 +163,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
   it('stays silent for a command that finishes before the settle read (`&`, fast exit)', async () => {
     const { lifetime, states, readForegroundProcessName } = setup()
     lifetime.onCommandStarted('pty-1')
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     await settle()
     expect(readForegroundProcessName).not.toHaveBeenCalled()
     expect(states()).toEqual([])
@@ -169,7 +180,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     )
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     resolveName('opencode')
     await vi.runAllTimersAsync()
     expect(states()).toEqual([])
@@ -179,7 +190,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     const { lifetime, states, readForegroundCommandLine } = setup({ enabledAgents: ['opencode2'] })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
@@ -195,40 +206,37 @@ describe('OpenCodeRunLifetimeStatus', () => {
     const { lifetime, states, readForegroundProcessName } = setup({ observable: false })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     expect(readForegroundProcessName).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
 
-  it('ends an armed run with Done when the next command starts without its 133;D', async () => {
+  it('clears an armed run when the next command starts without its 133;D', async () => {
     const { lifetime, states } = setup()
     lifetime.onCommandStarted('pty-1')
     await settle()
     lifetime.onCommandStarted('pty-1')
-    expect(states()).toEqual(['working', 'done'])
+    expect(states()).toEqual(['working', 'cleared'])
     await settle()
-    expect(states()).toEqual(['working', 'done', 'working'])
+    expect(states()).toEqual(['working', 'cleared', 'working'])
   })
 
-  it('posts no Done for a pane torn down mid-run', async () => {
+  // Why: the PTY's own exit already retires the pane's row through the runtime.
+  it('clears nothing for a pane torn down mid-run', async () => {
     const { lifetime, states } = setup()
     lifetime.onCommandStarted('pty-1')
     await settle()
     lifetime.forgetPty('pty-1')
-    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1')
     expect(states()).toEqual(['working'])
   })
 
   it('keeps each pane to its own command', async () => {
-    const { lifetime, published } = setup()
+    const { lifetime, events } = setup()
     lifetime.onCommandStarted('pty-1')
     lifetime.onCommandStarted('pty-2')
     await settle()
-    lifetime.onCommandFinished('pty-2', 0)
-    expect(published.map((entry) => `${entry.ptyId}:${entry.payload.state}`)).toEqual([
-      'pty-1:working',
-      'pty-2:working',
-      'pty-2:done'
-    ])
+    lifetime.onCommandFinished('pty-2')
+    expect(events).toEqual(['pty-1:working', 'pty-2:working', 'pty-2:cleared'])
   })
 })

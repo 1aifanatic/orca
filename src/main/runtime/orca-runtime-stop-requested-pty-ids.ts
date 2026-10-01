@@ -179,16 +179,18 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     },
     readForegroundCommandLine: (ptyId, foregroundProcess) =>
       readLocalPtyForegroundCommandLine(ptyId, foregroundProcess),
-    // Why after the chunk's facts: the renderer drops an exited agent's row on command-finished
-    // unless the row changed after it, so the run's Done must arrive after that fact.
     publish: (ptyId, payload, yieldsToHookSince) =>
-      this.runAfterPendingTerminalSideEffectFacts(ptyId, () =>
-        this.emitTerminalAgentStatusEvents(
-          ptyId,
-          { payloads: [payload] },
-          { origin: 'process', yieldsToHookSince }
-        )
+      this.emitTerminalAgentStatusEvents(
+        ptyId,
+        { payloads: [payload] },
+        { origin: 'process', yieldsToHookSince }
       ),
+    // Why the ended-process path: it clears every reader, renderer included. The shell outlived
+    // the run, so the pane keeps its resume identity, as for a confirmed shell foreground.
+    clearEndedRun: (ptyId) =>
+      this.reconcileAgentStatusForEndedProcessFn?.(this.collectAgentStatusPaneKeysForPty(ptyId), {
+        preserveResumeIdentity: true
+      }),
     now: () => Date.now()
   })
 

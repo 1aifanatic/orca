@@ -129,8 +129,8 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   return buildPaneConnectionDeps(() => mockStoreState, overrides)
 }
 
-// A process-lifetime producer (OpenCode 2 `opencode run`) posts the run's Done after the
-// command-finished fact; the exited-agent drop must keep it, as it keeps a late hook Done.
+// The exited-agent drop removes only the row it captured at command-finished; a late hook Done
+// that changed the row after that fact is kept.
 describe('command-finished drop and a Done that lands after it', () => {
   beforeEach(() => {
     vi.resetModules()

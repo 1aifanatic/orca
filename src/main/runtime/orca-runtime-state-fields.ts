@@ -85,7 +85,10 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       checkHookAgentPresence?: (
         paneKey: string
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>
-      reconcileAgentStatusForEndedProcess?: (paneKeys: Iterable<string>) => void
+      reconcileAgentStatusForEndedProcess?: (
+        paneKeys: Iterable<string>,
+        options?: { preserveResumeIdentity?: boolean }
+      ) => void
       canRecoverPersistentLocalPtys?: () => boolean
       // Why: the device registry lives on the RPC server, which is constructed with this runtime;
       // a closure defers the lookup past that ordering instead of inverting ownership.
