@@ -317,6 +317,27 @@ describe('a Stop pressed before its send opened a turn', () => {
 })
 
 describe('a Stop whose provider ends its session', () => {
+  // The phone names the turn its journal last showed; the follow-up already written runs next.
+  it('keys a Stop naming an ended turn by the turn its event records, so its answer clears Stopping', async () => {
+    const { sent, status } = await runningTurn({ stopEndsSession: true })
+    await turn('turn-1', sent, 'interrupted')
+    await eventually(() => expect(status()?.status).toBe('idle'))
+    const followUp = await rig.workingSend()
+    const kill = Promise.withResolvers<boolean>()
+    rig.closeSession.mockImplementationOnce(() => kill.promise)
+
+    expect(await namedStop('turn-1')).toMatchObject({ ok: true })
+    await eventually(() => expect(rig.closeSession).toHaveBeenCalled())
+    expect(journal().stopMarks.latest()?.event).not.toHaveProperty('turnId')
+    await rig.settleAccepted(followUp, 'follow-up')
+    await turn('turn-2', followUp, 'running')
+    kill.reject(new Error('the kill timed out'))
+
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+    await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+    expect(status()).not.toHaveProperty('stopping')
+  })
+
   it("revises the note a Stop pressed before its turn showed wrote, once that turn opened and the child's end failed", async () => {
     rig = await createQueuedMessageTestRig({ stopEndsSession: true })
     const sent = await rig.workingSend()

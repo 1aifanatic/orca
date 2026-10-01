@@ -31,6 +31,7 @@ import {
   isMainAgentWorkingOnceFlushed,
   performCancel
 } from './structured-agent-session-turns-cancel'
+import type { StructuredAgentSessionStopTarget } from './structured-agent-session-turn-stop-notes'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 type ChatStopOutcome = TurnOutcome<AgentSessionCancelResult>
@@ -60,16 +61,17 @@ export function mutateWithChatStop<TValue>(
   const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
   // The same for every client: once the Stop takes effect its event is written, and the queue's
   // pause follows from it. The cards stay published; no text rides the answer.
-  const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>
-    runRecordedStop(
+  const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> => {
+    // Read once for the Stop's event and its note. A Stop that ends the provider's session ends
+    // whatever is in flight, so both name the live turn, never a named turn that already ended.
+    const target: StructuredAgentSessionStopTarget = {
+      ...(turnId !== undefined ? { namedTurnId: turnId } : {}),
+      endsSession: ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
+    }
+    return runRecordedStop(
       ctx,
-      {
-        reason: 'user-stop',
-        caller: caller.callerKey,
-        // A Stop that ends the provider's session ends whatever is in flight, so its event names
-        // the live turn, or none (the turn opened next), never a named turn that already ended.
-        ...(ctx.adapter.stopEndsSession?.(ctx.sessionId) === true ? {} : named)
-      },
+      { reason: 'user-stop', caller: caller.callerKey },
+      target,
       async (tookEffect) => {
         // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
@@ -114,11 +116,13 @@ export function mutateWithChatStop<TValue>(
             endSession: (owed) => {
               windDown = { owed, ctx }
             },
+            stopTarget: target,
             withdrewQueued: withdrawn.length > 0
           }
         )
       }
     )
+  }
   const result = mutateStructuredAgentSession(
     context,
     caller,

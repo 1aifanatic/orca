@@ -26,7 +26,8 @@ import {
   structuredAgentSessionStopEventTurnId,
   structuredAgentSessionStopNamesTurnNotLive,
   structuredAgentSessionStopNoteKey,
-  structuredAgentSessionStoppedTurnId
+  structuredAgentSessionStoppedTurnId,
+  type StructuredAgentSessionStopTarget
 } from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -99,6 +100,9 @@ export async function performCancel(
     /** Hands the child's end to the Stop's next serialized step, for a provider whose Stop ends
      *  its session. */
     endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
+    /** The person's Stop this runs for, as its event read it, which keys its note. Absent: a Stop
+     *  with no event, keyed by the turn it names. */
+    stopTarget?: StructuredAgentSessionStopTarget
     /** The host already withdrew queued messages for this Stop. */
     withdrewQueued?: boolean
     /** The session's child records: a background Stop reaches the tasks they offer a stop. */
@@ -121,10 +125,13 @@ export async function performCancel(
     input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
   // The turn the Stop's event records, read before the cancel settles it: the note sits on that
   // turn and is keyed by it, as every reader of the Stop's answer looks it up.
-  const eventTurnId = structuredAgentSessionStopEventTurnId(ctx.journal, {
-    ...(input.turnId !== undefined ? { namedTurnId: input.turnId } : {}),
-    endsSession
-  })
+  const eventTurnId = structuredAgentSessionStopEventTurnId(
+    ctx.journal,
+    input.stopTarget ?? {
+      ...(input.turnId !== undefined ? { namedTurnId: input.turnId } : {}),
+      endsSession: false
+    }
+  )
   const noteIdentity = structuredAgentSessionStopNoteKey(eventTurnId, input.clientOperationId)
   const turnScope =
     (eventTurnId !== null && !input.scope

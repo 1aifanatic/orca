@@ -15,8 +15,9 @@ import {
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
 import {
+  structuredAgentSessionStopEventTurnId,
   structuredAgentSessionStopNamesTurnNotLive,
-  structuredAgentSessionStoppedTurnId
+  type StructuredAgentSessionStopTarget
 } from './structured-agent-session-turn-stop-notes'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
@@ -37,14 +38,15 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  */
 export async function runRecordedStop<TValue>(
   ctx: AgentSessionTurnContext,
-  /** `turnId` absent: the turn running when the Stop takes effect, if any. */
-  event: Omit<JournalStopEvent, 'at'>,
+  event: Omit<JournalStopEvent, 'at' | 'turnId'>,
+  /** Its turn, by the rule its note is keyed by (`structuredAgentSessionStopEventTurnId`). */
+  target: StructuredAgentSessionStopTarget,
   stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
   const skipped = (error: unknown): void => report(ctx, 'event row', error)
   return stop(() => {
     try {
-      const turnId = structuredAgentSessionStoppedTurnId(ctx.journal, event.turnId) ?? undefined
+      const turnId = structuredAgentSessionStopEventTurnId(ctx.journal, target) ?? undefined
       return ctx.journal
         .appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence)
         .then(() => undefined, skipped)

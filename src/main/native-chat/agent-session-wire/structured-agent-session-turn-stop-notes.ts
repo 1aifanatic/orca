@@ -40,13 +40,16 @@ export function structuredAgentSessionNamedTurnScope(
   return turn ? { kind: 'turn', turnItemId: turn.itemId } : null
 }
 
+/** What a person's Stop is aimed at, read once per Stop for both its event and its note. */
+export type StructuredAgentSessionStopTarget = { namedTurnId?: string; endsSession: boolean }
+
 /**
  * The turn a person's Stop records on its event, and so keys its note by: the one it named, unless
  * the Stop ends the provider's session (then whatever runs), else the one running. Null: none ran.
  */
 export function structuredAgentSessionStopEventTurnId(
   journal: Pick<AgentSessionJournal, 'activeTurnId'>,
-  stop: { namedTurnId?: string; endsSession: boolean }
+  stop: StructuredAgentSessionStopTarget
 ): string | null {
   return structuredAgentSessionStoppedTurnId(
     journal,
