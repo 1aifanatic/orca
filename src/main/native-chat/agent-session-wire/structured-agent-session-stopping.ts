@@ -19,27 +19,34 @@ function noteSaysStopTookNoEffect(item: AgentJournalRenderItem): boolean {
 
 /**
  * Whether the latest person's Stop is still ending the work it stopped: the live turn it named, or
- * with none, the sends it stopped (`personStopDecidesTurn`), unless the newest Stop answer since
- * that Stop says it stopped nothing. A later press of the same Stop writes no event, only its
- * answer, so the newest answer is what counts.
+ * with none, the sends it stopped (`personStopDecidesTurn`), unless every Stop answer since then
+ * says it stopped nothing. A repeat press writes no event, only its answer, so one press that took
+ * keeps it whichever order the answers came in.
  */
 export function structuredAgentSessionStopping(
   journal: Pick<AgentSessionJournal, 'activeTurnId' | 'stopMarks'>,
   items: readonly AgentJournalRenderItem[]
 ): boolean {
   const stop = journal.stopMarks.latest()
-  if (stop === null || !journal.stopMarks.personStopDecides(journal.activeTurnId())) {
+  if (stop === null) {
     return false
   }
-  let answer: AgentJournalRenderItem | undefined
+  const liveTurnId = journal.activeTurnId()
+  // Cheap exit before the full turn scan: a Stop naming a turn decides only that turn.
+  if (stop.event.turnId !== undefined && stop.event.turnId !== liveTurnId) {
+    return false
+  }
+  if (!journal.stopMarks.personStopDecides(liveTurnId)) {
+    return false
+  }
+  let answered = false
   for (const item of items) {
-    if (
-      item.sequence > stop.sequence &&
-      isStructuredAgentSessionStopNote(item.itemId) &&
-      item.sequence >= (answer?.sequence ?? -1)
-    ) {
-      answer = item
+    if (item.sequence > stop.sequence && isStructuredAgentSessionStopNote(item.itemId)) {
+      if (!noteSaysStopTookNoEffect(item)) {
+        return true
+      }
+      answered = true
     }
   }
-  return answer === undefined || !noteSaysStopTookNoEffect(answer)
+  return !answered
 }
