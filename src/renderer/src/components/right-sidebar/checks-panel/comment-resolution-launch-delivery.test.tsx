@@ -82,22 +82,27 @@ function resolution(): PendingPRCommentAiAck {
   }
 }
 
+type AcknowledgementInput = Parameters<typeof useChecksPanelAiAcknowledgement>[0]
+
 function acknowledgement() {
+  const pendingCommentResolutionRef: AcknowledgementInput['pendingCommentResolutionRef'] = {
+    current: resolution()
+  }
   const model = {
-    addPRConversationComment: vi.fn(async () => ({
-      ok: true as const,
+    addPRConversationComment: vi.fn<AcknowledgementInput['addPRConversationComment']>(async () => ({
+      ok: true,
       comment: comment({ id: 30 })
     })),
-    addPRReviewCommentReply: vi.fn(async () => ({
-      ok: true as const,
+    addPRReviewCommentReply: vi.fn<AcknowledgementInput['addPRReviewCommentReply']>(async () => ({
+      ok: true,
       comment: comment({ id: 31, threadId: 'T1' })
     })),
-    resolveReviewThread: vi.fn(async () => true),
+    resolveReviewThread: vi.fn<AcknowledgementInput['resolveReviewThread']>(async () => true),
     asyncResultKeyRef: { current: REVIEW_KEY },
-    claimedCommentResolutionRef: { current: null as PendingPRCommentAiAck | null },
-    commentsRef: { current: [] as PRComment[] },
+    claimedCommentResolutionRef: { current: null },
+    commentsRef: { current: [] },
     commentsSelectionClearTokenRef: { current: 0 },
-    pendingCommentResolutionRef: { current: resolution() as PendingPRCommentAiAck | null },
+    pendingCommentResolutionRef,
     commentResolutionLaunchAcceptedRef: { current: false },
     setCommentResolutionAckBusyNow: vi.fn(),
     setComments: vi.fn(),
@@ -105,13 +110,8 @@ function acknowledgement() {
     settings: null,
     fetchComments: vi.fn(async () => {}),
     fetchGitLabDetails: vi.fn(async () => {})
-  }
-  const hook = renderHook(() =>
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the model carries every member the hook reads; its state setters are no-op spies.
-    useChecksPanelAiAcknowledgement(
-      model as unknown as Parameters<typeof useChecksPanelAiAcknowledgement>[0]
-    )
-  )
+  } satisfies AcknowledgementInput
+  const hook = renderHook(() => useChecksPanelAiAcknowledgement(model))
   return { model, hook }
 }
 
