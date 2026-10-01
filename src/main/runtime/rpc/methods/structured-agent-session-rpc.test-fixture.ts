@@ -124,7 +124,7 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
 export function hostStub(): StructuredAgentSessionHost {
   reset(hostCalls)
   Object.assign(hostCalls, {
-    attach: vi.fn(async () => ({
+    create: vi.fn(async () => ({
       ok: true,
       replayed: false,
       fence: 1,

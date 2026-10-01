@@ -510,17 +510,15 @@ describe('a create that reserves its tab', () => {
     })
   })
 
-  it('leaves no tab behind when the create fails, so nothing is restored and the id is free', async () => {
+  // A create starts no agent, so a start that would fail cannot cost the chat its tab.
+  it('gives the chat its tab even when its agent could not start', async () => {
     acquireFails = true
-    expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({ ok: false })
-    expect(store.getSessionTabId(HOST_TEST_SESSION)).toBeNull()
-    expect(store.listVisibleSessionIds()).toEqual([])
-
-    acquireFails = false
-    expect(await createChat('session-bravo', 'reserved-tab')).toMatchObject({
+    expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({
       ok: true,
       value: { tabId: 'reserved-tab' }
     })
+    expect(store.getSessionTabId(HOST_TEST_SESSION)).toBe('reserved-tab')
+    expect(await createChat('session-bravo', 'reserved-tab')).toMatchObject({ ok: false })
   })
 })
 

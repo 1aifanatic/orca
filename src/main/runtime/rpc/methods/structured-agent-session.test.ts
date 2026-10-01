@@ -174,7 +174,7 @@ describe('capability gating', () => {
     }
     // Bump deliberately: the whole agentSession.* surface is behind the structured capability,
     // so an additive method is invisible to old clients and needs no protocol bump.
-    expect(STRUCTURED_AGENT_SESSION_METHODS).toHaveLength(32)
+    expect(STRUCTURED_AGENT_SESSION_METHODS).toHaveLength(31)
   })
 
   it('hides the surface from a declared client that did not advertise it', async () => {
@@ -398,14 +398,14 @@ describe('method routing', () => {
       ...params,
       callerKey: 'trusted-local:runtime'
     })
-    expect(hostCalls.attach).toHaveBeenCalledWith(
+    expect(hostCalls.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         accountHome: { variable: 'CODEX_HOME', path: '/host/.codex' },
         options: { model: 'gpt-5.6-sol', effort: 'medium' }
       })
     )
-    expect(hostCalls.attach.mock.calls[0]?.[1]).not.toHaveProperty('providerHandle')
+    expect(hostCalls.create.mock.calls[0]?.[1]).not.toHaveProperty('providerHandle')
     expect(runtimeCalls.publishStructuredAgentSessionTab).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: SESSION, activate: true })
     )
@@ -431,7 +431,7 @@ describe('method routing', () => {
     })
     // Beside `options`, after the attach fingerprint: which tab shows the chat is not which
     // conversation this attaches to.
-    expect(hostCalls.attach).toHaveBeenCalledWith(
+    expect(hostCalls.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ surfaceTabId: 'chat-tab-1' })
     )
@@ -458,7 +458,7 @@ describe('method routing', () => {
       ok: true,
       result: { ok: false, refusal: { code: 'agent_session_operation_conflict' } }
     })
-    expect(hostCalls.attach).not.toHaveBeenCalled()
+    expect(hostCalls.create).not.toHaveBeenCalled()
   })
 
   it.each(['agent-session:with-colon', 'web-terminal-local-surface'])(
@@ -480,7 +480,7 @@ describe('method routing', () => {
         ok: false,
         error: { code: 'invalid_argument', message: expect.stringContaining('Invalid chat tab ID') }
       })
-      expect(hostCalls.attach).not.toHaveBeenCalled()
+      expect(hostCalls.create).not.toHaveBeenCalled()
     }
   )
 
@@ -545,7 +545,7 @@ describe('method routing', () => {
       ...params,
       callerKey: 'trusted-local:runtime'
     })
-    expect(hostCalls.attach).toHaveBeenCalledWith(
+    expect(hostCalls.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/host/.claude' }
@@ -560,7 +560,7 @@ describe('method routing', () => {
     )
   })
 
-  it('reports an unknown create outcome when attach commits before tab publication fails', async () => {
+  it('reports an unknown create outcome when the create commits before tab publication fails', async () => {
     const worktree = 'id:workspace-1'
     const params = {
       envelope: envelope({
@@ -581,7 +581,7 @@ describe('method routing', () => {
       })
     })
 
-    expect(hostCalls.attach).toHaveBeenCalledOnce()
+    expect(hostCalls.create).toHaveBeenCalledOnce()
     expect(response).toMatchObject({
       ok: true,
       result: {
@@ -591,19 +591,16 @@ describe('method routing', () => {
     })
   })
 
-  it('separates create from ensure by the fence the client may declare', async () => {
+  it('refuses a create that names a runtime fence', async () => {
     const created = await call('agentSession.create', attachParams())
     expect(created).toMatchObject({ ok: true })
 
     const fenced = await call('agentSession.create', attachParams({ envelope: envelope() }))
     expect(fenced).toMatchObject({ ok: false })
-
-    const ensured = await call('agentSession.ensure', attachParams({ envelope: envelope() }))
-    expect(ensured).toMatchObject({ ok: true })
   })
 
-  /** A client-supplied location skips the worktree-resolving support check, so both attach-shaped
-   *  entries must ask the executing host directly or a host that cannot fence a provider child
+  /** A client-supplied location skips the worktree-resolving support check, so an attach-shaped
+   *  create must ask the executing host directly or a host that cannot fence a provider child
    *  would create one anyway. */
   it('returns a refusal envelope when create cannot support a client-supplied location', async () => {
     hostCalls.supportsCreate.mockReturnValue(false)
@@ -617,20 +614,7 @@ describe('method routing', () => {
         refusal: { code: 'structured_agent_session_unsupported' }
       }
     })
-    expect(hostCalls.attach).not.toHaveBeenCalled()
-    expect(hostCalls.supportsCreate).toHaveBeenCalledWith(attachParams().location, 'codex')
-  })
-
-  it('keeps ensure failures as top-level errors for an unsupported client location', async () => {
-    hostCalls.supportsCreate.mockReturnValue(false)
-
-    const refused = await call('agentSession.ensure', attachParams())
-
-    expect(refused).toMatchObject({
-      ok: false,
-      error: { message: expect.stringContaining('structured_agent_session_unsupported') }
-    })
-    expect(hostCalls.attach).not.toHaveBeenCalled()
+    expect(hostCalls.create).not.toHaveBeenCalled()
     expect(hostCalls.supportsCreate).toHaveBeenCalledWith(attachParams().location, 'codex')
   })
 

@@ -503,7 +503,7 @@ describe('cross-version structured agent sessions', () => {
         now: () => NOW
       })
       setStructuredAgentSessionHost(host)
-      const attached = await host.attach({ callerKey: 'test' }, attachParams(null) as never)
+      const attached = await host.create({ callerKey: 'test' }, attachParams(null) as never)
       expect(attached.ok).toBe(true)
       createMobileSessionTerminal = vi.fn()
       runtime = {
@@ -722,21 +722,6 @@ describe('cross-version structured agent sessions', () => {
       refusal?: { code: string; currentFence?: number }
     }
 
-    /** Reattaching after a restart: the client's fence died with the previous
-     *  host, and the refusal that says so is what hands it the live one. */
-    async function reattach(staleFence: number): Promise<HostAnswer> {
-      const refused = await answer('agentSession.ensure', attachParams(staleFence))
-      expect(refused).toMatchObject({
-        ok: false,
-        refusal: { code: 'agent_session_checkpoint_stale' }
-      })
-      const currentFence = refused.refusal?.currentFence
-      expect(currentFence).toBeGreaterThan(staleFence)
-      const reattached = await answer('agentSession.ensure', attachParams(currentFence ?? 0))
-      expect(reattached).toMatchObject({ ok: true })
-      return reattached
-    }
-
     async function call(
       method: string,
       params: unknown,
@@ -809,16 +794,19 @@ describe('cross-version structured agent sessions', () => {
     })
 
     // Every released client still sends the fence it last saw; this host names a write by its
-    // target and ignores that fence. Only the attach keeps comparing one, which `reattach` pins.
+    // target and ignores that fence. The first send's start moved it past the one create answered.
     it('delivers a write still fenced to the host generation that died', async () => {
       const created = await answer('agentSession.create', createIntentParams())
+      expect(await answer('agentSession.send', sendParams('first', created.fence))).toMatchObject({
+        ok: true
+      })
       await bootHost('b')
-      const reattached = await reattach(created.fence)
-      expect(reattached.fence).toBeGreaterThan(created.fence)
+      const current = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+      expect(current).toBeGreaterThan(created.fence)
 
       expect(await answer('agentSession.send', sendParams('stale', created.fence))).toMatchObject({
         ok: true,
-        fence: reattached.fence
+        fence: store.getRecord(SESSION)?.lease.runtimeFence
       })
     })
 

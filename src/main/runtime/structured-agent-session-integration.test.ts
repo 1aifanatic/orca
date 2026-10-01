@@ -251,6 +251,19 @@ async function ok<T>(method: string, params: unknown): Promise<T> {
   return result.value as T
 }
 
+/** A chat is created at rest; its first send is what starts the agent, for a test that needs it. */
+async function sendToStart(fence: number, text = 'start'): Promise<string> {
+  const body = { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
+  const sent = await ok<{ clientMessageId: string }>('agentSession.send', {
+    envelope: envelope('agentSession.send', { body }, fence),
+    body
+  })
+  await vi.waitFor(() =>
+    expect(codex.live().calls).toContainEqual(expect.objectContaining({ method: 'turn/start' }))
+  )
+  return sent.clientMessageId
+}
+
 /** Opens a live subscription and keeps collecting frames after the call settles. */
 async function subscribe(
   requestId: string,
@@ -431,18 +444,26 @@ describe('a structured codex session over agentSession.*', () => {
     // The previous process exits, closing its database.
     await journals.closeAll()
 
-    const created = await ok<{ page: { items: AgentJournalRenderItem[] } }>(
+    const created = await ok<{ fence: number; page: { items: AgentJournalRenderItem[] } }>(
       'agentSession.create',
       createIntentParams()
     )
     expect(created.page.items.map(textOf)).toContain('legacy question')
-    expect(await call('agentSession.options', { sessionId: SESSION })).toMatchObject({
-      ok: true,
-      result: {
-        models: [{ id: 'gpt-live', defaultEffort: 'medium' }],
-        current: { model: 'gpt-live' }
-      }
+    // The live options come from the agent, which the first send starts.
+    const body = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'next' }] }
+    await ok('agentSession.send', {
+      envelope: envelope('agentSession.send', { body }, created.fence),
+      body
     })
+    await vi.waitFor(async () =>
+      expect(await call('agentSession.options', { sessionId: SESSION })).toMatchObject({
+        ok: true,
+        result: {
+          models: [{ id: 'gpt-live', defaultEffort: 'medium' }],
+          current: { model: 'gpt-live' }
+        }
+      })
+    )
   })
 
   it('dispatches and streams a plain first send from a fresh session', async () => {
@@ -451,11 +472,8 @@ describe('a structured codex session over agentSession.*', () => {
       createIntentParams()
     )
     expect(created.page.items).toEqual([])
-    expect(codex.live().launch.env).toMatchObject({
-      CODEX_PROFILE: 'configured',
-      EXAMPLE_GATEWAY_TOKEN: 'shell-exported',
-      CODEX_HOME: '/home/dev/.codex'
-    })
+    // The chat is created at rest: its first send starts the agent.
+    expect(() => codex.live()).toThrow('no codex app-server has been opened')
     const store = await readPersistedTestAgentSessionStoreText(root)
     // The record this create wrote, so the checks below read the runtime's own rows.
     expect(store).toContain('/home/dev/.codex')
@@ -476,6 +494,11 @@ describe('a structured codex session over agentSession.*', () => {
     // which message landed where is knowable only from the echo.
     expect(sent.submission).toMatchObject({ dispatchState: 'pending', providerItemId: null })
     await handedOverAs({ threadId: THREAD, clientUserMessageId: sent.clientMessageId })
+    expect(codex.live().launch.env).toMatchObject({
+      CODEX_PROFILE: 'configured',
+      EXAMPLE_GATEWAY_TOKEN: 'shell-exported',
+      CODEX_HOME: '/home/dev/.codex'
+    })
 
     codex.notify('turn/started', { turn: { id: TURN } })
     // Codex echoes the message back carrying the `clientId` it was sent under,
@@ -516,23 +539,17 @@ describe('a structured codex session over agentSession.*', () => {
       createIntentParams()
     )
     expect(created.page.items).toEqual([])
-    expect(codex.live().calls[0]).toMatchObject({
-      method: 'thread/start',
-      params: { cwd: `/repos/${WORKSPACE}` }
-    })
     const fence = created.fence
 
     const stream = await subscribe('sub-1')
     expect(stream[0]).toMatchObject({ type: 'snapshot', sessionId: SESSION })
 
     // ── options ─────────────────────────────────────────────────────────────
-    const options = await call('agentSession.options', { sessionId: SESSION })
-    expect(options).toMatchObject({
+    // At rest the list is the host's model catalog, which this harness has none of; a pick made now
+    // is the record's intent, which the first send's start applies.
+    expect(await call('agentSession.options', { sessionId: SESSION })).toMatchObject({
       ok: true,
-      result: {
-        models: [{ id: 'gpt-live', defaultEffort: 'medium' }],
-        current: { model: 'gpt-live' }
-      }
+      result: { models: [] }
     })
     await ok('agentSession.setOption', {
       envelope: envelope('agentSession.setOption', { key: 'model', value: 'gpt-live' }, fence),
@@ -568,6 +585,11 @@ describe('a structured codex session over agentSession.*', () => {
       clientUserMessageId: sent.clientMessageId,
       model: 'gpt-live',
       effort: 'high'
+    })
+    // The send started the agent; the create had not.
+    expect(codex.live().calls[0]).toMatchObject({
+      method: 'thread/start',
+      params: { cwd: `/repos/${WORKSPACE}` }
     })
 
     // ── stream ──────────────────────────────────────────────────────────────
@@ -678,16 +700,15 @@ describe('a structured codex session over agentSession.*', () => {
     ).toBe(true)
     expect(itemsOf(missed).map(textOf).filter(Boolean)).toEqual(['Stopped.'])
 
-    // A runtime taking the session over is the other half of reconnect: the
-    // fence advances, the old child is reaped, and its replacement resumes the
-    // thread this session proved rather than forking a new one.
+    // The other half of reconnect: a closed chat's next send starts a replacement that resumes the
+    // thread this session proved rather than forking a new one, at an advanced fence.
     const reaped = codex.live()
-    const resumed = await ok<{ fence: number; page: { items: AgentJournalRenderItem[] } }>(
-      'agentSession.ensure',
-      attachParams(fence)
-    )
-    expect(resumed.fence).toBe(fence + 1)
+    await ok('agentSession.close', { sessionId: SESSION })
     expect(reaped.closed).toBe(true)
+    await sendToStart(fence, 'again')
+    expect(
+      getStructuredAgentSessionHost()?.deps.store.getRecord(SESSION)?.lease.runtimeFence
+    ).toBeGreaterThan(fence)
     expect(codex.live().resumedThreadId).toBe(THREAD)
     expect(await call('agentSession.options', { sessionId: SESSION })).toMatchObject({
       ok: true,
@@ -696,8 +717,6 @@ describe('a structured codex session over agentSession.*', () => {
         current: { model: 'gpt-live', effort: 'high' }
       }
     })
-    // The journal belongs to the session, not to the process that just died.
-    expect(resumed.page.items.map(textOf)).toContain('Two files.')
 
     // ── page history ────────────────────────────────────────────────────────
     const tail = await historyPage('tail', { limit: 2 })
@@ -724,6 +743,7 @@ describe('a structured codex session over agentSession.*', () => {
       'tool-call',
       'approval',
       'status',
+      'message',
       'message'
     ])
     expect([...older.page.items, ...tail.page.items].map(textOf)).toEqual([
@@ -733,24 +753,30 @@ describe('a structured codex session over agentSession.*', () => {
       '',
       '',
       '',
-      'Stopped.'
+      'Stopped.',
+      'again'
     ])
   })
 
   it('caches shell exports but re-reads configured overrides for a resume', async () => {
     shellEnvironmentPolicy = { inheritAll: false, names: [] }
     const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    // Nothing is read for a create: the first send's start reads the overrides.
+    expect(codexOverrideReads).toBe(0)
+    await sendToStart(created.fence)
     expect(codex.live().launch.env?.EXAMPLE_GATEWAY_TOKEN).toBeUndefined()
     expect({ bootEnvironmentReads, codexOverrideReads }).toEqual({
       bootEnvironmentReads: 1,
       codexOverrideReads: 1
     })
+    const started = codex.live()
 
     configuredCodexProfile = 'updated'
     shellEnvironmentPolicy = { inheritAll: false, names: ['EXAMPLE_GATEWAY_TOKEN'] }
-    const resumed = await ok<{ fence: number }>('agentSession.ensure', attachParams(created.fence))
+    await ok('agentSession.close', { sessionId: SESSION })
+    await sendToStart(created.fence, 'again')
 
-    expect(resumed.fence).toBe(created.fence + 1)
+    expect(codex.live()).not.toBe(started)
     expect(codex.live().resumedThreadId).toBe(THREAD)
     expect(codex.live().launch.env).toMatchObject({
       CODEX_PROFILE: 'updated',
@@ -783,7 +809,8 @@ describe('a structured codex session over agentSession.*', () => {
   })
 
   it('joins final deferred writes before runtime teardown completes', async () => {
-    await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    await sendToStart(created.fence)
     codex.notify('turn/started', { threadId: THREAD, turn: { id: TURN } })
     codex.notify('item/started', {
       threadId: THREAD,
@@ -844,7 +871,8 @@ describe('a structured codex session over agentSession.*', () => {
   })
 
   it('persists truncated command output before publishing its journal row', async () => {
-    await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    await sendToStart(created.fence)
     const output = 'large command output\n'.repeat(2_000)
 
     codex.notify('item/completed', {
@@ -872,6 +900,7 @@ describe('a structured codex session over agentSession.*', () => {
 
   it('keeps an answered prompt resolved after the provider exits', async () => {
     const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    await sendToStart(created.fence)
     codex.notify('turn/started', { threadId: THREAD, turn: { id: TURN } })
     codex.notify('item/started', {
       threadId: THREAD,

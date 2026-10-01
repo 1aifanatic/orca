@@ -42,17 +42,6 @@ async function createAtRest(
 ): Promise<CreateResult> {
   const { store, adapter } = context.deps
   const sessionId = params.envelope.sessionId
-  if (params.envelope.expectedRuntimeFence !== null) {
-    // A create names no fence; one that does is asking to take over an existing chat.
-    return {
-      ok: false,
-      refusal: refuse(
-        'agent_session_operation_invalid',
-        { reason: 'requestMalformed' },
-        'A create cannot name a runtime fence.'
-      )
-    }
-  }
   const admitted = admitAttachOrRefuse(params)
   if (!admitted.ok) {
     return admitted
@@ -123,12 +112,27 @@ async function createAtRest(
   }
   const { journal } = conversation
   if (!created.replayed) {
-    await importAdoptedTranscript(
-      params,
-      { journal, unconfirmedClientMessageIds: [] },
-      created.record,
-      transcript.items
-    )
+    try {
+      await importAdoptedTranscript(
+        params,
+        { journal, unconfirmedClientMessageIds: [] },
+        created.record,
+        transcript.items
+      )
+    } catch (error) {
+      // Settled before rethrowing, so a retry of this create replays the failure, not a success.
+      await store.recordOperationOutcome({
+        callerKey,
+        operationId: params.envelope.clientOperationId,
+        outcome: {
+          status: 'failed',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'attachFailed' },
+          message: error instanceof Error ? error.message : String(error)
+        }
+      })
+      throw error
+    }
   }
   const fence = created.record.lease.runtimeFence
   const tabId = store.getSessionTabId(created.record.sessionId)

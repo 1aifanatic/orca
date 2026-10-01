@@ -1,5 +1,5 @@
-// The create route's pre-commit boundary: a failure before `attach` must reach the client as a
-// refusal it can classify, and a failure at or after `attach` must not.
+// The create route's pre-commit boundary: a failure before the host's `create` must reach the
+// client as a refusal it can classify, and a failure at or after it must not.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
@@ -39,17 +39,17 @@ function createParams(overrides: Record<string, unknown> = {}) {
   }
 }
 
-let attach: ReturnType<typeof vi.fn>
+let hostCreate: ReturnType<typeof vi.fn>
 
 function hostStub(): StructuredAgentSessionHost {
-  attach = vi.fn(async () => ({
+  hostCreate = vi.fn(async () => ({
     ok: true,
     replayed: false,
     fence: 1,
     cursor: { epoch: 'epoch-a', sequence: 0 },
     value: { sessionId: SESSION, fence: 1, page: {}, unconfirmedClientMessageIds: [] }
   }))
-  return { attach } as unknown as StructuredAgentSessionHost
+  return { create: hostCreate } as unknown as StructuredAgentSessionHost
 }
 
 const resolvedIntent = {
@@ -133,7 +133,7 @@ describe('a create refused before it commits', () => {
     expect(refusal?.message).toContain('structured agent chat')
     expect(refusal?.message).not.toContain('Codex')
     expect(isDefinitiveAgentSessionCreateRefusal(refusal?.code)).toBe(true)
-    expect(attach).not.toHaveBeenCalled()
+    expect(hostCreate).not.toHaveBeenCalled()
   })
 
   it('answers a code-less failure as a definitive envelope too, keeping the cause in the message', async () => {
@@ -149,7 +149,7 @@ describe('a create refused before it commits', () => {
     expect(refusal?.message).toContain('structured agent chat')
     expect(refusal?.message).not.toContain('Codex')
     expect(refusal?.message).toContain('No worktree matches id:workspace-1')
-    expect(attach).not.toHaveBeenCalled()
+    expect(hostCreate).not.toHaveBeenCalled()
   })
 
   it('answers a host that will not install as a definitive envelope', async () => {
@@ -183,13 +183,13 @@ describe('a create refused before it commits', () => {
     )
 
     expect(refusalOf(response)?.code).toBe('agent_session_operation_conflict')
-    expect(attach).not.toHaveBeenCalled()
+    expect(hostCreate).not.toHaveBeenCalled()
   })
 })
 
 describe('the boundary the envelope stops at', () => {
-  it('leaves a failure at attach unknown, because it may have committed', async () => {
-    attach.mockRejectedValueOnce(new Error('attach exploded'))
+  it('leaves a failure in the host create unknown, because it may have committed', async () => {
+    hostCreate.mockRejectedValueOnce(new Error('create exploded'))
 
     const response = await create()
 

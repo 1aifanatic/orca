@@ -234,7 +234,7 @@ describe('structured worker session', () => {
 
 describe('structured worker dispatch preamble', () => {
   type PreambleHost = Parameters<typeof sendStructuredWorkerPreamble>[0]['host']
-  type Settled = Pick<AgentJournalSubmission, 'dispatchState' | 'reason'>
+  type Settled = Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'startFailure'>
 
   function submissionOf(settled: Settled): AgentJournalSubmission {
     return {
@@ -276,7 +276,7 @@ describe('structured worker dispatch preamble', () => {
   it('reports the preamble delivered only on an accepted submission', async () => {
     await expect(
       send(hostWithSubmission({ dispatchState: 'accepted', reason: null }))
-    ).resolves.toBe('accepted')
+    ).resolves.toEqual({ state: 'accepted' })
   })
 
   it('waits for an accepted preamble to be delivered, and reports that delivery (W10)', async () => {
@@ -287,7 +287,21 @@ describe('structured worker dispatch preamble', () => {
           { dispatchState: 'accepted', reason: null }
         )
       )
-    ).resolves.toBe('accepted')
+    ).resolves.toEqual({ state: 'accepted' })
+  })
+
+  // The preamble is what starts the worker's agent, so a start still being retried is why it waits.
+  it('names the failed start a held preamble waits behind', async () => {
+    const startFailure = {
+      attempts: 1,
+      reason: "Codex couldn't start. Orca will try again shortly.",
+      rejection: { kind: 'startFailed' as const },
+      failedAt: 1,
+      nextAttemptAt: 2
+    }
+    await expect(
+      send(hostWithSubmission({ dispatchState: 'pending', reason: null, startFailure }))
+    ).resolves.toEqual({ state: 'pending', startFailure })
   })
 
   it('reports a preamble still held for an agent that outlasted the wait, without failing the start (W10)', async () => {
@@ -295,7 +309,7 @@ describe('structured worker dispatch preamble', () => {
     // down, which rejected the preamble the start was about to deliver.
     await expect(
       send(hostWithSubmission({ dispatchState: 'pending', reason: null }))
-    ).resolves.toBe('pending')
+    ).resolves.toEqual({ state: 'pending' })
   })
 
   it('never claims delivery for a submission the provider never acknowledged', async () => {

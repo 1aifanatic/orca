@@ -227,7 +227,8 @@ describe('committed adopting create RPC replay', () => {
         }
       }
     })
-    expect(sessionAdapter.acquire).toHaveBeenCalledTimes(1)
+    // The adopting create starts no agent; its first send would.
+    expect(sessionAdapter.acquire).not.toHaveBeenCalled()
     expect(internal.publishStructuredAgentSessionTab).toHaveBeenCalledTimes(2)
     expect(selectAccountHome).toHaveBeenCalledTimes(1)
 
@@ -240,7 +241,7 @@ describe('committed adopting create RPC replay', () => {
       ok: true,
       result: { ok: false, refusal: { code: 'agent_session_identity_required' } }
     })
-    expect(sessionAdapter.acquire).toHaveBeenCalledTimes(1)
+    expect(sessionAdapter.acquire).not.toHaveBeenCalled()
     expect(internal.publishStructuredAgentSessionTab).toHaveBeenCalledTimes(2)
   })
 })

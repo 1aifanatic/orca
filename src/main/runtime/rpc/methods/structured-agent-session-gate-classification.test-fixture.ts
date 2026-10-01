@@ -54,7 +54,6 @@ export const ADMISSION_METHODS = [
       agent: 'codex'
     }
   },
-  { method: 'agentSession.ensure', params: attachParams() },
   { method: 'agentSession.send', params: sendParams() },
   {
     method: 'agentSession.queuedMessageSend',
