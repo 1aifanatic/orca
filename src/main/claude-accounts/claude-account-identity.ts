@@ -122,6 +122,16 @@ export function withObservedClaudeIdentities(
   })
 }
 
+/** Only with a finished account: the personal state file is large, and the notice needs one. */
+export function describeClaudeSystemDefaultFor(
+  owner: { systemDefaultIdentity?: () => ClaudeLoginIdentity | null },
+  accounts: readonly ClaudeManagedAccountSummary[]
+): { systemDefault?: ClaudeSystemDefaultIdentity } {
+  return owner.systemDefaultIdentity && !accounts.every(isUnfinishedClaudeSignIn)
+    ? { systemDefault: describeClaudeSystemDefault(owner.systemDefaultIdentity(), accounts) }
+    : {}
+}
+
 /** System Default's login, flagged when it is also a saved account (an earlier Orca copied those). */
 export function describeClaudeSystemDefault(
   identity: ClaudeLoginIdentity | null,

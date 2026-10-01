@@ -14,6 +14,20 @@ import {
   createNativeClaudeProfileRouting,
   inheritedClaudeConfigDir
 } from './claude-profile-native-owner'
+import type * as FsUtils from '../codex-accounts/fs-utils'
+const writeFailure = vi.hoisted(() => ({ error: null as Error | null }))
+vi.mock('../codex-accounts/fs-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsUtils>()
+  return {
+    ...actual,
+    writeFileAtomically: (...args: Parameters<typeof actual.writeFileAtomically>) => {
+      if (writeFailure.error) {
+        throw writeFailure.error
+      }
+      return actual.writeFileAtomically(...args)
+    }
+  }
+})
 import { resolveSkillProviderRoots } from '../runtime/runtime-skill-install-authority'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
 import { publishClaudeProfilePointer, readClaudeProfilePointer } from './claude-profile-pointer'
@@ -128,6 +142,24 @@ describe('native Claude profile authority', () => {
     rmSync(f.routing.pointerPath(), { recursive: true })
     await f.routing.startup()
     expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(f.profiles[0].home)
+  })
+  it('keeps a System Default pointer when rewriting it fails, and says why in plain words', async () => {
+    const f = fixture()
+    f.settings.activeClaudeManagedAccountId = null
+    await f.routing.publish()
+    writeFailure.error = Object.assign(new Error('ENOSPC: no space left on device, write'), {
+      code: 'ENOSPC'
+    })
+    try {
+      await expect(f.routing.publish()).rejects.toThrow('ENOSPC')
+      expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(null)
+      const issue = f.routing.describeAccounts({ accounts: [], activeAccountId: null })
+      expect(issue.profileRoutingIssue).toBe(
+        'Orca could not save the Claude account selection because the disk is full.'
+      )
+    } finally {
+      writeFailure.error = null
+    }
   })
   it('requires host capability and refuses WSL until the guest step, without host fallback', async () => {
     const f = fixture()

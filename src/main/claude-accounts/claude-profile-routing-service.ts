@@ -1,6 +1,10 @@
 import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
 import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
-import { readClaudeProfilePointer } from './claude-profile-pointer'
+import {
+  claudeProfilePointerKeepsSystemDefault,
+  describeClaudeProfilePublishError,
+  readClaudeProfilePointer
+} from './claude-profile-pointer'
 import { ClaudeProfilePointerQueue } from './claude-profile-pointer-queue'
 import {
   ClaudeProfileHostUnreachableError,
@@ -13,7 +17,7 @@ import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
 import type { ClaudeEnvPatch } from './environment'
 import {
-  describeClaudeSystemDefault,
+  describeClaudeSystemDefaultFor,
   findClaudeAccountIdentityRefusal,
   withObservedClaudeIdentities,
   type ClaudeObservedAccount
@@ -25,7 +29,6 @@ import {
   provisionClaudeLaunchProfile
 } from './claude-profile-launch-preparation'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
-import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
@@ -116,16 +119,19 @@ export class ClaudeProfileRoutingService {
       // Why: a pointer left naming the previous account would launch it silently. Only the newest
       // target publish, still naming the current selection, speaks for the pointer.
       if (this.pointers.isNewest(key, generation) && !this.isOvertaken(descriptor)) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = describeClaudeProfilePublishError(error)
         this.current.delete(key)
         this.publishIssues.set(
           key,
           target?.runtime === 'wsl' ? `WSL ${target.wslDistro ?? 'distro'}: ${message}` : message
         )
         try {
-          await this.pointers.write(key, generation, async () => {
-            await this.owner.withdraw(target, access)
-          })
+          // Why: a pointer already on System Default launches what was asked; removing it refuses.
+          if (!claudeProfilePointerKeepsSystemDefault(descriptor)) {
+            await this.pointers.write(key, generation, async () => {
+              await this.owner.withdraw(target, access)
+            })
+          }
         } catch (withdrawError) {
           console.warn('[claude-profile] Pointer withdrawal failed:', withdrawError)
         }
@@ -267,13 +273,7 @@ export class ClaudeProfileRoutingService {
   /** Never throws: readiness is per account, and a stale pointer is republished in the background. */
   describeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {
     const accounts = withObservedClaudeIdentities(state.accounts, this.owner)
-    // Why only with accounts: the personal state file is large, and the notice needs a saved account.
-    const systemDefault =
-      this.owner.systemDefaultIdentity && !accounts.every(isUnfinishedClaudeSignIn)
-        ? {
-            systemDefault: describeClaudeSystemDefault(this.owner.systemDefaultIdentity(), accounts)
-          }
-        : {}
+    const systemDefault = describeClaudeSystemDefaultFor(this.owner, accounts)
     const issues = this.currentPublishIssues()
     if (this.pointerIsCurrent()) {
       return {
