@@ -48,8 +48,12 @@ export const FIRST_START_FAILS = {
     RETRYING(3),
     { dispatchState: 'rejected', rejection: { kind: 'accountSwitchInProgress' } }
   ],
-  /** The person closes the chat while it waits: the host withdraws the message. */
-  chatClosed: [RETRYING(1), { dispatchState: 'rejected', rejection: { kind: 'chatClosed' } }]
+  /** The person closes the chat while it waits: the host withdraws the message, keeping the start
+   *  failure it waited out (structured-agent-session-close-withdraws-first-message.test.ts). */
+  chatClosed: [
+    RETRYING(1),
+    { dispatchState: 'rejected', rejection: { kind: 'accountSwitchInProgress' } }
+  ]
 } satisfies Record<string, Partial<FirstMessage>[]>
 
 export type FirstMessageStream = {
