@@ -214,9 +214,10 @@ export function TerminalErrorToast({
     footer: string
   } | null>(null)
 
-  // Why: a select-all copy should carry details loaded asynchronously from preload.
+  // Why: a select-all copy should carry details loaded asynchronously from preload; an expected
+  // account refusal is not a bug report, so it gets none.
   useEffect(() => {
-    if (ssh || hasClientEnvironmentFooter(displayError)) {
+    if (caution || hasClientEnvironmentFooter(displayError)) {
       return
     }
     let cancelled = false
@@ -228,7 +229,7 @@ export function TerminalErrorToast({
     return () => {
       cancelled = true
     }
-  }, [displayError, ssh])
+  }, [displayError, caution])
 
   const footer = environmentFooter?.error === displayError ? environmentFooter.footer : ''
   const handleRetry = async (): Promise<void> => {
