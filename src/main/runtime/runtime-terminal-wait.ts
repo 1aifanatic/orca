@@ -28,8 +28,8 @@ import type { RuntimeTerminalWaiterRegistry } from './runtime-terminal-waiter-re
 /**
  * A pane with no retained bytes and no status has only its provider's screen to read, and one
  * whose tail shows a rule file's `profile.screenProbeBanner` is probed as before screen rules. So
- * is a clockless pane whose rules read the trusted screen, whatever its status: a re-attached pane's own model can be
- * untrusted. A clocked one settles through the poll, once quiet.
+ * is a clockless pane whose rules read the trusted screen, whatever its status: a re-attached
+ * pane's own model can be untrusted. A clocked one settles through the poll, once quiet.
  */
 function shouldProbeVisibleScreen(
   paneAgent: TuiAgent | null,

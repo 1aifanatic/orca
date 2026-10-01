@@ -23,7 +23,7 @@ function compileTitleAnchor(when: TitleAnchorCondition): TitleAnchorMatcher {
   return (title, status) => status === when.status && matches(title)
 }
 
-export function compileTitleAnchors(files: readonly AgentStateRulesFile[]): TitleAnchorMatcher[] {
+function compileTitleAnchors(files: readonly AgentStateRulesFile[]): TitleAnchorMatcher[] {
   return files.flatMap((file) =>
     file.anchors.flatMap(({ when }) => (when.region === 'title' ? [compileTitleAnchor(when)] : []))
   )

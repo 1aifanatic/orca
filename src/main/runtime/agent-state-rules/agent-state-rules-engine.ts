@@ -46,8 +46,8 @@ type CompiledRule = {
   verdict: AgentStateVerdict
   region: Region
   skipWithoutClock: boolean
-  /** Null when its region is unreadable, which skips the rule. */
-  matches: (reads: RegionReads) => boolean | null
+  /** False when its region is unreadable, which skips the rule. */
+  matches: (reads: RegionReads) => boolean
 }
 
 const NAMED_SCREEN_PREDICATES: Record<NamedScreenPredicate, (screen: string) => boolean> = {
@@ -55,9 +55,9 @@ const NAMED_SCREEN_PREDICATES: Record<NamedScreenPredicate, (screen: string) => 
   'codex-composer-ready': isCodexComposerReadyScreen
 }
 
-function readThen<T>(read: RegionReader<T>, test: (value: T) => boolean): boolean | null {
+function readThen<T>(read: RegionReader<T>, test: (value: T) => boolean): boolean {
   const value = read()
-  return value === null ? null : test(value)
+  return value !== null && test(value)
 }
 
 function compileCondition(
@@ -105,13 +105,11 @@ type RulesKey = TuiAgent | typeof UNKNOWN_PANE_RULES_ID
 type CompiledFile = { rules: CompiledRule[]; readsTrustedScreen: boolean }
 
 const FILES_BY_KEY: ReadonlyMap<RulesKey, CompiledFile> = new Map(
-  BUNDLED_AGENT_STATE_RULE_FILES.filter((file) => file.rules.length > 0).map((file) => [
+  BUNDLED_AGENT_STATE_RULE_FILES.map((file) => [
     file.id,
     {
       rules: compileAgentRules(file),
-      readsTrustedScreen:
-        file.profile?.screenSource === 'trusted' &&
-        file.rules.some((rule) => rule.when.region === 'screen')
+      readsTrustedScreen: file.profile?.screenSource === 'trusted'
     }
   ])
 )
@@ -184,7 +182,7 @@ export function evaluateCompiledRules(
     if (rule.skipWithoutClock && regions.hasOutputClock === false) {
       continue
     }
-    if (rule.matches(reads) === true) {
+    if (rule.matches(reads)) {
       return rule.verdict
     }
   }
