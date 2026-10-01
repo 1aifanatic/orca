@@ -1,10 +1,13 @@
 // The chat's Stop, however a client reached it: the Stop button or a question card's Cancel. One
 // body and one order: withdraw what is queued, record where the Stop took effect, interrupt, then
-// end the child in the next step on the session's lane. The body is reachable only through
-// `mutateWithChatStop`, which queues that step in the same synchronous call as the mutation.
+// end the child: in this step when the interrupt failed with the turn still running, else in the
+// next step on the session's lane for a provider whose Stop ends its session. The body is
+// reachable only through `mutateWithChatStop`, which queues that step in the same synchronous call
+// as the mutation.
 
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -17,7 +20,8 @@ import {
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
-  runStopWithQueuePause,
+  runRecordedStop,
+  stopReachesUnrecordedWork,
   withdrawQueuedForStop
 } from './structured-agent-session-queued-stop'
 import {
@@ -52,13 +56,16 @@ export function mutateWithChatStop<TValue>(
   const { sessionId } = envelope
   // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
   let windDown: StructuredAgentSessionStopWindDown | undefined
-  // The Stop's queue pause, still landing when its session ends: the next step holds the lane for it.
-  let pauseAfterEnd: Promise<void> | undefined
+  // The Stop's event, still landing when its session ends: the next step holds the lane for it.
+  let eventAfterEnd: Promise<void> | undefined
   const named = turnId !== undefined ? { turnId } : {}
-  // Stop's queue step, the same for every client: once the Stop takes effect the queue is paused.
-  // The cards stay published; nothing is withdrawn and no text ever rides the answer.
+  const stopEvent = { reason: 'user-stop' as const, caller: caller.callerKey, ...named }
+  // The same for every client: once the Stop takes effect its event is written, and the queue's
+  // pause follows from it. The cards stay published; no text rides the answer.
   const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>
-    runStopWithQueuePause(ctx, async (tookEffect) => {
+    runRecordedStop(ctx, stopEvent, async (tookEffect) => {
+      // Read before the withdrawal it decides on is issued.
+      const hadQueued = ctx.journal.submissions().some(isQueuedAgentJournalSubmission)
       // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
       // Issued, not awaited: the interrupt never waits on bookkeeping. (The open paid any owed import.)
       const withdrew = withdrawQueuedForStop(ctx, () =>
@@ -67,16 +74,15 @@ export function mutateWithChatStop<TValue>(
           agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
       )
-      // The pause is judged once the withdrawal has landed, so it sees each card sent back.
-      const tookEffectOnceWithdrawn = (): Promise<void> => withdrew.then(tookEffect)
       const child = context.sessions.get(ctx.sessionId)?.child
       if (child?.phase === 'starting') {
         // A start that may never land is the one thing here Stop has to end; the chat stays.
-        const effect = tookEffectOnceWithdrawn()
+        // The event is issued first and lands behind the withdrawal, in the journal's queue order.
+        const effect = tookEffect()
         try {
           await context.stopAgent(ctx.sessionId)
         } finally {
-          // Even a failed Stop holds the lane until its pause lands: the drain shares the lane.
+          // Even a failed Stop holds the lane until its event lands: the drain shares the lane.
           await effect
         }
         return { ok: true, value: { ...named, cancelled: true } }
@@ -93,7 +99,9 @@ export function mutateWithChatStop<TValue>(
         }
         return { ok: true, value: { ...named, cancelled: withdrewAny } }
       }
-      const effect = tookEffectOnceWithdrawn()
+      // Issued, not awaited, before the interrupt or any child end; the `finally` awaits it.
+      const effect =
+        hadQueued || stopReachesUnrecordedWork(ctx, turnId) ? tookEffect() : Promise.resolve()
       try {
         return await performCancel(
           { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
@@ -101,6 +109,14 @@ export function mutateWithChatStop<TValue>(
             clientOperationId: envelope.clientOperationId,
             ...named,
             stopChild: () => context.stopAgent(sessionId),
+            onStopChildError: (error) =>
+              context.deps.logger.warn('ending the agent process on Stop failed', {
+                scope: 'stop-child',
+                sessionId,
+                error
+              }),
+            // The host drops its child only once the exit is proven, and nothing else runs meanwhile.
+            childReleased: () => context.sessions.get(sessionId)?.child !== child,
             endSession: (owed) => {
               windDown = owed
             },
@@ -108,10 +124,10 @@ export function mutateWithChatStop<TValue>(
           }
         )
       } finally {
-        // As above (`effect` never rejects); a session-ending Stop hands that hold to its next step,
-        // so the child's end never waits on it.
+        // `effect` never rejects, so the Stop's own error survives. A session-ending Stop hands this
+        // hold to its next step, so the child's end never waits on it.
         if (windDown) {
-          pauseAfterEnd = effect
+          eventAfterEnd = effect
         } else {
           await effect
         }
@@ -135,10 +151,15 @@ export function mutateWithChatStop<TValue>(
         { sessionId, adapter: context.deps.adapter },
         windDown,
         () => context.stopAgent(sessionId),
-        (error) => context.deps.onEventSinkError?.({ sessionId, error })
+        (error) =>
+          context.deps.logger.warn("ending a stopped chat's provider session failed", {
+            scope: 'chat-stop',
+            sessionId,
+            error
+          })
       )
     }
-    await pauseAfterEnd
+    await eventAfterEnd
   })
   return result
 }

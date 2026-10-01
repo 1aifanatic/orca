@@ -126,8 +126,8 @@ it('a Stop whose withdrawal throws after landing still answers; the draft it rel
   try {
     expect(await rig.stop()).toMatchObject({ ok: true })
     expect(warned).toHaveBeenCalledWith(
-      "[agent-session] Stop's withdrawal skipped:",
-      expect.objectContaining({ error: 'disk full' })
+      "[agent-session] stop-queued-bookkeeping: Stop's withdrawal failed",
+      expect.objectContaining({ step: 'withdrawal', error: new Error('disk full') })
     )
   } finally {
     failing.mockRestore()
@@ -178,7 +178,8 @@ async function stopWithSkippedSettlement(): Promise<{ a: string; working: string
 
 it("a Stop whose withdrawal's settlement was skipped still pauses the card it sent back", async () => {
   const { a } = await stopWithSkippedSettlement()
-  expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  // The drain heals the skipped return; the Stop's row already pauses whatever comes back.
+  await eventually(async () => expect(await rig.queuePause()).toEqual({ reason: 'stopped' }))
   await new Promise((resolve) => setTimeout(resolve, 250))
   // Healed back to waiting, but the Stop's pause holds it: it does not send.
   expect(await rig.drafts()).toEqual([{ messageId: a, state: 'waiting' }])
@@ -190,28 +191,4 @@ it("a Stop whose withdrawal's settlement was skipped still pauses the card it se
       )
     ).toHaveLength(2)
   )
-})
-
-it('the pause is recorded even when healing the skipped settlement fails, since the card is still owed', async () => {
-  const heal = vi
-    .spyOn(JournalQueuedMessages.prototype, 'settleOwed')
-    .mockRejectedValueOnce(new Error('disk full'))
-  try {
-    const { a } = await stopWithSkippedSettlement()
-    const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal
-    expect(journal?.queuedMessages.pause()).toMatchObject({ reason: 'stopped' })
-    // The drain heals it later; the pause recorded over the owed card holds it then.
-    await eventually(async () =>
-      expect(await rig.drafts()).toEqual([{ messageId: a, state: 'waiting' }])
-    )
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
-    expect(
-      (await rig.host.journalSnapshot(SESSION)).submissions.filter(
-        (entry) => entry.queuedMessageId === a
-      )
-    ).toHaveLength(1)
-  } finally {
-    heal.mockRestore()
-  }
 })

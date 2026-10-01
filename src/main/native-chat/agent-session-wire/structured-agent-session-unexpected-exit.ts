@@ -17,6 +17,7 @@ import {
   unfinishedStructuredAgentSessionWorkWasInterrupted
 } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionTurnVerdict } from './structured-agent-session-stale-turn-verdict'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 type UnexpectedExitLifecycleEvent = StructuredAgentSessionEndedEvent & {
   cause: 'unexpected-exit'
@@ -37,7 +38,7 @@ export type StructuredAgentSessionUnexpectedExitContext<
   publishStatus?: (sessionId: string) => void
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
-  onBarrierError?: (sessionId: string, error: unknown) => void
+  logger: StructuredAgentSessionLogger
 }
 
 export async function settleUnexpectedStructuredAgentSessionExit<
@@ -93,10 +94,10 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       try {
         const barrier = await context.flushLifecycle(unexpectedEvent.sessionId)
         if (!barrier.ok) {
-          context.onBarrierError?.(unexpectedEvent.sessionId, barrier.error)
+          logExitFailure(context, unexpectedEvent, 'exit-lifecycle-barrier', barrier.error)
         }
       } catch (error) {
-        context.onBarrierError?.(unexpectedEvent.sessionId, error)
+        logExitFailure(context, unexpectedEvent, 'exit-lifecycle-barrier', error)
       }
       const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
       await retryUnexpectedExitSettlement({
@@ -137,7 +138,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
           exitReason: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
         })
       } catch (error) {
-        context.onBarrierError?.(unexpectedEvent.sessionId, error)
+        logExitFailure(context, unexpectedEvent, 'exit-owner-release', error)
       } finally {
         endChild()
         if (released) {
@@ -149,7 +150,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
 }
 
 async function retryUnexpectedExitSettlement(input: {
-  context: Pick<StructuredAgentSessionUnexpectedExitContext, 'onBarrierError'>
+  context: Pick<StructuredAgentSessionUnexpectedExitContext, 'logger'>
   event: UnexpectedExitLifecycleEvent
   journal: DeadGenerationJournal
   fence: number
@@ -158,8 +159,8 @@ async function retryUnexpectedExitSettlement(input: {
   exitedDuringStartup: boolean
   failureTextContext: AgentSessionFailureWordsContext
   showUnexpectedExitOutcome?: boolean
-}): Promise<boolean> {
-  return settleStructuredAgentSessionDeadGeneration({
+}): Promise<void> {
+  const settled = await settleStructuredAgentSessionDeadGeneration({
     journal: input.journal,
     sessionId: input.event.sessionId,
     fence: input.fence,
@@ -171,8 +172,23 @@ async function retryUnexpectedExitSettlement(input: {
     failureTextContext: input.failureTextContext,
     ...(input.exitedDuringStartup
       ? { exitedDuringStartup: { generation: input.event.acquisitionGeneration } }
-      : {}),
-    onError: input.context.onBarrierError
+      : {})
+  })
+  if (!settled.ok) {
+    logExitFailure(input.context, input.event, 'exit-settlement', settled.error)
+  }
+}
+
+function logExitFailure(
+  context: Pick<StructuredAgentSessionUnexpectedExitContext, 'logger'>,
+  event: UnexpectedExitLifecycleEvent,
+  scope: string,
+  error: unknown
+): void {
+  context.logger.warn('settling a provider exit did not finish', {
+    scope,
+    sessionId: event.sessionId,
+    error
   })
 }
 

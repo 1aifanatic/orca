@@ -34,6 +34,7 @@ import {
   type JournalLifecycleMutation,
   type JournalRow
 } from '../native-chat/agent-session-journal/journal-row-schema'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
@@ -154,6 +155,7 @@ beforeEach(async () => {
     return connection
   }
   host = await ensureStructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     stateDirectory: root,
     hostId: 'local',
     claimKeyId: 'key-1',

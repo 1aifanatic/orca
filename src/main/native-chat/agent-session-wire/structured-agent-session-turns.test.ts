@@ -10,6 +10,8 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { performCancel, type AgentSessionTurnContext } from './structured-agent-session-turns'
 import { createDeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { testEventSinkLogging } from './structured-agent-session-logger-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -51,6 +53,7 @@ describe('performCancel', () => {
     )
     const cancelTurn = vi.fn(async () => ({ cancelled: true }))
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -104,6 +107,7 @@ describe('performCancel', () => {
       }
     )
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -148,6 +152,7 @@ describe('performCancel', () => {
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -181,6 +186,7 @@ describe('performCancel', () => {
     const cancelTurn = vi.fn(async () => ({ cancelled: true }))
     const stopBackgroundTasks = vi.fn(async () => ({ cancelled: true }))
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -218,6 +224,7 @@ describe('performCancel', () => {
     const cancelTurn = vi.fn(async () => ({ cancelled: true }))
     const stopBackgroundTasks = vi.fn(async () => ({ cancelled: true }))
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -298,6 +305,7 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
     // Issued, not yet landed: the Stop's read takes its place behind it in the journal's queue.
     const landing = turnRow === 'landing' ? openTurn() : null
     const ctx: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,
@@ -357,7 +365,7 @@ describe('the note a Stop writes', () => {
   it('belongs to the turn whose row was emitted just before the Stop, with no flush', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-note-scope-'))
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind({ journal, fence: 1, publish: () => {} })
     const turnIdentity = {
       provider: 'legacy' as const,
@@ -395,6 +403,7 @@ describe('the note a Stop writes', () => {
       persistOptions: async () => undefined,
       resolvedBy: 'client-1',
       publish: vi.fn(),
+      logger: createStructuredAgentSessionLogger(),
       now: () => 1
     }
 

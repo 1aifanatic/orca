@@ -60,7 +60,8 @@ export class StructuredAgentSessionSinkQueue {
   constructor(
     private readonly deps: {
       watermarks: StructuredAgentSessionSinkWatermarks
-      onError?: (error: unknown) => void
+      /** The queue just failed for good; it accepts and runs nothing more. */
+      onFailed?: (error: unknown) => void
       readingControl?: StructuredAgentSessionReadingControl
       onBackpressureChange?: (
         backpressured: boolean,
@@ -291,7 +292,7 @@ export class StructuredAgentSessionSinkQueue {
   private fail = (error: unknown): void => {
     if (this.failure === null) {
       this.failure = { error }
-      this.deps.onError?.(error)
+      this.deps.onFailed?.(error)
     }
     this.dropBuffered()
     this.updateBackpressure()

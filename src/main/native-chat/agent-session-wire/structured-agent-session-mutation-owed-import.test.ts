@@ -141,8 +141,8 @@ describe('a mutation while an import is owed', () => {
 
     expect(await stopNamingNoTurn()).toMatchObject({ ok: true })
     expect(warned).toHaveBeenCalledWith(
-      '[agent-session] the import owed before a write failed:',
-      expect.objectContaining({ message: 'disk I/O error' })
+      '[agent-session] open-for-write: the import owed before a write failed',
+      expect.objectContaining({ error: new Error('disk I/O error') })
     )
   })
 })

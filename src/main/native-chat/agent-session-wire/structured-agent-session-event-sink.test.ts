@@ -23,6 +23,8 @@ import { openAgentSessionJournal } from '../agent-session-journal/journal-store-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { openJournalOwingImport } from '../agent-session-journal/journal-owed-import-test-support'
 import { createCodexJournalTranslator } from '../../codex/codex-structured-journal-translation'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { testEventSinkLogging } from './structured-agent-session-logger-test-support'
 
 const BODY: AgentJournalItemBody = {
   kind: 'message',
@@ -155,7 +157,7 @@ async function owingTarget(fence: number) {
 describe('deferred structured agent-session event sink', () => {
   it('buffers writes made before the journal exists and drains them in arrival order', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
 
     deferred.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     deferred.sink.appendItem(identity(1), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
@@ -174,7 +176,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('writes at the fence bound at submission time, so a rebind cannot backdate a write', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(target(1, log))
 
     deferred.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
@@ -191,7 +193,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('buffers replacement-acquisition events while unbound', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(target(1, log))
     deferred.unbind()
 
@@ -205,7 +207,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('resolves a lifecycle transition after journal bind and skips an existing state', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
 
     expect(
       deferred.sink.tryAppendLifecycleTransition?.(identity(0), BODY, () => identity(1), {
@@ -230,7 +232,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('drops buffered and later writes once closed, and refuses to rebind', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
 
     deferred.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     deferred.close()
@@ -243,7 +245,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('lands writes already handed to the journal when closed; only never-bound ones drop', async () => {
     const owed = await owingTarget(3)
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(owed.bound)
 
     deferred.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
@@ -267,7 +269,8 @@ describe('deferred structured agent-session event sink', () => {
     const errors: unknown[] = []
     const readingControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
-      onError: (error) => errors.push(error),
+      ...testEventSinkLogging(),
+      onFailed: (error) => errors.push(error),
       readingControl
     })
     deferred.bind(target(4, log, 0))
@@ -294,7 +297,11 @@ describe('deferred structured agent-session event sink', () => {
   })
 
   it('replaces a failed cached sink before recovery drain', async () => {
-    const runtime = new StructuredAgentSessionHostRuntimeState({ store: {} } as never)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the cached-sink path reads only the logger, on the failed drain.
+    const runtime = new StructuredAgentSessionHostRuntimeState({
+      store: {},
+      logger: createStructuredAgentSessionLogger()
+    } as never)
     const failed = runtime.eventSinkFor('session-1')
     failed.bind(target(1, [], 0))
     failed.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
@@ -314,6 +321,7 @@ describe('deferred structured agent-session event sink', () => {
     const changes: boolean[] = []
     const readingControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      ...testEventSinkLogging(),
       watermarks: {
         maxQueuedBytes: 1_000_000,
         lowQueuedBytes: 0,
@@ -351,6 +359,7 @@ describe('deferred structured agent-session event sink', () => {
     const changes: boolean[] = []
     const readingControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      ...testEventSinkLogging(),
       watermarks: {
         pauseQueuedBytes: 1_000_000,
         maxQueuedBytes: 1_000_000,
@@ -390,6 +399,7 @@ describe('deferred structured agent-session event sink', () => {
   it('admits a resolved append and publication as one bounded operation', async () => {
     const log: Recorded[] = []
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      ...testEventSinkLogging(),
       watermarks: {
         pauseQueuedOperations: 1,
         maxQueuedOperations: 2,
@@ -427,6 +437,7 @@ describe('deferred structured agent-session event sink', () => {
     const changes: boolean[] = []
     const readingControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      ...testEventSinkLogging(),
       watermarks: {
         pauseQueuedBytes: 1,
         maxQueuedBytes: 1_000_000,
@@ -457,7 +468,8 @@ describe('deferred structured agent-session event sink', () => {
     const log: Recorded[] = []
     const errors: unknown[] = []
     const deferred = createDeferredStructuredAgentSessionEventSink({
-      onError: (error) => errors.push(error),
+      ...testEventSinkLogging(),
+      onFailed: (error) => errors.push(error),
       watermarks: {
         pauseQueuedBytes: 1,
         maxQueuedBytes: 1,
@@ -492,6 +504,7 @@ describe('deferred structured agent-session event sink', () => {
     const firstControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const secondControl = { pauseReading: vi.fn(), resumeReading: vi.fn() }
     const deferred = createDeferredStructuredAgentSessionEventSink({
+      ...testEventSinkLogging(),
       watermarks: {
         pauseQueuedBytes: 1,
         maxQueuedBytes: 1_000_000,
@@ -529,7 +542,7 @@ describe('deferred structured agent-session event sink', () => {
       database: openTestJournalHostDatabase(root),
       mintEpoch: () => 'epoch-1'
     })
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     const batch = (ordinal: number) => [
       {
         kind: 'item' as const,
@@ -556,7 +569,7 @@ describe('deferred structured agent-session event sink', () => {
   it('keeps a rewritten streamed row in its place ahead of what was issued after it', async () => {
     // A Codex reply checkpointed, then another row, then the reply's next checkpoint.
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     const window: (() => void)[] = []
     const translator = createCodexJournalTranslator({
       sink: deferred.sink,
@@ -605,7 +618,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('coalesces provider activity as a publication without a journal write', async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
 
     deferred.sink.setActivity?.({ turnId: 'turn-1', text: 'Thinking' })
     deferred.sink.setActivity?.({ turnId: 'turn-1', text: 'Checking the result' })
@@ -623,7 +636,7 @@ describe('deferred structured agent-session event sink', () => {
 
   it('skips a publication handed over and then replaced, and runs its replacement after the write between them', async () => {
     const owed = await owingTarget(6)
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(owed.bound)
     const seen: string[] = []
     owed.bound.publish = (activity) =>
@@ -656,7 +669,7 @@ describe('producer linkage reaches the journal through every append path', () =>
   it('forwards the whole bundle on the plain and try append paths', async () => {
     for (const append of ['appendItem', 'tryAppendItem'] as const) {
       const log: Recorded[] = []
-      const deferred = createDeferredStructuredAgentSessionEventSink()
+      const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
       deferred.bind(target(5, log))
       deferred.sink[append]?.(identity(1), BODY, {
         ...LINKAGE,
@@ -680,7 +693,7 @@ describe('producer linkage reaches the journal through every append path', () =>
       'tryAppendLifecycleTransition'
     ] as const) {
       const log: Recorded[] = []
-      const deferred = createDeferredStructuredAgentSessionEventSink()
+      const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
       deferred.bind(target(5, log))
       deferred.sink[append]?.(identity(1), BODY, () => identity(1), {
         ...LINKAGE,
@@ -700,7 +713,7 @@ describe('producer linkage reaches the journal through every append path', () =>
     // would stamp whoever opened the batch onto all of them. Both callers are
     // single-producer today; a mixed batch would have to stamp per mutation.
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(target(5, log))
     deferred.sink.appendLifecycleBatch?.(
       'settle-1',
@@ -717,7 +730,7 @@ describe('producer linkage reaches the journal through every append path', () =>
 
   it("writes no linkage keys at all for the session's own agent", async () => {
     const log: Recorded[] = []
-    const deferred = createDeferredStructuredAgentSessionEventSink()
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
     deferred.bind(target(5, log))
     deferred.sink.appendItem(identity(1), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     await deferred.drained()

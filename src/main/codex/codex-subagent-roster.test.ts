@@ -13,6 +13,7 @@ import {
   type StructuredAgentSessionEventTarget
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { withJournalQueueMembers } from '../native-chat/agent-session-wire/structured-agent-session-journal-double-test-support'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import {
   CodexSubagentRoster,
   codexSubagentGroupIdentity,
@@ -119,7 +120,7 @@ function createQueuedHarness(): {
 } {
   const appended: Appended[] = []
   let clock = 1_000
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
   const journal = withJournalQueueMembers({
     appendItem: async (identity: AgentJournalItemIdentity, body: AgentJournalItemBody) => {
       appended.push({ identity, body })
