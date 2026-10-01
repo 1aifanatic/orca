@@ -1,5 +1,5 @@
 import {
-  AGENT_RESUME_IDENTITY_ERROR,
+  AGENT_RESUME_IDENTITY_DISCARDED_ERROR,
   agentResumeIdentityPermits
 } from '../../../shared/agent-resume-identity'
 import { toast } from 'sonner'
@@ -72,7 +72,9 @@ export function launchSleepingAgentSession(
 ): boolean {
   const state = useAppStore.getState()
   if (!agentResumeIdentityPermits(record.agent, record.providerSession)) {
-    toast.error(AGENT_RESUME_IDENTITY_ERROR)
+    // Why: consumed like a launched record, so one refusal is shown instead of one per activation.
+    state.clearSleepingAgentSession(record.paneKey)
+    toast.error(AGENT_RESUME_IDENTITY_DISCARDED_ERROR)
     return false
   }
   const launchConfig = record.launchConfig

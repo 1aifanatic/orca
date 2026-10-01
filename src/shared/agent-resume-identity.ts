@@ -10,6 +10,10 @@ import {
 export const AGENT_RESUME_IDENTITY_ERROR =
   'Cannot resume this session because its agent ownership could not be verified. The saved session is preserved. You can start a fresh agent separately.'
 
+/** Automatic wake consumes the refused record, so this text must not promise it is kept. */
+export const AGENT_RESUME_IDENTITY_DISCARDED_ERROR =
+  "Cannot resume this session because it belongs to a different agent. Orca removed its saved resume entry; the agent's own session history was not touched. You can start a fresh agent separately."
+
 /** Only the saved hook route can establish a legacy session's provider. */
 export function decodeHookResumeSession(
   raw: unknown,

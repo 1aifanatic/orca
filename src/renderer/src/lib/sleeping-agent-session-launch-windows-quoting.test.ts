@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { AGENT_RESUME_IDENTITY_ERROR } from '../../../shared/agent-resume-identity'
+import { AGENT_RESUME_IDENTITY_DISCARDED_ERROR } from '../../../shared/agent-resume-identity'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 
 const mockCreateTab = vi.fn()
@@ -112,16 +112,16 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
   })
 
-  it('visibly refuses an identity naming another agent without creating a resume tab', async () => {
+  it('visibly refuses and consumes an identity naming another agent without creating a resume tab', async () => {
     await expect(
       launch({
         ...record,
         providerSession: { ...record.providerSession, resumeIdentity: { agent: 'claude' } }
       })
     ).resolves.toBeUndefined()
-    expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_ERROR)
+    expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_DISCARDED_ERROR)
     expect(mockCreateTab).not.toHaveBeenCalled()
-    expect(store.clearSleepingAgentSession).not.toHaveBeenCalled()
+    expect(store.clearSleepingAgentSession).toHaveBeenCalledWith(record.paneKey)
   })
 
   it('resumes an owned record exactly like a legacy one', async () => {
