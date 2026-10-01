@@ -27,10 +27,18 @@ function isAttachmentLocation(value: unknown): value is NativeChatDraftAttachmen
 /** Launch text Orca typed into a terminal agent's input line, which still holds it. */
 export type NativeChatTuiInputSeed = { agent: TuiAgent; text: string; createdAt: number }
 
+/**
+ * The newest message the host had accepted in the chat, in host order, as this client saw it when
+ * the draft was saved; `sequence` 0 when it had seen none. A message the host accepted after it
+ * with the draft's own content was sent from this draft, even if the draft's clear never landed.
+ */
+export type NativeChatDraftSentBaseline = { epoch: string; sequence: number }
+
 export type PersistedNativeChatDraft = {
   text: string
   attachments: readonly NativeChatDraftAttachment[]
   tuiInputSeed?: NativeChatTuiInputSeed
+  sentBaseline?: NativeChatDraftSentBaseline
 }
 
 export function isEmptyNativeChatDraft(draft: PersistedNativeChatDraft): boolean {
@@ -194,6 +202,16 @@ function parseTuiInputSeed(value: unknown): { tuiInputSeed?: NativeChatTuiInputS
     : {}
 }
 
+function parseSentBaseline(value: unknown): { sentBaseline?: NativeChatDraftSentBaseline } {
+  if (!isRecord(value)) {
+    return {}
+  }
+  const { epoch, sequence } = value
+  return typeof epoch === 'string' && typeof sequence === 'number'
+    ? { sentBaseline: { epoch, sequence } }
+    : {}
+}
+
 function parseStoredDraft(
   raw: string | null
 ): (PersistedNativeChatDraft & { savedAt: number }) | null {
@@ -205,7 +223,7 @@ function parseStoredDraft(
     if (!isRecord(value)) {
       return null
     }
-    const { text, attachments, tuiInputSeed, savedAt } = value
+    const { text, attachments, tuiInputSeed, sentBaseline, savedAt } = value
     if (typeof text !== 'string' || !Array.isArray(attachments)) {
       return null
     }
@@ -214,7 +232,8 @@ function parseStoredDraft(
       attachments: attachments
         .map(parseAttachment)
         .filter((attachment): attachment is NativeChatDraftAttachment => attachment !== null),
-      ...parseTuiInputSeed(tuiInputSeed)
+      ...parseTuiInputSeed(tuiInputSeed),
+      ...parseSentBaseline(sentBaseline)
     }
     return isEmptyNativeChatDraft(draft)
       ? null

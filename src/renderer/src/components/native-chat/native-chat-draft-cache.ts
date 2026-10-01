@@ -15,12 +15,15 @@ import {
   resetNativeChatDraftStorageForTests,
   scheduleNativeChatDraftPersist,
   type NativeChatDraftAttachment,
+  type NativeChatDraftSentBaseline,
   type NativeChatDraftWriteResult,
   type NativeChatTuiInputSeed,
   type PersistedNativeChatDraft
 } from './native-chat-draft-storage'
+import { draftWasSentAfterSaving, type NativeChatSentHistory } from './native-chat-draft-sent-match'
 
 export type { NativeChatDraftAttachment, NativeChatDraftWriteResult, NativeChatTuiInputSeed }
+export type { NativeChatSentHistory }
 
 /**
  * The chat a draft belongs to. A structured chat is its session, whichever pane shows it. A chat
@@ -40,6 +43,10 @@ type DraftEntry = Omit<PersistedNativeChatDraft, 'attachments'> & {
 
 const EMPTY_ATTACHMENTS: readonly NativeChatDraftChip[] = []
 const draftCache = new Map<string, DraftEntry>()
+// Saved drafts that can be checked against what the chat's host accepted; shown only once checked.
+const heldDrafts = new Map<string, DraftEntry>()
+// The newest host row each chat's view has seen; saved with the draft as its sent baseline.
+const latestSeenSends = new Map<string, NativeChatDraftSentBaseline>()
 let hydrated = false
 
 let observingOtherWindows = false
@@ -50,7 +57,11 @@ function drafts(): Map<string, DraftEntry> {
     for (const [draftKey, draft] of loadPersistedNativeChatDrafts(
       NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
     )) {
-      draftCache.set(draftKey, draft)
+      if (draft.sentBaseline) {
+        heldDrafts.set(draftKey, draft)
+      } else {
+        draftCache.set(draftKey, draft)
+      }
     }
     if (!observingOtherWindows) {
       observingOtherWindows = true
@@ -59,6 +70,7 @@ function drafts(): Map<string, DraftEntry> {
         // This window's pending chips never reach disk, so the other window cannot know them.
         const pending = readEntry(draftKey).attachments.filter((chip) => chip.pending)
         const saved = draft ?? { text: '', attachments: EMPTY_ATTACHMENTS }
+        heldDrafts.delete(draftKey)
         setEntry(draftKey, { ...saved, attachments: [...saved.attachments, ...pending] })
       })
     }
@@ -112,6 +124,7 @@ export function discardNativeChatDrafts(ended: {
     }
   }
   for (const draftKey of doomed) {
+    heldDrafts.delete(draftKey)
     if (drafts().has(draftKey)) {
       setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS })
     }
@@ -121,9 +134,11 @@ export function discardNativeChatDrafts(ended: {
 
 function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
   const entry = drafts().get(draftKey)
+  const sentBaseline = latestSeenSends.get(draftKey) ?? entry?.sentBaseline
   return entry
     ? {
         ...entry,
+        ...(sentBaseline ? { sentBaseline } : {}),
         attachments: entry.attachments.flatMap(({ pending, ...attachment }) =>
           pending ? [] : [attachment]
         )
@@ -258,6 +273,41 @@ export function appendNativeChatDraftNow(
   return persistNow(draftKey)
 }
 
+export function noteNativeChatDraftLatestSend(
+  draftKey: string,
+  latest: NativeChatDraftSentBaseline
+): void {
+  latestSeenSends.set(draftKey, latest)
+}
+
+/**
+ * Shows a saved draft held at launch, unless the host accepted a message with its exact content
+ * after the draft was saved: then the send happened and only its clear was lost (a crash right
+ * after Enter), so the draft is dropped for good. `null` history (unreachable, or none to read)
+ * restores it, since losing contact is not proof the message was sent.
+ */
+export function settleHeldNativeChatDraft(
+  draftKey: string,
+  history: NativeChatSentHistory | null
+): void {
+  // Loads what was saved, if no view has read it yet.
+  drafts()
+  const held = heldDrafts.get(draftKey)
+  if (!held) {
+    return
+  }
+  heldDrafts.delete(draftKey)
+  if (history && draftWasSentAfterSaving(held, history)) {
+    // Disk now holds whatever this window has, which no longer includes the sent text.
+    persistNow(draftKey)
+    return
+  }
+  if (held.sentBaseline && !latestSeenSends.has(draftKey)) {
+    latestSeenSends.set(draftKey, held.sentBaseline)
+  }
+  appendNativeChatDraftNow(draftKey, { text: held.text, attachments: held.attachments })
+}
+
 /** Puts content back only into an empty draft, so nothing the user typed since is touched. */
 export function restoreNativeChatDraftIfEmpty(
   draftKey: string,
@@ -299,6 +349,8 @@ const documentCache = new Map<string, { text: string; document: JSONContent }>()
 /** Clears memory and the saved drafts on disk. */
 export function clearNativeChatDraftCacheForTests(): void {
   draftCache.clear()
+  heldDrafts.clear()
+  latestSeenSends.clear()
   documentCache.clear()
   hydrated = false
   resetNativeChatDraftStorageForTests()
