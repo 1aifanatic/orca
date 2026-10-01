@@ -44,6 +44,7 @@ import {
 import {
   childWhoseStartFailed,
   closeWhatTheUserClosed,
+  endChildWhoseStartFailed,
   startThatFailedUnrecorded,
   structuredAgentSessionEndedChildFailure
 } from './structured-agent-session-ended-child-failure'
@@ -188,7 +189,7 @@ export class StructuredAgentSessionDeliveryLoop {
     const failedChild = childWhoseStartFailed(session, next)
     if (failedChild) {
       return failedChild === 'end'
-        ? this.deps.endFailedStart(sessionId).then(() => 'continue')
+        ? endChildWhoseStartFailed(session, sessionId, this.deps)
         : this.stop(sessionId, decidedAt)
     }
     // A running command takes no input while its child carries it; its end is a commit, which

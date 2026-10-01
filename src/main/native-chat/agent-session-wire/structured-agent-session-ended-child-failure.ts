@@ -9,8 +9,12 @@ import type {
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
-import { failedProviderChildStart } from './structured-agent-session-provider-child'
+import {
+  failedProviderChildStart,
+  pendingProviderChildWindDown
+} from './structured-agent-session-provider-child'
 import { submissionsHandedToChild } from './structured-agent-session-start-attempt-failure'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 /** A start that died while nothing recorded it — its exit landed between steps, say: the message
  *  that waited on it, and any its child was handed, take its failure rather than starting again. */
@@ -73,7 +77,8 @@ export function structuredAgentSessionEndedChildFailure(
 
 /** A child whose start the loop already recorded as failed, still indexed until its end lands:
  *  `end` it when a message is ready to go, so that message has a fresh start; `wait` for its end
- *  otherwise; null when there is no such child. */
+ *  otherwise; null when there is no such child, or its stop is already owed: the next start retries
+ *  that stop, and waits while it cannot prove the exit. */
 export function childWhoseStartFailed(
   session: StructuredAgentSessionHostSession,
   next: AgentJournalSubmission | undefined
@@ -81,7 +86,35 @@ export function childWhoseStartFailed(
   if (!session.child?.startFailed) {
     return null
   }
-  return next ? 'end' : 'wait'
+  if (!next) {
+    return 'wait'
+  }
+  return pendingProviderChildWindDown(session) ? null : 'end'
+}
+
+/** Ends a child whose start failed. A stop that could not prove the exit leaves it owed, which the
+ *  next step waits on as for any such stop; it is not the message's failure. */
+export async function endChildWhoseStartFailed(
+  session: StructuredAgentSessionHostSession,
+  sessionId: string,
+  deps: {
+    endFailedStart: (sessionId: string) => Promise<void>
+    logger: StructuredAgentSessionLogger
+  }
+): Promise<'continue'> {
+  try {
+    await deps.endFailedStart(sessionId)
+  } catch (error) {
+    if (!pendingProviderChildWindDown(session)) {
+      throw error
+    }
+    deps.logger.warn('ending a failed start left its stop owed', {
+      scope: 'delivery-loop-end-failed-start',
+      sessionId,
+      error
+    })
+  }
+  return 'continue'
 }
 
 /** A close of this chat that stopped its child and then did not complete still closed what was
