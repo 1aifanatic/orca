@@ -26,6 +26,7 @@ describe("the phone's status stream", () => {
     frames = []
     stateListeners = []
     // A fresh client per test: the stream is one per client for its life.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reaches the client only through subscribe and onStateChange.
     client = {
       subscribe: vi.fn((_method: string, _params: unknown, onData: (value: unknown) => void) => {
         frames.push(onData)

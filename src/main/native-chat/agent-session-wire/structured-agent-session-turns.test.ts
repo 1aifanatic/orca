@@ -157,8 +157,13 @@ describe('performCancel', () => {
       journal,
       fence: 1,
       adapter: {
-        cancelTurn: vi.fn(async () => ({ cancelled: false, refusal: { detail: REFUSAL } }))
-      } as unknown as StructuredAgentSessionAdapter,
+        acquire: vi.fn(),
+        dispatch: vi.fn(),
+        closeSession: vi.fn(),
+        cancelTurn: vi.fn(async () => ({ cancelled: false, refusal: { detail: REFUSAL } })),
+        answerPrompt: vi.fn(),
+        setOption: vi.fn()
+      },
       persistOptions: async () => undefined,
       resolvedBy: 'client-1',
       publish: vi.fn(),

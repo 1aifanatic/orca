@@ -290,6 +290,7 @@ describe("useMobileStructuredAgentSession and the host's Stopping", () => {
         : Promise.resolve({ ok: true, result: {}, _meta: { runtimeId: 'r1' } })
     )
     // A fresh client per test: the status stream is one per client for its life.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the session hook and its status feed call only these members here; a missing one would throw at once, never misread.
     client = {
       sendRequest,
       subscribe,
