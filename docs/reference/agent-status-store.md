@@ -288,7 +288,13 @@ Every lane, Codex included, combines through the fold. A child waiting on a
 human is a fold input (`childWorkLiveness: 'waiting'`, derived from the child's
 own `waiting` state; a child's `blocked` means it failed and stays live work)
 and makes the row wait whatever the main agent is doing, unless the main agent
-is itself asking. Only the Codex hook lane feeds that input today. Known
+is itself asking. The Codex hook lane feeds it from its child transcripts; the
+structured lanes feed it from child records, which read `waiting` for a Codex
+child thread's `waitingOnApproval` or `waitingOnUserInput` flag and for a
+Claude subagent's pending permission request. The structured lane also states
+the request itself: the status summary's `awaitsUser` (someone in the session
+must answer, whoever asked) is a fold input of its own, so a subagent's request
+makes the row wait even when no child record carries it. Known
 divergences, pinned by name in the parity table
 (`src/shared/main-agent-status-parity.test.ts`) where they are reachable, so a
 reader does not mistake them for drift:
@@ -301,10 +307,10 @@ reader does not mistake them for drift:
   first.
 - The structured lane reads the main agent's OWN pending prompt as its
   `blocked` (the session's `attention`), where the hook lane reads it as
-  `waiting`. A Claude subagent's prompt is not the main agent's: its row names
-  the subagent, the child's record reads `waiting`, and the waiting arm makes
-  the row wait. A Codex child-thread prompt row names no child yet, so a Codex
-  child's request still reads as the main agent's `blocked`.
+  `waiting`. A subagent's prompt, Claude's or Codex's, is not the main agent's:
+  its prompt row names the subagent, `status` stays the main agent's own, and
+  `awaitsUser` makes the row wait. A client that predates `awaitsUser` is sent
+  `attention` for either ask (`agent-session.status-awaits-user.v1`).
 - The Codex hook lane drops its roster on a root `Stop` when it tracks no
   child transcripts, so a still-running or still-asking child stops holding
   the row.
