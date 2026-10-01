@@ -32,7 +32,7 @@ export type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-t
 
 export class ClaudeRuntimeAuthService {
   private mutationQueue: Promise<unknown> = Promise.resolve()
-  constructor(private readonly store: Store) {
+  constructor(private readonly store: Pick<Store, 'getSettings'>) {
     if (claudeProfileRoutingEnabled()) {
       installClaudeProfileRoutingAuthority(
         createNativeClaudeProfileRouting({
@@ -54,7 +54,9 @@ export class ClaudeRuntimeAuthService {
   async prepareForClaudeLaunch(
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRuntimeAuthPreparation> {
-    const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
+    const effectiveTarget = resolveWslDefaultTarget(
+      target ?? this.getDefaultAccountSelectionTarget()
+    )
     const profiles = getClaudeProfileRoutingAuthority()
     if (profiles) {
       // Why: an unrouted WSL distro launches System Default with no guest call, as before profiles.
@@ -69,7 +71,7 @@ export class ClaudeRuntimeAuthService {
   async prepareForRateLimitFetch(
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRuntimeAuthPreparation> {
-    const effective = target ?? this.getDefaultAccountSelectionTarget()
+    const effective = resolveWslDefaultTarget(target ?? this.getDefaultAccountSelectionTarget())
     try {
       const profiles = getClaudeProfileRoutingAuthority()
       if (!profiles) {
@@ -99,7 +101,9 @@ export class ClaudeRuntimeAuthService {
     access: ClaudeProfileHostAccess = 'if-running'
   ): Promise<void> {
     await this.serializeMutation(async () => {
-      const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
+      const effectiveTarget = resolveWslDefaultTarget(
+        target ?? this.getDefaultAccountSelectionTarget()
+      )
       const profiles = getClaudeProfileRoutingAuthority()
       if (!profiles) {
         throw new Error('Claude profile routing is unavailable.')
@@ -132,7 +136,12 @@ export class ClaudeRuntimeAuthService {
 
   getRuntimeConfigDir(target?: ClaudeAccountSelectionTarget): string {
     const legacy = () => new ClaudeRuntimePathResolver().getRuntimePaths().configDir
-    return getClaudeProfileRoutingAuthority()?.configDirOr(target, legacy) ?? legacy()
+    return (
+      getClaudeProfileRoutingAuthority()?.configDirOr(
+        target && resolveWslDefaultTarget(target),
+        legacy
+      ) ?? legacy()
+    )
   }
 
   private async safeSyncForCurrentSelection(): Promise<void> {
@@ -186,4 +195,15 @@ export class ClaudeRuntimeAuthService {
       provenance: 'system'
     }
   }
+}
+
+/** A WSL target that names no distro means the default distro, as Claude launches it there. */
+function resolveWslDefaultTarget(
+  target: ClaudeAccountSelectionTarget
+): ClaudeAccountSelectionTarget {
+  if (target.runtime !== 'wsl' || target.wslDistro?.trim()) {
+    return target
+  }
+  const defaultDistro = getDefaultWslDistro()
+  return defaultDistro ? { runtime: 'wsl', wslDistro: defaultDistro } : target
 }
