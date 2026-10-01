@@ -66,6 +66,7 @@ export type PaneEvidenceSignals = {
   hookAgent: TuiAgent | null
   focusedCompletedHookAgent?: TuiAgent | null
   processAgent?: TuiAgent | null
+  sleepingSessionAgent?: TuiAgent | null
   launchAgent?: TuiAgent
 }
 
@@ -83,6 +84,7 @@ export function withoutEndedOwnerEvidence<T extends PaneEvidenceSignals>(
     hookAgent: paneEvidenceAgent(presence, args.hookAgent),
     focusedCompletedHookAgent: paneEvidenceAgent(presence, args.focusedCompletedHookAgent),
     processAgent: paneEvidenceAgent(presence, args.processAgent),
+    sleepingSessionAgent: paneEvidenceAgent(presence, args.sleepingSessionAgent),
     launchAgent: paneEvidenceAgent(presence, args.launchAgent) ?? undefined
   }
 }

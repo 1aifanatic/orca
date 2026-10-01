@@ -56,16 +56,17 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
   const runtimePaneTitlesByPaneId = useAppStore(
     useShallow((store) => store.runtimePaneTitlesByTabId[tabId] ?? {})
   )
-  const tabAgentTypeByLeaf = useAppStore((store) =>
-    selectTerminalTabAgentTypesByLeaf(
-      store.agentStatusByPaneKey,
-      tabId,
-      store.paneForegroundAgentByPaneKey,
-      store.agentPresenceByPaneKey
-    )
-  )
-  const agentPresenceByPaneKey = useAppStore((store) =>
-    selectAgentPresencesForTab(store.agentPresenceByPaneKey, tabId)
+  // Why one selector: TerminalPane mounts per retained tab, so each subscription is a per-tab listener.
+  const { tabAgentTypeByLeaf, agentPresenceByPaneKey } = useAppStore(
+    useShallow((store) => ({
+      tabAgentTypeByLeaf: selectTerminalTabAgentTypesByLeaf(
+        store.agentStatusByPaneKey,
+        tabId,
+        store.paneForegroundAgentByPaneKey,
+        store.agentPresenceByPaneKey
+      ),
+      agentPresenceByPaneKey: selectAgentPresencesForTab(store.agentPresenceByPaneKey, tabId)
+    }))
   )
   const savedLayout = useAppStore((store) => store.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
   const terminalTab = useAppStore((store) =>

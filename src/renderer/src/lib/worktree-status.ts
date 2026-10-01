@@ -23,6 +23,7 @@ export type WorktreeStatus =
   | 'permission'
   | 'failed'
   | 'interrupted'
+  | 'unconfirmed'
   | 'done'
   | 'inactive'
 
@@ -43,6 +44,7 @@ const STATUS_LABELS: Record<WorktreeStatus, string> = {
   permission: 'Needs permission',
   failed: 'Failed',
   interrupted: 'Interrupted',
+  unconfirmed: 'Couldn’t confirm',
   done: 'Done',
   inactive: 'Inactive'
 }
@@ -207,6 +209,7 @@ export function resolveWorktreeStatus(args: {
   hasLiveMonitoring?: boolean
   hasFailed?: boolean
   hasInterrupted?: boolean
+  hasUnconfirmed?: boolean
   hasLiveDone: boolean
   hasRetainedDone: boolean
   hasRetainedFailed?: boolean
@@ -247,7 +250,11 @@ export function resolveWorktreeStatus(args: {
   if (args.hasRetainedFailed) {
     return 'failed'
   }
-  // A stop follows live states, but must not collapse into success.
+  // Why: an end Orca cannot prove is not a finish, and unlike a user's Stop it is news.
+  if (args.hasUnconfirmed) {
+    return 'unconfirmed'
+  }
+  // A user's Stop follows every state that is news, but must not collapse into success.
   if (args.hasInterrupted) {
     return 'interrupted'
   }
