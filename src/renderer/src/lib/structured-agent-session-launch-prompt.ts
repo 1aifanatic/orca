@@ -2,6 +2,7 @@ import type {
   AgentSessionMutationResult,
   AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import {
   requeueStructuredAgentSessionSendRefusal,
   stageStructuredAgentSessionOutboxEntryForSend,
@@ -16,6 +17,10 @@ import {
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import {
+  awaitStructuredLaunchPromptHandover,
+  structuredLaunchPromptHandover
+} from '@/lib/structured-agent-session-launch-prompt-handover'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -95,9 +100,13 @@ function mutateEntry(
   )
 }
 
+/** How the host first answered an admitted launch prompt: the message, or held as a queued draft. */
+type LaunchPromptAnswer = AgentJournalSubmission | 'queued'
+
 async function dispatchStructuredLaunchPrompt(
   entry: StructuredAgentSessionOutboxEntry,
-  receipt: LaunchReceipt
+  receipt: LaunchReceipt,
+  onAnswer: (answer: LaunchPromptAnswer) => void
 ): Promise<boolean> {
   // Why: an unsaved stage must leave the entry queued; a held 'dispatching' copy is never drained.
   if (
@@ -131,8 +140,10 @@ async function dispatchStructuredLaunchPrompt(
     if ('queued' in result.value) {
       // The host holds the draft; the outbox entry is spent.
       mutateEntry(entry, () => null)
+      onAnswer('queued')
       return true
     }
+    onAnswer(result.value.submission)
     const dispatchState = result.value.submission.dispatchState
     mutateEntry(entry, (current) =>
       dispatchState === 'accepted'
@@ -169,13 +180,23 @@ export function settleStructuredAgentLaunchPrompt(args: {
       return { delivered: false, failureNotified: true }
     }
     const entry = args.stagedEntry
+    let answer: LaunchPromptAnswer | undefined
     const dispatch = shareStructuredAgentLaunchPromptDispatch(
       entry.sessionId,
       entry.clientMessageId,
       receipt.fence,
-      () => dispatchStructuredLaunchPrompt(entry, receipt)
+      () =>
+        dispatchStructuredLaunchPrompt(entry, receipt, (answered) => {
+          answer = answered
+        })
     )
-    const delivered = await dispatch.promise
+    // Admitted is not delivered: the chat's first message starts its agent, which may fail. A
+    // queued draft keeps its old meaning; a dispatch the chat's own outbox ran answered elsewhere.
+    const delivered =
+      (await dispatch.promise) &&
+      (answer === 'queued' ||
+        (answer !== undefined && structuredLaunchPromptHandover(answer) === 'handed-over') ||
+        (await awaitStructuredLaunchPromptHandover(entry.sessionId, entry.clientMessageId)))
     if (delivered) {
       args.options.onPromptDelivered?.()
     }
