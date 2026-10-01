@@ -61,19 +61,16 @@ async function runningTurn(identity: AgentJournalItemIdentity): Promise<void> {
 
 /** Orca dies with the turn's end unwritten; the relaunch reopens the chat from disk and proves
  *  the old child gone (its last renewal came before the Stop), then settles what it left. */
-async function restartAndSettle(proof: 'pid-absent' | 'unproven' = 'pid-absent'): Promise<void> {
+async function restartAndSettle(
+  proof: 'pid-absent' | 'exit-observed' | 'unproven' = 'pid-absent'
+): Promise<void> {
   rig.crashRestartHostProcess()
   await rig.host.journalSnapshot(HOST_TEST_SESSION)
   const now = Date.now()
   const deathEvidence: AgentSessionDeathEvidence | null =
-    proof === 'pid-absent'
-      ? {
-          kind: 'pid-absent',
-          observedAt: now + 60_000,
-          ownerFence: 1,
-          lastProvenAliveAt: now - 20_000
-        }
-      : null
+    proof === 'unproven'
+      ? null
+      : { kind: proof, observedAt: now + 60_000, ownerFence: 1, lastProvenAliveAt: now - 20_000 }
   await settleStaleStructuredAgentSessionState({
     journal: journal(),
     sessionId: HOST_TEST_SESSION,
@@ -171,6 +168,29 @@ describe('a restart between a Stop and its turn end', () => {
     expect(turn).not.toHaveProperty('outcome')
     expect(label).toMatch(/^Failed after /)
     expect(mark).toBe('failed')
+  })
+
+  it('reads a turn a send made after a Stop pressed before any turn showed as no Stop of its', async () => {
+    rig = await createQueuedMessageTestRig()
+    const stopped = await rig.workingSend()
+    // Pressed before the turn showed: the Stop names no turn.
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(journal().stopMarks.latest()?.event.turnId).toBeUndefined()
+    await rig.settleAccepted(stopped, 'stopped')
+    const next = rig.send('sent after the Stop')
+    await next.result
+    await rig.settleAccepted(next.id, 'next')
+    await journal().appendItem(
+      CODEX_TURN,
+      { kind: 'turn', turnId: TURN, state: 'running', startedAt: Date.now() - 30_000 },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+
+    // Its exit is proven after the Stop, so only whose turn it is decides.
+    await restartAndSettle('exit-observed')
+
+    expect(settled().turn).toMatchObject({ state: 'interrupted' })
+    expect(settled().turn).not.toHaveProperty('outcome')
   })
 
   it('a Stop pressed again after a refusal is a new Stop, which its turn end reads', async () => {
