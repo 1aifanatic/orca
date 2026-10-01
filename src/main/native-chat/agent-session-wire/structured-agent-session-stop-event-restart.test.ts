@@ -186,7 +186,8 @@ describe('a restart between a Stop and its turn end', () => {
   })
 
   // Codex refuses a Stop naming a turn that is no longer its active one ("expected active turn id
-  // X but found Y"). The Stop names X, so Y's end is never the person's, by its turn id alone.
+  // X but found Y"), as a turn not running, so the child stays. The Stop names X, so Y's end is
+  // never the person's, by its turn id alone.
   it('reads Failed for the turn running when the provider refused a Stop naming the one before it', async () => {
     await runningTurn(CODEX_TURN)
     rig.cancelTurn.mockResolvedValueOnce({
@@ -195,7 +196,8 @@ describe('a restart between a Stop and its turn end', () => {
         detail: {
           text: `expected active turn id ${TURN} but found ${NEXT_TURN}`,
           audience: 'person'
-        }
+        },
+        turnNotRunning: true
       }
     })
     const fields = { turnId: TURN }

@@ -32,11 +32,12 @@ import type {
   AgentSessionThreadGoalChange
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
+import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type {
-  ProviderDiagnostic,
-  SubmissionRejectionFact
-} from '../../../shared/agent-session-failure'
-import type { StructuredAgentSessionAdapterStop } from './structured-agent-session-adapter-stop'
+  AgentSessionCancelOutcome,
+  StructuredAgentSessionAdapterStop
+} from './structured-agent-session-adapter-stop'
+export type { AgentSessionCancelOutcome } from './structured-agent-session-adapter-stop'
 export type {
   StructuredAgentSessionChildEndCause,
   StructuredAgentSessionStopCause
@@ -237,12 +238,6 @@ export type StructuredAgentSessionSetOptionInput = {
   key: string
   value: string
   fence: number
-}
-
-/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any. */
-export type AgentSessionCancelOutcome = {
-  cancelled: boolean
-  refusal?: { detail?: ProviderDiagnostic }
 }
 
 export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & {

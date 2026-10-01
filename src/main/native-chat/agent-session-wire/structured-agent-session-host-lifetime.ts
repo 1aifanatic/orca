@@ -48,7 +48,7 @@ export type StructuredAgentSessionLifetimeContext = {
   }
 }
 
-type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkError'> & {
+type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
 }
 
@@ -71,7 +71,11 @@ export async function abandonQueuedStructuredAgentSessionMessages(
     .then(
       () => true,
       (error: unknown) => {
-        deps.onEventSinkError?.({ sessionId, error })
+        deps.logger.warn('rejecting queued messages of a closed chat failed', {
+          scope: 'queued-abandon',
+          sessionId,
+          error
+        })
         return false
       }
     )
@@ -165,7 +169,12 @@ function recordStopEvent(
     )
     .then(
       () => undefined,
-      (error: unknown) => context.deps.onEventSinkError?.({ sessionId, error })
+      (error: unknown) =>
+        context.deps.logger.warn("a host stop's Stop event row skipped", {
+          scope: 'stop-event',
+          sessionId,
+          error
+        })
     )
 }
 
@@ -194,7 +203,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedProviderChildWindDown(session)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
-  let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -202,6 +210,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     owesProviderChildWindDown: owed !== undefined,
     eventSink: context.runtimeState.eventSinkFor(sessionId),
     adapter: context.deps.adapter,
+    logger: context.deps.logger,
     ...(context.restartWitness
       ? { beforeProviderChildStop: () => context.restartWitness?.beforeStop(sessionId) }
       : {}),
@@ -235,15 +244,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         // Only a turn no adapter settled: one with no close, or whose settle threw. Whether it was
         // a person's Stop is its event's to say (`turnEndAfterStop`).
         verdict: { state: 'interrupted', completedAt: context.now() },
-        showUnexpectedExitOutcome: false,
-        onError: (id, error) => {
-          settlementError = error
-          context.deps.onEventSinkError?.({ sessionId: id, error })
-        }
+        showUnexpectedExitOutcome: false
       })
-      if (!settled) {
+      if (!settled.ok) {
+        context.deps.logger.warn("settling a closed agent's work failed", {
+          scope: 'close-settlement',
+          sessionId,
+          error: settled.error
+        })
         // Without the cause the log names the step and nothing else.
-        throw new Error('dead generation work settlement failed', { cause: settlementError })
+        throw new Error('dead generation work settlement failed', { cause: settled.error })
       }
     },
     releaseLease: async () => {

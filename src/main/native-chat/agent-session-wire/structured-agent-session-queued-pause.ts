@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { DerivedQueuePause } from '../agent-session-journal/queued-message-pause'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 /** A per-process id, minted once per host process like the runtime's own
  *  `runtimeId` (`orca-runtime-runtime-id.ts`); a draft written by another
@@ -35,7 +36,8 @@ export function structuredQueuePauses(journal: PauseJournal): DerivedQueuePause[
  */
 export async function adoptEndedRestartPause(
   sessionId: string,
-  journal: PauseJournal
+  journal: PauseJournal,
+  logger: StructuredAgentSessionLogger
 ): Promise<void> {
   try {
     const { queuedMessages } = journal
@@ -46,9 +48,10 @@ export async function adoptEndedRestartPause(
       await queuedMessages.adopt(hostInstance)
     }
   } catch (error) {
-    console.warn("[agent-session] a started turn's restart-pause adoption skipped:", {
+    logger.warn("adopting a restart's queued cards after a started turn failed", {
+      scope: 'queue-pause-adoption',
       sessionId,
-      error: error instanceof Error ? error.message : String(error)
+      error
     })
   }
 }
