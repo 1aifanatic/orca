@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
 import { HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
 import {
@@ -57,6 +58,28 @@ async function runningTurn(turnId = 'turn-1'): Promise<string> {
     { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   return working
+}
+
+/** The stopped send's turn opens after its turnless Stop and ends cut: the turn that Stop bound. */
+async function stoppedTurnEnded(): Promise<void> {
+  const fence = rig.store.getRecord(HOST_TEST_SESSION)?.lease.runtimeFence ?? 1
+  const scope = { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  const identity = {
+    provider: 'codex' as const,
+    threadId: 'thread-1',
+    turnId: 'turn-stopped',
+    ordinal: 998
+  }
+  await journal().appendItem(
+    identity,
+    { kind: 'turn', turnId: 'turn-stopped', state: 'running', startedAt: 1 },
+    scope
+  )
+  await journal().appendItem(
+    identity,
+    { kind: 'turn', turnId: 'turn-stopped', state: 'interrupted', completedAt: Date.now() },
+    scope
+  )
 }
 
 async function queuedDraft(text: string): Promise<string> {
@@ -141,6 +164,23 @@ describe('every Stop entry writes its event, with its reason, before it ends the
     expect(atClose.events).toEqual([])
   })
 
+  // The person's reason survives to the turn's end.
+  it("writes nothing when the host evicts a turn a person's Stop is still ending", async () => {
+    rig = await createQueuedMessageTestRig()
+    await runningTurn()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, 'evict')
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
+    const { items } = await rig.host.journalSnapshot(HOST_TEST_SESSION)
+    expect(items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)).toMatchObject({
+      state: 'interrupted',
+      outcome: 'cancellation'
+    })
+  })
+
   it("writes nothing at quit, whose resume marker's trigger records why", async () => {
     rig = await createQueuedMessageTestRig()
     await runningTurn()
@@ -217,6 +257,7 @@ describe("a person's Stop pause and the Stop events after it", () => {
     await queuedDraft('queued behind the turn')
     expect(await rig.stop()).toMatchObject({ ok: true })
     await rig.settleAccepted(working, 'stopped')
+    await stoppedTurnEnded()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     // Orchestration mail starts a turn the host sent, which lifts nothing.
     await rig.send('mail for the lead', undefined, { internal: true }).result
@@ -244,6 +285,7 @@ describe("a person's Stop pause and the Stop events after it", () => {
     const held = await queuedDraft('queued behind the turn')
     expect(await rig.stop()).toMatchObject({ ok: true })
     await rig.settleAccepted(working, 'stopped')
+    await stoppedTurnEnded()
     // The agent at rest goes, writing nothing; mail then starts a new child, which never lands.
     await idleSweep().tick()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })

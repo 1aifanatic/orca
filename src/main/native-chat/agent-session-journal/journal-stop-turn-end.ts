@@ -47,7 +47,7 @@ function stopIsTurnCancellation(
   stop: JournalLatestStop,
   turnId: string,
   state: TurnEndState,
-  itemId: string
+  itemId: string | null
 ): boolean {
   return (
     personStopMayNameTurn(stop, turnId) &&
@@ -56,13 +56,14 @@ function stopIsTurnCancellation(
 }
 
 /** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
- *  one: unless a send a person made since was accepted, whose turn that is. */
+ *  one: unless a send a person made since was accepted, whose turn that is. `itemId` null: a turn
+ *  not yet opened. */
 function turnlessStopStopped(
   state: TurnEndState,
   stop: JournalLatestStop,
-  itemId: string
+  itemId: string | null
 ): boolean {
-  const createdAt = state.items.get(itemId)?.sequence ?? null
+  const createdAt = itemId === null ? null : (state.items.get(itemId)?.sequence ?? null)
   if (
     (createdAt !== null && createdAt <= stop.sequence) ||
     state.latestPersonTurnSequence >= stop.sequence
@@ -80,6 +81,22 @@ function turnlessStopStopped(
     }
   }
   return true
+}
+
+/** Whether a person's Stop already decides the end of what runs now: the live turn `turnId`, or
+ *  with none, the turn a send opens next. A host stop of that work must not supersede it. */
+export function personStopInForce(state: TurnEndState, turnId: string | null): boolean {
+  const stop = state.queuePauseMarks.latestStop
+  if (!stop || !stopIsAPersons(stop.event.reason)) {
+    return false
+  }
+  if (turnId === null) {
+    return stop.event.turnId === undefined && turnlessStopStopped(state, stop, null)
+  }
+  const itemId = [...state.items].find(
+    ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
+  )?.[0]
+  return stopIsTurnCancellation(stop, turnId, state, itemId ?? null)
 }
 
 /**

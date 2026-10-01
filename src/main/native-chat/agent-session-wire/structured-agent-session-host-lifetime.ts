@@ -120,13 +120,18 @@ async function stopEndsWork(
   if ('recorded' in ending || ending.quit || ending.resting || !child) {
     return false
   }
-  return isMainAgentWorkingOnceFlushed(
+  const working = await isMainAgentWorkingOnceFlushed(
     {
       journal,
       fence: child.fence,
       flushStreamedEvents: () => context.runtimeState.flushEventSink(sessionId)
     },
     STOP_EVENT_DRAIN_TIMEOUT_MS
+  )
+  // A host stop of work a person's Stop is already ending must not supersede that Stop's reason.
+  return (
+    working &&
+    (ending.cause === 'user-close' || !journal.stopMarks.personStopInForce(journal.activeTurnId()))
   )
 }
 
