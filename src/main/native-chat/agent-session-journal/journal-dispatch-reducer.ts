@@ -6,6 +6,7 @@ import {
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import { notePersonTurnAccepted, placeHandedOverMessage } from './journal-submission-fold'
@@ -29,6 +30,10 @@ export function applyJournalDispatchRow(
     submission.rejection = rejection
   } else {
     delete submission.rejection
+  }
+  // A failed start's rejection proves its child took nothing it was handed: never handed over.
+  if (rejection && isFailedStartRejection({ reason: row.reason, rejection })) {
+    delete submission.handedOverAt
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   const startFailure =

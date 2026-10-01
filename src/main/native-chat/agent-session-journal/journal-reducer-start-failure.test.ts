@@ -127,6 +127,38 @@ describe('a failed start recorded on its message', () => {
     expect(rejected.startFailure).toBeUndefined()
   })
 
+  // A child that never proved its start took nothing it was handed, so no reader may read the
+  // message as possibly written, as one rejected after its handover otherwise reads.
+  it('reads a message its failed start rejected after its handover as never handed over', () => {
+    const handedThenRejected = (rejection: { kind: string }) =>
+      fold([
+        accepted,
+        {
+          kind: 'dispatch',
+          clientMessageId: 'cm_1',
+          state: 'pending',
+          providerItemId: null,
+          reason: null,
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE,
+          ...base(2)
+        },
+        fromDisk({
+          kind: 'dispatch',
+          clientMessageId: 'cm_1',
+          state: 'rejected',
+          providerItemId: null,
+          reason: 'Written by the host.',
+          rejection,
+          ...base(3)
+        })
+      ]).submissions.get('cm_1')!
+
+    expect(handedThenRejected({ kind: 'providerStartFailed' }).handedOverAt).toBeUndefined()
+    expect(handedThenRejected({ kind: 'hostStopped' }).handedOverAt).toBeUndefined()
+    // The provider refusing what it was handed is no failed start: it was handed over.
+    expect(handedThenRejected({ kind: 'providerRejected' }).handedOverAt).toBe(1_002)
+  })
+
   it('reads a malformed record as a plain handover: in doubt at the next open, never failed', () => {
     const submission = fold([
       accepted,
