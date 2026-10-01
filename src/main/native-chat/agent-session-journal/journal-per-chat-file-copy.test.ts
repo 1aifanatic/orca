@@ -1,6 +1,7 @@
 // A per-chat file's copy publishes the chat's status row from the copy's own fold, hands back the
-// load a replay would read, stops within one batch once quit aborts imports, and deletes the file
-// only while it is still as the copy's last read left it.
+// load a replay would read, stops within one batch once quit aborts imports, deletes what a stopped
+// try staged a batch at a time, and deletes the file only while it is still as it stood before the
+// verify read it.
 
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -184,7 +185,8 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
       const out = Reflect.apply(Object.getPrototypeOf(database).unsyncedTransaction, database, [
         run
       ])
-      if (batch.mock.calls.length === 2) {
+      // The delete of what an earlier try staged, then two copy batches.
+      if (batch.mock.calls.length === 3) {
         database.abortImports()
       }
       return out
@@ -194,7 +196,7 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
       JournalImportAbortedError
     )
 
-    expect(batch).toHaveBeenCalledTimes(2)
+    expect(batch).toHaveBeenCalledTimes(3)
     expect(readJournalSessionEpoch(database.db, 'session-quit')).toBeNull()
     expect((await readFile(legacyJournalDatabaseFile(directory))).equals(before)).toBe(true)
     // The next launch: its first batch deletes what the stopped one staged.
@@ -205,6 +207,53 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     expect(result.outcome).toBe('imported')
     expect([...iterateJournalEpochRows(db, 'session-quit', epoch)]).toEqual(rows)
     expect(db.prepare('SELECT count(*) AS n FROM journal_rows').get()).toEqual({ n: rows.length })
+  })
+
+  it('deletes what a stopped try staged a batch per task, and stops between those batches too', async () => {
+    const { directory, epoch, rows } = await stageChat('session-staged', manyItems)
+    const stage = openTestJournalHostDatabase(root).db.prepare(
+      'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
+    )
+    for (let seq = 1_001; seq <= 1_010; seq += 1) {
+      stage.run('session-staged', epoch, seq, 1, '{}')
+    }
+    /** The staged rows left after each batch transaction; quit lands after the `abortAfter`th. */
+    const trackStaged = (abortAfter?: number) => {
+      const database = openTestJournalHostDatabase(root)
+      const left: unknown[] = []
+      const batch = vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
+        const out = Reflect.apply(Object.getPrototypeOf(database).unsyncedTransaction, database, [
+          run
+        ])
+        left.push(
+          database.db
+            .prepare('SELECT count(*) AS n FROM journal_rows WHERE session_id = ? AND seq > 1000')
+            .get('session-staged')?.n
+        )
+        if (batch.mock.calls.length === abortAfter) {
+          database.abortImports()
+        }
+        return out
+      })
+      return left
+    }
+
+    const stopped = trackStaged(1)
+    await expect(importChat('session-staged', directory, { batchRows: 4 })).rejects.toBeInstanceOf(
+      JournalImportAbortedError
+    )
+    expect(stopped).toEqual([6])
+
+    // The next launch deletes the rest a batch at a time, then copies.
+    closeTestJournalHostDatabase(root)
+    const next = trackStaged()
+    expect((await importChat('session-staged', directory, { batchRows: 4 })).outcome).toBe(
+      'imported'
+    )
+    expect(next.slice(0, 2)).toEqual([2, 0])
+    expect([
+      ...iterateJournalEpochRows(openTestJournalHostDatabase(root).db, 'session-staged', epoch)
+    ]).toEqual(rows)
   })
 
   it('stops a verify within one batch of the abort, on the file side as on the copy side', async () => {
@@ -267,7 +316,7 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
   })
 })
 
-describe('a file written after its copy verified (T20)', () => {
+describe('a file written after its copy began verifying (T20)', () => {
   it('keeps the file, and the next try sets it aside rather than losing what was written', async () => {
     const { directory, epoch, rows } = await stageChat('session-moved', manyItems)
     const database = openTestJournalHostDatabase(root)
@@ -295,5 +344,51 @@ describe('a file written after its copy verified (T20)', () => {
         .prepare('SELECT tip FROM journal_set_aside WHERE session_id = ?')
         .get('session-moved')
     ).toEqual({ tip: rows.length + 1 })
+  })
+
+  it('keeps a file written while the verify reads the copy back, after it read the file', async () => {
+    const { directory, epoch, rows } = await stageChat('session-during', manyItems)
+    let reads = 0
+    let written = false
+    // The source's prepare caches statements, so wrap each one once.
+    const wrapped = new WeakSet<object>()
+    const openSource = (path: string) => {
+      const source = new Database(path, { readonly: true, fileMustExist: true })
+      const prepare = source.prepare.bind(source)
+      source.prepare = (sql: string) => {
+        const statement = prepare(sql)
+        if (!sql.includes('seq > ?') || wrapped.has(statement)) {
+          return statement
+        }
+        wrapped.add(statement)
+        const all = statement.all.bind(statement)
+        statement.all = (...args: Parameters<typeof all>) => {
+          reads += 1
+          // batchRows 1: the copy reads rows.length + 1 pages, the verify's file side as many again.
+          if (reads === 2 * (rows.length + 1)) {
+            // An older build appends while the copy side is still being read back.
+            setImmediate(() => {
+              const legacy = new Database(legacyJournalDatabaseFile(directory))
+              const last = rows.at(-1)!
+              legacy
+                .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
+                .run('session-during', epoch, last.seq + 1, last.ts + 1, last.rowJson)
+              legacy.close()
+              written = true
+            })
+          }
+          return all(...args)
+        }
+        return statement
+      }
+      return source
+    }
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const result = await importChat('session-during', directory, { batchRows: 1, openSource })
+
+    expect(written).toBe(true)
+    expect(result.outcome).toBe('imported')
+    expect(existsSync(legacyJournalDatabaseFile(directory))).toBe(true)
   })
 })

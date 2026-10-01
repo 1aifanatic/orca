@@ -3,15 +3,15 @@
 
 import { existsSync } from 'node:fs'
 import { perChatJournalRoot } from '../agent-session-journal/journal-paths'
-import { hasJournalSessionWithoutStatus } from '../agent-session-journal/journal-session-status-backfill'
 import {
   StructuredAgentSessionPerChatFileCopy,
   type PerChatFileCopyDeps
 } from './structured-agent-session-per-chat-file-copy'
+import { readStatusBackfillOwed } from './structured-agent-session-status-backfill-step'
 
 /** Starts the job, or returns null when there is nothing it may do: a newer build's database, a
  *  records file this launch could not read (a real chat's file would look like an orphan), or no
- *  old-file root and no chat without a status row. */
+ *  old-file root and no chat its second phase owes a status row. */
 export function startStructuredAgentSessionPerChatFileCopy(
   deps: PerChatFileCopyDeps
 ): StructuredAgentSessionPerChatFileCopy | null {
@@ -21,7 +21,7 @@ export function startStructuredAgentSessionPerChatFileCopy(
     database.legacyRecordImportOwed ||
     database.isClosed ||
     (!existsSync(perChatJournalRoot(database.stateDirectory)) &&
-      !hasJournalSessionWithoutStatus(database.db))
+      readStatusBackfillOwed(deps).length === 0)
   ) {
     return null
   }
@@ -53,11 +53,16 @@ export function createStructuredAgentSessionPerChatFileCopyControl(
         return
       }
       started = true
-      job = startStructuredAgentSessionPerChatFileCopy({
-        ...deps,
-        listedIds: input.listedIds,
-        isStartupChatWorkActive: () => input.isRuntimeChatWorkActive() || isHostChatWorkActive()
-      })
+      try {
+        job = startStructuredAgentSessionPerChatFileCopy({
+          ...deps,
+          listedIds: input.listedIds,
+          isStartupChatWorkActive: () => input.isRuntimeChatWorkActive() || isHostChatWorkActive()
+        })
+      } catch (error) {
+        // Bookkeeping: startup goes on, and the next launch derives what is owed again.
+        console.warn('[structured-agent-session] starting the copy of old chat files failed', error)
+      }
     },
     stop: async () => {
       // Every import stops at its next batch, the job's and a restored chat's owed one alike.

@@ -4,12 +4,14 @@
 // A chat is copied on its first use too; this job does the rest after startup. Its shape is the
 // common one for background maintenance: a fixed interval, a fixed budget per run checked before
 // each chat, a yield between chats, a run still going skips the next tick, and a failure is logged,
-// never thrown. A run waits while startup chat work is in flight (a tab listing, a history restore,
-// the settle step), re-derived before every run and every chat. What is owed is derived from the
-// files on disk, so nothing stored can disagree with it: listed chats first, in tab order, then a
-// walk of the old-file root. A file whose copy failed for good is skipped while it and the app
-// version stay as they were (journal-copy-failures.ts). Each chat copies inside its host serialize,
-// so a send to it goes first or waits for the rest of that copy; any other chat waits one batch.
+// never thrown: one chat's skips that chat, and any other ends the job for this launch. A run waits
+// while startup chat work is in flight (a tab listing, a history restore, the settle step),
+// re-derived before every run and every chat. What is owed is derived from the files on disk, so
+// nothing stored can disagree with it (structured-agent-session-per-chat-file-queue.ts). A file
+// whose copy failed for good is skipped while it and the app version stay as they were
+// (journal-background-failures.ts). A chat too big for the free space is left for a later launch;
+// below a floor no chat copies until space returns. Each chat copies inside its host serialize, so
+// a send to it goes first or waits for the rest of that copy; any other chat waits one batch.
 // Then, under the same budget and gate, every chat already in the database gets the status row the
 // version 5 migration left it without (structured-agent-session-status-backfill-step.ts).
 
@@ -17,26 +19,29 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
-  classifyJournalCopyFailure,
-  forgetJournalCopyFailure,
-  journalCopyFailureStands,
-  recordJournalCopyFailure,
-  statPerChatFile
-} from '../agent-session-journal/journal-copy-failures'
+  classifyJournalBackgroundFailure,
+  forgetJournalBackgroundFailure,
+  journalBackgroundFailureStands,
+  perChatFileInput,
+  recordJournalBackgroundFailure
+} from '../agent-session-journal/journal-background-failures'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
-import type { JournalLoad } from '../agent-session-journal/journal-open'
-import { isUnsettledJournalSessionStatus } from '../agent-session-journal/journal-session-state'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { isPerSessionJournalSetAside } from '../agent-session-journal/journal-per-session-reimport'
+import {
+  statPerChatFile,
+  type PerChatFileState
+} from '../agent-session-journal/journal-per-session-source'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
 import { createStructuredAgentSessionStatusBackfill } from './structured-agent-session-status-backfill-step'
+import { StructuredAgentSessionPerChatFileQueue } from './structured-agent-session-per-chat-file-queue'
 import {
-  hasRoomToCopy,
   removeEmptyPerChatDirectories,
-  walkPerChatFiles
+  roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
+import type { StructuredAgentSessionStartupState } from './structured-agent-session-startup-state'
 
 export const PER_CHAT_FILE_COPY_INTERVAL_MS = 1_000
 /** No run before this long after host startup: the first launch's paint and listing go first. */
@@ -45,7 +50,6 @@ export const PER_CHAT_FILE_COPY_RUN_BUDGET_MS = 200
 export const PER_CHAT_FILE_COPY_RUN_MAX_CHATS = 8
 /** After a run stopped for low disk, the next free-space probe waits this long. */
 export const PER_CHAT_FILE_COPY_DISK_RETRY_MS = 60_000
-const MAX_TRANSIENT_TRIES = 3
 
 export type PerChatFileCopyDeps = {
   database: JournalHostDatabase
@@ -59,8 +63,9 @@ export type PerChatFileCopyDeps = {
   openJournal: (
     sessionId: string
   ) => Pick<AgentSessionJournal, 'importPending' | 'whenImported'> | undefined
-  /** Settles a copied chat nobody has open, from the copy's load. Inside the chat's serialize. */
-  settleCopied: (record: AgentSessionRecord, loaded: JournalLoad) => Promise<void>
+  /** Settles a chat the job wrote a status row for, when startup would. Inside the chat's
+   *  serialize; never rejects. */
+  settleCopied: StructuredAgentSessionStartupState['settleCopied']
   isDisposed: () => boolean
   now: () => number
   appVersion: string
@@ -80,6 +85,7 @@ type TallyKey =
   | 'setAside'
   | 'failed'
   | 'skipped'
+  | 'noRoom'
   | 'orphans'
   | 'leftovers'
 
@@ -89,24 +95,19 @@ export class StructuredAgentSessionPerChatFileCopy {
   private finished = false
   private readonly startedAt: number
   private diskRetryAt = 0
-  private readonly listed: string[]
-  private readonly walk: AsyncGenerator<string>
-  private recordsByDirectory: Map<string, AgentSessionRecord> | null = null
-  private readonly visited = new Set<string>()
-  /** Chats a transient failure put back, tried again after the walk. */
-  private readonly retries: AgentSessionRecord[] = []
-  private readonly tries = new Map<string, number>()
-  /** A chat the disk guard turned back, first in line for the next run. */
-  private deferred: AgentSessionRecord | null = null
+  private readonly queue: StructuredAgentSessionPerChatFileQueue
   private readonly logged = new Set<string>()
   private readonly tally = new Map<TallyKey, number>()
   private readonly backfill: ReturnType<typeof createStructuredAgentSessionStatusBackfill>
 
   constructor(private readonly deps: PerChatFileCopyDeps) {
     this.startedAt = deps.now()
-    this.listed = [...deps.listedIds]
+    this.queue = new StructuredAgentSessionPerChatFileQueue({
+      ...deps,
+      onLeftover: () => this.count('leftovers'),
+      onOrphan: () => this.count('orphans')
+    })
     this.backfill = createStructuredAgentSessionStatusBackfill(deps)
-    this.walk = walkPerChatFiles(deps.database.stateDirectory, () => this.count('leftovers'))
   }
 
   start(): void {
@@ -143,9 +144,11 @@ export class StructuredAgentSessionPerChatFileCopy {
     ) {
       return
     }
-    this.running = this.run().finally(() => {
-      this.running = null
-    })
+    this.running = this.run()
+      .catch((error: unknown) => this.endForLaunch(error))
+      .finally(() => {
+        this.running = null
+      })
     await this.running
   }
 
@@ -159,8 +162,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       if (this.stopped() || this.deps.isStartupChatWorkActive()) {
         return
       }
-      const record = this.deferred ?? (await this.nextRecord())
-      this.deferred = null
+      const record = await this.queue.next()
       // Old files first, then chats already in the database that have no status row.
       const step = record ? await this.copyChat(record) : await this.backfill.next()
       if (step === 'done') {
@@ -180,59 +182,53 @@ export class StructuredAgentSessionPerChatFileCopy {
     }
   }
 
-  /** The next chat owed a look: listed ones first, then the walk, then transient retries. */
-  private async nextRecord(): Promise<AgentSessionRecord | null> {
-    for (let id = this.listed.shift(); id !== undefined; id = this.listed.shift()) {
-      const record = this.deps.store.getRecord(id)
-      if (record && !this.visited.has(id)) {
-        return record
-      }
-    }
-    for (let next = await this.walk.next(); !next.done; next = await this.walk.next()) {
-      const record = this.recordForDirectory(next.value)
-      if (!record) {
-        // A deleted chat, or a directory an older build's recovery wrote: never opened or deleted.
-        this.count('orphans')
-      } else if (!this.visited.has(record.sessionId)) {
-        return record
-      }
-    }
-    return this.retries.shift() ?? null
-  }
-
   private async copyChat(record: AgentSessionRecord): Promise<'copied' | 'skipped' | 'stop'> {
     const { sessionId } = record
-    const db = this.deps.database.db
     const legacyDirectory = this.deps.database.legacyDirectoryFor({
       workspaceId: record.location.workspaceId,
       sessionId
     })
-    const file = statPerChatFile(legacyDirectory)
-    this.visited.add(sessionId)
-    if (!file) {
-      forgetJournalCopyFailure(db, sessionId)
-      return 'skipped'
-    }
-    if (isPerSessionJournalSetAside(db, sessionId)) {
-      this.count('setAside')
-      return 'skipped'
-    }
-    if (journalCopyFailureStands(db, sessionId, file, this.deps.appVersion)) {
-      this.count('skipped')
-      return 'skipped'
-    }
-    if (!(await hasRoomToCopy(this.deps.database.stateDirectory, file, this.deps.freeBytes))) {
-      this.visited.delete(sessionId)
-      this.deferred = record
-      this.diskRetryAt = this.deps.now() + PER_CHAT_FILE_COPY_DISK_RETRY_MS
-      return 'stop'
-    }
     try {
+      const file = this.fileOwedCopy(sessionId, legacyDirectory)
+      if (!file) {
+        return 'skipped'
+      }
+      const room = await roomToCopy(this.deps.database.stateDirectory, file, this.deps.freeBytes)
+      if (room === 'wait') {
+        this.queue.defer(record)
+        this.diskRetryAt = this.deps.now() + PER_CHAT_FILE_COPY_DISK_RETRY_MS
+        return 'stop'
+      }
+      if (room === 'skip') {
+        this.count('noRoom')
+        return 'skipped'
+      }
       await this.deps.serialize(sessionId, () => this.copyUnderSerialize(record, legacyDirectory))
       return 'copied'
     } catch (error) {
       return this.onFailure(record, legacyDirectory, error)
     }
+  }
+
+  /** The chat's file, when the job owes it a copy. */
+  private fileOwedCopy(sessionId: string, legacyDirectory: string): PerChatFileState | null {
+    const db = this.deps.database.db
+    const file = statPerChatFile(legacyDirectory)
+    if (!file) {
+      forgetJournalBackgroundFailure(db, { sessionId, step: 'copy' })
+      return null
+    }
+    if (isPerSessionJournalSetAside(db, sessionId)) {
+      this.count('setAside')
+      return null
+    }
+    const { appVersion } = this.deps
+    const input = perChatFileInput(file)
+    if (journalBackgroundFailureStands(db, { sessionId, step: 'copy', input, appVersion })) {
+      this.count('skipped')
+      return null
+    }
+    return file
   }
 
   private async copyUnderSerialize(
@@ -270,11 +266,11 @@ export class StructuredAgentSessionPerChatFileCopy {
     } else {
       this.count('deleted')
     }
-    // An older build left it with work: settled now, from the copy's fold, by the same rule the
-    // startup settle selects by, so no later startup opens it. A newer build's rows stay unwritten.
+    // An older build left it with work: settled now, from the copy's fold, so no later startup
+    // opens it. A failed settle is not a failed copy: startup settles the row the copy wrote.
     const { load, status } = result
-    if (!open && load && status && !load.readOnly && isUnsettledJournalSessionStatus(status)) {
-      await this.deps.settleCopied(this.deps.store.getRecord(sessionId) ?? record, load)
+    if (!open && load && status) {
+      await this.deps.settleCopied(sessionId, { load, status })
     }
   }
 
@@ -284,21 +280,21 @@ export class StructuredAgentSessionPerChatFileCopy {
     error: unknown
   ): 'skipped' | 'stop' {
     const { sessionId } = record
-    const kind = classifyJournalCopyFailure(error)
+    const kind = classifyJournalBackgroundFailure(error)
     if (kind === 'aborted') {
       return 'stop'
     }
     this.count('failed')
     if (kind === 'transient') {
-      const tries = (this.tries.get(sessionId) ?? 0) + 1
-      this.tries.set(sessionId, tries)
-      if (tries < MAX_TRANSIENT_TRIES) {
-        this.retries.push(record)
-      }
+      this.queue.retry(record)
     } else {
-      recordJournalCopyFailure(this.deps.database.db, {
+      recordJournalBackgroundFailure(this.deps.database.db, {
         sessionId,
-        legacyDirectory,
+        step: 'copy',
+        readInput: () => {
+          const file = statPerChatFile(legacyDirectory)
+          return file && perChatFileInput(file)
+        },
         appVersion: this.deps.appVersion,
         error,
         failedAt: this.deps.now()
@@ -314,18 +310,15 @@ export class StructuredAgentSessionPerChatFileCopy {
     return 'skipped'
   }
 
-  private recordForDirectory(directory: string): AgentSessionRecord | null {
-    // Built on the first file found, so a walk that finds none never hashes a record.
-    this.recordsByDirectory ??= new Map(
-      this.deps.store.listRecords().map((record) => [
-        this.deps.database.legacyDirectoryFor({
-          workspaceId: record.location.workspaceId,
-          sessionId: record.sessionId
-        }),
-        record
-      ])
-    )
-    return this.recordsByDirectory.get(directory) ?? null
+  /** A failure outside any one chat's: logged, and the job ends for this launch. The next launch
+   *  derives what is still owed. */
+  private endForLaunch(error: unknown): void {
+    this.finished = true
+    this.clearTimer()
+    console.warn('[structured-agent-session] copying old chat files stopped for this launch', {
+      tally: Object.fromEntries(this.tally),
+      error
+    })
   }
 
   private async finish(): Promise<void> {

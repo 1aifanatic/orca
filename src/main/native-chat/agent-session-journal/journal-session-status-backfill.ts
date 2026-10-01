@@ -20,19 +20,30 @@ import {
   type JournalSessionStatus
 } from './journal-session-state'
 
+// The give-up's input is built here as `journalStatusInput` builds it.
 const SELECT_WITHOUT_STATUS = `SELECT s.session_id AS session_id FROM journal_sessions s
-WHERE NOT EXISTS (SELECT 1 FROM journal_session_state st WHERE st.session_id = s.session_id)`
+WHERE NOT EXISTS (SELECT 1 FROM journal_session_state st WHERE st.session_id = s.session_id)
+AND NOT EXISTS (SELECT 1 FROM journal_background_failures f
+  WHERE f.session_id = s.session_id AND f.step = 'status' AND f.app_version = ?
+  AND f.input = s.epoch || ':' || (SELECT ifnull(max(r.seq), 0) FROM journal_rows r
+    WHERE r.session_id = s.session_id AND r.epoch = s.epoch))`
 
-/** Every chat in the host's database with no status row. */
-export function readJournalSessionIdsWithoutStatus(db: Database.Database): string[] {
+/** Every chat in the host's database with no status row, but one whose row failed for good on
+ *  the rows it holds now, under this app version (journal-background-failures.ts). */
+export function readJournalSessionIdsWithoutStatus(
+  db: Database.Database,
+  appVersion: string
+): string[] {
   return db
     .prepare(SELECT_WITHOUT_STATUS)
-    .all()
+    .all(appVersion)
     .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
 }
 
-export function hasJournalSessionWithoutStatus(db: Database.Database): boolean {
-  return db.prepare(`${SELECT_WITHOUT_STATUS} LIMIT 1`).get() !== undefined
+/** What a give-up of the chat's status row is keyed to: its epoch and tip. */
+export function journalStatusInput(db: Database.Database, sessionId: string): string | null {
+  const epoch = readJournalSessionEpoch(db, sessionId)
+  return epoch === null ? null : `${epoch}:${readJournalTip(db, sessionId, epoch)}`
 }
 
 /** The chat's row: its rows folded a batch per task, as a replay folds them, then the row derived

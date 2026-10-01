@@ -17,6 +17,7 @@ import {
 } from '../agent-session-journal/journal-session-state'
 import { createStructuredAgentSessionPerChatFileCopyControl } from './structured-agent-session-per-chat-file-copy-control'
 import {
+  COPY_TEST_WORKSPACE,
   copyJob,
   createChats,
   createCopyTestRig,
@@ -149,6 +150,69 @@ describe('a missing status row (R2A-3)', () => {
     await runToEnd(rig, job)
 
     expect(readTestJournalSessionStatus(rig.root, 'session-open')).toBeNull()
+  })
+})
+
+describe('a chat this host does not serve (L1)', () => {
+  it('writes the row of a copied or row-less chat a crash cut, and settles neither, as startup does', async () => {
+    const rig = await newRig()
+    await crashMidSend(rig, 'session-copied', false)
+    await crashMidSend(rig, 'session-rowless', false)
+    await rig.crash()
+    moveToPerChatFiles(rig, ['session-copied'])
+    db(rig).prepare("DELETE FROM journal_session_state WHERE session_id = 'session-rowless'").run()
+    rig.unsupportedWorkspaceIds.add(COPY_TEST_WORKSPACE)
+    await rig.boot()
+    const job = copyJob(rig)
+
+    await runToEnd(rig, job)
+
+    for (const sessionId of ['session-copied', 'session-rowless']) {
+      expect(
+        isUnsettledJournalSessionStatus(readTestJournalSessionStatus(rig.root, sessionId)!)
+      ).toBe(true)
+    }
+    // Startup selects both and skips both, by the same rule.
+    expect(readUnsettledJournalSessionIds(db(rig)).toSorted()).toEqual([
+      'session-copied',
+      'session-rowless'
+    ])
+    await rig.host.settleOwedSessions([])
+    expect(readUnsettledJournalSessionIds(db(rig))).toHaveLength(2)
+  })
+})
+
+describe('a settle that fails after its copy (S-N3)', () => {
+  it('is logged as a settle, not a failed copy: the copy stands and startup settles the row', async () => {
+    const rig = await newRig()
+    await crashMidSend(rig, 'session-cut', false)
+    await rig.crash()
+    moveToPerChatFiles(rig, ['session-cut'])
+    await rig.boot()
+    const { sessions } = rig.host.collaboratorsForTests()
+    const has = sessions.has.bind(sessions)
+    vi.spyOn(sessions, 'has').mockImplementation((sessionId) => {
+      if (sessionId === 'session-cut') {
+        throw new Error('settle failed')
+      }
+      return has(sessionId)
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    await runToEnd(rig, copyJob(rig))
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('settling a copied chat failed'),
+      expect.objectContaining({ sessionId: 'session-cut' })
+    )
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('copying an old chat file failed'),
+      expect.anything()
+    )
+    expect(info).toHaveBeenCalledWith(expect.any(String), { copied: 1 })
+    expect(hasPerChatFile(rig, 'session-cut')).toBe(false)
+    expect(readUnsettledJournalSessionIds(db(rig))).toEqual(['session-cut'])
   })
 })
 

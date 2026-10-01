@@ -4,11 +4,11 @@
 import { existsSync } from 'node:fs'
 import { readdir, rmdir, statfs } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { PerChatFileState } from '../agent-session-journal/journal-copy-failures'
 import {
   legacyJournalDatabaseFile,
   perChatJournalRoot
 } from '../agent-session-journal/journal-paths'
+import type { PerChatFileState } from '../agent-session-journal/journal-per-session-source'
 
 const MIN_FREE_BYTES = 512 * 1024 * 1024
 /** Free space a chat needs before its copy starts, as a multiple of its file and WAL. */
@@ -42,15 +42,22 @@ export async function removeEmptyPerChatDirectories(stateDirectory: string): Pro
   await rmdir(root).catch(() => undefined)
 }
 
-/** max(512 MiB, 4 x the chat's file and WAL) free on the state volume; unknown space copies. */
-export async function hasRoomToCopy(
+/** Room on the state volume to copy this chat: `copy` with max(512 MiB, 4 x its file and WAL) free
+ *  (or unknown), `skip` when only this chat is too big for what is free, and `wait` below 512 MiB,
+ *  where no chat copies. */
+export async function roomToCopy(
   stateDirectory: string,
   file: PerChatFileState,
   freeBytes: (directory: string) => Promise<number | null> = freeBytesOnVolume
-): Promise<boolean> {
+): Promise<'copy' | 'skip' | 'wait'> {
   const free = await freeBytes(stateDirectory)
-  const needed = Math.max(MIN_FREE_BYTES, FREE_SPACE_FACTOR * (file.dbSize + (file.walSize ?? 0)))
-  return free === null || free >= needed
+  if (free === null) {
+    return 'copy'
+  }
+  if (free < MIN_FREE_BYTES) {
+    return 'wait'
+  }
+  return free >= FREE_SPACE_FACTOR * (file.dbSize + (file.walSize ?? 0)) ? 'copy' : 'skip'
 }
 
 async function readdirOrEmpty(directory: string): Promise<string[]> {

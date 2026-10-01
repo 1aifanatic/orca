@@ -1,7 +1,7 @@
 // Reading a chat's per-chat journal file, the one each chat had before the host's one database.
 // The importer copies through this reader, and a restore folds through it without copying.
 
-import { rmdirSync, rmSync } from 'node:fs'
+import { rmdirSync, rmSync, statSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import Database from '../../sqlite/sync-database'
 import type { SqliteRow } from '../../sqlite/sqlite-statement'
@@ -26,6 +26,42 @@ const SELECT_LEGACY_REPAIR =
 
 type ImportedRow = { seq: number; ts: number; rowJson: string }
 export type ImportBatch = { rows: ImportedRow[]; last: boolean }
+
+/** A per-chat file as it stands on disk; a missing `-wal` is a value of its own. */
+export type PerChatFileState = {
+  dbSize: number
+  dbMtimeMs: number
+  walSize: number | null
+  walMtimeMs: number | null
+}
+
+/** Null when the chat's `journal.db` is gone. */
+export function statPerChatFile(legacyDirectory: string): PerChatFileState | null {
+  const file = legacyJournalDatabaseFile(legacyDirectory)
+  const database = statSync(file, { throwIfNoEntry: false })
+  if (!database) {
+    return null
+  }
+  const wal = statSync(`${file}-wal`, { throwIfNoEntry: false })
+  return {
+    dbSize: database.size,
+    dbMtimeMs: Math.trunc(database.mtimeMs),
+    walSize: wal ? wal.size : null,
+    walMtimeMs: wal ? Math.trunc(wal.mtimeMs) : null
+  }
+}
+
+export function samePerChatFileState(
+  left: PerChatFileState | null,
+  right: PerChatFileState | null
+): boolean {
+  return (
+    left?.dbSize === right?.dbSize &&
+    left?.dbMtimeMs === right?.dbMtimeMs &&
+    left?.walSize === right?.walSize &&
+    left?.walMtimeMs === right?.walMtimeMs
+  )
+}
 
 /** A plain read-only connection: it sees committed WAL frames without checkpointing them. */
 export function openLegacySource(path: string): Database.Database {

@@ -20,7 +20,8 @@ import type { JournalLoad } from '../agent-session-journal/journal-open'
 import {
   isUnsettledJournalSessionStatus,
   readJournalSessionStatuses,
-  readUnsettledJournalSessionIds
+  readUnsettledJournalSessionIds,
+  type JournalSessionStatus
 } from '../agent-session-journal/journal-session-state'
 import {
   openStructuredAgentSessionConversationJournal,
@@ -57,9 +58,14 @@ export type StructuredAgentSessionStartupState = {
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
   /** The settle step has started and not finished. */
   isSettling: () => boolean
-  /** Settles a chat the background copy just copied and nothing holds open, from the copy's load,
-   *  with no replay. For a caller inside the chat's serialize, after this settle has finished. */
-  settleCopied: (record: AgentSessionRecord, loaded: JournalLoad) => Promise<void>
+  /** Settles a chat the background copy just wrote a status row for and nothing holds open, from
+   *  the load it wrote that row from, with no replay, when this settle would select it. For a
+   *  caller inside the chat's serialize, after this settle has finished. Never rejects: a failure
+   *  is logged, and the next startup settles the row. */
+  settleCopied: (
+    sessionId: string,
+    written: { load: JournalLoad; status: JournalSessionStatus }
+  ) => Promise<void>
 }
 
 export function createStructuredAgentSessionStartupState(
@@ -76,7 +82,7 @@ export function createStructuredAgentSessionStartupState(
       return settling
     },
     isSettling: () => settling !== null && !settled,
-    settleCopied: (record, loaded) => settleClosed(deps, record, loaded)
+    settleCopied: (sessionId, written) => settleCopied(deps, sessionId, written)
   }
 }
 
@@ -145,8 +151,8 @@ async function settleOwedSessions(
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
     for (const sessionId of readUnsettledJournalSessionIds(database.db)) {
-      const record = deps.openDeps.store.getRecord(sessionId)
-      if (!record || !deps.supportsRecord(record)) {
+      const record = settleableRecord(deps, sessionId)
+      if (!record) {
         continue
       }
       if (listedOrder.has(sessionId)) {
@@ -191,6 +197,32 @@ async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateD
   await forEachWithConcurrency(recovering, RECOVERY_CONCURRENCY, async ({ sessionId }) => {
     await deps.resolveRecovery(sessionId)
   })
+}
+
+/** The record of a chat this host settles: one it serves. Every settle selects by this. */
+function settleableRecord(
+  deps: StructuredAgentSessionStartupStateDeps,
+  sessionId: string
+): AgentSessionRecord | null {
+  const record = deps.openDeps.store.getRecord(sessionId)
+  return record && deps.supportsRecord(record) ? record : null
+}
+
+async function settleCopied(
+  deps: StructuredAgentSessionStartupStateDeps,
+  sessionId: string,
+  { load, status }: { load: JournalLoad; status: JournalSessionStatus }
+): Promise<void> {
+  const record = settleableRecord(deps, sessionId)
+  // A newer build's rows stay unwritten.
+  if (!record || load.readOnly || !isUnsettledJournalSessionStatus(status)) {
+    return
+  }
+  try {
+    await settleClosed(deps, record, load)
+  } catch (error) {
+    console.warn('[structured-agent-session] settling a copied chat failed', { sessionId, error })
+  }
 }
 
 /** A chat nothing holds open: settled and closed, never indexed, so it gets no status row. */

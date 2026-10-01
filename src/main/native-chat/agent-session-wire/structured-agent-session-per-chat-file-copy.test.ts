@@ -1,5 +1,6 @@
 // The background copy of old per-chat files: a fixed budget per run, a gate re-derived before every
-// run and every chat, listed chats first, a disk guard, a give-up keyed to the file, and an end.
+// run and every chat, listed chats first, a disk guard, a give-up keyed to the file, a failure that
+// is logged and never thrown, and an end.
 
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
@@ -11,9 +12,13 @@ import { NO_LEGACY_JOURNAL_RECORDS } from '../agent-session-journal/journal-data
 import { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import {
   closeTestJournalHostDatabases,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
 import { writePerChatJournalFile } from '../agent-session-journal/journal-per-chat-file-test-support'
+import { readJournalSessionEpoch, readJournalTip } from '../agent-session-journal/journal-row-table'
+import type * as PerSessionSource from '../agent-session-journal/journal-per-session-source'
+import { statPerChatFile } from '../agent-session-journal/journal-per-session-source'
 import {
   legacyJournalDatabaseFile,
   perChatJournalRoot
@@ -39,11 +44,35 @@ import {
   type CopyTestRig
 } from './structured-agent-session-per-chat-file-copy-test-rig'
 
+vi.mock('../agent-session-journal/journal-per-session-source', async (importOriginal) => {
+  const actual = await importOriginal<typeof PerSessionSource>()
+  return { ...actual, statPerChatFile: vi.fn(actual.statPerChatFile) }
+})
+
 const rigs: CopyTestRig[] = []
 const scratch: string[] = []
 
+/** Answers `stat` for the chat whose old-file directory ends in its id, the real stat otherwise. */
+async function statChatAs(
+  rig: CopyTestRig,
+  sessionId: string,
+  stat: (directory: string) => ReturnType<typeof statPerChatFile>
+): Promise<void> {
+  const actual = await vi.importActual<typeof PerSessionSource>(
+    '../agent-session-journal/journal-per-session-source'
+  )
+  const target = openTestJournalHostDatabase(rig.root).legacyDirectoryFor({
+    sessionId,
+    workspaceId: COPY_TEST_WORKSPACE
+  })
+  vi.mocked(statPerChatFile).mockImplementation((directory) =>
+    directory === target ? stat(directory) : actual.statPerChatFile(directory)
+  )
+}
+
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.mocked(statPerChatFile).mockReset()
   for (const rig of rigs.splice(0)) {
     await rig.dispose()
   }
@@ -217,6 +246,75 @@ describe('the disk guard (T12)', () => {
     await job.tick()
     expect(fake).toHaveBeenCalledOnce()
   })
+
+  it('leaves a chat too big for the free space owed, and copies the rest in the same run', async () => {
+    const rig = await newRig()
+    const [big, small] = await stubChats(rig, 2, true)
+    // 200 MiB: four times that is more than the 600 MiB free, which is above the 512 MiB floor.
+    await statChatAs(rig, big, () => ({
+      dbSize: 200 * 1024 * 1024,
+      dbMtimeMs: 1,
+      walSize: null,
+      walMtimeMs: null
+    }))
+    const fake = costlyImport(rig, 1)
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const job = copyJob(rig, { importJournal: fake, freeBytes: async () => 600 * 1024 * 1024 })
+
+    await job.tick()
+
+    expect(fake.mock.calls.map(([input]) => input.identity.sessionId)).toEqual([small])
+    await runToEnd(rig, job)
+    expect(fake).toHaveBeenCalledOnce()
+    expect(info).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ noRoom: 1 }))
+    expect(hasPerChatFile(rig, big)).toBe(true)
+  })
+})
+
+describe('a failure is logged, never thrown (S1)', () => {
+  it('skips a chat whose file cannot even be read, and copies the rest', async () => {
+    const rig = await newRig()
+    const [first, unreadable, last] = await stubChats(rig, 3, true)
+    await statChatAs(rig, unreadable, () => {
+      throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fake = costlyImport(rig, 1)
+
+    await runToEnd(rig, copyJob(rig, { importJournal: fake }))
+
+    expect(fake.mock.calls.map(([input]) => input.identity.sessionId)).toEqual([first, last])
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('copying an old chat file failed'),
+      expect.objectContaining({ sessionId: unreadable })
+    )
+  })
+
+  it('ends the job for this launch when a run fails outside any one chat', async () => {
+    const rig = await newRig()
+    await stubChats(rig, 1, true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fake = costlyImport(rig, 1)
+    const store = {
+      getRecord: () => {
+        throw new Error('records unreadable')
+      },
+      listRecords: () => rig.store.listRecords()
+    }
+    const job = copyJob(rig, { importJournal: fake, store })
+    const clear = vi.spyOn(globalThis, 'clearInterval')
+    job.start()
+
+    await expect(job.tick()).resolves.toBeUndefined()
+
+    expect(job.isFinished).toBe(true)
+    expect(clear).toHaveBeenCalled()
+    expect(fake).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped for this launch'),
+      expect.objectContaining({ error: expect.any(Error) })
+    )
+  })
 })
 
 describe('what the job never touches (T13, T14, T18)', () => {
@@ -317,9 +415,15 @@ describe('a copy that fails (T10, T11)', () => {
     expect(counted).toHaveBeenCalledOnce()
     expect(
       openTestJournalHostDatabase(rig.root)
-        .db.prepare('SELECT db_size, app_version FROM journal_copy_failures WHERE session_id = ?')
+        .db.prepare(
+          'SELECT step, input, app_version FROM journal_background_failures WHERE session_id = ?'
+        )
         .get('session-broken')
-    ).toEqual({ db_size: 'not a database '.repeat(512).length, app_version: '1.0.0' })
+    ).toEqual({
+      step: 'copy',
+      input: expect.stringMatching(new RegExp(`^${'not a database '.repeat(512).length}:`)),
+      app_version: '1.0.0'
+    })
 
     // The next launch, same file and version: not tried.
     await runToEnd(rig, copyJob(rig, { importJournal: counted }))
@@ -351,7 +455,7 @@ describe('a copy that fails (T10, T11)', () => {
     expect(warn).toHaveBeenCalledOnce()
     expect(
       openTestJournalHostDatabase(rig.root)
-        .db.prepare('SELECT count(*) AS n FROM journal_copy_failures')
+        .db.prepare('SELECT count(*) AS n FROM journal_background_failures')
         .get()
     ).toEqual({ n: 0 })
     expect(hasPerChatFile(rig, 'session-0')).toBe(true)
@@ -379,5 +483,82 @@ describe('the end (T17)', () => {
         database: openTestJournalHostDatabase(rig.root)
       })
     ).toBeNull()
+  })
+})
+
+describe('the missing-row phase (L2, A8)', () => {
+  /** Chats in the host's database, closed, with no status row, as after the version 5 migration. */
+  async function chatsWithoutRows(rig: CopyTestRig, sessionIds: readonly string[]): Promise<void> {
+    await createChats(rig, sessionIds, { listed: false })
+    await rig.crash()
+    openTestJournalHostDatabase(rig.root).db.prepare('DELETE FROM journal_session_state').run()
+    await rig.boot()
+  }
+
+  const startJob = (rig: CopyTestRig, appVersion = '1.0.0') =>
+    startStructuredAgentSessionPerChatFileCopy({
+      ...copyJobDeps,
+      store: rig.store,
+      database: openTestJournalHostDatabase(rig.root),
+      appVersion
+    })
+
+  it('writes no row for a chat whose record is gone, and starts no job for one', async () => {
+    const rig = await newRig()
+    await createChats(rig, ['session-kept'], { listed: false })
+    openTestJournalHostDatabase(rig.root)
+      .db.prepare('INSERT INTO journal_sessions (session_id, workspace_id, epoch) VALUES (?, ?, ?)')
+      .run('session-gone', COPY_TEST_WORKSPACE, 'epoch-gone')
+    // Only the record-less chat has no row.
+    expect(startJob(rig)).toBeNull()
+
+    await chatsWithoutRows(rig, [])
+    await runToEnd(rig, copyJob(rig))
+
+    expect(readTestJournalSessionStatus(rig.root, 'session-kept')).not.toBeNull()
+    expect(readTestJournalSessionStatus(rig.root, 'session-gone')).toBeNull()
+    expect(startJob(rig)).toBeNull()
+  })
+
+  it('gives up on a row that fails for good until the chat or the app version changes', async () => {
+    const rig = await newRig()
+    await chatsWithoutRows(rig, ['session-bad'])
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const failing = vi.fn(async (): Promise<never> => {
+      throw new Error('malformed row')
+    })
+
+    await runToEnd(rig, copyJob(rig, { serialize: failing }))
+
+    expect(failing).toHaveBeenCalledOnce()
+    // The next launch: the same rows under the same version owe nothing.
+    expect(startJob(rig)).toBeNull()
+    const updated = startJob(rig, '1.0.1')
+    expect(updated).not.toBeNull()
+    await updated?.stop()
+    // A chat written to since is owed again.
+    const { db } = openTestJournalHostDatabase(rig.root)
+    const epoch = readJournalSessionEpoch(db, 'session-bad')!
+    db.prepare(
+      'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
+    ).run('session-bad', epoch, readJournalTip(db, 'session-bad', epoch) + 1, 1, '{}')
+    const written = startJob(rig)
+    expect(written).not.toBeNull()
+    await written?.stop()
+  })
+
+  it('records nothing for a failure a later try may clear', async () => {
+    const rig = await newRig()
+    await chatsWithoutRows(rig, ['session-busy'])
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const locked = vi.fn(async (): Promise<never> => {
+      throw Object.assign(new Error('database is locked'), { code: 'ERR_SQLITE_ERROR', errcode: 5 })
+    })
+
+    await runToEnd(rig, copyJob(rig, { serialize: locked }))
+
+    const job = startJob(rig)
+    expect(job).not.toBeNull()
+    await job?.stop()
   })
 })

@@ -103,7 +103,8 @@ export function copyJob(
       },
       journalDatabase: database
     },
-    supportsRecord: () => true,
+    // The rig adapter's own rule.
+    supportsRecord: (record) => !rig.unsupportedWorkspaceIds.has(record.location.workspaceId),
     seedStatus: () => undefined,
     resolveRecovery: async () => true,
     restoreListed: async () => undefined,

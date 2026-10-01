@@ -12,13 +12,14 @@
 // sees them. Once they read back as the file does (every row's sequence, time and bytes), one
 // transaction publishes the chat's pointer with its repair and import markers, so the chat is
 // imported all at once or not at all. A try that stops midway (a quit, a crash) leaves only
-// unpublished rows, which the next try deletes before it copies again. A copy that does not read
-// back as the file is never published: the file stays, and the chat is refused as unreadable.
+// unpublished rows, which the next try deletes, a batch per task, before it copies again. A copy
+// that does not read back as the file is never published: the file stays, and the chat is refused
+// as unreadable.
 //
 // Only after that commit is the file deleted, its connection closed first, and only while it is
-// still as the copy's last read left it. A read that fails leaves the file where it is for the next
-// open, and the open is refused rather than served empty: an empty chat founded here would take a
-// new epoch the next open's import could not reconcile. A file that was never written holds no
+// still as it stood before the verify read it. A read that fails leaves the file where it is for
+// the next open, and the open is refused rather than served empty: an empty chat founded here would
+// take a new epoch the next open's import could not reconcile. A file that was never written holds no
 // history and is deleted whenever it is found.
 
 import {
@@ -30,12 +31,7 @@ import { existsSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import {
-  deleteJournalCopyFailure,
-  samePerChatFileState,
-  statPerChatFile,
-  type PerChatFileState
-} from './journal-copy-failures'
+import { deleteJournalBackgroundFailure } from './journal-background-failures'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLoad } from './journal-open'
 import { legacyJournalDatabaseFile } from './journal-paths'
@@ -56,7 +52,10 @@ import {
   openLegacySource,
   readLegacyHead,
   readLegacyRepair,
-  retireLegacyJournal
+  retireLegacyJournal,
+  samePerChatFileState,
+  statPerChatFile,
+  type PerChatFileState
 } from './journal-per-session-source'
 import {
   deleteUnpublishedJournalRows,
@@ -154,8 +153,8 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> 
     copied &&
     !samePerChatFileState(copied.verifiedFile, statPerChatFile(input.legacyDirectory))
   ) {
-    // Written since the copy's last read (an older build on a shared profile): kept, so its next
-    // try finds a head past the import marker and sets it aside rather than losing those rows.
+    // Written since the verify began (an older build on a shared profile): kept, so its next try
+    // finds a head past the import marker and sets it aside rather than losing those rows.
     console.warn(`[agent-session-journal] ${input.legacyDirectory} changed after its copy; kept`)
   } else {
     // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
@@ -201,8 +200,8 @@ export async function previewPerSessionJournal(
   }
 }
 
-/** What a first copy hands back: its load and the status it published, and the file as the copy's
- *  last read of it left it. */
+/** What a first copy hands back: its load and the status it published, and the file as it stood
+ *  before the verify read it. */
 type CopiedJournal = {
   load: JournalLoad
   status: JournalSessionStatus
@@ -223,26 +222,35 @@ async function copyLegacyJournal(
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
+  // What an earlier try that stopped midway left, a batch per task as the copy's own rows go in.
+  for (let deleted = batchRows; deleted === batchRows;) {
+    assertImportNotAborted(input.database, sessionId)
+    deleted = input.database.unsyncedTransaction((db) =>
+      deleteUnpublishedJournalRows(db, sessionId, batchRows)
+    )
+    if (deleted > 0) {
+      await yieldToEventLoop()
+    }
+  }
   let first = true
   for (const batch of legacyRowBatches(source, sessionId, epoch, batchRows)) {
     if (!first) {
       await yieldToEventLoop()
     }
+    first = false
     assertImportNotAborted(input.database, sessionId)
     // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
     input.database.unsyncedTransaction((db) => {
-      if (first) {
-        // What an earlier try that stopped midway left.
-        deleteUnpublishedJournalRows(db, sessionId)
-      }
       const insert = db.prepare(INSERT_ROW)
       for (const row of batch.rows) {
         // Copied as stored: the bytes are the row, its epoch and sequence included.
         insert.run(sessionId, epoch, row.seq, row.ts, row.rowJson)
       }
     })
-    first = false
   }
+  // Before the verify reads the file: a write after this is either read by it (a mismatch, never
+  // published) or changes the file from this (kept).
+  const verifiedFile = statPerChatFile(input.legacyDirectory)
   const load = await verifyCopiedJournal(
     {
       database: input.database,
@@ -254,7 +262,6 @@ async function copyLegacyJournal(
     },
     legacyRowBatches(source, sessionId, epoch, batchRows)
   )
-  const verifiedFile = statPerChatFile(input.legacyDirectory)
   const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   assertImportNotAborted(input.database, sessionId)
   input.database.transaction((db) => {
@@ -268,7 +275,7 @@ async function copyLegacyJournal(
       )
     }
     writePerSessionImportMarker(db, sessionId, legacy)
-    deleteJournalCopyFailure(db, sessionId)
+    deleteJournalBackgroundFailure(db, { sessionId, step: 'copy' })
     // From the copy's own fold, which is what a replay of these rows reads: no second fold here.
     writeJournalSessionStatus(db, sessionId, status)
   })
