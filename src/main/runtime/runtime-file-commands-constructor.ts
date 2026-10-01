@@ -171,8 +171,7 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
         : isMobileMarkdownPath(relativePath)
           ? 'markdown'
           : 'text'
-    // Why: the tab opens in the desktop editor, which previews PDFs/images like the File Explorer does;
-    // `kind` describes the file, it must not gate the open on what a mobile client can render.
+    // Why: `kind` only describes the file; the desktop editor opens binaries (e.g. PDFs) like the File Explorer.
     const filePath = joinWorktreeRelativePath(worktree.path, relativePath)
     // Why: CLI/agents treat opened:true as success; stat first so missing paths fail the RPC instead of opening a ghost tab.
     await this.assertMobileOpenTargetExists(filePath, runtimeFileRouteForTarget(target))

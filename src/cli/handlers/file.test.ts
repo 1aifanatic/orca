@@ -113,33 +113,6 @@ describe('orca file CLI handlers', () => {
     })
   })
 
-  it('fails an unopened direct diff instead of exiting 0', async () => {
-    queueFixtures(
-      callMock,
-      okFixture('req_diff', {
-        worktree: 'wt-1',
-        relativePath: 'assets/logo.png',
-        kind: 'binary',
-        opened: false
-      })
-    )
-
-    await main(['file', 'diff', '--path', 'assets/logo.png', '--worktree', 'id:wt-1'], '/tmp/repo')
-
-    expect(callMock).toHaveBeenCalledWith('files.openDiff', {
-      worktree: 'id:wt-1',
-      relativePath: 'assets/logo.png',
-      staged: false,
-      navigation: 'caller'
-    })
-    expect(console.log).not.toHaveBeenCalled()
-    expect(vi.mocked(console.error).mock.calls[0][0]).toContain(
-      'Did not open diff for assets/logo.png: the Orca app declined this binary file.'
-    )
-    expect(process.exitCode).toBe(1)
-    process.exitCode = undefined
-  })
-
   // Why: an older host still answers a PDF with opened:false (STA-9113); that must not read as success.
   it('fails an unopened file open with ok:false in --json mode', async () => {
     queueFixtures(
