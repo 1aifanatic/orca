@@ -104,7 +104,7 @@ export function finalizeLocalPtySpawnEnvironment(args: {
     // config below may name features for this shell.
     delete env.ORCA_SHELL_FEATURES
     delete env[POSIX_SHELL_STARTUP_COMMAND_ENV]
-    // Why captured now: the closure re-runs after the launch env has prefixed it.
+    // Why captured now: the launch env below prefixes XDG_DATA_DIRS.
     const fishLaunch = {
       inheritedXdgDataDirs: env.XDG_DATA_DIRS,
       shellArgs: plan.shellArgs
@@ -135,10 +135,12 @@ export function finalizeLocalPtySpawnEnvironment(args: {
       )
     }
     const shellLaunch = plan.getFallbackShellReadyConfig(plan.shellPath)
+    plan.primaryPreLaunchEnv = Object.fromEntries(
+      Object.keys(shellLaunch.env).map((key) => [key, env[key]])
+    )
     Object.assign(env, shellLaunch.env)
     plan.shellArgs = shellLaunch.args ?? plan.shellArgs
     plan.shellReadyLaunch = spawn.command ? shellLaunch : null
-    plan.primaryLaunchEnvKeys = Object.keys(shellLaunch.env)
   }
   return historyResult
 }
