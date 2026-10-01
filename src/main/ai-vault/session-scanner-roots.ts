@@ -1,3 +1,4 @@
+import { claudeProfileReaderRoots } from '../claude-accounts/claude-profile-reader-roots'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { resolveOmpSessionsDir } from './omp-session-root'
@@ -13,10 +14,13 @@ export function claudeProjectsRootDirs(args: {
   claudeProjectsDir?: string
   wslHomeDirs?: readonly string[]
 }): string[] {
-  return [
-    args.claudeProjectsDir ?? CLAUDE_PROJECTS_DIR,
-    ...(args.wslHomeDirs ?? []).map((homeDir) => join(homeDir, '.claude', 'projects'))
-  ]
+  return claudeProfileReaderRoots(
+    [
+      args.claudeProjectsDir ?? CLAUDE_PROJECTS_DIR,
+      ...(args.wslHomeDirs ?? []).map((homeDir) => join(homeDir, '.claude', 'projects'))
+    ],
+    'projects'
+  )
 }
 
 // The local host and each WSL distro's OMP sessions root. Callers reading OMP

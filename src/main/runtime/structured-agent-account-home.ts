@@ -1,3 +1,4 @@
+import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getSystemCodexHomePath } from '../codex/codex-home-paths'
@@ -18,6 +19,12 @@ export type StructuredClaudeAccountHomeDeps = {
 export function resolveStructuredClaudeAccountHomePath(
   deps: StructuredClaudeAccountHomeDeps
 ): string {
+  const profiles = getClaudeProfileRoutingAuthority()
+  if (profiles) {
+    return profiles.resolve(
+      deps.wslDistro ? { runtime: 'wsl', wslDistro: deps.wslDistro } : { runtime: 'host' }
+    ).configHome
+  }
   return (
     deps.launchEnv.CLAUDE_CONFIG_DIR?.trim() ||
     deps

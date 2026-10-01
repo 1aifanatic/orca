@@ -1,3 +1,4 @@
+import { getClaudeProfileRoutingAuthority } from '../../../claude-accounts/claude-profile-routing-authority'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -227,6 +228,12 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.cwd,
     ctx.expectedWslDistro
   )
+  if (!args.connectionId && initialSelectionTarget.runtime !== 'wsl') {
+    const profiles = getClaudeProfileRoutingAuthority()
+    if (profiles) {
+      args.env = { ...args.env, ORCA_CLAUDE_PROFILE_POINTER: profiles.pointerPath() }
+    }
+  }
   ctx.claudeAuth =
     ctx.isClaudeLaunch && ctx.deps.prepareClaudeAuth
       ? await ctx.deps.prepareClaudeAuth(initialSelectionTarget)

@@ -1,3 +1,5 @@
+import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { getWslHome } from '../wsl'
 import { parseWslUncPath } from '../../shared/wsl-paths'
@@ -91,7 +93,7 @@ export async function resolveSkillSshTarget(
 }
 
 export async function resolveSkillProviderRoots(
-  host: RuntimeSkillCommandHost,
+  host: Pick<RuntimeSkillCommandHost, 'getClaudeConfigDirectory'>,
   destination: {
     scope: 'global' | 'workspace'
     homeDirectory: string
@@ -110,11 +112,13 @@ export async function resolveSkillProviderRoots(
       ? { grok }
       : {}
     : resolveEnvironmentSkillProviderRoots()
-  const config = host.getClaudeConfigDirectory?.(
-    destination.wslDistro
-      ? { runtime: 'wsl', wslDistro: destination.wslDistro }
-      : { runtime: 'host' }
-  )
+  const config = claudeProfileRoutingEnabled()
+    ? join(destination.homeDirectory, '.claude')
+    : host.getClaudeConfigDirectory?.(
+        destination.wslDistro
+          ? { runtime: 'wsl', wslDistro: destination.wslDistro }
+          : { runtime: 'host' }
+      )
   return withClaudeSkillProviderRoot(roots, config)
 }
 

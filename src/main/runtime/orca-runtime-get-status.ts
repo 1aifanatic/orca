@@ -1,3 +1,7 @@
+import {
+  claudeProfileRoutingEnabled,
+  CLAUDE_PROFILE_ROUTING_CAPABILITY
+} from '../../shared/claude-profile-routing'
 import { OrcaRuntimeWithGetRuntimeId } from './orca-runtime-get-runtime-id'
 import type { RuntimeDegradation, RuntimeStatus } from '../../shared/runtime-types'
 import {
@@ -92,6 +96,9 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
         (capability !== TERMINAL_PROMPT_DELIVERY_RUNTIME_CAPABILITY ||
           supportsDurableTerminalPromptDelivery())
     )
+    if (claudeProfileRoutingEnabled()) {
+      capabilities.push(CLAUDE_PROFILE_ROUTING_CAPABILITY)
+    }
     if (hasOffscreen || hasHeadlessCommands) {
       capabilities.push(BROWSER_HEADLESS_RUNTIME_CAPABILITY)
     }

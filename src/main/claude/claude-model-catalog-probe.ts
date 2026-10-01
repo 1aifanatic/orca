@@ -1,3 +1,5 @@
+import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { applyClaudeEnvPatch } from '../claude-accounts/environment'
 import { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import { commandBackslashMode } from '../text-generation/commit-message-text-generation'
 import { spawnSourceControlAgent } from '../text-generation/source-control-agent-launch'
@@ -31,12 +33,30 @@ export function createClaudeModelCatalogProbe(
   deps: ClaudeModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
+    const profiles = getClaudeProfileRoutingAuthority()
+    const assertSelected = () => {
+      if (profiles && profiles.resolve().configHome !== accountHomePath) {
+        throw new Error('Inactive Claude accounts cannot be probed')
+      }
+    }
+    assertSelected()
+    const prepared = profiles ? await profiles.prepare() : undefined
+    assertSelected()
     // Same pin rule as the session spawn: naming the CLI's default dir would move
     // it off the default Keychain item and list under another identity.
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) => ({
-      ...base,
-      ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
-    }))
+    const { command, env } = await resolveClaudeStructuredInvocation(
+      prepared
+        ? { ...deps, resolveAuthPolicy: () => ({ stripAuthEnv: prepared.stripAuthEnv }) }
+        : deps,
+      (base) => ({
+        ...base,
+        ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
+      })
+    )
+    if (prepared) {
+      applyClaudeEnvPatch(env, prepared.envPatch, { stripAuthEnv: prepared.stripAuthEnv })
+    }
+    assertSelected()
     const result = await (deps.discover ?? discoverModelsLocal)({
       agentId: 'claude',
       env,
@@ -45,8 +65,10 @@ export function createClaudeModelCatalogProbe(
       // The resolved absolute command replaces the plan's bare binary directly:
       // routing it through the command-override template would re-tokenize a
       // path that may contain spaces.
-      spawnAgent: (input) =>
-        (deps.spawnAgent ?? spawnSourceControlAgent)({ ...input, binary: command })
+      spawnAgent: (input) => {
+        assertSelected()
+        return (deps.spawnAgent ?? spawnSourceControlAgent)({ ...input, binary: command })
+      }
     })
     // The spec's static fallback must never pass as a listing: Claude's real
     // list replaces the seed, so only a probe-origin answer is a catalog.

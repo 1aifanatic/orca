@@ -1,6 +1,7 @@
+import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import { open, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { summarizeSkillMarkdown } from '../../shared/skill-metadata'
 import type { Repo } from '../../shared/repo-types'
 import type {
@@ -272,8 +273,20 @@ export async function discoverSkills(args: {
   const startedAt = Date.now()
   const homeDir = args.homeDir ?? homedir()
   const refresh = args.refresh === true
+  const profileHome = getClaudeProfileRoutingAuthority()?.resolve().readHome
   const roots = [
-    ...buildSkillDiscoverySources({ ...args, homeDir }),
+    ...buildSkillDiscoverySources({
+      ...args,
+      homeDir,
+      ...(profileHome
+        ? {
+            providerRootOverrides: {
+              ...args.providerRootOverrides,
+              claude: join(profileHome, 'skills')
+            }
+          }
+        : {})
+    }),
     // Why: plugin discovery is native-chat data keyed to an explicit workspace.
     // Untargeted scans (Settings) keep their pre-picker inventory and cost.
     ...(args.cwd &&

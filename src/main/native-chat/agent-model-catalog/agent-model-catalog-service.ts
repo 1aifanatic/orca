@@ -1,3 +1,4 @@
+import { claudeProfileRoutingEnabled } from '../../../shared/claude-profile-routing'
 import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
@@ -91,10 +92,21 @@ export function createAgentModelCatalogService(
       const scoped = record && record.provider === params.agent ? record : undefined
       let fingerprint: string
       let accountHomePath: string | null
-      if (scoped) {
+      if (
+        scoped &&
+        !(
+          claudeProfileRoutingEnabled() &&
+          scoped.provider === 'claude' &&
+          scoped.lease.claimStatus === 'released'
+        )
+      ) {
         fingerprint = agentModelCatalogFingerprintForRecord(scoped)
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
-        accountHomePath = scoped.location.wslDistro === null ? scoped.accountHome.path : null
+        accountHomePath =
+          scoped.location.wslDistro === null
+            ? ((scoped.provider === 'claude' ? scoped.claudeLaunchHome : undefined) ??
+              scoped.accountHome.path)
+            : null
       } else {
         let resolved: { variable: 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME'; path: string }
         try {

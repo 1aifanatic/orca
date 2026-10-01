@@ -35,18 +35,20 @@ export function agentModelCatalogFingerprint(identity: AgentModelCatalogIdentity
 /** The durable record pins the account home at launch, so this names the
  *  catalog THAT session lists from — not whichever account is selected now. */
 export function agentModelCatalogIdentityForRecord(
-  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location' | 'claudeLaunchHome'>
 ): AgentModelCatalogIdentity {
   return {
     agent: record.provider,
     accountHomeVariable: record.accountHome.variable,
-    accountHomePath: record.accountHome.path,
+    accountHomePath:
+      (record.provider === 'claude' ? record.claudeLaunchHome : undefined) ??
+      record.accountHome.path,
     wslDistro: record.location.wslDistro
   }
 }
 
 export function agentModelCatalogFingerprintForRecord(
-  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location' | 'claudeLaunchHome'>
 ): string {
   return agentModelCatalogFingerprint(agentModelCatalogIdentityForRecord(record))
 }

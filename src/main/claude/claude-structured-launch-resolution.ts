@@ -1,3 +1,4 @@
+import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type {
@@ -106,7 +107,7 @@ export type ClaudeStructuredLaunch = {
 }
 
 export type ClaudeStructuredLaunchResolverDeps = {
-  store: AgentSessionRecordStore
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'transitionHandoff'>
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
   resolveEnv?: () =>
@@ -252,7 +253,10 @@ export function createClaudeStructuredLaunchResolver(
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
-    const gate = deps.readManagedAccountGate?.()
+    const profiles = getClaudeProfileRoutingAuthority()
+    const prepared = profiles ? await profiles.prepare() : undefined
+    const launchHome = prepared?.profileLaunch?.configHome ?? record.accountHome.path
+    const gate = profiles ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
@@ -287,14 +291,39 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
-      // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-      structuredSessionChildIdentityEnv(record.sessionId, {
-        ...base,
-        // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-        [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-      })
+    const { command, env } = await resolveClaudeStructuredInvocation(
+      prepared
+        ? { ...deps, resolveAuthPolicy: () => ({ stripAuthEnv: prepared.stripAuthEnv }) }
+        : deps,
+      (base) =>
+        // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
+        structuredSessionChildIdentityEnv(record.sessionId, {
+          ...base,
+          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+        })
     )
+    if (profiles && prepared) {
+      if (profiles.resolve().configHome !== launchHome) {
+        throw new Error('Claude account changed before launch; retry')
+      }
+      if (
+        resumesTranscript &&
+        !(await (deps.hasTranscript ?? claudeTranscriptExists)({
+          providerSessionId,
+          claudeConfigDir: launchHome
+        }))
+      ) {
+        throw new Error('Conversation history is not available in the selected Claude profile')
+      }
+      applyClaudeEnvPatch(env, prepared.envPatch, { stripAuthEnv: prepared.stripAuthEnv })
+      await deps.store.transitionHandoff(record.sessionId, (current) => {
+        if (current.lease.runtimeFence !== record.lease.runtimeFence) {
+          throw new Error('Claude session ownership changed before launch')
+        }
+        return { ...current, claudeLaunchHome: launchHome }
+      })
+    }
     return {
       pathToClaudeCodeExecutable: command,
       options: {
@@ -306,7 +335,7 @@ export function createClaudeStructuredLaunchResolver(
       },
       cwd: await deps.resolveWorkspacePath(record.location.workspaceId),
       env,
-      claudeConfigDir: record.accountHome.path,
+      claudeConfigDir: launchHome,
       providerSessionId,
       resumeLeafUuid:
         resumesTranscript && head?.handle.provider === 'claude' ? head.handle.leafUuid : null,
