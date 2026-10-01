@@ -1,14 +1,39 @@
 import { Worker } from 'node:worker_threads'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { build } from 'esbuild'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'
 import { describeClaudeProfile } from './claude-profile-paths'
-import { getManagedCommand } from '../claude/hook-settings'
+import { getManagedCommand, getManagedScriptPath } from '../claude/hook-settings'
 const roots: string[] = []
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
+afterEach(() => {
+  vi.unstubAllEnvs()
+  roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
+})
+/** A worker's os.homedir() reads the process HOME, never its own env; pin that to a sentinel first. */
+async function pinWorkerHomedir(sentinel: string): Promise<void> {
+  vi.stubEnv('HOME', sentinel)
+  vi.stubEnv('USERPROFILE', sentinel)
+  const probe = new Worker(
+    "require('node:worker_threads').parentPort.postMessage(require('node:os').homedir())",
+    { eval: true }
+  )
+  const seen = await new Promise((done) => probe.once('message', done))
+  await probe.terminate()
+  if (seen !== sentinel) {
+    throw new Error(`worker homedir is ${String(seen)}, not the sentinel; refusing to run setup`)
+  }
+}
 it('runs the ownership-gated setup and versioned hooks in a real worker under an isolated HOME', async () => {
   const root = mkdtempSync(join(tmpdir(), 'profile-worker-'))
   roots.push(root)
@@ -24,6 +49,10 @@ it('runs the ownership-gated setup and versioned hooks in a real worker under an
   )
   writeFileSync(join(home, '.claude', 'projects', 'cwd', 'session.jsonl'), '{"fake":true}\n')
   writeFileSync(join(home, '.claude', '.credentials.json'), 'fake-secret-must-stay')
+  // Anything the worker writes through homedir() instead of the job's home lands here.
+  const sentinel = join(root, 'process-home')
+  mkdirSync(sentinel)
+  await pinWorkerHomedir(sentinel)
   const outfile = join(root, 'profile-worker.cjs')
   await build({
     entryPoints: [resolve('src/main/claude-accounts/claude-profile-worker-entry.ts')],
@@ -67,6 +96,8 @@ it('runs the ownership-gated setup and versioned hooks in a real worker under an
     expect(readFileSync(join(home, '.claude', '.credentials.json'), 'utf8')).toBe(
       'fake-secret-must-stay'
     )
+    expect(existsSync(getManagedScriptPath(undefined, home))).toBe(true)
+    expect(readdirSync(sentinel)).toEqual([])
   } finally {
     worker.dispose()
     await Promise.all(threads.map((thread) => thread.terminate()))
