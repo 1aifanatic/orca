@@ -121,8 +121,8 @@ export async function proveDaemonShellForeground(args: {
     incarnationId: args.incarnationId,
     requestStartedAtMonotonic
   })
-  if (typeof evidence === 'string') {
-    return evidence
+  if (typeof evidence === 'string' || evidence.fence.platform !== 'posix') {
+    return typeof evidence === 'string' ? evidence : 'other'
   }
   return (await args.confirmPaneShellForeground(evidence.fence.shellPid)) ? 'shell' : 'other'
 }
