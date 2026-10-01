@@ -23,6 +23,7 @@ import {
   type StructuredAgentSessionStatusFeedDeps,
   type StructuredAgentSessionStatusSink
 } from './structured-agent-session-status-feed'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const SESSION = 'status-session'
 const TURN_IDENTITY = {
@@ -79,6 +80,7 @@ function feedFor(
     statusSink ??
     (readChildWork ? { publish: () => {}, forget: () => {}, readChildWork } : undefined)
   const feed = new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     ...(onStatusChanged ? { onStatusChanged } : {}),
     ...(sink ? { statusSink: () => sink } : {}),
     sessions: {

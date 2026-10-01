@@ -33,7 +33,12 @@ export function wireStructuredAgentSessionQueuedMessages(
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(context().deps.store, sessionId),
     wakeDelivery: (sessionId) => context().wakeDelivery(sessionId),
-    onError: (sessionId, error) => context().deps.onEventSinkError?.({ sessionId, error })
+    onError: (sessionId, error) =>
+      context().deps.logger.warn('draining queued messages failed', {
+        scope: 'queued-drain',
+        sessionId,
+        error
+      })
   })
   return {
     drain,
@@ -44,7 +49,7 @@ export function wireStructuredAgentSessionQueuedMessages(
       sessions.touch(sessionId)
       const journal = sessions.get(sessionId)?.journal
       if (journal && !journal.isReadOnly) {
-        void retireEndedQueuePause(sessionId, journal)
+        void retireEndedQueuePause(sessionId, journal, context().deps.logger)
       }
       drain.schedule(sessionId)
     },

@@ -81,8 +81,17 @@ async function relaunch(
     await seedTestAgentSessionStoreFromNewerBuild(relaunched)
   }
   const store = await openTestAgentSessionRecordStore(relaunched)
+  // The lease-reconcile entries the host logs, by the failure each reports.
   const onLeaseReconcileFailure = vi.fn()
   const host = new StructuredAgentSessionHost({
+    logger: {
+      warn: (_message, fields) => {
+        if (fields.scope === 'lease-reconcile') {
+          onLeaseReconcileFailure(fields.error)
+        }
+      },
+      error: () => undefined
+    },
     store,
     adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(relaunched),
@@ -92,8 +101,7 @@ async function relaunch(
     stopOwnerProcess: () => {
       throw new Error('an owner not proven alive must not be stopped')
     },
-    now: () => NOW,
-    onLeaseReconcileFailure
+    now: () => NOW
   })
   replaceHostTestState({ store, host })
   return { host, store, stateDirectory: relaunched, onLeaseReconcileFailure }
@@ -214,7 +222,7 @@ it('restores a chat for reading when resolving its recovery cannot write the sto
 it.each([
   ['startup reconcile', (host: StructuredAgentSessionHost) => host.reconcileRestartLeases()],
   ['read restore', (host: StructuredAgentSessionHost) => host.restoreReadableSessions([SESSION])]
-])('keeps the %s resolving when the failure sink throws', async (_step, read) => {
+])('keeps the %s resolving when the logger throws', async (_step, read) => {
   const { host, onLeaseReconcileFailure } = await relaunch()
   const sinkError = new Error('error sink failed')
   onLeaseReconcileFailure.mockImplementation(() => {
@@ -227,8 +235,8 @@ it.each([
 
     expect(onLeaseReconcileFailure).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('reporting a lease bookkeeping failure failed'),
-      expect.objectContaining({ failure: IO_ERROR, sinkError })
+      expect.stringContaining('chat lease bookkeeping for a read failed'),
+      expect.objectContaining({ error: IO_ERROR, loggerError: sinkError })
     )
   } finally {
     warn.mockRestore()

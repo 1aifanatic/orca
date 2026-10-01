@@ -8,6 +8,7 @@ import { createTrackedJournalOpener } from '../agent-session-journal/journal-hos
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { performCancel, type AgentSessionTurnContext } from './structured-agent-session-turns'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -62,6 +63,7 @@ function context(
   flushStreamedEvents: () => Promise<void>
 ): AgentSessionTurnContext {
   return {
+    logger: createStructuredAgentSessionLogger(),
     sessionId: 'session-1',
     journal,
     fence: 1,

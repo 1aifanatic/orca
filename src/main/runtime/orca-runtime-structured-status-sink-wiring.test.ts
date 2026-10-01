@@ -88,6 +88,19 @@ describe('structured status sink wiring', () => {
     expect(installed.deps?.['statusSink']).toBe(sink)
   })
 
+  // The runtime class does not typecheck its own calls, so the required logger is pinned here.
+  it('hands the host the trace-file logger', async () => {
+    installed.deps = null
+    const runtime = new OrcaRuntimeService()
+
+    await runtime.ensureStructuredAgentSessionHost()
+
+    expect(installed.deps?.['logger']).toMatchObject({
+      warn: expect.any(Function),
+      error: expect.any(Function)
+    })
+  })
+
   it('installs without a sink when none was provided', async () => {
     installed.deps = null
     const runtime = new OrcaRuntimeService()

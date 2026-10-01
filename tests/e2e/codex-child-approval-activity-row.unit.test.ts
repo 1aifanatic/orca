@@ -71,6 +71,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { StructuredAgentSessionStatusBridge } from '../../src/renderer/src/components/native-chat/StructuredAgentSessionStatusBridge'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '../../src/renderer/src/runtime/structured-agent-session-status-feed'
+import { createStructuredAgentSessionLogger } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-logger'
 
 const SESSION = 'codex-child-approval'
 const CODEX_THREAD = 'thread-parent'
@@ -143,6 +144,7 @@ async function openHost() {
     stateDirectory: join(root, SESSION)
   })
   const feed = new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     sessions: new Map([
       [SESSION, indexedStatusFeedSession({ journal, child: { phase: 'ready' } })]
     ]),

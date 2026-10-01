@@ -56,6 +56,7 @@ import { structuredAgentSessionRestartResumeSurfaces } from './structured-agent-
 import { createStructuredAgentSessionConversationDelivery } from './structured-agent-session-host-delivery'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { wireStructuredAgentSessionQueuedMessages } from './structured-agent-session-queued-wiring'
+import { logSessionFailure, withNeverThrowingLogger } from './structured-agent-session-logger'
 export type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
 export class StructuredAgentSessionHost {
@@ -68,7 +69,7 @@ export class StructuredAgentSessionHost {
       this.subscribers.publish(sessionId, journal)
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
-    onDeliveryError: (sessionId, error) => this.deps.onEventSinkError?.({ sessionId, error }),
+    onDeliveryError: logSessionFailure(() => this.deps.logger, 'journal-delivery', 'not delivered'),
     onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
     now: () => this.now()
   })
@@ -101,6 +102,8 @@ export class StructuredAgentSessionHost {
   readonly restartResume: StructuredAgentSessionRestartResume
 
   constructor(readonly deps: StructuredAgentSessionHostDeps) {
+    // Every collaborator reads this copy, so a logger that throws cannot fail what it reports.
+    this.deps = deps = withNeverThrowingLogger(deps)
     this.backgroundTasks = new StructuredAgentSessionBackgroundTaskChannel(
       deps,
       this.sessions,
@@ -158,7 +161,7 @@ export class StructuredAgentSessionHost {
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
-      onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
+      onBarrierError: logSessionFailure(() => deps.logger, 'lifecycle-barrier', 'barrier failed')
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
       ...structuredAgentSessionRestartResumeSurfaces(this, this.now),

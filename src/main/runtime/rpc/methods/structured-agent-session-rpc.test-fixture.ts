@@ -19,6 +19,7 @@ import {
 import type { RpcRequest, RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
+import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
 
 export const SESSION = 'session-alpha'
 export const FINGERPRINT = 'f'.repeat(64)
@@ -94,6 +95,7 @@ export const STATUS_ITEMS: AgentJournalRenderItem[] = [
 /** One indexed session over a journal that reads back fixed items; the projection is real. */
 function statusFeed(): StructuredAgentSessionStatusFeed {
   return new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     sessions: new Map([
       [
         STATUS_SESSION,

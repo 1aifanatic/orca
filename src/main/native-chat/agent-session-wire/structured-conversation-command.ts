@@ -151,6 +151,7 @@ export function runStructuredConversationCommand(
     admitAndRunAgentSessionMutation({
       store,
       adapter: context.deps.adapter,
+      logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope,
       // Only the provider can do this, so an agent at rest is started first.

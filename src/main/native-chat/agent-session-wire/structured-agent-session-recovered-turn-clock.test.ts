@@ -34,6 +34,7 @@ import {
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
 import { StructuredAgentSessionTurnCompletionFeed } from './structured-agent-session-turn-completion-feed'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const SESSION = 'recovered-turn-session'
 const THREAD = 'thread-1'
@@ -81,6 +82,7 @@ async function sessionWithRunningTurn() {
   const server = new AgentHookServer()
   const sessions = new Map([[SESSION, indexedStatusFeedSession({ journal })]])
   const feed = new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     sessions,
     getRecord: () => null,
     now: () => clock,

@@ -9,6 +9,7 @@ import { createTrackedJournalOpener } from '../agent-session-journal/journal-hos
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { performSend, type AgentSessionTurnContext } from './structured-agent-session-turns'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const journals = createTrackedJournalOpener()
 
@@ -97,6 +98,7 @@ describe('structured send idempotency', () => {
       }
     }))
     const context: AgentSessionTurnContext = {
+      logger: createStructuredAgentSessionLogger(),
       sessionId: 'session-1',
       journal,
       fence: 1,

@@ -38,6 +38,7 @@ import { createStructuredAgentSessionConversationLifetime } from './structured-a
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import { createStructuredAgentSessionRestartOfferWithdrawal } from './structured-agent-session-restart-offer-withdrawal'
 import { restoreStructuredAgentSessionsOnRestart } from './structured-agent-session-restart-restore'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const { readOnlyOpens, openReadOnly } = vi.hoisted(() => ({
   readOnlyOpens: new Array<string>(),
@@ -377,6 +378,7 @@ describe('startup restore of chats still in their per-chat files', () => {
 
     const { sessions } = await restore(['chat-a'])
     const withdrawal = createStructuredAgentSessionRestartOfferWithdrawal({
+      logger: createStructuredAgentSessionLogger(),
       sessions,
       now: () => clock,
       enqueue: (operation) => operation()

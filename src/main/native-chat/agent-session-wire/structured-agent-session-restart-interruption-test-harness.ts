@@ -34,6 +34,7 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 /** Starts the agent explicitly — the attach a client's ensure makes — for a test that needs a
  *  running child before its next step. Nothing else starts one ahead of a send. */
@@ -125,6 +126,7 @@ export async function interruptedRestart(
   // The relaunch comes after the quit that recorded the offer.
   const clock = { now: NOW + 1 }
   const host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       ...adapter(),

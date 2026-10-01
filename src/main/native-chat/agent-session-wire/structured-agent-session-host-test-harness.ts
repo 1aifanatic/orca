@@ -29,6 +29,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const journals = createTrackedJournalOpener()
 
@@ -153,6 +154,7 @@ beforeEach(async () => {
   store = await openTestAgentSessionRecordStore(root)
   recoveryCapsule = new TrackedTestRecoveryCapsule(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(root),

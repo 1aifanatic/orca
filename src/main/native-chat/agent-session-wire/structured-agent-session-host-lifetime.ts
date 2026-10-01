@@ -47,7 +47,7 @@ export type StructuredAgentSessionLifetimeContext = {
   }
 }
 
-type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkError'> & {
+type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
 }
 
@@ -70,7 +70,11 @@ export async function abandonQueuedStructuredAgentSessionMessages(
     .then(
       () => true,
       (error: unknown) => {
-        deps.onEventSinkError?.({ sessionId, error })
+        deps.logger.warn('rejecting queued messages of a closed chat failed', {
+          scope: 'queued-abandon',
+          sessionId,
+          error
+        })
         return false
       }
     )
@@ -121,6 +125,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     owesProviderChildWindDown: owed !== undefined,
     eventSink: context.runtimeState.eventSinkFor(sessionId),
     adapter: context.deps.adapter,
+    logger: context.deps.logger,
     // The adapter settles its own open turn with this, so who asked travels with the stop.
     stopCause: cause,
     ...(context.restartWitness
@@ -156,7 +161,11 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         showUnexpectedExitOutcome: false,
         onError: (id, error) => {
           settlementError = error
-          context.deps.onEventSinkError?.({ sessionId: id, error })
+          context.deps.logger.warn("settling a closed agent's work failed", {
+            scope: 'close-settlement',
+            sessionId: id,
+            error
+          })
         }
       })
       if (!settled) {

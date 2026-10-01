@@ -10,12 +10,14 @@ import {
   AgentSessionPreSpawnError
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 function context(): StructuredAgentSessionEvictionContext & { order: string[] } {
   const order: string[] = []
   return {
     order,
     sessionId: 'session-1',
+    logger: createStructuredAgentSessionLogger(),
     eventSink: {
       unbind: vi.fn(() => order.push('unbind')),
       drained: vi.fn(async () => {
