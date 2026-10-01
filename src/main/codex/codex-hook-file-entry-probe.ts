@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ORCA_CODEX_HOOK_FILE_ENTRY_MARKER } from '../../shared/codex-shell-function'
+import { ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES } from '../../shared/codex-shell-function'
 import { getSystemCodexHomePath } from './codex-home-paths'
 
 /**
@@ -12,7 +12,7 @@ import { getSystemCodexHomePath } from './codex-home-paths'
 export function codexHomeHoldsOrcaFileEntry(codexHomePath: string | null | undefined): boolean {
   try {
     const raw = readFileSync(join(codexHomePath || getSystemCodexHomePath(), 'hooks.json'), 'utf-8')
-    return raw.includes(ORCA_CODEX_HOOK_FILE_ENTRY_MARKER)
+    return ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES.some((needle) => raw.includes(needle))
   } catch {
     return false
   }

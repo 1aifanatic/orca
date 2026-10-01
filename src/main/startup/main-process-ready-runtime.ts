@@ -15,9 +15,11 @@ import { handleGpuChildCrash } from './gpu-lifecycle'
 import { isGpuFallbackCrashCandidate } from '../crash-reporting/gpu-crash-fallback-decision'
 import {
   installManagedAgentHooks,
+  isAgentStatusHooksEnabledForAgent,
   resolveStartupManagedHookAction,
   shouldContinueManagedHookStartup
 } from '../agent-hooks/managed-agent-hook-controls'
+import { startCodexHookFlagRequests } from '../codex/codex-hook-flag-requests'
 import { shouldInstallManagedHooks } from './configure-process'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
 import { mainProcessState as state } from './main-process-state'
@@ -93,6 +95,10 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   }, WORKTREE_TRASH_SWEEP_FALLBACK_MS)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   const startupManagedHookSettings = store.getSettings()
+  // Why before the managed-hook chain: a launch's request is served without waiting for CLI detection.
+  startCodexHookFlagRequests({
+    isEnabled: () => isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
+  })
   const shouldReconcileStartupManagedHooks =
     shouldInstallManagedHooks(is.dev) &&
     resolveStartupManagedHookAction(startupManagedHookSettings) === 'install'

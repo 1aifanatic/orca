@@ -3,8 +3,10 @@ import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 import {
   buildCodexHookDefinitionFlag,
   buildCodexHookSessionFlag,
+  codexHookSessionFlagDefines,
   type CodexHookSessionTrust
 } from './codex-hook-session-flags'
+import { MANAGED_HOOK_TIMEOUT_SECONDS } from '../agent-hooks/installer-utils'
 
 function trustFor(prefix: string): CodexHookSessionTrust {
   return Object.fromEntries(
@@ -68,5 +70,36 @@ describe('buildCodexHookSessionFlag', () => {
     const flag = buildCodexHookDefinitionFlag('x', 'linux')
     expect(flag).toContain('Stop=[{hooks=[{type="command",command="x",timeout=10}]}]')
     expect(flag).not.toContain('state')
+  })
+
+  it('carries nothing on Windows for a non-ASCII path, which cmd.exe reads in its code page', () => {
+    const command = 'C:/Users/José/.orca/agent-hooks/codex-hook.cmd'
+    expect(buildCodexHookDefinitionFlag(command, 'win32')).toBeNull()
+    expect(buildCodexHookDefinitionFlag(command, 'linux')).not.toBeNull()
+  })
+})
+
+describe('codexHookSessionFlagDefines', () => {
+  const trust = trustFor('/<session-flags>/config.toml')
+
+  it.each(['linux', 'win32'] as const)(
+    'accepts a flag built from the same command (%s)',
+    (platform) => {
+      const flag = buildCodexHookSessionFlag('C:/x/codex-hook.cmd', trust, platform)!
+      expect(codexHookSessionFlagDefines(flag, 'C:/x/codex-hook.cmd', platform)).toBe(true)
+    }
+  )
+
+  it('rejects a flag for another command, whose approval hashes other bytes', () => {
+    const flag = buildCodexHookSessionFlag('/a/codex-hook.sh', trust, 'linux')!
+    expect(codexHookSessionFlagDefines(flag, '/b/codex-hook.sh', 'linux')).toBe(false)
+  })
+
+  it('rejects a flag whose hook timeout differs, since Codex hashes the timeout too', () => {
+    const flag = buildCodexHookSessionFlag('/a/codex-hook.sh', trust, 'linux')!.replaceAll(
+      `timeout=${MANAGED_HOOK_TIMEOUT_SECONDS}`,
+      `timeout=${MANAGED_HOOK_TIMEOUT_SECONDS + 5}`
+    )
+    expect(codexHookSessionFlagDefines(flag, '/a/codex-hook.sh', 'linux')).toBe(false)
   })
 })

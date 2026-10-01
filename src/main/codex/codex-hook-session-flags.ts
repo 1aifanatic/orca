@@ -26,7 +26,8 @@ const POSIX_SPELLING: TomlSpelling = { string: (value) => JSON.stringify(value),
 // native arguments, and npm's codex.cmd re-parses the line in cmd.exe, which
 // expands %VAR% and treats an unquoted `<`/`>` as a redirect. A value with a
 // space and none of those is wrapped in quotes whole by every Windows host.
-const WINDOWS_UNSAFE = /['"%\r\n]/
+// Why ASCII only: cmd.exe reads the published flag file in the console code page.
+const WINDOWS_UNSAFE = /['"%]|[^\x20-\x7e]/
 const WINDOWS_SPELLING: TomlSpelling = {
   string: (value) => (WINDOWS_UNSAFE.test(value) ? null : `'${value}'`),
   gap: ' '
@@ -94,4 +95,22 @@ export function buildCodexHookSessionFlag(
     states.push(`${key}${g}=${g}{${g}trusted_hash${g}=${g}${hash}${g}}`)
   }
   return `hooks=${renderTable([...entries, `state${g}=${g}${renderTable(states, spelling)}`], spelling)}`
+}
+
+/**
+ * Whether `flag` defines exactly the hook `command` renders today, byte for
+ * byte (command, timeout, shape); the approval it carries was derived for that
+ * definition, so an entry that fails this is re-derived, never patched.
+ */
+export function codexHookSessionFlagDefines(
+  flag: string,
+  command: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  const spelling = spellingFor(platform)
+  const entries = renderHooksEntries(command, spelling)
+  const g = spelling.gap
+  return (
+    entries !== null && flag.startsWith(`hooks={${g}${entries.join(`,${g}`)},${g}state${g}=${g}{`)
+  )
 }

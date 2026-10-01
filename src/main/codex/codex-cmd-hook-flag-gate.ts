@@ -1,43 +1,62 @@
 import { getSharedManagedScriptPath, writeManagedScript } from '../agent-hooks/installer-utils'
 import {
-  ORCA_CODEX_HOOK_CONFIG_ENV,
-  ORCA_CODEX_HOOK_FILE_ENTRY_MARKER,
-  ORCA_CODEX_HOOK_VERSION_ENV
+  CODEX_HOOK_FLAG_ENTRY_SUFFIX,
+  CODEX_HOOK_FLAG_REQUEST_SUFFIX,
+  ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES,
+  ORCA_CODEX_HOOK_FLAGS_ENV
 } from '../../shared/codex-shell-function'
 
 /**
  * cmd.exe defines no codex function, so a cmd pane carries Orca's status hook
  * flag through a doskey macro. doskey rewrites only typed lines, in the
  * console, so it adds no process and no file on PATH. The macro first `call`s
- * this gate, in the same cmd.exe, which sets ORCA_CODEX_HOOK_ARG only when the
- * codex on PATH reports the version the flag was derived for and the Codex home
- * holds no Orca file entry; its next two lines run codex with or without it.
- * The user's own arguments never pass through `call`, which would double their carets.
+ * this gate, in the same cmd.exe, which sets ORCA_CODEX_HOOK_ARG from the flag
+ * table's entry for the version the codex on PATH reports, unless the Codex
+ * home holds an Orca file entry; its next two lines run codex with or without it.
+ * The user's own arguments never pass through `call`, which would double their
+ * carets, so a user `-c hooks...` in cmd is not detected here.
  */
 export const ORCA_CODEX_HOOK_ARG_ENV = 'ORCA_CODEX_HOOK_ARG'
 const GATE_SCRIPT_FILE_NAME = 'codex-session-flag-gate.cmd'
-const SEEN_VERSION = 'ORCA_CODEX_HOOK_SEEN_VERSION'
+const ENTRY = 'ORCA_CODEX_HOOK_ENTRY'
+const LAST_LINE = 'ORCA_CODEX_HOOK_LAST'
 const HOME = 'ORCA_CODEX_HOOK_HOME'
 
 export function getCodexCmdHookFlagGatePath(): string {
   return getSharedManagedScriptPath(GATE_SCRIPT_FILE_NAME)
 }
 
+// Why findstr doubles each backslash: it reads `\\` as one literal backslash even under /l.
+const FINDSTR_NEEDLES = ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES.map(
+  (needle) => `/c:"${needle.replaceAll('\\', '\\\\')}"`
+).join(' ')
+
 // Why `@` on each line rather than `echo off`: a called batch's echo state leaks to the prompt.
+// Why every version line is tried: `for /f` runs its command through a cmd that runs the
+// user's AutoRun, whose output can precede Codex's own line; `%%~nxv` equal to the line
+// proves it names no other directory. The last line names the request on a miss.
 export function getCodexCmdHookFlagGateScript(): string {
+  const table = `%${ORCA_CODEX_HOOK_FLAGS_ENV}%`
   return [
     `@set "${ORCA_CODEX_HOOK_ARG_ENV}="`,
-    `@if not defined ${ORCA_CODEX_HOOK_CONFIG_ENV} exit /b 0`,
-    `@set "${SEEN_VERSION}="`,
-    `@for /f "delims=" %%v in ('codex --version 2^>nul') do @if not defined ${SEEN_VERSION} set "${SEEN_VERSION}=%%v"`,
-    `@if not "%${SEEN_VERSION}%"=="%${ORCA_CODEX_HOOK_VERSION_ENV}%" goto orca_done`,
+    `@if not defined ${ORCA_CODEX_HOOK_FLAGS_ENV} exit /b 0`,
+    `@set "${ENTRY}="`,
+    `@set "${LAST_LINE}="`,
+    `@for /f "delims=" %%v in ('codex --version 2^>nul') do @if "%%v"=="%%~nxv" (set "${LAST_LINE}=%%v" & if not defined ${ENTRY} if exist "${table}\\%%v${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" set "${ENTRY}=${table}\\%%v")`,
+    `@if not defined ${ENTRY} goto orca_request`,
     `@set "${HOME}=%CODEX_HOME%"`,
     `@if not defined ${HOME} set "${HOME}=%USERPROFILE%\\.codex"`,
-    `@if exist "%${HOME}%\\hooks.json" findstr /l /c:"${ORCA_CODEX_HOOK_FILE_ENTRY_MARKER}" "%${HOME}%\\hooks.json" >nul 2>&1 && goto orca_done`,
+    `@if exist "%${HOME}%\\hooks.json" findstr /l ${FINDSTR_NEEDLES} "%${HOME}%\\hooks.json" >nul 2>&1 && goto orca_done`,
     // Why the quotes in the value: the flag holds `<` and `>`, which cmd reads as redirects outside quotes.
-    `@set ${ORCA_CODEX_HOOK_ARG_ENV}="%${ORCA_CODEX_HOOK_CONFIG_ENV}%"`,
+    // Why `for /f` over the file, not `set /p`: set /p stops at 1023 characters and the flag is longer.
+    `@for /f "usebackq delims=" %%L in ("%${ENTRY}%${CODEX_HOOK_FLAG_ENTRY_SUFFIX}") do @if not defined ${ORCA_CODEX_HOOK_ARG_ENV} set ${ORCA_CODEX_HOOK_ARG_ENV}="%%L"`,
+    '@goto orca_done',
+    ':orca_request',
+    // Why: Orca derives an entry for its own codex, so a later launch carries it.
+    `@if defined ${LAST_LINE} (type nul>"${table}\\%${LAST_LINE}%${CODEX_HOOK_FLAG_REQUEST_SUFFIX}") 2>nul`,
     ':orca_done',
-    `@set "${SEEN_VERSION}="`,
+    `@set "${ENTRY}="`,
+    `@set "${LAST_LINE}="`,
     `@set "${HOME}="`,
     '@exit /b 0',
     ''

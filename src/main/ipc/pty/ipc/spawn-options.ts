@@ -25,7 +25,7 @@ import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-qu
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import { withCodexTerminalServerIsolationEnv } from '../../../../shared/codex-terminal-server-isolation'
 import { planCodexNoDaemonLaunch } from '../../../pty/codex-no-daemon-launch-command'
-import { getCodexHookSessionFlagsForSettings } from '../../../codex/codex-hook-session-trust'
+import { getCodexHookFlagTablePath } from '../../../codex/codex-hook-flag-table'
 import type { PtyIpcSpawnState } from './spawn-state'
 import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
@@ -90,7 +90,7 @@ export async function buildPtyIpcSpawnOptions(
     env: ctx.spawnEnv,
     envToDelete: ctx.combinedEnvToDelete,
     cwd: ctx.cwd,
-    hookFlags: getCodexHookSessionFlagsForSettings(ctx.deps.getSettings?.()),
+    hookFlagTable: getCodexHookFlagTablePath(),
     codexHomePath: ctx.selectedCodexHomePath
   })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand

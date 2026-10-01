@@ -12,9 +12,10 @@ import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cle
 import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 import {
   clearCodexHookSessionFlags,
-  getCodexHookSessionFlags,
+  getCodexHookSessionFlagFailure,
   refreshCodexHookSessionFlags
 } from './codex-hook-session-trust'
+import { listCodexHookFlagEntries } from './codex-hook-flag-table'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
@@ -187,34 +188,43 @@ export class CodexHookService {
     return wslPlan ? refreshWslRuntimeUserHooks(wslPlan) : null
   }
 
-  /** Native Codex's status hook is ready when launches have a flag to carry. */
+  /**
+   * Native Codex's status hook is ready when the flag table holds an entry.
+   * Read from disk, so the CLI's process reports what the app published.
+   */
   getStatus(): AgentHookInstallStatus {
-    const flags = getCodexHookSessionFlags()
+    const versions = listCodexHookFlagEntries().map((entry) => entry.codexVersion)
     return {
       agent: 'codex',
-      state: flags ? 'installed' : 'not_installed',
+      state: versions.length > 0 ? 'installed' : 'not_installed',
       configPath: getManagedScriptPath(),
-      managedHooksPresent: flags !== null,
-      detail: flags
-        ? `Carried as a session flag for ${flags.codexVersion}`
-        : 'Codex has not reported its hook trust yet'
+      managedHooksPresent: versions.length > 0,
+      detail:
+        versions.length > 0
+          ? `Carried as a session flag for ${versions.join(', ')}`
+          : (getCodexHookSessionFlagFailure() ?? 'Codex has not reported its hook trust yet')
     }
   }
 
   /**
-   * App start and the setting turning on: deploys the hook script, removes
-   * Orca's entries from ~/.codex and the shared managed home, and asks Codex
-   * for the flag's trust. The only ~/.codex writes are those removals.
+   * App start and the setting turning on: publishes the flag for the resolved
+   * Codex, deploys the hook script, and removes Orca's entries from ~/.codex
+   * and the shared managed home. The only ~/.codex writes are those removals.
    */
   async installSessionFlags(): Promise<AgentHookInstallStatus> {
-    writeManagedScript(getManagedScriptPath(), getManagedScript())
-    ensureCodexCmdHookFlagGate()
-    // Why the retired-form sweep first: it finds their trust through the entries
-    // it removes, and the removal below strips those entries too.
-    await cleanupLegacyManagedHookRepresentations()
-    await removeRealHomeCodexHookEntries()
-    await this.refreshRuntimeUserHooks()
-    await refreshCodexHookSessionFlags()
+    // Why started first and awaited last: cleanup below may throw, and must never stop the flag.
+    const flags = refreshCodexHookSessionFlags()
+    try {
+      writeManagedScript(getManagedScriptPath(), getManagedScript())
+      ensureCodexCmdHookFlagGate()
+      // Why the retired-form sweep first: it finds their trust through the entries
+      // it removes, and the removal below strips those entries too.
+      await cleanupLegacyManagedHookRepresentations()
+      await removeRealHomeCodexHookEntries()
+      await this.refreshRuntimeUserHooks()
+    } finally {
+      await flags
+    }
     return this.getStatus()
   }
 
@@ -260,7 +270,7 @@ export class CodexHookService {
   }
 
   private removeExclusively(): Promise<AgentHookInstallStatus> {
-    // Why first: status reports from the flags, and an opt-out means launches carry none.
+    // Why first: open panes read the table at their next launch, so this is what stops them.
     clearCodexHookSessionFlags()
     return removeCodexHooksExclusively(() => this.getStatus())
   }

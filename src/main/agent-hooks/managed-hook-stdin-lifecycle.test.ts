@@ -38,11 +38,14 @@ const { homedirMock } = vi.hoisted(() => ({
 // Why: deriving the session flag's trust spawns the real codex binary; the script is what's under test.
 vi.mock('../codex/codex-hook-session-trust', async (importOriginal) => {
   const actual = await importOriginal<typeof codexHookSessionTrustModule>()
-  const flags = { flag: 'hooks=[]', codexVersion: 'codex-cli 0.0.0-test' }
+  const entry = { codexVersion: 'codex-cli 0.0.0-test', flag: 'hooks=[]', noDaemon: false }
   return {
     ...actual,
-    getCodexHookSessionFlags: () => flags,
-    refreshCodexHookSessionFlags: async () => flags
+    refreshCodexHookSessionFlags: async () => {
+      const { publishCodexHookFlagEntry } = await import('../codex/codex-hook-flag-table')
+      publishCodexHookFlagEntry(entry)
+      return entry
+    }
   }
 })
 

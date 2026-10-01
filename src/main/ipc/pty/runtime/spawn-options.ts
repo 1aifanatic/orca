@@ -25,7 +25,7 @@ import { PI_PROCESS_OWNER_ENV_KEYS } from '../../../pty/pi-process-owner-env'
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import { withCodexTerminalServerIsolationEnv } from '../../../../shared/codex-terminal-server-isolation'
 import { planCodexNoDaemonLaunch } from '../../../pty/codex-no-daemon-launch-command'
-import { getCodexHookSessionFlagsForSettings } from '../../../codex/codex-hook-session-trust'
+import { getCodexHookFlagTablePath } from '../../../codex/codex-hook-flag-table'
 import { resolveStablePaneOwner } from '../pane/stable-owner'
 import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-query-replies'
 import {
@@ -111,7 +111,7 @@ export async function buildRuntimePtySpawnOptions(
     env: ctx.env,
     envToDelete: ctx.spawnOptions.envToDelete,
     cwd: ctx.cwd,
-    hookFlags: getCodexHookSessionFlagsForSettings(ctx.deps.getSettings?.()),
+    hookFlagTable: getCodexHookFlagTablePath(),
     codexHomePath: ctx.selectedCodexHomePath
   })
   const launchCommand = noDaemonLaunch ? await noDaemonLaunch : ctx.launchCommand

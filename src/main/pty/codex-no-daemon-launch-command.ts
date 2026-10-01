@@ -3,8 +3,12 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { quoteStartupArg, tokenizeStartupCommand } from '../../shared/tui-agent-startup-shell'
 import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-terminal-shell'
 import { resolveCommandOnLocalPath } from '../ipc/command-path-resolver'
-import { CODEX_SHARED_SERVER_ARGS } from '../../shared/codex-shell-function'
-import type { CodexHookSessionFlags } from '../codex/codex-hook-session-trust'
+import { CODEX_SHARED_SERVER_ARGS, codexArgsOverrideHooks } from '../../shared/codex-shell-function'
+import {
+  readCodexHookFlagEntry,
+  requestCodexHookFlagEntry,
+  type CodexHookFlagEntry
+} from '../codex/codex-hook-flag-table'
 import { codexHomeHoldsOrcaFileEntry } from '../codex/codex-hook-file-entry-probe'
 
 const CODEX_EXECUTABLE = /^codex(\.(exe|cmd|bat|ps1))?$/i
@@ -23,8 +27,8 @@ export type LocalCodexLaunch = {
   /** Keys the provider removes from that merged env. */
   envToDelete?: readonly string[]
   cwd: string | undefined
-  /** Orca's status hook flag; carried only by a launch no codex function sees. */
-  hookFlags?: CodexHookSessionFlags | null
+  /** Orca's flag table; its entry is carried only by a launch no codex function sees. */
+  hookFlagTable?: string | null
   /** The pane's CODEX_HOME; null for the user's default home. */
   codexHomePath?: string | null
 }
@@ -33,8 +37,9 @@ export type LocalCodexLaunch = {
  * The launch command with `--no-daemon` after the Codex executable, applying the
  * shell codex function's rule (src/shared/codex-shell-function.ts) where that
  * function never runs: cmd.exe defines none, and a path-named binary bypasses it.
- * A path-named binary also gets the function's status hook flag, under the same
- * version and file-entry gates; cmd's bare `codex` gets it from the pane's doskey macro.
+ * A path-named binary also gets the function's status hook flag, from the table
+ * entry for its version, under the same gates; cmd's bare `codex` gets it from
+ * the pane's doskey macro.
  * Everywhere else the function probes the binary the shell itself resolves after
  * the user's startup files, which main cannot see. Null (synchronously) when
  * nothing applies: an extra await tick would reorder the pane-spawn reservation
@@ -67,30 +72,31 @@ export function planCodexNoDaemonLaunch(launch: LocalCodexLaunch): Promise<strin
   for (const key of launch.envToDelete ?? []) {
     delete env[key]
   }
-  const hookFlags = isAbsolute(executable) ? (launch.hookFlags ?? null) : null
+  const hookFlagTable = isAbsolute(executable) ? (launch.hookFlagTable ?? null) : null
   const sharedServer =
     env.ORCA_CODEX_ISOLATE === '0' ||
     args.some((arg) => SHARED_SERVER_ARGS.has(arg) || arg.startsWith('--remote='))
-  if (sharedServer && !hookFlags) {
+  if (sharedServer && !hookFlagTable) {
     return null
   }
   const head = command.slice(0, executableSpan.end)
   const tail = command.slice(executableSpan.end)
-  return Promise.all([
-    sharedServer ? false : supportsNoDaemon(executable, env, launch.cwd),
-    hookFlags
-      ? carriesHookFlags(
-          executable,
-          hookFlags,
-          launch.codexHomePath ?? env.CODEX_HOME,
-          env,
-          launch.cwd
-        )
-      : false
-  ]).then(([noDaemon, withHook]) => {
-    const hookArg = withHook && hookFlags ? ` -c ${quoteHookFlag(hookFlags.flag, shell)}` : ''
+  const codexHomePath = launch.codexHomePath ?? env.CODEX_HOME
+  return (async () => {
+    const entry = hookFlagTable
+      ? await readHookFlagEntryFor(executable, hookFlagTable, env, launch.cwd)
+      : null
+    // Why skip beside the user's own `-c hooks...`: it replaces Orca's table, approval included.
+    const hookFlag =
+      entry && !codexArgsOverrideHooks(args) && !codexHomeHoldsOrcaFileEntry(codexHomePath)
+        ? entry.flag
+        : null
+    const noDaemon = sharedServer
+      ? false
+      : (entry?.noDaemon ?? (await supportsNoDaemon(executable, env, launch.cwd)))
+    const hookArg = hookFlag ? ` -c ${quoteHookFlag(hookFlag, shell)}` : ''
     return `${head}${noDaemon ? ' --no-daemon' : ''}${hookArg}${tail}`
-  })
+  })()
 }
 
 function quoteHookFlag(flag: string, shell: 'posix' | 'powershell' | 'cmd'): string {
@@ -98,16 +104,14 @@ function quoteHookFlag(flag: string, shell: 'posix' | 'powershell' | 'cmd'): str
   return shell === 'cmd' ? `"${flag}"` : quoteStartupArg(flag, shell)
 }
 
-async function carriesHookFlags(
+/** The table entry for the version this binary reports; a miss asks Orca to derive one. */
+async function readHookFlagEntryFor(
   executable: string,
-  hookFlags: CodexHookSessionFlags,
-  codexHomePath: string | null | undefined,
+  table: string,
   env: NodeJS.ProcessEnv,
   cwd: string | undefined
-): Promise<boolean> {
-  if (codexHomeHoldsOrcaFileEntry(codexHomePath)) {
-    return false
-  }
+): Promise<CodexHookFlagEntry | null> {
+  let codexVersion = ''
   try {
     const version = await runProcess({
       program: executable,
@@ -116,13 +120,21 @@ async function carriesHookFlags(
       env,
       timeoutMs: HELP_PROBE_TIMEOUT_MS
     })
-    return version.code === 0 && version.stdout.trim() === hookFlags.codexVersion
+    codexVersion = version.code === 0 ? version.stdout.trim() : ''
   } catch {
-    return false
+    return null
   }
+  if (!codexVersion) {
+    return null
+  }
+  const entry = readCodexHookFlagEntry(codexVersion, table)
+  if (!entry) {
+    requestCodexHookFlagEntry(codexVersion, executable, table)
+  }
+  return entry
 }
 
-// Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
+// Why probe unless the table records it: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
 async function supportsNoDaemon(
   executable: string,
   env: NodeJS.ProcessEnv,

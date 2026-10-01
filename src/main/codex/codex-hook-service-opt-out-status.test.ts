@@ -1,38 +1,51 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const flags = vi.hoisted(() => ({
-  current: { flag: 'hooks={}', codexVersion: 'codex-cli 1.0.0' } as unknown
-}))
-
-vi.mock('./codex-hook-session-trust', () => ({
-  getCodexHookSessionFlags: () => flags.current,
-  refreshCodexHookSessionFlags: vi.fn(),
-  clearCodexHookSessionFlags: () => {
-    flags.current = null
-  }
-}))
 vi.mock('./codex-hook-local-maintenance', () => ({
   refreshCodexRuntimeUserHooksExclusively: vi.fn(),
   removeCodexHooksExclusively: async (getStatus: () => unknown) => getStatus()
-}))
-
-vi.mock('./codex-home-paths', () => ({
-  getOrcaManagedCodexHomePath: () => '/orca/codex-runtime-home'
 }))
 vi.mock('./codex-hook-trust-queue', () => ({
   runExclusivelyForRuntimeAndSystemTrustConfig: (_home: string, run: () => unknown) => run()
 }))
 
 import { CodexHookService } from './codex-hook-service-implementation'
+import { listCodexHookFlagEntries, publishCodexHookFlagEntry } from './codex-hook-flag-table'
 
 describe('Codex hook status after the opt-out', () => {
-  it('reads not installed once hooks are turned off, since launches carry no flag', async () => {
+  let userData: string
+
+  beforeEach(() => {
+    userData = mkdtempSync(join(tmpdir(), 'orca-codex-hook-opt-out-'))
+    vi.stubEnv('ORCA_USER_DATA_PATH', userData)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    rmSync(userData, { recursive: true, force: true })
+  })
+
+  it('reads the published table, so a separate CLI process reports what the app published', () => {
     const service = new CodexHookService()
-    expect(service.getStatus().state).toBe('installed')
+    expect(service.getStatus().state).toBe('not_installed')
+
+    publishCodexHookFlagEntry({ codexVersion: 'codex-cli 1.0.0', flag: 'hooks={}', noDaemon: true })
+
+    expect(new CodexHookService().getStatus()).toMatchObject({
+      state: 'installed',
+      detail: 'Carried as a session flag for codex-cli 1.0.0'
+    })
+  })
+
+  it('empties the table on opt-out, so open panes stop carrying at their next launch', async () => {
+    publishCodexHookFlagEntry({ codexVersion: 'codex-cli 1.0.0', flag: 'hooks={}', noDaemon: true })
+    const service = new CodexHookService()
 
     const status = await service.remove()
 
     expect(status.state).toBe('not_installed')
-    expect(service.getStatus().managedHooksPresent).toBe(false)
+    expect(listCodexHookFlagEntries()).toEqual([])
   })
 })

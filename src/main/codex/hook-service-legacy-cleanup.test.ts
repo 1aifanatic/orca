@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
@@ -11,16 +11,10 @@ import {
   setupCodexHookHomes
 } from './hook-service-test-harness'
 
-const { getPathMock, homedirMock, sessionFlags } = vi.hoisted(() => {
-  const sessionFlags: { current: { flag: string; codexVersion: string } | null } = {
-    current: null
-  }
-  return {
-    getPathMock: vi.fn<(name: string) => string>(),
-    homedirMock: vi.fn<() => string>(),
-    sessionFlags
-  }
-})
+const { getPathMock, homedirMock } = vi.hoisted(() => ({
+  getPathMock: vi.fn<(name: string) => string>(),
+  homedirMock: vi.fn<() => string>()
+}))
 
 vi.mock('electron', () => ({
   app: {
@@ -39,20 +33,17 @@ vi.mock('os', async (importOriginal) => {
 // Why: deriving the flag spawns `codex app-server`; these suites cover only the file sweeps around it.
 vi.mock('./codex-hook-session-trust', async (importOriginal) => ({
   ...(await importOriginal<typeof CodexHookSessionTrust>()),
-  getCodexHookSessionFlags: () => sessionFlags.current,
   refreshCodexHookSessionFlags: async () => {
-    sessionFlags.current = { flag: 'hooks={}', codexVersion: 'codex-cli 0.0.0-test' }
-    return sessionFlags.current
+    const { publishCodexHookFlagEntry } = await import('./codex-hook-flag-table')
+    const entry = { codexVersion: 'codex-cli 0.0.0-test', flag: 'hooks={}', noDaemon: false }
+    publishCodexHookFlagEntry(entry)
+    return entry
   }
 }))
 
 import { CodexHookService, getCodexManagedHookInstallMaterial } from './hook-service'
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
-
-beforeEach(() => {
-  sessionFlags.current = null
-})
 
 const LEGACY_ORCA_PROFILE_LINES = [
   '# BEGIN ORCA AGENT STATUS HOOKS',
