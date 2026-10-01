@@ -268,6 +268,9 @@ export function MobileNativeChatView({
   // "Worked for N" row. The structured lane owns them; the bridge lane keeps its
   // three-dot indicator.
   const stopping = agentWorking === true && turnIndicator?.stopping === true
+  // Only this phone's own request holds Stop: a repeat is how a stuck stop escalates.
+  const stopHeld = agentWorking === true && turnIndicator?.stopRequestInFlight === true
+  const stoppingCopy = NATIVE_CHAT_TURN_STATUS_COPY.stopping
   const turns = useMobileNativeChatTurnDisclosure({
     messages: data,
     enabled: structuredActivityUi,
@@ -409,18 +412,15 @@ export function MobileNativeChatView({
           </Pressable>
         </View>
         {canStop ? (
-          // A second Stop while one is ending the turn sends nothing.
           <Pressable
             style={({ pressed }) => [styles.stopButton, pressed && styles.pressed]}
             onPress={onStop}
-            disabled={stopping}
+            disabled={stopHeld}
             hitSlop={8}
-            accessibilityLabel={stopping ? NATIVE_CHAT_TURN_STATUS_COPY.stopping : 'Stop the agent'}
+            accessibilityLabel={stopHeld ? stoppingCopy : 'Stop the agent'}
           >
             <Square size={13} color={colors.statusRed} strokeWidth={2.4} fill={colors.statusRed} />
-            <Text style={styles.stopLabel}>
-              {stopping ? NATIVE_CHAT_TURN_STATUS_COPY.stopping : 'Stop'}
-            </Text>
+            <Text style={styles.stopLabel}>{stopHeld ? stoppingCopy : 'Stop'}</Text>
           </Pressable>
         ) : null}
       </View>

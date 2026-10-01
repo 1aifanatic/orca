@@ -78,6 +78,8 @@ export type NativeChatLiveTurnIndicator = {
   activityText: string | null
   /** A person's Stop is ending the turn. */
   stopping?: boolean
+  /** This client's own Stop request is in flight: only then does its Stop control hold. */
+  stopRequestInFlight?: boolean
 }
 
 export type NativeChatActiveTurnLabel =

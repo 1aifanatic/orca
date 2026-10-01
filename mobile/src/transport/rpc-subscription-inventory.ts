@@ -87,6 +87,13 @@ export const RPC_SUBSCRIPTION_SITES: readonly RpcSubscriptionSite[] = [
     method: 'agentSession.subscribe',
     coverage: { kind: 'unwritten-scenario' }
   },
+  // The host's status stream, one per client, which the chat reads the host's "Stopping…" from.
+  // Mountable: the feed guards each frame and touches no device surface. The scenario is missing.
+  {
+    file: 'src/session/mobile-structured-session-status-feed.ts',
+    method: 'agentSession.subscribeStatus',
+    coverage: { kind: 'unwritten-scenario' }
+  },
   // The session tab snapshot. Mountable behind the reconciliation controller the hook already
   // takes; no device surface is involved.
   {

@@ -21,6 +21,7 @@ import type { MobileNativeChatSession } from './use-mobile-native-chat-session'
 import type { NativeChatLiveTurnIndicator } from '../../../src/shared/native-chat-turn-status'
 import { useMobileStructuredAgentState } from './use-mobile-structured-agent-state'
 import { useMobileStructuredStopPress } from './use-mobile-structured-stop-press'
+import { useMobileStructuredSessionHostStopping } from './use-mobile-structured-session-host-stopping'
 import { useMobileStructuredPromptResponses } from './use-mobile-structured-prompt-responses'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
@@ -170,12 +171,18 @@ export function useMobileStructuredAgentSession(args: {
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
   const thinking = isStructuredAgentSessionThinking(state.items)
   const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence)
-  // The phone reads no session status, so only its own press says "Stopping…".
+  const hostStopping = useMobileStructuredSessionHostStopping({
+    client,
+    sessionId,
+    enabled: enabled && connected && hostSupport?.statusFeed === true
+  })
+  // The host's word, bridged by this phone's own press until its Stop event lands.
   const stopPress = useMobileStructuredStopPress(sessionKey)
-  const stopping = isWorking && stopPress.pressed
+  const stopping = isWorking && (hostStopping || stopPress.pressed)
+  const stopRequestInFlight = isWorking && stopPress.pressed
   const turnIndicator = useMemo(
-    () => ({ thinking, activityText, stopping }),
-    [thinking, activityText, stopping]
+    () => ({ thinking, activityText, stopping, stopRequestInFlight }),
+    [thinking, activityText, stopping, stopRequestInFlight]
   )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(

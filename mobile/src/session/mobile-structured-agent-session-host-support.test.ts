@@ -2,25 +2,26 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
-  AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+  AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+  AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
 import { structuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 
 describe('structuredAgentSessionHostSupport', () => {
   it('reads each structured-session feature from the host capability list', () => {
-    expect(structuredAgentSessionHostSupport([])).toEqual({
-      promptCancel: false,
-      questionAnswers: false,
-      queuedMessages: false
-    })
+    const none = { promptCancel: false, questionAnswers: false, queuedMessages: false }
+    expect(structuredAgentSessionHostSupport([])).toEqual({ ...none, statusFeed: false })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY])
-    ).toEqual({ promptCancel: false, questionAnswers: true, queuedMessages: false })
+    ).toEqual({ ...none, questionAnswers: true, statusFeed: false })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY])
-    ).toEqual({ promptCancel: true, questionAnswers: false, queuedMessages: false })
+    ).toEqual({ ...none, promptCancel: true, statusFeed: false })
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
-    ).toEqual({ promptCancel: false, questionAnswers: false, queuedMessages: true })
+    ).toEqual({ ...none, queuedMessages: true, statusFeed: false })
+    expect(
+      structuredAgentSessionHostSupport([AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY])
+    ).toEqual({ ...none, statusFeed: true })
   })
 })

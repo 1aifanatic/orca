@@ -147,7 +147,26 @@ describe('MobileNativeChatView', () => {
     })
   }
 
-  it("disables Stop and says Stopping while this phone's Stop is ending the turn", async () => {
+  it("holds Stop and says Stopping while this phone's own Stop request is in flight", async () => {
+    await render({
+      structuredActivityUi: true,
+      agentWorking: true,
+      canStop: true,
+      turnIndicator: {
+        thinking: false,
+        activityText: null,
+        stopping: true,
+        stopRequestInFlight: true
+      }
+    })
+    const stop = renderer!.root.find(
+      (node) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Stopping…'
+    )
+    expect(stop.props.disabled).toBe(true)
+  })
+
+  // A Stop the provider took and never answered ends only at a repeat Stop.
+  it('keeps Stop for the repeat that escalates while the host alone says Stopping', async () => {
     await render({
       structuredActivityUi: true,
       agentWorking: true,
@@ -155,9 +174,9 @@ describe('MobileNativeChatView', () => {
       turnIndicator: { thinking: false, activityText: null, stopping: true }
     })
     const stop = renderer!.root.find(
-      (node) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Stopping…'
+      (node) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Stop the agent'
     )
-    expect(stop.props.disabled).toBe(true)
+    expect(stop.props.disabled).toBe(false)
   })
 
   /** Ids of the rows the list is currently rendering. */

@@ -124,7 +124,8 @@ function Harness({
     hostSupport: {
       promptCancel: promptCancelSupported,
       questionAnswers: questionAnswersSupported,
-      queuedMessages: false
+      queuedMessages: false,
+      statusFeed: false
     },
     onSendError: vi.fn()
   })

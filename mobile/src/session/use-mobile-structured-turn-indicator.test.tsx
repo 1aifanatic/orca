@@ -114,7 +114,12 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       listener?.(snapshot([runningTurn, reasoning], 3))
     })
 
-    expect(hook?.turnIndicator).toEqual({ thinking: true, activityText: null, stopping: false })
+    expect(hook?.turnIndicator).toEqual({
+      thinking: true,
+      activityText: null,
+      stopping: false,
+      stopRequestInFlight: false
+    })
   })
 
   it('hands the row the provider copy once real content ends the reasoning', async () => {
@@ -146,7 +151,8 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
     expect(hook?.turnIndicator).toEqual({
       thinking: false,
       activityText: 'Updating the plan',
-      stopping: false
+      stopping: false,
+      stopRequestInFlight: false
     })
   })
 
@@ -173,7 +179,7 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
     expect(hook?.turnIndicator.stopping).toBe(false)
 
     act(() => hook?.cancel())
-    expect(hook?.turnIndicator.stopping).toBe(true)
+    expect(hook?.turnIndicator).toMatchObject({ stopping: true, stopRequestInFlight: true })
 
     await act(async () => {
       const cancelled = { ok: true, value: { cancelled: true } }
@@ -204,6 +210,148 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       )
     })
 
-    expect(hook?.turnIndicator).toEqual({ thinking: false, activityText: null, stopping: false })
+    expect(hook?.turnIndicator).toEqual({
+      thinking: false,
+      activityText: null,
+      stopping: false,
+      stopRequestInFlight: false
+    })
+  })
+})
+
+/** The phone's chat reads the host's "Stopping…" from the status stream the desktop chat reads. */
+describe("useMobileStructuredAgentSession and the host's Stopping", () => {
+  type RpcReply = { ok: boolean; result: unknown; _meta: { runtimeId: string } }
+  let renderer: ReactTestRenderer | null = null
+  let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
+  let streams: Map<string, (value: unknown) => void>
+  let cancelReply: ((reply: RpcReply) => void) | null
+  let subscribe: ReturnType<typeof vi.fn>
+  let client: RpcClient
+  const onSendError = vi.fn()
+  const runningTurn = journalItem(1, { kind: 'turn', turnId: 'turn-1', state: 'running' })
+
+  function hostSays(sessionId: string, stopping: boolean): void {
+    act(() =>
+      streams.get('agentSession.subscribeStatus')?.({
+        type: 'status',
+        session: {
+          sessionId,
+          workspaceId: 'workspace-a',
+          agent: 'codex',
+          status: 'working',
+          updatedAt: 1,
+          ...(stopping ? { stopping: true } : {})
+        }
+      })
+    )
+  }
+
+  let connected = true
+
+  function Harness({ statusFeed }: { statusFeed: boolean }): null {
+    hook = useMobileStructuredAgentSession({
+      client,
+      sessionId: 'session-1',
+      sourceIdentity: 'host-a\0workspace-a',
+      enabled: true,
+      connected,
+      hostSupport: {
+        promptCancel: false,
+        questionAnswers: false,
+        queuedMessages: false,
+        statusFeed
+      },
+      agent: 'codex',
+      onSendError
+    })
+    return null
+  }
+
+  async function mount(options: { statusFeed?: boolean } = {}) {
+    act(() => {
+      renderer = create(createElement(Harness, { statusFeed: options.statusFeed ?? true }))
+    })
+    await vi.waitFor(() => expect(streams.has('agentSession.subscribe')).toBe(true))
+    act(() => streams.get('agentSession.subscribe')?.(snapshot([runningTurn], 3)))
+  }
+
+  beforeEach(() => {
+    streams = new Map()
+    cancelReply = null
+    connected = true
+    subscribe = vi.fn((method: string, _params: unknown, onData: (value: unknown) => void) => {
+      streams.set(method, onData)
+      return vi.fn()
+    })
+    const sendRequest = vi.fn((method: string): Promise<RpcReply> =>
+      method === 'agentSession.cancel'
+        ? new Promise<RpcReply>((resolve) => (cancelReply = resolve))
+        : Promise.resolve({ ok: true, result: {}, _meta: { runtimeId: 'r1' } })
+    )
+    // A fresh client per test: the status stream is one per client for its life.
+    client = {
+      sendRequest,
+      subscribe,
+      getState: () => 'connected',
+      onStateChange: () => () => {}
+    } as unknown as RpcClient
+  })
+
+  afterEach(() => {
+    act(() => renderer?.unmount())
+    renderer = null
+    hook = null
+  })
+
+  it('reads Stopping from the host with no press of its own, and keeps Stop for a repeat', async () => {
+    await mount()
+
+    hostSays('session-1', true)
+
+    expect(hook?.turnIndicator).toMatchObject({ stopping: true, stopRequestInFlight: false })
+  })
+
+  it("stays Stopping after this phone's own Stop answers while the host still says so", async () => {
+    await mount()
+    act(() => hook?.cancel())
+    hostSays('session-1', true)
+    expect(hook?.turnIndicator).toMatchObject({ stopping: true, stopRequestInFlight: true })
+
+    await act(async () => {
+      const cancelled = { ok: true, value: { cancelled: true } }
+      cancelReply?.({ ok: true, result: cancelled, _meta: { runtimeId: 'r1' } })
+    })
+
+    await vi.waitFor(() => expect(hook?.turnIndicator.stopRequestInFlight).toBe(false))
+    expect(hook?.turnIndicator.stopping).toBe(true)
+  })
+
+  it("never reads another session's Stopping", async () => {
+    await mount()
+
+    hostSays('session-2', true)
+
+    expect(hook?.turnIndicator.stopping).toBe(false)
+  })
+
+  it('reads nothing from the host while the phone is not connected', async () => {
+    await mount()
+    hostSays('session-1', true)
+    expect(hook?.turnIndicator.stopping).toBe(true)
+
+    connected = false
+    act(() => renderer?.update(createElement(Harness, { statusFeed: true })))
+
+    expect(hook?.turnIndicator.stopping).toBe(false)
+  })
+
+  it('never opens the status stream on a host without the status feed', async () => {
+    await mount({ statusFeed: false })
+
+    expect(subscribe.mock.calls.map(([method]) => method)).not.toContain(
+      'agentSession.subscribeStatus'
+    )
+    expect(hook?.turnIndicator.stopping).toBe(false)
   })
 })
