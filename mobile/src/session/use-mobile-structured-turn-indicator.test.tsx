@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../src/shared/agent-session-journal-types'
 import type {
   AgentSessionSubscribeEvent,
@@ -147,6 +147,39 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       activityText: 'Updating the plan',
       stopping: false
     })
+  })
+
+  it("reads Stopping from this phone's own Stop until its request answers", async () => {
+    let answer: (value: unknown) => void = () => undefined
+    const passthrough = sendRequest.getMockImplementation()!
+    // The Stop's request stays in flight until the test answers it; every other call is as usual.
+    sendRequest.mockImplementation(((method: string) =>
+      method === 'agentSession.cancel'
+        ? new Promise((resolve) => (answer = resolve))
+        : passthrough(method)) as never)
+    onTestFinished(() => {
+      sendRequest.mockImplementation(passthrough)
+    })
+    act(() => {
+      renderer = create(createElement(Harness))
+    })
+    await vi.waitFor(() => expect(listener).not.toBeNull())
+    act(() => {
+      listener?.(snapshot([runningTurn], 3))
+    })
+    expect(hook?.turnIndicator.stopping).toBe(false)
+
+    act(() => hook?.cancel())
+    expect(hook?.turnIndicator.stopping).toBe(true)
+
+    await act(async () => {
+      answer({
+        ok: true,
+        result: { ok: true, value: { cancelled: true } },
+        _meta: { runtimeId: 'r1' }
+      })
+    })
+    await vi.waitFor(() => expect(hook?.turnIndicator.stopping).toBe(false))
   })
 
   it('never reads a journal status row as the live activity', async () => {
