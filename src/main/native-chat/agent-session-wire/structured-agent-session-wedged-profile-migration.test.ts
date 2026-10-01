@@ -369,14 +369,9 @@ describe('already-wedged profiles become usable on load', () => {
     await seedRunningTurn()
     openHost()
 
-    // The attach adjudicates the dead owner first, which moves the fence; like a client's ensure,
-    // it is retried at the fence the refusal names.
-    const stale = await attachForTests(host, CALLER, hostTestAttachParams(13))
-    const fence = stale.ok ? 13 : (stale.refusal.currentFence ?? 13)
-    expect(stale.ok || stale.refusal.code === 'agent_session_checkpoint_stale').toBe(true)
-    expect(stale.ok || (await attachForTests(host, CALLER, hostTestAttachParams(fence))).ok).toBe(
-      true
-    )
+    // The start adjudicates the dead owner first, which moves the fence, then reserves at the
+    // fence it reads from the record.
+    expect(await attachForTests(host, CALLER, hostTestAttachParams(13))).toMatchObject({ ok: true })
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)

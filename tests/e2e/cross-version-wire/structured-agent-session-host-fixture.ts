@@ -24,9 +24,9 @@ export function structuredHostStub(
     restartResumeAll: vi.fn(async () => []),
     restartContinueAll: vi.fn(async () => ({ resumed: [], continued: [] })),
     create: vi.fn(async () => ({ ok: true, replayed: false, value: { sessionId } })),
-    // Attach-shaped entries take a client-supplied location, so the host is asked whether it
-    // supports creating there. A real host always answers; leaving it unstubbed made every
-    // `ensure` refuse for the harness's own reason rather than the location's.
+    // A create takes a client-supplied location, so the host is asked whether it supports
+    // creating there. A real host always answers; leaving it unstubbed made every create refuse
+    // for the harness's own reason rather than the location's.
     supportsCreate: vi.fn(() => true),
     conversationCommand: vi.fn(async () => ({
       ok: true,

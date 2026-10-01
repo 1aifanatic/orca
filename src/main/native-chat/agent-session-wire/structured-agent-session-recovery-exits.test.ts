@@ -63,10 +63,9 @@ async function stopOwner(child: ReturnType<typeof spawnProcess>): Promise<void> 
   spawnedOwners.delete(child)
 }
 
-/** What a send's delivery or `agentSession.ensure` does: attach at the record's current fence. */
+/** What a send's delivery does: the start at the record's current fence. */
 async function startAgent(): Promise<void> {
-  const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-  expect((await attachForTests(host, CALLER, hostTestAttachParams(fence))).ok).toBe(true)
+  expect((await startAgentForTests(host, SESSION)).ok).toBe(true)
 }
 
 function adapter(): StructuredAgentSessionAdapter {

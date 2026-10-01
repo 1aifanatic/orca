@@ -144,8 +144,8 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
           reason: 'requestMalformed'
         })
       }
-      // Everything up to `attach` is pre-commit, and answers with a refusal rather than a throw so
-      // a client can tell "nothing was created" from "the outcome is unknown".
+      // Everything up to the host's create is pre-commit, and answers with a refusal rather than a
+      // throw so a client can tell "nothing was created" from "the outcome is unknown".
       const prepared = await resolveUncommittedStructuredCreate(async () => {
         if ('worktree' in params) {
           const conflict = agentSessionFingerprintConflict(
