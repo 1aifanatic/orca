@@ -2,8 +2,9 @@ import { requirePathExistenceResults } from '../../../../shared/path-existence-b
 import type { NativeChatDraftAttachment } from './native-chat-draft-storage'
 
 /**
- * Ids of attachments whose file is gone. A path that cannot be checked (an unreachable SSH host,
- * or a file outside Orca's roots) is not reported: losing contact is not proof the file is gone.
+ * Ids of attachments whose file is gone. Local paths are granted for reading first, as at attach.
+ * A path that cannot be checked (an unreachable SSH host, a refused grant) is not reported:
+ * losing contact is not proof the file is gone.
  */
 export async function findMissingNativeChatAttachments(
   attachments: readonly NativeChatDraftAttachment[]
@@ -18,6 +19,10 @@ export async function findMissingNativeChatAttachments(
     Array.from(byConnection, async ([connectionId, group]) => {
       try {
         const filePaths = group.map((attachment) => attachment.path)
+        if (!connectionId) {
+          // A relaunch forgot the read grant each local image got when it was attached.
+          await Promise.all(filePaths.map(grantRead))
+        }
         const results = requirePathExistenceResults(
           await window.api.fs.pathsExist?.({
             filePaths,
@@ -36,4 +41,12 @@ export async function findMissingNativeChatAttachments(
     })
   )
   return missing
+}
+
+async function grantRead(targetPath: string): Promise<void> {
+  try {
+    await window.api.fs.authorizeExternalPath({ targetPath })
+  } catch {
+    // Left ungranted: its preview stays blank and the check below cannot answer for it.
+  }
 }

@@ -75,6 +75,8 @@ export type NativeChatComposerImageAttachment = {
   pending?: boolean
   /** The file is gone (a restored draft outlived it); Send waits until the chip is removed. */
   missing?: boolean
+  /** A restored chip being granted and checked; its preview waits so the read is not refused. */
+  checking?: boolean
 }
 
 /**

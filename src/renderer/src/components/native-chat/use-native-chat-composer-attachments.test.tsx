@@ -648,14 +648,50 @@ describe('a restored draft whose image is gone', () => {
       ['/remote.png', false],
       ['/new.png', false]
     ])
-    expect(pathsExist.mock.calls).toEqual([
-      [{ filePaths: ['/gone.png', '/here.png'] }],
-      [{ filePaths: ['/remote.png'], connectionId: 'ssh-1' }]
-    ])
+    expect(pathsExist).toHaveBeenCalledTimes(2)
+    expect(pathsExist).toHaveBeenCalledWith({ filePaths: ['/gone.png', '/here.png'] })
+    expect(pathsExist).toHaveBeenCalledWith({ filePaths: ['/remote.png'], connectionId: 'ssh-1' })
     expect(readNativeChatDraftAttachments('session:restored')[0]).toEqual({
       id: 'gone',
       path: '/gone.png'
     })
+    act(() => probe.root.unmount())
+  })
+
+  // The read grant made at attach lived in memory; without it a restored preview is blank and a
+  // deleted original can never be shown missing.
+  it('grants each restored local image before checking it, and holds its preview until then', async () => {
+    const calls: string[] = []
+    const answer = Promise.withResolvers<void>()
+    const authorizeExternalPath = vi.fn(async ({ targetPath }: { targetPath: string }) => {
+      calls.push(`grant ${targetPath}`)
+    })
+    const pathsExist = vi.fn(async ({ filePaths }: { filePaths: string[] }) => {
+      calls.push(`check ${filePaths.join(',')}`)
+      await answer.promise
+      return filePaths.map(() => ({ exists: true }))
+    })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { fs: { authorizeExternalPath, pathsExist } }
+    })
+    addNativeChatDraftAttachments('session:granted', [
+      { id: 'local', path: '/Users/me/Desktop/shot.png' },
+      { id: 'remote', path: '/remote.png', connectionId: 'ssh-1' }
+    ])
+
+    const probe = await renderProbe('session:granted', true)
+    const checking = () => probe.latest().imageAttachments.map((chip) => chip.checking === true)
+    expect(checking()).toEqual([true, true])
+    await act(async () => answer.resolve())
+
+    expect(authorizeExternalPath.mock.calls).toEqual([
+      [{ targetPath: '/Users/me/Desktop/shot.png' }]
+    ])
+    expect(calls.indexOf('grant /Users/me/Desktop/shot.png')).toBeLessThan(
+      calls.indexOf('check /Users/me/Desktop/shot.png')
+    )
+    expect(checking()).toEqual([false, false])
     act(() => probe.root.unmount())
   })
 })

@@ -45,7 +45,9 @@ export function NativeChatImageAttachmentPreview({
   const isPending = attachment.pending === true
   const isMissing = attachment.missing === true
   const localSrc = useLocalImageSrc(
-    !isPending && !isMissing && (isNearViewport || isOpen) ? attachment.path : undefined,
+    !isPending && !isMissing && !attachment.checking && (isNearViewport || isOpen)
+      ? attachment.path
+      : undefined,
     attachment.path,
     attachment.connectionId
   )

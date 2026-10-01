@@ -64,6 +64,8 @@ export function useNativeChatComposerAttachments({
   // Chips this view has checked or attached itself; anything else may be restored from disk.
   const checkedIdsRef = useRef(new Set<string>())
   const [missingIds, setMissingIds] = useState<ReadonlySet<string>>(() => new Set())
+  // Restored chips whose read grant and check are still running; their previews wait for both.
+  const [checkingIds, setCheckingIds] = useState<ReadonlySet<string>>(() => new Set())
 
   // A saved draft can outlive its image (age sweep, OS temp cleanup), so each restored chip is
   // checked once; a missing one is shown as such and blocks Send, rather than sending a dead path.
@@ -74,11 +76,14 @@ export function useNativeChatComposerAttachments({
     if (unchecked.length === 0) {
       return
     }
-    unchecked.forEach((attachment) => checkedIdsRef.current.add(attachment.id))
+    const ids = unchecked.map((attachment) => attachment.id)
+    ids.forEach((id) => checkedIdsRef.current.add(id))
+    setCheckingIds((previous) => new Set([...previous, ...ids]))
     void findMissingNativeChatAttachments(unchecked).then((missing) => {
       if (missing.size > 0) {
         setMissingIds((previous) => new Set([...previous, ...missing]))
       }
+      setCheckingIds((previous) => new Set([...previous].filter((id) => !ids.includes(id))))
     })
   }, [shared])
 
@@ -200,10 +205,11 @@ export function useNativeChatComposerAttachments({
         return {
           ...chip,
           ...(previewUrl ? { previewUrl } : {}),
-          ...(missingIds.has(chip.id) ? { missing: true } : {})
+          ...(missingIds.has(chip.id) ? { missing: true } : {}),
+          ...(checkingIds.has(chip.id) ? { checking: true } : {})
         }
       }),
-    [missingIds, shared]
+    [checkingIds, missingIds, shared]
   )
 
   return {
