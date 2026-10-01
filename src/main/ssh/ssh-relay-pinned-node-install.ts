@@ -4,9 +4,11 @@ import {
   ensureRemoteOrcadNodeRuntime,
   remoteNodeRuntimeDir,
   remoteNodeRuntimePresentCommand,
+  RemoteNodeRuntimeSecurityModifiedError,
   RemoteNodeRuntimeSelfTestError,
   REMOTE_NODE_RUNTIME_READY
 } from './orcad-remote-node-runtime'
+import { withRuntimeStoreLock } from './remote-node-runtime-store-lock'
 import type { SshConnection } from './ssh-connection'
 import { shellEscape } from './ssh-connection-utils'
 import { execCommand } from './ssh-relay-deploy-helpers'
@@ -18,26 +20,45 @@ import {
   recordPinnedRuntimeRefusal,
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
+import type { PrebuiltRelayPlan } from './ssh-relay-host-node-addons'
+import type { RelayRuntimeLadderRun } from './ssh-relay-runtime-resolution'
 import {
   classifyPinnedRuntimeFailure,
   runPinnedRuntimeSelfTest
 } from './ssh-relay-runtime-self-test'
-import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import {
+  isWindowsRemoteHost,
+  joinRemotePath,
+  remoteDirname,
+  type RemoteHostPlatform
+} from './ssh-remote-platform'
 
 type PinnedInstallContext = {
   conn: SshConnection
   host: RemoteHostPlatform
   remoteRelayDir: string
-  plan: PinnedRelayPlan
+  plan: PrebuiltRelayPlan
   targetId: string
   signal?: AbortSignal
+  run?: RelayRuntimeLadderRun
 }
 
 function refuse(context: PinnedInstallContext, error: PinnedRelayFallbackError): never {
-  if (isPinnedRuntimeRefusal(error.reason)) {
+  // Only Orca's pinned Node is cached as refused; a host Node refusal names nothing reusable.
+  if (context.plan.kind === 'pinned-node' && isPinnedRuntimeRefusal(error.reason)) {
     recordPinnedRuntimeRefusal(context.targetId, context.plan.target, error.reason)
   }
   throw error
+}
+
+export function prebuiltRelayNodePath(context: {
+  host: RemoteHostPlatform
+  remoteRelayDir: string
+  plan: PrebuiltRelayPlan
+}): string {
+  return context.plan.kind === 'pinned-node'
+    ? pinnedRelayNodePath(context.host, context.remoteRelayDir, context.plan.target)
+    : context.plan.nodePath
 }
 
 /**
@@ -45,21 +66,25 @@ function refuse(context: PinnedInstallContext, error: PinnedRelayFallbackError):
  * spend the warm-reconnect budget (design D10 G2.6). A cold install verifies in full.
  */
 export async function ensurePinnedRelayRuntime(
-  context: PinnedInstallContext,
+  context: PinnedInstallContext & { plan: PinnedRelayPlan },
   relayAlreadyInstalled: boolean
 ): Promise<void> {
-  const { conn, host, remoteRelayDir, plan, signal } = context
+  const { conn, host, remoteRelayDir, plan, signal, run } = context
   if (relayAlreadyInstalled) {
     const runtimeDir = remoteNodeRuntimeDir(host, remoteRelayDir, plan.target)
     const present = await execCommand(conn, remoteNodeRuntimePresentCommand(host, runtimeDir), {
-      signal
+      signal,
+      wrapCommand: !isWindowsRemoteHost(host)
     })
     if (present.trim() === REMOTE_NODE_RUNTIME_READY) {
+      if (run && run.runtimeTransfer === 'none') {
+        run.runtimeTransfer = 'cached'
+      }
       return
     }
   }
   try {
-    await ensureRemoteOrcadNodeRuntime({
+    const { transfer } = await ensureRemoteOrcadNodeRuntime({
       conn,
       host,
       slotDir: remoteRelayDir,
@@ -67,9 +92,15 @@ export async function ensurePinnedRelayRuntime(
       archivePath: plan.runtimeArchive,
       signal
     })
+    if (run && run.runtimeTransfer !== 'uploaded') {
+      run.runtimeTransfer = transfer
+    }
   } catch (error) {
     if (error instanceof PinnedRelayFallbackError) {
       refuse(context, error)
+    }
+    if (error instanceof RemoteNodeRuntimeSecurityModifiedError) {
+      refuse(context, new PinnedRelayFallbackError('security_software', error.detail))
     }
     if (error instanceof RemoteNodeRuntimeSelfTestError) {
       const refusal = classifyPinnedRuntimeFailure(error.exitStatus, error.output)
@@ -81,9 +112,42 @@ export async function ensurePinnedRelayRuntime(
   }
 }
 
+/**
+ * The runtime was ensured before the relay dir carried its ref, so a store GC in between could
+ * have collected it. Now that the ref is visible, a check under the store lock is final: GC only
+ * deletes while holding that lock, and it never deletes a referenced runtime.
+ */
+async function confirmPinnedRuntimeHeld(
+  context: PinnedInstallContext & { plan: PinnedRelayPlan }
+): Promise<void> {
+  const { conn, host, remoteRelayDir, plan, signal } = context
+  const runtimeDir = remoteNodeRuntimeDir(host, remoteRelayDir, plan.target)
+  const present = await withRuntimeStoreLock(
+    conn,
+    host,
+    remoteDirname(runtimeDir, host),
+    () =>
+      execCommand(conn, remoteNodeRuntimePresentCommand(host, runtimeDir), {
+        signal,
+        wrapCommand: !isWindowsRemoteHost(host)
+      }),
+    signal
+  )
+  if (present.trim() !== REMOTE_NODE_RUNTIME_READY) {
+    console.warn(
+      `[ssh-relay] Pinned Node runtime vanished before launch; reinstalling ${runtimeDir}`
+    )
+    await ensurePinnedRelayRuntime(context, false)
+  }
+}
+
 /** Runs after the payload is promoted and before `.install-complete`, so a refused dir never completes. */
 export async function verifyPinnedRelayInstall(context: PinnedInstallContext): Promise<void> {
   const { conn, host, remoteRelayDir, plan, signal } = context
+  // Rung C runs no store runtime, so it has nothing store GC can take.
+  if (plan.kind === 'pinned-node') {
+    await confirmPinnedRuntimeHeld({ ...context, plan })
+  }
   const spawnHelpers = orcadNodePtyNativeArtifacts(plan.target).filter((artifact) =>
     artifact.endsWith('/spawn-helper')
   )
@@ -99,12 +163,18 @@ export async function verifyPinnedRelayInstall(context: PinnedInstallContext): P
       { signal }
     )
   }
-  const nodePath = pinnedRelayNodePath(host, remoteRelayDir, plan.target)
-  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal)
+  const nodePath = prebuiltRelayNodePath(context)
+  const verdict = await runPinnedRuntimeSelfTest(conn, remoteRelayDir, nodePath, signal, {
+    host,
+    expectPinnedVersion: plan.kind === 'pinned-node'
+  })
+  if (context.run && verdict.verdict !== 'unverifiable') {
+    context.run.selfTest = verdict.verdict
+  }
   switch (verdict.verdict) {
     case 'passed':
       console.log(
-        `[ssh-relay] Pinned Node self-test passed at ${remoteRelayDir} (${verdict.report.node}, glibc ${verdict.report.glibcVersionRuntime ?? 'n/a'})`
+        `[ssh-relay] ${plan.kind === 'pinned-node' ? 'Pinned' : 'Host'} Node self-test passed at ${remoteRelayDir} (${verdict.report.node}, glibc ${verdict.report.glibcVersionRuntime ?? 'n/a'})`
       )
       return
     case 'refused':
@@ -116,9 +186,9 @@ export async function verifyPinnedRelayInstall(context: PinnedInstallContext): P
         throw verdict.cause
       }
       throw new Error(
-        `The pinned Node self-test at ${remoteRelayDir} is unverifiable; retrying on the next connect: ${verdict.detail}`
+        `The relay runtime self-test at ${remoteRelayDir} is unverifiable; retrying on the next connect: ${verdict.detail}`
       )
     case 'failed':
-      throw new Error(`The pinned Node self-test at ${remoteRelayDir} failed: ${verdict.detail}`)
+      throw new Error(`The relay runtime self-test at ${remoteRelayDir} failed: ${verdict.detail}`)
   }
 }
