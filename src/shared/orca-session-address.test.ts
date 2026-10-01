@@ -38,8 +38,12 @@ describe('Orca session address', () => {
     expect(parseOrcaSessionAddress(value)).toBeNull()
   })
 
-  it('no longer reads the retired session:<id> spelling as a session, as an address or a bare id', () => {
-    expect(parseOrcaSessionAddress(`session:${SESSION_ID}`)).toBeNull()
+  it('reads the legacy session:<id> spelling as the session it names, and writes only the current one', () => {
+    const parsed = parseOrcaSessionAddress(`session:${SESSION_ID}`)
+    expect(parsed).toBe(SESSION_ID)
+    expect(parsed && formatOrcaSessionAddress(parsed)).toBe(ADDRESS)
+    expect(parseOrcaSessionAddress('session:term_4f2c9a')).toBeNull()
+    // Not a bare id either, so a recipient check cannot mistake it for one.
     expect(isOrcaSessionId(`session:${SESSION_ID}`)).toBe(false)
   })
 

@@ -1,6 +1,10 @@
 import { isAgentSessionId } from './agent-session-record'
 import { STRUCTURED_WORKER_HANDLE_PREFIX } from './structured-worker-handle'
-import { ORCA_SESSION_ADDRESS_PREFIX } from './orca-session-address-prefix'
+import {
+  ORCA_SESSION_ADDRESS_PREFIX,
+  isSpelledAsOrcaSessionAddress,
+  respellLegacyOrcaSessionAddress
+} from './orca-session-address-prefix'
 
 /**
  * The Orca session id is the id Orca minted for a structured session (its session record id, the
@@ -13,7 +17,7 @@ import { ORCA_SESSION_ADDRESS_PREFIX } from './orca-session-address-prefix'
  * agents have none today, and never a pane-keyed one: a pane outlives the agent in it, so such an id
  * would be inherited by the pane's next occupant.
  */
-export { ORCA_SESSION_ADDRESS_PREFIX }
+export { ORCA_SESSION_ADDRESS_PREFIX, isSpelledAsOrcaSessionAddress }
 
 declare const orcaSessionIdBrand: unique symbol
 declare const orcaSessionAddressBrand: unique symbol
@@ -41,15 +45,22 @@ export function formatOrcaSessionAddress(orcaSessionId: OrcaSessionId): OrcaSess
   return address
 }
 
-/** The bare Orca session id of an `orca_session_id:<id>` address; anything else reads as null. */
+/**
+ * The bare Orca session id of an `orca_session_id:<id>` address, or of the legacy `session:<id>`
+ * spelling; anything else reads as null.
+ */
 export function parseOrcaSessionAddress(address: string | null | undefined): OrcaSessionId | null {
-  if (!address?.startsWith(ORCA_SESSION_ADDRESS_PREFIX)) {
+  const spelled = address ? respellLegacyOrcaSessionAddress(address) : null
+  if (!spelled?.startsWith(ORCA_SESSION_ADDRESS_PREFIX)) {
     return null
   }
-  const id = address.slice(ORCA_SESSION_ADDRESS_PREFIX.length)
+  const id = spelled.slice(ORCA_SESSION_ADDRESS_PREFIX.length)
   return isOrcaSessionId(id) ? id : null
 }
 
 function isOrcaSessionAddress(address: string): address is OrcaSessionAddress {
-  return parseOrcaSessionAddress(address) !== null
+  // The brand is the current spelling only, so a legacy one can never be written back out.
+  return (
+    address.startsWith(ORCA_SESSION_ADDRESS_PREFIX) && parseOrcaSessionAddress(address) !== null
+  )
 }

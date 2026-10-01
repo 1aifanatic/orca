@@ -92,6 +92,20 @@ describe('a send addressed to an agent session', () => {
     })
   })
 
+  it('reaches a chat named by the legacy session:<id> spelling exactly as by its current address', async () => {
+    expect(await send(`session:${SESSION_X}`)).toMatchObject({
+      ok: true,
+      result: { message: { to_handle: ADDRESS_X } }
+    })
+    const created = await h.dispatch(
+      orchestrationRequest('orchestration.runCreate', { objective: 'o' }, { sessionId: SESSION_Y })
+    )
+    expect(await send(`session:${SESSION_Y}`)).toMatchObject({
+      ok: true,
+      result: { message: { to_handle: `run:${idOf(resultOf(created).run)}` } }
+    })
+  })
+
   it.each([
     [
       'an unknown session',

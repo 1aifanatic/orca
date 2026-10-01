@@ -307,7 +307,9 @@ describe.each(CALLER_VERBS)('orchestration $command run as an agent session', (v
     }
   )
 
-  it.runIf(verb.callerFlag !== undefined).each([`orca_session_id:${SESSION}`, SESSION])(
+  it
+    .runIf(verb.callerFlag !== undefined)
+    .each([`orca_session_id:${SESSION}`, `session:${SESSION}`, SESSION])(
     'accepts a caller flag that restates the session (%s)',
     async (restated) => {
       await invoke(verb.command, flagMap({ ...verb.flags, [verb.callerFlag ?? 'from']: restated }))
@@ -337,6 +339,13 @@ describe.each(CALLER_VERBS.filter((verb) => verb.callerFlag !== undefined))(
       expect(params?.terminalPaneKey).toBeUndefined()
       expect(params?.senderPaneKey).toBeUndefined()
       expect(getTerminalHandleMock).not.toHaveBeenCalled()
+    })
+
+    it('respells a legacy session:<id> address before the host sees it', async () => {
+      const flags = flagMap({ ...verb.flags, [verb.callerFlag ?? 'from']: `session:${ROOT}` })
+      await invoke(verb.command, flags)
+
+      expect(callsTo(verb.method)[0]?.[verb.callerParam]).toBe(`orca_session_id:${ROOT}`)
     })
   }
 )
