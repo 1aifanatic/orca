@@ -10,7 +10,7 @@ function hasEndpointEvidence(path: string): boolean {
     return true
   } catch (error) {
     // Unreadable evidence must keep the generation represented as unverifiable.
-    return (error as NodeJS.ErrnoException).code !== 'ENOENT'
+    return !(error instanceof Error && 'code' in error && error.code === 'ENOENT')
   }
 }
 

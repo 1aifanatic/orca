@@ -31,6 +31,7 @@ export function createAdapter(
   const exitListeners: ((payload: { id: string; code: number; incarnationId?: string }) => void)[] =
     []
   const identityChangeListeners: (() => void)[] = []
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the router calls only the adapter members this mock defines.
   return {
     protocolVersion,
     supportsGitCredentialGuardHost: () =>

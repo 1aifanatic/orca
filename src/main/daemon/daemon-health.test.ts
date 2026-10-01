@@ -129,11 +129,15 @@ describe('daemon health', () => {
           if (newline === -1) {
             return
           }
-          const message = JSON.parse(pending.slice(0, newline)) as { type?: string }
+          const message: unknown = JSON.parse(pending.slice(0, newline))
+          const type =
+            typeof message === 'object' && message !== null && 'type' in message
+              ? message.type
+              : undefined
           pending = pending.slice(newline + 1)
-          if (message.type === 'hello') {
+          if (type === 'hello') {
             socket.write(`${JSON.stringify({ type: 'hello', ok: true })}\n`)
-          } else if (message.type === 'ptySpawnHealth') {
+          } else if (type === 'ptySpawnHealth') {
             socket.write(
               `${JSON.stringify({ id: 'health-1', ok: true, payload: { healthy: true } })}\n`
             )
