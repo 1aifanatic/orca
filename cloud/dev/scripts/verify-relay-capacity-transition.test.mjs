@@ -593,7 +593,7 @@ test('restart-safe settling resets after data-plane admission appears', async ()
   assert.equal(runtimeReads, 4)
 })
 
-test('restart-safe settling resets after director activity appears', async () => {
+test('restart-safe settling resets after a migration opens', async () => {
   const restartConfig = {
     ...config,
     admission: 'migration-only',
@@ -607,10 +607,11 @@ test('restart-safe settling resets after director activity appears', async () =>
     restartBlockingReservedRequests: 0
   })
   const unsafe = harness({
-    activityLeases: 840,
-    restartBlockingActivityLeases: 1,
-    restartBlockingActivityRequestUnits: 1,
-    restartBlockingReservedRequests: 1
+    activityLeases: 839,
+    restartBlockingActivityLeases: 0,
+    restartBlockingActivityRequestUnits: 0,
+    restartBlockingReservedRequests: 0,
+    incomingMigrations: 1
   })
   let directorReads = 0
   let runtimeReads = 0
@@ -764,7 +765,7 @@ test('negative restart reservation accounting cannot mask real work', async () =
       },
       {
         fetch: harness({
-          restartBlockingActivityLeases: 1,
+          controls: 1,
           restartBlockingReservedRequests: -1
         }),
         token: 'masked-token'
@@ -798,16 +799,6 @@ test('restart gate rejects live or durable cell work', async (t) => {
       reservedConnectionUnits: 1,
       enforcedConnectionUnits: 2
     }],
-    ['activity lease', { activityLeases: 1 }],
-    ['misaccounted pending control lease', {
-      activityLeases: 1,
-      activityRequestUnits: 2,
-      reservedRequests: 2,
-      restartBlockingActivityLeases: 0,
-      restartBlockingActivityRequestUnits: 1,
-      restartBlockingReservedRequests: 1
-    }],
-    ['cell reservation', { reservedRequests: 1 }],
     ['outgoing migration', { outgoingMigrations: 1 }],
     ['incoming migration', { incomingMigrations: 1 }]
   ]
@@ -1169,14 +1160,8 @@ test('fails when both director health attempts return a transient 503', async ()
   assert.equal(healthCalls, 2)
 })
 
-// Production-gce-c28 on 2026-10-01: an empty drained cell held by hosts with nowhere to go.
-const strandedConfig = {
-  ...config,
-  admission: 'migration-only',
-  activity: 'restart-safe',
-  strandedEscape: { quietMs: 120_000, maxLeases: 25 },
-  timeoutMs: 600_000
-}
+// Production-gce-c28 on 2026-10-01: drained to an empty runtime while four hosts with no free
+// slot anywhere kept redialling and held director leases on it.
 const strandedCell = {
   activityLeases: 10,
   activityRequestUnits: 10,
@@ -1186,8 +1171,15 @@ const strandedCell = {
   restartBlockingReservedRequests: -2,
   pendingControlReservations: 6
 }
+const pacedRestartConfig = {
+  ...config,
+  admission: 'migration-only',
+  activity: 'restart-safe',
+  paceWindowMs: 300_000,
+  timeoutMs: 1_200_000
+}
 
-function clock() {
+function fakeClock() {
   let now = 0
   return {
     now: () => now,
@@ -1197,16 +1189,7 @@ function clock() {
   }
 }
 
-function countingRuntimeReads(fetch) {
-  const counter = { reads: 0 }
-  counter.fetch = async (url, options) => {
-    if (new URL(url).pathname === '/v1/admin/runtime-status') counter.reads += 1
-    return await fetch(url, options)
-  }
-  return counter
-}
-
-test('parses the opt-in stranded-host escape with its defaults', () => {
+test('parses the drain pace window only for a live restart-safe wait', () => {
   const base = [
     '--director-origin', 'https://relay.example.com',
     '--cell-origin', 'https://c3.relay.example.com',
@@ -1215,171 +1198,101 @@ test('parses the opt-in stranded-host escape with its defaults', () => {
     '--admission', 'migration-only',
     '--draining', 'required'
   ]
-  assert.deepEqual(
+  assert.equal(
     parseCapacityTransitionArguments([
-      ...base, '--activity', 'restart-safe', '--max-stranded-leases', '25'
-    ]).strandedEscape,
-    { quietMs: 120_000, maxLeases: 25 }
-  )
-  assert.deepEqual(
-    parseCapacityTransitionArguments([
-      ...base, '--activity', 'restart-safe', '--stranded-quiet-ms', '60000'
-    ]).strandedEscape,
-    { quietMs: 60_000, maxLeases: 25 }
+      ...base, '--activity', 'restart-safe', '--pace-window-ms', '300000'
+    ]).paceWindowMs,
+    300_000
   )
   assert.equal(
-    'strandedEscape' in parseCapacityTransitionArguments([...base, '--activity', 'restart-safe']),
+    'paceWindowMs' in parseCapacityTransitionArguments([...base, '--activity', 'restart-safe']),
     false
   )
-  for (const [flag, value] of [
-    ['--stranded-quiet-ms', '0'],
-    ['--max-stranded-leases', '0'],
-    ['--max-stranded-leases', '-1']
-  ]) {
-    assert.throws(
-      () => parseCapacityTransitionArguments([...base, '--activity', 'restart-safe', flag, value]),
-      /invalid/
-    )
-  }
   assert.throws(
     () => parseCapacityTransitionArguments([
-      ...base, '--activity', 'allowed', '--max-stranded-leases', '25'
+      ...base, '--activity', 'allowed', '--pace-window-ms', '300000'
     ]),
-    /requires restart-safe/
+    /applies only to restart-safe/
+  )
+  assert.throws(
+    () => parseCapacityTransitionArguments([
+      ...base, '--activity', 'restart-safe', '--pace-window-ms', '-1'
+    ]),
+    /--pace-window-ms is invalid/
   )
 })
 
-test('stranded-host escape passes only after the empty cell stays quiet for the window', async () => {
-  const counter = countingRuntimeReads(harness(strandedCell))
-  const result = await verifyCapacityTransition(strandedConfig, {
-    fetch: counter.fetch,
-    token: 'masked-token',
-    ...clock()
-  })
-  assert.equal(result.cellId, config.cellId)
-  assert.deepEqual(result.strandedEscape, {
-    restartBlockingActivityLeases: 4,
-    restartBlockingActivityRequestUnits: 4,
-    quietMs: 120_000,
-    maxStrandedLeases: 25
-  })
-  // One sample at the start of the window plus one every five seconds through it.
-  assert.equal(counter.reads, 25)
-  await assert.rejects(
-    verifyCapacityTransition(
-      { ...strandedConfig, timeoutMs: 115_000 },
-      { fetch: harness(strandedCell), token: 'masked-token', ...clock() }
-    ),
-    (error) => {
-      assert.match(error.message, /"restartBlockingActivityLeases":4/)
-      assert.match(error.message, /"strandedQuietMs":115000/)
-      assert.match(error.message, /"requiredStrandedQuietMs":120000/)
-      return true
-    }
-  )
-})
-
-test('stranded-host quiet window restarts when the runtime shows any activity', async () => {
-  const quiet = harness(strandedCell)
-  const busy = harness({ ...strandedCell, active: 1, enforcedConnectionUnits: 0 })
-  const counter = countingRuntimeReads(quiet)
-  let cellReads = 0
-  const result = await verifyCapacityTransition(strandedConfig, {
+test('lingering director leases do not block a restart of an empty runtime', async () => {
+  const lines = []
+  let runtimeReads = 0
+  const base = harness(strandedCell)
+  const result = await verifyCapacityTransition(pacedRestartConfig, {
     fetch: async (url, options) => {
-      if (new URL(url).pathname === '/v1/admin/runtime-status') cellReads += 1
-      return await (cellReads === 10 ? busy : counter.fetch)(url, options)
+      if (new URL(url).pathname === '/v1/admin/runtime-status') runtimeReads += 1
+      return await base(url, options)
     },
     token: 'masked-token',
-    ...clock()
+    progress: (line) => lines.push(line),
+    ...fakeClock()
   })
-  assert.equal(result.strandedEscape.quietMs, 120_000)
-  assert.equal(cellReads, 35)
+  // One sample at each end of a full five-minute pace window.
+  assert.equal(runtimeReads, 61)
+  assert.equal(result.director.restartBlockingActivityLeases, 4)
+  assert.equal(result.restartBlockingReservedRequests, -2)
+  assert.deepEqual(lines.map((line) => line.event), [
+    'relay_capacity_transition_restart_quiet_started'
+  ])
+  assert.equal(lines[0].director.restartBlockingActivityLeases, 4)
+  assert.equal(lines[0].requiredRestartSafeSamples, 61)
 })
 
-test('stranded-host escape is refused while any runtime counter is non-zero', async (t) => {
+test('restart-safe waits out the pace window and restarts it on runtime activity', async () => {
+  const quiet = harness(strandedCell)
+  const busy = harness({ ...strandedCell, controls: 1 })
+  let runtimeReads = 0
+  const lines = []
+  await verifyCapacityTransition(pacedRestartConfig, {
+    fetch: async (url, options) => {
+      if (new URL(url).pathname === '/v1/admin/runtime-status') runtimeReads += 1
+      return await (runtimeReads === 30 ? busy : quiet)(url, options)
+    },
+    token: 'masked-token',
+    progress: (line) => lines.push(line),
+    ...fakeClock()
+  })
+  assert.equal(runtimeReads, 91)
+  assert.equal(lines.length, 2)
+  await assert.rejects(
+    verifyCapacityTransition(
+      { ...pacedRestartConfig, timeoutMs: 295_000 },
+      { fetch: quiet, token: 'masked-token', progress: () => {}, ...fakeClock() }
+    ),
+    /"restartSafeSamples":60,"requiredRestartSafeSamples":61/
+  )
+})
+
+test('restart-safe refuses any live runtime work however long it waits', async (t) => {
   for (const blocker of [
-    { active: 1, enforcedConnectionUnits: 0 },
     { preAuthConnections: 1 },
     { inFlightConnections: 1 },
     { reservedConnectionUnits: 1 },
     { controls: 1 },
     { splices: 1 },
     { pendingSplices: 1 },
-    { queuedBytes: 1 }
-  ]) {
-    await t.test(Object.keys(blocker).join(','), async () => {
-      await assert.rejects(
-        verifyCapacityTransition(strandedConfig, {
-          fetch: harness({ ...strandedCell, ...blocker }),
-          token: 'masked-token',
-          ...clock()
-        }),
-        /timed out.*"strandedQuietMs":0/
-      )
-    })
-  }
-})
-
-test('stranded-host escape is refused above the lease cap or with real director work', async (t) => {
-  for (const blocker of [
-    { restartBlockingActivityLeases: 26, restartBlockingActivityRequestUnits: 26 },
-    { restartBlockingActivityRequestUnits: 26 },
-    { restartBlockingReservedRequests: 1 },
+    { queuedBytes: 1 },
     { outgoingMigrations: 1 },
     { incomingMigrations: 1 }
   ]) {
-    await t.test(Object.keys(blocker).join(','), async () => {
+    await t.test(Object.keys(blocker)[0], async () => {
       await assert.rejects(
-        verifyCapacityTransition(strandedConfig, {
+        verifyCapacityTransition(pacedRestartConfig, {
           fetch: harness({ ...strandedCell, ...blocker }),
           token: 'masked-token',
-          ...clock()
+          progress: () => {},
+          ...fakeClock()
         }),
-        /timed out.*"strandedQuietMs":0/
+        /timed out.*"restartSafeSamples":0/
       )
     })
   }
-  await t.test('not draining', async () => {
-    await assert.rejects(
-      verifyCapacityTransition(strandedConfig, {
-        fetch: harness({ ...strandedCell, draining: 'forbidden' }),
-        token: 'masked-token',
-        ...clock()
-      }),
-      /timed out.*"strandedQuietMs":0/
-    )
-  })
-})
-
-test('stranded-host escape stays off unless requested and never applies to allowed activity', async () => {
-  const { strandedEscape: _, ...withoutEscape } = strandedConfig
-  await assert.rejects(
-    verifyCapacityTransition(withoutEscape, {
-      fetch: harness(strandedCell),
-      token: 'masked-token',
-      ...clock()
-    }),
-    (error) => {
-      assert.doesNotMatch(error.message, /strandedQuietMs/)
-      return /timed out/.test(error.message)
-    }
-  )
-  const allowed = await verifyCapacityTransition(
-    { ...strandedConfig, activity: 'allowed' },
-    { fetch: harness(strandedCell), token: 'masked-token', ...clock() }
-  )
-  assert.equal('strandedEscape' in allowed, false)
-})
-
-test('a cell whose leases drain to zero takes the ordinary restart-safe pass', async () => {
-  const result = await verifyCapacityTransition(strandedConfig, {
-    fetch: harness({
-      ...strandedCell,
-      restartBlockingActivityLeases: 0,
-      restartBlockingActivityRequestUnits: 0
-    }),
-    token: 'masked-token',
-    ...clock()
-  })
-  assert.equal('strandedEscape' in result, false)
 })

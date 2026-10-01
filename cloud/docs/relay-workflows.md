@@ -404,11 +404,13 @@ seals its commit, target and rollback digests, selector generation, and durable 
 `batch-apply` accepts only that same authority and rolls two to four cells sequentially. Both apply
 modes first refuse a cell whose hosts exceed 80% of the free slots (normal admission pause minus
 observed connections) on the other fresh general cells, since drained hosts with nowhere to go keep
-redialling and pin the cell. Each cell is isolated, drained to two restart-safe samples, replaced
+redialling and pin the cell. Each cell is isolated, drained until restart-safe, replaced
 from a targeted saved plan, and restored only after a new incarnation reports the exact digest, cap,
-heartbeat, and rehome protocol. The drain also counts as restart-safe once the runtime has carried
-nothing for two minutes while 25 or fewer director leases remain; the run log then shows a
-`relay_capacity_transition_stranded_escape` line with the lease count. The durable
+heartbeat, and rehome protocol. Restart-safe means the cell runtime itself carries nothing live (no
+controls, pre-auth or in-flight connections, splices, or queued bytes) and no migration is open,
+for a whole drain pace window. Director activity leases left by hosts that already went or cannot
+be placed do not hold the restart; the `relay_capacity_transition_restart_quiet_started` line and
+the final verified line report them. The durable
 worker must remain disabled throughout. The post-restart trust check is application-mediated by the
 director; the workflow never receives or mints a director or stamped-cell runtime token. A failure
 keeps only the selected cell migration-only, while the exact rollback digest remains dispatchable via

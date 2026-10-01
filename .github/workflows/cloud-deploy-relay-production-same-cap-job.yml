@@ -582,16 +582,15 @@ jobs:
             --director-origin "${DIRECTOR_ORIGIN}" --cell-origin "${CELL_ORIGIN}" \
             --cell-id "${TARGET_CELL_ID}" --approved-cells same-cap --mode drain \
             --pace-window-ms "${DRAIN_PACE_WINDOW_MS}"
-          # The wait has to outlast the pacing window as well as the leases it waits on.
-          # Unplaceable hosts redial forever and hold leases on an empty cell (c28, 2026-10-01).
+          # Restart-safe means an empty runtime for a whole pace window after the drain; leases
+          # held by unplaceable hosts are reported, not waited on (c28, 2026-10-01).
           node dev/scripts/verify-relay-capacity-transition.mjs \
             --director-origin "${DIRECTOR_ORIGIN}" --cell-origin "${CELL_ORIGIN}" \
             --cell-id "${TARGET_CELL_ID}" --hard-cap "${EXPECTED_HARD_CAP}" \
             --unobserved-bound "${EXPECTED_UNOBSERVED_BOUND}" \
             --heartbeat either --admission migration-only --draining required \
             --activity restart-safe --expected-image-digests "${PREDECESSOR_IMAGE_DIGEST}" \
-            --stranded-quiet-ms 120000 --max-stranded-leases 25 \
-            --timeout-ms 1200000
+            --pace-window-ms "${DRAIN_PACE_WINDOW_MS}" --timeout-ms 1200000
 
       - id: capacity-auth
         if: ${{ inputs.mode != 'verify' }}

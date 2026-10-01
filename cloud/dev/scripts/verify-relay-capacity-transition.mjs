@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { fetchAdminOnceMore } from './relay-admin-transient-retry.mjs'
 
 const CAPACITY_PROTOCOL = 2
+const POLL_INTERVAL_MS = 5_000
 
 function integer(value, name) {
   const parsed = Number(value)
@@ -114,7 +115,15 @@ export function parseCapacityTransitionArguments(argv) {
   if (runtime === 'unavailable' && regionalRehomeProtocol !== undefined) {
     throw new Error('unavailable runtime cannot prove the regional rehome protocol')
   }
-  const strandedEscape = parseStrandedEscape(values, runtime)
+  const paceWindowMs = values['pace-window-ms'] === undefined
+    ? undefined
+    : integer(values['pace-window-ms'], '--pace-window-ms')
+  if (
+    paceWindowMs !== undefined &&
+    (values.activity !== 'restart-safe' || runtime !== 'required')
+  ) {
+    throw new Error('--pace-window-ms applies only to restart-safe activity on a live runtime')
+  }
   return {
     directorOrigin: origin.origin,
     cellOrigin: cellOrigin.origin,
@@ -126,27 +135,11 @@ export function parseCapacityTransitionArguments(argv) {
     runtime,
     expectedImageDigests,
     ...(regionalRehomeProtocol === undefined ? {} : { regionalRehomeProtocol }),
+    ...(paceWindowMs === undefined ? {} : { paceWindowMs }),
     hardCap,
     unobservedBound,
-    ...(strandedEscape === undefined ? {} : { strandedEscape }),
     timeoutMs: integer(values['timeout-ms'] ?? 180_000, '--timeout-ms')
   }
-}
-
-// Opt-in so other restart-safe callers keep requiring zero director leases.
-function parseStrandedEscape(values, runtime) {
-  const quiet = values['stranded-quiet-ms']
-  const max = values['max-stranded-leases']
-  if (quiet === undefined && max === undefined) return undefined
-  if (values.activity !== 'restart-safe' || runtime !== 'required') {
-    throw new Error('the stranded-host escape requires restart-safe activity on a live runtime')
-  }
-  const quietMs = integer(quiet ?? 120_000, '--stranded-quiet-ms')
-  const maxLeases = integer(max ?? 25, '--max-stranded-leases')
-  // A zero window would escape on one sample; a zero cap could never escape.
-  if (quietMs === 0) throw new Error('--stranded-quiet-ms is invalid')
-  if (maxLeases === 0) throw new Error('--max-stranded-leases is invalid')
-  return { quietMs, maxLeases }
 }
 
 async function responseJson(response, label) {
@@ -199,7 +192,7 @@ function offlineRollbackMatches(status, config) {
     restartBlockingReservedRequests <= 0
 }
 
-function directorActivityMatches(status, config, restartBlockingReservedRequests) {
+function directorActivityMatches(status, config) {
   const durable = [
     status.activityLeases,
     status.reservedRequests,
@@ -215,17 +208,15 @@ function directorActivityMatches(status, config, restartBlockingReservedRequests
     status.connectionCapacity?.pendingControlReservations
   ]
   const restartSafe = config.activity !== 'restart-safe' || (() => {
-    // Only a positive remainder is unexplained; the other gates reject real work.
-    return integer(
-      status.restartBlockingActivityLeases,
-      'restart-blocking activity leases'
-    ) === 0 &&
-      integer(
-        status.restartBlockingActivityRequestUnits,
-        'restart-blocking activity request units'
-      ) === 0 &&
-      restartBlockingReservedRequests <= 0 &&
-      integer(status.outgoingMigrations, 'outgoing migrations') === 0 &&
+    // Leases lag hosts that left or cannot be placed, so the runtime's counters gate instead;
+    // still validated so a malformed director fails closed.
+    integer(status.restartBlockingActivityLeases, 'restart-blocking activity leases')
+    integer(
+      status.restartBlockingActivityRequestUnits,
+      'restart-blocking activity request units'
+    )
+    // An open migration is a handoff still in progress through this cell, not a lagging record.
+    return integer(status.outgoingMigrations, 'outgoing migrations') === 0 &&
       integer(status.incomingMigrations, 'incoming migrations') === 0
   })()
   const quiescent = [...durable, ...transient]
@@ -383,42 +374,6 @@ function runtimeQuiescent(runtime, config) {
     (config.activity === 'restart-safe' ? restartSafe : quiescent)
 }
 
-// Hosts with no placement left keep redialling and hold director leases on a cell that
-// carries nothing; a long-empty drained runtime proves a restart loses no live work.
-function strandedHostsOnly(runtime, status, config, restartBlockingReservedRequests) {
-  if (
-    config.strandedEscape === undefined ||
-    runtime.draining !== true ||
-    status.admissionState !== 'migration-only'
-  ) {
-    return false
-  }
-  const empty = [
-    runtime.runtime?.totalConnections,
-    runtime.runtime?.preAuthConnections,
-    runtime.runtime?.inFlightConnections,
-    runtime.runtime?.reservedConnectionUnits,
-    runtime.runtime?.controls,
-    runtime.runtime?.splices,
-    runtime.runtime?.pendingSplices,
-    runtime.runtime?.queuedBytes
-  ].every((value) => integer(value, 'live runtime count') === 0)
-  const leases = integer(status.restartBlockingActivityLeases, 'restart-blocking activity leases')
-  const units = integer(
-    status.restartBlockingActivityRequestUnits,
-    'restart-blocking activity request units'
-  )
-  // Above the cap the drain has not finished; that is not a few stranded hosts.
-  const { maxLeases } = config.strandedEscape
-  return empty &&
-    leases > 0 &&
-    leases <= maxLeases &&
-    units <= maxLeases &&
-    restartBlockingReservedRequests <= 0 &&
-    integer(status.outgoingMigrations, 'outgoing migrations') === 0 &&
-    integer(status.incomingMigrations, 'incoming migrations') === 0
-}
-
 export async function verifyCapacityTransition(config, overrides = {}) {
   if (
     config.activity === 'restart-safe' &&
@@ -428,6 +383,8 @@ export async function verifyCapacityTransition(config, overrides = {}) {
     throw new Error('restart-safe activity requires migration-only admission and draining')
   }
   const fetchImpl = overrides.fetch ?? fetch
+  const progress = overrides.progress ??
+    ((line) => process.stdout.write(`${JSON.stringify(line)}\n`))
   const wait = overrides.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   const now = overrides.now ?? Date.now
   const token = overrides.token ?? process.env.ORCA_RELAY_ADMIN_ID_TOKEN
@@ -445,8 +402,11 @@ export async function verifyCapacityTransition(config, overrides = {}) {
     throw new Error('director is not capacity-protocol compatible')
   }
   const deadline = now() + config.timeoutMs
+  // A paced drain can refill the runtime until its window ends, so the quiet must outlast it.
+  // Each poll waits a full interval, so consecutive samples bound the quiet time from below.
+  const requiredRestartSafeSamples =
+    Math.max(Math.ceil((config.paceWindowMs ?? 0) / POLL_INTERVAL_MS) + 1, 2)
   let restartSafeSamples = 0
-  let strandedSince = null
   let lastObservation = { runtimeAvailable: false }
   for (;;) {
     const runtime = await cellRuntime(fetchImpl, config, token)
@@ -484,22 +444,13 @@ export async function verifyCapacityTransition(config, overrides = {}) {
       const matches = runtime === null
         ? offlineRollbackMatches(status, config)
         : runtimeQuiescent(runtime, config) &&
-          directorActivityMatches(status, config, restartBlockingReservedRequests) &&
+          directorActivityMatches(status, config) &&
           capacityMatches(status, config) &&
           heartbeatMatches(status, config.heartbeat)
-      const stranded = config.activity === 'restart-safe' &&
-        runtime !== null &&
-        !matches &&
-        strandedHostsOnly(runtime, status, config, restartBlockingReservedRequests) &&
-        runtimeQuiescent(runtime, config) &&
-        capacityMatches(status, config) &&
-        heartbeatMatches(status, config.heartbeat)
-      strandedSince = stranded ? strandedSince ?? now() : null
-      const strandedQuietMs = strandedSince === null ? 0 : now() - strandedSince
-      const strandedEscape = stranded && strandedQuietMs >= config.strandedEscape.quietMs
       if (
-        strandedEscape ||
-        (matches && (config.activity !== 'restart-safe' || restartSafeSamples === 1))
+        matches &&
+        (config.activity !== 'restart-safe' ||
+          restartSafeSamples + 1 >= requiredRestartSafeSamples)
       ) {
         return {
           cellId: status.cellId,
@@ -512,36 +463,27 @@ export async function verifyCapacityTransition(config, overrides = {}) {
             status.connectionCapacity?.heartbeatFresh ?? status.runtime?.heartbeatFresh ?? false,
           imageDigest: runtime?.imageDigest ?? null,
           ...(config.activity === 'restart-safe'
-            ? { restartBlockingReservedRequests }
-            : {}),
-          ...(strandedEscape
-            ? {
-                strandedEscape: {
-                  restartBlockingActivityLeases: status.restartBlockingActivityLeases,
-                  restartBlockingActivityRequestUnits: status.restartBlockingActivityRequestUnits,
-                  quietMs: strandedQuietMs,
-                  maxStrandedLeases: config.strandedEscape.maxLeases
-                }
-              }
+            ? { restartBlockingReservedRequests, director: lastObservation.director }
             : {})
         }
       }
-      restartSafeSamples = matches ? 1 : 0
+      if (config.activity === 'restart-safe' && matches && restartSafeSamples === 0) {
+        // Shows the operator any leases still held by hosts that left or cannot be placed.
+        progress({
+          event: 'relay_capacity_transition_restart_quiet_started',
+          requiredRestartSafeSamples,
+          director: lastObservation.director
+        })
+      }
+      restartSafeSamples = matches ? restartSafeSamples + 1 : 0
     } else {
       restartSafeSamples = 0
-      strandedSince = null
     }
     if (config.activity === 'restart-safe') {
       lastObservation = {
         ...lastObservation,
         restartSafeSamples,
-        requiredRestartSafeSamples: 2,
-        ...(config.strandedEscape === undefined
-          ? {}
-          : {
-              strandedQuietMs: strandedSince === null ? 0 : now() - strandedSince,
-              requiredStrandedQuietMs: config.strandedEscape.quietMs
-            })
+        requiredRestartSafeSamples
       }
     }
     if (now() >= deadline) {
@@ -549,20 +491,12 @@ export async function verifyCapacityTransition(config, overrides = {}) {
         `capacity transition verification timed out: ${JSON.stringify(lastObservation)}`
       )
     }
-    await wait(5_000)
+    await wait(POLL_INTERVAL_MS)
   }
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const { strandedEscape, ...result } =
-    await verifyCapacityTransition(parseCapacityTransitionArguments(argv))
-  if (strandedEscape !== undefined) {
-    process.stdout.write(`${JSON.stringify({
-      event: 'relay_capacity_transition_stranded_escape',
-      cellId: result.cellId,
-      ...strandedEscape
-    })}\n`)
-  }
+  const result = await verifyCapacityTransition(parseCapacityTransitionArguments(argv))
   process.stdout.write(`${JSON.stringify({ event: 'relay_capacity_transition_verified', ...result })}\n`)
 }
 
