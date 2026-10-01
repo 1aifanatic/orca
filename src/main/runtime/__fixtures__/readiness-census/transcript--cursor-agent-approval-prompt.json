@@ -3,9 +3,9 @@
   "description": "cursor recording at 80x24, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-7: now=pending:closed quiet=pending:closed wait=pending",
-      "8-9: now=ready-strong quiet=ready-strong wait=ready",
-      "10: now=blocked:agent-approval-prompt quiet=blocked:agent-approval-prompt wait=blocked:agent-approval-prompt"
+      "0-7: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "8-9: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready",
+      "10: now=blocked:agent-approval-prompt edge=blocked:agent-approval-prompt quiet=blocked:agent-approval-prompt wait=blocked:agent-approval-prompt"
     ],
     "agent:clockless": [
       "0-7: verdict=pending:closed wait=pending",
@@ -13,9 +13,9 @@
       "10: verdict=blocked:agent-approval-prompt wait=blocked:agent-approval-prompt"
     ],
     "unknown:clocked": [
-      "0-7: now=pending:open quiet=pending:open wait=ready",
-      "8-9: now=ready-strong quiet=ready-strong wait=ready",
-      "10: now=blocked:agent-approval-prompt quiet=blocked:agent-approval-prompt wait=blocked:agent-approval-prompt"
+      "0-7: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "8-9: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready",
+      "10: now=blocked:agent-approval-prompt edge=blocked:agent-approval-prompt quiet=blocked:agent-approval-prompt wait=blocked:agent-approval-prompt"
     ],
     "unknown:clockless": [
       "0-7: verdict=pending:open wait=ready",

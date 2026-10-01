@@ -3,12 +3,12 @@
   "description": "prime-agent recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-40: now=pending:closed quiet=pending:closed wait=pending",
-      "41-56: now=pending:closed quiet=ready-strong wait=ready",
-      "57: now=pending:closed quiet=pending:closed wait=pending",
-      "58-298: now=pending:closed quiet=ready-strong wait=ready",
-      "299-8956: now=pending:closed quiet=pending:closed wait=pending",
-      "8957-8960: now=pending:closed quiet=ready-strong wait=ready"
+      "0-40: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "41-56: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "57: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "58-298: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "299-8956: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "8957-8960: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-40: verdict=pending:closed wait=pending",

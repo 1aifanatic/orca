@@ -3,10 +3,10 @@
   "description": "qoder recording at 100x32, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-22: now=pending:closed quiet=pending:closed wait=pending",
-      "23-34: now=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace",
-      "35-39: now=pending:closed quiet=pending:closed wait=pending",
-      "40-62: now=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace"
+      "0-22: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "23-34: now=pending:closed edge=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace",
+      "35-39: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "40-62: now=pending:closed edge=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace"
     ],
     "agent:clockless": [
       "0-22: verdict=pending:closed wait=pending",
@@ -15,12 +15,12 @@
       "40-62: verdict=pending:closed wait=blocked:agent-trust-workspace"
     ],
     "unknown:clocked": [
-      "0: now=pending:open quiet=pending:open wait=ready",
-      "1: now=ready-strong quiet=ready-strong wait=ready",
-      "2-22: now=pending:closed quiet=pending:closed wait=pending",
-      "23-34: now=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace",
-      "35-39: now=pending:closed quiet=pending:closed wait=pending",
-      "40-62: now=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace"
+      "0: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "1: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready",
+      "2-22: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "23-34: now=pending:closed edge=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace",
+      "35-39: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "40-62: now=pending:closed edge=pending:closed quiet=pending:closed wait=blocked:agent-trust-workspace"
     ],
     "unknown:clockless": [
       "0: verdict=pending:open wait=ready",

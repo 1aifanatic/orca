@@ -2,9 +2,11 @@
   "subject": "transcript/zcode-missing-tui",
   "description": "zcode recording at 120x32, one entry per replayed chunk",
   "observations": {
-    "agent:clocked": ["0-1: now=pending:closed quiet=pending:closed wait=pending"],
+    "agent:clocked": [
+      "0-1: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending"
+    ],
     "agent:clockless": ["0-1: verdict=pending:closed wait=pending"],
-    "unknown:clocked": ["0-1: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clocked": ["0-1: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
     "unknown:clockless": ["0-1: verdict=pending:open wait=ready"]
   }
 }

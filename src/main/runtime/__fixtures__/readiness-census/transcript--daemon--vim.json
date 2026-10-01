@@ -2,7 +2,7 @@
   "subject": "transcript/daemon/vim",
   "description": "non-agent recording at 100x30, one entry per replayed chunk",
   "observations": {
-    "unknown:clocked": ["0-251: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clocked": ["0-251: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
     "unknown:clockless": ["0-251: verdict=pending:open wait=ready"]
   }
 }

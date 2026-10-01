@@ -3,10 +3,10 @@
   "description": "cline recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-77: now=pending:closed quiet=pending:closed wait=pending",
-      "78-112: now=pending:closed quiet=ready-strong wait=ready",
-      "113: now=pending:closed quiet=pending:closed wait=pending",
-      "114-116: now=pending:closed quiet=ready-strong wait=ready"
+      "0-77: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "78-112: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "113: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "114-116: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-77: verdict=pending:closed wait=pending",
@@ -14,7 +14,7 @@
       "113: verdict=pending:closed wait=pending",
       "114-116: verdict=ready-strong wait=ready"
     ],
-    "unknown:clocked": ["0-116: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clocked": ["0-116: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
     "unknown:clockless": ["0-116: verdict=pending:open wait=ready"]
   }
 }

@@ -3,18 +3,18 @@
   "description": "codex recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-135: now=pending:closed quiet=pending:closed wait=pending",
-      "136-157: now=pending:closed quiet=ready-strong wait=ready",
-      "158-163: now=pending:closed quiet=pending:closed wait=pending",
-      "164-166: now=blocked:codex-model-migration-prompt quiet=blocked:codex-model-migration-prompt wait=blocked:codex-model-migration-prompt"
+      "0-135: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "136-157: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "158-163: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "164-166: now=blocked:codex-model-migration-prompt edge=blocked:codex-model-migration-prompt quiet=blocked:codex-model-migration-prompt wait=blocked:codex-model-migration-prompt"
     ],
     "agent:clockless": [
       "0-163: verdict=pending:closed wait=pending",
       "164-166: verdict=blocked:codex-model-migration-prompt wait=blocked:codex-model-migration-prompt"
     ],
     "unknown:clocked": [
-      "0-163: now=pending:open quiet=pending:open wait=ready",
-      "164-166: now=blocked:codex-model-migration-prompt quiet=blocked:codex-model-migration-prompt wait=blocked:codex-model-migration-prompt"
+      "0-163: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "164-166: now=blocked:codex-model-migration-prompt edge=blocked:codex-model-migration-prompt quiet=blocked:codex-model-migration-prompt wait=blocked:codex-model-migration-prompt"
     ],
     "unknown:clockless": [
       "0-163: verdict=pending:open wait=ready",

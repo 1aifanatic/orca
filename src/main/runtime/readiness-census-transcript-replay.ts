@@ -3,7 +3,8 @@ import { vi } from 'vitest'
 import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 import {
   asClocklessPane,
-  CENSUS_QUIESCENCE_MS,
+  CENSUS_QUIET_EDGE_MS,
+  CENSUS_QUIET_MS,
   evaluatePaneVerdict,
   probePaneWait
 } from './readiness-census-pane-probe'
@@ -20,8 +21,9 @@ const BASE_TIME_MS = Date.UTC(2026, 0, 1)
 
 /**
  * Each frame records, for a pane that knows its agent and for an agent-unknown pane:
- * - clocked: `now` (the verdict the moment the chunk lands), `quiet` (the verdict had the stream
- *   stopped there for the quiescence window) and `wait` (a tui-idle wait started at that quiet point);
+ * - clocked: `now` (the verdict the moment the chunk lands), `edge` and `quiet` (the verdict had
+ *   the stream stopped there 1 ms short of, and for, today's quiescence window) and `wait` (a
+ *   tui-idle wait started at that quiet point);
  * - clockless: the same screen and tail on a pane with no output clock (restored or adopted).
  */
 export async function replayCensusTranscript(
@@ -68,10 +70,12 @@ async function replayIntoPane(
     })
     await painted
     const now = evaluatePaneVerdict(runtime, handle)
-    vi.setSystemTime(at + CENSUS_QUIESCENCE_MS)
+    vi.setSystemTime(at + CENSUS_QUIET_EDGE_MS)
+    const edge = evaluatePaneVerdict(runtime, handle)
+    vi.setSystemTime(at + CENSUS_QUIET_MS)
     const quiet = evaluatePaneVerdict(runtime, handle)
     const wait = await probePaneWait(runtime, handle)
-    clocked.push(`now=${now} quiet=${quiet} wait=${wait}`)
+    clocked.push(`now=${now} edge=${edge} quiet=${quiet} wait=${wait}`)
     const unclocked = await asClocklessPane(runtime, handle, TRANSCRIPT_PANE_PTY_ID, async () => {
       const verdict = evaluatePaneVerdict(runtime, handle)
       return `verdict=${verdict} wait=${await probePaneWait(runtime, handle)}`

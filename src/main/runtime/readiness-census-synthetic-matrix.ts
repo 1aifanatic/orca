@@ -11,7 +11,8 @@ import {
 } from './agent-transcript-replay-test-harness'
 import {
   asClocklessPane,
-  CENSUS_QUIESCENCE_MS,
+  CENSUS_QUIET_EDGE_MS,
+  CENSUS_QUIET_MS,
   evaluatePaneVerdict,
   probePaneWait
 } from './readiness-census-pane-probe'
@@ -201,7 +202,9 @@ export async function runSyntheticCase(
   // Why after painting: an untrusted grid is one the TUI painted for, but the PTY no longer has.
   options.size = { cols: screen.cols, rows: screen.rows }
   const now = evaluatePaneVerdict(runtime, handle)
-  vi.setSystemTime(at + CENSUS_QUIESCENCE_MS)
+  vi.setSystemTime(at + CENSUS_QUIET_EDGE_MS)
+  const edge = evaluatePaneVerdict(runtime, handle)
+  vi.setSystemTime(at + CENSUS_QUIET_MS)
   const quiet = evaluatePaneVerdict(runtime, handle)
   const wait = await probePaneWait(runtime, handle)
   const clockless = await asClocklessPane(runtime, handle, TRANSCRIPT_PANE_PTY_ID, async () => {
@@ -210,7 +213,7 @@ export async function runSyntheticCase(
   })
   const label = caseLabel(entry)
   return {
-    [`${label} clock=clocked`]: `now=${now} quiet=${quiet} wait=${wait}`,
+    [`${label} clock=clocked`]: `now=${now} edge=${edge} quiet=${quiet} wait=${wait}`,
     [`${label} clock=clockless`]: clockless
   }
 }

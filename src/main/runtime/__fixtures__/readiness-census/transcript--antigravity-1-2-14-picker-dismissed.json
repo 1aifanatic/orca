@@ -3,10 +3,10 @@
   "description": "antigravity recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-38: now=pending:closed quiet=pending:closed wait=pending",
-      "39-42: now=pending:closed quiet=ready-strong wait=ready",
-      "43-76: now=pending:closed quiet=pending:closed wait=pending",
-      "77-78: now=pending:closed quiet=ready-strong wait=ready"
+      "0-38: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "39-42: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "43-76: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "77-78: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-38: verdict=pending:closed wait=pending",
@@ -15,10 +15,10 @@
       "77-78: verdict=ready-strong wait=ready"
     ],
     "unknown:clocked": [
-      "0-70: now=pending:open quiet=pending:open wait=ready",
-      "71: now=ready-strong quiet=ready-strong wait=ready",
-      "72-77: now=pending:open quiet=pending:open wait=ready",
-      "78: now=ready-strong quiet=ready-strong wait=ready"
+      "0-70: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "71: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready",
+      "72-77: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "78: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready"
     ],
     "unknown:clockless": [
       "0-70: verdict=pending:open wait=ready",

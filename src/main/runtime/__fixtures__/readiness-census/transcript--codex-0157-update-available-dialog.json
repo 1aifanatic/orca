@@ -3,18 +3,18 @@
   "description": "codex recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-46: now=pending:closed quiet=pending:closed wait=pending",
-      "47-49: now=pending:closed quiet=ready-strong wait=ready",
-      "50: now=pending:closed quiet=pending:closed wait=pending",
-      "51-62: now=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+      "0-46: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "47-49: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "50: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "51-62: now=blocked:agent-update-prompt edge=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
     ],
     "agent:clockless": [
       "0-50: verdict=pending:closed wait=pending",
       "51-62: verdict=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
     ],
     "unknown:clocked": [
-      "0-50: now=pending:open quiet=pending:open wait=ready",
-      "51-62: now=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+      "0-50: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "51-62: now=blocked:agent-update-prompt edge=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
     ],
     "unknown:clockless": [
       "0-50: verdict=pending:open wait=ready",

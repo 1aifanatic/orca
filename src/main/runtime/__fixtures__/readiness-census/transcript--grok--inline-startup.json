@@ -2,9 +2,9 @@
   "subject": "transcript/grok/inline-startup",
   "description": "grok recording at 120x30, one entry per replayed chunk",
   "observations": {
-    "agent:clocked": ["0-96: now=ready-weak quiet=ready-weak wait=ready"],
+    "agent:clocked": ["0-96: now=ready-weak edge=ready-weak quiet=ready-weak wait=ready"],
     "agent:clockless": ["0-96: verdict=ready-weak wait=ready"],
-    "unknown:clocked": ["0-96: now=ready-weak quiet=ready-weak wait=ready"],
+    "unknown:clocked": ["0-96: now=ready-weak edge=ready-weak quiet=ready-weak wait=ready"],
     "unknown:clockless": ["0-96: verdict=ready-weak wait=ready"]
   }
 }

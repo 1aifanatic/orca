@@ -3,14 +3,14 @@
   "description": "cline recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-77: now=pending:closed quiet=pending:closed wait=pending",
-      "78-112: now=pending:closed quiet=ready-strong wait=ready",
-      "113-265: now=pending:closed quiet=pending:closed wait=pending",
-      "266-267: now=pending:closed quiet=ready-strong wait=ready",
-      "268-343: now=pending:closed quiet=pending:closed wait=pending",
-      "344-349: now=pending:closed quiet=ready-strong wait=ready",
-      "350-515: now=pending:closed quiet=pending:closed wait=pending",
-      "516-545: now=pending:closed quiet=ready-strong wait=ready"
+      "0-77: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "78-112: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "113-265: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "266-267: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "268-343: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "344-349: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "350-515: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "516-545: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-77: verdict=pending:closed wait=pending",
@@ -22,7 +22,7 @@
       "350-515: verdict=pending:closed wait=pending",
       "516-545: verdict=ready-strong wait=ready"
     ],
-    "unknown:clocked": ["0-545: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clocked": ["0-545: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
     "unknown:clockless": ["0-545: verdict=pending:open wait=ready"]
   }
 }

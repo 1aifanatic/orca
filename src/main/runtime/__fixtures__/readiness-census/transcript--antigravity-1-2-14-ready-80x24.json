@@ -3,16 +3,16 @@
   "description": "antigravity recording at 80x24, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-38: now=pending:closed quiet=pending:closed wait=pending",
-      "39-40: now=pending:closed quiet=ready-strong wait=ready"
+      "0-38: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "39-40: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-38: verdict=pending:closed wait=pending",
       "39-40: verdict=ready-strong wait=ready"
     ],
     "unknown:clocked": [
-      "0-39: now=pending:open quiet=pending:open wait=ready",
-      "40: now=ready-strong quiet=ready-strong wait=ready"
+      "0-39: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "40: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready"
     ],
     "unknown:clockless": [
       "0-39: verdict=pending:open wait=ready",

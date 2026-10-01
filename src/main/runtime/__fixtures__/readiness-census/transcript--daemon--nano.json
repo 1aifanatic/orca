@@ -2,7 +2,7 @@
   "subject": "transcript/daemon/nano",
   "description": "non-agent recording at 80x24, one entry per replayed chunk",
   "observations": {
-    "unknown:clocked": ["0-45: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clocked": ["0-45: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
     "unknown:clockless": ["0-45: verdict=pending:open wait=ready"]
   }
 }

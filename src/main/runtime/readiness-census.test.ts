@@ -16,7 +16,7 @@
  *
  *   UPDATE_READINESS_CENSUS=1 pnpm test src/main/runtime/readiness-census
  *
- * and review the JSON diff.
+ * and review the JSON diff (the commit hook's oxfmt pass reflows it; the census only parses it).
  */
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'

@@ -3,24 +3,24 @@
   "description": "codex recording at 120x40, one entry per replayed chunk",
   "observations": {
     "agent:clocked": [
-      "0-27: now=pending:closed quiet=pending:closed wait=pending",
-      "28-31: now=pending:closed quiet=ready-strong wait=ready",
-      "32-35: now=working quiet=ready-strong wait=ready",
-      "36-119: now=pending:closed quiet=ready-strong wait=ready",
-      "120-1220: now=working quiet=ready-strong wait=ready",
-      "1221-1224: now=pending:closed quiet=ready-strong wait=ready"
+      "0-27: now=pending:closed edge=pending:closed quiet=pending:closed wait=pending",
+      "28-31: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "32-35: now=working edge=working quiet=ready-strong wait=ready",
+      "36-119: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "120-1220: now=working edge=working quiet=ready-strong wait=ready",
+      "1221-1224: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "agent:clockless": [
       "0-27: verdict=pending:closed wait=pending",
       "28-1224: verdict=ready-strong wait=ready"
     ],
     "unknown:clocked": [
-      "0-27: now=pending:open quiet=pending:open wait=ready",
-      "28-32: now=ready-strong quiet=ready-strong wait=ready",
-      "33-35: now=working quiet=ready-strong wait=ready",
-      "36-119: now=pending:closed quiet=ready-strong wait=ready",
-      "120-1220: now=working quiet=ready-strong wait=ready",
-      "1221-1224: now=pending:closed quiet=ready-strong wait=ready"
+      "0-27: now=pending:open edge=pending:open quiet=pending:open wait=ready",
+      "28-32: now=ready-strong edge=ready-strong quiet=ready-strong wait=ready",
+      "33-35: now=working edge=working quiet=ready-strong wait=ready",
+      "36-119: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready",
+      "120-1220: now=working edge=working quiet=ready-strong wait=ready",
+      "1221-1224: now=pending:closed edge=pending:closed quiet=ready-strong wait=ready"
     ],
     "unknown:clockless": [
       "0-27: verdict=pending:open wait=ready",

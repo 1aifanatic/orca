@@ -1,7 +1,6 @@
 // Reads what tui-idle callers observe off a runtime pane: the ranked verdict and a wait's outcome.
 import { vi } from 'vitest'
 import type { OrcaRuntimeService } from './orca-runtime'
-import { TUI_IDLE_POLL_INTERVAL_MS, TUI_IDLE_QUIESCENCE_MS } from './orca-runtime-postlude'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import {
@@ -87,7 +86,7 @@ export async function probePaneWait(runtime: OrcaRuntimeService, handle: string)
   const isSettled = (): boolean => outcome !== 'pending'
   await flushUntil(isSettled)
   if (!isSettled()) {
-    await vi.advanceTimersByTimeAsync(TUI_IDLE_POLL_INTERVAL_MS)
+    await vi.advanceTimersByTimeAsync(CENSUS_POLL_INTERVAL_MS)
     await flushUntil(isSettled)
   }
   abort.abort()
@@ -124,4 +123,8 @@ export async function asClocklessPane<T>(
   }
 }
 
-export const CENSUS_QUIESCENCE_MS = TUI_IDLE_QUIESCENCE_MS
+// Why literals, not TUI_IDLE_QUIESCENCE_MS / TUI_IDLE_POLL_INTERVAL_MS: a changed window or poll
+// interval must surface as changed verdicts. The edge read sits 1 ms inside today's window.
+export const CENSUS_QUIET_MS = 3_000
+export const CENSUS_QUIET_EDGE_MS = CENSUS_QUIET_MS - 1
+const CENSUS_POLL_INTERVAL_MS = 2_000
