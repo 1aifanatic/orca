@@ -30,6 +30,7 @@ import {
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   hasCodexTranscriptSubagents,
+  isStaleCodexInterrupt,
   resolveCodexPaneStatus,
   setCodexMainAgentTurnState
 } from './codex-state'
@@ -170,6 +171,9 @@ export function normalizeCodexEvent(
   }
 
   const agentId = readString(hookPayload, 'agent_id')
+  if (eventName === 'Interrupt' && !agentId && isStaleCodexInterrupt(state, paneKey, hookPayload)) {
+    return null
+  }
   const transcriptPath = readFirstString(hookPayload, ['transcript_path', 'transcriptPath'])
   if (eventName === 'SessionStart' && !agentId) {
     // Why: a pane can host a new Codex process after the old one exited without child Stop hooks.
@@ -234,6 +238,7 @@ export function normalizeCodexEvent(
   const record = setCodexMainAgentTurnState(state, paneKey, {
     state: ownedState,
     ...codexLeadOutcomeForEvent(eventName, previousLead, ownedState),
+    ...(eventName === 'UserPromptSubmit' ? { turnId: readString(hookPayload, 'turn_id') } : {}),
     model:
       normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
       (eventName === 'SessionStart' ? undefined : previousLead?.model)

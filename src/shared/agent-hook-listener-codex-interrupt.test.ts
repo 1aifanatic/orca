@@ -91,6 +91,42 @@ describe("Codex's Interrupt hook", () => {
     expect(state.codexLeadStateByPaneKey.get(PANE_KEY)?.outcome).toBeUndefined()
   })
 
+  it('ignores an Interrupt from the previous turn that lands after the next turn started', () => {
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'first', turn_id: 'turn-1' })
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'second', turn_id: 'turn-2' })
+
+    expect(post(INTERRUPT)).toBeNull()
+    expect(
+      post({ hook_event_name: 'PreToolUse', tool_name: 'Bash', turn_id: 'turn-2' })?.payload
+    ).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+
+    const stopped = post({ hook_event_name: 'Stop', turn_id: 'turn-2' })?.payload
+    expect(stopped).toMatchObject({ state: 'done', prompt: 'second' })
+    expect(stopped?.interrupted).toBeUndefined()
+    expect(stopped?.mainAgent?.outcome).toBeUndefined()
+  })
+
+  it('cancels when the Interrupt names the running turn', () => {
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'list files', turn_id: 'turn-1' })
+
+    expect(post(INTERRUPT)?.payload).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+
+  it('cancels on an Interrupt without a turn id', () => {
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'list files', turn_id: 'turn-2' })
+    const { turn_id: _omitted, ...withoutTurnId } = INTERRUPT
+
+    expect(post(withoutTurnId)?.payload).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+
   it('records the cancellation when a relay forwards the Interrupt row', () => {
     reconcileRemoteCodexState(
       state,
