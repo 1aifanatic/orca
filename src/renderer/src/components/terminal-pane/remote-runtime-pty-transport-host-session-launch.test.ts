@@ -315,8 +315,19 @@ describe('createRemoteRuntimePtyTransport', () => {
       command: "claude '--resume' 'provider-session'",
       env: { CLIENT_ONLY: 'must-not-cross' },
       launchAgent: 'claude',
-      agentArgsOverride: '--permission-mode plan',
-      resumeProviderSession: { key: 'session_id', id: 'provider-session' },
+      agentArgsOverride: '--stale-override',
+      resumeProviderSession: {
+        key: 'session_id',
+        id: 'provider-session',
+        resumeIdentity: {
+          agent: 'claude',
+          connectionId: null,
+          launchConfig: {
+            agentArgs: '--permission-mode plan',
+            agentEnv: { CAPTURED: 'client-only' }
+          }
+        }
+      },
       tabId: 'tab-1',
       leafId: '11111111-1111-4111-8111-111111111111'
     })

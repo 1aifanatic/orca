@@ -8,6 +8,16 @@ import {
 } from './agent-session-claim-identity'
 
 describe('agent session claim identity', () => {
+  it('refuses a provider locator owned by another agent before creating a claim', () => {
+    expect(() =>
+      canonicalizeAgentSessionIdentity('claude', {
+        key: 'session_id',
+        id: 'codex-worker',
+        resumeIdentity: { agent: 'codex', connectionId: null }
+      })
+    ).toThrow('Cannot resume this session')
+  })
+
   it('creates stable opaque identity and worktree digests', () => {
     const signer = createEphemeralAgentSessionClaimSigner('profile-1')
     const identity = canonicalizeAgentSessionIdentity('codex', {

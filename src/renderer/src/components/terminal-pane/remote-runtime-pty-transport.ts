@@ -1,3 +1,4 @@
+import { providerSessionForResumeRequest } from '../../../../shared/agent-resume-identity'
 import { createAgentSessionKeyboardOptions } from '@/runtime/agent-session-keyboard-capability'
 import { withRemoteReattachInputBuffer } from './remote-reattach-input-buffer'
 /* eslint-disable max-lines -- Why: remote PTY transport keeps lifecycle, JSON fallback, and binary stream wiring together so reconnect/destroy ordering stays testable as one behavior surface. */
@@ -2277,11 +2278,22 @@ export function createRemoteRuntimePtyTransport(
                       ...keyboardOptions,
                       worktree: toRuntimeTerminalWorktreeSelector(worktreeId),
                       agent: launchAgentToSend!,
-                      providerSession: resumeProviderSessionToSend,
+                      providerSession: providerSessionForResumeRequest(
+                        launchAgentToSend!,
+                        resumeProviderSessionToSend
+                      ),
                       ...(launchConfigToSend?.ompResumeFilePath
                         ? { ompResumeFilePath: launchConfigToSend.ompResumeFilePath }
                         : {}),
-                      ...(agentArgsOverride !== undefined ? { agentArgs: agentArgsOverride } : {}),
+                      ...(resumeProviderSessionToSend.resumeIdentity
+                        ? {
+                            agentArgs:
+                              resumeProviderSessionToSend.resumeIdentity.launchConfig?.agentArgs ??
+                              ''
+                          }
+                        : agentArgsOverride !== undefined
+                          ? { agentArgs: agentArgsOverride }
+                          : {}),
                       ...(agentLaunchPreferences
                         ? { launchPreferences: agentLaunchPreferences }
                         : {}),

@@ -3,6 +3,8 @@
 // not receive PowerShell single quotes.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
+import { AGENT_RESUME_IDENTITY_ERROR } from '../../../shared/agent-resume-identity'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 
 const mockCreateTab = vi.fn()
@@ -70,7 +72,15 @@ const record: SleepingAgentSessionRecord = {
   tabId: 'tab-1',
   worktreeId: 'wt-1',
   agent: 'codex',
-  providerSession: { key: 'session_id', id: SESSION_ID },
+  providerSession: {
+    key: 'session_id',
+    id: SESSION_ID,
+    resumeIdentity: {
+      agent: 'codex',
+      connectionId: null,
+      launchConfig: { agentArgs: '--dangerously-bypass-approvals-and-sandbox', agentEnv: {} }
+    }
+  },
   prompt: 'finish the task',
   state: 'done',
   origin: 'worktree-sleep',
@@ -109,6 +119,27 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
     }
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
   })
+
+  it.each(['unresolved', 'mixed', 'wrong-host'] as const)(
+    'visibly refuses %s ownership without creating a resume tab',
+    async (kind) => {
+      const providerSession = { ...record.providerSession }
+      if (kind === 'unresolved') {
+        delete providerSession.resumeIdentity
+      } else {
+        providerSession.resumeIdentity = {
+          agent: kind === 'mixed' ? 'claude' : 'codex',
+          connectionId: kind === 'wrong-host' ? 'ssh-other' : null
+        }
+      }
+      await expect(
+        launch({ ...record, connectionId: null, providerSession })
+      ).resolves.toBeUndefined()
+      expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_ERROR)
+      expect(mockCreateTab).not.toHaveBeenCalled()
+      expect(store.clearSleepingAgentSession).not.toHaveBeenCalled()
+    }
+  )
 
   it('quotes the resume argv for a cmd.exe tab', async () => {
     store.settings.terminalWindowsShell = 'cmd.exe'
@@ -163,6 +194,7 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
       providerSession: {
         key: 'session_id',
         id: SESSION_ID,
+        resumeIdentity: { agent: 'omp', connectionId: null },
         transcriptPath: 'C:\\custom sessions\\session.jsonl'
       }
     }
@@ -177,6 +209,7 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
       providerSession: {
         key: 'session_id',
         id: SESSION_ID,
+        resumeIdentity: { agent: 'omp', connectionId: null },
         transcriptPath: '/remote/custom sessions/session.jsonl'
       }
     }

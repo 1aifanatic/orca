@@ -1,3 +1,7 @@
+import {
+  AGENT_RESUME_IDENTITY_ERROR,
+  isOwnedAgentResumeSession
+} from '../../../shared/agent-resume-identity'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { buildAgentResumeStartupPlan } from '@/lib/tui-agent-startup'
@@ -9,10 +13,6 @@ import {
 } from '@/lib/agent-resume-launch-target'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
-import {
-  resolveTuiAgentLaunchArgs,
-  resolveTuiAgentLaunchEnv
-} from '../../../shared/tui-agent-launch-defaults'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import { translate } from '@/i18n/i18n'
 
@@ -67,20 +67,19 @@ export function launchSleepingAgentSession(
   options?: ResumeSleepingAgentSessionsOptions
 ): boolean {
   const state = useAppStore.getState()
-  const launchConfig = record.launchConfig
+  if (!isOwnedAgentResumeSession(record.agent, record.providerSession, record.connectionId)) {
+    toast.error(AGENT_RESUME_IDENTITY_ERROR)
+    return false
+  }
+  const launchConfig = record.providerSession.resumeIdentity?.launchConfig
   const resumeTarget = getResumeLaunchTarget(record.worktreeId)
   const startupPlan = buildAgentResumeStartupPlan({
     agent: record.agent,
+    requireOwnedSession: true,
     providerSession: record.providerSession,
-    cmdOverrides: state.settings?.agentCmdOverrides ?? {},
-    agentArgs:
-      launchConfig !== undefined
-        ? launchConfig.agentArgs
-        : resolveTuiAgentLaunchArgs(record.agent, state.settings?.agentDefaultArgs),
-    agentEnv:
-      launchConfig !== undefined
-        ? launchConfig.agentEnv
-        : resolveTuiAgentLaunchEnv(record.agent, state.settings?.agentDefaultEnv),
+    cmdOverrides: {},
+    agentArgs: launchConfig !== undefined ? launchConfig.agentArgs : '',
+    agentEnv: launchConfig !== undefined ? launchConfig.agentEnv : {},
     ...(launchConfig?.agentCommand ? { agentCommand: launchConfig.agentCommand } : {}),
     ...(launchConfig?.ompResumeFilePath
       ? { ompResumeFilePath: launchConfig.ompResumeFilePath }

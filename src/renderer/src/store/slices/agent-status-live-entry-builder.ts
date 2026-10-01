@@ -1,3 +1,4 @@
+import { captureAgentResumeLaunchConfig } from '../../../../shared/agent-resume-identity'
 import type { AppState } from '../types'
 import { resolveAgentStatusLiveEntryMainAgent } from './agent-status-live-entry-main-agent'
 import { resolveAgentStatusLiveEntryStateHistory } from './agent-status-live-entry-state-history'
@@ -144,8 +145,8 @@ export function buildAgentStatusLiveEntry(
   const canReuseExistingProviderSession =
     existing?.agentType === identity.agentType &&
     (existing.state !== 'done' || payload.state === 'done')
-  const providerSession =
-    metadata?.providerSession ??
+  let providerSession =
+    (identity.inheritedFromActivePane ? existing?.providerSession : metadata?.providerSession) ??
     (canReuseExistingProviderSession ? existing.providerSession : undefined)
   const existingProviderSession = canReuseExistingProviderSession
     ? existing.providerSession
@@ -191,11 +192,27 @@ export function buildAgentStatusLiveEntry(
       ? existingSleepingRecord.launchConfig
       : undefined
   const launchConfigSource =
-    (payload.state !== 'done' && !providerSessionChanged && metadata?.launchToken
+    providerSession?.resumeIdentity?.launchConfig ??
+    (!identity.inheritedFromActivePane &&
+    payload.state !== 'done' &&
+    !providerSessionChanged &&
+    metadata?.launchToken
       ? metadata?.launchConfig
       : undefined) ??
     matchedRegistryLaunchConfig ??
     matchedSleepingLaunchConfig
+  if (providerSession) {
+    providerSession = captureAgentResumeLaunchConfig(
+      providerSession,
+      identity.agentType,
+      matchedRegistryLaunchConfig ??
+        (identity.inheritedFromActivePane
+          ? undefined
+          : metadata?.launchToken
+            ? metadata.launchConfig
+            : undefined)
+    )
+  }
   const mainAgent = resolveAgentStatusLiveEntryMainAgent(existing, payload, identity.agentType)
   const entry: AgentStatusEntry = {
     state: payload.state,

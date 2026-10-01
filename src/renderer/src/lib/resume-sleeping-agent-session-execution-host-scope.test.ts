@@ -44,7 +44,11 @@ function makeRecord(
     tabId: 'tab-1',
     worktreeId: WORKTREE_ID,
     agent: 'claude',
-    providerSession: { key: 'session_id', id: SESSION_ID },
+    providerSession: {
+      key: 'session_id',
+      id: SESSION_ID,
+      resumeIdentity: { agent: 'claude', connectionId: overrides.connectionId ?? null }
+    },
     prompt: 'finish the task',
     state: 'working',
     origin: 'quit',
@@ -214,11 +218,12 @@ describe('the resume sweep under execution-host scope', () => {
     expect(useAppStore.getState().sleepingAgentSessionsByPaneKey[record.paneKey]).toBeUndefined()
   })
 
-  it('still resumes a legacy record that names no host at all', () => {
-    const record = makeRecord()
+  it('keeps an unresolved legacy record without silently starting fresh', () => {
+    const record = makeRecord({ providerSession: { key: 'session_id', id: SESSION_ID } })
     seedAnsweredSshWorkspace(record)
 
-    expect(resumeSleepingAgentSessionsForWorktree(WORKTREE_ID)).toBe(1)
+    expect(resumeSleepingAgentSessionsForWorktree(WORKTREE_ID)).toBe(0)
+    expect(useAppStore.getState().sleepingAgentSessionsByPaneKey[record.paneKey]).toBe(record)
   })
 
   it('declines only the foreign record and resumes its native sibling', () => {

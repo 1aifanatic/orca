@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import {
+  sleepingAgentLaunchConfigSchema,
+  isUnsafeObjectKey
+} from './agent-resume-launch-config-schema'
+export { sleepingAgentLaunchConfigSchema } from './agent-resume-launch-config-schema'
+import {
   getAgentResumeArgv,
   normalizeAgentProviderSession,
   RESUMABLE_TUI_AGENTS
@@ -13,75 +18,14 @@ const terminalTabIdSchema = z
   .min(1)
   .refine(isValidTerminalTabId, 'terminal tab id must not contain ":"')
 
-const agentProviderSessionSchema = z.preprocess(
-  (raw) => normalizeAgentProviderSession(raw) ?? undefined,
-  z.object({
-    key: z.enum(['session_id', 'conversation_id']),
-    id: z.string().min(1).max(512),
-    // Why: Pi resumes by its authoritative session file, so dropping this
-    // field during hydration makes an otherwise valid record unusable.
-    transcriptPath: z.string().min(1).optional()
-  })
-)
-
-function hasUnsafeLaunchEnvChars(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i)
-    if (code <= 0x1f || code === 0x7f) {
-      return true
-    }
+const agentProviderSessionSchema = z.unknown().transform((raw, ctx) => {
+  const session = normalizeAgentProviderSession(raw)
+  if (!session) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid provider session' })
+    return z.NEVER
   }
-  return false
-}
-
-function isUnsafeObjectKey(value: string): boolean {
-  return value === '__proto__' || value === 'constructor' || value === 'prototype'
-}
-
-const sleepingAgentLaunchEnvSchema = z.preprocess(
-  (raw) => {
-    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
-      return undefined
-    }
-    const cleaned: Record<string, string> = Object.create(null)
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      const trimmedKey = key.trim()
-      if (
-        trimmedKey.length === 0 ||
-        isUnsafeObjectKey(trimmedKey) ||
-        trimmedKey.includes('=') ||
-        hasUnsafeLaunchEnvChars(trimmedKey) ||
-        typeof value !== 'string' ||
-        value.includes('\0')
-      ) {
-        return undefined
-      }
-      cleaned[trimmedKey] = value
-    }
-    return { ...cleaned }
-  },
-  z.record(z.string(), z.string())
-)
-
-const sleepingAgentLaunchConfigBaseSchema = z.object({
-  agentCommand: z.string().optional(),
-  agentArgs: z.string(),
-  agentEnv: sleepingAgentLaunchEnvSchema,
-  // Why: AI Vault can scan arbitrary OMP roots, so cold restore must retain
-  // the exact provider resume locator instead of reconstructing its store.
-  ompResumeFilePath: z
-    .string()
-    .trim()
-    .min(1)
-    .max(32 * 1024)
-    .refine((value) => !hasUnsafeLaunchEnvChars(value))
-    .optional()
+  return session
 })
-
-export const sleepingAgentLaunchConfigSchema = z.preprocess((raw) => {
-  const parsed = sleepingAgentLaunchConfigBaseSchema.safeParse(raw)
-  return parsed.success ? parsed.data : undefined
-}, sleepingAgentLaunchConfigBaseSchema.optional())
 
 const sleepingAgentSessionRecordSchema = z
   .object({
