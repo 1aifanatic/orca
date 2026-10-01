@@ -115,8 +115,9 @@ export function shellStartupCodexHomeOverrideContextsEqual(
 }
 
 /**
- * The CODEX_HOME the pane's shell startup would set. Windows panes may run
- * either PowerShell edition, so any profile pointing elsewhere counts.
+ * The CODEX_HOME the pane's shell startup would set. A Windows pane may run
+ * either PowerShell edition or Git Bash, so any of their startup files
+ * pointing elsewhere counts.
  */
 function readShellStartupCodexHome(
   home: string | undefined,
@@ -126,11 +127,13 @@ function readShellStartupCodexHome(
   if (process.platform !== 'win32') {
     return readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)
   }
-  return home
-    ? readPowerShellProfileEnvAssignments('CODEX_HOME', home).find((codexHome) =>
-        hasCustomCodexHomeOverride({ CODEX_HOME: codexHome })
-      )
-    : undefined
+  if (!home) {
+    return undefined
+  }
+  return [
+    ...readPowerShellProfileEnvAssignments('CODEX_HOME', home),
+    readShellStartupEnvVar('CODEX_HOME', home, 'bash')
+  ].find((codexHome) => codexHome && hasCustomCodexHomeOverride({ CODEX_HOME: codexHome }))
 }
 
 type LaunchEnvKey =

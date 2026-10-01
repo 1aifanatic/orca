@@ -52,16 +52,16 @@ describe('readPowerShellProfileEnvAssignments', () => {
     ])
   })
 
-  it('finds profiles under an OneDrive-redirected Documents folder', () => {
+  it('reads the registry-named Documents folder, e.g. one OneDrive redirected', () => {
     const root = createRoot()
-    const oneDrive = join(root, 'OneDrive')
+    const documentsDir = join(root, 'OneDrive', 'Dokumente')
     writeProfile(
-      join(oneDrive, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
+      join(documentsDir, 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
       "$env:CODEX_HOME = 'D:\\codex'\n"
     )
 
     expect(
-      readPowerShellProfileEnvAssignments('CODEX_HOME', join(root, 'me'), { OneDrive: oneDrive })
+      readPowerShellProfileEnvAssignments('CODEX_HOME', join(root, 'me'), {}, documentsDir)
     ).toEqual(['D:\\codex'])
   })
 
