@@ -14,6 +14,12 @@ import {
   readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
 import Database from '../../sqlite/sync-database'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
+import {
+  createStructuredAgentSessionStartupState,
+  type StructuredAgentSessionStartupStateDeps
+} from './structured-agent-session-startup-state'
 import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
 import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
 import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
@@ -507,6 +513,42 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
 })
 
 describe('a stored status no settle here can clear (R2A-4)', () => {
+  it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {
+    const opens: string[] = []
+    const openDeps = new Proxy(
+      {},
+      {
+        get: (_target, key) => {
+          opens.push(String(key))
+          throw new Error('the settle opened a chat this host cannot settle')
+        }
+      }
+    )
+    const refused: AgentSessionRecord[] = []
+    const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord => {
+      if (record) {
+        refused.push(record)
+      }
+      return false
+    }
+    const state = createStructuredAgentSessionStartupState({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a refused settle reads no open dependency; any read throws and fails the test.
+      openDeps: openDeps as StructuredAgentSessionStartupStateDeps['openDeps'],
+      canSettle,
+      seedStatus: vi.fn(),
+      resolveRecovery: vi.fn(async () => true),
+      restoreListed: vi.fn(async () => undefined),
+      serialize: (_sessionId, task) => task(),
+      hasSession: () => false,
+      isDisposed: () => false
+    })
+    const record = agentSessionRecordFixture()
+
+    await expect(state.settleClosedChat(record)).resolves.toBe(false)
+    expect(refused).toEqual([record])
+    expect(opens).toEqual([])
+  })
+
   it('drops the row of a chat whose record is gone or whose provider this host does not serve, so the next boot selects neither', async () => {
     const rig = await newRig()
     await crashMidSend(rig, 'session-gone', false)

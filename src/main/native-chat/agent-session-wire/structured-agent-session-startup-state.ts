@@ -56,6 +56,9 @@ export type StructuredAgentSessionStartupState = {
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat a gone process left with work, once per host. Never rejects. */
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
+  /** The one settle of a chat nothing holds open, for any caller inside the chat's serialize.
+   *  False, opening nothing, for a chat `canSettle` rejects, one already open, or after quit. */
+  settleClosedChat: (record: AgentSessionRecord) => Promise<boolean>
 }
 
 export function createStructuredAgentSessionStartupState(
@@ -67,7 +70,8 @@ export function createStructuredAgentSessionStartupState(
     settleOwedSessions: (listedIds) => {
       settling ??= settleOwedSessions(deps, listedIds)
       return settling
-    }
+    },
+    settleClosedChat: (record) => settleClosed(deps, record)
   }
 }
 
@@ -212,12 +216,13 @@ async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateD
 async function settleClosed(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord
-): Promise<void> {
+): Promise<boolean> {
   if (deps.isDisposed() || deps.hasSession(record.sessionId) || !deps.canSettle(record)) {
-    return
+    return false
   }
   const opened = await openStructuredAgentSessionConversationJournal(deps.openDeps, record, {
     deferPerSessionImport: true
   })
   await opened.session.journal.close()
+  return true
 }
