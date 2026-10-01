@@ -1,10 +1,13 @@
-import { isOmpComposerReadyScreen } from './omp-terminal-readiness'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { isClineComposerReadyScreen } from './cline-terminal-readiness'
+import { isOmpSetupOverlayScreen } from './omp-terminal-readiness'
 import { isPrimeAgentComposerReadyScreen } from './prime-agent-terminal-readiness'
 
 type ScreenReadyRule = (screenLines: readonly string[]) => boolean
+
+/** An agent's grid as painted on its own PTY, and whether that is the alternate screen. */
+export type RuledScreen = { lines: readonly string[]; alternateScreen: boolean }
 
 /**
  * Agents whose live screen decides readiness. Each rule reads an idle composer off the grid,
@@ -13,7 +16,6 @@ type ScreenReadyRule = (screenLines: readonly string[]) => boolean
  * erased before its redraw) and, for Prime, just before its first-launch question.
  */
 const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
-  omp: isOmpComposerReadyScreen,
   antigravity: isAntigravityComposerReadyScreen,
   cline: isClineComposerReadyScreen,
   'prime-agent': isPrimeAgentComposerReadyScreen
@@ -35,4 +37,22 @@ export function readScreenRuledVerdict(
   const rule = getScreenReadyRule(agent)
   const screenLines = rule ? readScreenLines() : null
   return rule && screenLines ? rule(screenLines) : null
+}
+
+/**
+ * Agents whose screen can refuse input whatever the other evidence says. OMP paints its idle
+ * title before its setup wizard opens, so a title, hook or quiet lane alone would type into it.
+ */
+const SCREEN_INPUT_VETOES: Partial<Record<TuiAgent, (screen: RuledScreen) => boolean>> = {
+  omp: isOmpSetupOverlayScreen
+}
+
+/** Whether the agent's live screen refuses input; null with no veto rule or no trustworthy screen. */
+export function readScreenInputVeto(
+  agent: TuiAgent | null | undefined,
+  readScreen: () => RuledScreen | null
+): boolean | null {
+  const veto = agent ? SCREEN_INPUT_VETOES[agent] : undefined
+  const screen = veto ? readScreen() : null
+  return veto && screen ? veto(screen) : null
 }

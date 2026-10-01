@@ -11,7 +11,7 @@ import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-term
 import {
   terminalTitleBlocksExplicitAgentStatus,
   agentTitleProvesAgentPresence,
-  getLatestAgentCandidateTitleInfo
+  getLatestAgentCandidate
 } from './runtime-worktree-status-projection'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { getTerminalState } from './terminal-wait-results'
@@ -23,6 +23,8 @@ export type RuntimeTerminalAgentStatusSnapshot = {
   title: string | null
   titleStatus: AgentStatus | null
   titleStatusIsLive: boolean
+  /** The title is the agent's own and display has retired it (stale-working clear). */
+  titleRetiredForDisplay: boolean
 }
 
 type Dependencies = {
@@ -38,6 +40,7 @@ type Dependencies = {
     ptyId: string
   ): { status: AgentStatus | null; updatedAt: number } | null | undefined
   isRunning(handle: string): Promise<boolean>
+  hasTitleDisplayClear(ptyId: string): boolean
 }
 
 export class RuntimeTerminalAgentStatusQuery {
@@ -107,8 +110,12 @@ export class RuntimeTerminalAgentStatusQuery {
       }
     }
     if (terminal.titleStatus) {
-      // Activity-only titles need the same identity check as the presence query.
-      if (!agentTitleProvesAgentPresence(terminal.title, 'agent')) {
+      // Activity-only titles need the same identity check as the presence query, and so does a
+      // title the stale-working timer retired: the agent may have exited behind it.
+      if (
+        terminal.titleRetiredForDisplay ||
+        !agentTitleProvesAgentPresence(terminal.title, 'agent')
+      ) {
         const isRunningAgent = await this.deps.isRunning(handle)
         this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
         return {
@@ -152,34 +159,24 @@ export class RuntimeTerminalAgentStatusQuery {
     throw new Error('terminal_handle_stale')
   }
 
-  getSnapshot(
-    handle: string,
-    expectedPtyId: string
-  ): {
-    waitText: string
-    waitBlockedAt: number | null
-    title: string | null
-    titleStatus: AgentStatus | null
-    titleStatusIsLive: boolean
-  } {
+  getSnapshot(handle: string, expectedPtyId: string): RuntimeTerminalAgentStatusSnapshot {
     const pty = this.deps.getLivePty(handle)
     if (pty) {
       if (!pty.pty.connected || pty.pty.ptyId !== expectedPtyId) {
         throw new Error('terminal_not_writable')
       }
       const leaf = this.deps.getPrimaryLeaf(pty.pty.ptyId)
-      const leafTitle = leaf
-        ? getLatestAgentCandidateTitleInfo(
-            { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
-            { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt }
-          )
-        : null
-      const ptyTitle =
-        leafTitle ??
-        getLatestAgentCandidateTitleInfo(
-          { title: pty.pty.title, updatedAt: pty.pty.titleUpdatedAt },
-          { title: pty.pty.lastOscTitle, updatedAt: pty.pty.lastOscTitleAt }
-        )
+      const leafOsc = { title: leaf?.lastOscTitle, updatedAt: leaf?.lastOscTitleAt }
+      const ptyOsc = { title: pty.pty.lastOscTitle, updatedAt: pty.pty.lastOscTitleAt }
+      const latest =
+        (leaf
+          ? getLatestAgentCandidate(
+              { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
+              leafOsc
+            )
+          : null) ??
+        getLatestAgentCandidate({ title: pty.pty.title, updatedAt: pty.pty.titleUpdatedAt }, ptyOsc)
+      const titleText = latest?.title?.trim() ?? null
       const waitText = buildTerminalWaitText(
         pty.pty.tailBuffer,
         pty.pty.tailPartialLine,
@@ -188,11 +185,11 @@ export class RuntimeTerminalAgentStatusQuery {
       return {
         waitText,
         waitBlockedAt: pty.pty.waitBlockedAt,
-        title: ptyTitle?.title ?? null,
-        titleStatus: ptyTitle
-          ? detectAgentStatusFromTitle(ptyTitle.title)
-          : pty.pty.lastAgentStatus,
-        titleStatusIsLive: ptyTitle !== null
+        title: titleText,
+        titleStatus: titleText ? detectAgentStatusFromTitle(titleText) : pty.pty.lastAgentStatus,
+        titleStatusIsLive: titleText !== null,
+        titleRetiredForDisplay:
+          (latest === leafOsc || latest === ptyOsc) && this.deps.hasTitleDisplayClear(pty.pty.ptyId)
       }
     }
 
@@ -206,17 +203,20 @@ export class RuntimeTerminalAgentStatusQuery {
     if (leaf.ptyId !== expectedPtyId) {
       throw new Error('terminal_not_writable')
     }
-    const title = getLatestAgentCandidateTitleInfo(
+    const leafOsc = { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt }
+    const title = getLatestAgentCandidate(
       { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
-      { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt },
+      leafOsc,
       { title: this.deps.getTabTitle(leaf.tabId), updatedAt: 0 }
     )
+    const titleText = title?.title?.trim() ?? null
     return {
       waitText: buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
       waitBlockedAt: leaf.waitBlockedAt,
-      title: title?.title ?? null,
-      titleStatus: title ? detectAgentStatusFromTitle(title.title) : leaf.lastAgentStatus,
-      titleStatusIsLive: (title?.updatedAt ?? 0) > 0
+      title: titleText,
+      titleStatus: titleText ? detectAgentStatusFromTitle(titleText) : leaf.lastAgentStatus,
+      titleStatusIsLive: (title?.updatedAt ?? 0) > 0,
+      titleRetiredForDisplay: title === leafOsc && this.deps.hasTitleDisplayClear(leaf.ptyId)
     }
   }
 

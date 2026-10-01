@@ -5,7 +5,17 @@ import type {
   TerminalSideEffectBatch,
   TerminalSideEffectFact
 } from '../../shared/terminal-side-effect-facts'
-import { isCursorNativeAgentTitle, normalizeTerminalTitle } from '../../shared/agent-detection'
+import {
+  detectAgentStatusFromTitle,
+  isCursorNativeAgentTitle,
+  normalizeTerminalTitle
+} from '../../shared/agent-detection'
+import {
+  getLeafDisplayRecord,
+  getPtyDisplayRecord,
+  type TitleDisplayClear
+} from './runtime-worktree-status-projection'
+import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { TerminalTitleFactMeta } from '../../shared/terminal-output-side-effects'
 
 export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithScheduleWaitBlockedCheck {
@@ -186,9 +196,27 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
   /** Display fallback for identities intentionally omitted from liveness records. */
   protected getTrackedDisplayTitleForPty(ptyId: string): string | null {
     return (
-      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ??
+      this.getPtyTitleDisplayClear(ptyId)?.title ??
       this.getTrackedRawTitleForPty(ptyId) ??
+      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ??
       null
     )
+  }
+
+  /** The tracker's display-only clear of this PTY's native title, while it stands. */
+  protected getPtyTitleDisplayClear(ptyId: string | null | undefined): TitleDisplayClear | null {
+    const entry = ptyId ? this.ptyTitleTrackersByPtyId.get(ptyId) : undefined
+    const title = entry?.displayClear ? entry.tracker.getLastNormalizedTitle() : null
+    return entry?.displayClear && title
+      ? { title, status: detectAgentStatusFromTitle(title), ...entry.displayClear }
+      : null
+  }
+
+  protected getPtyDisplayRecord(pty: RuntimePtyWorktreeRecord): RuntimePtyWorktreeRecord {
+    return getPtyDisplayRecord(pty, this.getPtyTitleDisplayClear(pty.ptyId))
+  }
+
+  protected getLeafDisplayRecord(leaf: RuntimeLeafRecord): RuntimeLeafRecord {
+    return getLeafDisplayRecord(leaf, this.getPtyTitleDisplayClear(leaf.ptyId))
   }
 }

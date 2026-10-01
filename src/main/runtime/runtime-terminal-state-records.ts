@@ -115,6 +115,9 @@ export type RuntimePtyTitleTrackerEntry = {
   /** Run once this chunk's facts are emitted: status that readers must see after them. */
   afterFacts: (() => void)[]
   commandCodeDetector: { observe: (data: string) => boolean } | null
+  /** Set while the stale-working timer's cleared title stands over the native one, dated as
+   *  a genuine title would be; display readers project through it, evidence readers never do. */
+  displayClear: { observedAt: number; observedAtEpochMs: number } | null
 }
 
 export type RuntimeHeadlessTerminal = {

@@ -6,13 +6,29 @@ import { terminalTitleBlocksExplicitAgentStatus } from './runtime-worktree-statu
 
 export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnpersistedTrackedTitleForPty {
   /** Apply one observed OSC title (raw form) to the PTY and leaf records.
-   *  Returns true when the PTY record's title or status changed. */
+   *  Returns true when what the PTY shows changed: its record, or its display-only clear. */
   protected applyTrackedPtyTitle(
     ptyId: string,
     rawTitle: string,
     normalizedTitle: string,
     meta?: TerminalTitleFactMeta
   ): boolean {
+    const trackerEntry = this.ptyTitleTrackersByPtyId.get(ptyId)
+    // Why: the timer only guesses the agent may have exited, so its cleared title is display
+    // (getPtyDisplayRecord) and must not overwrite what readiness and delivery read as the
+    // agent's own evidence. The next genuine title retires the clear.
+    if (meta?.staleWorkingTitleClear) {
+      if (trackerEntry) {
+        trackerEntry.displayClear = {
+          observedAt: this.nextTitleObservationSequence(),
+          observedAtEpochMs: Date.now()
+        }
+      }
+      return true
+    }
+    if (trackerEntry) {
+      trackerEntry.displayClear = null
+    }
     // Why: status is detected from the RAW title (mirrors the renderer tracker),
     // so working/idle transitions are unaffected by normalization; the records
     // store the NORMALIZED title so rotating Grok/Pi/Gemini frames collapse to
@@ -22,10 +38,6 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
     // asserting activity, so it records NO title/status evidence — only the tracker keeps it,
     // for display (#10258). Nulling the status here rather than trusting the detector keeps
     // that contract local, since every activity-gated effect below is keyed on status.
-    // Publish the tracker's display change without replacing native execution evidence.
-    if (meta?.staleWorkingTitleClear) {
-      return true
-    }
     const identityOnlyTitle = this.isLiveCursorNativeTitle(rawTitle, meta)
     const recordedTitle = identityOnlyTitle ? null : normalizedTitle
     const agentStatus = identityOnlyTitle ? null : detectAgentStatusFromTitle(rawTitle)

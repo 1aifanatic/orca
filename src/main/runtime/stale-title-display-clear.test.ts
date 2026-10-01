@@ -9,8 +9,9 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-// Synthetic protocol cases test title ownership, not what a particular CLI paints.
-describe('native title evidence survives display clearing', () => {
+// Synthetic protocol cases: they test which title readiness, display and presence each read,
+// not what a particular CLI paints. The 3 s timer is the stale-working-title clear.
+describe('the stale-working title clear is display-only', () => {
   it.each([
     ['claude', '. claude', '* claude'],
     ['codex', '⠋ Codex working', 'Codex ready'],
@@ -78,4 +79,67 @@ describe('native title evidence survives display clearing', () => {
       }
     }
   )
+
+  it.each([['⠋ repo'], ['⠋ Codex working']])(
+    'an agent that exited behind %s does not pass for a running agent',
+    async (title) => {
+      vi.useFakeTimers()
+      try {
+        const { runtime, handle } = await createTranscriptPane({
+          paneTitle: 'Terminal',
+          foregroundProcess: 'zsh',
+          data: ''
+        })
+        runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, `\x1b]0;${title}\x07`, Date.now())
+        // The agent exits and the shell prints its prompt: output, but no title.
+        runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]133;D;0\x07\x1b]133;A\x07% ', Date.now())
+        await vi.advanceTimersByTimeAsync(3_000)
+        await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+          isRunningAgent: false,
+          status: null
+        })
+        await expect(
+          runtime.isTerminalRunningAgent(handle, { retryForegroundWrappers: false })
+        ).resolves.toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
+  it('a live agent behind a cleared title is still found by its process', async () => {
+    vi.useFakeTimers()
+    try {
+      const { runtime, handle } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'codex',
+        data: ''
+      })
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;⠋ repo\x07', Date.now())
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, 'still running\r\n', Date.now())
+      await vi.advanceTimersByTimeAsync(3_000)
+      await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+        isRunningAgent: true,
+        status: 'working'
+      })
+      await expect(
+        runtime.isTerminalRunningAgent(handle, { retryForegroundWrappers: false })
+      ).resolves.toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a live Cursor spinner title proves presence when no foreground read can answer', async () => {
+    const { runtime, handle } = await createTranscriptPane({
+      paneTitle: 'Terminal',
+      foregroundProcess: null,
+      data: ''
+    })
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;⠋ Cursor Agent\x07', Date.now())
+    await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+      isRunningAgent: true,
+      status: 'working'
+    })
+  })
 })

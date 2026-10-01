@@ -16,7 +16,13 @@ import {
   isKnownReadyPromptBody,
   isQuietReadyScreenBody
 } from './terminal-wait-detection'
-import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent-readiness'
+import { isOmpIdleStateTitle } from './omp-terminal-readiness'
+import {
+  getScreenReadyRule,
+  readScreenInputVeto,
+  readScreenRuledVerdict,
+  type RuledScreen
+} from './screen-ruled-agent-readiness'
 
 /**
  * Ranking the evidence that a `tui-idle` wait may settle on.
@@ -32,7 +38,8 @@ import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent
  *      title, or a known ready-prompt body.
  *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, and the screen-ruled
  *      agents (Antigravity, Cline, Prime Agent) can paint their idle composer mid-turn, so their
- *      ready-screen body is believed only once quiet.
+ *      ready-screen body is believed only once quiet. OMP's own idle title likewise, because it
+ *      paints that title before its setup wizard opens.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
  *      inferred.
@@ -42,6 +49,8 @@ import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent
  * Why weak ready is a verdict class rather than a per-evidence flag: none of it can see a
  * start-up dialog the line tail lost (Claude's workspace trust), so ONLY the poll may settle
  * on it, after the rendered screen shows no blocker. Synchronous sites settle on tiers 0-1b.
+ *
+ * Over every ready tier: a screen veto (OMP's setup wizard) refuses input whichever lane settled.
  *
  * Why derived here rather than stamped onto the record at write time: `syncWindowGraph`
  * rebuilds every leaf from an explicit field list, so a bespoke provenance field is
@@ -195,6 +204,8 @@ export type TuiIdleEvaluationInput = {
   readQuietReadyBodyEvidence: () => boolean
   /** Whether the agent's live screen already ruled on readiness, which shuts the weak lanes. */
   readScreenDecidesReadiness: () => boolean
+  /** Whether an overlay on the agent's screen refuses input; null with no rule or no screen. */
+  readScreenInputVeto: () => boolean | null
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   quiescenceMs: number
@@ -235,17 +246,27 @@ export function hasQuietReadyScreen(
   if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent) && !getScreenReadyRule(agent)) {
     return false
   }
-  // Why: same rule as the tier-3 lane — without an output clock there is no
-  // corroboration available, so hold out instead of settling.
-  if (record.lastOutputAt === null || Date.now() - record.lastOutputAt < quiescenceMs) {
-    return false
-  }
   // Why last: a streaming pane never pays for the screen projection.
-  return readBodyEvidence()
+  return hasQuietOutputClock(record, quiescenceMs) && readBodyEvidence()
+}
+
+// Why: same rule as the tier-3 lane — without an output clock there is no
+// corroboration available, so hold out instead of settling.
+function hasQuietOutputClock(record: TuiIdleEvidenceRecord, quiescenceMs: number): boolean {
+  return record.lastOutputAt !== null && Date.now() - record.lastOutputAt >= quiescenceMs
 }
 
 /** The one place the tiers are combined; every settle site branches only on the verdict. */
 export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
+  const verdict = rankTuiIdleEvidence(input)
+  // Why over the verdict rather than per lane: an overlay refuses input whichever lane would
+  // settle, and only a ready verdict pays for the screen read.
+  return isTuiIdleReadyVerdict(verdict) && input.readScreenInputVeto() === true
+    ? { kind: 'pending', quietForeground: 'closed' }
+    : verdict
+}
+
+function rankTuiIdleEvidence(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   const blockedReason = input.readTailBlockedReason()
   if (blockedReason) {
     return { kind: 'blocked', reason: blockedReason }
@@ -259,25 +280,6 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       return WORKING
     }
     return input.readPositiveBodyEvidence()
-      ? READY_STRONG
-      : { kind: 'pending', quietForeground: 'closed' }
-  }
-  // OMP emits its idle title before setup ends; only its composer can authorize input.
-  if (input.agent === 'omp') {
-    if (
-      hasFreshWorkingFirstPartyStatus(input.firstPartyStatus) ||
-      input.record.lastAgentStatus === 'working'
-    ) {
-      return WORKING
-    }
-    return hasExplicitIdleTitle(input.record) &&
-      (input.readPositiveBodyEvidence() ||
-        hasQuietReadyScreen(
-          input.record,
-          input.agent,
-          input.readQuietReadyBodyEvidence,
-          input.quiescenceMs
-        ))
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
@@ -296,6 +298,14 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
     // when a dialog is on screen, so the screen read must still run.
     return input.firstPartyStatus?.state === 'working'
       ? WORKING
+      : { kind: 'pending', quietForeground: 'closed' }
+  }
+  // OMP paints `π >` before its setup wizard, so it counts only once quiet on a screen read clear
+  // of the wizard. Unreadable, it cannot rule setup out, and no lane, the weak one included, may.
+  if (input.agent === 'omp' && isOmpIdleStateTitle(input.record.lastOscTitle)) {
+    return hasQuietOutputClock(input.record, input.quiescenceMs) &&
+      input.readScreenInputVeto() === false
+      ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
   // Why after the veto: a first-party working account outranks inferred body evidence.
@@ -340,9 +350,9 @@ export type TuiIdleEvidenceSource = {
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
   readScreenLines(ptyId: string | null | undefined): readonly string[] | null
-  /** The painted rows on the PTY's own grid, which only screen-ruled agents read. Absent, they
+  /** The painted grid on the PTY's own size, which only screen-ruled agents read. Absent, they
    *  have no trustworthy screen. */
-  readScreenRuledLines?(ptyId: string | null | undefined): readonly string[] | null
+  readRuledScreen?(ptyId: string | null | undefined): RuledScreen | null
 }
 
 // Why per agent table: every other agent keeps the screen it read before screen rules existed.
@@ -352,8 +362,25 @@ function screenReader(
   ptyId: string | null | undefined
 ): () => readonly string[] | null {
   return getScreenReadyRule(agent)
-    ? () => source.readScreenRuledLines?.(ptyId) ?? null
+    ? () => source.readRuledScreen?.(ptyId)?.lines ?? null
     : () => source.readScreenLines(ptyId)
+}
+
+function screenInputVetoReader(
+  source: TuiIdleEvidenceSource,
+  agent: TuiAgent | null,
+  ptyId: string | null | undefined
+): () => boolean | null {
+  // Why memoized: the OMP lane and the veto over the verdict both ask within one evaluation.
+  let read = false
+  let veto: boolean | null = null
+  return () => {
+    if (!read) {
+      veto = readScreenInputVeto(agent, () => source.readRuledScreen?.(ptyId) ?? null)
+      read = true
+    }
+    return veto
+  }
 }
 
 function lazyWaitText(readWaitText: () => string): () => string {
@@ -377,6 +404,7 @@ export function leafTuiIdleEvidence(
       isKnownReadyPromptBody(waitText(), agent, readScreen, leaf.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
+    readScreenInputVeto: screenInputVetoReader(source, agent, leaf.ptyId),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
     quiescenceMs: source.quiescenceMs
@@ -395,10 +423,11 @@ export function ptyTuiIdleEvidence(
     record: pty,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     readPositiveBodyEvidence: () =>
-      (agent !== 'qoder' && agent !== 'omp' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
+      (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
       isKnownReadyPromptBody(waitText(), agent, readScreen, pty.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
+    readScreenInputVeto: screenInputVetoReader(source, agent, pty.ptyId),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
     quiescenceMs: source.quiescenceMs

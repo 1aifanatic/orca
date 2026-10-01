@@ -11,6 +11,7 @@ import {
   agentTitleProvesAgentPresence,
   classifyAgentTitle,
   classifyLatestAgentTitle,
+  getLatestAgentCandidate,
   getLatestAgentCandidateTitle,
   getLatestLeafTitle,
   ptyTitleProvesAgentPresence
@@ -28,6 +29,8 @@ type RuntimeTerminalAgentPresenceDependencies = {
   getTrackedPty(ptyId: string): RuntimePtyWorktreeRecord | null
   getTabTitle(tabId: string): string | null
   getForegroundProcess(ptyId: string): Promise<string | null> | null
+  /** The stale-working timer retired this PTY's own title for display; it may name an exited agent. */
+  hasTitleDisplayClear(ptyId: string): boolean
 }
 
 export type RuntimeTerminalAgentPresenceOptions = {
@@ -60,9 +63,10 @@ export class RuntimeTerminalAgentPresence {
       const paneTitle = getLatestLeafTitle(leaf, null)
       const paneClassification = classifyAgentTitle(paneTitle)
       if (
-        trackedPty
+        !this.isRetiredLeafTitle(leaf) &&
+        (trackedPty
           ? ptyTitleProvesAgentPresence(trackedPty, paneTitle, paneClassification)
-          : agentTitleProvesAgentPresence(paneTitle, paneClassification)
+          : agentTitleProvesAgentPresence(paneTitle, paneClassification))
       ) {
         return true
       }
@@ -118,15 +122,24 @@ export class RuntimeTerminalAgentPresence {
         )
       : null
     const leafClassification = classifyAgentTitle(leafTitle)
-    if (ptyTitleProvesAgentPresence(pty, leafTitle, leafClassification)) {
+    if (
+      !(leaf && this.isRetiredLeafTitle(leaf)) &&
+      ptyTitleProvesAgentPresence(pty, leafTitle, leafClassification)
+    ) {
       return true
     }
-    const ptyTitle = getLatestAgentCandidateTitle(
+    const ptyOsc = { title: pty.lastOscTitle, updatedAt: pty.lastOscTitleAt }
+    const ptyLatest = getLatestAgentCandidate(
       { title: pty.title, updatedAt: pty.titleUpdatedAt },
-      { title: pty.lastOscTitle, updatedAt: pty.lastOscTitleAt }
+      ptyOsc
     )
+    const ptyTitle = ptyLatest?.title?.trim() ?? null
     const ptyClassification = classifyAgentTitle(ptyTitle)
-    if (leafTitle === null && ptyTitleProvesAgentPresence(pty, ptyTitle, ptyClassification)) {
+    if (
+      leafTitle === null &&
+      !(ptyLatest === ptyOsc && this.deps.hasTitleDisplayClear(pty.ptyId)) &&
+      ptyTitleProvesAgentPresence(pty, ptyTitle, ptyClassification)
+    ) {
       return true
     }
     const managementClassification = classifyLatestAgentTitle({
@@ -165,6 +178,20 @@ export class RuntimeTerminalAgentPresence {
       foreground,
       suppressClaude,
       options.retryForegroundWrappers !== false
+    )
+  }
+
+  // Why a veto only: the timer guesses the agent exited behind its working title, so that title
+  // cannot prove presence; the foreground process must, as it did before the title was kept.
+  private isRetiredLeafTitle(leaf: RuntimeLeafRecord): boolean {
+    const leafOsc = { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt }
+    return (
+      leaf.ptyId !== null &&
+      getLatestAgentCandidate(
+        { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
+        leafOsc
+      ) === leafOsc &&
+      this.deps.hasTitleDisplayClear(leaf.ptyId)
     )
   }
 

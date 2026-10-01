@@ -349,7 +349,7 @@ export class OrcaRuntimeWithRuntimeId {
     getFirstPartyAgentStatus: (ptyId) =>
       (ptyId ? this.ptysById.get(ptyId)?.lastExplicitAgentStatus : null) ?? null,
     readScreenLines: (ptyId) => this.readLiveTerminalScreenLines(ptyId),
-    readScreenRuledLines: (ptyId) => this.readScreenRuledLines(ptyId)
+    readRuledScreen: (ptyId) => this.readRuledScreen(ptyId)
   }
 
   protected readonly terminalIdlePolls = new RuntimeTerminalIdlePolls({

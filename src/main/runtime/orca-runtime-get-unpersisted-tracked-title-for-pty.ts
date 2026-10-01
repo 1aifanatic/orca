@@ -9,7 +9,7 @@ import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-
 
 export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntimeWithEmitDaemonPtyTransientFact {
   protected getUnpersistedTrackedTitleForPty(ptyId: string | null): string | null {
-    if (!ptyId) {
+    if (!ptyId || this.getTrackedRawTitleForPty(ptyId) !== null) {
       return null
     }
     // Why: a manual title is authoritative until explicitly cleared with null.
@@ -17,9 +17,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
     if (pty && pty.title !== null) {
       return null
     }
-    const displayTitle =
-      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ?? null
-    return displayTitle === this.getTrackedRawTitleForPty(ptyId) ? null : displayTitle
+    return this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ?? null
   }
 
   /** Why: synthetic agent title frames no longer ride pty:data, so neither
@@ -178,6 +176,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
       chunkTouchedSessionTabs: false,
       pendingFacts: [],
       afterFacts: [],
+      displayClear: null,
       // Why: command-code facts exist only for the pty:sideEffect channel —
       // headless serve skips the per-chunk scrape entirely. The detector
       // self-arms on the Command Code banner; the spawn command (when main
