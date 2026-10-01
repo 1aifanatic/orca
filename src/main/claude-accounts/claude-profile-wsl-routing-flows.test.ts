@@ -166,8 +166,9 @@ describe('a WSL distro stopped when Orca starts', () => {
     expect(issue(routing)).toBeUndefined()
     const before = mocks.state.runningChecks
     routing.terminalEnv(ubuntu)
+    // No probe before the pane's own wsl.exe has had a turn to boot the distro.
+    await vi.advanceTimersByTimeAsync(0)
     expect(mocks.state.runningChecks).toBe(before)
-    // The pane's own wsl.exe boots the distro after terminalEnv returned.
     mocks.state.running = true
     await vi.advanceTimersByTimeAsync(1_000)
     expect(helperActions()).toEqual(['inspect', 'publish'])
