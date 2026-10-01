@@ -431,6 +431,9 @@ describe('SSH OpenCode runtime setup on a Windows host', () => {
       if (script.includes('SELECT 1 AS ready')) {
         return frame('unsupported')
       }
+      if (script.includes('.store-lock') && script.includes('CreateNew')) {
+        return 'OK'
+      }
       if (script.includes('Invoke-OrcaPromote')) {
         return 'ORCA_NODE_RUNTIME_READY'
       }
