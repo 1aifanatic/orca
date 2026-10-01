@@ -779,8 +779,7 @@ describe('subscribeViaWatcherProcess', () => {
 
     disposeWatcherProcess()
 
-    // Why not exactly once: awaited pool disposal re-signals each child it must see exit.
-    expect(child.kill).toHaveBeenCalled()
+    expect(child.kill).toHaveBeenCalledTimes(1)
     await expect(
       subscribeViaRuntimeWatcherProcess('/runtime-root', vi.fn(), {})
     ).rejects.toMatchObject({ code: 'supervisor_disposed' })

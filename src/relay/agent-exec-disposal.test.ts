@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AgentExecHandler } from './agent-exec-handler'
+import { RELAY_AGENT_CLOSE_DEADLINE_MS } from './relay-agent-process-lifetime'
 import { createFakeChild, requestContext } from './agent-exec-handler-test-harness'
 import type { MethodHandler, RelayDispatcher } from './dispatcher'
 
@@ -120,4 +121,28 @@ it('resolves disposal with no children or only already-closed children', async (
   await request
   await f.handler.dispose()
   expect(child.kill).not.toHaveBeenCalled()
+})
+
+it('rejects within the close deadline and re-checks without re-killing on retry', async () => {
+  const f = fixture()
+  const child = createFakeChild()
+  spawnMock.mockReturnValue(child as never)
+  const request = f.exec({ timeoutMs: 60_000 })
+  const signals = () =>
+    process.platform === 'win32'
+      ? vi.mocked(execFile).mock.calls.length
+      : child.kill.mock.calls.length
+  const first = f.handler.dispose()
+  const firstOutcome = first.then(
+    () => 'resolved',
+    (error: Error) => error.message
+  )
+  expect(signals()).toBe(1)
+  await vi.advanceTimersByTimeAsync(RELAY_AGENT_CLOSE_DEADLINE_MS)
+  await expect(firstOutcome).resolves.toBe('relay_agent_execution_shutdown_incomplete')
+  const retry = f.handler.dispose()
+  expect(signals()).toBe(1)
+  child.emit('close', null)
+  await expect(retry).resolves.toBeUndefined()
+  await request
 })

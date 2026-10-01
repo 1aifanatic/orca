@@ -4,7 +4,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { WatcherOwnedChildren } from './parcel-watcher-owned-children'
 import {
   registerWatcherChildPhysicalExit,
-  WATCHER_PROCESS_EXIT_DEADLINE_MS
+  signalWatcherChild,
+  WATCHER_PROCESS_EXIT_DEADLINE_MS,
+  WATCHER_PROCESS_HARD_KILL_DELAY_MS
 } from './parcel-watcher-child-termination'
 
 afterEach(() => vi.useRealTimers())
@@ -101,4 +103,18 @@ it('waits for other children even when logical disposal and one kill fail', asyn
   const retry = owner.disposeAndWait(() => {})
   failed.close()
   await retry
+})
+
+it('skips a second graceful signal after the supervisor sent one but still escalates', async () => {
+  vi.useFakeTimers()
+  const owner = new WatcherOwnedChildren()
+  const c = child()
+  owner.track(c.process)
+  const disposal = owner.disposeAndWait(() => signalWatcherChild(c.process))
+  expect(c.events.kill).toHaveBeenCalledTimes(1)
+  expect(c.events.kill).toHaveBeenCalledWith()
+  await vi.advanceTimersByTimeAsync(WATCHER_PROCESS_HARD_KILL_DELAY_MS)
+  expect(c.events.kill).toHaveBeenLastCalledWith('SIGKILL')
+  c.events.emit('exit', null, 'SIGKILL')
+  await expect(disposal).resolves.toBeUndefined()
 })

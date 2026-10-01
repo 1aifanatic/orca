@@ -10,6 +10,13 @@ export const WATCHER_PROCESS_HARD_KILL_DELAY_MS = 5_000
 export const WATCHER_PROCESS_EXIT_DEADLINE_MS = RUNTIME_FILE_WATCH_EXIT_DEADLINE_MS
 
 const physicalExitPromises = new WeakMap<ChildProcess, Promise<void>>()
+const signalledChildren = new WeakSet<ChildProcess>()
+
+/** Sends the graceful signal once; a later awaited termination only escalates and waits. */
+export function signalWatcherChild(child: ChildProcess): void {
+  signalledChildren.add(child)
+  child.kill()
+}
 
 export function registerWatcherChildPhysicalExit(child: ChildProcess): () => void {
   let resolveExit: () => void = () => undefined
@@ -86,6 +93,10 @@ export function terminateWatcherChild(child: ChildProcess): Promise<boolean> {
     hardKillTimer.unref?.()
     const exitDeadlineTimer = setTimeout(() => finish(false), WATCHER_PROCESS_EXIT_DEADLINE_MS)
     exitDeadlineTimer.unref?.()
+    if (signalledChildren.has(child)) {
+      return
+    }
+    signalledChildren.add(child)
     try {
       child.kill()
     } catch {
