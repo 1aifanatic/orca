@@ -319,7 +319,7 @@ describe('a Codex Stop whose interrupt failed', () => {
     }
   )
 
-  it('keeps the child at rest when a Stop names a turn that already ended', async () => {
+  it('keeps the child at rest, and writes no row, when a Stop names a turn that already ended', async () => {
     await runningTurn()
     turns.end('completed')
     await vi.waitFor(async () => expect((await journalRows()).turns).toEqual(['completed']))
@@ -331,7 +331,7 @@ describe('a Codex Stop whose interrupt failed', () => {
     expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
     expect(childEndedByStop()).toBe(false)
     expect(codex.connections.at(-1)?.closed).toBe(false)
-    expect((await journalRows()).statuses).toEqual(['The provider had already finished this turn.'])
+    expect((await journalRows()).statuses).toEqual([])
   })
 
   // A phone names the turn it shows; a follow-up from elsewhere is not that Stop's to end.
