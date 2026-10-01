@@ -5,10 +5,7 @@ import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  agentJournalSubmissionKey,
-  parseAgentJournalItemKey
-} from '../../../shared/agent-session-journal-item-key'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
@@ -59,22 +56,24 @@ function blockedOnlyByLaterWork(
   if (since === undefined || submission.startRetry === undefined) {
     return false
   }
-  const acceptedAfter = (clientMessageId: string): boolean =>
-    (ctx.journal.submissions().find((entry) => entry.clientMessageId === clientMessageId)
-      ?.acceptedSequence ?? 0) > since
   if (reason === 'turnActive') {
     const items = ctx.journal.snapshot().items
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const turn = readAgentJournalTurn(items[index]?.body)
       if (turn) {
-        // A turn the provider opened on its own is not a later message's.
-        const sentBy = turn.userItemId ? parseAgentJournalItemKey(turn.userItemId) : null
-        return (
-          turn.state === 'running' &&
-          sentBy !== null &&
-          'clientMessageId' in sentBy &&
-          acceptedAfter(sentBy.clientMessageId)
-        )
+        const { userItemId } = turn
+        // The message that opened it: by its own key, or by the provider echo it adopted, as a
+        // Claude turn names it. A turn the provider opened on its own is not a later message's.
+        const sentBy = userItemId
+          ? ctx.journal
+              .submissions()
+              .find(
+                (entry) =>
+                  agentJournalSubmissionKey(entry.clientMessageId) === userItemId ||
+                  entry.providerItemId === userItemId
+              )
+          : undefined
+        return turn.state === 'running' && (sentBy?.acceptedSequence ?? 0) > since
       }
     }
     return false
