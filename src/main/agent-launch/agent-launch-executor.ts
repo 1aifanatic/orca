@@ -164,13 +164,17 @@ export async function executeAgentLaunch(
   // stale once the launch recovers by building a working one, so the user can be told the agent did
   // not start while looking at it. Telling those apart needs `createManagedWorktree` to stop
   // multiplexing "couldn't copy untracked files" and "startup terminal failed" into one string.
-  const warning = combineLaunchWarnings(placed.warning, created.warning)
+  const prompt = await settleLaunchPromptDisposal(execution, created)
+  const warning = combineLaunchWarnings(
+    combineLaunchWarnings(placed.warning, created.warning),
+    prompt.warning
+  )
   return {
     outcome: created.outcome,
     worktreeId: placed.worktreeId,
     receipt: settled,
     ...(warning ? { warning } : {}),
-    ...promptReceipt(intent, await settleLaunchPromptDisposal(execution, created))
+    ...promptReceipt(intent, prompt.disposal)
   }
 }
 

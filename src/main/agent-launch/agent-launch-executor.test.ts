@@ -10,7 +10,10 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { executeAgentLaunch, type AgentLaunchExecution } from './agent-launch-executor'
-import { AgentLaunchStructuredSessionRefusedError } from './agent-launch-surface-factories'
+import {
+  AgentLaunchStructuredSessionRefusedError,
+  type StructuredLaunchPromptDelivery
+} from './agent-launch-surface-factories'
 import type { AgentLaunchIntent } from '../../shared/agent-launch-intent'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 
@@ -26,6 +29,7 @@ function harness(options: {
   createSupportThrows?: boolean
   structuredCreateError?: Error
   deliveredMessageId?: string | null
+  notTakenWarning?: string
   terminalPromptDelivered?: boolean
 }) {
   const calls: string[] = []
@@ -60,9 +64,15 @@ function harness(options: {
     calls.push('createTerminalAgent')
     return { handle: 'term_1' }
   })
-  const deliverStructuredPrompt = vi.fn(async () => {
+  const deliverStructuredPrompt = vi.fn(async (): Promise<StructuredLaunchPromptDelivery> => {
     calls.push('deliverStructuredPrompt')
-    return options.deliveredMessageId === undefined ? 'msg-1' : options.deliveredMessageId
+    if (options.deliveredMessageId === null) {
+      return {
+        taken: false,
+        ...(options.notTakenWarning ? { warning: options.notTakenWarning } : {})
+      }
+    }
+    return { taken: true, messageId: options.deliveredMessageId ?? 'msg-1' }
   })
   const deliverTerminalPrompt = vi.fn(async () => {
     calls.push('deliverTerminalPrompt')
@@ -278,6 +288,14 @@ describe('the prompt receipt', () => {
     const result = await h.run({ ...CREATE_INTENT, prompt: SUBMIT })
     // A resend costs a duplicate; claiming a row that does not exist loses the text silently.
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'not-delivered' })
+  })
+
+  it("reports the host's words for a prompt the agent did not take as the launch's warning", async () => {
+    const h = harness({ deliveredMessageId: null, notTakenWarning: 'The agent is still starting.' })
+    const result = await h.run({ ...CREATE_INTENT, prompt: SUBMIT })
+
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'not-delivered' })
+    expect(result.warning).toBe('The agent is still starting.')
   })
 
   it('leaves a draft with the caller, because the host has no composer to hold one', async () => {

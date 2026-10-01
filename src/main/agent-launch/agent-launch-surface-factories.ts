@@ -10,6 +10,11 @@ import type { TuiAgent } from '../../shared/tui-agent'
 /** How a surface is built once the executor has decided which one. Injected because an
  *  orchestration worker's session carries a redrive subscription and a mailbox a plain launch
  *  must not take, while the decision and ordering above it are identical. */
+/** What became of a structured launch prompt; see `deliverStructuredPrompt`. */
+export type StructuredLaunchPromptDelivery =
+  | { taken: true; messageId: string }
+  | { taken: false; warning?: string }
+
 export type AgentLaunchSurfaceFactory = {
   createStructuredSession(args: {
     worktreeId: string
@@ -42,17 +47,19 @@ export type AgentLaunchSurfaceFactory = {
     warning?: string
   }>
   /**
-   * Commits the launch text as the session's first turn, answering with the transcript row's id.
+   * Sends the launch text as the session's first message, which starts its agent, and answers
+   * whether the agent took it (with the transcript row's id) or not (with the host's words for why
+   * in `warning`, when it has them).
    *
-   * `null` means nothing was committed, and is the answer for every failure — a refused send, an
-   * unreachable host, a throw. Delivery must not fail a launch whose agent is already running: the
-   * caller can resend under `not-delivered`, but it cannot un-create a workspace.
+   * Not taken is the answer for every failure — a refused send, an unreachable host, a throw, a start
+   * that failed or is still being retried. Delivery must not fail a launch whose chat already
+   * exists: the caller keeps the text under `not-delivered`, but it cannot un-create a workspace.
    */
   deliverStructuredPrompt?(args: {
     sessionId: string
     fence: number
     prompt: AgentLaunchPrompt
-  }): Promise<string | null>
+  }): Promise<StructuredLaunchPromptDelivery>
   /**
    * Writes the launch text into a terminal agent's live PTY, answering whether it landed.
    *
