@@ -49,7 +49,7 @@ type Sandbox = { root: string; bin: string; home: string; codexHome: string; tab
 
 /** Fake codex: `--version` prints FAKE_CODEX_VERSION, `--help` prints FAKE_CODEX_HELP, else argv. */
 function makeSandbox(): Sandbox {
-  const root = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-'))
+  const root = mkdtempSync(join(tmpdir(), 'shell-carrier-'))
   roots.push(root)
   const bin = join(root, 'bin')
   const home = join(root, 'home')
@@ -147,7 +147,8 @@ function run(
   if (isWindows && (shell === 'pwsh' || shell === 'powershell')) {
     // Why not empty: npm's codex.cmd hop runs the machine's cmd AutoRun, which can fail against
     // the sandboxed USERPROFILE. USERPROFILE stays sandboxed because PowerShell's $HOME, the
-    // default ~/.codex the carrier reads, comes from it.
+    // default ~/.codex the carrier reads, comes from it. The sandbox's name holds none of
+    // these words, so an AutoRun error that names it cannot match.
     expect(result.stderr).not.toMatch(/codex|ORCA_|hooks/i)
   } else {
     expect(result.stderr).toBe('')
