@@ -52,7 +52,7 @@ A [three-pair hosted transcript comparison](https://github.com/stablyai/orca/act
 on one four-worker ARM runner measured baseline invocations at 127.001 / 114.307 /
 114.265 seconds, versus 28.903 / 28.663 / 28.455 seconds with virtual readiness
 deadlines. Median elapsed time for these five files fell about 75%. All 259
-original named assertions passed in every baseline and candidate, and candidates
+original named tests passed in every baseline and candidate, and candidates
 also passed three repaint checks. Summed test-body time fell from a median 325.85
 to 31.80 worker-seconds. This comparison includes Vitest startup/import work but
 excludes checkout, dependency setup, and queues; it is not a measured percentage
@@ -183,7 +183,7 @@ commit `8ba5c9bf9f734d585f5e89945519aef4f607face`.
 
 Two local cache screens do not justify enabling Node's compile cache. A 96-file
 screen with an explicit worker flush produced a small, noisy difference. A larger
-256-file screen retained all 2,088 assertions: baseline elapsed times were
+256-file screen retained all 2,088 tests: baseline elapsed times were
 54.630 / 55.105 / 55.171 seconds, fresh caches 53.719 / 54.577, and a warm cache
 53.732. The roughly 1.7% median difference is too small to justify cache transfer
 and another test hook without stronger hosted evidence.
@@ -864,7 +864,7 @@ the local warm result does not justify adding a persistent cache to CI.
 The pointer-drag test imported only `makeWorktree` from `store-test-helpers`,
 which also loads the real store slices. Its existing identical export in
 `worktrees-slice-test-fixtures` supplies the same defaults without that graph.
-Changing this single import preserves the five assertions, fork workers,
+Changing this single import preserves the five tests, fork workers,
 isolation, and disabled filesystem/Node compile caches.
 
 Three local interleaved before/after pairs took 2.066/2.047/2.031 seconds versus
@@ -877,10 +877,10 @@ which does not justify splitting the fixture module across those consumers.
 Two further import-only reuses passed the same six-run controls. The kanban
 lane test mocks its card component, so switching its builder import reduced
 the isolated median from 2.202 to 0.495 seconds (77.5%) and transformed modules
-from 1,082 to 13, with all six assertions unchanged. The autosave fixture needs
+from 1,082 to 13, with all six tests unchanged. The autosave fixture needs
 the real editor slice, but not every store slice: the same import change across
 its three consuming suites reduced the median from 3.027 to 1.301 seconds
-(57.0%), with 1,107 to 320 modules and all 17 assertions unchanged. These
+(57.0%), with 1,107 to 320 modules and all 17 tests unchanged. These
 results also measure isolated file groups; they are not additive shard savings.
 The remaining inspected builder-only imports already load the full store as
 their subject, or use builders whose defaults differ from existing exports.
@@ -889,9 +889,9 @@ their subject, or use builders whose defaults differ from existing exports.
 
 Three local interleaved comparisons kept four workers, `isolate: true`, both
 persistent caches disabled, and the same test assertions/module graph. The
-94-file happy-dom renderer cohort passed all 570 assertions: forks took
+94-file happy-dom renderer cohort passed all 570 tests: forks took
 17.480/17.382/17.657 seconds and threads 15.048/14.890/15.013 seconds, a 14.1%
-median reduction. A 23-file shared JavaScript cohort passed all 248 assertions,
+median reduction. A 23-file shared JavaScript cohort passed all 248 tests,
 with its median falling from 1.435 to 1.274 seconds (11.2%). No main-process
 module or native addon loaded; guards reject native loading, `chdir`, and
 process signals. These Mac/Node 24 timings motivated the hosted comparison.
@@ -911,13 +911,13 @@ passed on Linux ARM64, four CPUs, Node 24.21.0, and Ubuntu image
 `20260927.135.1`. Three alternating pairs preserved source hashes and complete
 module graphs, with no main-process module or native addon loaded:
 
-| Audited cohort                              | Forks, seconds           | Threads, seconds         | Median saving         |
-| ------------------------------------------- | ------------------------ | ------------------------ | --------------------- |
-| 94 renderer files / 570 assertions          | 48.591 / 48.144 / 47.299 | 42.486 / 42.402 / 42.221 | 5.742 seconds (11.9%) |
-| 23 shared JavaScript files / 248 assertions | 3.386 / 3.330 / 3.424    | 3.203 / 3.237 / 3.278    | 0.149 seconds (4.4%)  |
+| Audited cohort                         | Forks, seconds           | Threads, seconds         | Median saving         |
+| -------------------------------------- | ------------------------ | ------------------------ | --------------------- |
+| 94 renderer files / 570 tests          | 48.591 / 48.144 / 47.299 | 42.486 / 42.402 / 42.221 | 5.742 seconds (11.9%) |
+| 23 shared JavaScript files / 248 tests | 3.386 / 3.330 / 3.424    | 3.203 / 3.237 / 3.278    | 0.149 seconds (4.4%)  |
 
 Each timed group also included two isolation sentinels: totals were 96 files /
-572 assertions and 25 files / 250 assertions, respectively, with no skips.
+572 tests and 25 files / 250 tests, respectively, with no skips.
 Their graph hashes matched in every pair (4,015 and 251 modules). Separate
 single-worker positive controls passed both sentinels in each pool. With
 isolation disabled, the second sentinel correctly failed on leaked state.
