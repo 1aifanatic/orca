@@ -93,12 +93,14 @@ drops the row on a clear and never keeps it as a finished (Done) agent.
 A command end (OSC 133;D) ends a pane's launch authority at once, because every later process in
 that shell inherits the token. It does not prove the agent exited: a full-screen agent's nested
 shells leak their own 133;D. So at every command end of a PTY whose panes hold a live row, the
-runtime asks the execution host again. The hook's own agent process still running keeps the row;
-the spawned shell owning the foreground with no job stopped clears it as an ended process, keeping
-the resume identity. Any other answer keeps the row, and nothing is latched: the PTY's next command
-end asks again, and its exit clears it. A verdict acts only on the row it checked, so a session
-that started while it was read keeps its row. SSH hosts cannot answer the shell check yet, so there
-only the agent's own exit hook or the PTY's exit removes a row the desktop pane did not drop.
+runtime asks the execution host again. The hook's own agent process still running keeps the row.
+The pane's shell back in front clears it as an ended process, keeping the resume identity: a local
+node-pty proves that from a fresh process-table read (the spawned shell in the foreground, no job
+stopped); the terminal daemon and an SSH relay prove it from their fenced foreground evidence (the
+shell's own process group in front, no agent named), which cannot see a stopped job. Any other
+answer keeps the row, and nothing is latched: the PTY's next command end asks again, and a
+confirmed PTY exit clears it. A verdict acts only on the row it checked, so a session that started
+while it was read keeps its row.
 
 ## PR 1a: structured sessions publish into the store
 

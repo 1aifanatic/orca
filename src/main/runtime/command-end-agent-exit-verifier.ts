@@ -55,7 +55,9 @@ export class CommandEndAgentExitVerifier {
       running.rerun = true
       return
     }
-    void this.run(ptyId)
+    this.run(ptyId).catch((error: unknown) => {
+      console.error('[agent-status] command-end exit check failed', { ptyId, error })
+    })
   }
 
   private async run(ptyId: string): Promise<void> {
@@ -80,25 +82,31 @@ export class CommandEndAgentExitVerifier {
       return
     }
     for (const [paneKey, receivedAt] of anchors) {
-      this.deps.reconcileEndedProcess(paneKey, receivedAt)
+      try {
+        this.deps.reconcileEndedProcess(paneKey, receivedAt)
+      } catch (error) {
+        // Why per pane: one pane's failed clear must not strand its siblings' rows.
+        console.error('[agent-status] command-end exit clear failed', { ptyId, paneKey, error })
+      }
     }
   }
 }
 
 /**
- * Local and daemon providers prove it from the process table. An SSH host has no shell confirm, so
- * it answers from the same fenced foreground evidence the desktop pane reads: the shell's own group
- * in front with no agent named in it.
+ * A local node-pty answers from a fresh process-table read. The terminal daemon answers its shell
+ * confirm from its byte scanner, which only proves a shell after a full-screen exit, and an SSH host
+ * has none; both also report fenced foreground evidence (a local node-pty reports none). That
+ * evidence proves the exit as the shell's own process group in front with no agent named in it.
  */
 export async function confirmShellOwnsPtyForeground(
   controller: RuntimePtyController | null,
-  pty: { ptyId: string; connectionId: string | null; incarnationId: string | null } | undefined
+  pty: { ptyId: string; incarnationId: string | null } | undefined
 ): Promise<boolean> {
   if (!controller || !pty) {
     return false
   }
-  if (!pty.connectionId) {
-    return (await controller.confirmShellForeground?.(pty.ptyId)) ?? false
+  if (await controller.confirmShellForeground?.(pty.ptyId)) {
+    return true
   }
   if (!controller.inspectProcess || !pty.incarnationId) {
     return false

@@ -335,6 +335,8 @@ function relayEvidence(
 
 describe("an SSH pane answers from its relay's foreground evidence", () => {
   async function sshAgentPane(host: CommandEndHost, ptyId: string) {
+    // The SSH provider has no shell confirm, so the runtime controller answers false.
+    host.shellOwnsForeground.mockResolvedValue(false)
     const pane = shellPane(host.runtime, ptyId, {
       tabId: TAB,
       leafId: LEAF,
@@ -355,7 +357,6 @@ describe("an SSH pane answers from its relay's foreground evidence", () => {
     await endCommand(host.runtime, pane.ptyId, 'shell bytes')
 
     expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
-    expect(host.shellOwnsForeground).not.toHaveBeenCalled()
   })
 
   for (const [name, front] of [
