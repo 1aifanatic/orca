@@ -589,6 +589,42 @@ function conversationCommandParams(sessionId: string, command: 'clear') {
   }
 }
 
+describe('a recovery that never answers', () => {
+  it('leaves that lease unverified and lets the settle go on', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const stuck = { ...agentSessionRecordFixture(), sessionId: 'session-stuck' }
+    stuck.lease = { ...stuck.lease, sessionId: 'session-stuck', handoffStage: 'recovering' }
+    const resolveRecovery = vi.fn(() => new Promise<boolean>(() => {}))
+    const restoreListed = vi.fn(async () => undefined)
+    const openDeps = {
+      store: { getRecord: () => stuck, listRecords: () => [stuck] },
+      journalDatabase: { readOnly: false, db: { prepare: () => ({ all: () => [] }) } }
+    }
+    const state = createStructuredAgentSessionStartupState({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the settle reads only the store's records and the unsettled-row query; nothing is selected, so nothing opens.
+      openDeps: openDeps as unknown as StructuredAgentSessionStartupStateDeps['openDeps'],
+      canSettle: (record): record is AgentSessionRecord => record !== null,
+      seedStatus: vi.fn(),
+      resolveRecovery,
+      restoreListed,
+      serialize: (_sessionId, task) => task(),
+      hasSession: () => false,
+      isDisposed: () => false,
+      recoveryBudgetMs: 20
+    })
+
+    await state.settleOwedSessions([])
+
+    expect(resolveRecovery).toHaveBeenCalledWith('session-stuck')
+    expect(restoreListed).toHaveBeenCalledWith([])
+    expect(stuck.lease.handoffStage).toBe('recovering')
+    expect(warn).toHaveBeenCalledWith(
+      '[structured-agent-session] a chat recovery outlasted startup; left unverified',
+      { sessionId: 'session-stuck' }
+    )
+  })
+})
+
 describe('a stored status no settle here can clear (R2A-4)', () => {
   it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {
     const opens: string[] = []
