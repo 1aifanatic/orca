@@ -325,6 +325,16 @@ describe('ClaudeRuntimeAuthService', () => {
       await expect(
         service.prepareForClaudeLaunch({ runtime: 'wsl', wslDistro: 'Ubuntu' })
       ).rejects.toThrow('not running')
+      // Why: retire is only for a WSL distro that lost its accounts, never for the host.
+      await service.syncForCurrentSelection({ runtime: 'host' })
+      expect(profiles.authority.publish).toHaveBeenCalledWith({ runtime: 'host' })
+      expect(profiles.authority.retire).toHaveBeenCalledTimes(1)
+      // Gate off: no authority, so selection takes the legacy path and never retires.
+      const routing = profiles.authority
+      profiles.authority = undefined
+      await service.syncForCurrentSelection(arch)
+      await service.forceMaterializeCurrentSelectionForRollback(arch)
+      expect(routing.retire).toHaveBeenCalledTimes(1)
     } finally {
       profiles.authority = undefined
     }
