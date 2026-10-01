@@ -83,7 +83,11 @@ export function codexCommandLineJoinsSharedServer(commandLine: string): boolean 
   const words = (commandLine.match(/"[^"]*"|\S+/g) ?? []).map((word) =>
     word.replace(/^["']+|["']+$/g, '')
   )
-  const args = words.slice(words.findIndex((word) => CODEX_PROGRAM_RE.test(word)) + 1)
+  const programIndex = words.findIndex((word) => CODEX_PROGRAM_RE.test(word))
+  if (programIndex === -1) {
+    return false
+  }
+  const args = words.slice(programIndex + 1)
   if (args.some(isEmbeddedFlag)) {
     return false
   }

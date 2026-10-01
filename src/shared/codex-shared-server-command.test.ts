@@ -35,6 +35,8 @@ describe('codexCommandLineJoinsSharedServer', () => {
   })
 
   it.each([
+    ['no Codex program', 'claude --resume'],
+    ['an empty command line', ''],
     ['--no-daemon', 'codex --no-daemon'],
     ['--no-daemon through the launcher', `${NPM_LAUNCHER} --no-daemon`],
     ['--no-daemon on Windows', `${WINDOWS_LAUNCHER} --no-daemon`],

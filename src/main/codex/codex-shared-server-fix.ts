@@ -6,7 +6,7 @@ import {
   CODEX_SHARED_SERVER_FEATURE_KEY,
   CODEX_STOP_SHARED_SERVER_ARGS
 } from '../../shared/codex-shared-server-command'
-import { isCodexSharedServerLive } from './codex-shared-server-probe'
+import { probeCodexSharedServer } from './codex-shared-server-probe'
 
 const COMMAND_TIMEOUT_MS = 15_000
 // Why longer: Codex lets running turns drain for up to 60 s by default, then forces after 10 s.
@@ -39,9 +39,10 @@ export async function resolveCodexSharedServerBinary(codexHome: string): Promise
 async function runCodex(
   codexHome: string,
   args: readonly string[],
-  timeoutMs: number
+  timeoutMs: number,
+  binaryHome = codexHome
 ): Promise<string | null> {
-  const program = await resolveCodexSharedServerBinary(codexHome)
+  const program = await resolveCodexSharedServerBinary(binaryHome)
   if (!program) {
     return null
   }
@@ -72,19 +73,38 @@ export function readFeatureEnabled(stdout: string, key: string): boolean | null 
   return null
 }
 
-/** Turns off server sharing for this home; true only once Codex reads it back as off. */
-export async function disableCodexSharedServerAutoStart(codexHome: string): Promise<boolean> {
-  if ((await runCodex(codexHome, CODEX_DISABLE_SHARED_SERVER_ARGS, COMMAND_TIMEOUT_MS)) === null) {
+/** Turns sharing off in `codexHome`, using the server's Codex from `binaryHome`; true once read back as off. */
+async function disableAutoStartIn(codexHome: string, binaryHome: string): Promise<boolean> {
+  const run = (args: readonly string[]): Promise<string | null> =>
+    runCodex(codexHome, args, COMMAND_TIMEOUT_MS, binaryHome)
+  if ((await run(CODEX_DISABLE_SHARED_SERVER_ARGS)) === null) {
     return false
   }
   // Why read back: managed config can pin the feature on even when the write exits 0.
-  const list = await runCodex(codexHome, ['features', 'list'], COMMAND_TIMEOUT_MS)
+  const list = await run(['features', 'list'])
   return list !== null && readFeatureEnabled(list, CODEX_SHARED_SERVER_FEATURE_KEY) === false
 }
 
-/** Stops this home's shared server; true only once it no longer accepts clients. */
+/**
+ * Turns off server sharing in `settingsHome`, where it persists, and in the
+ * pane's home, which a Codex typed in this pane reads before Orca next mirrors
+ * `settingsHome` into it. True only once both read it back as off.
+ */
+export async function disableCodexSharedServerAutoStart(
+  paneHome: string,
+  settingsHome: string = paneHome
+): Promise<boolean> {
+  for (const codexHome of new Set([settingsHome, paneHome])) {
+    if (!(await disableAutoStartIn(codexHome, paneHome))) {
+      return false
+    }
+  }
+  return true
+}
+
+/** Stops this home's shared server; true only once it is proven gone. */
 export async function stopCodexSharedServer(codexHome: string): Promise<boolean> {
   // Why the probe decides: only it shows whether this home's server is actually gone.
   await runCodex(codexHome, CODEX_STOP_SHARED_SERVER_ARGS, STOP_TIMEOUT_MS)
-  return !(await isCodexSharedServerLive(codexHome))
+  return (await probeCodexSharedServer(codexHome)) === 'absent'
 }

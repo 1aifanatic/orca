@@ -2,6 +2,7 @@
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -84,7 +85,7 @@ beforeEach(() => {
     configurable: true,
     value: {
       pty: { isCodexOnSharedServer, disableCodexSharedServerAutoStart, stopCodexSharedServer },
-      ui: { writeClipboardText }
+      ui: { writeClipboardText, set: vi.fn(() => Promise.resolve()) }
     }
   })
 })
@@ -93,6 +94,7 @@ afterEach(() => {
   act(() => root.unmount())
   paneElement.remove()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
@@ -109,6 +111,18 @@ describe('CodexSharedServerBanner', () => {
     expect(paneElement.textContent).toContain('agent status may be wrong')
     expect(paneElement.querySelector(':scope > .pane-top-banner')).not.toBeNull()
     expect(paneElement.style.getPropertyValue('--orca-pane-top-banner-height')).toMatch(/px$/)
+  })
+
+  it("retires the one-time 'runs Codex without its shared server' toast, which it contradicts", async () => {
+    setState({})
+    useAppStore.setState({ codexTerminalServerIsolationNoticeSeen: false })
+    const dismiss = vi.spyOn(toast, 'dismiss')
+    await renderBanner()
+    await advance(1_000)
+
+    expect(paneElement.textContent).toContain(TITLE)
+    expect(dismiss).toHaveBeenCalledWith('codex-terminal-server-isolation-notice')
+    expect(useAppStore.getState().codexTerminalServerIsolationNoticeSeen).toBe(true)
   })
 
   it('keeps asking while Codex starts, then stops once it has an answer', async () => {

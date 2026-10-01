@@ -6,11 +6,11 @@ import type { ProcessResult, ProcessSpec } from '../../shared/child-process/run-
 
 const mocks = vi.hoisted(() => ({
   runProcess: vi.fn<(spec: ProcessSpec) => Promise<ProcessResult>>(),
-  isCodexSharedServerLive: vi.fn<(home: string) => Promise<boolean>>()
+  probeCodexSharedServer: vi.fn<(home: string) => Promise<'live' | 'absent' | 'unknown'>>()
 }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: mocks.runProcess }))
 vi.mock('./codex-shared-server-probe', () => ({
-  isCodexSharedServerLive: mocks.isCodexSharedServerLive
+  probeCodexSharedServer: mocks.probeCodexSharedServer
 }))
 
 import {
@@ -118,6 +118,30 @@ describe('disableCodexSharedServerAutoStart', () => {
     expect(mocks.runProcess).toHaveBeenCalledTimes(1)
   })
 
+  it("writes the user's own home first, then the pane's mirror home, with the server's Codex", async () => {
+    const binary = installPackage('app-server-daemon', 'current', 'bin')
+    const systemHome = join(home, 'system')
+    mocks.runProcess.mockResolvedValue(result({ stdout: LIST_OFF }))
+
+    expect(await disableCodexSharedServerAutoStart(home, systemHome)).toBe(true)
+
+    expect(
+      mocks.runProcess.mock.calls.map(([spec]) => [spec.program, spec.args, spec.env?.CODEX_HOME])
+    ).toEqual([
+      [binary, ['features', 'disable', 'daemon_auto_start'], systemHome],
+      [binary, ['features', 'list'], systemHome],
+      [binary, ['features', 'disable', 'daemon_auto_start'], home],
+      [binary, ['features', 'list'], home]
+    ])
+  })
+
+  it("leaves the pane's home alone when the user's own home refuses the setting", async () => {
+    installPackage('app-server-daemon', 'current', 'bin')
+    mocks.runProcess.mockResolvedValueOnce(result({ code: 1 }))
+    expect(await disableCodexSharedServerAutoStart(home, join(home, 'system'))).toBe(false)
+    expect(mocks.runProcess).toHaveBeenCalledTimes(1)
+  })
+
   it('fails without running anything when the binary is missing', async () => {
     expect(await disableCodexSharedServerAutoStart(home)).toBe(false)
     expect(mocks.runProcess).not.toHaveBeenCalled()
@@ -134,7 +158,7 @@ describe('stopCodexSharedServer', () => {
   it('succeeds only once a fresh probe finds no server', async () => {
     installPackage('app-server-daemon', 'current', 'bin')
     mocks.runProcess.mockResolvedValueOnce(result())
-    mocks.isCodexSharedServerLive.mockResolvedValueOnce(false)
+    mocks.probeCodexSharedServer.mockResolvedValueOnce('absent')
 
     expect(await stopCodexSharedServer(home)).toBe(true)
     expect(mocks.runProcess.mock.calls[0]?.[0]).toMatchObject({
@@ -146,19 +170,26 @@ describe('stopCodexSharedServer', () => {
   it('fails when the server is still live after a clean exit', async () => {
     installPackage('app-server-daemon', 'current', 'bin')
     mocks.runProcess.mockResolvedValueOnce(result())
-    mocks.isCodexSharedServerLive.mockResolvedValueOnce(true)
+    mocks.probeCodexSharedServer.mockResolvedValueOnce('live')
     expect(await stopCodexSharedServer(home)).toBe(false)
   })
 
   it('succeeds on a failed exit once the server is gone', async () => {
     installPackage('app-server-daemon', 'current', 'bin')
     mocks.runProcess.mockResolvedValueOnce(result({ code: 1 }))
-    mocks.isCodexSharedServerLive.mockResolvedValueOnce(false)
+    mocks.probeCodexSharedServer.mockResolvedValueOnce('absent')
     expect(await stopCodexSharedServer(home)).toBe(true)
   })
 
+  it('fails when the probe cannot tell whether the server is gone', async () => {
+    installPackage('app-server-daemon', 'current', 'bin')
+    mocks.runProcess.mockResolvedValueOnce(result())
+    mocks.probeCodexSharedServer.mockResolvedValueOnce('unknown')
+    expect(await stopCodexSharedServer(home)).toBe(false)
+  })
+
   it('fails without running anything when the binary is missing and the server is live', async () => {
-    mocks.isCodexSharedServerLive.mockResolvedValueOnce(true)
+    mocks.probeCodexSharedServer.mockResolvedValueOnce('live')
     expect(await stopCodexSharedServer(home)).toBe(false)
     expect(mocks.runProcess).not.toHaveBeenCalled()
   })

@@ -3,7 +3,7 @@ import type { CodexPaneAccountRecord } from './codex-pane-account-registry-types
 
 const mocks = vi.hoisted(() => ({
   getCodexPaneAccount: vi.fn<(ptyId: string) => CodexPaneAccountRecord | null>(),
-  isCodexSharedServerLive: vi.fn<(home: string) => Promise<boolean>>(),
+  probeCodexSharedServer: vi.fn<(home: string) => Promise<'live' | 'absent' | 'unknown'>>(),
   getProcessTableSnapshot: vi.fn(),
   readWindowsProcessTable: vi.fn()
 }))
@@ -11,7 +11,7 @@ vi.mock('./codex-pane-account-registry', () => ({
   getCodexPaneAccount: mocks.getCodexPaneAccount
 }))
 vi.mock('./codex-shared-server-probe', () => ({
-  isCodexSharedServerLive: mocks.isCodexSharedServerLive
+  probeCodexSharedServer: mocks.probeCodexSharedServer
 }))
 vi.mock('./codex-home-paths', () => ({
   getSystemCodexHomePath: () => '/home/me/.codex',
@@ -27,7 +27,8 @@ vi.mock('../windows/windows-process-table', () => ({
 import {
   findPaneCodexCommandLine,
   isPaneCodexOnSharedServer,
-  resolveCodexPaneHome
+  resolveCodexPaneHome,
+  resolveCodexPaneSettingsHome
 } from './codex-shared-server-pane'
 
 const SHELL = 100
@@ -111,6 +112,31 @@ describe('resolveCodexPaneHome', () => {
   })
 })
 
+describe('resolveCodexPaneSettingsHome', () => {
+  it.each([
+    [{ selectionKey: 'host', accountId: null, homeRoute: 'real-home' }, '/home/me/.codex'],
+    [
+      {
+        selectionKey: 'host',
+        accountId: null,
+        homeRoute: 'real-home',
+        environmentHomeOverride: { codexHome: '/custom/codex' }
+      },
+      '/custom/codex'
+    ],
+    // Why: Orca re-mirrors its shared home from ~/.codex on every launch.
+    [{ selectionKey: 'host', accountId: null, homeRoute: 'shared-home' }, '/home/me/.codex'],
+    [{ selectionKey: 'host', accountId: null, homeRoute: 'custom-home' }, null],
+    [{ selectionKey: 'wsl:Ubuntu', accountId: null, homeRoute: 'shared-home' }, null]
+  ] satisfies [CodexPaneAccountRecord, string | null][])(
+    'resolves %o to %s',
+    (record, expected) => {
+      mocks.getCodexPaneAccount.mockReturnValue(record)
+      expect(resolveCodexPaneSettingsHome('pty')).toBe(expected)
+    }
+  )
+})
+
 describe('isPaneCodexOnSharedServer', () => {
   beforeEach(() => {
     mocks.getCodexPaneAccount.mockReturnValue({
@@ -118,7 +144,7 @@ describe('isPaneCodexOnSharedServer', () => {
       accountId: null,
       homeRoute: 'real-home'
     })
-    mocks.isCodexSharedServerLive.mockResolvedValue(true)
+    mocks.probeCodexSharedServer.mockResolvedValue('live')
     const rows = [row(SHELL, 1, '-bash'), row(101, SHELL, 'codex')]
     mocks.getProcessTableSnapshot.mockResolvedValue(rows)
     mocks.readWindowsProcessTable.mockResolvedValue(rows)
@@ -126,13 +152,16 @@ describe('isPaneCodexOnSharedServer', () => {
 
   it('is true for a typed codex while its home has a live server', async () => {
     await expect(isPaneCodexOnSharedServer('pty', SHELL)).resolves.toBe(true)
-    expect(mocks.isCodexSharedServerLive).toHaveBeenCalledWith('/home/me/.codex')
+    expect(mocks.probeCodexSharedServer).toHaveBeenCalledWith('/home/me/.codex')
   })
 
-  it('is false when no server is live for the pane home', async () => {
-    mocks.isCodexSharedServerLive.mockResolvedValue(false)
-    await expect(isPaneCodexOnSharedServer('pty', SHELL)).resolves.toBe(false)
-  })
+  it.each(['absent', 'unknown'] as const)(
+    'is false when the pane home server is %s',
+    async (state) => {
+      mocks.probeCodexSharedServer.mockResolvedValue(state)
+      await expect(isPaneCodexOnSharedServer('pty', SHELL)).resolves.toBe(false)
+    }
+  )
 
   it('is false when Codex runs with --no-daemon, without probing', async () => {
     mocks.getProcessTableSnapshot.mockResolvedValue([
@@ -144,7 +173,7 @@ describe('isPaneCodexOnSharedServer', () => {
       row(101, SHELL, 'codex --no-daemon')
     ])
     await expect(isPaneCodexOnSharedServer('pty', SHELL)).resolves.toBe(false)
-    expect(mocks.isCodexSharedServerLive).not.toHaveBeenCalled()
+    expect(mocks.probeCodexSharedServer).not.toHaveBeenCalled()
   })
 
   it('is false when the pane home cannot be named, without reading processes', async () => {

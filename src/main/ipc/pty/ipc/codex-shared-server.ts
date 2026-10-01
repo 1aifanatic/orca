@@ -2,7 +2,8 @@ import { getPtyIpc } from '../../pty-host-bindings'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
 import {
   isPaneCodexOnSharedServer,
-  resolveCodexPaneHome
+  resolveCodexPaneHome,
+  resolveCodexPaneSettingsHome
 } from '../../../codex/codex-shared-server-pane'
 import {
   disableCodexSharedServerAutoStart,
@@ -50,21 +51,23 @@ function handleLocalPane(
   })
 }
 
-/** Runs a fix command against the pane's own CODEX_HOME, never a guessed one. */
-function runForPaneHome(fix: (codexHome: string) => Promise<boolean>) {
-  return async (id: string): Promise<boolean> => {
-    const codexHome = resolveCodexPaneHome(id)
-    return codexHome ? await fix(codexHome) : false
-  }
+/** Runs a fix step against the pane's own CODEX_HOME, never a guessed one. */
+async function disableForPane(id: string): Promise<boolean> {
+  const paneHome = resolveCodexPaneHome(id)
+  const settingsHome = resolveCodexPaneSettingsHome(id)
+  return paneHome && settingsHome
+    ? await disableCodexSharedServerAutoStart(paneHome, settingsHome)
+    : false
+}
+
+async function stopForPane(id: string): Promise<boolean> {
+  const paneHome = resolveCodexPaneHome(id)
+  return paneHome ? await stopCodexSharedServer(paneHome) : false
 }
 
 // Why its own read: only a pane already showing Codex asks, so no cadence poll pays for argv.
 export function installPtyCodexSharedServerIpcHandler(deps: Deps): void {
   handleLocalPane(deps, 'pty:isCodexOnSharedServer', isPaneCodexOnSharedServer)
-  handleLocalPane(
-    deps,
-    'pty:disableCodexSharedServerAutoStart',
-    runForPaneHome(disableCodexSharedServerAutoStart)
-  )
-  handleLocalPane(deps, 'pty:stopCodexSharedServer', runForPaneHome(stopCodexSharedServer))
+  handleLocalPane(deps, 'pty:disableCodexSharedServerAutoStart', disableForPane)
+  handleLocalPane(deps, 'pty:stopCodexSharedServer', stopForPane)
 }

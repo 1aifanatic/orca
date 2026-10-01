@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => ({
   hasProvider: vi.fn<(id: string) => boolean>(),
   isPaneCodexOnSharedServer: vi.fn<(id: string, rootPid: number) => Promise<boolean>>(),
   resolveCodexPaneHome: vi.fn<(id: string) => string | null>(),
-  disable: vi.fn<(home: string) => Promise<boolean>>(),
+  resolveCodexPaneSettingsHome: vi.fn<(id: string) => string | null>(),
+  disable: vi.fn<(paneHome: string, settingsHome: string) => Promise<boolean>>(),
   stop: vi.fn<(home: string) => Promise<boolean>>()
 }))
 vi.mock('../../pty-host-bindings', () => ({
@@ -19,7 +20,8 @@ vi.mock('../../pty-host-bindings', () => ({
 }))
 vi.mock('../../../codex/codex-shared-server-pane', () => ({
   isPaneCodexOnSharedServer: mocks.isPaneCodexOnSharedServer,
-  resolveCodexPaneHome: mocks.resolveCodexPaneHome
+  resolveCodexPaneHome: mocks.resolveCodexPaneHome,
+  resolveCodexPaneSettingsHome: mocks.resolveCodexPaneSettingsHome
 }))
 vi.mock('../../../codex/codex-shared-server-fix', () => ({
   disableCodexSharedServerAutoStart: mocks.disable,
@@ -56,6 +58,7 @@ beforeEach(() => {
   mocks.hasProvider.mockReturnValue(true)
   mocks.isPaneCodexOnSharedServer.mockResolvedValue(true)
   mocks.resolveCodexPaneHome.mockReturnValue('/home/me/.codex')
+  mocks.resolveCodexPaneSettingsHome.mockReturnValue('/home/me/.codex')
   mocks.disable.mockResolvedValue(true)
   mocks.stop.mockResolvedValue(true)
   installPtyCodexSharedServerIpcHandler({ getLocalPtyProviderStartupPromise: () => undefined })
@@ -70,8 +73,19 @@ describe('Codex shared-server IPC', () => {
     await invoke('pty:disableCodexSharedServerAutoStart', 'local-1')
     await invoke('pty:stopCodexSharedServer', 'local-1')
     expect(mocks.resolveCodexPaneHome).toHaveBeenCalledWith('local-1')
-    expect(mocks.disable).toHaveBeenCalledWith('/home/me/.codex')
+    expect(mocks.disable).toHaveBeenCalledWith('/home/me/.codex', '/home/me/.codex')
     expect(mocks.stop).toHaveBeenCalledWith('/home/me/.codex')
+  })
+
+  it("persists the setting in the mirror's source but stops the pane home's server", async () => {
+    mocks.resolveCodexPaneHome.mockReturnValue('/data/orca/codex-runtime-home/home')
+    await invoke('pty:disableCodexSharedServerAutoStart', 'local-1')
+    await invoke('pty:stopCodexSharedServer', 'local-1')
+    expect(mocks.disable).toHaveBeenCalledWith(
+      '/data/orca/codex-runtime-home/home',
+      '/home/me/.codex'
+    )
+    expect(mocks.stop).toHaveBeenCalledWith('/data/orca/codex-runtime-home/home')
   })
 
   const refusals: [string, string, () => void][] = [
@@ -100,6 +114,7 @@ describe('Codex shared-server IPC', () => {
 
   it.each(CHANNELS.slice(1))('%s runs nothing when the pane has no Codex home', async (channel) => {
     mocks.resolveCodexPaneHome.mockReturnValue(null)
+    mocks.resolveCodexPaneSettingsHome.mockReturnValue(null)
     expect(await invoke(channel, 'local-1')).toBe(false)
     expect(mocks.disable).not.toHaveBeenCalled()
     expect(mocks.stop).not.toHaveBeenCalled()

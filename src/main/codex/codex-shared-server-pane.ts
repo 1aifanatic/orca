@@ -9,7 +9,7 @@ import { getProcessTableSnapshot } from '../../shared/process-table-snapshot-rea
 import { readWindowsProcessTable } from '../windows/windows-process-table'
 import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getCodexPaneAccount } from './codex-pane-account-registry'
-import { isCodexSharedServerLive } from './codex-shared-server-probe'
+import { probeCodexSharedServer } from './codex-shared-server-probe'
 
 type CommandRow = ProcessIdentityRow & { command: string }
 
@@ -61,6 +61,18 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
   }
 }
 
+/**
+ * Where a Codex setting changed for this pane persists. Orca rebuilds its
+ * shared mirror home from the user's own home on every launch, so a setting
+ * written only to the mirror would be lost.
+ */
+export function resolveCodexPaneSettingsHome(ptyId: string): string | null {
+  const codexHome = resolveCodexPaneHome(ptyId)
+  return codexHome && getCodexPaneAccount(ptyId)?.homeRoute === 'shared-home'
+    ? getSystemCodexHomePath()
+    : codexHome
+}
+
 /** Whether the Codex running in this local pane is a client of Codex's shared server. */
 export async function isPaneCodexOnSharedServer(ptyId: string, rootPid: number): Promise<boolean> {
   const codexHome = resolveCodexPaneHome(ptyId)
@@ -73,6 +85,6 @@ export async function isPaneCodexOnSharedServer(ptyId: string, rootPid: number):
   return (
     commandLine !== null &&
     codexCommandLineJoinsSharedServer(commandLine) &&
-    (await isCodexSharedServerLive(codexHome))
+    (await probeCodexSharedServer(codexHome)) === 'live'
   )
 }

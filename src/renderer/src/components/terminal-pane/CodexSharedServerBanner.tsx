@@ -5,6 +5,7 @@ import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { isCodexSharedServerWarningEnabled } from '../../../../shared/codex-terminal-server-isolation'
 import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
+import { retireCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
 
 // Why a ladder: Codex joins or starts the server a few seconds after its process appears.
 const CHECK_DELAYS_MS = [1_000, 4_000, 10_000] as const
@@ -144,6 +145,7 @@ function CodexSharedServerBannerContent({
   onDontShowAgain: () => void
 }): React.JSX.Element {
   const ref = useReservePaneTopSpace()
+  useEffect(retireCodexTerminalServerIsolationNotice, [])
 
   return (
     <div
