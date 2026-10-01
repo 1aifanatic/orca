@@ -15,7 +15,7 @@ import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timesta
 import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
-import { translate } from '@/i18n/i18n'
+import { agentRowStoppingLabel } from '@/lib/agent-row-stopping-label'
 
 function getCompactAgentPrimary(
   agent: DashboardAgentRowData,
@@ -39,9 +39,9 @@ export function getCompactAgentSecondary(
   if (agent.state === 'unverifiable') {
     return agentNoUpdateLabel(agent.entry, now)
   }
-  // Why: a person's Stop is ending the turn, so its last tool line no longer says what comes next.
-  if (agent.state === 'working' && agent.entry.mainAgent?.stopping) {
-    return translate('components.native-chat.status.stopping', 'Stopping…')
+  const stoppingLabel = agentRowStoppingLabel(agent.entry, agent.state)
+  if (stoppingLabel) {
+    return stoppingLabel
   }
   // Why: the lead turn is over in monitoring, so its last tool line is stale; name the state instead.
   if (agent.state === 'working' && agent.entry.workingMode === 'monitoring') {
