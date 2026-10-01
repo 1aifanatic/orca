@@ -62,15 +62,12 @@ describe.skipIf(process.platform === 'win32').each([
   ['daemon', daemonEnv],
   ['local', localEnv]
 ])('%s fish spawn', (_name, launchEnv) => {
-  // Why: fish skips vendor_conf.d under these, so nothing would ever undo the prefix.
-  it.for([['-N'], ['--no-config'], ['-l', '--no-c'], ['-lN']])(
-    'leaves XDG_DATA_DIRS alone for %j',
-    (args) => {
-      const env = launchEnv(args)
-      expect(env.XDG_DATA_DIRS).toBe(INHERITED)
-      expect(env[FISH_XDG_DATA_DIRS_PREFIX_ENV]).toBeUndefined()
-    }
-  )
+  // Why: fish skips vendor_conf.d under -N, so nothing would ever undo the prefix.
+  it('leaves XDG_DATA_DIRS alone for -N', () => {
+    const env = launchEnv(['-l', '-N'])
+    expect(env.XDG_DATA_DIRS).toBe(INHERITED)
+    expect(env[FISH_XDG_DATA_DIRS_PREFIX_ENV]).toBeUndefined()
+  })
 
   it('still hands off for a plain login fish', () => {
     const env = launchEnv(['-l'])

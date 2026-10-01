@@ -9,8 +9,7 @@ import {
   buildFishVendorConfWrapperFile,
   FISH_XDG_DATA_DIRS_PREFIX_ENV,
   getFishVendorConfSnippet,
-  getFishXdgDataDirsLaunchEnv,
-  restoreFishXdgDataDirs
+  getFishXdgDataDirsLaunchEnv
 } from './fish-xdg-data-dirs-handoff'
 
 const ROOT = '/orca/shell-wrappers/abc'
@@ -25,12 +24,10 @@ describe('getFishXdgDataDirsLaunchEnv', () => {
     })
   })
 
-  it('treats an empty XDG_DATA_DIRS as unset and restores it to unset', () => {
-    const expected = `${DATA_DIR}:/usr/local/share:/usr/share`
-    const env: Record<string, string> = getFishXdgDataDirsLaunchEnv(ROOT, '')
-    expect(env).toEqual({ XDG_DATA_DIRS: expected, [FISH_XDG_DATA_DIRS_PREFIX_ENV]: expected })
-    restoreFishXdgDataDirs(env)
-    expect(env).toEqual({})
+  it('treats an empty XDG_DATA_DIRS as unset', () => {
+    expect(getFishXdgDataDirsLaunchEnv(ROOT, '')).toEqual(
+      getFishXdgDataDirsLaunchEnv(ROOT, undefined)
+    )
   })
 
   it.each([['-N'], ['--no-config'], ['--no-c'], ['-lN'], ['-Ni']])(
@@ -57,43 +54,13 @@ describe('getFishXdgDataDirsLaunchEnv', () => {
   // Why: restore must hand back exactly what was inherited, stale Orca entry included.
   it('prepends again when the inherited value already names the dir', () => {
     const inherited = `${DATA_DIR}:/opt/a`
-    const env = getFishXdgDataDirsLaunchEnv(ROOT, inherited)
-    expect(env.XDG_DATA_DIRS).toBe(`${DATA_DIR}:${inherited}`)
-    restoreFishXdgDataDirs(env)
-    expect(env).toEqual({ XDG_DATA_DIRS: inherited })
+    expect(getFishXdgDataDirsLaunchEnv(ROOT, inherited).XDG_DATA_DIRS).toBe(
+      `${DATA_DIR}:${inherited}`
+    )
   })
 
   it('skips a dir that XDG_DATA_DIRS cannot represent', () => {
     expect(getFishXdgDataDirsLaunchEnv('/odd:root', undefined)).toEqual({})
-  })
-})
-
-describe('restoreFishXdgDataDirs', () => {
-  it.each([[undefined], ['/opt/a:/opt/b'], ['/opt/a:'], [':/opt/a']])(
-    'round-trips %s',
-    (inherited) => {
-      const env = {
-        PATH: '/bin',
-        ...getFishXdgDataDirsLaunchEnv(ROOT, inherited)
-      }
-      restoreFishXdgDataDirs(env)
-      expect(env).toEqual(
-        inherited === undefined ? { PATH: '/bin' } : { PATH: '/bin', XDG_DATA_DIRS: inherited }
-      )
-    }
-  )
-
-  it('removes only what Orca added when something else prepended later', () => {
-    const env = getFishXdgDataDirsLaunchEnv(ROOT, undefined)
-    env.XDG_DATA_DIRS = `/late:${env.XDG_DATA_DIRS}`
-    restoreFishXdgDataDirs(env)
-    expect(env).toEqual({ XDG_DATA_DIRS: '/late' })
-  })
-
-  it('leaves an env with no marker alone', () => {
-    const env = { XDG_DATA_DIRS: `${DATA_DIR}:/opt/a` }
-    restoreFishXdgDataDirs(env)
-    expect(env).toEqual({ XDG_DATA_DIRS: `${DATA_DIR}:/opt/a` })
   })
 })
 

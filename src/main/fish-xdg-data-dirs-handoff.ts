@@ -38,26 +38,11 @@ export function getFishXdgDataDirsLaunchEnv(
   if (dataDir.includes(':') || fishArgsSkipConfig(fishArgs)) {
     return {}
   }
-  // Why empty counts as unset: fish and the XDG spec read both as the default, so restoring '' as unset is invisible.
+  // Why empty counts as unset: the XDG spec and fish 4.7+ read both as the default; older fish only gains the two default vendor dirs.
   const prefix = inheritedXdgDataDirs ? dataDir : `${dataDir}:${XDG_DATA_DIRS_DEFAULT}`
   return {
     XDG_DATA_DIRS: inheritedXdgDataDirs ? `${prefix}:${inheritedXdgDataDirs}` : prefix,
     [FISH_XDG_DATA_DIRS_PREFIX_ENV]: prefix
-  }
-}
-
-/** Node twin of the snippet's restore, for a fish launch that fell back to another shell. */
-export function restoreFishXdgDataDirs(env: Record<string, string>): void {
-  const prefix = env[FISH_XDG_DATA_DIRS_PREFIX_ENV]
-  if (prefix === undefined) {
-    return
-  }
-  delete env[FISH_XDG_DATA_DIRS_PREFIX_ENV]
-  const rest = `:${env.XDG_DATA_DIRS ?? ''}:`.replace(`:${prefix}:`, ':').slice(1, -1)
-  if (rest) {
-    env.XDG_DATA_DIRS = rest
-  } else {
-    delete env.XDG_DATA_DIRS
   }
 }
 
@@ -74,8 +59,7 @@ function __orca_fish_xdg_handoff
     set -q ${FISH_XDG_DATA_DIRS_PREFIX_ENV}; or return 0
     set -l prefix "$${FISH_XDG_DATA_DIRS_PREFIX_ENV}"
     set -e -g ${FISH_XDG_DATA_DIRS_PREFIX_ENV}
-    set -l dirs (string join : -- $XDG_DATA_DIRS)
-    set dirs (string replace -- ":$prefix:" : ":$dirs:")
+    set -l dirs (string replace -- ":$prefix:" : ":$XDG_DATA_DIRS:")
     set dirs (string replace -r -a -- '^:|:$' '' "$dirs")
     if test -n "$dirs"
         set -gx XDG_DATA_DIRS "$dirs"
@@ -85,11 +69,7 @@ function __orca_fish_xdg_handoff
 
     set -l orca_fish_dir (string split -m 1 : -- $prefix)[1]/fish
     for var in __fish_vendor_confdirs __fish_vendor_functionsdirs __fish_vendor_completionsdirs fish_function_path fish_complete_path
-        for sub in vendor_conf.d vendor_functions.d vendor_completions.d
-            while set -l index (contains -i -- $orca_fish_dir/$sub $$var)
-                set -e $var"[$index]"
-            end
-        end
+        set $var (string match -v -- "$orca_fish_dir/*" $$var)
     end
 
     status is-interactive; or return 0

@@ -67,10 +67,10 @@ export function getShellLaunchConfig(
   shellPath: string,
   features: readonly ShellStartupFeature[],
   startupCommand?: string,
-  fishLaunch: {
-    inheritedXdgDataDirs?: string
+  fishLaunch?: {
+    inheritedXdgDataDirs: string | undefined
     shellArgs?: readonly string[]
-  } = {}
+  }
 ): ShellReadyLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
   const wrapperFeatures =
@@ -136,8 +136,8 @@ export function getShellLaunchConfig(
     }
   }
 
-  // Why: mirrors daemon/shell-ready.ts; markerless fish stays unwrapped. The
-  // selection is baked into the init command, so fish needs no feature env var.
+  // Why: mirrors daemon/shell-ready.ts; only these need the -C init, plain fish gets
+  // the env-only handoff below. The selection is baked in, so no feature env var.
   if (shellName === 'fish' && (features.includes('ready') || startupCommand !== undefined)) {
     return {
       args: [
@@ -162,8 +162,8 @@ export function getShellLaunchConfig(
       args: null,
       env: getFishXdgDataDirsLaunchEnv(
         getShellReadyWrapperRoot(),
-        fishLaunch.inheritedXdgDataDirs,
-        fishLaunch.shellArgs
+        fishLaunch?.inheritedXdgDataDirs,
+        fishLaunch?.shellArgs
       ),
       supportsReadyMarker: false
     }
