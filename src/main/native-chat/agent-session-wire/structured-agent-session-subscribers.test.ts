@@ -24,6 +24,7 @@ import {
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { MAX_RETAINED_SESSION_ACTIVITIES } from './structured-agent-session-activity-retention'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const SESSION = 'subscriber-session'
 
@@ -236,6 +237,7 @@ describe('AgentSessionSubscribers', () => {
       stateDirectory: join(root, 'unread-journal')
     })
     const statusFeed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([
         [
           SESSION,
