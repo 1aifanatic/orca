@@ -3,7 +3,8 @@
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
-  type AgentJournalItemIdentity
+  type AgentJournalItemIdentity,
+  type AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from './journal-store'
 
@@ -65,7 +66,7 @@ export async function settledTurn(journal: AgentSessionJournal, turnId: string):
   })
 }
 
-export function userMessage(text: string): AgentJournalItemBody {
+export function userMessage(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 

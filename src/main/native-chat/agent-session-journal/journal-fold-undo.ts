@@ -62,7 +62,7 @@ export type JournalFoldUndo = {
 
 /** Null when the fold's containers cannot record their changes; the caller re-reads it instead. */
 export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUndo | null {
-  const containers = [
+  const containers: readonly object[] = [
     state.items,
     state.itemFences,
     state.tombstones,
@@ -71,12 +71,12 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     state.aliases,
     state.appliedSettlementIds
   ]
-  const recording = containers.filter(
-    (container): container is JournalFoldMap<unknown, unknown> | JournalFoldSet<unknown> =>
-      container instanceof JournalFoldMap || container instanceof JournalFoldSet
-  )
-  if (recording.length !== containers.length) {
-    return null
+  const recording: { onChange: ((undo: Undo) => void) | null }[] = []
+  for (const container of containers) {
+    if (!(container instanceof JournalFoldMap || container instanceof JournalFoldSet)) {
+      return null
+    }
+    recording.push(container)
   }
   const undos: Undo[] = []
   const record = (undo: Undo) => {
