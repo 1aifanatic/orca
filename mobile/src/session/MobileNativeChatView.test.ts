@@ -147,6 +147,19 @@ describe('MobileNativeChatView', () => {
     })
   }
 
+  it("disables Stop and says Stopping while this phone's Stop is ending the turn", async () => {
+    await render({
+      structuredActivityUi: true,
+      agentWorking: true,
+      canStop: true,
+      turnIndicator: { thinking: false, activityText: null, stopping: true }
+    })
+    const stop = renderer!.root.find(
+      (node) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Stopping…'
+    )
+    expect(stop.props.disabled).toBe(true)
+  })
+
   /** Ids of the rows the list is currently rendering. */
   it('keeps Stop hidden during a structured dispatch until a provider turn can be cancelled', async () => {
     const props = { structuredActivityUi: true, agentWorking: true, canStop: false }

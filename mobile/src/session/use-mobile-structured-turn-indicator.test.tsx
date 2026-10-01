@@ -113,7 +113,7 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       listener?.(snapshot([runningTurn, reasoning], 3))
     })
 
-    expect(hook?.turnIndicator).toEqual({ thinking: true, activityText: null })
+    expect(hook?.turnIndicator).toEqual({ thinking: true, activityText: null, stopping: false })
   })
 
   it('hands the row the provider copy once real content ends the reasoning', async () => {
@@ -142,7 +142,11 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       )
     })
 
-    expect(hook?.turnIndicator).toEqual({ thinking: false, activityText: 'Updating the plan' })
+    expect(hook?.turnIndicator).toEqual({
+      thinking: false,
+      activityText: 'Updating the plan',
+      stopping: false
+    })
   })
 
   it('never reads a journal status row as the live activity', async () => {
@@ -167,6 +171,6 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
       )
     })
 
-    expect(hook?.turnIndicator).toEqual({ thinking: false, activityText: null })
+    expect(hook?.turnIndicator).toEqual({ thinking: false, activityText: null, stopping: false })
   })
 })
