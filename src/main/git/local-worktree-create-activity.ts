@@ -66,6 +66,11 @@ export async function runWithLocalWorktreeCreateHold<T>(operation: () => Promise
   }
 }
 
+/** Any local create running, past the deadline too: optional work (a spare) must not start then. */
+export function isLocalWorktreeCreateInFlight(): boolean {
+  return activeCreates > 0
+}
+
 /**
  * True while background producers should hold off: a create is in flight and this stretch of
  * creates has not yet outlasted the deadline, so a stuck create can never starve them for long.

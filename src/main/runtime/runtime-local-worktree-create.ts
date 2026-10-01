@@ -104,6 +104,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     store,
     settings,
     baseBranch,
+    workspaceRoot: computeWorkspaceRoot(repo.path, pathSettings),
     branchName: candidate.branchName,
     worktreePath: candidate.worktreePath,
     effectiveSanitizedName: candidate.effectiveSanitizedName,

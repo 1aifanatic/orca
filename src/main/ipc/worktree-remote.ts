@@ -2585,6 +2585,15 @@ async function performLocalWorktreeCreate(
     ...remoteTrackingBaseOption,
     ...(suggestLocalBaseRefUpdate ? { suggestLocalBaseRefUpdate } : {})
   }
+  // A spare is a detached full checkout, so only a plain new-branch add can use one.
+  const addSpareOptions = (options?: AddWorktreeOptions): AddWorktreeOptions =>
+    addProjectGitOptions({ ...options, preparedCheckout: { workspaceRoot } })
+  if (sparseDirectories.length > 0 || checkoutExistingBranch) {
+    timing.recordPreparedCheckout({
+      status: 'miss',
+      reason: sparseDirectories.length > 0 ? 'sparse_checkout' : 'checkout_existing_branch'
+    })
+  }
   let addResult: AddWorktreeResult
   try {
     addResult =
@@ -2642,7 +2651,7 @@ async function performLocalWorktreeCreate(
             baseBranch,
             settings.refreshLocalBaseRefOnWorktreeCreate,
             false,
-            addProjectGitOptions({ ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate })
+            addSpareOptions({ ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate })
           )
         }
         return addWorktree(
@@ -2652,7 +2661,7 @@ async function performLocalWorktreeCreate(
           baseBranch,
           settings.refreshLocalBaseRefOnWorktreeCreate,
           false,
-          addProjectGitOptions(remoteTrackingBaseOption)
+          addSpareOptions(remoteTrackingBaseOption)
         )
       })) ?? {}
   } catch (error) {
@@ -2660,6 +2669,9 @@ async function performLocalWorktreeCreate(
       await retireGeneratedWorktreeName(store, repo, settings, effectiveSanitizedName)
     }
     throw error
+  }
+  if (addResult.preparedCheckout) {
+    timing.recordPreparedCheckout(addResult.preparedCheckout)
   }
   // Why: the worktree is listable from here on. Every scan that started earlier now describes a
   // catalog without it, and must not be served or cached as the current one.

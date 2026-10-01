@@ -32,6 +32,7 @@ export async function createRuntimeLocalGitWorktree(args: {
     localBaseRefSuggestionDismissed?: boolean
   }
   baseBranch: string
+  workspaceRoot: string
   branchName: string
   worktreePath: string
   effectiveSanitizedName?: string
@@ -122,7 +123,11 @@ export async function createRuntimeLocalGitWorktree(args: {
     ...remoteOption,
     ...(suggestLocalBaseRefUpdate ? { suggestLocalBaseRefUpdate } : {}),
     ...args.localWorktreeGitOptions,
-    ...(args.checkoutExistingBranch ? { checkoutExistingBranch: true } : {})
+    ...(args.checkoutExistingBranch ? { checkoutExistingBranch: true } : {}),
+    // A spare is a full detached checkout, so only a plain new-branch add can use one.
+    ...(sparseDirectories.length === 0 && !args.checkoutExistingBranch
+      ? { preparedCheckout: { workspaceRoot: args.workspaceRoot } }
+      : {})
   }
   const shouldRetireGeneratedName =
     args.request.nameWasGenerated === true &&

@@ -1,9 +1,8 @@
-export { addWorktree } from './worktree-add'
+export { addWorktree, resolveWorktreeAddBaseContext } from './worktree-add'
 export {
   configurePushAutoSetupRemote,
-  persistWorktreeCreationBase,
-  resolveWorktreeAddBaseContext
-} from './worktree-add'
+  persistWorktreeCreationBase
+} from './worktree-add-creation-config'
 export { forceDeleteLocalBranch } from './worktree-branch-removal'
 export { parseWorktreeList } from '../../shared/git-worktree-porcelain-parser'
 // Unshared by design: verification-after-mutation callers must not join an

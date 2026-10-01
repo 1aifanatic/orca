@@ -33,9 +33,30 @@ export type WorktreeCreateTimingPhase = {
   durationMs: number
 }
 
+/** Closed vocabulary: these values reach span attributes, so none of them may ever
+ *  be derived from a branch name, a ref, or a path. */
+export type PreparedCheckoutMissReason =
+  | 'none'
+  /** A spare existed but was still being built; the create never waits on one. */
+  | 'not_ready'
+  /** The spare's commit is not the create's base commit after the create's own fetch. */
+  | 'base_moved'
+  | 'workspace_root_mismatch'
+  /** No spare was built: Git before 2.36 cannot give `post-checkout` a plain create's arguments. */
+  | 'hook_unsupported'
+  | 'finalize_failed'
+  | 'sparse_checkout'
+  | 'checkout_existing_branch'
+
+/** Whether a create used a spare checkout, and when it did not, why. */
+export type PreparedCheckoutOutcome =
+  | { status: 'hit' }
+  | { status: 'miss'; reason: PreparedCheckoutMissReason }
+
 export type WorktreeCreateTiming = {
   totalDurationMs: number
   phases: WorktreeCreateTimingPhase[]
+  preparedCheckout?: PreparedCheckoutOutcome
 }
 
 export type CreateSparseCheckoutRequest = {
