@@ -57,7 +57,7 @@ export type NativeChatComposerProps = {
   canSend?: boolean
   /** True while the hosted TUI reports an in-flight turn; swaps Send to Stop. */
   isWorking?: boolean
-  /** A person's Stop is ending the turn: the Stop control is disabled and says so. */
+  /** This client's Stop request is in flight: the Stop control is disabled and says so. */
   isStopping?: boolean
   /** Interrupt the hosted agent, usually by sending ESC into the PTY. */
   onStop?: () => void

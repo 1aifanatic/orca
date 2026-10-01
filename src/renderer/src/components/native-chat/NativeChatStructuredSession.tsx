@@ -61,6 +61,8 @@ export function NativeChatStructuredSession(
   })
   // The host's word, bridged by this client's own press until its Stop event lands.
   const stopping = controller.canStop && (hostExecution.stopping || controller.stopPressed)
+  // Only this client's own request in flight holds Stop: a repeat is how a stuck stop escalates.
+  const stopInFlight = controller.canStop && controller.stopPressed
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,
     agent: props.agent,
@@ -396,9 +398,8 @@ export function NativeChatStructuredSession(
           agent={props.agent}
           canSend={!prompt}
           isWorking={controller.canStop}
-          isStopping={stopping}
-          // A second Stop while one is ending the turn sends nothing.
-          onStop={() => void (stopping || controller.stop())}
+          isStopping={stopInFlight}
+          onStop={() => void (stopInFlight || controller.stop())}
           steerQueued={controller.queuedMessages.steerNewest}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}

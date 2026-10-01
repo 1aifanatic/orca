@@ -71,7 +71,7 @@ describe("the chat pane while a person's Stop ends the turn", () => {
     resetStructuredSessionMocks()
   })
 
-  it("reads Stopping from the host's word, and a second Stop sends nothing", async () => {
+  it("reads Stopping from the host's word and keeps Stop for the repeat that escalates", async () => {
     mocks.turnId = 'turn-1'
     mocks.isWorking = true
     renderPane()
@@ -80,19 +80,22 @@ describe("the chat pane while a person's Stop ends the turn", () => {
 
     hostSays(true)
 
-    await waitFor(() => expect(mocks.composerProps).toMatchObject({ isStopping: true }))
-    expect(mocks.messageListProps).toMatchObject({ stopping: true })
+    // A Stop the provider took and never answered (a Codex command) ends only at a second Stop.
+    await waitFor(() => expect(mocks.messageListProps).toMatchObject({ stopping: true }))
+    expect(mocks.composerProps).toMatchObject({ isStopping: false })
     mocks.composerProps?.onStop?.()
-    expect(mocks.stop).not.toHaveBeenCalled()
+    expect(mocks.stop).toHaveBeenCalledOnce()
   })
 
-  it('reads Stopping from its own press until the host has answered', () => {
+  it('reads Stopping from its own press, and holds Stop until that request answers', () => {
     mocks.turnId = 'turn-1'
     mocks.stopPressed = true
     renderPane()
 
     expect(mocks.composerProps).toMatchObject({ isStopping: true })
     expect(mocks.messageListProps).toMatchObject({ stopping: true })
+    mocks.composerProps?.onStop?.()
+    expect(mocks.stop).not.toHaveBeenCalled()
   })
 
   it('stops normally while nothing is stopping', () => {

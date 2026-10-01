@@ -35,7 +35,7 @@ export type NativeChatComposerFieldProps = {
   imageAttachments: readonly NativeChatComposerImageAttachment[]
   sendButtonDisabled: boolean
   isWorking: boolean
-  /** A person's Stop is ending the turn: the Stop control is disabled and says so. */
+  /** This client's Stop request is in flight: the Stop control is disabled and says so. */
   isStopping?: boolean
   attachDisabled: boolean
   dictationDisabled: boolean
