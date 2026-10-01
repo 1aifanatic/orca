@@ -6,12 +6,8 @@ let authority: ClaudeProfileRoutingService | undefined
 export function installClaudeProfileRoutingAuthority(value: ClaudeProfileRoutingService): void {
   authority = value
 }
+/** Undefined where no owner is installed (headless hosts, worker threads, child processes): those
+ *  launch and read System Default, and out-of-process readers get profile roots from their parent. */
 export function getClaudeProfileRoutingAuthority(): ClaudeProfileRoutingService | undefined {
-  if (!claudeProfileRoutingEnabled()) {
-    return undefined
-  }
-  if (!authority) {
-    throw new Error('Claude account routing is unavailable on this host')
-  }
-  return authority
+  return claudeProfileRoutingEnabled() ? authority : undefined
 }

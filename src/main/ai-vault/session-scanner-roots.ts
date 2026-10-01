@@ -1,4 +1,7 @@
-import { claudeProfileReaderRoots } from '../claude-accounts/claude-profile-reader-roots'
+import {
+  claudeProfileSurfaceRoots,
+  mergeClaudeProfileReaderRoots
+} from '../claude-accounts/claude-profile-reader-roots'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { resolveOmpSessionsDir } from './omp-session-root'
@@ -13,13 +16,15 @@ const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 export function claudeProjectsRootDirs(args: {
   claudeProjectsDir?: string
   wslHomeDirs?: readonly string[]
+  /** Resolved by the scan's parent; an isolate without the account owner sees none itself. */
+  claudeProfileProjectsDirs?: readonly string[]
 }): string[] {
-  return claudeProfileReaderRoots(
+  return mergeClaudeProfileReaderRoots(
     [
       args.claudeProjectsDir ?? CLAUDE_PROJECTS_DIR,
       ...(args.wslHomeDirs ?? []).map((homeDir) => join(homeDir, '.claude', 'projects'))
     ],
-    'projects'
+    args.claudeProfileProjectsDirs ?? claudeProfileSurfaceRoots('projects')
   )
 }
 

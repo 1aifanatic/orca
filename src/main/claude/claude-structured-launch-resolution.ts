@@ -7,6 +7,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
+import { agentSessionLaunchAccountHome } from '../runtime/agent-session-launch-account-home'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
@@ -255,7 +256,8 @@ export function createClaudeStructuredLaunchResolver(
     // Codex has no gate here — it resolves its account on a different path.
     const profiles = getClaudeProfileRoutingAuthority()
     const prepared = profiles ? await profiles.prepare() : undefined
-    const launchHome = prepared?.profileLaunch?.configHome ?? record.accountHome.path
+    const launchHome =
+      prepared?.profileLaunch?.configHome ?? agentSessionLaunchAccountHome(record).path
     const gate = profiles ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
@@ -321,7 +323,14 @@ export function createClaudeStructuredLaunchResolver(
         if (current.lease.runtimeFence !== record.lease.runtimeFence) {
           throw new Error('Claude session ownership changed before launch')
         }
-        return { ...current, claudeLaunchHome: launchHome }
+        return {
+          ...current,
+          launchAccountHome: {
+            variable: 'CLAUDE_CONFIG_DIR',
+            path: launchHome,
+            accountId: prepared.profileLaunch?.profile?.accountId ?? null
+          }
+        }
       })
     }
     return {

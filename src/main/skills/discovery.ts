@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { selectedClaudeProfileHome } from '../claude-accounts/claude-profile-reader-roots'
 import { open, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, sep } from 'node:path'
@@ -273,7 +273,8 @@ export async function discoverSkills(args: {
   const startedAt = Date.now()
   const homeDir = args.homeDir ?? homedir()
   const refresh = args.refresh === true
-  const profileHome = getClaudeProfileRoutingAuthority()?.resolve().readHome
+  // Why only without a caller root: install verification compares against the root it passed.
+  const profileHome = args.providerRootOverrides?.claude ? undefined : selectedClaudeProfileHome()
   const roots = [
     ...buildSkillDiscoverySources({
       ...args,

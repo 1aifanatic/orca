@@ -15,6 +15,7 @@ import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-p
 import { publishClaudeProfilePointer, readClaudeProfilePointer } from './claude-profile-pointer'
 import { requireClaudeProfileRoutingCapability } from '../../shared/claude-profile-routing'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
+import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -39,14 +40,20 @@ function fixture() {
     activeClaudeManagedAccountId: string | null
   } = { claudeManagedAccounts: accounts, activeClaudeManagedAccountId: 'a' }
   const worker = {
-    prepare: vi.fn(async () => ({ outcome: 'prepared' as const, warnings: [], surfaces: {} }))
+    prepare: vi.fn(async (): Promise<ClaudeProfileSetupReport> => ({
+      outcome: 'prepared',
+      warnings: [],
+      surfaces: {}
+    }))
   }
+  const inherited: { dir?: string } = {}
   const routing = createNativeClaudeProfileRouting({
     store: {
       getSettings: () => ({ ...settings, agentStatusHooksEnabled: true, disabledTuiAgents: [] })
     },
     dataRoot,
     userHome: home,
+    defaultHome: () => inherited.dir ?? join(home, '.claude'),
     worker,
     claudeVersion: async () => '2.1.261'
   })
@@ -54,7 +61,7 @@ function fixture() {
     describeClaudeProfile(dataRoot, id, { runtime: 'host', executionHostId: 'local' })
   )
   profiles.forEach((profile) => prepareClaudeProfileDirectory(dataRoot, profile, home))
-  return { root, home, dataRoot, settings, worker, routing, profiles }
+  return { root, home, dataRoot, settings, worker, routing, profiles, inherited }
 }
 describe('native Claude profile authority', () => {
   it('re-derives the pointer at startup and selection, passes the version to the worker, and preserves an immutable launch', async () => {
@@ -72,7 +79,7 @@ describe('native Claude profile authority', () => {
     const system = await f.routing.prepare()
     expect(readFileSync(f.routing.pointerPath(), 'utf8')).toBe('')
     expect(system.stripAuthEnv).toBe(false)
-    expect(system.envPatch.CLAUDE_CONFIG_DIR).toBe('')
+    expect(system.envPatch).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: f.routing.pointerPath() })
   })
   it('never manufactures missing profiles or silently uses default for a missing selection', async () => {
     const f = fixture()
@@ -132,5 +139,66 @@ describe('native Claude profile authority', () => {
       writeFileSync(pointer, value)
       expect(() => readClaudeProfilePointer(pointer)).toThrow()
     }
+  })
+  it('sets up a profile at select and startup, and at launch only when it never was', async () => {
+    const f = fixture()
+    await f.routing.prepare()
+    expect(f.worker.prepare).toHaveBeenCalledTimes(1)
+    mkdirSync(join(f.profiles[0].home, 'projects'))
+    await f.routing.prepare()
+    await f.routing.prepare()
+    expect(f.worker.prepare).toHaveBeenCalledTimes(1)
+    await f.routing.publish()
+    expect(f.worker.prepare).toHaveBeenCalledTimes(2)
+    f.worker.prepare.mockRejectedValue(new Error('Claude profile setup queue is full'))
+    await expect(f.routing.publish()).resolves.toMatchObject({ configHome: f.profiles[0].home })
+    f.settings.activeClaudeManagedAccountId = 'b'
+    await expect(f.routing.prepare()).rejects.toThrow('queue is full')
+    f.worker.prepare.mockResolvedValue({ outcome: 'refused', warnings: [], surfaces: {} })
+    f.settings.activeClaudeManagedAccountId = 'a'
+    await expect(f.routing.publish()).rejects.toThrow('could not be prepared')
+  })
+  it('lists every account without throwing and republishes a stale pointer in the background', async () => {
+    const f = fixture()
+    f.settings.claudeManagedAccounts.push({
+      ...f.settings.claudeManagedAccounts[0],
+      id: 'legacy'
+    })
+    const state = {
+      accounts: f.settings.claudeManagedAccounts.map((account) => ({ ...account })),
+      activeAccountId: 'a'
+    }
+    const listed = f.routing.describeAccounts(state)
+    expect(listed.accounts.map((account) => account.profileReadiness)).toEqual([
+      'ready',
+      'ready',
+      'sign-in-required'
+    ])
+    expect(listed.profileRoutingIssue).toBeDefined()
+    await vi.waitFor(() =>
+      expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(f.profiles[0].home)
+    )
+    expect(f.routing.describeAccounts(state).profileRoutingIssue).toBeUndefined()
+    f.settings.activeClaudeManagedAccountId = 'legacy'
+    expect(f.routing.describeAccounts(state).profileRoutingIssue).toBeDefined()
+    await vi.waitFor(() =>
+      expect(f.routing.describeAccounts(state).profileRoutingIssue).toContain('fresh sign-in')
+    )
+  })
+  it('gives panes the selected profile and a twin, and System Default nothing but the pointer', () => {
+    const f = fixture()
+    const pointer = { ORCA_CLAUDE_PROFILE_POINTER: f.routing.pointerPath() }
+    expect(f.routing.terminalEnv()).toEqual({
+      ...pointer,
+      CLAUDE_CONFIG_DIR: f.profiles[0].home,
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: f.profiles[0].home
+    })
+    f.settings.activeClaudeManagedAccountId = 'unknown'
+    expect(f.routing.terminalEnv()).toEqual(pointer)
+    f.settings.activeClaudeManagedAccountId = null
+    expect(f.routing.terminalEnv()).toEqual(pointer)
+    f.inherited.dir = join(f.root, 'user-own-claude')
+    expect(f.routing.resolve().configHome).toBe(f.inherited.dir)
+    expect(f.routing.historyRoots()[0]).toBe(f.inherited.dir)
   })
 })

@@ -1,4 +1,4 @@
-import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
+import { selectedClaudeProfileHome } from '../claude-accounts/claude-profile-reader-roots'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { getWslHome } from '../wsl'
@@ -112,13 +112,15 @@ export async function resolveSkillProviderRoots(
       ? { grok }
       : {}
     : resolveEnvironmentSkillProviderRoots()
-  const config = claudeProfileRoutingEnabled()
-    ? join(destination.homeDirectory, '.claude')
-    : host.getClaudeConfigDirectory?.(
-        destination.wslDistro
-          ? { runtime: 'wsl', wslDistro: destination.wslDistro }
-          : { runtime: 'host' }
-      )
+  // Why: a profile's skills link to the personal ~/.claude/skills; System Default keeps its own dir.
+  const config =
+    !destination.wslDistro && selectedClaudeProfileHome()
+      ? join(destination.homeDirectory, '.claude')
+      : host.getClaudeConfigDirectory?.(
+          destination.wslDistro
+            ? { runtime: 'wsl', wslDistro: destination.wslDistro }
+            : { runtime: 'host' }
+        )
   return withClaudeSkillProviderRoot(roots, config)
 }
 

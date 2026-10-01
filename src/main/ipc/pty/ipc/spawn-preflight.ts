@@ -229,9 +229,9 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.expectedWslDistro
   )
   if (!args.connectionId && initialSelectionTarget.runtime !== 'wsl') {
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      args.env = { ...args.env, ORCA_CLAUDE_PROFILE_POINTER: profiles.pointerPath() }
+    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv()
+    if (profileEnv) {
+      args.env = { ...args.env, ...profileEnv }
     }
   }
   ctx.claudeAuth =

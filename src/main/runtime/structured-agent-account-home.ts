@@ -19,11 +19,12 @@ export type StructuredClaudeAccountHomeDeps = {
 export function resolveStructuredClaudeAccountHomePath(
   deps: StructuredClaudeAccountHomeDeps
 ): string {
-  const profiles = getClaudeProfileRoutingAuthority()
-  if (profiles) {
-    return profiles.resolve(
-      deps.wslDistro ? { runtime: 'wsl', wslDistro: deps.wslDistro } : { runtime: 'host' }
-    ).configHome
+  // Why only a profile: System Default keeps the inherited and launch-env homes below.
+  const profile = getClaudeProfileRoutingAuthority()?.resolve(
+    deps.wslDistro ? { runtime: 'wsl', wslDistro: deps.wslDistro } : { runtime: 'host' }
+  ).profile
+  if (profile) {
+    return profile.home
   }
   return (
     deps.launchEnv.CLAUDE_CONFIG_DIR?.trim() ||

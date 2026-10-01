@@ -27,6 +27,8 @@ export function createNativeClaudeProfileRouting(args: {
   }
   dataRoot: string
   userHome: string
+  /** System Default's home: the inherited CLAUDE_CONFIG_DIR when set, as the legacy resolver reads it. */
+  defaultHome: () => string
   claudeVersion: () => Promise<string | null>
   worker?: Pick<ClaudeProfileSetupWorker, 'prepare'>
 }): ClaudeProfileRoutingService {
@@ -52,6 +54,8 @@ export function createNativeClaudeProfileRouting(args: {
     }
     return profile
   }
+  const accountFor = (id: string) =>
+    args.store.getSettings().claudeManagedAccounts.find((entry) => entry.id === id)
   return new ClaudeProfileRoutingService({
     resolve(target = { runtime: 'host' }) {
       if (target.runtime === 'wsl') {
@@ -59,14 +63,13 @@ export function createNativeClaudeProfileRouting(args: {
           'WSL Claude profiles are not supported until guest provisioning is available'
         )
       }
-      const settings = args.store.getSettings()
-      const id = getSelectedClaudeAccountIdForTarget(settings, target)
-      const account = id ? settings.claudeManagedAccounts.find((entry) => entry.id === id) : null
+      const id = getSelectedClaudeAccountIdForTarget(args.store.getSettings(), target)
+      const account = id ? accountFor(id) : null
       if (id && (!account || account.managedAuthRuntime === 'wsl')) {
         throw new Error('Selected Claude account is unavailable on this host')
       }
       const profile = id ? profileFor(id) : null
-      const defaultHome = join(args.userHome, '.claude')
+      const defaultHome = args.defaultHome()
       return {
         profile,
         configHome: profile?.home ?? defaultHome,
@@ -84,10 +87,10 @@ export function createNativeClaudeProfileRouting(args: {
       try {
         ids = readdirSync(join(args.dataRoot, 'claude-profiles'))
       } catch {
-        return [join(args.userHome, '.claude')]
+        return [args.defaultHome()]
       }
       return [
-        join(args.userHome, '.claude'),
+        args.defaultHome(),
         ...ids.flatMap((id) => {
           try {
             return [profileFor(id).home]
@@ -97,7 +100,27 @@ export function createNativeClaudeProfileRouting(args: {
         })
       ]
     },
-    prepare: async (descriptor, trustKeys) => {
+    // Why `projects`: setup always leaves it (shared link or private tree) after writing the marker.
+    isProvisioned: ({ profile }) => {
+      try {
+        return profile !== null && Boolean(lstatSync(join(profile.home, 'projects')))
+      } catch {
+        return false
+      }
+    },
+    readiness: (id) => {
+      const account = accountFor(id)
+      if (!account || account.managedAuthRuntime === 'wsl') {
+        return 'unsupported'
+      }
+      try {
+        profileFor(id)
+        return 'ready'
+      } catch {
+        return 'sign-in-required'
+      }
+    },
+    prepare: async (descriptor) => {
       if (!descriptor.profile) {
         throw new Error('System Default does not require profile setup')
       }
@@ -106,8 +129,7 @@ export function createNativeClaudeProfileRouting(args: {
         userHome: args.userHome,
         profile: descriptor.profile,
         hooksEnabled: isAgentStatusHooksEnabledForAgent(args.store.getSettings(), 'claude'),
-        claudeVersion: (await args.claudeVersion()) ?? undefined,
-        trustKeys
+        claudeVersion: (await args.claudeVersion()) ?? undefined
       })
     },
     publish: async (descriptor) =>

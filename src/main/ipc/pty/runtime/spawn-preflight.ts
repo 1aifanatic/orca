@@ -147,9 +147,9 @@ export async function prepareRuntimePtySpawn(
   // notifyResumeUnavailable — runtime/relay panes start fresh without the notice.
   ctx.launchCommand = codexResumeLaunch.command
   if (!args.connectionId && ctx.codexSelectionTarget.runtime !== 'wsl') {
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      args.env = { ...args.env, ORCA_CLAUDE_PROFILE_POINTER: profiles.pointerPath() }
+    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv()
+    if (profileEnv) {
+      args.env = { ...args.env, ...profileEnv }
     }
   }
   ctx.claudeAuth =

@@ -2,16 +2,24 @@ import { realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 
-/** Shared links scan once; a private tree is visible without granting an arbitrary linked root. */
-export function claudeProfileReaderRoots(
+/** This host's profile `<surface>` dirs; empty where no owner is installed (workers, child processes). */
+export function claudeProfileSurfaceRoots(surface: 'projects' | 'transcripts'): string[] {
+  return (
+    getClaudeProfileRoutingAuthority()
+      ?.historyRoots()
+      .map((home) => join(home, surface)) ?? []
+  )
+}
+
+/** Pure, so an isolate without the owner merges the roots its parent resolved. Shared links scan
+ *  once; a private tree is visible without granting an arbitrary linked root. */
+export function mergeClaudeProfileReaderRoots(
   legacy: string[],
-  surface: 'projects' | 'transcripts'
+  candidates: readonly string[]
 ): string[] {
-  const authority = getClaudeProfileRoutingAuthority()
-  if (!authority) {
+  if (candidates.length === 0) {
     return legacy
   }
-  const candidates = authority.historyRoots().map((home) => join(home, surface))
   const allowed = new Set(
     candidates.map((path) => {
       try {
@@ -38,4 +46,21 @@ export function claudeProfileReaderRoots(
     seen.add(canonical)
     return true
   })
+}
+
+export function claudeProfileReaderRoots(
+  legacy: string[],
+  surface: 'projects' | 'transcripts'
+): string[] {
+  return mergeClaudeProfileReaderRoots(legacy, claudeProfileSurfaceRoots(surface))
+}
+
+/** The selected profile's home, or undefined for System Default and any unresolvable selection:
+ *  a broken Claude account must never take other providers' discovery down with it. */
+export function selectedClaudeProfileHome(): string | undefined {
+  try {
+    return getClaudeProfileRoutingAuthority()?.resolve().profile?.home
+  } catch {
+    return undefined
+  }
 }

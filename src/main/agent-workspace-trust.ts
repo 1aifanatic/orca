@@ -1,15 +1,10 @@
-import { getClaudeProfileRoutingAuthority } from './claude-accounts/claude-profile-routing-authority'
-import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 import { homedir } from 'node:os'
 import {
   AGENT_TRUST_WRITE_DEADLINE_MS,
   SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
 } from './agent-trust-write-deadline'
 import type { AgentTrustPreset } from './agent-trust-presets'
-import {
-  resolveLocalClaudeTrustConfig,
-  claudeTrustKeysForHostPath
-} from './claude/claude-folder-trust-file'
+import { resolveLocalClaudeTrustConfig } from './claude/claude-folder-trust-file'
 import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-auth/runtime-auth-types'
 import type { AgentWorkspaceTrustSpawnRequest } from '../shared/agent-workspace-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
@@ -66,25 +61,6 @@ export async function applyAgentWorkspaceTrust(
   // Why: the other writers target this host's home, which a WSL guest agent never reads.
   if (preset !== 'claude' && isWslLaunch(workspacePath, context)) {
     return {}
-  }
-  if (preset === 'claude' && !isWslLaunch(workspacePath, context)) {
-    const profiles = getClaudeProfileRoutingAuthority()
-    const descriptor = context.claudeAuth?.profileLaunch ?? profiles?.resolve()
-    if (profiles && descriptor?.profile) {
-      const homes = localHomePaths(workspacePath, context).filter((home): home is string =>
-        Boolean(home)
-      )
-      if (!isTooBroadToPreTrust(workspacePath, homes)) {
-        await profiles.prepareProfile(
-          descriptor,
-          claudeTrustKeysForHostPath(
-            workspacePath,
-            process.platform === 'win32' ? 'win32' : 'posix'
-          )
-        )
-      }
-      return {}
-    }
   }
   await applyWorkspaceTrustOnThisHost(preset, workspacePath, () => {
     const agentHome = launchedAgentHome(context.env)

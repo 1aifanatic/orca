@@ -1,11 +1,17 @@
 import type * as ProfileRouting from '../../shared/claude-profile-routing'
+import type * as Os from 'node:os'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 const state = vi.hoisted<{ routing: ClaudeProfileRoutingService | undefined }>(() => ({
   routing: undefined
+}))
+const fakeHome = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/orca-consumers-no-home`)
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof Os>()),
+  homedir: () => fakeHome
 }))
 vi.mock('./claude-profile-routing-authority', () => ({
   getClaudeProfileRoutingAuthority: () => state.routing
@@ -30,6 +36,7 @@ import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { resolveSkillProviderRoots } from '../runtime/runtime-skill-install-authority'
 import { applyAgentWorkspaceTrust } from '../agent-workspace-trust'
 import { discoverRetiredWorktreeNames } from '../worktree-retirement-discovery'
+import { discoverSkills } from '../skills/discovery'
 import { prepareLocalCommitMessageAgentEnv } from '../text-generation/commit-message-agent-environment'
 import { MARINE_CREATURES } from '../../shared/marine-creatures'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
@@ -37,6 +44,7 @@ import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 const roots: string[] = []
 afterEach(() => {
   state.routing = undefined
+  vi.unstubAllEnvs()
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
 })
 function fixture() {
@@ -55,7 +63,13 @@ function fixture() {
     updatedAt: 0,
     lastAuthenticatedAt: 0
   }))
-  const settings = { claudeManagedAccounts: accounts, activeClaudeManagedAccountId: 'b' }
+  const settings: {
+    claudeManagedAccounts: ClaudeManagedAccount[]
+    activeClaudeManagedAccountId: string | null
+  } = {
+    claudeManagedAccounts: accounts,
+    activeClaudeManagedAccountId: 'b'
+  }
   const profiles = ['a', 'b'].map((id) =>
     describeClaudeProfile(dataRoot, id, { runtime: 'host', executionHostId: 'local' })
   )
@@ -71,6 +85,7 @@ function fixture() {
     },
     dataRoot,
     userHome: home,
+    defaultHome: () => join(home, '.claude'),
     claudeVersion: async () => '2.1.261',
     worker: { prepare: async (job) => worker.prepare({ ...job, installHooks: null }) }
   })
@@ -86,6 +101,15 @@ describe('Claude profile consumers', () => {
       getClaudeConfigDirectory: () => null
     })
     expect(home).toBe(f.profiles[1].home)
+    f.settings.activeClaudeManagedAccountId = null
+    expect(
+      resolveStructuredClaudeAccountHomePath({
+        launchEnv: { CLAUDE_CONFIG_DIR: '/user-own-claude' },
+        wslDistro: null,
+        getClaudeConfigDirectory: () => null
+      })
+    ).toBe('/user-own-claude')
+    f.settings.activeClaudeManagedAccountId = 'b'
     expect(() =>
       resolveStructuredClaudeAccountHomePath({
         launchEnv: {},
@@ -130,7 +154,11 @@ describe('Claude profile consumers', () => {
     expect(launch.claudeConfigDir).toBe(f.profiles[1].home)
     expect(launch.env?.ANTHROPIC_API_KEY).toBeUndefined()
     expect(record.accountHome.path).toBe(f.profiles[0].home)
-    expect(record.claudeLaunchHome).toBe(f.profiles[1].home)
+    expect(record.launchAccountHome).toEqual({
+      variable: 'CLAUDE_CONFIG_DIR',
+      path: f.profiles[1].home,
+      accountId: 'b'
+    })
   })
   it('refuses inactive model probes and pins a selected probe to its cache home', async () => {
     const f = fixture()
@@ -173,26 +201,63 @@ describe('Claude profile consumers', () => {
     expect(roots.claude).toBe(join(f.home, '.claude', 'skills'))
     writeFileSync(join(roots.claude!, 'fake-skill'), 'installed')
     expect(readFileSync(join(f.profiles[1].home, 'skills', 'fake-skill'), 'utf8')).toBe('installed')
+    f.settings.activeClaudeManagedAccountId = null
+    const systemDefault = await resolveSkillProviderRoots(
+      { getClaudeConfigDirectory: () => '/user-own-claude' },
+      { scope: 'global', homeDirectory: f.home }
+    )
+    expect(systemDefault.claude).toBe(join('/user-own-claude', 'skills'))
   })
-  it('pre-trust uses the gated existing-target state merge and preserves account fields', async () => {
+  it('skill discovery keeps a caller’s Claude root and survives an unresolvable selection', async () => {
+    const f = fixture()
+    vi.stubEnv('HERMES_HOME', join(f.root, 'hermes'))
+    const personal = join(f.home, '.claude', 'skills')
+    for (const dir of [
+      join(personal, 'fake-skill'),
+      join(f.home, '.codex', 'skills', 'codex-skill')
+    ]) {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${basename(dir)}\ndescription: Fake\n---\n`)
+    }
+    await f.routing.prepare()
+    const scan = (providerRootOverrides: { claude?: string }) =>
+      discoverSkills({
+        homeDir: f.home,
+        repos: [],
+        includeCwd: false,
+        refresh: true,
+        providerRootOverrides
+      })
+    const explicit = await scan({ claude: personal })
+    expect(explicit.skills.find((skill) => skill.name === 'fake-skill')?.directoryPath).toBe(
+      join(personal, 'fake-skill')
+    )
+    rmSync(join(f.dataRoot, 'claude-profiles', 'b', 'profile.json'))
+    const names = (await scan({})).skills.map((skill) => skill.name)
+    expect(names).toEqual(expect.arrayContaining(['codex-skill', 'fake-skill']))
+  })
+  it('pre-trust writes the launch env’s profile config within the legacy guard, without setup', async () => {
     const f = fixture()
     const config = join(f.profiles[1].home, '.claude.json')
     writeFileSync(config, JSON.stringify({ oauthAccount: { fake: 'private-b' } }))
     const cwd = join(f.root, 'workspace')
     mkdirSync(cwd)
-    await applyAgentWorkspaceTrust('claude', cwd, {
-      connectionId: null,
-      wslDistro: null,
-      env: { HOME: f.home },
-      claudeAuth: null
-    })
+    const launch = (workspace: string) =>
+      applyAgentWorkspaceTrust('claude', workspace, {
+        connectionId: null,
+        wslDistro: null,
+        env: { HOME: f.home, ...f.routing.terminalEnv() },
+        claudeAuth: null
+      })
+    await launch(cwd)
     const result = JSON.parse(readFileSync(config, 'utf8'))
     expect(result.oauthAccount).toEqual({ fake: 'private-b' })
     expect(result.projects).toEqual(expect.objectContaining({ [cwd]: expect.any(Object) }))
-    expect(result.hasCompletedOnboarding).toBe(true)
-    expect(f.worker.prepare).toHaveBeenCalledWith(
-      expect.objectContaining({ trustKeys: expect.arrayContaining([cwd]) })
-    )
+    expect(f.worker.prepare).not.toHaveBeenCalled()
+    const homeLink = join(f.root, 'home-link')
+    symlinkSync(f.home, homeLink, 'dir')
+    await launch(homeLink)
+    expect(JSON.parse(readFileSync(config, 'utf8')).projects).toEqual(result.projects)
   })
   it('commit generation uses the same captured profile and retirement includes private history', async () => {
     const f = fixture()
@@ -200,6 +265,13 @@ describe('Claude profile consumers', () => {
       prepareForClaudeLaunch: () => f.routing.prepare()
     })
     expect(result).toMatchObject({ ok: true, env: { CLAUDE_CONFIG_DIR: f.profiles[1].home } })
+    f.settings.activeClaudeManagedAccountId = null
+    vi.stubEnv('CLAUDE_CONFIG_DIR', '/user-own-claude')
+    await expect(
+      prepareLocalCommitMessageAgentEnv('claude', {
+        prepareForClaudeLaunch: () => f.routing.prepare()
+      })
+    ).resolves.toMatchObject({ ok: true, env: { CLAUDE_CONFIG_DIR: '/user-own-claude' } })
     const parent = join(f.root, 'workspaces')
     mkdirSync(parent)
     const retired = MARINE_CREATURES[0].toLowerCase()
@@ -214,6 +286,7 @@ describe('Claude profile consumers', () => {
   })
   it('Vault and transcript discovery include private homes, deduplicate shared roots and reject arbitrary links', async () => {
     const f = fixture()
+    vi.stubEnv('CLAUDE_CONFIG_DIR', '')
     const shared = join(f.home, '.claude', 'projects')
     const privateProjects = join(f.profiles[0].home, 'projects')
     mkdirSync(shared)

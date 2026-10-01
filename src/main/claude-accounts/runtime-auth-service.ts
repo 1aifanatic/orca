@@ -7,7 +7,7 @@ import {
   installClaudeProfileRoutingAuthority,
   getClaudeProfileRoutingAuthority
 } from './claude-profile-routing-authority'
-import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
+import { probeClaudeCliVersionCached } from '../claude/claude-hook-event-versions'
 import type { Store } from '../persistence'
 import {
   getSelectedClaudeAccountIdForTarget,
@@ -27,7 +27,8 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
           store,
           dataRoot: getAppEnvironment().getPath('userData'),
           userHome: homedir(),
-          claudeVersion: () => probeClaudeCliVersion(resolveClaudeCommand())
+          defaultHome: () => this.pathResolver.getRuntimePaths().configDir,
+          claudeVersion: () => probeClaudeCliVersionCached(resolveClaudeCommand())
         })
       )
     }

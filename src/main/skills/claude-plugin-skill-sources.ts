@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { selectedClaudeProfileHome } from '../claude-accounts/claude-profile-reader-roots'
 import { open, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep, type posix } from 'node:path'
 import { stablePathId, type SkillScanRoot } from './skill-discovery-sources'
@@ -214,7 +214,7 @@ export async function discoverClaudePluginSkillSources(args: {
     args.homeDir,
     args.cwd,
     defaultPathApi,
-    getClaudeProfileRoutingAuthority()?.resolve().readHome
+    selectedClaudeProfileHome()
   )
   const [installedPlugins, ...settings] = await Promise.all(
     [paths.installedPlugins, ...paths.settings].map(readMetadataFile)

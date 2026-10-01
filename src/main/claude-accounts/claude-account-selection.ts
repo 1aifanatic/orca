@@ -1,5 +1,4 @@
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
-import { readClaudeProfilePointer } from './claude-profile-pointer'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
@@ -29,16 +28,9 @@ export class ClaudeAccountSelection {
   ) {}
 
   list(): ClaudeRateLimitAccountsState {
+    this.normalizeActiveSelection()
     const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      const selected = profiles.resolve()
-      if (readClaudeProfilePointer(selected.pointerPath) !== (selected.profile?.home ?? null)) {
-        throw new Error('Claude account selection could not be published; choose an account again')
-      }
-    } else {
-      this.normalizeActiveSelection()
-    }
-    return this.snapshot()
+    return profiles ? profiles.describeAccounts(this.snapshot()) : this.snapshot()
   }
 
   async remove(accountId: string): Promise<ClaudeRateLimitAccountsState> {

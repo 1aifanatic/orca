@@ -27,6 +27,7 @@ export function stripRemotePaneEnvWhenHooksDisabled(
   if (connectionId && env?.ORCA_CLAUDE_PROFILE_POINTER && claudeProfileRoutingEnabled()) {
     env = { ...env }
     delete env.ORCA_CLAUDE_PROFILE_POINTER
+    delete env.ORCA_CLAUDE_INJECTED_CONFIG_DIR
     delete env.CLAUDE_CONFIG_DIR
   }
   if (!connectionId || isRemoteAgentHooksEnabled()) {

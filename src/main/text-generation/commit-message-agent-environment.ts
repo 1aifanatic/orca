@@ -1,4 +1,3 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
 import { readShellStartupEnvVar } from '../pty/shell-startup-env'
@@ -96,10 +95,6 @@ export async function prepareLocalCommitMessageAgentEnv(
   const shellConfigEnv = target?.runtime === 'wsl' ? null : prepareShellConfigDirEnv(agentId)
   if (shellConfigEnv) {
     return shellConfigEnv
-  }
-  const profiles = agentId === 'claude' ? getClaudeProfileRoutingAuthority() : undefined
-  if (profiles) {
-    resolvers = { ...resolvers, prepareForClaudeLaunch: (selection) => profiles.prepare(selection) }
   }
   if (!resolvers) {
     return { ok: true }
