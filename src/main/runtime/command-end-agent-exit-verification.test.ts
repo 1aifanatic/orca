@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
 import {
   endCommand,
   expectEveryReaderSawTheClear,
@@ -299,4 +300,79 @@ describe('a command end that does not prove the agent exited keeps its row every
 
     expect(host.runtime.readPaneLaunchAuthority(pane.paneKey)).toEqual({ launchTokenHash: null })
   })
+})
+
+/** What an SSH relay reports for a PTY: the shell's group in front unless another group is. */
+function relayEvidence(
+  ptyId: string,
+  front: { processName: string | null; foregroundPgid: number } | 'unverifiable'
+): { foregroundProcessEvidence: RemoteForegroundEvidence } {
+  const observation = {
+    authorityGeneration: 'relay-generation',
+    observationEpoch: 1,
+    capturedAgeMs: 0,
+    ptyId,
+    ptyIncarnationId: `${ptyId}-incarnation`
+  }
+  return {
+    foregroundProcessEvidence:
+      front === 'unverifiable'
+        ? { ...observation, verdict: 'unverifiable', reason: 'process_table_unreadable' }
+        : {
+            ...observation,
+            verdict: 'live',
+            processName: front.processName,
+            fence: {
+              platform: 'posix',
+              shellPid: 100,
+              shellStartTime: 'shell-birth',
+              tty: '/dev/pts/3',
+              foregroundPgid: front.foregroundPgid
+            }
+          }
+  }
+}
+
+describe("an SSH pane answers from its relay's foreground evidence", () => {
+  async function sshAgentPane(host: CommandEndHost, ptyId: string) {
+    const pane = shellPane(host.runtime, ptyId, {
+      tabId: TAB,
+      leafId: LEAF,
+      connectionId: 'conn-1'
+    })
+    await claudeIsWorking(host, pane)
+    host.readers.republishedWorktrees.length = 0
+    return pane
+  }
+
+  it('the shell back in front with no agent named clears the row everywhere', async () => {
+    const host = await wire()
+    host.inspectProcess.mockImplementation(async (ptyId) =>
+      relayEvidence(ptyId, { processName: null, foregroundPgid: 100 })
+    )
+    const pane = await sshAgentPane(host, 'pty-ssh-exit')
+
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+    expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
+    expect(host.shellOwnsForeground).not.toHaveBeenCalled()
+  })
+
+  for (const [name, front] of [
+    ['the agent still in front', { processName: 'claude', foregroundPgid: 200 }],
+    // Job control off (`set +m`): the agent runs in the shell's own group.
+    ['an agent in the shell group', { processName: 'claude', foregroundPgid: 100 }],
+    ['another command in front', { processName: null, foregroundPgid: 200 }],
+    ['a relay that cannot read its process table', 'unverifiable']
+  ] as const) {
+    it(`${name} keeps the row`, async () => {
+      const host = await wire()
+      host.inspectProcess.mockImplementation(async (ptyId) => relayEvidence(ptyId, front))
+      const pane = await sshAgentPane(host, `pty-ssh-${name.replace(/\W+/g, '-')}`)
+
+      await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+      expectNoReaderLostTheRow(host.server, host.readers, pane.paneKey, 'working')
+    })
+  }
 })

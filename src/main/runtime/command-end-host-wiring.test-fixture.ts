@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest'
 import type { AgentStatusClearIpcPayload } from '../../shared/agent-status-types'
+import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
 import { AgentHookServer } from '../agent-hooks/server'
 import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-status-session-tabs-republish'
 import { OrcaRuntimeService } from './orca-runtime'
@@ -24,6 +25,12 @@ export type CommandEndHost = {
   spawn: ReturnType<typeof vi.fn>
   /** The execution host's answer to "does the spawned shell own the foreground, nothing stopped?" */
   shellOwnsForeground: ReturnType<typeof vi.fn<(ptyId: string) => Promise<boolean>>>
+  /** An SSH host's fenced foreground evidence, keyed to the PTY's incarnation. */
+  inspectProcess: ReturnType<
+    typeof vi.fn<
+      (ptyId: string) => Promise<{ foregroundProcessEvidence?: RemoteForegroundEvidence }>
+    >
+  >
   teardown: () => void
 }
 
@@ -63,12 +70,20 @@ export async function wireCommandEndHost(
   const uninstallRepublish = installHookStatusSessionTabsRepublish(server, () => runtime)
   const spawn = vi.fn()
   const shellOwnsForeground = vi.fn<(ptyId: string) => Promise<boolean>>(async () => true)
+  const inspectProcess = vi.fn<
+    (ptyId: string) => Promise<{ foregroundProcessEvidence?: RemoteForegroundEvidence }>
+  >(async () => ({}))
   runtime.setPtyController({
     spawn,
     write: () => true,
     kill: () => true,
     getForegroundProcess: async () => null,
-    confirmShellForeground: shellOwnsForeground
+    confirmShellForeground: shellOwnsForeground,
+    inspectProcess: async (ptyId) => ({
+      foregroundProcess: null,
+      hasChildProcesses: false,
+      ...(await inspectProcess(ptyId))
+    })
   })
   return {
     server,
@@ -76,6 +91,7 @@ export async function wireCommandEndHost(
     readers,
     spawn,
     shellOwnsForeground,
+    inspectProcess,
     teardown: () => {
       unsubscribeClears()
       uninstallRepublish()
@@ -150,7 +166,7 @@ type RuntimeInternals = {
 export function shellPane(
   runtime: OrcaRuntimeService,
   ptyId: string,
-  options: { tabId: string; leafId: string; listingReceipt?: boolean }
+  options: { tabId: string; leafId: string; listingReceipt?: boolean; connectionId?: string }
 ): { ptyId: string; paneKey: string } {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these protected members exist on the runtime; the listing path that calls them needs a live controller inventory.
   const internals = runtime as unknown as RuntimeInternals
@@ -159,7 +175,8 @@ export function shellPane(
     connected: true,
     tabId: options.tabId,
     paneKey,
-    incarnationId: `${ptyId}-incarnation`
+    incarnationId: `${ptyId}-incarnation`,
+    ...(options.connectionId ? { connectionId: options.connectionId } : {})
   })
   if (options.listingReceipt) {
     internals.rememberRestoredOrchestrationAuthority(pty, `term-${ptyId}`, `${ptyId}-incarnation`)

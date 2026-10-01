@@ -1,4 +1,7 @@
 import type { AgentProcessVerdict } from '../../shared/agent-process-presence'
+import { admitRemoteForegroundEvidence } from '../../shared/remote-foreground-evidence-admission'
+import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
 
 type CommandEndAgentExitDeps = {
   /** The PTY's pane keys whose host row is live (not a resume remnant), each with that row's
@@ -7,7 +10,8 @@ type CommandEndAgentExitDeps = {
   /** The hook presence check: the row's own agent pid and start time. An `exited` answer has
    *  already cleared that row; null when no hook identified a process. */
   checkHookAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null>
-  /** The PTY's spawned shell owns the foreground with no job stopped; false when its host cannot say. */
+  /** The PTY's spawned shell owns the foreground with nothing else running; false when its host
+   *  cannot say. */
   confirmShellOwnsForeground(ptyId: string): Promise<boolean>
   /** Clears a pane whose agent exited, unless its row changed after `armedRowReceivedAt`. */
   reconcileEndedProcess(paneKey: string, armedRowReceivedAt: number): void
@@ -79,4 +83,43 @@ export class CommandEndAgentExitVerifier {
       this.deps.reconcileEndedProcess(paneKey, receivedAt)
     }
   }
+}
+
+/**
+ * Local and daemon providers prove it from the process table. An SSH host has no shell confirm, so
+ * it answers from the same fenced foreground evidence the desktop pane reads: the shell's own group
+ * in front with no agent named in it.
+ */
+export async function confirmShellOwnsPtyForeground(
+  controller: RuntimePtyController | null,
+  pty: { ptyId: string; connectionId: string | null; incarnationId: string | null } | undefined
+): Promise<boolean> {
+  if (!controller || !pty) {
+    return false
+  }
+  if (!pty.connectionId) {
+    return (await controller.confirmShellForeground?.(pty.ptyId)) ?? false
+  }
+  if (!controller.inspectProcess || !pty.incarnationId) {
+    return false
+  }
+  const requestStartedAtMonotonic = performance.now()
+  const inspection = await controller.inspectProcess(pty.ptyId, {
+    expectedIncarnationId: pty.incarnationId
+  })
+  const evidence = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
+    expectedPtyId: parseAppSshPtyId(pty.ptyId)?.relayPtyId ?? pty.ptyId,
+    expectedIncarnationId: pty.incarnationId,
+    requestStartedAtMonotonic,
+    receivedAtMonotonic: performance.now(),
+    lastAuthorityGeneration: null,
+    lastObservationEpoch: -1
+  })
+  // Why TEMPORARY: this evidence cannot see a stopped job, so a Ctrl+Z'd agent reads as exited.
+  return (
+    evidence?.verdict === 'live' &&
+    evidence.processName === null &&
+    evidence.fence.platform === 'posix' &&
+    evidence.fence.foregroundPgid === evidence.fence.shellPid
+  )
 }

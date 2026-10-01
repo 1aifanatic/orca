@@ -23,7 +23,10 @@ import type { FleetAgentStatusEvidence } from '../../shared/orchestration-fleet-
 import { readOrchestrationFleetAgentStatusSnapshot } from './orchestration-fleet-agent-status-snapshot'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { matchesProcessIncarnation } from './orchestration/worker-terminal-process-liveness'
-import { CommandEndAgentExitVerifier } from './command-end-agent-exit-verifier'
+import {
+  CommandEndAgentExitVerifier,
+  confirmShellOwnsPtyForeground
+} from './command-end-agent-exit-verifier'
 
 export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller {
   /** Every pane key this PTY could be addressed by, including restored receipts. */
@@ -155,8 +158,8 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     },
     checkHookAgentPresence: async (paneKey) =>
       (await this.checkHookAgentPresenceFn?.(paneKey)) ?? null,
-    confirmShellOwnsForeground: async (ptyId) =>
-      (await this.ptyController?.confirmShellForeground?.(ptyId)) ?? false,
+    confirmShellOwnsForeground: (ptyId) =>
+      confirmShellOwnsPtyForeground(this.ptyController, this.ptysById.get(ptyId)),
     reconcileEndedProcess: (paneKey, armedRowReceivedAt) =>
       this.reconcileAgentStatusForEndedProcessFn?.([paneKey], {
         // The shell outlived its agent, so the session stays resumable in place.
