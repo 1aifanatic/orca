@@ -13,8 +13,9 @@ import {
   classifyLatestAgentTitle,
   getLatestAgentCandidateTitle,
   getLatestLeafTitle,
+  getLeafDisplayRecord,
+  getPtyDisplayRecord,
   ptyTitleProvesAgentPresence,
-  showsTitleDisplayClear,
   type TitleDisplayClear
 } from './runtime-worktree-status-projection'
 
@@ -30,7 +31,7 @@ type RuntimeTerminalAgentPresenceDependencies = {
   getTrackedPty(ptyId: string): RuntimePtyWorktreeRecord | null
   getTabTitle(tabId: string): string | null
   getForegroundProcess(ptyId: string): Promise<string | null> | null
-  /** The stale-working timer's display-only clear of this PTY's own title; it may hide an exit. */
+  /** The stale-working timer's display-only clear of the PTY's own title, if one stands. */
   getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
 }
 
@@ -55,19 +56,31 @@ export class RuntimeTerminalAgentPresence {
       return true
     }
     try {
+      // Why display records: presence reads what the pane shows, as before the stale-working
+      // clear stopped rewriting records. A cwd spinner clears to a neutral title, so the
+      // foreground process decides for an agent that exited behind it.
       const pty = this.deps.getLivePty(handle)
       if (pty) {
-        return await this.isPtyRunning(pty, this.deps.getPrimaryLeaf(pty.ptyId), options)
+        const clear = this.deps.getTitleDisplayClear(pty.ptyId)
+        const leaf = this.deps.getPrimaryLeaf(pty.ptyId)
+        return await this.isPtyRunning(
+          getPtyDisplayRecord(pty, clear),
+          leaf ? getLeafDisplayRecord(leaf, clear) : null,
+          options
+        )
       }
-      const leaf = this.deps.getLiveLeaf(handle)
+      const liveLeaf = this.deps.getLiveLeaf(handle)
+      const leaf = getLeafDisplayRecord(
+        liveLeaf,
+        liveLeaf.ptyId ? this.deps.getTitleDisplayClear(liveLeaf.ptyId) : null
+      )
       const trackedPty = leaf.ptyId ? this.deps.getTrackedPty(leaf.ptyId) : null
       const paneTitle = getLatestLeafTitle(leaf, null)
       const paneClassification = classifyAgentTitle(paneTitle)
       if (
-        !this.isRetiredLeafTitle(leaf) &&
-        (trackedPty
+        trackedPty
           ? ptyTitleProvesAgentPresence(trackedPty, paneTitle, paneClassification)
-          : agentTitleProvesAgentPresence(paneTitle, paneClassification))
+          : agentTitleProvesAgentPresence(paneTitle, paneClassification)
       ) {
         return true
       }
@@ -123,23 +136,15 @@ export class RuntimeTerminalAgentPresence {
         )
       : null
     const leafClassification = classifyAgentTitle(leafTitle)
-    if (
-      !(leaf && this.isRetiredLeafTitle(leaf)) &&
-      ptyTitleProvesAgentPresence(pty, leafTitle, leafClassification)
-    ) {
+    if (ptyTitleProvesAgentPresence(pty, leafTitle, leafClassification)) {
       return true
     }
-    const manualTitle = { title: pty.title, updatedAt: pty.titleUpdatedAt }
-    const ptyTitle = getLatestAgentCandidateTitle(manualTitle, {
-      title: pty.lastOscTitle,
-      updatedAt: pty.lastOscTitleAt
-    })
+    const ptyTitle = getLatestAgentCandidateTitle(
+      { title: pty.title, updatedAt: pty.titleUpdatedAt },
+      { title: pty.lastOscTitle, updatedAt: pty.lastOscTitleAt }
+    )
     const ptyClassification = classifyAgentTitle(ptyTitle)
-    if (
-      leafTitle === null &&
-      !showsTitleDisplayClear(pty, this.deps.getTitleDisplayClear(pty.ptyId), manualTitle) &&
-      ptyTitleProvesAgentPresence(pty, ptyTitle, ptyClassification)
-    ) {
+    if (leafTitle === null && ptyTitleProvesAgentPresence(pty, ptyTitle, ptyClassification)) {
       return true
     }
     const managementClassification = classifyLatestAgentTitle({
@@ -178,18 +183,6 @@ export class RuntimeTerminalAgentPresence {
       foreground,
       suppressClaude,
       options.retryForegroundWrappers !== false
-    )
-  }
-
-  // Why a veto only: the timer guesses the agent exited behind its working title, so that title
-  // cannot prove presence; the foreground process must, as it did before the title was kept.
-  private isRetiredLeafTitle(leaf: RuntimeLeafRecord): boolean {
-    return (
-      leaf.ptyId !== null &&
-      showsTitleDisplayClear(leaf, this.deps.getTitleDisplayClear(leaf.ptyId), {
-        title: leaf.paneTitle,
-        updatedAt: leaf.paneTitleUpdatedAt
-      })
     )
   }
 

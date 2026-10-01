@@ -196,4 +196,36 @@ describe('display surfaces after the stale-working title clear', () => {
       vi.useRealTimers()
     }
   })
+
+  it('a live agent with an unrecognized process keeps presence through its cleared name title', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'bg-pty' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'Python'
+      })
+      runtime.attachWindow(1)
+      runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
+      const terminal = await runtime.createTerminal(`id:${TEST_WORKTREE_ID}`, {
+        tabId: 'bg-tab',
+        leafId: HEADLESS_LEAF_ID
+      })
+      runtime.onPtyData('bg-pty', '\x1b]0;⠋ Claude Code\x07', Date.now())
+      runtime.onPtyData('bg-pty', 'output without a title\r\n', Date.now())
+      await vi.advanceTimersByTimeAsync(3_000)
+      // Main read the cleared `Claude Code`, which names an agent, so a live wrapper-run agent stays found.
+      await expect(runtime.getTerminalAgentStatus(terminal.handle)).resolves.toMatchObject({
+        isRunningAgent: true,
+        status: 'idle'
+      })
+      await expect(
+        runtime.isTerminalRunningAgent(terminal.handle, { retryForegroundWrappers: false })
+      ).resolves.toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

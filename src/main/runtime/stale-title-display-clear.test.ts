@@ -80,7 +80,8 @@ describe('the stale-working title clear is display-only', () => {
     }
   )
 
-  it.each([['⠋ repo'], ['⠋ Codex working']])(
+  // A name-shaped title (`⠋ Codex working`) clears to `Codex`, which still names an agent, as on main.
+  it.each([['⠋ repo']])(
     'an agent that exited behind %s does not pass for a running agent',
     async (title) => {
       vi.useFakeTimers()
@@ -120,7 +121,7 @@ describe('the stale-working title clear is display-only', () => {
       await vi.advanceTimersByTimeAsync(3_000)
       await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
         isRunningAgent: true,
-        status: 'working'
+        status: null
       })
       await expect(
         runtime.isTerminalRunningAgent(handle, { retryForegroundWrappers: false })
