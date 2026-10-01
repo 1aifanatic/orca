@@ -4,7 +4,7 @@ import {
   readAgentSessionFailureFact,
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
-import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { failedBeforeHandover } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionContinuationOutcome } from './structured-agent-session-restart-continuation'
 
 export type ContinuationSubmission = {
@@ -12,6 +12,8 @@ export type ContinuationSubmission = {
   reason?: string | null
   rejection?: UnreadAgentSessionFailureFact
   startRetry?: unknown
+  handedOverAt?: number
+  handoverRecorded?: true
 }
 
 /** The outcome already settled when the message was handed over, or null while it is in flight. */
@@ -19,11 +21,8 @@ export function handedOverContinuationOutcome(
   sessionId: string,
   handedOver: ContinuationSubmission | undefined
 ): StructuredAgentSessionContinuationOutcome | null {
-  // Its agent did not start for it: the message says why, as any message whose start failed does.
-  if (
-    handedOver?.dispatchState === 'rejected' &&
-    isFailedStartRejection({ reason: handedOver.reason ?? null, rejection: handedOver.rejection })
-  ) {
+  // No agent took it: the message says why, as any message that failed before handover does.
+  if (handedOver && failedBeforeHandover(handedOver)) {
     return { ...refusedBy(sessionId, handedOver), startFailed: true }
   }
   if (handedOver?.dispatchState === 'rejected') {

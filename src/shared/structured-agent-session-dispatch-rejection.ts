@@ -182,10 +182,15 @@ export function isFailedStartRejection(
   return category === 'startFailed' || kind === 'hostStopped' || kind === 'providerExited'
 }
 
-type FailedBeforeHandoverFields = Pick<
-  AgentJournalSubmission,
-  'dispatchState' | 'reason' | 'handedOverAt' | 'handoverRecorded'
-> & { rejection?: unknown }
+/** Structural, so a reader holding only these fields of a submission — a restart continuation's
+ *  verdict — asks the same question. */
+type FailedBeforeHandoverFields = {
+  dispatchState?: string
+  reason?: string | null
+  handedOverAt?: number
+  handoverRecorded?: boolean
+  rejection?: unknown
+}
 
 /** Rejected on its way to an agent, which never took it: a failed start, or Orca's own fault before
  *  any handover. The one rule for where it is drawn, when its failure is announced, whether another
@@ -195,8 +200,15 @@ export function failedBeforeHandover(submission: FailedBeforeHandoverFields): bo
     submission.dispatchState === 'rejected' &&
     submission.handedOverAt === undefined &&
     submission.handoverRecorded === true &&
-    (isFailedStartRejection(submission) ||
-      classifyDispatchRejection(submission).kind === 'hostFault')
+    isFailedStartOrHostFault({ reason: submission.reason ?? null, rejection: submission.rejection })
+  )
+}
+
+function isFailedStartOrHostFault(
+  submission: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }
+): boolean {
+  return (
+    isFailedStartRejection(submission) || classifyDispatchRejection(submission).kind === 'hostFault'
   )
 }
 

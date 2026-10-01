@@ -43,6 +43,8 @@ function dependencies(
       handedOver
         ? {
             dispatchState: handedOver,
+            // Accepted, and settled by this host's delivery loop.
+            handoverRecorded: true,
             reason: handedOver === 'rejected' ? 'Codex could not start.' : null,
             ...(handedOver === 'rejected' ? { rejection } : {})
           }
