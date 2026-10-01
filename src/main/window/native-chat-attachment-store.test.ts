@@ -1,4 +1,14 @@
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, utimes } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  utimes
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -40,6 +50,22 @@ describe('native chat attachment storage', () => {
     const store = { getRepos: () => [], getSettings: () => ({}) } as unknown as Store
 
     await expect(resolveAuthorizedPath(saved, store)).resolves.toBe(await realpath(saved))
+  })
+
+  // User data is already per user; a restored or mode-less root must not stop every paste.
+  it('saves into a root that is not private, but never through a symlinked one', async () => {
+    await mkdir(getNativeChatAttachmentRoot(), { mode: 0o755 })
+    await chmod(getNativeChatAttachmentRoot(), 0o755)
+    const saved = await saveNativeChatAttachmentFile('orca-paste-1.png', Buffer.from([7]))
+    expect(await readFile(saved)).toEqual(Buffer.from([7]))
+
+    await rm(getNativeChatAttachmentRoot(), { recursive: true })
+    const elsewhere = await mkdtemp(join(tmpdir(), 'orca-chat-elsewhere-'))
+    await symlink(elsewhere, getNativeChatAttachmentRoot())
+    await expect(
+      saveNativeChatAttachmentFile('orca-paste-2.png', Buffer.from([7]))
+    ).rejects.toThrow()
+    await rm(elsewhere, { recursive: true, force: true })
   })
 
   it('sweeps pastes and drag copies past the age limit, and keeps younger ones', async () => {

@@ -1,12 +1,8 @@
-import { lstat, mkdtemp, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
 import { DRAG_TEMP_COPY_DIR_PATTERN } from './dragged-temp-file-copy'
-import {
-  ensureOwnedTempStagingRoot,
-  isSafeOwnedDirectory,
-  sweepExpiredOwnedDirectories
-} from './owned-temp-staging-root'
+import { sweepExpiredOwnedDirectories } from './owned-temp-staging-root'
 
 // Images pasted or dropped (macOS drag copies) into a chat live here rather than in OS temp, so
 // a draft restored after a reboot still names a real file. One directory per image, swept by age.
@@ -28,8 +24,9 @@ export async function saveNativeChatAttachmentFile(
   contents: Buffer
 ): Promise<string> {
   const root = getNativeChatAttachmentRoot()
-  if (!(await ensureOwnedTempStagingRoot(root))) {
-    throw new Error('Chat attachment storage is not a private directory')
+  await mkdir(root, { recursive: true })
+  if (!(await isRealDirectory(root))) {
+    throw new Error('Chat attachment storage is not a directory')
   }
   const filePath = join(await mkdtemp(join(root, ATTACHMENT_DIR_PREFIX)), fileName)
   await writeFile(filePath, contents)
@@ -41,13 +38,19 @@ export function getNativeChatAttachmentAllowedRoots(): string[] {
   return hasAppEnvironment() ? [resolve(getNativeChatAttachmentRoot())] : []
 }
 
+// Why not the shared-temp ownership check: user data is already per user, and its modes may not
+// survive a restore or a filesystem without them; a symlink is still refused.
+async function isRealDirectory(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 export async function sweepExpiredNativeChatAttachments(nowMs = Date.now()): Promise<void> {
   const root = getNativeChatAttachmentRoot()
-  try {
-    if (!isSafeOwnedDirectory(await lstat(root))) {
-      return
-    }
-  } catch {
+  if (!(await isRealDirectory(root))) {
     return
   }
   await sweepExpiredOwnedDirectories(root, {
