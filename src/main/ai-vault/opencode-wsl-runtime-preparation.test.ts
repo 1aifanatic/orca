@@ -131,6 +131,39 @@ describe('WSL SQLite runtime preparation', () => {
     await prepared()
   })
 
+  it('rejects a guest Node without the SyncDatabase surface and tolerates its stderr warning', async () => {
+    await prepared()
+    const probe = mocks.run.mock.calls.find(([spec]) => spec.program === 'node')?.[0]
+    expect(probe?.args[0]).toBe('-e')
+    const directory = await mkdtemp(join(tmpdir(), 'orca-wsl-sqlite-probe-'))
+    const runProbe = (preload: string) =>
+      runProcess({
+        program: process.execPath,
+        args: probe.args,
+        timeoutMs: 10_000,
+        env: { ...process.env, NODE_OPTIONS: `--require ${JSON.stringify(preload)}` }
+      })
+    try {
+      // Node 22.13-22.15: DatabaseSync ships, the backup export does not.
+      const withoutBackup = join(directory, 'node-22-13-sqlite.cjs')
+      await writeFile(withoutBackup, "delete require('node:sqlite').backup")
+      const rejected = await runProbe(withoutBackup)
+      expect(rejected.code).not.toBe(0)
+      expect(rejected.stdout).toBe('')
+      const warning = join(directory, 'experimental-warning.cjs')
+      await writeFile(
+        warning,
+        "process.emitWarning('SQLite is an experimental feature and might change at any time','ExperimentalWarning')"
+      )
+      const admitted = await runProbe(warning)
+      expect(admitted.code, admitted.stderr).toBe(0)
+      expect(admitted.stderr).toContain('ExperimentalWarning')
+      expect(admitted.stdout.trim()).toBe(process.execPath)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('falls back to the pinned proxy runtime, verifies the guest stage, and preserves literal argv', async () => {
     const expected = ORCAD_BUN_RELEASE_ASSETS['linux-arm64-musl'].executableSha256
     mocks.run.mockImplementation(async (spec) => {

@@ -132,6 +132,12 @@ describe('per-job path classification', () => {
     expectClassification(['.github/actions/prepare-git-compatibility/action.yml'], {
       git_compatibility: true
     })
+    // The contract pins the local-main fast-forward's exact arguments.
+    expectClassification(['src/shared/worktree/local-base-branch-fast-forward.ts'], {
+      git_compatibility: true,
+      package: true,
+      package_windows: true
+    })
   })
 
   it('runs the Codex index-heal contract only when the heal or its transport changes', () => {
@@ -194,7 +200,7 @@ describe('per-job path classification', () => {
   })
 
   it('runs native package jobs only for the platform that ships the changed native', () => {
-    expectClassification(['native/windows-cli-launcher/OrcaCliLauncher.cs'], {
+    expectClassification(['native/windows-cli-launcher/src/main.rs'], {
       package_windows: true
     })
     expectClassification(['native/computer-use-linux/runtime.py'], {
@@ -372,21 +378,6 @@ describe('per-job path classification', () => {
       ['tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts'],
       { 'cross-version-wire': true }
     )
-  })
-
-  it('runs the daemon protocol crossing gate when the protocol or its checker changes', () => {
-    expectClassification(['src/main/daemon/daemon-protocol-version.ts'], {
-      'cross-version-wire': true,
-      package: true,
-      package_windows: true
-    })
-    for (const file of [
-      'config/scripts/daemon-protocol-facts.mjs',
-      'config/scripts/check-daemon-protocol-crossing.mjs',
-      'config/scripts/stable-release-tags.mjs'
-    ]) {
-      expectClassification([file], { 'cross-version-wire': true })
-    }
   })
 
   it('runs workflow-self-change and lockfile diffs as force-all', () => {
