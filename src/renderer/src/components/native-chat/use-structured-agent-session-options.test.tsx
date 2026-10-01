@@ -542,25 +542,23 @@ describe('useStructuredAgentSessionOptions', () => {
       unmount()
     })
 
-    // An older server names no seed, so a pick would land under a guessed model.
-    it('names no model and takes no pick from a server that reported no seed', async () => {
+    // A server whose user never saved a model starts the CLI default, as a local chat does.
+    it('shows the CLI default and takes picks when the server saved no model', async () => {
       answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
       mocks.hold.mockResolvedValue({ kind: 'accepted', options: { model: 'gpt-hosted' } })
       const { result, unmount } = renderOptions(
         { ...PROVISIONAL, paired: true },
         mutateWith(async () => null).mutate
       )
-      await waitFor(() => expect(modelChoiceCount(result.current.optionSnapshot)).toBe(1))
+      await waitFor(() =>
+        expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-hosted')
+      )
+      expect(descriptor(result.current.optionSnapshot, 'model')?.settable).toBe(true)
 
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
-      expect(result.current.optionSnapshot.map(({ id, settable }) => [id, settable])).toEqual([
-        ['model', false]
-      ])
       await act(async () => {
         await result.current.setStructuredOption('model', 'gpt-hosted')
       })
-      expect(mocks.hold).not.toHaveBeenCalled()
-      expect(mocks.enqueue).not.toHaveBeenCalled()
+      expect(mocks.hold).toHaveBeenCalledWith('session-1', 'model', 'gpt-hosted')
       unmount()
     })
 

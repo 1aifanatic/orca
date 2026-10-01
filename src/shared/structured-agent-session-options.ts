@@ -222,26 +222,6 @@ export function lockedStructuredAgentSessionOptionSnapshot(
   }))
 }
 
-/** The model is not known yet (a paired server's new chat runs the server's saved selection): no
- *  stand-in model, and no picks, which would apply to and be remembered under a guessed model. */
-export function unconfirmedModelStructuredAgentSessionOptionSnapshot(
-  snapshot: readonly SessionOptionDescriptor[]
-): SessionOptionDescriptor[] {
-  return lockedStructuredAgentSessionOptionSnapshot(
-    snapshot.flatMap((descriptor) =>
-      descriptor.id === 'model' && descriptor.kind.type === 'select'
-        ? [
-            {
-              ...descriptor,
-              kind: { type: 'select', choices: descriptor.kind.choices },
-              valueSource: 'unknown'
-            }
-          ]
-        : []
-    )
-  )
-}
-
 export function canSetStructuredAgentSessionOption(
   state: StructuredAgentSessionOptionState,
   id: string,

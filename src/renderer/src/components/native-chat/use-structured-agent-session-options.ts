@@ -15,7 +15,6 @@ import {
   structuredAgentSessionOptionPicks,
   structuredAgentSessionOptionSnapshot,
   structuredAgentSessionOptionView,
-  unconfirmedModelStructuredAgentSessionOptionSnapshot,
   type StructuredAgentSessionOptionState
 } from '../../../../shared/structured-agent-session-options'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
@@ -34,22 +33,6 @@ import {
 } from '@/lib/structured-agent-session-launch-options'
 
 const NO_HELD_OPTIONS: Readonly<Record<string, string>> = {}
-
-/** A paired server's new chat runs the server's saved selection, which the server names when it
- *  admits the chat. One too old to name it leaves this machine guessing until the chat reports its
- *  model, and a pick then would apply to, and be remembered under, the guess. */
-function awaitsServerModel(
-  target: RuntimeClientTarget,
-  launch: StructuredAgentSessionLaunchView | undefined,
-  state: StructuredAgentSessionOptionState
-): boolean {
-  return (
-    target.kind === 'environment' &&
-    launch?.kind === 'new' &&
-    launch.seedOptions === undefined &&
-    state.record.model === undefined
-  )
-}
 
 export function useStructuredAgentSessionOptions(args: {
   agent: AgentType
@@ -222,11 +205,8 @@ export function useStructuredAgentSessionOptions(args: {
     const snapshot = structuredAgentSessionOptionSnapshot(
       structuredAgentSessionOptionView(optionState, launchSeedOptions, held)
     )
-    if (awaitsServerModel(target, launch, optionState)) {
-      return unconfirmedModelStructuredAgentSessionOptionSnapshot(snapshot)
-    }
     return acceptsPicks ? snapshot : lockedStructuredAgentSessionOptionSnapshot(snapshot)
-  }, [acceptsPicks, held, launch, launchSeedOptions, optionState, target])
+  }, [acceptsPicks, held, launchSeedOptions, optionState])
   const setStructuredOption = useCallback(
     async (id: string, value: string | boolean): Promise<boolean> => {
       const view = structuredAgentSessionOptionView(optionStateRef.current, launchSeedOptions, held)
@@ -234,7 +214,6 @@ export function useStructuredAgentSessionOptions(args: {
       if (
         !optionCatalog ||
         encoded === null ||
-        awaitsServerModel(target, launch, optionStateRef.current) ||
         !canSetStructuredAgentSessionOption(view, id, value)
       ) {
         return false
@@ -253,7 +232,6 @@ export function useStructuredAgentSessionOptions(args: {
     [
       fence,
       held,
-      launch,
       launchSeedOptions,
       optionCatalog,
       optionStateRef,
@@ -261,7 +239,6 @@ export function useStructuredAgentSessionOptions(args: {
       sendStructuredOption,
       sessionId,
       settleLaunchOptionPick,
-      target,
       transportEnabled
     ]
   )

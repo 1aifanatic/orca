@@ -177,7 +177,8 @@ describe('structured agent launch reload recovery', () => {
             payloadFingerprint: 'fingerprint-reloaded'
           })
         })
-      })
+      }),
+      expect.any(Function)
     )
   })
 })

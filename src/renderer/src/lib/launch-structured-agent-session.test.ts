@@ -323,6 +323,28 @@ describe('structured agent session launch', () => {
     }
   })
 
+  it("reports a paired server's current seed from the create probe, and no local one", async () => {
+    vi.mocked(callStructuredAgentSession).mockImplementation(async (_target, method) =>
+      method === 'agentSession.createSupport'
+        ? { supported: true, seedOptions: { model: 'sonnet' } }
+        : { ok: true, replayed: false, value: { sessionId: 'claude_1', fence: 1 } }
+    )
+    const paired = vi.fn()
+    const local = vi.fn()
+
+    await launchStructuredAgentSession(
+      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'runtime:server-1'),
+      paired
+    )
+    await launchStructuredAgentSession(
+      createStructuredAgentSessionLaunchIntent('workspace-1', 'claude', 'local'),
+      local
+    )
+
+    expect(paired).toHaveBeenCalledWith({ model: 'sonnet' })
+    expect(local).not.toHaveBeenCalled()
+  })
+
   it("seeds a paired chat with the server's reported selection, kept through a retry", () => {
     const intent = createStructuredAgentSessionLaunchIntent(
       'workspace-1',

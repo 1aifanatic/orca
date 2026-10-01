@@ -236,9 +236,11 @@ export function abandonStructuredAgentSessionLaunchIntent(
  * on Windows that means reading the provider child's process start time, which a client cannot
  * observe. Both providers ask: the host classifies per agent, and Codex inherits the
  * unresolvable-selector retry above along with the probe. The unknown branch stays on the chat for
- * reconciliation: a retry may follow a create whose reply was lost.
+ * reconciliation: a retry may follow a create whose reply was lost. Answers the seed create will use.
  */
-async function requireHostCreateSupport(intent: StructuredAgentSessionLaunchIntent): Promise<void> {
+async function requireHostCreateSupport(
+  intent: StructuredAgentSessionLaunchIntent
+): Promise<LaunchSeed> {
   const support = await askHostCreateSupport(intent.target, intent.params.worktree, intent.agent)
   if (support.kind === 'unreachable') {
     throw new StructuredAgentSessionCreateUnknownOutcomeError(
@@ -254,12 +256,21 @@ async function requireHostCreateSupport(intent: StructuredAgentSessionLaunchInte
       'structured_agent_session_unsupported'
     )
   }
+  return support.seedOptions
 }
 
+/** Told the seed a paired server says this create will use, which may differ from an earlier
+ *  attempt's; a local launch reads its own settings instead. */
+export type StructuredLaunchHostSeedListener = (seedOptions: LaunchSeed) => void
+
 export async function launchStructuredAgentSession(
-  intent: StructuredAgentSessionLaunchIntent
+  intent: StructuredAgentSessionLaunchIntent,
+  onHostSeed?: StructuredLaunchHostSeedListener
 ): Promise<Pick<AgentSessionAttachResult, 'sessionId' | 'fence'>> {
-  await requireHostCreateSupport(intent)
+  const hostSeed = await requireHostCreateSupport(intent)
+  if (intent.target.kind !== 'local') {
+    onHostSeed?.(hostSeed)
+  }
   let result: AgentSessionMutationResult<AgentSessionAttachResult>
   try {
     result = await callStructuredAgentSession<AgentSessionMutationResult<AgentSessionAttachResult>>(

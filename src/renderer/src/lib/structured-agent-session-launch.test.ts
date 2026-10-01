@@ -95,6 +95,7 @@ import {
 import { readOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { resetStructuredAgentLaunchPersistenceForTests } from './structured-agent-session-launch-persistence'
 import { resetStructuredAgentLaunchRegistryForTests } from './structured-agent-session-launch-registry'
+import { getStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 
 function launchIntent(
   worktreeId: string,
@@ -308,7 +309,7 @@ describe('startStructuredAgentLaunch', () => {
     await flushLaunchSettlement()
 
     expect(mocks.launch).toHaveBeenCalledOnce()
-    expect(mocks.launch).toHaveBeenCalledWith(intent)
+    expect(mocks.launch).toHaveBeenCalledWith(intent, expect.any(Function))
     expect(toast.message).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })
@@ -685,6 +686,38 @@ describe('startStructuredAgentLaunch', () => {
 
     expect(readOutbox(intent.sessionId)).toEqual([])
     expect(mocks.seedDraft).toHaveBeenCalledOnce()
+  })
+
+  // A paired server's create seeds from its settings at create time, which its probe reports.
+  it("shows the seed a paired server's probe reports on a retry, not the first admission's", async () => {
+    const worktreeId = 'wt-paired-retry-seed'
+    const intent: StructuredAgentSessionLaunchIntent = {
+      ...launchIntent(worktreeId, 'session-paired-retry-seed'),
+      executionHostId: 'runtime:server-1',
+      target: { kind: 'environment', environmentId: 'server-1' },
+      seedOptions: { model: 'gpt-5.5' }
+    }
+    mocks.createIntent.mockReturnValueOnce(intent)
+    mocks.launch
+      .mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
+      .mockImplementationOnce(
+        (_intent: StructuredAgentSessionLaunchIntent, onHostSeed?: (seed: unknown) => void) => {
+          onHostSeed?.({ model: 'gpt-5.6-luna' })
+          return new Promise(() => undefined)
+        }
+      )
+
+    startStructuredAgentLaunch(worktreeId, 'codex')
+    await flushLaunchSettlement()
+    expect(getStructuredAgentSessionLaunchSelection(intent.sessionId)?.seed).toEqual({
+      model: 'gpt-5.5'
+    })
+
+    expect(retryStructuredAgentSessionLaunch(worktreeId, intent.sessionId)).toBe(true)
+    await flushLaunchSettlement()
+    expect(getStructuredAgentSessionLaunchSelection(intent.sessionId)?.seed).toEqual({
+      model: 'gpt-5.6-luna'
+    })
   })
 
   it('retries a resumed launch by session id without reconstructing its identity', async () => {

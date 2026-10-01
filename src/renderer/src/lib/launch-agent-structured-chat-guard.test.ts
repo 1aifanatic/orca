@@ -278,7 +278,8 @@ describe('structured chat adoption guard on the launch path', () => {
       undefined
     )
     expect(mockLaunchStructuredCodexSession).toHaveBeenCalledWith(
-      expect.objectContaining({ worktreeId: 'wt-1' })
+      expect.objectContaining({ worktreeId: 'wt-1' }),
+      expect.any(Function)
     )
     expect(mockCreateTab).not.toHaveBeenCalled()
     expect(mockWaitForAgentReady).not.toHaveBeenCalled()
