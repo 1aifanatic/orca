@@ -118,11 +118,9 @@ export function parseCapacityTransitionArguments(argv) {
   const paceWindowMs = values['pace-window-ms'] === undefined
     ? undefined
     : integer(values['pace-window-ms'], '--pace-window-ms')
-  if (
-    paceWindowMs !== undefined &&
-    (values.activity !== 'restart-safe' || runtime !== 'required')
-  ) {
-    throw new Error('--pace-window-ms applies only to restart-safe activity on a live runtime')
+  const liveRestartSafe = values.activity === 'restart-safe' && runtime === 'required'
+  if ((paceWindowMs !== undefined) !== liveRestartSafe) {
+    throw new Error('--pace-window-ms is required exactly for restart-safe activity on a live runtime')
   }
   return {
     directorOrigin: origin.origin,
@@ -368,11 +366,10 @@ function runtimeQuiescent(runtime, config) {
     counts.push(runtime.runtime.enforcedConnectionUnits)
   }
   const quiescent = counts.every((value) => integer(value, 'runtime connection count') === 0)
-  // Total connections also count redials the draining cell rejects, which never stop while
-  // hosts have nowhere else to go.
+  // Total and pre-auth connections also count unauthenticated redials, which never stop while
+  // hosts have nowhere else to go and lose nothing on a restart.
   const restartSafe = config.activity !== 'restart-safe' ||
     [
-      runtime.runtime?.preAuthConnections,
       runtime.runtime?.inFlightConnections,
       runtime.runtime?.reservedConnectionUnits,
       runtime.runtime?.controls,
@@ -497,6 +494,8 @@ export async function verifyCapacityTransition(config, overrides = {}) {
         event: 'relay_capacity_transition_restart_progress',
         restartSafeSamples,
         requiredRestartSafeSamples,
+        totalConnections: lastObservation.runtime?.totalConnections ?? null,
+        preAuthConnections: lastObservation.runtime?.preAuthConnections ?? null,
         stranded: strandedObservation(lastObservation)
       })
     }

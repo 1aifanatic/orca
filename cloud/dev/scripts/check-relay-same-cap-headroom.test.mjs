@@ -13,12 +13,25 @@ const config = {
   generalCells: ['production-gce-c28', 'production-gce-c29', 'production-gce-asia-c1']
 }
 
-function cell({ region = 'us-central1', pause = 840, observed = 0, ...rest } = {}) {
+function cell({
+  region = 'us-central1',
+  pause = 840,
+  observed = 0,
+  enforced = observed,
+  pending = 0,
+  ...rest
+} = {}) {
   return {
     enabled: true,
     admissionState: 'general',
     region,
-    connectionCapacity: { normalAdmissionPause: pause, observedConnections: observed, heartbeatFresh: true },
+    connectionCapacity: {
+      normalAdmissionPause: pause,
+      observedConnections: observed,
+      enforcedConnectionUnits: enforced,
+      pendingControlReservations: pending,
+      heartbeatFresh: true
+    },
     ...rest
   }
 }
@@ -64,6 +77,27 @@ test('counts free general-cell slots by region and excludes the target', async (
   ])
 })
 
+test('free slots subtract the larger of observed and enforced use plus reservations', async () => {
+  for (const [state, free] of [
+    [{ observed: 340, enforced: 400 }, 640],
+    [{ observed: 400, enforced: 340 }, 640],
+    [{ observed: 340, pending: 60 }, 640],
+    [{ observed: 800, pending: 60 }, 200]
+  ]) {
+    const result = await run(harness({ cells: { 'production-gce-c29': cell(state) } }))
+    assert.equal(result.freeSlots, free)
+  }
+})
+
+test('rejects malformed capacity counts', async () => {
+  await assert.rejects(
+    run(harness({
+      cells: { 'production-gce-c29': cell({ pending: null }) }
+    })),
+    /pending control reservations is invalid/
+  )
+})
+
 test('refuses a cell whose hosts exceed 80% of the free slots', async () => {
   const result = await run(harness({ controls: 561 }))
   assert.equal(result.sufficient, false)
@@ -71,7 +105,15 @@ test('refuses a cell whose hosts exceed 80% of the free slots', async () => {
 
 test('a stale, full, or non-general cell offers no slots', async () => {
   for (const blocked of [
-    cell({ connectionCapacity: { normalAdmissionPause: 840, observedConnections: 0, heartbeatFresh: false } }),
+    cell({
+      connectionCapacity: {
+        normalAdmissionPause: 840,
+        observedConnections: 0,
+        enforcedConnectionUnits: 0,
+        pendingControlReservations: 0,
+        heartbeatFresh: false
+      }
+    }),
     cell({ connectionCapacity: null }),
     cell({ admissionState: 'migration-only' }),
     cell({ enabled: false }),

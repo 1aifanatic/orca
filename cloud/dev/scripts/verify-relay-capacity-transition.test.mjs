@@ -135,7 +135,8 @@ test('parses a paired reviewed capacity', () => {
       '--activity', 'restart-safe',
       '--expected-image-digests', imageDigest,
       '--hard-cap', '1000',
-      '--unobserved-bound', '60'
+      '--unobserved-bound', '60',
+      '--pace-window-ms', '300000'
     ]),
     {
       ...config,
@@ -144,6 +145,7 @@ test('parses a paired reviewed capacity', () => {
       activity: 'restart-safe',
       runtime: 'required',
       expectedImageDigests: [imageDigest],
+      paceWindowMs: 300_000,
       timeoutMs: 180_000
     }
   )
@@ -572,7 +574,7 @@ test('restart-safe settling resets after data-plane admission appears', async ()
     timeoutMs: 20_000
   }
   const safe = harness({ active: 1, activityLeases: 0 })
-  const unsafe = harness({ active: 1, activityLeases: 0, preAuthConnections: 1 })
+  const unsafe = harness({ active: 1, activityLeases: 0, controls: 1 })
   let runtimeReads = 0
   let now = 0
   const result = await verifyCapacityTransition(restartConfig, {
@@ -787,7 +789,6 @@ test('restart gate rejects live or durable cell work', async (t) => {
     ['splice', { active: 1, activityLeases: 0, splices: 1 }],
     ['pending splice', { active: 1, activityLeases: 0, pendingSplices: 1 }],
     ['queued data', { active: 1, activityLeases: 0, queuedBytes: 1 }],
-    ['pre-auth connection', { active: 1, activityLeases: 0, preAuthConnections: 1 }],
     ['in-flight connection', {
       activityLeases: 0,
       inFlightConnections: 1,
@@ -1189,7 +1190,7 @@ function fakeClock() {
   }
 }
 
-test('parses the drain pace window only for a live restart-safe wait', () => {
+test('requires the drain pace window exactly for a live restart-safe wait', () => {
   const base = [
     '--director-origin', 'https://relay.example.com',
     '--cell-origin', 'https://c3.relay.example.com',
@@ -1204,15 +1205,15 @@ test('parses the drain pace window only for a live restart-safe wait', () => {
     ]).paceWindowMs,
     300_000
   )
-  assert.equal(
-    'paceWindowMs' in parseCapacityTransitionArguments([...base, '--activity', 'restart-safe']),
-    false
+  assert.throws(
+    () => parseCapacityTransitionArguments([...base, '--activity', 'restart-safe']),
+    /required exactly for restart-safe/
   )
   assert.throws(
     () => parseCapacityTransitionArguments([
       ...base, '--activity', 'allowed', '--pace-window-ms', '300000'
     ]),
-    /applies only to restart-safe/
+    /required exactly for restart-safe/
   )
   assert.throws(
     () => parseCapacityTransitionArguments([
@@ -1280,7 +1281,6 @@ test('the pace window resets on any non-zero runtime sample', async () => {
 
 test('restart-safe fails on live runtime work or an open migration regardless of leases', async (t) => {
   for (const blocker of [
-    { preAuthConnections: 1 },
     { inFlightConnections: 1 },
     { reservedConnectionUnits: 1 },
     { controls: 1 },
@@ -1302,4 +1302,29 @@ test('restart-safe fails on live runtime work or an open migration regardless of
       )
     })
   }
+})
+
+test('unauthenticated redials do not reset the pace window', async () => {
+  let runtimeReads = 0
+  const lines = []
+  const result = await verifyCapacityTransition(pacedRestartConfig, {
+    fetch: async (url, options) => {
+      if (new URL(url).pathname === '/v1/admin/runtime-status') runtimeReads += 1
+      return await harness({
+        ...strandedCell,
+        active: runtimeReads % 4,
+        enforcedConnectionUnits: 0,
+        preAuthConnections: runtimeReads % 2
+      })(url, options)
+    },
+    token: 'masked-token',
+    progress: (line) => lines.push(line),
+    ...fakeClock()
+  })
+  assert.equal(runtimeReads, 61)
+  assert.equal(result.stranded.restartBlockingActivityLeases, 4)
+  assert.deepEqual(
+    lines.slice(0, 4).map((line) => [line.totalConnections, line.preAuthConnections]),
+    [[1, 1], [2, 0], [3, 1], [0, 0]]
+  )
 })

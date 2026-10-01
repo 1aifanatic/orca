@@ -2,7 +2,8 @@ import { pathToFileURL } from 'node:url'
 import { fetchAdminOnceMore } from './relay-admin-transient-retry.mjs'
 
 // Drained hosts that find no free slot keep redialling and pin the drained cell (c28,
-// 2026-10-01); the margin covers hosts that reconnect while the drain is paced.
+// 2026-10-01). Hosts are counted as controls, but each moved host also brings its splices;
+// the 20% margin is for those.
 export const MAX_HEADROOM_FRACTION = 0.8
 
 function count(value, name) {
@@ -61,6 +62,7 @@ async function adminJson(fetchImpl, url, token, body, wait) {
 }
 
 // A cell whose capacity view is stale, absent, or not general offers no slot we can count.
+// Placement admits while enforced units plus outstanding reservations stay under the pause.
 function freeSlots(status) {
   const capacity = status.connectionCapacity
   if (
@@ -73,7 +75,12 @@ function freeSlots(status) {
     return 0
   }
   const pause = count(capacity.normalAdmissionPause, 'normal admission pause')
-  return Math.max(0, pause - count(capacity.observedConnections, 'observed connections'))
+  const used = Math.max(
+    count(capacity.observedConnections, 'observed connections'),
+    count(capacity.enforcedConnectionUnits, 'enforced connection units')
+  )
+  const reserved = count(capacity.pendingControlReservations, 'pending control reservations')
+  return Math.max(0, pause - used - reserved)
 }
 
 export async function checkSameCapHeadroom(config, overrides = {}) {
