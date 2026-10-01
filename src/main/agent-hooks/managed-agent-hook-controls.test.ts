@@ -290,6 +290,25 @@ describe('managed agent hook controls', () => {
     expect(mocks.installCodex).not.toHaveBeenCalled()
   })
 
+  // Why the order: launches between ON and the slow install must already find the table.
+  it("turns Codex's hooks on before its installer runs", async () => {
+    mocks.detect.mockResolvedValue({ codex: { state: 'found' } })
+    const order: string[] = []
+    mocks.enableCodex.mockImplementation(() => order.push('enable'))
+    mocks.detect.mockImplementation(async () => {
+      order.push('detect')
+      return { codex: { state: 'found' } }
+    })
+    mocks.installCodex.mockImplementation(() => {
+      order.push('install')
+      return status('codex', 'installed')
+    })
+
+    await applyAgentStatusHooksEnabled(true, { agentCmdOverrides: {} })
+
+    expect(order).toEqual(['enable', 'detect', 'install'])
+  })
+
   it('does not turn on a disabled agent, or one a newer update turned off', async () => {
     mocks.detect.mockResolvedValue({})
 

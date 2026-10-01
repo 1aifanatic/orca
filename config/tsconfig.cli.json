@@ -131,6 +131,7 @@
     "../src/main/codex/codex-hook-flag-requests.ts",
     "../src/main/codex/codex-hook-session-flags.ts",
     "../src/main/codex/codex-hook-session-trust.ts",
+    "../src/main/codex/codex-hook-session-flag-lookup.ts",
     "../src/main/windows/windows-short-path.ts",
     "../src/main/codex/codex-managed-home-resource-copy-marker.ts",
     "../src/main/codex/codex-managed-trust-grant-plan.ts",

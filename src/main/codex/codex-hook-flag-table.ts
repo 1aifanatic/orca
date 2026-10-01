@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -7,7 +8,7 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import {
   CODEX_HOOK_FLAG_ENTRY_SUFFIX,
   CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX,
@@ -20,9 +21,11 @@ import { getOrcaUserDataPath } from './codex-home-paths'
  * A pane carries only this directory's path, and every launch reads the entry
  * for its own binary's version then, so an entry published after the pane
  * opened, or removed by the opt-out, takes effect at that pane's next launch.
- * Per profile: one profile's opt-out never strips another's panes. The
- * directory exists exactly while Codex hooks are on for this profile, so a
- * launch without it runs plain codex with no probe at all.
+ * Per userData directory, whose active profile's setting decides, so a dev
+ * and a packaged Orca never strip each other's panes. The directory exists
+ * exactly while Codex hooks are on, so a launch without it runs plain codex
+ * with no probe at all. Every delete here is best-effort: bookkeeping never
+ * stops Orca from starting or the opt-out from finishing.
  *
  *   <version>.flag       the `-c` value, one line
  *   <version>.no-daemon  present when that Codex accepts --no-daemon
@@ -59,17 +62,39 @@ export function codexHookFlagTableExists(table = getCodexHookFlagTablePath()): b
   return existsSync(table)
 }
 
-export function removeCodexHookFlagTable(table = getCodexHookFlagTablePath()): void {
-  rmSync(table, { recursive: true, force: true })
+// Why retries: a Windows carrier or a virus scan can hold a file open for a moment.
+const RM_OPTIONS = { force: true, maxRetries: 3 } as const
+
+/** False when the directory could not be removed; it is logged, never thrown. */
+export function removeCodexHookFlagTable(table = getCodexHookFlagTablePath()): boolean {
+  try {
+    rmSync(table, { ...RM_OPTIONS, recursive: true })
+    return true
+  } catch (error) {
+    console.warn('[codex-hook-session] could not remove the Codex hook flag table:', error)
+    return false
+  }
+}
+
+function removeFile(path: string): void {
+  try {
+    rmSync(path, RM_OPTIONS)
+  } catch (error) {
+    console.warn('[codex-hook-session] could not remove a Codex hook flag file:', error)
+  }
+}
+
+function isPlainFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile()
+  } catch {
+    return false
+  }
 }
 
 function readFirstLine(path: string): string | null {
   try {
-    return (
-      readFileSync(path, 'utf-8')
-        .replace(/^\uFEFF/, '')
-        .split(/\r?\n/)[0] ?? ''
-    )
+    return readFileSync(path, 'utf-8').split(/\r?\n/)[0] ?? ''
   } catch {
     return null
   }
@@ -118,8 +143,13 @@ export function listCodexHookFlagEntries(
 
 function writeAtomically(path: string, content: string): void {
   const temp = `${path}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(temp, content, 'utf-8')
-  renameSync(temp, path)
+  try {
+    writeFileSync(temp, content, 'utf-8')
+    renameSync(temp, path)
+  } catch (error) {
+    removeFile(temp)
+    throw error
+  }
 }
 
 /**
@@ -140,7 +170,7 @@ export function publishCodexHookFlagEntry(
   if (entry.noDaemon) {
     writeFileSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, '', 'utf-8')
   } else {
-    rmSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, { force: true })
+    removeFile(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`)
   }
   writeAtomically(`${base}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`, `${entry.flag}\n`)
   return true
@@ -151,8 +181,51 @@ export function removeCodexHookFlagEntry(
   table = getCodexHookFlagTablePath()
 ): void {
   const base = join(table, codexVersion)
-  rmSync(`${base}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`, { force: true })
-  rmSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, { force: true })
+  removeFile(`${base}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`)
+  removeFile(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`)
+}
+
+/**
+ * Drops every entry `keep` rejects, then all but the `cap` newest, so the
+ * table never keeps an old definition or grows with every Codex version seen.
+ */
+export function pruneCodexHookFlagEntries(
+  keep: (entry: CodexHookFlagEntry) => boolean,
+  cap: number,
+  table = getCodexHookFlagTablePath()
+): void {
+  const kept: { codexVersion: string; modifiedMs: number }[] = []
+  for (const entry of listCodexHookFlagEntries(table)) {
+    if (!keep(entry)) {
+      removeCodexHookFlagEntry(entry.codexVersion, table)
+      continue
+    }
+    try {
+      const { mtimeMs } = lstatSync(
+        join(table, `${entry.codexVersion}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`)
+      )
+      kept.push({ codexVersion: entry.codexVersion, modifiedMs: mtimeMs })
+    } catch {
+      // Why: removed meanwhile.
+    }
+  }
+  kept.sort((a, b) => b.modifiedMs - a.modifiedMs)
+  for (const { codexVersion } of kept.slice(cap)) {
+    removeCodexHookFlagEntry(codexVersion, table)
+  }
+}
+
+/**
+ * The binary a codex path's probes run: npm's PowerShell shim (codex.ps1)
+ * cannot be spawned directly, so its sibling codex.cmd, which runs the same
+ * install, stands in for it.
+ */
+export function resolveCodexProbePath(codexPath: string): string {
+  if (!/^codex\.ps1$/i.test(basename(codexPath))) {
+    return codexPath
+  }
+  const sibling = join(dirname(codexPath), 'codex.cmd')
+  return existsSync(sibling) ? sibling : codexPath
 }
 
 /** What an Orca-side launch writes on a miss, the same request a pane's codex function writes. */
@@ -175,15 +248,19 @@ export function requestCodexHookFlagEntry(
   }
 }
 
-/** Reads and deletes every pending request. Unreadable names are dropped. */
+/** Reads and deletes every pending request. Unusable names and anything but a file are skipped. */
 export function takeCodexHookFlagRequests(
   table = getCodexHookFlagTablePath()
 ): CodexHookFlagRequest[] {
   const requests: CodexHookFlagRequest[] = []
   for (const codexVersion of listNames(table, CODEX_HOOK_FLAG_REQUEST_SUFFIX)) {
     const path = join(table, `${codexVersion}${CODEX_HOOK_FLAG_REQUEST_SUFFIX}`)
+    if (!isPlainFile(path)) {
+      continue
+    }
+    // Why trim: it also drops the byte-order mark PowerShell 5.1 writes.
     const codexPath = readFirstLine(path)?.trim() || null
-    rmSync(path, { force: true })
+    removeFile(path)
     if (isCodexHookFlagEntryName(codexVersion)) {
       requests.push({ codexVersion, codexPath })
     }

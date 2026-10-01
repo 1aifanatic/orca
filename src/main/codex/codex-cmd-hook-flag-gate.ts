@@ -27,6 +27,7 @@ export function getCodexCmdHookFlagGatePath(): string {
 }
 
 // Why findstr doubles each backslash: it reads `\\` as one literal backslash even under /l.
+// Why /i: several case-sensitive literals of different lengths can miss a match (a FINDSTR bug).
 const FINDSTR_NEEDLES = ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES.map(
   (needle) => `/c:"${needle.replaceAll('\\', '\\\\')}"`
 ).join(' ')
@@ -48,7 +49,7 @@ export function getCodexCmdHookFlagGateScript(): string {
     `@if not defined ${ENTRY} goto orca_request`,
     `@set "${HOME}=%CODEX_HOME%"`,
     `@if not defined ${HOME} set "${HOME}=%USERPROFILE%\\.codex"`,
-    `@if exist "%${HOME}%\\hooks.json" findstr /l ${FINDSTR_NEEDLES} "%${HOME}%\\hooks.json" >nul 2>&1 && goto orca_done`,
+    `@if exist "%${HOME}%\\hooks.json" findstr /l /i ${FINDSTR_NEEDLES} "%${HOME}%\\hooks.json" >nul 2>&1 && goto orca_done`,
     // Why the quotes in the value: the flag holds `<` and `>`, which cmd reads as redirects outside quotes.
     // Why `for /f` over the file, not `set /p`: set /p stops at 1023 characters and the flag is longer.
     `@for /f "usebackq delims=" %%L in ("%${ENTRY}%${CODEX_HOOK_FLAG_ENTRY_SUFFIX}") do @if not defined ${ORCA_CODEX_HOOK_ARG_ENV} set ${ORCA_CODEX_HOOK_ARG_ENV}="%%L"`,

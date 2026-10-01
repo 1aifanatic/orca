@@ -8,9 +8,11 @@ import {
   codexHookFlagTableExists,
   readCodexHookFlagEntry,
   requestCodexHookFlagEntry,
+  resolveCodexProbePath,
   type CodexHookFlagEntry
 } from '../codex/codex-hook-flag-table'
 import { codexHomeHoldsOrcaFileEntry } from '../codex/codex-hook-file-entry-probe'
+import { nudgeCodexHookFlagRequests } from '../codex/codex-hook-flag-requests'
 
 const CODEX_EXECUTABLE = /^codex(\.(exe|cmd|bat|ps1))?$/i
 const SHARED_SERVER_ARGS: ReadonlySet<string> = new Set(CODEX_SHARED_SERVER_ARGS)
@@ -116,27 +118,34 @@ async function readHookFlagEntryFor(
   env: NodeJS.ProcessEnv,
   cwd: string | undefined
 ): Promise<CodexHookFlagEntry | null> {
-  let codexVersion = ''
+  const program = resolveCodexProbePath(executable)
+  let lines: string[] = []
   try {
     const version = await runProcess({
-      program: executable,
+      program,
       args: ['--version'],
       cwd,
       env,
       timeoutMs: HELP_PROBE_TIMEOUT_MS
     })
-    codexVersion = version.code === 0 ? version.stdout.trim() : ''
+    lines = version.code === 0 ? version.stdout.split(/\r?\n/).map((line) => line.trim()) : []
   } catch {
     return null
   }
-  if (!codexVersion) {
-    return null
+  // Why line by line: a cmd AutoRun under npm's codex.cmd can print before Codex's own line.
+  const versions = lines.filter(Boolean)
+  for (const codexVersion of versions) {
+    const entry = readCodexHookFlagEntry(codexVersion, table)
+    if (entry) {
+      return entry
+    }
   }
-  const entry = readCodexHookFlagEntry(codexVersion, table)
-  if (!entry) {
-    requestCodexHookFlagEntry(codexVersion, executable, table)
+  const lastVersion = versions.at(-1)
+  if (lastVersion) {
+    requestCodexHookFlagEntry(lastVersion, program, table)
+    nudgeCodexHookFlagRequests()
   }
-  return entry
+  return null
 }
 
 // Why probe unless the table records it: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
@@ -146,7 +155,7 @@ async function supportsNoDaemon(
   cwd: string | undefined
 ): Promise<boolean> {
   const program = isAbsolute(executable)
-    ? executable
+    ? resolveCodexProbePath(executable)
     : await resolveCommandOnLocalPath(executable, { env, cwd })
   if (!program) {
     return false

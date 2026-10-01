@@ -12,9 +12,10 @@ import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cle
 import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 import {
   getCodexHookSessionFlagFailure,
+  getDefaultCodexHookFlagVersion,
   refreshCodexHookSessionFlags
 } from './codex-hook-session-trust'
-import { closeCodexHookFlagTable, openCodexHookFlagTable } from './codex-hook-flag-requests'
+import { reconcileCodexHookFlagTable } from './codex-hook-flag-requests'
 import { listCodexHookFlagEntries } from './codex-hook-flag-table'
 import {
   refreshCodexRuntimeUserHooksExclusively,
@@ -189,11 +190,15 @@ export class CodexHookService {
   }
 
   /**
-   * Native Codex's status hook is ready when the flag table holds an entry.
-   * Read from disk, so the CLI's process reports what the app published.
+   * Native Codex's status hook is ready when the flag table holds an entry for
+   * the codex this process resolves (any entry where that version is unknown,
+   * as in the CLI's process). Read from disk.
    */
   getStatus(): AgentHookInstallStatus {
-    const versions = listCodexHookFlagEntries().map((entry) => entry.codexVersion)
+    const current = getDefaultCodexHookFlagVersion()
+    const versions = listCodexHookFlagEntries()
+      .map((entry) => entry.codexVersion)
+      .filter((version) => current === null || version === current)
     return {
       agent: 'codex',
       state: versions.length > 0 ? 'installed' : 'not_installed',
@@ -211,7 +216,7 @@ export class CodexHookService {
    * launch's miss then asks for its entry instead of running plain codex.
    */
   openSessionFlagTable(): void {
-    openCodexHookFlagTable()
+    reconcileCodexHookFlagTable(true)
   }
 
   /**
@@ -272,14 +277,11 @@ export class CodexHookService {
   }
 
   remove(): Promise<AgentHookInstallStatus> {
+    // Why outside the trust lane: open panes read the table at their next launch,
+    // so this is what stops them, and it never waits behind a launch's refresh.
+    reconcileCodexHookFlagTable(false)
     return runExclusivelyForRuntimeAndSystemTrustConfig(getOrcaManagedCodexHomePath(), () =>
-      this.removeExclusively()
+      removeCodexHooksExclusively(() => this.getStatus())
     )
-  }
-
-  private removeExclusively(): Promise<AgentHookInstallStatus> {
-    // Why first: open panes read the table at their next launch, so this is what stops them.
-    closeCodexHookFlagTable()
-    return removeCodexHooksExclusively(() => this.getStatus())
   }
 }

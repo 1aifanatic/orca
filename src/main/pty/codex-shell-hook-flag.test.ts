@@ -144,7 +144,14 @@ function run(
     encoding: 'utf-8',
     env: Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined))
   })
-  expect(result.stderr).toBe('')
+  if (isWindows && (shell === 'pwsh' || shell === 'powershell')) {
+    // Why not empty: npm's codex.cmd hop runs the machine's cmd AutoRun, which can fail against
+    // the sandboxed USERPROFILE. USERPROFILE stays sandboxed because PowerShell's $HOME, the
+    // default ~/.codex the carrier reads, comes from it.
+    expect(result.stderr).not.toMatch(/codex|ORCA_|hooks/i)
+  } else {
+    expect(result.stderr).toBe('')
+  }
   return result.stdout.trimEnd()
 }
 
@@ -247,7 +254,10 @@ describe('codex function status hook flag', () => {
         ['-c', 'hooks.Stop=[]'],
         ['-c', 'hooks.state={}'],
         ['--config', 'hooks={}'],
-        ['--config=hooks.Stop=[]']
+        ['--config=hooks.Stop=[]'],
+        ['-c=hooks.state={}'],
+        ['-c', ' hooks.state={}'],
+        ['--config= hooks.Stop=[]']
       ])("carries nothing beside the user's own hooks override %s", (...override) => {
         const sandbox = makeSandbox()
         publish(sandbox)
@@ -273,6 +283,23 @@ describe('codex function status hook flag', () => {
         publish(sandbox)
         expect(run(shell, sandbox, { ORCA_CODEX_HOOK_FLAGS: undefined })).toBe(WITHOUT_FLAG)
       })
+
+      it.skipIf(isWindows || process.getuid?.() === 0)(
+        'stays silent when it cannot write its request',
+        () => {
+          const sandbox = makeSandbox()
+          chmodSync(sandbox.table, 0o555)
+          try {
+            // Why: run() fails on any stderr, which is where fish warns about a failed redirection.
+            expect(run(shell, sandbox, { FAKE_CODEX_VERSION: 'codex-cli 9.9.10' })).toBe(
+              WITHOUT_FLAG
+            )
+            expect(existsSync(join(sandbox.table, 'codex-cli 9.9.10.request'))).toBe(false)
+          } finally {
+            chmodSync(sandbox.table, 0o755)
+          }
+        }
+      )
 
       it('probes and requests nothing while hooks are off, which removes the table', () => {
         const sandbox = makeSandbox()

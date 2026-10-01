@@ -120,14 +120,20 @@ __orca_deferred_init() {
     function codex {
       # Why local: zsh's warn_create_global warns for each global a function creates.
       local __orca_codex_arg __orca_codex_prev= __orca_codex_isolate="${ORCA_CODEX_ISOLATE:-1}"
-      local __orca_codex_user_hooks= __orca_codex_version= __orca_codex_entry= __orca_codex_flag=
+      local __orca_codex_user_hooks= __orca_codex_value= __orca_codex_version= __orca_codex_entry= __orca_codex_flag=
       if [[ -n "${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
         "${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
       fi
       for __orca_codex_arg in "$@"; do
         case "$__orca_codex_arg" in agents|queue|--no-daemon|--remote|--remote=*) __orca_codex_isolate=0 ;; esac
-        case "$__orca_codex_arg" in --config=hooks[.=[:space:]]*|-chooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac
-        case "$__orca_codex_prev" in -c|--config) case "$__orca_codex_arg" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac ;; esac
+        __orca_codex_value=
+        case "$__orca_codex_prev" in -c|--config) __orca_codex_value="$__orca_codex_arg" ;; esac
+        case "$__orca_codex_arg" in
+          --config=*) __orca_codex_value="${__orca_codex_arg#--config=}" ;;
+          -c?*) __orca_codex_value="${__orca_codex_arg#-c}"; __orca_codex_value="${__orca_codex_value#=}" ;;
+        esac
+        __orca_codex_value="${__orca_codex_value#"${__orca_codex_value%%[![:space:]]*}"}"
+        case "$__orca_codex_value" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac
         __orca_codex_prev="$__orca_codex_arg"
       done
       if [[ -n "${ORCA_CODEX_HOOK_FLAGS:-}" && -d "${ORCA_CODEX_HOOK_FLAGS}" ]]; then

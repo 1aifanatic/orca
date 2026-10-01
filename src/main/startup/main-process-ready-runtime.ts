@@ -20,6 +20,7 @@ import {
   shouldContinueManagedHookStartup
 } from '../agent-hooks/managed-agent-hook-controls'
 import { startCodexHookFlagRequests } from '../codex/codex-hook-flag-requests'
+import { hydrateAgentCliShellPath } from '../agent-hooks/local-agent-cli-presence'
 import { shouldInstallManagedHooks } from './configure-process'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
 import { mainProcessState as state } from './main-process-state'
@@ -100,8 +101,10 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   const startupManagedHookSettings = store.getSettings()
   // Why before the managed-hook chain: a launch's request is served without waiting for CLI detection.
+  // Why its own PATH wait: the 3 s resume wait needs this derivation in flight before the installers run.
   startCodexHookFlagRequests({
-    isEnabled: () => isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
+    isEnabled: () => isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex'),
+    pathReady: app.isPackaged ? hydrateAgentCliShellPath() : undefined
   })
   const shouldReconcileStartupManagedHooks =
     shouldInstallManagedHooks(is.dev) &&

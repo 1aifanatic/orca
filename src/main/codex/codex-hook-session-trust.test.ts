@@ -1,4 +1,13 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -25,8 +34,11 @@ import {
   _internals,
   awaitCodexHookSessionFlags,
   clearCodexHookSessionFlags,
+  getDefaultCodexHookFlagVersion,
   handleCodexHookFlagRequest,
-  refreshCodexHookSessionFlags
+  pruneCodexHookSessionFlags,
+  refreshCodexHookSessionFlags,
+  refreshCodexHookSessionFlagsAfter
 } from './codex-hook-session-trust'
 import {
   CODEX_EVENTS,
@@ -38,6 +50,7 @@ import { buildCodexHookSessionFlag } from './codex-hook-session-flags'
 import {
   createCodexHookFlagTable,
   getCodexHookFlagTablePath,
+  publishCodexHookFlagEntry,
   readCodexHookFlagEntry
 } from './codex-hook-flag-table'
 
@@ -91,6 +104,9 @@ describe('codex hook session trust', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'orca-codex-hook-trust-table-'))
     vi.stubEnv('ORCA_USER_DATA_PATH', userData)
+    // Why: publishing writes the hook script under ~/.orca.
+    vi.stubEnv('HOME', join(userData, 'home'))
+    vi.stubEnv('USERPROFILE', join(userData, 'home'))
     // Why: the table exists exactly while Codex hooks are on.
     createCodexHookFlagTable()
     _internals.resetForTesting()
@@ -127,12 +143,32 @@ describe('codex hook session trust', () => {
     expect(invocation.args[0]).toBe('-c')
   })
 
+  it('writes the hook script before publishing, so a codex installed after start runs it', async () => {
+    answerVersion('codex-cli 0.159.2')
+    expect(existsSync(getManagedScriptPath())).toBe(false)
+
+    await handleCodexHookFlagRequest({ codexVersion: 'codex-cli 0.159.2', codexPath: null })
+
+    expect(existsSync(getManagedScriptPath())).toBe(true)
+    expect(readCodexHookFlagEntry('codex-cli 0.159.2')).not.toBeNull()
+  })
+
+  it('publishes nothing when the hook script cannot be written', async () => {
+    answerVersion('codex-cli 0.159.2')
+    mkdirSync(join(userData, 'home'), { recursive: true })
+    // Why a file where the folder goes: the script's mkdir then fails.
+    writeFileSync(join(userData, 'home', '.orca'), '')
+
+    expect(await refreshCodexHookSessionFlags()).toBeNull()
+    expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
+  })
+
   it('verifies the complete flag with Codex before publishing it', async () => {
     answerVersion('codex-cli 0.159.2')
     await refreshCodexHookSessionFlags()
 
     const [definitionRun, verifyRun] = mocks.runCodexAppServerSession.mock.calls
-    expect(definitionRun[0].args[1]).not.toContain('state=')
+    expect(definitionRun[0].args[1]).not.toMatch(/state\s*=/)
     expect(verifyRun[0].args[1]).toBe(readCodexHookFlagEntry('codex-cli 0.159.2')?.flag)
   })
 
@@ -255,6 +291,65 @@ describe('codex hook session trust', () => {
     expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
   })
 
+  it('never lets a run the opt-out voided publish, even after hooks turn back on', async () => {
+    answerVersion('codex-cli 0.159.2')
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    mocks.runCodexAppServerSession.mockImplementation(async (invocation, body) => {
+      await gate
+      return body({ request: async () => listingFor(hookCommand(), invocation.args[1]) })
+    })
+    const voided = refreshCodexHookSessionFlags()
+    await vi.waitFor(() => expect(mocks.runCodexAppServerSession).toHaveBeenCalled())
+    clearCodexHookSessionFlags()
+    createCodexHookFlagTable()
+
+    const fresh = refreshCodexHookSessionFlags()
+    expect(fresh).not.toBe(voided)
+    release()
+
+    expect(await voided).toBeNull()
+    expect((await fresh)?.codexVersion).toBe('codex-cli 0.159.2')
+  })
+
+  it('does not count a run the opt-out voided as a failed try for that binary', async () => {
+    answerVersion('codex-cli 0.159.2')
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    mocks.runCodexAppServerSession.mockImplementationOnce(async () => {
+      await gate
+      return { data: [] }
+    })
+    const request = { codexVersion: 'codex-cli 0.159.2', codexPath: null }
+    const voided = handleCodexHookFlagRequest(request)
+    await vi.waitFor(() => expect(mocks.runCodexAppServerSession).toHaveBeenCalled())
+    clearCodexHookSessionFlags()
+    createCodexHookFlagTable()
+    release()
+    await voided
+
+    const again = handleCodexHookFlagRequest(request)
+    expect(again).not.toBeNull()
+    await again
+  })
+
+  it('lets a failed binary try again after the opt-out and back on', async () => {
+    answerVersion('codex-cli 0.159.2')
+    mocks.runCodexAppServerSession.mockRejectedValueOnce(new Error('timed out'))
+    const request = { codexVersion: 'codex-cli 0.159.2', codexPath: null }
+    await handleCodexHookFlagRequest(request)
+    expect(handleCodexHookFlagRequest(request)).toBeNull()
+
+    clearCodexHookSessionFlags()
+    createCodexHookFlagTable()
+
+    expect(await handleCodexHookFlagRequest(request)).not.toBeNull()
+  })
+
   it("derives for the binary a launch's request names, not only the one Orca resolves", async () => {
     answerVersion('codex-cli 0.150.1', '/Users/me/.local/share/mise/shims/codex')
 
@@ -290,6 +385,75 @@ describe('codex hook session trust', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("ignores a request path that names no codex, deriving for Orca's own instead", async () => {
+    answerVersion('codex-cli 0.159.2')
+
+    await handleCodexHookFlagRequest({ codexVersion: 'codex-cli 0.159.2', codexPath: '/tmp/evil' })
+
+    expect(mocks.runCodexAppServerSession.mock.calls[0][0].command).toBe('/opt/codex/bin/codex')
+  })
+
+  it("derives through npm's codex.cmd when a PowerShell launch names codex.ps1", async () => {
+    const bin = join(userData, 'npm')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'codex.ps1'), '')
+    writeFileSync(join(bin, 'codex.cmd'), '')
+    answerVersion('codex-cli 0.159.2', join(bin, 'codex.cmd'))
+
+    await handleCodexHookFlagRequest({
+      codexVersion: 'codex-cli 0.159.2',
+      codexPath: join(bin, 'codex.ps1')
+    })
+
+    expect(mocks.runCodexAppServerSession.mock.calls[0][0].command).toBe(join(bin, 'codex.cmd'))
+  })
+
+  it("waits at start for the default derivation scheduled behind the shell's PATH", async () => {
+    answerVersion('codex-cli 0.159.2')
+    let pathReady!: () => void
+    refreshCodexHookSessionFlagsAfter(
+      new Promise<void>((resolve) => {
+        pathReady = resolve
+      })
+    )
+    let waited = false
+    const wait = awaitCodexHookSessionFlags(5_000).then(() => {
+      waited = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(waited).toBe(false)
+
+    pathReady()
+    await wait
+
+    expect(readCodexHookFlagEntry('codex-cli 0.159.2')).not.toBeNull()
+    expect(getDefaultCodexHookFlagVersion()).toBe('codex-cli 0.159.2')
+  })
+
+  it('prunes entries whose definition this build no longer writes, and all but the newest few', async () => {
+    answerVersion('codex-cli 0.159.2')
+    const entry = (await refreshCodexHookSessionFlags())!
+    publishCodexHookFlagEntry({
+      codexVersion: 'codex-cli 0.1.0',
+      flag: 'hooks={old}',
+      noDaemon: false
+    })
+    for (let index = 0; index < 10; index += 1) {
+      const codexVersion = `codex-cli 1.0.${index}`
+      publishCodexHookFlagEntry({ ...entry, codexVersion })
+      const stamp = new Date(Date.now() - (10 - index) * 60_000)
+      utimesSync(versionFile(codexVersion), stamp, stamp)
+    }
+
+    await pruneCodexHookSessionFlags()
+
+    const left = readdirSync(getCodexHookFlagTablePath()).filter((name) => name.endsWith('.flag'))
+    expect(left).not.toContain('codex-cli 0.1.0.flag')
+    expect(left).toHaveLength(8)
+    expect(left).toContain('codex-cli 0.159.2.flag')
+    expect(left).not.toContain('codex-cli 1.0.0.flag')
   })
 
   it('bounds how long a launch waits for a derivation in flight', async () => {

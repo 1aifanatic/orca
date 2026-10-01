@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   prepareRuntimeHomeForLaunch: vi.fn(),
   removeRealHomeCodexHookEntries: vi.fn(async () => 'removed' as const),
   prepareCodexSessionResume: vi.fn(),
-  prepareLegacySharedCodexSessionResume: vi.fn()
+  prepareLegacySharedCodexSessionResume: vi.fn(),
+  awaitCodexHookSessionFlags: vi.fn(async () => {})
 }))
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/orca-user-data') } }))
@@ -35,6 +36,9 @@ vi.mock('../codex/codex-home-paths', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSystemCodexHomePath: () => mocks.systemHomePath,
   getOrcaManagedCodexHomePath: () => mocks.sharedHomePath
+}))
+vi.mock('../codex/codex-hook-session-trust', () => ({
+  awaitCodexHookSessionFlags: mocks.awaitCodexHookSessionFlags
 }))
 vi.mock('../codex/codex-session-resume-preparation', () => ({
   prepareCodexSessionResume: mocks.prepareCodexSessionResume
@@ -142,5 +146,37 @@ describe('Codex session resume daemon socket guard', () => {
     expect(mocks.prepareRuntimeHomeForLaunch).not.toHaveBeenCalled()
     expect(mocks.removeRealHomeCodexHookEntries).not.toHaveBeenCalled()
     expect(readdirSync(mocks.systemHomePath)).toEqual([])
+  })
+
+  // Why: at a cold restore the resume can beat the start's derivation of the flag it needs.
+  it('waits, bounded, for a flag derivation in flight before resuming while hooks are on', async () => {
+    mocks.hooksEnabled = true
+    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ agent: 'codex', state: 'installed' })
+    let settle!: () => void
+    mocks.awaitCodexHookSessionFlags.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve
+        })
+    )
+    let resumed = false
+    const pending = resume().then(() => {
+      resumed = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(resumed).toBe(false)
+
+    settle()
+    await pending
+
+    expect(mocks.awaitCodexHookSessionFlags).toHaveBeenCalledWith(3_000)
+  })
+
+  it('does not wait for a flag while Codex hooks are off', async () => {
+    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ agent: 'codex', state: 'installed' })
+
+    await resume()
+
+    expect(mocks.awaitCodexHookSessionFlags).not.toHaveBeenCalled()
   })
 })

@@ -178,6 +178,18 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
     await expect(plan(`${codex} resume`)).resolves.toBe(`${codex} -c '${FLAG}' resume`)
   })
 
+  it.each([
+    ["-c 'hooks.state={}'"],
+    ["-c='hooks.state={}'"],
+    ["-c ' hooks.state={}'"],
+    ["--config 'hooks={}'"],
+    ["--config=' hooks.Stop=[]'"],
+    ['-chooks.Stop=[]']
+  ])("carries nothing beside the user's own hooks override %s", async (override) => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    await expect(plan(`${codex} ${override} resume`)).resolves.toBe(`${codex} ${override} resume`)
+  })
+
   it("carries nothing beside the user's own hooks override", async () => {
     const codex = writeVersionedCodex('codex-cli 9.9.9')
     await expect(plan(`${codex} -c 'hooks.state={}' resume`)).resolves.toBe(
@@ -193,6 +205,51 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
       table
     )
     await expect(plan(`${codex} resume`)).resolves.toBe(`${codex} --no-daemon -c '${FLAG}' resume`)
+  })
+
+  function planIn(command: string, options: Partial<LocalCodexLaunch>) {
+    return planCodexNoDaemonLaunch({
+      command,
+      executesOnThisHost: true,
+      shellOverride: undefined,
+      env: {},
+      cwd: dir,
+      hookFlagTable: table,
+      ...options
+    })
+  }
+
+  const ORCA_ENTRY =
+    '{"hooks":{"Stop":[{"hooks":[{"command":"/x/.orca/agent-hooks/codex-hook.sh"}]}]}}'
+
+  it("checks the pane's CODEX_HOME for an older Orca entry when no home was selected", async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    writeFileSync(join(codexHome, 'hooks.json'), ORCA_ENTRY)
+    await expect(planIn(`${codex} resume`, { env: { CODEX_HOME: codexHome } })).resolves.toBe(
+      `${codex} resume`
+    )
+  })
+
+  it('checks the default ~/.codex for an older Orca entry when nothing names a home', async () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    const home = join(dir, 'home')
+    mkdirSync(join(home, '.codex'), { recursive: true })
+    writeFileSync(join(home, '.codex', 'hooks.json'), ORCA_ENTRY)
+    vi.stubEnv('HOME', home)
+    vi.stubEnv('USERPROFILE', home)
+    vi.stubEnv('CODEX_HOME', '')
+    try {
+      await expect(planIn(`${codex} resume`, { codexHomePath: null })).resolves.toBe(
+        `${codex} resume`
+      )
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it("finds Codex's version line after output a shell startup printed first", async () => {
+    const codex = writeVersionedCodex('conda activated\ncodex-cli 9.9.9')
+    await expect(plan(`${codex} resume`)).resolves.toBe(`${codex} -c '${FLAG}' resume`)
   })
 
   it('probes nothing while hooks are off, which removes the table', () => {

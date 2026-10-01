@@ -25,12 +25,16 @@ export const ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES = [
   'agent-hooks/codex-hook.',
   'agent-hooks\\\\codex-hook.'
 ] as const
-/** Whether `args` hold the user's own `-c hooks...` / `--config hooks...` override. */
+/**
+ * Whether `args` hold the user's own hooks override, in any spelling Codex
+ * accepts: `-c hooks...`, `-chooks...`, `-c=hooks...`, `--config hooks...`,
+ * `--config=hooks...`, with whitespace before the key.
+ */
 export function codexArgsOverrideHooks(args: readonly string[]): boolean {
   return args.some(
     (arg, index) =>
-      /^(--config=|-c)hooks[.=\s]/.test(arg) ||
-      ((args[index - 1] === '-c' || args[index - 1] === '--config') && /^hooks[.=\s]/.test(arg))
+      /^(--config=|-c=?)\s*hooks[.=\s]/.test(arg) ||
+      ((args[index - 1] === '-c' || args[index - 1] === '--config') && /^\s*hooks[.=\s]/.test(arg))
   )
 }
 const [SLASH_NEEDLE, BACKSLASH_NEEDLE] = ORCA_CODEX_HOOK_FILE_ENTRY_NEEDLES
@@ -50,14 +54,20 @@ if [[ -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
   function codex {
     # Why local: zsh's warn_create_global warns for each global a function creates.
     local __orca_codex_arg __orca_codex_prev= __orca_codex_isolate="\${ORCA_CODEX_ISOLATE:-1}"
-    local __orca_codex_user_hooks= __orca_codex_version= __orca_codex_entry= __orca_codex_flag=
+    local __orca_codex_user_hooks= __orca_codex_value= __orca_codex_version= __orca_codex_entry= __orca_codex_flag=
     if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
       "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
     for __orca_codex_arg in "$@"; do
       case "$__orca_codex_arg" in ${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=*) __orca_codex_isolate=0 ;; esac
-      case "$__orca_codex_arg" in --config=hooks[.=[:space:]]*|-chooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac
-      case "$__orca_codex_prev" in -c|--config) case "$__orca_codex_arg" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac ;; esac
+      __orca_codex_value=
+      case "$__orca_codex_prev" in -c|--config) __orca_codex_value="$__orca_codex_arg" ;; esac
+      case "$__orca_codex_arg" in
+        --config=*) __orca_codex_value="\${__orca_codex_arg#--config=}" ;;
+        -c?*) __orca_codex_value="\${__orca_codex_arg#-c}"; __orca_codex_value="\${__orca_codex_value#=}" ;;
+      esac
+      __orca_codex_value="\${__orca_codex_value#"\${__orca_codex_value%%[![:space:]]*}"}"
+      case "$__orca_codex_value" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac
       __orca_codex_prev="$__orca_codex_arg"
     done
     if [[ -n "\${ORCA_CODEX_HOOK_FLAGS:-}" && -d "\${ORCA_CODEX_HOOK_FLAGS}" ]]; then
@@ -104,7 +114,7 @@ if test "$__orca_codex_type" = file
     set -l orca_codex_user_hooks
     set -l orca_codex_prev
     for orca_codex_arg in $argv
-      if string match -qr -- '^(--config=|-c)hooks[.=\\s]' $orca_codex_arg; or begin; contains -- "$orca_codex_prev" -c --config; and string match -qr -- '^hooks[.=\\s]' $orca_codex_arg; end
+      if string match -qr -- '^(--config=|-c=?)\\s*hooks[.=\\s]' $orca_codex_arg; or begin; contains -- "$orca_codex_prev" -c --config; and string match -qr -- '^\\s*hooks[.=\\s]' $orca_codex_arg; end
         set orca_codex_user_hooks 1
       end
       set orca_codex_prev $orca_codex_arg
@@ -118,7 +128,9 @@ if test "$__orca_codex_type" = file
       end
       if test -n "$orca_codex_entry"; and not test -f "$orca_codex_entry${CODEX_HOOK_FLAG_ENTRY_SUFFIX}"
         # Why: Orca derives this binary's entry, so a later launch carries it.
-        command -s codex >"$orca_codex_entry${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" 2>/dev/null
+        # Why sh: fish itself warns when a redirection fails, and 2>/dev/null cannot silence it.
+        set -l orca_codex_path (command -s codex)
+        command sh -c 'printf "%s\\n" "$1" >"$2"' sh "$orca_codex_path" "$orca_codex_entry${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" 2>/dev/null
         set orca_codex_entry
       else if test -n "$orca_codex_entry"; and test -z "$orca_codex_user_hooks"
         set -l orca_codex_home $CODEX_HOME
@@ -169,30 +181,43 @@ if ($orcaCodexCommand -and
         for ($orcaCodexIndex = 0; $orcaCodexIndex -lt $args.Count; $orcaCodexIndex++) {
             $orcaCodexArg = [string]$args[$orcaCodexIndex]
             $orcaCodexPrev = if ($orcaCodexIndex -gt 0) { [string]$args[$orcaCodexIndex - 1] } else { '' }
-            if ($orcaCodexArg -cmatch '^(--config=|-c)hooks[.=\\s]' -or
-                (($orcaCodexPrev -ceq '-c' -or $orcaCodexPrev -ceq '--config') -and $orcaCodexArg -cmatch '^hooks[.=\\s]')) {
+            if ($orcaCodexArg -cmatch '^(--config=|-c=?)\\s*hooks[.=\\s]' -or
+                (($orcaCodexPrev -ceq '-c' -or $orcaCodexPrev -ceq '--config') -and $orcaCodexArg -cmatch '^\\s*hooks[.=\\s]')) {
                 $orcaCodexUserHooks = $true
             }
         }
         if ($env:ORCA_CODEX_HOOK_FLAGS -and (Test-Path -LiteralPath $env:ORCA_CODEX_HOOK_FLAGS -PathType Container)) {
             try {
-                $orcaCodexVersion = ((& $orcaCodexExecutable.Source --version 2>$null) -join ' ').Trim()
-                if ($orcaCodexVersion -and $orcaCodexVersion -notmatch '[\\\\/:]') {
-                    $orcaCodexEntryPath = Join-Path $env:ORCA_CODEX_HOOK_FLAGS $orcaCodexVersion
-                    if (-not (Test-Path -LiteralPath "$orcaCodexEntryPath${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" -PathType Leaf)) {
+                # Why line by line: a cmd AutoRun under npm's codex.cmd can print before Codex's own line.
+                $orcaCodexEntryPath = $null
+                $orcaCodexMissPath = $null
+                foreach ($orcaCodexLine in @(& $orcaCodexExecutable.Source --version 2>$null)) {
+                    $orcaCodexVersion = ([string]$orcaCodexLine).Trim()
+                    if (-not $orcaCodexVersion -or $orcaCodexVersion -match '[\\\\/:]') {
+                        continue
+                    }
+                    $orcaCodexCandidate = Join-Path $env:ORCA_CODEX_HOOK_FLAGS $orcaCodexVersion
+                    if (Test-Path -LiteralPath "$orcaCodexCandidate${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" -PathType Leaf) {
+                        $orcaCodexEntryPath = $orcaCodexCandidate
+                        break
+                    }
+                    $orcaCodexMissPath = $orcaCodexCandidate
+                }
+                if (-not $orcaCodexEntryPath) {
+                    if ($orcaCodexMissPath) {
                         # Why: Orca derives this binary's entry, so a later launch carries it.
-                        Set-Content -LiteralPath "$orcaCodexEntryPath${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" -Value $orcaCodexExecutable.Source -Encoding UTF8 -ErrorAction SilentlyContinue
-                    } else {
-                        $orcaCodexEntry = $orcaCodexEntryPath
-                        $orcaCodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
-                        $orcaCodexHooks = Join-Path $orcaCodexHome 'hooks.json'
-                        $orcaCodexFileEntry = (Test-Path -LiteralPath $orcaCodexHooks) -and
-                            (Select-String -LiteralPath $orcaCodexHooks -SimpleMatch -Pattern @('${SLASH_NEEDLE}', '${BACKSLASH_NEEDLE}') -Quiet)
-                        if (-not $orcaCodexUserHooks -and -not $orcaCodexFileEntry) {
-                            $orcaCodexFlag = [string](Get-Content -LiteralPath "$orcaCodexEntryPath${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" -TotalCount 1 -Encoding UTF8)
-                            if ($orcaCodexFlag) {
-                                $orcaCodexFlags = @('-c', $orcaCodexFlag)
-                            }
+                        Set-Content -LiteralPath "$orcaCodexMissPath${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" -Value $orcaCodexExecutable.Source -Encoding UTF8 -ErrorAction SilentlyContinue
+                    }
+                } else {
+                    $orcaCodexEntry = $orcaCodexEntryPath
+                    $orcaCodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+                    $orcaCodexHooks = Join-Path $orcaCodexHome 'hooks.json'
+                    $orcaCodexFileEntry = (Test-Path -LiteralPath $orcaCodexHooks) -and
+                        (Select-String -LiteralPath $orcaCodexHooks -SimpleMatch -Pattern @('${SLASH_NEEDLE}', '${BACKSLASH_NEEDLE}') -Quiet)
+                    if (-not $orcaCodexUserHooks -and -not $orcaCodexFileEntry) {
+                        $orcaCodexFlag = [string](Get-Content -LiteralPath "$orcaCodexEntryPath${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" -TotalCount 1 -Encoding UTF8)
+                        if ($orcaCodexFlag) {
+                            $orcaCodexFlags = @('-c', $orcaCodexFlag)
                         }
                     }
                 }

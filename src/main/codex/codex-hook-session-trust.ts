@@ -1,22 +1,21 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join } from 'node:path'
+import { basename, isAbsolute } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { resolveCodexCommand, withCliRuntimeOnPath } from '../codex-cli/command'
-import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
-import { collectHookListings, type CodexHookListing } from './codex-app-server-client'
-import { runCodexAppServerSession } from './codex-app-server-session'
+import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import {
-  CODEX_EVENTS,
-  CODEX_EVENT_LABEL,
-  getManagedCommand,
-  getManagedScriptPath
-} from './codex-hook-definition'
+  askCodexForHookSessionTrust,
+  codexTrustsHookSessionFlag
+} from './codex-hook-session-flag-lookup'
+import { writeManagedScript } from '../agent-hooks/installer-utils'
+import { getManagedScript } from './codex-hook-script'
+import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
 import {
   isCodexHookFlagEntryName,
   publishCodexHookFlagEntry,
+  pruneCodexHookFlagEntries,
   readCodexHookFlagEntry,
+  resolveCodexProbePath,
   removeCodexHookFlagEntry,
   removeCodexHookFlagTable,
   type CodexHookFlagEntry,
@@ -26,8 +25,7 @@ import { resolveWindowsShortPath } from '../windows/windows-short-path'
 import {
   buildCodexHookDefinitionFlag,
   buildCodexHookSessionFlag,
-  codexHookSessionFlagDefines,
-  type CodexHookSessionTrust
+  codexHookSessionFlagDefines
 } from './codex-hook-session-flags'
 
 /**
@@ -40,17 +38,21 @@ import {
  * installed later, a pane's own codex), so no launch waits for an Orca restart.
  */
 
-// Why: an app-server start with a cold sqlite takes ~4 s; this bounds a hung binary.
-const DERIVE_TIMEOUT_MS = 30_000
 const VERSION_TIMEOUT_MS = 5_000
 // Why bounded: a binary that never yields a flag must stop costing app-server sessions.
 const MAX_REQUEST_ATTEMPTS = 3
 const REQUEST_RETRY_BASE_MS = 60_000
 
+// Why a cap: one entry per Codex version ever seen would otherwise accumulate.
+const MAX_TABLE_ENTRIES = 8
+
 let generation = 0
 let lastFailure: string | null = null
+// Why per generation too: an ON after an opt-out must never join a run the opt-out voided.
 const inFlight = new Map<string, Promise<CodexHookFlagEntry | null>>()
+const pendingStarts = new Set<Promise<unknown>>()
 const requestFailures = new Map<string, { count: number; retryAt: number }>()
+let defaultCodexVersion: string | null = null
 
 /**
  * Makes sure the table holds a current entry for `codexCommand` (default: the
@@ -58,14 +60,15 @@ const requestFailures = new Map<string, { count: number; retryAt: number }>()
  * Never throws, and never touches a user or managed Codex home.
  */
 export function refreshCodexHookSessionFlags(
-  codexCommand: string = resolveCodexCommand()
+  codexCommand?: string
 ): Promise<CodexHookFlagEntry | null> {
-  const key = normalizeRuntimePathForComparison(codexCommand)
+  const command = codexCommand ?? resolveCodexCommand()
+  const key = `${generation}\0${normalizeRuntimePathForComparison(command)}`
   const running = inFlight.get(key)
   if (running) {
     return running
   }
-  const run = deriveAndPublish(codexCommand, generation)
+  const run = deriveAndPublish(command, generation, codexCommand === undefined)
     .catch((error: unknown) => {
       console.warn('[codex-hook-session] could not derive Codex hook flags:', error)
       return fail(error instanceof Error ? error.message : String(error))
@@ -93,10 +96,12 @@ export function handleCodexHookFlagRequest(
   if (failure && (failure.count >= MAX_REQUEST_ATTEMPTS || Date.now() < failure.retryAt)) {
     return null
   }
+  const startedIn = generation
   return refreshCodexHookSessionFlags(codexCommand).then((entry) => {
     if (entry?.codexVersion === request.codexVersion) {
       requestFailures.delete(key)
-    } else {
+    } else if (startedIn === generation) {
+      // Why only then: a run the opt-out voided says nothing about this binary.
       const count = (failure?.count ?? 0) + 1
       requestFailures.set(key, {
         count,
@@ -107,14 +112,27 @@ export function handleCodexHookFlagRequest(
   })
 }
 
-/** Waits, at most `timeoutMs`, for derivations already running; never starts one. */
+/**
+ * App start: derives for the codex this process resolves once `ready` (shell
+ * PATH hydration) settles, and counts as in flight from now, so a restored
+ * resume can wait for it.
+ */
+export function refreshCodexHookSessionFlagsAfter(ready: Promise<unknown>): void {
+  const run: Promise<unknown> = ready
+    .catch(() => {})
+    .then(() => refreshCodexHookSessionFlags())
+    .finally(() => pendingStarts.delete(run))
+  pendingStarts.add(run)
+}
+
+/** Waits, at most `timeoutMs`, for derivations already running or scheduled; never starts one. */
 export async function awaitCodexHookSessionFlags(timeoutMs: number): Promise<void> {
-  if (inFlight.size === 0) {
+  if (inFlight.size === 0 && pendingStarts.size === 0) {
     return
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   await Promise.race([
-    Promise.allSettled(inFlight.values()),
+    Promise.allSettled([...inFlight.values(), ...pendingStarts]),
     new Promise<void>((resolve) => {
       timer = setTimeout(resolve, timeoutMs)
     })
@@ -133,6 +151,20 @@ export function clearCodexHookSessionFlags(): void {
   removeCodexHookFlagTable()
 }
 
+/** The version the codex this process resolves reported at its last derivation. */
+export function getDefaultCodexHookFlagVersion(): string | null {
+  return defaultCodexVersion
+}
+
+/** Drops entries whose definition this build no longer writes, and all but the newest few. */
+export async function pruneCodexHookSessionFlags(): Promise<void> {
+  const hookCommand = await resolveCarriableHookCommand().catch(() => null)
+  pruneCodexHookFlagEntries(
+    (entry) => hookCommand !== null && codexHookSessionFlagDefines(entry.flag, hookCommand),
+    MAX_TABLE_ENTRIES
+  )
+}
+
 /** Why the last derivation in this process published nothing, if it did not. */
 export function getCodexHookSessionFlagFailure(): string | null {
   return lastFailure
@@ -145,16 +177,31 @@ function fail(detail: string): null {
 
 // Why a codex-named absolute path only: the request file is text any launch may write.
 function readRequestedCodexPath(codexPath: string | null): string | null {
-  return codexPath && isAbsolute(codexPath) && /^codex(\.(exe|cmd))?$/i.test(basename(codexPath))
-    ? codexPath
-    : null
+  const probePath = codexPath && isAbsolute(codexPath) ? resolveCodexProbePath(codexPath) : null
+  return probePath && /^codex(\.(exe|cmd))?$/i.test(basename(probePath)) ? probePath : null
+}
+
+// Why before publishing: a flag whose script is missing runs nothing, or fails every event on Windows.
+function ensureCodexHookScripts(): boolean {
+  try {
+    writeManagedScript(getManagedScriptPath(), getManagedScript())
+  } catch (error) {
+    console.warn('[codex-hook-session] could not write the Codex hook script:', error)
+    return false
+  }
+  ensureCodexCmdHookFlagGate()
+  return true
 }
 
 async function deriveAndPublish(
   codexCommand: string,
-  startedIn: number
+  startedIn: number,
+  isDefault: boolean
 ): Promise<CodexHookFlagEntry | null> {
   const codexVersion = await readCodexVersion(codexCommand)
+  if (isDefault) {
+    defaultCodexVersion = codexVersion
+  }
   if (!codexVersion) {
     return fail(`${codexCommand} did not report its version`)
   }
@@ -186,6 +233,9 @@ async function deriveAndPublish(
   // Why: an opt-out that landed mid-derivation must not be undone by its result.
   if (startedIn !== generation) {
     return null
+  }
+  if (!ensureCodexHookScripts()) {
+    return fail('The Codex hook script could not be written')
   }
   const entry = { codexVersion, flag, noDaemon }
   if (!publishCodexHookFlagEntry(entry)) {
@@ -234,112 +284,13 @@ async function readCodexAcceptsNoDaemon(codexCommand: string): Promise<boolean> 
   return result?.stdout.includes('--no-daemon') ?? false
 }
 
-/** Codex's key and hash for each event of `hookCommand`, asked in a throwaway CODEX_HOME. */
-export async function askCodexForHookSessionTrust(
-  codexCommand: string,
-  hookCommand: string
-): Promise<CodexHookSessionTrust | null> {
-  const definition = buildCodexHookDefinitionFlag(hookCommand)
-  if (!definition) {
-    return null
-  }
-  const listings = await listSessionFlagHooks(codexCommand, definition)
-  return readSessionFlagTrust(listings, hookCommand)
-}
-
-/** Whether Codex lists every event of the complete flag (definition plus approval) as trusted and enabled. */
-export async function codexTrustsHookSessionFlag(
-  codexCommand: string,
-  flag: string,
-  hookCommand: string
-): Promise<boolean> {
-  const listings = await listSessionFlagHooks(codexCommand, flag)
-  return CODEX_EVENTS.every((eventName) => {
-    const matches = matchSessionFlagEvent(listings, hookCommand, CODEX_EVENT_LABEL[eventName])
-    return (
-      matches.length === 1 && matches[0].trustStatus === 'trusted' && matches[0].enabled === true
-    )
-  })
-}
-
-async function listSessionFlagHooks(
-  codexCommand: string,
-  flag: string
-): Promise<CodexHookListing[]> {
-  // Why a throwaway home: Codex computes the hash with no file or position in it,
-  // so the answer holds for every home, and no real home is read or written.
-  const scratchHome = await mkdtemp(join(tmpdir(), 'orca-codex-hook-trust-'))
-  try {
-    const listing = await runCodexAppServerSession(
-      {
-        command: codexCommand,
-        // Why the probe args: plugin startup can leave marketplace clones behind a short session.
-        args: ['-c', flag, ...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
-        cliPath: codexCommand,
-        env: { CODEX_HOME: scratchHome },
-        timeoutMs: DERIVE_TIMEOUT_MS
-      },
-      (rpc) => rpc.request('hooks/list', { cwds: [scratchHome] })
-    )
-    return collectHookListings(listing)
-  } finally {
-    await rm(scratchHome, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
-  }
-}
-
-function matchSessionFlagEvent(
-  listings: readonly CodexHookListing[],
-  hookCommand: string,
-  label: string
-): CodexHookListing[] {
-  return listings.filter(
-    (listing) =>
-      listing.source === 'sessionFlags' &&
-      listing.command === hookCommand &&
-      listing.key.endsWith(`:${label}:0:0`)
-  )
-}
-
-/** Codex's key and hash per managed event, or null unless every event is reported once. */
-export function readSessionFlagTrust(
-  listings: readonly CodexHookListing[],
-  hookCommand: string
-): CodexHookSessionTrust | null {
-  const entries = CODEX_EVENTS.map((eventName) => {
-    const label = CODEX_EVENT_LABEL[eventName]
-    const matches = matchSessionFlagEvent(listings, hookCommand, label)
-    return matches.length === 1
-      ? ([label, { key: matches[0].key, trustedHash: matches[0].currentHash }] as const)
-      : null
-  })
-  return readTrustRecord(Object.fromEntries(entries.filter((entry) => entry !== null)))
-}
-
-/** A complete per-event trust record from untrusted input, or null. */
-function readTrustRecord(value: unknown): CodexHookSessionTrust | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
-  const record: Record<string, { key: string; trustedHash: string }> = {}
-  for (const eventName of CODEX_EVENTS) {
-    const label = CODEX_EVENT_LABEL[eventName]
-    const entry: unknown = Reflect.get(value, label)
-    const key: unknown = entry && typeof entry === 'object' ? Reflect.get(entry, 'key') : null
-    const trustedHash: unknown =
-      entry && typeof entry === 'object' ? Reflect.get(entry, 'trustedHash') : null
-    if (typeof key !== 'string' || typeof trustedHash !== 'string') {
-      return null
-    }
-    record[label] = { key, trustedHash }
-  }
-  return record
-}
-
 export const _internals = {
   resetForTesting(): void {
     generation = 0
     lastFailure = null
+    defaultCodexVersion = null
     inFlight.clear()
+    pendingStarts.clear()
     requestFailures.clear()
   }
 }

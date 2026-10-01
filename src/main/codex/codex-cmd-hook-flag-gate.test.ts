@@ -27,7 +27,8 @@ describe('cmd codex status hook flag gate', () => {
   })
 
   it('matches the same Orca entry text as the retired-form sweep, with either separator', () => {
-    expect(script).toContain('/c:"agent-hooks/codex-hook."')
+    // Why /i: FINDSTR can miss with several case-sensitive literals of different lengths.
+    expect(script).toContain('findstr /l /i /c:"agent-hooks/codex-hook."')
     expect(script).toContain('/c:"agent-hooks\\\\\\\\codex-hook."')
     expect(script).not.toMatch(/\/c:"codex-hook\./)
   })

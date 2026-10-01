@@ -9,7 +9,10 @@ import { collectHookListings } from './codex-app-server-client'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 import { buildCodexHookDefinitionFlag, buildCodexHookSessionFlag } from './codex-hook-session-flags'
-import { askCodexForHookSessionTrust, codexTrustsHookSessionFlag } from './codex-hook-session-trust'
+import {
+  askCodexForHookSessionTrust,
+  codexTrustsHookSessionFlag
+} from './codex-hook-session-flag-lookup'
 
 // Why this file exists: Orca's status hook rides every native Codex launch as a
 // `-c hooks=...` session flag that also carries Codex's approval of it. Only a
