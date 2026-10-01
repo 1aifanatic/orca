@@ -47,12 +47,13 @@ export const appApi = {
     ipcRenderer.invoke('app:awaitGitEnvironmentStartupBarrier'),
   prepareTerminalStartupRestoration: (): Promise<void> =>
     ipcRenderer.invoke('app:prepareTerminalStartupRestoration'),
-  hasStructuredAgentSessionHost: (): Promise<boolean> =>
-    ipcRenderer.invoke('app:hasStructuredAgentSessionHost'),
-  onStructuredAgentSessionHostInstalled: (callback: () => void): (() => void) => {
-    const listener = (): void => callback()
-    ipcRenderer.on('app:structuredAgentSessionHostInstalled', listener)
-    return () => ipcRenderer.removeListener('app:structuredAgentSessionHostInstalled', listener)
+  holdsStructuredAgentSessions: (): Promise<boolean> =>
+    ipcRenderer.invoke('app:holdsStructuredAgentSessions'),
+  onStructuredAgentSessionsHeldChanged: (callback: (held: boolean) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, held: boolean): void =>
+      callback(held === true)
+    ipcRenderer.on('app:structuredAgentSessionsHeldChanged', listener)
+    return () => ipcRenderer.removeListener('app:structuredAgentSessionsHeldChanged', listener)
   },
   recoverLegacyWorkerTerminalsForRendererStartup: (): Promise<void> =>
     ipcRenderer.invoke('app:recoverLegacyWorkerTerminalsForRendererStartup'),

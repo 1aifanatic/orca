@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ hostInstalled: false, isWebClient: false }))
+const mocks = vi.hoisted(() => ({ held: false, isWebClient: false }))
 
 vi.mock('@/lib/web-client-location', () => ({ isWebClientLocation: () => mocks.isWebClient }))
 vi.mock('@/store', () => ({ useAppStore: { getState: () => ({}) } }))
@@ -17,14 +17,14 @@ const SETTING_OFF = { experimentalStructuredNativeChat: false }
 const SETTING_ON = { experimentalStructuredNativeChat: true }
 
 beforeEach(() => {
-  mocks.hostInstalled = false
+  mocks.held = false
   mocks.isWebClient = false
   resetLocalStructuredChatsForTests()
   vi.stubGlobal('window', {
     api: {
       app: {
-        hasStructuredAgentSessionHost: async () => mocks.hostInstalled,
-        onStructuredAgentSessionHostInstalled: () => () => undefined
+        holdsStructuredAgentSessions: async () => mocks.held,
+        onStructuredAgentSessionsHeldChanged: () => () => undefined
       }
     }
   })
@@ -41,7 +41,7 @@ describe("startup's restore of this machine's structured chats", () => {
 
   // Existing chats come back whatever the setting says.
   it('restores the chats this machine holds with the setting off', async () => {
-    mocks.hostInstalled = true
+    mocks.held = true
     const step = vi.fn(async () => undefined)
 
     await restoreLocalStructuredChatsAtStartup(SETTING_OFF, step)
@@ -59,7 +59,7 @@ describe("startup's restore of this machine's structured chats", () => {
 
   it('never restores in the browser client', async () => {
     mocks.isWebClient = true
-    mocks.hostInstalled = true
+    mocks.held = true
     const step = vi.fn(async () => undefined)
 
     await restoreLocalStructuredChatsAtStartup(SETTING_ON, step)
