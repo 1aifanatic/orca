@@ -89,8 +89,12 @@ export function getCodexCmdHookFlagGateEnvValue(): string {
  * The `/K` startup command that defines the macro, a no-op in a pane without
  * the gate variable. %ORCA_CODEX_HOOK_ARG% stays literal here because that
  * variable is never set at startup; the macro's own line expands it after the gate ran.
+ * Why clear first and `if exist`: without the gate file, typing codex must run
+ * plain codex, silently, never with a flag a previous launch left behind.
  */
 export const CODEX_CMD_HOOK_FLAG_MACRO_COMMAND =
-  `(if defined ${ORCA_CODEX_HOOK_GATE_ENV} doskey codex=call %${ORCA_CODEX_HOOK_GATE_ENV}% $T ` +
+  // Why no quotes and no space before the first $T: node-pty mangles a `"` in /K, and a space would set the flag to " ".
+  `(if defined ${ORCA_CODEX_HOOK_GATE_ENV} doskey codex=set ${ORCA_CODEX_HOOK_ARG_ENV}=$T` +
+  `if exist %${ORCA_CODEX_HOOK_GATE_ENV}% call %${ORCA_CODEX_HOOK_GATE_ENV}% $T ` +
   `if defined ${ORCA_CODEX_HOOK_ARG_ENV} codex -c %${ORCA_CODEX_HOOK_ARG_ENV}% $* $T ` +
   `if not defined ${ORCA_CODEX_HOOK_ARG_ENV} codex $*)`

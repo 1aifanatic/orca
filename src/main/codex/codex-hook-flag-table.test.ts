@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  fromMsysPath,
   publishCodexHookFlagEntry,
   readCodexHookFlagEntry,
   removeCodexHookFlagTable,
@@ -71,6 +72,15 @@ describe('Codex hook flag table files', () => {
     ).toThrow()
     expect(readdirSync(table).filter((name) => name.endsWith('.tmp'))).toEqual([])
     expect(readCodexHookFlagEntry('codex-cli 0.159.2', table)).toBeNull()
+  })
+
+  it("reads a Git Bash pane's codex path as Windows spells it, on Windows only", () => {
+    expect(fromMsysPath('/c/Users/me/AppData/Roaming/npm/codex', 'win32')).toBe(
+      'C:\\Users\\me\\AppData\\Roaming\\npm\\codex'
+    )
+    expect(fromMsysPath('/d', 'win32')).toBe('D:\\')
+    expect(fromMsysPath('C:\\npm\\codex.cmd', 'win32')).toBe('C:\\npm\\codex.cmd')
+    expect(fromMsysPath('/c/Users/me/codex', 'darwin')).toBe('/c/Users/me/codex')
   })
 
   it("maps npm's PowerShell shim to its sibling codex.cmd, which can be spawned", () => {

@@ -14,6 +14,7 @@ import {
   pruneCodexHookFlagEntries,
   readCodexHookFlagEntry,
   removeCodexHookFlagTable,
+  fromMsysPath,
   resolveCodexProbePath,
   takeCodexHookFlagRequests
 } from './codex-hook-flag-table'
@@ -74,6 +75,8 @@ export function startCodexHookFlagSync(options: {
     isEnabled: options.isEnabled,
     watch: options.watch ?? ((path, onChange) => watchFs(path, onChange))
   }
+  // Why whatever the setting: every native cmd pane's macro calls it, and without the table it is inert.
+  ensureCodexCmdHookFlagGate()
   void syncCodexHookFlags({ after: options.pathReady })
   return () => {
     closeWatcher()
@@ -286,7 +289,8 @@ async function fingerprintCodex(codexPath: string): Promise<string> {
 }
 
 // Why a codex-named absolute path only: the request file is text any launch may write.
-function readRequestedCodexPath(codexPath: string | null): string | null {
+function readRequestedCodexPath(requested: string | null): string | null {
+  const codexPath = requested ? fromMsysPath(requested) : null
   const probePath = codexPath && isAbsolute(codexPath) ? resolveCodexProbePath(codexPath) : null
   return probePath && /^codex(\.(exe|cmd))?$/i.test(basename(probePath)) ? probePath : null
 }

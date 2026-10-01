@@ -216,6 +216,15 @@ export function pruneCodexHookFlagEntries(
 }
 
 /**
+ * A Git Bash pane's `command -v` path (`/c/Users/...`) as Windows spells it,
+ * which Node can resolve; any other path unchanged.
+ */
+export function fromMsysPath(path: string, platform: NodeJS.Platform = process.platform): string {
+  const msys = platform === 'win32' ? /^\/([A-Za-z])(?:\/(.*))?$/.exec(path) : null
+  return msys ? `${msys[1].toUpperCase()}:\\${(msys[2] ?? '').replaceAll('/', '\\')}` : path
+}
+
+/**
  * The binary a codex path's probes run: npm's PowerShell shim (codex.ps1)
  * cannot be spawned directly, so its sibling codex.cmd, which runs the same
  * install, stands in for it.

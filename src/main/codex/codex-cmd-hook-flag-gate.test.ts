@@ -40,10 +40,19 @@ describe('cmd codex status hook flag gate', () => {
   })
 
   it("never passes the user's arguments through `call`", () => {
-    expect(CODEX_CMD_HOOK_FLAG_MACRO_COMMAND).toMatch(
-      /doskey codex=call %ORCA_CODEX_HOOK_GATE% \$T /
-    )
+    expect(CODEX_CMD_HOOK_FLAG_MACRO_COMMAND).toMatch(/call %ORCA_CODEX_HOOK_GATE% \$T /)
     expect(CODEX_CMD_HOOK_FLAG_MACRO_COMMAND).not.toMatch(/call [^$]*\$\*/)
+  })
+
+  // Why: a build that never ran with Codex hooks on has no gate file, and typing codex must stay quiet.
+  it('runs plain codex, silently and with no flag left from earlier, when the gate file is missing', () => {
+    const steps = CODEX_CMD_HOOK_FLAG_MACRO_COMMAND.replace(/^.*doskey codex=/, '')
+      .replace(/\)$/, '')
+      .split(/\s*\$T\s*/)
+    expect(steps[0]).toBe('set ORCA_CODEX_HOOK_ARG=')
+    expect(steps[1]).toBe('if exist %ORCA_CODEX_HOOK_GATE% call %ORCA_CODEX_HOOK_GATE%')
+    // Why no quote: node-pty's argv escaping mangles a literal `"` in /K.
+    expect(CODEX_CMD_HOOK_FLAG_MACRO_COMMAND).not.toContain('"')
   })
 })
 

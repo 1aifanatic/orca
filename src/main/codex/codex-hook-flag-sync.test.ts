@@ -62,6 +62,7 @@ import {
   getManagedCommand,
   getManagedScriptPath
 } from './codex-hook-definition'
+import { getCodexCmdHookFlagGatePath } from './codex-cmd-hook-flag-gate'
 import {
   getCodexHookFlagTablePath,
   publishCodexHookFlagEntry,
@@ -589,6 +590,14 @@ describe('syncCodexHookFlags', () => {
       }
 
       expect(mocks.runProcess.mock.calls.length).toBe(spawned)
+    })
+
+    it("writes the cmd gate at start even while Codex hooks are off, so cmd panes' codex stays quiet", async () => {
+      enabled = false
+      await start()
+
+      expect(existsSync(getCodexCmdHookFlagGatePath())).toBe(true)
+      expect(existsSync(table())).toBe(false)
     })
 
     it('spawns no cmd.exe on each sync while codex is not installed', async () => {
