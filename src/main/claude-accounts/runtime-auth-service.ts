@@ -18,14 +18,18 @@ import {
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
 import type { ClaudeProfileHostAccess } from './claude-profile-routing-owner'
-import { ClaudeRuntimeAuthSync } from './runtime-auth/runtime-auth-sync'
+import { resolveLocalAccountRuntimeTarget } from '../../shared/local-account-runtime'
+import { ClaudeRuntimePathResolver } from './runtime-paths'
+import { getDefaultWslDistro, getWslHome } from '../wsl'
+import { parseWslUncPath } from '../../shared/wsl-paths'
+import { join } from 'node:path'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
 export type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
-export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
-  constructor(store: Store) {
-    super(store)
+export class ClaudeRuntimeAuthService {
+  private mutationQueue: Promise<unknown> = Promise.resolve()
+  constructor(private readonly store: Store) {
     if (claudeProfileRoutingEnabled()) {
       installClaudeProfileRoutingAuthority(
         createNativeClaudeProfileRouting({
@@ -41,7 +45,6 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
         })
       )
     }
-    this.initializeLastSyncedState()
     void this.safeSyncForCurrentSelection()
   }
 
@@ -63,13 +66,26 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   async prepareForRateLimitFetch(
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRuntimeAuthPreparation> {
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      return profiles.preparation(profiles.resolve(target))
+    const effective = target ?? this.getDefaultAccountSelectionTarget()
+    try {
+      const profiles = getClaudeProfileRoutingAuthority()
+      if (!profiles) {
+        throw new Error('Claude profile host is unavailable.')
+      }
+      if (!profiles.routes(effective)) {
+        return this.getPreparation(effective)
+      }
+      await profiles.refreshForRead(effective)
+      return profiles.preparation(profiles.resolve(effective))
+    } catch (error) {
+      return {
+        configDir: '',
+        envPatch: {},
+        stripAuthEnv: true,
+        provenance: `profile:${getSelectedClaudeAccountIdForTarget(this.store.getSettings(), effective) ?? 'system'}`,
+        profileIssue: error instanceof Error ? error.message : 'Claude usage is unavailable.'
+      }
     }
-    const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
-    await this.syncForCurrentSelection(effectiveTarget)
-    return this.getPreparation(effectiveTarget)
   }
 
   /** `access: 'boot'` marks a user's select or remove, which may start a stopped WSL distro. */
@@ -81,7 +97,7 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
       const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
       const profiles = getClaudeProfileRoutingAuthority()
       if (!profiles) {
-        await this.doSyncForCurrentSelection(effectiveTarget)
+        throw new Error('Claude profile routing is unavailable.')
       } else if (profiles.routes(effectiveTarget)) {
         await profiles.publish(effectiveTarget, 'always', access)
       } else {
@@ -105,31 +121,13 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
         }
         return
       }
-      const settings = this.store.getSettings()
-      if (!settings.activeClaudeManagedAccountId) {
-        const previousAccount = this.getActiveAccount(
-          settings.claudeManagedAccounts,
-          this.lastSyncedAccountId
-        )
-        await this.restoreSystemDefaultSnapshot(
-          previousAccount ? await this.readManagedCredentials(previousAccount) : null,
-          previousAccount ? await this.readManagedOauthAccount(previousAccount) : undefined
-        )
-        this.lastSyncedAccountId = null
-        return
-      }
-      await this.doSyncForCurrentSelection()
+      throw new Error('Claude profile routing is unavailable.')
     })
   }
 
   getRuntimeConfigDir(target?: ClaudeAccountSelectionTarget): string {
-    const legacy = () => this.getPreparation(target).configDir
+    const legacy = () => new ClaudeRuntimePathResolver().getRuntimePaths().configDir
     return getClaudeProfileRoutingAuthority()?.configDirOr(target, legacy) ?? legacy()
-  }
-
-  private initializeLastSyncedState(): void {
-    const settings = this.store.getSettings()
-    this.lastSyncedAccountId = getSelectedClaudeAccountIdForTarget(settings, { runtime: 'host' })
   }
 
   private async safeSyncForCurrentSelection(): Promise<void> {
@@ -147,13 +145,40 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     return next
   }
 
-  // Why: re-auth/add-account write fresh managed tokens; skip the next read-back so stale runtime tokens can't overwrite them.
-  clearLastWrittenCredentialsJson(
-    accountId = this.store.getSettings().activeClaudeManagedAccountId
-  ): void {
-    if (accountId === this.store.getSettings().activeClaudeManagedAccountId) {
-      this.lastWrittenCredentialsJson = null
+  private getDefaultAccountSelectionTarget(): ClaudeAccountSelectionTarget {
+    const target = resolveLocalAccountRuntimeTarget(this.store.getSettings())
+    return process.platform === 'win32' ? target : { runtime: 'host' }
+  }
+
+  private getPreparation(target?: ClaudeAccountSelectionTarget): ClaudeRuntimeAuthPreparation {
+    const effective = target ?? this.getDefaultAccountSelectionTarget()
+    if (getSelectedClaudeAccountIdForTarget(this.store.getSettings(), effective)) {
+      throw new Error('Sign in again to use this account.')
     }
-    this.skipNextReadBackForAccountId = accountId
+    const paths = new ClaudeRuntimePathResolver().getRuntimePaths()
+    if (effective.runtime === 'wsl') {
+      const distro = effective.wslDistro ?? getDefaultWslDistro()
+      const home = distro ? getWslHome(distro) : null
+      const guest = home ? parseWslUncPath(home) : null
+      if (!home || !guest) {
+        throw new Error('WSL Claude home is unavailable.')
+      }
+      return {
+        configDir: join(home, '.claude'),
+        runtime: 'wsl',
+        wslDistro: distro,
+        wslLinuxConfigDir: `${guest.linuxPath.replace(/\/$/, '')}/.claude`,
+        envPatch: {},
+        stripAuthEnv: true,
+        provenance: 'system'
+      }
+    }
+    return {
+      configDir: paths.configDir,
+      runtime: 'host',
+      envPatch: paths.envPatch,
+      stripAuthEnv: false,
+      provenance: 'system'
+    }
   }
 }

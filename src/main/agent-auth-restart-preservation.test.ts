@@ -8,7 +8,7 @@ describe('preserveAgentAuthBeforeRestart', () => {
     vi.restoreAllMocks()
   })
 
-  it('syncs Codex then Claude before flushing the store', async () => {
+  it('syncs Codex and flushes the store without touching Claude credentials', async () => {
     const calls: string[] = []
 
     await preserveAgentAuthBeforeRestart({
@@ -29,7 +29,7 @@ describe('preserveAgentAuthBeforeRestart', () => {
       }
     })
 
-    expect(calls).toEqual(['codex', 'claude', 'flush'])
+    expect(calls).toEqual(['codex', 'flush'])
   })
 
   it('drains retained WSL Codex auth before flushing the store', async () => {
@@ -122,9 +122,7 @@ describe('preserveAgentAuthBeforeRestart', () => {
     })
 
     expect(syncClaude).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-auth-restart] Claude auth preservation exceeded 0ms; continuing restart/update'
-    )
+    expect(warn).not.toHaveBeenCalled()
   })
 
   it('checkpoints admitted state without waiting for ongoing edits when auth services are missing', async () => {
@@ -158,45 +156,8 @@ describe('preserveAgentAuthBeforeRestart', () => {
     ).resolves.toBeUndefined()
 
     expect(flushPendingOrThrowAsync).toHaveBeenCalledTimes(1)
-    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(warn.mock.calls)).not.toContain('token-secret')
-  })
-
-  it('releases the lifecycle path on timeout without canceling in-flight sync', async () => {
-    vi.useFakeTimers()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const calls: string[] = []
-    let finishClaude!: () => void
-
-    const preservation = preserveAgentAuthBeforeRestart({
-      claudeRuntimeAuth: {
-        syncForCurrentSelection: vi.fn(async () => {
-          calls.push('claude-start')
-          await new Promise<void>((resolve) => {
-            finishClaude = resolve
-          })
-          calls.push('claude-finish')
-        })
-      },
-      store: {
-        flushPendingOrThrowAsync: vi.fn(async () => {
-          calls.push('flush')
-        })
-      }
-    })
-
-    await vi.advanceTimersByTimeAsync(2_000)
-    await preservation
-
-    expect(calls).toEqual(['claude-start', 'flush'])
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-auth-restart] Claude auth preservation exceeded 2000ms; continuing restart/update'
-    )
-
-    finishClaude()
-    await Promise.resolve()
-
-    expect(calls).toEqual(['claude-start', 'flush', 'claude-finish'])
   })
 
   it('shares the original lifecycle timeout between Claude and store preservation', async () => {
@@ -221,7 +182,7 @@ describe('preserveAgentAuthBeforeRestart', () => {
 
     expect(settled).toBe(true)
     expect(warn).toHaveBeenCalledWith(
-      '[agent-auth-restart] Store persistence exceeded 0ms; continuing restart/update'
+      '[agent-auth-restart] Store persistence exceeded 2000ms; continuing restart/update'
     )
   })
 

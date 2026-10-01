@@ -85,7 +85,7 @@ export type ClaudeManagedAccountSummary = {
   profileReadiness?: ClaudeProfileReadiness
 }
 
-export type ClaudeProfileReadiness = 'ready' | 'sign-in-required' | 'unsupported'
+export type ClaudeProfileReadiness = 'ready' | 'sign-in-required' | 'unsupported' | 'unavailable'
 
 export type ClaudeRateLimitAccountsState = {
   accounts: ClaudeManagedAccountSummary[]

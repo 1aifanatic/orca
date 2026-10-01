@@ -22,24 +22,12 @@ export type AgentAuthRestartPreservationOptions = {
 
 export async function preserveAgentAuthBeforeRestart({
   codexRuntimeHome,
-  claudeRuntimeAuth,
   store
 }: AgentAuthRestartPreservationOptions): Promise<void> {
   const startedAt = Date.now()
   runCodexPreservationStep(codexRuntimeHome)
   // Why: the drain owns guest-process timeouts; a shared 2s cutoff can relaunch before promotion.
   const wslCodexPreservation = runWslCodexPreservationStep(codexRuntimeHome)
-
-  const claudeRemainingMs = remainingLifecycleTime(startedAt)
-  if (claudeRuntimeAuth && claudeRemainingMs > 0) {
-    await runWithinLifecycleTimeout(
-      'Claude auth preservation',
-      () => claudeRuntimeAuth.syncForCurrentSelection(),
-      claudeRemainingMs
-    )
-  } else if (claudeRuntimeAuth) {
-    logStepTimeout('Claude auth preservation', 0)
-  }
 
   const storePreservation = store
     ? runWithinLifecycleTimeout(

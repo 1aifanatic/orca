@@ -64,7 +64,13 @@ function fixture() {
   const profiles = ['a', 'b'].map((id) =>
     describeClaudeProfile(dataRoot, id, { runtime: 'host', executionHostId: 'local' })
   )
-  profiles.forEach((profile) => prepareClaudeProfileDirectory(dataRoot, profile, home))
+  profiles.forEach((profile) => {
+    prepareClaudeProfileDirectory(dataRoot, profile, home)
+    writeFileSync(
+      join(profile.home, '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: 'fake@example.test' } })
+    )
+  })
   return { root, home, dataRoot, settings, worker, routing, profiles, inherited }
 }
 describe('native Claude profile authority', () => {
@@ -186,7 +192,9 @@ describe('native Claude profile authority', () => {
     f.settings.activeClaudeManagedAccountId = 'legacy'
     expect(f.routing.describeAccounts(state).profileRoutingIssue).toBeDefined()
     await vi.waitFor(() =>
-      expect(f.routing.describeAccounts(state).profileRoutingIssue).toContain('fresh sign-in')
+      expect(f.routing.describeAccounts(state).profileRoutingIssue).toContain(
+        'Sign in again to use this account.'
+      )
     )
   })
   it('gives panes the selected profile and a twin, and System Default nothing but the pointer', () => {
@@ -210,7 +218,7 @@ describe('native Claude profile authority', () => {
     const f = fixture()
     await f.routing.publish()
     rmSync(join(f.dataRoot, 'claude-profiles', 'a', 'profile.json'))
-    await expect(f.routing.startup()).rejects.toThrow('fresh sign-in')
+    await expect(f.routing.startup()).rejects.toThrow('Sign in again to use this account.')
     expect(existsSync(f.routing.pointerPath())).toBe(false)
     f.settings.activeClaudeManagedAccountId = 'b'
     await f.routing.publish()

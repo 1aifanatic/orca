@@ -26,16 +26,9 @@ export class ClaudeProfileRoutingService {
   private readonly backgroundPublishes = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
-  /** Settings only: a WSL distro is routed while it holds an Orca Claude account. An unrouted one
-   *  stays System Default exactly as before profiles: no pointer, no guest call. */
+  // Every named distro pane must see its first account selection without reopening.
   routes(target?: ClaudeAccountSelectionTarget): boolean {
-    if (target?.runtime !== 'wsl') {
-      return true
-    }
-    const distro = target.wslDistro?.trim().toLowerCase()
-    return this.owner
-      .targets()
-      .some((entry) => entry.runtime === 'wsl' && entry.wslDistro?.toLowerCase() === distro)
+    return target?.runtime !== 'wsl' || Boolean(target.wslDistro?.trim())
   }
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
     const descriptor = this.owner.resolve(target)
@@ -266,6 +259,19 @@ export class ClaudeProfileRoutingService {
       [CLAUDE_PROFILE_POINTER_ENV]: descriptor.pointerPath,
       ...(home ? { CLAUDE_CONFIG_DIR: home, [CLAUDE_INJECTED_CONFIG_DIR_ENV]: home } : {})
     }
+  }
+  async refreshForRead(target?: ClaudeAccountSelectionTarget): Promise<void> {
+    await this.owner.refresh?.(target, 'if-running')
+  }
+  accountHome(accountId: string): string {
+    if (this.owner.readiness(accountId) !== 'ready') {
+      throw new Error('Claude profile is not signed in or is unavailable.')
+    }
+    const home = this.owner.accountHome?.(accountId)
+    if (!home) {
+      throw new Error('Claude profile home is unavailable.')
+    }
+    return home
   }
   /** Never throws: readiness is per account, and a stale pointer is republished in the background. */
   describeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {

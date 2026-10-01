@@ -29,6 +29,7 @@ export type ClaudeProfileRoutingOwner = {
   capabilities: (target: ClaudeAccountSelectionTarget) => readonly string[]
   /** Derived from step-1 setup's own output, so no flag records that setup ran. */
   isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
+  accountHome?: (accountId: string) => string
   readiness: (accountId: string) => ClaudeProfileReadiness
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
   prepare: (

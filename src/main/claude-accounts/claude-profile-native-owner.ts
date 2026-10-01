@@ -1,16 +1,13 @@
+import { readClaudeProfileReadiness, readClaudeProfileOwnership } from './claude-profile-readiness'
 import { lstatSync, readdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
   CLAUDE_PROFILE_ROUTING_CAPABILITY
 } from '../../shared/claude-profile-routing'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
-import {
-  describeClaudeProfile,
-  assertClaudeProfileDescendant,
-  readClaudeProfileObject
-} from './claude-profile-paths'
+import { describeClaudeProfile, assertClaudeProfileDescendant } from './claude-profile-paths'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
 import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
@@ -54,18 +51,13 @@ export function createNativeClaudeProfileRouting(args: {
       runtime: 'host'
     })
     assertClaudeProfileDescendant(args.dataRoot, profile.home)
-    const markerPath = join(dirname(profile.home), 'profile.json')
-    const marker = readClaudeProfileObject(markerPath)
-    if (
-      marker.kind !== 'present' ||
-      marker.value.version !== 1 ||
-      marker.value.accountId !== id ||
-      marker.value.runtime !== 'host' ||
-      marker.value.distro !== undefined ||
-      !lstatSync(markerPath).isFile() ||
-      !lstatSync(profile.home).isDirectory()
-    ) {
-      throw new Error('Selected Claude account needs a fresh sign-in')
+    const readiness = readClaudeProfileReadiness(args.dataRoot, profile)
+    if (readiness !== 'ready') {
+      throw new Error(
+        readiness === 'sign-in-required'
+          ? 'Sign in again to use this account.'
+          : 'Claude profile is unavailable. Try again.'
+      )
     }
     return profile
   }
@@ -110,7 +102,13 @@ export function createNativeClaudeProfileRouting(args: {
         ...shared,
         ...ids.flatMap((id) => {
           try {
-            return [profileFor(id).home]
+            const profile = describeClaudeProfile(args.dataRoot, id, {
+              executionHostId: 'local',
+              runtime: 'host'
+            })
+            return readClaudeProfileOwnership(args.dataRoot, profile) === 'ready'
+              ? [profile.home]
+              : []
           } catch {
             return []
           }
@@ -125,17 +123,16 @@ export function createNativeClaudeProfileRouting(args: {
         return false
       }
     },
+    accountHome: (id) => profileFor(id).home,
     readiness: (id) => {
       const account = accountFor(id)
       if (!account || account.managedAuthRuntime === 'wsl') {
         return 'unsupported'
       }
-      try {
-        profileFor(id)
-        return 'ready'
-      } catch {
-        return 'sign-in-required'
-      }
+      return readClaudeProfileReadiness(
+        args.dataRoot,
+        describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
+      )
     },
     prepare: async (descriptor) => {
       if (!descriptor.profile) {

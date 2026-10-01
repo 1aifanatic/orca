@@ -1,11 +1,7 @@
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 
-export const CLAUDE_AUTH_ENV_VARS = [
-  'ANTHROPIC_API_KEY',
-  'ANTHROPIC_AUTH_TOKEN',
-  'CLAUDE_CODE_OAUTH_TOKEN',
-  'AWS_BEARER_TOKEN_BEDROCK'
-] as const
+import { CLAUDE_AUTH_ENV_VARS } from '../../shared/claude-auth-env'
+export { CLAUDE_AUTH_ENV_VARS } from '../../shared/claude-auth-env'
 
 export type ClaudeEnvPatch = {
   ORCA_CLAUDE_PROFILE_POINTER?: string

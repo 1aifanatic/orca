@@ -123,6 +123,14 @@ export class RuntimeAccountController {
     return { outcome: result.outcome, scope: result.scope, snapshot }
   }
 
+  beginClaudeProfileLogin(target: ClaudeAccountSelectionTarget) {
+    return this.requireServices().claudeAccounts.beginProfileLogin(target)
+  }
+
+  finishClaudeProfileLogin(accountId: string) {
+    return this.requireServices().claudeAccounts.finishProfileLogin(accountId)
+  }
+
   removeClaude(accountId: string): Promise<ClaudeRateLimitAccountsState> {
     return this.requireServices().claudeAccounts.removeAccount(accountId)
   }

@@ -148,6 +148,13 @@ export function isCompatServerTarget(target: string): target is CompatServerTarg
   return COMPAT_SERVER_TARGETS.some((known) => known === target)
 }
 
+/** The pinned asset for a known default or compatibility target. */
+export function pinnedNodeRuntimeAsset(target: NodeRuntimeTarget): NodeRuntimeAsset {
+  return isCompatServerTarget(target)
+    ? NODE_RUNTIME_COMPAT_ASSETS[target]
+    : NODE_RUNTIME_ASSETS[target]
+}
+
 /** The pinned asset for a default or compat target; undefined for anything else. */
 export function nodeRuntimeAsset(target: string): NodeRuntimeAsset | undefined {
   if (isCompatServerTarget(target)) {

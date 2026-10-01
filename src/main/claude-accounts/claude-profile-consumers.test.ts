@@ -79,7 +79,13 @@ function fixture() {
   const profiles = ['a', 'b'].map((id) =>
     describeClaudeProfile(dataRoot, id, { runtime: 'host', executionHostId: 'local' })
   )
-  profiles.forEach((profile) => prepareClaudeProfileDirectory(dataRoot, profile, home))
+  profiles.forEach((profile) => {
+    prepareClaudeProfileDirectory(dataRoot, profile, home)
+    writeFileSync(
+      join(profile.home, '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: 'fake@example.test' } })
+    )
+  })
   const worker = {
     prepare: vi.fn(async (job: Parameters<typeof provisionClaudeAccountProfile>[0]) =>
       provisionClaudeAccountProfile(job)

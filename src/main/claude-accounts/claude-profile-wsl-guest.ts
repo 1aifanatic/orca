@@ -1,3 +1,4 @@
+import { readClaudeProfileReadiness } from './claude-profile-readiness'
 import { lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { z } from 'zod'
@@ -13,8 +14,9 @@ import { ClaudeHookService } from '../claude/hook-service'
 import { WSL_CLAUDE_PROFILE_POINTER_FROM_HOME } from '../../shared/claude-profile-routing'
 
 export const ClaudeWslProfileRequest = z.object({
-  action: z.enum(['inspect', 'setup', 'publish', 'withdraw', 'trust']),
+  action: z.enum(['inspect', 'setup', 'create', 'publish', 'withdraw', 'trust']),
   distro: z.string().min(1),
+  accountIds: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
   userHome: z.string().startsWith('/'),
   accountId: z
     .string()
@@ -125,9 +127,24 @@ export async function runClaudeWslProfileRequest(request: ClaudeWslProfileReques
       })
       historyHomes[surface] = [...new Set(roots)]
     }
-    return { ready, provisioned, homes, historyHomes }
+    const readiness = Object.fromEntries(
+      (request.accountIds ?? (accountId ? [accountId] : [])).map((id) => [
+        id,
+        readClaudeProfileReadiness(
+          dataRoot,
+          describeClaudeProfile(dataRoot, id, { executionHostId: 'local', runtime: 'wsl', distro })
+        )
+      ])
+    )
+    return {
+      ready: accountId ? readiness[accountId] === 'ready' : true,
+      provisioned,
+      homes,
+      historyHomes,
+      readiness
+    }
   }
-  if (!ready) {
+  if (!ready && request.action !== 'create') {
     throw new Error('Selected WSL Claude account needs a fresh sign-in')
   }
   if (request.action === 'publish') {

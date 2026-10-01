@@ -45,11 +45,26 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
         </p>
       </div>
 
+      {claudeAccounts.profileRoutingIssue ? (
+        <p role="alert" className="text-xs text-muted-foreground">
+          {translate(
+            'accounts.claude.routingIssue',
+            'Claude account selection needs attention: {{value0}}',
+            { value0: claudeAccounts.profileRoutingIssue }
+          )}
+        </p>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {translate(
+          'accounts.claude.upgrade',
+          'After upgrading, sign in once for each saved account. Your personal Claude login stays separate. Usage may be stale or expired until you start Claude in that account.'
+        )}
+      </p>
       <SearchableSetting
         title={translate('auto.components.settings.AccountsPane.8bbfd74556', 'Claude Accounts')}
         description={translate(
-          'auto.components.settings.AccountsPane.79e484c3b2',
-          'Optional account switcher for the shared Claude auth files.'
+          'accounts.claude.profileSwitching',
+          'Switching applies to the next Claude you start in any tab. Running sessions keep their account.'
         )}
         keywords={['claude', 'account', 'rate limit', 'status bar', 'quota']}
         className="space-y-3 py-2"
@@ -208,11 +223,18 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                           accountRuntimeView
                         )
                       }}
-                      disabled={isBusy}
+                      disabled={
+                        isBusy ||
+                        (account.profileReadiness !== undefined &&
+                          account.profileReadiness !== 'ready')
+                      }
                       className="flex min-w-0 flex-1 flex-col gap-0.5 text-left disabled:cursor-default"
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-medium">{account.email}</span>
+                        <span className="truncate text-sm font-medium">
+                          {account.email ||
+                            translate('accounts.claude.draft', 'Unfinished sign-in')}
+                        </span>
                         <Badge
                           variant="outline"
                           className="h-4 shrink-0 rounded px-1.5 text-[10px] font-medium leading-none text-foreground/70"
@@ -232,9 +254,19 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                         ) : null}
                       </div>
                       <span className="truncate text-[11px] text-muted-foreground">
-                        {account.organizationName
-                          ? `${account.organizationName} · ${formatAccountTimestamp(account.lastAuthenticatedAt)}`
-                          : formatAccountTimestamp(account.lastAuthenticatedAt)}
+                        {account.profileReadiness === 'sign-in-required'
+                          ? translate(
+                              'accounts.claude.signInRequired',
+                              'Sign in again to use this account'
+                            )
+                          : account.profileReadiness === 'unavailable'
+                            ? translate(
+                                'accounts.claude.unavailable',
+                                'Account unavailable. Try again when its host is reachable.'
+                              )
+                            : account.organizationName
+                              ? `${account.organizationName} · ${formatAccountTimestamp(account.lastAuthenticatedAt)}`
+                              : formatAccountTimestamp(account.lastAuthenticatedAt)}
                       </span>
                     </button>
                     <div className="flex shrink-0 items-center justify-end gap-1 max-md:w-full max-md:flex-wrap">
@@ -260,10 +292,7 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                         ) : (
                           <RefreshCw className="size-3" />
                         )}
-                        {translate(
-                          'auto.components.settings.AccountsPane.8a0f870153',
-                          'Re-authenticate'
-                        )}
+                        {translate('accounts.claude.signInAgain', 'Sign in again')}
                       </Button>
                       <Button
                         variant="ghost"
@@ -275,7 +304,11 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                             runtime: getProviderAccountRuntime(account)
                           })
                         }}
-                        disabled={isBusy}
+                        disabled={
+                          isBusy ||
+                          (account.profileReadiness !== undefined &&
+                            account.profileReadiness !== 'ready')
+                        }
                         className="h-6 px-2 text-muted-foreground hover:text-destructive"
                       >
                         <Trash2 className="size-3" />

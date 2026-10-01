@@ -214,6 +214,9 @@
         "title": "Run each Codex terminal on its own server",
         "description": "Keeps Orca's status and closing tabs working correctly. Turn off to use Codex's shared server and its agents overview. Applies to new terminals."
       }
+    },
+    "accounts": {
+      "claudeRemoveProfile": "Orca will forget this account and leave its login files on disk. If selected, the next Claude launch uses System Default. Running sessions keep their account."
     }
   },
   "menu": {
@@ -18668,5 +18671,17 @@
     "addTypedPath": "Add",
     "noDirectories": "No folders added yet.",
     "removePath": "Remove {{name}}"
+  },
+  "accounts": {
+    "claude": {
+      "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses this selection. Running sessions keep their account.",
+      "routingIssue": "Claude account selection needs attention: {{value0}}",
+      "upgrade": "After upgrading, sign in once for each saved account. Your personal Claude login stays separate. Usage may be stale or expired until you start Claude in that account.",
+      "profileSwitching": "Switching applies to the next Claude you start in any tab. Running sessions keep their account.",
+      "draft": "Unfinished sign-in",
+      "signInRequired": "Sign in again to use this account",
+      "unavailable": "Account unavailable. Try again when its host is reachable.",
+      "signInAgain": "Sign in again"
+    }
   }
 }

@@ -1,3 +1,8 @@
+import {
+  buildWslExecArgs,
+  buildWslCapturedLoginShellCommand
+} from '../../shared/wsl-login-shell-command'
+import { CLAUDE_AUTH_ENV_VARS } from './environment'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import {
@@ -150,7 +155,7 @@ export function runClaudeCommandProcess(
       }
       settle(() => {
         if (code === 0 || options?.allowFailure) {
-          resolvePromise(output)
+          resolvePromise(spawnConfig.readOutput ? spawnConfig.readOutput(output) : output)
           return
         }
         const trimmedOutput = output.trim()
@@ -186,6 +191,7 @@ type ClaudeSpawnConfig = {
   args: string[]
   env: NodeJS.ProcessEnv
   windowsVerbatimArguments: boolean
+  readOutput?: (output: string) => string
 }
 
 function claudeConfigDirEnv(configDir: string): NodeJS.ProcessEnv {
@@ -202,6 +208,18 @@ function resolveClaudeInvocation(
   interactiveLogin: WindowsHostInteractiveLoginSpawn | null,
   hostClaudeCommand: () => string
 ): ClaudeSpawnConfig {
+  if (configDir.linuxPath && configDir.wslDistro) {
+    const capture = buildWslCapturedLoginShellCommand(
+      `env ${CLAUDE_AUTH_ENV_VARS.map((key) => `-u ${key}`).join(' ')} -u ANTHROPIC_CUSTOM_HEADERS CLAUDE_CONFIG_DIR=${shellQuote(configDir.linuxPath)} CLAUDE_SECURESTORAGE_CONFIG_DIR=${shellQuote(configDir.linuxPath)} claude ${args.map(shellQuote).join(' ')}`
+    )
+    return {
+      command: 'wsl.exe',
+      args: buildWslExecArgs(configDir.wslDistro, ['/bin/sh', '-c', capture.command]),
+      env: process.env,
+      windowsVerbatimArguments: false,
+      readOutput: (output) => capture.readStdout(output) ?? ''
+    }
+  }
   const spawnConfig = interactiveLogin
     ? {
         command: interactiveLogin.command,
@@ -212,36 +230,31 @@ function resolveClaudeInvocation(
         }),
         windowsVerbatimArguments: false
       }
-    : configDir.linuxPath && configDir.wslDistro
+    : process.platform === 'win32'
       ? {
-          command: 'wsl.exe',
-          args: [
-            '-d',
-            configDir.wslDistro,
-            '--exec',
-            'bash',
-            '-lc',
-            `export CLAUDE_CONFIG_DIR=${shellQuote(configDir.linuxPath)}; export CLAUDE_SECURESTORAGE_CONFIG_DIR=${shellQuote(configDir.linuxPath)}; exec claude ${args.map(shellQuote).join(' ')}`
-          ],
-          env: process.env,
+          ...buildWindowsCommandInvocation(hostClaudeCommand(), args),
+          env: withCliRuntimeOnPath(hostClaudeCommand(), {
+            ...process.env,
+            ...claudeConfigDirEnv(configDir.windowsPath)
+          })
+        }
+      : {
+          command: hostClaudeCommand(),
+          args,
+          env: withCliRuntimeOnPath(hostClaudeCommand(), {
+            ...process.env,
+            ...claudeConfigDirEnv(configDir.windowsPath)
+          }),
           windowsVerbatimArguments: false
         }
-      : process.platform === 'win32'
-        ? {
-            ...buildWindowsCommandInvocation(hostClaudeCommand(), args),
-            env: withCliRuntimeOnPath(hostClaudeCommand(), {
-              ...process.env,
-              ...claudeConfigDirEnv(configDir.windowsPath)
-            })
-          }
-        : {
-            command: hostClaudeCommand(),
-            args,
-            env: withCliRuntimeOnPath(hostClaudeCommand(), {
-              ...process.env,
-              ...claudeConfigDirEnv(configDir.windowsPath)
-            }),
-            windowsVerbatimArguments: false
-          }
+  for (const key of Object.keys(spawnConfig.env)) {
+    const normalized = process.platform === 'win32' ? key.toUpperCase() : key
+    if (
+      CLAUDE_AUTH_ENV_VARS.some((name) => name === normalized) ||
+      normalized === 'ANTHROPIC_CUSTOM_HEADERS'
+    ) {
+      delete spawnConfig.env[key]
+    }
+  }
   return spawnConfig
 }

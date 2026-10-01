@@ -1,3 +1,4 @@
+import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -80,6 +81,9 @@ function fixture(options: { withHost?: boolean } = {}) {
   const respond = vi.fn(async (request: ClaudeWslProfileRequest) => ({
     ready: true,
     provisioned: true,
+    readiness: Object.fromEntries<ClaudeProfileReadiness>(
+      settings.claudeManagedAccounts.map((account) => [account.id, 'ready' as const])
+    ),
     homes: [
       `/home/${request.distro}/.claude`,
       ...settings.claudeManagedAccounts
@@ -117,7 +121,8 @@ function fixture(options: { withHost?: boolean } = {}) {
               hooksEnabled: false
             })
           },
-          reachable
+          reachable,
+          prepare
         )
         return options.withHost ? withWslClaudeProfileOwner(hostOwner(), wsl, () => settings) : wsl
       })()
@@ -137,7 +142,7 @@ it('keeps distro pointers, guest paths, startup and current selection separate',
   }
   expect(f.calls.filter((request) => request.action === 'setup')).toHaveLength(2)
   expect(f.calls.filter((request) => request.action === 'publish')).toHaveLength(4)
-  expect(claudeProfileRoutingEnabled()).toBe(false)
+  expect(claudeProfileRoutingEnabled()).toBe(true)
 })
 it('refuses runtime failure and withdraws only that distro pointer; retry can recover', async () => {
   const f = fixture()
@@ -169,17 +174,30 @@ it('continues initializing other distros when one is stopped, then reports the f
     false
   )
 })
-it('leaves a WSL distro with no Orca account exactly as before profiles', () => {
+it('makes an empty distro pointer-aware before its first account, then switches to the managed guest', async () => {
   const f = fixture()
-  for (const target of [
-    { runtime: 'wsl' as const, wslDistro: 'Arch' },
-    { runtime: 'wsl' as const, wslDistro: null }
-  ]) {
-    expect(f.routing.routes(target)).toBe(false)
-    expect(f.routing.terminalEnv(target)).toEqual({})
-  }
-  expect(f.routing.routes({ runtime: 'wsl', wslDistro: 'ubuntu' })).toBe(true)
-  expect(f.prepare).not.toHaveBeenCalled()
+  const target = { runtime: 'wsl' as const, wslDistro: 'Arch' }
+  expect(f.routing.routes(target)).toBe(true)
+  expect(f.routing.terminalEnv(target)).toEqual({
+    ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER
+  })
+  await vi.waitFor(() =>
+    expect(
+      f.calls.some(
+        (call) => call.distro === 'Arch' && call.action === 'publish' && call.accountId === null
+      )
+    ).toBe(true)
+  )
+  f.settings.claudeManagedAccounts.push({
+    ...f.settings.claudeManagedAccounts[0],
+    id: 'arch',
+    wslDistro: 'Arch'
+  })
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Arch = 'arch'
+  await f.routing.publish(target)
+  expect(f.prepare.mock.calls.filter(([distro]) => distro === 'Arch')).toHaveLength(2)
+  expect(f.calls.at(-1)).toMatchObject({ action: 'publish', distro: 'Arch', accountId: 'arch' })
+  expect(f.routing.routes({ runtime: 'wsl', wslDistro: null })).toBe(false)
 })
 it('opens a routed WSL pane at once and re-derives its publish once the distro is up', async () => {
   const f = fixture({ withHost: true })
@@ -263,7 +281,7 @@ it('lets overlapping launches of the same WSL account share the newest publish',
   const results = await Promise.allSettled([f.routing.prepare(ubuntu), f.routing.prepare(ubuntu)])
   expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled'])
 })
-it('names the distro in a publish issue and drops issues for targets no longer routed', async () => {
+it('clears a distro publication issue after removing its last account and publishing System Default', async () => {
   const f = fixture({ withHost: true })
   f.prepare.mockRejectedValueOnce(new Error('runtime download failed'))
   await expect(f.routing.prepare(ubuntu)).rejects.toThrow('runtime download failed')
@@ -276,6 +294,9 @@ it('names the distro in a publish issue and drops issues for targets no longer r
   f.settings.claudeManagedAccounts = f.settings.claudeManagedAccounts.filter(
     (account) => account.wslDistro !== 'Ubuntu'
   )
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  await f.routing.publish(ubuntu)
+  expect(f.calls.at(-1)).toMatchObject({ action: 'publish', distro: 'Ubuntu', accountId: null })
   expect(issue()).toBeUndefined()
 })
 it('keeps a newer selection verified when an older inspect lands late', async () => {
@@ -308,6 +329,7 @@ it('reports readiness for every owned WSL profile, not only the selected one', a
     const result = await respond!(request)
     return {
       ...result,
+      readiness: { ...result.readiness, unowned: 'sign-in-required' as const },
       homes: result.homes.filter((home) => home !== profileHome('Ubuntu', 'unowned'))
     }
   })
@@ -322,7 +344,7 @@ it('reports readiness for every owned WSL profile, not only the selected one', a
     Ubuntu: 'ready',
     second: 'ready',
     unowned: 'sign-in-required',
-    Debian: 'sign-in-required'
+    Debian: 'unavailable'
   })
 })
 it('sets a WSL profile up at launch only while the guest reports it unprovisioned', async () => {
