@@ -44,11 +44,12 @@ async function waitsReady(
   if (options.busyFirst) {
     runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;π : capture-cwd\x07', Date.now())
   }
-  runtime.onPtyData(
-    TRANSCRIPT_PANE_PTY_ID,
-    `${options.repaint ?? ''}\x1b]0;${options.title}\x07`,
-    Date.now()
-  )
+  if (options.repaint) {
+    // Why the wait: the grid ingests writes asynchronously, and the repaint precedes the title.
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, options.repaint, Date.now())
+    await vi.advanceTimersByTimeAsync(50)
+  }
+  runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, `\x1b]0;${options.title}\x07`, Date.now())
   // OMP 18.4.5 re-asserts bracketed paste every second once a terminal answers its DECRQM probe,
   // as xterm and main's query authority do; the capture tool answered nothing.
   const keepalive = options.keepalive
