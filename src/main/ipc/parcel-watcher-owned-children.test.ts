@@ -12,11 +12,11 @@ import {
 afterEach(() => vi.useRealTimers())
 
 function child() {
-  const events = Object.assign(new EventEmitter(), {
-    exitCode: null as number | null,
-    signalCode: null,
-    kill: vi.fn(() => true)
-  })
+  const exitState: { exitCode: number | null; signalCode: NodeJS.Signals | null } = {
+    exitCode: null,
+    signalCode: null
+  }
+  const events = Object.assign(new EventEmitter(), exitState, { kill: vi.fn(() => true) })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: termination reads only the exit fields, kill and events stubbed here.
   const process = events as unknown as ChildProcess
   const physicalExit = registerWatcherChildPhysicalExit(process)

@@ -41,9 +41,12 @@ function fixture() {
 it('waits for a scheduled pump and permanently fences later metadata requests', async () => {
   const f = fixture()
   const scheduled: (() => void)[] = []
+  // A real, already-cleared handle satisfies the return type without scheduling anything.
+  const handle = setImmediate(() => {})
+  clearImmediate(handle)
   const schedule = vi.spyOn(globalThis, 'setImmediate').mockImplementation((callback) => {
     scheduled.push(callback)
-    return {} as NodeJS.Immediate
+    return handle
   })
   await f.start()
   schedule.mockRestore()

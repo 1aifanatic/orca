@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AgentExecHandler } from './agent-exec-handler'
@@ -6,13 +6,13 @@ import { RELAY_AGENT_CLOSE_DEADLINE_MS } from './relay-agent-process-lifetime'
 import { createFakeChild, requestContext } from './agent-exec-handler-test-harness'
 import type { MethodHandler, RelayDispatcher } from './dispatcher'
 
+// Why an untyped mock: the fake child stubs only what AgentExecHandler reads from a ChildProcess.
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }))
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof ChildProcess>()),
-  spawn: vi.fn(),
+  spawn: (...args: unknown[]) => spawnMock(...args),
   execFile: vi.fn()
 }))
-
-const spawnMock = vi.mocked(spawn)
 
 function fixture() {
   const methods = new Map<string, MethodHandler>()
@@ -44,7 +44,7 @@ it('waits for every child close, including commands without a cwd and replaced l
   const f = fixture()
   const children = [createFakeChild(), createFakeChild(), createFakeChild()]
   for (const child of children) {
-    spawnMock.mockReturnValueOnce(child as never)
+    spawnMock.mockReturnValueOnce(child)
   }
   const requests = [f.exec(), f.exec({ cwd: '/repo' }), f.exec({ cwd: '/repo' })]
   let finished = false
@@ -77,7 +77,7 @@ it('waits for every child close, including commands without a cwd and replaced l
 it('refuses execution once disposal begins and after it completes', async () => {
   const f = fixture()
   const child = createFakeChild()
-  spawnMock.mockReturnValue(child as never)
+  spawnMock.mockReturnValue(child)
   const request = f.exec()
   const disposal = f.handler.dispose()
   await expect(f.exec()).rejects.toThrow()
@@ -91,7 +91,7 @@ it('refuses execution once disposal begins and after it completes', async () => 
 it('retains timed-out children until close rather than treating RPC settlement as exit', async () => {
   const f = fixture()
   const child = createFakeChild()
-  spawnMock.mockReturnValue(child as never)
+  spawnMock.mockReturnValue(child)
   const request = f.exec({ cwd: '/repo' })
   await vi.advanceTimersByTimeAsync(1000)
   await expect(request).resolves.toMatchObject({ timedOut: true })
@@ -115,7 +115,7 @@ it('resolves disposal with no children or only already-closed children', async (
   await fixture().handler.dispose()
   const f = fixture()
   const child = createFakeChild()
-  spawnMock.mockReturnValue(child as never)
+  spawnMock.mockReturnValue(child)
   const request = f.exec()
   child.emit('close', 0)
   await request
@@ -126,7 +126,7 @@ it('resolves disposal with no children or only already-closed children', async (
 it('rejects within the close deadline and re-checks without re-killing on retry', async () => {
   const f = fixture()
   const child = createFakeChild()
-  spawnMock.mockReturnValue(child as never)
+  spawnMock.mockReturnValue(child)
   const request = f.exec({ timeoutMs: 60_000 })
   const signals = () =>
     process.platform === 'win32'
