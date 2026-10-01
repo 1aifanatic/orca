@@ -58,6 +58,14 @@ async function createAtRest(
       )
     }
   }
+  // A record this host has not adjudicated since load is adjudicated here, as a start does: the
+  // create's transaction refuses one still unreconciled, and nothing else on this path would clear it.
+  if (store.getRecord(sessionId)?.lease.unreconciled) {
+    const unreconciled = await context.reconcileLeases(sessionId)
+    if (unreconciled) {
+      return { ok: false, refusal: unreconciled }
+    }
+  }
   // Read and checked before the record claims the provider conversation it adopts.
   const transcript = store.getRecord(sessionId)
     ? { ok: true as const, items: null }
