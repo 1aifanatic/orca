@@ -93,7 +93,11 @@ describe('a failure that repeats', () => {
     // A refusal's message is its bare code: only the cause tells these two apart.
     const unreadable = (cause: Error): Error =>
       new AgentSessionRefusalError(
-        refuse('agent_session_journal_unreadable', { reason: 'journalUnavailable' }),
+        refuse(
+          'agent_session_journal_unreadable',
+          { reason: 'journalUnavailable' },
+          'agent_session_journal_unreadable'
+        ),
         { cause }
       )
     const report = (error: unknown): void =>
