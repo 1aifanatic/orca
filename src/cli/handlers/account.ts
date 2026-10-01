@@ -24,7 +24,7 @@ import {
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
   CODEX_ACCOUNT_IMPORT_CAPABILITY,
   CLAUDE_PROFILE_LOGIN_CAPABILITY
-} from '../../shared/protocol-version'
+} from '../../shared/account-runtime-capabilities'
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import type {
   ClaudeRateLimitAccountsState,

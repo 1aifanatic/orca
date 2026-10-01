@@ -8,9 +8,9 @@ import {
 } from './runtime-browser-commands-factory'
 import { isBrowserIdentityModeStoreInitialized } from '../browser/browser-identity-mode-store'
 import type { RuntimeCapability } from '../../shared/protocol-version'
+import { CLAUDE_PROFILE_LOGIN_CAPABILITY } from '../../shared/account-runtime-capabilities'
 import {
   BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY,
-  CLAUDE_PROFILE_LOGIN_CAPABILITY,
   BROWSER_HEADLESS_RUNTIME_CAPABILITY,
   BROWSER_IDENTITY_RUNTIME_CAPABILITY,
   MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,

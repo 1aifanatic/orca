@@ -63,10 +63,10 @@ import {
   WINDOWS_BATCH_UNSAFE_CHARACTERS_LABEL
 } from '../../shared/windows-batch-spawn'
 import {
+  ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
   CODEX_ACCOUNT_IMPORT_CAPABILITY,
   CLAUDE_PROFILE_LOGIN_CAPABILITY
-} from '../../shared/protocol-version'
-import { ACCOUNT_IMPORT_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
+} from '../../shared/account-runtime-capabilities'
 
 function successfulChild(): EventEmitter {
   const child = new EventEmitter()

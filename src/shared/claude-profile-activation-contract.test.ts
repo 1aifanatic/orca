@@ -2,9 +2,9 @@ import { expect, it } from 'vitest'
 import {
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
   CODEX_ACCOUNT_IMPORT_CAPABILITY,
-  CLAUDE_PROFILE_LOGIN_CAPABILITY,
-  RUNTIME_CAPABILITIES
-} from './protocol-version'
+  CLAUDE_PROFILE_LOGIN_CAPABILITY
+} from './account-runtime-capabilities'
+import { RUNTIME_CAPABILITIES } from './protocol-version'
 import {
   buildWslInteractiveLoginShellCommand,
   buildWslCapturedLoginShellCommand

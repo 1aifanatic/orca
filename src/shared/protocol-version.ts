@@ -1,5 +1,4 @@
 import { ACCOUNT_RUNTIME_CAPABILITIES } from './account-runtime-capabilities'
-export * from './account-runtime-capabilities'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
