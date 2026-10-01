@@ -459,7 +459,9 @@ fresh row read straight from the store, through the same
   blocks a turn the hook says ended;
 - the row joins on any pane key or terminal handle the PTY owns; a pane neither
   reaches, a stale or restored row, a session-start `done`, and a row from
-  before the PTY respawned all leave the decision to the screen and text rules,
+  before the PTY respawned, and a `done` received before Orca's latest input to
+  the pane (the next turn's first hook may still be in flight) all leave the
+  decision to the screen and text rules,
   which is also how startup readiness works before an agent's first hook. A
   shell command marker is no process boundary: Pi paints OSC 133 zones itself;
 - every other agent stays `identity-only`: Claude sends no event when an
