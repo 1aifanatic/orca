@@ -409,8 +409,8 @@ from a targeted saved plan, and restored only after a new incarnation reports th
 heartbeat, and rehome protocol. Restart-safe means the cell runtime itself carries nothing live (no
 controls, pre-auth or in-flight connections, splices, or queued bytes) and no migration is open,
 for a whole drain pace window. Director activity leases left by hosts that already went or cannot
-be placed do not hold the restart; the `relay_capacity_transition_restart_quiet_started` line and
-the final verified line report them. The durable
+be placed do not hold the restart; every `relay_capacity_transition_restart_progress` sample and
+the final verified line report them under `stranded`. The durable
 worker must remain disabled throughout. The post-restart trust check is application-mediated by the
 director; the workflow never receives or mints a director or stamped-cell runtime token. A failure
 keeps only the selected cell migration-only, while the exact rollback digest remains dispatchable via

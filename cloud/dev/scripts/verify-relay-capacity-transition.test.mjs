@@ -1222,7 +1222,7 @@ test('parses the drain pace window only for a live restart-safe wait', () => {
   )
 })
 
-test('lingering director leases do not block a restart of an empty runtime', async () => {
+test('passes after one pace window of an empty runtime and reports stranded leases', async () => {
   const lines = []
   let runtimeReads = 0
   const base = harness(strandedCell)
@@ -1237,16 +1237,23 @@ test('lingering director leases do not block a restart of an empty runtime', asy
   })
   // One sample at each end of a full five-minute pace window.
   assert.equal(runtimeReads, 61)
-  assert.equal(result.director.restartBlockingActivityLeases, 4)
-  assert.equal(result.restartBlockingReservedRequests, -2)
-  assert.deepEqual(lines.map((line) => line.event), [
-    'relay_capacity_transition_restart_quiet_started'
-  ])
-  assert.equal(lines[0].director.restartBlockingActivityLeases, 4)
-  assert.equal(lines[0].requiredRestartSafeSamples, 61)
+  assert.deepEqual(result.stranded, {
+    restartBlockingActivityLeases: 4,
+    restartBlockingActivityRequestUnits: 4,
+    restartBlockingReservedRequests: -2,
+    outgoingMigrations: 0,
+    incomingMigrations: 0
+  })
+  // Every sample but the passing one prints its progress with the stranded counts.
+  assert.equal(lines.length, 60)
+  assert.ok(lines.every((line) =>
+    line.event === 'relay_capacity_transition_restart_progress' &&
+    line.requiredRestartSafeSamples === 61 &&
+    line.stranded.restartBlockingActivityLeases === 4))
+  assert.deepEqual(lines.slice(0, 2).map((line) => line.restartSafeSamples), [1, 2])
 })
 
-test('restart-safe waits out the pace window and restarts it on runtime activity', async () => {
+test('the pace window resets on any non-zero runtime sample', async () => {
   const quiet = harness(strandedCell)
   const busy = harness({ ...strandedCell, controls: 1 })
   let runtimeReads = 0
@@ -1261,7 +1268,7 @@ test('restart-safe waits out the pace window and restarts it on runtime activity
     ...fakeClock()
   })
   assert.equal(runtimeReads, 91)
-  assert.equal(lines.length, 2)
+  assert.deepEqual(lines.slice(28, 31).map((line) => line.restartSafeSamples), [29, 0, 1])
   await assert.rejects(
     verifyCapacityTransition(
       { ...pacedRestartConfig, timeoutMs: 295_000 },
@@ -1271,7 +1278,7 @@ test('restart-safe waits out the pace window and restarts it on runtime activity
   )
 })
 
-test('restart-safe refuses any live runtime work however long it waits', async (t) => {
+test('restart-safe fails on live runtime work or an open migration regardless of leases', async (t) => {
   for (const blocker of [
     { preAuthConnections: 1 },
     { inFlightConnections: 1 },

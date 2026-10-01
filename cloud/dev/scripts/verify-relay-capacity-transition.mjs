@@ -215,7 +215,7 @@ function directorActivityMatches(status, config) {
       status.restartBlockingActivityRequestUnits,
       'restart-blocking activity request units'
     )
-    // An open migration is a handoff still in progress through this cell, not a lagging record.
+    // Open migrations are pinned to this cell's incarnation, which a restart replaces.
     return integer(status.outgoingMigrations, 'outgoing migrations') === 0 &&
       integer(status.incomingMigrations, 'incoming migrations') === 0
   })()
@@ -324,6 +324,20 @@ function transitionObservation(runtime, status) {
   }
 }
 
+// Director records of hosts that left or cannot be placed; reported, never gated on.
+function strandedObservation(observation) {
+  const director = observation.director
+  return director === undefined
+    ? null
+    : {
+        restartBlockingActivityLeases: director.restartBlockingActivityLeases,
+        restartBlockingActivityRequestUnits: director.restartBlockingActivityRequestUnits,
+        restartBlockingReservedRequests: director.restartBlockingReservedRequests,
+        outgoingMigrations: director.outgoingMigrations,
+        incomingMigrations: director.incomingMigrations
+      }
+}
+
 function runtimeQuiescent(runtime, config) {
   if (
     runtime.role !== 'cell' ||
@@ -354,6 +368,8 @@ function runtimeQuiescent(runtime, config) {
     counts.push(runtime.runtime.enforcedConnectionUnits)
   }
   const quiescent = counts.every((value) => integer(value, 'runtime connection count') === 0)
+  // Total connections also count redials the draining cell rejects, which never stop while
+  // hosts have nowhere else to go.
   const restartSafe = config.activity !== 'restart-safe' ||
     [
       runtime.runtime?.preAuthConnections,
@@ -463,17 +479,9 @@ export async function verifyCapacityTransition(config, overrides = {}) {
             status.connectionCapacity?.heartbeatFresh ?? status.runtime?.heartbeatFresh ?? false,
           imageDigest: runtime?.imageDigest ?? null,
           ...(config.activity === 'restart-safe'
-            ? { restartBlockingReservedRequests, director: lastObservation.director }
+            ? { restartBlockingReservedRequests, stranded: strandedObservation(lastObservation) }
             : {})
         }
-      }
-      if (config.activity === 'restart-safe' && matches && restartSafeSamples === 0) {
-        // Shows the operator any leases still held by hosts that left or cannot be placed.
-        progress({
-          event: 'relay_capacity_transition_restart_quiet_started',
-          requiredRestartSafeSamples,
-          director: lastObservation.director
-        })
       }
       restartSafeSamples = matches ? restartSafeSamples + 1 : 0
     } else {
@@ -485,6 +493,12 @@ export async function verifyCapacityTransition(config, overrides = {}) {
         restartSafeSamples,
         requiredRestartSafeSamples
       }
+      progress({
+        event: 'relay_capacity_transition_restart_progress',
+        restartSafeSamples,
+        requiredRestartSafeSamples,
+        stranded: strandedObservation(lastObservation)
+      })
     }
     if (now() >= deadline) {
       throw new Error(
