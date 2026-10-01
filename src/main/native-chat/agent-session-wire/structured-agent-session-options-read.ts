@@ -16,6 +16,7 @@ import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-fa
 import { isClaudeStructuredOptionKey } from '../../claude/claude-structured-options'
 import { isCodexTurnOptionKey } from '../../codex/codex-structured-turn-start'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
+import { structuredAgentSessionOptionModels } from './structured-agent-session-option-models'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 
@@ -48,7 +49,7 @@ async function readStructuredAgentSessionOptionsAtRest(
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
   return {
-    models,
+    models: structuredAgentSessionOptionModels(models, model, (row) => row),
     ...(catalog.origin !== 'unknown' && catalog.fastModeSupport
       ? { fastModeSupport: catalog.fastModeSupport }
       : {}),
