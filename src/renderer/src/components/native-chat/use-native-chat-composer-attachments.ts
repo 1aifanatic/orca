@@ -54,14 +54,15 @@ export function useNativeChatComposerAttachments({
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
   dropPendingImageAttachment: (id: string) => void
 } {
+  const [shownAtMount] = useState(() => readNativeChatDraftAttachments(attachmentScopeKey))
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
-    () => [...readNativeChatDraftAttachments(attachmentScopeKey)]
+    () => [...shownAtMount]
   )
   // This view's chips for synchronous updates; React state only renders them.
   const attachmentsRef = useRef(imageAttachments)
   const writerRef = useRef<object>({})
-  // The shared list last shown here; null until the first sync.
-  const syncedRef = useRef<readonly NativeChatDraftAttachment[] | null>(null)
+  // The shared list last shown here.
+  const syncedRef = useRef<readonly NativeChatDraftAttachment[]>(shownAtMount)
   const imageAttachmentCounter = useRef(0)
   // Chips this view has checked or attached itself; anything else may be restored from disk.
   const checkedIdsRef = useRef(new Set<string>())
@@ -90,34 +91,36 @@ export function useNativeChatComposerAttachments({
   }, [imageAttachments])
 
   // Settled chips are the chat's, shared with every view; pending chips and previews stay here.
-  useEffect(
-    () =>
-      subscribeToNativeChatDraft(attachmentScopeKey, (writer) => {
-        const shared = readNativeChatDraftAttachments(attachmentScopeKey)
-        if (writer === writerRef.current || shared === syncedRef.current) {
-          return
-        }
-        syncedRef.current = shared
-        const local = attachmentsRef.current
-        const sharedIds = new Set(shared.map((attachment) => attachment.id))
-        local
-          .filter((attachment) => !attachment.pending && !sharedIds.has(attachment.id))
-          .forEach(releaseAttachmentPreview)
-        const previews = new Map(
-          local.flatMap((attachment) =>
-            attachment.previewUrl ? [[attachment.id, attachment.previewUrl] as const] : []
-          )
+  useEffect(() => {
+    const showShared = (writer?: object): void => {
+      const shared = readNativeChatDraftAttachments(attachmentScopeKey)
+      if (writer === writerRef.current || shared === syncedRef.current) {
+        return
+      }
+      syncedRef.current = shared
+      const local = attachmentsRef.current
+      const sharedIds = new Set(shared.map((attachment) => attachment.id))
+      local
+        .filter((attachment) => !attachment.pending && !sharedIds.has(attachment.id))
+        .forEach(releaseAttachmentPreview)
+      const previews = new Map(
+        local.flatMap((attachment) =>
+          attachment.previewUrl ? [[attachment.id, attachment.previewUrl] as const] : []
         )
-        showAttachments([
-          ...shared.map((attachment) => {
-            const previewUrl = previews.get(attachment.id)
-            return previewUrl ? { ...attachment, previewUrl } : attachment
-          }),
-          ...local.filter((attachment) => attachment.pending)
-        ])
-      }),
-    [attachmentScopeKey, showAttachments]
-  )
+      )
+      showAttachments([
+        ...shared.map((attachment) => {
+          const previewUrl = previews.get(attachment.id)
+          return previewUrl ? { ...attachment, previewUrl } : attachment
+        }),
+        ...local.filter((attachment) => attachment.pending)
+      ])
+    }
+    const unsubscribe = subscribeToNativeChatDraft(attachmentScopeKey, showShared)
+    // A write between this view's render and its subscription would otherwise never show here.
+    showShared()
+    return unsubscribe
+  }, [attachmentScopeKey, showAttachments])
 
   const updateImageAttachments = useCallback(
     (

@@ -5,6 +5,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
 import type * as NativeChatDraftCache from './native-chat-draft-cache'
@@ -131,6 +132,17 @@ describe('composer draft persistence', () => {
     act(() => result.current.setDraft(''))
 
     expect(saved(SCOPE)?.text).toBe('withdrawn')
+  })
+
+  it("shows a write that lands between a view's render and its subscription", async () => {
+    const { useNativeChatDraft } = await import('./use-native-chat-draft')
+    const { result } = renderHook(() => {
+      const view = useNativeChatDraft(SCOPE, () => false)
+      useLayoutEffect(() => cache.writeNativeChatDraftCache(SCOPE, 'written meanwhile'), [])
+      return view
+    })
+
+    expect(result.current.draft).toBe('written meanwhile')
   })
 
   it('writes text put back at once and reports that it reached disk', async () => {

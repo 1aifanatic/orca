@@ -46,13 +46,14 @@ export function useNativeChatDraft(
 
   useEffect(() => {
     // This view's own writes come back too; they hold what it already shows.
-    const unsubscribeChange = subscribeToNativeChatDraft(draftKey, () => {
+    const showShared = (): void => {
       const shared = readNativeChatDraftCache(draftKey)
       // A clear still reaches a composing field, which keeps only the composed segment.
       if (!isComposing() || shared === '') {
         showDraft(shared)
       }
-    })
+    }
+    const unsubscribeChange = subscribeToNativeChatDraft(draftKey, showShared)
     const unsubscribeAppend = subscribeToNativeChatDraftAppend(draftKey, (text) => {
       if (!isComposing()) {
         return
@@ -63,6 +64,8 @@ export function useNativeChatDraft(
         text: pending?.draftKey === draftKey ? appendNativeChatDraftText(pending.text, text) : text
       }
     })
+    // A write between this view's render and its subscription would otherwise never show here.
+    showShared()
     return () => {
       unsubscribeChange()
       unsubscribeAppend()

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, createElement, useEffect, useRef, useState } from 'react'
+import { act, createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { renderHook } from '@testing-library/react'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftAttachments,
@@ -324,6 +325,32 @@ describe('useNativeChatComposerAttachments', () => {
     expect(first.latest().imageAttachments).toMatchObject([{ pending: true }])
     act(() => first.root.unmount())
     act(() => second.root.unmount())
+  })
+
+  it("shows chips written between a view's render and its subscription", () => {
+    const { result, unmount } = renderHook(() => {
+      const view = useNativeChatComposerAttachments({
+        attachmentScopeKey: 'session:chat-gap',
+        allowWithoutTarget: true,
+        caret: 0,
+        disabled: false,
+        isComposing: () => false,
+        resolveTarget: () => null,
+        textareaRef: { current: null },
+        setCaret: () => {},
+        setDraft: () => {},
+        setNotice: () => {}
+      })
+      useLayoutEffect(
+        () =>
+          writeNativeChatDraftAttachments('session:chat-gap', [{ id: 'late', path: '/late.png' }]),
+        []
+      )
+      return view
+    })
+
+    expect(result.current.imageAttachments).toMatchObject([{ path: '/late.png' }])
+    unmount()
   })
 
   it('keeps chips in the order they were added while a paste is still saving', async () => {
