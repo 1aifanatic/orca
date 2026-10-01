@@ -281,8 +281,12 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
           () => this.getTerminalAgentStatusSnapshot(handle, ptyId).waitText
         )
       : undefined
-    const terminal = this.getTerminalAgentStatusSnapshot(handle, ptyId, waitText)
-    const status = this.hasAuthoritativeTerminalWaitPermission(terminal, explicit, lifecycle)
+    const waitInputs = this.getTerminalWaitPermissionInputs(handle, ptyId, waitText)
+    const status = this.hasAuthoritativeTerminalWaitPermission(
+      waitInputs.terminal,
+      explicit,
+      waitInputs.lifecycle
+    )
       ? 'permission'
       : lifecycleIsNewer
         ? lifecycle.status

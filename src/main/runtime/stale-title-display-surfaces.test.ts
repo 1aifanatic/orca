@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
 import './orca-runtime-test-lifecycle.spec'
+import { assertTerminalAgentSendable } from './rpc/terminal-agent-send-guard'
 import {
   HEADLESS_LEAF_ID,
   TEST_WORKTREE_ID,
@@ -228,4 +229,67 @@ describe('display surfaces after the stale-working title clear', () => {
       vi.useRealTimers()
     }
   })
+
+  // Synthetic: a trust dialog painted after the clear, behind the name title `⠋ Claude Code`.
+  it.each(['mounted', 'mountedEcho', 'rendererless'] as const)(
+    'a trust dialog painted after the clear still reads as a wait on the user (%s)',
+    async (mode) => {
+      vi.useFakeTimers()
+      try {
+        const ptyId = mode === 'rendererless' ? 'bg-pty' : 'pty-1'
+        const runtime = new OrcaRuntimeService(store)
+        runtime.setPtyController({
+          spawn: vi.fn().mockResolvedValue({ id: ptyId }),
+          write: () => true,
+          kill: () => true,
+          getForegroundProcess: async () => 'claude'
+        })
+        let handle: string
+        if (mode === 'rendererless') {
+          runtime.attachWindow(1)
+          runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
+          handle = (
+            await runtime.createTerminal(`id:${TEST_WORKTREE_ID}`, {
+              tabId: 'bg-tab',
+              leafId: HEADLESS_LEAF_ID
+            })
+          ).handle
+        } else {
+          syncSinglePty(runtime, ptyId, { tabTitle: 'Terminal 1', paneTitle: null })
+          runtime.onPtyData(ptyId, 'boot\r\n', Date.now())
+          handle = (await runtime.listTerminals()).terminals[0]?.handle ?? ''
+        }
+        runtime.onPtyData(ptyId, '\x1b]0;⠋ Claude Code\x07', Date.now())
+        if (mode !== 'rendererless') {
+          syncSinglePty(runtime, ptyId, { tabTitle: '⠋ Claude Code', paneTitle: '⠋ Claude Code' })
+        }
+        runtime.onPtyData(ptyId, 'still running\r\n', Date.now())
+        await vi.advanceTimersByTimeAsync(3_000)
+        if (mode === 'mountedEcho') {
+          // The renderer republishes its own cleared title, as a mounted pane does.
+          syncSinglePty(runtime, ptyId, { tabTitle: 'Claude Code', paneTitle: 'Claude Code' })
+        }
+        await vi.advanceTimersByTimeAsync(1_000)
+        runtime.onPtyData(
+          ptyId,
+          '\r\nDo you trust the files in this folder?\r\n /repo/app\r\n 1. Yes, proceed\r\n 2. No, exit\r\n',
+          Date.now()
+        )
+        await vi.advanceTimersByTimeAsync(1_000)
+        await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+          isRunningAgent: true,
+          status: 'permission'
+        })
+        await expect(
+          assertTerminalAgentSendable({ runtime, handle, assertWritable: () => {} })
+        ).rejects.toThrow('terminal_guard_permission')
+        await expect(runtime.getTerminalInteractiveWait(handle)).resolves.toMatchObject({
+          source: 'prompt-text',
+          reason: 'agent-trust-workspace'
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 })

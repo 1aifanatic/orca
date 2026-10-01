@@ -11,6 +11,7 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   terminalTitleBlocksExplicitAgentStatus,
+  getDisplayPromptLifecycle,
   getLatestAgentCandidateTitleInfo,
   getLeafDisplayRecord,
   getPtyDisplayRecord,
@@ -70,9 +71,10 @@ export class RuntimeTerminalAgentStatusQuery {
     // Why display: whether an agent is here is read off what the pane shows, as before the
     // stale-working clear stopped rewriting records; a cwd spinner clears to a neutral title,
     // so the foreground process decides for an agent that exited behind it.
-    const terminal = this.getSnapshot(handle, ptyId, this.deps.getTitleDisplayClear(ptyId))
+    const clear = this.deps.getTitleDisplayClear(ptyId)
+    const terminal = this.getSnapshot(handle, ptyId, clear)
     const explicitStatus = this.deps.getExplicitStatus(handle)
-    const lifecycle = this.deps.getLifecycleStatus(ptyId)
+    const lifecycle = getDisplayPromptLifecycle(this.deps.getLifecycleStatus(ptyId), clear)
     const blockedByWaitText = detectTerminalWaitBlockedReason(terminal.waitText)
     const liveTitleClearsBlockedText =
       terminal.titleStatusIsLive &&

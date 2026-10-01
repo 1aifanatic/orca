@@ -8,6 +8,7 @@ import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
 import type { AgentStatusEntry } from '../../shared/agent-status-types'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { renewRuntimeMobileAgentStatusFromPtyTitle } from './runtime-mobile-agent-status-projection'
+import { getDisplayPromptLifecycle } from './runtime-worktree-status-projection'
 import type { RuntimeTerminalWriteOptions } from './runtime-terminal-writer'
 import { getRegisteredSshState } from '../ssh/ssh-target-registry'
 import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
@@ -47,6 +48,29 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       lifecycle?.status && lifecycle.status !== 'permission' ? lifecycle.updatedAt : -1
     )
     return newestPermissionAt >= 0 && newestPermissionAt >= newestClearAt ? blockedByWaitText : null
+  }
+
+  /**
+   * The title snapshot and prompt lifecycle the blocked-dialog check compares, both as display
+   * shows them: after a stale-working clear main compared the cleared pair, and comparing a
+   * renderer's echoed clear with the native lifecycle hid a dialog painted later. It can only
+   * report a wait on the user, never idle.
+   */
+  protected getTerminalWaitPermissionInputs(
+    handle: string,
+    ptyId: string,
+    waitTextOverride?: string
+  ): {
+    terminal: RuntimeTerminalAgentStatusSnapshot
+    lifecycle: { status: AgentStatus | null; updatedAt: number } | null | undefined
+  } {
+    const clear = this.getPtyTitleDisplayClear(ptyId)
+    const snapshot = this.terminalAgentStatus.getSnapshot(handle, ptyId, clear)
+    return {
+      terminal:
+        waitTextOverride === undefined ? snapshot : { ...snapshot, waitText: waitTextOverride },
+      lifecycle: getDisplayPromptLifecycle(this.agentPromptLifecycleByPtyId.get(ptyId), clear)
+    }
   }
 
   renewMobileAgentStatusFromPtyTitle(
