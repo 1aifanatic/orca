@@ -77,7 +77,6 @@ function FixStep({
   failedLabel,
   onAction,
   locked = false,
-  note,
   warning
 }: {
   step: number
@@ -90,7 +89,6 @@ function FixStep({
   failedLabel: string
   onAction: () => void
   locked?: boolean
-  note?: string
   warning?: string
 }): React.JSX.Element {
   return (
@@ -129,7 +127,6 @@ function FixStep({
             {command}
           </code>
         </p>
-        {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
         {warning ? <p className="text-xs text-status-warning">{warning}</p> : null}
         {status === 'failed' ? (
           <>
@@ -230,10 +227,6 @@ export function CodexSharedServerFixDialog({
               "Orca couldn't turn this off."
             )}
             onAction={() => void turnOff.start()}
-            note={translate(
-              'terminal.codexSharedServerBanner.step1Note',
-              'This changes your Codex settings, so it also applies outside Orca.'
-            )}
           />
           <FixStep
             step={2}
