@@ -5,10 +5,12 @@
 // keeps the cached summaries and reconnects; a fresh snapshot merges over them.
 // Which sessions are listed is the tab map's decision, so the feed never retracts a summary.
 
-import type {
-  AgentSessionStatusEvent,
-  AgentSessionStatusSummary
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
+import {
+  foldAgentSessionStatusEvent,
+  revokeAgentSessionStatusLive,
+  type AgentSessionStatusSnapshot
+} from '../../../shared/agent-session-status-snapshot-fold'
 import { AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import {
   runtimeEnvironmentSupportsCapability,
@@ -16,7 +18,7 @@ import {
 } from './runtime-rpc-client'
 import { subscribeStructuredAgentSessionStatus } from './structured-agent-session-client'
 
-export type StructuredAgentSessionStatusSnapshot = ReadonlyMap<string, AgentSessionStatusSummary>
+export type StructuredAgentSessionStatusSnapshot = AgentSessionStatusSnapshot
 
 export type StructuredAgentSessionStatusFeedOwner = {
   activate: () => () => void
@@ -58,22 +60,15 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   const applyEvent = (event: AgentSessionStatusEvent): void => {
     if (event.type === 'snapshot') {
       reconnectAttempt = 0
-      // Merged, not replaced: a restarted host restores its readable sessions asynchronously, so
-      // the first snapshot can be empty and dropping those rows flickers every one to no-status.
-      const next = new Map(snapshot)
       for (const session of event.sessions) {
         confirmedSessions.add(session.sessionId)
-        next.set(session.sessionId, session)
       }
-      setSnapshot(next)
+    } else if (event.type === 'status') {
+      confirmedSessions.add(event.session.sessionId)
+    } else {
       return
     }
-    if (event.type === 'status') {
-      confirmedSessions.add(event.session.sessionId)
-      const next = new Map(snapshot)
-      next.set(event.session.sessionId, event.session)
-      setSnapshot(next)
-    }
+    setSnapshot(foldAgentSessionStatusEvent(snapshot, event))
   }
   const active = (candidate: number): boolean => activations.size > 0 && candidate === generation
   const clearReconnect = (): void => {
@@ -86,28 +81,10 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
     handle?.unsubscribe()
     handle = null
   }
-  // A Stop the host was ending is its live state too: with contact lost, no Stopping outlives it.
   const revokeSnapshotOwnership = (): void => {
-    let next: Map<string, AgentSessionStatusSummary> | null = null
-    for (const [sessionId, summary] of snapshot) {
-      if (!summary.hostExecutionOwned && !summary.stopping) {
-        continue
-      }
-      if (!next) {
-        next = new Map(snapshot)
-      }
-      const {
-        hostExecutionOwned: _owned,
-        hostExecutionPhase: _phase,
-        hostExecutionChild: _child,
-        stopping: _stopping,
-        ...retained
-      } = summary
-      next.set(sessionId, retained)
-    }
-    if (next) {
-      snapshot = next
-      emit()
+    const next = revokeAgentSessionStatusLive(snapshot)
+    if (next !== snapshot) {
+      setSnapshot(next)
     }
   }
   let open = (): void => {}
