@@ -16,6 +16,13 @@ afterEach(() => {
   vi.resetModules()
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
 })
+function fishInit({ args }: { args: string[] | null }): string {
+  const init = args?.[2]
+  if (!init) {
+    throw new Error('fish launch was not wrapped')
+  }
+  return init
+}
 async function composed(enabled: boolean) {
   gate.enabled = enabled
   vi.resetModules()
@@ -30,8 +37,8 @@ async function composed(enabled: boolean) {
       daemonBash.getDaemonBashShellReadyRcfileContent()
     ],
     fish: [
-      local.getShellLaunchConfig(FISH, ['ready']).args[2],
-      daemon.getShellLaunchConfig(FISH, ['ready']).args[2]
+      fishInit(local.getShellLaunchConfig(FISH, ['ready'])),
+      fishInit(daemon.getShellLaunchConfig(FISH, ['ready']))
     ],
     powershell: powershell.getPowerShellOsc133Bootstrap()
   }
