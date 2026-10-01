@@ -5,6 +5,7 @@ import {
 } from './claude-oauth-credentials'
 import { fetchClaudeOAuthUsage } from './claude-oauth-usage-request'
 import { classifyClaudeOAuthUsageError } from './claude-usage-error-classification'
+import { OAuthUsageError } from './claude-oauth-usage-error'
 import type { ClaudeRateLimitFetchOptions } from './claude-usage-fetch-options'
 import { abortedClaudeRateLimitResult, makeClaudeUsageResult } from './claude-usage-result'
 
@@ -64,16 +65,22 @@ export async function fetchActiveClaudeRateLimits(
   try {
     return await fetchClaudeOAuthUsage(credentials.token, options?.signal)
   } catch (error) {
-    const classification = classifyClaudeOAuthUsageError(error)
+    const { failureKind } = classifyClaudeOAuthUsageError(error)
+    // Why: the 429 wait gates the poll, and both messages tell the user why usage is missing.
+    const retryAfterMs = error instanceof OAuthUsageError ? error.retryAfterMs : null
     return makeClaudeUsageResult(
       'error',
-      classification.failureKind === 'stale-token'
+      failureKind === 'stale-token'
         ? 'Claude usage has expired. Start Claude in this account to refresh it.'
-        : 'Claude usage is unavailable.',
+        : (failureKind === 'rate-limited' || failureKind === 'missing-scope') &&
+            error instanceof OAuthUsageError
+          ? error.message
+          : 'Claude usage is unavailable.',
       {
         ...metadata,
-        failureKind: classification.failureKind,
-        attemptedSources: ['oauth']
+        failureKind,
+        attemptedSources: ['oauth'],
+        ...(retryAfterMs ? { retryAtMs: Date.now() + retryAfterMs } : {})
       }
     )
   }

@@ -21,6 +21,7 @@ vi.mock('../../shared/child-process/run-process', () => ({
 }))
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
 import { readClaudeOAuthCredentials } from './claude-oauth-credentials'
+import { OAuthUsageError } from './claude-oauth-usage-error'
 const roots: string[] = []
 afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
@@ -140,4 +141,24 @@ it('hides Claude usage for System Default with no Claude login, instead of askin
     status: 'error',
     error: 'Sign in again to use this account.'
   })
+})
+it("keeps a 429's Retry-After and rate-limit message so polling waits it out", async () => {
+  const f = profile()
+  writeFileSync(
+    join(f.home, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'fake' } })
+  )
+  const message = 'Claude usage is rate limited right now.'
+  calls.usage.mockRejectedValueOnce(new OAuthUsageError(message, 429, true, 3_000_000))
+  const before = Date.now()
+  const limited = await fetchActiveClaudeRateLimits(f.options)
+  expect(limited).toMatchObject({
+    status: 'error',
+    error: message,
+    usageMetadata: { failureKind: 'rate-limited' }
+  })
+  expect(limited.usageMetadata?.retryAtMs).toBeGreaterThanOrEqual(before + 3_000_000)
+  expect(limited.usageMetadata?.retryAtMs).toBeLessThanOrEqual(Date.now() + 3_000_000)
+  calls.usage.mockRejectedValueOnce(new OAuthUsageError(message, 429, true, null))
+  expect((await fetchActiveClaudeRateLimits(f.options)).usageMetadata?.retryAtMs).toBeUndefined()
 })
