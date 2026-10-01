@@ -128,11 +128,10 @@ function errorAttributes(error: unknown): Record<string, unknown> {
   }
   const code = errorCode(error)
   // node:sqlite's `code` is one generic value; `errcode` tells SQLITE_BUSY from SQLITE_FULL.
-  const sqliteCode = errorCode(error, 'errcode')
+  const sqliteCode = codeValue('errcode' in error ? error.errcode : undefined)
   // A refusal's message is its bare code; its reason is wire-safe and tells refusals apart.
-  const details: unknown = isAgentSessionRefusalError(error) ? error.refusal.details : undefined
-  const reason: unknown =
-    typeof details === 'object' && details !== null ? Reflect.get(details, 'reason') : undefined
+  const details = isAgentSessionRefusalError(error) ? error.refusal.details : undefined
+  const reason = details && 'reason' in details ? details.reason : undefined
   return {
     ...(code !== undefined ? { errorCode: code } : {}),
     ...(sqliteCode !== undefined ? { errorErrcode: sqliteCode } : {}),
@@ -160,8 +159,11 @@ function stableJson(value: unknown): string {
   }
 }
 
-function errorCode(error: Error, key: 'code' | 'errcode' = 'code'): string | number | undefined {
-  const value: unknown = Reflect.get(error, key)
+function errorCode(error: Error): string | number | undefined {
+  return codeValue('code' in error ? error.code : undefined)
+}
+
+function codeValue(value: unknown): string | number | undefined {
   return typeof value === 'string' || typeof value === 'number' ? value : undefined
 }
 
