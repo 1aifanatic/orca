@@ -15,6 +15,7 @@ import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
 import type { Repo } from '../../shared/repo-types'
 import { hasRemoteFilesystemOwner } from './remote-filesystem-owner'
+import { getNativeChatAttachmentAllowedRoots } from '../window/native-chat-attachment-store'
 
 type FolderScopeStore = Pick<Store, 'getRepos'> &
   Partial<Pick<Store, 'getProjectGroups' | 'getFolderWorkspaces'>>
@@ -165,5 +166,7 @@ export function getAllowedRoots(store: Store): string[] {
       }
     }
   }
+  // Orca's own storage for images a chat draft holds, so their previews survive a relaunch.
+  roots.push(...getNativeChatAttachmentAllowedRoots())
   return roots
 }

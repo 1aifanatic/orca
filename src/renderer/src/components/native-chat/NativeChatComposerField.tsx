@@ -73,6 +73,8 @@ export type NativeChatComposerImageAttachment = {
   previewUrl?: string
   /** True while the pasted image is still being written to disk or uploaded. */
   pending?: boolean
+  /** The file is gone (a restored draft outlived it); Send waits until the chip is removed. */
+  missing?: boolean
 }
 
 /**

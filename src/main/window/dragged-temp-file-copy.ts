@@ -23,7 +23,7 @@ const TEMPORARY_ITEMS_SEGMENT = 'TemporaryItems'
 const DRAG_PROVIDER_DIR_PREFIX = 'NSIRD_'
 const COPY_ROOT_NAME = 'orca-drops'
 const COPY_DIR_PREFIX = 'orca-drop-'
-const COPY_DIR_PATTERN = /^orca-drop-[A-Za-z0-9]{6}$/
+export const DRAG_TEMP_COPY_DIR_PATTERN = /^orca-drop-[A-Za-z0-9]{6}$/
 // Why: open drafts and startup prompts read the copy lazily, often days later, so
 // keep it well past the drop; the TTL still bounds what the copy budget holds.
 export const DRAG_TEMP_COPY_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -211,7 +211,7 @@ export async function sweepExpiredDragTempCopies(
   await sweepExpiredOwnedDirectories(copyRoot, {
     nowMs,
     ttlMs: DRAG_TEMP_COPY_TTL_MS,
-    ownsEntry: (name) => COPY_DIR_PATTERN.test(name)
+    ownsEntry: (name) => DRAG_TEMP_COPY_DIR_PATTERN.test(name)
   })
 }
 
@@ -226,7 +226,7 @@ async function measureRetainedCopyBytes(copyRoot: string): Promise<number> {
   }
   try {
     for await (const entry of rootDir) {
-      if (!entry.isDirectory() || !COPY_DIR_PATTERN.test(entry.name)) {
+      if (!entry.isDirectory() || !DRAG_TEMP_COPY_DIR_PATTERN.test(entry.name)) {
         continue
       }
       const copyDir = join(copyRoot, entry.name)

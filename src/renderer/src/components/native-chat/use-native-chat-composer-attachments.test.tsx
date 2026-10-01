@@ -4,7 +4,8 @@ import { act, createElement, useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import {
   clearNativeChatDraftCacheForTests,
-  readNativeChatDraftAttachments
+  readNativeChatDraftAttachments,
+  writeNativeChatDraftAttachments
 } from './native-chat-draft-cache'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
@@ -520,6 +521,53 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().clearImageAttachments()
     })
     expect(revoke).not.toHaveBeenCalled()
+    act(() => probe.root.unmount())
+  })
+})
+
+describe('a restored draft whose image is gone', () => {
+  afterEach(() => {
+    clearNativeChatDraftCacheForTests()
+    document.body.replaceChildren()
+  })
+
+  it('marks only a chip whose file is proven gone, checking each restored chip once', async () => {
+    const pathsExist = vi.fn(
+      async ({ filePaths, connectionId }: { filePaths: string[]; connectionId?: string }) =>
+        // An unreachable host cannot say; that is not proof the file is gone.
+        filePaths.map((path) =>
+          connectionId ? { error: 'offline' } : { exists: path !== '/gone.png' }
+        )
+    )
+    Object.defineProperty(window, 'api', { configurable: true, value: { fs: { pathsExist } } })
+    writeNativeChatDraftAttachments('session:restored', [
+      { id: 'gone', path: '/gone.png' },
+      { id: 'here', path: '/here.png' },
+      { id: 'remote', path: '/remote.png', connectionId: 'ssh-1' }
+    ])
+
+    const probe = await renderProbe('session:restored', true)
+    await act(async () => {})
+    await act(async () => {
+      probe.latest().attachResolvedPaths(['/new.png'])
+    })
+
+    expect(
+      probe.latest().imageAttachments.map(({ path, missing }) => [path, missing === true])
+    ).toEqual([
+      ['/gone.png', true],
+      ['/here.png', false],
+      ['/remote.png', false],
+      ['/new.png', false]
+    ])
+    expect(pathsExist.mock.calls).toEqual([
+      [{ filePaths: ['/gone.png', '/here.png'] }],
+      [{ filePaths: ['/remote.png'], connectionId: 'ssh-1' }]
+    ])
+    expect(readNativeChatDraftAttachments('session:restored')[0]).toEqual({
+      id: 'gone',
+      path: '/gone.png'
+    })
     act(() => probe.root.unmount())
   })
 })

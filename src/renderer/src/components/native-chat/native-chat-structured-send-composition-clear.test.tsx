@@ -332,6 +332,35 @@ describe('the draft saved to disk', () => {
     expect(localStorage.getItem(key)).toBeNull()
   })
 
+  // Sending would hand the agent a path to nothing; the chip says so and Send waits for its removal.
+  it('will not send a restored image whose file is gone until the chip is removed', async () => {
+    const structured = transport()
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        ...window.api,
+        fs: { pathsExist: vi.fn(async () => [{ exists: false }]) }
+      }
+    })
+    const chat = nativeChatDraftKey({ sessionId: structured.sessionId, paneKey: '' })
+    appendNativeChatDraftNow(chat, {
+      text: 'look at this',
+      attachments: [{ id: 'gone', path: '/gone.png' }]
+    })
+    renderComposer(structured)
+    await act(async () => {})
+
+    await act(async () => pressEnter(textarea()))
+    expect(structured.send).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: /Image no longer available\. Remove it to send\./ })
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    await act(async () => pressEnter(textarea()))
+    expect(structured.send).toHaveBeenCalledWith('look at this', [])
+  })
+
   // The composing box still holds the sent text; its keystrokes must not save it again before the
   // composition settles, or a crash meanwhile restores it and the next Enter sends it twice.
   it('never gets the sent text back from a composition the clear landed in', async () => {
