@@ -232,6 +232,23 @@ describe('a Codex Stop whose interrupt failed', () => {
     }
   )
 
+  it('says Codex did not stop when a Stop naming the running turn could not prove the exit', async () => {
+    await runningTurn()
+    codex.routes['turn/interrupt'] = () => {
+      throw interruptFailure('internal error')
+    }
+    disposeSession.mockResolvedValueOnce(false)
+
+    const stopped = await stop('turn-1')
+    await host.flushStreamedEvents(SESSION)
+
+    expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+    expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect((await journalRows()).statuses).toEqual([
+      "Codex didn't stop: failed to interrupt turn: channel closed."
+    ])
+  })
+
   it.each([
     ['naming no turn', undefined],
     ['naming its turn', 'turn-1']

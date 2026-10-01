@@ -48,6 +48,21 @@ async function stillRunsStoppedTurn(
   return stoppedTurnId === null || ctx.journal.activeTurnId() === stoppedTurnId
 }
 
+/** The row for a Stop the provider declined, in its words when it gave any. */
+function stopRefusedNote(
+  ctx: Pick<AgentSessionTurnContext, 'failureTextContext'>,
+  refusal: AgentSessionCancelOutcome['refusal']
+): AgentJournalStatusItem {
+  const detail = refusal?.detail
+  return {
+    kind: 'status',
+    ...agentSessionFailureWords(agentSessionFailureFact('stopRefused', detail ? { detail } : {}), {
+      ...ctx.failureTextContext,
+      surface: 'row'
+    })
+  }
+}
+
 /** What a Stop that ends the provider's session leaves its next serialized step: whether the
  *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
  *  out. No turn id: that step runs right behind the Stop, so no later turn can slip in between. */
@@ -130,6 +145,7 @@ export async function performCancel(
   let taken: boolean | undefined
   // The provider could not interrupt the turn, or its cancel threw: the turn may run on.
   let interruptFailed = false
+  let refusal: AgentSessionCancelOutcome['refusal']
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     const outcome: AgentSessionCancelOutcome = stoppedBefore
@@ -156,7 +172,8 @@ export async function performCancel(
           })
     taken = outcome.cancelled
     cancelled = outcome.cancelled
-    interruptFailed = outcome.refusal !== undefined && outcome.refusal.turnNotRunning !== true
+    refusal = outcome.refusal
+    interruptFailed = refusal !== undefined && refusal.turnNotRunning !== true
     if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
@@ -168,14 +185,7 @@ export async function performCancel(
       note = null
     } else if (!cancelled) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
-      const detail = outcome.refusal?.detail
-      note = {
-        kind: 'status',
-        ...agentSessionFailureWords(
-          agentSessionFailureFact('stopRefused', detail ? { detail } : {}),
-          { ...ctx.failureTextContext, surface: 'row' }
-        )
-      }
+      note = stopRefusedNote(ctx, refusal)
     }
   } catch (error) {
     if (input.prompt) {
@@ -226,6 +236,9 @@ export async function performCancel(
     if (ended) {
       cancelled = true
       note = { kind: 'status', text: 'Cancellation requested.' }
+    } else if (taken !== undefined) {
+      // The turn was just read running, so a named Stop's "already finished" row would be false.
+      note = stopRefusedNote(ctx, refusal)
     }
   }
   if (cancelled && input.prompt) {
