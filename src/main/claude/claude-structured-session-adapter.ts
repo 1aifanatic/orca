@@ -40,7 +40,8 @@ import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-
 import { drainClaudeChildWork } from './claude-child-work-evidence'
 import {
   answerClaudeStructuredPrompt,
-  cancelClaudeStructuredTurn
+  cancelClaudeStructuredTurn,
+  dismissClaudeStructuredPrompt
 } from './claude-structured-prompt-ownership'
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
 
@@ -204,6 +205,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   stopEndsSession = (): boolean => true
   awaitStoppedTurnEnd = claudeStoppedTurnEndWait(this.sessions)
   routePromptCancel = claudePromptCancelRoute
+  dismissPrompt: StructuredAgentSessionAdapter['dismissPrompt'] = (request) =>
+    dismissClaudeStructuredPrompt({ request, sessions: this.sessions })
   stopBackgroundTasks: StructuredAgentSessionAdapter['stopBackgroundTasks'] = (input) => {
     const session = this.session(input.sessionId)
     const acquisitionGeneration = session.acquisitionGeneration

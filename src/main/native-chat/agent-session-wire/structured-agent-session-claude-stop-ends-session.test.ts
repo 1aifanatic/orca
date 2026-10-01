@@ -553,6 +553,17 @@ it('keeps a second Stop pressed while the first ends the child quiet', async () 
   expect(sinkErrors).toEqual([])
 })
 
+const BRANCH_QUESTION = {
+  questions: [
+    {
+      question: 'Which branch?',
+      header: 'Branch',
+      multiSelect: false,
+      options: [{ label: 'main' }, { label: 'dev' }]
+    }
+  ]
+}
+
 /** Claude asks on the open turn; returns its answer and the card the journal shows for it. */
 async function ask(
   connection: FakeConnection,
@@ -616,28 +627,26 @@ it("answers an approval card's Cancel as its Deny, and the turn and child go on"
 it("ends a question card's Cancel the way the chat's Stop does, and the next send resumes", async () => {
   const connection = claude.connections[0]!
   const turnId = await openTurn(connection)
-  const { card } = await ask(connection, 'AskUserQuestion', {
-    questions: [
-      {
-        question: 'Which branch?',
-        header: 'Branch',
-        multiSelect: false,
-        options: [{ label: 'main' }, { label: 'dev' }]
-      }
-    ]
-  })
+  const { answered, card } = await ask(connection, 'AskUserQuestion', BRANCH_QUESTION)
 
   await expect(cancelCard(turnId, card)).resolves.toMatchObject({
     ok: true,
     value: { turnId, cancelled: true }
   })
+  // Settled with the Stop's first step, before the child ends: not answerable meanwhile.
+  expect(connection.closed).toBe(false)
+  const cancelledHere = { state: 'cancelled', resolvedBy: CALLER.callerKey }
+  expect(await cardResolution(card.itemId)).toMatchObject(cancelledHere)
   expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
   frame(connection, INTERRUPTED_RESULT)
   await laneDrained()
 
   expect(connection.closed).toBe(true)
   expect(await turnOutcome()).toBe('cancellation')
-  expect(await cardResolution(card.itemId)).not.toMatchObject({ state: 'pending' })
+  // The child's end takes Claude's request with it: no reply raced the interrupt, and nothing
+  // wrote over the user's cancel.
+  expect(await answered.promise).not.toMatchObject({ behavior: expect.any(String) })
+  expect(await cardResolution(card.itemId)).toMatchObject(cancelledHere)
   expect(await statusTexts()).toEqual(['Cancellation requested.'])
   await send('Carry on.')
   await eventually(() => {
@@ -645,6 +654,34 @@ it("ends a question card's Cancel the way the chat's Stop does, and the next sen
     expect(started).not.toBe(connection)
     expect(wrote(started, 'Carry on.')).toBe(true)
   })
+})
+
+it("declines a question card's Cancel itself when the Stop finds nothing to stop", async () => {
+  const connection = claude.connections[0]!
+  const ended = await openTurn(connection)
+  frame(connection, { type: 'result', subtype: 'success', is_error: false, uuid: 'result-1' })
+  await eventually(async () =>
+    expect(
+      activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
+    ).toBeNull()
+  )
+  // Asked after the main turn ended, as a background agent might.
+  const { answered, card } = await ask(connection, 'AskUserQuestion', BRANCH_QUESTION)
+
+  await expect(cancelCard(ended, card)).resolves.toMatchObject({ ok: true })
+  await laneDrained()
+
+  expect(await answered.promise).toMatchObject({
+    behavior: 'deny',
+    message: expect.stringMatching(/dismissed/)
+  })
+  expect(await cardResolution(card.itemId)).toMatchObject({
+    state: 'cancelled',
+    resolvedBy: CALLER.callerKey
+  })
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
+  expect(connection.closed).toBe(false)
+  expect(await statusTexts()).toEqual([])
 })
 
 it('dismisses a plan card on its Cancel: Claude is told to wait for the user, and keeps running', async () => {
@@ -672,6 +709,9 @@ it('dismisses a plan card on its Cancel: Claude is told to wait for the user, an
     (item) => item.body.kind === 'approval'
   )
   expect(cards).toHaveLength(1)
-  expect(await cardResolution(card.itemId)).toMatchObject({ state: 'resolved' })
+  expect(await cardResolution(card.itemId)).toMatchObject({
+    state: 'cancelled',
+    resolvedBy: CALLER.callerKey
+  })
   expect(await statusTexts()).toEqual([])
 })

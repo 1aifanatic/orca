@@ -7,9 +7,12 @@ import type {
   AgentJournalQuestionItem
 } from '../../../shared/agent-session-journal-types'
 
-/** Where a card's Cancel goes: an approval answer, sent as if the user picked it, or the chat's
- *  Stop. The answer may be one the card does not offer, such as a dismissal. */
-export type AgentSessionPromptCancelRoute = { kind: 'option'; optionId: string } | { kind: 'stop' }
+/** Where a card's Cancel goes: one of the approval's options, sent as if the user picked it; a
+ *  dismissal (`dismissPrompt`); or the chat's Stop. */
+export type AgentSessionPromptCancelRoute =
+  | { kind: 'option'; optionId: string }
+  | { kind: 'dismiss' }
+  | { kind: 'stop' }
 
 export type StructuredAgentSessionAdapterStop = {
   /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
@@ -25,4 +28,14 @@ export type StructuredAgentSessionAdapterStop = {
     sessionId: string
     prompt: AgentJournalApprovalItem | AgentJournalQuestionItem
   }): AgentSessionPromptCancelRoute | undefined
+  /** The user dismissed the pending card; `commit` records it as cancelled, with the claim held.
+   *  `answer` then declines the provider's request; without it the request is left to end with the
+   *  child a Stop ends. Either way the provider records nothing more for the card. */
+  dismissPrompt?(input: {
+    sessionId: string
+    itemId: string
+    fence: number
+    answer: boolean
+    commit: () => Promise<void>
+  }): Promise<void>
 }

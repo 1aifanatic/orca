@@ -3,9 +3,10 @@ import {
   AgentSessionPromptUnavailableError,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionAdapterStop } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
 import { answerClaudePrompt, cancelClaudeTurn } from './claude-structured-control-actions'
 import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resolution'
-import { buildClaudePromptReply } from './claude-structured-prompt-replies'
+import { buildClaudePromptReply, claudePromptDismissal } from './claude-structured-prompt-replies'
 import type { ClaudeSession } from './claude-structured-session-state'
 import type { ClaudePendingPrompt } from './claude-prompt-registry'
 import { CLAUDE_STOP_GRACE_MS } from './claude-turn-end-wait'
@@ -179,5 +180,30 @@ export async function answerClaudeStructuredPrompt(input: {
   } catch (error) {
     session.prompts.releaseClaim(claim)
     throw error
+  }
+}
+
+/** The host records the dismissal (`commit`) while the claim is held. A Stop that ends the child
+ *  leaves the request to end with it; only `answer` declines it, so Claude never gets a reply racing
+ *  that Stop's interrupt. */
+export async function dismissClaudeStructuredPrompt(input: {
+  request: Parameters<NonNullable<StructuredAgentSessionAdapterStop['dismissPrompt']>>[0]
+  sessions: Map<string, ClaudeSession>
+}): Promise<void> {
+  const { request, sessions } = input
+  const session = sessions.get(request.sessionId)
+  const claim = session?.fence === request.fence ? session.prompts.claim(request.itemId) : null
+  if (!session || !claim) {
+    throw new AgentSessionPromptUnavailableError(request.itemId)
+  }
+  try {
+    await request.commit()
+    // The card is the user's now: nothing Claude does to its request writes it again.
+    session.translator?.journalPrompts.resolve(claim.found.prompt.promptKey)
+    if (request.answer && session.prompts.ownsClaim(claim)) {
+      await answerClaudePrompt(session, claim, claudePromptDismissal(claim.found.prompt))
+    }
+  } finally {
+    session.prompts.releaseClaim(claim)
   }
 }

@@ -45,13 +45,11 @@ function invalid(
 /** The one place a client's choice is read; an answer an older client packed into `optionId` is unpacked here, once. */
 function readPromptChoice(
   prompt: AgentJournalApprovalItem | AgentJournalQuestionItem,
-  input: AgentSessionPromptRequest,
-  providerRouted: boolean
+  input: AgentSessionPromptRequest
 ): { response: AgentSessionPromptResponse; selectedOptionId: string } | null {
   if (prompt.kind === 'approval') {
     const optionId = input.optionId
-    return optionId !== undefined &&
-      (providerRouted || prompt.options.some((option) => option.id === optionId))
+    return optionId !== undefined && prompt.options.some((option) => option.id === optionId)
       ? { response: { kind: 'option', optionId }, selectedOptionId: optionId }
       : null
   }
@@ -74,16 +72,14 @@ function readPromptChoice(
 
 export async function performPrompt(
   ctx: AgentSessionTurnContext,
-  input: AgentSessionPromptRequest,
-  /** The provider's own answer to the card's Cancel, which the card need not offer. */
-  options: { providerRouted?: true } = {}
+  input: AgentSessionPromptRequest
 ): Promise<TurnOutcome<AgentSessionPromptResult>> {
   const validated = validatePendingPrompt(ctx, input)
   if (!validated.ok) {
     return validated
   }
   const { prompt } = validated
-  const choice = readPromptChoice(prompt, input, options.providerRouted === true)
+  const choice = readPromptChoice(prompt, input)
   if (!choice) {
     return invalid(
       'optionRejected',

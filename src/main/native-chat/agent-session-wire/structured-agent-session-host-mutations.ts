@@ -159,14 +159,17 @@ export function cancelStructuredAgentSessionTurn(
   }
   const plan = cancelPlan(params)
   const { prompt } = params
-  return mutateWithChatStop(context, caller, params, plan, (ctx, stop) =>
+  // A card's Cancel stops whatever the chat has in flight, as the Stop button does: the turn it
+  // names may have ended under a request still waiting on the user.
+  const stopped = prompt ? { envelope: params.envelope } : params
+  return mutateWithChatStop(context, caller, stopped, plan, (ctx, stop) =>
     prompt
       ? cancelStructuredAgentSessionPrompt(
           ctx,
           { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
           { stop, interrupt: () => plan.run(ctx) }
         )
-      : stop()
+      : stop().then(({ outcome }) => outcome)
   )
 }
 

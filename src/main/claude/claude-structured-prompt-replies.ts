@@ -19,13 +19,9 @@ export {
   type ClaudePromptSettle
 } from './claude-prompt-registry'
 
-/** `cancel` is the dismissal a card's own Cancel sends; no card offers it, and an older card's
- *  "Stop" option still answers with it. */
+/** No card offers `cancel` any more; an older card's "Stop" option answers it as a dismissal. */
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
 export type ClaudeApprovalDecision = (typeof CLAUDE_APPROVAL_DECISIONS)[number]
-
-const PLAN_DISMISSED =
-  'The user dismissed this plan without approving it. End your turn and wait for them to say what to change.'
 
 /** A card's own Cancel: a tool approval is denied as its Deny option denies it, a plan is dismissed
  *  so Claude waits for the user, and a question ends the way the chat's Stop does. Nothing on a
@@ -35,7 +31,24 @@ export const claudePromptCancelRoute: NonNullable<
 > = ({ prompt }) =>
   prompt.kind === 'question'
     ? { kind: 'stop' }
-    : { kind: 'option', optionId: prompt.subject?.kind === 'plan' ? 'cancel' : 'deny' }
+    : prompt.subject?.kind === 'plan'
+      ? { kind: 'dismiss' }
+      : { kind: 'option', optionId: 'deny' }
+
+/** Declines a request the user dismissed. A dismissed plan or question waits on the user: Claude is
+ *  told to end its turn rather than revise or ask again. */
+export function claudePromptDismissal(prompt: ClaudePendingPrompt): PermissionResult {
+  return {
+    behavior: 'deny',
+    message:
+      prompt.kind === 'question'
+        ? 'The user dismissed these questions without answering. End your turn and wait for them.'
+        : prompt.subject?.kind === 'plan'
+          ? 'The user dismissed this plan without approving it. End your turn and wait for them to say what to change.'
+          : 'User denied this action.',
+    toolUseID: prompt.toolUseId
+  }
+}
 
 function isClaudeApprovalDecision(optionId: string): optionId is ClaudeApprovalDecision {
   return CLAUDE_APPROVAL_DECISIONS.some((decision) => decision === optionId)
@@ -109,14 +122,15 @@ function approvalResponse(prompt: ClaudePendingPrompt, optionId: string): Permis
       toolUseID: prompt.toolUseId
     }
   }
-  const plan = prompt.subject?.kind === 'plan'
+  if (decision === 'cancel') {
+    return claudePromptDismissal(prompt)
+  }
   return {
     behavior: 'deny',
-    message: !plan
-      ? 'User denied this action.'
-      : decision === 'cancel'
-        ? PLAN_DISMISSED
-        : 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.',
+    message:
+      prompt.subject?.kind === 'plan'
+        ? 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.'
+        : 'User denied this action.',
     toolUseID: prompt.toolUseId
   }
 }

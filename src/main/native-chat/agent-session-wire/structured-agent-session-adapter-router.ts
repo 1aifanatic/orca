@@ -127,6 +127,9 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   routePromptCancel: NonNullable<StructuredAgentSessionAdapter['routePromptCancel']> = (input) =>
     this.liveOwnerOrNull(input.sessionId)?.routePromptCancel?.(input)
 
+  dismissPrompt: NonNullable<StructuredAgentSessionAdapter['dismissPrompt']> = async (input) =>
+    this.owner(input.sessionId).dismissPrompt?.(input)
+
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.liveOwnerOrNull(sessionId)?.readCommands?.(sessionId)
 

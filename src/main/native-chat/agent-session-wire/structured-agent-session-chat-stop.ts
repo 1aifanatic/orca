@@ -31,6 +31,9 @@ import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-se
 
 type ChatStopOutcome = TurnOutcome<AgentSessionCancelResult>
 
+/** What the chat's Stop did, and whether its next step ends the provider's session. */
+export type StructuredAgentSessionChatStopRun = { outcome: ChatStopOutcome; endsSession: boolean }
+
 /** Runs `plan` with `run`, which may call `stop` for the chat's Stop. */
 export function mutateWithChatStop<TValue>(
   context: StructuredAgentSessionMutationContext,
@@ -39,7 +42,7 @@ export function mutateWithChatStop<TValue>(
   plan: MutationPlan<TValue>,
   run: (
     ctx: AgentSessionTurnContext,
-    stop: () => Promise<ChatStopOutcome>
+    stop: () => Promise<StructuredAgentSessionChatStopRun>
   ) => Promise<TurnOutcome<TValue>>
 ): Promise<AgentSessionMutationResult<TValue>> {
   const { envelope, turnId } = params
@@ -91,7 +94,11 @@ export function mutateWithChatStop<TValue>(
     context,
     caller,
     envelope,
-    { ...plan, run: (ctx) => run(ctx, () => stop(ctx)) },
+    {
+      ...plan,
+      run: (ctx) =>
+        run(ctx, async () => ({ outcome: await stop(ctx), endsSession: windDown !== undefined }))
+    },
     openForWrite(context, envelope)
   )
   // Queued in the mutation's own tick, so a send made meanwhile lands behind the child's end.
