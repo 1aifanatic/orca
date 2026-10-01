@@ -13,7 +13,7 @@ describe('agent session claim identity', () => {
       canonicalizeAgentSessionIdentity('claude', {
         key: 'session_id',
         id: 'codex-worker',
-        resumeIdentity: { agent: 'codex', connectionId: null }
+        resumeIdentity: { agent: 'codex' }
       })
     ).toThrow('Cannot resume this session')
   })

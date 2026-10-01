@@ -2264,9 +2264,6 @@ export function createRemoteRuntimePtyTransport(
             createEnvironmentId,
             connectLifecycleEpoch
           )
-        // Why: captured args win; with none captured the field stays omitted so the host uses its defaults.
-        const resumeAgentArgs =
-          resumeProviderSessionToSend?.resumeIdentity?.launchConfig?.agentArgs ?? agentArgsOverride
         const hostAuthorityCreate = async () => {
           const keyboardOptions = await agentKeyboardOptions(createEnvironmentId)
           return createWithUnknownOutcomeRecovery(
@@ -2288,7 +2285,7 @@ export function createRemoteRuntimePtyTransport(
                       ...(launchConfigToSend?.ompResumeFilePath
                         ? { ompResumeFilePath: launchConfigToSend.ompResumeFilePath }
                         : {}),
-                      ...(resumeAgentArgs !== undefined ? { agentArgs: resumeAgentArgs } : {}),
+                      ...(agentArgsOverride !== undefined ? { agentArgs: agentArgsOverride } : {}),
                       ...(agentLaunchPreferences
                         ? { launchPreferences: agentLaunchPreferences }
                         : {}),

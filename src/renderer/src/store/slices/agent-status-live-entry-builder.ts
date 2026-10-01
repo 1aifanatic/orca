@@ -1,7 +1,3 @@
-import {
-  captureAgentResumeLaunchConfig,
-  savedAgentResumeLaunchConfig
-} from '../../../../shared/agent-resume-identity'
 import type { AppState } from '../types'
 import { resolveAgentStatusLiveEntryMainAgent } from './agent-status-live-entry-main-agent'
 import { resolveAgentStatusLiveEntryStateHistory } from './agent-status-live-entry-state-history'
@@ -148,8 +144,8 @@ export function buildAgentStatusLiveEntry(
   const canReuseExistingProviderSession =
     existing?.agentType === identity.agentType &&
     (existing.state !== 'done' || payload.state === 'done')
-  let providerSession =
-    (identity.inheritedFromActivePane ? existing?.providerSession : metadata?.providerSession) ??
+  const providerSession =
+    metadata?.providerSession ??
     (canReuseExistingProviderSession ? existing.providerSession : undefined)
   const existingProviderSession = canReuseExistingProviderSession
     ? existing.providerSession
@@ -182,45 +178,24 @@ export function buildAgentStatusLiveEntry(
     isResumableTuiAgent(identity.agentType) &&
     providerSession !== undefined &&
     getAgentResumeArgv(identity.agentType, providerSession) !== null
-  // Why: a replayed hook row never carries the renderer's capture, so the saved record supplies it.
-  const existingSleepingLaunchConfig = existingSleepingRecord
-    ? savedAgentResumeLaunchConfig(identity.agentType, existingSleepingRecord)
-    : undefined
   const matchedSleepingLaunchConfig =
     (payload.state !== 'done' || retainsResumableRecoveryIdentity) &&
-    existingSleepingLaunchConfig &&
-    existingSleepingRecord?.agent === identity.agentType &&
+    existingSleepingRecord?.launchConfig &&
+    existingSleepingRecord.agent === identity.agentType &&
     providerSession &&
     agentProviderSessionsEqual(
       identity.agentType,
       existingSleepingRecord.providerSession,
       providerSession
     )
-      ? existingSleepingLaunchConfig
+      ? existingSleepingRecord.launchConfig
       : undefined
   const launchConfigSource =
-    providerSession?.resumeIdentity?.launchConfig ??
-    (!identity.inheritedFromActivePane &&
-    payload.state !== 'done' &&
-    !providerSessionChanged &&
-    metadata?.launchToken
+    (payload.state !== 'done' && !providerSessionChanged && metadata?.launchToken
       ? metadata?.launchConfig
       : undefined) ??
     matchedRegistryLaunchConfig ??
     matchedSleepingLaunchConfig
-  if (providerSession) {
-    providerSession = captureAgentResumeLaunchConfig(
-      providerSession,
-      identity.agentType,
-      matchedRegistryLaunchConfig ??
-        (identity.inheritedFromActivePane
-          ? undefined
-          : metadata?.launchToken
-            ? metadata.launchConfig
-            : undefined) ??
-        matchedSleepingLaunchConfig
-    )
-  }
   const mainAgent = resolveAgentStatusLiveEntryMainAgent(existing, payload, identity.agentType)
   const entry: AgentStatusEntry = {
     state: payload.state,

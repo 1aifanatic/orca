@@ -32,8 +32,8 @@ export type ResumableTuiAgent = (typeof RESUMABLE_TUI_AGENTS)[number]
 export type AgentProviderSessionKey = 'session_id' | 'conversation_id'
 
 export type AgentProviderSessionMetadata = {
-  /** Provider ownership travels with the locator; null preserves invalid evidence for refusal. */
-  resumeIdentity?: AgentResumeIdentity | null
+  /** The provider that owns this locator, from the hook route; absent on records saved before it. */
+  resumeIdentity?: AgentResumeIdentity
   key: AgentProviderSessionKey
   id: string
   /** Authoritative on-disk transcript/rollout path reported by the agent's hook
@@ -171,13 +171,12 @@ export function normalizeAgentProviderSession(raw: unknown): AgentProviderSessio
   // Why: persisted/relay metadata crosses a trust boundary too; apply the same
   // control-character rejection used for hook-reported transcript paths.
   const transcriptPath = readTranscriptPathFromKeys(record, ['transcriptPath'])
+  const resumeIdentity = readAgentResumeIdentity(record.resumeIdentity)
   return {
     key,
     id,
     ...(transcriptPath ? { transcriptPath } : {}),
-    ...(record.resumeIdentity !== undefined
-      ? { resumeIdentity: readAgentResumeIdentity(record.resumeIdentity) }
-      : {})
+    ...(resumeIdentity ? { resumeIdentity } : {})
   }
 }
 

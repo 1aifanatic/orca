@@ -1,44 +1,23 @@
-import { launchConfigsEqual } from './sleeping-agent-launch-config'
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
 import {
   isResumableTuiAgent,
   normalizeAgentProviderSession,
   type AgentProviderSessionMetadata,
-  type ResumableTuiAgent,
-  type SleepingAgentLaunchConfig
+  type ResumableTuiAgent
 } from './agent-session-resume'
-import { sleepingAgentLaunchConfigSchema } from './agent-resume-launch-config-schema'
 
 export type AgentResumeIdentity = {
   agent: ResumableTuiAgent
-  connectionId: string | null
-  launchConfig?: SleepingAgentLaunchConfig
 }
 
 export const AGENT_RESUME_IDENTITY_ERROR =
   'Cannot resume this session because its agent ownership could not be verified. The saved session is preserved. You can start a fresh agent separately.'
 
-export function readAgentResumeIdentity(raw: unknown): AgentResumeIdentity | null {
-  if (!raw || typeof raw !== 'object' || !('agent' in raw) || !('connectionId' in raw)) {
-    return null
-  }
-  if (
-    !isResumableTuiAgent(raw.agent) ||
-    (raw.connectionId !== null &&
-      (typeof raw.connectionId !== 'string' || !raw.connectionId.trim()))
-  ) {
-    return null
-  }
-  const config = 'launchConfig' in raw ? raw.launchConfig : undefined
-  const parsed = sleepingAgentLaunchConfigSchema.safeParse(config)
-  if (!parsed.success || (config !== undefined && parsed.data === undefined)) {
-    return null
-  }
-  return {
-    agent: raw.agent,
-    connectionId: raw.connectionId,
-    ...(parsed.data ? { launchConfig: parsed.data } : {})
-  }
+/** A malformed identity reads as absent so it can be re-derived, never stored as a refusal. */
+export function readAgentResumeIdentity(raw: unknown): AgentResumeIdentity | undefined {
+  return raw && typeof raw === 'object' && 'agent' in raw && isResumableTuiAgent(raw.agent)
+    ? { agent: raw.agent }
+    : undefined
 }
 
 /** Only the saved hook route can establish a legacy session's provider. */
@@ -48,14 +27,14 @@ export function decodeHookResumeSession(
   connectionId: string | null
 ): AgentProviderSessionMetadata | undefined {
   const session = normalizeAgentProviderSession(raw)
-  if (!session || session.resumeIdentity !== undefined) {
+  if (!session || session.resumeIdentity) {
     return session ?? undefined
   }
   // Older remote OMP rows synthesized source from display identity, not the hook route.
   if (!isResumableTuiAgent(source) || (source === 'omp' && connectionId !== null)) {
     return session
   }
-  return { ...session, resumeIdentity: { agent: source, connectionId } }
+  return { ...session, resumeIdentity: { agent: source } }
 }
 
 /** Status inheritance must take the owner's whole resume record, never the child's locator. */
@@ -64,81 +43,30 @@ export function inheritAgentResumeIdentity(
   previous: AgentHookEventPayload | undefined,
   agent: string
 ): AgentHookEventPayload {
-  const owner = agent !== incoming.payload.agentType || incoming.toolAgentId ? previous : incoming
-  const decoded = owner
-    ? decodeHookResumeSession(owner.providerSession, owner.source, owner.connectionId)
-    : undefined
-  const providerSession =
-    decoded?.resumeIdentity?.connectionId === null && owner === incoming
-      ? {
-          ...decoded,
-          resumeIdentity: { ...decoded.resumeIdentity, connectionId: owner.connectionId }
-        }
-      : decoded
+  // Why: only a previous row of the displayed agent is an owner; otherwise the event's own session stands.
+  const owner =
+    previous?.payload.agentType === agent &&
+    (agent !== incoming.payload.agentType || incoming.toolAgentId)
+      ? previous
+      : incoming
   return {
     ...incoming,
-    providerSession,
+    providerSession: decodeHookResumeSession(
+      owner.providerSession,
+      owner.source,
+      owner.connectionId
+    ),
     payload: { ...incoming.payload, agentType: agent }
   }
 }
 
-export function isOwnedAgentResumeSession(
-  agent: string,
-  session: AgentProviderSessionMetadata,
-  connectionId?: string | null
-): boolean {
-  const identity = session.resumeIdentity
-  return Boolean(
-    identity &&
-    identity.agent === agent &&
-    (connectionId === undefined || identity.connectionId === connectionId)
-  )
-}
-
 /** One resume rule: no identity is a record saved before ownership existed and resumes as before;
- *  `null` (unreadable evidence) or another agent/host refuses. */
+ *  only an identity naming another agent refuses. */
 export function agentResumeIdentityPermits(
   agent: string,
-  session: AgentProviderSessionMetadata,
-  connectionId?: string | null
+  session: AgentProviderSessionMetadata
 ): boolean {
-  return (
-    session.resumeIdentity === undefined || isOwnedAgentResumeSession(agent, session, connectionId)
-  )
-}
-
-/** Settings captured with the owner win; a record's top-level config is the pre-identity fallback. */
-export function savedAgentResumeLaunchConfig(
-  agent: string,
-  record: {
-    providerSession: AgentProviderSessionMetadata
-    launchConfig?: SleepingAgentLaunchConfig
-  }
-): SleepingAgentLaunchConfig | undefined {
-  return (
-    (isOwnedAgentResumeSession(agent, record.providerSession)
-      ? record.providerSession.resumeIdentity?.launchConfig
-      : undefined) ?? record.launchConfig
-  )
-}
-
-/** The launch writer attaches only settings already matched to this provider and launch. */
-export function captureAgentResumeLaunchConfig(
-  session: AgentProviderSessionMetadata,
-  agent: string,
-  config: SleepingAgentLaunchConfig | undefined
-): AgentProviderSessionMetadata {
-  const identity = session.resumeIdentity
-  if (!identity || identity.agent !== agent || identity.launchConfig || !config) {
-    return session
-  }
-  return {
-    ...session,
-    resumeIdentity: {
-      ...identity,
-      launchConfig: { ...config, agentEnv: { ...config.agentEnv } }
-    }
-  }
+  return session.resumeIdentity === undefined || session.resumeIdentity.agent === agent
 }
 
 /** Strict older RPC decoders accept only the locator; validate ownership before projecting it. */
@@ -157,15 +85,8 @@ export function providerSessionForResumeRequest(
 }
 
 export function agentResumeIdentitiesEqual(
-  left: AgentResumeIdentity | null | undefined,
-  right: AgentResumeIdentity | null | undefined
+  left: AgentResumeIdentity | undefined,
+  right: AgentResumeIdentity | undefined
 ): boolean {
-  if (!left || !right) {
-    return left === right
-  }
-  return (
-    left.agent === right.agent &&
-    left.connectionId === right.connectionId &&
-    launchConfigsEqual(left.launchConfig, right.launchConfig)
-  )
+  return left?.agent === right?.agent
 }

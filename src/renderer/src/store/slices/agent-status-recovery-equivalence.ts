@@ -1,9 +1,29 @@
 import { agentResumeIdentitiesEqual } from '../../../../shared/agent-resume-identity'
-import { launchConfigsEqual } from '../../../../shared/sleeping-agent-launch-config'
-export { launchConfigsEqual } from '../../../../shared/sleeping-agent-launch-config'
-import type { SleepingAgentSessionRecord } from '../../../../shared/agent-session-resume'
+import type {
+  SleepingAgentSessionRecord,
+  SleepingAgentLaunchConfig
+} from '../../../../shared/agent-session-resume'
 import { agentProviderSessionsEqual } from '../../../../shared/agent-session-resume'
 import { agentMainAgentVerdict } from '../../../../shared/agent-main-agent-verdict'
+
+export function launchConfigsEqual(
+  a: SleepingAgentLaunchConfig | undefined,
+  b: SleepingAgentLaunchConfig | undefined
+): boolean {
+  if (a === undefined || b === undefined) {
+    return a === b
+  }
+  if (
+    a.agentCommand !== b.agentCommand ||
+    a.agentArgs !== b.agentArgs ||
+    a.ompResumeFilePath !== b.ompResumeFilePath
+  ) {
+    return false
+  }
+  const aKeys = Object.keys(a.agentEnv)
+  const bKeys = Object.keys(b.agentEnv)
+  return aKeys.length === bKeys.length && aKeys.every((key) => a.agentEnv[key] === b.agentEnv[key])
+}
 
 export function sleepingRecordsEquivalentIgnoringCaptureTime(
   existing: SleepingAgentSessionRecord | undefined,

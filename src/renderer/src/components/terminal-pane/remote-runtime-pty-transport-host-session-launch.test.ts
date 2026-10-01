@@ -349,20 +349,9 @@ describe('createRemoteRuntimePtyTransport', () => {
   })
 
   it.each([
-    [
-      'captured args win over the pane override',
-      '--permission-mode plan',
-      '--stale',
-      '--permission-mode plan'
-    ],
-    ['nothing captured keeps the pane override', undefined, '--pane-override', '--pane-override'],
-    [
-      'nothing captured or overridden omits agentArgs for the host defaults',
-      undefined,
-      undefined,
-      undefined
-    ]
-  ] as const)('sends owned resume args: %s', async (_name, captured, override, expected) => {
+    ['the pane override', '--pane-override'],
+    ['no agentArgs, so the host keeps its defaults', undefined]
+  ] as const)('sends an owned resume as a bare locator with %s', async (_name, override) => {
     const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
     const transport = createRemoteRuntimePtyTransport('env-1', {
       worktreeId: 'repo1::/remote/wt',
@@ -372,13 +361,7 @@ describe('createRemoteRuntimePtyTransport', () => {
       resumeProviderSession: {
         key: 'session_id',
         id: 'provider-session',
-        resumeIdentity: {
-          agent: 'claude',
-          connectionId: null,
-          ...(captured !== undefined
-            ? { launchConfig: { agentArgs: captured, agentEnv: { CAPTURED: 'client-only' } } }
-            : {})
-        }
+        resumeIdentity: { agent: 'claude' }
       },
       tabId: 'tab-1',
       leafId: '11111111-1111-4111-8111-111111111111'
@@ -391,11 +374,11 @@ describe('createRemoteRuntimePtyTransport', () => {
         method: 'terminal.ensureAgentSession',
         params: expect.objectContaining({
           providerSession: { key: 'session_id', id: 'provider-session' },
-          ...(expected !== undefined ? { agentArgs: expected } : {})
+          ...(override !== undefined ? { agentArgs: override } : {})
         })
       })
     )
-    if (expected === undefined) {
+    if (override === undefined) {
       expect(runtimeCall).not.toHaveBeenCalledWith(
         expect.objectContaining({
           method: 'terminal.ensureAgentSession',

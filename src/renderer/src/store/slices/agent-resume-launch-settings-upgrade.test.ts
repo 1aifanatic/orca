@@ -1,6 +1,6 @@
 // Launch settings must survive resume for records saved before resume identity existed (legacy)
-// and for sessions whose settings were captured with their owner, across quit, restart and the
-// replay of the main process's saved hook row (which never carries the renderer's capture).
+// and for sessions launched with custom settings, across quit, restart and the replay of the main
+// process's saved hook row (which carries no launch settings).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState } from '../types'
@@ -184,7 +184,7 @@ describe('launch settings across the resume-identity upgrade', () => {
 
     expect(
       currentStore().getState().agentStatusByPaneKey[PANE]?.providerSession?.resumeIdentity
-    ).toMatchObject({ agent: 'claude', launchConfig: { agentArgs: '--model opus' } })
+    ).toEqual({ agent: 'claude' })
     expect(coldRestore()).toMatchObject({
       command: `/opt/custom/claude '--model' 'opus' '--resume' '${CLAUDE_ID}'`,
       env: { MY_FLAG: '1' }
@@ -243,10 +243,7 @@ describe('launch settings across the resume-identity upgrade', () => {
     if (!record) {
       throw new Error('Sleeping record was lost')
     }
-    expect(record.providerSession.resumeIdentity).toMatchObject({
-      agent: 'codex',
-      launchConfig: { agentEnv: { MY_FLAG: '1' } }
-    })
+    expect(record.providerSession.resumeIdentity).toEqual({ agent: 'codex' })
     expect(wake(record)).toBe(expected)
   })
 })

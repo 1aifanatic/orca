@@ -1,50 +1,60 @@
 import { expect, it } from 'vitest'
 import { createTestStore } from './store-test-helpers'
-import { decodeHookResumeSession } from '../../../../shared/agent-resume-identity'
+import { normalizeHookPayload } from '../../../../shared/agent-hook-listener'
+import { createHookListenerState } from '../../../../shared/agent-hook-listener/listener-state'
+import { inheritAgentResumeIdentity } from '../../../../shared/agent-resume-identity'
+import type { AgentHookEventPayload } from '../../../../shared/agent-hook-listener/listener-event'
 
-it('captures matched launch settings with the owner and keeps them across inherited child events', () => {
+const PANE = 'tab-1:11111111-1111-4111-8111-111111111111'
+
+function hookEvent(source: 'claude' | 'codex', sessionId: string): AgentHookEventPayload {
+  const event = normalizeHookPayload(
+    createHookListenerState(),
+    source,
+    {
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      launchToken: 'owner-launch',
+      payload: { hook_event_name: 'UserPromptSubmit', session_id: sessionId, prompt: 'work' }
+    },
+    'production'
+  )
+  if (!event) {
+    throw new Error('Hook was not normalized')
+  }
+  return event
+}
+
+it('keeps the owner session from the host row with no renderer-side ownership rule', () => {
   const store = createTestStore()
-  const paneKey = 'tab-1:leaf-1'
-  const launchConfig = { agentArgs: '--model captured', agentEnv: { PROFILE: 'owner' } }
-  const owner = decodeHookResumeSession({ key: 'session_id', id: 'claude-owner' }, 'claude', null)!
-  store.getState().registerAgentLaunchConfig(paneKey, launchConfig, {
-    agentType: 'claude',
-    launchToken: 'owner-launch'
-  })
-  store
-    .getState()
-    .setAgentStatus(
-      paneKey,
-      { agentType: 'claude', state: 'working', prompt: 'delegate' },
-      undefined,
-      { updatedAt: Date.now() },
-      { tabId: 'tab-1', worktreeId: 'wt-1' },
-      { providerSession: owner, launchToken: 'owner-launch' }
-    )
-  const captured = store.getState().agentStatusByPaneKey[paneKey].providerSession
-  expect(captured).toMatchObject({
+  const owner = inheritAgentResumeIdentity(hookEvent('claude', 'claude-owner'), undefined, 'claude')
+  // The host resolves a nested child to the active owner's display agent before publishing the row.
+  const child = inheritAgentResumeIdentity(hookEvent('codex', 'codex-child'), owner, 'claude')
+  for (const row of [owner, child]) {
+    store
+      .getState()
+      .setAgentStatus(
+        PANE,
+        row.payload,
+        undefined,
+        { updatedAt: Date.now() },
+        { tabId: 'tab-1', worktreeId: 'wt-1' },
+        { providerSession: row.providerSession, launchToken: 'owner-launch' }
+      )
+  }
+  const expected = {
+    key: 'session_id',
     id: 'claude-owner',
-    resumeIdentity: { agent: 'claude', launchConfig }
+    resumeIdentity: { agent: 'claude' }
+  }
+  expect(store.getState().agentStatusByPaneKey[PANE]).toMatchObject({
+    agentType: 'claude',
+    providerSession: expected
   })
-  store
-    .getState()
-    .setAgentStatus(
-      paneKey,
-      { agentType: 'codex', state: 'working', prompt: 'child' },
-      undefined,
-      undefined,
-      undefined,
-      {
-        providerSession: decodeHookResumeSession(
-          { key: 'session_id', id: 'codex-child' },
-          'codex',
-          null
-        ),
-        launchToken: 'owner-launch',
-        launchConfig: { agentArgs: '--child', agentEnv: {} }
-      }
-    )
-  expect(store.getState().agentStatusByPaneKey[paneKey].providerSession).toEqual(captured)
   store.getState().captureAllSleepingAgentSessions('quit')
-  expect(store.getState().sleepingAgentSessionsByPaneKey[paneKey].providerSession).toEqual(captured)
+  expect(store.getState().sleepingAgentSessionsByPaneKey[PANE]).toMatchObject({
+    agent: 'claude',
+    providerSession: expected
+  })
 })

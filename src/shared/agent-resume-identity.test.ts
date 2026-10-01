@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_RESUME_IDENTITY_ERROR,
   agentResumeIdentityPermits,
-  captureAgentResumeLaunchConfig,
   decodeHookResumeSession,
-  isOwnedAgentResumeSession,
-  providerSessionForResumeRequest,
-  savedAgentResumeLaunchConfig
+  providerSessionForResumeRequest
 } from './agent-resume-identity'
 import { normalizeAgentProviderSession, RESUMABLE_TUI_AGENTS } from './agent-session-resume'
 import { buildAgentResumeStartupPlan } from './tui-agent-startup'
@@ -18,8 +15,8 @@ const locator = { key: 'session_id', id: 'provider-owned-id' } as const
 describe('owned resume record', () => {
   it.each(RESUMABLE_TUI_AGENTS)('records %s from the producing route', (agent) => {
     const session = decodeHookResumeSession(locator, agent, null)
-    expect(session).toMatchObject({ resumeIdentity: { agent, connectionId: null } })
-    expect(session && isOwnedAgentResumeSession(agent, session)).toBe(true)
+    expect(session?.resumeIdentity).toEqual({ agent })
+    expect(session && agentResumeIdentityPermits(agent, session)).toBe(true)
   })
 
   it('keeps a legacy row without source unresolved, and resumes it as before', () => {
@@ -42,35 +39,12 @@ describe('owned resume record', () => {
     )
   })
 
-  it('refuses only unreadable or mismatched ownership, never an absent one', () => {
+  it('refuses only an identity naming another agent', () => {
     expect(agentResumeIdentityPermits('codex', locator)).toBe(true)
-    expect(agentResumeIdentityPermits('codex', { ...locator, resumeIdentity: null })).toBe(false)
     const owned = decodeHookResumeSession(locator, 'codex', 'ssh-a')!
-    expect(agentResumeIdentityPermits('codex', owned, 'ssh-a')).toBe(true)
-    expect(agentResumeIdentityPermits('claude', owned, 'ssh-a')).toBe(false)
-    expect(agentResumeIdentityPermits('codex', owned, 'ssh-b')).toBe(false)
-  })
-
-  it('prefers settings captured with the owner, then the record settings', () => {
-    const captured = { agentCommand: 'captured', agentArgs: '', agentEnv: {} }
-    const recordConfig = { agentCommand: 'record', agentArgs: '', agentEnv: {} }
-    const owned = captureAgentResumeLaunchConfig(
-      decodeHookResumeSession(locator, 'codex', null)!,
-      'codex',
-      captured
-    )
-    expect(
-      savedAgentResumeLaunchConfig('codex', { providerSession: owned, launchConfig: recordConfig })
-    ).toBe(owned.resumeIdentity?.launchConfig)
-    expect(
-      savedAgentResumeLaunchConfig('claude', { providerSession: owned, launchConfig: recordConfig })
-    ).toBe(recordConfig)
-    expect(
-      savedAgentResumeLaunchConfig('codex', {
-        providerSession: locator,
-        launchConfig: recordConfig
-      })
-    ).toBe(recordConfig)
+    expect(owned.resumeIdentity).toEqual({ agent: 'codex' })
+    expect(agentResumeIdentityPermits('codex', owned)).toBe(true)
+    expect(agentResumeIdentityPermits('claude', owned)).toBe(false)
   })
 
   it('refuses a saved mixed identity rather than relabeling it', () => {
@@ -88,26 +62,22 @@ describe('owned resume record', () => {
     )
   })
 
-  it('preserves invalid ownership as a refusal instead of downgrading it to legacy', () => {
-    const session = decodeHookResumeSession(
-      { ...locator, resumeIdentity: { agent: 'bogus' } },
-      'codex',
-      null
-    )
-    expect(session?.resumeIdentity).toBeNull()
-  })
-
-  it('retains provider, host and captured settings across sleeping-record hydration', () => {
-    const config = {
-      agentCommand: 'codex --model captured',
-      agentArgs: '--model captured',
-      agentEnv: { PROFILE: 'captured' }
+  it.each([{ agent: 'bogus' }, 'codex', 42, { connectionId: null }])(
+    'reads a malformed identity %j as absent and re-derives it from the route',
+    (resumeIdentity) => {
+      const raw = { ...locator, resumeIdentity }
+      expect(normalizeAgentProviderSession(raw)).toEqual(locator)
+      expect(decodeHookResumeSession(raw, 'codex', null)?.resumeIdentity).toEqual({
+        agent: 'codex'
+      })
+      const legacy = decodeHookResumeSession(raw, undefined, null)!
+      expect(legacy.resumeIdentity).toBeUndefined()
+      expect(agentResumeIdentityPermits('claude', legacy)).toBe(true)
     }
-    const session = captureAgentResumeLaunchConfig(
-      decodeHookResumeSession(locator, 'codex', 'remote-a')!,
-      'codex',
-      config
-    )
+  )
+
+  it('retains the provider across sleeping-record hydration', () => {
+    const session = decodeHookResumeSession(locator, 'codex', 'remote-a')!
     const record = {
       paneKey: 'pane',
       worktreeId: 'folder-workspace',
@@ -124,14 +94,11 @@ describe('owned resume record', () => {
     if (!restored) {
       throw new Error('Sleeping record was discarded')
     }
-    expect(restored.pane.providerSession).toEqual(session)
-    expect(isOwnedAgentResumeSession('codex', restored.pane.providerSession, 'remote-b')).toBe(
-      false
-    )
+    expect(restored.pane.providerSession).toEqual({
+      ...locator,
+      resumeIdentity: { agent: 'codex' }
+    })
     expect(normalizeAgentProviderSession(session)).toEqual(session)
-    expect(
-      captureAgentResumeLaunchConfig(session, 'claude', { ...config, agentCommand: 'claude' })
-    ).toEqual(session)
   })
 
   it('projects a validated locator for older strict RPC decoders', () => {

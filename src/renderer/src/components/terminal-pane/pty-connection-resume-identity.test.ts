@@ -144,9 +144,9 @@ describe('connectPanePty', () => {
     await restoreTerminalTestGlobals()
   })
 
-  it.each(['unreadable', 'mixed'] as const)(
-    'refuses an %s saved identity without typing and still permits a fresh launch',
-    async (kind) => {
+  it.each(['mixed'] as const)(
+    'refuses a %s saved identity without typing and still permits a fresh launch',
+    async () => {
       const { connectPanePty } = await import('./pty-connection')
       const paneKey = makePaneKey('tab-1', LEAF_1)
       mockStoreState.sleepingAgentSessionsByPaneKey = {
@@ -158,7 +158,7 @@ describe('connectPanePty', () => {
           providerSession: {
             key: 'session_id',
             id: '0195f2ce-1111-4000-8000-000000000001',
-            resumeIdentity: kind === 'mixed' ? { agent: 'codex', connectionId: null } : null
+            resumeIdentity: { agent: 'codex' }
           },
           prompt: 'saved work',
           state: 'working',
@@ -189,8 +189,8 @@ describe('connectPanePty', () => {
       const freshDeps = createDeps({
         startup: { command: 'codex', launchAgent: 'codex', startupCommandDelivery: 'shell-ready' }
       })
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Same connection harness; an explicit pending startup bypasses automatic recovery.
-      connectPanePty(createPane(1) as never, createManager(1) as never, freshDeps as never)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Same connection harness; the fresh agent opens in a pane with no saved session.
+      connectPanePty(createPane(2) as never, createManager(2) as never, freshDeps as never)
       await flushAsyncTicks(20)
       expect(freshDeps.onPtyErrorRef.current).not.toHaveBeenCalled()
       expect(createdTransportOptions.at(-1)).toMatchObject({

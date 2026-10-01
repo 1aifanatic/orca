@@ -112,46 +112,28 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
   })
 
-  it.each(['unreadable', 'mixed', 'wrong-host'] as const)(
-    'visibly refuses %s saved ownership without creating a resume tab',
-    async (kind) => {
-      const resumeIdentity =
-        kind === 'unreadable'
-          ? null
-          : {
-              agent: kind === 'mixed' ? ('claude' as const) : ('codex' as const),
-              connectionId: kind === 'wrong-host' ? 'ssh-other' : null
-            }
-      await expect(
-        launch({
-          ...record,
-          connectionId: null,
-          providerSession: { ...record.providerSession, resumeIdentity }
-        })
-      ).resolves.toBeUndefined()
-      expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_ERROR)
-      expect(mockCreateTab).not.toHaveBeenCalled()
-      expect(store.clearSleepingAgentSession).not.toHaveBeenCalled()
-    }
-  )
+  it('visibly refuses an identity naming another agent without creating a resume tab', async () => {
+    await expect(
+      launch({
+        ...record,
+        providerSession: { ...record.providerSession, resumeIdentity: { agent: 'claude' } }
+      })
+    ).resolves.toBeUndefined()
+    expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_ERROR)
+    expect(mockCreateTab).not.toHaveBeenCalled()
+    expect(store.clearSleepingAgentSession).not.toHaveBeenCalled()
+  })
 
-  it('prefers settings captured with the owner over the current settings', async () => {
+  it('resumes an owned record exactly like a legacy one', async () => {
     store.settings.terminalWindowsShell = 'powershell.exe'
-    store.settings.agentCmdOverrides = { codex: 'current-codex' }
 
     await expect(
       launch({
         ...record,
-        providerSession: {
-          ...record.providerSession,
-          resumeIdentity: {
-            agent: 'codex',
-            connectionId: null,
-            launchConfig: { agentCommand: 'captured-codex', agentArgs: '', agentEnv: {} }
-          }
-        }
+        providerSession: { ...record.providerSession, resumeIdentity: { agent: 'codex' } }
       })
-    ).resolves.toBe(`captured-codex 'resume' '${SESSION_ID}'`)
+    ).resolves.toBe(`codex '--dangerously-bypass-approvals-and-sandbox' 'resume' '${SESSION_ID}'`)
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('quotes the resume argv for a cmd.exe tab', async () => {

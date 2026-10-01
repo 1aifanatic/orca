@@ -1,7 +1,6 @@
 import {
   AGENT_RESUME_IDENTITY_ERROR,
-  agentResumeIdentityPermits,
-  savedAgentResumeLaunchConfig
+  agentResumeIdentityPermits
 } from '../../../shared/agent-resume-identity'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
@@ -72,11 +71,11 @@ export function launchSleepingAgentSession(
   options?: ResumeSleepingAgentSessionsOptions
 ): boolean {
   const state = useAppStore.getState()
-  if (!agentResumeIdentityPermits(record.agent, record.providerSession, record.connectionId)) {
+  if (!agentResumeIdentityPermits(record.agent, record.providerSession)) {
     toast.error(AGENT_RESUME_IDENTITY_ERROR)
     return false
   }
-  const launchConfig = savedAgentResumeLaunchConfig(record.agent, record)
+  const launchConfig = record.launchConfig
   const resumeTarget = getResumeLaunchTarget(record.worktreeId)
   const startupPlan = buildAgentResumeStartupPlan({
     agent: record.agent,

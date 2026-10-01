@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { normalizeHookPayload } from '../../shared/agent-hook-listener'
-import { isOwnedAgentResumeSession } from '../../shared/agent-resume-identity'
 import { AgentHookServer } from './server'
 import { buildBody, PANE, GOOD_PANE, postHookEvent } from './server.test-fixtures'
 import { buildAgentResumeStartupPlan } from '../../shared/tui-agent-startup'
@@ -110,7 +109,7 @@ describe('resume identity through authenticated provider hooks', () => {
         providerSession: {
           key: 'session_id',
           id: 'forged',
-          resumeIdentity: { agent: 'claude', connectionId: null }
+          resumeIdentity: { agent: 'claude' }
         }
       })
     })
@@ -123,15 +122,14 @@ describe('resume identity through authenticated provider hooks', () => {
       source: 'codex',
       providerSession: {
         id: 'codex-worker',
-        resumeIdentity: { agent: 'codex', connectionId: null }
+        resumeIdentity: { agent: 'codex' }
       }
     })
 
     const legacy = saved.entries[PANE]
     delete legacy.providerSession.resumeIdentity
     expect(sanitizeHydratedEntry(PANE, legacy)?.providerSession?.resumeIdentity).toEqual({
-      agent: 'codex',
-      connectionId: null
+      agent: 'codex'
     })
     legacy.payload.agentType = 'claude'
     const hydrated = sanitizeHydratedEntry(PANE, legacy)
@@ -149,7 +147,7 @@ describe('resume identity through authenticated provider hooks', () => {
     expect(sanitizeHydratedEntry(PANE, legacy)?.providerSession?.resumeIdentity).toBeUndefined()
   })
 
-  it('binds a remote identity-only hook to its connection and rejects another host', async () => {
+  it('keeps a remote identity-only hook resumable by its own agent', async () => {
     const server = await startServer()
     const event = normalizeHookPayload(
       server._getStateForTests(),
@@ -175,8 +173,8 @@ describe('resume identity through authenticated provider hooks', () => {
       throw new Error('Missing remote identity')
     }
     expect(row.connectionId).toBe('ssh-owner')
-    expect(isOwnedAgentResumeSession('pi', row.providerSession, 'ssh-owner')).toBe(true)
-    expect(isOwnedAgentResumeSession('pi', row.providerSession, 'ssh-other')).toBe(false)
+    // Host scope is the record's connectionId, checked by the resume sweep; the identity names the agent only.
+    expect(row.providerSession.resumeIdentity).toEqual({ agent: 'pi' })
     expect(
       buildAgentResumeStartupPlan({
         agent: 'pi',
@@ -226,5 +224,94 @@ describe('resume identity through authenticated provider hooks', () => {
         })
       ])
     )
+  })
+
+  it('keeps the Claude session when the first event of a pane is a subagent event', async () => {
+    const server = await startServer()
+    await postHookEvent(
+      server,
+      buildBody({
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: 'ls' },
+        session_id: 'claude-main',
+        agent_id: 'sub-1',
+        agent_type: 'general-purpose'
+      })
+    )
+    expect(server.getStatusSnapshot()).toMatchObject([
+      {
+        paneKey: PANE,
+        agentType: 'claude',
+        providerSession: { id: 'claude-main', resumeIdentity: { agent: 'claude' } }
+      }
+    ])
+  })
+
+  it('keeps the Claude session when an SSH reconnect replays a subagent event into cleared rows', async () => {
+    const server = await startServer()
+    const normalize = (body: Record<string, unknown>) => {
+      const event = normalizeHookPayload(
+        server._getStateForTests(),
+        'claude',
+        buildBody(body),
+        'production'
+      )
+      if (!event) {
+        throw new Error('Hook was not normalized')
+      }
+      return event
+    }
+    server.ingestRemote(
+      normalize({ hook_event_name: 'UserPromptSubmit', prompt: 'go', session_id: 'claude-main' }),
+      'ssh-1'
+    )
+    const subagent = normalize({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls' },
+      session_id: 'claude-main',
+      agent_id: 'sub-1',
+      agent_type: 'general-purpose'
+    })
+    server.ingestRemote(subagent, 'ssh-1')
+    server.clearStatusEntriesForConnection('ssh-1')
+    expect(server.getStatusSnapshot()).toEqual([])
+    server.ingestRemote({ ...subagent, isReplay: true }, 'ssh-1')
+    expect(server.getStatusSnapshot()).toMatchObject([
+      {
+        paneKey: PANE,
+        agentType: 'claude',
+        providerSession: { id: 'claude-main', resumeIdentity: { agent: 'claude' } }
+      }
+    ])
+  })
+
+  it('stores no mismatched pair when a Codex child event follows a finished Claude owner', async () => {
+    const server = await startServer()
+    await postHookEvent(
+      server,
+      buildBody({ hook_event_name: 'UserPromptSubmit', prompt: 'go', session_id: 'claude-parent' })
+    )
+    await postHookEvent(
+      server,
+      buildBody({ hook_event_name: 'UserPromptSubmit', prompt: 'work', session_id: 'codex-root' }),
+      '/hook/codex'
+    )
+    await postHookEvent(server, buildBody({ hook_event_name: 'Stop', session_id: 'claude-parent' }))
+    await postHookEvent(
+      server,
+      buildBody({
+        hook_event_name: 'PreToolUse',
+        tool_name: 'shell',
+        session_id: 'codex-sub',
+        agent_id: 'codex-sub-1'
+      }),
+      '/hook/codex'
+    )
+    const row = server.getStatusSnapshot().find((entry) => entry.paneKey === PANE)
+    expect(row?.agentType).toBe('codex')
+    expect(row?.providerSession?.id).not.toBe('claude-parent')
+    expect(row?.providerSession?.resumeIdentity?.agent ?? 'codex').toBe('codex')
   })
 })

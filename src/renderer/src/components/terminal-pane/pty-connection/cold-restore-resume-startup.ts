@@ -26,7 +26,7 @@ import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySession): void {
   session.buildColdRestoreAgentResumeStartup = (): ColdRestoreAgentResumeStartup | null => {
-    if (session.paneStartup?.command || session.pendingStartupCommand) {
+    if (session.pendingStartupCommand) {
       return null
     }
     const state = useAppStore.getState()
@@ -64,13 +64,7 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     ) {
       return null
     }
-    if (
-      !agentResumeIdentityPermits(
-        agent,
-        providerSession,
-        useLiveEntry ? entry.connectionId : sleepingRecord?.connectionId
-      )
-    ) {
+    if (!agentResumeIdentityPermits(agent, providerSession)) {
       session.reportError(AGENT_RESUME_IDENTITY_ERROR)
       return null
     }
@@ -82,7 +76,6 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
         ? sleepingRecord.launchConfig
         : undefined
     const launchConfig =
-      providerSession.resumeIdentity?.launchConfig ??
       (useLiveEntry && entry ? state.getAgentLaunchConfigForStatusEntry(entry) : undefined) ??
       matchingSleepingLaunchConfig
     // Why: the resume line is typed into this pane's live shell, so its quoting must
