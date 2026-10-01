@@ -410,8 +410,10 @@ sets and the two migration-only US 600/60 cells, C17 and C18, without changing a
 shape. Use `canary-apply` for exactly one cell. A successful canary
 seals its commit, target and rollback digests, selector generation, and durable rehome generation;
 `batch-apply` accepts only that same authority and rolls two to four cells sequentially. Both apply
-modes first refuse a cell whose hosts (controls) exceed 80% of the free slots on the other fresh
-general cells, since drained hosts with nowhere to go keep redialling and pin the cell. A cell's free
+modes and `rollback` first refuse a cell whose hosts (controls) exceed 80% of the free slots on the
+other fresh general cells, since drained hosts with nowhere to go keep redialling and pin the cell.
+`verify` runs the same read-only check, so it reports the headroom answer before an apply is
+dispatched; a rollback that resumes after its restart drains nothing and skips it. A cell's free
 slots are its normal admission pause minus the larger of observed connections and enforced units,
 minus outstanding control reservations; each moved host also brings its splices, which the 20%
 margin covers. Each cell is isolated, drained until restart-safe, replaced
@@ -470,8 +472,14 @@ drained. Then read the cell's live runtime image from
 3. The job classifies the cell itself and needs no extra input:
    - serving the **rollback** image and draining, it is `stranded`. The wave stopped before
      or during its template apply. The job re-isolates, re-drains, applies the reviewed
-     template, and rolls the MIG explicitly if that template was already in place. The cell
-     comes back on a new instance, so the drain clears, and it is restored to its entry class.
+     template, and, if that template was already in place, recreates the cell's one instance
+     with `recreate-instances`. The cell comes back on a new instance, so the drain clears, and
+     it is restored to its entry class. The recovery does not use a rolling action: that
+     rewrites the MIG's version name outside Terraform. The plan validator does accept a MIG
+     moving back to the version name and update policy `relay-gce-cells.tf` declares, so a cell
+     an older rolling action left relabelled reconciles on its next apply, roll, or stranded
+     rollback. The recreate refuses a MIG that does not hold exactly one instance, such as a
+     fenced cell; that failure is the guard, not a fault, so unfence before dispatching.
    - serving the **target** image, it is `roll`, the ordinary rollback. The template applied
      and the instance was replaced.
    - serving the **rollback** image and not draining, it is `resume`: a rollback that failed
@@ -486,6 +494,15 @@ drained. Then read the cell's live runtime image from
 
 A mutating dispatch still needs a fresh aggregate monitor dry-run unless the break-glass
 override below is used.
+
+"Fresh" is short. The dispatch's `gate` job must see the dry-run completed at most 5 minutes
+earlier, on its own clock, and its checkout alone takes about 1.5 minutes, so dispatch within
+about 3 minutes of the monitor finishing. The gate records that authorization instant in the
+single-use consumed marker. Each cell job then checks the evidence was at most 5 minutes old at
+that instant, and that the job itself started within 5 minutes of it, plus 75 minutes per
+predecessor cell. The live preflight in each wave still rejects evidence older than 10 minutes,
+plus the same 75 minutes per predecessor, on its own clock. Evidence the gate rejects as stale
+is not consumed, so a fresh monitor run is the only fix.
 
 ### Gate override (break-glass)
 
