@@ -6,6 +6,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import {
   attachFingerprintFields,
   type AgentSessionAttachParams
@@ -124,11 +125,11 @@ describe('creating a structured codex chat over agentSession.*', () => {
     const host = await ensureStructuredAgentSessionHost(harness.hostConfig())
     const { store } = host.deps
     const now = Date.now()
-    const location = {
+    const location: AgentSessionExecutionLocation = {
       executionHostId: 'local',
       wslDistro: null,
       workspaceId: 'workspace-1',
-      workspaceKind: 'git-worktree' as const
+      workspaceKind: 'git-worktree'
     }
     const identity = {
       sessionId: SESSION,
