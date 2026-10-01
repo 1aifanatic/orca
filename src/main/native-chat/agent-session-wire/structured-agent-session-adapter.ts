@@ -10,6 +10,7 @@ import type {
 // take this?" — and it answers `unknown` rather than guessing, because the
 // journal renders that as delivery unconfirmed instead of as failure.
 
+import type { AgentSessionBackgroundTaskStops } from '../../../shared/agent-child-work-stop-targets'
 import type {
   AgentJournalItemIdentity,
   AgentJournalItemBody,
@@ -24,8 +25,8 @@ import type {
   AgentSessionExecutionLocation,
   AgentSessionProcessIdentity
 } from '../../../shared/agent-session-record'
+import type { StructuredAgentSessionAtRestCommands } from './structured-agent-session-at-rest-commands'
 import type {
-  AgentSessionBackgroundTaskState,
   AgentSessionOptionsResult,
   AgentSessionSlashCommand,
   AgentSessionThreadGoalChange
@@ -39,6 +40,7 @@ import type {
   SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-stop-cause'
+import type { StructuredAgentSessionAdapterStop } from './structured-agent-session-adapter-stop'
 export type {
   StructuredAgentSessionChildEndCause,
   StructuredAgentSessionStopCause
@@ -249,7 +251,7 @@ export type AgentSessionCancelOutcome = {
   refusal?: { detail?: ProviderDiagnostic }
 }
 
-export type StructuredAgentSessionAdapter = {
+export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & {
   /** Provider-aware capability check for hosts that route more than one adapter. */
   supportsCreate?(location: AgentSessionExecutionLocation, agent: string): boolean
   /** Provider/runtime support, kept here so remote enablement changes adapter data, not UI logic. */
@@ -332,18 +334,23 @@ export type StructuredAgentSessionAdapter = {
   supportsThreadGoal?(sessionId: string, agent?: string): boolean
   /** Whether this session writes context facts to its turn rows; `agent` answers one at rest. */
   recordsContextUsage?(sessionId: string, agent?: string): boolean
+  /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string
     fence: number
-    taskId?: string
+    taskIds: readonly string[]
   }): Promise<{ cancelled: boolean }>
-  backgroundTaskState?(sessionId: string): AgentSessionBackgroundTaskState | null | undefined
+  /** The stops this provider honours for a live session's background work; undefined when the
+   *  adapter holds no live session for it. */
+  backgroundTaskStops?(sessionId: string): AgentSessionBackgroundTaskStops | undefined
   /** The provider reported taking a send it has neither answered nor ended, as a queued follow-up
    *  or a silent retry does. Derived from the live child; false with none. */
   holdsDispatch?(sessionId: string): boolean
   /** The `/` surface the running provider reports for itself. Undefined when the
    *  provider never reports one, which is what keeps the client on its catalog. */
   readCommands?(sessionId: string): AgentSessionSlashCommand[] | undefined
+  /** The `/` surface of a chat whose agent is not running; absent when the provider has none. */
+  atRestCommands?: StructuredAgentSessionAtRestCommands
   /** Claims the live callback, builds the provider reply, commits the journal CAS while that claim is
    *  held, then answers it. A reply that cannot be built throws `AgentSessionPromptAnswerRejectedError`
    *  before the commit. A prompt cancel claims the same callback, so only one operation can commit. */
