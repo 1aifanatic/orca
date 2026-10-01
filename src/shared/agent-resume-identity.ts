@@ -1,5 +1,7 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
 import type { AgentType } from './agent-status-types'
+import { isRetainedSessionRemnant } from './agent-hook-presence-transition'
+import { normalizedKnownAgentType } from './agent-status-identity'
 import {
   isResumableTuiAgent,
   normalizeAgentProviderSession,
@@ -37,20 +39,29 @@ export function inheritAgentResumeIdentity(
   previous: AgentHookEventPayload | undefined,
   agent: AgentType | undefined
 ): AgentHookEventPayload {
-  // Why: only a previous row of the displayed agent is an owner; otherwise the event's own session stands.
-  const owner =
+  // Why: only a live previous row of the displayed agent owns the pane, and only a nested event
+  // (another named agent, or a subagent) defers to it; otherwise the event's own session stands.
+  const nested =
+    Boolean(incoming.toolAgentId) ||
+    (normalizedKnownAgentType(incoming.payload.agentType) !== null &&
+      agent !== incoming.payload.agentType)
+  const borrowed =
     agent !== undefined &&
     previous?.payload.agentType === agent &&
-    (agent !== incoming.payload.agentType || incoming.toolAgentId)
+    !isRetainedSessionRemnant(previous) &&
+    nested
       ? previous
-      : incoming
+      : undefined
+  const owner = borrowed ?? incoming
+  const decoded = decodeHookResumeSession(owner.providerSession, owner.source, owner.connectionId)
+  // Why: the row keeps the child's source, so a borrowed legacy session must name its owner now.
+  const providerSession =
+    borrowed && decoded && !decoded.resumeIdentity && isResumableTuiAgent(agent)
+      ? { ...decoded, resumeIdentity: { agent } }
+      : decoded
   return {
     ...incoming,
-    providerSession: decodeHookResumeSession(
-      owner.providerSession,
-      owner.source,
-      owner.connectionId
-    ),
+    providerSession,
     payload: { ...incoming.payload, agentType: agent }
   }
 }
