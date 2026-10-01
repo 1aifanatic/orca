@@ -10,7 +10,7 @@ import {
   type AgentSessionStatusSnapshot
 } from '../../../src/shared/agent-session-status-snapshot-fold'
 import type { AgentSessionStatusEvent } from '../../../src/shared/agent-session-wire'
-import { isMobileMethodUnavailableError } from '../files/file-list-fallback'
+import { isMobileMethodUnavailableError } from '../transport/mobile-method-unavailable'
 import type { RpcClient } from '../transport/rpc-client'
 
 export type MobileStructuredSessionStatusFeed = {
