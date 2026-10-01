@@ -78,6 +78,20 @@ describe('every host that constructs a runtime wires the agent-status store', ()
   )
 })
 
+describe('the desktop host wires launch authority', () => {
+  // Why: both are optional deps, so dropping either still typechecks, and the hook server would
+  // then keep vouching for a launch token every later process in the shell inherits.
+  it('passes the launch-authority deps and wires the runtime as the token reader', () => {
+    const relativePath = 'startup/main-process-runtime-service.ts'
+    expect(runtimeConstruction(relativePath)).toContain(
+      '...agentHookLaunchAuthorityRuntimeDeps(agentHookServer)'
+    )
+    expect(readFileSync(join(MAIN_ROOT, relativePath), 'utf8')).toContain(
+      'wireRuntimeLaunchAuthorityReader(agentHookServer, runtime)'
+    )
+  })
+})
+
 describe('structured status sink wiring', () => {
   it('hands the host the sink the runtime was constructed with', async () => {
     installed.deps = null
