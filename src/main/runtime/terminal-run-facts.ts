@@ -35,6 +35,7 @@ type TerminalRunRecord = {
   incarnationId: string | null
   spawnOrigin: TerminalRunSpawnOrigin
   firstUserInputAt: number | null
+  lastInputAt: number | null
 }
 
 /** Main's per-process facts about one PTY run, keyed by the incarnation they describe. */
@@ -55,7 +56,8 @@ export class TerminalRunFactsRegister {
     this.runsByPtyId.set(commit.id, {
       incarnationId,
       spawnOrigin: origin === 'spawn' && commit.coldRestore !== undefined ? 'cold-restore' : origin,
-      firstUserInputAt: null
+      firstUserInputAt: null,
+      lastInputAt: null
     })
   }
 
@@ -63,13 +65,20 @@ export class TerminalRunFactsRegister {
    *  such as `exit` can end the process before the write returns. The payload check backs up a
    *  writer that labels a reply or focus report as driving. */
   recordInput(ptyId: string, inputKind: TerminalInputKind, data: string, now = Date.now()): void {
-    if (inputKind !== 'driving') {
+    const run = this.runsByPtyId.get(ptyId)
+    if (!run || inputKind === 'query-reply' || isUntypedTerminalInput(data)) {
       return
     }
-    const run = this.runsByPtyId.get(ptyId)
-    if (run && run.firstUserInputAt === null && !isUntypedTerminalInput(data)) {
-      run.firstUserInputAt = now
+    run.lastInputAt = now
+    if (inputKind === 'driving') {
+      run.firstUserInputAt ??= now
     }
+  }
+
+  /** When input other than a terminal reply last reached the PTY's current process, launch writes
+   *  included; null if none has. */
+  readLastInputAt(ptyId: string): number | null {
+    return this.runsByPtyId.get(ptyId)?.lastInputAt ?? null
   }
 
   /** A run main never saw committed reads as not fresh, which keeps today's close-on-exit. */

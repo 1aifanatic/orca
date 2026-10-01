@@ -458,12 +458,15 @@ fresh row read straight from the store, through the same
   its explicit status, so a denied prompt's dialog left in the tail no longer
   blocks a turn the hook says ended;
 - the row joins on any pane key or terminal handle the PTY owns; a pane neither
-  reaches, a stale or restored row, a session-start `done`, and a row from
-  before the PTY respawned, and a `done` received before Orca's latest input to
-  the pane (the next turn's first hook may still be in flight) all leave the
-  decision to the screen and text rules,
-  which is also how startup readiness works before an agent's first hook. A
-  shell command marker is no process boundary: Pi paints OSC 133 zones itself;
+  reaches, a stale or restored row, a session-start `done`, a row from before
+  the PTY respawned, and a `done` received before the pane's latest input all
+  leave the decision to the screen and text rules, which is also how startup
+  readiness works before an agent's first hook. The input is the PTY run's
+  `lastInputAt` (`terminal-run-facts.ts`), which both write funnels record, so
+  a key the user typed counts like a prompt Orca sent: the next turn's first
+  hook may still be in flight, and an agent restarted in the same shell has
+  not posted one. A shell command marker is no process boundary: Pi paints
+  OSC 133 zones itself;
 - every other agent stays `identity-only`: Claude sends no event when an
   approval is denied or Esc stops a tool, so its row can sit at `waiting` or
   `working` forever, and the rules keep deciding.

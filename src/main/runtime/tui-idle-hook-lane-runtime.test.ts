@@ -122,18 +122,22 @@ describe('tui-idle hook lane through the runtime', () => {
     ).toBe('timeout')
   })
 
-  it("does not settle on the previous turn's done once a new prompt is written", async () => {
+  // Both write funnels record input (terminal-run-facts-input.test.ts), the user's keys included:
+  // typing `codex` to restart the agent in the same shell must not read the old process's done.
+  it.each([
+    ['a prompt Orca sent', 'next task\r'],
+    ['the user restarting the agent in the same shell', 'codex\r']
+  ])('reads no done from before %s', async (_label, input) => {
     const before = Date.now() - 1000
     const rows = (): AgentStatusIpcPayload[] => [
       row({ receivedAt: before, stateStartedAt: before })
     ]
-    expect(
-      await waitOutcome({
-        rows,
-        afterCreate: (runtime, handle) =>
-          runtime.sendTerminal(handle, { text: 'next task', enter: true }, { inputKind: 'driving' })
-      })
-    ).toBe('timeout')
+    const typeAt = (at: number) => (runtime: OrcaRuntimeService) => {
+      runtime.noteTerminalSpawnCommit({ id: TRANSCRIPT_PANE_PTY_ID, incarnationId: 'inc-1' })
+      runtime.terminalRunFacts.recordInput(TRANSCRIPT_PANE_PTY_ID, 'driving', input, at)
+    }
+    expect(await waitOutcome({ rows, afterCreate: typeAt(before - 1) })).toBe('ready')
+    expect(await waitOutcome({ rows, afterCreate: typeAt(before + 1) })).toBe('timeout')
   })
 
   // Pi brackets each message in OSC 133 zones itself, so a command marker is no process boundary.

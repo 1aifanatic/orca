@@ -62,4 +62,19 @@ describe('terminal run facts', () => {
 
     expect(facts.read('pty-1', 'inc-1').firstUserInputAt).toBeNull()
   })
+
+  it('records the last input, a launch write included, but no terminal reply', () => {
+    const facts = new TerminalRunFactsRegister()
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-1' })
+    facts.recordInput('pty-1', 'driving', 'ls\r', 100)
+    facts.recordInput('pty-1', 'launch', 'next task\r', 200)
+    facts.recordInput('pty-1', 'query-reply', 'answer', 300)
+    facts.recordInput('pty-1', 'driving', '\x1b[I', 400)
+
+    expect(facts.read('pty-1', 'inc-1').firstUserInputAt).toBe(100)
+    expect(facts.readLastInputAt('pty-1')).toBe(200)
+
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-2' })
+    expect(facts.readLastInputAt('pty-1')).toBeNull()
+  })
 })

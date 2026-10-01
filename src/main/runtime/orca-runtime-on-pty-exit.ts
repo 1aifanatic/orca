@@ -143,7 +143,6 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
       this.providerVisibleStateByPtyId.delete(ptyId)
       this.providerVisibleRetryAtByPtyId.delete(ptyId)
       this.agentPromptExplicitStatusFloorByPtyId.delete(ptyId)
-      this.terminalInputAtByPtyId.delete(ptyId)
       this.ptyLifecycleGenerationById.delete(ptyId)
       this.agentStatusOscProcessorsByPtyId.delete(ptyId)
       this.terminalSpawnCommandsByPtyId.delete(ptyId)

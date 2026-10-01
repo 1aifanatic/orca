@@ -133,9 +133,6 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
 
   protected readonly agentPromptExplicitStatusFloorByPtyId = new Map<string, number>()
 
-  /** When Orca last wrote driving input (a prompt, a key, a mailbox pointer) to each PTY. */
-  protected readonly terminalInputAtByPtyId = new Map<string, number>()
-
   protected readonly orchestrationCompatibilitySshAttachments = new Map<
     string,
     OrchestrationCompatibilitySshAttachmentAuthority

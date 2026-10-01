@@ -40,11 +40,12 @@ export type TuiIdleHookTurnRead = {
   handles: Iterable<string>
   paneKeys: Iterable<string>
   hookRows: readonly AgentStatusIpcPayload[]
-  /** Rows received before this came from an earlier process in the pane. */
-  receivedNotBefore?: number
-  /** When Orca last wrote input to the pane: a `done` from before it cannot speak for the turn
-   *  that input may have started, whose first hook can still be in flight. */
-  doneNotBefore?: number
+  /** When the PTY respawned: every row from before it is the previous process's. */
+  respawnedAt?: number
+  /** When input last reached the pane, typed or sent: a `done` from before it cannot speak for
+   *  the turn that input may have started (or the agent it restarted), whose first hook can still
+   *  be in flight. */
+  lastInputAt?: number | null
   /** The existing permission arbiter, given the turn as the pane's explicit status. */
   resolveBlockedText(
     status: HookTurnState,
@@ -55,15 +56,15 @@ export type TuiIdleHookTurnRead = {
 /**
  * The pane's freshest hook row, joined on its pane keys and terminal handles. A pane neither
  * reaches (a PTY created with no pane key whose agent never posted under one) has no answer, and
- * neither does a row another agent wrote: the caller's other lanes decide.
+ * neither does a row another agent or an earlier process wrote: the caller's other lanes decide.
  */
 export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn | null {
   const row = selectFreshExplicitAgentStatusRow(read)
-  if (!row || row.agentType !== read.agent) {
+  if (!row || row.agentType !== read.agent || row.receivedAt < (read.respawnedAt ?? -1)) {
     return null
   }
   const state = hookLeadTurnState(row)
-  if (state === null || (state === 'done' && row.receivedAt < (read.doneNotBefore ?? -1))) {
+  if (state === null || (state === 'done' && row.receivedAt < (read.lastInputAt ?? -1))) {
     return null
   }
   return { state, blockedReason: read.resolveBlockedText(state, row) }

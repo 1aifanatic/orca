@@ -6,7 +6,6 @@ import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-type
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
 import type { AgentStatusEntry, AgentStatusIpcPayload } from '../../shared/agent-status-types'
-import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { renewRuntimeMobileAgentStatusFromPtyTitle } from './runtime-mobile-agent-status-projection'
 import type { RuntimeTerminalWriteOptions } from './runtime-terminal-writer'
@@ -68,25 +67,11 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       handles,
       paneKeys,
       hookRows,
-      // Why: a respawn under the same PTY id leaves the previous process's row behind.
-      receivedNotBefore: this.agentPromptExplicitStatusFloorByPtyId.get(ptyId),
-      doneNotBefore: this.terminalInputAtByPtyId.get(ptyId),
+      respawnedAt: this.agentPromptExplicitStatusFloorByPtyId.get(ptyId),
+      lastInputAt: this.terminalRunFacts.readLastInputAt(ptyId),
       resolveBlockedText: (state, row) =>
         this.resolveTuiIdleHookBlockedText(ptyId, handles, state, row)
     })
-  }
-
-  /** Writes Orca-driven input, stamping the PTY's input clock for the tui-idle hook lane. */
-  protected writeDrivingPtyInput(
-    ptyId: string,
-    data: string,
-    inputKind: TerminalInputKind
-  ): boolean {
-    const wrote = this.ptyController?.write(ptyId, data, inputKind) ?? false
-    if (wrote) {
-      this.terminalInputAtByPtyId.set(ptyId, Date.now())
-    }
-    return wrote
   }
 
   private resolveTuiIdleHookBlockedText(

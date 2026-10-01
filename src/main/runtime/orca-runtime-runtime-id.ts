@@ -335,7 +335,7 @@ export class OrcaRuntimeWithRuntimeId {
   protected readonly terminalWaiters = new RuntimeTerminalWaiterRegistry()
 
   protected readonly terminalWriter = new RuntimeTerminalWriter(
-    (ptyId, data, inputKind) => this.writeDrivingPtyInput(ptyId, data, inputKind),
+    (ptyId, data, inputKind) => this.ptyController?.write(ptyId, data, inputKind) ?? false,
     (ptyId) => this.getPtyWriteHostPlatform(ptyId),
     (ptyId) => this.getPtyAgent(ptyId)
   )

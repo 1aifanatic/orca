@@ -126,14 +126,14 @@ describe('readTuiIdleHookTurn', () => {
       readTuiIdleHookTurn({
         ...base,
         hookRows: [row({ receivedAt })],
-        receivedNotBefore: receivedAt + 1
+        respawnedAt: receivedAt + 1
       })
     ).toBeNull()
     expect(
       readTuiIdleHookTurn({
         ...base,
         hookRows: [row({ receivedAt })],
-        receivedNotBefore: receivedAt
+        respawnedAt: receivedAt
       })
     ).toEqual(DONE)
   })
@@ -144,18 +144,18 @@ describe('readTuiIdleHookTurn', () => {
       readTuiIdleHookTurn({
         ...base,
         hookRows: [row({ receivedAt })],
-        doneNotBefore: receivedAt + 1
+        lastInputAt: receivedAt + 1
       })
     ).toBeNull()
     expect(
-      readTuiIdleHookTurn({ ...base, hookRows: [row({ receivedAt })], doneNotBefore: receivedAt })
+      readTuiIdleHookTurn({ ...base, hookRows: [row({ receivedAt })], lastInputAt: receivedAt })
     ).toEqual(DONE)
     // A working row keeps the pane busy whatever its age against the input.
     expect(
       readTuiIdleHookTurn({
         ...base,
         hookRows: [row({ receivedAt, state: 'working' })],
-        doneNotBefore: receivedAt + 1
+        lastInputAt: receivedAt + 1
       })
     ).toEqual(WORKING)
   })

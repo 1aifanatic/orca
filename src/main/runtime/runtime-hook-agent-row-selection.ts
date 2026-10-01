@@ -32,8 +32,6 @@ type HookRowJoin = {
   handles: Iterable<string>
   paneKeys: Iterable<string>
   hookRows: readonly AgentStatusIpcPayload[]
-  /** Rows received before this belong to an earlier process in the pane. */
-  receivedNotBefore?: number
 }
 
 function isPermissionState(state: AgentStatusEntry['state']): boolean {
@@ -54,9 +52,6 @@ export function selectFreshExplicitAgentStatusRow(args: HookRowJoin): AgentStatu
       continue
     }
     if (now - (row.evidenceObservedAt ?? row.receivedAt) > AGENT_STATUS_STALE_AFTER_MS) {
-      continue
-    }
-    if (args.receivedNotBefore !== undefined && row.receivedAt < args.receivedNotBefore) {
       continue
     }
     if (
