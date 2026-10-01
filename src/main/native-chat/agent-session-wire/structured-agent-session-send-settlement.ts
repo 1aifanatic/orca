@@ -20,7 +20,7 @@ type SendSettlement = SettledSend | 'pending' | 'missing'
 
 /** What ends a wait: the provider's answer, the host handing the message over, or either that or
  *  the message waiting behind a running command, which hands nothing over until it ends. A failed
- *  start recorded on the message ends each: the host answers it now, while it waits for its next try. */
+ *  start recorded on the message ends each too, unless the wait runs `throughStartRetries`. */
 export type SendSettlementPoint = 'answered' | 'handed-over' | 'handed-over-or-behind-command'
 
 export type SendSettlementWaitOptions = {
