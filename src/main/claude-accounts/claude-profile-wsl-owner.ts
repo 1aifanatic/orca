@@ -89,28 +89,20 @@ export function createWslClaudeProfileOwner(
     refresh: async (target) => {
       const { distro, accountId } = selected(target)
       const key = distro.toLowerCase()
-      let result: ClaudeWslProfileResponse
-      let guest: ClaudeWslGuest
-      try {
-        const cached = guests.get(key)
-        guest = cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
-        if (guest !== cached?.guest) {
-          guests.set(key, { guest, expires: Date.now() + 600_000 })
-          homes.set(key, guest.home)
-        }
-        result = await guest.request({
-          action: 'inspect',
-          distro,
-          accountId,
-          userHome: guest.home,
-          hooksEnabled: false
-        })
-      } catch (error) {
-        // Why: roots, readiness and a possibly broken runtime must not outlive the failure.
-        guests.delete(key)
-        inspections.delete(key)
-        throw error
+      const cached = guests.get(key)
+      const guest =
+        cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
+      if (guest !== cached?.guest) {
+        guests.set(key, { guest, expires: Date.now() + 600_000 })
+        homes.set(key, guest.home)
       }
+      const result = await guest.request({
+        action: 'inspect',
+        distro,
+        accountId,
+        userHome: guest.home,
+        hooksEnabled: false
+      })
       // Why: an inspect that lands after a newer selection must not replace its verification.
       if (selectedAccountId(target) === accountId) {
         inspections.set(key, { accountId, home: guest.home, result })
