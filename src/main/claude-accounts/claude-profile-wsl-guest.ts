@@ -10,6 +10,7 @@ import { provisionClaudeAccountProfile } from './claude-profile-setup'
 import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
 import { applyWorkspaceTrustOnThisHost } from '../execution-host-workspace-trust'
 import { ClaudeHookService } from '../claude/hook-service'
+import { WSL_CLAUDE_PROFILE_POINTER_FROM_HOME } from '../../shared/claude-profile-routing'
 
 export const ClaudeWslProfileRequest = z.object({
   action: z.enum(['inspect', 'setup', 'publish', 'withdraw', 'trust']),
@@ -29,7 +30,7 @@ export type ClaudeWslProfileRequest = z.infer<typeof ClaudeWslProfileRequest>
 export async function runClaudeWslProfileRequest(request: ClaudeWslProfileRequest) {
   const { userHome, distro, accountId } = request
   const dataRoot = join(userHome, '.local', 'share', 'orca')
-  const pointer = join(dataRoot, 'claude-profiles', 'selected-wsl')
+  const pointer = join(userHome, WSL_CLAUDE_PROFILE_POINTER_FROM_HOME)
   if (request.action === 'withdraw') {
     withdrawClaudeProfilePointer(pointer)
     return { ready: false, provisioned: false }

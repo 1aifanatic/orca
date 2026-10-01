@@ -163,6 +163,17 @@ describe('Claude invocation account selection', () => {
       expect([missing.status, missing.stdout]).toEqual([1, ''])
     }
   )
+  it.each(POSIX_SHELLS)(
+    'in %s refuses a guest-relative pointer cleanly under set -u with HOME unset',
+    (shell) => {
+      const f = fixture()
+      const relative = [`ORCA_CLAUDE_PROFILE_POINTER=${WSL_CLAUDE_PROFILE_POINTER}`]
+      const fn = getPosixClaudeShellFunction()
+      const result = f.run(shell, `${fn}\nunset HOME\nset -u\nclaude x`, relative)
+      expect([result.status, result.stdout]).toEqual([1, ''])
+      expect(result.stderr).toContain('Claude account selection is unreadable')
+    }
+  )
   it('preserves dormant generated scripts byte for byte', () => {
     gate.enabled = false
     expect([

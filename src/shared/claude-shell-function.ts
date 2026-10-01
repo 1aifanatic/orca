@@ -19,7 +19,7 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
   function claude {
     local __orca_claude_home __orca_claude_pointer="\${ORCA_CLAUDE_PROFILE_POINTER:-}"
     # Why: a WSL pane's pointer is guest-relative, since the host cannot know the guest home.
-    case "$__orca_claude_pointer" in '~/'*) __orca_claude_pointer="$HOME/\${__orca_claude_pointer#??}" ;; esac
+    case "$__orca_claude_pointer" in '~/'*) __orca_claude_pointer="\${HOME:-}/\${__orca_claude_pointer#??}" ;; esac
     if [ -n "\${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "\${ORCA_CLAUDE_INJECTED_CONFIG_DIR:-}" ]; then
       command claude "$@"; return
     fi

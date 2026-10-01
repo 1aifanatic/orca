@@ -3,6 +3,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import type { WslResult, WslSpec } from '../wsl/wsl-runner'
+import {
+  WSL_CLAUDE_PROFILE_POINTER,
+  WSL_CLAUDE_PROFILE_POINTER_FROM_HOME
+} from '../../shared/claude-profile-routing'
 const mocks = vi.hoisted(() => ({
   root: '',
   running: true,
@@ -174,7 +178,8 @@ it('withdraws a stale pointer even without a usable pinned runtime', async () =>
     expect.objectContaining({
       distro: 'Ubuntu',
       loginPath: 'none',
-      script: expect.stringContaining('selected-wsl')
+      script: `rm -f -- "$HOME/${WSL_CLAUDE_PROFILE_POINTER_FROM_HOME}"`
     })
   )
+  expect(WSL_CLAUDE_PROFILE_POINTER).toBe(`~/${WSL_CLAUDE_PROFILE_POINTER_FROM_HOME}`)
 })

@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { it, expect, afterEach } from 'vitest'
 import { runClaudeWslProfileRequest } from './claude-profile-wsl-guest'
+import { WSL_CLAUDE_PROFILE_POINTER_FROM_HOME } from '../../shared/claude-profile-routing'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -58,7 +59,9 @@ it('sets up in the fake guest home through the ownership gate, preserves login b
     JSON.parse(readFileSync(join(f.profile.home, '.claude.json'), 'utf8')).hasCompletedOnboarding
   ).toBe(true)
   await runClaudeWslProfileRequest({ ...f.request, action: 'publish' })
-  expect(readFileSync(join(f.data, 'claude-profiles/selected-wsl'), 'utf8')).toBe(f.profile.home)
+  expect(readFileSync(join(f.home, WSL_CLAUDE_PROFILE_POINTER_FROM_HOME), 'utf8')).toBe(
+    f.profile.home
+  )
   await runClaudeWslProfileRequest({ ...f.request, action: 'withdraw' })
   expect(existsSync(join(f.data, 'claude-profiles/selected-wsl'))).toBe(false)
 })

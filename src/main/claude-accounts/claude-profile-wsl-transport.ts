@@ -7,6 +7,7 @@ import { parseClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { buildWslCapturedLoginShellCommand } from '../../shared/wsl-login-shell-command'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
+import { WSL_CLAUDE_PROFILE_POINTER_FROM_HOME } from '../../shared/claude-profile-routing'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
 import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
@@ -171,7 +172,7 @@ export async function withdrawClaudeWslPointer(distro: string): Promise<void> {
   const result = await runWslProcess({
     distro,
     loginPath: 'none',
-    script: 'rm -f -- "$HOME/.local/share/orca/claude-profiles/selected-wsl"',
+    script: `rm -f -- "$HOME/${WSL_CLAUDE_PROFILE_POINTER_FROM_HOME}"`,
     timeoutMs: 5_000
   })
   if (result.code !== 0 || result.timedOut) {
