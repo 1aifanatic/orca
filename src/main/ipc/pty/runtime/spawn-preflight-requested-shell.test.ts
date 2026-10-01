@@ -112,6 +112,7 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
               id: 'a',
               email: 'a@example.test',
               managedAuthPath: '/unused-legacy',
+              authMethod: 'subscription-oauth',
               managedAuthRuntime: 'wsl',
               wslDistro: 'Ubuntu',
               createdAt: 0,
