@@ -29,6 +29,7 @@ import {
   orcadNodeRuntimeRelativePath
 } from '../../shared/orcad-artifacts'
 import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
+import { readDaemonPidRecord } from '../daemon/daemon-endpoint-incarnation'
 import { PROTOCOL_VERSION } from '../daemon/types'
 import type { ServeReadiness } from '../server/serve-readiness'
 import {
@@ -255,20 +256,38 @@ async function backUpProfile(slot: Slot, runtime: string, userDataDir: string): 
   expect(JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '')).toEqual({ ok: true })
 }
 
+function killLaunched(): void {
+  for (const pid of launched) {
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {}
+  }
+  launched.clear()
+}
+
 /** The protocol the Bun slot's own daemon reports, read from a throwaway launch. */
 async function probeBunDaemonProtocol(): Promise<number> {
   const probeRoot = mkdtempSync(join(root, 'bun-probe-'))
   const slot = installSlot(probeRoot, 'Bun', bunSlotSource!)
-  const daemon = (await launch(slot, join(probeRoot, 'data'))).health!.terminalDaemon
+  const userDataDir = join(probeRoot, 'data')
   try {
-    await stop(slot)
+    const daemon = (await launch(slot, userDataDir)).health!.terminalDaemon
+    expect(daemon).toMatchObject({ state: 'live', protocolVersion: expect.any(Number) })
+    return daemon.protocolVersion!
   } finally {
-    if (daemon.pid && isAlive(daemon.pid)) {
-      process.kill(daemon.pid, 'SIGKILL')
+    await stop(slot).catch(() => {})
+    killLaunched()
+    // Even after a failed launch: the daemon outlives orcad, and only its pid file names it.
+    const daemonDir = join(userDataDir, 'daemon')
+    for (const name of existsSync(daemonDir) ? readdirSync(daemonDir) : []) {
+      const pid = /^daemon-v\d+\.pid$/.test(name)
+        ? readDaemonPidRecord(join(daemonDir, name))?.pid
+        : undefined
+      if (pid && isAlive(pid)) {
+        process.kill(pid, 'SIGKILL')
+      }
     }
   }
-  expect(daemon).toMatchObject({ state: 'live', protocolVersion: expect.any(Number) })
-  return daemon.protocolVersion!
 }
 
 // Windows has no orcad launch path (POSIX-only, orcad-remote-host-support.ts), so no inputs.
@@ -341,14 +360,7 @@ worker.on('error', (error) => { console.error(error); process.exitCode = 1 })
     bunProtocolVersion = await probeBunDaemonProtocol()
   }, 180_000)
 
-  afterEach(() => {
-    for (const pid of launched) {
-      try {
-        process.kill(pid, 'SIGKILL')
-      } catch {}
-    }
-    launched.clear()
-  })
+  afterEach(killLaunched)
 
   afterAll(() => {
     removeTreeSync(root)
