@@ -1,4 +1,5 @@
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
+import { ClaudeProfileHostMissingError } from './claude-profile-routing-owner'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
@@ -61,7 +62,7 @@ export class ClaudeAccountSelection {
           activeClaudeManagedAccountId: nextActiveId,
           activeClaudeManagedAccountIdsByRuntime: nextSelection
         })
-        await this.syncRuntimeAuth(target)
+        await this.syncRuntimeAuthAfterRemoval(target)
       }
       await this.removeManagedAuth(accountId, account.managedAuthPath)
       this.rateLimits.evictInactiveClaudeCache(accountId)
@@ -116,6 +117,22 @@ export class ClaudeAccountSelection {
       this.restoreSettings(previousSettings)
       await this.rollBackRuntimeAuth(effectiveTarget ?? { runtime: 'host' })
       throw error
+    }
+  }
+
+  // Why: a distro that no longer exists has no pointer anyone can launch, so its bookkeeping must
+  // not block removing its accounts. Only the profile transport reports a missing distro.
+  private async syncRuntimeAuthAfterRemoval(target: ClaudeAccountSelectionTarget): Promise<void> {
+    try {
+      await this.syncRuntimeAuth(target)
+    } catch (error) {
+      if (!(error instanceof ClaudeProfileHostMissingError)) {
+        throw error
+      }
+      console.warn(
+        '[claude-accounts] Removed an account of a WSL distro that no longer exists:',
+        error
+      )
     }
   }
 

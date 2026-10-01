@@ -31,7 +31,11 @@ import {
   waitForRunningWslDistro,
   withdrawClaudeWslPointer
 } from './claude-profile-wsl-transport'
-import { ClaudeProfileHostUnreachableError } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileHostMissingError,
+  ClaudeProfileHostUnreachableError
+} from './claude-profile-routing-owner'
+import { WSL_CLAUDE_PROFILE_HELPER_FILENAME } from '../../shared/relay-artifacts'
 const EXECUTABLE = '/home/fake/.cache/orca/runtimes/pinned/bin/node'
 const helperCalls = () => mocks.run.mock.calls.filter(([spec]) => spec.program === '/usr/bin/env')
 const helperInput = () => JSON.parse(helperCalls().at(-1)?.[0].input ?? '{}')
@@ -57,7 +61,7 @@ beforeEach(() => {
     }
     return { executable: EXECUTABLE, home: '/home/fake' }
   })
-  writeFileSync(join(mocks.root, 'claude-profile-wsl.cjs'), 'FAKE BUNDLE')
+  writeFileSync(join(mocks.root, WSL_CLAUDE_PROFILE_HELPER_FILENAME), 'FAKE BUNDLE')
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -227,4 +231,29 @@ it('lets user-initiated work boot a stopped distro instead of checking it is run
   expect(helperCalls()).toHaveLength(1)
   await expect(withdrawClaudeWslPointer('Ubuntu')).rejects.toThrow('not running')
   expect(mocks.runningChecks).toBe(1)
+})
+it("classifies wsl.exe's own missing-distro failure and reports its diagnostic", async () => {
+  const hostFailure = (stdout: string) => ({
+    code: 0xffffffff,
+    stdout,
+    stderr: '',
+    timedOut: false,
+    environmentResolved: true
+  })
+  mocks.run.mockResolvedValueOnce(
+    hostFailure(
+      'There is no distribution with the supplied name.\r\nError code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n'
+    )
+  )
+  await expect(prepareClaudeWslGuest('Gone', 'boot')).rejects.toBeInstanceOf(
+    ClaudeProfileHostMissingError
+  )
+  mocks.run.mockResolvedValueOnce(
+    hostFailure(
+      'The virtual machine could not be started.\r\nError code: Wsl/Service/WSL_E_VM_FAILED\r\n'
+    )
+  )
+  const error = await prepareClaudeWslGuest('Broken', 'boot').catch((caught) => caught)
+  expect(error).not.toBeInstanceOf(ClaudeProfileHostMissingError)
+  expect(String(error)).toContain('WSL_E_VM_FAILED')
 })

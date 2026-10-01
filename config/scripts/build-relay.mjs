@@ -25,6 +25,7 @@ import {
   RELAY_VERSION_FILENAME,
   RELAY_WINDOWS_PROCESS_TREE_FILENAME,
   RELAY_OPENCODE_SQLITE_READER_FILENAME,
+  WSL_CLAUDE_PROFILE_HELPER_FILENAME,
   relayOptionalArtifactFilenames,
   isWindowsRelayPlatform,
   relayArtifactFilenames
@@ -351,7 +352,7 @@ for (const platform of RELAY_BUILD_PLATFORMS) {
     platform: 'node',
     target: 'node18',
     format: 'cjs',
-    outfile: join(outDir, 'claude-profile-wsl.cjs'),
+    outfile: join(outDir, WSL_CLAUDE_PROFILE_HELPER_FILENAME),
     external: ['electron'],
     minify: true,
     define: { 'process.env.NODE_ENV': '"production"' }

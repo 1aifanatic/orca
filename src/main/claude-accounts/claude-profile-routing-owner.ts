@@ -61,3 +61,8 @@ export type ClaudeProfileHostAccess = 'boot' | 'if-running'
 export class ClaudeProfileHostUnreachableError extends Error {
   override name = 'ClaudeProfileHostUnreachableError'
 }
+
+/** The execution host itself is gone (wsl.exe: WSL_E_DISTRO_NOT_FOUND), so it has no pointer. */
+export class ClaudeProfileHostMissingError extends Error {
+  override name = 'ClaudeProfileHostMissingError'
+}

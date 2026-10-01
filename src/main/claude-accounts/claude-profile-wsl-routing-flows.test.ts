@@ -5,6 +5,7 @@ import type * as NodeOs from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { WslResult, WslSpec } from '../wsl/wsl-runner'
+import { WSL_CLAUDE_PROFILE_HELPER_FILENAME } from '../../shared/relay-artifacts'
 import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
 import type { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import {
@@ -29,6 +30,8 @@ const mocks = vi.hoisted(() => {
     exists: boolean
     runningChecks: number
     authority?: ClaudeProfileRoutingService
+    /** A stopped distro finishes booting when this settles. */
+    boot?: Promise<void>
   } = { root: '', running: true, exists: true, runningChecks: 0 }
   return {
     state,
@@ -126,18 +129,24 @@ beforeEach(() => {
   mocks.state.root = mkdtempSync(join(tmpdir(), 'wsl-routing-flows-'))
   mocks.state.running = true
   mocks.state.exists = true
+  mocks.state.boot = undefined
   mocks.state.runningChecks = 0
   mocks.state.authority = undefined
   // Why: like `wsl -d <distro> --exec`, any guest command boots a stopped distro that exists.
   mocks.run.mockReset().mockImplementation(async (spec) => {
     if (!mocks.state.exists) {
+      // wsl.exe's own failure: exit 0xFFFFFFFF, empty stderr, the diagnostic on stdout.
       return {
-        code: 1,
-        stdout: '',
-        stderr: 'There is no distribution with the supplied name.\r\n',
+        code: 0xffffffff,
+        stdout:
+          'There is no distribution with the supplied name.\r\nError code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n',
+        stderr: '',
         timedOut: false,
         environmentResolved: true
       }
+    }
+    if (!mocks.state.running) {
+      await mocks.state.boot
     }
     mocks.state.running = true
     return guestAnswer(spec)
@@ -148,7 +157,7 @@ beforeEach(() => {
     }
     return { executable: '/home/fake/node', home: '/home/fake' }
   })
-  writeFileSync(join(mocks.state.root, 'claude-profile-wsl.cjs'), 'FAKE BUNDLE')
+  writeFileSync(join(mocks.state.root, WSL_CLAUDE_PROFILE_HELPER_FILENAME), 'FAKE BUNDLE')
 })
 function guestAnswer(spec: WslSpec): WslResult {
   return {
@@ -310,14 +319,48 @@ describe('user-initiated work on an idle-stopped routed distro boots it', () => 
     expect(flows.removeManagedAuth).toHaveBeenCalledTimes(1)
   })
 
-  it("refuses a distro that does not exist with wsl.exe's own reason", async () => {
+  it("refuses a launch into a distro that does not exist with wsl.exe's own reason", async () => {
     const flows = await userFlows(ubuntuSettings(), true)
     mocks.state.exists = false
     mocks.state.running = false
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await expect(flows.runtimeAuth.prepareForClaudeLaunch(ubuntu)).rejects.toThrow(
-      /There is no distribution with the supplied name\.$/
+    const error = await flows.runtimeAuth.prepareForClaudeLaunch(ubuntu).catch((caught) => caught)
+    // Why by name: the harness resets modules, so this file's class is a different instance.
+    expect(error).toHaveProperty('name', 'ClaudeProfileHostMissingError')
+    expect(String(error)).toContain(
+      'There is no distribution with the supplied name.\r\nError code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND'
     )
+  })
+
+  it('removes accounts of a distro that no longer exists, but still refuses selecting there', async () => {
+    const flows = await userFlows(twoAccountSettings(), true)
+    mocks.state.exists = false
+    mocks.state.running = false
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(flows.selection.select(null, ubuntu)).rejects.toThrow('There is no distribution')
+    await flows.selection.remove('u2')
+    await flows.selection.remove('u1')
+    expect(flows.store.getSettings().claudeManagedAccounts).toEqual([])
+    expect(flows.removeManagedAuth).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith(
+      '[claude-accounts] Removed an account of a WSL distro that no longer exists:',
+      expect.objectContaining({ name: 'ClaudeProfileHostMissingError' })
+    )
+  })
+
+  it('lets a launch booting the distro finish when startup reaches the same distro', async () => {
+    const settings = ubuntuSettings()
+    const routing = await routingFor(() => settings)
+    mocks.state.running = false
+    const booted = Promise.withResolvers<void>()
+    mocks.state.boot = booted.promise
+    const launch = routing.prepare(ubuntu)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const startup = routing.startup()
+    booted.resolve()
+    await expect(launch).resolves.toMatchObject({ provenance: 'profile:u1' })
+    await startup
+    expect(helperActions()).toEqual(['inspect', 'publish'])
   })
 
   it('never boots the distro from startup', async () => {

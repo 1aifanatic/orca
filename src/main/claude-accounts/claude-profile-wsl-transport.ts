@@ -8,12 +8,15 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { buildWslCapturedLoginShellCommand } from '../../shared/wsl-login-shell-command'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { WSL_CLAUDE_PROFILE_POINTER_FROM_HOME } from '../../shared/claude-profile-routing'
+import { WSL_CLAUDE_PROFILE_HELPER_FILENAME } from '../../shared/relay-artifacts'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
 import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
-import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
+import { runWslProcess, type WslResult, type WslSpec } from '../wsl/wsl-runner'
+import { readWslExeFailure } from '../wsl/wsl-exe-failure'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 import {
+  ClaudeProfileHostMissingError,
   ClaudeProfileHostUnreachableError,
   type ClaudeProfileHostAccess
 } from './claude-profile-routing-owner'
@@ -83,7 +86,7 @@ export async function prepareClaudeWslGuest(
 ): Promise<ClaudeWslGuest> {
   const app = getAppEnvironment()
   const bundle = wslRelayBundleDirs()
-    .map((root) => join(root, 'claude-profile-wsl.cjs'))
+    .map((root) => join(root, WSL_CLAUDE_PROFILE_HELPER_FILENAME))
     .find(existsSync)
   if (!bundle) {
     throw new Error('The bundled WSL Claude profile helper is missing. Reinstall Orca.')
@@ -91,9 +94,7 @@ export async function prepareClaudeWslGuest(
   const run = async (spec: WslSpec, timeoutMs = 15_000): Promise<string> => {
     const result = await runWslProcess({ ...spec, distro, timeoutMs, maxOutputBytes: 256 * 1024 })
     if (result.code !== 0 || result.timedOut) {
-      throw new Error(
-        `WSL Claude profile setup failed: ${result.stderr.trim() || 'guest command unavailable'}`
-      )
+      throw guestCommandFailure(distro, result, 'WSL Claude profile setup failed')
     }
     return result.stdout.trim()
   }
@@ -154,9 +155,7 @@ export async function prepareClaudeWslGuest(
         maxOutputBytes: 256 * 1024
       })
       if (result.code !== 0 || result.timedOut) {
-        throw new Error(
-          `WSL Claude profile refused: ${result.stderr.trim() || 'guest runtime unavailable'}`
-        )
+        throw guestCommandFailure(distro, result, 'WSL Claude profile refused')
       }
       return responseSchema.parse(JSON.parse(result.stdout))
     }
@@ -208,8 +207,17 @@ export async function withdrawClaudeWslPointer(
     timeoutMs: access === 'boot' ? 15_000 : 5_000
   })
   if (result.code !== 0 || result.timedOut) {
-    throw new Error(
-      `WSL Claude account pointer could not be withdrawn: ${result.stderr.trim() || 'command failed'}`
-    )
+    throw guestCommandFailure(distro, result, 'WSL Claude account pointer could not be withdrawn')
   }
+}
+
+/** wsl.exe's own failure (stdout, WSL_E_* code) when it has one, else the guest's stderr. */
+function guestCommandFailure(distro: string, result: WslResult, context: string): Error {
+  const host = readWslExeFailure(result)
+  if (host?.includes('WSL_E_DISTRO_NOT_FOUND')) {
+    return new ClaudeProfileHostMissingError(`${context}: WSL distro ${distro}: ${host}`)
+  }
+  const detail =
+    host ?? (result.stderr.trim() || (result.timedOut ? 'timed out' : 'command failed'))
+  return new Error(`${context}: ${detail}`)
 }
