@@ -26,7 +26,7 @@ import {
   structuredClaudeMatchesActiveManagedAccount,
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
-import { resolveClaudeCommand } from '../codex-cli/command'
+import { isCliCommandMissing, resolveClaudeCommand } from '../codex-cli/command'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
@@ -295,6 +295,13 @@ export function createClaudeStructuredLaunchResolver(
         [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
       })
     )
+    // Found before any spawn, so a spawn that fails after this stays a start worth trying again.
+    if (isCliCommandMissing('claude', command, env)) {
+      throw new AgentSessionPreSpawnError(
+        new Error('claude is not on PATH or in the usual install directories'),
+        { reason: 'providerMissing' }
+      )
+    }
     return {
       pathToClaudeCodeExecutable: command,
       options: {

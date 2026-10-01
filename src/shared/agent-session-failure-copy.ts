@@ -23,6 +23,10 @@ export const AGENT_SESSION_FAILURE_COPY = {
   signInFirst: 'Sign in first.',
   signInThenRunCommand: 'Sign in, then run /{{command}} again.',
   signInThenSend: 'Sign in, then send your message again.',
+  providerMissing: "{{agent}} isn't installed.",
+  installThenRetry: 'Install it, then retry.',
+  installThenRunCommand: 'Install it, then run /{{command}} again.',
+  installThenSend: 'Install it, then send your message again.',
   historyTooLarge: "This conversation's history is too large to restore here.",
   managedAccountEnvOverride:
     'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.',

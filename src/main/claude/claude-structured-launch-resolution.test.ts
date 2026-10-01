@@ -17,6 +17,11 @@ import {
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
 
+// The host's own install directories are this machine's; each case names the only places it has.
+vi.mock('../../shared/system-cli-install-dirs', () => ({
+  getSystemCliInstallDirectories: () => []
+}))
+
 const SESSION_ID = 'orca-session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<
   ReturnType<typeof createClaudeStructuredLaunchResolver>
@@ -524,4 +529,50 @@ describe('claude structured launch resolution', () => {
       ).resolves.toMatchObject({ providerSessionId: 'provider-current' })
     })
   })
+})
+
+describe('a Claude CLI the host cannot find', () => {
+  /** The resolver found nothing on the process PATH; `env` is what the spawn itself inherits. */
+  function bareResolver(env: Record<string, string>) {
+    return createClaudeStructuredLaunchResolver({
+      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      resolveWorkspacePath: async (id) => `/repos/${id}`,
+      resolveCommand: () => 'claude',
+      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveInheritedEnv: async () => env,
+      hasTranscript: async () => false
+    })
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'is refused as missing before any spawn when neither PATH nor an install directory has it',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-claude-missing-'))
+
+      await expect(
+        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
+      ).rejects.toSatisfy(
+        (error) => error instanceof AgentSessionPreSpawnError && error.reason === 'providerMissing'
+      )
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    "launches one only the spawn's PATH or a version manager has",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-claude-found-'))
+      makeExecutable(join(root, 'shell-bin', 'claude'))
+      makeExecutable(join(root, 'home', '.volta', 'bin', 'claude'))
+
+      await expect(
+        bareResolver({
+          PATH: [join(root, 'shell-bin')].join(delimiter),
+          HOME: join(root, 'empty-home')
+        })({ identity: IDENTITY })
+      ).resolves.toMatchObject({ pathToClaudeCodeExecutable: 'claude' })
+      await expect(
+        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
+      ).resolves.toMatchObject({ pathToClaudeCodeExecutable: 'claude' })
+    }
+  )
 })

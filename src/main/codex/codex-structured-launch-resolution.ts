@@ -9,7 +9,8 @@
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { resolveCodexCommand } from '../codex-cli/command'
+import { isCliCommandMissing, resolveCodexCommand } from '../codex-cli/command'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
@@ -89,6 +90,13 @@ export function createCodexStructuredLaunchResolver(
       throw new Error(`codex sessions pin CODEX_HOME, not ${accountHome.variable}`)
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
+    // Found before any spawn, so a spawn that fails after this stays a start worth trying again.
+    if (isCliCommandMissing('codex', command, environment ?? process.env)) {
+      throw new AgentSessionPreSpawnError(
+        new Error('codex is not on PATH or in the usual install directories'),
+        { reason: 'providerMissing' }
+      )
+    }
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()

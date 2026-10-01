@@ -1,3 +1,6 @@
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
@@ -5,6 +8,11 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { createCodexStructuredLaunchResolver } from './codex-structured-launch-resolution'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
+
+// The host's own install directories are this machine's; each case names the only places it has.
+vi.mock('../../shared/system-cli-install-dirs', () => ({
+  getSystemCliInstallDirectories: () => []
+}))
 
 const SESSION_ID = 'session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<
@@ -260,4 +268,57 @@ describe('codex structured launch resolution', () => {
       })({ identity: IDENTITY })
     ).rejects.toThrow('workspace-1 is gone')
   })
+})
+
+describe('a Codex CLI the host cannot find', () => {
+  function executable(dir: string, name: string): void {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, name), '')
+    chmodSync(join(dir, name), 0o755)
+  }
+
+  /** The resolver found nothing on the process PATH; `env` is what the spawn itself would get. */
+  function bareResolver(env: NodeJS.ProcessEnv) {
+    return createCodexStructuredLaunchResolver({
+      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      resolveWorkspacePath: async (id) => `/repos/${id}`,
+      resolveCommand: () => 'codex',
+      resolveEnvironment: async () => env,
+      isWindowsProcessStartTimeAvailable: () => true
+    })
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'is refused as missing before any spawn when neither PATH nor an install directory has it',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-codex-missing-'))
+
+      const refused = bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({
+        identity: IDENTITY
+      })
+
+      await expect(refused).rejects.toMatchObject({
+        name: 'AgentSessionPreSpawnError',
+        reason: 'providerMissing'
+      })
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    "launches one only the spawn's PATH or a version manager has",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-codex-found-'))
+      executable(join(root, 'shell-bin'), 'codex')
+      executable(join(root, 'home', '.volta', 'bin'), 'codex')
+
+      await expect(
+        bareResolver({ PATH: join(root, 'shell-bin'), HOME: join(root, 'empty-home') })({
+          identity: IDENTITY
+        })
+      ).resolves.toMatchObject({ command: 'codex' })
+      await expect(
+        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
+      ).resolves.toMatchObject({ command: 'codex' })
+    }
+  )
 })

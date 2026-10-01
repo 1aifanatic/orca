@@ -12,7 +12,10 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import {
+  AgentSessionPreSpawnError,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-request-error'
 import {
@@ -480,6 +483,37 @@ describe('a send with no live owner', () => {
     await eventually(async () => expect(dispatch).toHaveBeenCalledOnce())
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
+  })
+
+  it('rejects the message at once when the CLI was found missing before any spawn', async () => {
+    await loseOwner()
+    acquire.mockRejectedValueOnce(
+      new AgentSessionPreSpawnError(new Error('codex is not on PATH'), {
+        reason: 'providerMissing'
+      })
+    )
+
+    const id = await accept(sendParams('before installing it'))
+
+    // Installing it is the person's step, so no later try is booked.
+    expect(await settled(id)).toMatchObject({
+      dispatchState: 'rejected',
+      reason: "Codex isn't installed. Install it, then send your message again.",
+      rejection: { kind: 'providerMissing' }
+    })
+    expect(acquire).toHaveBeenCalledOnce()
+  })
+
+  it('books the next try for a spawn that failed after the CLI was found', async () => {
+    await loseOwner()
+    acquire.mockRejectedValueOnce(
+      Object.assign(new Error('spawn /usr/local/bin/codex ENOENT'), { code: 'ENOENT' })
+    )
+
+    const id = await accept(sendParams('while the install is moving'))
+
+    expect(await settled(id)).toMatchObject({ dispatchState: 'retrying' })
+    expect((await submission(id))?.startFailure?.nextAttemptAt).toBe(NOW + 15_000)
   })
 
   it('suggests a new chat only when this host has nothing to restart the chat from', async () => {

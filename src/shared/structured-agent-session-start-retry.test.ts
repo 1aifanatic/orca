@@ -23,6 +23,7 @@ describe('when a message whose agent start failed is tried again', () => {
 
   it.each([
     ['signed out', { kind: 'notSignedIn' }],
+    ['not installed', { kind: 'providerMissing' }],
     ['a launch setting to remove', { kind: 'managedAccountEnvOverride' }],
     ['an account Claude chats cannot use', { kind: 'managedAccountUnsupported' }],
     ['too much history to restore', { kind: 'historyTooLarge' }],

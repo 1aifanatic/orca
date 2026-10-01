@@ -33,6 +33,7 @@ export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolea
  *  does not compile until it is classified here. */
 export const TYPED_START_REFUSAL_RESUMABLE = {
   notSignedIn: false,
+  providerMissing: false,
   historyTooLarge: false,
   managedAccountEnvOverride: false,
   accountSwitchInProgress: true,

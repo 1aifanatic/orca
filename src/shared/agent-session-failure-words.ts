@@ -174,6 +174,16 @@ const FAILURE_SENTENCES = {
           ? say('signInThenRunCommand', { command: context.command })
           : say('signInThenSend')
     ]),
+  // Installing it is the person's step; beside a Retry, the retry is the button.
+  providerMissing: (context, _fact, _surface, say) =>
+    joinSentences([
+      say('providerMissing', agent(say, context)),
+      context.retryControl
+        ? say('installThenRetry')
+        : context.command
+          ? say('installThenRunCommand', { command: context.command })
+          : say('installThenSend')
+    ]),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
