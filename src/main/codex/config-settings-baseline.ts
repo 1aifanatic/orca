@@ -24,6 +24,8 @@ export type CodexSettingsBaseline = {
   /** MCP server names the last mirror copied from the canonical source. */
   mcpServers: ReadonlySet<string>
   mcpServerRoot: boolean
+  /** Set when read from a baseline written before MCP ownership was recorded (#22426). */
+  mcpOwnershipUnrecorded?: boolean
 }
 
 type StoredSettingsBaseline = {
@@ -92,7 +94,8 @@ function readParsedCodexSettingsBaseline(
       registrations: readStoredRegistrations(parsed.registrations),
       mcpServers: readStoredMcpServers(parsed.mcpServers),
       // Older mirrors owned the whole MCP root; retain that removal policy for one pass.
-      mcpServerRoot: parsed.mcpServers === undefined || parsed.mcpServerRoot === true
+      mcpServerRoot: parsed.mcpServers === undefined || parsed.mcpServerRoot === true,
+      ...(parsed.mcpServers === undefined ? { mcpOwnershipUnrecorded: true } : {})
     }
   } catch (error) {
     // Why: invalid baseline state is still `null` — resetting it is the intent,

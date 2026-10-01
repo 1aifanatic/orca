@@ -148,4 +148,21 @@ describe('carryRetiredMirrorConfig', () => {
 
     expect(readSystem('config.toml')).toBe('model = "gpt-5"\n')
   })
+
+  it.each([
+    { baseline: { version: 1, settings: {} }, carried: true },
+    { baseline: { version: 3, settings: {}, mcpServers: [], mcpServerRoot: true }, carried: false }
+  ])('reads $baseline as MCP ownership only when it records some', ({ baseline, carried }) => {
+    mkdirSync(systemHomePath, { recursive: true })
+    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+    writeFileSync(join(runtimeHomePath, 'config.toml'), '[mcp_servers.docs]\ncommand = "server"\n')
+    writeFileSync(
+      join(runtimeHomePath, '.orca-config-settings-baseline.json'),
+      JSON.stringify(baseline)
+    )
+
+    expect(carry()).toBe(true)
+
+    expect(readSystem('config.toml').includes('[mcp_servers.docs]')).toBe(carried)
+  })
 })
