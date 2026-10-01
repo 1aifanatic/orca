@@ -1,3 +1,4 @@
+import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
   SKILL_BUNDLE_INSTALL_CAPABILITY,
@@ -11,6 +12,11 @@ import {
   SKILL_UPLOAD_CAPABILITY
 } from './skill-install-capability'
 export { SKILL_INSTALL_RESULT_V2_CAPABILITY } from './skill-install-capability'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITIES,
+  AGENT_LAUNCH_RUNTIME_CAPABILITY
+} from './agent-launch-runtime-capability'
+export * from './agent-launch-runtime-capability'
 
 // Why: declares the Orca runtime RPC compatibility contract. Desktop,
 // headless server, CLI, and mobile builds may drift in app version, but
@@ -273,6 +279,11 @@ export const WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY =
   'worktree.visibility-defaults.v1' as const
 export const WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY =
   'worktree.visibility-source-defaults.v1' as const
+// Why: Git's checkout delete outlives worktree.rm's older client timeouts. A client with this waits
+// for the reply and shows `removing` rows as Deleting; one without it is answered on acceptance and
+// would re-show that row as a normal workspace, so the host leaves such rows out of its listings.
+export const WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY =
+  'worktree.background-removal.v1' as const
 // Why: older hosts drop automation.list's selector and answer with the whole authority, so a scoped client must not read that as one host's rows.
 export const AUTOMATION_LIST_HOST_SCOPE_RUNTIME_CAPABILITY =
   'automation.list-host-scope.v1' as const
@@ -286,34 +297,6 @@ export const AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
   'automation.create-idempotency.v1' as const
 // Hosts without this capability have no notifications.registerPush RPC.
 export const NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY = 'notifications.remote-push.v1' as const
-
-/**
- * `agent.launch` exists: one host-side method that decides structured-vs-terminal and creates the
- * surface, instead of each client routing for itself.
- *
- * Negotiated rather than assumed because a client that cannot see it must keep using
- * `worktree.create` + `startupAgent`, which stays supported verbatim. The reverse skew is the
- * dangerous one: `worktree.create` returns `agentTerminalHandle` only when a startup agent was
- * requested, so a host that quietly routed that call to a structured session would hand an old
- * client a response with no handle and no error.
- *
- * Advertising it is a statement that the client understands EITHER outcome, since the host is what
- * picks: a structured session it can open, or a terminal agent. A client that renders only one of
- * the two keeps using the surface-specific methods.
- */
-// v2 makes prompt delivery an outcome union and top-level warnings the only supported shape.
-export const AGENT_LAUNCH_RUNTIME_CAPABILITY = 'agent.launch.v2' as const
-
-// Optional identity support on agent.launch; mobile replay across replacement hosts requires the new method.
-export const AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY = 'agent.launch.replay.v1' as const
-
-// A host that sends a launch prompt its typed startup line cannot carry to a paste after
-// readiness; an older host folds any prompt into that line, so clients gate prompted launches on it.
-export const AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY = 'agent.launch.prompt-carry.v1' as const
-
-// agent.launchReplay requires the ledger; older replacement hosts must reject the method.
-export const AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY =
-  'agent.launch.replay-required.v1' as const
 
 // Generic native clients include the CLI and must not claim Electron-only page
 // placement support.
@@ -337,7 +320,9 @@ export const ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
   // Why: only the renderer runs the retirement-proof ledger; CLI and mobile must keep full lists.
-  SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY
+  SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY,
+  // Only the renderer shows Deleting for a `removing` row; CLI and mobile get those rows omitted.
+  WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY
 ] as const
 
 export const ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY =
@@ -420,6 +405,7 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
+  AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
   AGENT_SESSION_KIMI_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_OPENCODE2_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_MUSE_RESUME_RUNTIME_CAPABILITY,
@@ -447,10 +433,7 @@ export const RUNTIME_CAPABILITIES = [
   AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
   AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY
+  ...AGENT_LAUNCH_RUNTIME_CAPABILITIES
 ] as const
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number] | (string & {})
