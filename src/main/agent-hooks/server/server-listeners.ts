@@ -173,6 +173,10 @@ export abstract class AgentHookServerListeners extends AgentHookServerState {
     }
   }
 
+  setPaneTerminalSleepStopProbe(probe: ((paneKey: string) => boolean) | null): void {
+    this.isPaneTerminalSleepStopInFlight = probe
+  }
+
   setAgentPresenceReleaseListener(listener: AgentPresenceReleaseListener | null): void {
     this.onAgentPresenceReleased = listener
   }

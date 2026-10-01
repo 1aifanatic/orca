@@ -262,6 +262,9 @@ async function startOrcadRuntime(
 
   // Why here too and not only on the desktop: nothing else republishes `session.tabs` when a
   // pane's status row changes, and orcad's whole job is serving paired clients.
+  agentHookServer.setPaneTerminalSleepStopProbe((paneKey) =>
+    runtime.isPaneTerminalSleepStopInFlight(paneKey)
+  )
   uninstallHookStatusRepublish = installHookStatusSessionTabsRepublish(
     agentHookServer,
     () => runtime

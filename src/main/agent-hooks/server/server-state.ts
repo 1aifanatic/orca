@@ -96,6 +96,8 @@ export abstract class AgentHookServerState {
   protected paneStatusClearListeners = new Set<PaneStatusClearListener>()
   protected statusDropListeners = new Set<StatusDropListener>()
   protected onAgentPresenceReleased: AgentPresenceReleaseListener | null = null
+  /** Orca's own fact that it is stopping a pane's terminal for sleep or hibernation. */
+  protected isPaneTerminalSleepStopInFlight: ((paneKey: string) => boolean) | null = null
   protected statusChangeListeners = new Set<StatusChangeListener>()
   protected statusFreshnessListeners = new Set<StatusFreshnessListener>()
   protected providerSessionChangeListeners = new Set<ProviderSessionChangeListener>()

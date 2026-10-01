@@ -75,6 +75,8 @@ export function createAgentOwnerExitObserver({
     if (agent && state.hasAgentRunEvidence && options.isLive()) {
       dispatchCompletion('process-exit', agent, {
         terminalIdleConfirmed: true,
+        // Why: a resumed owner that exits without ever working has nothing to announce.
+        requiresUnnotifiedTurn: true,
         completionIdentity: {
           source: 'process-exit',
           identity: `${exited.platform}:${exited.pid}:${exited.startTime}`,
