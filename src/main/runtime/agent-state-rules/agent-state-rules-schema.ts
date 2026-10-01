@@ -146,9 +146,9 @@ const AGENT_BLOCKED_REASONS = [
 /**
  * A position in the lowercased text tail. Text anchors read every pane whatever agent it runs (a
  * tail can show another agent's dialog, and an adopted pane has no known agent), and the latest one
- * in the text wins. A blocked anchor reads the blocked layer's live window. An idle, working or live
- * one is a live prompt, which cancels an earlier blocker; only an idle one settles a wait. A hold
- * anchor, found anywhere, stops every text anchor from settling one (the agent is up, not ready).
+ * in the text wins. A blocked anchor reads the blocked layer's live window. An idle or live one is
+ * a live prompt, which cancels an earlier blocker; only an idle one settles a wait. A hold anchor,
+ * found anywhere, stops every text anchor from settling one (the agent is up, not ready).
  */
 const TextAnchorConditionSchema = z
   .object({
@@ -199,7 +199,6 @@ const AnchorSchema = z
     answer: z.discriminatedUnion('state', [
       z.object({ state: z.literal('blocked'), reason: z.enum(AGENT_BLOCKED_REASONS) }).strict(),
       z.object({ state: z.literal('idle') }).strict(),
-      z.object({ state: z.literal('working') }).strict(),
       z.object({ state: z.literal('live') }).strict(),
       z.object({ state: z.literal('hold') }).strict()
     ])

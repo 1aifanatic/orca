@@ -37,7 +37,7 @@
         "find": { "lastOf": "cursor agent" },
         "after": { "all": [{ "contains": "→" }, { "regex": "[⠁-⣿]" }] }
       },
-      "answer": { "state": "working" }
+      "answer": { "state": "live" }
     },
     {
       "id": "prompt_idle",

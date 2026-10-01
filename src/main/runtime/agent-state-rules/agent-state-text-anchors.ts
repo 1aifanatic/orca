@@ -112,7 +112,7 @@ export function findBlockedAnchorSignals(window: string): BlockedTextSignal[] {
 }
 
 /**
- * The latest live prompt (`live`: an idle, working or live anchor, which proves an earlier startup
+ * The latest live prompt (`live`: an idle or live anchor, which proves an earlier startup
  * dialog was answered) and the latest idle one (`ready`) that any rule file's anchors find.
  */
 export function findPromptAnchorIndexes(normalized: string): {

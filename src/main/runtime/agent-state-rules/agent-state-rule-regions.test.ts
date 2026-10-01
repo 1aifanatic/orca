@@ -78,7 +78,7 @@ describe('region schema', () => {
             id: 't',
             why: 'test',
             when: { region: 'title', status: 'idle', match: { contains: '◇' } },
-            answer: { state: 'working' }
+            answer: { state: 'live' }
           }
         ]
       })
