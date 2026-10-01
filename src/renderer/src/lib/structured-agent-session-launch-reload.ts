@@ -32,7 +32,8 @@ export function restorePersistedStructuredLaunchState(
       clientOperationId: record.clientOperationId,
       payloadFingerprint: record.payloadFingerprint,
       expectedRuntimeFence: record.expectedRuntimeFence,
-      ...(record.resumeFrom ? { resumeFrom: record.resumeFrom } : {})
+      ...(record.resumeFrom ? { resumeFrom: record.resumeFrom } : {}),
+      ...(record.seedOptions ? { seedOptions: record.seedOptions } : {})
     })
   } catch (error) {
     // A record naming a host no runtime serves cannot be retried anywhere.

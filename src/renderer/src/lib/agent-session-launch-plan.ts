@@ -58,6 +58,8 @@ export type AgentSessionLaunchTarget = {
   worktreeId?: string
   /** The host that admitted the chat, when one was asked first; it is the host the chat is made on. */
   executionHostId?: ExecutionHostId
+  /** The saved selection that host said create will seed. */
+  seedOptions?: Readonly<Record<string, string>>
 }
 
 export type AgentSessionLaunchPlan = Readonly<AgentSessionLaunchVerdict> & {
@@ -102,7 +104,8 @@ function beginStructuredPlanLaunch(
       verdict.agent,
       {
         ...structuredLaunchOptions(verdict),
-        ...(executionHostId ? { executionHostId } : {})
+        ...(executionHostId ? { executionHostId } : {}),
+        ...(target?.seedOptions ? { hostSeedOptions: target.seedOptions } : {})
       },
       hooks
     )

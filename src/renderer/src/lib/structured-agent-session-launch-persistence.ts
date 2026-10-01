@@ -1,5 +1,7 @@
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
+import { parseStructuredLaunchSeedOptions } from '../../../shared/native-chat-session-option-defaults'
+import type { StructuredAgentSessionLaunchIntent } from './launch-structured-agent-session'
 import {
   LOCAL_EXECUTION_HOST_ID,
   parseExecutionHostId,
@@ -19,6 +21,29 @@ export type StructuredAgentLaunchPersistedRecord = {
   payloadFingerprint: string
   expectedRuntimeFence: number | null
   resumeFrom?: StructuredAgentSessionResumeSource
+  /** A paired server's reported seed, which this machine cannot re-derive after a reload. */
+  seedOptions?: Readonly<Record<string, string>>
+}
+
+/** What survives a reload of an unpublished launch. */
+export function structuredAgentLaunchRecordFor(
+  intent: StructuredAgentSessionLaunchIntent,
+  lifecycle: StructuredAgentLaunchPersistedLifecycle
+): StructuredAgentLaunchPersistedRecord {
+  const { envelope, resumeFrom } = intent.params
+  // A local launch re-reads this machine's settings on reload; only a paired server's seed is kept.
+  const pairedSeed = intent.target.kind === 'local' ? undefined : intent.seedOptions
+  return {
+    sessionId: intent.sessionId,
+    executionHostId: intent.executionHostId,
+    agent: intent.agent,
+    lifecycle,
+    clientOperationId: envelope.clientOperationId,
+    payloadFingerprint: envelope.payloadFingerprint,
+    expectedRuntimeFence: envelope.expectedRuntimeFence,
+    ...(resumeFrom ? { resumeFrom } : {}),
+    ...(pairedSeed ? { seedOptions: pairedSeed } : {})
+  }
 }
 
 const LAUNCH_STORAGE_KEY = 'orca:structuredAgentLaunches:v1'
@@ -91,8 +116,13 @@ function load(): void {
     if (Array.isArray(stored)) {
       for (const value of stored) {
         if (validRecord(value)) {
+          const seedOptions = parseStructuredLaunchSeedOptions(
+            'seedOptions' in value ? value.seedOptions : undefined
+          )
+          const { seedOptions: _stored, ...rest } = value
           records.set(value.sessionId, {
-            ...value,
+            ...rest,
+            ...(seedOptions ? { seedOptions } : {}),
             executionHostId:
               parseExecutionHostId(value.executionHostId)?.id ?? LOCAL_EXECUTION_HOST_ID,
             // A renderer reload cannot prove a pending request was delivered.

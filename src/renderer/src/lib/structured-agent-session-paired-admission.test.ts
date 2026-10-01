@@ -30,9 +30,11 @@ import { beginDirectWorkItemStructuredLaunch } from './launch-work-item-direct-a
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import { resumeAiVaultSessionInNewChat } from '@/components/right-sidebar/ai-vault-session-resume-in-chat-launch'
 import { getStructuredAgentLaunchStatus } from './structured-agent-session-launch-registry'
+import { getStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
 
 const WORKTREE = 'repo-1::/srv/app'
+const INITIAL_SETTINGS = useAppStore.getState().settings
 
 function pairedPlan(overrides: { resumeFrom?: { providerSessionId: string } } = {}) {
   return adoptAgentSessionLaunchVerdict({
@@ -60,7 +62,8 @@ beforeEach(() => {
   useAppStore.setState({
     activeWorktreeId: WORKTREE,
     activeWorkspaceExecutionHostId: null,
-    unifiedTabsByWorktree: {}
+    unifiedTabsByWorktree: {},
+    settings: INITIAL_SETTINGS
   })
 })
 
@@ -171,6 +174,30 @@ describe('a structured chat launch on a paired server', () => {
     await expect(launch?.settlement).resolves.toMatchObject({ kind: 'failed' })
     expect(onHostDeclined).not.toHaveBeenCalled()
     expectNoChatCommitted()
+  })
+
+  // The picker shows what create will run: the server's saved selection, not this machine's.
+  it('seeds the chat with the selection the admitting server reported', async () => {
+    mocks.createSupport.mockResolvedValue({ supported: true, seedOptions: { model: 'opus' } })
+    useAppStore.setState({
+      settings: {
+        ...useAppStore.getState().settings!,
+        nativeChatSessionOptions: { claude: { model: 'sonnet' } }
+      }
+    })
+
+    const launch = beginStructuredAgentSessionProvisionalLaunch({
+      plan: pairedPlan(),
+      hooks: {},
+      onHostDeclined: vi.fn()
+    })
+    await vi.waitFor(() =>
+      expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE]).toHaveLength(1)
+    )
+    const sessionId = useAppStore.getState().unifiedTabsByWorktree[WORKTREE]![0]!.entityId
+
+    expect(getStructuredAgentSessionLaunchSelection(sessionId)?.seed).toEqual({ model: 'opus' })
+    launch?.cancel()
   })
 
   it('opens the chat on the server that admitted it', async () => {

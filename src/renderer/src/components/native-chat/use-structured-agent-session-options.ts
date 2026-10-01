@@ -35,14 +35,20 @@ import {
 
 const NO_HELD_OPTIONS: Readonly<Record<string, string>> = {}
 
-/** A paired server's new chat runs the server's saved model, which this machine learns only when
- *  the server reports it; until then a pick would apply to, and be remembered under, a guess. */
+/** A paired server's new chat runs the server's saved selection, which the server names when it
+ *  admits the chat. One too old to name it leaves this machine guessing until the chat reports its
+ *  model, and a pick then would apply to, and be remembered under, the guess. */
 function awaitsServerModel(
   target: RuntimeClientTarget,
   launch: StructuredAgentSessionLaunchView | undefined,
   state: StructuredAgentSessionOptionState
 ): boolean {
-  return target.kind === 'environment' && launch?.kind === 'new' && state.record.model === undefined
+  return (
+    target.kind === 'environment' &&
+    launch?.kind === 'new' &&
+    launch.seedOptions === undefined &&
+    state.record.model === undefined
+  )
 }
 
 export function useStructuredAgentSessionOptions(args: {

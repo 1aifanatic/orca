@@ -30,6 +30,7 @@ import {
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { askHostCreateSupport } from '@/lib/structured-agent-session-host-admission'
 import {
   StructuredAgentSessionCreateError,
   StructuredAgentSessionCreateRefusalError,
@@ -57,14 +58,20 @@ export type StructuredAgentSessionLaunchIntent = {
   seedOptions?: Readonly<Record<string, string>>
 }
 
+type LaunchSeed = Readonly<Record<string, string>> | undefined
+
+/** What create will seed: this machine's saved selection for its own chats; for a paired server's,
+ *  the server's own, which it reports when it admits the chat (absent from an older server). */
 function launchSeedOptions(
   state: ReturnType<typeof useAppStore.getState>,
-  agent: AgentSessionHandleProvider
+  owner: Pick<StructuredAgentSessionLaunchIntent, 'target'>,
+  agent: AgentSessionHandleProvider,
+  hostSeedOptions: LaunchSeed
 ): { seedOptions?: Readonly<Record<string, string>> } {
-  const seedOptions = resolveStructuredLaunchSeedOptions(
-    state.settings?.nativeChatSessionOptions,
-    agent
-  )
+  const seedOptions =
+    owner.target.kind === 'local'
+      ? resolveStructuredLaunchSeedOptions(state.settings?.nativeChatSessionOptions, agent)
+      : hostSeedOptions
   return seedOptions ? { seedOptions } : {}
 }
 
@@ -106,14 +113,22 @@ export function createStructuredAgentSessionLaunchIntent(
   worktreeId: string,
   agent: AgentSessionHandleProvider,
   executionHostId?: ExecutionHostId,
-  resumeFrom?: StructuredAgentSessionResumeSource
+  resumeFrom?: StructuredAgentSessionResumeSource,
+  hostSeedOptions?: LaunchSeed
 ): StructuredAgentSessionLaunchIntent {
   const owner = structuredAgentSessionOwnerTarget(
     worktreeId,
     executionHostId ?? resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)
   )
   const sessionId = createStructuredAgentSessionId(agent, createBrowserUuid)
-  return buildStructuredAgentSessionLaunchIntent(worktreeId, owner, agent, sessionId, resumeFrom)
+  return buildStructuredAgentSessionLaunchIntent(
+    worktreeId,
+    owner,
+    agent,
+    sessionId,
+    resumeFrom,
+    hostSeedOptions
+  )
 }
 
 function buildStructuredAgentSessionLaunchIntent(
@@ -121,7 +136,8 @@ function buildStructuredAgentSessionLaunchIntent(
   owner: Pick<StructuredAgentSessionLaunchIntent, 'executionHostId' | 'target'>,
   agent: AgentSessionHandleProvider,
   sessionId: string,
-  resumeFrom?: StructuredAgentSessionResumeSource
+  resumeFrom: StructuredAgentSessionResumeSource | undefined,
+  hostSeedOptions: LaunchSeed
 ): StructuredAgentSessionLaunchIntent {
   const state = useAppStore.getState()
   recordWebSessionFocusIntent(
@@ -144,9 +160,7 @@ function buildStructuredAgentSessionLaunchIntent(
       ...(resumeFrom ? { resumeFrom } : {}),
       randomUuid: createBrowserUuid
     }),
-    // A paired server starts the chat with its own saved selection, which this machine cannot read;
-    // the picker waits for the model the server reports instead of showing this machine's.
-    ...(owner.target.kind === 'local' ? launchSeedOptions(state, agent) : {})
+    ...launchSeedOptions(state, owner, agent, hostSeedOptions)
   }
 }
 
@@ -159,7 +173,8 @@ export function retryStructuredAgentSessionLaunchIntent(
     intent,
     intent.agent,
     intent.sessionId,
-    intent.params.resumeFrom
+    intent.params.resumeFrom,
+    intent.seedOptions
   )
 }
 
@@ -173,6 +188,8 @@ export function restoreStructuredAgentSessionLaunchIntent(args: {
   payloadFingerprint: string
   expectedRuntimeFence: number | null
   resumeFrom?: StructuredAgentSessionResumeSource
+  /** A paired server's seed, kept with the launch so a reload shows what create runs. */
+  seedOptions?: Readonly<Record<string, string>>
 }): StructuredAgentSessionLaunchIntent {
   const state = useAppStore.getState()
   const { target } = structuredAgentSessionOwnerTarget(args.worktreeId, args.executionHostId)
@@ -200,7 +217,7 @@ export function restoreStructuredAgentSessionLaunchIntent(args: {
       agent: args.agent,
       ...(args.resumeFrom ? { resumeFrom: args.resumeFrom } : {})
     },
-    ...launchSeedOptions(state, args.agent)
+    ...launchSeedOptions(state, { target }, args.agent, args.seedOptions)
   }
 }
 
@@ -212,81 +229,6 @@ export function abandonStructuredAgentSessionLaunchIntent(
     intent.worktreeId,
     `agent-session:${intent.sessionId}`
   )
-}
-
-/** The host answers a worktree selector it cannot resolve yet with this rather than a verdict. */
-const SELECTOR_NOT_RESOLVABLE_CODE = 'selector_not_found'
-
-/**
- * A worktree is not resolvable for a beat after `createWorktree` resolves, so a probe fired
- * immediately after creation fails instead of answering. Measured window: under ~250ms. These
- * delays cover it with margin and bound the wait when the selector is genuinely absent.
- */
-const CREATE_SUPPORT_RETRY_DELAYS_MS: readonly number[] = [50, 150, 300]
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function runtimeErrorCode(error: unknown): string {
-  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
-    return error.code
-  }
-  return 'runtime_unavailable'
-}
-
-/** The owning host's answer to "can you run this chat here?", asked before anything is created. */
-export type StructuredLaunchAdmission = 'admitted' | 'declined' | 'unreachable'
-
-type HostCreateSupport =
-  | { kind: 'admitted' | 'declined' }
-  | { kind: 'unreachable'; code: string; message: string; error: unknown }
-
-/**
- * Whether the executing host supports creating this session, retrying only while the host cannot
- * yet resolve the worktree. "Could not answer" and "answered no" are different states and only the
- * second is a verdict. Each call is bounded by the runtime RPC client's own timeout.
- */
-async function askHostCreateSupport(
-  target: RuntimeClientTarget,
-  worktree: string,
-  agent: AgentSessionHandleProvider
-): Promise<HostCreateSupport> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const support = await callStructuredAgentSession<{ supported: boolean; reason?: string }>(
-        target,
-        'agentSession.createSupport',
-        { worktree, agent }
-      )
-      return { kind: support.supported === true ? 'admitted' : 'declined' }
-    } catch (error) {
-      const retryDelayMs = CREATE_SUPPORT_RETRY_DELAYS_MS[attempt]
-      if (retryDelayMs === undefined) {
-        // A selector that never appears is a definitive refusal.
-        return { kind: 'declined' }
-      }
-      if (hasRuntimeRpcErrorCode(error, SELECTOR_NOT_RESOLVABLE_CODE)) {
-        await delay(retryDelayMs)
-        continue
-      }
-      const code = runtimeErrorCode(error)
-      if (isDefinitiveAgentSessionCreateRefusal(code)) {
-        return { kind: 'declined' }
-      }
-      const message = error instanceof Error ? error.message : String(error)
-      return { kind: 'unreachable', code, message, error }
-    }
-  }
-}
-
-/** Asks a host to admit a chat before the client commits any of it. */
-export async function admitStructuredLaunchOnHost(
-  target: RuntimeClientTarget,
-  worktree: string,
-  agent: AgentSessionHandleProvider
-): Promise<StructuredLaunchAdmission> {
-  return (await askHostCreateSupport(target, worktree, agent)).kind
 }
 
 /**

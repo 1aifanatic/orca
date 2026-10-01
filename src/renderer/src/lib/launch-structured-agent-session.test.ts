@@ -3,7 +3,6 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { useAppStore } from '@/store'
 import {
-  admitStructuredLaunchOnHost,
   createStructuredAgentSessionLaunchIntent,
   launchStructuredAgentSession,
   restoreStructuredAgentSessionLaunchIntent,
@@ -12,6 +11,7 @@ import {
   StructuredAgentSessionCreateUnknownOutcomeError,
   StructuredAgentSessionOwnerUnresolvedError
 } from './launch-structured-agent-session'
+import { admitStructuredLaunchOnHost } from './structured-agent-session-host-admission'
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: vi.fn()
@@ -267,18 +267,73 @@ describe('structured agent session launch', () => {
   it('answers admission with the host verdict, before anything is created', async () => {
     const server = { kind: 'environment' as const, environmentId: 'server-1' }
     vi.mocked(callStructuredAgentSession).mockResolvedValueOnce({ supported: true })
-    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe('admitted')
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toEqual({
+      kind: 'admitted'
+    })
     vi.mocked(callStructuredAgentSession).mockResolvedValueOnce({ supported: false, reason: 'wsl' })
-    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe('declined')
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toEqual({
+      kind: 'declined'
+    })
     vi.mocked(callStructuredAgentSession).mockRejectedValueOnce(new Error('runtime unreachable'))
-    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toBe(
-      'unreachable'
-    )
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toEqual({
+      kind: 'unreachable'
+    })
     expect(vi.mocked(callStructuredAgentSession).mock.calls.map(([, method]) => method)).toEqual([
       'agentSession.createSupport',
       'agentSession.createSupport',
       'agentSession.createSupport'
     ])
+  })
+
+  // The server's own saved selection is what create seeds, so it is what the picker shows.
+  it('carries the seed an admitting server reports, keeping only seedable values', async () => {
+    const server = { kind: 'environment' as const, environmentId: 'server-1' }
+    vi.mocked(callStructuredAgentSession).mockResolvedValueOnce({
+      supported: true,
+      seedOptions: { model: 'opus', fastMode: 'true', personality: 'terse', effort: 7 }
+    })
+
+    await expect(admitStructuredLaunchOnHost(server, 'id:wt-1', 'claude')).resolves.toEqual({
+      kind: 'admitted',
+      seedOptions: { model: 'opus', fastMode: 'true' }
+    })
+  })
+
+  it("restores a paired launch with the server's seed it kept, never this machine's", () => {
+    const settings = useAppStore.getState().settings
+    useAppStore.setState({
+      settings: { ...settings!, nativeChatSessionOptions: { claude: { model: 'sonnet' } } }
+    })
+    const restore = (executionHostId: 'local' | 'runtime:server-1') =>
+      restoreStructuredAgentSessionLaunchIntent({
+        worktreeId: 'workspace-1',
+        executionHostId,
+        sessionId: 'claude_1',
+        agent: 'claude',
+        clientOperationId: 'operation-1',
+        payloadFingerprint: 'fingerprint-1',
+        expectedRuntimeFence: null,
+        seedOptions: { model: 'opus' }
+      })
+    try {
+      expect(restore('runtime:server-1').seedOptions).toEqual({ model: 'opus' })
+      expect(restore('local').seedOptions).toEqual({ model: 'sonnet' })
+    } finally {
+      useAppStore.setState({ settings })
+    }
+  })
+
+  it("seeds a paired chat with the server's reported selection, kept through a retry", () => {
+    const intent = createStructuredAgentSessionLaunchIntent(
+      'workspace-1',
+      'claude',
+      'runtime:server-1',
+      undefined,
+      { model: 'opus' }
+    )
+
+    expect(intent.seedOptions).toEqual({ model: 'opus' })
+    expect(retryStructuredAgentSessionLaunchIntent(intent).seedOptions).toEqual({ model: 'opus' })
   })
 
   /** A worktree is not resolvable for a beat after createWorktree resolves, so the probe fails with

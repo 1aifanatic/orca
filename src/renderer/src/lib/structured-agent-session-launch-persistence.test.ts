@@ -9,8 +9,10 @@ import {
   retireAbsentStructuredAgentLaunchCancellationTombstonesPersisted,
   retireStructuredAgentLaunchCancellationTombstonePersisted,
   writeStructuredAgentLaunchRecord,
-  markStructuredAgentLaunchCancelledPersisted
+  markStructuredAgentLaunchCancelledPersisted,
+  structuredAgentLaunchRecordFor
 } from './structured-agent-session-launch-persistence'
+import type { StructuredAgentSessionLaunchIntent } from './launch-structured-agent-session'
 
 const SERVER = 'runtime:server-1'
 const TOMBSTONES_KEY = 'orca:structuredAgentLaunchCancelledSessions:v1'
@@ -61,6 +63,69 @@ describe('structured agent launch persistence', () => {
     reload()
 
     expect(readStructuredAgentLaunchRecord('claude_remote')?.executionHostId).toBe(SERVER)
+  })
+
+  // This machine cannot re-derive a paired server's seed, so a reload must show the same one.
+  it("keeps a paired server's reported seed across a reload, and no local one", () => {
+    const intent = (
+      executionHostId: 'local' | typeof SERVER,
+      sessionId: string
+    ): StructuredAgentSessionLaunchIntent => ({
+      sessionId,
+      worktreeId: 'workspace-1',
+      executionHostId,
+      target:
+        executionHostId === 'local'
+          ? { kind: 'local' }
+          : { kind: 'environment', environmentId: 'server-1' },
+      agent: 'claude',
+      params: {
+        envelope: {
+          sessionId,
+          clientOperationId: 'operation-9',
+          expectedRuntimeFence: null,
+          payloadFingerprint: 'fingerprint-9'
+        },
+        worktree: 'id:workspace-1',
+        agent: 'claude'
+      },
+      seedOptions: { model: 'opus', fastMode: 'true' }
+    })
+    writeStructuredAgentLaunchRecord(
+      structuredAgentLaunchRecordFor(intent(SERVER, 'claude_paired'), 'pending')
+    )
+    writeStructuredAgentLaunchRecord(
+      structuredAgentLaunchRecordFor(intent('local', 'claude_local'), 'pending')
+    )
+    reload()
+
+    expect(readStructuredAgentLaunchRecord('claude_paired')?.seedOptions).toEqual({
+      model: 'opus',
+      fastMode: 'true'
+    })
+    expect(readStructuredAgentLaunchRecord('claude_local')?.seedOptions).toBeUndefined()
+  })
+
+  it('drops a stored seed value that does not decode', () => {
+    localStorage.setItem(
+      'orca:structuredAgentLaunches:v1',
+      JSON.stringify([
+        {
+          sessionId: 'claude_paired',
+          executionHostId: SERVER,
+          agent: 'claude',
+          lifecycle: 'failed',
+          clientOperationId: 'operation-1',
+          payloadFingerprint: 'fingerprint-1',
+          expectedRuntimeFence: null,
+          seedOptions: { model: 'opus', fastMode: 'maybe' }
+        }
+      ])
+    )
+
+    expect(readStructuredAgentLaunchRecord('claude_paired')?.seedOptions).toEqual({
+      model: 'opus'
+    })
   })
 
   it('stores only content-free identity and preserves operation identity', () => {

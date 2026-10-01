@@ -14,6 +14,8 @@ export type StructuredAgentLaunchOptions = {
   resumeFrom?: StructuredAgentSessionResumeSource
   /** The host the route decided on; read only by the caller that starts the launch. */
   executionHostId?: ExecutionHostId
+  /** The saved selection a paired host reported it will seed; read only by the starting caller. */
+  hostSeedOptions?: Readonly<Record<string, string>>
 }
 
 export type StructuredLaunchCaller = {

@@ -515,9 +515,35 @@ describe('useStructuredAgentSessionOptions', () => {
     })
   })
 
-  // A paired server's new chat runs the server's saved selection, which this machine cannot read.
+  // A paired server names the saved selection its create seeds when it admits the chat.
   describe("a paired server's new chat", () => {
-    it('names no model and takes no pick until the server reports the one it started', async () => {
+    it("shows the server's seed at once and remembers a pick on the server under its model", async () => {
+      answer({})
+      mocks.hold.mockResolvedValue({ kind: 'accepted', options: { effort: 'high' } })
+      const { result, unmount } = renderOptions(
+        { ...PROVISIONAL, paired: true, launchSeedOptions: SEED },
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() =>
+        expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
+      )
+      expect(descriptor(result.current.optionSnapshot, 'model')?.settable).toBe(true)
+
+      await act(async () => {
+        await result.current.setStructuredOption('effort', 'high')
+      })
+      await waitFor(() =>
+        expect(mocks.enqueue).toHaveBeenCalledWith(PAIRED_TARGET, {
+          type: 'apply-picks',
+          agent: 'codex',
+          picks: [{ modelId: 'gpt-5.5', optionId: 'effort', value: 'high' }]
+        })
+      )
+      unmount()
+    })
+
+    // An older server names no seed, so a pick would land under a guessed model.
+    it('names no model and takes no pick from a server that reported no seed', async () => {
       answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
       mocks.hold.mockResolvedValue({ kind: 'accepted', options: { model: 'gpt-hosted' } })
       const { result, unmount } = renderOptions(

@@ -8,7 +8,7 @@ import {
   adoptAgentSessionLaunchVerdict,
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
-import { admitStructuredLaunchOnHost } from '@/lib/launch-structured-agent-session'
+import { admitStructuredLaunchOnHost } from '@/lib/structured-agent-session-host-admission'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import type {
@@ -133,8 +133,9 @@ export function beginPairedStructuredLaunch(args: {
   worktreeId: string
   executionHostId: ExecutionHostId
   target: RuntimeClientTarget
-  /** Commits the admitted chat: the local launch path, told which host admitted it. */
-  openAdmitted: () => AdmittedLaunch | null
+  /** Commits the admitted chat: the local launch path, told which host admitted it and the saved
+   *  selection that host said create will seed. */
+  openAdmitted: (seedOptions?: Readonly<Record<string, string>>) => AdmittedLaunch | null
   onHostDeclined: () => Promise<StructuredLaunchTerminal> | StructuredLaunchTerminal
 }): PairedStructuredLaunch {
   const { plan } = args
@@ -158,7 +159,7 @@ export function beginPairedStructuredLaunch(args: {
       resolveDelivery(NOT_DELIVERED)
       return { kind: 'cancelled', sessionId: null }
     }
-    if (admission === 'unreachable') {
+    if (admission.kind === 'unreachable') {
       notifyHostUnreachable(plan.agent, args.executionHostId)
       resolveDelivery({ delivered: false, failureNotified: true })
       return {
@@ -167,7 +168,7 @@ export function beginPairedStructuredLaunch(args: {
         notified: true
       }
     }
-    if (admission === 'declined') {
+    if (admission.kind === 'declined') {
       if (plan.resumeFrom) {
         resolveDelivery(NOT_DELIVERED)
         return {
@@ -185,7 +186,7 @@ export function beginPairedStructuredLaunch(args: {
       ).then(resolveDelivery, () => resolveDelivery(NOT_DELIVERED))
       return terminal.opened ? { kind: 'terminal' } : { kind: 'cancelled', sessionId: null }
     }
-    admitted = args.openAdmitted()
+    admitted = args.openAdmitted(admission.seedOptions)
     if (!admitted) {
       resolveDelivery(NOT_DELIVERED)
       return { kind: 'cancelled', sessionId: null }

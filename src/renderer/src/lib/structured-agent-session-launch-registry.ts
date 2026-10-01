@@ -13,6 +13,7 @@ import {
   deleteStructuredAgentLaunchRecord,
   hasStructuredAgentLaunchCancellationTombstonePersisted,
   readStructuredAgentLaunchRecord,
+  structuredAgentLaunchRecordFor,
   writeStructuredAgentLaunchRecord,
   type StructuredAgentLaunchPersistedRecord
 } from './structured-agent-session-launch-persistence'
@@ -113,18 +114,7 @@ function persistStructuredLaunchState(state: StructuredLaunchState): void {
     deleteStructuredAgentLaunchRecord(state.intent.sessionId)
     return
   }
-  const { envelope, resumeFrom } = state.intent.params
-  const record: StructuredAgentLaunchPersistedRecord = {
-    sessionId: state.intent.sessionId,
-    executionHostId: state.intent.executionHostId,
-    agent: state.intent.agent,
-    lifecycle,
-    clientOperationId: envelope.clientOperationId,
-    payloadFingerprint: envelope.payloadFingerprint,
-    expectedRuntimeFence: envelope.expectedRuntimeFence,
-    ...(resumeFrom ? { resumeFrom } : {})
-  }
-  writeStructuredAgentLaunchRecord(record)
+  writeStructuredAgentLaunchRecord(structuredAgentLaunchRecordFor(state.intent, lifecycle))
 }
 
 export function getPersistedStructuredAgentLaunchRecord(
