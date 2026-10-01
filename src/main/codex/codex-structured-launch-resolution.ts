@@ -16,6 +16,10 @@ import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
+import {
+  openCodexAppServerConnection,
+  type CodexAppServerConnection
+} from './codex-app-server-connection'
 
 export type CodexStructuredLaunchResolverDeps = {
   store: AgentSessionRecordStore
@@ -90,13 +94,6 @@ export function createCodexStructuredLaunchResolver(
       throw new Error(`codex sessions pin CODEX_HOME, not ${accountHome.variable}`)
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
-    // Found before any spawn, so a spawn that fails after this stays a start worth trying again.
-    if (isCliCommandMissing('codex', command, environment ?? process.env)) {
-      throw new AgentSessionPreSpawnError(
-        new Error('codex is not on PATH or in the usual install directories'),
-        { reason: 'providerMissing' }
-      )
-    }
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()
@@ -128,4 +125,25 @@ export function createCodexStructuredLaunchResolver(
         : {})
     }
   }
+}
+
+/**
+ * The real Codex child: refused before it spawns when the spawn's own environment holds no `codex`
+ * to run. Part of the spawn, so a host that supplies its own connection never reads this machine's
+ * PATH.
+ */
+export async function openCodexStructuredChild(
+  ...[launch, ...rest]: Parameters<typeof openCodexAppServerConnection>
+): Promise<CodexAppServerConnection> {
+  const spawnEnv: NodeJS.ProcessEnv = { ...process.env, ...launch.env }
+  for (const key of launch.envToDelete ?? []) {
+    delete spawnEnv[key]
+  }
+  if (isCliCommandMissing('codex', launch.command, spawnEnv)) {
+    throw new AgentSessionPreSpawnError(
+      new Error('codex is not on PATH or in the usual install directories'),
+      { reason: 'providerMissing' }
+    )
+  }
+  return openCodexAppServerConnection(launch, ...rest)
 }
