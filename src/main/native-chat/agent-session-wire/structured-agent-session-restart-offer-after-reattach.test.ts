@@ -5,13 +5,17 @@ import { expect, it } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import { AGENT_SESSION_RESTART_CONTINUATION_MESSAGE } from '../../../shared/agent-session-restart-continuation'
 import { restartContinuationBody } from './structured-agent-session-restart-continuation-envelope'
-import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
+import {
+  interruptedRestart,
+  terminalStartRefusal
+} from './structured-agent-session-restart-interruption-test-harness'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
 
-// The first attempt's start failed, so its continuation was rejected and never reached the agent.
+// The first attempt's start failed for good, so its continuation was rejected and never reached the
+// agent.
 // A retry is a new action with a new message, not a replay of the rejected one, and it is
 // delivered with the same body.
 it("delivers a retry as a new continuation after the first one's start failed", async () => {
@@ -19,7 +23,7 @@ it("delivers a retry as a new continuation after the first one's start failed", 
   if (!marker) {
     throw new Error('missing interrupted restart marker')
   }
-  acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
+  acquire.mockRejectedValueOnce(terminalStartRefusal())
   const first = await host.restartResume.continueAfterRestart([SESSION], 'modal')
   expect(first.failed).toMatchObject([{ sessionId: SESSION, outcome: 'refused', retryable: true }])
   const [rejected] = (await host.journalSnapshot(SESSION)).submissions

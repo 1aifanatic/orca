@@ -3,7 +3,10 @@
 
 import { expect, it, vi } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
-import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
+import {
+  interruptedRestart,
+  terminalStartRefusal
+} from './structured-agent-session-restart-interruption-test-harness'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
 import {
@@ -66,7 +69,7 @@ it('deletes the offer when the chat itself is closed', async () => {
 // A failure record is the same obligation in a later state; the chat's close ends it too.
 it('deletes a failed-resume record when the chat itself is closed', async () => {
   const { host, root, acquire } = await interruptedRestart()
-  acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
+  acquire.mockRejectedValueOnce(terminalStartRefusal())
   await host.restartResume.continueAfterRestart([SESSION], 'modal')
   const capsule = new AgentSessionRecoveryCapsule(root)
   expect(await capsule.listFailed(NOW)).toHaveLength(1)

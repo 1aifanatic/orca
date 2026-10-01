@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import {
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
@@ -45,22 +47,76 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
   expect(await statusNotes(host)).toEqual([])
 })
 
-// The continuation is accepted and its agent then fails to start: the message is rejected with the
-// cause, the failure is filed, and the chat says the agent did not carry on.
-it('says so in the chat when the agent cannot start for the continuation', async () => {
+// The continuation is accepted and its agent then fails to start. Like any message whose start
+// failed, it says why and waits for its next try: the batch counts it done at once, the restart list
+// files nothing, and no note claims the agent did or did not carry on.
+it('files nothing and notes nothing while the continuation waits for its next try', async () => {
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
   acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
+  // The next try is booked and never comes: the batch must not wait for it.
+  host.deps.setStartRetryTimer = () => () => {}
+
+  const startedAt = Date.now()
+  const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect(Date.now() - startedAt).toBeLessThan(5_000)
+  expect(result.continued).toMatchObject([{ sessionId: SESSION, outcome: 'pending' }])
+  expect(result.failed).toEqual([])
+  expect(await host.restartResume.listFailures()).toEqual([])
+  const notes = (await statusNotes(host)).map((note) => note.text)
+  expect(notes).not.toContain(AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE)
+  expect(notes).not.toContain(AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE)
+  expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
+    {
+      dispatchState: 'pending',
+      startFailure: {
+        attempts: 1,
+        reason: "Codex couldn't restart. Send your message to try again."
+      }
+    }
+  ])
+})
+
+// Out of tries, the continuation reads Failed in the chat with its own Retry, and the chat's failure
+// is announced once — when it first failed, not again at the last try.
+it('reads Failed once its tries run out, with one failure notification', async () => {
+  const { host, acquire, clock } = await interruptedRestart()
+  await host.restartResume.list()
+  acquire.mockRejectedValue(new Error('provider could not reconnect'))
+  // Each booked try comes due at once.
+  host.deps.setStartRetryTimer = (delayMs, run) => {
+    const timer = setTimeout(() => {
+      clock.now += delayMs
+      run()
+    }, 0)
+    return () => clearTimeout(timer)
+  }
+  const completions: AgentSessionTurnCompletionEvent[] = []
+  host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
 
   await host.restartResume.continueAfterRestart([SESSION], 'modal')
 
-  expect(await host.restartResume.listFailures()).toMatchObject([
-    { sessionId: SESSION, outcome: 'refused', retryable: true }
+  await vi.waitFor(async () =>
+    expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
+      {
+        dispatchState: 'rejected',
+        reason: "Codex couldn't restart. Send your message to try again."
+      }
+    ])
+  )
+  const [continuation] = (await host.journalSnapshot(SESSION)).submissions
+  await host.flushAllStreamedEvents()
+  expect(
+    completions.filter(
+      (event) =>
+        event.type === 'completion' &&
+        event.completion.turnId === agentJournalSubmissionKey(continuation!.clientMessageId)
+    )
+  ).toEqual([
+    expect.objectContaining({ completion: expect.objectContaining({ outcome: 'failure' }) })
   ])
-  expect(await statusNotes(host)).toContainEqual({
-    text: AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-    tone: 'error'
-  })
+  expect(await host.restartResume.listFailures()).toEqual([])
 })
 
 // A send that throws after Orca may have taken it cannot be proven undelivered: filed unconfirmed,

@@ -149,6 +149,7 @@ type ContinuationSubmission = {
   dispatchState?: string
   reason?: string | null
   rejection?: UnreadAgentSessionFailureFact
+  startFailure?: unknown
 }
 
 export type StructuredAgentSessionContinuationDeps = {
@@ -190,9 +191,10 @@ export type StructuredAgentSessionContinuationDeps = {
   onNoteFailed: (sessionId: string, error: unknown) => void
 }
 
-/** A continuation handed to its agent, or already decided. */
+/** A continuation handed to its agent, or already decided. `retrying`: its start failed and the
+ *  message waits for its next try, saying why in the chat; it is `pending`, filed and noted nowhere. */
 export type StartedStructuredAgentSessionContinuation =
-  | { done: StructuredAgentSessionContinuationOutcome }
+  | { done: StructuredAgentSessionContinuationOutcome; retrying?: true }
   | { verdict: () => Promise<StructuredAgentSessionContinuationOutcome> }
 
 /**
@@ -218,7 +220,9 @@ export async function startStructuredAgentSessionContinuation(
     throw error
   }
   if ('done' in started) {
-    await noteOutcome(deps, sessionId, started.done)
+    if (!started.retrying) {
+      await noteOutcome(deps, sessionId, started.done)
+    }
     return started
   }
   const { verdict } = started
@@ -314,6 +318,10 @@ async function sendContinuation(
   const handedOver = await deps.awaitHandedOver(sessionId, clientMessageId).catch(() => undefined)
   if (handedOver?.dispatchState === 'rejected') {
     return { done: refusedBy(sessionId, handedOver) }
+  }
+  // The message itself says why and tries again, as any message whose start failed does.
+  if (handedOver?.dispatchState === 'pending' && handedOver.startFailure !== undefined) {
+    return { done: { sessionId, outcome: 'pending' }, retrying: true }
   }
   return {
     verdict: async () =>

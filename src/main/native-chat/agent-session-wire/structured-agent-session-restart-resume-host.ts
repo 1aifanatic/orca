@@ -223,6 +223,7 @@ export function createStructuredAgentSessionRestartResume(
     failed?: StructuredAgentSessionResumeFailure[]
   }> => {
     const continued: StructuredAgentSessionContinuationOutcome[] = []
+    const retrying = new Set<string>()
     const verdicts: Promise<void>[] = []
     // A chat holds its slot until its agent took the continuation or its start failed, so a batch
     // never starts more agents at once than the runner allows; the provider's answer comes after.
@@ -235,6 +236,9 @@ export function createStructuredAgentSessionRestartResume(
       )
       if ('done' in started) {
         continued.push(started.done)
+        if (started.retrying) {
+          retrying.add(marker.sessionId)
+        }
         const { outcome, reason, refusal } = started.done
         if (outcome === 'refused') {
           // Thrown as a refusal so the filed failure keeps its details beside the code.
@@ -254,7 +258,10 @@ export function createStructuredAgentSessionRestartResume(
         markers: action.markers,
         failureAfterResume: (sessionId) => {
           const outcome = continued.find((entry) => entry.sessionId === sessionId)
-          return outcome ? continuationFailureOutcome(outcome.outcome) : null
+          // A start that failed and is retrying is the chat message's to report, not this list's.
+          return outcome && !retrying.has(sessionId)
+            ? continuationFailureOutcome(outcome.outcome)
+            : null
         },
         failureReason: (sessionId) => {
           const outcome = continued.find((entry) => entry.sessionId === sessionId)
