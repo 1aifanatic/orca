@@ -76,6 +76,11 @@ export class ClaudeProfileSignInRequiredError extends Error {
   }
 }
 
+/** The account's profile holds another login than the one it was added as. */
+export class ClaudeProfileIdentityRefusalError extends Error {
+  override name = 'ClaudeProfileIdentityRefusalError'
+}
+
 /** The execution host could not be reached, so its pointer cannot be stale or rewritten. */
 export class ClaudeProfileHostUnreachableError extends Error {
   override name = 'ClaudeProfileHostUnreachableError'

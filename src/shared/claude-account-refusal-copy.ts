@@ -3,6 +3,9 @@ export const CLAUDE_ACCOUNT_SIGN_IN_REQUIRED = 'Sign in again to use this accoun
 /** The sign-in refusal with its next step, for surfaces that show host text as is. */
 export const CLAUDE_ACCOUNT_SIGN_IN_REQUIRED_NEXT_STEP =
   'The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.'
+/** An identity refusal without its emails, for surfaces that only carry a typed reason. */
+export const CLAUDE_ACCOUNT_LOGIN_CHANGED_NEXT_STEP =
+  'The selected Claude account is now signed in to a different login. Open Settings > Accounts to sign in again, or choose System default.'
 /** Ends every identity refusal, so the renderer explains it like the sign-in one. */
 const CLAUDE_ACCOUNT_IDENTITY_REFUSAL_END = 'or remove this account.'
 

@@ -1,7 +1,8 @@
-import type {
-  ClaudeProfileHostAccess,
-  ClaudeProfileLaunchDescriptor,
-  ClaudeProfileRoutingOwner
+import {
+  ClaudeProfileIdentityRefusalError,
+  type ClaudeProfileHostAccess,
+  type ClaudeProfileLaunchDescriptor,
+  type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import { recordClaudeProfileSetupReport } from './claude-profile-setup-issues'
@@ -31,7 +32,7 @@ export function assertClaudeProfileLaunchable(
   // Why: select refuses a row holding another login, so a row already selected must too.
   const refusal = descriptor.profile && checks.identityRefusal(descriptor.profile.accountId)
   if (refusal) {
-    throw new Error(refusal)
+    throw new ClaudeProfileIdentityRefusalError(refusal)
   }
   return descriptor
 }

@@ -2719,6 +2719,8 @@
         "imageUnsupported": "Image paste is not supported for this agent."
       },
       "failureWords": {
+        "accountLoginChanged": "The selected Claude account is now signed in to a different login. Open Settings > Accounts to sign in again, or choose System default.",
+        "accountSignInRequired": "The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.",
         "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "attachmentAtMost": "{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.",

@@ -1,4 +1,10 @@
 import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import {
+  ClaudeProfileIdentityRefusalError,
+  ClaudeProfileSignInRequiredError
+} from '../claude-accounts/claude-profile-routing-owner'
+import type { ClaudeProfileRoutingService } from '../claude-accounts/claude-profile-routing-service'
+import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth/runtime-auth-types'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type {
@@ -193,6 +199,23 @@ export async function resolveClaudeStructuredInvocation(
   return { command, env }
 }
 
+/** A refused account is a situation the person acts on, so the chat names it, not only the log. */
+async function prepareClaudeChatProfile(
+  profiles: ClaudeProfileRoutingService
+): Promise<ClaudeRuntimeAuthPreparation> {
+  try {
+    return await profiles.prepare()
+  } catch (error) {
+    if (error instanceof ClaudeProfileSignInRequiredError) {
+      throw new AgentSessionPreSpawnError(error, { reason: 'accountSignInRequired' })
+    }
+    if (error instanceof ClaudeProfileIdentityRefusalError) {
+      throw new AgentSessionPreSpawnError(error, { reason: 'accountLoginChanged' })
+    }
+    throw error
+  }
+}
+
 export function claudeSessionIdForOrcaSession(sessionId: string): string {
   const bytes = createHash('sha256').update(`orca-claude:${sessionId}`).digest().subarray(0, 16)
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
@@ -227,7 +250,7 @@ export function createClaudeStructuredLaunchResolver(
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
     const profiles = getClaudeProfileRoutingAuthority()
-    const prepared = profiles ? await profiles.prepare() : undefined
+    const prepared = profiles ? await prepareClaudeChatProfile(profiles) : undefined
     let launchHome = agentSessionLaunchAccountHome(record).path
     const gate = profiles ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
