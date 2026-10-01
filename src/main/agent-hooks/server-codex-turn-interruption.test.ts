@@ -51,12 +51,39 @@ describe('Codex recorded turn interruption', () => {
           worktreeId: 'folder-1',
           payload: {
             hook_event_name: 'UserPromptSubmit',
+            session_id: 'main-session',
             prompt: 'main task',
             transcript_path: transcriptPath
           }
         })
       })
       expect(response.status).toBe(204)
+      const beforeSide = server.getStatusSnapshot()[0]
+      for (const hookEventName of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
+        const sideResponse = await fetch(
+          `http://127.0.0.1:${env.ORCA_AGENT_HOOK_PORT}/hook/codex`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Orca-Agent-Hook-Token': env.ORCA_AGENT_HOOK_TOKEN
+            },
+            body: JSON.stringify({
+              paneKey: PANE,
+              tabId: 'tab-1',
+              worktreeId: 'folder-1',
+              payload: {
+                hook_event_name: hookEventName,
+                session_id: 'side-session',
+                transcript_path: null,
+                prompt: 'side chat'
+              }
+            })
+          }
+        )
+        expect(sideResponse.status).toBe(204)
+        expect(server.getStatusSnapshot()[0]).toEqual(beforeSide)
+      }
       const baseline = server.getStatusSnapshot()[0]
       expect(
         server.inferInterrupt({

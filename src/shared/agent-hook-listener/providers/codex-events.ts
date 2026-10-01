@@ -150,6 +150,20 @@ export function normalizeCodexEvent(
     return normalizeCodexSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
 
+  const sessionId = readString(hookPayload, 'session_id')
+  const currentSessionId = state.lastStatusByPaneKey.get(paneKey)?.providerSession?.id
+  // Ephemeral side chats share the pane but must not replace its recorded main turn.
+  if (
+    hookPayload.transcript_path === null &&
+    !readString(hookPayload, 'agent_id') &&
+    state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath &&
+    sessionId &&
+    currentSessionId &&
+    sessionId !== currentSessionId
+  ) {
+    return null
+  }
+
   // Why: Codex's request_user_input (0.145+) is auto-allowed, so it fires PreToolUse while blocked on a human answer; map to waiting like grok's ask_user_question.
   const isUserInputPreTool =
     eventName === 'PreToolUse' &&

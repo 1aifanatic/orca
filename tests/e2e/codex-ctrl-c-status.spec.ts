@@ -37,12 +37,21 @@ test('Codex Ctrl+C preserves working status until a confirmed interruption', asy
     await emitCodexHookStatus(endpoint, {
       ...descriptor,
       transcriptPath,
+      sessionId: 'main-session',
       state: 'working',
       prompt: 'Main task continues'
     })
     const working = orcaPage.locator('[aria-label="Working"]')
     const interrupted = orcaPage.locator('[aria-label="Interrupted"]')
     await expect(working.first()).toBeVisible()
+    await emitCodexHookStatus(endpoint, {
+      ...descriptor,
+      state: 'working',
+      sessionId: 'side-session',
+      transcriptPath: null,
+      prompt: 'Side chat'
+    })
+    await expect(orcaPage.getByText('Main task continues', { exact: true })).toBeVisible()
     await focusActiveTerminalInput(orcaPage)
     await orcaPage.keyboard.press('Control+c')
     // Allow the old 500 ms inference timer to fire before recording the rendered result.

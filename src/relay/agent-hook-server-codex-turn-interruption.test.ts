@@ -30,6 +30,7 @@ it('forwards host-confirmed Codex interruption without requiring a local rollout
         worktreeId: 'folder-1',
         payload: {
           hook_event_name: 'UserPromptSubmit',
+          session_id: 'main-session',
           prompt: 'remote main task',
           transcript_path: transcriptPath
         }
@@ -37,6 +38,24 @@ it('forwards host-confirmed Codex interruption without requiring a local rollout
     })
     expect(response.status).toBe(204)
     expect(desktop.getStatusSnapshot()[0].state).toBe('working')
+    const sideResponse = await fetch(`http://127.0.0.1:${port}/hook/codex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Orca-Agent-Hook-Token': token },
+      body: JSON.stringify({
+        paneKey: PANE_KEY,
+        tabId: 'tab-1',
+        worktreeId: 'folder-1',
+        payload: {
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'side-session',
+          transcript_path: null,
+          prompt: 'side chat'
+        }
+      })
+    })
+    expect(sideResponse.status).toBe(204)
+    expect(forward).toHaveBeenCalledTimes(1)
+
     appendFileSync(
       transcriptPath,
       line({ type: 'turn_aborted', turn_id: 'turn-1', reason: 'interrupted' })

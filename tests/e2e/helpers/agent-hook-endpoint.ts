@@ -57,7 +57,8 @@ export async function emitCodexHookStatus(
     state: 'working' | 'done'
     prompt?: string
     lastAssistantMessage?: string
-    transcriptPath?: string
+    transcriptPath?: string | null
+    sessionId?: string
   }
 ): Promise<void> {
   const [tabId] = status.paneKey.split(':')
@@ -85,7 +86,8 @@ export async function emitCodexHookStatus(
       version: endpoint.version,
       payload: {
         ...payload,
-        ...(status.transcriptPath ? { transcript_path: status.transcriptPath } : {})
+        ...(status.transcriptPath !== undefined ? { transcript_path: status.transcriptPath } : {}),
+        ...(status.sessionId ? { session_id: status.sessionId } : {})
       }
     })
   })
