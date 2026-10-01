@@ -5,8 +5,8 @@
 // common one for background maintenance: a fixed interval, a fixed budget per run checked before
 // each chat, a yield between chats, a run still going skips the next tick, and a failure is logged,
 // never thrown: one chat's skips that chat, and any other ends the job for this launch. A run waits
-// while startup chat work is in flight (a tab listing, a history restore, the settle step),
-// re-derived before every run and every chat. What is owed is derived from the files on disk, so
+// while startup chat work is in flight (startup restoration not yet settled, a tab listing, a
+// history restore, the settle step), re-derived before every run and every chat. What is owed is derived from the files on disk, so
 // nothing stored can disagree with it (structured-agent-session-per-chat-file-queue.ts). A file
 // whose copy failed for good is skipped while it and the app version stay as they were
 // (journal-background-failures.ts). A chat too big for the free space is left for a later launch;
@@ -50,7 +50,8 @@ import type {
 } from './structured-agent-session-startup-state'
 
 export const PER_CHAT_FILE_COPY_INTERVAL_MS = 1_000
-/** No run before this long after host startup: the first launch's paint and listing go first. */
+/** No run before this long after the job starts, so the first launch's paint goes first; the first
+ *  listing goes first by the startup chat work gate. */
 export const PER_CHAT_FILE_COPY_START_DELAY_MS = 10_000
 export const PER_CHAT_FILE_COPY_RUN_BUDGET_MS = 200
 export const PER_CHAT_FILE_COPY_RUN_MAX_CHATS = 8
@@ -62,7 +63,8 @@ export type PerChatFileCopyDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   /** The chats with a tab, in tab order: copied first. */
   listedIds: readonly string[]
-  /** Startup chat work is in flight: a tab listing, a history restore, or the settle step. */
+  /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
+   *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The chat's journal, when it is open on this host. */

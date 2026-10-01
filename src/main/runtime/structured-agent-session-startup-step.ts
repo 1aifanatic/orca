@@ -29,8 +29,8 @@ export async function runStructuredAgentSessionStartupStep(
   savedSession: WorkspaceSessionState | null,
   /** The settle, which chat commands wait for; it never rejects. */
   onSettling: (settled: Promise<void>) => void,
-  /** The runtime's own startup chat work (a tab listing, a history restore owed or starting), which
-   *  the background copy of old chat files waits for. */
+  /** The runtime's own startup chat work (startup restoration not yet settled, a tab listing, a
+   *  history restore owed or starting), which the background copy of old chat files waits for. */
   isRuntimeChatWorkActive: () => boolean = () => false
 ): Promise<string[]> {
   await host.reconcileRestartLeases()

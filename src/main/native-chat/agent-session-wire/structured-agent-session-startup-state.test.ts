@@ -589,6 +589,37 @@ function conversationCommandParams(sessionId: string, command: 'clear') {
   }
 }
 
+describe('whether the settle step is running (R3M-2)', () => {
+  it('answers true from the settle’s start until it has finished, and never again', async () => {
+    const rig = await newRig()
+    const restoring = Promise.withResolvers<void>()
+    const state = createStructuredAgentSessionStartupState({
+      openDeps: {
+        store: rig.store,
+        adapter: { historyFilePath: async () => null },
+        journalDatabase: openTestJournalHostDatabase(rig.root)
+      },
+      canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => !!record,
+      seedStatus: vi.fn(),
+      resolveRecovery: vi.fn(async () => true),
+      restoreListed: () => restoring.promise,
+      serialize: (_sessionId, task) => task(),
+      hasSession: () => false,
+      isDisposed: () => false
+    })
+    expect(state.isSettling()).toBe(false)
+
+    const settled = state.settleOwedSessions([])
+    expect(state.isSettling()).toBe(true)
+    restoring.resolve()
+    await settled
+
+    expect(state.isSettling()).toBe(false)
+    await state.settleOwedSessions([])
+    expect(state.isSettling()).toBe(false)
+  })
+})
+
 describe('a stored status no settle here can clear (R2A-4)', () => {
   it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {
     const opens: string[] = []

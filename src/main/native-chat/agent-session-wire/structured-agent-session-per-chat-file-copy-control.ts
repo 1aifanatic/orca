@@ -32,7 +32,8 @@ export function startStructuredAgentSessionPerChatFileCopy(
 
 export type PerChatFileCopyStart = {
   listedIds: readonly string[]
-  /** The runtime's own startup chat work: a tab listing, or a history restore owed or starting. */
+  /** The runtime's own startup chat work: startup restoration not yet settled, a tab listing, or a
+   *  history restore owed or starting. */
   isRuntimeChatWorkActive: () => boolean
 }
 

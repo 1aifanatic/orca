@@ -268,8 +268,9 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   /** The tab restore's preparation: the startup step, then the terminal records refresh, which
    *  lists the daemon's terminals against the records the host build brought in. */
   prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
-    this.structuredAgentSessionStartupRestorePromise ??= this.startStructuredAgentSessionStartup()
-      .then(async () => {
+    this.structuredAgentSessionStartupRestorePromise ??= this.structuredAgentSessionStartupChatWork
+      .trackRestorationPrepare(async () => {
+        await this.startStructuredAgentSessionStartup()
         if (this.hasPersistedStructuredAgentSessionStore()) {
           await this.refreshMobileSessionPtyRecords()
         }
