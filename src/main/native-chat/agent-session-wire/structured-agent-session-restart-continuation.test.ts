@@ -124,15 +124,21 @@ it('reports an unattached chat without sending', async () => {
   expect(deps.send).not.toHaveBeenCalled()
 })
 
-// A start that failed rejects the continuation before any provider saw it: that is the verdict.
+// A start that failed rejects the continuation before any provider saw it. The message says why
+// and carries its Retry, so the restart list files nothing and the chat gets no note.
 it('reports a continuation rejected at handover without waiting for the provider', async () => {
   const deps = dependencies('accepted', 'rejected')
 
   await expect(
     continueStructuredAgentSessionAfterRestart(deps, SESSION, marker(), 'operation-1')
-  ).resolves.toEqual({ sessionId: SESSION, outcome: 'refused', reason: 'Codex could not start.' })
+  ).resolves.toEqual({
+    sessionId: SESSION,
+    outcome: 'refused',
+    reason: 'Codex could not start.',
+    startFailed: true
+  })
   expect(deps.awaitSettlement).not.toHaveBeenCalled()
-  expect(deps.note).toHaveBeenCalledExactlyOnceWith(...REFUSED)
+  expect(deps.note).not.toHaveBeenCalled()
 })
 
 // The start completes once the agent took the message; the provider's answer is a later verdict.

@@ -661,7 +661,7 @@ describe('the notice on a message whose agent start failed', () => {
       stage === 'beforeHandoff' ? [code] : []
     )
     const facts = [
-      { kind: 'accountSwitchInProgress' },
+      { kind: 'accountSwitchInProgress' } satisfies AgentSessionFailureFact,
       ...AGENT_SESSION_FAILURE_KINDS.flatMap((kind) =>
         codes.map((code) => readWholeAgentSessionFailureFact({ kind, refusal: { code } }))
       )

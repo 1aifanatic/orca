@@ -324,7 +324,10 @@ async function sendContinuation(
   // start for it. The message says why, as any message whose start failed does.
   if (
     handedOver?.dispatchState === 'rejected' &&
-    classifyDispatchRejection(handedOver).verdict === 'failure'
+    classifyDispatchRejection({
+      reason: handedOver.reason ?? null,
+      rejection: handedOver.rejection
+    }).verdict === 'failure'
   ) {
     return { done: { ...refusedBy(sessionId, handedOver), startFailed: true } }
   }
