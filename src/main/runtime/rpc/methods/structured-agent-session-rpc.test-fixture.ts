@@ -20,6 +20,7 @@ import type { RpcRequest, RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
 import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 
 export const SESSION = 'session-alpha'
 export const FINGERPRINT = 'f'.repeat(64)
@@ -208,6 +209,8 @@ export function hostStub(): StructuredAgentSessionHost {
     ),
     unsubscribe: vi.fn()
   })
+  // Not a call: the logger the host hands a runtime caller that reports for it.
+  Reflect.set(hostCalls, 'deps', { logger: recordingStructuredAgentSessionLogger().logger })
   return hostCalls as unknown as StructuredAgentSessionHost
 }
 
