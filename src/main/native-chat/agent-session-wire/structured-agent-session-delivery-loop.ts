@@ -182,8 +182,9 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     // Already waiting on a stop that could not prove its child gone: a new message retries it, and
     // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
+    // Another operation's retry may have failed first, so the row is made sure of here too.
     if (structuredAgentSessionWindDownWaitHolds(session)) {
-      return this.stop(sessionId)
+      return this.waitOnUnprovenExit(sessionId, session)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)
     if (failedStart) {
@@ -193,11 +194,7 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!ready.ok && isStructuredAgentSessionPreviousExitUnverifiable(ready.refusal)) {
       // The start retried that stop first and still could not prove the exit: the message waits,
       // saying why, rather than being refused.
-      await recordStructuredAgentSessionWindDownWait(session, {
-        fence: this.deps.conversationFence(sessionId),
-        failureTextContext: this.deps.failureTextContext(sessionId)
-      })
-      return this.stop(sessionId)
+      return this.waitOnUnprovenExit(sessionId, session)
     }
     if (!ready.ok) {
       return ready
@@ -302,6 +299,18 @@ export class StructuredAgentSessionDeliveryLoop {
         submission.acceptedSequence !== undefined &&
         submission.acceptedSequence <= ended.endedAt.sequence
     )
+  }
+
+  /** The row is written once per unproven child, so this is idempotent. */
+  private async waitOnUnprovenExit(
+    sessionId: string,
+    session: StructuredAgentSessionHostSession
+  ): Promise<'stop'> {
+    await recordStructuredAgentSessionWindDownWait(session, {
+      fence: this.deps.conversationFence(sessionId),
+      failureTextContext: this.deps.failureTextContext(sessionId)
+    })
+    return this.stop(sessionId)
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. */

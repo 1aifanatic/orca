@@ -522,3 +522,20 @@ it('rejects as closed a message a second tab close closed, though that close cou
   expect(await submission(next)).toMatchObject({ dispatchState: 'rejected' })
   expect(claude.connections).toHaveLength(1)
 })
+
+it('notes why a message waits when another operation failed its retry before the message was delivered', async () => {
+  const connection = await stopWithUnprovenClose(2)
+
+  // The send is accepted, then the option change's failed retry runs before the send's delivery.
+  const sent = send('Carry on.')
+  const option = setModel('claude-opus-5')
+  await expect(option).resolves.toMatchObject({
+    ok: false,
+    refusal: { details: { reason: 'previousExitUnverifiable' } }
+  })
+  await sent
+  await commitSettled()
+  expect(connection.closeCount).toBe(2)
+  expect(await waitRows()).toHaveLength(1)
+  expect(claude.connections).toHaveLength(1)
+})
