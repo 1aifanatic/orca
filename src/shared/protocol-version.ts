@@ -185,6 +185,10 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 // gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
+// Why: `agentSession.send`'s params are strict, so an older host rejects `retries`, the rejected
+// message a Retry sends again; a client sends it only to a host that records it.
+export const AGENT_SESSION_SEND_RETRIES_RUNTIME_CAPABILITY =
+  'agent-session.send-retries.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -347,6 +351,7 @@ export const AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY =
 
 export const RUNTIME_CAPABILITIES = [
   ...AGENT_SESSION_STOP_RUNTIME_CAPABILITIES,
+  AGENT_SESSION_SEND_RETRIES_RUNTIME_CAPABILITY,
   AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY,
   ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY,
   'files.pathsExist',

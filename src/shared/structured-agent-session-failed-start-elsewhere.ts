@@ -15,10 +15,13 @@ export function failedStartsSentElsewhere(
   outbox: readonly Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>[]
 ): AgentJournalSubmission[] {
   const sentHere = new Set(outbox.map((entry) => entry.clientMessageId))
+  // A Retry's message stands for the one it sends again, wherever it was sent from.
+  const retried = new Set(submissions.flatMap((submission) => submission.retries ?? []))
   return submissions.filter(
     (submission) =>
       submission.dispatchState === 'rejected' &&
       !sentHere.has(submission.clientMessageId) &&
+      !retried.has(submission.clientMessageId) &&
       // Orca's own fault on the way to a start is one the start's writer records too.
       (isFailedStartRejection(submission) ||
         classifyDispatchRejection(submission).kind === 'hostFault')

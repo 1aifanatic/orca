@@ -64,6 +64,7 @@ export function sendPlan(params: {
   body: AgentJournalMessageItem
   retryUnknown?: true
   delivery?: 'queue-if-active'
+  retries?: string
   userSend?: true
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
@@ -86,6 +87,7 @@ export function sendPlan(params: {
       params.beforeRun?.()
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
+        ...(params.retries ? { retries: params.retries } : {}),
         clientMessageId,
         payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
         body: params.body

@@ -39,6 +39,8 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
       entry.clientMessageId === clientMessageId
         ? {
             ...retriedByUser(entry),
+            // The rejected id stays in the journal; this names it so no client shows it again.
+            retries: clientMessageId,
             clientMessageId: args.createOperationId(),
             state: 'queued' as const,
             lastAttemptAt: null,

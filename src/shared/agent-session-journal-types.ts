@@ -426,6 +426,9 @@ export type AgentJournalSubmission = {
   /** Host-only: who asked for this turn — a person over the client send RPC, or Orca itself.
    *  A person's turn is what ends a Stop's queue pause. */
   origin?: 'client' | 'host'
+  /** The rejected message this one sends again, by the person's Retry: every client then hides
+   *  that one, which this message now stands for. Absent on older hosts. */
+  retries?: string
   /** On a queued message only: the agent start it was for failed and another is booked. A start
    *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
   startRetry?: AgentJournalStartRetry

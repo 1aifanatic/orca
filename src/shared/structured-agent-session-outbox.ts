@@ -40,6 +40,9 @@ export type StructuredAgentSessionOutboxEntry = {
    *  of this id asks the same (structured-agent-session-outbox-delivery). On a request's own copy,
    *  what that request carries. */
   sentDelivery?: 'queue-if-active' | null
+  /** The rejected message this one is the person's Retry of, which every client then hides. Sent
+   *  only to a host that records it (`agent-session.send-retries.v1`). */
+  retries?: string
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
    *  is sent again or delivered, instead of outliving it as a separate error. On a `queued` entry
    *  it is also the hold (structured-agent-session-outbox-admission). */
@@ -297,6 +300,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
+    ...(typeof entry.retries === 'string' && entry.retries ? { retries: entry.retries } : {}),
     ...(lastFailure ? { lastFailure } : {})
   }
 }
@@ -305,6 +309,7 @@ export type StructuredAgentSessionSendMutation = {
   envelope: AgentSessionMutationEnvelope
   body: AgentJournalMessageItem
   delivery?: 'queue-if-active'
+  retries?: string
 }
 
 /** The `agentSession.send` arguments an entry stands for. Typed rather than wire-shaped so a host
@@ -327,7 +332,9 @@ export function structuredAgentSessionSendMutation(
         fields
       })
     },
-    ...fields
+    ...fields,
+    // In neither fingerprint: it names what the message stands for, not what it says.
+    ...(entry.retries ? { retries: entry.retries } : {})
   }
 }
 

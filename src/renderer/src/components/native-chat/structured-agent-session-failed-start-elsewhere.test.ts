@@ -12,6 +12,7 @@ import type {
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 import { resendableFailedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
+import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
@@ -139,5 +140,68 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     expect(notice).toEqual({
       text: 'Codex stopped before it finished starting. Send your message to try again.'
     })
+  })
+})
+
+// A Retry sends the message again under a new id; the rejected one stays in the journal. The new
+// message names it, so no client draws it, or offers its Retry, again.
+describe('a message whose start failed for good, after its Retry', () => {
+  const RETRY = '1759312345999-fedcba9876543210fedcba9876543210'
+  const retryItem: AgentJournalRenderItem = {
+    ...TEXT,
+    itemId: agentJournalSubmissionKey(RETRY),
+    sequence: 9,
+    observedAt: 9
+  }
+  const retrySubmission = (retries?: string): AgentJournalSubmission => ({
+    clientMessageId: RETRY,
+    fence: 1,
+    payloadFingerprint: 'fp',
+    dispatchState: 'pending',
+    providerItemId: null,
+    reason: null,
+    submittedAt: 9,
+    resolvedAt: null,
+    handoverRecorded: true,
+    ...(retries ? { retries } : {})
+  })
+
+  it('is drawn once, as its Retry, when this desktop retried its own message', () => {
+    const retried = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: RETRY,
+        sessionId: 's',
+        text: 'Continue where you left off',
+        attachments: [],
+        queuedAt: 1
+      }),
+      retries: ID
+    }
+    const submissions = [rejected({ kind: 'providerStartFailed' }), retrySubmission(ID)]
+
+    expect(
+      projectStructuredAgentSessionMessages([TEXT, retryItem], [retried], submissions).map(
+        (row) => row.id
+      )
+    ).toEqual([agentJournalSubmissionKey(RETRY)])
+  })
+
+  it('keeps no Retry of its own when another device resent it', () => {
+    const submissions = [rejected({ kind: 'providerStartFailed' }), retrySubmission(ID)]
+
+    expect(resendableFailedStartsSentElsewhere([TEXT, retryItem], submissions, []).has(ID)).toBe(
+      false
+    )
+    expect(
+      projectStructuredAgentSessionMessages([TEXT, retryItem], [], submissions).map((row) => row.id)
+    ).toEqual([agentJournalSubmissionKey(RETRY)])
+  })
+
+  it('is still drawn, with its Retry, by a host that did not record what the Retry sent again', () => {
+    const submissions = [rejected({ kind: 'providerStartFailed' }), retrySubmission()]
+
+    expect(resendableFailedStartsSentElsewhere([TEXT, retryItem], submissions, []).has(ID)).toBe(
+      true
+    )
   })
 })

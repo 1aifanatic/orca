@@ -51,6 +51,19 @@ export function structuredAgentSessionEntryAttempt(
   }
 }
 
+/** The request's copy names the message it is a Retry of only to a host that records it: the
+ *  field is unknown to an older host, whose strict params refuse it. */
+export function structuredAgentSessionEntryForRetriesHost(
+  entry: StructuredAgentSessionOutboxEntry,
+  hostRecordsRetries: boolean
+): StructuredAgentSessionOutboxEntry {
+  if (hostRecordsRetries || entry.retries === undefined) {
+    return entry
+  }
+  const { retries: _unrecorded, ...wire } = entry
+  return wire
+}
+
 /** The queue fields a stored entry carries, read back from storage. */
 export function parseStructuredAgentSessionOutboxQueueFields(entry: {
   sentDelivery?: unknown

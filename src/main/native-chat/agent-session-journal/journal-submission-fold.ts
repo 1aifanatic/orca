@@ -30,7 +30,8 @@ export function applyJournalSubmission(
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }
       : {}),
-    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {})
+    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {}),
+    ...(typeof row.retries === 'string' && row.retries.length > 0 ? { retries: row.retries } : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // A message handed over later belongs to no turn until its handover names one.

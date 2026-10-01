@@ -85,6 +85,8 @@ export type JournalSubmissionInput = {
   queuedMessageId?: string
   /** Who asked for this turn (`JournalSubmissionRow.origin`). */
   origin?: 'client' | 'host'
+  /** The rejected message this one sends again (`JournalSubmissionRow.retries`). */
+  retries?: string
 }
 
 /** A submission append that converts a queued draft, in one transaction. */
