@@ -32,6 +32,7 @@ import {
   type ClaudeModelCatalogProbeDeps
 } from '../claude/claude-model-catalog-probe'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
+import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { claudeProjectsRootDirs } from '../ai-vault/session-scanner-roots'
 import {
   claudeTranscriptScanRoots,
@@ -175,9 +176,9 @@ describe('Claude profile consumers', () => {
       wslDistro: null,
       getClaudeConfigDirectory: () => null
     })
-    let record = {
+    let record: AgentSessionRecord = {
       ...agentSessionRecordFixture(),
-      accountHome: { variable: 'CLAUDE_CONFIG_DIR' as const, path: created },
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: created },
       providerHandleChain: []
     }
     const launch = await createClaudeStructuredLaunchResolver({
