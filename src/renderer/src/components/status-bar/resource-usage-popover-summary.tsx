@@ -138,7 +138,7 @@ export function renderSessionsPartialBanner(): React.JSX.Element {
       <span>
         {translate(
           'auto.components.status.bar.ResourceUsageStatusSegment.7a2e9c5b14',
-          'A version of the terminal service didn’t answer, so its sessions aren’t listed. They are not known to have stopped.'
+          'A version of the terminal service didn’t answer, so this list may be incomplete. Its sessions are not known to have stopped.'
         )}
       </span>
     </div>

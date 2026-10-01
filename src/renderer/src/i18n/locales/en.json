@@ -3685,7 +3685,7 @@
             "2b84c4d11f": "{{value0}} workspace · {{value1}} external"
           },
           "ResourceUsageStatusSegment": {
-            "7a2e9c5b14": "A version of the terminal service didn’t answer, so its sessions aren’t listed. They are not known to have stopped.",
+            "7a2e9c5b14": "A version of the terminal service didn’t answer, so this list may be incomplete. Its sessions are not known to have stopped.",
             "946d9f94d0": "Cancel",
             "67c4ecda49": "Force-quits this terminal. Any unsaved work in the pane is lost. This can't be undone.",
             "4bb076fa89": "Kill",

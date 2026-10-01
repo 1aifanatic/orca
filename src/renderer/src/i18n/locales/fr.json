@@ -3628,7 +3628,7 @@
             "2b84c4d11f": "{{value0}} espace de travail · {{value1}} externes"
           },
           "ResourceUsageStatusSegment": {
-            "7a2e9c5b14": "Une version du service de terminal n’a pas répondu, ses sessions ne sont donc pas listées. Rien n’indique qu’elles se soient arrêtées.",
+            "7a2e9c5b14": "Une version du service de terminal n’a pas répondu, cette liste est donc peut-être incomplète. Rien n’indique que ses sessions se soient arrêtées.",
             "946d9f94d0": "Annuler",
             "67c4ecda49": "Force la fermeture de ce terminal. Tout travail non enregistré dans le volet est perdu. Action irréversible.",
             "4bb076fa89": "Tuer",
