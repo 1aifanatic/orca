@@ -209,3 +209,22 @@ it('waits a few seconds for a booting distro, probing sparingly, then gives up',
     vi.useRealTimers()
   }
 })
+it('lets user-initiated work boot a stopped distro instead of checking it is running first', async () => {
+  mocks.running = false
+  const guest = await prepareClaudeWslGuest('Ubuntu', 'boot')
+  await guest.request(
+    {
+      action: 'publish',
+      distro: 'Ubuntu',
+      userHome: guest.home,
+      accountId: 'a',
+      hooksEnabled: false
+    },
+    'boot'
+  )
+  await withdrawClaudeWslPointer('Ubuntu', 'boot')
+  expect(mocks.runningChecks).toBe(0)
+  expect(helperCalls()).toHaveLength(1)
+  await expect(withdrawClaudeWslPointer('Ubuntu')).rejects.toThrow('not running')
+  expect(mocks.runningChecks).toBe(1)
+})

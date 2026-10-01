@@ -13,7 +13,10 @@ import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
-import { ClaudeProfileHostUnreachableError } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileHostUnreachableError,
+  type ClaudeProfileHostAccess
+} from './claude-profile-routing-owner'
 
 const responseSchema = z.object({
   ready: z.boolean(),
@@ -64,14 +67,20 @@ const responseSchema = z.object({
 export type ClaudeWslProfileResponse = z.infer<typeof responseSchema>
 export type ClaudeWslGuest = {
   home: string
-  request: (request: ClaudeWslProfileRequest) => Promise<ClaudeWslProfileResponse>
+  request: (
+    request: ClaudeWslProfileRequest,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<ClaudeWslProfileResponse>
 }
 
 const PREPARE_TIMEOUT_MS = 180_000
 // Why a window: one prepare runs several guest commands back to back; a long download re-checks.
 const RUNNING_CONFIRMATION_MS = 10_000
 
-export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGuest> {
+export async function prepareClaudeWslGuest(
+  distro: string,
+  access: ClaudeProfileHostAccess = 'if-running'
+): Promise<ClaudeWslGuest> {
   const app = getAppEnvironment()
   const bundle = wslRelayBundleDirs()
     .map((root) => join(root, 'claude-profile-wsl.cjs'))
@@ -93,7 +102,8 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
   let confirmedAt = Number.NEGATIVE_INFINITY
   const runPreparing = async (spec: WslSpec, timeoutMs?: number) => {
     signal.throwIfAborted()
-    if (Date.now() - confirmedAt > RUNNING_CONFIRMATION_MS) {
+    // Why no check when booting: the first guest command boots the distro or reports wsl.exe's reason.
+    if (access === 'if-running' && Date.now() - confirmedAt > RUNNING_CONFIRMATION_MS) {
       await requireRunningWslDistro(distro)
       confirmedAt = Date.now()
     }
@@ -115,8 +125,10 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
   }
   return {
     home: runtime.home,
-    request: async (request) => {
-      await requireRunningWslDistro(distro)
+    request: async (request, requestAccess = 'if-running') => {
+      if (requestAccess === 'if-running') {
+        await requireRunningWslDistro(distro)
+      }
       let claudeVersion = request.claudeVersion
       if (request.action === 'setup' && request.hooksEnabled) {
         // Why caught: like native setup, an unknown version installs the default hook plan.
@@ -181,20 +193,23 @@ async function requireRunningWslDistro(distro: string): Promise<void> {
 }
 
 /** Withdrawing selection must still work when the pinned runtime is missing. */
-export async function withdrawClaudeWslPointer(distro: string): Promise<void> {
-  const paths = await filterPathsToRunningWslDistrosAsync([toWindowsWslUncPath('/', distro)], {
-    requireConfirmed: true
-  })
-  if (!paths.length) {
+export async function withdrawClaudeWslPointer(
+  distro: string,
+  access: ClaudeProfileHostAccess = 'if-running'
+): Promise<void> {
+  if (access === 'if-running' && !(await isWslDistroRunning(distro))) {
     throw new Error(`WSL distro ${distro} is not running; its pointer could not be withdrawn`)
   }
   const result = await runWslProcess({
     distro,
     loginPath: 'none',
     script: `rm -f -- "$HOME/${WSL_CLAUDE_PROFILE_POINTER_FROM_HOME}"`,
-    timeoutMs: 5_000
+    // Why longer when booting: the rm also waits for the distro to start.
+    timeoutMs: access === 'boot' ? 15_000 : 5_000
   })
   if (result.code !== 0 || result.timedOut) {
-    throw new Error('WSL Claude account pointer could not be withdrawn')
+    throw new Error(
+      `WSL Claude account pointer could not be withdrawn: ${result.stderr.trim() || 'command failed'}`
+    )
   }
 }

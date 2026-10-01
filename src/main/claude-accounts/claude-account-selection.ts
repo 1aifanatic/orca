@@ -167,7 +167,7 @@ export class ClaudeAccountSelection {
   ): Promise<void> {
     beginClaudeAuthSwitch()
     try {
-      await (operation ? operation() : this.runtimeAuth.syncForCurrentSelection(target))
+      await (operation ? operation() : this.runtimeAuth.syncForCurrentSelection(target, 'boot'))
     } finally {
       endClaudeAuthSwitch()
     }

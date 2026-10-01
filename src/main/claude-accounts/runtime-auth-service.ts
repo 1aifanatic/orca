@@ -17,6 +17,7 @@ import {
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
+import type { ClaudeProfileHostAccess } from './claude-profile-routing-owner'
 import { ClaudeRuntimeAuthSync } from './runtime-auth/runtime-auth-sync'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
@@ -71,16 +72,20 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     return this.getPreparation(effectiveTarget)
   }
 
-  async syncForCurrentSelection(target?: ClaudeAccountSelectionTarget): Promise<void> {
+  /** `access: 'boot'` marks a user's select or remove, which may start a stopped WSL distro. */
+  async syncForCurrentSelection(
+    target?: ClaudeAccountSelectionTarget,
+    access: ClaudeProfileHostAccess = 'if-running'
+  ): Promise<void> {
     await this.serializeMutation(async () => {
       const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
       const profiles = getClaudeProfileRoutingAuthority()
       if (!profiles) {
         await this.doSyncForCurrentSelection(effectiveTarget)
       } else if (profiles.routes(effectiveTarget)) {
-        await profiles.publish(effectiveTarget)
+        await profiles.publish(effectiveTarget, 'always', access)
       } else {
-        await profiles.retire(effectiveTarget)
+        await profiles.retire(effectiveTarget, access)
       }
     })
   }
@@ -95,7 +100,8 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
         if (!target) {
           await profiles.startup()
         } else if (profiles.routes(target)) {
-          await profiles.publish(target)
+          // Why boot: this undoes a user's failed select or remove.
+          await profiles.publish(target, 'always', 'boot')
         }
         return
       }

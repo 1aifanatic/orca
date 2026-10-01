@@ -8,6 +8,7 @@ import { readClaudeProfilePointer } from './claude-profile-pointer'
 import { ClaudeProfilePointerQueue } from './claude-profile-pointer-queue'
 import {
   ClaudeProfileHostUnreachableError,
+  type ClaudeProfileHostAccess,
   type ClaudeProfileLaunchDescriptor,
   type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
@@ -50,37 +51,39 @@ export class ClaudeProfileRoutingService {
   /** Select and startup set the profile up (`always`); a launch only sets up one that never was. */
   publish(
     target?: ClaudeAccountSelectionTarget,
-    provisioning: 'always' | 'if-missing' = 'always'
+    provisioning: 'always' | 'if-missing' = 'always',
+    access: ClaudeProfileHostAccess = 'if-running'
   ): Promise<ClaudeProfileLaunchDescriptor> {
     const key = publishKey(target)
     return this.pointers.start(key, (generation) =>
-      this.publishGeneration(key, generation, target, provisioning)
+      this.publishGeneration(key, generation, target, provisioning, access)
     )
   }
   private async publishGeneration(
     key: string,
     generation: number,
     target: ClaudeAccountSelectionTarget | undefined,
-    provisioning: 'always' | 'if-missing'
+    provisioning: 'always' | 'if-missing',
+    access: ClaudeProfileHostAccess
   ): Promise<ClaudeProfileLaunchDescriptor> {
     let descriptor: ClaudeProfileLaunchDescriptor | undefined
     try {
       if (this.owner.refresh) {
-        await this.owner.refresh(target)
+        await this.owner.refresh(target, access)
       }
       descriptor = this.resolve(target)
       if (
         descriptor.profile &&
         (provisioning === 'always' || !this.owner.isProvisioned(descriptor))
       ) {
-        await this.provision(descriptor)
+        await this.provision(descriptor, access)
       }
       if (this.resolve(target).configHome !== descriptor.configHome) {
         throw new Error('Claude account changed while preparing its profile; retry')
       }
       const captured = descriptor
       const published = await this.pointers.write(key, generation, () =>
-        this.owner.publish(captured)
+        this.owner.publish(captured, access)
       )
       if (!published) {
         // Why: a newer publish owns the pointer; it speaks for this caller while it names the same profile.
@@ -112,7 +115,7 @@ export class ClaudeProfileRoutingService {
         )
         try {
           await this.pointers.write(key, generation, async () => {
-            await this.owner.withdraw(target)
+            await this.owner.withdraw(target, access)
           })
         } catch (withdrawError) {
           console.warn('[claude-profile] Pointer withdrawal failed:', withdrawError)
@@ -123,7 +126,10 @@ export class ClaudeProfileRoutingService {
   }
   /** A distro that lost its last account: panes opened while it was routed must stop launching
    *  that account. Bookkeeping, so it only warns. */
-  async retire(target: ClaudeAccountSelectionTarget): Promise<void> {
+  async retire(
+    target: ClaudeAccountSelectionTarget,
+    access: ClaudeProfileHostAccess
+  ): Promise<void> {
     const key = publishKey(target)
     // Why: an in-flight publish this overtakes must not wait on itself as the newest one.
     const retired = Promise.reject(
@@ -135,7 +141,7 @@ export class ClaudeProfileRoutingService {
     this.publishIssues.delete(key)
     try {
       await this.pointers.write(key, generation, async () => {
-        await this.owner.withdraw(target)
+        await this.owner.withdraw(target, access)
       })
     } catch (error) {
       console.warn('[claude-profile] Pointer withdrawal failed:', error)
@@ -152,11 +158,14 @@ export class ClaudeProfileRoutingService {
     }
   }
   /** Ownership refusal stops the caller; a worker fault on an already prepared profile only warns. */
-  private async provision(descriptor: ClaudeProfileLaunchDescriptor): Promise<void> {
+  private async provision(
+    descriptor: ClaudeProfileLaunchDescriptor,
+    access: ClaudeProfileHostAccess
+  ): Promise<void> {
     const provisioned = this.owner.isProvisioned(descriptor)
     let report: ClaudeProfileSetupReport
     try {
-      report = await this.owner.prepare(descriptor)
+      report = await this.owner.prepare(descriptor, access)
     } catch (error) {
       if (!provisioned || descriptor.target.runtime === 'wsl') {
         throw error
@@ -168,8 +177,9 @@ export class ClaudeProfileRoutingService {
       throw new Error('Selected Claude profile could not be prepared')
     }
   }
+  /** Part of a Claude launch, so it may boot the distro the launch just prepared. */
   trust(descriptor: ClaudeProfileLaunchDescriptor, workspace: string): Promise<void> {
-    return this.owner.trust?.(descriptor, workspace) ?? Promise.resolve()
+    return this.owner.trust?.(descriptor, workspace, 'boot') ?? Promise.resolve()
   }
   pointerPath(target?: ClaudeAccountSelectionTarget): string {
     return this.owner.pointerPath(target)
@@ -187,8 +197,9 @@ export class ClaudeProfileRoutingService {
       throw firstError
     }
   }
+  /** A Claude launch: user-initiated, so it boots a stopped distro rather than refusing. */
   async prepare(target?: ClaudeAccountSelectionTarget): Promise<ClaudeRuntimeAuthPreparation> {
-    return this.preparation(await this.publish(target, 'if-missing'))
+    return this.preparation(await this.publish(target, 'if-missing', 'boot'))
   }
   preparation(descriptor: ClaudeProfileLaunchDescriptor): ClaudeRuntimeAuthPreparation {
     return {

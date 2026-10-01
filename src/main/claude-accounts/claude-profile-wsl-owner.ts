@@ -7,7 +7,10 @@ import {
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
+import type {
+  ClaudeProfileHostAccess,
+  ClaudeProfileRoutingOwner
+} from './claude-profile-routing-owner'
 import {
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
@@ -31,8 +34,14 @@ export type ClaudeProfileSettings = Pick<
 
 export function createWslClaudeProfileOwner(
   settings: () => ClaudeProfileSettings,
-  prepareGuest: (distro: string) => Promise<ClaudeWslGuest> = prepareClaudeWslGuest,
-  withdrawPointer: (distro: string) => Promise<void> = withdrawClaudeWslPointer,
+  prepareGuest: (
+    distro: string,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<ClaudeWslGuest> = prepareClaudeWslGuest,
+  withdrawPointer: (
+    distro: string,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<void> = withdrawClaudeWslPointer,
   waitForRunning: (distro: string) => Promise<boolean> = waitForRunningWslDistro
 ): ClaudeProfileRoutingOwner {
   const guests = new Map<string, { guest: ClaudeWslGuest; expires: number }>()
@@ -89,22 +98,19 @@ export function createWslClaudeProfileOwner(
     }
   }
   const owner: ClaudeProfileRoutingOwner = {
-    refresh: async (target) => {
+    refresh: async (target, access) => {
       const { distro, accountId } = selected(target)
       const key = distro.toLowerCase()
       const cached = guests.get(key)
       const guest =
-        cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
+        cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro, access)
       if (guest !== cached?.guest) {
         guests.set(key, { guest, expires: Date.now() + 600_000 })
       }
-      const result = await guest.request({
-        action: 'inspect',
-        distro,
-        accountId,
-        userHome: guest.home,
-        hooksEnabled: false
-      })
+      const result = await guest.request(
+        { action: 'inspect', distro, accountId, userHome: guest.home, hooksEnabled: false },
+        access
+      )
       // Why: an inspect that lands after a newer selection must not replace its verification.
       if (selectedAccountId(target) === accountId) {
         inspections.set(key, { accountId, home: guest.home, result })
@@ -171,16 +177,19 @@ export function createWslClaudeProfileOwner(
         return 'sign-in-required'
       }
     },
-    prepare: async (descriptor) => {
+    prepare: async (descriptor, access) => {
       const distro = distroFor(descriptor.target)
       const guest = guestFor(distro)
-      const result = await guest.request({
-        action: 'setup',
-        distro,
-        userHome: guest.home,
-        accountId: descriptor.profile?.accountId ?? null,
-        hooksEnabled: isAgentStatusHooksEnabledForAgent(settings(), 'claude')
-      })
+      const result = await guest.request(
+        {
+          action: 'setup',
+          distro,
+          userHome: guest.home,
+          accountId: descriptor.profile?.accountId ?? null,
+          hooksEnabled: isAgentStatusHooksEnabledForAgent(settings(), 'claude')
+        },
+        access
+      )
       if (!result.report) {
         throw new Error('WSL profile helper did not report setup')
       }
@@ -199,35 +208,41 @@ export function createWslClaudeProfileOwner(
       }
       return result.report
     },
-    trust: async ({ target, profile }, workspacePath) => {
+    trust: async ({ target, profile }, workspacePath, access) => {
       const distro = distroFor(target)
       const guest = guestFor(distro)
-      await guest.request({
-        action: 'trust',
-        distro,
-        userHome: guest.home,
-        accountId: profile?.accountId ?? null,
-        hooksEnabled: false,
-        workspacePath
-      })
+      await guest.request(
+        {
+          action: 'trust',
+          distro,
+          userHome: guest.home,
+          accountId: profile?.accountId ?? null,
+          hooksEnabled: false,
+          workspacePath
+        },
+        access
+      )
     },
-    publish: async ({ target, profile }) => {
+    publish: async ({ target, profile }, access) => {
       const distro = distroFor(target)
       const guest = guestFor(distro)
-      await guest.request({
-        action: 'publish',
-        distro,
-        userHome: guest.home,
-        accountId: profile?.accountId ?? null,
-        hooksEnabled: false
-      })
+      await guest.request(
+        {
+          action: 'publish',
+          distro,
+          userHome: guest.home,
+          accountId: profile?.accountId ?? null,
+          hooksEnabled: false
+        },
+        access
+      )
     },
     reachable: (target) => waitForRunning(distroFor(target)),
-    withdraw: async (target) => {
+    withdraw: async (target, access) => {
       const distro = distroFor(target)
       guests.delete(distro.toLowerCase())
       inspections.delete(distro.toLowerCase())
-      await withdrawPointer(distro)
+      await withdrawPointer(distro, access)
     }
   }
   return owner
@@ -241,7 +256,7 @@ export function withWslClaudeProfileOwner(
   const forTarget = (target?: ClaudeAccountSelectionTarget) =>
     target?.runtime === 'wsl' ? wsl : native
   return {
-    refresh: (target) => forTarget(target).refresh?.(target) ?? Promise.resolve(),
+    refresh: (target, access) => forTarget(target).refresh?.(target, access) ?? Promise.resolve(),
     resolve: (target) => forTarget(target).resolve(target),
     pointerPath: (target) => forTarget(target).pointerPath(target),
     targets: () => [...native.targets(), ...wsl.targets()],
@@ -257,11 +272,11 @@ export function withWslClaudeProfileOwner(
         ? wsl
         : native
       ).readiness(id),
-    prepare: (descriptor) => forTarget(descriptor.target).prepare(descriptor),
-    trust: (descriptor, workspace) =>
-      forTarget(descriptor.target).trust?.(descriptor, workspace) ?? Promise.resolve(),
-    publish: (descriptor) => forTarget(descriptor.target).publish(descriptor),
-    withdraw: (target) => forTarget(target).withdraw(target),
+    prepare: (descriptor, access) => forTarget(descriptor.target).prepare(descriptor, access),
+    trust: (descriptor, workspace, access) =>
+      forTarget(descriptor.target).trust?.(descriptor, workspace, access) ?? Promise.resolve(),
+    publish: (descriptor, access) => forTarget(descriptor.target).publish(descriptor, access),
+    withdraw: (target, access) => forTarget(target).withdraw(target, access),
     reachable: (target) => forTarget(target).reachable?.(target) ?? Promise.resolve(true)
   }
 }

@@ -26,9 +26,10 @@ const mocks = vi.hoisted(() => {
   const state: {
     root: string
     running: boolean
+    exists: boolean
     runningChecks: number
     authority?: ClaudeProfileRoutingService
-  } = { root: '', running: true, runningChecks: 0 }
+  } = { root: '', running: true, exists: true, runningChecks: 0 }
   return {
     state,
     run: vi.fn<(spec: WslSpec) => Promise<WslResult>>(),
@@ -124,9 +125,33 @@ beforeEach(() => {
   resetRuntimeAuthTestState()
   mocks.state.root = mkdtempSync(join(tmpdir(), 'wsl-routing-flows-'))
   mocks.state.running = true
+  mocks.state.exists = true
   mocks.state.runningChecks = 0
   mocks.state.authority = undefined
-  mocks.run.mockReset().mockImplementation(async (spec) => ({
+  // Why: like `wsl -d <distro> --exec`, any guest command boots a stopped distro that exists.
+  mocks.run.mockReset().mockImplementation(async (spec) => {
+    if (!mocks.state.exists) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: 'There is no distribution with the supplied name.\r\n',
+        timedOut: false,
+        environmentResolved: true
+      }
+    }
+    mocks.state.running = true
+    return guestAnswer(spec)
+  })
+  mocks.runtime.mockReset().mockImplementation(async (run) => {
+    for (const program of ['uname', 'getconf', 'printf', 'probe']) {
+      await run({ program, loginPath: 'none' })
+    }
+    return { executable: '/home/fake/node', home: '/home/fake' }
+  })
+  writeFileSync(join(mocks.state.root, 'claude-profile-wsl.cjs'), 'FAKE BUNDLE')
+})
+function guestAnswer(spec: WslSpec): WslResult {
+  return {
     code: 0,
     stdout:
       spec.program === '/usr/bin/env'
@@ -141,15 +166,8 @@ beforeEach(() => {
     stderr: '',
     timedOut: false,
     environmentResolved: true
-  }))
-  mocks.runtime.mockReset().mockImplementation(async (run) => {
-    for (const program of ['uname', 'getconf', 'printf', 'probe']) {
-      await run({ program, loginPath: 'none' })
-    }
-    return { executable: '/home/fake/node', home: '/home/fake' }
-  })
-  writeFileSync(join(mocks.state.root, 'claude-profile-wsl.cjs'), 'FAKE BUNDLE')
-})
+  }
+}
 afterEach(() => {
   vi.useRealTimers()
   cleanupRuntimeAuthTestState()
@@ -203,57 +221,117 @@ describe('a WSL Claude launch in a distro with no publish yet', () => {
     await routing.prepare(ubuntu)
     await vi.advanceTimersByTimeAsync(7_000)
     // Before the join: 2 runtime ensures, 13 guest runs and 5 running checks for this launch.
+    // A launch may boot its distro, so only the pane's background wait probes.
     expect(mocks.runtime).toHaveBeenCalledTimes(1)
     expect(helperActions()).toEqual(['inspect', 'publish'])
     expect({
       wslRuns: mocks.run.mock.calls.length,
       runningChecks: mocks.state.runningChecks
-    }).toEqual({ wslRuns: 7, runningChecks: 4 })
+    }).toEqual({ wslRuns: 7, runningChecks: 1 })
   })
 })
 
-describe('removing the last selected WSL account of a stopped distro', () => {
-  async function removeLast(profileMode: boolean) {
-    setPlatform('win32')
-    const store = createStore(ubuntuSettings())
-    if (profileMode) {
-      mocks.state.authority = await routingFor(() => store.getSettings())
-    }
-    const retire = mocks.state.authority ? vi.spyOn(mocks.state.authority, 'retire') : undefined
-    mocks.state.running = false
-    const { ClaudeRuntimeAuthService } = await import('./runtime-auth-service')
-    const { ClaudeAccountSelection } = await import('./claude-account-selection')
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the harness store implements the getSettings/updateSettings pair these classes use.
-    const runtimeAuth = new ClaudeRuntimeAuthService(store as never)
-    const removeManagedAuth = vi.fn(async () => {})
-    const selection = new ClaudeAccountSelection(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
-      store as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: remove() calls only these two rate-limit members.
-      {
-        evictInactiveClaudeCache: vi.fn(),
-        refreshForClaudeAccountChange: vi.fn(async () => {})
-      } as never,
-      runtimeAuth,
-      removeManagedAuth
-    )
-    await selection.remove('u1')
-    return { store, retire, removeManagedAuth }
+async function userFlows(settings: GlobalSettings, profileMode: boolean) {
+  setPlatform('win32')
+  const store = createStore(settings)
+  if (profileMode) {
+    mocks.state.authority = await routingFor(() => store.getSettings())
   }
+  const { ClaudeRuntimeAuthService } = await import('./runtime-auth-service')
+  const { ClaudeAccountSelection } = await import('./claude-account-selection')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the harness store implements the getSettings/updateSettings pair these classes use.
+  const runtimeAuth = new ClaudeRuntimeAuthService(store as never)
+  const removeManagedAuth = vi.fn(async () => {})
+  const selection = new ClaudeAccountSelection(
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
+    store as never,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: select() and remove() call only these two rate-limit members.
+    {
+      evictInactiveClaudeCache: vi.fn(),
+      refreshForClaudeAccountChange: vi.fn(async () => {})
+    } as never,
+    runtimeAuth,
+    removeManagedAuth
+  )
+  // Why: settle the constructor's startup publish before the distro idles.
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  return { store, runtimeAuth, selection, removeManagedAuth }
+}
 
-  it('succeeds with profiles, retiring the pointer best-effort without a guest publish', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = await removeLast(true)
-    expect(result.store.getSettings().claudeManagedAccounts).toEqual([])
-    expect(result.retire).toHaveBeenCalledWith(ubuntu)
-    expect(result.removeManagedAuth).toHaveBeenCalledTimes(1)
-    expect(helperActions()).toEqual([])
-    warn.mockRestore()
+const twoAccountSettings = () =>
+  createSettings({
+    claudeManagedAccounts: ['u1', 'u2'].map((id) =>
+      createClaudeAccount(id, join(mocks.state.root, id), {
+        managedAuthRuntime: 'wsl',
+        wslDistro: 'Ubuntu'
+      })
+    ),
+    activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'u1' } }
   })
 
-  it('succeeds with the gate off exactly as before', async () => {
-    const result = await removeLast(false)
-    expect(result.store.getSettings().claudeManagedAccounts).toEqual([])
+describe('user-initiated work on an idle-stopped routed distro boots it', () => {
+  it('launches Claude', async () => {
+    const flows = await userFlows(ubuntuSettings(), true)
+    mocks.state.running = false
+    await expect(flows.runtimeAuth.prepareForClaudeLaunch(ubuntu)).resolves.toMatchObject({
+      provenance: 'profile:u1'
+    })
+    expect(mocks.state.running).toBe(true)
+  })
+
+  it('selects another account', async () => {
+    const flows = await userFlows(twoAccountSettings(), true)
+    mocks.state.running = false
+    await flows.selection.select('u2', ubuntu)
+    expect(helperActions().at(-1)).toBe('publish')
+    expect(mocks.state.authority?.resolve(ubuntu).profile?.accountId).toBe('u2')
+  })
+
+  it('removes a selected account that is not the last', async () => {
+    const flows = await userFlows(twoAccountSettings(), true)
+    mocks.state.running = false
+    await flows.selection.remove('u1')
+    expect(flows.store.getSettings().claudeManagedAccounts.map((account) => account.id)).toEqual([
+      'u2'
+    ])
+    expect(helperActions().at(-1)).toBe('publish')
+  })
+
+  it('retires the last selected account by booting the distro to delete its pointer', async () => {
+    const flows = await userFlows(ubuntuSettings(), true)
+    const retire = vi.spyOn(mocks.state.authority!, 'retire')
+    mocks.state.running = false
+    const before = helperActions().length
+    await flows.selection.remove('u1')
+    expect(flows.store.getSettings().claudeManagedAccounts).toEqual([])
+    expect(retire).toHaveBeenCalledWith(ubuntu, 'boot')
+    expect(rmCalls()).toHaveLength(1)
+    expect(helperActions()).toHaveLength(before)
+    expect(flows.removeManagedAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses a distro that does not exist with wsl.exe's own reason", async () => {
+    const flows = await userFlows(ubuntuSettings(), true)
+    mocks.state.exists = false
+    mocks.state.running = false
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(flows.runtimeAuth.prepareForClaudeLaunch(ubuntu)).rejects.toThrow(
+      /There is no distribution with the supplied name\.$/
+    )
+  })
+
+  it('never boots the distro from startup', async () => {
+    mocks.state.running = false
+    const flows = await userFlows(ubuntuSettings(), true)
+    expect(flows).toBeDefined()
+    expect(mocks.run).not.toHaveBeenCalled()
+  })
+
+  it('removes the last selected account with the gate off exactly as before', async () => {
+    const flows = await userFlows(ubuntuSettings(), false)
+    mocks.state.running = false
+    await flows.selection.remove('u1')
+    expect(flows.store.getSettings().claudeManagedAccounts).toEqual([])
     expect(mocks.run).not.toHaveBeenCalled()
   })
 })

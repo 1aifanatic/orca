@@ -15,7 +15,10 @@ export type ClaudeProfileLaunchDescriptor = {
 
 export type ClaudeProfileRoutingOwner = {
   resolve: (target?: ClaudeAccountSelectionTarget) => ClaudeProfileLaunchDescriptor
-  refresh?: (target?: ClaudeAccountSelectionTarget) => Promise<void>
+  refresh?: (
+    target?: ClaudeAccountSelectionTarget,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<void>
   pointerPath: (target?: ClaudeAccountSelectionTarget) => string
   targets: () => ClaudeAccountSelectionTarget[]
   /** All known owned profiles, including unselected profiles with private/retained history. */
@@ -28,14 +31,31 @@ export type ClaudeProfileRoutingOwner = {
   isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
   readiness: (accountId: string) => ClaudeProfileReadiness
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
-  prepare: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<ClaudeProfileSetupReport>
-  trust?: (descriptor: ClaudeProfileLaunchDescriptor, workspace: string) => Promise<void>
-  publish: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<void>
+  prepare: (
+    descriptor: ClaudeProfileLaunchDescriptor,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<ClaudeProfileSetupReport>
+  trust?: (
+    descriptor: ClaudeProfileLaunchDescriptor,
+    workspace: string,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<void>
+  publish: (
+    descriptor: ClaudeProfileLaunchDescriptor,
+    access?: ClaudeProfileHostAccess
+  ) => Promise<void>
   /** Removes the pointer so the shell refuses visibly; never throws. */
-  withdraw: (target?: ClaudeAccountSelectionTarget) => void | Promise<void>
+  withdraw: (
+    target?: ClaudeAccountSelectionTarget,
+    access?: ClaudeProfileHostAccess
+  ) => void | Promise<void>
   /** Resolves false when the host stays unreachable for a short, bounded wait. */
   reachable?: (target: ClaudeAccountSelectionTarget) => Promise<boolean>
 }
+
+/** User-initiated work may boot a stopped WSL distro, as a legacy spawn or \\wsl$ write does;
+ *  background work (startup, pane repair, readers) only talks to a running one. */
+export type ClaudeProfileHostAccess = 'boot' | 'if-running'
 
 /** The execution host could not be reached, so its pointer cannot be stale or rewritten. */
 export class ClaudeProfileHostUnreachableError extends Error {
