@@ -4603,6 +4603,7 @@
           "bdd23b4e07": "Issues de GitHub",
           "44713a5d04": "Issues de Linear",
           "jiraIssues": "Issues de Jira",
+          "host": "Host",
           "cc17bd443b": "Detallado",
           "0f9b959b31": "PR",
           "e029a2d775": "Estado",
@@ -6113,9 +6114,9 @@
           "80c454e8a6": "Haz que esto coincida con el TTL de caché de tu proveedor."
         },
         "GeneralEditorSettingsSection": {
-          "f80603d293": "Muestra controles de notas Markdown locales en modo de editor enriquecido y acciones de handoff de agentes.",
+          "f80603d293": "Muestra controles de notas Markdown en todas las vistas Markdown e incluye esas notas en las acciones de handoff de agentes.",
           "4edc104f0f": "Notas Markdown de revisión",
-          "5f02e6fb21": "Muestra controles de notas Markdown locales en modo de editor enriquecido.",
+          "5f02e6fb21": "Muestra controles de notas Markdown locales en archivos Markdown.",
           "51161d1647": "Muestra la vista general del minimapa al editar un archivo.",
           "6690b1ffb9": "Minimapa",
           "5a1ea6eaa2": "Oculto",
@@ -13872,6 +13873,7 @@
             "4300f38145": "Descargando desde {{value0}}{{value1}}",
             "31375046b7": "Descargar desde {{value0}}",
             "acbe79fd01": "Tomar elemento de página ({{value0}})",
+            "cc4a071d3a": "Anotar elemento de la página ({{value0}})",
             "572046436a": "Navegador remoto",
             "b313a7275b": "Abrir navegador remoto",
             "5f66313863": "anotación",

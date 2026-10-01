@@ -24,6 +24,10 @@ import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt
 import { nameLocalTypedLineShell } from './agent-launch-typed-line-shell'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
+import { resumeInterruptedWorktreeRemovals } from '../worktree-background-removal'
+import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
 export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWithRemoveManagedWorktree {
   protected async resolveWorktreeRemovalTarget(
@@ -38,6 +42,41 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
         this.resolveExplicitWorktreeIdScoped(worktreeId, hostId),
       ...(requiredHostId ? { requiredHostId } : {})
     })
+  }
+
+  /** Runs the same delete again for each local removal a quit or crash interrupted. */
+  finishInterruptedWorktreeRemovals(): void {
+    const store = this.store
+    if (!store) {
+      return
+    }
+    resumeInterruptedWorktreeRemovals((record) =>
+      interruptedLocalWorktreeRemovalJob(record, {
+        store,
+        acquireWatcherRemoval: this.acquireFileWatcherRemoval,
+        closeWatchers: (path) => this.closeFileWatchersForRemoval(path),
+        preservedBranchCleanup: this.preservedBranchCleanup,
+        purge: ({ worktreeId, repoId }) =>
+          this.purgeRemovedWorktree(store, worktreeId, repoId, LOCAL_EXECUTION_HOST_ID),
+        onRemoved: ({ worktreeId, worktreePath }) =>
+          this.emitWorktreeLifecycle({ kind: 'removed', worktreeId, path: worktreePath }),
+        publish: (repoId) => this.publishWorktreeRemovalChange(repoId)
+      })
+    )
+  }
+
+  // Host state every removal path drops once Git has let go of the checkout.
+  protected purgeRemovedWorktree(
+    store: RuntimeStore,
+    worktreeId: string,
+    repoId: string,
+    removalHostId?: ExecutionHostId
+  ): void {
+    this.clearOptimisticReconcileToken(worktreeId)
+    this.removeWorktreeMetadataAndHistory(store, worktreeId, removalHostId)
+    this.invalidateResolvedWorktreeCache()
+    this.invalidateWorktreeScanCacheForRepo(repoId)
+    invalidateAuthorizedRootsCache()
   }
 
   protected removeWorktreeMetadataAndHistory(
