@@ -48,7 +48,9 @@ export function mutateWithChatStop<TValue>(
   const { envelope, turnId } = params
   const { sessionId } = envelope
   // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
-  let windDown: StructuredAgentSessionStopWindDown | undefined
+  let windDown:
+    | { owed: StructuredAgentSessionStopWindDown; ctx: AgentSessionTurnContext }
+    | undefined
   const named = turnId !== undefined ? { turnId } : {}
   // Its own step wrote the Stop's event first.
   const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
@@ -98,7 +100,7 @@ export function mutateWithChatStop<TValue>(
             ...named,
             stopChild,
             endSession: (owed) => {
-              windDown = owed
+              windDown = { owed, ctx }
             },
             withdrewQueued: withdrawn.length > 0
           }
@@ -119,9 +121,11 @@ export function mutateWithChatStop<TValue>(
   // Queued in the mutation's own tick, so a send made meanwhile lands behind the child's end.
   void context.serialize(sessionId, async () => {
     if (windDown) {
+      const { owed, ctx } = windDown
       await endStoppedStructuredAgentSession(
-        { sessionId, adapter: context.deps.adapter },
-        windDown,
+        { ...ctx, adapter: context.deps.adapter },
+        owed,
+        envelope.clientOperationId,
         stopChild,
         (error) => context.deps.onEventSinkError?.({ sessionId, error })
       )

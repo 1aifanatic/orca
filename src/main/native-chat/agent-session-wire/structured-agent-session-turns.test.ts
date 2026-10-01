@@ -8,6 +8,11 @@ import type { AgentChildWorkView } from '../../../shared/agent-status-child-work
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { performCancel, type AgentSessionTurnContext } from './structured-agent-session-turns'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+
+/** Codex's own words refusing an interrupt, as its request error carries them. */
+const REFUSAL = { text: 'failed to interrupt turn', audience: 'person' as const }
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -130,7 +135,7 @@ describe('performCancel', () => {
     expect(resolveLiveTurnId?.()).toBeNull()
   })
 
-  it('keeps the running lifecycle when cancellation cannot be confirmed', async () => {
+  it('keeps the running lifecycle and says the agent declined a Stop naming the turn that runs on', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-unconfirmed-'))
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
     await journal.appendItem(
@@ -152,7 +157,7 @@ describe('performCancel', () => {
       journal,
       fence: 1,
       adapter: {
-        cancelTurn: vi.fn(async () => ({ cancelled: false }))
+        cancelTurn: vi.fn(async () => ({ cancelled: false, refusal: { detail: REFUSAL } }))
       } as unknown as StructuredAgentSessionAdapter,
       persistOptions: async () => undefined,
       resolvedBy: 'client-1',
@@ -173,7 +178,12 @@ describe('performCancel', () => {
         text: 'Agent is working…',
         turnLifecycle: { turnId: 'turn-1', state: 'running' }
       },
-      { kind: 'status', text: 'The provider had already finished this turn.' }
+      {
+        kind: 'status',
+        ...agentSessionFailureWords(agentSessionFailureFact('stopRefused', { detail: REFUSAL }), {
+          surface: 'row'
+        })
+      }
     ])
   })
 
@@ -277,11 +287,11 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
   async function cancelWith(
     outcome: Awaited<ReturnType<StructuredAgentSessionAdapter['cancelTurn']>>,
     input: { turnId?: string; withdrewQueued?: boolean },
-    turnRow: 'none' | 'running' | 'lands-on-flush' = 'none'
+    turnRow: 'none' | 'running' | 'lands-on-flush' | 'ends-on-flush' = 'none'
   ) {
     root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-report-'))
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
-    const openTurn = () =>
+    const openTurn = (state: 'running' | 'completed' = 'running') =>
       journal.appendItem(
         {
           provider: 'legacy',
@@ -292,11 +302,11 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
         {
           kind: 'status',
           text: 'Agent is working…',
-          turnLifecycle: { turnId: 'turn-1', state: 'running' }
+          turnLifecycle: { turnId: 'turn-1', state }
         },
         { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
-    if (turnRow === 'running') {
+    if (turnRow === 'running' || turnRow === 'ends-on-flush') {
       await openTurn()
     }
     const ctx: AgentSessionTurnContext = {
@@ -317,6 +327,9 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
       flushStreamedEvents: async () => {
         if (turnRow === 'lands-on-flush') {
           await openTurn()
+        }
+        if (turnRow === 'ends-on-flush') {
+          await openTurn('completed')
         }
       },
       now: () => 1
@@ -354,5 +367,20 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
       cancelled: false,
       rows: ['The provider had already finished this turn.']
     })
+  })
+
+  it('says the turn had finished when the refusal of the turn it named crossed that turn ending', async () => {
+    expect(await cancelWith({ cancelled: false }, { turnId: 'turn-1' }, 'ends-on-flush')).toEqual({
+      cancelled: false,
+      rows: ['The provider had already finished this turn.']
+    })
+  })
+
+  it('says the agent declined a Stop naming the turn that runs on', async () => {
+    const reported = await cancelWith({ cancelled: false }, { turnId: 'turn-1' }, 'running')
+    expect(reported.cancelled).toBe(false)
+    expect(reported.rows).toEqual([
+      agentSessionFailureWords(agentSessionFailureFact('stopRefused'), { surface: 'row' }).text
+    ])
   })
 })
