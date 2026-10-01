@@ -5,18 +5,12 @@ import { CLAUDE_PROFILE_HISTORY_DIRS } from './claude-profile-history'
 import { CLAUDE_PROFILE_RESOURCE_DIRS } from './claude-profile-provisioning'
 import { parseClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { getAppEnvironment } from '../../shared/app-environment'
-import { runProcess } from '../../shared/child-process/run-process'
-import {
-  buildWslExecArgs,
-  buildWslCapturedLoginShellCommand
-} from '../../shared/wsl-login-shell-command'
+import { buildWslCapturedLoginShellCommand } from '../../shared/wsl-login-shell-command'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
-import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
-import { ensureWslPinnedRuntime, type WslRuntimeCommand } from '../wsl/wsl-pinned-runtime'
-import { runWslProcess } from '../wsl/wsl-runner'
-import { resolveWslExecutablePath } from '../wsl/wsl-executable-path'
-import { resolveWslInteropSpawnCwd } from '../wsl-interop-spawn-directory'
+import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
+import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
+import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 
 const responseSchema = z.object({
@@ -71,29 +65,19 @@ export type ClaudeWslGuest = {
   request: (request: ClaudeWslProfileRequest) => Promise<ClaudeWslProfileResponse>
 }
 
+const PREPARE_TIMEOUT_MS = 180_000
+// Why a window: one prepare runs several guest commands back to back; a long download re-checks.
+const RUNNING_CONFIRMATION_MS = 10_000
+
 export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGuest> {
   const app = getAppEnvironment()
-  const bundle = (['linux-x64', 'linux-arm64'] as const)
-    .flatMap((platform) => relayBundleCandidates(platform, app.getAppPath()))
+  const bundle = wslRelayBundleDirs()
     .map((root) => join(root, 'claude-profile-wsl.cjs'))
     .find(existsSync)
   if (!bundle) {
     throw new Error('The bundled WSL Claude profile helper is missing. Reinstall Orca.')
   }
-  const signal = AbortSignal.timeout(180_000)
-  const checkRunning = async () => {
-    const paths = await filterPathsToRunningWslDistrosAsync([toWindowsWslUncPath('/', distro)], {
-      requireConfirmed: true
-    })
-    if (!paths.length) {
-      throw new Error(
-        `WSL distro ${distro} is not running. Start it before choosing a Claude account.`
-      )
-    }
-  }
-  const run: WslRuntimeCommand = async (spec, timeoutMs = 15_000) => {
-    signal.throwIfAborted()
-    await checkRunning()
+  const run = async (spec: WslSpec, timeoutMs = 15_000): Promise<string> => {
     const result = await runWslProcess({ ...spec, distro, timeoutMs, maxOutputBytes: 256 * 1024 })
     if (result.code !== 0 || result.timedOut) {
       throw new Error(
@@ -102,12 +86,24 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
     }
     return result.stdout.trim()
   }
+  // Why per operation: a cached guest outlives this deadline, so requests never inherit it.
+  const signal = AbortSignal.timeout(PREPARE_TIMEOUT_MS)
+  let confirmedAt = Number.NEGATIVE_INFINITY
+  const runPreparing = async (spec: WslSpec, timeoutMs?: number) => {
+    signal.throwIfAborted()
+    if (Date.now() - confirmedAt > RUNNING_CONFIRMATION_MS) {
+      await requireRunningWslDistro(distro)
+      confirmedAt = Date.now()
+    }
+    return run(spec, timeoutMs)
+  }
   const runtime = await ensureWslPinnedRuntime(
-    run,
+    runPreparing,
     join(app.getPath('userData'), 'orcad-artifacts'),
-    signal
+    signal,
+    'Claude profile helper'
   )
-  const guestBundle = await run({
+  const guestBundle = await runPreparing({
     program: 'wslpath',
     args: ['-a', '-u', bundle],
     loginPath: 'none'
@@ -118,30 +114,28 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
   return {
     home: runtime.home,
     request: async (request) => {
-      await checkRunning()
-      // Resolve Claude's version through the guest login environment only when installing hooks.
+      await requireRunningWslDistro(distro)
       let claudeVersion = request.claudeVersion
       if (request.action === 'setup' && request.hooksEnabled) {
-        const capture = buildWslCapturedLoginShellCommand('claude --version')
-        const output = await run({
-          program: '/bin/sh',
-          args: ['-c', capture.command],
-          loginPath: 'none'
-        })
-        claudeVersion = parseClaudeCliVersion(capture.readStdout(output) ?? '') ?? undefined
+        // Why caught: like native setup, an unknown version installs the default hook plan.
+        try {
+          const capture = buildWslCapturedLoginShellCommand('claude --version')
+          const output = await run({
+            program: '/bin/sh',
+            args: ['-c', capture.command],
+            loginPath: 'none'
+          })
+          claudeVersion = parseClaudeCliVersion(capture.readStdout(output) ?? '') ?? undefined
+        } catch (error) {
+          console.warn('[claude-profile] WSL Claude version probe failed:', error)
+        }
       }
-      await checkRunning()
-      const result = await runProcess({
-        program: resolveWslExecutablePath(),
-        args: buildWslExecArgs(distro, [
-          '/usr/bin/env',
-          '-u',
-          'NODE_OPTIONS',
-          runtime.executable,
-          guestBundle
-        ]),
+      const result = await runWslProcess({
+        program: '/usr/bin/env',
+        args: ['-u', 'NODE_OPTIONS', runtime.executable, guestBundle],
         input: JSON.stringify({ ...request, claudeVersion }),
-        cwd: resolveWslInteropSpawnCwd(),
+        distro,
+        loginPath: 'none',
         timeoutMs: 120_000,
         maxOutputBytes: 256 * 1024
       })
@@ -152,6 +146,17 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
       }
       return responseSchema.parse(JSON.parse(result.stdout))
     }
+  }
+}
+
+async function requireRunningWslDistro(distro: string): Promise<void> {
+  const paths = await filterPathsToRunningWslDistrosAsync([toWindowsWslUncPath('/', distro)], {
+    requireConfirmed: true
+  })
+  if (!paths.length) {
+    throw new Error(
+      `WSL distro ${distro} is not running. Start it before choosing a Claude account.`
+    )
   }
 }
 

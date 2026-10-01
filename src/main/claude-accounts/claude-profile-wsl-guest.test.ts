@@ -10,7 +10,7 @@ import {
   symlinkSync
 } from 'node:fs'
 import { build } from 'esbuild'
-import { runProcess } from '../../shared/child-process/run-process'
+import { runProcess, spawnProcess } from '../../shared/child-process/run-process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { it, expect, afterEach } from 'vitest'
@@ -18,8 +18,8 @@ import { runClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
-function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'wsl-profile-'))
+function fixture(prefix = 'wsl-profile-') {
+  const home = mkdtempSync(join(tmpdir(), prefix))
   roots.push(home)
   const data = join(home, '.local/share/orca')
   const profile = describeClaudeProfile(data, 'a', {
@@ -143,4 +143,33 @@ it('deduplicates shared guest history and rejects an arbitrary linked history ro
   symlinkSync(outside, join(f.profile.home, 'projects'))
   const inspected = await runClaudeWslProfileRequest({ ...f.request, action: 'inspect' })
   expect(inspected.historyHomes?.projects).toEqual([realpathSync(join(f.home, '.claude'))])
+})
+it('reads a request whose UTF-8 home is split across stdin chunks', async () => {
+  const f = fixture('wsl-profile-\u00fc-')
+  const bundle = join(f.home, 'guest.cjs')
+  await build({
+    entryPoints: ['src/main/claude-accounts/claude-profile-wsl-entry.ts'],
+    outfile: bundle,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    external: ['electron'],
+    logLevel: 'silent'
+  })
+  const child = spawnProcess({
+    program: process.execPath,
+    args: [bundle],
+    env: { HOME: f.home, PATH: '/usr/bin:/bin', ORCA_BACKGROUND_LAUNCH: '1' }
+  })
+  let stdout = ''
+  child.stdout.on('data', (chunk) => (stdout += chunk))
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  const payload = Buffer.from(JSON.stringify({ ...f.request, action: 'inspect' }))
+  const split = payload.indexOf(Buffer.from('\u00fc')) + 1
+  child.stdin.write(payload.subarray(0, split))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  child.stdin.end(payload.subarray(split))
+  expect(await exited).toBe(0)
+  expect(JSON.parse(stdout)).toMatchObject({ ready: true })
+  expect(JSON.parse(stdout).homes).toContain(f.profile.home)
 })

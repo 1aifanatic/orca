@@ -1,14 +1,18 @@
 import { ClaudeWslProfileRequest, runClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 
 async function main(): Promise<void> {
-  let input = ''
+  // Why buffers: decoding per chunk corrupts a UTF-8 character split across reads.
+  const chunks: Buffer[] = []
+  let size = 0
   for await (const chunk of process.stdin) {
-    input += chunk
-    if (input.length > 16_384) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    size += bytes.length
+    if (size > 16_384) {
       throw new Error('Claude profile request is too large')
     }
+    chunks.push(bytes)
   }
-  const request = ClaudeWslProfileRequest.parse(JSON.parse(input))
+  const request = ClaudeWslProfileRequest.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
   process.stdout.write(JSON.stringify(await runClaudeWslProfileRequest(request)))
 }
 void main().catch((error: unknown) => {

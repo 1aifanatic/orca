@@ -1,78 +1,82 @@
-import { chmodSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
+import type { WslSpec } from '../wsl/wsl-runner'
 const mocks = vi.hoisted(() => ({
-  executable: '',
   root: '',
   running: true,
+  runningChecks: 0,
   run: vi.fn(),
   runtime: vi.fn()
 }))
 vi.mock('../../shared/app-environment', () => ({
   getAppEnvironment: () => ({ getAppPath: () => mocks.root, getPath: () => mocks.root })
 }))
-vi.mock('../ssh/relay-bundle-paths', () => ({ relayBundleCandidates: () => [mocks.root] }))
-vi.mock('../wsl/wsl-executable-path', () => ({ resolveWslExecutablePath: () => mocks.executable }))
-vi.mock('../wsl-interop-spawn-directory', () => ({ resolveWslInteropSpawnCwd: () => mocks.root }))
+vi.mock('../wsl/wsl-relay-bundle-dirs', () => ({ wslRelayBundleDirs: () => [mocks.root] }))
 vi.mock('../wsl-running-path-filter', () => ({
-  filterPathsToRunningWslDistrosAsync: async (paths: string[]) => (mocks.running ? paths : [])
+  filterPathsToRunningWslDistrosAsync: async (paths: string[]) => {
+    mocks.runningChecks += 1
+    return mocks.running ? paths : []
+  }
 }))
 vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: mocks.run }))
 vi.mock('../wsl/wsl-pinned-runtime', () => ({ ensureWslPinnedRuntime: mocks.runtime }))
 import { prepareClaudeWslGuest, withdrawClaudeWslPointer } from './claude-profile-wsl-transport'
+const EXECUTABLE = '/home/fake/.cache/orca/runtimes/pinned/bin/node'
+const helperCalls = () =>
+  mocks.run.mock.calls.filter(([spec]: [WslSpec]) => spec.program === '/usr/bin/env')
 beforeEach(() => {
   mocks.root = mkdtempSync(join(tmpdir(), 'fake-wsl-'))
-  mocks.executable = join(mocks.root, 'wsl.exe')
   mocks.running = true
-  mocks.run.mockReset().mockImplementation(async (spec) => {
+  mocks.runningChecks = 0
+  mocks.run.mockReset().mockImplementation(async (spec: WslSpec) => {
     let stdout = '/mnt/c/fake-helper.cjs'
-    if (spec.args?.[0] === '-c') {
-      const script: string = spec.args[1]
+    if (spec.program === '/usr/bin/env') {
+      stdout = JSON.stringify({ ready: true, provisioned: true })
+    } else if (spec.args?.[0] === '-c') {
+      const script = spec.args[1]
       const begin = script.match(/__ORCA_WSL_CAPTURE_BEGIN_[a-z0-9]+__/)?.[0]
       const end = script.match(/__ORCA_WSL_CAPTURE_END_[a-z0-9]+__/)?.[0]
       stdout = `guest banner\n${begin}2.1.0 (Claude Code)${end}`
     }
-    return { code: 0, stdout, stderr: '', timedOut: false }
+    return { code: 0, stdout, stderr: '', timedOut: false, environmentResolved: true }
   })
   mocks.runtime.mockReset().mockImplementation(async (run) => {
-    await run({ program: 'uname', args: ['-m'], loginPath: 'none' })
-    return { executable: '/home/fake/.cache/orca/runtimes/pinned/bin/node', home: '/home/fake' }
+    for (const program of ['uname', 'getconf', 'printf', 'probe']) {
+      await run({ program, loginPath: 'none' })
+    }
+    return { executable: EXECUTABLE, home: '/home/fake' }
   })
   writeFileSync(join(mocks.root, 'claude-profile-wsl.cjs'), 'FAKE BUNDLE')
-  writeFileSync(
-    mocks.executable,
-    `#!${process.execPath}\nlet s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{require('node:fs').writeFileSync(${JSON.stringify(join(mocks.root, 'request.json'))},JSON.stringify({args:process.argv.slice(2),request:JSON.parse(s)}));process.stdout.write(JSON.stringify({ready:true,provisioned:true}));});\n`
-  )
-  chmodSync(mocks.executable, 0o700)
 })
-afterEach(() => rmSync(mocks.root, { recursive: true, force: true }))
-it('uses fake wsl.exe with literal --exec argv and a fenced version probe, never a local shell', async () => {
-  const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
-  await guest.request({
+afterEach(() => {
+  vi.restoreAllMocks()
+  rmSync(mocks.root, { recursive: true, force: true })
+})
+const setup = (home: string) =>
+  ({
     action: 'setup',
     distro: 'Ubuntu with spaces',
-    userHome: guest.home,
+    userHome: home,
     accountId: 'a',
     hooksEnabled: true
+  }) as const
+it('runs the helper through the WSL runner with literal argv, stdin JSON and a fenced version probe', async () => {
+  const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
+  await guest.request(setup(guest.home))
+  const [helper] = helperCalls().at(-1) ?? []
+  expect(helper).toMatchObject({
+    distro: 'Ubuntu with spaces',
+    loginPath: 'none',
+    args: ['-u', 'NODE_OPTIONS', EXECUTABLE, '/mnt/c/fake-helper.cjs']
   })
-  const result = JSON.parse(readFileSync(join(mocks.root, 'request.json'), 'utf8'))
-  expect(result.args).toEqual([
-    '-d',
-    'Ubuntu with spaces',
-    '--exec',
-    '/usr/bin/env',
-    '-u',
-    'NODE_OPTIONS',
-    '/home/fake/.cache/orca/runtimes/pinned/bin/node',
-    '/mnt/c/fake-helper.cjs'
-  ])
-  expect(result.request.claudeVersion).toBe('2.1.0')
+  expect(JSON.parse(helper.input)).toMatchObject({ action: 'setup', claudeVersion: '2.1.0' })
   expect(
     mocks.run.mock.calls.some(([spec]) => spec.args?.[1]?.includes('__ORCA_WSL_CAPTURE_BEGIN_'))
   ).toBe(true)
 })
-it('refuses stopped distros before any guest command and again before publishing', async () => {
+it('refuses stopped distros before any guest command and again before each request', async () => {
   mocks.running = false
   await expect(prepareClaudeWslGuest('Stopped')).rejects.toThrow('not running')
   expect(mocks.run).not.toHaveBeenCalled()
@@ -88,15 +92,19 @@ it('refuses stopped distros before any guest command and again before publishing
       hooksEnabled: false
     })
   ).rejects.toThrow('not running')
+  expect(helperCalls()).toHaveLength(0)
 })
 it('surfaces runtime and process failures without substituting a personal Claude launch', async () => {
   mocks.runtime.mockRejectedValueOnce(new Error('download refused'))
   await expect(prepareClaudeWslGuest('Ubuntu')).rejects.toThrow('download refused')
   const guest = await prepareClaudeWslGuest('Ubuntu')
-  writeFileSync(
-    mocks.executable,
-    `#!${process.execPath}\nprocess.stderr.write('pinned runtime missing');process.exit(1)\n`
-  )
+  mocks.run.mockResolvedValue({
+    code: 1,
+    stdout: '',
+    stderr: 'pinned runtime missing',
+    timedOut: false,
+    environmentResolved: true
+  })
   await expect(
     guest.request({
       action: 'publish',
@@ -106,6 +114,48 @@ it('surfaces runtime and process failures without substituting a personal Claude
       hooksEnabled: false
     })
   ).rejects.toThrow('pinned runtime missing')
+})
+it('keeps a cached guest usable after its preparation deadline has passed', async () => {
+  const deadline = new AbortController()
+  vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+  const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
+  deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+  await expect(guest.request(setup(guest.home))).resolves.toMatchObject({ ready: true })
+  expect(JSON.parse(helperCalls().at(-1)?.[0].input).claudeVersion).toBe('2.1.0')
+})
+it('continues setup with an unknown Claude version when the guest probe fails, like native', async () => {
+  const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
+  const helper = mocks.run.getMockImplementation()
+  mocks.run.mockImplementation(async (spec: WslSpec) =>
+    spec.program === '/bin/sh'
+      ? { code: 127, stdout: '', stderr: 'claude: not found', timedOut: false }
+      : helper?.(spec)
+  )
+  await expect(guest.request(setup(guest.home))).resolves.toMatchObject({ ready: true })
+  expect(JSON.parse(helperCalls().at(-1)?.[0].input)).not.toHaveProperty('claudeVersion')
+})
+it('confirms the distro is running once per preparation and once per request', async () => {
+  const guest = await prepareClaudeWslGuest('Ubuntu')
+  expect({ checks: mocks.runningChecks, commands: mocks.run.mock.calls.length }).toEqual({
+    checks: 1,
+    commands: 5
+  })
+  await guest.request({
+    action: 'inspect',
+    distro: 'Ubuntu',
+    userHome: guest.home,
+    accountId: 'a',
+    hooksEnabled: false
+  })
+  expect({ checks: mocks.runningChecks, commands: mocks.run.mock.calls.length }).toEqual({
+    checks: 2,
+    commands: 6
+  })
+  await guest.request({ ...setup(guest.home), distro: 'Ubuntu' })
+  expect({ checks: mocks.runningChecks, commands: mocks.run.mock.calls.length }).toEqual({
+    checks: 3,
+    commands: 8
+  })
 })
 
 it('withdraws a stale pointer even without a usable pinned runtime', async () => {
