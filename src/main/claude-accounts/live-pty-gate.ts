@@ -4,14 +4,6 @@ const liveClaudePtyIds = new Set<string>()
 // cannot rotate the single-use refresh token out from under a Claude CLI that
 // survived the app restart inside the daemon.
 const seededUnconfirmedPtyIds = new Set<string>()
-let switchInProgress = false
-// Woken by endClaudeAuthSwitch so a caller past the point of no return can wait the
-// swap out instead of refusing. See whenClaudeAuthSwitchSettles.
-const switchSettledListeners = new Set<() => void>()
-
-/** A managed account swap is a credential-file rewrite, not a network round trip;
- *  anything past this is a wedged switch, and refusing beats waiting forever. */
-export const CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS = 15_000
 
 export type ClaudeLivePtyPersistence = {
   addClaudeLivePtySessionId(sessionId: string): void
@@ -119,56 +111,4 @@ function structuredChildGateId(childKey: string): string {
 
 export function hasLiveClaudePtys(): boolean {
   return liveClaudePtyIds.size > 0
-}
-
-export function beginClaudeAuthSwitch(): void {
-  if (switchInProgress) {
-    throw new Error('A Claude account switch is already in progress.')
-  }
-  switchInProgress = true
-}
-
-export function endClaudeAuthSwitch(): void {
-  const wasInProgress = switchInProgress
-  switchInProgress = false
-  if (!wasInProgress) {
-    return
-  }
-  // Each listener removes itself as it settles; Set iteration is defined over that.
-  for (const listener of switchSettledListeners) {
-    listener()
-  }
-}
-
-/**
- * Resolves `true` once no account switch is running, `false` if one is still running
- * at the deadline.
- *
- * Exists for callers that have already done irreversible work — a structured acquire
- * has closed the old child by the time it resolves its launch, so turning a switch
- * into a refusal there strands the user with a dead session and no replacement.
- * Waiting for the swap and then launching against it is the recoverable answer;
- * refusing is only correct when nothing has been torn down yet.
- */
-export function whenClaudeAuthSwitchSettles(
-  timeoutMs = CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS
-): Promise<boolean> {
-  if (!switchInProgress) {
-    return Promise.resolve(true)
-  }
-  return new Promise<boolean>((resolve) => {
-    const settle = (settled: boolean): void => {
-      switchSettledListeners.delete(listener)
-      clearTimeout(timer)
-      resolve(settled)
-    }
-    const listener = (): void => settle(true)
-    switchSettledListeners.add(listener)
-    const timer = setTimeout(() => settle(false), timeoutMs)
-    timer.unref?.()
-  })
-}
-
-export function isClaudeAuthSwitchInProgress(): boolean {
-  return switchInProgress
 }

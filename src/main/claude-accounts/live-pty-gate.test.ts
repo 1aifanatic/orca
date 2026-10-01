@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   attachClaudeLivePtyPersistence,
-  beginClaudeAuthSwitch,
   confirmSeededClaudeLivePtys,
-  endClaudeAuthSwitch,
   hasLiveClaudePtys,
-  isClaudeAuthSwitchInProgress,
   markClaudePtyExited,
   markClaudePtySpawned,
   onLiveClaudePtysDrained,
@@ -19,21 +16,6 @@ describe('Claude live PTY gate', () => {
     markClaudePtyExited('seeded-pty-2')
     confirmSeededClaudeLivePtys([])
     attachClaudeLivePtyPersistence(null)
-    endClaudeAuthSwitch()
-  })
-
-  it('allows switching while Claude PTYs are live', () => {
-    markClaudePtySpawned('live-claude-pty')
-
-    beginClaudeAuthSwitch()
-
-    expect(isClaudeAuthSwitchInProgress()).toBe(true)
-  })
-
-  it('still rejects overlapping account switches', () => {
-    beginClaudeAuthSwitch()
-
-    expect(() => beginClaudeAuthSwitch()).toThrow('already in progress')
   })
 
   it('counts seeded session ids as live until confirmed dead', () => {

@@ -52,9 +52,6 @@ export function applyClaudeEnvPatch(
 export const CLAUDE_AUTH_ENV_CONFLICT_MESSAGE =
   'This Claude launch defines explicit Anthropic auth environment variables. Remove those overrides before using a managed Claude account.'
 
-export const CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE =
-  'A Claude account switch is in progress. Try again after it finishes.'
-
 /**
  * Whether a launch on the host runtime must drop inherited Anthropic auth.
  *

@@ -6,7 +6,6 @@ import type {
 } from '../../shared/managed-account-types'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
-import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from './live-pty-gate'
 import { describeClaudeAccountIdentityIssue } from './claude-account-identity'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import {
@@ -223,12 +222,8 @@ export class ClaudeAccountSelection {
     target?: ClaudeAccountSelectionTarget,
     operation?: () => Promise<void>
   ): Promise<void> {
-    beginClaudeAuthSwitch()
-    try {
-      await (operation ? operation() : this.runtimeAuth.syncForCurrentSelection(target, 'boot'))
-    } finally {
-      endClaudeAuthSwitch()
-    }
+    // Why no launch gate: launches read the settings selection, and the pointer queue orders publishes.
+    await (operation ? operation() : this.runtimeAuth.syncForCurrentSelection(target, 'boot'))
   }
 }
 
