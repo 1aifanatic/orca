@@ -424,7 +424,7 @@ describe('SSH OpenCode runtime setup on a Windows host', () => {
 
   function answerWindows(storeReady: boolean): string[] {
     const scripts: string[] = []
-    mocks.target.mockResolvedValue('win32-x64')
+    mocks.target.mockResolvedValue({ target: 'win32-x64', glibc: null })
     mocks.exec.mockImplementation(async (_conn, command: string) => {
       const script = decodeRemotePowerShellScript(command)
       scripts.push(script)
