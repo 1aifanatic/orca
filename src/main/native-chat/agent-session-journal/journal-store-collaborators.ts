@@ -237,14 +237,14 @@ function backfillSessionStatus(
 
 /**
  * An append whose transaction failed after its row was folded: the undo puts back what the row
- * changed. If it cannot, the fold is marked stale and folded again from what committed before its
- * next use (the host database rolls a stranded transaction back before it hands out the connection,
- * so that re-read never sees the failed row).
+ * changed. If it cannot (it throws, or the row removed an entry, which no undo puts back in its
+ * place), the fold is marked stale and folded again from what committed before its next use (the
+ * host database rolls a stranded transaction back before it hands out the connection, so that
+ * re-read never sees the failed row).
  */
 function recoverJournalFold(host: JournalStoreHost, undo: JournalFoldUndo | null): void {
   try {
-    if (undo) {
-      undo.rollback()
+    if (undo?.rollback()) {
       return
     }
   } catch (error) {
