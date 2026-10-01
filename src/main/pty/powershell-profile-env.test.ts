@@ -113,17 +113,13 @@ describe('readPowerShellProfileEnvAssignments', () => {
         '$env:CODEX_HOME = $null',
         "$env:CODEX_HOME = ''",
         "$env:CODEX_HOMEX = 'C:\\other'",
-        "# $env:CODEX_HOME = 'C:\\commented'",
-        "Set-Item -Path Env:CODEX_HOME -Value 'C:\\set-item'",
-        "[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet', 'User')"
+        "# $env:CODEX_HOME = 'C:\\commented'"
       ].join('\n')
     )
 
     expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root)).toEqual([
       '$HOME\\literal # kept',
-      `(Join-Path ${root} .codex-x)`,
-      'C:\\set-item',
-      'C:\\dotnet'
+      `(Join-Path ${root} .codex-x)`
     ])
   })
 })

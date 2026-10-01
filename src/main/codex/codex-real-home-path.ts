@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { getSystemCodexHomePath } from './codex-home-paths'
-import { readShellStartupEnvVar } from '../pty/shell-startup-env'
+import { readBashStartupEnvVar, readShellStartupEnvVar } from '../pty/shell-startup-env'
 import { readPowerShellProfileEnvAssignments } from '../pty/powershell-profile-env'
 
 export type CodexShellStartupHomeOverride = {
@@ -57,8 +57,8 @@ export function getCustomCodexHomeOverrideForLaunch(
   const home = getLaunchEnvValue(launchEnv, process.platform === 'win32' ? 'USERPROFILE' : 'HOME')
   const shell = getLaunchEnvValue(launchEnv, 'SHELL')
   const configHome = getLaunchEnvValue(launchEnv, 'XDG_CONFIG_HOME')
-  const shellCodexHome = readShellStartupCodexHome(home, shell, configHome)
-  if (!home || !shellCodexHome || !hasCustomCodexHomeOverride({ CODEX_HOME: shellCodexHome })) {
+  const [shellCodexHome] = readCustomShellStartupCodexHomes(home, shell, configHome)
+  if (!home || !shellCodexHome) {
     return null
   }
   return {
@@ -86,15 +86,13 @@ export function shellStartupCodexHomeOverrideMatches(
   if (!shellStartupCodexHomeOverrideContextsEqual(context, currentContext)) {
     return false
   }
-  const currentCodexHome = readShellStartupCodexHome(
+  return readCustomShellStartupCodexHomes(
     currentContext.home,
     currentContext.shell,
     currentContext.configHome
-  )
-  return Boolean(
-    currentCodexHome &&
-    hasCustomCodexHomeOverride({ CODEX_HOME: currentCodexHome }) &&
-    normalizePathForComparison(currentCodexHome) === normalizePathForComparison(context.codexHome)
+  ).some(
+    (codexHome) =>
+      normalizePathForComparison(codexHome) === normalizePathForComparison(context.codexHome)
   )
 }
 
@@ -111,25 +109,28 @@ export function shellStartupCodexHomeOverrideContextsEqual(
 }
 
 /**
- * The CODEX_HOME the pane's shell startup would set. A Windows pane may run
- * either PowerShell edition or Git Bash, so any of their startup files
- * pointing elsewhere counts.
+ * Custom CODEX_HOMEs the pane's shell startup may set. A Windows pane may run
+ * either PowerShell edition or Git Bash, so any of their startup files counts.
  */
-function readShellStartupCodexHome(
+function readCustomShellStartupCodexHomes(
   home: string | undefined,
   shell: string | undefined,
   configHome: string | undefined
-): string | undefined {
-  if (process.platform !== 'win32') {
-    return readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)
-  }
+): string[] {
   if (!home) {
-    return undefined
+    return []
   }
-  return [
-    ...readPowerShellProfileEnvAssignments('CODEX_HOME', home),
-    readShellStartupEnvVar('CODEX_HOME', home, 'bash')
-  ].find((codexHome) => codexHome && hasCustomCodexHomeOverride({ CODEX_HOME: codexHome }))
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          ...readPowerShellProfileEnvAssignments('CODEX_HOME', home),
+          readBashStartupEnvVar('CODEX_HOME', home)
+        ]
+      : [readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)]
+  return candidates.filter(
+    (codexHome): codexHome is string =>
+      codexHome !== undefined && hasCustomCodexHomeOverride({ CODEX_HOME: codexHome })
+  )
 }
 
 type LaunchEnvKey =

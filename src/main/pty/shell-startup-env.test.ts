@@ -14,6 +14,7 @@ vi.mock('fs', () => ({
 
 import {
   __resetShellStartupEnvCache,
+  readBashStartupEnvVar,
   readSessionShellStartupEnvVar,
   readShellStartupEnvVar,
   SHELL_STARTUP_ENV_CACHE_MAX_ENTRIES
@@ -105,6 +106,14 @@ describe('readShellStartupEnvVar', () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     mockStartupFiles({ '.zshrc': 'export OPENCODE_CONFIG_DIR=/win\n' })
     expect(readShellStartupEnvVar('OPENCODE_CONFIG_DIR', '/home/alice')).toBeUndefined()
+  })
+
+  it('reads Git Bash login files on Windows only when asked for bash', () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    process.env.SHELL = '/usr/bin/bash'
+    mockStartupFiles({ '.bash_profile': 'export OPENCODE_CONFIG_DIR=/git-bash\n' })
+    expect(readShellStartupEnvVar('OPENCODE_CONFIG_DIR', '/home/alice')).toBeUndefined()
+    expect(readBashStartupEnvVar('OPENCODE_CONFIG_DIR', '/home/alice')).toBe('/git-bash')
   })
 
   it('returns undefined when no startup file matches', () => {
