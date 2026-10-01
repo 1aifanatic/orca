@@ -70,7 +70,13 @@ async function restartAndSettle(
   const deathEvidence: AgentSessionDeathEvidence | null =
     proof === 'unproven'
       ? null
-      : { kind: proof, observedAt: now + 60_000, ownerFence: 1, lastProvenAliveAt: now - 20_000 }
+      : {
+          kind: proof,
+          detail: 'the relaunch proved the old child gone',
+          observedAt: now + 60_000,
+          ownerFence: 1,
+          lastProvenAliveAt: now - 20_000
+        }
   await settleStaleStructuredAgentSessionState({
     journal: journal(),
     sessionId: HOST_TEST_SESSION,
