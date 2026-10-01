@@ -10,6 +10,7 @@ import {
   type RuntimeCapability
 } from '../../shared/protocol-version'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from '../../shared/agent-session-background-task-child-views-capability'
+import { AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY } from '../../shared/agent-session-status-awaits-user-capability'
 
 /**
  * What the desktop renderer advertises when it calls its own main process over `runtime:call`.
@@ -31,6 +32,7 @@ export const DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES: readonly RuntimeCapab
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
+  AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   // Without this `supportsAgentLaunch` refuses the renderer outright, while the same renderer

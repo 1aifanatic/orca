@@ -23,6 +23,7 @@ import {
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from '../../../shared/agent-session-background-task-child-views-capability'
+import { AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY } from '../../../shared/agent-session-status-awaits-user-capability'
 
 const fakeSockets: FakeWebSocket[] = []
 
@@ -92,6 +93,7 @@ describe('WebRuntimeClient', () => {
       clientCapabilities: [
         AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
         AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
+        AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY,
         AGENT_SESSION_TURN_ITEM_CAPABILITY,
         SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
         SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY,

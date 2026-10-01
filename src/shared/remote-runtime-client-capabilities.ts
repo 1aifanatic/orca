@@ -12,6 +12,7 @@ import {
   type RuntimeCapability
 } from './protocol-version'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
+import { AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY } from './agent-session-status-awaits-user-capability'
 import { SKILL_INSTALL_RESULT_V2_CAPABILITY } from './skill-install-capability'
 
 // Keep every remote request transport on the same mixed-version capability contract.
@@ -23,6 +24,7 @@ export function remoteRuntimeClientCapabilities(
       AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
       AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
       AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
+      AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY,
       AGENT_SESSION_TURN_ITEM_CAPABILITY,
       SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
       SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
