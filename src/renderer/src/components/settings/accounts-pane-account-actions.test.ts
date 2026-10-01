@@ -88,4 +88,29 @@ describe('Claude account action toasts', () => {
         'new@example.test is signed in again. The next Claude you start uses it. Running sessions keep their account.'
     })
   })
+
+  it('keeps the switch wording for a select between two accounts with the same email', async () => {
+    const twoOrgs: ClaudeRateLimitAccountsState = {
+      accounts: [
+        { ...added.accounts[0], id: 'org-a' },
+        { ...added.accounts[0], id: 'org-b' }
+      ],
+      activeAccountId: 'org-a'
+    }
+    const run = createClaudeAccountActionRunner({
+      settings: getDefaultSettings('/tmp'),
+      accountRuntime: { runtime: 'host', wslDistro: null, label: 'This device' },
+      isRemoteAccountScope: true,
+      claudeAccounts: twoOrgs,
+      setClaudeAccounts: vi.fn(),
+      setClaudeAction: vi.fn(),
+      fetchSettings: vi.fn(async () => {}),
+      recordFeatureInteraction: vi.fn()
+    })
+    await run('select:org-b', async () => ({ ...twoOrgs, activeAccountId: 'org-b' }))
+    expect(toast.info).toHaveBeenCalledWith(expect.any(String), {
+      description:
+        'new@example.test → new@example.test. The next Claude you start uses this selection. Running sessions keep their account.'
+    })
+  })
 })

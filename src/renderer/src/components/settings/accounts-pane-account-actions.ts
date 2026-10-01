@@ -188,8 +188,12 @@ export function createClaudeAccountActionRunner(
           action === 'adding' && previousActiveAccountId === nextActiveAccountId
         const previousLabel = getClaudeAccountLabel(claudeAccounts, previousActiveAccountId)
         const nextLabel = getClaudeAccountLabel(next, nextActiveAccountId)
-        // Why: a re-sign-in, or an Add replacing the selected account, would read "a@ → a@".
-        const signedInAgain = nextActiveAccountId !== null && previousLabel === nextLabel
+        // Why: a re-sign-in, or an Add replacing the selected account, would read "a@ → a@"; a
+        // select between two accounts with one email (two organizations) is a real switch.
+        const signedInAgain =
+          (action === 'adding' || action.startsWith('reauth:')) &&
+          nextActiveAccountId !== null &&
+          previousLabel === nextLabel
         toast.info(
           translate('auto.components.settings.AccountsPane.f921d32606', 'Claude account updated.'),
           {
