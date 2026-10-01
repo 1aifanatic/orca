@@ -16,10 +16,13 @@ describe('LocalPtyProvider shell proof', () => {
     await expect(new LocalPtyProvider().proveShellForeground('pty-wsl')).resolves.toBe('unprovable')
   })
 
-  it('answers from the process table for a pane whose root is a shell', async () => {
-    ptyShellPath.set('pty-zsh', '/bin/zsh')
+  it.each(['/bin/zsh', '/usr/bin/yash'])(
+    'answers from the process table for a pane rooted in %s, known shell or not',
+    async (shellPath) => {
+      ptyShellPath.set('pty-posix', shellPath)
 
-    // No live process is registered under this id, so the table read proves nothing.
-    await expect(new LocalPtyProvider().proveShellForeground('pty-zsh')).resolves.toBe('other')
-  })
+      // No live process is registered under this id, so the table read proves nothing.
+      await expect(new LocalPtyProvider().proveShellForeground('pty-posix')).resolves.toBe('other')
+    }
+  )
 })
