@@ -199,7 +199,7 @@ function failedCreateFromOlderHost(
 }
 
 describe('a create over a record an older host left after its start failed', () => {
-  it('founds it again at rest, at its own fence, keeping its name', () => {
+  it('founds it again at rest, at the next fence, keeping its name', () => {
     const existing = failedCreateFromOlderHost()
     const state = storeState([existing])
 
@@ -212,11 +212,38 @@ describe('a create over a record an older host left after its start failed', () 
       createdAt: existing.createdAt
     })
     expect(record.lease).toMatchObject({
-      runtimeFence: 2,
+      runtimeFence: 3,
       claimStatus: 'released',
       handoffStage: null,
       deathEvidence: null
     })
+  })
+
+  it('keeps the floor a recovered copy set, and mints the fence past it', () => {
+    const exited = failedCreateFromOlderHost().lease
+    const state = storeState([
+      failedCreateFromOlderHost({ lease: { ...exited, minimumNextFence: 9 } })
+    ])
+
+    const { record } = commitAgentSessionAtRestCreate(state, createRequest())
+
+    expect(record.lease).toMatchObject({ runtimeFence: 9, minimumNextFence: 9 })
+  })
+
+  it('refuses while this host has not yet adjudicated the lease', () => {
+    const exited = failedCreateFromOlderHost().lease
+    const state = storeState([
+      failedCreateFromOlderHost({ lease: { ...exited, unreconciled: true } })
+    ])
+
+    expect(() => commitAgentSessionAtRestCreate(state, createRequest())).toThrow(
+      expect.objectContaining({
+        refusal: expect.objectContaining({
+          code: 'execution_owner_reconciling',
+          details: { reason: 'hostReconciling' }
+        })
+      })
+    )
   })
 
   it('refuses one that bound a conversation, may still run, or is another identity', () => {

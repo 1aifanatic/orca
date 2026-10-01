@@ -8,6 +8,7 @@ import {
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import { agentSessionLeaseOwnerVerdict } from '../../shared/agent-session-lease-adjudication'
+import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
 import {
   agentSessionExecutionLocationsEqual,
   isAgentSessionOptions,
@@ -84,18 +85,14 @@ export function commitAgentSessionAtRestCreate(
   if (existing && !refoundable(existing, request)) {
     throw agentSessionRefusalError('agent_session_conflict', { reason: 'sessionExists' })
   }
+  if (existing?.lease.unreconciled) {
+    // This host has not adjudicated the lease since it loaded it: nothing proves its exit yet.
+    throw agentSessionRefusalError('execution_owner_reconciling', { reason: 'hostReconciling' })
+  }
   assertAdoptedConversationUnowned(state, request)
   assertReservedTabUnheld(state, request)
   const founded = foundAgentSessionRecord(request, request, request.adoptedHandleLink)
-  // Refounded keeps what the chat already has (its name) and its fence: a fence never moves back.
-  const record = existing
-    ? {
-        ...existing,
-        ...founded,
-        createdAt: existing.createdAt,
-        lease: { ...founded.lease, runtimeFence: existing.lease.runtimeFence }
-      }
-    : founded
+  const record = existing ? refounded(existing, founded) : founded
   state.records.set(record.sessionId, record)
   return recordOperationRow(state, record, request, false)
 }
@@ -154,6 +151,24 @@ function refoundable(
     agentSessionLeaseOwnerVerdict(existing.lease) === 'exited' &&
     sameIdentity(existing, request)
   )
+}
+
+/**
+ * Founded again over the lease already there, so what that lease carries holds: its fence moves
+ * on through the one mint (never back, never onto a floor a recovered copy set), and the chat keeps
+ * what it already has, such as its name.
+ */
+function refounded(existing: AgentSessionRecord, founded: AgentSessionRecord): AgentSessionRecord {
+  return {
+    ...existing,
+    ...founded,
+    createdAt: existing.createdAt,
+    lease: {
+      ...existing.lease,
+      ...founded.lease,
+      runtimeFence: nextAgentSessionFence(existing.lease)
+    }
+  }
 }
 
 /**

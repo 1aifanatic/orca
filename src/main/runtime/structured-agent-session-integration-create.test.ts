@@ -170,8 +170,8 @@ describe('creating a structured codex chat over agentSession.*', () => {
       'agentSession.create',
       harness.createIntentParams()
     )
-    // Founded again at rest, at the fence the failed start left: a fence never moves back.
-    expect(created.fence).toBe(left?.lease.runtimeFence)
+    // Founded again at rest, one fence past the failed start's: a fence never moves back.
+    expect(created.fence).toBe((left?.lease.runtimeFence ?? 0) + 1)
     await send(created.fence, 'signed in now')
     await startedTurn()
   })
