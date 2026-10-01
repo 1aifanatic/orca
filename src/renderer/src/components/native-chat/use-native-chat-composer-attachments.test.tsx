@@ -325,6 +325,24 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => second.root.unmount())
   })
 
+  it('keeps chips in the order they were added while a paste is still saving', async () => {
+    const probe = await renderProbe('session:chat-order', true)
+    let pastedId: string | null = null
+    act(() => {
+      pastedId = probe.latest().beginPendingImageAttachment('blob:pasted')
+    })
+    await act(async () => {
+      probe.latest().attachResolvedPaths(['/tmp/dropped.png'])
+    })
+    act(() => probe.latest().resolvePendingImageAttachment(pastedId ?? '', '/tmp/pasted.png'))
+
+    expect(probe.latest().imageAttachments.map(({ path }) => path)).toEqual([
+      '/tmp/pasted.png',
+      '/tmp/dropped.png'
+    ])
+    act(() => probe.root.unmount())
+  })
+
   it('removes an attached image chip cleanly', async () => {
     const probe = await renderProbe('pty-1')
     await act(async () => {

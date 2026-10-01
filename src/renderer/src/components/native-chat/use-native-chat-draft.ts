@@ -25,7 +25,6 @@ export function useNativeChatDraft(
   const [draft, setDraftState] = useState(() => readNativeChatDraftCache(draftKey))
   // This view's draft for synchronous updates; React state only renders it.
   const draftRef = useRef(draft)
-  const writerRef = useRef<object>({})
   // Appended while composing: the editor's own writes would erase it, so each write re-adds it.
   const pendingAppendRef = useRef<{ draftKey: string; text: string } | null>(null)
 
@@ -45,10 +44,8 @@ export function useNativeChatDraft(
   }, [draft])
 
   useEffect(() => {
-    const unsubscribeChange = subscribeToNativeChatDraft(draftKey, (writer) => {
-      if (writer === writerRef.current) {
-        return
-      }
+    // This view's own writes come back too; they hold what it already shows.
+    const unsubscribeChange = subscribeToNativeChatDraft(draftKey, () => {
       const shared = readNativeChatDraftCache(draftKey)
       // A clear still reaches a composing field, which keeps only the composed segment.
       if (!isComposing() || shared === '') {
@@ -80,8 +77,7 @@ export function useNativeChatDraft(
         draftKey,
         pending?.draftKey === draftKey
           ? appendNativeChatDraftText(resolved, pending.text)
-          : resolved,
-        writerRef.current
+          : resolved
       )
       showDraft(resolved)
     },

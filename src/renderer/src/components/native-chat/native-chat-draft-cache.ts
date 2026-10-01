@@ -50,7 +50,7 @@ function readEntry(draftKey: string): DraftEntry {
   return drafts().get(draftKey) ?? { text: '', attachments: EMPTY_ATTACHMENTS }
 }
 
-/** A view's own writes carry its token so it is not told about them; other views are. */
+/** An attachment write carries its view's token, so that view can skip its own echo. */
 const changeListeners = new Map<string, Set<(writer: object | undefined) => void>>()
 
 function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefined): void {
@@ -79,8 +79,8 @@ export function readNativeChatDraftCache(draftKey: string): string {
 }
 
 /** Typing waits for a pause; emptying the text (the clear at send) is written at once. */
-export function writeNativeChatDraftCache(draftKey: string, draft: string, writer?: object): void {
-  setEntry(draftKey, { ...readEntry(draftKey), text: draft }, writer)
+export function writeNativeChatDraftCache(draftKey: string, draft: string): void {
+  setEntry(draftKey, { ...readEntry(draftKey), text: draft }, undefined)
   if (draft === '') {
     persistNow(draftKey)
   } else {
@@ -104,7 +104,7 @@ export function writeNativeChatDraftAttachments(
   persistNow(draftKey)
 }
 
-/** Fires when another writer changes the chat's draft. */
+/** Fires on every change to the chat's draft, with the writing view's token if it gave one. */
 export function subscribeToNativeChatDraft(
   draftKey: string,
   listener: (writer: object | undefined) => void
