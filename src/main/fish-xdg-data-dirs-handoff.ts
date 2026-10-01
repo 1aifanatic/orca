@@ -35,10 +35,10 @@ export function getFishXdgDataDirsLaunchEnv(
   fishArgs: readonly string[] = []
 ): Record<string, string> {
   const dataDir = getFishXdgDataDir(wrapperRoot)
-  // Why skip empty: the restore cannot tell '' from unset, and fish reads both as the default.
-  if (dataDir.includes(':') || inheritedXdgDataDirs === '' || fishArgsSkipConfig(fishArgs)) {
+  if (dataDir.includes(':') || fishArgsSkipConfig(fishArgs)) {
     return {}
   }
+  // Why empty counts as unset: fish and the XDG spec read both as the default, so restoring '' as unset is invisible.
   const prefix = inheritedXdgDataDirs ? dataDir : `${dataDir}:${XDG_DATA_DIRS_DEFAULT}`
   return {
     XDG_DATA_DIRS: inheritedXdgDataDirs ? `${prefix}:${inheritedXdgDataDirs}` : prefix,

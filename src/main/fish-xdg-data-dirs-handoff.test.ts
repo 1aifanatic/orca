@@ -25,9 +25,12 @@ describe('getFishXdgDataDirsLaunchEnv', () => {
     })
   })
 
-  // Why: the restore would hand back unset, not the inherited empty value.
-  it('skips an empty XDG_DATA_DIRS', () => {
-    expect(getFishXdgDataDirsLaunchEnv(ROOT, '')).toEqual({})
+  it('treats an empty XDG_DATA_DIRS as unset and restores it to unset', () => {
+    const expected = `${DATA_DIR}:/usr/local/share:/usr/share`
+    const env: Record<string, string> = getFishXdgDataDirsLaunchEnv(ROOT, '')
+    expect(env).toEqual({ XDG_DATA_DIRS: expected, [FISH_XDG_DATA_DIRS_PREFIX_ENV]: expected })
+    restoreFishXdgDataDirs(env)
+    expect(env).toEqual({})
   })
 
   it.each([['-N'], ['--no-config'], ['--no-c'], ['-lN'], ['-Ni']])(
