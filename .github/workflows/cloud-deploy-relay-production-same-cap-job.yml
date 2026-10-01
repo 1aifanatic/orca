@@ -709,11 +709,12 @@ jobs:
             --project "${GCP_PROJECT_ID}" --zone "${TARGET_ZONE}" --timeout 900
           # A stranded cell already runs the reviewed template, so the apply above replaces
           # no instance and the drain flag, which only a restart clears, would survive the
-          # whole wave. Recreate its one instance from the MIG's current template. A rolling
-          # action would rewrite the MIG's version name outside Terraform, and every later
-          # targeted plan would carry that revert.
+          # whole wave. Fewer than the template-and-MIG pair means the template stayed put,
+          # including a MIG-only reconciliation. Recreate its one instance from the MIG's
+          # current template; a rolling action would rewrite the MIG's version name outside
+          # Terraform, and every later targeted plan would carry that revert.
           if test "${ROLLBACK_STAGE}" = stranded \
-            && test "$(jq -er '.changes' <<< "${PLAN_REVIEW}")" = 0; then
+            && jq -e '.changes < 2' <<< "${PLAN_REVIEW}" >/dev/null; then
             STRANDED_INSTANCE="$(gcloud compute instance-groups managed list-instances \
               "${MIG_NAME}" --project "${GCP_PROJECT_ID}" --zone "${TARGET_ZONE}" \
               --format=json \

@@ -584,10 +584,6 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
     // The plan is reviewed against the image the cell serves, not an assumed predecessor.
     assert.match(apply, /--rollback-image "\$\{PLAN_ROLLBACK_IMAGE\}"/)
     assert.doesNotMatch(apply, /--rollback-image "\$\{IMAGE_REPOSITORY\}/)
-    assert.match(
-      apply,
-      /test "\$\{ROLLBACK_STAGE\}" = stranded \\\n\s+&& test "\$\(jq -er '\.changes' <<< "\$\{PLAN_REVIEW\}"\)" = 0/
-    )
     // A rolling action rewrites the MIG's version name outside Terraform, and the validator then
     // refuses every later plan for the cell; recreating the instance leaves the MIG untouched.
     assert.doesNotMatch(apply, /rolling-action/)
@@ -618,6 +614,7 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
     const link = (name) =>
       `https://www.googleapis.com/compute/v1/projects/p/zones/z/instances/${name}`
     const one = pick([{ instance: link('relay-c29-abcd') }])
+    assert.equal(one.error, undefined)
     assert.equal(one.status, 0, one.stderr)
     assert.equal(one.stdout.trim(), 'relay-c29-abcd')
     assert.notEqual(pick([]).status, 0)
@@ -662,7 +659,7 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
       .split('name: Apply only the selected same-cap template and MIG')[1]
       .split('\n      - id:')[0]
     const condition =
-      /if test "\$\{ROLLBACK_STAGE\}" = stranded \\\n\s+(&& test "\$\(jq -er '\.changes' <<< "\$\{PLAN_REVIEW\}"\)" = 0); then/
+      /if test "\$\{ROLLBACK_STAGE\}" = stranded \\\n\s+(&& jq -e '\.changes < 2' <<< "\$\{PLAN_REVIEW\}" >\/dev\/null); then/
         .exec(apply)
     assert.notEqual(condition, null, 'the stranded roll no longer gates on the plan review')
     const rolls = (stage, review) => {
@@ -676,6 +673,8 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
       return resolved.stdout.trim()
     }
     assert.equal(rolls('stranded', { changes: 0 }), 'replace')
+    // A MIG-only reconciliation (a version label revert) leaves the template, so no restart.
+    assert.equal(rolls('stranded', { changes: 1 }), 'replace')
     // A real template replacement already restarts the instance; rolling again would be a second.
     assert.equal(rolls('stranded', { changes: 2 }), 'no-replace')
     assert.equal(rolls('resume', { changes: 0 }), 'no-replace')

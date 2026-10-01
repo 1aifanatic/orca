@@ -397,14 +397,18 @@ function validateManagerUpdate(manager) {
     'version.0.instance_template'
   ])
   const managerUnknown = unknownPaths(manager.change.after_unknown)
+  const moved = changedPaths(manager.change.before, manager.change.after)
+  const reconciled = declaredManagerReconciliationPaths(manager).filter((path) =>
+    moved.includes(path))
+  // A plan that only reconciles declared fields leaves the template where it is.
   requireOnlyPaths(
     manager,
     new Set([
       'version.0.instance_template',
-      ...declaredManagerReconciliationPaths(manager),
+      ...reconciled,
       ...managerUnknown.filter((path) => managerComputed.has(path))
     ]),
-    ['version.0.instance_template'],
+    reconciled.length > 0 ? [] : ['version.0.instance_template'],
     managerComputed
   )
 }

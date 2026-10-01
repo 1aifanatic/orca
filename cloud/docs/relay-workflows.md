@@ -477,7 +477,9 @@ drained. Then read the cell's live runtime image from
      it is restored to its entry class. The recovery does not use a rolling action: that
      rewrites the MIG's version name outside Terraform. The plan validator does accept a MIG
      moving back to the version name and update policy `relay-gce-cells.tf` declares, so a cell
-     an older rolling action left relabelled reconciles on its next apply or rollback.
+     an older rolling action left relabelled reconciles on its next apply, roll, or stranded
+     rollback. The recreate refuses a MIG that does not hold exactly one instance, such as a
+     fenced cell; that failure is the guard, not a fault, so unfence before dispatching.
    - serving the **target** image, it is `roll`, the ordinary rollback. The template applied
      and the instance was replaced.
    - serving the **rollback** image and not draining, it is `resume`: a rollback that failed

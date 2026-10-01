@@ -519,6 +519,66 @@ test('same-cap mode preserves 1000/60 while adding only the reviewed trust confi
       field
     )
   }
+  // A second version is a canary split, never a label revert.
+  const secondVersion = structuredClone(relabelledManager)
+  secondVersion.change.after.version.push({
+    name: 'primary',
+    instance_template: 'projects/project/global/instanceTemplates/canary',
+    target_size: [{ fixed: 1 }]
+  })
+  assert.throws(
+    () => validateCapacityPlan({ resource_changes: [template, secondVersion] }, sameCapConfig),
+    /outside the reviewed capacity fields/
+  )
+  // A stranded rollback whose template is already in place plans only the label revert.
+  const plannedCell = (startupScript, templateLink) => ({
+    root_module: {
+      resources: [
+        {
+          address: 'google_compute_instance_template.relay_gce_cell["staging-gce-c3"]',
+          values: { metadata_startup_script: startupScript, self_link: templateLink }
+        },
+        {
+          address: 'google_compute_instance_group_manager.relay_gce_cell["staging-gce-c3"]',
+          values: { version: [{ instance_template: templateLink, name: 'primary' }] }
+        }
+      ]
+    }
+  })
+  const reviewedLink = 'projects/project/global/instanceTemplates/reviewed'
+  const labelOnly = {
+    address: manager.address,
+    change: {
+      actions: ['update'],
+      before: {
+        target_size: 1,
+        version: [{ instance_template: reviewedLink, name: '0/2026-10-01 10:41:28.681518+00:00' }]
+      },
+      after: { target_size: 1, version: [{ instance_template: reviewedLink, name: 'primary' }] },
+      after_unknown: {}
+    }
+  }
+  const strandedPlan = (managerChange) => ({
+    resource_changes: [managerChange],
+    planned_values: plannedCell(template.change.after.metadata_startup_script, reviewedLink)
+  })
+  assert.deepEqual(
+    validateCapacityPlan(strandedPlan(labelOnly), sameCapConfig),
+    { mode: 'same-cap-cell', changes: 1 }
+  )
+  const labelAway = structuredClone(labelOnly)
+  labelAway.change.before.version[0].name = 'primary'
+  labelAway.change.after.version[0].name = 'other'
+  assert.throws(
+    () => validateCapacityPlan(strandedPlan(labelAway), sameCapConfig),
+    /outside the reviewed capacity fields/
+  )
+  const labelAndResize = structuredClone(labelOnly)
+  labelAndResize.change.after.target_size = 0
+  assert.throws(
+    () => validateCapacityPlan(strandedPlan(labelAndResize), sameCapConfig),
+    /outside the reviewed capacity fields/
+  )
   const percentSurge = structuredClone(relabelledManager)
   percentSurge.change.before.update_policy = [{ ...declaredPolicy, max_surge_percent: 0 }]
   percentSurge.change.after.update_policy = [{ ...declaredPolicy, max_surge_percent: 50 }]
