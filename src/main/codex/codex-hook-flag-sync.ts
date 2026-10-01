@@ -187,14 +187,16 @@ function ensureCodexHookScripts(): boolean {
 
 async function runUntilSettled(): Promise<void> {
   for (;;) {
-    rerun = false
+    let again = false
     try {
+      rerun = false
       await syncOnce()
+      again = rerun && isEnabledNow()
     } catch (error) {
       console.warn('[codex-hook-session] Codex hook flag sync failed:', error)
     }
     // Why decided and cleared in one step: a call in between would mark a finished run.
-    if (!rerun || !isEnabledNow()) {
+    if (!again) {
       running = null
       return
     }

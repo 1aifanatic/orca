@@ -247,6 +247,32 @@ describe('codex hook session trust', () => {
     expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
   })
 
+  it.each([
+    [
+      'an app-server timeout',
+      Object.assign(new Error('slow'), { name: 'CodexAppServerTimeoutError' }),
+      true
+    ],
+    ['a failed spawn', Object.assign(new Error('EAGAIN'), { syscall: 'spawn codex' }), true],
+    [
+      'a codex without the app-server',
+      Object.assign(new Error('no app-server'), { name: 'CodexAppServerUnsupportedError' }),
+      false
+    ],
+    [
+      'an app-server that exits early',
+      new Error('codex app-server exited before completing the session'),
+      false
+    ]
+  ])('marks %s as worth retrying soon: %s', async (_label, error, transient) => {
+    answerVersion('codex-cli 0.159.2')
+    mocks.runCodexAppServerSession.mockRejectedValue(error)
+
+    const result = await deriveCodexHookFlagEntry('/opt/codex/bin/codex', () => true)
+
+    expect(result).toMatchObject({ entry: null, transient })
+  })
+
   it('reports why a binary yields no entry, and its version', async () => {
     answerVersion(null)
 

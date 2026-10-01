@@ -427,6 +427,54 @@ describe('syncCodexHookFlags', () => {
     expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
   })
 
+  it('keeps a failure no retry can fix cached past the retry time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    mocks.runCodexAppServerSession.mockRejectedValue(
+      Object.assign(new Error('no app-server'), { name: 'CodexAppServerUnsupportedError' })
+    )
+    await start()
+    const calls = versionCalls().length
+
+    vi.setSystemTime(Date.now() + 61_000)
+    await syncCodexHookFlags()
+
+    expect(versionCalls()).toHaveLength(calls)
+  })
+
+  // Why N3-2: a throw deciding whether to run again must not leave the run marked forever.
+  it('recovers when reading the setting throws as a run decides to go again', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    mocks.runCodexAppServerSession.mockImplementationOnce(async (invocation, body) => {
+      await gate
+      return body({ request: async () => listingFor(invocation.args[1]) })
+    })
+    let broken = false
+    stop = startCodexHookFlagSync({
+      isEnabled: () => {
+        if (broken) {
+          throw new Error('settings store unavailable')
+        }
+        return enabled
+      },
+      watch: (_path, onChange) => fakeWatch(onChange)
+    })
+    const first = syncCodexHookFlagsWithin(5_000)
+    await vi.waitFor(() => expect(mocks.runCodexAppServerSession).toHaveBeenCalled())
+    void syncCodexHookFlags()
+    broken = true
+    release()
+    await expect(first).resolves.toBeUndefined()
+
+    broken = false
+    rmSync(join(table(), 'codex-cli 0.159.2.flag'), { force: true })
+    await expect(syncCodexHookFlags()).resolves.toBeUndefined()
+
+    expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
+  })
+
   it('lets a request naming the version retry a binary whose plain sync failed', async () => {
     versions.set(mocks.state.mainPath, 'timeout')
     await start()

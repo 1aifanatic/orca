@@ -95,10 +95,18 @@ export async function deriveCodexHookFlagEntry(
     // Why checked here, synchronously with the write: an opt-out meanwhile must win.
     return done(canPublish() && publishCodexHookFlagEntry(entry) ? entry : null)
   } catch (error) {
-    // Why transient: what throws here is a spawn or app-server failure or timeout.
     console.warn('[codex-hook-session] could not derive Codex hook flags:', error)
-    return failed(error instanceof Error ? error.message : String(error), true)
+    return failed(error instanceof Error ? error.message : String(error), isTransient(error))
   }
+}
+
+// Why only these: a codex without the app-server, or one that exits early, would fail the same way every time.
+function isTransient(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'CodexAppServerTimeoutError' ||
+      typeof Reflect.get(error, 'syscall') === 'string')
+  )
 }
 
 /**
