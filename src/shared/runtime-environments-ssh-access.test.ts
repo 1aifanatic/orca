@@ -54,7 +54,7 @@ describe('runtime SSH access without deployment ownership', () => {
     const restored = RuntimeEnvironmentStoreSchema.parse({ version: 1, environments: [original] })
       .environments[0]!
     expect(restored).toEqual(original)
-    expect(getRuntimeSshAccess(restored)).toBeUndefined()
+    expect(getRuntimeSshAccess(KnownRuntimeEnvironmentSchema.parse(restored))).toBeUndefined()
     expect(restored).not.toHaveProperty('sshAccess')
     // The persisted envelope never carries sidecar state, even when handed a linked environment.
     const persisted = RuntimeEnvironmentStoreSchema.parse({
