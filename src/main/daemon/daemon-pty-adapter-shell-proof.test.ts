@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+import type * as AgentForegroundProcess from '../providers/agent-foreground-process'
 import { DaemonPtyAdapter } from './daemon-pty-adapter'
 
 // Daemons survive app updates. Those from v27 until the shell-confirm request existed answer it as
 // unknown, yet still send fenced foreground evidence, which must decide; a dead socket must not.
+
+// This host's own process-table read of the pane: its shell in front.
+vi.mock('../providers/agent-foreground-process', async (importOriginal) => ({
+  ...(await importOriginal<typeof AgentForegroundProcess>()),
+  confirmPaneShellForegroundProcess: async () => true
+}))
 
 type ClientInternals = {
   client: { request: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }

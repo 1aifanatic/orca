@@ -5,6 +5,7 @@ import type * as ProcessTableSnapshotReader from '../../shared/process-table-sna
 import type { SubprocessHandle } from '../daemon/session-subprocess-handle'
 import { TerminalHost } from '../daemon/terminal-host'
 import { proveDaemonShellForeground } from '../providers/shell-foreground-proof'
+import { confirmPaneShellForegroundProcess } from '../providers/agent-foreground-process'
 import {
   endCommand,
   expectEveryReaderSawTheClear,
@@ -45,7 +46,9 @@ vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => 
     const startedAt = Date.now()
     await new Promise((resolve) => setTimeout(resolve, 40))
     return { rows: processTable.rows, capturedAgeMs: Date.now() - startedAt }
-  }
+  },
+  // Main's own fresh read of this machine's process table.
+  getFreshShellForegroundSnapshot: async () => processTable.rows
 }))
 
 vi.mock('../git/worktree', () => {
@@ -64,26 +67,45 @@ vi.mock('../git/worktree', () => {
   }
 })
 
-const SHELL_PID = 99_999
+const ROOT_PID = 99_999
+const LOGIN_SHELL_PID = 99_990
 const AGENT_PID = 100_100
 
-/** The pane's process table: its zsh alone in front, or a Codex process group in front of it. */
-function paneProcesses(front: 'shell' | 'codex'): ProcessTableRow[] {
+/**
+ * The pane's process table: its zsh alone in front, or a Codex process group in front of it. On
+ * macOS the daemon spawns the shell under `/usr/bin/login` for TCC attribution, so the PTY's root
+ * is login and the shell is its child in its own process group.
+ */
+function paneProcesses(
+  front: 'shell' | 'codex',
+  root: 'shell' | 'macos-login' = 'shell'
+): ProcessTableRow[] {
   const tty = '/dev/pts/7'
-  const foregroundPgid = front === 'shell' ? SHELL_PID : AGENT_PID
-  const shell = {
-    pid: SHELL_PID,
+  const shellPid = root === 'shell' ? ROOT_PID : LOGIN_SHELL_PID
+  const foregroundPgid = front === 'shell' ? shellPid : AGENT_PID
+  const login = {
+    pid: ROOT_PID,
     ppid: 1,
-    pgid: SHELL_PID,
+    pgid: ROOT_PID,
+    tpgid: foregroundPgid,
+    tty,
+    startTime: 'login-birth',
+    stat: 'Ss',
+    command: '/usr/bin/login -flpq qa /bin/bash --noprofile --norc -p -c exec'
+  }
+  const shell = {
+    pid: shellPid,
+    ppid: root === 'shell' ? 1 : ROOT_PID,
+    pgid: shellPid,
     tpgid: foregroundPgid,
     tty,
     startTime: 'shell-birth',
     stat: front === 'shell' ? 'Ss+' : 'Ss',
-    command: '/bin/zsh'
+    command: root === 'shell' ? '/bin/zsh' : '-zsh'
   }
   const codex = {
     pid: AGENT_PID,
-    ppid: SHELL_PID,
+    ppid: shellPid,
     pgid: AGENT_PID,
     tpgid: foregroundPgid,
     tty,
@@ -91,14 +113,14 @@ function paneProcesses(front: 'shell' | 'codex'): ProcessTableRow[] {
     stat: 'S+',
     command: 'node /opt/homebrew/bin/codex'
   }
-  return front === 'shell' ? [shell] : [shell, codex]
+  return [...(root === 'macos-login' ? [login] : []), shell, ...(front === 'codex' ? [codex] : [])]
 }
 
 function createSubprocess(): { handle: SubprocessHandle; emit: (data: string) => void } {
   let onData: ((data: string) => void) | null = null
   let onExit: ((code: number) => void) | null = null
   const handle: SubprocessHandle = {
-    pid: SHELL_PID,
+    pid: ROOT_PID,
     getForegroundProcess: vi.fn(() => 'zsh'),
     // The fresh process read exists, but the daemon only asks it after a full-screen exit.
     confirmShellForeground: vi.fn(async () => true),
@@ -158,9 +180,6 @@ async function launchDaemonCodexPane(
         proveDaemonShellForeground({
           ptyId: id,
           incarnationId: options?.expectedIncarnationId ?? null,
-          ...(options?.notCapturedBefore !== undefined
-            ? { notCapturedBefore: options.notCapturedBefore }
-            : {}),
           platform,
           confirmShellForeground: () => terminalHost.confirmShellForeground(id),
           inspectProcess: () =>
@@ -169,7 +188,8 @@ async function launchDaemonCodexPane(
               options?.expectedIncarnationId
                 ? { expectedIncarnationId: options.expectedIncarnationId }
                 : undefined
-            )
+            ),
+          confirmPaneShellForeground: confirmPaneShellForegroundProcess
         })
     }
   })
@@ -247,14 +267,13 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
     )
   })
 
-  it('re-asks when the shared capture predates the exit, and clears on the fresh one', async () => {
+  it('is not held by a shared capture from before the exit: a fresh read here decides', async () => {
     const daemonPane = await launchDaemonCodexPane('pty-daemon-stale-capture')
     // A poll's capture from just before the exit, served from the cache 300 ms later.
     processTable.captures = [{ rows: paneProcesses('codex'), capturedAgeMs: 300 }]
     processTable.rows = paneProcesses('shell')
 
     await runCommandToItsEnd(daemonPane, 'daemon fact')
-    expect(liveRow(daemonPane.host.server, daemonPane.pane.paneKey)?.state).toBe('done')
 
     await vi.waitFor(
       () =>
@@ -263,7 +282,44 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
           daemonPane.host.readers,
           daemonPane.pane.paneKey
         ),
-      { timeout: 2_000, interval: 50 }
+      { timeout: 400, interval: 20 }
+    )
+  })
+
+  // QA G4 (macOS, default daemon backend): a parked pane's Gemini quit, zsh was in front, and Done
+  // stayed on every surface, also after a later command end.
+  for (const path of ['shell bytes', 'daemon fact'] as const) {
+    it(`on macOS, under the login wrapper, quits to the shell: the row clears (${path})`, async () => {
+      const daemonPane = await launchDaemonCodexPane(`pty-daemon-login-${path.replace(' ', '-')}`)
+      processTable.rows = paneProcesses('shell', 'macos-login')
+
+      await runCommandToItsEnd(daemonPane, path)
+
+      await vi.waitFor(
+        () =>
+          expectEveryReaderSawTheClear(
+            daemonPane.host.server,
+            daemonPane.host.readers,
+            daemonPane.pane.paneKey
+          ),
+        { timeout: 400, interval: 20 }
+      )
+    })
+  }
+
+  it('on macOS, under the login wrapper, an agent still in front keeps its row', async () => {
+    const daemonPane = await launchDaemonCodexPane('pty-daemon-login-live')
+    processTable.rows = paneProcesses('codex', 'macos-login')
+
+    await runCommandToItsEnd(daemonPane, 'daemon fact')
+    await vi.waitFor(() => expect(processTable.reads).toBe(1), { timeout: 400, interval: 20 })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expectNoReaderLostTheRow(
+      daemonPane.host.server,
+      daemonPane.host.readers,
+      daemonPane.pane.paneKey,
+      'done'
     )
   })
 })

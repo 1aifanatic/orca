@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
 import {
   proveDaemonShellForeground,
@@ -120,8 +120,14 @@ describe('an inspection the host never answered', () => {
 })
 
 describe('the terminal daemon shell proof', () => {
-  const daemon = (platform: NodeJS.Platform, confirmed: boolean) =>
-    proveDaemonShellForeground({
+  const daemon = (
+    platform: NodeJS.Platform,
+    confirmed: boolean,
+    paneShellInFront = true,
+    evidence: RemoteForegroundEvidence = live('codex', 200)
+  ) => {
+    const confirmPaneShellForeground = vi.fn(async () => paneShellInFront)
+    const proof = proveDaemonShellForeground({
       ptyId: PTY,
       incarnationId: INCARNATION,
       platform,
@@ -129,17 +135,32 @@ describe('the terminal daemon shell proof', () => {
       inspectProcess: async () => ({
         foregroundProcess: null,
         hasChildProcesses: false,
-        foregroundProcessEvidence: live(null, 100)
-      })
+        foregroundProcessEvidence: evidence
+      }),
+      confirmPaneShellForeground
     })
+    return { proof, confirmPaneShellForeground }
+  }
 
-  it("trusts the daemon's own confirm, then its evidence", async () => {
-    await expect(daemon('linux', true)).resolves.toBe('shell')
-    await expect(daemon('linux', false)).resolves.toBe('shell')
+  it("trusts the daemon's own confirm first", async () => {
+    await expect(daemon('linux', true, false).proof).resolves.toBe('shell')
+  })
+
+  it("then reads this host's own process table under the root the evidence names", async () => {
+    // The evidence, possibly from a capture before the exit, still names the agent: the fresh read decides.
+    const { proof, confirmPaneShellForeground } = daemon('darwin', false, true)
+    await expect(proof).resolves.toBe('shell')
+    expect(confirmPaneShellForeground).toHaveBeenCalledWith(100)
+    await expect(daemon('darwin', false, false).proof).resolves.toBe('other')
+  })
+
+  it('reads no answer from evidence it cannot admit', async () => {
+    const stale = { ...live(null, 100), ptyIncarnationId: 'replacement' }
+    await expect(daemon('linux', false, true, stale).proof).resolves.toBe('unread')
   })
 
   it('cannot tell on Windows, where the daemon has no foreground evidence', async () => {
-    await expect(daemon('win32', false)).resolves.toBe('unprovable')
+    await expect(daemon('win32', false).proof).resolves.toBe('unprovable')
   })
 
   it('rejects when the daemon cannot be reached', async () => {
@@ -151,7 +172,8 @@ describe('the terminal daemon shell proof', () => {
         confirmShellForeground: async () => {
           throw new Error('daemon socket closed')
         },
-        inspectProcess: async () => ({ foregroundProcess: null, hasChildProcesses: false })
+        inspectProcess: async () => ({ foregroundProcess: null, hasChildProcesses: false }),
+        confirmPaneShellForeground: async () => true
       })
     ).rejects.toThrow('daemon socket closed')
   })

@@ -1,5 +1,6 @@
 import { admitRemoteForegroundEvidence } from '../../shared/remote-foreground-evidence-admission'
 import { isClientOnlyUnverifiableInspection } from '../../shared/terminal-process-inspection'
+import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
 import type { PtyProcessInspection } from './pty-process-inspection'
 
 /**
@@ -28,18 +29,14 @@ const OTHER_IN_FRONT_REASONS = new Set([
   'ambiguous_foreground_group'
 ])
 
-/** Reads the fenced foreground evidence a terminal daemon or SSH relay inspection carries. */
-export function shellForegroundProofFromInspection(
+type LiveEvidence = Extract<RemoteForegroundEvidence, { verdict: 'live' }>
+
+/** The fenced live evidence a daemon or relay inspection carries for this PTY incarnation, or the
+ *  proof its answer already settles. */
+function readLiveEvidence(
   inspection: PtyProcessInspection,
-  expected: {
-    ptyId: string
-    incarnationId: string | null
-    requestStartedAtMonotonic: number
-    notCapturedBefore?: number
-    /** A host on this machine (the terminal daemon): its reply arrives as it is sent. */
-    replyIsLocal?: boolean
-  }
-): ShellForegroundProof {
+  expected: { ptyId: string; incarnationId: string | null; requestStartedAtMonotonic: number }
+): LiveEvidence | ShellForegroundProof {
   // Why throw: a client-only verdict (transport loss) is no answer from the host at all.
   if (isClientOnlyUnverifiableInspection(inspection)) {
     throw new Error(`execution host gave no answer: ${inspection.reason}`)
@@ -47,29 +44,15 @@ export function shellForegroundProofFromInspection(
   if (!('foregroundProcessEvidence' in inspection) || !inspection.foregroundProcessEvidence) {
     return 'unprovable'
   }
-  const receivedAtMonotonic = performance.now()
   const evidence = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
     expectedPtyId: expected.ptyId,
     expectedIncarnationId: expected.incarnationId,
     requestStartedAtMonotonic: expected.requestStartedAtMonotonic,
-    receivedAtMonotonic,
+    receivedAtMonotonic: performance.now(),
     lastAuthorityGeneration: null,
     lastObservationEpoch: -1
   })
   if (!evidence) {
-    return 'unread'
-  }
-  // Why: a shared capture that began before the command end still shows the exiting agent in
-  // front. `capturedAgeMs` runs from the capture's start to its reply, so subtracting it from the
-  // reply's send time gives the start: a local reply is sent as it arrives; a remote one was sent
-  // at the earliest when the request left, which only errs early.
-  const replySentAt = expected.replyIsLocal
-    ? receivedAtMonotonic
-    : expected.requestStartedAtMonotonic
-  if (
-    expected.notCapturedBefore !== undefined &&
-    replySentAt - evidence.capturedAgeMs < expected.notCapturedBefore
-  ) {
     return 'unread'
   }
   if (evidence.verdict === 'unverifiable') {
@@ -78,8 +61,31 @@ export function shellForegroundProofFromInspection(
     }
     return OTHER_IN_FRONT_REASONS.has(evidence.reason) ? 'other' : 'unread'
   }
-  if (evidence.verdict !== 'live') {
-    return 'other'
+  return evidence.verdict === 'live' && evidence.fence.platform === 'posix' ? evidence : 'other'
+}
+
+/** Reads an SSH relay's fenced foreground evidence, whose PTY root is the shell itself. */
+export function shellForegroundProofFromInspection(
+  inspection: PtyProcessInspection,
+  expected: {
+    ptyId: string
+    incarnationId: string | null
+    requestStartedAtMonotonic: number
+    notCapturedBefore?: number
+  }
+): ShellForegroundProof {
+  const evidence = readLiveEvidence(inspection, expected)
+  if (typeof evidence === 'string') {
+    return evidence
+  }
+  // Why: a shared capture that began before the command end still shows the exiting agent in
+  // front. `capturedAgeMs` runs from the capture's start to the reply, which left the relay no
+  // earlier than the request did, so this bound can only err early.
+  if (
+    expected.notCapturedBefore !== undefined &&
+    expected.requestStartedAtMonotonic - evidence.capturedAgeMs < expected.notCapturedBefore
+  ) {
+    return 'unread'
   }
   // Why TEMPORARY: this evidence cannot see a stopped job, so a Ctrl+Z'd agent reads as `shell`.
   return evidence.processName === null &&
@@ -89,15 +95,19 @@ export function shellForegroundProofFromInspection(
     : 'other'
 }
 
-/** The terminal daemon's own confirm proves a shell only after a full-screen exit, so its fenced
- *  evidence is read next; that evidence is POSIX-only, so a Windows daemon cannot tell. */
+/**
+ * The terminal daemon's own confirm proves a shell only after a full-screen exit. Otherwise its
+ * fenced evidence names the PTY's root, and this host, which is the daemon's, reads its own process
+ * table fresh: on macOS the root is login(1) and the shell its child in another process group, so
+ * the evidence's root-is-the-shell test never holds there. A Windows daemon cannot tell.
+ */
 export async function proveDaemonShellForeground(args: {
   ptyId: string
   incarnationId: string | null
-  notCapturedBefore?: number
   platform: NodeJS.Platform
   confirmShellForeground: () => Promise<boolean>
   inspectProcess: () => Promise<PtyProcessInspection>
+  confirmPaneShellForeground: (rootPid: number) => Promise<boolean>
 }): Promise<ShellForegroundProof> {
   if (await args.confirmShellForeground()) {
     return 'shell'
@@ -106,13 +116,15 @@ export async function proveDaemonShellForeground(args: {
     return 'unprovable'
   }
   const requestStartedAtMonotonic = performance.now()
-  return shellForegroundProofFromInspection(await args.inspectProcess(), {
+  const evidence = readLiveEvidence(await args.inspectProcess(), {
     ptyId: args.ptyId,
     incarnationId: args.incarnationId,
-    requestStartedAtMonotonic,
-    replyIsLocal: true,
-    ...(args.notCapturedBefore !== undefined ? { notCapturedBefore: args.notCapturedBefore } : {})
+    requestStartedAtMonotonic
   })
+  if (typeof evidence === 'string') {
+    return evidence
+  }
+  return (await args.confirmPaneShellForeground(evidence.fence.shellPid)) ? 'shell' : 'other'
 }
 
 /** An SSH relay has no shell confirm; its fenced evidence answers, keyed to the relay's own PTY id. */

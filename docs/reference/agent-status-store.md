@@ -96,8 +96,9 @@ shells leak their own 133;D. So at every command end of a PTY whose panes hold a
 runtime asks the execution host again, and reads its answer in this order:
 1. The hook's own agent process still running keeps the row.
 2. The pane's own shell proven back in front clears it as an ended process, keeping the resume
-   identity. A local node-pty proves that from a fresh process-table read (spawned shell in the
-   foreground, no job stopped); the terminal daemon and an SSH relay from their fenced foreground
+   identity. A local node-pty, and the terminal daemon (which is on the same machine), prove that
+   from a fresh read of this machine's process table: the pane's shell, under its login(1) wrapper
+   on macOS, in the foreground and no job stopped. An SSH relay proves it from its fenced foreground
    evidence (the shell's own process group in front, no agent named), which cannot see a stopped
    job (temporary), and only from a capture that began after the command end.
 3. Something else proven in front keeps the row; that command ends with its own 133;D.

@@ -15,6 +15,7 @@ import {
   type ShellForegroundProofOptions
 } from '../providers/shell-foreground-proof'
 import { isUnknownRequestTypeError } from './daemon-endpoint-errors'
+import { confirmPaneShellForegroundProcess } from '../providers/agent-foreground-process'
 
 export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshots {
   // Why: daemon-backed PTYs can host long-lived agents while detached; cleanup prompts must not treat them as idle shells.
@@ -108,9 +109,6 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
     return proveDaemonShellForeground({
       ptyId: id,
       incarnationId: expectedIncarnationId ?? null,
-      ...(options?.notCapturedBefore !== undefined
-        ? { notCapturedBefore: options.notCapturedBefore }
-        : {}),
       platform: process.platform,
       confirmShellForeground: () =>
         this.client
@@ -127,7 +125,8 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
             }
           ),
       inspectProcess: () =>
-        this.inspectProcess(id, expectedIncarnationId ? { expectedIncarnationId } : undefined)
+        this.inspectProcess(id, expectedIncarnationId ? { expectedIncarnationId } : undefined),
+      confirmPaneShellForeground: confirmPaneShellForegroundProcess
     })
   }
 
