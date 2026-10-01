@@ -213,6 +213,24 @@ describe('a Claude subagent waiting on a permission request', () => {
     expect(timeline.at(-1)).toBe('success -> settled done')
   })
 
+  it('goes back to working when the user dismisses the card and Orca declines the request', async () => {
+    const harness = await askedAt('fg-allow')
+    expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
+    const request = capturedScenario('fg-allow').find(
+      (event) => event.frame.type === 'control_request'
+    )
+    const requestId = text(request?.frame.request_id)
+    harness.adapter.bindPromptItemId('session-1', `item-${requestId}`, requestId)
+    await harness.adapter.dismissPrompt({
+      sessionId: 'session-1',
+      itemId: `item-${requestId}`,
+      fence: 7,
+      answer: true,
+      commit: async () => undefined
+    })
+    expect(harness.byDescription('Touch probe file')?.state).toBe('working')
+  })
+
   it('stops waiting when an interrupt cancels the request, then settles cancelled', async () => {
     const { timeline, subagent } = await replay('fg-interrupt')
     expect(aroundRequest(timeline)).toEqual([

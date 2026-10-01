@@ -3,10 +3,11 @@
 // A child is live from its `task_started` until its own terminal `task_updated` or
 // `task_notification`; nothing else ends it. A roster (`background_tasks_changed`), a turn ending
 // or a spawn call returning is the parent's view of the child, not the child's, and the CLI sends
-// every child its own terminal frame, so none of them settles one. When the session ends, the
-// host settles whatever is still live. A live child blocked on a permission request reads
-// waiting; no task frame says so, so the caller hands over which children a request blocks. Edges
-// wait here until the frame is journaled, then take the host clock.
+// every child its own terminal frame, so none of them settles one. When Orca ends the session and
+// proves its tree gone, what is still live is stopped (`stopLive`); any other end leaves it for the
+// host to settle as unknown. A live child blocked on a permission request reads waiting; no task
+// frame says so, so the caller hands over which children a request blocks. Edges wait here until
+// the frame is journaled, then take the host clock.
 
 import type {
   AgentChildWorkKind,
@@ -138,6 +139,14 @@ export class ClaudeChildWorkDecoder {
       if (task && previous.has(id) !== waiting.has(id)) {
         this.report(id, task, {})
       }
+    }
+  }
+
+  /** Orca ended the session and proved its process tree gone: what still ran is stopped. The
+   *  ending is Orca's, not the child's, so a frame of the child's own still replaces it. */
+  stopLive(): void {
+    for (const id of this.live.keys()) {
+      this.end(id, 'stopped', { basis: 'stop-acknowledged' })
     }
   }
 

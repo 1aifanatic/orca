@@ -287,7 +287,6 @@ export function createClaudeJournalTranslator(
       return turn.id
     },
     recordTurnStop: (turnId, cause) => turn.recordStop(turnId, cause),
-    withdrawTurnStop: (turnId) => turn.withdrawStop(turnId),
     get commandTurnId() {
       return turn.command ? turn.id : null
     },

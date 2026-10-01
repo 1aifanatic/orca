@@ -7,7 +7,7 @@ import {
   ORCAD_TEMPLATE_TARGETS_DIR,
   orcadTemplateCommonFilenames
 } from '../../src/shared/orcad-artifacts.ts'
-import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/orcad-bun-runtime.ts'
+import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/node-runtime-pin.ts'
 
 async function write(path, contents) {
   await mkdir(dirname(path), { recursive: true })

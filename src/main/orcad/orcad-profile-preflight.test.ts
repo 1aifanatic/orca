@@ -20,8 +20,8 @@ vi.mock('node:fs/promises', () => ({ readFile: fixture.readVersion }))
 vi.mock('../persistence/profile-state/profile-state-runtime-preflight', () => ({
   preflightProfileStateRuntime: fixture.sql
 }))
-vi.mock('./orcad-bun-native-preflight', () => ({
-  preflightOrcadBunNativeRuntime: fixture.native
+vi.mock('./orcad-runtime-native-preflight', () => ({
+  preflightOrcadNativeRuntime: fixture.native
 }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: fixture.run }))
 
