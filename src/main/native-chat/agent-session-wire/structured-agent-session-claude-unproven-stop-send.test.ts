@@ -593,6 +593,18 @@ it('sends a held message as soon as the old child exits after its retry gave up,
   expect(owedWindDown()).toBeUndefined()
 })
 
+it('finishes an owed stop as soon as the old child exits with nothing waiting, starting no agent', async () => {
+  const connection = await stopWithUnprovenClose(1)
+
+  connection.handlers.onExitAfterClose?.()
+  await eventually(() => expect(owedWindDown()).toBeUndefined())
+  await commitSettled()
+
+  expect(connection.closeCount).toBe(2)
+  expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
+  expect(claude.connections).toHaveLength(1)
+})
+
 it('sends a held message as soon as a stop that ran past its deadline proves the exit late', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
