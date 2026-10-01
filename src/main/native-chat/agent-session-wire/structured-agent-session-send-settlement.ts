@@ -18,10 +18,15 @@ type SettledSend = {
 
 type SendSettlement = SettledSend | 'pending' | 'missing'
 
-/** What ends a wait: the provider's answer, the host handing the message over, or either that or
- *  the message waiting behind a running command, which hands nothing over until it ends. A failed
- *  start recorded on the message ends each too, unless the wait runs `throughStartRetries`. */
-export type SendSettlementPoint = 'answered' | 'handed-over' | 'handed-over-or-behind-command'
+/** What ends a wait: the provider's answer, its final answer (a lost one, `unknown`, can still
+ *  turn accepted), the host handing the message over, or either that or the message waiting behind
+ *  a running command, which hands nothing over until it ends. A failed start recorded on the
+ *  message ends each too, unless the wait runs `throughStartRetries`. */
+export type SendSettlementPoint =
+  | 'answered'
+  | 'final'
+  | 'handed-over'
+  | 'handed-over-or-behind-command'
 
 export type SendSettlementWaitOptions = {
   signal?: AbortSignal
@@ -67,8 +72,10 @@ function settledSend(
     (wait.throughStartRetries || !isRetryingStructuredAgentSessionStart(submission)) &&
     (until === 'answered'
       ? submission.dispatchState === 'pending'
-      : isQueuedAgentJournalSubmission(submission) &&
-        !(until === 'handed-over-or-behind-command' && runningCommand(journal)))
+      : until === 'final'
+        ? submission.dispatchState === 'pending' || submission.dispatchState === 'unknown'
+        : isQueuedAgentJournalSubmission(submission) &&
+          !(until === 'handed-over-or-behind-command' && runningCommand(journal)))
   return waiting ? 'pending' : { cursor: journal.cursor(), value: { clientMessageId, submission } }
 }
 

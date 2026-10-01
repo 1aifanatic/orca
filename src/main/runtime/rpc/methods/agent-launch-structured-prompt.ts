@@ -110,22 +110,23 @@ export async function deliverStructuredAgentSessionLaunchPrompt(
   const settled = await args.host
     .waitForSendSettlement(args.sessionId, messageId, {
       budgetMs: args.budgetMs ?? STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS,
+      until: 'final',
       throughStartRetries: true
     })
     .catch(() => undefined)
   const submission = agentSessionSendSubmission(settled?.value)
   switch (submission?.dispatchState) {
-    // Unknown is a hand-over whose answer was lost: the agent was given it.
     case 'accepted':
-    case 'unknown':
       return { taken: true, messageId }
     case 'rejected':
       return {
         taken: false,
         warning: submission.reason ?? "The agent couldn't start, so its prompt wasn't sent."
       }
-    // Still waiting at the budget (a start being retried, or one still running).
+    // Still waiting at the budget: a start being retried or still running, or a hand-over whose
+    // answer was lost and may yet turn accepted.
     case 'pending':
+    case 'unknown':
     case undefined:
       throw agentSessionRefusalError(
         'agent_session_operation_unknown',

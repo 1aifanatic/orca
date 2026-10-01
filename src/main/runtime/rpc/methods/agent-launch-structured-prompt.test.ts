@@ -222,12 +222,41 @@ describe('a launch prompt followed to whether its agent took it', () => {
     })
   })
 
-  it('waits through an unknown hand-over and names the row', async () => {
+  it('waits through a lost answer, and names the row once it turns accepted', async () => {
+    vi.useFakeTimers()
     const { host, becomes } = settlingHost()
-    const delivered = deliver(host)
-    await vi.waitFor(() => expect(host.send).toHaveBeenCalled())
+    let answer: unknown
+    void deliver(host).then((value) => {
+      answer = value
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    becomes({ handedOverAt: 2, dispatchState: 'unknown' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(answer).toBeUndefined()
+
+    becomes({ dispatchState: 'accepted', resolvedAt: 3 })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answer).toMatchObject({ taken: true, messageId: expect.any(String) })
+  })
+
+  it('refuses as an unknown outcome when the answer is still lost at the budget', async () => {
+    vi.useFakeTimers()
+    const { host, becomes } = settlingHost()
+    let refused: unknown
+    let answered = false
+    void deliver(host).then(
+      () => {
+        answered = true
+      },
+      (error: unknown) => {
+        refused = error
+      }
+    )
+    await vi.advanceTimersByTimeAsync(0)
     becomes({ handedOverAt: 2, dispatchState: 'unknown' })
 
-    await expect(delivered).resolves.toMatchObject({ taken: true, messageId: expect.any(String) })
+    await vi.advanceTimersByTimeAsync(STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS)
+    expect(answered).toBe(false)
+    expect(refused).toMatchObject({ refusal: { code: 'agent_session_operation_unknown' } })
   })
 })
