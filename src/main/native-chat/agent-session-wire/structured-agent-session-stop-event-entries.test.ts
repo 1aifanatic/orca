@@ -170,6 +170,29 @@ describe("a person's Stop pause and the Stop events after it", () => {
     expect(await rig.handoff(held)).toBeUndefined()
   })
 
+  // The sweep and the Stop event's writer read working by one rule: a send whose reply was lost
+  // may still be running, so neither calls the chat resting.
+  it('holds through an idle tick while a send with a lost reply is unanswered: nothing is evicted', async () => {
+    rig = await createQueuedMessageTestRig({ idleSweep: MANUAL_IDLE_SWEEP })
+    const working = await rig.workingSend()
+    await queuedDraft('queued behind the turn')
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(working, 'stopped')
+    rig.dispatch.mockRejectedValueOnce(new Error('reply lost'))
+    const lost = rig.send('sent as the reply was lost')
+    await lost.result
+    await eventually(async () =>
+      expect(await rig.submission(lost.id)).toMatchObject({ dispatchState: 'unknown' })
+    )
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+
+    await idleSweep().tick()
+
+    expect(rig.closeSession).not.toHaveBeenCalled()
+    expect(stopEvents().map((event) => event.reason)).toEqual(['user-stop'])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  })
+
   it('ends when a host eviction ends a running turn: that Stop event is later', async () => {
     rig = await createQueuedMessageTestRig()
     const working = await rig.workingSend()

@@ -9,7 +9,7 @@
 // Owed work is derived on every tick, never stored, so there is nothing to disagree with it.
 
 import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
-import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
@@ -139,11 +139,16 @@ export class StructuredAgentSessionIdleSweep {
   }
 
   /** Work the running child still owes. Scoped to the child: with none, nothing here can pin the
-   *  handle, and a leftover prompt or turn row is only history. */
+   *  handle, and a leftover prompt or turn row is only history. Working reads as a stop's event
+   *  does (`isStructuredAgentSessionMainAgentWorking`), so a chat swept as resting writes none. */
   private owesWork(sessionId: string, session: StructuredAgentSessionHostSession): boolean {
     const items = session.journal.snapshot().items
     return (
-      activeStructuredAgentSessionTurnId(items) !== null ||
+      isStructuredAgentSessionMainAgentWorking(
+        session.journal.activeTurnId(),
+        session.journal.submissions(),
+        session.child?.fence
+      ) ||
       this.queuedOrDelivering(sessionId, session) ||
       agentChildWorkLiveness(this.deps.childWork(sessionId)) !== null ||
       this.deps.hasOpenDispatch(sessionId) ||
