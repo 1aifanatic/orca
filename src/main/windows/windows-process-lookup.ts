@@ -5,7 +5,7 @@ export type WindowsProcessLookup =
       status: 'present'
       /** Null when the process denied a query handle. */
       commandLine: string | null
-      /** Null when the native snapshot cannot report creation times on this host. */
+      /** Null when the snapshot has no creation time for it (old addon, or denied handle). */
       startedAtMs: number | null
     }
   | { status: 'missing' }

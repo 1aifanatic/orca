@@ -4,6 +4,7 @@ import { link, lstat, mkdir, readFile, readlink, unlink, writeFile } from 'node:
 import { join, win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { readWindowsProcessCreationTime } from '../windows/windows-process-table'
+import { readWindowsProcess } from '../windows/windows-process-lookup'
 
 const runtimeHostIdentity = `runtime:${randomUUID()}`
 const runtimeProcessIdentity = `runtime:${randomUUID()}`
@@ -188,6 +189,43 @@ export async function readManagedHookProcessIdentity(
   return await readProcessIdentity(pid)
 }
 
+// Same millisecond value the former per-PID CIM CreationDate query produced (all
+// three sources floor the kernel creation FILETIME), so older builds' identities match.
+async function readWindowsProcessIdentity(pid: number): Promise<string | null | undefined> {
+  // Why the one-handle read first: lock waiters re-read the owner every 20ms. The
+  // table covers hosts without the addon (SSH relays built off Windows).
+  const nativeStartedAt = readWindowsProcessCreationTime(pid)
+  if (nativeStartedAt !== null) {
+    // An exited process still has a creation time while any handle holds it open.
+    return pid !== process.pid && isWindowsProcessExited(pid)
+      ? null
+      : `win32:${pid}:${nativeStartedAt}`
+  }
+  const lookup = await readWindowsProcess(pid)
+  if (lookup.status === 'missing') {
+    return null
+  }
+  if (lookup.status === 'present' && lookup.startedAtMs !== null) {
+    return `win32:${pid}:${lookup.startedAtMs}`
+  }
+  try {
+    process.kill(pid, 0)
+    return pid === process.pid ? runtimeProcessIdentity : undefined
+  } catch (error) {
+    return hasCode(error, 'ESRCH') ? null : undefined
+  }
+}
+
+/** libuv answers signal 0 with ESRCH once the process has an exit code. */
+function isWindowsProcessExited(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return false
+  } catch (error) {
+    return hasCode(error, 'ESRCH')
+  }
+}
+
 async function readProcessIdentity(pid: number): Promise<string | null | undefined> {
   if (process.platform === 'linux') {
     try {
@@ -209,18 +247,7 @@ async function readProcessIdentity(pid: number): Promise<string | null | undefin
   }
 
   if (process.platform === 'win32') {
-    // Same millisecond value the former CIM CreationDate query produced (both floor the
-    // kernel creation FILETIME), so identities recorded by older builds still match.
-    const startedAt = readWindowsProcessCreationTime(pid)
-    if (startedAt !== null) {
-      return `win32:${pid}:${startedAt}`
-    }
-    try {
-      process.kill(pid, 0)
-      return pid === process.pid ? runtimeProcessIdentity : undefined
-    } catch (error) {
-      return hasCode(error, 'ESRCH') ? null : undefined
-    }
+    return await readWindowsProcessIdentity(pid)
   }
 
   bootIdentityPromise ??= readBootIdentity()
