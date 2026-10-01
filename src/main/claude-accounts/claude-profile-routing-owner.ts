@@ -9,6 +9,8 @@ export type ClaudeProfileLaunchDescriptor = {
   configHome: string
   readHome: string
   defaultHome: string
+  /** System Default's own CLAUDE_CONFIG_DIR, which launches inherit unpatched; absent when unset. */
+  inheritedConfigDir?: string
   pointerPath: string
   target: ClaudeAccountSelectionTarget
 }

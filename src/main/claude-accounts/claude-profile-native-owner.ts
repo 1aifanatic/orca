@@ -15,12 +15,10 @@ import { withWslClaudeProfileOwner } from './claude-profile-wsl-owner'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'
 
-/** The legacy resolver's home, except a value an outer Orca injected (its twin still marks it). */
-export function systemDefaultClaudeHome(env: NodeJS.ProcessEnv, userHome: string): string {
+/** The user's own CLAUDE_CONFIG_DIR, except a value an outer Orca injected (its twin still marks it). */
+export function inheritedClaudeConfigDir(env: NodeJS.ProcessEnv): string | null {
   const inherited = env.CLAUDE_CONFIG_DIR?.trim()
-  return inherited && inherited !== env[CLAUDE_INJECTED_CONFIG_DIR_ENV]?.trim()
-    ? inherited
-    : join(userHome, '.claude')
+  return inherited && inherited !== env[CLAUDE_INJECTED_CONFIG_DIR_ENV]?.trim() ? inherited : null
 }
 
 /** An owning runtime uses its own settings and paths, including when a paired client calls it. */
@@ -37,14 +35,15 @@ export function createNativeClaudeProfileRouting(args: {
   }
   dataRoot: string
   userHome: string
-  /** System Default's home: the inherited CLAUDE_CONFIG_DIR when set, as the legacy resolver reads it. */
-  defaultHome: () => string
+  /** System Default's CLAUDE_CONFIG_DIR; its home is ~/.claude when unset, as the legacy resolver reads it. */
+  inheritedConfigDir: () => string | null
   claudeVersion: () => Promise<string | null>
   wsl?: ClaudeProfileRoutingOwner
   worker?: Pick<ClaudeProfileSetupWorker, 'prepare'>
 }): ClaudeProfileRoutingService {
   const worker = args.worker ?? new ClaudeProfileSetupWorker()
   const pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
+  const defaultHome = () => args.inheritedConfigDir() ?? join(args.userHome, '.claude')
   const profileFor = (id: string) => {
     const profile = describeClaudeProfile(args.dataRoot, id, {
       executionHostId: 'local',
@@ -76,12 +75,14 @@ export function createNativeClaudeProfileRouting(args: {
         throw new Error('Selected Claude account is unavailable on this host')
       }
       const profile = id ? profileFor(id) : null
-      const defaultHome = args.defaultHome()
+      const inheritedConfigDir = profile ? null : args.inheritedConfigDir()
+      const home = defaultHome()
       return {
         profile,
-        configHome: profile?.home ?? defaultHome,
-        readHome: profile?.home ?? defaultHome,
-        defaultHome,
+        configHome: profile?.home ?? home,
+        readHome: profile?.home ?? home,
+        defaultHome: home,
+        ...(inheritedConfigDir ? { inheritedConfigDir } : {}),
         pointerPath,
         target
       }
@@ -91,7 +92,7 @@ export function createNativeClaudeProfileRouting(args: {
     capabilities: () => [CLAUDE_PROFILE_ROUTING_CAPABILITY],
     readHomes: () => {
       // Why ~/.claude too: step-1 setup pools every profile's history there, whatever System Default is.
-      const shared = [args.defaultHome(), join(args.userHome, '.claude')]
+      const shared = [defaultHome(), join(args.userHome, '.claude')]
       let ids: string[]
       try {
         ids = readdirSync(join(args.dataRoot, 'claude-profiles'))

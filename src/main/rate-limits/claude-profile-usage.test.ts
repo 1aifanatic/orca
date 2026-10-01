@@ -22,6 +22,7 @@ vi.mock('../../shared/child-process/run-process', () => ({
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
 import { readClaudeOAuthCredentials } from './claude-oauth-credentials'
 import { OAuthUsageError } from './claude-oauth-usage-error'
+import { createNativeClaudeProfileRouting } from '../claude-accounts/claude-profile-native-owner'
 const roots: string[] = []
 afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
@@ -161,4 +162,35 @@ it("keeps a 429's Retry-After and rate-limit message so polling waits it out", a
   expect(limited.usageMetadata?.retryAtMs).toBeLessThanOrEqual(Date.now() + 3_000_000)
   calls.usage.mockRejectedValueOnce(new OAuthUsageError(message, 429, true, null))
   expect((await fetchActiveClaudeRateLimits(f.options)).usageMetadata?.retryAtMs).toBeUndefined()
+})
+it("reads System Default's inherited CLAUDE_CONFIG_DIR Keychain item before the unsuffixed one", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-usage-inherited-'))
+  roots.push(root)
+  const inherited = join(root, 'own-claude-config')
+  const routing = createNativeClaudeProfileRouting({
+    store: {
+      getSettings: () => ({
+        claudeManagedAccounts: [],
+        activeClaudeManagedAccountId: null,
+        agentStatusHooksEnabled: false,
+        disabledTuiAgents: []
+      })
+    },
+    dataRoot: join(root, 'data'),
+    userHome: root,
+    inheritedConfigDir: () => inherited,
+    claudeVersion: async () => null,
+    worker: { prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }) }
+  })
+  calls.keychain.mockResolvedValue(null)
+  await fetchActiveClaudeRateLimits({
+    authPreparation: routing.preparation(routing.resolve({ runtime: 'host' }))
+  })
+  expect(calls.keychain.mock.calls).toEqual(
+    process.platform === 'darwin' ? [[inherited], [undefined]] : []
+  )
+  const managed = profile()
+  calls.keychain.mockClear()
+  await fetchActiveClaudeRateLimits(managed.options)
+  expect(calls.keychain.mock.calls).toEqual(process.platform === 'darwin' ? [[managed.home]] : [])
 })

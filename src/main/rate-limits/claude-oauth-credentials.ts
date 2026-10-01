@@ -4,7 +4,10 @@ import path from 'node:path'
 import { z } from 'zod'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { readActiveClaudeKeychainCredentialsStrict } from '../claude-accounts/keychain'
-import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
+import {
+  claudeLaunchConfigDir,
+  type ClaudeRuntimeAuthPreparation
+} from '../claude-accounts/runtime-auth/runtime-auth-types'
 
 export type ClaudeOAuthCredentialSource =
   | 'scoped-keychain'
@@ -22,6 +25,8 @@ export type ClaudeOAuthCredentialReadResult = {
 type ClaudeOAuthCredentialReadOptions = {
   credentialsFileConfigDir?: string
   keychainConfigDir?: string
+  /** System Default only: a managed profile never reads another login's item. */
+  unsuffixedKeychainFallback?: boolean
 }
 const schema = z.object({
   claudeAiOauth: z
@@ -69,15 +74,35 @@ export async function readClaudeCredentialsFromStrictKeychain(
     }
   }
 }
+async function readClaudeKeychainCredentials(
+  options?: ClaudeOAuthCredentialReadOptions
+): Promise<ClaudeOAuthCredentialReadResult> {
+  if (!options?.keychainConfigDir) {
+    return readClaudeCredentialsFromStrictKeychain(undefined, 'legacy-keychain')
+  }
+  const scoped = await readClaudeCredentialsFromStrictKeychain(
+    options.keychainConfigDir,
+    'scoped-keychain'
+  )
+  if (scoped.token || !options.unsuffixedKeychainFallback) {
+    return scoped
+  }
+  const legacy = await readClaudeCredentialsFromStrictKeychain(undefined, 'legacy-keychain')
+  // Why: as before profiles, a usable token wins over an expired or unreadable item.
+  const candidates = [scoped, legacy]
+  return (
+    candidates.find((candidate) => candidate.token) ??
+    candidates.find((candidate) => candidate.expired) ??
+    candidates.find((candidate) => candidate.unavailable) ??
+    legacy
+  )
+}
 export async function readClaudeOAuthCredentials(
   options?: ClaudeOAuthCredentialReadOptions
 ): Promise<ClaudeOAuthCredentialReadResult> {
   const keychain =
     process.platform === 'darwin'
-      ? await readClaudeCredentialsFromStrictKeychain(
-          options?.keychainConfigDir,
-          options?.keychainConfigDir ? 'scoped-keychain' : 'legacy-keychain'
-        )
+      ? await readClaudeKeychainCredentials(options)
       : emptyClaudeOAuthCredentialReadResult()
   if (keychain.token || keychain.expired) {
     return keychain
@@ -103,12 +128,14 @@ export function resolveClaudeOAuthCredentialReadOptions(
   if (!authPreparation) {
     return undefined
   }
+  const launchConfigDir = claudeLaunchConfigDir(authPreparation)
   return {
     credentialsFileConfigDir: authPreparation.configDir,
+    keychainConfigDir: launchConfigDir,
     // An unsuffixed lookup is exclusively System Default, never a fallback from a profile.
-    keychainConfigDir:
-      authPreparation.profileLaunch?.profile || authPreparation.envPatch.CLAUDE_CONFIG_DIR
-        ? authPreparation.configDir
-        : undefined
+    unsuffixedKeychainFallback:
+      Boolean(launchConfigDir) &&
+      !authPreparation.profileLaunch?.profile &&
+      authPreparation.provenance === 'system'
   }
 }

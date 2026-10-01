@@ -5,7 +5,7 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
 import {
   createNativeClaudeProfileRouting,
-  systemDefaultClaudeHome
+  inheritedClaudeConfigDir
 } from './claude-profile-native-owner'
 import {
   installClaudeProfileRoutingAuthority,
@@ -40,7 +40,7 @@ export class ClaudeRuntimeAuthService {
               : undefined,
           dataRoot: getAppEnvironment().getPath('userData'),
           userHome: homedir(),
-          defaultHome: () => systemDefaultClaudeHome(process.env, homedir()),
+          inheritedConfigDir: () => inheritedClaudeConfigDir(process.env),
           claudeVersion: () => probeClaudeCliVersionCached(resolveClaudeCommand())
         })
       )

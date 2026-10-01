@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createNativeClaudeProfileRouting,
-  systemDefaultClaudeHome
+  inheritedClaudeConfigDir
 } from './claude-profile-native-owner'
 import { resolveSkillProviderRoots } from '../runtime/runtime-skill-install-authority'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
@@ -57,7 +57,7 @@ function fixture() {
     },
     dataRoot,
     userHome: home,
-    defaultHome: () => inherited.dir ?? join(home, '.claude'),
+    inheritedConfigDir: () => inherited.dir ?? null,
     worker,
     claudeVersion: async () => '2.1.261'
   })
@@ -293,13 +293,13 @@ describe('native Claude profile authority', () => {
     expect(roots.claude).toBe(join('/legacy-claude', 'skills'))
   })
   it('System Default ignores a config dir an outer Orca injected', () => {
-    expect(systemDefaultClaudeHome({ CLAUDE_CONFIG_DIR: '/own' }, '/home/u')).toBe('/own')
+    expect(inheritedClaudeConfigDir({ CLAUDE_CONFIG_DIR: '/own' })).toBe('/own')
     expect(
-      systemDefaultClaudeHome(
-        { CLAUDE_CONFIG_DIR: '/outer/profile', ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/outer/profile' },
-        '/home/u'
-      )
-    ).toBe(join('/home/u', '.claude'))
-    expect(systemDefaultClaudeHome({}, '/home/u')).toBe(join('/home/u', '.claude'))
+      inheritedClaudeConfigDir({
+        CLAUDE_CONFIG_DIR: '/outer/profile',
+        ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/outer/profile'
+      })
+    ).toBeNull()
+    expect(inheritedClaudeConfigDir({})).toBeNull()
   })
 })

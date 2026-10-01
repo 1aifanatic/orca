@@ -3,6 +3,7 @@ import type { ProviderRateLimits } from '../../shared/rate-limit-types'
 import { RateLimitService } from './service'
 import { fetchClaudeRateLimits } from './claude-fetcher'
 import { fetchCodexRateLimits } from './codex-fetcher'
+import { createNativeClaudeProfileRouting } from '../claude-accounts/claude-profile-native-owner'
 import {
   asRateLimitWindow,
   deferred,
@@ -275,6 +276,42 @@ describe('RateLimitService', () => {
         sevenDay: null
       })
       expect(service.getState().claude?.session?.usedPercent).toBe(33)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('attributes statusline posts to System Default when it inherits CLAUDE_CONFIG_DIR', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(fetchClaudeRateLimits).mockResolvedValue(okProvider('claude', 18))
+      mockFreshBackgroundProviderFetches()
+      const routing = createNativeClaudeProfileRouting({
+        store: {
+          getSettings: () => ({
+            claudeManagedAccounts: [],
+            activeClaudeManagedAccountId: null,
+            agentStatusHooksEnabled: false,
+            disabledTuiAgents: []
+          })
+        },
+        dataRoot: '/fake-data',
+        userHome: '/fake-home',
+        inheritedConfigDir: () => '/own/claude-config',
+        claudeVersion: async () => null,
+        worker: { prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }) }
+      })
+      const service = new RateLimitService()
+      service.setClaudeAuthPreparationResolver(async () =>
+        routing.preparation(routing.resolve({ runtime: 'host' }))
+      )
+      await service.refresh()
+      service.ingestLiveClaudeRateLimits({
+        configDir: '/own/claude-config',
+        fiveHour: { used_percentage: 44 },
+        sevenDay: null
+      })
+      expect(service.getState().claude?.session?.usedPercent).toBe(44)
     } finally {
       vi.useRealTimers()
     }

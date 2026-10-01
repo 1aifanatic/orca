@@ -97,7 +97,7 @@ function fixture() {
     },
     dataRoot,
     userHome: home,
-    defaultHome: () => join(home, '.claude'),
+    inheritedConfigDir: () => null,
     claudeVersion: async () => '2.1.261',
     worker: { prepare: async (job) => worker.prepare({ ...job, installHooks: null }) }
   })

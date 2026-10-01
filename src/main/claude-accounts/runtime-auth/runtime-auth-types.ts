@@ -13,3 +13,10 @@ export type ClaudeRuntimeAuthPreparation = {
   managedRefreshDeferredByLivePty?: boolean
   provenance: string
 }
+
+/** The CLAUDE_CONFIG_DIR the launched Claude sees: the patched profile home or System Default's own. */
+export function claudeLaunchConfigDir(
+  preparation: ClaudeRuntimeAuthPreparation | undefined
+): string | undefined {
+  return preparation?.envPatch.CLAUDE_CONFIG_DIR ?? preparation?.profileLaunch?.inheritedConfigDir
+}
