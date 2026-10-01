@@ -58,6 +58,7 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
     } else {
       this.retirePtyAgentLaunchAuthority(ptyId, 'pty')
     }
+    this.commandEndAgentExit.onPtyExit(ptyId)
     const processDeathCertified =
       exitCode >= 0 || options.hostExitConfirmed === true || options.providerExitObserved === true
     if (processDeathCertified && exitPaneKeys.size > 0) {

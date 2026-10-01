@@ -11,8 +11,10 @@ import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import { clientOnlyUnverifiableInspection } from '../../shared/terminal-process-inspection'
 import {
   proveDaemonShellForeground,
-  type ShellForegroundProof
+  type ShellForegroundProof,
+  type ShellForegroundProofOptions
 } from '../providers/shell-foreground-proof'
+import { isUnknownRequestTypeError } from './daemon-endpoint-errors'
 
 export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshots {
   // Why: daemon-backed PTYs can host long-lived agents while detached; cleanup prompts must not treat them as idle shells.
@@ -97,22 +99,35 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
 
   async proveShellForeground(
     id: string,
-    options?: { expectedIncarnationId?: string }
+    options?: ShellForegroundProofOptions
   ): Promise<ShellForegroundProof> {
     if (this.protocolVersion < COMPLETION_PROCESS_INSPECTION_PROTOCOL_VERSION) {
       return 'unprovable'
     }
+    const expectedIncarnationId = options?.expectedIncarnationId
     return proveDaemonShellForeground({
       ptyId: id,
-      incarnationId: options?.expectedIncarnationId ?? null,
+      incarnationId: expectedIncarnationId ?? null,
+      ...(options?.notCapturedBefore !== undefined
+        ? { notCapturedBefore: options.notCapturedBefore }
+        : {}),
       platform: process.platform,
-      confirmShellForeground: async () =>
-        (
-          await this.client.request<{ confirmed: boolean }>('confirmShellForeground', {
-            sessionId: id
-          })
-        ).confirmed === true,
-      inspectProcess: () => this.inspectProcess(id, options)
+      confirmShellForeground: () =>
+        this.client
+          .request<{ confirmed: boolean }>('confirmShellForeground', { sessionId: id })
+          .then(
+            (result) => result.confirmed === true,
+            (error: unknown) => {
+              // Why: daemons from before this request (v27-v36) answer it as unknown; their fenced
+              // evidence still answers. Any other failure is loss of contact and must reject.
+              if (isUnknownRequestTypeError(error)) {
+                return false
+              }
+              throw error
+            }
+          ),
+      inspectProcess: () =>
+        this.inspectProcess(id, expectedIncarnationId ? { expectedIncarnationId } : undefined)
     })
   }
 

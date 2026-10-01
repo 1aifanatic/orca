@@ -36,14 +36,20 @@ function live(processName: string | null, foregroundPgid: number): RemoteForegro
   }
 }
 
-function proof(evidence: RemoteForegroundEvidence | undefined) {
+function proof(evidence: RemoteForegroundEvidence | undefined, notCapturedBefore?: number) {
+  const requestStartedAtMonotonic = performance.now()
   return shellForegroundProofFromInspection(
     {
       foregroundProcess: null,
       hasChildProcesses: false,
       ...(evidence ? { foregroundProcessEvidence: evidence } : {})
     },
-    { ptyId: PTY, incarnationId: INCARNATION, requestStartedAtMonotonic: performance.now() }
+    {
+      ptyId: PTY,
+      incarnationId: INCARNATION,
+      requestStartedAtMonotonic,
+      ...(notCapturedBefore !== undefined ? { notCapturedBefore } : {})
+    }
   )
 }
 
@@ -52,20 +58,37 @@ describe('fenced foreground evidence as a shell proof', () => {
     expect(proof(live(null, 100))).toBe('shell')
   })
 
-  const keepsTheRow: [string, RemoteForegroundEvidence][] = [
+  const somethingElseInFront: [string, RemoteForegroundEvidence][] = [
     ['an agent in front', live('codex', 200)],
     ['another command in front', live(null, 200)],
     // Job control off (`set +m`): the agent runs in the shell's own group.
     ['an agent in the shell group', live('claude', 100)],
     [
+      'a multiplexer in the pane',
+      { ...observation(), verdict: 'unverifiable', reason: 'multiplexer_boundary' }
+    ]
+  ]
+  it.each(somethingElseInFront)('proves something else in front for %s', (_name, evidence) => {
+    expect(proof(evidence)).toBe('other')
+  })
+
+  const unread: [string, RemoteForegroundEvidence][] = [
+    [
       'an unreadable process table',
       { ...observation(), verdict: 'unverifiable', reason: 'process_table_unreadable' }
     ],
     ['evidence for another incarnation', { ...live(null, 100), ptyIncarnationId: 'replacement' }],
-    ['stale evidence', { ...live(null, 100), capturedAgeMs: 5_000 }]
+    ['evidence past the admission age', { ...live(null, 100), capturedAgeMs: 5_000 }]
   ]
-  it.each(keepsTheRow)('keeps the row for %s', (_name, evidence) => {
-    expect(proof(evidence)).toBe('other')
+  it.each(unread)('reads no answer from %s', (_name, evidence) => {
+    expect(proof(evidence)).toBe('unread')
+  })
+
+  it('reads no answer from a shared capture that began before the command end', () => {
+    const commandEndedAt = performance.now() - 50
+    // Captured 300 ms before the request: the exiting agent was still in front then.
+    expect(proof({ ...live('codex', 200), capturedAgeMs: 300 }, commandEndedAt)).toBe('unread')
+    expect(proof({ ...live(null, 100), capturedAgeMs: 10 }, commandEndedAt)).toBe('shell')
   })
 
   const cannotTell: [string, RemoteForegroundEvidence | undefined][] = [

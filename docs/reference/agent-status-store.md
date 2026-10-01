@@ -99,17 +99,19 @@ runtime asks the execution host again, and reads its answer in this order:
    identity. A local node-pty proves that from a fresh process-table read (spawned shell in the
    foreground, no job stopped); the terminal daemon and an SSH relay from their fenced foreground
    evidence (the shell's own process group in front, no agent named), which cannot see a stopped
-   job (temporary).
-3. Something else in front keeps the row.
-4. A host that cannot be reached keeps it: loss of contact is never evidence of an exit.
-5. A host that answered but cannot tell (a WSL guest, a Windows daemon or relay, a daemon or relay
-   that predates foreground evidence) leaves the mark as the only evidence, so it stands as the
-   exit, as the desktop pane treats it. Temporary: there a nested shell's 133;D under a live TUI
-   drops its row, until those hosts report shell-owns-the-foreground evidence.
+   job (temporary), and only from a capture that began after the command end.
+3. Something else proven in front keeps the row; that command ends with its own 133;D.
+4. No trustworthy answer (a host that cannot be reached, an unreadable process table, a capture
+   older than the command end) keeps the row, and is asked again a bounded number of times: loss
+   of contact is never evidence of an exit.
+5. A host that answered but cannot tell (a WSL guest, a Windows daemon or relay, a daemon that
+   predates foreground evidence) leaves the mark as the only evidence, so it stands as the exit.
+   That is a presentation choice, not a proven exit. Temporary: there a nested shell's 133;D
+   under a live TUI drops its row, until those hosts report shell-owns-the-foreground evidence.
 
 A kept row is not latched: the PTY's next command end asks again, and a confirmed PTY exit clears
-it. A verdict acts only on the row it checked, so a session that started while it was read keeps
-its row. The clear also records which session ended, so a reconnecting SSH relay's replay of that
+it. A verdict acts only on the row it checked: a session that started while it was read keeps its
+row, and a row the same session rewrote meanwhile (its own late hook) is checked again. The clear also records which session ended, so a reconnecting SSH relay's replay of that
 session's cached status is refused; any newer evidence (a live event, a new turn, another
 session) is admitted and drops the record.
 

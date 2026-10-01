@@ -12,7 +12,7 @@ import type {
   AgentSessionSurfaceBinding
 } from '../../shared/agent-session-host-authority'
 import type { PtyProcessInfo } from './pty-process-info'
-import type { ShellForegroundProof } from './shell-foreground-proof'
+import type { ShellForegroundProof, ShellForegroundProofOptions } from './shell-foreground-proof'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
@@ -246,7 +246,7 @@ export type IPtyProvider = {
    *  cannot be reached. */
   proveShellForeground?: (
     id: string,
-    options?: { expectedIncarnationId?: string }
+    options?: ShellForegroundProofOptions
   ) => Promise<ShellForegroundProof>
   serialize(ids: string[]): Promise<string>
   revive(state: string): Promise<void>

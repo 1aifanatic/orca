@@ -21,10 +21,20 @@ import {
 // scanner, which only proves a shell after a full-screen exit. A Codex run in the normal screen
 // buffer that quits must still be verified, from the daemon's fenced process evidence.
 
-const processTable = vi.hoisted((): { rows: ProcessTableRow[] } => ({ rows: [] }))
+const processTable = vi.hoisted(
+  (): {
+    rows: ProcessTableRow[]
+    captures: { rows: ProcessTableRow[]; capturedAgeMs: number }[]
+  } => ({
+    rows: [],
+    captures: []
+  })
+)
 vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => ({
   ...(await importOriginal<typeof ProcessTableSnapshotReader>()),
-  getStrictProcessTableSnapshotWithAge: async () => ({ rows: processTable.rows, capturedAgeMs: 0 })
+  // A queued capture is served first, as the shared cache would; then a fresh one.
+  getStrictProcessTableSnapshotWithAge: async () =>
+    processTable.captures.shift() ?? { rows: processTable.rows, capturedAgeMs: 0 }
 }))
 
 vi.mock('../git/worktree', () => {
@@ -111,6 +121,7 @@ afterEach(async () => {
     await teardown()
   }
   processTable.rows = []
+  processTable.captures = []
   vi.restoreAllMocks()
 })
 
@@ -135,9 +146,18 @@ async function launchDaemonCodexPane(
         proveDaemonShellForeground({
           ptyId: id,
           incarnationId: options?.expectedIncarnationId ?? null,
+          ...(options?.notCapturedBefore !== undefined
+            ? { notCapturedBefore: options.notCapturedBefore }
+            : {}),
           platform,
           confirmShellForeground: () => terminalHost.confirmShellForeground(id),
-          inspectProcess: () => terminalHost.inspectProcess(id, options)
+          inspectProcess: () =>
+            terminalHost.inspectProcess(
+              id,
+              options?.expectedIncarnationId
+                ? { expectedIncarnationId: options.expectedIncarnationId }
+                : undefined
+            )
         })
     }
   })
@@ -204,6 +224,26 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
       daemonPane.host.server,
       daemonPane.host.readers,
       daemonPane.pane.paneKey
+    )
+  })
+
+  it('re-asks when the shared capture predates the exit, and clears on the fresh one', async () => {
+    const daemonPane = await launchDaemonCodexPane('pty-daemon-stale-capture')
+    // A poll's capture from just before the exit, served from the cache 300 ms later.
+    processTable.captures = [{ rows: paneProcesses('codex'), capturedAgeMs: 300 }]
+    processTable.rows = paneProcesses('shell')
+
+    await runCommandToItsEnd(daemonPane, 'daemon fact')
+    expect(liveRow(daemonPane.host.server, daemonPane.pane.paneKey)?.state).toBe('done')
+
+    await vi.waitFor(
+      () =>
+        expectEveryReaderSawTheClear(
+          daemonPane.host.server,
+          daemonPane.host.readers,
+          daemonPane.pane.paneKey
+        ),
+      { timeout: 2_000, interval: 50 }
     )
   })
 })

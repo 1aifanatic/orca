@@ -244,28 +244,50 @@ describe('a command end that does not prove the agent exited keeps its row every
     expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
   })
 
-  it('a session that starts while the check is read keeps its row', async () => {
+  for (const answerProof of ['shell', 'unprovable'] as const) {
+    it(`a session that starts while the check is read keeps its row (${answerProof})`, async () => {
+      const host = await wire()
+      let answer: (proof: ShellForegroundProof) => void = () => {}
+      host.shellProof.mockImplementationOnce(
+        () => new Promise<ShellForegroundProof>((resolve) => (answer = resolve))
+      )
+      const pane = await launchAgentPane(host, `pty-next-session-${answerProof}`)
+      await claudeIsWorking(host, pane)
+
+      await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+      // The first agent exited; the user starts another before the slow read lands.
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      await postHook(host.server, 'claude', pane, {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'second-session',
+        prompt: 'a different task'
+      })
+      answer(answerProof)
+      await settle()
+
+      expect(liveRow(host.server, pane.paneKey)?.prompt).toBe('a different task')
+      expect(host.readers.windowClears).toEqual([])
+      expect(host.shellProof).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it("the exiting agent's own late hook mid-check gets a second look, which clears it", async () => {
     const host = await wire()
     let answer: (proof: ShellForegroundProof) => void = () => {}
     host.shellProof.mockImplementationOnce(
       () => new Promise<ShellForegroundProof>((resolve) => (answer = resolve))
     )
-    const pane = await launchAgentPane(host, 'pty-next-session')
+    const pane = await launchAgentPane(host, 'pty-late-own-hook')
     await claudeIsWorking(host, pane)
 
     await endCommand(host.runtime, pane.ptyId, 'shell bytes')
-    // The first agent exited; the user starts another before the slow read lands.
     await new Promise((resolve) => setTimeout(resolve, 2))
-    await postHook(host.server, 'claude', pane, {
-      hook_event_name: 'UserPromptSubmit',
-      session_id: 'second-session',
-      prompt: 'a different task'
-    })
+    await claudeIsDone(host, pane)
     answer('shell')
     await settle()
 
-    expect(liveRow(host.server, pane.paneKey)?.prompt).toBe('a different task')
-    expect(host.readers.windowClears).toEqual([])
+    expect(host.shellProof).toHaveBeenCalledTimes(2)
+    expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
   })
 
   it('a command end that lands while a check is in flight is checked too', async () => {
@@ -367,5 +389,61 @@ describe('an SSH pane after a verified exit', () => {
     )
 
     expect(liveRow(host.server, pane.paneKey)).toBeUndefined()
+  })
+})
+
+describe('an answer that could not be read', () => {
+  it('is asked again shortly, without waiting for another command end', async () => {
+    const host = await wire()
+    host.shellProof.mockResolvedValueOnce('unread')
+    const pane = await launchAgentPane(host, 'pty-unread-reask')
+    await claudeIsWorking(host, pane)
+
+    await endCommand(host.runtime, pane.ptyId, 'daemon fact')
+    expectNoReaderLostTheRow(host.server, host.readers, pane.paneKey, 'working')
+
+    await vi.waitFor(() => expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey), {
+      timeout: 2_000,
+      interval: 50
+    })
+    expect(host.shellProof).toHaveBeenCalledTimes(2)
+  })
+
+  it('is asked a bounded number of times, then waits for the next command end', async () => {
+    const host = await wire()
+    host.shellProof.mockResolvedValue('unread')
+    const pane = await launchAgentPane(host, 'pty-unread-bounded')
+    await claudeIsWorking(host, pane)
+
+    await endCommand(host.runtime, pane.ptyId, 'daemon fact')
+    await new Promise((resolve) => setTimeout(resolve, 2_400))
+
+    expect(host.shellProof).toHaveBeenCalledTimes(3)
+    expectNoReaderLostTheRow(host.server, host.readers, pane.paneKey, 'working')
+  })
+
+  it('is not asked again once something else is proven in front', async () => {
+    const host = await wire()
+    host.shellProof.mockResolvedValue('other')
+    const pane = await launchAgentPane(host, 'pty-other-no-reask')
+    await claudeIsWorking(host, pane)
+
+    await endCommand(host.runtime, pane.ptyId, 'daemon fact')
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
+    expect(host.shellProof).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves no re-ask behind once the PTY exits', async () => {
+    const host = await wire()
+    host.shellProof.mockResolvedValue('unread')
+    const pane = await launchAgentPane(host, 'pty-unread-exit')
+    await claudeIsWorking(host, pane)
+
+    await endCommand(host.runtime, pane.ptyId, 'daemon fact')
+    await host.runtime.onPtyExit(pane.ptyId, 0, `${pane.ptyId}-incarnation`)
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
+    expect(host.shellProof).toHaveBeenCalledTimes(1)
   })
 })

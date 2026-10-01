@@ -23,7 +23,11 @@ import type { FleetAgentStatusEvidence } from '../../shared/orchestration-fleet-
 import { readOrchestrationFleetAgentStatusSnapshot } from './orchestration-fleet-agent-status-snapshot'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { matchesProcessIncarnation } from './orchestration/worker-terminal-process-liveness'
-import { CommandEndAgentExitVerifier } from './command-end-agent-exit-verifier'
+import {
+  CommandEndAgentExitVerifier,
+  liveRowAnchor,
+  type CommandEndRowAnchor
+} from './command-end-agent-exit-verifier'
 
 export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller {
   /** Every pane key this PTY could be addressed by, including restored receipts. */
@@ -142,34 +146,29 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
 
   protected readonly commandEndAgentExit = new CommandEndAgentExitVerifier({
     readLiveRowAnchors: (ptyId) => {
-      const anchors = new Map<string, number>()
+      const anchors = new Map<string, CommandEndRowAnchor>()
       for (const paneKey of this.collectAgentStatusPaneKeysForPty(ptyId)) {
-        const row = this.getAgentProviderSessionRowsForPaneFn?.(paneKey).find(
-          (entry) => entry.providerSessionOnly !== true
-        )
-        if (row) {
-          anchors.set(paneKey, row.receivedAt)
+        const anchor = liveRowAnchor(this.getAgentProviderSessionRowsForPaneFn?.(paneKey))
+        if (anchor) {
+          anchors.set(paneKey, anchor)
         }
       }
       return anchors
     },
     checkHookAgentPresence: async (paneKey) =>
       (await this.checkHookAgentPresenceFn?.(paneKey)) ?? null,
-    proveShellForeground: async (ptyId) => {
-      const incarnationId = this.ptysById.get(ptyId)?.incarnationId
-      return (
-        (await this.ptyController?.proveShellForeground?.(
-          ptyId,
-          incarnationId ? { expectedIncarnationId: incarnationId } : undefined
-        )) ?? 'other'
-      )
+    proveShellForeground: async (ptyId, notCapturedBefore) => {
+      const expectedIncarnationId = this.ptysById.get(ptyId)?.incarnationId ?? undefined
+      const options = { expectedIncarnationId, notCapturedBefore }
+      return (await this.ptyController?.proveShellForeground?.(ptyId, options)) ?? 'other'
     },
     reconcileEndedProcess: (paneKey, armedRowReceivedAt) =>
       this.reconcileAgentStatusForEndedProcessFn?.([paneKey], {
         // The shell outlived its agent, so the session stays resumable in place.
         preserveResumeIdentity: true,
         armedRowReceivedAt
-      })
+      }),
+    now: () => performance.now()
   })
 
   /** A command end (OSC 133;D): the launch token lives on in the shell's environment, so its

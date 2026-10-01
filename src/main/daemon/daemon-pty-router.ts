@@ -9,7 +9,10 @@ import type {
   PtySpawnResult
 } from '../providers/types'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
-import type { ShellForegroundProof } from '../providers/shell-foreground-proof'
+import type {
+  ShellForegroundProof,
+  ShellForegroundProofOptions
+} from '../providers/shell-foreground-proof'
 import { shouldHandoffDaemonHistory } from './daemon-history-handoff'
 import type { DaemonPtyRouterDataEvent, DaemonPtyRouterExitEvent } from './daemon-pty-router-events'
 import { DaemonSessionOwnerResolver } from './daemon-session-owner-resolution'
@@ -207,7 +210,7 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   proveShellForeground(
     id: string,
-    options?: { expectedIncarnationId?: string }
+    options?: ShellForegroundProofOptions
   ): Promise<ShellForegroundProof> {
     return this.adapterFor(id).proveShellForeground(id, options)
   }

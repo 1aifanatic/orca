@@ -4,8 +4,9 @@ import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalOscColorQueryReplyColors } from '../../shared/terminal-osc-color-reply'
 import { parseAppSshPtyId, toAppSshPtyId, toRelaySshPtyId } from './ssh-pty-id'
 import {
-  shellForegroundProofFromInspection,
-  type ShellForegroundProof
+  proveRelayShellForeground,
+  type ShellForegroundProof,
+  type ShellForegroundProofOptions
 } from './shell-foreground-proof'
 import { createSshPtyAppliedSizeReader } from './ssh-pty-applied-size'
 import type {
@@ -74,17 +75,13 @@ export class SshPtyProvider implements IPtyProvider {
     id: string,
     options?: { expectedIncarnationId?: string; scanChildProcesses?: boolean }
   ): Promise<PtyProcessInspection> => this.rpcOperations.inspectProcess(id, options)
-  proveShellForeground = async (
+  proveShellForeground = (
     id: string,
-    options?: { expectedIncarnationId?: string }
-  ): Promise<ShellForegroundProof> => {
-    const requestStartedAtMonotonic = performance.now()
-    return shellForegroundProofFromInspection(await this.inspectProcess(id, options), {
-      ptyId: parseAppSshPtyId(id)?.relayPtyId ?? id,
-      incarnationId: options?.expectedIncarnationId ?? null,
-      requestStartedAtMonotonic
-    })
-  }
+    options?: ShellForegroundProofOptions
+  ): Promise<ShellForegroundProof> =>
+    proveRelayShellForeground(parseAppSshPtyId(id)?.relayPtyId ?? id, options, (inspect) =>
+      this.inspectProcess(id, inspect)
+    )
   serialize = (ids: string[]): Promise<string> => this.rpcOperations.serialize(ids)
   revive = (state: string): Promise<void> => this.rpcOperations.revive(state)
   getDefaultShell = (): Promise<string> => this.rpcOperations.getDefaultShell()
