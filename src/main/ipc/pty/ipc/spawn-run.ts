@@ -1,6 +1,12 @@
+import { toSshExecutionHostId } from '../../../../shared/execution-host'
 import { rejectPaneSpawnReservation, reserveIdlePaneSpawn } from '../pane/spawn-reservation'
 import { ptySizes } from '../delivery/visibility-state'
-import { beginPtyIpcSpawn, resolveEarlyPaneSpawnReservationKey } from './spawn-begin'
+import {
+  beginPtyIpcSpawn,
+  resolveEarlyPaneKey,
+  resolveEarlyPaneSpawnReservationKey
+} from './spawn-begin'
+import { resolveStablePaneOwner } from '../pane/stable-owner'
 import { preparePtyIpcSpawnPreflight } from './spawn-preflight'
 import { assemblePtyIpcSpawnEnv } from './spawn-env'
 import { buildPtyIpcSpawnOptions } from './spawn-options'
@@ -42,9 +48,34 @@ export async function runPtyIpcSpawn(deps: PtySpawnIpcDeps, args: PtySpawnIpcArg
   }
   try {
     if (args.replacesPtyId !== undefined) {
-      // Why: stop before resolving the pane owner, so the spawn below finds a dead owner and
-      // launches fresh instead of reattaching the process this restart exists to replace.
+      const owner = resolveStablePaneOwner(
+        deps.runtime,
+        deps.store,
+        resolveEarlyPaneKey(args),
+        args.worktreeId,
+        args.connectionId
+      )
+      if (owner && owner.ptyId !== args.replacesPtyId) {
+        throw new Error('terminal_pane_owner_changed')
+      }
       await deps.stopReplacedPty(args.replacesPtyId)
+      // A stopped daemon session is tombstoned; retire its binding before owner resolution can reattach it.
+      if (
+        owner?.hasPersistedBinding &&
+        args.worktreeId &&
+        !(await deps.store?.retirePtyBinding(
+          {
+            worktreeId: args.worktreeId,
+            tabId: owner.tabId,
+            leafId: owner.leafId,
+            ptyId: owner.ptyId,
+            incarnationId: owner.persistedIncarnationId
+          },
+          args.connectionId ? toSshExecutionHostId(args.connectionId) : undefined
+        ))
+      ) {
+        throw new Error('terminal_pane_owner_changed')
+      }
     }
     triggerPtySpawnPushTargetMaterialization(deps, args)
     const early = await beginPtyIpcSpawn(ctx)

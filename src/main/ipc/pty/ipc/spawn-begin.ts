@@ -17,7 +17,7 @@ import type { PtyIpcSpawnState } from './spawn-state'
 import type { PtySpawnIpcArgs } from './spawn-types'
 
 /** The pane key a spawn names before preflight; null when it names no stable pane. */
-function resolveEarlyPaneKey(args: PtySpawnIpcArgs): string | null {
+export function resolveEarlyPaneKey(args: PtySpawnIpcArgs): string | null {
   const leafId =
     typeof args.leafId === 'string' && isTerminalLeafId(args.leafId) ? args.leafId : null
   return typeof args.worktreeId === 'string' &&
