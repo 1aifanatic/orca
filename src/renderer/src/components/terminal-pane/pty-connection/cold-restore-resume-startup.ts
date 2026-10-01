@@ -25,7 +25,9 @@ import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySession): void {
-  session.buildColdRestoreAgentResumeStartup = (): ColdRestoreAgentResumeStartup | null => {
+  const resolveStartup = (
+    onRefused?: (message: string) => void
+  ): ColdRestoreAgentResumeStartup | null => {
     if (session.pendingStartupCommand) {
       return null
     }
@@ -65,7 +67,7 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       return null
     }
     if (!agentResumeIdentityPermits(agent, providerSession)) {
-      session.reportError(AGENT_RESUME_IDENTITY_ERROR)
+      onRefused?.(AGENT_RESUME_IDENTITY_ERROR)
       return null
     }
     const matchingSleepingLaunchConfig =
@@ -127,5 +129,10 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       hasSleepingRecord: Boolean(sleepingRecord),
       sleepingRecordEntry
     }
+  }
+  // Why: builds also run speculatively before a live reattach, so only an applied cold restore reports.
+  session.buildColdRestoreAgentResumeStartup = () => resolveStartup()
+  session.reportColdRestoreAgentResumeRefusal = (): void => {
+    resolveStartup((message) => session.reportError(message))
   }
 }

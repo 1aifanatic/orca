@@ -24,6 +24,7 @@ export function bindDeferredColdRestoreAndSnapshot(session: ConnectPanePtySessio
     startup: ColdRestoreAgentResumeStartup | null
   ): boolean => {
     if (!startup) {
+      session.reportColdRestoreAgentResumeRefusal()
       return false
     }
     const state = useAppStore.getState()

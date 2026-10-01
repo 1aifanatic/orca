@@ -144,60 +144,105 @@ describe('connectPanePty', () => {
     await restoreTerminalTestGlobals()
   })
 
-  it.each(['mixed'] as const)(
-    'refuses a %s saved identity without typing and still permits a fresh launch',
-    async () => {
-      const { connectPanePty } = await import('./pty-connection')
-      const paneKey = makePaneKey('tab-1', LEAF_1)
-      mockStoreState.sleepingAgentSessionsByPaneKey = {
-        [paneKey]: {
-          paneKey,
-          tabId: 'tab-1',
-          worktreeId: 'wt-1',
-          agent: 'claude',
-          providerSession: {
-            key: 'session_id',
-            id: '0195f2ce-1111-4000-8000-000000000001',
-            resumeIdentity: { agent: 'codex' }
-          },
-          prompt: 'saved work',
-          state: 'working',
-          capturedAt: 1,
-          updatedAt: 1
-        }
-      }
-      mockStoreState.tabsByWorktree = { 'wt-1': [{ id: 'tab-1', ptyId: 'saved-pty' }] }
-      const refused = createMockTransport('saved-pty')
-      transportFactoryQueue.push(refused)
-      const deps = createDeps({
-        restoredLeafId: LEAF_1,
-        restoredPtyIdByLeafId: { [LEAF_1]: 'saved-pty' }
-      })
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing connection harness supplies the pane, manager and dependency methods exercised by connectPanePty.
-      connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
-      await flushAsyncTicks(20)
-      expect(deps.onPtyErrorRef.current).toHaveBeenCalledWith(1, AGENT_RESUME_IDENTITY_ERROR)
-      expect(refused.sendInput).not.toHaveBeenCalled()
-      expect(refused.connect).toHaveBeenCalled()
-      for (const [options] of refused.connect.mock.calls) {
-        expect(options.command).toBeUndefined()
-      }
-      expect(mockStoreState.clearSleepingAgentSession).not.toHaveBeenCalled()
+  const SESSION_ID = '0195f2ce-1111-4000-8000-000000000001'
+  // A Claude pane whose saved locator is owned by Codex: the one identity mismatch resume refuses.
+  const mismatchedSession = {
+    key: 'session_id',
+    id: SESSION_ID,
+    resumeIdentity: { agent: 'codex' }
+  }
 
-      const fresh = createMockTransport('fresh-pty')
-      transportFactoryQueue.push(fresh)
-      const freshDeps = createDeps({
-        startup: { command: 'codex', launchAgent: 'codex', startupCommandDelivery: 'shell-ready' }
-      })
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Same connection harness; the fresh agent opens in a pane with no saved session.
-      connectPanePty(createPane(2) as never, createManager(2) as never, freshDeps as never)
-      await flushAsyncTicks(20)
-      expect(freshDeps.onPtyErrorRef.current).not.toHaveBeenCalled()
-      expect(createdTransportOptions.at(-1)).toMatchObject({
-        command: 'codex',
-        launchAgent: 'codex'
-      })
-      expect(fresh.connect).toHaveBeenCalled()
+  it('reports nothing when a mismatched pane reattaches live and nothing is resumed', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const paneKey = makePaneKey('tab-1', LEAF_1)
+    mockStoreState.agentStatusByPaneKey = {
+      [paneKey]: {
+        paneKey,
+        agentType: 'claude',
+        state: 'working',
+        prompt: 'saved work',
+        connectionId: null,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        updatedAt: Date.now(),
+        stateStartedAt: Date.now(),
+        stateHistory: [],
+        providerSession: mismatchedSession
+      }
     }
-  )
+    mockStoreState.tabsByWorktree = { 'wt-1': [{ id: 'tab-1', ptyId: 'saved-pty' }] }
+    const live = createMockTransport('saved-pty')
+    transportFactoryQueue.push(live)
+    const deps = createDeps({
+      restoredLeafId: LEAF_1,
+      restoredPtyIdByLeafId: { [LEAF_1]: 'saved-pty' }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing connection harness supplies the pane, manager and dependency methods exercised by connectPanePty.
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await flushAsyncTicks(20)
+
+    expect(live.connect).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'saved-pty' }))
+    expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
+  })
+
+  it('refuses a mismatched cold restore once, types nothing, and lets the same pane start fresh', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const paneKey = makePaneKey('tab-1', LEAF_1)
+    mockStoreState.sleepingAgentSessionsByPaneKey = {
+      [paneKey]: {
+        paneKey,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        agent: 'claude',
+        providerSession: mismatchedSession,
+        prompt: 'saved work',
+        state: 'working',
+        capturedAt: 1,
+        updatedAt: 1
+      }
+    }
+    mockStoreState.tabsByWorktree = { 'wt-1': [{ id: 'tab-1', ptyId: 'lost-pty' }] }
+    const transport = createMockTransport('fresh-pty')
+    transport.connect.mockImplementation(async ({ sessionId }: { sessionId?: string }) =>
+      sessionId
+        ? { id: 'fresh-pty', coldRestore: { scrollback: 'cold-payload', cwd: '/tmp/wt-1' } }
+        : 'fresh-pty'
+    )
+    transportFactoryQueue.push(transport)
+    const deps = createDeps({
+      restoredLeafId: LEAF_1,
+      restoredPtyIdByLeafId: { [LEAF_1]: 'lost-pty' }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing connection harness supplies the pane, manager and dependency methods exercised by connectPanePty.
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await flushAsyncTicks(20)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+
+    expect(transport.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'lost-pty' })
+    )
+    expect(deps.onPtyErrorRef.current.mock.calls).toEqual([[1, AGENT_RESUME_IDENTITY_ERROR]])
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    for (const [options] of transport.connect.mock.calls) {
+      expect(options.command).toBeUndefined()
+    }
+    expect(mockStoreState.clearSleepingAgentSession).not.toHaveBeenCalled()
+
+    // The refused pane is a plain shell: a fresh agent typed into that same pane reaches its PTY.
+    expect(transport.sendInput('codex\r', 'user')).toBe(true)
+    expect(transport.sendInput).toHaveBeenCalledWith('codex\r', 'user')
+
+    // A fresh agent launched into the same tab and pane opens without another refusal.
+    const fresh = createMockTransport('fresh-agent-pty')
+    transportFactoryQueue.push(fresh)
+    const freshDeps = createDeps({
+      startup: { command: 'codex', launchAgent: 'codex', startupCommandDelivery: 'shell-ready' }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Same connection harness, reconnecting the refused pane with an explicit agent launch.
+    connectPanePty(createPane(1) as never, createManager(1) as never, freshDeps as never)
+    await flushAsyncTicks(20)
+    expect(freshDeps.onPtyErrorRef.current).not.toHaveBeenCalled()
+    expect(createdTransportOptions.at(-1)).toMatchObject({ command: 'codex', launchAgent: 'codex' })
+    expect(fresh.connect).toHaveBeenCalled()
+  })
 })
