@@ -203,6 +203,7 @@ describe('a retired id the journal does not show as rejected', () => {
   })
 
   it('is never retired when its Retry rotates an id the host refused as expired, which may have reached the agent', () => {
+    const inDoubt = settled({ dispatchState: 'unknown', reason: 'lost reply' })
     commitStructuredAgentSessionOutbox(SESSION, [
       {
         ...createStructuredAgentSessionOutboxEntry({
@@ -220,7 +221,7 @@ describe('a retired id the journal does not show as rejected', () => {
     retryStructuredAgentSessionOutboxEntry({
       clientMessageId: OLD,
       sessionId: SESSION,
-      submissions: [settled({ dispatchState: 'unknown', reason: 'lost reply' })],
+      submissions: [inDoubt],
       setError: vi.fn(),
       createOperationId: () => NEW
     })
@@ -229,6 +230,13 @@ describe('a retired id the journal does not show as rejected', () => {
       expect.objectContaining({ clientMessageId: NEW })
     ])
     expect(readRetiredStructuredAgentSessionMessageIds(SESSION).size).toBe(0)
+    // The original still shows, since the agent may have it.
+    const shown = withoutRetiredStructuredAgentSessionMessages(
+      { items, submissions: [inDoubt] },
+      readRetiredStructuredAgentSessionMessageIds(SESSION)
+    )
+    expect(shown.items.map((item) => item.itemId)).toEqual([KEY])
+    expect(shown.submissions).toEqual([inDoubt])
   })
 
   it.each([

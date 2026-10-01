@@ -3,8 +3,16 @@
 // Which Retry a press takes: the same message queued again on a host that can, a new copy from the
 // outbox where the host cannot, and nothing yet while the host has not said which.
 
-import { act, renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import '@testing-library/jest-dom/vitest'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render as renderUi,
+  renderHook,
+  screen
+} from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
@@ -20,6 +28,7 @@ vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
 const { useStructuredAgentSessionRetryInPlace } =
   await import('./use-structured-agent-session-retry-in-place')
 const { withHeldRetries } = await import('./use-structured-agent-session-delivery-notices')
+const { MessageRow } = await import('./NativeChatMessageRow')
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
 
@@ -49,6 +58,8 @@ beforeEach(() => {
   outboxRetry = vi.fn()
   capability.state = 'supported'
 })
+
+afterEach(cleanup)
 
 function render(submissions: AgentJournalSubmission[]) {
   return renderHook(() =>
@@ -147,5 +158,57 @@ describe('the notice of a held Retry', () => {
       onRetry
     })
     expect(withHeldRetries(notices, new Set())).toBe(notices)
+  })
+})
+
+describe('a Retry pressed before the host has answered', () => {
+  function Chat({ submissions }: { submissions: AgentJournalSubmission[] }) {
+    const { retry, retryHeld } = useStructuredAgentSessionRetryInPlace({
+      target: { kind: 'local' },
+      mutate,
+      submissions,
+      outboxRetry
+    })
+    const key = agentJournalSubmissionKey(ID)
+    const notices = withHeldRetries(
+      new Map([[key, { text: 'Codex stopped.', onRetry: () => retry(ID) }]]),
+      retryHeld
+    )
+    return (
+      <MessageRow
+        message={{
+          id: key,
+          role: 'user',
+          timestamp: 0,
+          source: 'transcript',
+          blocks: [{ type: 'text', text: 'hello' }]
+        }}
+        expandSignal={false}
+        onScrollMessageToTop={vi.fn()}
+        deliveryNotice={notices.get(key)}
+      />
+    )
+  }
+
+  it('shows the button pending and disabled, then queues the message again once the host can', () => {
+    capability.state = 'unknown'
+    const submissions = [rejected({ kind: 'providerStartFailed' })]
+    const { rerender } = renderUi(<Chat submissions={submissions} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    const pending = screen.getByRole('button', { name: 'Retry' })
+    expect(pending).toBeDisabled()
+    expect(pending).toHaveAttribute('aria-busy', 'true')
+    expect(mutate).not.toHaveBeenCalled()
+    expect(outboxRetry).not.toHaveBeenCalled()
+
+    capability.state = 'supported'
+    act(() => rerender(<Chat submissions={submissions} />))
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate).toHaveBeenCalledWith(...QUEUE_AGAIN)
+    expect(outboxRetry).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
   })
 })
