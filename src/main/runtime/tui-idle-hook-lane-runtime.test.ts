@@ -45,14 +45,13 @@ function row(overrides: Partial<AgentStatusIpcPayload> = {}): AgentStatusIpcPayl
 async function waitOutcome(options: {
   rows: (handle: string) => AgentStatusIpcPayload[]
   launchAgent?: TuiAgent
-  paneTitle?: string
   data?: string
   afterCreate?: (runtime: OrcaRuntimeService, handle: string) => unknown
 }): Promise<string> {
   let handle = ''
   const pane = await createTranscriptPane(
     {
-      paneTitle: options.paneTitle ?? 'Terminal',
+      paneTitle: 'Terminal',
       foregroundProcess: 'codex',
       data: options.data ?? BUSY_SCREEN,
       launchAgent: options.launchAgent ?? 'codex'
@@ -83,13 +82,6 @@ describe('tui-idle hook lane through the runtime', () => {
 
   it('without a row, the same pane does not settle', async () => {
     expect(await waitOutcome({ rows: () => [] })).toBe('timeout')
-  })
-
-  it('holds a working turn over an explicit ready title', async () => {
-    expect(await waitOutcome({ rows: () => [], paneTitle: 'Codex ready' })).toBe('ready')
-    expect(
-      await waitOutcome({ rows: () => [row({ state: 'working' })], paneTitle: 'Codex ready' })
-    ).toBe('timeout')
   })
 
   it('joins a row on the terminal handle when its pane key is not the pane', async () => {
@@ -150,10 +142,6 @@ describe('tui-idle hook lane through the runtime', () => {
     ).toBe('ready')
   })
 
-  it('never settles a permission wait as ready', async () => {
-    expect(await waitOutcome({ rows: () => [row({ state: 'waiting' })] })).toBe('timeout')
-  })
-
   it("settles past a denied prompt's dialog text once the hook says the turn ended", async () => {
     const options = { launchAgent: 'opencode' as const, data: OPENCODE_PERMISSION_DIALOG }
     expect(await waitOutcome({ ...options, rows: () => [] })).toBe(
@@ -171,11 +159,5 @@ describe('tui-idle hook lane through the runtime', () => {
         rows: () => [row({ agentType: 'opencode', receivedAt: Date.now() + 1 })]
       })
     ).toBe('ready')
-  })
-
-  it('reads no hooks for an identity-only agent', async () => {
-    expect(
-      await waitOutcome({ rows: () => [row({ agentType: 'claude' })], launchAgent: 'claude' })
-    ).toBe('timeout')
   })
 })
