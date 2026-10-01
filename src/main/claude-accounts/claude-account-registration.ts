@@ -35,7 +35,8 @@ export class ClaudeAccountRegistration {
                 GlobalSettings,
                 'activeClaudeManagedAccountId' | 'activeClaudeManagedAccountIdsByRuntime'
               >
-            >
+            >,
+          options?: { notifyListeners?: boolean }
         ) => unknown
       }
       rateLimits: Pick<
@@ -220,35 +221,47 @@ export class ClaudeAccountRegistration {
     const settings = this.deps.store.getSettings()
     const selection = normalizeClaudeRuntimeSelection(settings)
     const swap = (id: string | null) => (id === previousId ? nextId : id)
-    this.deps.store.updateSettings({
-      claudeManagedAccounts: settings.claudeManagedAccounts.filter(
-        (entry) => entry.id !== previousId
-      ),
-      activeClaudeManagedAccountId: swap(settings.activeClaudeManagedAccountId ?? null),
-      activeClaudeManagedAccountIdsByRuntime: {
-        host: swap(selection.host),
-        wsl: Object.fromEntries(
-          Object.entries(selection.wsl).map(([distro, id]) => [distro, swap(id)])
-        )
-      }
-    })
+    this.deps.store.updateSettings(
+      {
+        claudeManagedAccounts: settings.claudeManagedAccounts.filter(
+          (entry) => entry.id !== previousId
+        ),
+        activeClaudeManagedAccountId: swap(settings.activeClaudeManagedAccountId ?? null),
+        activeClaudeManagedAccountIdsByRuntime: {
+          host: swap(selection.host),
+          wsl: Object.fromEntries(
+            Object.entries(selection.wsl).map(([distro, id]) => [distro, swap(id)])
+          )
+        }
+      },
+      NOTIFY
+    )
   }
 
   private forget(accountId: string): void {
-    this.deps.store.updateSettings({
-      claudeManagedAccounts: this.deps.store
-        .getSettings()
-        .claudeManagedAccounts.filter((entry) => entry.id !== accountId)
-    })
+    this.deps.store.updateSettings(
+      {
+        claudeManagedAccounts: this.deps.store
+          .getSettings()
+          .claudeManagedAccounts.filter((entry) => entry.id !== accountId)
+      },
+      NOTIFY
+    )
   }
 
   private save(account: ClaudeManagedAccount): void {
     const accounts = this.deps.store.getSettings().claudeManagedAccounts
-    this.deps.store.updateSettings({
-      claudeManagedAccounts: [...accounts.filter((entry) => entry.id !== account.id), account]
-    })
+    this.deps.store.updateSettings(
+      {
+        claudeManagedAccounts: [...accounts.filter((entry) => entry.id !== account.id), account]
+      },
+      NOTIFY
+    )
   }
 }
+
+// Why notify: every window's switcher and Settings read the account list from settings.
+const NOTIFY = { notifyListeners: true }
 
 /** Re-reads the account's profile; a WSL guest is asked only while it is running. */
 async function observeClaudeProfileIdentity(

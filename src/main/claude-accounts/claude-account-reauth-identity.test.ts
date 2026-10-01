@@ -41,9 +41,15 @@ function fixture(accounts: ClaudeManagedAccount[]) {
     worker: { prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }) }
   })
   installClaudeProfileRoutingAuthority(routing)
+  const notified: Partial<typeof settings>[] = []
   const store = {
     getSettings: () => settings,
-    updateSettings: (patch: Partial<typeof settings>) => Object.assign(settings, patch)
+    updateSettings: (patch: Partial<typeof settings>, options?: { notifyListeners?: boolean }) => {
+      if (options?.notifyListeners) {
+        notified.push(patch)
+      }
+      return Object.assign(settings, patch)
+    }
   }
   const rateLimits = {
     evictInactiveClaudeCache: vi.fn(),
@@ -92,6 +98,7 @@ function fixture(accounts: ClaudeManagedAccount[]) {
       .sort(([l], [r]) => String(l).localeCompare(String(r)))
   return {
     settings,
+    notified,
     routing,
     selection,
     registration,
@@ -182,4 +189,14 @@ it('refuses to launch a selected account that is now signed in to another saved 
   await expect(f.routing.publish({ runtime: 'host' })).rejects.toThrow('or remove this account.')
   f.signInRow('a', 'a@example.test')
   expect(f.routing.resolve({ runtime: 'host' }).profile?.accountId).toBe('a')
+})
+
+it('tells every window when a selection or sign-in changes the Claude settings', async () => {
+  const f = fixture([legacy('a', 'a@example.test', 1)])
+  f.signInRow('a', 'a@example.test')
+  await f.selection.select('a')
+  expect(f.notified.at(-1)).toMatchObject({ activeClaudeManagedAccountId: 'a' })
+  f.signInAs('a@example.test')
+  await f.registration.reauthenticate('a')
+  expect(f.notified.at(-1)).toHaveProperty('claudeManagedAccounts')
 })

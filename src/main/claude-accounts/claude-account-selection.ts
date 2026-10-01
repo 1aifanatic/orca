@@ -30,7 +30,10 @@ export class ClaudeAccountSelection {
   constructor(
     private readonly store: {
       getSettings: () => SelectionSettings
-      updateSettings: (patch: Partial<SelectionSettings>) => unknown
+      updateSettings: (
+        patch: Partial<SelectionSettings>,
+        options?: { notifyListeners?: boolean }
+      ) => unknown
     },
     private readonly rateLimits: Pick<
       RateLimitService,
@@ -74,7 +77,7 @@ export class ClaudeAccountSelection {
       return described
     }
     const ids = new Set(completed.map((account) => account.id))
-    this.store.updateSettings({
+    this.writeSettings({
       claudeManagedAccounts: [
         ...this.store.getSettings().claudeManagedAccounts.filter((entry) => !ids.has(entry.id)),
         ...completed
@@ -95,7 +98,7 @@ export class ClaudeAccountSelection {
       settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host
     const target = getClaudeSelectionTargetForAccount(account)
     const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
-    this.store.updateSettings({
+    this.writeSettings({
       claudeManagedAccounts: nextAccounts,
       activeClaudeManagedAccountId: nextActiveId,
       activeClaudeManagedAccountIdsByRuntime: nextSelection
@@ -141,7 +144,7 @@ export class ClaudeAccountSelection {
       accountId,
       effectiveTarget
     )
-    this.store.updateSettings({
+    this.writeSettings({
       activeClaudeManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,
       activeClaudeManagedAccountIdsByRuntime: nextSelection
@@ -212,11 +215,17 @@ export class ClaudeAccountSelection {
   }
 
   restoreSettings(settings: SelectionSettings): void {
-    this.store.updateSettings({
+    this.writeSettings({
       claudeManagedAccounts: settings.claudeManagedAccounts,
       activeClaudeManagedAccountId: settings.activeClaudeManagedAccountId,
       activeClaudeManagedAccountIdsByRuntime: settings.activeClaudeManagedAccountIdsByRuntime
     })
+  }
+
+  // Why notify: every window's switcher and Settings read the selection from settings, including
+  // selections made by the CLI, a paired client or another window.
+  private writeSettings(patch: Partial<SelectionSettings>): void {
+    this.store.updateSettings(patch, { notifyListeners: true })
   }
 
   async syncRuntimeAuth(
