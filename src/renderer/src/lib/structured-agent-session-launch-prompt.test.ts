@@ -3,8 +3,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   enqueueStructuredAgentSessionLaunchPrompt,
+  getStructuredAgentSessionOutbox,
   mutateStructuredAgentSessionLaunchPrompt
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { structuredAgentSessionDeliveryNotices } from '@/components/native-chat/structured-agent-session-delivery-notices'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
 
@@ -161,6 +164,37 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     expect(persisted).toHaveLength(1)
     expect(persisted).not.toContainEqual(
       expect.objectContaining({ lastFailure: expect.anything() })
+    )
+  })
+
+  it('keeps why a launch prompt was refused for good, so its notice says it', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: { code: 'agent_session_operation_invalid', message: 'invalid' }
+    })
+
+    await settleStructuredAgentLaunchPrompt({
+      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      options: { prompt: 'review this' },
+      stagedEntry
+    })
+
+    const [refused] = getStructuredAgentSessionOutbox('session-1')
+    expect(refused).toMatchObject({
+      state: 'rejected',
+      lastFailure: { kind: 'refused', code: 'agent_session_operation_invalid' }
+    })
+    const notice = structuredAgentSessionDeliveryNotices(
+      [refused!],
+      'Claude',
+      vi.fn(),
+      [],
+      [],
+      new Set()
+    )
+    expect(notice.get(agentJournalSubmissionKey(refused!.clientMessageId))?.text).not.toContain(
+      'Message was not sent.'
     )
   })
 

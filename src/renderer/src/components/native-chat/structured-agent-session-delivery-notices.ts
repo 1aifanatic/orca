@@ -233,9 +233,7 @@ export function structuredAgentSessionDeliveryNotices(
       const retryControl = stalledFrom === -1 || index <= stalledFrom
       const text = deliveryNoticeText(
         entry,
-        sentFromSource(entry)
-          ? { agentName, retryControl: true, sourceRetries: true }
-          : { agentName, retryControl },
+        sentFromSource(entry) ? { agentName, retryControl: true } : { agentName, retryControl },
         rejected.get(entry.clientMessageId),
         startFailures,
         failedHere

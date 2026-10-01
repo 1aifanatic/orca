@@ -595,8 +595,10 @@ describe('the notice on a message sent from elsewhere that was not sent', () => 
     expect(launch?.text).toBe(
       "Not sent: Claude isn't installed. Install it first. Send it again from where you started it."
     )
-    // A message typed in the chat keeps its own Retry.
-    expect(notices.get(agentJournalSubmissionKey('typed'))?.onRetry).toBeTypeOf('function')
+    // A message typed in the chat keeps its own Retry, and the same step to take first.
+    const typed = notices.get(agentJournalSubmissionKey('typed'))
+    expect(typed?.onRetry).toBeTypeOf('function')
+    expect(typed?.text).toBe("Claude isn't installed. Install it first.")
   })
 
   it('offers no Retry on notes the host refused and the chat holds, since their source sends them again', () => {

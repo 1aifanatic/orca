@@ -14942,7 +14942,6 @@
         "signInThenSend": "Inicie sesión y vuelva a enviar su mensaje.",
         "providerMissing": "{{agent}} no está instalado.",
         "installFirst": "Instálelo primero.",
-        "installThenRetry": "Instálelo y vuelva a intentarlo.",
         "installThenRunCommand": "Instálelo y vuelva a ejecutar /{{command}}.",
         "installThenSend": "Instálelo y vuelva a enviar su mensaje.",
         "historyTooLarge": "El historial de esta conversación es demasiado grande para restaurarlo aquí.",

@@ -68,9 +68,6 @@ export type AgentSessionFailureWordsContext = {
   /** Orca starts it again on its own, so the words leave out even when to try again. Implies
    *  `retryControl`. */
   orcaRetries?: boolean
-  /** Where the message was sent from sends it again, so the words name only the person's own step
-   *  first. Implies `retryControl`. */
-  sourceRetries?: boolean
 }
 
 /** Person-facing provider text is quoted, but bounded so the sentence stays one. */
@@ -184,13 +181,11 @@ const FAILURE_SENTENCES = {
   providerMissing: (context, _fact, _surface, say) =>
     joinSentences([
       say('providerMissing', agent(say, context)),
-      context.sourceRetries
+      context.retryControl
         ? say('installFirst')
-        : context.retryControl
-          ? say('installThenRetry')
-          : context.command
-            ? say('installThenRunCommand', { command: context.command })
-            : say('installThenSend')
+        : context.command
+          ? say('installThenRunCommand', { command: context.command })
+          : say('installThenSend')
     ]),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),

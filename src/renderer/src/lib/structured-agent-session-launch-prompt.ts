@@ -127,14 +127,17 @@ async function dispatchStructuredLaunchPrompt(
       structuredAgentSessionSendRequest(entry, receipt.fence)
     )
     if (!result.ok) {
-      mutateEntry(entry, (current) =>
-        requeueStructuredAgentSessionSendRefusal(
+      const failure = agentSessionRefusalFailure(result.refusal)
+      mutateEntry(entry, (current) => {
+        const requeued = requeueStructuredAgentSessionSendRefusal(
           current,
-          agentSessionRefusalFailure(result.refusal),
+          failure,
           () => createStructuredAgentSessionOperationId(createBrowserUuid),
           entry.lastAttemptAt !== null
         )
-      )
+        // Refused for good, the chat shows it as not sent, so it says why.
+        return requeued.state === 'rejected' ? { ...requeued, lastFailure: failure } : requeued
+      })
       return false
     }
     if ('queued' in result.value) {
