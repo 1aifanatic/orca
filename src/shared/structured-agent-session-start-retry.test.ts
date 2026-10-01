@@ -30,10 +30,6 @@ describe('when a message whose agent start failed is tried again', () => {
     [
       'another operation in the way',
       { kind: 'startFailed', refusal: { code: 'agent_session_operation_conflict' } }
-    ],
-    [
-      'ownership not yet settled',
-      { kind: 'restartFailed', refusal: { code: 'agent_session_ownership_unknown' } }
     ]
   ] as const)('tries again a start refused before it ran by %s', (_situation, fact) => {
     expect(structuredAgentSessionStartRetryAt(fact, 1, FAILED_AT)).toBe(FAILED_AT + 15_000)
@@ -45,6 +41,10 @@ describe('when a message whose agent start failed is tried again', () => {
     [
       'failed its acquisition',
       { kind: 'restartFailed', refusal: { code: 'agent_session_operation_invalid' } }
+    ],
+    [
+      'could not prove its process gone',
+      { kind: 'restartFailed', refusal: { code: 'agent_session_ownership_unknown' } }
     ],
     ['stopped by Orca after it hung', { kind: 'hostStopped' }],
     ['ended before it took the message', { kind: 'providerExited' }],
