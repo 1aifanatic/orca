@@ -86,6 +86,23 @@ describe('retiring the Windows system-default mirror', () => {
     expect(existsSync(getMarkerPath())).toBe(true)
   })
 
+  it('carries a login made in a pane that opened while the hook approval ran', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const service = await createService(createSettings({ realHomeRoutable: true }))
+    expect(service.prepareForCodexLaunch()).toBeNull()
+    expect(existsSync(getMarkerPath())).toBe(true)
+
+    let approving = true
+    service.setRealHomeLaneGate(() => !approving)
+    expect(service.prepareForCodexLaunch()).not.toBeNull()
+    const paneLogin = createCodexAuthJson('me@example.com', 'acct-me', 'approval-window')
+    writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
+    approving = false
+
+    expect(service.prepareForCodexLaunch()).toBeNull()
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(paneLogin)
+  })
+
   it('does not undo a logout from ~/.codex', async () => {
     writeFileSync(
       getSystemCodexAuthPath(),

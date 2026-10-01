@@ -69,6 +69,7 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
       return null
     }
     this.invalidateBackfillAfterManagedSystemDefaultLaunch(launchEnv)
+    this.rearmRetiredMirrorCarry()
     this.syncForCurrentSelection(target, launchEnv)
     syncSystemCodexResourcesIntoManagedHome()
     syncSystemConfigIntoManagedCodexHome()
