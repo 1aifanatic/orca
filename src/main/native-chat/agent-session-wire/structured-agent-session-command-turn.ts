@@ -120,14 +120,12 @@ export function isStructuredAgentSessionCommandTurnId(turnId: string): boolean {
 
 const STOP_NOTE_PREFIX = 'stop:'
 
-/** A Stop's note, on the turn it named. The key says what it is, so a later Stop can read it. */
-export function structuredAgentSessionStopNoteIdentity(
-  clientOperationId: string
-): AgentJournalItemIdentity {
-  return { provider: 'orca', clientMessageId: `${STOP_NOTE_PREFIX}${clientOperationId}` }
+/** A Stop's note, keyed by the turn it stopped (or, with no turn, by its operation). */
+export function structuredAgentSessionStopNoteIdentity(stopKey: string): AgentJournalItemIdentity {
+  return { provider: 'orca', clientMessageId: `${STOP_NOTE_PREFIX}${stopKey}` }
 }
 
-/** Whether journal item `itemId` is a Stop's note. */
+/** Whether a journal row is a Stop's note. */
 export function isStructuredAgentSessionStopNote(itemId: string): boolean {
   const identity = parseAgentJournalItemKey(itemId)
   return identity?.provider === 'orca' && identity.clientMessageId.startsWith(STOP_NOTE_PREFIX)

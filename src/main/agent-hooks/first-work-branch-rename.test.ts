@@ -63,6 +63,7 @@ import {
   noUpstreamError,
   workingEvent
 } from './first-work-branch-rename-test-harness'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 function makeDeps(overrides: Partial<FirstWorkBranchRenameDeps> = {}) {
   return makeBranchRenameDeps(vi.fn, overrides)
@@ -119,6 +120,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         }
       })
       const feed = new StructuredAgentSessionStatusFeed({
+        logger: createStructuredAgentSessionLogger(),
         sessions: new Map([
           [
             'session',
@@ -219,6 +221,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     }
     const pending: Promise<void>[] = []
     const feed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([['session', { journal, params: { location, provider: 'codex' } }]]),
       getRecord: () => null,
       now: () => 1,

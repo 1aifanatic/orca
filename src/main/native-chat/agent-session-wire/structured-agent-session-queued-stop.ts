@@ -14,6 +14,10 @@ import {
 } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
+import {
+  structuredAgentSessionStopNamesTurnNotLive,
+  structuredAgentSessionStoppedTurnId
+} from './structured-agent-session-turn-stop-notes'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
  *  waiting or returned. Pending/unknown/accepted deliveries stay outside it. */
@@ -37,15 +41,10 @@ export async function runRecordedStop<TValue>(
   event: Omit<JournalStopEvent, 'at'>,
   stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
-  const skipped = (error: unknown): void => {
-    console.warn("[agent-session] Stop's event row skipped:", {
-      sessionId: ctx.sessionId,
-      error: error instanceof Error ? error.message : String(error)
-    })
-  }
+  const skipped = (error: unknown): void => report(ctx, 'event row', error)
   return stop(() => {
     try {
-      const turnId = event.turnId ?? ctx.journal.activeTurnId() ?? undefined
+      const turnId = structuredAgentSessionStoppedTurnId(ctx.journal, event.turnId) ?? undefined
       return ctx.journal
         .appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence)
         .then(() => undefined, skipped)
@@ -70,8 +69,7 @@ export async function stopReachesUnrecordedWork(
   const live = ctx.journal.activeTurnId()
   // No turn published yet while the agent works: the named one may still be opening.
   if (
-    namedTurnId !== undefined &&
-    namedTurnId !== live &&
+    structuredAgentSessionStopNamesTurnNotLive(namedTurnId, live) &&
     (live !== null || !(await isMainAgentWorkingOnceFlushed(ctx)))
   ) {
     return false
@@ -90,5 +88,14 @@ export async function stopReachesUnrecordedWork(
         entry.acceptedSequence !== undefined &&
         entry.acceptedSequence > inForce.sequence
     )
-  return sentSince || (inForce.event.turnId !== undefined && inForce.event.turnId !== live)
+  return sentSince || structuredAgentSessionStopNamesTurnNotLive(inForce.event.turnId, live)
+}
+
+function report(ctx: AgentSessionTurnContext, step: string, error: unknown): void {
+  ctx.logger.warn(`Stop's ${step} failed`, {
+    scope: 'stop-queued-bookkeeping',
+    sessionId: ctx.sessionId,
+    step,
+    error
+  })
 }

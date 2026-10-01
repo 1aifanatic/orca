@@ -126,8 +126,8 @@ describe("a Stop's event", () => {
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
     expect(warned).toHaveBeenCalledWith(
-      "[agent-session] Stop's event row skipped:",
-      expect.objectContaining({ error: 'the journal threw' })
+      "[agent-session] stop-queued-bookkeeping: Stop's event row failed",
+      expect.objectContaining({ step: 'event row', error: new Error('the journal threw') })
     )
     warned.mockRestore()
   })
@@ -224,6 +224,14 @@ describe("a Stop's event", () => {
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.drafts()).toEqual([{ messageId: steered, state: 'waiting' }])
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  })
+
+  it('naming no turn, names the turn running when it takes effect', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    await turnRow('turn-1', 'running')
+    await rig.stop()
+    expect(stopEvents()).toMatchObject([{ reason: 'user-stop', turnId: 'turn-1' }])
   })
 
   it('names a turn already over, as a late Stop from a phone does: writes nothing', async () => {
