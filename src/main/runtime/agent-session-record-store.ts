@@ -45,10 +45,8 @@ import {
   type AgentSessionProcessIdentityCommit
 } from './agent-session-lease-transitions'
 import {
-  settleAgentSessionCreateAtRest,
   settleFailedAgentSessionAcquisition,
   settleFailedAgentSessionPostAcquisitionAttachment,
-  type AgentSessionCreateAtRestSettlement,
   type AgentSessionFailedAcquisitionSettlement,
   type AgentSessionFailedPostAcquisitionAttachmentSettlement
 } from './agent-session-acquisition-failure-settlement'
@@ -221,10 +219,6 @@ export class AgentSessionRecordStore {
   /** Settle the failed attach and its reservation in one durable transaction. */
   settleFailedAcquisition = (args: AgentSessionFailedAcquisitionSettlement) =>
     this.transact((draft) => settleFailedAgentSessionAcquisition(draft, args))
-
-  /** The same release, with the create succeeding: its chat stands at rest. */
-  settleCreateAtRest = (args: AgentSessionCreateAtRestSettlement) =>
-    this.transact((draft) => settleAgentSessionCreateAtRest(draft, args))
 
   settleFailedPostAcquisitionAttachment = (
     args: AgentSessionFailedPostAcquisitionAttachmentSettlement

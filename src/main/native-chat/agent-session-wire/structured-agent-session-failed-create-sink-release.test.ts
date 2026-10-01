@@ -71,12 +71,12 @@ afterEach(async () => {
 
 describe('a create that fails after its child wrote through the unbound sink', () => {
   it.each([
-    // A start that ran and failed.
-    ['ran', new Error(EXIT_REASON)],
-    // A start refused before it ran.
-    ['was refused', new AgentSessionPreSpawnError(new Error(EXIT_REASON))]
+    // The common failed start: answered as a refusal.
+    ['refused', new Error(EXIT_REASON)],
+    // A failure the attach cannot classify still throws, and must release the sink too.
+    ['thrown', new AgentSessionPreSpawnError(new Error(EXIT_REASON))]
   ])(
-    'releases the sink when its start %s, so the chat at rest starts next time and shutdown proceeds',
+    'releases the sink when %s, so a new create and shutdown both proceed',
     async (_how, cause) => {
       acquire.mockImplementationOnce(async ({ events }) => {
         // The published child's exit reached the translator before any journal was attached.
@@ -84,14 +84,15 @@ describe('a create that fails after its child wrote through the unbound sink', (
         throw cause
       })
 
-      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
-        ok: true
-      })
-      const [failedAttempt] = acquire.mock.calls.map(([input]) => input.events)
-      expect(failedAttempt?.tryPublish?.()).toEqual({ accepted: false, reason: 'closed' })
+      const failed = host.attach(CALLER, hostTestAttachParams(null))
+      await (cause instanceof AgentSessionPreSpawnError
+        ? expect(failed).rejects.toThrow("Codex couldn't restart. Send your message to try again.")
+        : expect(failed).resolves.toMatchObject({
+            ok: false,
+            refusal: { message: "Codex couldn't restart. Send your message to try again." }
+          }))
 
-      const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-      await expect(host.attach(CALLER, hostTestAttachParams(fence))).resolves.toMatchObject({
+      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
         ok: true
       })
       await expect(host.flushAllStreamedEvents()).resolves.toBeUndefined()

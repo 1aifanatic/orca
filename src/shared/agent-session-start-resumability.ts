@@ -69,9 +69,3 @@ export function isResumableStartFailure(
   const code = fact.refusal?.code
   return code !== undefined && START_REFUSAL_STAGE[code] === 'beforeHandoff'
 }
-
-/** Whether a new chat whose first start failed this way still stands, at rest, for its first
- *  message to start and carry the failure: every failure but one with nothing to run the chat from. */
-export function startFailureKeepsChat(code: AgentSessionWireRefusalCode): boolean {
-  return START_REFUSAL_STAGE[code] !== 'newChat'
-}

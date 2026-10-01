@@ -59,7 +59,10 @@ function startHost(): void {
           link: {
             linkId: `link-${fence}`,
             handle: { provider: 'codex' as const, threadId: THREAD },
-            origin: 'created' as const,
+            // A start after the first continues the chain it created.
+            origin: store.getRecord(SESSION)?.providerHandleChain.length
+              ? ('resumed' as const)
+              : ('created' as const),
             mintedAtFence: fence,
             observedAt: NOW
           },
@@ -95,12 +98,14 @@ beforeEach(async () => {
   beforeSpawn = vi.fn(async () => undefined)
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   store = await openTestAgentSessionRecordStore(root)
-  // The chat stands at rest: its first start is refused, so each message starts the agent.
-  beforeSpawn.mockRejectedValueOnce(notInstalled())
   startHost()
   await expect(
     host.attach(CALLER, hostTestAttachParams(null, { providerHandle: undefined }))
   ).resolves.toMatchObject({ ok: true })
+  // The chat is put to rest, so each message starts the agent.
+  await host.close(SESSION, 'evict')
+  dispatch.mockClear()
+  beforeSpawn.mockClear()
 })
 
 afterEach(async () => {

@@ -42,41 +42,10 @@ export type AgentSessionFailedAcquisitionSettlement = {
 export type AgentSessionFailedPostAcquisitionAttachmentSettlement =
   AgentSessionFailedAcquisitionSettlement
 
-/** A create whose own start failed with nothing of it left running: its lease is released as for a
- *  failed acquisition, and the create succeeds, its chat at rest for the first message to start. */
-export type AgentSessionCreateAtRestSettlement = Omit<
-  AgentSessionFailedAcquisitionSettlement,
-  'outcome' | 'exitProof'
-> & { exitProof: Exclude<AgentSessionAcquisitionExitProof, 'unproven'> }
-
 /** Liveness invariant: a settled attach never leaves its reservation in new-owner-proving. */
 export function settleFailedAgentSessionAcquisition(
   state: AgentSessionStoreState,
   args: AgentSessionFailedAcquisitionSettlement
-): AgentSessionRecord {
-  return settleReservationInto(state, args)
-}
-
-export function settleAgentSessionCreateAtRest(
-  state: AgentSessionStoreState,
-  args: AgentSessionCreateAtRestSettlement
-): AgentSessionRecord {
-  const next = settleReservationInto(state, {
-    ...args,
-    outcome: { status: 'succeeded', sessionId: args.sessionId }
-  })
-  // A chat stands at rest only on a lease nothing holds.
-  if (next.lease.claimStatus !== 'released') {
-    throw new Error('agent_session_ownership_unknown')
-  }
-  return next
-}
-
-function settleReservationInto(
-  state: AgentSessionStoreState,
-  args: Omit<AgentSessionFailedAcquisitionSettlement, 'outcome'> & {
-    outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' | 'succeeded' }>
-  }
 ): AgentSessionRecord {
   const operation = state.operations.get(agentSessionOperationKey(args.callerKey, args.operationId))
   if (!operation || operation.outcome.status !== 'pending') {
@@ -151,10 +120,7 @@ export function settleFailedAgentSessionPostAcquisitionAttachment(
 
 function settleFailedLease(
   record: AgentSessionRecord,
-  args: Pick<
-    AgentSessionFailedAcquisitionSettlement,
-    'fence' | 'spawnToken' | 'operationId' | 'exitProof' | 'now'
-  >
+  args: AgentSessionFailedAcquisitionSettlement
 ): AgentSessionRecord {
   assertFence(record.lease, args.fence)
   if (

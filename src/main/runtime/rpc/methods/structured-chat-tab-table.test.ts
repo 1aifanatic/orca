@@ -50,8 +50,7 @@ let host: StructuredAgentSessionHost
 let runtime: OrcaRuntimeService
 let dispatcher: RpcDispatcher
 let acquisitions = 0
-// The start's failure, when it fails.
-let acquireFailure: Error | null = null
+let acquireFails = false
 let closeSession: ReturnType<typeof vi.fn<() => Promise<boolean>>>
 
 function providerAdapter(): StructuredAgentSessionAdapter {
@@ -59,8 +58,8 @@ function providerAdapter(): StructuredAgentSessionAdapter {
     supportsLocation: (location) =>
       location.executionHostId === 'local' && location.wslDistro === null,
     acquire: vi.fn(async (input) => {
-      if (acquireFailure) {
-        throw acquireFailure
+      if (acquireFails) {
+        throw new Error('provider failed to start')
       }
       acquisitions++
       return {
@@ -179,7 +178,7 @@ async function snapshot() {
 beforeEach(async () => {
   resetHostTestOperationIds()
   acquisitions = 0
-  acquireFailure = null
+  acquireFails = false
   closeSession = vi.fn(async () => true)
   directory = await mkdtemp(join(tmpdir(), 'orca-chat-tab-table-'))
   runtime = new OrcaRuntimeService()
@@ -512,30 +511,16 @@ describe('a create that reserves its tab', () => {
   })
 
   it('leaves no tab behind when the create fails, so nothing is restored and the id is free', async () => {
-    // A host with nothing to run the chat from still fails its create.
-    acquireFailure = new Error('agent_session_identity_required')
+    acquireFails = true
     expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({ ok: false })
     expect(store.getSessionTabId(HOST_TEST_SESSION)).toBeNull()
     expect(store.listVisibleSessionIds()).toEqual([])
 
-    acquireFailure = null
+    acquireFails = false
     expect(await createChat('session-bravo', 'reserved-tab')).toMatchObject({
       ok: true,
       value: { tabId: 'reserved-tab' }
     })
-  })
-})
-
-describe('a chat whose first start failed with nothing left running', () => {
-  it('keeps its reserved tab, for its first message to start the agent', async () => {
-    acquireFailure = new Error('provider failed to start')
-
-    expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({
-      ok: true,
-      value: { tabId: 'reserved-tab' }
-    })
-    expect(store.getSessionTabId(HOST_TEST_SESSION)).toBe('reserved-tab')
-    expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
   })
 })
 

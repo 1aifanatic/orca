@@ -143,11 +143,18 @@ describe('attach', () => {
     })
     const params = attachParams()
 
-    // Orca's own store fault: the child is gone, and the new chat stands at rest for its first
-    // message to start it again. The replay answers the same, and starts nothing.
-    expect(await host.attach(CALLER, params)).toMatchObject({ ok: true, replayed: false })
-    expect(await host.attach(CALLER, params)).toMatchObject({ ok: true, replayed: true })
-    expect(acquire).toHaveBeenCalledOnce()
+    // Orca's own store fault: the child is gone, but nothing blames the provider.
+    const refused = {
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: { ownerVerdict: 'exited' },
+        message: "Codex couldn't restart. Send your message to try again.",
+        ownerVerdict: 'exited'
+      }
+    }
+    expect(await host.attach(CALLER, params)).toEqual(refused)
+    expect(await host.attach(CALLER, params)).toEqual(refused)
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     expect(await host.attach(CALLER, ensureParams(releasedFence))).toMatchObject({ ok: true })
     expect(acquire).toHaveBeenCalledTimes(2)
@@ -158,11 +165,15 @@ describe('attach', () => {
   it('reaps an acquisition when process identity commit fails', async () => {
     vi.spyOn(store, 'commitProcessIdentity').mockRejectedValueOnce(new Error('commit failed'))
 
-    // The new chat stands at rest, with nothing left running.
-    await expect(host.attach(CALLER, attachParams())).resolves.toMatchObject({ ok: true })
+    await expect(host.attach(CALLER, attachParams())).resolves.toMatchObject({
+      ok: false,
+      refusal: {
+        message: "Codex couldn't restart. Send your message to try again.",
+        ownerVerdict: 'exited'
+      }
+    })
 
     expect(releaseAcquisition).toHaveBeenCalledWith({ sessionId: SESSION })
-    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
   })
 
   it('drains writes captured by the old journal before acquiring its replacement', async () => {

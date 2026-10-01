@@ -8,10 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
-import {
-  AgentSessionAcquisitionRefusal,
-  type StructuredAgentSessionAdapter
-} from './structured-agent-session-adapter'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   attachFingerprintFields,
   type AgentSessionAttachParams
@@ -157,29 +154,6 @@ describe('adopting a provider conversation on create', () => {
     // conversation this session owns.
     const page = (result as { value: { page: { items: unknown[] } } }).value.page
     expect(JSON.stringify(page.items)).toContain('ORCA-ADOPT-1')
-  })
-
-  it('opens the adopted conversation at rest when its start is refused for too much history', async () => {
-    root = await mkdtemp(join(tmpdir(), 'orca-adopt-at-rest-'))
-    const transcriptPath = join(root, 'rollout.jsonl')
-    await writeCodexRollout(transcriptPath, 'token ORCA-ADOPT-REST')
-    const sessionAdapter = adapter()
-    vi.mocked(sessionAdapter.acquire).mockRejectedValueOnce(
-      AgentSessionAcquisitionRefusal.historyTooLarge('the conversation is too large to restore')
-    )
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await attach(transcriptPath, sessionAdapter)
-
-    expect(result).toMatchObject({ ok: true })
-    const page = (result as { value: { page: { items: unknown[] } } }).value.page
-    expect(JSON.stringify(page.items)).toContain('ORCA-ADOPT-REST')
-    // The adopted conversation stays the chain head, so the first message resumes it, and is the
-    // one told why it cannot.
-    expect(store?.getRecord(SESSION)).toMatchObject({
-      lease: { claimStatus: 'released' },
-      providerHandleChain: [{ handle: { provider: 'codex', threadId: THREAD } }]
-    })
   })
 
   it('replays create without replacing journal-only messages or rereading the source', async () => {

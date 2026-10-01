@@ -409,13 +409,15 @@ describe('structured session acquisition options', () => {
         now: () => NOW,
         onAttached: () => {}
       })
-      // The new chat stands at rest; its first message starts the agent again.
-    ).resolves.toMatchObject({ ok: true })
-    expect(releaseAcquisition).toHaveBeenCalledOnce()
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      ownerProcess: null,
-      claimStatus: 'released'
+    ).resolves.toEqual({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        message: "Codex couldn't restart. Send your message to try again."
+      }
     })
+    expect(releaseAcquisition).toHaveBeenCalledOnce()
+    expect(store.getRecord(SESSION)?.lease.ownerProcess).toBeNull()
   })
 
   describe.each([
@@ -505,11 +507,17 @@ describe('structured session acquisition options', () => {
           onAttached: () => {}
         })
 
-      // A proven exit before the journal opens leaves the new chat at rest, its create answered.
-      const atRest = exitProven && failurePoint !== 'journal'
+      // A proven exit before the journal opens is answered once, as the refusal its replay gives;
+      // no exit was observed, so it names no situation.
       const failed = perform(store, CREATE_OPERATION, null)
-      await (atRest
-        ? expect(failed).resolves.toMatchObject({ ok: true })
+      await (exitProven && failurePoint !== 'journal'
+        ? expect(failed).resolves.toEqual({
+            ok: false,
+            refusal: {
+              code: 'agent_session_operation_invalid',
+              message: "Codex couldn't restart. Send your message to try again."
+            }
+          })
         : expect(failed).rejects.toThrow(
             exitProven ? injected.message : 'agent_session_acquisition_exit_unproven'
           ))
@@ -519,7 +527,7 @@ describe('structured session acquisition options', () => {
       expectSettledAttachLease(failedRecord)
       expect(
         reopened.listOperationRows().find((row) => row.operationId === CREATE_OPERATION)?.outcome
-      ).toMatchObject({ status: atRest ? 'succeeded' : 'failed' })
+      ).toMatchObject({ status: 'failed' })
 
       await reopened.reconcileOnRestart({
         probe: async (record) =>

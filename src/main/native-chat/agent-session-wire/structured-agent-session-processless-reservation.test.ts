@@ -207,7 +207,7 @@ describe('processless structured session reservation', () => {
     expect(acquire).not.toHaveBeenCalled()
   })
 
-  it("settles a create's pre-spawn failure, its processless evidence and its chat at rest in one durable transaction", async () => {
+  it('settles a pre-spawn failure and its processless evidence in one durable transaction', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-processless-reservation-'))
     const store = await openTestAgentSessionRecordStore(root)
     const adapter = {
@@ -215,8 +215,7 @@ describe('processless structured session reservation', () => {
         throw new AgentSessionPreSpawnError(new Error('workspace no longer exists'))
       })
     } as unknown as StructuredAgentSessionAdapter
-    const settlement = vi.spyOn(store, 'settleCreateAtRest')
-    const failedSettlement = vi.spyOn(store, 'settleFailedAcquisition')
+    const settlement = vi.spyOn(store, 'settleFailedAcquisition')
 
     await expect(
       performAttach({
@@ -235,11 +234,10 @@ describe('processless structured session reservation', () => {
         now: () => NOW,
         onAttached: () => {}
       })
-    ).resolves.toMatchObject({ ok: true, replayed: false, fence: 2 })
+    ).rejects.toThrow("Codex couldn't restart. Send your message to try again.")
     expect(settlement).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ exitProof: 'processless', spawnToken: 'spawn-a' })
     )
-    expect(failedSettlement).not.toHaveBeenCalled()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
@@ -248,10 +246,7 @@ describe('processless structured session reservation', () => {
       reservedSpawnToken: null,
       deathEvidence: { kind: 'pid-absent', detail: 'reservation failed before spawn' }
     })
-    expect(store.listOperationRows()[0]?.outcome).toEqual({
-      status: 'succeeded',
-      sessionId: SESSION
-    })
+    expect(store.listOperationRows()[0]?.outcome).toMatchObject({ status: 'failed' })
 
     const reopened = await openTestAgentSessionRecordStore(root)
     await reopened.reconcileOnRestart({
@@ -265,7 +260,7 @@ describe('processless structured session reservation', () => {
     })
   })
 
-  it('answers a replay of a create left at rest without starting it, and a fresh operation starts it', async () => {
+  it('does not rerun a settled pre-spawn failure and admits a fresh operation', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-processless-retry-'))
     const store = await openTestAgentSessionRecordStore(root)
     const adapter = {
@@ -307,17 +302,14 @@ describe('processless structured session reservation', () => {
       onAttached: () => {}
     }
 
-    await expect(performAttach(input)).resolves.toMatchObject({ ok: true, replayed: false })
+    await expect(performAttach(input)).rejects.toThrow(
+      "Codex couldn't restart. Send your message to try again."
+    )
     await expect(performAttach(input)).resolves.toMatchObject({
-      ok: true,
-      replayed: true,
-      fence: 2
+      ok: false,
+      refusal: { code: 'agent_session_operation_invalid' }
     })
     expect(adapter.acquire).toHaveBeenCalledOnce()
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'released',
-      runtimeFence: 2
-    })
 
     await expect(
       performAttach({
