@@ -28,11 +28,15 @@ export type SendSettlementWaitOptions = {
   /** How long to observe; unanswered by then resolves undefined. */
   budgetMs?: number
   until?: SendSettlementPoint
+  /** A failed start waiting for its next try does not end the wait: only a later start's verdict,
+   *  the message's rejection, or the budget does. */
+  throughStartRetries?: boolean
 }
 
 type SendSettlementWaiter = {
   clientMessageId: string
   until: SendSettlementPoint
+  throughStartRetries: boolean
   resolve: (result: SettledSend | undefined) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
@@ -50,7 +54,7 @@ const MAX_SEND_SETTLEMENT_WAITERS = 1_024
 function settledSend(
   journal: SendSettlementJournal,
   clientMessageId: string,
-  until: SendSettlementPoint,
+  wait: Pick<SendSettlementWaiter, 'until' | 'throughStartRetries'>,
   submission: AgentJournalSubmission | undefined = journal
     .submissions()
     .find((candidate) => candidate.clientMessageId === clientMessageId)
@@ -58,8 +62,9 @@ function settledSend(
   if (!submission) {
     return 'missing'
   }
+  const { until } = wait
   const waiting =
-    !isRetryingStructuredAgentSessionStart(submission) &&
+    (wait.throughStartRetries || !isRetryingStructuredAgentSessionStart(submission)) &&
     (until === 'answered'
       ? submission.dispatchState === 'pending'
       : isQueuedAgentJournalSubmission(submission) &&
@@ -92,10 +97,14 @@ export class StructuredAgentSessionSendSettlement {
   ): Promise<SettledSend | undefined> => {
     const { signal } = options
     const until = options.until ?? 'answered'
+    const throughStartRetries = options.throughStartRetries === true
     if (signal?.aborted) {
       return Promise.reject(abortError(signal))
     }
-    const immediate = settledSend(this.journalFor(sessionId), clientMessageId, until)
+    const immediate = settledSend(this.journalFor(sessionId), clientMessageId, {
+      until,
+      throughStartRetries
+    })
     if (immediate === 'missing') {
       return Promise.reject(new Error('agent session send disappeared before settlement'))
     }
@@ -113,6 +122,7 @@ export class StructuredAgentSessionSendSettlement {
       const waiter: SendSettlementWaiter = {
         clientMessageId,
         until,
+        throughStartRetries,
         resolve,
         reject,
         timer: setTimeout(() => {
@@ -152,7 +162,7 @@ export class StructuredAgentSessionSendSettlement {
       const result = settledSend(
         journal,
         waiter.clientMessageId,
-        waiter.until,
+        waiter,
         submissions.get(waiter.clientMessageId)
       )
       if (result !== 'pending') {

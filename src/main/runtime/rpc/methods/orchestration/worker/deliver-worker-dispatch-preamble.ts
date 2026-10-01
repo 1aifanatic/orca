@@ -4,7 +4,10 @@ import {
   buildDispatchPreamble,
   dispatchPreambleSendOptions
 } from '../../../../orchestration/preamble'
-import { sendStructuredWorkerPreamble } from '../../orchestration-structured-worker-session'
+import {
+  sendStructuredWorkerPreamble,
+  type StructuredWorkerPreambleDelivery
+} from '../../orchestration-structured-worker-session'
 import type { WorkerTurnStartObservation } from './worker-start-turn-observation'
 import type { createStructuredWorkerSessionForWorktree } from './worker-topology'
 
@@ -54,21 +57,7 @@ export async function deliverWorkerDispatchPreamble(args: {
       dispatchId: args.dispatchId,
       preamble
     })
-    return {
-      structuredTurnStart:
-        delivery.state === 'accepted'
-          ? { verdict: 'observed' }
-          : {
-              verdict: 'unobserved',
-              reason: delivery.startFailure
-                ? `The worker's agent did not start: ${delivery.startFailure.reason} The dispatch ` +
-                  'preamble waits for its next start; if the worker then reports, this Dispatch ' +
-                  'settles normally.'
-                : 'The dispatch preamble was accepted, but the agent had not started to take it. ' +
-                  'It is delivered when the agent starts; if the worker then reports, this ' +
-                  'Dispatch settles normally.'
-            }
-    }
+    return { structuredTurnStart: structuredPreambleTurnStart(delivery) }
   }
   return {
     prompt: (
@@ -78,5 +67,24 @@ export async function deliverWorkerDispatchPreamble(args: {
         dispatchPreambleSendOptions(args.requestId)
       )
     ).prompt
+  }
+}
+
+/** What a structured preamble's delivery says about the worker's turn start. */
+export function structuredPreambleTurnStart(
+  delivery: StructuredWorkerPreambleDelivery
+): WorkerTurnStartObservation {
+  if (delivery.state === 'accepted') {
+    return { verdict: 'observed' }
+  }
+  return {
+    verdict: 'unobserved',
+    reason: delivery.startFailure
+      ? `The worker's agent did not start: ${delivery.startFailure.reason} The dispatch ` +
+        'preamble waits for its next start; if the worker then reports, this Dispatch ' +
+        'settles normally.'
+      : 'The dispatch preamble was accepted, but the agent had not started to take it. ' +
+        'It is delivered when the agent starts; if the worker then reports, this ' +
+        'Dispatch settles normally.'
   }
 }

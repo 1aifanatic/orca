@@ -39,6 +39,7 @@ import {
 } from '../../structured-worker-identity'
 import { createKeyedTrailingEdgeCoalescer } from '../../keyed-trailing-edge-coalescer'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
+import type { SendSettlementWaitOptions } from '../../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
 
 type StructuredWorkerBinding = {
   sessionId: string
@@ -218,7 +219,7 @@ type StructuredWorkerPreambleHost = Pick<
 
 /** What became of the preamble within the wait. `pending`: the worker's agent had not taken it; the
  *  host still holds it for that agent and never re-sends it. `startFailure`: its start failed and
- *  another is booked, which is why it had not. */
+ *  another was still booked when the wait ran out, which is why it had not. */
 export type StructuredWorkerPreambleDelivery =
   | { state: 'accepted' }
   | { state: 'pending'; startFailure?: AgentJournalStartFailure }
@@ -229,6 +230,7 @@ export async function sendStructuredWorkerPreamble(args: {
   sessionId: string
   dispatchId: string
   preamble: string
+  budgetMs?: number
 }): Promise<StructuredWorkerPreambleDelivery> {
   const body: AgentJournalMessageItem = {
     kind: 'message',
@@ -258,15 +260,7 @@ export async function sendStructuredWorkerPreamble(args: {
   const answered = agentSessionSendSubmission(result.value)
   const submission =
     answered?.dispatchState === 'pending'
-      ? (agentSessionSendSubmission(
-          (
-            await args.host
-              .waitForSendSettlement(args.sessionId, result.value.clientMessageId, {
-                budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-              })
-              .catch(() => undefined)
-          )?.value
-        ) ?? answered)
+      ? ((await preambleVerdict(args, result.value.clientMessageId)) ?? answered)
       : answered
   if (submission?.dispatchState === 'accepted') {
     return { state: 'accepted' }
@@ -297,6 +291,27 @@ export async function sendStructuredWorkerPreamble(args: {
   throw new OrchestrationError(
     'operation_unknown',
     `The dispatch preamble was submitted but not acknowledged (${submission?.dispatchState ?? 'unknown'}): ${reasonClause(submission?.reason)}.`
+  )
+}
+
+/** The preamble's verdict within the budget: a start that fails and is tried again inside it is
+ *  still waited on. At the budget, a start still waiting for its next try answers with its failure. */
+async function preambleVerdict(
+  args: { host: StructuredWorkerPreambleHost; sessionId: string; budgetMs?: number },
+  clientMessageId: string
+) {
+  const read = (options: SendSettlementWaitOptions) =>
+    args.host
+      .waitForSendSettlement(args.sessionId, clientMessageId, options)
+      .then((settled) => agentSessionSendSubmission(settled?.value))
+      .catch(() => undefined)
+  return (
+    (await read({
+      budgetMs: args.budgetMs ?? ORCHESTRATION_READINESS_TIMEOUT_MS,
+      throughStartRetries: true
+    })) ??
+    // A zero budget answers at once only for a start waiting for its next try.
+    (await read({ budgetMs: 0 }))
   )
 }
 
