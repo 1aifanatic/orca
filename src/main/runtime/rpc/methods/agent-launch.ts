@@ -19,7 +19,7 @@
  * harmless, and does nothing to reunite a caller with a surface a dead attempt left behind.
  */
 
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type {
   AgentLaunchIntent,
