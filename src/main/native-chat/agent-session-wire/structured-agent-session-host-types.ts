@@ -11,7 +11,8 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionChildEndCause,
-  StructuredAgentSessionProviderChildPhase
+  StructuredAgentSessionProviderChildPhase,
+  StructuredAgentSessionStopCause
 } from './structured-agent-session-adapter'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
@@ -35,6 +36,15 @@ export type StructuredAgentSessionReveal = {
 export type StructuredAgentSessionProviderChildIdentity = {
   readonly generation: string | null
   readonly fence: number
+}
+
+/** A wind-down still owed, with the stop that owes it: a retry finishes that stop. */
+export type StructuredAgentSessionOwedWindDown = StructuredAgentSessionProviderChildIdentity & {
+  readonly cause: StructuredAgentSessionStopCause
+  /** Where the journal stood when the stop was asked for; the child's end is ordered there. */
+  readonly requestedAt: AgentJournalCursor
+  /** Where it stood once the newest pass failed: a message accepted by then waited through a retry. */
+  readonly failedAt?: AgentJournalCursor
 }
 
 /** The provider process behind a conversation. Written only in
@@ -68,7 +78,8 @@ export type StructuredAgentSessionEndedChild = StructuredAgentSessionProviderChi
     duringStartup: boolean
     startedFor?: string
     /** Where the conversation's journal stood when the child ended, to order the end against a
-     *  message's acceptance. */
+     *  message's acceptance. A stop's end stands where it was asked for: a message accepted while
+     *  retries proved the exit waited on it, and came after it. */
     endedAt: AgentJournalCursor
   }
 
@@ -84,7 +95,7 @@ export type StructuredAgentSessionHostSession = {
   /** The wind-down this host still owes for a child it started: settling that generation's work
    *  and handing the lease back. Outlives `child`, which ends the moment the adapter proves the
    *  exit — an eviction that aborts after that point must still finish it on the next close. */
-  owesProviderChildWindDown?: StructuredAgentSessionProviderChildIdentity
+  owesProviderChildWindDown?: StructuredAgentSessionOwedWindDown
   lastEndedChild?: StructuredAgentSessionEndedChild
 }
 
