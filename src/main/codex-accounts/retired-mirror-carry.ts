@@ -3,18 +3,21 @@ import { join } from 'node:path'
 import { observeAgentStateFile } from '../codex/codex-path-observation'
 import { promoteCodexRuntimeSettingsToSystem } from '../codex/config-settings-promotion'
 import { resolvePromotionWriteTarget } from '../codex/config-settings-promotion-write-target'
-import {
-  readCodexSettingsBaseline,
-  type CodexSettingsBaseline
-} from '../codex/config-settings-baseline'
+import { readCodexSettingsBaseline } from '../codex/config-settings-baseline'
 import { promoteCodexRuntimeHookApprovalsToSystem } from '../codex/hook-trust-promotion'
-import { readMcpServerTomlOwnership } from '../codex/config-toml-mcp-servers'
+import {
+  readMcpServerTomlOwnership,
+  readTomlRootTableOwnership
+} from '../codex/config-toml-mcp-servers'
+import {
+  normalizeCodexProjectPathForLookup,
+  normalizeCodexProjectPathForRevocationLookup,
+  parseCodexProjectHeaderPath
+} from '../codex/config-toml-trust'
 import {
   deduplicateProjectTomlSections,
   extractOrdinaryCodexSettings,
   getMcpServerTomlSectionName,
-  getRevocationTomlSectionHeaderKey,
-  getTomlSectionHeaderKey,
   getTomlSections,
   isRuntimeProjectTomlSection,
   joinTomlBlocks
@@ -71,9 +74,10 @@ function runStep(step: () => boolean): boolean {
   }
 }
 
-/** False when ~/.codex/config.toml changed underneath, so the carry retries. */
+/** False when either config changed underneath, so the carry retries. */
 function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirrorHomes): boolean {
-  const runtimeObservation = observeAgentStateFile(join(runtimeHomePath, 'config.toml'))
+  const runtimeConfigPath = join(runtimeHomePath, 'config.toml')
+  const runtimeObservation = observeAgentStateFile(runtimeConfigPath)
   if (runtimeObservation.kind === 'indeterminate') {
     throw runtimeObservation.error
   }
@@ -85,17 +89,29 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
   if (systemObservation.kind === 'indeterminate') {
     throw systemObservation.error
   }
+  const runtimeConfig = runtimeObservation.value
   const systemConfig = systemObservation.kind === 'present' ? systemObservation.value : null
   // Why: with no config of its own, the mirror was the user's only config, so
   // its ordinary settings carry too — promotion alone skips any it baselined.
   const baseConfig = systemConfig?.trim()
     ? systemConfig
-    : extractOrdinaryCodexSettings(runtimeObservation.value)
-  const tables = selectMirrorOnlyTables(
-    runtimeObservation.value,
-    baseConfig,
-    readCodexSettingsBaseline(runtimeHomePath)
-  )
+    : extractOrdinaryCodexSettings(runtimeConfig)
+  const baseOwns = readTableOwnership(baseConfig)
+  const baseline = readCodexSettingsBaseline(runtimeHomePath)
+  // Why: an MCP server the mirror copied from ~/.codex and the user since
+  // removed there stays gone.
+  const removedFromSystem = (header: string): boolean => {
+    const mcpServerName = getMcpServerTomlSectionName(header)
+    return (
+      mcpServerName !== null &&
+      (baseline?.mcpServerRoot === true || baseline?.mcpServers.has(mcpServerName) === true)
+    )
+  }
+  const tables = deduplicateProjectTomlSections(getTomlSections(runtimeConfig))
+    .filter(
+      ({ header }) => isCarriedTable(header) && !baseOwns(header) && !removedFromSystem(header)
+    )
+    .map((section) => section.block)
   const nextConfig = joinTomlBlocks([baseConfig, ...tables])
   if (
     nextConfig !== joinTomlBlocks([systemConfig ?? '']) &&
@@ -105,58 +121,52 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
   ) {
     return false
   }
-  // Why move, not copy: ~/.codex now owns these tables, so a later mirror pass
-  // takes them from there and a removal the user makes there sticks.
+  // Why move, not copy: once ~/.codex owns a table, a later mirror pass takes it
+  // from there and a removal the user makes there sticks. Pruning everything it
+  // owns (not just this pass's tables) keeps an interrupted move retryable.
+  const nextOwns = readTableOwnership(nextConfig)
+  const owned = getTomlSections(runtimeConfig).filter(
+    ({ header }) => isCarriedTable(header) && nextOwns(header)
+  )
   return (
-    tables.length === 0 ||
+    owned.length === 0 ||
     writeFileAtomicallyIfUnchanged(
-      join(runtimeHomePath, 'config.toml'),
-      runtimeObservation.value,
-      tables.reduce((config, table) => config.replace(table, ''), runtimeObservation.value)
+      runtimeConfigPath,
+      runtimeConfig,
+      owned.reduce((config, section) => config.replace(section.block, ''), runtimeConfig)
     )
   )
 }
 
+function isCarriedTable(header: string): boolean {
+  return isRuntimeProjectTomlSection(header) || getMcpServerTomlSectionName(header) !== null
+}
+
 /**
- * Project trust and MCP servers the mirror kept for itself. A project ~/.codex
- * names at all, trusted or revoked, is the user's decision and wins; an MCP
- * server the mirror copied from ~/.codex and the user since removed stays gone.
+ * Whether a config already declares a project or MCP server table, in any TOML
+ * form. Appending a table it declares inline would make the file invalid, and a
+ * project it names at all — trusted or revoked — is the user's decision.
  */
-function selectMirrorOnlyTables(
-  runtimeConfig: string,
-  systemConfig: string,
-  baseline: CodexSettingsBaseline | null
-): string[] {
-  const systemSections = getTomlSections(systemConfig)
-  const systemProjects = new Set(
-    systemSections.flatMap((section) =>
-      isRuntimeProjectTomlSection(section.header)
-        ? [
-            getTomlSectionHeaderKey(section.header),
-            getRevocationTomlSectionHeaderKey(section.header)
-          ]
-        : []
-    )
-  )
-  const systemMcpServers = readMcpServerTomlOwnership(systemConfig)
-  const mcpServersOwnedElsewhere = systemMcpServers.ownsRoot || baseline?.mcpServerRoot === true
-  return deduplicateProjectTomlSections(getTomlSections(runtimeConfig))
-    .filter((section) => {
-      if (isRuntimeProjectTomlSection(section.header)) {
-        return (
-          !systemProjects.has(getTomlSectionHeaderKey(section.header)) &&
-          !systemProjects.has(getRevocationTomlSectionHeaderKey(section.header))
-        )
-      }
-      const mcpServerName = getMcpServerTomlSectionName(section.header)
-      return (
-        mcpServerName !== null &&
-        !mcpServersOwnedElsewhere &&
-        !systemMcpServers.names.has(mcpServerName) &&
-        !baseline?.mcpServers.has(mcpServerName)
-      )
-    })
-    .map((section) => section.block)
+function readTableOwnership(config: string): (header: string) => boolean {
+  const projects = readTomlRootTableOwnership(config, 'projects')
+  const projectKeys = new Set([...projects.names].flatMap(projectLookupKeys))
+  const mcpServers = readMcpServerTomlOwnership(config)
+  return (header) => {
+    const projectPath = parseCodexProjectHeaderPath(header)
+    if (projectPath !== null) {
+      return projects.ownsRoot || projectLookupKeys(projectPath).some((key) => projectKeys.has(key))
+    }
+    const mcpServerName = getMcpServerTomlSectionName(header)
+    return mcpServerName !== null && (mcpServers.ownsRoot || mcpServers.names.has(mcpServerName))
+  }
+}
+
+// Why both: a revocation written under drifted casing still names the project.
+function projectLookupKeys(projectPath: string): string[] {
+  return [
+    normalizeCodexProjectPathForLookup(projectPath),
+    `revocation:${normalizeCodexProjectPathForRevocationLookup(projectPath)}`
+  ]
 }
 
 function copyIfAbsent(sourcePath: string, targetPath: string): void {
