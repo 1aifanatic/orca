@@ -107,6 +107,9 @@ let channelUnsubscribe: (() => void) | null = null
 
 function applyLiveFact(entry: ConsumerEntry, fact: TerminalSideEffectFact, seq: number): void {
   switch (fact.kind) {
+    case 'agent-run-ended':
+      // Why: announced once per batch before the consumer lookup, not per consumer.
+      return
     case 'agent-status':
       entry.callbacks.onAgentStatus?.(fact.payload)
       return
