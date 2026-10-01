@@ -111,6 +111,7 @@ function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | n
     entryPath?: unknown
     appVersion?: unknown
     spawnerExecPath?: unknown
+    claudeAccountFunction?: unknown
   }
   if (
     !Number.isSafeInteger(identity.pid) ||
@@ -135,7 +136,8 @@ function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | n
       : {}),
     ...(typeof identity.spawnerExecPath === 'string' && identity.spawnerExecPath.length > 0
       ? { spawnerExecPath: identity.spawnerExecPath }
-      : {})
+      : {}),
+    ...(identity.claudeAccountFunction === true ? { claudeAccountFunction: true as const } : {})
   }
 }
 

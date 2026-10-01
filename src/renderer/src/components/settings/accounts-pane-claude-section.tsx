@@ -82,8 +82,8 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
       {claudeAccounts.olderTerminalsRunning ? (
         <p role="status" className="text-xs text-muted-foreground">
           {translate(
-            'accounts.claude.olderTerminals',
-            'Some terminals are still running from before this Orca update. Until you close all of them, terminals keep the Claude account they started with.'
+            'accounts.claude.olderTerminalsClose',
+            'Some terminals are still running from before this Orca update and keep the Claude account they started with. Close all terminals once to finish the update.'
           )}
         </p>
       ) : null}

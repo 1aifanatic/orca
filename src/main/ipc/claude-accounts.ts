@@ -2,19 +2,23 @@ import { ipcMain } from 'electron'
 import type { ClaudeAccountAddTarget, ClaudeAccountService } from '../claude-accounts/service'
 import type { ClaudeAccountSelectionTarget } from '../claude-accounts/runtime-selection'
 import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
-import { daemonHostsTerminalsFromOlderBuild } from '../daemon/daemon-provider-state'
+import { daemonHostsTerminalsWithoutClaudeAccountFunction } from '../daemon/daemon-provider-state'
 
 export function registerClaudeAccountHandlers(
   claudeAccounts: ClaudeAccountService,
-  olderTerminalsRunning: () => Promise<boolean> = daemonHostsTerminalsFromOlderBuild
+  olderTerminalsRunning: () => boolean = daemonHostsTerminalsWithoutClaudeAccountFunction
 ): void {
   // Why derived per call: the notice must end as soon as the last pre-update terminal closes.
   const withTerminalNotice = async (
     state: ClaudeRateLimitAccountsState | Promise<ClaudeRateLimitAccountsState>
   ): Promise<ClaudeRateLimitAccountsState> => {
     const resolved = await state
-    const older = await olderTerminalsRunning().catch(() => false)
-    return older ? { ...resolved, olderTerminalsRunning: true } : resolved
+    // Why only with an account: with none saved (drafts hold no login), every terminal already
+    // uses the personal login.
+    if (!resolved.accounts.some((account) => account.email)) {
+      return resolved
+    }
+    return olderTerminalsRunning() ? { ...resolved, olderTerminalsRunning: true } : resolved
   }
   ipcMain.handle('claudeAccounts:list', () => withTerminalNotice(claudeAccounts.listAccounts()))
   ipcMain.handle('claudeAccounts:add', (_event, args?: ClaudeAccountAddTarget) =>
