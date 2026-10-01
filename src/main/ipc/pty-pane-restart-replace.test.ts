@@ -125,6 +125,8 @@ function installRestartHarness(
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restart path calls only the provider members this fake defines.
   setLocalPtyProvider(provider as unknown as Parameters<typeof setLocalPtyProvider>[0])
+  // A Record, so a test can withdraw the leaf's binding the way a renderer patch does.
+  const ptyIdsByLeafId: Record<string, string> = { [leafId]: 'pty-old' }
   let session = {
     tabsByWorktree: { [worktreeId]: [{ id: tabId, worktreeId, ptyId: 'pty-old' }] },
     terminalLayoutsByTabId: {
@@ -132,7 +134,7 @@ function installRestartHarness(
         root: { type: 'leaf' as const, leafId },
         activeLeafId: leafId,
         expandedLeafId: null,
-        ptyIdsByLeafId: { [leafId]: 'pty-old' }
+        ptyIdsByLeafId
       }
     },
     terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-old' }
