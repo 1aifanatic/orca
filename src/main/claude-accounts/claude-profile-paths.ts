@@ -155,11 +155,14 @@ export function assertClaudeProfileDescendant(root: string, destination: string)
   }
 }
 
-/** Resolves links in the deepest existing ancestor so a not-yet-created path cannot hide behind one. */
+/**
+ * Resolves links in the deepest existing ancestor so a not-yet-created path cannot hide behind one;
+ * the native call also returns on-disk case, so a case-only alias compares equal.
+ */
 function canonicalPath(file: string): string {
   const resolved = resolve(file)
   try {
-    return realpathSync(resolved)
+    return realpathSync.native(resolved)
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
       throw error

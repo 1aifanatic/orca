@@ -89,10 +89,13 @@ function isSharedFile(file: string, destination: string): boolean {
 }
 
 function drainHistory(pending: string, destination: string): void {
-  // Why: a second name for the shared file holds nothing new, and would replay it once the default is replaced.
   if (isSharedFile(pending, destination)) {
-    unlinkSync(pending)
-    rmSync(`${pending}.offset`, { force: true })
+    // Why: a second name for the shared file would replay it once the default is replaced, but a
+    // default that links to this very file keeps its only copy here.
+    if (realpathSync(destination) !== realpathSync(pending)) {
+      unlinkSync(pending)
+      rmSync(`${pending}.offset`, { force: true })
+    }
     return
   }
   const content = readFileSync(pending)

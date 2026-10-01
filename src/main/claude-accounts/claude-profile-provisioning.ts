@@ -127,6 +127,10 @@ function mergeSettings(
   const current = withoutOrcaEntries(config)
   const desired = pickSettings(input.kind === 'present' ? input.value : {})
   const written = { ...ledger.keys['settings.json'] }
+  if (written.hooks === undefined && JSON.stringify(current.hooks) === '{}') {
+    // Why: Orca-only hooks that sharing never recorded are the installer's, not a user edit.
+    delete current.hooks
+  }
   const changed = mergeClaudeProfileKeys(current, desired, written)
   // Why: a statusLine Orca shared and the profile never edited follows the default when it goes away.
   if (

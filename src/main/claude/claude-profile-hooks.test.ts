@@ -20,6 +20,16 @@ vi.mock('electron', () => ({ app: { getPath: () => state.home } }))
 import { ClaudeHookService } from './hook-service'
 import { provisionClaudeProfile } from '../claude-accounts/claude-profile-provisioning'
 
+// Case-only aliases exist only on a case-insensitive filesystem (default APFS, NTFS).
+const caseInsensitive = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-case-probe-'))
+  try {
+    mkdirSync(join(dir, 'probe'))
+    return existsSync(join(dir, 'PROBE'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})()
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -252,6 +262,27 @@ describe('Claude hooks at an explicit profile', () => {
     expect(f.service.install({ ...CURRENT, configDir: f.defaultDir }).state).toBe('error')
     expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(defaults)
     expect(existsSync(join(f.defaultDir, '.orca-statusline.installed'))).toBe(false)
+  })
+  it.runIf(caseInsensitive)('refuses a case-only alias of the default home', () => {
+    const f = fixture()
+    f.service.install(CURRENT)
+    const defaults = readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')
+    const alias = join(state.home, '.CLAUDE')
+    expect(f.service.install({ ...CURRENT, configDir: alias }).state).toBe('error')
+    expect(f.service.remove({ configDir: alias }).state).toBe('error')
+    expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(defaults)
+    expect(existsSync(join(f.defaultDir, '.orca-statusline.installed'))).toBe(false)
+  })
+  it("shares the user's first hook into a profile that so far holds only Orca's", async () => {
+    const f = fixture()
+    const { hook, setStop, stop } = stopHooks(f)
+    writeFileSync(join(f.defaultDir, 'settings.json'), '{"model":"a"}')
+    await f.provision()
+    f.installProfile()
+    f.service.install(CURRENT)
+    setStop(f.defaultDir, ['my-guard'])
+    await f.provision()
+    expect(stop(f.profile)[0]).toEqual(hook('my-guard'))
   })
   it('creates the marker in a profile directory that did not exist yet', () => {
     const f = fixture()

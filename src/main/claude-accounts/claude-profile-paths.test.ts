@@ -12,11 +12,22 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 import {
+  assertOutsideDefaultClaudeHomes,
   describeClaudeProfile,
   prepareClaudeProfileDirectory,
   readClaudeProfileObject
 } from './claude-profile-paths'
 
+// Case-only aliases exist only on a case-insensitive filesystem (default APFS, NTFS).
+const caseInsensitive = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-case-probe-'))
+  try {
+    mkdirSync(join(dir, 'probe'))
+    return existsSync(join(dir, 'PROBE'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})()
 const roots: string[] = []
 function root(): string {
   const dir = mkdtempSync(join(tmpdir(), 'claude-profile-paths-'))
@@ -99,6 +110,16 @@ describe('Claude profile namespace', () => {
       prepareClaudeProfileDirectory(dataRoot, describeClaudeProfile(dataRoot, 'a', local), userHome)
     ).toThrow('separate directories')
     expect(existsSync(join(userHome, '.claude'))).toBe(false)
+  })
+  it.runIf(caseInsensitive)('refuses a case-only alias of the default home', () => {
+    const userHome = root()
+    mkdirSync(join(userHome, '.claude'))
+    expect(() => assertOutsideDefaultClaudeHomes(join(userHome, '.CLAUDE'), userHome)).toThrow(
+      'separate directories'
+    )
+    expect(() =>
+      assertOutsideDefaultClaudeHomes(join(userHome, '.CLAUDE', 'nested'), userHome)
+    ).toThrow('separate directories')
   })
   it('distinguishes missing from empty, malformed, nonobject and inaccessible JSON', () => {
     const file = join(root(), 'state.json')
