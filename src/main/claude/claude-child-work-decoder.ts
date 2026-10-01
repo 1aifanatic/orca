@@ -3,9 +3,9 @@
 // A child is live from its `task_started` until its own terminal `task_updated` or
 // `task_notification`; nothing else ends it. A roster (`background_tasks_changed`), a turn ending
 // or a spawn call returning is the parent's view of the child, not the child's, and the CLI sends
-// every child its own terminal frame, so none of them settles one. When the session ends, the
-// host settles whatever is still live. Edges wait here until the frame is journaled, then take
-// the host clock.
+// every child its own terminal frame, so none of them settles one. When Orca ends the session and
+// proves its tree gone, what is still live is stopped (`stopLive`); any other end leaves it for the
+// host to settle as unknown. Edges wait here until the frame is journaled, then take the host clock.
 
 import type {
   AgentChildWorkKind,

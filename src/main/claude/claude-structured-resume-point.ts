@@ -18,7 +18,7 @@ export function persistClaudeTurnResumePoint(
     return
   }
   session.turnEndLeafUuid = session.leafUuid
-  // The resume point is past the turn, which is all a Stop waits for before it ends the child.
+  // The turn ended: a Stop waiting to end the child re-reads what Claude still has in flight.
   settleClaudeTurnEndWaiters(session)
   const leafUuid = session.turnEndLeafUuid
   const persist = deps.persistResumePoint

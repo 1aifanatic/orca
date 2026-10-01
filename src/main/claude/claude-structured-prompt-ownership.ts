@@ -68,7 +68,7 @@ export async function cancelClaudeStructuredTurn(input: {
   onDispatchSettledLate?: ClaudeLateDispatchSettlement
 }): Promise<{ cancelled: boolean }> {
   const { request, sessions } = input
-  // A Stop ends the child next, so its interrupt shares the grace with the stopped turn's end.
+  // A Stop ends the child next, so its interrupt shares the grace with Claude's wind-down after it.
   const timeoutMs = Math.min(input.timeoutMs ?? CLAUDE_STOP_GRACE_MS, CLAUDE_STOP_GRACE_MS)
   const session = requireSession(sessions, request.sessionId)
   const acquisitionGeneration = session.acquisitionGeneration

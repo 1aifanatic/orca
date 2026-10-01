@@ -39,8 +39,9 @@ export type StructuredAgentSessionStopWindDown = { waitsForProvider: boolean; st
 
 /**
  * A session-ending Stop's second step, queued behind its first in the same tick so nothing sent
- * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported, and the
- * wind-down it leaves owed is retried by the next stop or the idle sweep.
+ * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported. The next
+ * Stop retries the wind-down it leaves owed, and so does the idle sweep: at its next tick once the
+ * child is proven gone, else only after the chat idles with no child work left.
  */
 export async function endStoppedStructuredAgentSession(
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'adapter'>,

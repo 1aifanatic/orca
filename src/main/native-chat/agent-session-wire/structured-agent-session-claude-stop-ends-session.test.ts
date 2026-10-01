@@ -1,6 +1,6 @@
 // A Stop ends Claude's child on the shipping adapter, whatever Claude answered the interrupt. The
-// Stop answers on the interrupt; its next serialized step ends the child once the stopped turn ends
-// or the grace runs out. The chat rests; the next send resumes it.
+// Stop answers on the interrupt; its next serialized step ends the child once Claude has wound down
+// what it had in flight, or the grace runs out. The chat rests; the next send resumes it.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
