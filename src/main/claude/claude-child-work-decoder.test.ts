@@ -201,22 +201,6 @@ describe('Claude child-work decoder', () => {
     decoder.observe(backgroundAgent)
     expect(decoder.drain(600)).toEqual([expect.not.objectContaining({ restart: true })])
   })
-
-  it("carries a live task's error as what it last said, with no ending and no new state", () => {
-    const decoder = decoderWith(backgroundAgent)
-    // Shape from the SDK's declared `task_updated` patch; no capture has shown one on a live task.
-    decoder.observe(
-      system('task_updated', { task_id: 'agent-bg', patch: { error: 'Rate limited' } })
-    )
-    expect(decoder.drain(500)).toEqual([
-      expect.objectContaining({
-        type: 'live',
-        child: expect.objectContaining({ state: 'working', lastMessage: 'Rate limited' })
-      })
-    ])
-    decoder.observe(system('task_updated', { task_id: 'agent-unknown', patch: { error: 'x' } }))
-    expect(decoder.drain(600)).toEqual([])
-  })
 })
 
 describe('Claude children waiting on a permission request', () => {

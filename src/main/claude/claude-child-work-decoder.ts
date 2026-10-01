@@ -218,13 +218,7 @@ export class ClaudeChildWorkDecoder {
     const running = liveClaudeTaskRunState(patch.status) !== null
     const name = taskName(patch)
     const description = taskDescription(patch.description)
-    // A live task's error is what it last said: not an ending, and no state follows from it.
-    const error = taskText(patch.error)
-    const facts = error ? { lastMessage: error } : {}
     if (patch.is_backgrounded !== true && !name && !description && !running && kind === 'unknown') {
-      if (error && existing) {
-        this.report(id, existing, facts)
-      }
       return
     }
     this.upsert(
@@ -237,7 +231,7 @@ export class ClaudeChildWorkDecoder {
         description: description ?? existing?.description,
         toolUseId: existing?.toolUseId
       },
-      facts,
+      {},
       false
     )
   }
