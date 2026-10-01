@@ -110,6 +110,18 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
+  /** On `pending`: the message goes back in the queue because the start it was for failed. An
+   *  older reader ignores the key and reads the row as a handover, so the message ends in doubt,
+   *  never as sent or failed. A malformed one is dropped when read, never the row. */
+  startFailure?: JournalStartFailureRecord
+}
+
+/** What a failed start's row records; the attempt count and the time are the reducer's. */
+export type JournalStartFailureRecord = {
+  reason: string
+  rejection: AgentSessionFailureFact
+  generation?: string
+  nextAttemptAt: number
 }
 
 /** An item mutation may name its own producer, because one batch can CREATE

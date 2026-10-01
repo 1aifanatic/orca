@@ -111,7 +111,11 @@ export function journalDispatchRowBuilder(
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {}),
-    ...(input.state === 'pending' ? { turnScope: input.turnScope } : {})
+    ...(input.state !== 'pending'
+      ? {}
+      : 'startFailure' in input
+        ? { startFailure: input.startFailure }
+        : { turnScope: input.turnScope })
   })
 }
 

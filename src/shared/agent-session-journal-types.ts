@@ -426,6 +426,23 @@ export type AgentJournalSubmission = {
   /** Host-only: who asked for this turn — a person over the client send RPC, or Orca itself.
    *  A person's turn is what ends a Stop's queue pause. */
   origin?: 'client' | 'host'
+  /** On a queued message only: the agent start it was for failed and another is booked. A start
+   *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
+  startFailure?: AgentJournalStartFailure
+}
+
+/** A delivery attempt whose agent start failed, as the message waiting on the next one keeps it. */
+export type AgentJournalStartFailure = {
+  /** Starts that failed for this message so far, counted from the rows that recorded them. */
+  attempts: number
+  /** The sentence `agentSessionFailureWords` gave, as a terminal rejection would carry it. */
+  reason: string
+  rejection: UnreadAgentSessionFailureFact
+  failedAt: number
+  /** The provider child whose start failed; absent when none was published. */
+  generation?: string
+  /** When the next start is due, on the host's clock. */
+  nextAttemptAt: number
 }
 
 /** Durable answer to "did my send land?", keyed by client message id. Only an

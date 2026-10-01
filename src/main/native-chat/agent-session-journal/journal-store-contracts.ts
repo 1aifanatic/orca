@@ -12,7 +12,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
-import type { JournalRow } from './journal-row-schema'
+import type { JournalRow, JournalStartFailureRecord } from './journal-row-schema'
 
 export type AgentSessionJournalOptions = {
   identity: AgentSessionJournalIdentity
@@ -38,6 +38,8 @@ export type ResolveDispatchInput = {
     | { state: 'accepted'; providerIdentity: AgentJournalItemIdentity | null }
     /** The turn the message is handed into — the live root turn, or `thread` when none runs. */
     | { state: 'pending'; turnScope: AgentJournalTurnScope }
+    /** Back in the queue: the start it was for failed, and its next try is booked. */
+    | { state: 'pending'; startFailure: JournalStartFailureRecord }
     /** `reason` is what released clients print, `rejection` what newer ones read: both from
      *  `agentSessionFailureWords`, never written by hand. */
     | ({ state: 'rejected' } & AgentJournalDispatchRejection)

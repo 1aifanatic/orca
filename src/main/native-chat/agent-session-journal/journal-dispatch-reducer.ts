@@ -9,7 +9,7 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import { notePersonTurnAccepted, placeHandedOverMessage } from './journal-submission-fold'
-import type { JournalRow } from './journal-row-schema'
+import type { JournalRow, JournalStartFailureRecord } from './journal-row-schema'
 
 export function applyJournalDispatchRow(
   state: JournalReducerState,
@@ -31,7 +31,20 @@ export function applyJournalDispatchRow(
     delete submission.rejection
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
-  if (row.state === 'pending') {
+  const startFailure =
+    row.state === 'pending' ? readStoredStartFailure(row.startFailure) : undefined
+  if (startFailure) {
+    // Back in the queue: each failed start this message waited on is one more attempt.
+    delete submission.handedOverAt
+    submission.startFailure = {
+      attempts: (submission.startFailure?.attempts ?? 0) + 1,
+      ...startFailure,
+      failedAt: row.ts
+    }
+  } else {
+    delete submission.startFailure
+  }
+  if (row.state === 'pending' && !startFailure) {
     submission.handedOverAt = row.ts
     placeHandedOverMessage(state, submission, row)
   }
@@ -70,4 +83,29 @@ function unreadFailureFact(value: unknown): UnreadAgentSessionFailureFact | unde
     value.kind
     ? { kind: value.kind }
     : undefined
+}
+
+/** A failed start as its row recorded it; undefined when anything it needs is malformed. */
+function readStoredStartFailure(value: unknown): JournalStartFailureRecord | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const reason = 'reason' in value ? value.reason : undefined
+  const rejection = readAgentSessionFailureFact('rejection' in value ? value.rejection : undefined)
+  const nextAttemptAt = 'nextAttemptAt' in value ? value.nextAttemptAt : undefined
+  const generation = 'generation' in value ? value.generation : undefined
+  if (
+    typeof reason !== 'string' ||
+    !rejection ||
+    typeof nextAttemptAt !== 'number' ||
+    !Number.isFinite(nextAttemptAt)
+  ) {
+    return undefined
+  }
+  return {
+    reason,
+    rejection,
+    nextAttemptAt,
+    ...(typeof generation === 'string' && generation ? { generation } : {})
+  }
 }
