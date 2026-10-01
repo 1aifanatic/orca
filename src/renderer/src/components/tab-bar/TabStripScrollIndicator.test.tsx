@@ -33,12 +33,12 @@ describe('TabStripScrollIndicator', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders under the tabs with bottom-0 and idle 2px height', () => {
+  it('renders under the tabs with bottom-0 and idle 3px height', () => {
     const { getByTestId } = render(<TabStripScrollIndicator metrics={OVERFLOW_METRICS} />)
     const indicator = getByTestId('tab-strip-scroll-indicator')
     expect(indicator).toBeTruthy()
     expect(indicator.className).toContain('bottom-0')
-    expect(indicator.className).toContain('h-[2px]')
+    expect(indicator.className).toContain('h-[3px]')
     expect(indicator.className).toContain('z-[12]')
     expect(indicator.className).toContain('opacity-0')
     expect(indicator.className).toContain('group-hover/tab-strip:opacity-100')
@@ -47,18 +47,18 @@ describe('TabStripScrollIndicator', () => {
     expect(thumb).toBeTruthy()
   })
 
-  it('expands to 3px and becomes opaque on pointer hover, restores on leave', () => {
+  it('expands to 4px and becomes opaque on pointer hover, restores on leave', () => {
     const { getByTestId } = render(<TabStripScrollIndicator metrics={OVERFLOW_METRICS} />)
     const indicator = getByTestId('tab-strip-scroll-indicator')
-    expect(indicator.className).toContain('h-[2px]')
+    expect(indicator.className).toContain('h-[3px]')
     expect(indicator.className).toContain('opacity-0')
 
     fireEvent.pointerEnter(indicator)
-    expect(indicator.className).toContain('h-[3px]')
+    expect(indicator.className).toContain('h-[4px]')
     expect(indicator.className).toContain('opacity-100')
 
     fireEvent.pointerLeave(indicator)
-    expect(indicator.className).toContain('h-[2px]')
+    expect(indicator.className).toContain('h-[3px]')
     expect(indicator.className).toContain('opacity-0')
   })
 
@@ -79,7 +79,7 @@ describe('TabStripScrollIndicator', () => {
     fireEvent.pointerEnter(indicator)
     expect(indicator.className).toContain('opacity-0')
     expect(indicator.className).not.toContain('opacity-100')
-    expect(indicator.className).toContain('h-[2px]')
+    expect(indicator.className).toContain('h-[3px]')
   })
 
   it('does not forward wheel events when disabled', () => {
@@ -177,7 +177,7 @@ describe('TabStripScrollIndicator', () => {
 
     // Start drag on thumb
     fireEvent.pointerDown(thumb, { button: 0, clientX: 50 })
-    expect(indicator.className).toContain('h-[3px]')
+    expect(indicator.className).toContain('h-[4px]')
 
     // Move pointer by 60px
     fireEvent(window, new MouseEvent('pointermove', { clientX: 110 }))
@@ -185,7 +185,7 @@ describe('TabStripScrollIndicator', () => {
 
     // Release drag
     fireEvent(window, new MouseEvent('pointerup'))
-    expect(indicator.className).toContain('h-[2px]')
+    expect(indicator.className).toContain('h-[3px]')
   })
 
   it('cancels an active thumb drag when it becomes disabled', () => {
