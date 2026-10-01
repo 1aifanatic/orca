@@ -20,6 +20,7 @@ import {
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
+import { queuedCardHoldsQueue } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -57,9 +58,8 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
   return pending
 }
 
-/** Waiting, not held on its own, not positioned behind a returned card, and the
- *  queue not paused. The admission rule (§accept) and the drain's selection
- *  both read it. */
+/** Waiting, not held on its own, not positioned behind a returned card that holds the queue, and
+ *  the queue not paused. The admission rule (§accept) and the drain's selection both read it. */
 function oldestActionableQueuedMessage(
   journal: Pick<AgentSessionJournal, 'queuedMessages' | 'cursor' | 'wroteBeforeOpen'>
 ): QueuedMessageRow | null {
@@ -69,9 +69,8 @@ function oldestActionableQueuedMessage(
     return null
   }
   for (const row of rows) {
-    if (row.state === 'returned') {
-      // A returned card blocks everything after it until the user acts. A card whose message waits
-      // for its next start after a refused one is not returned and holds nothing.
+    // See `queuedCardHoldsQueue` for which returned cards block what follows until the user acts.
+    if (queuedCardHoldsQueue(row)) {
       return null
     }
     if (row.state === 'waiting' && row.holdReason === null) {

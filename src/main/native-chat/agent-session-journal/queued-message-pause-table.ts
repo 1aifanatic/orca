@@ -4,6 +4,7 @@
 // fact only records the one event the journal's closed row kinds cannot carry.
 // An explicit Resume retires it.
 
+import { queuedCardHoldsQueue } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type Database from '../../sqlite/sync-database'
 
 export type QueuePauseReason = 'stopped' | 'cleared'
@@ -79,7 +80,12 @@ export function clearQueuePause(
   )
 }
 
-type QueueCardState = { state: string; holdReason: string | null }
+type QueueCardState = {
+  state: string
+  holdReason: string | null
+  returnedReason?: string | null
+  returnedRejection?: unknown
+}
 
 /** A card a pause holds back: waiting, with no hold of its own, wherever it sits.
  *  While one exists — or a hand-off still owed a return to waiting
@@ -90,13 +96,12 @@ export function isPausableQueuedMessage(row: QueueCardState): boolean {
   return row.state === 'waiting' && row.holdReason === null
 }
 
-/** Whether Resume would send anything: a pausable card not behind a returned one,
- *  which blocks everything after it until the user acts, exactly as the drain
- *  reads it. Only then is the kept pause PUBLISHED, so its header never offers a
- *  Resume that sends nothing. */
+/** Whether Resume would send anything: a pausable card not behind a returned one that holds the
+ *  queue (`queuedCardHoldsQueue`), exactly as the drain reads it. Only then is the kept pause
+ *  PUBLISHED, so its header never offers a Resume that sends nothing. */
 export function hasResumableQueuedMessage(rows: readonly QueueCardState[]): boolean {
   for (const row of rows) {
-    if (row.state === 'returned') {
+    if (queuedCardHoldsQueue(row)) {
       return false
     }
     if (isPausableQueuedMessage(row)) {

@@ -170,6 +170,36 @@ export function classifyDispatchRejection(
   return { category: KIND_CATEGORY[kind], verdict: KIND_VERDICT[kind], kind }
 }
 
+/** Rejected because the agent it waited on never started: what a failed start writes, whatever
+ *  the person may have to do first. Orca stopping a start that hung is one. */
+export function isFailedStartRejection(
+  submission: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }
+): boolean {
+  const { category, kind } = classifyDispatchRejection(submission)
+  return category === 'startFailed' || kind === 'hostStopped'
+}
+
+/**
+ * Whether a queued card holds every card behind it until the person acts: one returned for
+ * something about it that only they can resolve — the provider or Orca refused its content or
+ * attachments, its command did not run, the queue was full, Orca could not hand it over or faulted,
+ * the agent stopped before taking it. One returned because its agent failed to start holds
+ * nothing: each card behind it starts the agent again for itself.
+ */
+export function queuedCardHoldsQueue(card: {
+  state: string
+  returnedReason?: string | null
+  returnedRejection?: unknown
+}): boolean {
+  return (
+    card.state === 'returned' &&
+    !isFailedStartRejection({
+      reason: card.returnedReason ?? null,
+      rejection: card.returnedRejection
+    })
+  )
+}
+
 /** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
 export function dispatchWasWithdrawn(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'> | undefined
