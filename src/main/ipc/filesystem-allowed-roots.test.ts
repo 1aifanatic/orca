@@ -15,7 +15,6 @@ import type { ProjectGroup } from '../../shared/project-group-types'
 import type { Project } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
 import { getAllowedRoots } from './filesystem-allowed-roots'
-import { getNativeChatAttachmentAllowedRoots } from '../window/native-chat-attachment-store'
 import { authorizeExternalPath, resolveAuthorizedPath } from './filesystem-auth'
 import { invalidateAuthorizedRootsCache } from './registered-worktree-roots-cache'
 import { computeWorkspaceRoot, getWorktreePathSettings } from './worktree-logic'
@@ -151,7 +150,7 @@ function referenceAllowedRoots(store: Store): string[] {
       }
     }
   }
-  return [...roots, ...getNativeChatAttachmentAllowedRoots()]
+  return roots
 }
 
 function makeRepo(overrides: Partial<Repo> & Pick<Repo, 'id' | 'path'>): Repo {
