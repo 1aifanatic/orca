@@ -74,7 +74,17 @@ describe('terminal run facts', () => {
     expect(facts.read('pty-1', 'inc-1').firstUserInputAt).toBe(100)
     expect(facts.readLastInputAt('pty-1')).toBe(200)
 
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-1', isReattach: true })
+    expect(facts.readLastInputAt('pty-1')).toBe(200)
     facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-2' })
     expect(facts.readLastInputAt('pty-1')).toBeNull()
+  })
+
+  it('records the last input on a PTY main adopted without a spawn commit', () => {
+    const facts = new TerminalRunFactsRegister()
+    facts.recordInput('pty-1', 'driving', 'next task\r', 100)
+
+    expect(facts.readLastInputAt('pty-1')).toBe(100)
+    expect(facts.read('pty-1', null).firstUserInputAt).toBeNull()
   })
 })

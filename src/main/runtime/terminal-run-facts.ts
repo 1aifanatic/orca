@@ -35,12 +35,13 @@ type TerminalRunRecord = {
   incarnationId: string | null
   spawnOrigin: TerminalRunSpawnOrigin
   firstUserInputAt: number | null
-  lastInputAt: number | null
 }
 
 /** Main's per-process facts about one PTY run, keyed by the incarnation they describe. */
 export class TerminalRunFactsRegister {
   private readonly runsByPtyId = new Map<string, TerminalRunRecord>()
+  // Why apart from the run record: input must count on a PTY main adopted without a commit.
+  private readonly lastInputAtByPtyId = new Map<string, number>()
 
   /** Once per process: a re-registration of the same incarnation keeps its facts. Without an
    *  incarnation a commit cannot be told from a new process, so it starts clean. */
@@ -53,11 +54,11 @@ export class TerminalRunFactsRegister {
       return
     }
     const origin = spawnCommitBindingOrigin(commit, expectedSourceBinding)
+    this.lastInputAtByPtyId.delete(commit.id)
     this.runsByPtyId.set(commit.id, {
       incarnationId,
       spawnOrigin: origin === 'spawn' && commit.coldRestore !== undefined ? 'cold-restore' : origin,
-      firstUserInputAt: null,
-      lastInputAt: null
+      firstUserInputAt: null
     })
   }
 
@@ -65,12 +66,12 @@ export class TerminalRunFactsRegister {
    *  such as `exit` can end the process before the write returns. The payload check backs up a
    *  writer that labels a reply or focus report as driving. */
   recordInput(ptyId: string, inputKind: TerminalInputKind, data: string, now = Date.now()): void {
-    const run = this.runsByPtyId.get(ptyId)
-    if (!run || inputKind === 'query-reply' || isUntypedTerminalInput(data)) {
+    if (inputKind === 'query-reply' || isUntypedTerminalInput(data)) {
       return
     }
-    run.lastInputAt = now
-    if (inputKind === 'driving') {
+    this.lastInputAtByPtyId.set(ptyId, now)
+    const run = this.runsByPtyId.get(ptyId)
+    if (run && inputKind === 'driving') {
       run.firstUserInputAt ??= now
     }
   }
@@ -78,7 +79,7 @@ export class TerminalRunFactsRegister {
   /** When input other than a terminal reply last reached the PTY's current process, launch writes
    *  included; null if none has. */
   readLastInputAt(ptyId: string): number | null {
-    return this.runsByPtyId.get(ptyId)?.lastInputAt ?? null
+    return this.lastInputAtByPtyId.get(ptyId) ?? null
   }
 
   /** A run main never saw committed reads as not fresh, which keeps today's close-on-exit. */
@@ -95,5 +96,6 @@ export class TerminalRunFactsRegister {
 
   delete(ptyId: string): void {
     this.runsByPtyId.delete(ptyId)
+    this.lastInputAtByPtyId.delete(ptyId)
   }
 }

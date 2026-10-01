@@ -125,7 +125,6 @@ describe('tui-idle hook lane through the runtime', () => {
       row({ receivedAt: before, stateStartedAt: before })
     ]
     const typeAt = (at: number) => (runtime: OrcaRuntimeService) => {
-      runtime.noteTerminalSpawnCommit({ id: TRANSCRIPT_PANE_PTY_ID, incarnationId: 'inc-1' })
       runtime.terminalRunFacts.recordInput(TRANSCRIPT_PANE_PTY_ID, 'driving', input, at)
     }
     expect(await waitOutcome({ rows, afterCreate: typeAt(before - 1) })).toBe('ready')
