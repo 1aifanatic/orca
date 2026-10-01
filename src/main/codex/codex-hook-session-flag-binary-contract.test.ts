@@ -7,8 +7,12 @@ import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { collectHookListings } from './codex-app-server-client'
 import { runCodexAppServerSession } from './codex-app-server-session'
-import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
-import { buildCodexHookDefinitionFlag, buildCodexHookSessionFlag } from './codex-hook-session-flags'
+import { CODEX_EVENT_LABEL } from './codex-hook-definition'
+import {
+  buildCodexHookDefinitionFlag,
+  buildCodexHookSessionFlag,
+  CODEX_REQUIRED_EVENTS
+} from './codex-hook-session-flags'
 import {
   askCodexForHookSessionTrust,
   codexTrustsHookSessionFlag
@@ -90,22 +94,38 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     return collectHookListings(result)
   }
 
+  /** The events this Codex lists: every required one, plus Interrupt from the Codex that has it. */
+  function expectManagedEvents(labels: readonly string[]): void {
+    const required = CODEX_REQUIRED_EVENTS.map((eventName) => CODEX_EVENT_LABEL[eventName])
+    expect([...labels].sort()).toEqual(
+      labels.includes(CODEX_EVENT_LABEL.Interrupt)
+        ? [...required, CODEX_EVENT_LABEL.Interrupt].sort()
+        : [...required].sort()
+    )
+  }
+
+  const labelOf = (key: string): string => key.split(':').at(-3) ?? ''
+
   it('reports a key and hash for every managed event of a flag-defined hook', async () => {
     const trust = await askCodexForHookSessionTrust(binary!, hookCommand)
     expect(trust).not.toBeNull()
-    for (const eventName of CODEX_EVENTS) {
-      expect(trust?.[CODEX_EVENT_LABEL[eventName]]?.key).toMatch(
-        new RegExp(`<session-flags>.*:${CODEX_EVENT_LABEL[eventName]}:0:0$`)
-      )
+    expectManagedEvents(Object.keys(trust!))
+    for (const [label, entry] of Object.entries(trust!)) {
+      expect(entry.key).toMatch(new RegExp(`<session-flags>.*:${label}:0:0$`))
     }
   })
 
-  it('trusts every event when the flag carries the reported hashes', async () => {
+  it('trusts every event it lists, Interrupt included, when the flag carries the reported hashes', async () => {
     const trust = await askCodexForHookSessionTrust(binary!, hookCommand)
     const flag = buildCodexHookSessionFlag(hookCommand, trust!)!
     const listings = (await listHooks(flag)).filter((listing) => listing.source === 'sessionFlags')
-    expect(listings).toHaveLength(CODEX_EVENTS.length)
+    expectManagedEvents(listings.map((listing) => labelOf(listing.key)))
+    // Why: a Codex that lists Interrupt must have approved it, or Esc-cancel would open a review.
+    expect(listings.map((listing) => labelOf(listing.key)).sort()).toEqual(
+      Object.keys(trust!).sort()
+    )
     expect(listings.every((listing) => listing.trustStatus === 'trusted')).toBe(true)
+    expect(listings.every((listing) => listing.enabled === true)).toBe(true)
   })
 
   it("confirms the complete flag with Orca's own pre-publish check", async () => {
@@ -138,7 +158,7 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     const listings = (
       await listHooks(buildCodexHookSessionFlag(hookCommand, trust!)!, home)
     ).filter((listing) => listing.source === 'sessionFlags')
-    expect(listings).toHaveLength(CODEX_EVENTS.length)
+    expectManagedEvents(listings.map((listing) => labelOf(listing.key)))
     expect(listings.every((listing) => listing.trustStatus === 'trusted')).toBe(true)
     expect(listings.every((listing) => listing.enabled === true)).toBe(true)
   })
@@ -162,7 +182,7 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     const listings = (await listHooks(buildCodexHookDefinitionFlag(hookCommand)!)).filter(
       (listing) => listing.source === 'sessionFlags'
     )
-    expect(listings).toHaveLength(CODEX_EVENTS.length)
+    expectManagedEvents(listings.map((listing) => labelOf(listing.key)))
     expect(listings.every((listing) => listing.trustStatus === 'untrusted')).toBe(true)
   })
 
@@ -170,6 +190,7 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     const trust = await askCodexForHookSessionTrust(binary!, hookCommand)
     const flag = buildCodexHookSessionFlag(hookCommand, trust!)!
     const server = await startMockResponses()
+    let stderr = ''
     const home = freshHome('exec')
     try {
       const address = server.address()
@@ -195,11 +216,13 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
       )
       // Why: `codex exec` also reads a prompt from stdin until it closes.
       run.child.stdin?.end()
-      await run
+      stderr = (await run).stderr
     } finally {
       server.close()
     }
     expect(readFileSync(hookLog, 'utf-8')).toContain('fired')
+    // Why: a Codex that predates Interrupt must drop its definition silently, and no hook may need review.
+    expect(stderr).not.toMatch(/interrupt|clamp|review|untrusted/i)
     expect(readdirSync(home)).not.toContain('hooks.json')
     const config = readdirSync(home).includes('config.toml')
       ? readFileSync(join(home, 'config.toml'), 'utf-8')

@@ -7,6 +7,7 @@ import { runCodexAppServerSession } from './codex-app-server-session'
 import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 import {
   buildCodexHookDefinitionFlag,
+  CODEX_REQUIRED_EVENTS,
   type CodexHookSessionTrust
 } from './codex-hook-session-flags'
 
@@ -26,7 +27,10 @@ export async function askCodexForHookSessionTrust(
   return readSessionFlagTrust(listings, hookCommand)
 }
 
-/** Whether Codex lists every event of the complete flag (definition plus approval) as trusted and enabled. */
+/**
+ * Whether Codex lists every required event of the complete flag (definition
+ * plus approval), and every other event it lists at all, as trusted and enabled.
+ */
 export async function codexTrustsHookSessionFlag(
   codexCommand: string,
   flag: string,
@@ -35,6 +39,9 @@ export async function codexTrustsHookSessionFlag(
   const listings = await listSessionFlagHooks(codexCommand, flag)
   return CODEX_EVENTS.every((eventName) => {
     const matches = matchSessionFlagEvent(listings, hookCommand, CODEX_EVENT_LABEL[eventName])
+    if (matches.length === 0 && !CODEX_REQUIRED_EVENTS.includes(eventName)) {
+      return true
+    }
     return (
       matches.length === 1 && matches[0].trustStatus === 'trusted' && matches[0].enabled === true
     )
@@ -79,7 +86,10 @@ function matchSessionFlagEvent(
   )
 }
 
-/** Codex's key and hash per managed event, or null unless every event is reported once. */
+/**
+ * Codex's key and hash per managed event, or null unless every required event
+ * is reported once. An optional event this Codex does not list is left out.
+ */
 export function readSessionFlagTrust(
   listings: readonly CodexHookListing[],
   hookCommand: string
@@ -88,6 +98,9 @@ export function readSessionFlagTrust(
   for (const eventName of CODEX_EVENTS) {
     const label = CODEX_EVENT_LABEL[eventName]
     const matches = matchSessionFlagEvent(listings, hookCommand, label)
+    if (matches.length === 0 && !CODEX_REQUIRED_EVENTS.includes(eventName)) {
+      continue
+    }
     if (matches.length !== 1) {
       return null
     }

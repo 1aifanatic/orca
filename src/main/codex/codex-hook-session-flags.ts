@@ -1,5 +1,14 @@
-import { MANAGED_HOOK_TIMEOUT_SECONDS } from '../agent-hooks/installer-utils'
-import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
+import { buildCodexManagedHook, CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
+
+type CodexEventName = (typeof CODEX_EVENTS)[number]
+
+// Why optional: only Codex 0.150+ lists Interrupt; an older Codex drops the definition silently.
+const OPTIONAL_EVENTS: ReadonlySet<CodexEventName> = new Set<CodexEventName>(['Interrupt'])
+
+/** The events every supported Codex lists; a flag carries no hook without approval for each. */
+export const CODEX_REQUIRED_EVENTS: readonly CodexEventName[] = CODEX_EVENTS.filter(
+  (eventName) => !OPTIONAL_EVENTS.has(eventName)
+)
 
 /**
  * Orca's Codex status hook travels as one `-c hooks=<inline table>` session flag
@@ -43,9 +52,10 @@ function renderHooksEntries(command: string, spelling: TomlSpelling): string[] |
     return null
   }
   const g = spelling.gap
+  // Why the builder's timeout: Codex hashes its per-event normalization (Interrupt is capped at 3 s).
   return CODEX_EVENTS.map(
     (eventName) =>
-      `${eventName}${g}=${g}[{${g}hooks${g}=${g}[{${g}type${g}=${g}${spelling.string('command')},${g}command${g}=${g}${commandString},${g}timeout${g}=${g}${MANAGED_HOOK_TIMEOUT_SECONDS}${g}}]${g}}]`
+      `${eventName}${g}=${g}[{${g}hooks${g}=${g}[{${g}type${g}=${g}${spelling.string('command')},${g}command${g}=${g}${commandString},${g}timeout${g}=${g}${buildCodexManagedHook(command, eventName).timeout}${g}}]${g}}]`
   )
 }
 
@@ -87,6 +97,9 @@ export function buildCodexHookSessionFlag(
   const states: string[] = []
   for (const eventName of CODEX_EVENTS) {
     const eventTrust = trust[CODEX_EVENT_LABEL[eventName]]
+    if (!eventTrust && OPTIONAL_EVENTS.has(eventName)) {
+      continue
+    }
     const key = eventTrust ? spelling.string(eventTrust.key) : null
     const hash = eventTrust ? spelling.string(eventTrust.trustedHash) : null
     if (key === null || hash === null) {
@@ -112,9 +125,11 @@ export function codexHookSessionFlagDefines(
   const spelling = spellingFor(platform)
   const entries = renderHooksEntries(command, spelling)
   const g = spelling.gap
+  const approvals = flag.split(`,${g}enabled${g}=${g}true${g}}`).length - 1
   return (
     entries !== null &&
     flag.startsWith(`hooks={${g}${entries.join(`,${g}`)},${g}state${g}=${g}{`) &&
-    flag.split(`,${g}enabled${g}=${g}true${g}}`).length === CODEX_EVENTS.length + 1
+    approvals >= CODEX_REQUIRED_EVENTS.length &&
+    approvals <= CODEX_EVENTS.length
   )
 }

@@ -35,25 +35,33 @@ import {
   readCodexHookFlagEntry
 } from './codex-hook-flag-table'
 
-/** hooks/list for a definition-only flag (untrusted), or for the full flag (trusted). */
-/** Codex's answer: an approval in the flag (either spelling) reads trusted unless `full` overrides it. */
+/**
+ * Codex's hooks/list answer: an approval in the flag (either spelling) reads
+ * trusted unless `full` overrides it; `listed` drops events a Codex predates.
+ */
 function listingFor(
   command: string,
   flag: string,
   hashPrefix = 'sha256:',
-  full: { trusted?: boolean; enabled?: boolean } = {}
+  full: { trusted?: boolean; enabled?: boolean; interrupt?: 'unlisted' | 'untrusted' } = {}
 ): unknown {
   const approved = /state\s*=/.test(flag)
   return {
     data: [
       {
-        hooks: CODEX_EVENTS.map((eventName) => {
+        hooks: CODEX_EVENTS.filter(
+          (eventName) => eventName !== 'Interrupt' || full.interrupt !== 'unlisted'
+        ).map((eventName) => {
           const label = CODEX_EVENT_LABEL[eventName]
+          const trusted =
+            approved &&
+            (full.trusted ?? true) &&
+            !(eventName === 'Interrupt' && full.interrupt === 'untrusted')
           return {
             key: `/<session-flags>/config.toml:${label}:0:0`,
             command,
             currentHash: `${hashPrefix}${label}`,
-            trustStatus: approved && (full.trusted ?? true) ? 'trusted' : 'untrusted',
+            trustStatus: trusted ? 'trusted' : 'untrusted',
             source: 'sessionFlags',
             enabled: approved ? (full.enabled ?? true) : true
           }
@@ -152,6 +160,27 @@ describe('codex hook session trust', () => {
 
     expect(await deriveEntry()).toBeNull()
     expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
+  })
+
+  it('publishes for a Codex that predates Interrupt, approving the events it lists', async () => {
+    answerVersion('codex-cli 0.133.0')
+    answerSession((command, flag) =>
+      listingFor(command, flag, 'sha256:', { interrupt: 'unlisted' })
+    )
+
+    const entry = await deriveEntry()
+
+    expect(entry?.flag).toContain('sha256:stop')
+    expect(entry?.flag).not.toContain(':interrupt:0:0')
+  })
+
+  it('publishes nothing when Codex lists Interrupt but does not trust its approval', async () => {
+    answerVersion('codex-cli 0.159.2')
+    answerSession((command, flag) =>
+      listingFor(command, flag, 'sha256:', { interrupt: 'untrusted' })
+    )
+
+    expect(await deriveEntry()).toBeNull()
   })
 
   it('publishes nothing when Codex lists the approved hook as switched off', async () => {

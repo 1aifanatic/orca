@@ -28,8 +28,10 @@ describe('buildCodexHookSessionFlag', () => {
     expect(flag!.startsWith('hooks={')).toBe(true)
     for (const eventName of CODEX_EVENTS) {
       const label = CODEX_EVENT_LABEL[eventName]
+      // Why per event: Codex hashes its own normalization, which caps Interrupt at 3 s.
+      const timeout = eventName === 'Interrupt' ? 3 : 10
       expect(flag).toContain(
-        `${eventName}=[{hooks=[{type="command",command=": form; /bin/sh \\"$HOME/x\\"",timeout=10}]}]`
+        `${eventName}=[{hooks=[{type="command",command=": form; /bin/sh \\"$HOME/x\\"",timeout=${timeout}}]}]`
       )
       expect(flag).toContain(
         `"/<session-flags>/config.toml:${label}:0:0"={trusted_hash="sha256:${label}",enabled=true}`
@@ -64,6 +66,17 @@ describe('buildCodexHookSessionFlag', () => {
     const partial = { ...trustFor('/<session-flags>/config.toml') }
     delete partial[CODEX_EVENT_LABEL.Stop]
     expect(buildCodexHookSessionFlag('x', partial, 'linux')).toBeNull()
+  })
+
+  it('still carries the hook when a Codex that predates Interrupt approved only the others', () => {
+    const withoutInterrupt = { ...trustFor('/<session-flags>/config.toml') }
+    delete withoutInterrupt[CODEX_EVENT_LABEL.Interrupt]
+
+    const flag = buildCodexHookSessionFlag('x', withoutInterrupt, 'linux')
+
+    expect(flag).toContain('Interrupt=[{hooks=[{type="command",command="x",timeout=3}]}]')
+    expect(flag).not.toContain(':interrupt:0:0')
+    expect(codexHookSessionFlagDefines(flag!, 'x', 'linux')).toBe(true)
   })
 
   it('defines the hook without any approval for the hash lookup', () => {
