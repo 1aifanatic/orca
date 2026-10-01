@@ -2,7 +2,10 @@
 import { OrcaRuntimeWithCaptureProviderTerminalBuffer } from './orca-runtime-capture-provider-terminal-buffer'
 import type { RuntimeTerminalProjection } from './orca-runtime-core'
 import { buildPreview } from './terminal-tail-state'
-import type { RuntimeVisibleTerminalState } from './runtime-terminal-state-records'
+import type {
+  RuntimeHeadlessTerminal,
+  RuntimeVisibleTerminalState
+} from './runtime-terminal-state-records'
 import {
   VISIBLE_TERMINAL_SNAPSHOT_RETRY_MS,
   VISIBLE_TERMINAL_SNAPSHOT_TIMEOUT_MS
@@ -142,19 +145,17 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
   }
 
   /** Synchronous visible grid of the live emulator, for tui-idle body evidence. Null when the
-   *  model is not the whole screen (a provider-restored partial suffix or a pending hydration) or
-   *  not the PTY's grid (an unknown or different size, or a reflow the TUI never repainted for). */
+   *  model is not the whole screen: a provider-restored partial suffix or a pending hydration. */
   protected readLiveTerminalScreenLines(ptyId: string | null | undefined): string[] | null {
-    if (!ptyId) {
-      return null
-    }
-    const state = this.headlessTerminals.get(ptyId)
-    if (
-      !state ||
-      state.unrepaintedReflowGrid !== undefined ||
-      this.providerSnapshotPreferredPtys.has(ptyId) ||
-      this.headlessHydrationState.get(ptyId) === 'pending'
-    ) {
+    const state = this.readWholeScreenModel(ptyId)
+    // Why unawaited writeChain: callers are synchronous; a grid one chunk behind is re-read next poll.
+    return state ? projectTerminalVisibleLines(state.emulator).lines : null
+  }
+
+  /** The rows a screen-ruled agent's rule reads: as painted, and only on the PTY's own grid. */
+  protected readScreenRuledLines(ptyId: string | null | undefined): string[] | null {
+    const state = this.readWholeScreenModel(ptyId)
+    if (!ptyId || !state || state.unrepaintedReflowGrid !== undefined) {
       return null
     }
     // Why: a TUI painted for another grid garbles on this one, and a screen rule would refuse it.
@@ -163,10 +164,24 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
     if (!ptySize || ptySize.cols !== grid.cols || ptySize.rows !== grid.rows) {
       return null
     }
-    // Why unawaited writeChain: callers are synchronous; a grid one chunk behind is re-read next poll.
     // Why raw rows, not the read projection: it blanks a composer it takes for a draft, and Cline's
     // placeholder reads as one, so a typed draft and an empty composer would look the same.
     return visibleNonBlankTerminalLines(state.emulator.getVisibleLines())
+  }
+
+  protected readWholeScreenModel(ptyId: string | null | undefined): RuntimeHeadlessTerminal | null {
+    if (!ptyId) {
+      return null
+    }
+    const state = this.headlessTerminals.get(ptyId)
+    if (
+      !state ||
+      this.providerSnapshotPreferredPtys.has(ptyId) ||
+      this.headlessHydrationState.get(ptyId) === 'pending'
+    ) {
+      return null
+    }
+    return state
   }
 
   protected async parseVisibleSnapshot(snapshot: {

@@ -10,6 +10,7 @@ import {
   getTerminalState
 } from './terminal-wait-results'
 import { getScreenReadyRule } from './screen-ruled-agent-readiness'
+import { hasAntigravityTerminalHeader } from './antigravity-terminal-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import {
   evaluateTuiIdle,
@@ -25,9 +26,10 @@ import type { RuntimeTerminalIdlePolls } from './runtime-terminal-idle-polls'
 import type { RuntimeTerminalWaiterRegistry } from './runtime-terminal-waiter-registry'
 
 /**
- * A pane with no retained bytes and no status has only its provider's screen to read. So does a
- * clockless screen-ruled pane whatever its status: a re-attached pane's own model can be
- * untrusted. A clocked one settles through the poll, once quiet.
+ * A pane with no retained bytes and no status has only its provider's screen to read, and one
+ * whose tail shows the Antigravity banner is probed as before screen rules. So is a clockless
+ * screen-ruled pane whatever its status: a re-attached pane's own model can be untrusted. A
+ * clocked one settles through the poll, once quiet.
  */
 function shouldProbeVisibleScreen(
   paneAgent: TuiAgent | null,
@@ -35,8 +37,9 @@ function shouldProbeVisibleScreen(
   waitText: string
 ): boolean {
   return (
-    (getScreenReadyRule(paneAgent) !== null && record.lastOutputAt === null) ||
-    (record.lastAgentStatus === null && waitText.length === 0)
+    (record.lastAgentStatus === null && waitText.length === 0) ||
+    hasAntigravityTerminalHeader(waitText) ||
+    (getScreenReadyRule(paneAgent) !== null && record.lastOutputAt === null)
   )
 }
 

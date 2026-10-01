@@ -51,10 +51,10 @@ describe('Prime Agent readiness from captured bytes', () => {
 
   // Why the footer is no ready signal (#22153): it and the bare caret stay painted mid-turn.
   it('keeps the footer and the bare caret on screen mid-turn', async () => {
-    const { screenLines } = await finalReplayFrame('prime-agent-0-9-8-busy-streaming', 120, 40)
-    expect(screenLines.at(-1)?.trim().startsWith('← manage')).toBe(true)
-    expect(screenLines.at(-2)?.trim()).toBe('>')
-    expect(screenOf(screenLines)).toMatch(/[⠀-⣿] Writing/)
+    const { ruledScreenLines } = await finalReplayFrame('prime-agent-0-9-8-busy-streaming', 120, 40)
+    expect(ruledScreenLines.at(-1)?.trim().startsWith('← manage')).toBe(true)
+    expect(ruledScreenLines.at(-2)?.trim()).toBe('>')
+    expect(screenOf(ruledScreenLines)).toMatch(/[⠀-⣿] Writing/)
   })
 
   // Why a clocked pane waits for quiet: the rule reads these frames as ready, and only the
@@ -66,11 +66,11 @@ describe('Prime Agent readiness from captured bytes', () => {
     let readyAfterMarker = 0
     let markerSeen = submittedMarker === null
     let questionSeen = false
-    for await (const { screenLines } of replayTranscript(readRuntimeFixture(name), 120, 40)) {
-      const screen = screenOf(screenLines)
+    for await (const { ruledScreenLines } of replayTranscript(readRuntimeFixture(name), 120, 40)) {
+      const screen = screenOf(ruledScreenLines)
       markerSeen ||= submittedMarker !== null && screen.includes(submittedMarker)
       questionSeen ||= screen.includes('Share agent traces')
-      if (markerSeen && !questionSeen && isPrimeAgentComposerReadyScreen(screenLines)) {
+      if (markerSeen && !questionSeen && isPrimeAgentComposerReadyScreen(ruledScreenLines)) {
         readyAfterMarker += 1
       }
     }

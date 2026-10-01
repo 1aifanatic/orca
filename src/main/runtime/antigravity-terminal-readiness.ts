@@ -127,3 +127,7 @@ function findAntigravityComposerIndex(normalized: string): number | null {
   }
   return modelAfterComposer && !workspaceAfterComposer ? null : composerStart
 }
+
+export function hasAntigravityTerminalHeader(text: string): boolean {
+  return text.toLowerCase().includes('antigravity cli')
+}

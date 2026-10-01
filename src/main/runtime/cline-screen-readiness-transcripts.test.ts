@@ -54,16 +54,20 @@ describe('Cline readiness from captured bytes', () => {
 
   // Why only quiescence can refuse it: the streaming reply has scrolled its spinner away.
   it('paints the same empty composer while a reply streams', async () => {
-    const { screenLines } = await finalReplayFrame(STREAMING, 120, 40)
-    expect(isClineComposerReadyScreen(screenLines)).toBe(true)
+    const { ruledScreenLines } = await finalReplayFrame(STREAMING, 120, 40)
+    expect(isClineComposerReadyScreen(ruledScreenLines)).toBe(true)
   })
 
   it('refuses every frame whose spinner row is still on screen', async () => {
     let spinnerFrames = 0
-    for await (const { screenLines } of replayTranscript(readRuntimeFixture(STREAMING), 120, 40)) {
-      if (screenLines.some((line) => /[\u2800-\u28ff] Thinking/.test(line))) {
+    for await (const { ruledScreenLines } of replayTranscript(
+      readRuntimeFixture(STREAMING),
+      120,
+      40
+    )) {
+      if (ruledScreenLines.some((line) => /[\u2800-\u28ff] Thinking/.test(line))) {
         spinnerFrames += 1
-        expect(isClineComposerReadyScreen(screenLines)).toBe(false)
+        expect(isClineComposerReadyScreen(ruledScreenLines)).toBe(false)
       }
     }
     // Presence precondition: the thinking spinner was painted above the composer.

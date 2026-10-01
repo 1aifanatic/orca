@@ -36,10 +36,9 @@ Recorded 2026-09-30 on macOS, `cline` 3.0.66, OpenRouter's free router, with an 
   out.
 - **The placeholder is not fixed.** It changes with mode and history, so the rule accepts the three
   captured placeholders and nothing else. A typed draft looks the same to the read projection, which
-  is why `readLiveTerminalScreenLines` now returns raw rows. That changes Codex's and Qoder's input
-  too, so every frame of every `codex-*` and `qoder-*` capture was replayed at 120x40, 80x24 and
-  100x32 through both readers: the rows differ on some Codex frames (up to 180 of 982), and no verdict of
-  `isKnownReadyPromptBody` (with and without a clock) or `isQuietReadyScreenBody` changes.
+  is why screen-ruled agents read raw rows (`readScreenRuledLines`, which also requires the PTY's
+  own grid). Every other agent keeps `readLiveTerminalScreenLines` exactly as before: replaying all
+  93 other fixture/grid pairs frame by frame gives identical verdicts on this branch and its base.
 - **The promo popup appears about 40ms after the composer** and returns on each launch until it
   is dismissed once (`cli-notices.json`). The quiet lane covers that race; the popup carries no
   blocked wording.

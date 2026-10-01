@@ -11,7 +11,12 @@ import { visibleNonBlankTerminalLines } from './terminal-tail-read'
 
 const DEFAULT_CHUNK_CHARS = 64
 
-export type TranscriptReplayFrame = { screenLines: string[]; waitText: string }
+/** `screenLines` are readLiveTerminalScreenLines' rows; `ruledScreenLines` readScreenRuledLines'. */
+export type TranscriptReplayFrame = {
+  screenLines: string[]
+  ruledScreenLines: string[]
+  waitText: string
+}
 
 export function readRuntimeFixture(name: string): string {
   return readFileSync(join(__dirname, '__fixtures__', `${name}.txt`), 'utf8')
@@ -46,8 +51,8 @@ export async function* replayTranscript(
       partialLine = tail.partialLine
       redrawCursor = tail.redrawCursor
       yield {
-        // Same rows as readLiveTerminalScreenLines.
-        screenLines: visibleNonBlankTerminalLines(emulator.getVisibleLines()),
+        screenLines: projectTerminalVisibleLines(emulator).lines,
+        ruledScreenLines: visibleNonBlankTerminalLines(emulator.getVisibleLines()),
         waitText: buildTerminalWaitText(lines, partialLine, buildPreview(lines, partialLine))
       }
     }

@@ -50,12 +50,12 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
 
   describe('the screen rule on the final recorded frame', () => {
     it.each(suite.ready)('$name ($what) reads ready', async ({ name, cols, rows }) => {
-      const { screenLines } = await finalReplayFrame(name, cols, rows)
-      expect(rule(screenLines)).toBe(true)
+      const { ruledScreenLines } = await finalReplayFrame(name, cols, rows)
+      expect(rule(ruledScreenLines)).toBe(true)
     })
     it.each(suite.notReady)('$name ($what) does not', async ({ name, cols, rows }) => {
-      const { screenLines } = await finalReplayFrame(name, cols, rows)
-      expect(rule(screenLines)).toBe(false)
+      const { ruledScreenLines } = await finalReplayFrame(name, cols, rows)
+      expect(rule(ruledScreenLines)).toBe(false)
     })
   })
 
@@ -70,8 +70,8 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
         ...(await Promise.all(MISMATCHED_GRIDS.map(([c, r]) => finalReplayFrame(name, c, r)))),
         await finalReplayFrame(name, cols, rows, resize)
       ]
-      for (const { screenLines, waitText } of frames) {
-        expect(isQuietReadyScreenBody(waitText, agent, () => screenLines)).toBe(false)
+      for (const { ruledScreenLines, waitText } of frames) {
+        expect(isQuietReadyScreenBody(waitText, agent, () => ruledScreenLines)).toBe(false)
       }
     })
   })
@@ -210,12 +210,12 @@ export function describeScreenRuledAgentTranscripts(suite: ScreenRuledAgentSuite
   })
 
   it('never reads the screen for another agent', async () => {
-    const { screenLines, waitText } = await finalReplayFrame(
+    const { ruledScreenLines, waitText } = await finalReplayFrame(
       firstReady.name,
       firstReady.cols,
       firstReady.rows
     )
-    const readScreenLines = vi.fn(() => screenLines)
+    const readScreenLines = vi.fn(() => ruledScreenLines)
     isKnownReadyPromptBody(waitText, 'claude', readScreenLines, false)
     expect(isQuietReadyScreenBody(waitText, 'claude', readScreenLines)).toBe(false)
     expect(readScreenLines).not.toHaveBeenCalled()

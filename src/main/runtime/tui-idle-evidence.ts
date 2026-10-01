@@ -328,6 +328,20 @@ export type TuiIdleEvidenceSource = {
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
   readScreenLines(ptyId: string | null | undefined): readonly string[] | null
+  /** The painted rows on the PTY's own grid, which only screen-ruled agents read. Absent, they
+   *  have no trustworthy screen. */
+  readScreenRuledLines?(ptyId: string | null | undefined): readonly string[] | null
+}
+
+// Why per agent table: every other agent keeps the screen it read before screen rules existed.
+function screenReader(
+  source: TuiIdleEvidenceSource,
+  agent: TuiAgent | null,
+  ptyId: string | null | undefined
+): () => readonly string[] | null {
+  return getScreenReadyRule(agent)
+    ? () => source.readScreenRuledLines?.(ptyId) ?? null
+    : () => source.readScreenLines(ptyId)
 }
 
 function lazyWaitText(readWaitText: () => string): () => string {
@@ -342,21 +356,15 @@ export function leafTuiIdleEvidence(
 ): TuiIdleEvaluationInput {
   const waitText = lazyWaitText(readWaitText)
   const agent = source.getPaneAgent(leaf.ptyId)
+  const readScreen = screenReader(source, agent, leaf.ptyId)
   return {
     record: leaf,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     rendererTitle: leaf.paneTitle ?? source.getTabTitle(leaf.tabId),
     readPositiveBodyEvidence: () =>
-      isKnownReadyPromptBody(
-        waitText(),
-        agent,
-        () => source.readScreenLines(leaf.ptyId),
-        leaf.lastOutputAt !== null
-      ),
-    readQuietReadyBodyEvidence: () =>
-      isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(leaf.ptyId)),
-    readScreenDecidesReadiness: () =>
-      readScreenRuledVerdict(agent, () => source.readScreenLines(leaf.ptyId)) !== null,
+      isKnownReadyPromptBody(waitText(), agent, readScreen, leaf.lastOutputAt !== null),
+    readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
+    readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
     quiescenceMs: source.quiescenceMs
@@ -370,21 +378,15 @@ export function ptyTuiIdleEvidence(
 ): TuiIdleEvaluationInput {
   const waitText = lazyWaitText(readWaitText)
   const agent = source.getPaneAgent(pty.ptyId)
+  const readScreen = screenReader(source, agent, pty.ptyId)
   return {
     record: pty,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     readPositiveBodyEvidence: () =>
       (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
-      isKnownReadyPromptBody(
-        waitText(),
-        agent,
-        () => source.readScreenLines(pty.ptyId),
-        pty.lastOutputAt !== null
-      ),
-    readQuietReadyBodyEvidence: () =>
-      isQuietReadyScreenBody(waitText(), agent, () => source.readScreenLines(pty.ptyId)),
-    readScreenDecidesReadiness: () =>
-      readScreenRuledVerdict(agent, () => source.readScreenLines(pty.ptyId)) !== null,
+      isKnownReadyPromptBody(waitText(), agent, readScreen, pty.lastOutputAt !== null),
+    readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
+    readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
     quiescenceMs: source.quiescenceMs

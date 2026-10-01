@@ -65,19 +65,21 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
 
   it('does not let the text rules overrule a screen that refused', async () => {
     const { waitText } = await finalReplayFrame('antigravity-1-2-14-picker-dismissed', 120, 40)
-    const { screenLines } = await finalReplayFrame('antigravity-1-2-14-model-picker', 120, 40)
+    const { ruledScreenLines } = await finalReplayFrame('antigravity-1-2-14-model-picker', 120, 40)
     // Presence precondition: the text alone would say ready.
     expect(isKnownReadyPromptPreview(waitText)).toBe(true)
-    expect(isQuietReadyScreenBody(waitText, 'antigravity', () => screenLines)).toBe(false)
-    expect(isKnownReadyPromptBody(waitText, 'antigravity', () => screenLines, false)).toBe(false)
+    expect(isQuietReadyScreenBody(waitText, 'antigravity', () => ruledScreenLines)).toBe(false)
+    expect(isKnownReadyPromptBody(waitText, 'antigravity', () => ruledScreenLines, false)).toBe(
+      false
+    )
   })
 
   // Why a caret rule is not enough: agy keeps the bare composer caret painted through both.
   it.each(['antigravity-1-2-14-busy-streaming', 'antigravity-1-2-14-model-picker'])(
     '%s: the bare caret is still on screen',
     async (name) => {
-      const { screenLines } = await finalReplayFrame(name, 120, 40)
-      expect(screenLines.some((line) => line.trim() === '>')).toBe(true)
+      const { ruledScreenLines } = await finalReplayFrame(name, 120, 40)
+      expect(ruledScreenLines.some((line) => line.trim() === '>')).toBe(true)
     }
   )
 
@@ -88,10 +90,10 @@ describe('Antigravity 1.2.14 readiness from captured bytes', () => {
     let submitted = false
     let answered = false
     let readyMidTurn = 0
-    for await (const { screenLines } of replayTranscript(data, 120, 40)) {
-      submitted ||= screenLines.some((line) => line.startsWith('> Without using any tools'))
-      answered ||= screenLines.some((line) => line.trim() === 'ok')
-      if (submitted && !answered && isAntigravityComposerReadyScreen(screenLines)) {
+    for await (const { ruledScreenLines } of replayTranscript(data, 120, 40)) {
+      submitted ||= ruledScreenLines.some((line) => line.startsWith('> Without using any tools'))
+      answered ||= ruledScreenLines.some((line) => line.trim() === 'ok')
+      if (submitted && !answered && isAntigravityComposerReadyScreen(ruledScreenLines)) {
         readyMidTurn += 1
       }
     }
