@@ -79,3 +79,50 @@ describe('relay removal of a branch whose base already holds its head', () => {
     expect(git(['rev-parse', 'refs/heads/unpushed'], repoPath)).toBe(head)
   })
 })
+
+// Why: a bare repo's HEAD names a branch without checking it out, so the base check must not count
+// the branch as its own base.
+describe('relay removal of the branch HEAD names in a .bare layout', () => {
+  let dispatcher: MockDispatcher
+  let handler: GitHandler
+  let scratchDir: string
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    scratchDir = realpathSync(createGitTempDir())
+    ;({ dispatcher, handler } = createGitHandlerRelay())
+  })
+
+  afterEach(async () => {
+    handler.dispose()
+    vi.restoreAllMocks()
+    await removeGitTempDir(scratchDir)
+  })
+
+  it('keeps it when it has a commit its upstream does not', async () => {
+    const seedPath = path.join(scratchDir, 'seed')
+    mkdirSync(seedPath)
+    gitInit(seedPath)
+    writeFileSync(path.join(seedPath, 'seed.txt'), 'seed\n')
+    gitCommit(seedPath, 'seed')
+    const originPath = path.join(scratchDir, 'origin.git')
+    git(['init', '-q', '--bare', originPath], scratchDir)
+    git(['push', '-q', originPath, 'HEAD:refs/heads/main'], seedPath)
+    const projectPath = path.join(scratchDir, 'project')
+    git(['clone', '-q', '--bare', originPath, path.join(projectPath, '.bare')], scratchDir)
+    writeFileSync(path.join(projectPath, '.git'), 'gitdir: ./.bare\n')
+    git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], projectPath)
+    git(['fetch', '-q', 'origin'], projectPath)
+    git(['branch', '-q', '-u', 'origin/main', 'main'], projectPath)
+    const worktreePath = path.join(scratchDir, 'main-checkout')
+    git(['worktree', 'add', '-q', worktreePath, 'main'], projectPath)
+    writeFileSync(path.join(worktreePath, 'unpushed.txt'), 'unpushed\n')
+    gitCommit(worktreePath, 'unpushed')
+    const head = git(['rev-parse', 'HEAD'], worktreePath)
+
+    await expect(dispatcher.callRequest('git.removeWorktree', { worktreePath })).resolves.toEqual({
+      preservedBranch: { branchName: 'main', head }
+    })
+    expect(git(['rev-parse', 'refs/heads/main'], projectPath)).toBe(head)
+  })
+})

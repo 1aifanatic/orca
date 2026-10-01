@@ -18,40 +18,57 @@ function runner(outputs: Record<string, string>, calls: string[][] = []): GitBra
   }
 }
 
+const SYMBOLIC = 'rev-parse --symbolic-full-name'
+
 describe('readBranchBaseRefs', () => {
   it('reads the saved base, the remote default and HEAD, without repeats', async () => {
     const runGit = runner({
       'config --get branch.feature.base': 'refs/remotes/origin/main\n',
-      'symbolic-ref --quiet refs/remotes/origin/HEAD': 'refs/remotes/origin/main\n'
+      [`${SYMBOLIC} refs/remotes/origin/main`]: 'refs/remotes/origin/main\n',
+      [`${SYMBOLIC} refs/remotes/origin/HEAD`]: 'refs/remotes/origin/main\n',
+      [`${SYMBOLIC} HEAD`]: 'refs/heads/main\n'
     })
 
     await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([
       'refs/remotes/origin/main',
-      'HEAD'
+      'refs/heads/main'
     ])
   })
 
   it('qualifies a short saved base and drops a bare commit id', async () => {
     const short = runner({
       'config --get branch.feature.base': 'origin/main\n',
-      'rev-parse --symbolic-full-name origin/main': 'refs/remotes/origin/main\n'
+      [`${SYMBOLIC} origin/main`]: 'refs/remotes/origin/main\n'
     })
     await expect(readBranchBaseRefs(short, 'feature')).resolves.toEqual([
-      'refs/remotes/origin/main',
-      'HEAD'
+      'refs/remotes/origin/main'
     ])
 
     const commit = runner({
       'config --get branch.feature.base': `${HEAD}\n`,
-      [`rev-parse --symbolic-full-name ${HEAD}`]: '\n'
+      [`${SYMBOLIC} ${HEAD}`]: '\n'
     })
-    await expect(readBranchBaseRefs(commit, 'feature')).resolves.toEqual(['HEAD'])
+    await expect(readBranchBaseRefs(commit, 'feature')).resolves.toEqual([])
   })
 
-  it('never compares a branch against itself', async () => {
-    const runGit = runner({ 'config --get branch.feature.base': 'refs/heads/feature\n' })
+  it('pins a detached HEAD to the commit it names', async () => {
+    const runGit = runner({
+      [`${SYMBOLIC} HEAD`]: 'HEAD\n',
+      'rev-parse --verify --quiet HEAD^{commit}': `${HEAD}\n`
+    })
 
-    await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual(['HEAD'])
+    await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([HEAD])
+  })
+
+  it('never compares a branch against itself, directly or through a symbolic ref', async () => {
+    const runGit = runner({
+      'config --get branch.feature.base': 'refs/heads/alias\n',
+      [`${SYMBOLIC} refs/heads/alias`]: 'refs/heads/feature\n',
+      // A bare repo whose HEAD names the branch being deleted.
+      [`${SYMBOLIC} HEAD`]: 'refs/heads/feature\n'
+    })
+
+    await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([])
   })
 })
 
@@ -61,6 +78,7 @@ describe('isBranchHeadInBaseHistory', () => {
     const runGit = runner(
       {
         'config --get branch.feature.base': 'refs/remotes/origin/feature\n',
+        [`${SYMBOLIC} refs/remotes/origin/feature`]: 'refs/remotes/origin/feature\n',
         [`merge-base --is-ancestor ${HEAD} refs/remotes/origin/feature`]: ''
       },
       calls

@@ -271,6 +271,41 @@ describe('removal of a branch whose base already holds its head', () => {
   })
 })
 
+// Why: a bare repo's HEAD names a branch without checking it out, so neither `-d` nor the checked-out
+// guard refuses it, and the base check must not count the branch as its own base.
+describe.each([
+  ['a bare clone', 'project.git', ''],
+  ['a .bare folder behind a .git file', 'project', '.bare']
+])('removal of the branch HEAD names in %s', (_layout, projectName, bareDirName) => {
+  it('keeps it when it has a commit its upstream does not', async () => {
+    const originPath = join(scratchDir, 'origin.git')
+    await git(['init', '-q', '--bare', originPath], scratchDir)
+    await git(['push', '-q', originPath, 'HEAD:refs/heads/main'], repoPath)
+    const projectPath = join(scratchDir, projectName)
+    const barePath = bareDirName ? join(projectPath, bareDirName) : projectPath
+    await git(['clone', '-q', '--bare', originPath, barePath], scratchDir)
+    if (bareDirName) {
+      await writeFile(join(projectPath, '.git'), `gitdir: ./${bareDirName}\n`)
+    }
+    await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], projectPath)
+    await git(['fetch', '-q', 'origin'], projectPath)
+    await git(['branch', '-q', '-u', 'origin/main', 'main'], projectPath)
+    const mainCheckout = join(scratchDir, 'main-checkout')
+    await git(['worktree', 'add', '-q', mainCheckout, 'main'], projectPath)
+    await git(['config', 'user.email', 'removal@example.invalid'], mainCheckout)
+    await git(['config', 'user.name', 'Worktree Removal'], mainCheckout)
+    await writeFile(join(mainCheckout, 'unpushed.txt'), 'unpushed\n')
+    await git(['add', 'unpushed.txt'], mainCheckout)
+    await git(['commit', '-qm', 'unpushed'], mainCheckout)
+    const head = (await git(['rev-parse', 'HEAD'], mainCheckout)).trim()
+
+    await expect(removeWorktree(projectPath, mainCheckout, false)).resolves.toEqual({
+      preservedBranch: { branchName: 'main', head }
+    })
+    expect(await git(['rev-parse', 'refs/heads/main'], projectPath)).toBe(`${head}\n`)
+  })
+})
+
 const POOL_FIXTURE_FILES = 3_000
 const POOL_SENTINEL_EVERY = 100
 

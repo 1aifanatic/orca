@@ -124,9 +124,9 @@ type KeptBranchRemoval = {
 
 /**
  * Local and WSL removals: settle a kept branch with the review host, then drop the push-target
- * remote. The only route from removal code to that cleanup (see the ratchet test), so every
- * removal asks the same question, and the cleanup, which keeps a remote a local branch still
- * tracks, always runs after the delete.
+ * remote. Removal code reaches that cleanup only through here and settleKeptSshBranch (the ratchet
+ * test), so a removal that hands over its Git result asks about a kept branch before the fork
+ * remote is dropped; a caller that passes an empty result or skips the cleanup is not caught.
  */
 export async function settleKeptBranch(
   removal: KeptBranchRemoval & { localGitOptions: LocalProjectWorktreeGitOptions }
@@ -134,7 +134,8 @@ export async function settleKeptBranch(
   const { repo, localGitOptions } = removal
   const result = await settlePreservedBranchWithForge(removal.result, {
     reviewHostKey: reviewHostKeyOf(repo),
-    confirmMergedAtHead: (branchName, head) =>
+    // Why async: a throw while building the check becomes a rejection the settle already absorbs.
+    confirmMergedAtHead: async (branchName, head) =>
       forgeMergedAtHeadCheck({
         repo,
         localGitOptions,
@@ -161,7 +162,7 @@ export async function settleKeptSshBranch(
   const { repo, provider } = removal
   const result = await settlePreservedBranchWithForge(removal.result, {
     reviewHostKey: reviewHostKeyOf(repo),
-    confirmMergedAtHead: (branchName, head) =>
+    confirmMergedAtHead: async (branchName, head) =>
       forgeMergedAtHeadCheck({
         repo,
         localGitOptions: {},

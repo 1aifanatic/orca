@@ -189,6 +189,19 @@ describe('finishRuntimeLocalWorktreeRemoval branch settlement', () => {
     expect(getHostedReviewForBranchMock).not.toHaveBeenCalled()
   })
 
+  it('finishes the delete and keeps the branch when reading the worktree metadata throws', async () => {
+    vi.spyOn(store, 'getWorktreeMeta').mockImplementation(() => {
+      throw new Error('store unavailable')
+    })
+
+    const { result, finishRemoval } = finish('a')
+
+    const kept = { preservedBranch: { branchName: 'feature/a', head: headOf('a') } }
+    await expect(result).resolves.toEqual(kept)
+    expect(finishRemoval).toHaveBeenCalledWith(kept, true, headOf('a'))
+    expect(events).toContain('push-target-cleanup')
+  })
+
   it('overlaps the forge lookups of a batch, so a hung forge costs one cap, not one per branch', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     getHostedReviewForBranchMock.mockImplementation(() => new Promise(() => {}))
@@ -305,6 +318,20 @@ describe('removeRuntimeRegisteredRemoteWorktree branch settlement', () => {
     expect(elapsed).toBeGreaterThanOrEqual(FORGE_MERGED_LOOKUP_TIMEOUT_MS)
     expect(elapsed).toBeLessThan(2 * FORGE_MERGED_LOOKUP_TIMEOUT_MS)
     expect(getHostedReviewForBranchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('finishes the SSH delete and keeps the branch when reading the worktree metadata throws', async () => {
+    vi.spyOn(store, 'getWorktreeMeta').mockImplementation(() => {
+      throw new Error('store unavailable')
+    })
+
+    const { result, provider } = removeRemote(async () => {})
+
+    await expect(result).resolves.toEqual({
+      preservedBranch: { branchName: 'feature/a', head: headOf('a') }
+    })
+    expect(provider.forceDeletePreservedBranch).not.toHaveBeenCalled()
+    expect(events).toContain('push-target-cleanup')
   })
 
   it('keeps the SSH branch when an old relay lacks the guarded delete', async () => {

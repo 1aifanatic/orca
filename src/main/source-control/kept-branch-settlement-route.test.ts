@@ -3,9 +3,10 @@ import { join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * The ratchet behind "every removal asks the review host about a kept branch": removal code reaches
- * the push-target remote cleanup only through settleKeptBranch / settleKeptSshBranch, so a removal
- * path cannot keep a squash-merged branch without asking, or drop a fork remote before the delete.
+ * Exactly what is enforced: removal code reaches the push-target cleanup only through
+ * settleKeptBranch / settleKeptSshBranch, so a removal that hands them its Git result asks about a
+ * kept branch before the fork remote is dropped. It cannot see a caller that passes an empty result
+ * or skips the cleanup, and the allowlist is per file.
  */
 const REPOSITORY_ROOT = resolve(__dirname, '..', '..', '..')
 const MAIN_DIRECTORY = join(REPOSITORY_ROOT, 'src', 'main')

@@ -10,36 +10,43 @@ async function readTrimmedStdout(runGit: GitBranchBaseRunner, argv: string[]): P
   }
 }
 
-// Why refs only: a bare commit id keeps nothing reachable once the branch is gone.
-async function qualifyBaseRef(runGit: GitBranchBaseRunner, base: string): Promise<string> {
-  if (!base || base.startsWith('-')) {
+/**
+ * The full ref name a candidate resolves to, following symbolic refs, so one that is the branch
+ * itself is recognised: a bare repo's HEAD names a branch without checking it out, so nothing else
+ * refuses it, and a branch always holds its own head. A commit id or a missing ref gives ''
+ * (a bare commit id keeps nothing reachable once the branch is gone).
+ */
+async function resolveBaseRef(runGit: GitBranchBaseRunner, candidate: string): Promise<string> {
+  if (!candidate || candidate.startsWith('-')) {
     return ''
   }
-  if (base.startsWith('refs/')) {
-    return base
+  const fullName = await readTrimmedStdout(runGit, ['rev-parse', '--symbolic-full-name', candidate])
+  if (fullName !== 'HEAD') {
+    return fullName
   }
-  return readTrimmedStdout(runGit, ['rev-parse', '--symbolic-full-name', base])
+  // Detached HEAD: pin the commit it names now, so a later switch to the branch cannot make it self.
+  return readTrimmedStdout(runGit, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])
 }
 
 /**
  * Refs whose history a removed workspace's branch was cut from: its saved creation base, the
- * remote's default branch, and the main checkout's HEAD. Local reads only; nothing is fetched.
+ * remote's default branch, and the main checkout's HEAD, each resolved to what it names and never
+ * the branch itself. Local reads only; nothing is fetched.
  */
 export async function readBranchBaseRefs(
   runGit: GitBranchBaseRunner,
   branchName: string
 ): Promise<string[]> {
-  const savedBase = await qualifyBaseRef(
-    runGit,
-    await readTrimmedStdout(runGit, ['config', '--get', `branch.${branchName}.base`])
-  )
-  const remoteDefault = await readTrimmedStdout(runGit, [
-    'symbolic-ref',
-    '--quiet',
-    'refs/remotes/origin/HEAD'
+  const savedBase = await readTrimmedStdout(runGit, [
+    'config',
+    '--get',
+    `branch.${branchName}.base`
   ])
   // Why HEAD: with an upstream set, `branch -d` compares against the upstream only.
-  const candidates = [savedBase, remoteDefault, 'HEAD']
+  const candidates: string[] = []
+  for (const candidate of [savedBase, 'refs/remotes/origin/HEAD', 'HEAD']) {
+    candidates.push(await resolveBaseRef(runGit, candidate))
+  }
   const ownRef = `refs/heads/${branchName}`
   return candidates.filter(
     (ref, index) =>
