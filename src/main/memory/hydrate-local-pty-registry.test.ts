@@ -83,6 +83,7 @@ function makeStore(
         Object.entries(worktreeMeta).filter(([, meta]) => !meta.hostId || meta.hostId === hostId)
       )
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: hydration reads only the store members stubbed above.
   return store as Store
 }
 

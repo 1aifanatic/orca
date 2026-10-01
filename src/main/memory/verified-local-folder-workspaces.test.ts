@@ -5,15 +5,43 @@ import type { ProjectGroup } from '../../shared/project-group-types'
 import type { Repo } from '../../shared/repo-types'
 import { getVerifiedLocalFolderWorkspaceKeys } from './verified-local-folder-workspaces'
 
-const folder = (patch: Partial<FolderWorkspace> = {}): FolderWorkspace =>
-  ({
-    id: 'folder-1',
-    folderPath: '/workspace',
-    projectGroupId: 'group-1',
-    ...patch
-  }) as FolderWorkspace
-const repo = (patch: Partial<Repo> = {}): Repo =>
-  ({ id: 'repo-1', path: '/workspace/repo', ...patch }) as Repo
+const folder = (patch: Partial<FolderWorkspace> = {}): FolderWorkspace => ({
+  id: 'folder-1',
+  projectGroupId: 'group-1',
+  name: 'Workspace',
+  folderPath: '/workspace',
+  linkedTask: null,
+  comment: '',
+  isArchived: false,
+  isUnread: false,
+  isPinned: false,
+  sortOrder: 0,
+  createdAt: 0,
+  lastActivityAt: 0,
+  updatedAt: 0,
+  ...patch
+})
+const repo = (patch: Partial<Repo> = {}): Repo => ({
+  id: 'repo-1',
+  path: '/workspace/repo',
+  displayName: 'repo',
+  badgeColor: '#000000',
+  addedAt: 0,
+  ...patch
+})
+const projectGroup = (patch: Partial<ProjectGroup> = {}): ProjectGroup => ({
+  id: 'group-1',
+  name: 'Group',
+  parentPath: null,
+  parentGroupId: null,
+  createdFrom: 'manual',
+  tabOrder: 0,
+  isCollapsed: false,
+  color: null,
+  createdAt: 0,
+  updatedAt: 0,
+  ...patch
+})
 const state = (patch: Partial<FolderWorkspaceHostState> = {}): FolderWorkspaceHostState => ({
   folderWorkspaces: [folder()],
   projectGroups: [],
@@ -39,7 +67,8 @@ describe('verified local folder workspace keys', () => {
         getVerifiedLocalFolderWorkspaceKeys(
           state({
             folderWorkspaces: [
-              folder({ executionHostId: executionHostId as FolderWorkspace['executionHostId'] })
+              // Why Object.assign: invalid stored ids must reach the parser without widening the type.
+              Object.assign(folder(), { executionHostId })
             ]
           })
         )
@@ -68,7 +97,7 @@ describe('verified local folder workspace keys', () => {
       ]
     }),
     state({ folderWorkspaces: [folder({ connectionId: 'target-1' })] }),
-    state({ projectGroups: [{ id: 'group-1', connectionId: 'target-1' } as ProjectGroup] }),
+    state({ projectGroups: [projectGroup({ connectionId: 'target-1' })] }),
     state({ repos: [repo({ executionHostId: 'runtime:environment-1' })] }),
     state({ repos: [repo({ executionHostId: 'ssh:target-1' })] }),
     state({ repos: [repo(), repo({ id: 'repo-2', connectionId: 'target-1' })] }),
