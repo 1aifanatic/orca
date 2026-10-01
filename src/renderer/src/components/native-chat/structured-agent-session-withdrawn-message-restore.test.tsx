@@ -73,6 +73,8 @@ import {
   writeOutbox
 } from './structured-agent-session-outbox-storage'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const SESSION = 'session-1'
@@ -274,16 +276,53 @@ describe('a message the host withdrew at a Stop', () => {
     expect(readNativeChatDraftCache(PANE)).toBe('')
   })
 
-  it('drops a withdrawn launch prompt where no composer shows the chat', () => {
-    const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
-    const { result, rerender } = renderOutbox(null)
+  it.each([
+    ['a composer shows the chat', PANE],
+    ['no composer shows the chat', null]
+  ])(
+    'keeps a launch prompt a Stop withdrew while its start retried as not sent, when %s',
+    (_case, composer) => {
+      const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
+      const id = launch.clientMessageId
+      const { result, rerender } = renderOutbox(composer)
+      rerender({
+        submissions: [
+          submission(id, {
+            startFailure: {
+              attempts: 1,
+              reason: 'An account switch is in progress.',
+              rejection: { kind: 'accountSwitchInProgress' },
+              failedAt: 1,
+              nextAttemptAt: 15_001
+            }
+          })
+        ]
+      })
 
-    expect(() => rerender({ submissions: [withdrawn(launch.clientMessageId)] })).not.toThrow()
+      rerender({ submissions: [withdrawn(id, { rejection: { kind: 'cancelled' } })] })
 
-    expect(result.current.outbox).toEqual([])
-    expect(readOutbox(SESSION)).toEqual([])
-    expect(readNativeChatDraftCache(PANE)).toBe('')
-  })
+      // Its source still holds it as unsent; a composer copy would send it twice.
+      expect(readNativeChatDraftCache(PANE)).toBe('')
+      expect(result.current.outbox).toEqual([
+        expect.objectContaining({
+          clientMessageId: id,
+          state: 'rejected',
+          lastFailure: expect.objectContaining({ rejection: { kind: 'cancelled' } })
+        })
+      ])
+      const notice = structuredAgentSessionDeliveryNotices(
+        result.current.outbox,
+        'Claude',
+        vi.fn(),
+        [],
+        [],
+        new Set()
+      ).get(agentJournalSubmissionKey(id))
+      expect(notice).toEqual({
+        text: 'Not sent: This message was withdrawn before the agent started it. Send it again from where you started it.'
+      })
+    }
+  )
 })
 
 describe('a message a Stop took out of the outbox before the host held it', () => {
@@ -326,6 +365,19 @@ describe('a message a Stop took out of the outbox before the host held it', () =
 
     await waitFor(() => expect(result.current.outbox).toEqual([]))
     expect(readNativeChatDraftCache(PANE)).toBe('hello')
+  })
+
+  it('keeps a launch prompt not yet sent as not sent, and gives it nothing in the composer', () => {
+    const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
+    mocks.call.mockImplementation(() => new Promise<never>(() => {}))
+    const { result } = renderOutbox()
+
+    act(() => result.current.withdrawUnsent())
+
+    expect(readNativeChatDraftCache(PANE)).toBe('')
+    expect(result.current.outbox).toEqual([
+      expect.objectContaining({ clientMessageId: launch.clientMessageId, state: 'rejected' })
+    ])
   })
 
   it('leaves a message waiting on Retry where it is, and gives back only what it withdrew', async () => {

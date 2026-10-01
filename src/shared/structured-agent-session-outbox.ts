@@ -12,6 +12,7 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
+import { withdrawnFromItsSource } from './structured-agent-session-outbox-source'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
@@ -229,7 +230,8 @@ export function reconcileStructuredAgentSessionOutbox(
       submission?.dispatchState === 'rejected' &&
       classifyDispatchRejection(submission).category === 'withdrawn'
     ) {
-      return []
+      const failure = structuredAgentSessionRejectedFailure(submission)
+      return entry.source === undefined ? [] : [withdrawnFromItsSource(entry, failure)]
     }
     if (submission?.dispatchState === 'pending') {
       if (entry.state === 'dispatching') {
