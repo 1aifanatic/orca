@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
+import { WSL_CLAUDE_PROFILE_POINTER } from '../../shared/claude-profile-routing'
 
 const {
   existsSyncMock,
@@ -167,7 +168,7 @@ describe('LocalPtyProvider', () => {
           ...env,
           CLAUDE_CONFIG_DIR: '/home/fake/.local/share/orca/claude-profiles/a/home',
           ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/home/fake/.local/share/orca/claude-profiles/a/home',
-          ORCA_CLAUDE_PROFILE_POINTER: '/home/fake/.local/share/orca/claude-profiles/selected-wsl'
+          ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER
         })
       })
       await provider.spawn({
@@ -183,9 +184,7 @@ describe('LocalPtyProvider', () => {
           'ORCA_CLAUDE_INJECTED_CONFIG_DIR'
         ])
       )
-      expect(env.ORCA_CLAUDE_PROFILE_POINTER).toBe(
-        '/home/fake/.local/share/orca/claude-profiles/selected-wsl'
-      )
+      expect(env.ORCA_CLAUDE_PROFILE_POINTER).toBe(WSL_CLAUDE_PROFILE_POINTER)
     })
 
     it('does not pass a Windows Codex home into WSL terminals', async () => {
