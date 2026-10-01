@@ -46,7 +46,9 @@ export class ClaudeAccountSelection {
     const target = getClaudeSelectionTargetForAccount(account)
     const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
     try {
-      if (wasSelected) {
+      // Why one write with profiles: the outgoing-token read-back needing the account is legacy only,
+      // and a distro losing its last account must already be unrouted when it syncs.
+      if (wasSelected && !getClaudeProfileRoutingAuthority()) {
         this.store.updateSettings({
           activeClaudeManagedAccountId: nextActiveId,
           activeClaudeManagedAccountIdsByRuntime: nextSelection
