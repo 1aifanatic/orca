@@ -8,7 +8,10 @@ import {
 } from '../../shared/orcad-profile-preflight'
 import { preflightBundledOrcadStartup, runOrcadProfilePreflight } from './orcad-profile-preflight'
 import { handoffToBundledOrcad } from './orcad-bundled-runtime'
-import { ORCAD_COMPLETE_MANAGED_STOP_FLAG } from '../../shared/orcad-stop-request'
+import {
+  ORCAD_CANCEL_MANAGED_STOP_FLAG,
+  ORCAD_COMPLETE_MANAGED_STOP_FLAG
+} from '../../shared/orcad-stop-request'
 
 // Why exit before the preflight: reaching this line means the whole module graph resolved
 // under plain Node, which is all the build guard needs to prove. Probing natives or
@@ -32,7 +35,10 @@ function failStartup(error: unknown): void {
 }
 
 // Why before the bundled handoff and preflights: completing a stop must not start a runtime.
-if (process.argv[2] === ORCAD_COMPLETE_MANAGED_STOP_FLAG) {
+if (
+  process.argv[2] === ORCAD_COMPLETE_MANAGED_STOP_FLAG ||
+  process.argv[2] === ORCAD_CANCEL_MANAGED_STOP_FLAG
+) {
   void import('./orcad-managed-stop-command').then(({ runOrcadManagedStopCommandAndExit }) =>
     runOrcadManagedStopCommandAndExit(process.argv.slice(2))
   )
