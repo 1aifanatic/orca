@@ -40,13 +40,26 @@ export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
   return { latestStop: null, resumedSequence: 0 }
 }
 
+/** The keys are read from disk unchecked: a value no build writes (a corrupt row) is ignored. */
+function isReadableStopEvent(value: unknown): value is JournalStopEvent {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'reason' in value &&
+    typeof value.reason === 'string' &&
+    'at' in value &&
+    typeof value.at === 'number' &&
+    Number.isFinite(value.at)
+  )
+}
+
 export function foldJournalQueuePauseMark(
   marks: JournalQueuePauseMarks,
   row: JournalTombstoneRow
 ): void {
-  if (row.stopEvent !== undefined) {
+  if (isReadableStopEvent(row.stopEvent)) {
     marks.latestStop = { sequence: row.seq, event: row.stopEvent }
-  } else if (row.queueResume !== undefined) {
+  } else if (row.queueResume === true) {
     marks.resumedSequence = row.seq
   }
 }

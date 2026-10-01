@@ -14,7 +14,8 @@ import Database from '../../sqlite/sync-database'
 import { journalDatabasePath } from './journal-host-database'
 import {
   createTrackedJournalOpener,
-  liveTestJournalRows
+  liveTestJournalRows,
+  updateTestJournalRowJson
 } from './journal-host-database-test-support'
 import { QueuedMessageNotConsumableError } from './journal-queued-messages'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
@@ -122,6 +123,23 @@ function stopEvents(): unknown[] {
         ? [parsed.row.stopEvent]
         : []
     })
+  } finally {
+    db.close()
+  }
+}
+
+/** Rewrites one key of each row at a sequence, as a corrupt write would leave it. */
+function rewriteRows(keys: Record<number, [string, unknown]>): void {
+  const db = new Database(journalDatabasePath(root))
+  try {
+    for (const stored of liveTestJournalRows(db, IDENTITY.sessionId)) {
+      const rewrite = keys[stored.seq]
+      if (rewrite) {
+        const row: Record<string, unknown> = JSON.parse(stored.rowJson)
+        row[rewrite[0]] = rewrite[1]
+        updateTestJournalRowJson(db, IDENTITY.sessionId, stored.seq, JSON.stringify(row))
+      }
+    }
   } finally {
     db.close()
   }
@@ -243,6 +261,37 @@ describe("the queue's pause, derived from the journal", () => {
     applyJournalRow(state, asOlderBuildReadsIt)
     expect([...state.items.keys()]).toEqual(items)
     expect([...state.submissions.keys()]).toEqual(submissions)
+  })
+
+  it('a Stop or Resume row holding a value no build writes is ignored on read, never trusted', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'held')
+    /** Appends a row, then reopens with one of its keys rewritten as a corrupt write would. */
+    const corrupted = async (
+      append: Promise<{ sequence: number }>,
+      key: string,
+      value: unknown
+    ) => {
+      const { sequence } = await append
+      await journal.close()
+      rewriteRows({ [sequence]: [key, value] })
+      journal = await open()
+    }
+    const malformed = [null, 'stopped', { at: 1 }]
+    // Pauses nothing as the latest Stop row.
+    for (const value of malformed) {
+      await corrupted(userStop(journal), 'stopEvent', value)
+      expect(reason(journal)).toBeNull()
+    }
+    // Ends nothing after a person's Stop: neither as a later Stop nor as a Resume.
+    await userStop(journal)
+    for (const value of malformed) {
+      await corrupted(userStop(journal), 'stopEvent', value)
+      expect(reason(journal)).toBe('stopped')
+    }
+    await corrupted(journal.appendQueueResume(0), 'queueResume', 'yes')
+    expect(reason(journal)).toBe('stopped')
+    expect(held(journal)).toEqual([['held', true]])
   })
 
   it("the queue's own consume is refused in its transaction while the pause holds the card; Send-now is not", async () => {
