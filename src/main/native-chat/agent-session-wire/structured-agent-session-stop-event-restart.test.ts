@@ -95,7 +95,8 @@ async function restartAndSettle(
   })
 }
 
-/** What the chat's turn bar and the session's mark read, for `turnId` or else the first turn. */
+/** What the chat's turn bar and the session's mark read, for `turnId` or else the first turn, and
+ *  the error rows beside it. */
 function settled(turnId?: string) {
   const { items } = journal().snapshot()
   const turn = items
@@ -110,7 +111,10 @@ function settled(turnId?: string) {
     label: timing ? formatNativeChatTurnStatusLabel({ elapsedSeconds: 0, ...timing }) : null,
     mark: verdict
       ? agentVerdictDisplayMark({ state: 'done', mainAgent: { state: 'done', outcome: verdict } })
-      : null
+      : null,
+    errorRows: items.flatMap((item) =>
+      item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+    )
   }
 }
 
@@ -125,10 +129,12 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark } = settled()
+    const { turn, label, mark, errorRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     expect(label).toMatch(/^Interrupted after /)
     expect(mark).toBe('interrupted')
+    // A live Stop writes no row saying the provider stopped; nor does its relaunch.
+    expect(errorRows).toEqual([])
   })
 
   it('reads Interrupted after N, marked interrupted: a close of the chat that died midway', async () => {
@@ -143,10 +149,12 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark } = settled()
+    const { turn, label, mark, errorRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     expect(label).toMatch(/^Interrupted after /)
     expect(mark).toBe('interrupted')
+    // A live Stop writes no row saying the provider stopped; nor does its relaunch.
+    expect(errorRows).toEqual([])
   })
 
   it('reads Failed after N, marked failed, when nobody stopped it', async () => {
@@ -154,11 +162,14 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark } = settled()
+    const { turn, label, mark, errorRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
     expect(label).toMatch(/^Failed after /)
     expect(mark).toBe('failed')
+    expect(errorRows).toEqual([
+      expect.stringContaining('stopped while this response was in progress')
+    ])
   })
 
   it("reads Couldn't confirm when the relaunch cannot prove the child gone, Stop or not", async () => {

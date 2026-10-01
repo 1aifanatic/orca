@@ -26,6 +26,7 @@ import {
 } from './structured-agent-session-start-failure-row'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
+  endedByPersonsStop,
   provenUnverifiableTurnRevisions,
   runningTurnLifecycleRevisions,
   stopFoundTurnLiveAt,
@@ -239,15 +240,17 @@ export async function settleStaleStructuredAgentSessionState(input: {
     }
   }
   const proven = provenUnverifiableTurnRevisions(items, input.deathEvidence, journal)
-  mutations.push(
+  const turnEnds = [
     ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
     ...proven
-  )
+  ]
+  mutations.push(...turnEnds)
   const evidence = input.deathEvidence
   if (
     evidence &&
     (proven.length > 0 ||
-      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted'))
+      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')) &&
+    !endedByPersonsStop(journal, turnEnds)
   ) {
     mutations.unshift({
       kind: 'item',

@@ -67,6 +67,22 @@ export function stopFoundTurnLiveAt(
   return stop && turnId !== undefined && stop.event.turnId === turnId ? stop.event.at : undefined
 }
 
+/** Every turn this settle interrupts is a person's Stop's to end (`turnEndAfterStop`), so it reads
+ *  as theirs, muted, with no row saying the provider stopped: as a live Stop writes none. */
+export function endedByPersonsStop(
+  journal: Pick<AgentSessionJournal, 'stopMarks'>,
+  turnEnds: readonly JournalLifecycleMutationInput[]
+): boolean {
+  const interrupted = turnEnds.flatMap((mutation) => {
+    const turn = mutation.kind === 'item' ? readAgentJournalTurn(mutation.body) : undefined
+    return turn?.state === 'interrupted' ? [turn] : []
+  })
+  return (
+    interrupted.length > 0 &&
+    interrupted.every((turn) => journal.stopMarks.personStopDecides(turn.turnId, turn.completedAt))
+  )
+}
+
 /** Revises every still-running lifecycle item in place, keeping its identity and start. */
 export function runningTurnLifecycleRevisions(
   items: readonly AgentJournalRenderItem[],
