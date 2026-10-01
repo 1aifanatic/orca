@@ -27,7 +27,32 @@ import {
 /** One forge round trip per kept branch; past this the branch is kept and the delete finishes. */
 export const FORGE_MERGED_LOOKUP_TIMEOUT_MS = 10_000
 
+/** After a lookup hits the cap, later kept branches in that repo are kept without asking this long. */
+export const FORGE_UNANSWERED_WINDOW_MS = 60_000
+
+// Why in memory with a deadline: it only spares serial deletes (WSL, Workspace Cleanup, SSH host
+// removal) from waiting on a host that just hung, one cap after another; nothing outlives it.
+const unansweredUntilByReviewHost = new Map<string, number>()
+
+function isReviewHostUnanswered(reviewHostKey: string): boolean {
+  const until = unansweredUntilByReviewHost.get(reviewHostKey)
+  if (until === undefined) {
+    return false
+  }
+  if (until > Date.now()) {
+    return true
+  }
+  unansweredUntilByReviewHost.delete(reviewHostKey)
+  return false
+}
+
+export function _resetUnansweredReviewHostsForTests(): void {
+  unansweredUntilByReviewHost.clear()
+}
+
 export type PreservedBranchForgeSettlement = {
+  /** One repo on one execution host: where a hung review host stops later lookups. */
+  reviewHostKey: string
   /** True only when the review host shows `head` belongs to a merged review. */
   confirmMergedAtHead: (branchName: string, head: string) => Promise<boolean>
   /** Deletes the branch only while it still points at `head`. */
@@ -42,14 +67,18 @@ export type PreservedBranchForgeSettlement = {
  */
 export async function settlePreservedBranchWithForge(
   result: RemoveWorktreeResult,
-  { confirmMergedAtHead, deleteAtHead }: PreservedBranchForgeSettlement
+  { reviewHostKey, confirmMergedAtHead, deleteAtHead }: PreservedBranchForgeSettlement
 ): Promise<RemoveWorktreeResult> {
   const preserved = result.preservedBranch
   if (!preserved?.head) {
     return result
   }
   const { branchName, head } = preserved
-  const confirmed = await withTimeout(
+  if (isReviewHostUnanswered(reviewHostKey)) {
+    console.warn(`[worktrees] Kept "${branchName}": its review host did not answer moments ago`)
+    return result
+  }
+  const answer = await withTimeout<boolean | 'timed-out'>(
     confirmMergedAtHead(branchName, head).catch((error: unknown) => {
       console.warn(
         `[worktrees] Could not ask the review host whether "${branchName}" merged`,
@@ -58,9 +87,14 @@ export async function settlePreservedBranchWithForge(
       return false
     }),
     FORGE_MERGED_LOOKUP_TIMEOUT_MS,
-    false
+    'timed-out'
   )
-  if (!confirmed) {
+  if (answer === 'timed-out') {
+    // Why only a timeout: a fast error costs the next delete nothing, a hang costs it the cap.
+    unansweredUntilByReviewHost.set(reviewHostKey, Date.now() + FORGE_UNANSWERED_WINDOW_MS)
+    return result
+  }
+  if (!answer) {
     return result
   }
   try {
@@ -90,19 +124,22 @@ type KeptBranchRemoval = {
 
 /**
  * Local and WSL removals: settle a kept branch with the review host, then drop the push-target
- * remote. One call so that cleanup, which keeps a remote a local branch still tracks, always runs
- * after the delete.
+ * remote. The only route from removal code to that cleanup (see the ratchet test), so every
+ * removal asks the same question, and the cleanup, which keeps a remote a local branch still
+ * tracks, always runs after the delete.
  */
 export async function settleKeptBranch(
   removal: KeptBranchRemoval & { localGitOptions: LocalProjectWorktreeGitOptions }
 ): Promise<RemoveWorktreeResult> {
   const { repo, localGitOptions } = removal
   const result = await settlePreservedBranchWithForge(removal.result, {
-    confirmMergedAtHead: forgeMergedAtHeadCheck({
-      repo,
-      localGitOptions,
-      linkedReviews: removedWorktreeMeta(removal)
-    }),
+    reviewHostKey: reviewHostKeyOf(repo),
+    confirmMergedAtHead: (branchName, head) =>
+      forgeMergedAtHeadCheck({
+        repo,
+        localGitOptions,
+        linkedReviews: removedWorktreeMeta(removal)
+      })(branchName, head),
     // Why the queue: it serializes this repo's removal ref writes on `packed-refs.lock`.
     deleteAtHead: (branchName, head) =>
       deletePreservedBranchAtHead(repo.path, branchName, head, localGitOptions)
@@ -123,11 +160,13 @@ export async function settleKeptSshBranch(
 ): Promise<RemoveWorktreeResult> {
   const { repo, provider } = removal
   const result = await settlePreservedBranchWithForge(removal.result, {
-    confirmMergedAtHead: forgeMergedAtHeadCheck({
-      repo,
-      localGitOptions: {},
-      linkedReviews: removedWorktreeMeta(removal)
-    }),
+    reviewHostKey: reviewHostKeyOf(repo),
+    confirmMergedAtHead: (branchName, head) =>
+      forgeMergedAtHeadCheck({
+        repo,
+        localGitOptions: {},
+        linkedReviews: removedWorktreeMeta(removal)
+      })(branchName, head),
     deleteAtHead: (branchName, head) =>
       provider.forceDeletePreservedBranch(repo.path, branchName, head)
   })
@@ -139,6 +178,10 @@ export async function settleKeptSshBranch(
     removal.store
   )
   return result
+}
+
+function reviewHostKeyOf(repo: SettlementRepo): string {
+  return JSON.stringify([getRepoHostedReviewExecutionHostId(repo), repo.path])
 }
 
 // Why the repo's host: a registered removal runs on the host that owns the repo row.

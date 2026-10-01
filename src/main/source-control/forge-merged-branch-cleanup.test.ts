@@ -12,7 +12,9 @@ vi.mock('../gitlab/merge-request-versions', () => ({
 }))
 
 import {
+  _resetUnansweredReviewHostsForTests,
   FORGE_MERGED_LOOKUP_TIMEOUT_MS,
+  FORGE_UNANSWERED_WINDOW_MS,
   forgeMergedAtHeadCheck,
   settlePreservedBranchWithForge
 } from './forge-merged-branch-cleanup'
@@ -48,6 +50,7 @@ function confirmFor(linkedReviews?: { linkedPR: number | null; linkedGitLabMR?: 
 }
 
 beforeEach(() => {
+  _resetUnansweredReviewHostsForTests()
   getHostedReviewForBranchMock.mockReset()
   getMergeRequestVersionHeadShasMock.mockReset()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -149,7 +152,7 @@ describe('settlePreservedBranchWithForge', () => {
     await expect(
       settlePreservedBranchWithForge(
         { ...kept, removing: true },
-        { confirmMergedAtHead, deleteAtHead }
+        { reviewHostKey: 'repo', confirmMergedAtHead, deleteAtHead }
       )
     ).resolves.toEqual({ removing: true })
     expect(confirmMergedAtHead).toHaveBeenCalledWith('feature/test', HEAD)
@@ -161,6 +164,7 @@ describe('settlePreservedBranchWithForge', () => {
 
     await expect(
       settlePreservedBranchWithForge(kept, {
+        reviewHostKey: 'repo',
         confirmMergedAtHead: vi.fn().mockResolvedValue(false),
         deleteAtHead
       })
@@ -173,6 +177,7 @@ describe('settlePreservedBranchWithForge', () => {
 
     await expect(
       settlePreservedBranchWithForge(kept, {
+        reviewHostKey: 'repo',
         confirmMergedAtHead: vi.fn().mockRejectedValue(new Error('rate_limited')),
         deleteAtHead
       })
@@ -184,6 +189,7 @@ describe('settlePreservedBranchWithForge', () => {
     vi.useFakeTimers()
     const deleteAtHead = vi.fn()
     const settled = settlePreservedBranchWithForge(kept, {
+      reviewHostKey: 'repo',
       confirmMergedAtHead: () => new Promise<boolean>(() => {}),
       deleteAtHead
     })
@@ -194,9 +200,48 @@ describe('settlePreservedBranchWithForge', () => {
     expect(deleteAtHead).not.toHaveBeenCalled()
   })
 
+  it('keeps later branches without asking while a hung review host is fresh, then asks again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const hung = vi.fn(() => new Promise<boolean>(() => {}))
+    const first = settlePreservedBranchWithForge(kept, {
+      reviewHostKey: 'repo',
+      confirmMergedAtHead: hung,
+      deleteAtHead: vi.fn()
+    })
+    await vi.advanceTimersByTimeAsync(FORGE_MERGED_LOOKUP_TIMEOUT_MS)
+    await expect(first).resolves.toBe(kept)
+
+    const confirmMergedAtHead = vi.fn().mockResolvedValue(true)
+    const deleteAtHead = vi.fn().mockResolvedValue(undefined)
+    const settlement = { reviewHostKey: 'repo', confirmMergedAtHead, deleteAtHead }
+    await expect(settlePreservedBranchWithForge(kept, settlement)).resolves.toBe(kept)
+    expect(confirmMergedAtHead).not.toHaveBeenCalled()
+    // Another repo has its own review host answer.
+    await expect(
+      settlePreservedBranchWithForge(kept, { ...settlement, reviewHostKey: 'other-repo' })
+    ).resolves.toEqual({})
+
+    await vi.advanceTimersByTimeAsync(FORGE_UNANSWERED_WINDOW_MS)
+    await expect(settlePreservedBranchWithForge(kept, settlement)).resolves.toEqual({})
+    expect(confirmMergedAtHead).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps asking after a lookup fails fast', async () => {
+    const settlement = {
+      reviewHostKey: 'repo',
+      confirmMergedAtHead: vi.fn().mockRejectedValue(new Error('rate_limited')),
+      deleteAtHead: vi.fn()
+    }
+    await settlePreservedBranchWithForge(kept, settlement)
+    await settlePreservedBranchWithForge(kept, settlement)
+
+    expect(settlement.confirmMergedAtHead).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps the branch when the guarded delete refuses', async () => {
     await expect(
       settlePreservedBranchWithForge(kept, {
+        reviewHostKey: 'repo',
         confirmMergedAtHead: vi.fn().mockResolvedValue(true),
         deleteAtHead: vi
           .fn()
@@ -207,7 +252,7 @@ describe('settlePreservedBranchWithForge', () => {
 
   it('never asks the forge when Git already deleted the branch, or without a saved head', async () => {
     const confirmMergedAtHead = vi.fn()
-    const settlement = { confirmMergedAtHead, deleteAtHead: vi.fn() }
+    const settlement = { reviewHostKey: 'repo', confirmMergedAtHead, deleteAtHead: vi.fn() }
 
     await expect(settlePreservedBranchWithForge({}, settlement)).resolves.toEqual({})
     const headless = { preservedBranch: { branchName: 'feature/test' } }

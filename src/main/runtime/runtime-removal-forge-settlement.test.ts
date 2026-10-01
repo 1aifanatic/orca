@@ -36,7 +36,10 @@ vi.mock('../worktree-archive-hook-gate', () => ({
   gateRemovalWhereArchiveHookCannotRun: async () => ({})
 }))
 
-import { FORGE_MERGED_LOOKUP_TIMEOUT_MS } from '../source-control/forge-merged-branch-cleanup'
+import {
+  _resetUnansweredReviewHostsForTests,
+  FORGE_MERGED_LOOKUP_TIMEOUT_MS
+} from '../source-control/forge-merged-branch-cleanup'
 import { finishRuntimeLocalWorktreeRemoval } from './runtime-registered-local-worktree-removal'
 import { removeRuntimeRegisteredRemoteWorktree } from './runtime-registered-remote-worktree-removal'
 
@@ -100,6 +103,7 @@ function finish(name: string) {
 let platformSpy: MockInstance<() => NodeJS.Platform>
 
 beforeEach(() => {
+  _resetUnansweredReviewHostsForTests()
   events.length = 0
   platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -265,6 +269,31 @@ describe('removeRuntimeRegisteredRemoteWorktree branch settlement', () => {
       'push-target-cleanup'
     ])
     expect(finishRemoval).toHaveBeenCalledWith({})
+  })
+
+  it('waits on a hung review host once across serial removals, not once per workspace', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    getHostedReviewForBranchMock.mockImplementation(() => new Promise(() => {}))
+    const startedAt = Date.now()
+    const kept = { preservedBranch: { branchName: 'feature/a', head: headOf('a') } }
+
+    // Like removing an SSH host's workspaces: each removal starts after the previous one returns.
+    for (let removal = 0; removal < 3; removal += 1) {
+      const { result } = removeRemote(async () => {})
+      let settled = false
+      void result.finally(() => {
+        settled = true
+      })
+      for (let step = 0; !settled && step < 20; step += 1) {
+        await vi.advanceTimersByTimeAsync(FORGE_MERGED_LOOKUP_TIMEOUT_MS / 10)
+      }
+      await expect(result).resolves.toEqual(kept)
+    }
+
+    const elapsed = Date.now() - startedAt
+    expect(elapsed).toBeGreaterThanOrEqual(FORGE_MERGED_LOOKUP_TIMEOUT_MS)
+    expect(elapsed).toBeLessThan(2 * FORGE_MERGED_LOOKUP_TIMEOUT_MS)
+    expect(getHostedReviewForBranchMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the SSH branch when an old relay lacks the guarded delete', async () => {
