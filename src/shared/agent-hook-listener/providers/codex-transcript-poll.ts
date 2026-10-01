@@ -13,15 +13,18 @@ export function pollCodexTranscriptStatus<T extends AgentHookEventPayload>(
   if (!transcript?.parent.filePath) {
     return undefined
   }
-  reconcileCodexSubagentTranscript(
+  const changed = reconcileCodexSubagentTranscript(
     transcript,
     getOrCreateCodexSubagentRoster(state, original.paneKey),
     transcript.parent.filePath
   )
-  if (
+  const interrupted =
     transcript.rootTurn.interrupted &&
     state.codexLeadStateByPaneKey.get(original.paneKey)?.state !== 'done'
-  ) {
+  if (!changed && !interrupted) {
+    return original
+  }
+  if (interrupted) {
     markCodexLeadTurnInterrupted(state, original.paneKey)
   }
   const payload = buildCodexChildDrivenStatusPayload(state, undefined, original.paneKey, {})

@@ -24,12 +24,26 @@ export function shouldPollHookTranscript(
   return false
 }
 
+/** Child rollout discovery keeps its existing cadence; only a root-only pane can use one file watch. */
+export function hookTranscriptWatchPath(
+  state: HookListenerState,
+  source: AgentHookSource,
+  paneKey: string
+): string | undefined {
+  return source === 'codex' && !hasCodexTranscriptSubagents(state, paneKey)
+    ? state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath
+    : undefined
+}
+
 /** Returns the poll result to publish, or undefined when it carries nothing new. */
 export function transcriptPollUpdate<T extends AgentHookEventPayload>(
   source: AgentHookSource,
   original: T,
   polled: T
 ): T | undefined {
+  if (original === polled) {
+    return undefined
+  }
   if (source === 'muse') {
     const changed =
       polled.payload.state !== original.payload.state ||
