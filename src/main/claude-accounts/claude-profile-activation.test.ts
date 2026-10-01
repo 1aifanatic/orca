@@ -1,3 +1,4 @@
+import type { GlobalSettings } from '../../shared/global-settings-types'
 import { syncBuiltinESMExports } from 'node:module'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -27,8 +28,17 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'claude-activation-'))
   roots.push(root)
   const accounts: ClaudeManagedAccount[] = []
-  const settings = {
+  const settings: Pick<
+    GlobalSettings,
+    | 'claudeManagedAccounts'
+    | 'activeClaudeManagedAccountId'
+    | 'activeClaudeManagedAccountIdsByRuntime'
+    | 'agentStatusHooksEnabled'
+    | 'disabledTuiAgents'
+  > = {
     claudeManagedAccounts: accounts,
+    activeClaudeManagedAccountId: null,
+    activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: {} },
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
