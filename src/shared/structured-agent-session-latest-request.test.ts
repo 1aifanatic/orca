@@ -20,7 +20,10 @@ import {
   hasStructuredAgentSessionRequest,
   latestStructuredAgentSessionRequest
 } from './structured-agent-session-latest-request'
-import { projectStructuredAgentSessionStatusSummary } from './structured-agent-session-projection'
+import {
+  projectStructuredAgentSessionStatusState,
+  projectStructuredAgentSessionStatusSummary
+} from './structured-agent-session-projection'
 
 const START_FAILURE = 'Claude is not signed in.'
 
@@ -382,15 +385,23 @@ describe('a send that failed for good while a later turn ran', () => {
     userEntry('m1', 4)
   ]
   const submissions = [
-    sent('m1', { dispatchState: 'rejected', reason: START_FAILURE, resolvedAt: 100 }),
+    sent('m1', {
+      dispatchState: 'rejected',
+      reason: START_FAILURE,
+      rejection: { kind: 'notSignedIn' },
+      resolvedAt: 100
+    }),
     sent('m2', { dispatchState: 'accepted' })
   ]
 
-  it('reads the turn when it ended after the failure', () => {
+  it('reads the turn when it ended after the failure: Done, the failure staying on its message', () => {
     expect(latestStructuredAgentSessionRequest(items('completed'), submissions)).toMatchObject({
       kind: 'turn',
       outcome: 'success'
     })
+    const state = projectStructuredAgentSessionStatusState(items('completed'), submissions)
+    expect(state.summary).toMatchObject({ status: 'idle', turnOutcome: 'success' })
+    expect(state.failedStarts).toEqual([agentJournalSubmissionKey('m1')])
   })
 
   it('reads the turn while it still runs', () => {
