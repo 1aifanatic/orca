@@ -60,7 +60,6 @@ import {
 import {
   launchSourceControlAgent,
   settleSourceControlAgentLaunch,
-  SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE,
   type SourceControlAgentLaunchArgs
 } from './source-control-agent-launch'
 import {
@@ -199,6 +198,12 @@ describe('launching a source-control button’s agent through the host', () => {
     expect(sentParams()).toHaveProperty('viewMode', 'chat')
   })
 
+  it('leaves the view mode out locally when the button would open a terminal', async () => {
+    await launchSourceControlAgent(ARGS)
+
+    expect(sentParams()).not.toHaveProperty('viewMode')
+  })
+
   it('reports the surface accepted at the reveal, before the prompt’s delivery settles', async () => {
     const onLaunchAccepted = vi.fn()
     mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
@@ -286,10 +291,7 @@ describe('launching a source-control button’s agent through the host', () => {
     const result = await launchSourceControlAgent(ARGS)
 
     expect(mocks.callRuntimeRpc).toHaveBeenCalledTimes(3)
-    expect(result).toEqual({
-      kind: 'unknown',
-      message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE
-    })
+    expect(result).toEqual({ kind: 'unknown' })
   })
 
   it.each(['runtime_timeout', 'remote_runtime_unavailable'])(
@@ -310,10 +312,7 @@ describe('launching a source-control button’s agent through the host', () => {
   it('calls a paired host that keeps timing out unconfirmed, not failed', async () => {
     mocks.callRuntimeRpc.mockRejectedValue(rpcRefusal('runtime_timeout'))
 
-    expect(await launchSourceControlAgent(ARGS)).toEqual({
-      kind: 'unknown',
-      message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE
-    })
+    expect(await launchSourceControlAgent(ARGS)).toEqual({ kind: 'unknown' })
   })
 
   it('reports an unreachable paired host as failed instead of throwing past the caller', async () => {
@@ -482,6 +481,8 @@ describe('a launch on a paired host', () => {
     await launchSourceControlAgent(ARGS)
 
     expect(mocks.callRuntimeRpc.mock.calls[0]?.[0]).toEqual({ kind: 'environment', ...PAIRED })
+    // Omitted, a paired host would apply its own default view mode instead of this window's.
+    expect(sentParams()).toHaveProperty('viewMode', 'terminal')
     expect(agentLaunchTabReservationCountForTests()).toBe(0)
     const { pane, focus, group } = beforeReply!
     expect(focus).toMatchObject({ hostTabId: pane.tabId, leafId: pane.leafId })
@@ -585,15 +586,29 @@ describe('telling the user what a hosted launch did', () => {
     expect(mocks.showNotDelivered).not.toHaveBeenCalled()
   })
 
-  it.each([
-    { kind: 'failed', message: 'Agent is disabled' },
-    { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
-  ] as const)('says so once when the launch is $kind', (result) => {
-    expect(settleSourceControlAgentLaunch(result, { agent: 'claude', prompt: PROMPT })).toEqual({
-      started: false,
-      promptDelivered: false,
-      failureNotified: true
+  it('says a refused launch failed in its own words, with the host’s reason as detail', () => {
+    const settled = settleSourceControlAgentLaunch(
+      { kind: 'failed', message: 'Agent is disabled' },
+      { agent: 'claude', prompt: PROMPT }
+    )
+
+    expect(settled).toEqual({ started: false, promptDelivered: false, failureNotified: true })
+    expect(mocks.toastError).toHaveBeenCalledTimes(1)
+    expect(mocks.toastError).toHaveBeenCalledWith("Couldn't start the agent.", {
+      description: 'Agent is disabled'
     })
-    expect(mocks.toastError).toHaveBeenCalledWith(result.message)
+  })
+
+  it('says once that an unconfirmed launch may have started', () => {
+    const settled = settleSourceControlAgentLaunch(
+      { kind: 'unknown' },
+      { agent: 'claude', prompt: PROMPT }
+    )
+
+    expect(settled).toEqual({ started: false, promptDelivered: false, failureNotified: true })
+    expect(mocks.toastError).toHaveBeenCalledTimes(1)
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Couldn't confirm the agent started. Check the workspace before trying again."
+    )
   })
 })

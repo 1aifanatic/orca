@@ -137,6 +137,8 @@ describe('a source-control action started through the host', () => {
     await expect(runSourceControlAgentActionStart(buildArgs())).resolves.toBe(false)
 
     expect(mocks.toastError).toHaveBeenCalledTimes(1)
-    expect(mocks.toastError).toHaveBeenCalledWith('Agent disabled')
+    expect(mocks.toastError).toHaveBeenCalledWith("Couldn't start the agent.", {
+      description: 'Agent disabled'
+    })
   })
 })

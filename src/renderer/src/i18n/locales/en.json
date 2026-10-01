@@ -817,6 +817,10 @@
                 "b96e091fc9": "The selected agent is disabled in Settings.",
                 "a7ac8717c7": "Choose an agent before starting."
               }
+            },
+            "launch": {
+              "failed": "Couldn't start the agent.",
+              "unconfirmed": "Couldn't confirm the agent started. Check the workspace before trying again."
             }
           },
           "generation": {

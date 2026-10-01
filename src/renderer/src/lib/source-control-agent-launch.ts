@@ -9,6 +9,7 @@
 
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
+import { translate } from '@/i18n/i18n'
 import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
@@ -51,9 +52,6 @@ const REQUIRED_HOST_CAPABILITIES: readonly RuntimeCapability[] = [
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY
 ]
 
-export const SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE =
-  "Couldn't confirm the agent started. Check the workspace before trying again."
-
 export type SourceControlAgentLaunchArgs = {
   agent: TuiAgent
   worktreeId: string
@@ -79,10 +77,10 @@ export type SourceControlAgentLaunchResult =
       promptDelivered: boolean
       warning?: string
     }
-  /** The host refused before starting anything. */
+  /** The host refused before starting anything; `message` is the host's own, untranslated. */
   | { kind: 'failed'; message: string }
   /** The agent may be running; the caller must not launch again on its own. */
-  | { kind: 'unknown'; message: string }
+  | { kind: 'unknown' }
 
 async function resolveLaunchTarget(worktreeId: string): Promise<RuntimeClientTarget | null> {
   const environmentId = getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
@@ -194,7 +192,8 @@ export async function launchSourceControlAgent(
     ...(sessionOptions ? { sessionOptions } : {}),
     launchSource: args.launchSource,
     paneKey: makePaneKey(tabId, leafId),
-    ...(viewMode ? { viewMode } : {}),
+    // Why: omission means terminal locally, but would let a paired host apply its own default.
+    ...(viewMode || target.kind === 'environment' ? { viewMode: viewMode ?? 'terminal' } : {}),
     ...(sessionId ? { sessionId } : {})
   }
   try {
@@ -204,13 +203,13 @@ export async function launchSourceControlAgent(
     }
     const sent = await sendReplayingAmbiguousLaunch(target, params)
     if (!sent) {
-      return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
+      return { kind: 'unknown' }
     }
     if ('refusal' in sent) {
       return refusalResult(sent.refusal, sent.replayed)
     }
     if (!isAgentLaunchResult(sent.result)) {
-      return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
+      return { kind: 'unknown' }
     }
     launched = sent.result
     // A chat, a reused pane or a missed reveal never reads the reservation; the reply still means
@@ -232,7 +231,7 @@ function refusalResult(
     case 'unsupported':
       return { kind: 'unsupported' }
     case 'unknown':
-      return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
+      return { kind: 'unknown' }
     case 'failed':
       return { kind: 'failed', message: refusal.message }
   }
@@ -264,8 +263,20 @@ export function settleSourceControlAgentLaunch(
     // The caller's `beforeLaunch` declined and has already said why.
     return { started: false, promptDelivered: false, failureNotified: true }
   }
-  if (result.kind !== 'launched') {
-    toast.error(result.message)
+  if (result.kind === 'failed') {
+    toast.error(
+      translate('auto.lib.source.control.agent.launch.failed', "Couldn't start the agent."),
+      { description: result.message }
+    )
+    return { started: false, promptDelivered: false, failureNotified: true }
+  }
+  if (result.kind === 'unknown') {
+    toast.error(
+      translate(
+        'auto.lib.source.control.agent.launch.unconfirmed',
+        "Couldn't confirm the agent started. Check the workspace before trying again."
+      )
+    )
     return { started: false, promptDelivered: false, failureNotified: true }
   }
   if (result.warning) {
