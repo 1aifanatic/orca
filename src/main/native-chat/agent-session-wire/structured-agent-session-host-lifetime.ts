@@ -121,18 +121,23 @@ async function stopEndsWork(
   if ('recorded' in ending || ending.quit || ending.resting || !child) {
     return false
   }
-  // Best effort: the stop goes ahead either way, so a failed or slow drain leaves the journal's
-  // read as it stands rather than calling the agent working.
-  await withTimeout(
-    context.runtimeState.flushEventSink(sessionId).catch(() => undefined),
+  // A failed drain has nothing more to deliver, so the journal's read as it stands holds. One
+  // still running past its bound may hold the turn's row, so the agent reads working.
+  const drain = await withTimeout(
+    context.runtimeState.flushEventSink(sessionId).then(
+      () => 'drained' as const,
+      () => 'failed' as const
+    ),
     STOP_EVENT_DRAIN_TIMEOUT_MS,
-    undefined
+    'slow' as const
   )
-  const working = isStructuredAgentSessionMainAgentWorking(
-    journal.activeTurnId(),
-    journal.submissions(),
-    child.fence
-  )
+  const working =
+    drain === 'slow' ||
+    isStructuredAgentSessionMainAgentWorking(
+      journal.activeTurnId(),
+      journal.submissions(),
+      child.fence
+    )
   // A host stop of work a person's Stop is already ending must not supersede that Stop's reason.
   return (
     working &&

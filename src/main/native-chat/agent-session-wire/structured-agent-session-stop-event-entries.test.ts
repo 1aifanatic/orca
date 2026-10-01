@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
 import { HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
@@ -158,6 +159,40 @@ describe('every Stop entry writes its event, with its reason, before it ends the
       outcome: 'cancellation'
     })
   })
+
+  // A drain still running after its bound may hold the turn's row: the agent reads working.
+  it("writes a person's close while the running turn's row waits behind a slow sink", async () => {
+    rig = await createQueuedMessageTestRig()
+    const sent = await rig.workingSend()
+    const open = journal()
+    const append = open.appendItem.bind(open)
+    let held = false
+    vi.spyOn(open, 'appendItem').mockImplementation(async (...args: Parameters<typeof append>) => {
+      if (!held && args[1].kind === 'turn' && args[1].state === 'running') {
+        held = true
+        await new Promise((resolve) => setTimeout(resolve, 1_500))
+      }
+      return append(...args)
+    })
+    rig.host['runtimeState'].eventSinkFor(HOST_TEST_SESSION).sink.appendItem(
+      { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 999 },
+      {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'running',
+        startedAt: Date.now(),
+        userItemId: agentJournalSubmissionKey(sent)
+      },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    // The echo's acceptance lands straight in the journal, ahead of the turn row.
+    await rig.settleAccepted(sent, 'turn-1')
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, 'user-close')
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-close'])
+  }, 20_000)
 
   // The drain is best effort: when it fails, the journal as it stands says the agent rests.
   it('writes nothing when the drain fails as it evicts a chat at rest', async () => {
