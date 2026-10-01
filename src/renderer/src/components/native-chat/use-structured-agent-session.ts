@@ -18,6 +18,7 @@ import {
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { isRetryingStructuredAgentSessionStart } from '../../../../shared/structured-agent-session-start-retry'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -148,10 +149,12 @@ export function useStructuredAgentSession(args: {
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
     useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
+  // A message waiting for its next start is not work in progress, but a Stop still withdraws it.
   const canStop =
     transportState.turnId !== null ||
     (stopsConversation &&
       (transportState.isWorking ||
+        transportState.submissions.some(isRetryingStructuredAgentSessionStart) ||
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking

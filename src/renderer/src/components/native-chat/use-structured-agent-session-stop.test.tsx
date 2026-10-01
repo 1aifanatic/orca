@@ -103,6 +103,20 @@ const IN_FLIGHT = {
   'it was handed over and is unanswered': () => {
     submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
   },
+  'it waits for its next start after a refused one': () => {
+    submissions = [
+      submission({
+        handoverRecorded: true,
+        startFailure: {
+          attempts: 1,
+          reason: 'A Claude account switch is in progress.',
+          rejection: { kind: 'accountSwitchInProgress' },
+          failedAt: 1,
+          nextAttemptAt: 15_001
+        }
+      })
+    ]
+  },
   'a turn is running': () => {
     items = [RUNNING_TURN]
   }
