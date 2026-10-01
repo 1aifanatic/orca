@@ -115,7 +115,7 @@ describe('Claude accounts section', () => {
     })
     expect(markup).toContain('System default: a@example.test')
     expect(markup).toContain(
-      'System default is signed in as a@example.test, which is also one of your saved accounts. If that isn&#x27;t your own Claude login, an earlier Orca version may have copied it there: select System default and run `claude /login`.'
+      'System default is signed in as a@example.test, which is also one of your saved accounts. If that isn&#x27;t your own Claude login, an earlier Orca version may have copied it there: select System default and run <code class="font-mono">claude /login</code>.'
     )
     const own = render({ systemDefault: { email: 'me@example.test', matchesSavedAccount: false } })
     expect(own).toContain('System default: me@example.test')
@@ -169,5 +169,24 @@ describe('Claude accounts section', () => {
     expect(render({ olderTerminalsRunning: true })).toContain(
       'Some terminals are still running from before this Orca update.'
     )
+  })
+
+  it('describes the host System Default login without "this device" mid-sentence', () => {
+    const markup = render()
+    expect(markup).toContain('Use the Claude login on this device.')
+    expect(markup).not.toContain('Use your current this device')
+  })
+
+  it('says an organization changed instead of repeating the same email', () => {
+    const markup = render({
+      accounts: [
+        account('org', 'a@example.test', {
+          profileEmail: 'a@example.test',
+          profileIdentityIssue: 'mismatch'
+        })
+      ]
+    })
+    expect(markup).toContain('This account is now signed in to a different organization.')
+    expect(markup).not.toContain('added as a@example.test but is now signed in as a@example.test')
   })
 })

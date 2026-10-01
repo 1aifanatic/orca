@@ -27,32 +27,38 @@ export function getClaudeAccountRowState(
           '{{value0}} is already added as another account. Sign in again with a different account, or remove this row.',
           { value0: label }
         )
-      : account.profileIdentityIssue === 'mismatch'
+      : account.profileIdentityIssue === 'mismatch' &&
+          account.profileEmail?.toLowerCase() === account.email.toLowerCase()
         ? translate(
-            'accounts.claude.identityMismatch',
-            'This account was added as {{value0}} but is now signed in as {{value1}}. Sign in again to choose which account it uses.',
-            { value0: account.email, value1: label }
+            'accounts.claude.organizationMismatch',
+            'This account is now signed in to a different organization. Sign in again to choose which one it uses.'
           )
-        : readiness === 'sign-in-required'
-          ? translate('accounts.claude.signInRequired', 'Sign in again to use this account')
-          : readiness === 'unverified'
-            ? translate(
-                'accounts.claude.wslNotRunning',
-                '{{value0}} is not running, so this account has not been checked yet. Selecting it starts {{value0}}.',
-                { value0: account.wslDistro || 'WSL' }
-              )
-            : readiness === 'unavailable'
-              ? account.managedAuthRuntime === 'wsl'
-                ? translate(
-                    'accounts.claude.wslUnavailable',
-                    'Orca could not check this account in {{value0}}. Select it to try again, or sign in again.',
-                    { value0: account.wslDistro || 'WSL' }
-                  )
-                : translate(
-                    'accounts.claude.profileUnreadable',
-                    "This account's files could not be read. Try again, or sign in again."
-                  )
-              : null
+        : account.profileIdentityIssue === 'mismatch'
+          ? translate(
+              'accounts.claude.identityMismatch',
+              'This account was added as {{value0}} but is now signed in as {{value1}}. Sign in again to choose which account it uses.',
+              { value0: account.email, value1: label }
+            )
+          : readiness === 'sign-in-required'
+            ? translate('accounts.claude.signInRequired', 'Sign in again to use this account')
+            : readiness === 'unverified'
+              ? translate(
+                  'accounts.claude.wslNotRunning',
+                  '{{value0}} is not running, so this account has not been checked yet. Selecting it starts {{value0}}.',
+                  { value0: account.wslDistro || 'WSL' }
+                )
+              : readiness === 'unavailable'
+                ? account.managedAuthRuntime === 'wsl'
+                  ? translate(
+                      'accounts.claude.wslUnavailable',
+                      'Orca could not check this account in {{value0}}. Select it to try again, or sign in again.',
+                      { value0: account.wslDistro || 'WSL' }
+                    )
+                  : translate(
+                      'accounts.claude.profileUnreadable',
+                      "This account's files could not be read. Try again, or sign in again."
+                    )
+                : null
   const notice =
     account.profileSetupIssue === 'hooks'
       ? translate(

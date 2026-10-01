@@ -18696,8 +18696,10 @@
       "setupHooks": "Orca's status hooks could not be added to this account, so its agent status may not update.",
       "setupLinks": "Some shared Claude settings could not be linked into this account.",
       "setupPrivateHistory": "This account's chat history is kept separate because it is on a different drive.",
-      "systemDefaultAlsoSaved": "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run `claude /login`.",
-      "olderTerminals": "Some terminals are still running from before this Orca update. Until you close all of them, terminals keep the Claude account they started with."
+      "olderTerminals": "Some terminals are still running from before this Orca update. Until you close all of them, terminals keep the Claude account they started with.",
+      "systemDefaultHost": "Use the Claude login on this device.",
+      "systemDefaultAlsoSavedCommand": "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run {{command}}.",
+      "organizationMismatch": "This account is now signed in to a different organization. Sign in again to choose which one it uses."
     }
   }
 }

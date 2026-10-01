@@ -94,7 +94,8 @@ export function useFeatureWallCompletion(
       window.api.codexAccounts.list().catch(() => null)
     ])
     return hasFeatureWallUsageTracking({
-      claudeManagedAccountCount: claude?.accounts.length ?? 0,
+      // Why: an unfinished sign-in has no login yet, so it tracks no usage.
+      claudeManagedAccountCount: claude?.accounts.filter((account) => account.email).length ?? 0,
       codexManagedAccountCount: codex?.accounts.length ?? 0,
       claudeRateLimits: rateLimits.claude,
       codexRateLimits: rateLimits.codex

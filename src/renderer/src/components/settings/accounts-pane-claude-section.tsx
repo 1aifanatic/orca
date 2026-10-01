@@ -212,20 +212,28 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                 ) : null}
               </div>
               <span className="truncate text-[11px] text-muted-foreground">
-                {translate(
-                  'auto.components.settings.AccountsPane.e05d0ff737',
-                  'Use your current {{value0}} Claude login.',
-                  { value0: accountRuntimeSentenceLabel }
-                )}
+                {accountRuntime.runtime === 'host' && !isRemoteAccountScope
+                  ? translate(
+                      'accounts.claude.systemDefaultHost',
+                      'Use the Claude login on this device.'
+                    )
+                  : translate(
+                      'auto.components.settings.AccountsPane.e05d0ff737',
+                      'Use your current {{value0}} Claude login.',
+                      { value0: accountRuntimeSentenceLabel }
+                    )}
               </span>
             </div>
           </button>
           {systemDefault?.matchesSavedAccount && systemDefault.email ? (
             <p role="alert" className="text-xs text-muted-foreground">
-              {translate(
-                'accounts.claude.systemDefaultAlsoSaved',
-                "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run `claude /login`.",
-                { value0: systemDefault.email }
+              {withInlineCommand(
+                translate(
+                  'accounts.claude.systemDefaultAlsoSavedCommand',
+                  "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run {{command}}.",
+                  { value0: systemDefault.email, command: INLINE_COMMAND_SLOT }
+                ),
+                'claude /login'
               )}
             </p>
           ) : null}
@@ -365,5 +373,21 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
         </div>
       </SearchableSetting>
     </section>
+  )
+}
+
+// Why a slot: the command must render as code while the sentence around it stays translatable.
+const INLINE_COMMAND_SLOT = '\u0000'
+
+function withInlineCommand(text: string, command: string): React.ReactNode {
+  const [before, after] = text.split(INLINE_COMMAND_SLOT)
+  return after === undefined ? (
+    text
+  ) : (
+    <>
+      {before}
+      <code className="font-mono">{command}</code>
+      {after}
+    </>
   )
 }
