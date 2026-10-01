@@ -93,17 +93,18 @@ function owedProviderChildWindDown(
 }
 
 /** The stop this pass owes. A retry continues the one already asked for, keeping where it was asked;
- *  any other stop is a new ask. */
+ *  any other stop is a new ask, even one with the same cause: a second close closes what came since. */
 function owedStop(
   session: StructuredAgentSessionHostSession,
-  cause: StructuredAgentSessionStopCause
+  cause: StructuredAgentSessionStopCause,
+  retry: boolean
 ): StructuredAgentSessionOwedWindDown | undefined {
   const owed = owedProviderChildWindDown(session)
   if (!owed) {
     return undefined
   }
   const asked = session.owesProviderChildWindDown
-  const continues = asked !== undefined && asked.cause === cause && sameProviderChild(asked, owed)
+  const continues = retry && asked !== undefined && sameProviderChild(asked, owed)
   return {
     generation: owed.generation,
     fence: owed.fence,
@@ -121,8 +122,9 @@ function owedStop(
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string,
-  // Required: an omitted cause must not default to the user's cancellation.
-  ending: { cause: StructuredAgentSessionStopCause; reason?: string }
+  // Required: an omitted cause must not default to the user's cancellation. `retry` is set only by
+  // the retry of a stop already owed.
+  ending: { cause: StructuredAgentSessionStopCause; reason?: string; retry?: true }
 ): Promise<void> {
   const session = context.sessions.get(sessionId)
   if (!session) {
@@ -135,7 +137,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   // The obligation OUTLIVES the child. `child` is ended the instant the adapter proves the exit,
   // so a step that aborts after that point would otherwise leave the retry reading "no child
   // here" and skipping the settlement and the lease release it still owes.
-  const owed = owedStop(session, cause)
+  const owed = owedStop(session, cause, ending.retry === true)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
   let settlementError: unknown
@@ -240,7 +242,10 @@ export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
     return true
   }
   try {
-    await stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, { cause: owed.cause })
+    await stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, {
+      cause: owed.cause,
+      retry: true
+    })
   } catch (error) {
     context.deps.onEventSinkError?.({ sessionId, error })
   }

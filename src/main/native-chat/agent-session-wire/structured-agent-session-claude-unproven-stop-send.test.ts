@@ -181,6 +181,12 @@ function laneDrained(): Promise<void> {
   return host['tasks'].serialize(SESSION, async () => {})
 }
 
+/** A commit queues a serialized wake, and the wake queues its delivery step behind that. */
+async function commitSettled(): Promise<void> {
+  await laneDrained()
+  await laneDrained()
+}
+
 /** As the real connection: once a close begins it refuses every write, proven or not. */
 function closeUnprovenFor(connection: FakeConnection, failures: number): void {
   const close = connection.close
@@ -426,7 +432,7 @@ it('never stops a live child for a wind-down another, earlier child still owes',
 })
 
 it('retries once per new message: commits after a second waiting message retry nothing', async () => {
-  const connection = await stopWithUnprovenClose(3)
+  const connection = await stopWithUnprovenClose(6)
   await send('Carry on.')
   await eventually(async () => expect(await waitRows()).toHaveLength(1))
   await laneDrained()
@@ -442,11 +448,18 @@ it('retries once per new message: commits after a second waiting message retry n
       { kind: 'status', text: `Unrelated ${n}.` },
       { fence: store.getRecord(SESSION)!.lease.runtimeFence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
-    await laneDrained()
+    await commitSettled()
   }
-  await laneDrained()
   expect(connection.closeCount).toBe(3)
   expect(claude.connections).toHaveLength(1)
+
+  // The sweep still retries, one pass a tick, until the exit is proven; then both go out.
+  for (const _tick of [1, 2, 3, 4]) {
+    await host['lifetime'].idleSweep.tick()
+  }
+  expect(connection.closeCount).toBe(7)
+  const resumed = await resumedWith(connection, 'Carry on.')
+  await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
 })
 
 it('queues a follow-up as a draft by default while a message waits, and Steer retries the stop once for it', async () => {
@@ -464,7 +477,7 @@ it('queues a follow-up as a draft by default while a message waits, and Steer re
     delivery
   })
   expect(queued).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
-  await laneDrained()
+  await commitSettled()
   expect(connection.closeCount).toBe(2)
 
   // Steer makes it a waiting message, which retries once and waits under the same note.
@@ -476,11 +489,36 @@ it('queues a follow-up as a draft by default while a message waits, and Steer re
     })
   ).resolves.toMatchObject({ ok: true })
   await eventually(() => expect(connection.closeCount).toBe(3))
-  await laneDrained()
+  await commitSettled()
+  expect(connection.closeCount).toBe(3)
   expect(claude.connections).toHaveLength(1)
   expect(await waitRows()).toHaveLength(1)
 
   await host['lifetime'].idleSweep.tick()
   const resumed = await resumedWith(connection, 'Carry on.')
   await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
+})
+
+it('rejects as closed a message a second tab close closed, though that close could not reject it itself', async () => {
+  const connection = claude.connections[0]!
+  closeUnprovenFor(connection, 3)
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  const next = await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  expect(connection.closeCount).toBe(2)
+
+  // The second close's own rejection of what is queued fails; its stop is a new ask all the same.
+  const session = host['sessions'].get(SESSION)!
+  vi.spyOn(session.journal, 'rejectQueuedSubmissions').mockRejectedValueOnce(new Error('disk full'))
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  expect(connection.closeCount).toBe(3)
+  expect(await submission(next)).toMatchObject({ dispatchState: 'pending' })
+
+  // The retry that proves the exit closes what that second close closed.
+  await host['lifetime'].idleSweep.tick()
+  await commitSettled()
+  expect(connection.closeCount).toBe(4)
+  expect(await submission(next)).toMatchObject({ dispatchState: 'rejected' })
+  expect(claude.connections).toHaveLength(1)
 })
