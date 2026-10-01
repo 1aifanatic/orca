@@ -189,16 +189,19 @@ function testDeps(args: {
   }
 }
 
+type GateTestStore = ReturnType<ReturnType<typeof testDeps>['deps']['getState']>
+
 function seedExistingSurface(
-  store: ReturnType<ReturnType<typeof testDeps>['deps']['getState']>,
-  args: { tabId: string; leafId: string; boundPtyId?: string }
+  store: GateTestStore,
+  args: { tabId: string; leafId: string; boundPtyId?: string; worktreeId?: string }
 ): void {
-  store.tabsByWorktree[WORKTREE_ID] = [
-    ...(store.tabsByWorktree[WORKTREE_ID] ?? []),
+  const worktreeId = args.worktreeId ?? WORKTREE_ID
+  store.tabsByWorktree[worktreeId] = [
+    ...(store.tabsByWorktree[worktreeId] ?? []),
     {
       id: args.tabId,
       ptyId: null,
-      worktreeId: WORKTREE_ID,
+      worktreeId,
       title: 'Terminal',
       customTitle: null,
       color: null,
@@ -316,23 +319,40 @@ describe('worktree agent activation gate', () => {
     expect(resume).not.toHaveBeenCalled()
   })
 
-  it.each([
-    ['the recorded pane now holds another PTY', `${WORKTREE_ID}@@other-pty`],
-    ['the recorded tab is gone', null]
-  ])('mints a tab for an unowned PTY when %s', async (_case, otherPtyId) => {
+  it.each<[string, (store: GateTestStore) => void]>([
+    [
+      'the recorded pane now holds another PTY',
+      (store) =>
+        seedExistingSurface(store, {
+          tabId: 'tab-live',
+          leafId: LIVE_LEAF_ID,
+          boundPtyId: `${WORKTREE_ID}@@other-pty`
+        })
+    ],
+    ['the recorded tab is gone', () => {}],
+    // A closed split or a replaced layout leaves the record naming a leaf the tab no longer has.
+    [
+      'the recorded leaf is no longer in the tab layout',
+      (store) => seedExistingSurface(store, { tabId: 'tab-live', leafId: SIBLING_LEAF_ID })
+    ],
+    [
+      'the recorded tab belongs to another worktree',
+      (store) =>
+        seedExistingSurface(store, {
+          tabId: 'tab-live',
+          leafId: LIVE_LEAF_ID,
+          worktreeId: 'repo::/other-worktree'
+        })
+    ]
+  ])('mints a tab for an unowned PTY when %s', async (_case, seed) => {
     const ptyId = `${WORKTREE_ID}@@live-pty`
     const recorded = { paneKey: `tab-live:${LIVE_LEAF_ID}`, ptyId, tabId: 'tab-live' }
     const { deps, createTab } = testDeps({
       sessions: [listed(ptyId)],
       surfaceOwners: new Map([[ptyId, { unowned: true, recorded }]])
     })
-    if (otherPtyId) {
-      seedExistingSurface(deps.getState(), {
-        tabId: 'tab-live',
-        leafId: LIVE_LEAF_ID,
-        boundPtyId: otherPtyId
-      })
-    }
+    seed(deps.getState())
+    const recordedLayoutBefore = structuredClone(deps.getState().terminalLayoutsByTabId['tab-live'])
 
     await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
 
@@ -341,11 +361,9 @@ describe('worktree agent activation gate', () => {
       activate: false,
       recordInteraction: false
     })
-    if (otherPtyId) {
-      expect(deps.getState().terminalLayoutsByTabId['tab-live']?.ptyIdsByLeafId[LIVE_LEAF_ID]).toBe(
-        otherPtyId
-      )
-    }
+    // Nothing may be bound to the recorded surface the gate refused.
+    expect(deps.getState().terminalLayoutsByTabId['tab-live']).toEqual(recordedLayoutBefore)
+    expect(deps.getState().ptyIdsByTabId['tab-live']).toBeUndefined()
   })
 
   it('adopts a daemon PTY minted for a folder workspace', async () => {
