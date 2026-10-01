@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
 import { claudeUnwrittenUserMessageError } from '../../claude/claude-agent-sdk-user-message-queue'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
@@ -102,7 +103,11 @@ function eventually<T>(assertion: () => T | Promise<T>): Promise<T> {
 }
 
 function envelope(
-  method: 'agentSession.send' | 'agentSession.cancel' | 'agentSession.setOption',
+  method:
+    | 'agentSession.send'
+    | 'agentSession.cancel'
+    | 'agentSession.setOption'
+    | 'agentSession.queuedMessageSend',
   fields: object
 ) {
   return {
@@ -267,7 +272,7 @@ it('holds the message with its reason while the exit stays unverifiable, and sen
     {
       kind: 'status',
       tone: 'warning',
-      text: "Orca couldn't confirm Claude's previous process ended. Your message will send once it has.",
+      text: "Orca couldn't confirm Claude's previous process ended. Messages wait to be sent until Orca confirms it has ended.",
       failure: { kind: 'previousExitUnverifiable' }
     }
   ])
@@ -418,4 +423,64 @@ it('never stops a live child for a wind-down another, earlier child still owes',
   await host['lifetime'].idleSweep.tick()
   expect(connection.closeCount).toBe(0)
   expect(claude.connections).toHaveLength(1)
+})
+
+it('retries once per new message: commits after a second waiting message retry nothing', async () => {
+  const connection = await stopWithUnprovenClose(3)
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  await send('And this.')
+  await eventually(() => expect(connection.closeCount).toBe(3))
+  await laneDrained()
+
+  // Any journal commit wakes the delivery loop while a message is queued.
+  const session = host['sessions'].get(SESSION)!
+  for (const n of [1, 2, 3]) {
+    await session.journal.appendItem(
+      { provider: 'orca', clientMessageId: `unrelated-${n}` },
+      { kind: 'status', text: `Unrelated ${n}.` },
+      { fence: store.getRecord(SESSION)!.lease.runtimeFence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await laneDrained()
+  }
+  await laneDrained()
+  expect(connection.closeCount).toBe(3)
+  expect(claude.connections).toHaveLength(1)
+})
+
+it('queues a follow-up as a draft by default while a message waits, and Steer retries the stop once for it', async () => {
+  const connection = await stopWithUnprovenClose(3)
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+
+  // Queueing follow-ups is the default: the waiting message reads as working, so this is a draft.
+  const body = hostTestMessage('And this.')
+  const delivery = 'queue-if-active' as const
+  const queued = await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body, delivery }),
+    body,
+    delivery
+  })
+  expect(queued).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
+  await laneDrained()
+  expect(connection.closeCount).toBe(2)
+
+  // Steer makes it a waiting message, which retries once and waits under the same note.
+  const messageId = queued.ok && 'queued' in queued.value ? queued.value.queued.messageId : ''
+  await expect(
+    host.queuedMessageSend(CALLER, {
+      envelope: envelope('agentSession.queuedMessageSend', { messageId }),
+      messageId
+    })
+  ).resolves.toMatchObject({ ok: true })
+  await eventually(() => expect(connection.closeCount).toBe(3))
+  await laneDrained()
+  expect(claude.connections).toHaveLength(1)
+  expect(await waitRows()).toHaveLength(1)
+
+  await host['lifetime'].idleSweep.tick()
+  const resumed = await resumedWith(connection, 'Carry on.')
+  await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
 })

@@ -42,6 +42,8 @@ export type StructuredAgentSessionOwedWindDown = StructuredAgentSessionProviderC
   readonly cause: StructuredAgentSessionStopCause
   /** Where the journal stood when the stop was asked for; the child's end is ordered there. */
   readonly requestedAt: AgentJournalCursor
+  /** Where it stood once the newest pass failed: a message accepted by then waited through a retry. */
+  readonly failedAt?: AgentJournalCursor
 }
 
 /** The provider process behind a conversation. Written only in

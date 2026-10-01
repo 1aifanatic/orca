@@ -40,13 +40,12 @@ function windDownWaitRow(
   return session.journal.snapshot().items.find((item) => item.itemId === itemId)
 }
 
-/** Every queued message already waited through a retry of the owed stop: its row came after the
- *  newest. A new message retries again, and a retry that lands wakes the loop itself, so the row's
- *  own commit, which wakes the delivery loop, does not. */
+/** Every queued message already waited through a retry of the owed stop: it was accepted before the
+ *  newest pass failed. Only a new message retries again, and a retry that lands wakes the loop
+ *  itself, so no other commit, each of which wakes the delivery loop, retries. */
 export function structuredAgentSessionWindDownWaitHolds(session: WaitingSession): boolean {
-  const owed = pendingProviderChildWindDown(session)
-  const row = owed && windDownWaitRow(session, owed)
-  if (!row) {
+  const failedAt = pendingProviderChildWindDown(session)?.failedAt
+  if (!failedAt || failedAt.epoch !== session.journal.cursor().epoch) {
     return false
   }
   return session.journal
@@ -54,7 +53,7 @@ export function structuredAgentSessionWindDownWaitHolds(session: WaitingSession)
     .every(
       (submission) =>
         !isQueuedAgentJournalSubmission(submission) ||
-        (submission.acceptedSequence ?? 0) < row.sequence
+        (submission.acceptedSequence ?? 0) <= failedAt.sequence
     )
 }
 

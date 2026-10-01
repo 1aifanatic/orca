@@ -209,10 +209,17 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       context.wakeDelivery?.(sessionId)
     }
   }
-  await evictStructuredAgentSession(
-    eviction,
-    withStructuredAgentSessionEvictionDeadline(STRUCTURED_AGENT_SESSION_EVICTION_STEPS)
-  )
+  try {
+    await evictStructuredAgentSession(
+      eviction,
+      withStructuredAgentSessionEvictionDeadline(STRUCTURED_AGENT_SESSION_EVICTION_STEPS)
+    )
+  } catch (error) {
+    if (session.owesProviderChildWindDown === owed && owed) {
+      session.owesProviderChildWindDown = { ...owed, failedAt: session.journal.cursor() }
+    }
+    throw error
+  }
 }
 
 /**
