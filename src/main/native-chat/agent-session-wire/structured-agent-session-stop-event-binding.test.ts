@@ -1,6 +1,6 @@
 // Which turn a person's Stop that named no turn binds: only the one its stopped send opens. A Stop of
 // a start that never landed stopped a send that opens no turn, and a send journaled after the Stop
-// opens its own; neither is the Stop's, whatever sent it.
+// opens its own; neither is the Stop's, whatever sent it, through a rewind too.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -121,6 +121,48 @@ describe('a Stop of a start that never landed binds no later turn', () => {
         ownerFence: owner
       }
     })
+
+    expect(mailTurn()).toMatchObject({ state: 'interrupted' })
+    expect(mailTurn()).not.toHaveProperty('outcome')
+  })
+})
+
+describe('a rewind that restates a turnless Stop', () => {
+  // The rewind writes the Stop still in force after the turns it keeps, so it follows the turn it
+  // already bound; the mail after the rewind is still its own.
+  it('binds no turn opened after the rewind', async () => {
+    rig = await createQueuedMessageTestRig()
+    const stopped = await rig.workingSend()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(journal().stopMarks.latest()?.event).not.toHaveProperty('turnId')
+    await rig.settleAccepted(stopped, 'stopped')
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    const stoppedTurn = { ...MAIL_TURN, turnId: 'turn-stopped', ordinal: 998 }
+    const ended = { kind: 'turn' as const, turnId: 'turn-stopped', state: 'interrupted' as const }
+    await journal().appendItem(
+      stoppedTurn,
+      { kind: 'turn', turnId: 'turn-stopped', state: 'running', startedAt: Date.now() },
+      scope
+    )
+    await journal().appendItem(stoppedTurn, { ...ended, completedAt: Date.now() + 1 }, scope)
+
+    await journal().replaceEpochItems('handle_forked', 1, [
+      {
+        identity: stoppedTurn,
+        body: { ...ended, completedAt: Date.now() + 1, outcome: 'cancellation' }
+      }
+    ])
+    await rig.send('mail after the rewind', undefined, { internal: true }).result
+    await journal().appendItem(
+      MAIL_TURN,
+      { kind: 'turn', turnId: 'turn-mail', state: 'running', startedAt: Date.now() },
+      scope
+    )
+    await journal().appendItem(
+      MAIL_TURN,
+      { kind: 'turn', turnId: 'turn-mail', state: 'interrupted', completedAt: Date.now() + 5 },
+      scope
+    )
 
     expect(mailTurn()).toMatchObject({ state: 'interrupted' })
     expect(mailTurn()).not.toHaveProperty('outcome')
