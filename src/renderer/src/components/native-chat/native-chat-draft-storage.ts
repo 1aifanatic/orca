@@ -2,11 +2,22 @@
 // Typing is saved after a short delay and flushed when the page hides or closes; a clear or a
 // put-back is saved at once, so a crash right after Enter cannot bring back text already sent.
 
+import type { TuiAgent } from '../../../../shared/tui-agent'
+import { isTuiAgent } from '../../../../shared/tui-agent-config'
+
 export type NativeChatDraftAttachment = { id: string; path: string; connectionId?: string }
+
+/** Launch text Orca typed into a terminal agent's input line, which still holds it. */
+export type NativeChatTuiInputSeed = { agent: TuiAgent; text: string; createdAt: number }
 
 export type PersistedNativeChatDraft = {
   text: string
   attachments: readonly NativeChatDraftAttachment[]
+  tuiInputSeed?: NativeChatTuiInputSeed
+}
+
+export function isEmptyNativeChatDraft(draft: PersistedNativeChatDraft): boolean {
+  return draft.text === '' && draft.attachments.length === 0 && !draft.tuiInputSeed
 }
 
 /** Whether a write reached disk; a `memory-only` draft is lost when Orca quits. */
@@ -40,13 +51,10 @@ function writeToStorage(
     return 'memory-only'
   }
   try {
-    if (!draft || (draft.text === '' && draft.attachments.length === 0)) {
+    if (!draft || isEmptyNativeChatDraft(draft)) {
       storage.removeItem(storageKey(scopeKey))
     } else {
-      storage.setItem(
-        storageKey(scopeKey),
-        JSON.stringify({ text: draft.text, attachments: draft.attachments, savedAt: Date.now() })
-      )
+      storage.setItem(storageKey(scopeKey), JSON.stringify({ ...draft, savedAt: Date.now() }))
     }
     return 'persisted'
   } catch {
@@ -151,6 +159,19 @@ function parseAttachment(value: unknown): NativeChatDraftAttachment | null {
   return typeof connectionId === 'string' ? { id, path, connectionId } : { id, path }
 }
 
+function parseTuiInputSeed(value: unknown): { tuiInputSeed?: NativeChatTuiInputSeed } {
+  if (!isRecord(value)) {
+    return {}
+  }
+  const { agent, text, createdAt } = value
+  return isTuiAgent(agent) &&
+    typeof text === 'string' &&
+    text !== '' &&
+    typeof createdAt === 'number'
+    ? { tuiInputSeed: { agent, text, createdAt } }
+    : {}
+}
+
 function parseStoredDraft(
   raw: string | null
 ): (PersistedNativeChatDraft & { savedAt: number }) | null {
@@ -162,17 +183,20 @@ function parseStoredDraft(
     if (!isRecord(value)) {
       return null
     }
-    const { text, attachments, savedAt } = value
+    const { text, attachments, tuiInputSeed, savedAt } = value
     if (typeof text !== 'string' || !Array.isArray(attachments)) {
       return null
     }
-    const parsed = attachments
-      .map(parseAttachment)
-      .filter((attachment): attachment is NativeChatDraftAttachment => attachment !== null)
-    if (text === '' && parsed.length === 0) {
-      return null
+    const draft = {
+      text,
+      attachments: attachments
+        .map(parseAttachment)
+        .filter((attachment): attachment is NativeChatDraftAttachment => attachment !== null),
+      ...parseTuiInputSeed(tuiInputSeed)
     }
-    return { text, attachments: parsed, savedAt: typeof savedAt === 'number' ? savedAt : 0 }
+    return isEmptyNativeChatDraft(draft)
+      ? null
+      : { ...draft, savedAt: typeof savedAt === 'number' ? savedAt : 0 }
   } catch {
     return null
   }
@@ -212,7 +236,7 @@ export function loadPersistedNativeChatDrafts(
     for (const key of discarded) {
       storage.removeItem(key)
     }
-    return kept.map(([scopeKey, { text, attachments }]) => [scopeKey, { text, attachments }])
+    return kept.map(([scopeKey, { savedAt: _savedAt, ...draft }]) => [scopeKey, draft])
   } catch {
     return []
   }

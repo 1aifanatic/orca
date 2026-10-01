@@ -8,6 +8,7 @@ import {
   setBoundedScopeCacheEntry
 } from './native-chat-composer-scope-cache'
 import {
+  isEmptyNativeChatDraft,
   loadPersistedNativeChatDrafts,
   observeOtherWindowNativeChatDrafts,
   persistNativeChatDraftNow,
@@ -15,10 +16,11 @@ import {
   scheduleNativeChatDraftPersist,
   type NativeChatDraftAttachment,
   type NativeChatDraftWriteResult,
+  type NativeChatTuiInputSeed,
   type PersistedNativeChatDraft
 } from './native-chat-draft-storage'
 
-export type { NativeChatDraftAttachment, NativeChatDraftWriteResult }
+export type { NativeChatDraftAttachment, NativeChatDraftWriteResult, NativeChatTuiInputSeed }
 
 /**
  * The chat a draft belongs to. A structured chat is its session, whichever pane shows it. A chat
@@ -29,7 +31,7 @@ export function nativeChatDraftKey(chat: { sessionId?: string; paneKey: string }
   return chat.sessionId ? `session:${chat.sessionId}` : `pane:${chat.paneKey}`
 }
 
-type DraftEntry = { text: string; attachments: readonly NativeChatDraftAttachment[] }
+type DraftEntry = PersistedNativeChatDraft
 
 const EMPTY_ATTACHMENTS: readonly NativeChatDraftAttachment[] = []
 const draftCache = new Map<string, DraftEntry>()
@@ -43,7 +45,7 @@ function drafts(): Map<string, DraftEntry> {
     for (const [draftKey, draft] of loadPersistedNativeChatDrafts(
       NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
     )) {
-      draftCache.set(draftKey, { text: draft.text, attachments: draft.attachments })
+      draftCache.set(draftKey, draft)
     }
     if (!observingOtherWindows) {
       observingOtherWindows = true
@@ -65,7 +67,7 @@ const changeListeners = new Map<string, Set<(writer: object | undefined) => void
 
 function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefined): void {
   // An empty draft carries no state worth retaining; drop it so a stale key never resurrects it.
-  if (entry.text === '' && entry.attachments.length === 0) {
+  if (isEmptyNativeChatDraft(entry)) {
     drafts().delete(draftKey)
   } else {
     setBoundedScopeCacheEntry(drafts(), draftKey, entry, {
@@ -111,8 +113,7 @@ export function discardNativeChatDrafts(ended: {
 }
 
 function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
-  const entry = drafts().get(draftKey)
-  return entry ? { text: entry.text, attachments: entry.attachments } : null
+  return drafts().get(draftKey) ?? null
 }
 
 function persistNow(draftKey: string): NativeChatDraftWriteResult {
@@ -123,20 +124,44 @@ export function readNativeChatDraftCache(draftKey: string): string {
   return readEntry(draftKey).text
 }
 
-/**
- * Typing waits for a pause; a clear (at send) is written at once, even if a put-back remains.
- * `never` keeps a copy of state held elsewhere out of the saved draft.
- */
+/** Typing waits for a pause; a clear (at send) is written at once, even if a put-back remains. */
 export function writeNativeChatDraftCache(
   draftKey: string,
   draft: string,
-  persist: 'now' | 'after-pause' | 'never' = draft === '' ? 'now' : 'after-pause'
+  persist: 'now' | 'after-pause'
 ): void {
   setEntry(draftKey, { ...readEntry(draftKey), text: draft }, undefined)
   if (persist === 'now') {
     persistNow(draftKey)
-  } else if (persist === 'after-pause') {
+  } else {
     scheduleNativeChatDraftPersist(draftKey, persistedDraft(draftKey))
+  }
+}
+
+export function readNativeChatDraftTuiInputSeed(
+  draftKey: string
+): NativeChatTuiInputSeed | undefined {
+  return readEntry(draftKey).tuiInputSeed
+}
+
+/** What Orca typed into the chat's terminal input line, kept with the draft; written at once. */
+export function writeNativeChatDraftTuiInputSeed(
+  draftKey: string,
+  seed: NativeChatTuiInputSeed
+): void {
+  setEntry(draftKey, { ...readEntry(draftKey), tuiInputSeed: seed }, undefined)
+  persistNow(draftKey)
+}
+
+/** The tab's launch draft is gone (sent, resolved, closed), so no pane's input line holds it. */
+export function forgetNativeChatTuiInputSeeds(terminalTabId: string): void {
+  const prefix = nativeChatDraftKey({ paneKey: `${terminalTabId}:` })
+  for (const [draftKey, entry] of Array.from(drafts())) {
+    if (draftKey.startsWith(prefix) && entry.tuiInputSeed) {
+      const { tuiInputSeed: _gone, ...rest } = entry
+      setEntry(draftKey, rest, undefined)
+      persistNow(draftKey)
+    }
   }
 }
 
@@ -192,6 +217,7 @@ export function appendNativeChatDraftNow(
   setEntry(
     draftKey,
     {
+      ...current,
       text:
         content.text === '' ? current.text : appendNativeChatDraftText(current.text, content.text),
       attachments: [...current.attachments, ...attachments]

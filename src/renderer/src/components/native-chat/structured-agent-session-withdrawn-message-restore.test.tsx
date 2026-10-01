@@ -177,7 +177,7 @@ describe('a message the host withdrew at a Stop', () => {
     'comes back to the composer with its images, after the draft, when %s',
     async (_case, handover) => {
       answerSendsPending()
-      writeNativeChatDraftCache(PANE, 'already typed')
+      writeNativeChatDraftCache(PANE, 'already typed', 'after-pause')
       appendNativeChatDraftNow(PANE, {
         text: '',
         attachments: [{ id: 'typed', path: '/tmp/typed.png' }]

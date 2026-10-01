@@ -63,7 +63,7 @@ function fullStorage(): Storage {
 
 describe('composer draft persistence', () => {
   it('restores typed text and attachments after a relaunch', async () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'half typed')
+    cache.writeNativeChatDraftCache(SCOPE, 'half typed', 'after-pause')
     cache.writeNativeChatDraftAttachments(SCOPE, [
       { id: 'a1', path: '/tmp/shot.png', connectionId: 'ssh-1' }
     ])
@@ -78,8 +78,8 @@ describe('composer draft persistence', () => {
   })
 
   it('saves typing only after the pause', () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'h')
-    cache.writeNativeChatDraftCache(SCOPE, 'he')
+    cache.writeNativeChatDraftCache(SCOPE, 'h', 'after-pause')
+    cache.writeNativeChatDraftCache(SCOPE, 'he', 'after-pause')
     expect(saved(SCOPE)).toBeNull()
 
     vi.advanceTimersByTime(299)
@@ -98,7 +98,7 @@ describe('composer draft persistence', () => {
       }
     ]
   ])('flushes pending typing on %s', (_case, hide) => {
-    cache.writeNativeChatDraftCache(SCOPE, 'about to quit')
+    cache.writeNativeChatDraftCache(SCOPE, 'about to quit', 'after-pause')
     expect(saved(SCOPE)).toBeNull()
 
     hide()
@@ -107,12 +107,12 @@ describe('composer draft persistence', () => {
   })
 
   it('writes the clear at send at once, cancelling the pending typing write', async () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'sent text')
+    cache.writeNativeChatDraftCache(SCOPE, 'sent text', 'after-pause')
     vi.advanceTimersByTime(300)
-    cache.writeNativeChatDraftCache(SCOPE, 'sent text, edited')
+    cache.writeNativeChatDraftCache(SCOPE, 'sent text, edited', 'after-pause')
 
     // Enter: the composer clears; a crash follows before any timer runs.
-    cache.writeNativeChatDraftCache(SCOPE, '')
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
 
     expect(saved(SCOPE)).toBeNull()
     const next = await relaunch()
@@ -122,7 +122,7 @@ describe('composer draft persistence', () => {
   // The put-back is not the sent text; a crash before the typing delay must not restore the latter.
   it('writes a clear at once when a put-back made mid-composition rides along', async () => {
     const { useNativeChatDraft } = await import('./use-native-chat-draft')
-    cache.writeNativeChatDraftCache(SCOPE, 'sent text')
+    cache.writeNativeChatDraftCache(SCOPE, 'sent text', 'after-pause')
     vi.advanceTimersByTime(300)
     const { result } = renderHook(() => useNativeChatDraft(SCOPE, () => true))
     act(() => {
@@ -138,26 +138,26 @@ describe('composer draft persistence', () => {
     const { useNativeChatDraft } = await import('./use-native-chat-draft')
     const { result } = renderHook(() => {
       const view = useNativeChatDraft(SCOPE, () => false)
-      useLayoutEffect(() => cache.writeNativeChatDraftCache(SCOPE, 'written meanwhile'), [])
+      useLayoutEffect(
+        () => cache.writeNativeChatDraftCache(SCOPE, 'written meanwhile', 'after-pause'),
+        []
+      )
       return view
     })
 
     expect(result.current.draft).toBe('written meanwhile')
   })
 
-  // The agent's input line keeps the launch seed across a relaunch; a saved copy would send it twice.
-  it('keeps an untouched launch seed copy off disk until it is edited', async () => {
-    const { useNativeChatDraft } = await import('./use-native-chat-draft')
-    const { result } = renderHook(() => useNativeChatDraft(SCOPE, () => false))
+  it("forgets a closed tab's input-line seeds, on disk too, and keeps other tabs'", async () => {
+    const seed = { agent: 'claude' as const, text: 'issue link', createdAt: 1 }
+    cache.writeNativeChatDraftTuiInputSeed('pane:tab-1:a', seed)
+    cache.writeNativeChatDraftTuiInputSeed('pane:tab-2:a', seed)
 
-    act(() => result.current.setDraft('line one\nline two', { keepOffDisk: true }))
-    act(() => window.dispatchEvent(new Event('pagehide')))
-    expect(result.current.draft).toBe('line one\nline two')
-    expect(saved(SCOPE)).toBeNull()
+    cache.forgetNativeChatTuiInputSeeds('tab-1')
 
-    act(() => result.current.setDraft('line one\nline two!'))
-    vi.advanceTimersByTime(300)
-    expect(saved(SCOPE)?.text).toBe('line one\nline two!')
+    const next = await relaunch()
+    expect(next.readNativeChatDraftTuiInputSeed('pane:tab-1:a')).toBeUndefined()
+    expect(next.readNativeChatDraftTuiInputSeed('pane:tab-2:a')).toEqual(seed)
   })
 
   it('writes text put back at once and reports that it reached disk', async () => {
@@ -176,14 +176,14 @@ describe('composer draft persistence', () => {
   })
 
   it('restores only into an empty composer', () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'typed since')
+    cache.writeNativeChatDraftCache(SCOPE, 'typed since', 'after-pause')
 
     expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).toBe(
       'composer-not-empty'
     )
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typed since')
 
-    cache.writeNativeChatDraftCache(SCOPE, '')
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
     expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).toBe('persisted')
     expect(saved(SCOPE)?.text).toBe('refused')
   })
@@ -212,7 +212,7 @@ describe('composer draft persistence', () => {
   it('keeps the draft in memory and reports memory-only when storage throws', () => {
     vi.stubGlobal('localStorage', fullStorage())
 
-    expect(() => cache.writeNativeChatDraftCache(SCOPE, 'typed')).not.toThrow()
+    expect(() => cache.writeNativeChatDraftCache(SCOPE, 'typed', 'after-pause')).not.toThrow()
     expect(() => vi.advanceTimersByTime(300)).not.toThrow()
     expect(cache.appendNativeChatDraftNow(SCOPE, { text: 'back' })).toBe('memory-only')
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nback')
@@ -222,7 +222,7 @@ describe('composer draft persistence', () => {
     vi.stubGlobal('localStorage', undefined)
     const next = await relaunch()
 
-    next.writeNativeChatDraftCache(SCOPE, 'typed')
+    next.writeNativeChatDraftCache(SCOPE, 'typed', 'after-pause')
     expect(next.appendNativeChatDraftNow(SCOPE, { text: 'back' })).toBe('memory-only')
     expect(next.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nback')
   })
@@ -323,7 +323,7 @@ describe('another window of the web client', () => {
   }
 
   it("shows another tab's draft, and its clear at send, instead of re-saving sent text", () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'deploy to prod')
+    cache.writeNativeChatDraftCache(SCOPE, 'deploy to prod', 'after-pause')
     vi.advanceTimersByTime(300)
     const shown = vi.fn()
     cache.subscribeToNativeChatDraft(SCOPE, shown)
@@ -337,7 +337,7 @@ describe('another window of the web client', () => {
   })
 
   it("keeps this tab's unsaved typing over another tab's write", () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'typing here')
+    cache.writeNativeChatDraftCache(SCOPE, 'typing here', 'after-pause')
 
     otherWindowSaves(SCOPE, JSON.stringify({ text: 'older', attachments: [] }))
 

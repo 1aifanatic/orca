@@ -5,7 +5,9 @@ import { createStoreCascadesMockApi } from '../slices/store-cascades-test-harnes
 import {
   appendNativeChatDraftNow,
   nativeChatDraftKey,
-  readNativeChatDraftCache
+  readNativeChatDraftCache,
+  readNativeChatDraftTuiInputSeed,
+  writeNativeChatDraftTuiInputSeed
 } from '@/components/native-chat/native-chat-draft-cache'
 
 vi.mock('sonner', () => ({
@@ -126,5 +128,18 @@ describe('closeTab and chat drafts', () => {
 
     expect(readNativeChatDraftCache(closing)).toBe('')
     expect(readNativeChatDraftCache(kept)).toBe('unsent')
+  })
+})
+
+describe('clearing a tab launch draft', () => {
+  // Sent, resolved or closed: the input line no longer holds it, so a relaunch must not seed it.
+  it("forgets the seed its panes' drafts saved", () => {
+    const store = storeWithTwoTabs()
+    const pane = nativeChatDraftKey({ paneKey: 'tab-a:leaf-1' })
+    writeNativeChatDraftTuiInputSeed(pane, { agent: 'claude', text: 'issue', createdAt: 1 })
+
+    store.getState().clearNativeChatLaunchDraft('tab-a')
+
+    expect(readNativeChatDraftTuiInputSeed(pane)).toBeUndefined()
   })
 })
