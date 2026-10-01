@@ -3,14 +3,15 @@
 
 import { existsSync } from 'node:fs'
 import { perChatJournalRoot } from '../agent-session-journal/journal-paths'
+import { hasJournalSessionWithoutStatus } from '../agent-session-journal/journal-session-status-backfill'
 import {
   StructuredAgentSessionPerChatFileCopy,
   type PerChatFileCopyDeps
 } from './structured-agent-session-per-chat-file-copy'
 
-/** Starts the job, or returns null when there is nothing it may copy: a newer build's database,
- *  a records file this launch could not read (a real chat's file would look like an orphan), or no
- *  old-file root at all. */
+/** Starts the job, or returns null when there is nothing it may do: a newer build's database, a
+ *  records file this launch could not read (a real chat's file would look like an orphan), or no
+ *  old-file root and no chat without a status row. */
 export function startStructuredAgentSessionPerChatFileCopy(
   deps: PerChatFileCopyDeps
 ): StructuredAgentSessionPerChatFileCopy | null {
@@ -19,7 +20,8 @@ export function startStructuredAgentSessionPerChatFileCopy(
     database.readOnly ||
     database.legacyRecordImportOwed ||
     database.isClosed ||
-    !existsSync(perChatJournalRoot(database.stateDirectory))
+    (!existsSync(perChatJournalRoot(database.stateDirectory)) &&
+      !hasJournalSessionWithoutStatus(database.db))
   ) {
     return null
   }

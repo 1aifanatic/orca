@@ -10,6 +10,8 @@
 // walk of the old-file root. A file whose copy failed for good is skipped while it and the app
 // version stay as they were (journal-copy-failures.ts). Each chat copies inside its host serialize,
 // so a send to it goes first or waits for the rest of that copy; any other chat waits one batch.
+// Then, under the same budget and gate, every chat already in the database gets the status row the
+// version 5 migration left it without (structured-agent-session-status-backfill-step.ts).
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -29,6 +31,7 @@ import { isPerSessionJournalSetAside } from '../agent-session-journal/journal-pe
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
+import { createStructuredAgentSessionStatusBackfill } from './structured-agent-session-status-backfill-step'
 import {
   hasRoomToCopy,
   removeEmptyPerChatDirectories,
@@ -70,7 +73,15 @@ export type PerChatFileCopyDeps = {
   runMaxChats?: number
 }
 
-type TallyKey = 'copied' | 'deleted' | 'setAside' | 'failed' | 'skipped' | 'orphans' | 'leftovers'
+type TallyKey =
+  | 'copied'
+  | 'backfilled'
+  | 'deleted'
+  | 'setAside'
+  | 'failed'
+  | 'skipped'
+  | 'orphans'
+  | 'leftovers'
 
 export class StructuredAgentSessionPerChatFileCopy {
   private timer: ReturnType<typeof setInterval> | null = null
@@ -89,10 +100,12 @@ export class StructuredAgentSessionPerChatFileCopy {
   private deferred: AgentSessionRecord | null = null
   private readonly logged = new Set<string>()
   private readonly tally = new Map<TallyKey, number>()
+  private readonly backfill: ReturnType<typeof createStructuredAgentSessionStatusBackfill>
 
   constructor(private readonly deps: PerChatFileCopyDeps) {
     this.startedAt = deps.now()
     this.listed = [...deps.listedIds]
+    this.backfill = createStructuredAgentSessionStatusBackfill(deps)
     this.walk = walkPerChatFiles(deps.database.stateDirectory, () => this.count('leftovers'))
   }
 
@@ -148,15 +161,19 @@ export class StructuredAgentSessionPerChatFileCopy {
       }
       const record = this.deferred ?? (await this.nextRecord())
       this.deferred = null
-      if (!record) {
+      // Old files first, then chats already in the database that have no status row.
+      const step = record ? await this.copyChat(record) : await this.backfill.next()
+      if (step === 'done') {
         await this.finish()
         return
       }
-      const step = await this.copyChat(record)
       if (step === 'stop') {
         return
       }
-      if (step === 'copied') {
+      if (step === 'backfilled') {
+        this.count(step)
+      }
+      if (step === 'copied' || step === 'backfilled') {
         copies += 1
       }
       await yieldToEventLoop()
