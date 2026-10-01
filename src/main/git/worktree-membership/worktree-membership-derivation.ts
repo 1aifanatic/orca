@@ -5,6 +5,7 @@ import { canonicalWorktreePath } from '../worktree-path-comparison'
 import { annotateSparseCheckoutStatus } from '../worktree-sparse-annotation'
 import { readRepoConfigFacts, resolveRepoCommonDirFromFiles } from './repo-admin-layout'
 import { WorktreeRowsNeedGit } from './worktree-membership-file-rows'
+import { stampUnplacedRepo, type UnplacedRepo } from './worktree-membership-not-repository'
 import { validateMembershipFromFiles } from './worktree-membership-file-validation'
 import {
   describeMembershipParityMismatch,
@@ -82,17 +83,17 @@ export function createMembershipModelShell(
 }
 
 /**
- * The model's first build, as generation 0's derivation. Resolves null when files cannot even
- * locate the repo's common dir; the caller then leaves the repo to Git.
+ * The model's first build, as generation 0's derivation. When files cannot even locate the repo's
+ * common dir, it resolves with the folder's stamps instead and the caller leaves the repo to Git.
  */
 export async function buildMembershipModel(
   model: WorktreeMembershipModel,
   options: GitWorktreeExecOptions
-): Promise<GitWorktreeInfo[] | null> {
+): Promise<GitWorktreeInfo[] | UnplacedRepo> {
   await assertRepoPathPresent(model.repoPath)
   const commonDir = await resolveRepoCommonDirFromFiles(model.repoPath).catch(() => null)
   if (!commonDir) {
-    return null
+    return stampUnplacedRepo(model.repoPath)
   }
   model.commonDir = commonDir
   model.commonDirKey = canonicalWorktreePath(await realpath(commonDir).catch(() => commonDir))

@@ -8,17 +8,25 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const hang = vi.hoisted((): { prefix: string; started: number; held: (() => void)[] } => ({
-  prefix: '',
-  started: 0,
-  held: []
-}))
+const hang = vi.hoisted(
+  (): { prefix: string; only: string | null; started: number; held: (() => void)[] } => ({
+    prefix: '',
+    // One fs function to hang, or every one of them.
+    only: null,
+    started: 0,
+    held: []
+  })
+)
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromises>()
   const hangUnderPrefix =
-    <A extends unknown[], R>(read: (...args: A) => Promise<R>) =>
+    <A extends unknown[], R>(read: (...args: A) => Promise<R>, name: string) =>
     (...args: A): Promise<R> => {
-      if (hang.prefix && String(args[0]).startsWith(hang.prefix)) {
+      if (
+        hang.prefix &&
+        String(args[0]).startsWith(hang.prefix) &&
+        (hang.only === null || hang.only === name)
+      ) {
         hang.started += 1
         // Held until the test lets the mount recover; then the op runs for real.
         return new Promise<R>((resolve, reject) => {
@@ -29,11 +37,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     }
   return {
     ...actual,
-    stat: hangUnderPrefix(actual.stat),
-    lstat: hangUnderPrefix(actual.lstat),
-    readdir: hangUnderPrefix(actual.readdir),
-    readFile: hangUnderPrefix(actual.readFile),
-    realpath: hangUnderPrefix(actual.realpath)
+    stat: hangUnderPrefix(actual.stat, 'stat'),
+    lstat: hangUnderPrefix(actual.lstat, 'lstat'),
+    readdir: hangUnderPrefix(actual.readdir, 'readdir'),
+    readFile: hangUnderPrefix(actual.readFile, 'readFile'),
+    realpath: hangUnderPrefix(actual.realpath, 'realpath')
   }
 })
 
@@ -66,6 +74,7 @@ beforeEach(async () => {
   await git(['worktree', 'add', '-q', join(scratchDir, 'linked'), '-b', 'linked'])
   _resetWorktreeMembershipModelsForTests()
   hang.prefix = ''
+  hang.only = null
   hang.started = 0
   hang.held.length = 0
 })
@@ -152,6 +161,24 @@ describe('worktree membership model on a hung mount', () => {
       )
     }
     expect(_getWorktreeMembershipModelForTests(repoPath)?.building?.work.waiterCount).toBe(0)
+  })
+
+  it('fails a read of a folder files cannot place by its deadline when stamping it hangs', async () => {
+    const plain = join(scratchDir, 'plain-folder')
+    await mkdir(plain)
+    // Only the stamp of `<folder>/.git` lstats it; the build's own layout probe uses stat.
+    hang.prefix = join(plain, '.git')
+    hang.only = 'lstat'
+    const read = readWorktreeMembership(plain, { timeout: 50 })
+    const outcome = await Promise.race([
+      read.then(
+        () => 'resolved',
+        (error: unknown) => (error instanceof WorktreeMembershipTimeoutError ? 'timed out' : error)
+      ),
+      new Promise((resolve) => setTimeout(() => resolve('still pending'), 1_000))
+    ])
+    expect(outcome).toBe('timed out')
+    expect(hang.started).toBe(1)
   })
 
   it('fails a cold build by its deadline and joins it instead of building again', async () => {

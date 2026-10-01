@@ -104,7 +104,7 @@ function startModel(
   models.set(key, model)
   const work = buildMembershipModel(model, options).then(
     (rows) => {
-      if (rows === null) {
+      if (!Array.isArray(rows)) {
         dropModel(model)
       }
       model.building = null
@@ -215,8 +215,8 @@ export async function readWorktreeMembership(
     // Checked on arrival, as for any in-flight derivation: a later reader re-derives once it lands.
     const reusable = isReusable(model, building, now)
     const rows = await awaitModelWork(model.repoPath, building.work, options)
-    if (rows === null) {
-      return { rows: await readWithoutModel(key, repoPath, options), fromModel: false }
+    if (!Array.isArray(rows)) {
+      return { rows: await readWithoutModel(key, repoPath, rows, options), fromModel: false }
     }
     if (reusable) {
       return { rows, fromModel: true }

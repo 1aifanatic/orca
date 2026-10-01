@@ -34,14 +34,24 @@ function verdictDependencies(repoPath: string): AdminStatDependency[] {
   return [{ path: repoPath }, { path: join(repoPath, '.git'), noFollow: true }]
 }
 
-/** Git's listing for a folder files cannot place; a "not a git repository" answer is kept. */
+/** A folder files cannot place in a repository, with the stamps a verdict on it would keep. */
+export type UnplacedRepo = { unplacedStamps: AdminStatSignature }
+
+/** Taken by the model build, under its readers' deadlines, before Git is asked about the folder. */
+export async function stampUnplacedRepo(repoPath: string): Promise<UnplacedRepo> {
+  return { unplacedStamps: await readAdminStatSignature(verdictDependencies(repoPath)) }
+}
+
+/**
+ * Git's listing for a folder files cannot place; a "not a git repository" answer is kept with the
+ * stamps taken before Git ran, so a repository appearing during the run is seen by the next read.
+ */
 export async function readWithoutModel(
   key: string,
   repoPath: string,
+  { unplacedStamps: signature }: UnplacedRepo,
   options: GitWorktreeExecOptions
 ): Promise<GitWorktreeInfo[]> {
-  // Stamped before Git runs, so a repository appearing during the run is seen by the next read.
-  const signature = await readAdminStatSignature(verdictDependencies(repoPath))
   try {
     return await readTranslatedWorktreeGraph(repoPath, options)
   } catch (error) {

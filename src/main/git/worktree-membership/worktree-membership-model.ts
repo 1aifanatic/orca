@@ -2,6 +2,7 @@ import type { GitWorktreeInfo } from '../../../shared/worktree/types'
 import type { AdminStatSignature } from './admin-stat-signature'
 import type { RepoConfigFacts } from './repo-admin-layout'
 import type { DerivedFileRow } from './worktree-membership-file-rows'
+import type { UnplacedRepo } from './worktree-membership-not-repository'
 import type { PromiseSettlementWaiters } from '../../../shared/promise-settlement-waiters'
 
 // A read may reuse a derivation (finished or in flight) only if it started at the model's current
@@ -67,9 +68,11 @@ export type WorktreeMembershipModel = {
   generation: number
   /** An Orca mark owes a listing re-read (readdir, primary HEAD) whatever the stats say. */
   listingOwed: boolean
-  /** The first build, until it settles; resolves null when the layout is not one files can read. */
+  /** The first build, until it settles; resolves stamps, not rows, when files cannot place it. */
   building:
-    | (MembershipDerivationStart & { work: PromiseSettlementWaiters<GitWorktreeInfo[] | null> })
+    | (MembershipDerivationStart & {
+        work: PromiseSettlementWaiters<GitWorktreeInfo[] | UnplacedRepo>
+      })
     | null
   /** The one derivation running, if any. */
   inFlight:
