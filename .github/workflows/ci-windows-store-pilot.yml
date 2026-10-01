@@ -1,0 +1,95 @@
+name: Windows dependency store comparison
+
+on:
+  pull_request:
+    paths:
+      ['.github/workflows/ci-windows-store-pilot.yml', 'config/scripts/ci-windows-store-pilot.ps1']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-store-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+
+jobs:
+  compare:
+    name: fresh Windows store sample ${{ matrix.sample }}
+    runs-on: windows-2022
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        sample: [1, 2, 3]
+    env:
+      COST_SAMPLE: ${{ matrix.sample }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - name: Start with a fresh dependency tree
+        id: first-reset
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase reset -Treatment cached
+
+      # The middle sample reverses order; reset is excluded from every measurement.
+      - name: Start first registry measurement
+        id: first-registry-start
+        if: matrix.sample == 2
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase start -Treatment registry
+      - name: Install from registry first
+        if: matrix.sample == 2
+        env:
+          COST_STARTED: ${{ steps.first-registry-start.outputs.started }}
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase measure -Treatment registry
+      - name: Reset after first registry measurement
+        if: matrix.sample == 2
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase reset -Treatment cached
+
+      - name: Start cached measurement
+        id: cached-start
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase start -Treatment cached
+      - name: Restore the actual mixed root and mobile store
+        id: store-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ steps.first-reset.outputs.store }}
+          key: node-cache-Windows-x64-pnpm-${{ hashFiles('pnpm-lock.yaml', 'mobile/pnpm-lock.yaml') }}
+      - name: Install from restored store
+        env:
+          COST_STARTED: ${{ steps.cached-start.outputs.started }}
+          COST_CACHE_HIT: ${{ steps.store-cache.outputs.cache-hit }}
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase measure -Treatment cached
+
+      - name: Reset after cached measurement
+        if: matrix.sample != 2
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase reset -Treatment registry
+      - name: Start second registry measurement
+        id: second-registry-start
+        if: matrix.sample != 2
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase start -Treatment registry
+      - name: Install from registry second
+        if: matrix.sample != 2
+        env:
+          COST_STARTED: ${{ steps.second-registry-start.outputs.started }}
+        run: ./config/scripts/ci-windows-store-pilot.ps1 -Phase measure -Treatment registry
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-store-comparison-${{ matrix.sample }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-store-comparison/
+          if-no-files-found: error
+          retention-days: 7
