@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
+import { showAgentLaunchStartedElsewhereNotice } from '@/lib/agent-launch-started-elsewhere-notice'
+import { isWorkspaceInTerminalView } from '@/lib/workspace-terminal-view'
 import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getConnectionIdFromState } from '@/lib/connection-context'
@@ -173,6 +175,7 @@ export async function launchSourceControlAgent(
   const sessionId = isAgentSessionHandleProvider(args.agent)
     ? createStructuredAgentSessionId(args.agent, createBrowserUuid)
     : undefined
+  let revealSeen = false
   const placement = placeAgentLaunchTab({
     target,
     worktreeId: args.worktreeId,
@@ -180,7 +183,17 @@ export async function launchSourceControlAgent(
     tabId,
     leafId,
     ...(sessionId ? { sessionId } : {}),
-    onRevealed: accept
+    onRevealed: (reveal) => {
+      revealSeen = true
+      accept()
+      if (!reveal.inView) {
+        showAgentLaunchStartedElsewhereNotice({
+          agent: args.agent,
+          worktreeId: args.worktreeId,
+          tab: { tabId: reveal.tabId, leafId: reveal.leafId }
+        })
+      }
+    }
   })
   let launched: AgentLaunchResult | null = null
   const params = {
@@ -215,6 +228,10 @@ export async function launchSourceControlAgent(
     // A chat, a reused pane or a missed reveal never reads the reservation; the reply still means
     // the surface exists.
     accept()
+    // Why: those surfaces never switch workspaces; a user who left is told where the agent is.
+    if (!revealSeen && !isWorkspaceInTerminalView(args.worktreeId)) {
+      showAgentLaunchStartedElsewhereNotice({ agent: args.agent, worktreeId: args.worktreeId })
+    }
     return launchedResult(sent.result)
   } catch (error) {
     return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }

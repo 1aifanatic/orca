@@ -15,12 +15,18 @@
 /** Longer than the launch's readiness budget plus spawn, so a slow but live launch keeps its entry. */
 export const AGENT_LAUNCH_TAB_RESERVATION_TTL_MS = 120_000
 
-/** A reserved tab always takes focus as it appears, as a launch from a button does. */
+/** The tab a reveal created, and whether the user was still on its workspace to be shown it. */
+export type AgentLaunchTabReveal = { tabId: string; leafId: string | null; inView: boolean }
+
+/**
+ * A reserved tab takes focus as it appears, as a launch from a button does, while the user is still
+ * on its workspace; otherwise it becomes its group's tab without switching workspaces.
+ */
 export type AgentLaunchTabReservation = {
   worktreeId: string
   groupId?: string
   /** Runs once the tab exists, before the launch reply arrives. */
-  onRevealed?: (tabId: string) => void
+  onRevealed?: (reveal: AgentLaunchTabReveal) => void
 }
 
 type Entry = { reservation: AgentLaunchTabReservation; expiresAt: number }
@@ -63,7 +69,7 @@ export function reserveAgentLaunchTab(
 /**
  * The reservation for a tab the host is revealing, if one is live for that workspace.
  *
- * Claimed, not consumed: the reveal activates the workspace before it creates the tab, and that
+ * Claimed, not consumed: a focused reveal activates the workspace before it creates the tab, and that
  * activation reconciles tabs, which would drop the reserved empty group if the reservation were
  * already gone. The reveal consumes it once the tab exists.
  */

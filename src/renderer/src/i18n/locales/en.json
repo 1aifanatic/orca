@@ -649,6 +649,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}} started in {{name}}"
+            }
           }
         }
       },

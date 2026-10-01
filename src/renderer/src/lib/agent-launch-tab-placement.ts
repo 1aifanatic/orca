@@ -10,7 +10,10 @@
  */
 
 import { useAppStore } from '@/store'
-import { reserveAgentLaunchTab } from '@/lib/agent-launch-tab-reservations'
+import {
+  reserveAgentLaunchTab,
+  type AgentLaunchTabReveal
+} from '@/lib/agent-launch-tab-reservations'
 import {
   clearWebSessionFocusIntentIfMatches,
   recordWebSessionFocusIntent,
@@ -35,7 +38,7 @@ export type AgentLaunchTabPlacementArgs = {
   /** The chat session the launch names, when the agent can run as one. */
   sessionId?: string
   /** The terminal's tab exists; the local reveal is the only one that can say so before the reply. */
-  onRevealed: () => void
+  onRevealed: (reveal: AgentLaunchTabReveal) => void
 }
 
 export type AgentLaunchTabPlacement = {

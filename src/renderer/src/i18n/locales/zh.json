@@ -523,6 +523,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}} 已在 {{name}} 中启动"
+            }
           }
         }
       },

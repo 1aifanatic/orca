@@ -523,6 +523,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}}이(가) {{name}}에서 시작되었습니다"
+            }
           }
         }
       },

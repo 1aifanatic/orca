@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => {
     toastError: vi.fn(),
     toastWarning: vi.fn(),
     showNotDelivered: vi.fn(),
+    showStartedElsewhere: vi.fn(),
+    workspaceInView: vi.fn(),
     settleTerminalPlacement: vi.fn(),
     refreshSessionTabs: vi.fn(),
     state
@@ -48,6 +50,12 @@ vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, warning: mocks.toastWarning } }))
 vi.mock('@/lib/agent-launch-prompt-not-delivered-notice', () => ({
   showAgentLaunchPromptNotDeliveredNotice: mocks.showNotDelivered
+}))
+vi.mock('@/lib/agent-launch-started-elsewhere-notice', () => ({
+  showAgentLaunchStartedElsewhereNotice: mocks.showStartedElsewhere
+}))
+vi.mock('@/lib/workspace-terminal-view', () => ({
+  isWorkspaceInTerminalView: mocks.workspaceInView
 }))
 
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
@@ -117,6 +125,7 @@ beforeEach(() => {
   mocks.refreshSessionTabs.mockResolvedValue(undefined)
   mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue(null)
   mocks.isWebRuntimeSessionActive.mockReturnValue(false)
+  mocks.workspaceInView.mockReturnValue(true)
   mocks.ensureLocalRuntimeCapabilities.mockResolvedValue(HOST_CAPABILITIES)
   mocks.callRuntimeRpc.mockResolvedValue(
     launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
@@ -210,7 +219,7 @@ describe('launching a source-control button’s agent through the host', () => {
       claimAgentLaunchTabReservation(
         parsePaneKey(params.paneKey)!.tabId,
         'wt-1'
-      )?.reservation.onRevealed?.('tab')
+      )?.reservation.onRevealed?.({ tabId: 'tab', leafId: 'leaf', inView: true })
       expect(onLaunchAccepted).toHaveBeenCalledOnce()
       return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
     })
@@ -218,6 +227,46 @@ describe('launching a source-control button’s agent through the host', () => {
     await launchSourceControlAgent({ ...ARGS, onLaunchAccepted })
 
     expect(onLaunchAccepted).toHaveBeenCalledOnce()
+    expect(mocks.showStartedElsewhere).not.toHaveBeenCalled()
+  })
+
+  it('offers the way to a terminal that appeared after the user left its workspace, once', async () => {
+    mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
+      claimAgentLaunchTabReservation(
+        parsePaneKey(params.paneKey)!.tabId,
+        'wt-1'
+      )?.reservation.onRevealed?.({ tabId: 'tab-a', leafId: 'leaf-a', inView: false })
+      return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    })
+    // Still away at the reply; the reveal already said so, so the reply adds nothing.
+    mocks.workspaceInView.mockReturnValue(false)
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(mocks.showStartedElsewhere).toHaveBeenCalledOnce()
+    expect(mocks.showStartedElsewhere).toHaveBeenCalledWith({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      tab: { tabId: 'tab-a', leafId: 'leaf-a' }
+    })
+  })
+
+  it('offers the way to the workspace when a launch no reveal reported lands after the user left', async () => {
+    mocks.workspaceInView.mockReturnValue(false)
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(mocks.workspaceInView).toHaveBeenCalledWith('wt-1')
+    expect(mocks.showStartedElsewhere).toHaveBeenCalledWith({ agent: 'claude', worktreeId: 'wt-1' })
+  })
+
+  it('says nothing extra for a launch whose user stayed, or that did not start', async () => {
+    await launchSourceControlAgent(ARGS)
+    mocks.workspaceInView.mockReturnValue(false)
+    mocks.callRuntimeRpc.mockRejectedValue(rpcRefusal('invalid_argument'))
+    await launchSourceControlAgent(ARGS)
+
+    expect(mocks.showStartedElsewhere).not.toHaveBeenCalled()
   })
 
   it('reports it accepted on the reply when no reveal read the reservation, as for a chat', async () => {

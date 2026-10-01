@@ -523,6 +523,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}} が {{name}} で起動しました"
+            }
           }
         }
       },

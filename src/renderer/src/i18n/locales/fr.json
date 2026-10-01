@@ -622,6 +622,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}} a démarré dans {{name}}"
+            }
           }
         }
       },

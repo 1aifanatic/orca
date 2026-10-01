@@ -412,6 +412,11 @@
                 }
               }
             }
+          },
+          "started": {
+            "elsewhere": {
+              "title": "{{agent}} se inició en {{name}}"
+            }
           }
         }
       },

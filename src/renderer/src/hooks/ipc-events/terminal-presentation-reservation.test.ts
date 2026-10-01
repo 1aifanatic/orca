@@ -1,25 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as TerminalCommandStateModule from './terminal-command-state'
 
-const mocks = vi.hoisted(() => ({
-  createTab: vi.fn(
-    (_worktreeId: string, _groupId?: string, _type?: string, options?: { id?: string }) => ({
-      id: options?.id ?? 'tab-new',
-      title: 'Terminal'
-    })
-  ),
-  setActiveTabType: vi.fn(),
-  setActiveTab: vi.fn(),
-  activateWorktree: vi.fn(),
-  focusTab: vi.fn(),
-  persistOrder: vi.fn(),
-  backgroundMount: vi.fn(),
-  replyTerminalCreate: vi.fn()
-}))
+type ActiveView = {
+  activeView: string
+  activeWorktreeId: string | null
+  activePendingCreationId: string | null
+}
+
+const mocks = vi.hoisted(() => {
+  const view: ActiveView = {
+    activeView: 'terminal',
+    activeWorktreeId: 'wt-1',
+    activePendingCreationId: null
+  }
+  return {
+    createTab: vi.fn(
+      (_worktreeId: string, _groupId?: string, _type?: string, options?: { id?: string }) => ({
+        id: options?.id ?? 'tab-new',
+        title: 'Terminal'
+      })
+    ),
+    setActiveTabType: vi.fn(),
+    setActiveTab: vi.fn(),
+    activateWorktree: vi.fn(),
+    focusTab: vi.fn(),
+    persistOrder: vi.fn(),
+    backgroundMount: vi.fn(),
+    replyTerminalCreate: vi.fn(),
+    view
+  }
+})
 
 vi.mock('../../store', () => ({
   useAppStore: {
     getState: () => ({
+      ...mocks.view,
       tabsByWorktree: {},
       settings: {},
       terminalLayoutsByTabId: {},
@@ -63,6 +78,7 @@ const releases: (() => void)[] = []
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.view = { activeView: 'terminal', activeWorktreeId: 'wt-1', activePendingCreationId: null }
   vi.stubGlobal('window', {
     api: {
       ui: {
@@ -123,7 +139,47 @@ describe('revealing a tab an agent launch reserved', () => {
     expect(mocks.setActiveTab).toHaveBeenCalledWith('tab-reserved')
     expect(mocks.focusTab).toHaveBeenCalledWith('tab-reserved', 'leaf-1', 'wt-1')
     expect(mocks.persistOrder).toHaveBeenCalledWith('wt-1', 'tab-reserved')
-    expect(onRevealed).toHaveBeenCalledWith('tab-reserved')
+    expect(onRevealed).toHaveBeenCalledWith({
+      tabId: 'tab-reserved',
+      leafId: 'leaf-1',
+      inView: true
+    })
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+  })
+
+  // Why: the tab appears seconds after the click; pulling a user who moved on back to the launching
+  // workspace is the bug #23974 fixed for creates.
+  it.each([
+    { left: 'to another workspace', view: { activeWorktreeId: 'wt-2' } },
+    { left: 'to an app view', view: { activeView: 'settings' } }
+  ])('leaves a user who went $left where they are and reports the tab unseen', ({ view }) => {
+    mocks.view = { ...mocks.view, ...view }
+    const onRevealed = vi.fn()
+    releases.push(
+      reserveAgentLaunchTab('tab-reserved', { worktreeId: 'wt-1', groupId: 'group-2', onRevealed })
+    )
+
+    reveal(hostReveal('tab-reserved'))
+
+    expect(mocks.activateWorktree).not.toHaveBeenCalled()
+    expect(mocks.setActiveTab).not.toHaveBeenCalled()
+    expect(mocks.focusTab).not.toHaveBeenCalled()
+    // Still the reserved group's tab, mounted so the agent starts without the workspace open.
+    expect(mocks.createTab).toHaveBeenCalledWith(
+      'wt-1',
+      'group-2',
+      undefined,
+      expect.objectContaining({ id: 'tab-reserved', activate: true })
+    )
+    expect(mocks.backgroundMount).toHaveBeenCalledWith({
+      worktreeId: 'wt-1',
+      tabIds: ['tab-reserved']
+    })
+    expect(onRevealed).toHaveBeenCalledWith({
+      tabId: 'tab-reserved',
+      leafId: 'leaf-1',
+      inView: false
+    })
     expect(agentLaunchTabReservationCountForTests()).toBe(0)
   })
 
