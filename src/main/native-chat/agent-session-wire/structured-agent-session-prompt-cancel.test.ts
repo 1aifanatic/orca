@@ -162,6 +162,78 @@ describe('performCancel for a pending prompt', () => {
     expect(items[1]!.sequence).toBeGreaterThan(items[0]!.sequence)
   })
 
+  it('answers another Cancel of the prompt it cancelled quietly, without reaching the provider', async () => {
+    const { journal, itemId } = await pendingPrompt()
+    // The provider's own cancel of the card, issued while it takes the interrupt.
+    const cancelTurn = vi.fn(async () => {
+      const current = journal.snapshot().items.find((item) => item.itemId === itemId)!
+      if (current.body.kind !== 'approval') {
+        throw new Error('expected approval prompt')
+      }
+      await journal.appendItem(
+        PROMPT_IDENTITY,
+        {
+          ...current.body,
+          resolution: {
+            state: 'cancelled',
+            selectedOptionId: null,
+            resolvedBy: null,
+            resolvedAt: null
+          }
+        },
+        { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+      )
+      return { cancelled: true }
+    })
+    const ctx = context(journal, cancelTurn)
+    const cancel = (clientOperationId: string) =>
+      performCancel(ctx, {
+        clientOperationId,
+        turnId: 'turn-1',
+        prompt: { itemId, expectedRevision: 1 }
+      })
+
+    await cancel('cancel-1')
+    const rows = journal.snapshot().items.length
+
+    // The second press names the revision it saw, which the first moved on.
+    await expect(cancel('cancel-2')).resolves.toEqual({
+      ok: true,
+      value: { turnId: 'turn-1', cancelled: false }
+    })
+    expect(cancelTurn).toHaveBeenCalledOnce()
+    expect(journal.snapshot().items).toHaveLength(rows)
+  })
+
+  it('still refuses a Cancel of a prompt that was answered', async () => {
+    const { journal, itemId } = await pendingPrompt()
+    const current = journal.snapshot().items.find((item) => item.itemId === itemId)!
+    if (current.body.kind !== 'approval') {
+      throw new Error('expected approval prompt')
+    }
+    await journal.appendItem(
+      PROMPT_IDENTITY,
+      {
+        ...current.body,
+        resolution: { state: 'resolved', selectedOptionId: 'allow', resolvedBy: 'c', resolvedAt: 1 }
+      },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    const cancelTurn = vi.fn(async () => ({ cancelled: true }))
+
+    const result = await performCancel(context(journal, cancelTurn), {
+      clientOperationId: 'cancel-1',
+      turnId: 'turn-1',
+      prompt: { itemId, expectedRevision: 1 }
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_item_revision_stale', details: { reason: 'promptMoved' } }
+    })
+    expect(cancelTurn).not.toHaveBeenCalled()
+  })
+
   it('keeps the callback answerable when interruption is declined', async () => {
     const { journal, itemId } = await pendingPrompt()
 
@@ -177,8 +249,7 @@ describe('performCancel for a pending prompt', () => {
     ).resolves.toEqual({ ok: true, value: { turnId: 'turn-1', cancelled: false } })
 
     expect(journal.snapshot().items.map((item) => item.body)).toEqual([
-      expect.objectContaining({ resolution: expect.objectContaining({ state: 'pending' }) }),
-      { kind: 'status', text: 'The provider had already finished this turn.' }
+      expect.objectContaining({ resolution: expect.objectContaining({ state: 'pending' }) })
     ])
   })
 

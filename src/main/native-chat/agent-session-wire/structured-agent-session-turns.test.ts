@@ -171,8 +171,7 @@ describe('performCancel', () => {
         kind: 'status',
         text: 'Agent is working…',
         turnLifecycle: { turnId: 'turn-1', state: 'running' }
-      },
-      { kind: 'status', text: 'The provider had already finished this turn.' }
+      }
     ])
   })
 
@@ -350,10 +349,7 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
       { turnId: 'turn-0', withdrewQueued: true },
       'landing'
     )
-    expect(reported).toEqual({
-      cancelled: false,
-      rows: ['The provider had already finished this turn.']
-    })
+    expect(reported).toEqual({ cancelled: false, rows: [] })
   })
 })
 

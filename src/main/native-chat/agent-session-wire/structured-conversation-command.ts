@@ -11,7 +11,11 @@ import { admitAndRunAgentSessionMutation } from './structured-agent-session-muta
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
-import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import {
+  committedClearOfCaller,
+  conversationCommandBlocked
+} from './structured-conversation-command-admission'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
@@ -42,6 +46,39 @@ export type ConversationReplacement = {
   agent: 'claude' | 'codex'
 }
 
+const clearFingerprintOf = (sessionId: string) =>
+  computeAgentSessionPayloadFingerprint({
+    method: 'agentSession.conversationCommand',
+    sessionId,
+    fields: { command: 'clear' }
+  })
+
+/** This caller's committed /clear, for a /clear it presses again on the conversation that one
+ *  cleared. Answered before admission, which would refuse it as cleared. */
+async function answerFromCommittedClear(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  { envelope, command }: ConversationCommandParams
+): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult> | null> {
+  const { store } = context.deps
+  const record = store.getRecord(envelope.sessionId)
+  const committed =
+    command === 'clear' && envelope.payloadFingerprint === clearFingerprintOf(envelope.sessionId)
+      ? committedClearOfCaller(record, caller.callerKey, store.getSessionTabId(envelope.sessionId))
+      : null
+  const session =
+    committed && (await context.openConversation(envelope.sessionId).catch(() => null))
+  return record && committed && session
+    ? {
+        ok: true,
+        replayed: true,
+        fence: record.lease.runtimeFence,
+        cursor: session.journal.cursor(),
+        value: committed
+      }
+    : null
+}
+
 /**
  * `/clear`: one write that points this conversation at a new, at-rest one and moves its tab there.
  * The new conversation's first send starts its agent.
@@ -60,8 +97,12 @@ export function runStructuredConversationCommand(
       ? record
       : null
   }
-  return context.serialize(sessionId, () =>
-    admitAndRunAgentSessionMutation({
+  return context.serialize(sessionId, async () => {
+    const committed = await answerFromCommittedClear(context, caller, params)
+    if (committed) {
+      return committed
+    }
+    return admitAndRunAgentSessionMutation({
       store,
       adapter: context.deps.adapter,
       callerKey: caller.callerKey,
@@ -134,5 +175,5 @@ export function runStructuredConversationCommand(
         }
       }
     })
-  )
+  })
 }
