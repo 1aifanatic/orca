@@ -165,6 +165,62 @@ describe('Claude profile consumers', () => {
       accountId: 'b'
     })
   })
+  it('System Default launches and probes under the Claude agent env’s own config dir', async () => {
+    const f = fixture()
+    f.settings.activeClaudeManagedAccountId = null
+    const userOwn = join(f.root, 'user-own-claude')
+    const resolveEnv = () => ({ CLAUDE_CONFIG_DIR: userOwn })
+    const created = resolveStructuredClaudeAccountHomePath({
+      launchEnv: resolveEnv(),
+      wslDistro: null,
+      getClaudeConfigDirectory: () => null
+    })
+    let record = {
+      ...agentSessionRecordFixture(),
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR' as const, path: created },
+      providerHandleChain: []
+    }
+    const launch = await createClaudeStructuredLaunchResolver({
+      store: {
+        getRecord: () => record,
+        transitionHandoff: async (_id, apply) => {
+          record = apply(record)
+          return record
+        }
+      },
+      resolveWorkspacePath: async () => f.root,
+      resolveCommand: () => '/fake/claude',
+      resolveEnv,
+      resolveInheritedEnv: async () => ({}),
+      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      hasTranscript: async () => true
+    })({
+      identity: {
+        sessionId: record.sessionId,
+        workspaceId: record.location.workspaceId,
+        hostId: 'local',
+        agent: 'claude',
+        providerHandle: { kind: 'claude', sessionId: 'fake-session', leafUuid: null }
+      }
+    })
+    expect(launch.claudeConfigDir).toBe(userOwn)
+    expect(launch.env?.CLAUDE_CONFIG_DIR).toBe(userOwn)
+    expect(record.launchAccountHome).toEqual({
+      variable: 'CLAUDE_CONFIG_DIR',
+      path: userOwn,
+      accountId: null
+    })
+    const discover = vi.fn(async () => ({ success: false as const, error: 'fake listing' }))
+    const probe = createClaudeModelCatalogProbe({
+      resolveCommand: () => '/fake/claude',
+      resolveEnv,
+      resolveInheritedEnv: async () => ({}),
+      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      discover
+    })
+    await expect(probe(userOwn)).rejects.toThrow('fake listing')
+    await expect(probe(f.profiles[0].home)).rejects.toThrow('Inactive')
+  })
   it('refuses inactive model probes and pins a selected probe to its cache home', async () => {
     const f = fixture()
     const discover = vi.fn(

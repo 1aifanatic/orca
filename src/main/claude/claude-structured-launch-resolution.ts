@@ -8,6 +8,7 @@ import type {
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { agentSessionLaunchAccountHome } from '../runtime/agent-session-launch-account-home'
+import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
@@ -256,8 +257,7 @@ export function createClaudeStructuredLaunchResolver(
     // Codex has no gate here — it resolves its account on a different path.
     const profiles = getClaudeProfileRoutingAuthority()
     const prepared = profiles ? await profiles.prepare() : undefined
-    const launchHome =
-      prepared?.profileLaunch?.configHome ?? agentSessionLaunchAccountHome(record).path
+    let launchHome = agentSessionLaunchAccountHome(record).path
     const gate = profiles ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
@@ -306,9 +306,16 @@ export function createClaudeStructuredLaunchResolver(
         })
     )
     if (profiles && prepared) {
-      if (profiles.resolve().configHome !== launchHome) {
+      const accountId = prepared.profileLaunch?.profile?.accountId ?? null
+      if ((profiles.resolve().profile?.accountId ?? null) !== accountId) {
         throw new Error('Claude account changed before launch; retry')
       }
+      // Why the create resolver: System Default keeps the Claude agent env's own CLAUDE_CONFIG_DIR.
+      launchHome = resolveStructuredClaudeAccountHomePath({
+        launchEnv: env,
+        wslDistro: null,
+        getClaudeConfigDirectory: () => prepared.configDir
+      })
       if (
         resumesTranscript &&
         !(await (deps.hasTranscript ?? claudeTranscriptExists)({
@@ -328,7 +335,7 @@ export function createClaudeStructuredLaunchResolver(
           launchAccountHome: {
             variable: 'CLAUDE_CONFIG_DIR',
             path: launchHome,
-            accountId: prepared.profileLaunch?.profile?.accountId ?? null
+            accountId
           }
         }
       })

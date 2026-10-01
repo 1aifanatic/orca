@@ -1,5 +1,6 @@
 import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
+import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 import { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import { commandBackslashMode } from '../text-generation/commit-message-text-generation'
 import { spawnSourceControlAgent } from '../text-generation/source-control-agent-launch'
@@ -34,8 +35,17 @@ export function createClaudeModelCatalogProbe(
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     const profiles = getClaudeProfileRoutingAuthority()
+    const launchEnv = (profiles && (await deps.resolveEnv?.())) || {}
+    // Why the create resolver: System Default may live in the Claude agent env's CLAUDE_CONFIG_DIR.
     const assertSelected = () => {
-      if (profiles && profiles.resolve().configHome !== accountHomePath) {
+      if (
+        profiles &&
+        resolveStructuredClaudeAccountHomePath({
+          launchEnv,
+          wslDistro: null,
+          getClaudeConfigDirectory: () => profiles.resolve().readHome
+        }) !== accountHomePath
+      ) {
         throw new Error('Inactive Claude accounts cannot be probed')
       }
     }
