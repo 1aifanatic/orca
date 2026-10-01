@@ -19,13 +19,10 @@ import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   adapter,
   attach,
-  CALLER,
-  envelope,
   hostTestState,
   replaceHostTestState
 } from './structured-agent-session-host-test-harness'
 import {
-  hostTestMessage,
   HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD
@@ -171,14 +168,20 @@ describe('a turn cut short by closing its provider', () => {
   })
 
   it("records the user's close on a turn whose start landed only as the provider stopped", async () => {
-    // A send still unanswered when the close arrives: the journal has no turn yet.
+    // The provider opened the turn, but its rows are still in the event sink when the close
+    // arrives: the journal has no turn yet.
     await attach()
-    hostTestState().dispatch.mockResolvedValueOnce({ state: 'admitted' })
-    const body = hostTestMessage('long job')
-    await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
     await host.flushStreamedEvents(SESSION)
-    await vi.waitFor(async () =>
-      expect((await host.journalSnapshot(SESSION)).submissions[0]?.handedOverAt).toBeDefined()
+    const events = hostTestState().acquire.mock.calls[0]?.[0].events
+    events?.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'cut-turn', ordinal: 0 },
+      { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'long job' }] },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    events?.appendItem(
+      CUT_TURN,
+      { kind: 'turn', turnId: 'cut-turn', state: 'running', startedAt: 1_000, requestedAt: 1_000 },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
 
     await host.close(SESSION, 'user-close')

@@ -31,7 +31,7 @@ import {
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
-import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -98,29 +98,50 @@ export type StructuredAgentSessionStopEnding =
       quit?: true
     }
 
+/** How long a host stop waits for the session's sink before it judges whether the stop ends work. */
+const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
+
 /**
- * Writes this stop's event (`JournalStopEvent`) when it ends a running turn or a start: a stop
- * that ends nothing writes nothing. Issued before the kill and never awaited by it: bookkeeping,
- * reported on failure.
+ * Whether this stop ends work its event must record: a start, or a running turn or unanswered send
+ * read once the sink drained what the provider already said (`isMainAgentWorkingOnceFlushed`). A
+ * person's Stop wrote its own event, and quit writes none.
  */
+async function stopEndsWork(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string,
+  session: StructuredAgentSessionHostSession,
+  ending: StructuredAgentSessionStopEnding
+): Promise<boolean> {
+  const { child, journal } = session
+  if ('recorded' in ending || ending.quit || !child) {
+    return false
+  }
+  return (
+    child.phase === 'starting' ||
+    isMainAgentWorkingOnceFlushed(
+      {
+        journal,
+        fence: child.fence,
+        flushStreamedEvents: () => context.runtimeState.flushEventSink(sessionId)
+      },
+      STOP_EVENT_DRAIN_TIMEOUT_MS
+    )
+  )
+}
+
+/** Writes this stop's event (`JournalStopEvent`). Issued before the kill and never awaited by it:
+ *  bookkeeping, reported on failure. */
 function recordStopEvent(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string,
   session: StructuredAgentSessionHostSession,
   ending: StructuredAgentSessionStopEnding
 ): Promise<void> {
-  const { child, journal } = session
-  const turnId = journal.activeTurnId()
-  if (
-    'recorded' in ending ||
-    ending.quit ||
-    !child ||
-    (child.phase !== 'starting' &&
-      !isStructuredAgentSessionMainAgentWorking(turnId, journal.submissions(), child.fence))
-  ) {
+  if ('recorded' in ending) {
     return Promise.resolve()
   }
-  return journal
+  const turnId = session.journal.activeTurnId()
+  return session.journal
     .appendStopEvent(
       { reason: ending.cause, ...(turnId !== null ? { turnId } : {}) },
       structuredAgentSessionConversationFence(context.deps.store, sessionId)
@@ -146,7 +167,10 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   if (!session) {
     return
   }
-  const recorded = recordStopEvent(context, sessionId, session, ending)
+  // Judged before the kill: a stop that ends nothing writes nothing.
+  const recorded = (await stopEndsWork(context, sessionId, session, ending))
+    ? recordStopEvent(context, sessionId, session, ending)
+    : Promise.resolve()
   // The obligation OUTLIVES the child. `child` is ended the instant the adapter proves the exit,
   // so a step that aborts after that point would otherwise leave the retry reading "no child
   // here" and skipping the settlement and the lease release it still owes.

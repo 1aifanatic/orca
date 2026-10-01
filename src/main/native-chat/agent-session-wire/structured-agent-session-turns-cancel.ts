@@ -13,16 +13,21 @@ import {
 } from './structured-agent-session-command-turn'
 import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain.
- *  A failed drain reads working: bookkeeping never talks a Stop out of stopping. */
+ *  A failed drain, or one still running after `timeoutMs`, reads working: bookkeeping never talks a
+ *  Stop out of stopping. */
 export async function isMainAgentWorkingOnceFlushed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
+  timeoutMs?: number
 ): Promise<boolean> {
-  try {
-    await ctx.flushStreamedEvents()
-  } catch {
+  const flushed = ctx.flushStreamedEvents().then(
+    () => true,
+    () => false
+  )
+  if (!(await (timeoutMs === undefined ? flushed : withTimeout(flushed, timeoutMs, false)))) {
     return true
   }
   return isStructuredAgentSessionMainAgentWorking(
