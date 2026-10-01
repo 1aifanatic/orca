@@ -34,13 +34,8 @@ it.skipIf(process.platform !== 'win32' || !wslDistro)(
       await writeFile(join(repoPath, 'version.txt'), 'one\n')
       await git(repoPath, ['add', 'version.txt'])
       await git(repoPath, ['commit', '--quiet', '-m', 'initial'])
-      await prepareWorktreeCreateCheckout(
-        repoPath,
-        preparedPath,
-        'main',
-        createWorktreePreparationLockReason('real-wsl-test'),
-        options
-      )
+      const lockReason = createWorktreePreparationLockReason('real-wsl-test')
+      await prepareWorktreeCreateCheckout(repoPath, preparedPath, 'main', lockReason, options)
       expect(await git(repoPath, ['worktree', 'list', '--porcelain'])).toContain(
         'locked orca-create-preparation:v1:'
       )
@@ -55,7 +50,8 @@ it.skipIf(process.platform !== 'win32' || !wslDistro)(
         'feature/routed',
         'main',
         false,
-        options
+        options,
+        lockReason
       )
       expect(await git(finalPath, ['rev-parse', 'HEAD'])).toBe(target)
       expect(await git(finalPath, ['symbolic-ref', '--short', 'HEAD'])).toBe('feature/routed')

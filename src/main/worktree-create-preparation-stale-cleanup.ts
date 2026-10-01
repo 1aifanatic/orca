@@ -57,9 +57,19 @@ export async function startStalePreparationCleanup(
         // Preserve a branch-attached final path after a crash; only detached or
         // still-hidden preparations are safe to discard automatically.
         if (worktree.branch && pathOwnerPid === null) {
-          await unlockPreparedWorktree(repoPath, worktree.path, reclaimOptions).catch(() => {})
+          await unlockPreparedWorktree(
+            repoPath,
+            worktree.path,
+            reclaimOptions,
+            worktree.lockReason
+          ).catch(() => {})
         } else if (pathOwnerPid === lockOwnerPid) {
-          await discardPreparedWorktree(repoPath, worktree.path, reclaimOptions).catch(() => {})
+          await discardPreparedWorktree(
+            repoPath,
+            worktree.path,
+            reclaimOptions,
+            worktree.lockReason
+          ).catch(() => {})
         }
       }
     }

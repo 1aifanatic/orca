@@ -19,6 +19,7 @@ vi.mock('./ipc/worktree-remote', () => ({
 }))
 
 import { prefetchWorktreeCreateBase } from './worktree-create-base-prefetch'
+import type { WorktreeCreatePreparationOptions } from './worktree-create-preparation'
 
 const repo = {
   id: 'repo-1',
@@ -186,7 +187,7 @@ describe('prefetchWorktreeCreateBase local git routing', () => {
 
 describe('checkout and refresh overlap', () => {
   it.each([{}, WSL])(
-    'starts one checkout before a blocked refresh finishes on %j',
+    'starts one checkout with a shared refresh barrier before fetch settles on %j',
     async (gitOptions) => {
       const base = {
         remote: 'origin',
@@ -199,11 +200,17 @@ describe('checkout and refresh overlap', () => {
       let release!: () => void
       mocks.getOrStartRemoteTrackingBaseRefresh.mockImplementation(
         () =>
-          new Promise<void>((resolve) => {
-            release = resolve
+          new Promise<{ ok: boolean }>((resolve) => {
+            release = () => resolve({ ok: true })
           })
       )
-      const prepareCheckout = vi.fn().mockResolvedValue(undefined)
+      let materialized = false
+      const prepareCheckout = vi.fn(
+        async (_base: string, options?: WorktreeCreatePreparationOptions) => {
+          await options?.beforeMaterialization
+          materialized = true
+        }
+      )
       let settled = false
       const result = prefetchWorktreeCreateBase({
         repo,
@@ -214,11 +221,18 @@ describe('checkout and refresh overlap', () => {
       }).finally(() => {
         settled = true
       })
-      await vi.waitFor(() => expect(prepareCheckout).toHaveBeenCalledWith('origin/main'))
+      await vi.waitFor(() =>
+        expect(prepareCheckout).toHaveBeenCalledWith('origin/main', {
+          beforeMaterialization: expect.any(Promise)
+        })
+      )
       expect(settled).toBe(false)
+      expect(materialized).toBe(false)
+      expect(mocks.getOrStartRemoteTrackingBaseRefresh).toHaveBeenCalledOnce()
       release()
       await expect(result).resolves.toBe('origin/main')
-      expect(prepareCheckout).toHaveBeenCalledTimes(1)
+      expect(materialized).toBe(true)
+      expect(prepareCheckout).toHaveBeenCalledOnce()
     }
   )
 
@@ -232,8 +246,8 @@ describe('checkout and refresh overlap', () => {
     let release!: () => void
     mocks.getOrStartRemoteTrackingBaseRefresh.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          release = resolve
+        new Promise<{ ok: boolean }>((resolve) => {
+          release = () => resolve({ ok: true })
         })
     )
     const prepareCheckout = vi.fn().mockResolvedValue(undefined)
@@ -306,6 +320,37 @@ describe('checkout and refresh overlap', () => {
     expect(settled).toBe(false)
     release()
     await assertion
+  })
+
+  it('settles the materialization barrier on fetch failure without hiding the fetch error', async () => {
+    mocks.resolveRemoteTrackingBase.mockResolvedValue({
+      remote: 'origin',
+      branch: 'main',
+      ref: 'refs/remotes/origin/main',
+      base: 'origin/main'
+    })
+    mocks.hasRemoteTrackingRef.mockResolvedValue(true)
+    const error = new Error('offline')
+    mocks.getOrStartRemoteTrackingBaseRefresh.mockRejectedValue(error)
+    let materialized = false
+    const prepareCheckout = vi.fn(
+      async (_base: string, options?: WorktreeCreatePreparationOptions) => {
+        await options?.beforeMaterialization
+        materialized = true
+      }
+    )
+    await expect(
+      prefetchWorktreeCreateBase({
+        repo,
+        baseBranch: 'origin/main',
+        runtime: runtime(),
+        gitOptions: {},
+        prepareCheckout
+      })
+    ).rejects.toBe(error)
+    expect(materialized).toBe(true)
+    expect(prepareCheckout).toHaveBeenCalledOnce()
+    expect(mocks.getOrStartRemoteTrackingBaseRefresh).toHaveBeenCalledOnce()
   })
 })
 

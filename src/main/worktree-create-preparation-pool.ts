@@ -8,7 +8,11 @@ import {
   createWorktreePreparationLockReason
 } from '../shared/worktree/create-preparation'
 import type { AddWorktreeOptions } from './git/worktree'
-import { prepareWorktreeCreateCheckout } from './git/worktree-create-preparation'
+import { WorktreePreparationLockOwnershipError } from './git/worktree-preparation-lock'
+import {
+  prepareCheckoutForEntry,
+  queuePreparedWorktreeTipRefresh
+} from './worktree-preparation-checkout'
 import { toHostFilesystemPath } from './host-tree-removal'
 import { preparationEntryKey, preparationPathKey } from './worktree-create-preparation-claim'
 import {
@@ -17,7 +21,8 @@ import {
   resetStalePreparationCleanupForTests
 } from './worktree-create-preparation-stale-cleanup'
 import {
-  discardPreparationWithRetry,
+  discardPreparationEntry,
+  preparationHostKey,
   resetPendingPreparationDiscardsForTests,
   trackPreparationDiscard
 } from './worktree-preparation-discard-retry'
@@ -35,6 +40,7 @@ export type PreparationEntry = {
   baseBranch: string
   canonicalBase: string
   preparedPath: string
+  lockReason: string
   options: AddWorktreeOptions
   createdAt: number
   ready: Promise<void>
@@ -49,6 +55,7 @@ export type StartPreparationArgs = {
   baseBranch: string
   canonicalBase: string
   options: AddWorktreeOptions
+  beforeMaterialization?: Promise<void>
 }
 
 export type DeferredPreparation = {
@@ -64,11 +71,6 @@ export type PreparationClaim = {
 }
 const claims = new Set<PreparationClaim>()
 
-/** One repo on one Git host: the scope a stranded discard is retried under. */
-function preparationHostKey(repoPathKey: string, wslDistro: string): string {
-  return `${repoPathKey}\0${wslDistro}`
-}
-
 /** A prepared checkout is a create that is either in flight or imminent. */
 export function hasPendingPreparations(): boolean {
   return preparations.size > 0 || claims.size > 0 || hasPendingStalePreparationCleanup()
@@ -78,24 +80,9 @@ function pathOps(path: string): Pick<typeof posix, 'dirname' | 'join'> {
   return isWindowsAbsolutePathLike(path) ? win32 : posix
 }
 
-async function discardEntry(entry: PreparationEntry): Promise<void> {
-  // A failed checkout self-discards, but that self-discard is best-effort too, so it can strand the
-  // registration for the same reason the discard here can. Enrol either way.
-  await entry.ready.catch(() => {})
-  if (!entry.checkoutStarted) {
-    return
-  }
-  await discardPreparationWithRetry({
-    hostKey: preparationHostKey(entry.repoPathKey, entry.wslDistro),
-    repoPath: entry.repoPath,
-    preparedPath: entry.preparedPath,
-    options: entry.options
-  })
-}
-
 function discardEntryInBackground(entry: PreparationEntry): void {
   // Tracked, not bare `void`: the test reset must be able to settle it before dropping the registry.
-  trackPreparationDiscard(worktreePreparationGit.run(() => discardEntry(entry)))
+  trackPreparationDiscard(worktreePreparationGit.run(() => discardPreparationEntry(entry)))
 }
 
 function expireEntry(entry: PreparationEntry): void {
@@ -107,16 +94,7 @@ function expireEntry(entry: PreparationEntry): void {
   discardEntryInBackground(entry)
 }
 
-/**
- * Frees a slot for an incoming preparation, preferring one the same workspace already owns.
- *
- * The cap is a disk bound — a prepared checkout is a full tree, ~200 MB of tracked content in the
- * repo this was measured against — so it stays small. But flipping through the composer's base
- * picker arms several preparations for one repo, and a plain oldest-first eviction let that churn
- * throw away another project's warm checkout, which is a structural miss for anyone working across
- * several repos. Evict the incoming workspace's own oldest entry first; only reach across
- * workspaces when this one holds none.
- */
+/** Bound full-checkout disk use, evicting the requesting workspace's oldest preparation first. */
 function enforcePreparationLimit(
   repoPathKey: string,
   workspaceRootKey: string,
@@ -230,7 +208,9 @@ export function startPreparation(
     args.options.wslDistro ?? ''
   )
   if (existing) {
-    return existing.ready
+    return args.beforeMaterialization
+      ? refreshPreparationTip(existing, args.beforeMaterialization)
+      : existing.ready
   }
   if (deferPreparationForClaim(args, kind)) {
     return Promise.resolve()
@@ -238,12 +218,34 @@ export function startPreparation(
   return worktreePreparationGit.run(() => startBackgroundPreparation(args))
 }
 
+function refreshPreparationTip(
+  entry: PreparationEntry,
+  beforeMaterialization: Promise<void>
+): Promise<void> {
+  return queuePreparedWorktreeTipRefresh(
+    entry,
+    () => {
+      const available = preparations.get(entry.key) === entry
+      if (!available && ![...claims].some((claim) => claim.entry === entry)) {
+        return
+      }
+      if (available) {
+        preparations.delete(entry.key)
+        clearTimeout(entry.expiration)
+      }
+      discardEntryInBackground(entry)
+    },
+    beforeMaterialization
+  )
+}
+
 function startBackgroundPreparation({
   repoPath,
   workspaceRoot,
   baseBranch,
   canonicalBase,
-  options
+  options,
+  beforeMaterialization
 }: StartPreparationArgs): Promise<void> {
   const repoPathKey = preparationPathKey(repoPath)
   const workspaceRootKey = preparationPathKey(workspaceRoot)
@@ -274,6 +276,7 @@ function startBackgroundPreparation({
     baseBranch,
     canonicalBase,
     preparedPath,
+    lockReason,
     options,
     createdAt: Date.now(),
     expiration,
@@ -290,10 +293,14 @@ function startBackgroundPreparation({
       signal.throwIfAborted()
       // Already canonical, so the add re-resolves nothing.
       entry.checkoutStarted = true
-      await prepareWorktreeCreateCheckout(repoPath, preparedPath, canonicalBase, lockReason, {
-        ...options,
-        signal
-      })
+      try {
+        await prepareCheckoutForEntry(entry, signal, beforeMaterialization)
+      } catch (error) {
+        if (error instanceof WorktreePreparationLockOwnershipError) {
+          entry.checkoutStarted = false
+        }
+        throw error
+      }
     })()
   } satisfies PreparationEntry)
   preparations.set(key, entry)
@@ -314,7 +321,7 @@ export async function _resetPreparationPoolForTests(): Promise<void> {
   await Promise.all(
     entries.map(async (entry) => {
       clearTimeout(entry.expiration)
-      await discardEntry(entry)
+      await discardPreparationEntry(entry)
     })
   )
   await resetPendingPreparationDiscardsForTests()

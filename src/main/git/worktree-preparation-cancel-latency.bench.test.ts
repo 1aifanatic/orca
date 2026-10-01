@@ -43,12 +43,16 @@ function nextPreparedPath(label: string): string {
   return join(preparationRoot, `${process.pid}-${label}-${sequence}`)
 }
 
+const lockReasons = new Map<string, string>()
+
 function checkout(preparedPath: string, signal?: AbortSignal): Promise<void> {
+  const lockReason = createWorktreePreparationLockReason(`bench-${sequence}`)
+  lockReasons.set(preparedPath, lockReason)
   return prepareWorktreeCreateCheckout(
     repoPath,
     preparedPath,
     'main',
-    createWorktreePreparationLockReason(`bench-${sequence}`),
+    lockReason,
     signal ? { signal } : {}
   )
 }
@@ -71,7 +75,7 @@ async function runTrial(variant: Variant, obsolete: number): Promise<Sample> {
   await Promise.all(obsoleteWork)
   await Promise.all(
     [...obsoletePaths, freshPath].map((path) =>
-      discardPreparedWorktree(repoPath, path).catch(() => {})
+      discardPreparedWorktree(repoPath, path, {}, lockReasons.get(path)).catch(() => {})
     )
   )
   return { variant, obsolete, freshCheckoutMs }
@@ -118,7 +122,7 @@ describeBench('obsolete preparation cancellation latency', () => {
     // Warm the object store and page cache once so the first variant is not penalised.
     const warm = nextPreparedPath('warm')
     await checkout(warm)
-    await discardPreparedWorktree(repoPath, warm)
+    await discardPreparedWorktree(repoPath, warm, {}, lockReasons.get(warm))
 
     const samples: Sample[] = []
     for (const obsolete of OBSOLETE_COUNTS) {
