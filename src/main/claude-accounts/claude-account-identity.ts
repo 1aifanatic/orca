@@ -98,7 +98,7 @@ export function withObservedClaudeIdentities(
   })
 }
 
-/** System Default's login, flagged when an earlier Orca left a saved account's login there. */
+/** System Default's login, flagged when it is also a saved account (an earlier Orca copied those). */
 export function describeClaudeSystemDefault(
   identity: ClaudeLoginIdentity | null,
   accounts: readonly Pick<ClaudeManagedAccountSummary, 'email' | 'profileEmail'>[]
@@ -106,7 +106,7 @@ export function describeClaudeSystemDefault(
   const email = normalizeClaudeEmail(identity?.email)
   return {
     email: identity?.email ?? null,
-    leftByEarlierOrca:
+    matchesSavedAccount:
       email !== null &&
       accounts.some(
         (account) =>

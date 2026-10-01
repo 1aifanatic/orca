@@ -111,15 +111,15 @@ describe('Claude accounts section', () => {
 
   it("names System Default's login and says when an earlier Orca left a saved account there", () => {
     const markup = render({
-      systemDefault: { email: 'a@example.test', leftByEarlierOrca: true }
+      systemDefault: { email: 'a@example.test', matchesSavedAccount: true }
     })
     expect(markup).toContain('System default: a@example.test')
     expect(markup).toContain(
-      'An earlier Orca version left a@example.test signed in to your personal Claude login. Select System default and run `claude /login` to sign back in to your own account.'
+      'System default is signed in as a@example.test, which is also one of your saved accounts. If that isn&#x27;t your own Claude login, an earlier Orca version may have copied it there: select System default and run `claude /login`.'
     )
-    const own = render({ systemDefault: { email: 'me@example.test', leftByEarlierOrca: false } })
+    const own = render({ systemDefault: { email: 'me@example.test', matchesSavedAccount: false } })
     expect(own).toContain('System default: me@example.test')
-    expect(own).not.toContain('An earlier Orca version')
+    expect(own).not.toContain('an earlier Orca version')
   })
 
   it('explains the one-time sign-in only while a saved account still needs it', () => {

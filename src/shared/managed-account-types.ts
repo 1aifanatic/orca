@@ -114,8 +114,8 @@ export type ClaudeRateLimitAccountsState = {
 export type ClaudeSystemDefaultIdentity = {
   /** The login Claude's own state file names; null when signed out or unreadable. */
   email: string | null
-  /** That login is also a saved account, which an earlier Orca copied into this slot. */
-  leftByEarlierOrca: boolean
+  /** That login is also a saved account, possibly copied into this slot by an earlier Orca. */
+  matchesSavedAccount: boolean
 }
 
 export type ClaudeManagedAccountRuntimeSelection = {

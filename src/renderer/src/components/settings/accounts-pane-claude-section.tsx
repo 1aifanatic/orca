@@ -212,11 +212,11 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
               </span>
             </div>
           </button>
-          {systemDefault?.leftByEarlierOrca && systemDefault.email ? (
+          {systemDefault?.matchesSavedAccount && systemDefault.email ? (
             <p role="alert" className="text-xs text-muted-foreground">
               {translate(
-                'accounts.claude.systemDefaultLeftByOrca',
-                'An earlier Orca version left {{value0}} signed in to your personal Claude login. Select System default and run `claude /login` to sign back in to your own account.',
+                'accounts.claude.systemDefaultAlsoSaved',
+                "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run `claude /login`.",
                 { value0: systemDefault.email }
               )}
             </p>

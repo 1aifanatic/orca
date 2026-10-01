@@ -150,16 +150,16 @@ it('keeps an unfinished sign-in holding an already added login flagged instead o
 it("names System Default's own login and flags one an earlier Orca left there", () => {
   const f = fixture()
   f.signIn('a', 'a@example.test')
-  expect(f.selection.list().systemDefault).toEqual({ email: null, leftByEarlierOrca: false })
+  expect(f.selection.list().systemDefault).toEqual({ email: null, matchesSavedAccount: false })
   f.signInDefault('a@example.test')
   expect(f.selection.list().systemDefault).toEqual({
     email: 'a@example.test',
-    leftByEarlierOrca: true
+    matchesSavedAccount: true
   })
   f.signInDefault('mine@example.test')
   expect(f.selection.list().systemDefault).toEqual({
     email: 'mine@example.test',
-    leftByEarlierOrca: false
+    matchesSavedAccount: false
   })
 })
 
