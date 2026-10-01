@@ -128,7 +128,7 @@ describe('a failure that repeats', () => {
     expect(written()[0]?.attributes).toMatchObject({ refusalReason: 'journalUnavailable' })
   })
 
-  it('writes the same code as a plain error and as a refusal as two failures', () => {
+  it('writes one message under another error name, or as a refusal, as separate failures', () => {
     const logger = createStructuredAgentSessionLogger({ now: () => clock })
     const renew = (error: Error): void =>
       logger.warn('renewing a chat lease failed', { scope: 'lease-renewal', sessionId: 'a', error })
@@ -139,9 +139,14 @@ describe('a failure that repeats', () => {
     for (let tick = 0; tick < 3; tick += 1) {
       renew(unreadableRecord())
       renew(reconciling())
+      renew(new TypeError('execution_owner_reconciling'))
     }
 
-    expect(written()).toHaveLength(2)
+    expect(written().map((span) => span.exit)).toEqual([
+      expect.objectContaining({ cause: expect.stringMatching(/^Error: /) }),
+      expect.objectContaining({ cause: expect.stringMatching(/^AgentSessionRefusalError: /) }),
+      expect.objectContaining({ cause: expect.stringMatching(/^TypeError: /) })
+    ])
   })
 
   it('tracks a bounded number of repeating entries', () => {
