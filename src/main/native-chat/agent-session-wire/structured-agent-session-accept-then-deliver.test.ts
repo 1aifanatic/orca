@@ -334,26 +334,25 @@ describe('a start the chat needed and did not get', () => {
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
 
-  it('notifies failed once for the queued messages whose starts all failed', async () => {
+  it('notifies each queued message whose start failed, once, as it fails', async () => {
     await host.close(SESSION, 'evict')
     acquire.mockRejectedValue(new Error('spawn codex ENOENT'))
     const completions: AgentSessionTurnCompletionEvent[] = []
     host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
-    await accept('first')
+    const first = await accept('first')
     const second = await accept('second')
 
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     await host.flushAllStreamedEvents()
-    expect(completions).toEqual([
-      {
-        type: 'completion',
-        completion: expect.objectContaining({
-          sessionId: SESSION,
-          turnId: agentJournalSubmissionKey(second),
-          outcome: 'failure'
-        })
-      }
-    ])
+    const failed = (id: string) => ({
+      type: 'completion',
+      completion: expect.objectContaining({
+        sessionId: SESSION,
+        turnId: agentJournalSubmissionKey(id),
+        outcome: 'failure'
+      })
+    })
+    expect(completions).toEqual([failed(first), failed(second)])
   })
 
   it.each([
