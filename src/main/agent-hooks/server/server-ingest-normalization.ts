@@ -78,10 +78,7 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
     if (statusDisposition === 'suppress') {
       return
     }
-    const event =
-      statusDisposition === 'restart'
-        ? { ...replay, launchToken: undefined }
-        : this.withLiveLaunchToken(replay)
+    const event = statusDisposition === 'restart' ? { ...replay, launchToken: undefined } : replay
     if (statusDisposition === 'restart') {
       this.observations.rebind(event.paneKey)
     }

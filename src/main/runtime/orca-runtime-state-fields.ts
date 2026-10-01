@@ -9,7 +9,10 @@ import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-
 import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { StructuredAgentSessionStatusSink } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { ObservedAgentStatusPaneIdentity } from '../ipc/agent-status-ipc-boundary'
-import type { AgentHookAuthorityAttestation } from '../agent-hooks/server'
+import type {
+  AgentHookAuthorityAttestation,
+  EndedProcessReconcileOptions
+} from '../agent-hooks/server'
 import type {
   AiVaultPrepareSessionResumeArgs,
   AiVaultPrepareSessionResumeResult
@@ -83,12 +86,15 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       }) => AgentHookAuthorityAttestation | null
       retireAgentHookCompatibilityAuthority?: (
         paneKey: string,
-        options?: { authorityOnly?: boolean; preserveResumeIdentity?: boolean }
+        options?: { authorityOnly?: boolean }
       ) => void
       checkHookAgentPresence?: (
         paneKey: string
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>
-      reconcileAgentStatusForEndedProcess?: (paneKeys: Iterable<string>) => void
+      reconcileAgentStatusForEndedProcess?: (
+        paneKeys: Iterable<string>,
+        options?: EndedProcessReconcileOptions
+      ) => void
       canRecoverPersistentLocalPtys?: () => boolean
       // Why: the device registry lives on the RPC server, which is constructed with this runtime;
       // a closure defers the lookup past that ordering instead of inverting ownership.

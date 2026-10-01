@@ -104,9 +104,9 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       }
       return 'accept'
     }
-    // Why: command completion retires launch authority but leaves its shell pane reusable.
-    // A live new-turn event proves a new agent process owns the retired pane just like a
-    // fresh prompt does — without it, a session resumed in a reused pane stays rowless (STA-3386).
+    // Why: retirement fences a pane whose key a new process can still reuse (a respawn, a
+    // reattach). A live new-turn event proves a new agent process owns the retired pane just like
+    // a fresh prompt does — without it, a session resumed in a reused pane stays rowless (STA-3386).
     // Why the classifier, not literals: only 5 of 18 sources name their boundary
     // `UserPromptSubmit`/`SessionStart`; the rest stayed retired forever.
     // Why four branches: `source` collapses to undefined when an older relay omits the field,

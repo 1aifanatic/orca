@@ -8,11 +8,6 @@ import type {
 } from './server-types'
 
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
-  /** Re-admits a dropped row's resume identity; null when it carried no resumable session. */
-  protected abstract admitResumeIdentityRemnant(
-    row: EnrichedAgentHookEventPayload
-  ): EnrichedAgentHookEventPayload | null
-
   /** Ends only the launch authority a pane's rows vouch for; rows and status fences stay. */
   protected abstract revokePaneLaunchAuthority(paneKey: string): void
 
@@ -20,12 +15,8 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
   retirePaneAuthority(
     paneKey: string,
     retirementId?: string,
-    options?: {
-      /** A command end: the agent may still be alive, so only its launch authority ends now. */
-      authorityOnly?: boolean
-      /** The pane's shell outlived its agent; keep the remnant as the ended-process clear does. */
-      preserveResumeIdentity?: boolean
-    }
+    /** A command end: the agent may still be alive, so only its launch authority ends now. */
+    options?: { authorityOnly?: boolean }
   ): void {
     if (options?.authorityOnly) {
       this.revokePaneLaunchAuthority(paneKey)
@@ -85,8 +76,7 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.notifyPaneKeyAliasPersistenceListener()
     }
     for (const row of retiredRows) {
-      const retained = options?.preserveResumeIdentity ? this.admitResumeIdentityRemnant(row) : null
-      this.commitStatusRowMutation(row, retained)
+      this.commitStatusRowMutation(row, undefined)
     }
     if (hadStatus || authorityChanged) {
       this.scheduleStatusPersist()

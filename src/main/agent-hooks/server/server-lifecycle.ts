@@ -130,7 +130,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
                       }
                     : {})
                 }
-              : this.withLiveLaunchToken(normalized.event)
+              : normalized.event
           if (statusDisposition === 'restart') {
             // Why: a retired pane accepting a new turn is a different agent session behind the
             // same key — later observations must not be ordered against the retired one.

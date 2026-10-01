@@ -89,9 +89,13 @@ const REMOVALS: Record<string, (server: AgentHookServer) => void> = {
   },
   dropStatusEntriesByTabPrefix: (server) => server.dropStatusEntriesByTabPrefix('tab-1'),
   clearStatusEntriesForConnection: (server) => server.clearStatusEntriesForConnection(CONNECTION),
-  'retirePaneAuthority (renderer pane close)': (server) => server.retirePaneAuthority(PANE),
-  'retirePaneAuthority (runtime command end)': (server) =>
-    server.retirePaneAuthority(PANE, undefined, { preserveResumeIdentity: true })
+  'retirePaneAuthority (pane close, PTY exit)': (server) => server.retirePaneAuthority(PANE),
+  'reconcileEndedProcessForPaneKeys (verified command-end exit)': (server) => {
+    server.reconcileEndedProcessForPaneKeys([PANE], {
+      preserveResumeIdentity: true,
+      armedRowReceivedAt: liveRow(server)!.receivedAt
+    })
+  }
 }
 
 describe('every host row removal notifies readers', () => {
@@ -123,10 +127,12 @@ describe('retirePaneAuthority', () => {
       seedClaudeRow(server)
       const seen = recordReaderNotifications(server)
 
-      server.retirePaneAuthority(PANE, undefined, { preserveResumeIdentity: true })
+      server.retirePaneAuthority(PANE)
 
       expect(seen.windowClears).toEqual([{ paneKey: PANE }])
       expect(seen.subscriberClears).toEqual([{ paneKey: PANE }])
+      // No shell is left to resume into, so the resume identity goes too.
+      expect(server.getStatusSnapshotForPane(PANE)).toEqual([])
     } finally {
       server.stop()
     }
@@ -137,7 +143,7 @@ describe('retirePaneAuthority', () => {
     try {
       const seen = recordReaderNotifications(server)
 
-      server.retirePaneAuthority(PANE, undefined, { preserveResumeIdentity: true })
+      server.retirePaneAuthority(PANE)
 
       expect(seen.windowClears).toEqual([])
       expect(seen.subscriberClears).toEqual([])
@@ -146,42 +152,14 @@ describe('retirePaneAuthority', () => {
     }
   })
 
-  it('keeps the resume identity on a command end, as the ended-process clear does', async () => {
-    const server = await startServer()
-    try {
-      seedClaudeRow(server)
-
-      server.retirePaneAuthority(PANE, undefined, { preserveResumeIdentity: true })
-
-      const rows = server.getStatusSnapshotForPane(PANE)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]?.providerSessionOnly).toBe(true)
-      expect(rows[0]?.providerSession?.id).toBe('resume-me')
-      expect(rows[0]?.launchToken).toBeUndefined()
-
-      // The fence still holds: a late event from the exited process cannot repaint the pane.
-      server.ingestRemote(claudeEvent('PostToolUse'), CONNECTION)
-      expect(liveRow(server)).toBeUndefined()
-      // A new turn proves a new process owns the pane and replaces the remnant.
-      server.ingestRemote(claudeEvent('UserPromptSubmit', 'next task'), CONNECTION)
-      expect(liveRow(server)?.prompt).toBe('next task')
-
-      // The remnant must not bring back retired launch authority after a restart.
-      server.retirePaneAuthority(PANE, undefined, { preserveResumeIdentity: true })
-      server.flushStatusPersistSync()
-      server.stop()
-      const restarted = await startServer()
-      expect(restarted.getStatusSnapshotForPane(PANE)[0]?.launchToken).toBeUndefined()
-      expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
-      restarted.stop()
-    } finally {
-      server.stop()
-    }
-  })
-
   it('on a command end ends only launch authority: the row, its fence and its readers stay', async () => {
     const server = await startServer()
     try {
+      // The runtime's answer: it honours the token until the command ends.
+      let runtimeTokenHash: string | null = createHash('sha256')
+        .update('launch-token')
+        .digest('hex')
+      server.setPaneLaunchAuthorityReader(() => ({ launchTokenHash: runtimeTokenHash }))
       seedClaudeRow(server)
       const seen = recordReaderNotifications(server)
       const attest = () =>
@@ -193,34 +171,73 @@ describe('retirePaneAuthority', () => {
         })
       expect(attest()).not.toBeNull()
 
+      runtimeTokenHash = null
       server.retirePaneAuthority(PANE, undefined, { authorityOnly: true })
 
       expect(liveRow(server)?.state).toBe('working')
-      expect(liveRow(server)?.launchToken).toBeUndefined()
       expect(attest()).toBeNull()
       expect(seen.windowClears).toEqual([])
       expect(seen.subscriberClears).toEqual([])
-      // The kept row no longer carries the token, so a restart cannot rehydrate its authority.
+      // The kept row still holds the token it arrived with; the file derives that it is dead.
       server.flushStatusPersistSync()
       const restarted = await startServer()
       expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
       restarted.stop()
-      // Not fenced: the live agent's next event still lands.
+      // Not fenced: the live agent's next event still lands, without the dead token.
       server.ingestRemote(claudeEvent('PostToolUse', 'still going'), CONNECTION)
       expect(liveRow(server)?.prompt).toBe('still going')
+      expect(liveRow(server)?.launchToken).toBeUndefined()
+      expect(attest()).toBeNull()
+    } finally {
+      server.stop()
+    }
+  })
+})
+
+describe('reconcileEndedProcessForPaneKeys after a verified command-end exit', () => {
+  it('keeps the resume identity, fences nothing, and keeps no launch authority', async () => {
+    const server = await startServer()
+    try {
+      seedClaudeRow(server)
+
+      server.reconcileEndedProcessForPaneKeys([PANE], {
+        preserveResumeIdentity: true,
+        armedRowReceivedAt: liveRow(server)!.receivedAt
+      })
+
+      const rows = server.getStatusSnapshotForPane(PANE)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.providerSessionOnly).toBe(true)
+      expect(rows[0]?.providerSession?.id).toBe('resume-me')
+      expect(rows[0]?.launchToken).toBeUndefined()
+      server.flushStatusPersistSync()
+      const restarted = await startServer()
+      expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
+      restarted.stop()
+      // A new agent in the same shell shows at once.
+      server.ingestRemote(claudeEvent('UserPromptSubmit', 'next task'), CONNECTION)
+      expect(liveRow(server)?.prompt).toBe('next task')
     } finally {
       server.stop()
     }
   })
 
-  it('takes the resume identity too when no shell is left to resume into', async () => {
+  it('skips a pane whose row changed after the verdict was armed', async () => {
     const server = await startServer()
     try {
       seedClaudeRow(server)
+      const armedRowReceivedAt = liveRow(server)!.receivedAt
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      server.ingestRemote(claudeEvent('UserPromptSubmit', 'a new session'), CONNECTION)
+      const seen = recordReaderNotifications(server)
 
-      server.retirePaneAuthority(PANE)
+      server.reconcileEndedProcessForPaneKeys([PANE], {
+        preserveResumeIdentity: true,
+        armedRowReceivedAt
+      })
 
-      expect(server.getStatusSnapshotForPane(PANE)).toEqual([])
+      expect(liveRow(server)?.prompt).toBe('a new session')
+      expect(seen.windowClears).toEqual([])
     } finally {
       server.stop()
     }

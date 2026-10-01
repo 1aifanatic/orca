@@ -90,6 +90,16 @@ export type AgentHookAuthorityAttestation = Readonly<{
   source: 'current_hook' | 'hydrated_commitment'
 }>
 
+/** How an ended-process clear treats the pane it reaches. */
+export type EndedProcessReconcileOptions = {
+  /** The pane's PTY outlived its agent (a confirmed shell foreground), so the session can still be
+   *  resumed in place: keep the `providerSessionOnly` remnant. A certified PTY exit passes nothing. */
+  preserveResumeIdentity?: boolean
+  /** The `receivedAt` of the row the caller checked; a pane whose row changed since is skipped, so
+   *  a slow verdict cannot clear a session that started meanwhile. */
+  armedRowReceivedAt?: number
+}
+
 export type StatusChangeListener = (statuses: AgentHookStatusChangeEntry[]) => void
 export type StatusFreshnessListener = (status: AgentHookStatusFreshnessObservation) => void
 export type ProviderSessionChangeListener = (

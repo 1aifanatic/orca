@@ -35,6 +35,7 @@ import type {
   AgentHookStatusChangeEntry,
   AgentHookStatusFreshnessObservation,
   AgentPromptSentDedupeEntry,
+  EndedProcessReconcileOptions,
   EnrichedAgentHookEventPayload,
   NormalizedLocalHook,
   PaneKeyAliasEntry,
@@ -267,7 +268,7 @@ export abstract class AgentHookServerState {
 
   abstract reconcileEndedProcessForPaneKeys(
     paneKeys: Iterable<string>,
-    options?: { preserveResumeIdentity?: boolean; endedPresence?: AgentProcessPresence }
+    options?: EndedProcessReconcileOptions & { endedPresence?: AgentProcessPresence }
   ): number
 
   protected abstract clearPaneState(
@@ -282,6 +283,9 @@ export abstract class AgentHookServerState {
   protected abstract hydrateLastStatusFromDisk(): void
   protected abstract captureHydratedAuthorityCommitments(): void
   protected abstract recordCurrentAuthorityObservation(payload: AgentHookEventPayload): void
+  protected abstract withLiveLaunchToken<T extends { paneKey: string; launchToken?: string }>(
+    event: T
+  ): T
   protected abstract toAuthorityEvidence(
     payload: AgentHookEventPayload | EnrichedAgentHookEventPayload,
     launchTokenHashOverride?: string

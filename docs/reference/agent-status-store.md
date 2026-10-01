@@ -87,10 +87,18 @@ delete the copies.**
 
 Every host row removal notifies every reader in the same step: a teardown or an ended process
 emits the pane clear, a dismissal emits the status drop. Launch-authority retirement is no
-exception. A command end (OSC 133;D) ends a pane's launch authority at once, because every later
-process in that shell inherits the token, but it removes the pane's rows only after the agent's
-exit is verified (a shell in the foreground, or the hook's own process gone). `unverifiable`
-keeps the rows.
+exception. The host clears a pane only when its agent ended or the pane went away, so a reader
+drops the row on a clear and never keeps it as a finished (Done) agent.
+
+A command end (OSC 133;D) ends a pane's launch authority at once, because every later process in
+that shell inherits the token. It does not prove the agent exited: a full-screen agent's nested
+shells leak their own 133;D. So at every command end of a PTY whose panes hold a live row, the
+runtime asks the execution host again. The hook's own agent process still running keeps the row;
+the spawned shell owning the foreground with no job stopped clears it as an ended process, keeping
+the resume identity. Any other answer keeps the row, and nothing is latched: the PTY's next command
+end asks again, and its exit clears it. A verdict acts only on the row it checked, so a session
+that started while it was read keeps its row. SSH hosts cannot answer the shell check yet, so there
+only the agent's own exit hook or the PTY's exit removes a row the desktop pane did not drop.
 
 ## PR 1a: structured sessions publish into the store
 

@@ -237,8 +237,8 @@ async function startOrcadRuntime(
       readChildWork: (subject) => agentHookServer.getStructuredChildWorkViews(subject)
     },
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
-    reconcileAgentStatusForEndedProcess: (paneKeys) =>
-      agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys),
+    reconcileAgentStatusForEndedProcess: (paneKeys, options) =>
+      agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys, options),
     buildAgentHookPtyEnv: () =>
       isAgentStatusHooksEnabled(profileStore.getSettings()) ? agentHookServer.buildPtyEnv() : {},
     // Why the dedupe here and not in the instance: `apply` closes and reconstructs
