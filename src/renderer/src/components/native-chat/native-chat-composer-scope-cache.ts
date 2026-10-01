@@ -1,24 +1,31 @@
-// LRU bound for the native-chat composer's per-scope draft cache (text and image
-// attachments), keyed by stable pane identity. A scope key for a permanently-removed
-// pane is never revisited, so without a bound its unsent entry would linger in memory
-// and on disk. delete-then-set keeps the actively-edited scope most-recent so
-// eviction only sheds the oldest untouched scopes.
+// LRU bound for the native-chat composer's per-scope caches. Drafts die with their chat
+// (discardNativeChatDrafts); this bound is the backstop for chats that end where this client
+// never sees it, such as a session closed from another device. delete-then-set keeps the
+// actively-edited scope most-recent so eviction only sheds the oldest untouched scopes.
 export const NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX = 128
 
 export function setBoundedScopeCacheEntry<T>(
   cache: Map<string, T>,
   scopeKey: string,
   value: T,
-  onEvict?: (evictedScopeKey: string) => void
+  options: {
+    onEvict?: (evictedScopeKey: string) => void
+    /** A scope still in use is never evicted, even past the bound. */
+    inUse?: (scopeKey: string) => boolean
+  } = {}
 ): void {
   cache.delete(scopeKey)
   cache.set(scopeKey, value)
-  while (cache.size > NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX) {
-    const oldest = cache.keys().next().value
-    if (oldest === undefined) {
+  let excess = cache.size - NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
+  for (const key of cache.keys()) {
+    if (excess <= 0) {
       break
     }
-    cache.delete(oldest)
-    onEvict?.(oldest)
+    if (key === scopeKey || options.inUse?.(key)) {
+      continue
+    }
+    cache.delete(key)
+    options.onEvict?.(key)
+    excess -= 1
   }
 }

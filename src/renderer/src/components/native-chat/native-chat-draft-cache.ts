@@ -58,11 +58,46 @@ function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefine
   if (entry.text === '' && entry.attachments.length === 0) {
     drafts().delete(draftKey)
   } else {
-    setBoundedScopeCacheEntry(drafts(), draftKey, entry, (evicted) =>
-      persistNativeChatDraftNow(evicted, null)
-    )
+    setBoundedScopeCacheEntry(drafts(), draftKey, entry, {
+      onEvict: (evicted) => persistNativeChatDraftNow(evicted, null),
+      inUse: (key) => changeListeners.has(key)
+    })
   }
   changeListeners.get(draftKey)?.forEach((listener) => listener(writer))
+}
+
+/**
+ * Deletes the drafts of chats that ended, from memory and disk: a closed structured session,
+ * a closed terminal pane, or every pane of a closed terminal tab. None of them comes back
+ * (session ids, tab ids and pane leaf ids are never reused), so nothing could show the draft.
+ */
+export function discardNativeChatDrafts(ended: {
+  sessionIds?: Iterable<string>
+  paneKeys?: Iterable<string>
+  terminalTabIds?: Iterable<string>
+}): void {
+  const doomed = new Set([
+    ...Array.from(ended.sessionIds ?? [], (sessionId) =>
+      nativeChatDraftKey({ sessionId, paneKey: '' })
+    ),
+    ...Array.from(ended.paneKeys ?? [], (paneKey) => nativeChatDraftKey({ paneKey }))
+  ])
+  const tabPrefixes = Array.from(ended.terminalTabIds ?? [], (tabId) =>
+    nativeChatDraftKey({ paneKey: `${tabId}:` })
+  )
+  if (tabPrefixes.length > 0) {
+    for (const draftKey of drafts().keys()) {
+      if (tabPrefixes.some((prefix) => draftKey.startsWith(prefix))) {
+        doomed.add(draftKey)
+      }
+    }
+  }
+  for (const draftKey of doomed) {
+    if (drafts().has(draftKey)) {
+      setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS }, undefined)
+    }
+    persistNativeChatDraftNow(draftKey, null)
+  }
 }
 
 function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {

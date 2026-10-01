@@ -15,6 +15,7 @@ import {
   structuredLaunchStates
 } from '@/lib/structured-agent-session-launch-registry'
 import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { discardNativeChatDrafts } from '@/components/native-chat/native-chat-draft-cache'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 
@@ -45,8 +46,12 @@ export function buildWorktreePurgeState(
       cancelledSessionIds.add(launch.intent.sessionId)
     }
   }
+  const endedSessionIds = new Set(cancelledSessionIds)
   for (const worktreeId of worktreeIdSet) {
     for (const tab of s.unifiedTabsByWorktree[worktreeId] ?? []) {
+      if (tab.contentType === 'agent-session') {
+        endedSessionIds.add(tab.entityId)
+      }
       if (
         tab.contentType === 'agent-session' &&
         !cancelledSessionIds.has(tab.entityId) &&
@@ -72,6 +77,7 @@ export function buildWorktreePurgeState(
   forgetAmbiguousOwnerWarnings(worktreeIdSet)
 
   const doomed = collectWorktreePurgeDoomedIds(s, worktreeIdSet)
+  discardNativeChatDrafts({ sessionIds: endedSessionIds, terminalTabIds: doomed.doomedTabIds })
   const {
     omitByWorktree,
     omitWorkspaceLineageByWorktree,

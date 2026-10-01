@@ -231,4 +231,60 @@ describe('composer draft persistence', () => {
     expect(saved('scope-0')).toBeNull()
     expect(localStorage.getItem(`${PREFIX}broken`)).toBeNull()
   })
+
+  it('never drops a draft a view is showing, however many newer drafts are written', () => {
+    cache.appendNativeChatDraftNow('open-chat', { text: 'still open' })
+    const unsubscribe = cache.subscribeToNativeChatDraft('open-chat', () => {})
+    for (let index = 0; index < NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX + 5; index += 1) {
+      cache.appendNativeChatDraftNow(`scope-${index}`, { text: `draft-${index}` })
+    }
+
+    expect(cache.readNativeChatDraftCache('open-chat')).toBe('still open')
+    expect(saved('open-chat')?.text).toBe('still open')
+    expect(saved('scope-0')).toBeNull()
+    unsubscribe()
+  })
+})
+
+describe('a draft dies with its chat', () => {
+  const chats = {
+    session: { sessionId: 's1', paneKey: 'tab-1:leaf-1' },
+    pane: { paneKey: 'tab-2:leaf-a' },
+    otherPane: { paneKey: 'tab-2:leaf-b' },
+    otherTab: { paneKey: 'tab-22:leaf-a' }
+  }
+
+  beforeEach(() => {
+    for (const chat of Object.values(chats)) {
+      cache.appendNativeChatDraftNow(cache.nativeChatDraftKey(chat), {
+        text: 'unsent',
+        attachments: [{ id: 'i1', path: '/tmp/i.png' }]
+      })
+    }
+  })
+
+  it('deletes a closed session or pane draft, in memory and on disk', async () => {
+    const shown = vi.fn()
+    cache.subscribeToNativeChatDraft(cache.nativeChatDraftKey(chats.session), shown)
+
+    cache.discardNativeChatDrafts({ sessionIds: ['s1'], paneKeys: ['tab-2:leaf-a'] })
+
+    expect(shown).toHaveBeenCalled()
+    expect(cache.readNativeChatDraftCache(cache.nativeChatDraftKey(chats.session))).toBe('')
+    expect(saved(cache.nativeChatDraftKey(chats.pane))).toBeNull()
+    const next = await relaunch()
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.session))).toBe('')
+    expect(next.readNativeChatDraftAttachments(next.nativeChatDraftKey(chats.pane))).toEqual([])
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.otherPane))).toBe('unsent')
+  })
+
+  it("deletes every pane's draft of a closed terminal tab, and no other tab's", async () => {
+    cache.discardNativeChatDrafts({ terminalTabIds: ['tab-2'] })
+
+    const next = await relaunch()
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.pane))).toBe('')
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.otherPane))).toBe('')
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.otherTab))).toBe('unsent')
+    expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.session))).toBe('unsent')
+  })
 })
