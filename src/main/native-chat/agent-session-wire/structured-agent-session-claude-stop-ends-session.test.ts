@@ -50,7 +50,6 @@ let store: AgentSessionRecordStore
 let queued: string[]
 let claude: ReturnType<typeof fakeClaude>
 let events: ClaudeStructuredSessionEvent[]
-let backgroundStates: unknown[]
 let sinkErrors: unknown[]
 
 beforeEach(async () => {
@@ -58,7 +57,6 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   queued = []
   events = []
-  backgroundStates = []
   sinkErrors = []
   claude = fakeClaude({
     replayUuid: null,
@@ -88,7 +86,6 @@ beforeEach(async () => {
         lifecycle.push(host.handleAdapterEvent(mapped))
       }
     },
-    onBackgroundTasksChanged: (_sessionId, state) => backgroundStates.push(state),
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     openConnection: claude.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
@@ -421,14 +418,15 @@ it('ends background work Claude runs when the Stop ends the child', async () => 
     task_type: 'local_agent',
     is_backgrounded: true
   })
-  expect(backgroundStates.at(-1)).toMatchObject({ state: 'monitoring' })
+  expect(adapter.backgroundTaskState(SESSION)).toMatchObject({ state: 'monitoring' })
 
   await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   frame(connection, INTERRUPTED_RESULT)
   await laneDrained()
 
+  // The work ran inside Claude's process, so it ends with it, and nothing holds it any more.
   expect(connection.closed).toBe(true)
-  expect(backgroundStates.at(-1)).toBeNull()
+  expect(adapter.backgroundTaskState(SESSION)).toBeUndefined()
 })
 
 it('starts a new child for the next send after a Stop, on the same Claude conversation', async () => {
