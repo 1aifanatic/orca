@@ -141,8 +141,8 @@ describe('a message the host refused, across a relaunch', () => {
 
   it.each(['returned', 'thrown'] as const)(
     'is not sent on its own after a relaunch; its Retry sends it (refusal %s)',
-    async (shape) => {
-      if (shape === 'returned') {
+    async (refusalDelivery) => {
+      if (refusalDelivery === 'returned') {
         mocks.call.mockResolvedValueOnce(newerOrcaRefusal())
       } else {
         // As `mapRuntimeError` sends a thrown refusal (pinned in `rpc/errors.test.ts`).
