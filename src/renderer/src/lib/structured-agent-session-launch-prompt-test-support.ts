@@ -10,6 +10,8 @@ export type LaunchPromptClientMock = { call: Mock; subscribe: Mock }
 
 type FirstMessage = Omit<AgentJournalSubmission, 'clientMessageId'>
 
+export type FirstMessageChange = Partial<FirstMessage>
+
 const QUEUED: FirstMessage = {
   fence: 1,
   payloadFingerprint: 'fingerprint',

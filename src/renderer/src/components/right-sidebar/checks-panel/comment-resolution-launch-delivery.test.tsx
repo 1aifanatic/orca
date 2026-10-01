@@ -29,7 +29,8 @@ import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-sessio
 import {
   FIRST_START_FAILS,
   firstMessageStream,
-  play
+  play,
+  type FirstMessageChange
 } from '@/lib/structured-agent-session-launch-prompt-test-support'
 import {
   clearPendingPRCommentAiAck,
@@ -189,25 +190,28 @@ describe('Resolve comments with AI, when the chat starts on its first message', 
     expect(model.pendingCommentResolutionRef.current).toBeNull()
   })
 
-  it.each([
+  const endings: [string, readonly FirstMessageChange[]][] = [
     ['rejected after its tries', FIRST_START_FAILS.rejectedAfterTries],
     ['withdrawn when its chat closes mid-wait', FIRST_START_FAILS.chatClosed],
     ...['notSignedIn', 'providerMissing', 'providerExited'].map(
-      (kind) =>
-        [
-          `refused at once (${kind})`,
-          [{ dispatchState: 'rejected' as const, rejection: { kind } }]
-        ] as const
+      (kind): [string, readonly FirstMessageChange[]] => [
+        `refused at once (${kind})`,
+        [{ dispatchState: 'rejected', rejection: { kind } }]
+      ]
     )
-  ])('posts nothing when the first message is %s, and hands the comments back', async (_c, end) => {
-    const { model, hook } = acknowledgement()
-    const { host, launched } = resolveCommentsWithAi(hook)
-    play(await host, end)
+  ]
+  it.each(endings)(
+    'posts nothing when the first message is %s, and hands the comments back',
+    async (_c, end) => {
+      const { model, hook } = acknowledgement()
+      const { host, launched } = resolveCommentsWithAi(hook)
+      play(await host, end)
 
-    await expect(launched).resolves.toBe(false)
-    expectNothingPosted(model)
-    expect(model.pendingCommentResolutionRef.current).toMatchObject({
-      reviewContextKey: REVIEW_KEY
-    })
-  })
+      await expect(launched).resolves.toBe(false)
+      expectNothingPosted(model)
+      expect(model.pendingCommentResolutionRef.current).toMatchObject({
+        reviewContextKey: REVIEW_KEY
+      })
+    }
+  )
 })
