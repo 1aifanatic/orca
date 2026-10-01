@@ -1,10 +1,10 @@
-// The background copy's share of the main thread: no second gives its tasks more than the budget
-// plus the one task that crossed it, and quit ends a wait at once.
+// The background copy's share of the main thread: no second gives its tasks more than the share,
+// the burst and the one task that crossed it, a stall counts, and quit ends a wait at once.
 
 import { describe, expect, it, vi } from 'vitest'
 import {
-  PER_CHAT_FILE_COPY_SHARE_BUDGET_MS,
-  PER_CHAT_FILE_COPY_SHARE_WINDOW_MS,
+  PER_CHAT_FILE_COPY_BURST_MS,
+  PER_CHAT_FILE_COPY_SHARE,
   StructuredAgentSessionPerChatFileCopyPace
 } from './structured-agent-session-per-chat-file-copy-pace'
 
@@ -19,43 +19,56 @@ function pacedClock() {
       clock.now += ms
     }
   )
-  /** Runs tasks of these costs, a yield after each; answers each window's busy time. */
+  /** Runs tasks of these costs, a yield after each; answers when each ran. */
   const run = async (costs: number[]) => {
-    const busy = new Map<number, number>()
+    const tasks: { start: number; end: number }[] = []
     pace.begin()
     for (const cost of costs) {
-      const window = Math.floor(clock.now / PER_CHAT_FILE_COPY_SHARE_WINDOW_MS)
-      busy.set(window, (busy.get(window) ?? 0) + cost)
+      tasks.push({ start: clock.now, end: clock.now + cost })
       clock.now += cost
       await pace.yieldTask()
     }
-    return [...busy.values()]
+    return tasks
   }
   return { clock, waits, pace, run }
 }
 
+/** The most busy time any one-second window holds. */
+function busiestSecond(tasks: { start: number; end: number }[]): number {
+  let most = 0
+  for (const from of tasks.map((task) => task.start)) {
+    const to = from + 1_000
+    const busy = tasks.reduce(
+      (sum, t) => sum + Math.max(0, Math.min(t.end, to) - Math.max(t.start, from)),
+      0
+    )
+    most = Math.max(most, busy)
+  }
+  return most
+}
+
 describe('the copy’s share of each second (C3)', () => {
-  it('waits for the next second once its tasks have taken the budget', async () => {
+  it('holds any second to its share, its burst and the one task that crossed it', async () => {
     const { waits, run } = pacedClock()
 
-    const busy = await run(Array.from({ length: 40 }, () => 40))
+    const tasks = await run(Array.from({ length: 60 }, () => 40))
 
     expect(waits.length).toBeGreaterThan(0)
-    for (const ms of busy) {
-      expect(ms).toBeLessThanOrEqual(PER_CHAT_FILE_COPY_SHARE_BUDGET_MS + 40)
-    }
+    expect(busiestSecond(tasks)).toBeLessThanOrEqual(
+      PER_CHAT_FILE_COPY_BURST_MS + PER_CHAT_FILE_COPY_SHARE * 1_000 + 40
+    )
   })
 
-  it('counts a task that stalls, so a long one ends the second’s share', async () => {
-    const { waits, clock, run } = pacedClock()
+  it('counts a task that stalls, and waits until the share catches up', async () => {
+    const { waits, run } = pacedClock()
 
     await run([200])
 
-    expect(waits).toEqual([PER_CHAT_FILE_COPY_SHARE_WINDOW_MS - 200])
-    expect(clock.now).toBe(PER_CHAT_FILE_COPY_SHARE_WINDOW_MS)
+    const debt = 200 - PER_CHAT_FILE_COPY_BURST_MS - 200 * PER_CHAT_FILE_COPY_SHARE
+    expect(waits).toEqual([debt / PER_CHAT_FILE_COPY_SHARE])
   })
 
-  it('takes no wait under the budget', async () => {
+  it('takes no wait inside its burst', async () => {
     const { waits, run } = pacedClock()
 
     await run([10, 10, 10])
@@ -64,7 +77,10 @@ describe('the copy’s share of each second (C3)', () => {
   })
 
   it('ends a wait at quit, and waits no more after it', async () => {
-    const pace = new StructuredAgentSessionPerChatFileCopyPace(() => 0, undefined, 0)
+    const clock = { now: 0 }
+    const pace = new StructuredAgentSessionPerChatFileCopyPace(() => clock.now)
+    pace.begin()
+    clock.now = 500
     const waiting = pace.yieldTask()
     const settled = vi.fn()
     void waiting.then(settled)
@@ -77,6 +93,7 @@ describe('the copy’s share of each second (C3)', () => {
       new Promise((resolve) => setTimeout(() => resolve('still waiting'), 200))
     ])
     expect(raced).toBe('ended')
+    clock.now = 1_000
     await expect(pace.yieldTask()).resolves.toBeUndefined()
   })
 })
