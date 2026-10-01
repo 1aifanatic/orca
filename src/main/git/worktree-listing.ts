@@ -3,7 +3,6 @@ import { join, posix, win32 } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { resolveGitMetadataPath } from '../../shared/git-metadata-path'
 import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
-import { isWorktreeCreatePreparation } from '../../shared/worktree/create-preparation'
 import { toWslExecutionSpace } from '../../shared/wsl-paths'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import {
@@ -23,6 +22,7 @@ import {
 } from './worktree-operation-options'
 import { areWorktreePathsEqual, translateWorktreePath } from './worktree-path-comparison'
 import { detectSparseCheckoutCached } from './worktree-sparse-checkout-cache'
+import { isHiddenCreatePreparation } from './worktree-create-spare-ids'
 import { resolveGitDir } from './source-control/resolve-git-dir'
 
 const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
@@ -35,7 +35,7 @@ export async function listWorktreeGraph(
     const worktrees = await readTranslatedWorktreeGraph(repoPath, options)
     return options.includeCreatePreparations
       ? worktrees
-      : worktrees.filter((worktree) => !isWorktreeCreatePreparation(worktree))
+      : worktrees.filter((worktree) => !isHiddenCreatePreparation(worktree))
   } catch (err) {
     if (await isTrueEmptyWorktreeListing(repoPath, err)) {
       return []
@@ -53,7 +53,7 @@ export async function listWorktreesUnshared(
     const worktrees = await readTranslatedWorktreeGraph(repoPath, options)
     const visibleWorktrees = options.includeCreatePreparations
       ? worktrees
-      : worktrees.filter((worktree) => !isWorktreeCreatePreparation(worktree))
+      : worktrees.filter((worktree) => !isHiddenCreatePreparation(worktree))
     return annotateSparseCheckoutStatus(repoPath, visibleWorktrees, options)
   } catch (err) {
     if (await isTrueEmptyWorktreeListing(repoPath, err)) {
@@ -93,7 +93,7 @@ export async function listWorktreesStrict(
   })
   const visibleWorktrees = options.includeCreatePreparations
     ? worktrees
-    : worktrees.filter((worktree) => !isWorktreeCreatePreparation(worktree))
+    : worktrees.filter((worktree) => !isHiddenCreatePreparation(worktree))
   return annotateSparseCheckoutStatus(repoPath, visibleWorktrees, options)
 }
 

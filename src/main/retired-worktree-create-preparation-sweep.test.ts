@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../shared/constants'
 import type { Repo } from '../shared/repo-types'
 import type { Store } from './persistence'
-import { collectRetiredPreparationSweepTargets } from './retired-worktree-create-preparation-sweep'
+import { collectRetiredPreparationSweepTargets } from './retired-worktree-create-preparation-sweep-targets'
 import { getWslHome } from './wsl'
 import type * as Wsl from './wsl'
 

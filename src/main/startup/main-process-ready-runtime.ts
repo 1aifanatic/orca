@@ -32,10 +32,8 @@ import {
 import { initializeMainProcessAutomations } from './main-process-automations'
 import { initializeMainProcessPlugins } from './main-process-plugins'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
-import {
-  collectRetiredPreparationSweepTargets,
-  sweepRetiredWorktreeCreatePreparations
-} from '../retired-worktree-create-preparation-sweep'
+import { sweepRetiredWorktreeCreatePreparations } from '../retired-worktree-create-preparation-sweep'
+import { collectRetiredPreparationSweepTargets } from '../retired-worktree-create-preparation-sweep-targets'
 import { loadWorktreeRemovalRecords } from '../worktree-background-removal'
 import { runAfterFirstWindowShown } from './first-window-deferral'
 import { logStartupMilestone } from './startup-diagnostics'
