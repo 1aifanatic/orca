@@ -24,12 +24,20 @@ export function projectStructuredAgentSessionMessages(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
+  // Sent from elsewhere and refused for good by a failed start: shown as unsent, as this client's
+  // own would be, in the conversation where the journal recorded it.
+  const unsentElsewhere = new Set(
+    failedStartsSentElsewhere(submissions, outbox).map((submission) =>
+      agentJournalSubmissionKey(submission.clientMessageId)
+    )
+  )
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
   for (const item of items) {
     if (rejected.has(item.itemId)) {
       refused.set(item.itemId, item)
-    } else {
+    }
+    if (!rejected.has(item.itemId) || unsentElsewhere.has(item.itemId)) {
       visibleItems.push(item)
     }
   }
@@ -46,21 +54,6 @@ export function projectStructuredAgentSessionMessages(
       .filter(isRetryingStructuredAgentSessionStart)
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
-  // Sent from elsewhere and refused for good by a failed start: shown as unsent, as this client's
-  // own would be, where the journal recorded it.
-  const unsentElsewhere = projectItems(
-    failedStartsSentElsewhere(submissions, outbox).flatMap((submission) => {
-      const item = refused.get(agentJournalSubmissionKey(submission.clientMessageId))
-      return item ? [item] : []
-    })
-  ).map((message): NativeChatMessage => {
-    const recorded = refused.get(message.id)
-    return {
-      ...message,
-      unsent: true,
-      ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
-    }
-  })
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
   for (const message of projectItems(visibleItems)) {
@@ -70,6 +63,13 @@ export function projectStructuredAgentSessionMessages(
         queued: true,
         ...(waiting.has(message.id) ? { waitingToStart: true as const } : {})
       })
+    } else if (unsentElsewhere.has(message.id)) {
+      const recorded = refused.get(message.id)
+      delivered.push({
+        ...message,
+        unsent: true,
+        ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
+      })
     } else {
       delivered.push(message)
     }
@@ -78,7 +78,6 @@ export function projectStructuredAgentSessionMessages(
     // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...collapseProviderRetryRuns(delivered),
     ...held,
-    ...unsentElsewhere,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
       .map((entry): NativeChatMessage => {

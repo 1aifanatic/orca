@@ -68,6 +68,47 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     expect(resendable.get(ID)).toBe('Continue where you left off')
   })
 
+  // The phone draws rows in the order the projection gives them; only the desktop sorts.
+  it('is placed where the journal recorded it, above what came after it', () => {
+    const exchange = (id: string, sequence: number, role: 'user' | 'assistant') => ({
+      itemId: role === 'user' ? agentJournalSubmissionKey(id) : `codex:${id}`,
+      revision: 0,
+      sequence,
+      observedAt: sequence,
+      body: { kind: 'message' as const, role, blocks: [{ type: 'text' as const, text: id }] }
+    })
+    const accepted = (id: string): AgentJournalSubmission => ({
+      ...rejected({ kind: 'providerStartFailed' }),
+      clientMessageId: id,
+      dispatchState: 'accepted',
+      reason: null,
+      rejection: undefined
+    })
+    const later = '1759312345999-0123456789abcdef0123456789abcdef'
+    const items = [
+      exchange('first', 1, 'user'),
+      exchange('first-answer', 2, 'assistant'),
+      TEXT,
+      exchange(later, 6, 'user'),
+      exchange('later-answer', 7, 'assistant')
+    ]
+    const submissions = [
+      accepted('first'),
+      rejected({ kind: 'providerStartFailed' }),
+      accepted(later)
+    ]
+
+    expect(
+      projectStructuredAgentSessionMessages(items, [], submissions).map((row) => row.id)
+    ).toEqual([
+      agentJournalSubmissionKey('first'),
+      'codex:first-answer',
+      KEY,
+      agentJournalSubmissionKey(later),
+      'codex:later-answer'
+    ])
+  })
+
   it('stays hidden when it failed for anything but its start, as before', () => {
     expect(
       projectStructuredAgentSessionMessages([TEXT], [], [rejected({ kind: 'queueFull' })])
