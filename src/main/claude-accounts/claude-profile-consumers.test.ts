@@ -8,7 +8,9 @@ import type { ClaudeProfileRoutingService } from './claude-profile-routing-servi
 const state = vi.hoisted<{ routing: ClaudeProfileRoutingService | undefined }>(() => ({
   routing: undefined
 }))
-const fakeHome = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/orca-consumers-no-home`)
+const fakeHome = vi.hoisted(
+  () => `${(process.env.TMPDIR ?? '/tmp').replace(/\/$/, '')}/orca-consumers-no-home`
+)
 vi.mock('node:os', async (original) => ({
   ...(await original<typeof Os>()),
   homedir: () => fakeHome
@@ -31,7 +33,10 @@ import {
 } from '../claude/claude-model-catalog-probe'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { claudeProjectsRootDirs } from '../ai-vault/session-scanner-roots'
-import { listClaudeTranscriptFiles } from '../claude-usage/transcript-file-discovery'
+import {
+  claudeTranscriptScanRoots,
+  listClaudeTranscriptFiles
+} from '../claude-usage/transcript-file-discovery'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { resolveSkillProviderRoots } from '../runtime/runtime-skill-install-authority'
 import { applyAgentWorkspaceTrust } from '../agent-workspace-trust'
@@ -297,7 +302,11 @@ describe('Claude profile consumers', () => {
     const roots = claudeProjectsRootDirs({ claudeProjectsDir: shared })
     expect(roots).toContain(privateProjects)
     expect(roots).not.toContain(join(f.profiles[1].home, 'projects'))
-    expect(await listClaudeTranscriptFiles()).toContain(transcript)
+    const scanRoots = claudeTranscriptScanRoots()
+    expect(
+      scanRoots.filter((root) => !root.startsWith(fakeHome) && !root.startsWith(f.root))
+    ).toEqual([])
+    expect(await listClaudeTranscriptFiles(scanRoots)).toContain(transcript)
     expect(await resolveSessionFilePath('claude', 'private-session')).toBe(transcript)
     rmSync(join(f.profiles[1].home, 'projects'))
     symlinkSync(f.root, join(f.profiles[1].home, 'projects'), 'dir')
