@@ -29,10 +29,16 @@ const INHERITED_STATE_ENV = [
   'ORCA_USER_DATA_PATH',
   'CODEX_HOME',
   'ORCA_CODEX_HOME',
-  'CLAUDE_CONFIG_DIR'
+  'CLAUDE_CONFIG_DIR',
+  'ORCA_CODEX_HOOK_FLAGS'
 ]
-// Why: an Orca terminal points this at the live app's CLI, which a test's child shell would run.
-const INHERITED_LIVE_CLI_ENV = ['ORCA_CODEX_LAUNCH_PREFLIGHT']
+// Why: an Orca terminal points these at the live app's CLI and Codex hook flag gate, which a
+// test's child shell would run; a codex function there writes requests the live app serves.
+const INHERITED_LIVE_CLI_ENV = [
+  'ORCA_CODEX_LAUNCH_PREFLIGHT',
+  'ORCA_CODEX_HOOK_GATE',
+  'ORCA_CODEX_HOOK_ARG'
+]
 // Why: opted-in real-agent suites point a real CLI at its own home on purpose; each suite's own switch.
 const REAL_AGENT_SUITE_SWITCHES = [
   'ORCA_REAL_CLAUDE_SUPERVISED_STOP',

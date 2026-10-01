@@ -103,6 +103,8 @@ const SHELL_PREFIXES = [
   'src/main/zsh-',
   'src/renderer/src/components/terminal-pane/fish-color-scheme',
   'src/shared/fish-',
+  // Why: the codex function's text is what the shell contract suites run in real shells.
+  'src/shared/codex-shell-function',
   'src/shared/pty-reply-echo-shapes',
   'src/shared/startup-shell-portability',
   'src/shared/posix-command-path-lookup',

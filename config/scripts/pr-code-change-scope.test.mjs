@@ -279,6 +279,15 @@ describe('per-job path classification', () => {
     })
   })
 
+  it('runs shell contracts when only the codex shell function changes', () => {
+    expectClassification(['src/shared/codex-shell-function.ts'], {
+      codex_index_heal_contract: true,
+      shell_contracts: true,
+      package: true,
+      package_windows: true
+    })
+  })
+
   it('runs orcad browser when Chrome launch, session, or tab modules change', () => {
     for (const file of [
       'src/main/orcad/external-chromium-browser-session.ts',
