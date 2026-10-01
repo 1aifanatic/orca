@@ -213,6 +213,33 @@ describe('worktree membership model: failure contracts', () => {
     await expect(listWorktreesSharedStrictAllowingTrueEmpty(plain)).resolves.toEqual([])
     await expect(listWorktreesSharedStrict(plain)).rejects.toThrow(/not a git repository/i)
   })
+
+  it('answers a folder Git says is no repository by stat alone until a repository appears', async () => {
+    const plain = join(scratchDir, 'plain-folder')
+    await mkdir(plain)
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    await expect(listWorktreesSharedStrict(plain)).rejects.toThrow(/not a git repository/i)
+    const firstListings = worktreeListSpawns()
+
+    for (let round = 0; round < 3; round++) {
+      now += MEMBERSHIP_REUSE_WINDOW_MS
+      const [lenient, trueEmpty, strict] = await Promise.allSettled([
+        listWorktrees(plain),
+        listWorktreesSharedStrictAllowingTrueEmpty(plain),
+        listWorktreesSharedStrict(plain)
+      ])
+      expect(lenient).toEqual({ status: 'fulfilled', value: [] })
+      expect(trueEmpty).toEqual({ status: 'fulfilled', value: [] })
+      expect(strict.status === 'rejected' && String(strict.reason)).toMatch(/not a git repository/i)
+    }
+    expect(worktreeListSpawns()).toBe(firstListings)
+
+    await git(['init', '-q', '-b', 'main'], plain)
+    now += MEMBERSHIP_REUSE_WINDOW_MS
+    const { rows } = await readWorktreeMembership(plain)
+    expect(rows.map((row) => row.path)).toEqual([plain])
+  })
 })
 
 describe('worktree membership model: freshness', () => {

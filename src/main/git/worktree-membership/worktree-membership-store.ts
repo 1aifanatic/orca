@@ -17,6 +17,12 @@ import {
   type MembershipDerivationStart,
   type WorktreeMembershipModel
 } from './worktree-membership-model'
+import {
+  _resetNotRepositoryVerdictsForTests,
+  dropNotRepositoryVerdicts,
+  readNotRepositoryVerdict,
+  readWithoutModel
+} from './worktree-membership-not-repository'
 import { PromiseSettlementWaiters } from '../../../shared/promise-settlement-waiters'
 
 export { MissingRepoPathError } from './worktree-membership-derivation'
@@ -49,7 +55,7 @@ const models = new Map<string, WorktreeMembershipModel>()
 
 /** Waits on shared model work under this reader's own deadline and signal. */
 function awaitModelWork<T>(
-  model: WorktreeMembershipModel,
+  repoPath: string,
   work: PromiseSettlementWaiters<T>,
   options: WorktreeMembershipReadOptions
 ): Promise<T> {
@@ -57,7 +63,7 @@ function awaitModelWork<T>(
   // stay attached to it. Zero is no deadline override, as the Git runner treats it.
   return work.wait({
     timeoutMs: options.waitMs || options.timeout || WORKTREE_LIST_TIMEOUT_MS,
-    createTimeoutError: () => new WorktreeMembershipTimeoutError(model.repoPath),
+    createTimeoutError: () => new WorktreeMembershipTimeoutError(repoPath),
     signal: options.signal,
     createAbortError: () => options.signal?.reason
   })
@@ -84,6 +90,7 @@ function dropIdleModels(now: number): void {
       models.delete(key)
     }
   }
+  dropNotRepositoryVerdicts(now)
 }
 
 function startModel(
@@ -156,14 +163,14 @@ function readModel(
   }
   // A queued follow-up means the running derivation was already too old for an earlier reader.
   if (model.followUp) {
-    return awaitModelWork(model, model.followUp, options)
+    return awaitModelWork(model.repoPath, model.followUp, options)
   }
   const inFlight = model.inFlight
   if (!inFlight) {
-    return awaitModelWork(model, startDerivation(model, options), options)
+    return awaitModelWork(model.repoPath, startDerivation(model, options), options)
   }
   if (isReusable(model, inFlight, now)) {
-    return awaitModelWork(model, inFlight.work, options)
+    return awaitModelWork(model.repoPath, inFlight.work, options)
   }
   // One derivation per model at a time, so a slow or hung disk never stacks fs work. A reader that
   // cannot reuse the running one shares the next, which starts after it arrived.
@@ -177,7 +184,7 @@ function readModel(
       return startDerivation(model, options).promise
     })
   model.followUp = new PromiseSettlementWaiters(followUp)
-  return awaitModelWork(model, model.followUp, options)
+  return awaitModelWork(model.repoPath, model.followUp, options)
 }
 
 /**
@@ -195,15 +202,21 @@ export async function readWorktreeMembership(
   const now = Date.now()
   dropIdleModels(now)
   const key = canonicalWorktreePath(repoPath)
+  const verdict = await readNotRepositoryVerdict(key, repoPath, (check) =>
+    awaitModelWork(repoPath, check, options)
+  )
+  if (verdict) {
+    throw verdict.error
+  }
   const model = models.get(key) ?? startModel(key, repoPath, options)
   model.lastReadAt = now
   const building = model.building
   if (building) {
     // Checked on arrival, as for any in-flight derivation: a later reader re-derives once it lands.
     const reusable = isReusable(model, building, now)
-    const rows = await awaitModelWork(model, building.work, options)
+    const rows = await awaitModelWork(model.repoPath, building.work, options)
     if (rows === null) {
-      return { rows: await readTranslatedWorktreeGraph(repoPath, options), fromModel: false }
+      return { rows: await readWithoutModel(key, repoPath, options), fromModel: false }
     }
     if (reusable) {
       return { rows, fromModel: true }
@@ -248,6 +261,7 @@ export function retainWorktreeMembershipModels(registeredRepoPaths: readonly str
       models.delete(key)
     }
   }
+  dropNotRepositoryVerdicts(Date.now(), registered)
 }
 
 /**
@@ -268,4 +282,5 @@ export function _getWorktreeMembershipModelForTests(
 
 export function _resetWorktreeMembershipModelsForTests(): void {
   models.clear()
+  _resetNotRepositoryVerdictsForTests()
 }
