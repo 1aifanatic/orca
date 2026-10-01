@@ -39,6 +39,7 @@ import {
 } from '../../../../shared/agent-session-failure-words'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { isRetryingStructuredAgentSessionStart } from '../../../../shared/structured-agent-session-start-retry'
+import { failedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { translate } from '@/i18n/i18n'
@@ -192,7 +193,9 @@ export function structuredAgentSessionDeliveryNotices(
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly StatedStartFailure[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
-  failedHere: ReadonlySet<string>
+  failedHere: ReadonlySet<string>,
+  /** Whether a Retry here can send again a message sent from elsewhere: its words alone can be. */
+  canResend: (clientMessageId: string) => boolean = () => false
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -230,6 +233,23 @@ export function structuredAgentSessionDeliveryNotices(
         text: startRetryingNoticeText(submission, agentName)
       })
     }
+  }
+  for (const submission of failedStartsSentElsewhere(submissions, outbox)) {
+    const { clientMessageId } = submission
+    const retryControl = canResend(clientMessageId)
+    const fact = readWholeAgentSessionFailureFact(submission.rejection)
+    const text = fact
+      ? agentSessionFailureSentence(
+          fact,
+          'rejection',
+          { agentName, retryControl },
+          sayAgentSessionFailureTranslated
+        )
+      : (submission.reason ?? '')
+    notices.set(
+      agentJournalSubmissionKey(clientMessageId),
+      retryControl ? { text, onRetry: () => retry(clientMessageId) } : { text }
+    )
   }
   return notices
 }

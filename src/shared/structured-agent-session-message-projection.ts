@@ -7,6 +7,7 @@ import type { NativeChatMessage } from './native-chat-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
+import { failedStartsSentElsewhere } from './structured-agent-session-failed-start-elsewhere'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
 
 export function projectStructuredAgentSessionMessages(
@@ -39,6 +40,21 @@ export function projectStructuredAgentSessionMessages(
       .filter(isQueuedAgentJournalSubmission)
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
+  // Sent from elsewhere and refused for good by a failed start: shown as unsent, as this client's
+  // own would be, where the journal recorded it.
+  const unsentElsewhere = projectItems(
+    failedStartsSentElsewhere(submissions, outbox).flatMap((submission) => {
+      const item = refused.get(agentJournalSubmissionKey(submission.clientMessageId))
+      return item ? [item] : []
+    })
+  ).map((message): NativeChatMessage => {
+    const recorded = refused.get(message.id)
+    return {
+      ...message,
+      unsent: true,
+      ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
+    }
+  })
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
   for (const message of projectItems(visibleItems)) {
@@ -52,6 +68,7 @@ export function projectStructuredAgentSessionMessages(
     // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...collapseProviderRetryRuns(delivered),
     ...held,
+    ...unsentElsewhere,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
       .map((entry): NativeChatMessage => {
