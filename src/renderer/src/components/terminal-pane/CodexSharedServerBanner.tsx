@@ -1,21 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Check, Copy, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { isCodexSharedServerWarningEnabled } from '../../../../shared/codex-terminal-server-isolation'
+import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
 
-export const CODEX_DISABLE_AUTO_START_COMMAND = 'codex features disable daemon_auto_start'
-// Why a second step: turning auto-start off stops new servers, but a running one is still joined.
-const CODEX_STOP_SHARED_SERVER_COMMAND = 'codex app-server daemon stop'
 // Why a ladder: Codex joins or starts the server a few seconds after its process appears.
 const CHECK_DELAYS_MS = [1_000, 4_000, 10_000] as const
 // Why module scope: a pane remounts on tab switches, and × must hold for the app session.
@@ -52,7 +42,7 @@ function askUntilOnSharedServer(
   }
 }
 
-function usePaneCodexOnSharedServer(ptyId: string, enabled: boolean): boolean {
+function usePaneCodexOnSharedServer(ptyId: string, enabled: boolean, recheck: number): boolean {
   const [joined, setJoined] = useState(false)
   useEffect(() => {
     const ask = window.api.pty.isCodexOnSharedServer
@@ -64,7 +54,7 @@ function usePaneCodexOnSharedServer(ptyId: string, enabled: boolean): boolean {
       cancel()
       setJoined(false)
     }
-  }, [enabled, ptyId])
+  }, [enabled, ptyId, recheck])
   return joined
 }
 
@@ -110,12 +100,24 @@ export function CodexSharedServerBanner({
       state.paneForegroundAgentByPaneKey[paneKey]?.agent === 'codex' ||
       state.agentStatusByPaneKey[paneKey]?.agentType === 'codex'
   )
-  const joined = usePaneCodexOnSharedServer(ptyId, warningEnabled && codexInPane && !dismissed)
-  if (!joined) {
+  // Why a recheck: after the fix stops the server, the banner hides unless a new one is joined.
+  const [recheck, setRecheck] = useState(0)
+  const joined = usePaneCodexOnSharedServer(
+    ptyId,
+    warningEnabled && codexInPane && !dismissed,
+    recheck
+  )
+  const [fixOpen, setFixOpen] = useState(false)
+  // Why fixOpen keeps it: stopping the server ends this pane's Codex, which must not close the dialog.
+  if (!joined && !fixOpen) {
     return null
   }
   return (
     <CodexSharedServerBannerContent
+      ptyId={ptyId}
+      fixOpen={fixOpen}
+      onFixOpenChange={setFixOpen}
+      onServerStopped={() => setRecheck((count) => count + 1)}
       onDismiss={() => {
         dismissedPtyIds.add(ptyId)
         setDismissed(true)
@@ -127,15 +129,22 @@ export function CodexSharedServerBanner({
   )
 }
 
-export function CodexSharedServerBannerContent({
+function CodexSharedServerBannerContent({
+  ptyId,
+  fixOpen,
+  onFixOpenChange,
+  onServerStopped,
   onDismiss,
   onDontShowAgain
 }: {
+  ptyId: string
+  fixOpen: boolean
+  onFixOpenChange: (open: boolean) => void
+  onServerStopped: () => void
   onDismiss: () => void
   onDontShowAgain: () => void
 }): React.JSX.Element {
   const ref = useReservePaneTopSpace()
-  const [fixOpen, setFixOpen] = useState(false)
 
   return (
     <div
@@ -148,7 +157,10 @@ export function CodexSharedServerBannerContent({
           Narrow and wide variants never share a property, so an unlayered utility cannot override them. */}
       <div className="@[44rem]:flex @[44rem]:items-center @[44rem]:gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-status-warning" aria-hidden="true" />
+          <TriangleAlert
+            className="mt-0.5 size-4 shrink-0 text-status-warning"
+            aria-hidden="true"
+          />
           <div className="min-w-0 leading-5">
             <p className="font-medium text-foreground">
               {translate(
@@ -164,7 +176,7 @@ export function CodexSharedServerBannerContent({
               <button
                 type="button"
                 className="text-foreground underline underline-offset-2 hover:text-foreground/80"
-                onClick={() => setFixOpen(true)}
+                onClick={() => onFixOpenChange(true)}
               >
                 {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
               </button>
@@ -172,7 +184,7 @@ export function CodexSharedServerBannerContent({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1 @[44rem]:shrink-0 @max-[44rem]:mt-1.5 @max-[44rem]:pl-6.5">
-          <Button type="button" variant="outline" size="xs" onClick={() => setFixOpen(true)}>
+          <Button type="button" variant="outline" size="xs" onClick={() => onFixOpenChange(true)}>
             {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
           </Button>
           <Button type="button" variant="ghost" size="xs" onClick={onDontShowAgain}>
@@ -183,136 +195,12 @@ export function CodexSharedServerBannerContent({
           </Button>
         </div>
       </div>
-      <CodexSharedServerFixDialog open={fixOpen} onOpenChange={setFixOpen} />
+      <CodexSharedServerFixDialog
+        ptyId={ptyId}
+        open={fixOpen}
+        onOpenChange={onFixOpenChange}
+        onServerStopped={onServerStopped}
+      />
     </div>
-  )
-}
-
-function CommandBlock({ command }: { command: string }): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    if (!copied) {
-      return
-    }
-    const timer = setTimeout(() => setCopied(false), 1_500)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border bg-muted py-1.5 pr-1.5 pl-3">
-      <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">
-        {command}
-      </code>
-      <Button
-        type="button"
-        variant="outline"
-        size="xs"
-        onClick={() =>
-          void window.api.ui
-            .writeClipboardText(command)
-            .then(() => setCopied(true))
-            .catch(() => {})
-        }
-      >
-        {copied ? <Check /> : <Copy />}
-        {copied
-          ? translate('terminal.codexSharedServerBanner.copied', 'Copied')
-          : translate('terminal.codexSharedServerBanner.copy', 'Copy')}
-      </Button>
-    </div>
-  )
-}
-
-function FixStep({
-  step,
-  title,
-  command,
-  note,
-  warning
-}: {
-  step: number
-  title: string
-  command: string
-  note?: string
-  warning?: string
-}): React.JSX.Element {
-  return (
-    <div className="flex gap-3">
-      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-        {step}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <p className="text-sm font-medium">{title}</p>
-        <CommandBlock command={command} />
-        {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
-        {warning ? <p className="text-xs text-status-warning">{warning}</p> : null}
-      </div>
-    </div>
-  )
-}
-
-function CodexSharedServerFixDialog({
-  open,
-  onOpenChange
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}): React.JSX.Element {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {translate(
-              'terminal.codexSharedServerBanner.dialogTitle',
-              'Give each Codex tab its own server'
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {translate(
-              'terminal.codexSharedServerBanner.dialogDescription',
-              'Codex sessions started directly in a terminal share one background server. Orca keeps the Codex sessions it starts separate. When sessions share a server, closing one can end the others, and agent status can be wrong.'
-            )}
-          </DialogDescription>
-        </DialogHeader>
-        <p className="text-sm font-medium">
-          {translate(
-            'terminal.codexSharedServerBanner.stepsHeading',
-            'Run these once in any terminal'
-          )}
-        </p>
-        <div className="flex flex-col gap-4">
-          <FixStep
-            step={1}
-            title={translate('terminal.codexSharedServerBanner.step1Title', 'Turn off Codex server sharing')}
-            command={CODEX_DISABLE_AUTO_START_COMMAND}
-            note={translate(
-              'terminal.codexSharedServerBanner.step1Note',
-              'This changes your Codex settings, so it also applies outside Orca.'
-            )}
-          />
-          <FixStep
-            step={2}
-            title={translate('terminal.codexSharedServerBanner.step2Title', 'Stop the running shared server')}
-            command={CODEX_STOP_SHARED_SERVER_COMMAND}
-            warning={translate(
-              'terminal.codexSharedServerBanner.step2Warning',
-              'Closes any open Codex sessions that share the server'
-            )}
-          />
-        </div>
-        <DialogFooter className="items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            {translate(
-              'terminal.codexSharedServerBanner.undo',
-              'To undo, run codex features enable daemon_auto_start.'
-            )}
-          </p>
-          <Button type="button" onClick={() => onOpenChange(false)}>
-            {translate('terminal.codexSharedServerBanner.done', 'Done')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }

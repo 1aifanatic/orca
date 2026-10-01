@@ -49,7 +49,7 @@ export function TerminalPaneCodexSharedServerPortals({
 }: {
   controller: TerminalPaneController
 }): React.JSX.Element | null {
-  const { managedPanes, paneTransportsRef, tabId } = controller
+  const { managedPanes, paneTransportsRef, savedLayout, tabId } = controller
   // Why: a paired web client's terminals belong to the host, whose setting this window does not own.
   if (isPairedWebClientWindow()) {
     return null
@@ -57,7 +57,10 @@ export function TerminalPaneCodexSharedServerPortals({
   return (
     <>
       {managedPanes.map((pane) => {
-        const ptyId = paneTransportsRef.current.get(pane.id)?.getPtyId()
+        // Why the saved fallback: a restored pane's transport has no pty id until it reattaches.
+        const ptyId =
+          paneTransportsRef.current.get(pane.id)?.getPtyId() ??
+          savedLayout.ptyIdsByLeafId?.[pane.leafId]
         if (!ptyId) {
           return null
         }

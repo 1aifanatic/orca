@@ -68,7 +68,10 @@ describe('codexCommandLineJoinsSharedServer', () => {
     ['doctor', 'codex doctor'],
     ['plugin', 'codex plugin list'],
     ['sandbox', 'codex sandbox macos ls'],
-    ['debug', 'codex debug models']
+    ['debug', 'codex debug models'],
+    ['an apostrophe in a prompt before --no-daemon', "codex don't touch tests --no-daemon"],
+    ['an apostrophe before a subcommand', "codex it's exec time"],
+    ['an apostrophe through the launcher', `${NPM_LAUNCHER} don't break --oss`]
   ])('%s stays off the shared server', (_label, commandLine) => {
     expect(codexCommandLineJoinsSharedServer(commandLine)).toBe(false)
   })

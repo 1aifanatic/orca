@@ -88,5 +88,22 @@ export function codexCommandLineJoinsSharedServer(commandLine: string): boolean 
       .replace(/\.exe$/, '')
   )
   const args = tokens.slice(entrypoint === null ? 1 : tokens.indexOf(entrypoint, 1) + 1)
-  return !args.some((token) => isEmbeddedFlag(token) || NON_TUI_SUBCOMMANDS.has(token))
+  // Why the plain split too: a lone `'` in a space-joined prompt (`don't`) swallows later tokens.
+  const plainArgs = commandLine
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .map((token) => token.replace(/^["']+|["']+$/g, ''))
+  return ![...args, ...plainArgs].some(
+    (token) => isEmbeddedFlag(token) || NON_TUI_SUBCOMMANDS.has(token)
+  )
 }
+
+/** The fix's commands, as argv after the `codex` program; shown verbatim in the UI. */
+export const CODEX_DISABLE_SHARED_SERVER_ARGS = [
+  'features',
+  'disable',
+  'daemon_auto_start'
+] as const
+export const CODEX_STOP_SHARED_SERVER_ARGS = ['app-server', 'daemon', 'stop'] as const
+export const CODEX_SHARED_SERVER_FEATURE_KEY = 'daemon_auto_start'

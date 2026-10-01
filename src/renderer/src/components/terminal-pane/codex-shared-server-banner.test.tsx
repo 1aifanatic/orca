@@ -6,17 +6,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { getDefaultSettings } from '../../../../shared/constants'
+import { CodexSharedServerBanner } from './CodexSharedServerBanner'
 import {
   CODEX_DISABLE_AUTO_START_COMMAND,
-  CodexSharedServerBanner
-} from './CodexSharedServerBanner'
+  CODEX_STOP_SHARED_SERVER_COMMAND
+} from './CodexSharedServerFixDialog'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const PANE_KEY = 'tab-1:leaf-1'
+const TITLE = 'This Codex is sharing a server'
 let paneElement: HTMLDivElement
 let root: Root
 let isCodexOnSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
+let disableCodexSharedServerAutoStart: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
+let stopCodexSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
 let writeClipboardText: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
 let updateSettings: ReturnType<typeof vi.fn<(updates: Partial<GlobalSettings>) => Promise<void>>>
 let nextPtyId = 0
@@ -47,8 +51,9 @@ async function advance(ms: number): Promise<void> {
   })
 }
 
+// Why document: the dialog portals out of the pane.
 function button(label: string): HTMLButtonElement {
-  const match = Array.from(paneElement.querySelectorAll('button')).find(
+  const match = Array.from(document.querySelectorAll('button')).find(
     (candidate) =>
       candidate.textContent?.trim() === label || candidate.getAttribute('aria-label') === label
   )
@@ -68,6 +73,8 @@ beforeEach(() => {
   document.body.appendChild(paneElement)
   root = createRoot(paneElement)
   isCodexOnSharedServer = vi.fn(() => Promise.resolve(true))
+  disableCodexSharedServerAutoStart = vi.fn(() => Promise.resolve(true))
+  stopCodexSharedServer = vi.fn(() => Promise.resolve(true))
   writeClipboardText = vi.fn(() => Promise.resolve())
   updateSettings = vi.fn((updates: Partial<GlobalSettings>) => {
     setState({ ...useAppStore.getState().settings, ...updates })
@@ -75,7 +82,10 @@ beforeEach(() => {
   })
   Object.defineProperty(window, 'api', {
     configurable: true,
-    value: { pty: { isCodexOnSharedServer }, ui: { writeClipboardText } }
+    value: {
+      pty: { isCodexOnSharedServer, disableCodexSharedServerAutoStart, stopCodexSharedServer },
+      ui: { writeClipboardText }
+    }
   })
 })
 
@@ -88,16 +98,15 @@ afterEach(() => {
 })
 
 describe('CodexSharedServerBanner', () => {
-  it('shows the command and reserves its height at the top of the pane', async () => {
+  it('shows the warning and reserves its height at the top of the pane', async () => {
     setState({})
     await renderBanner()
-    expect(paneElement.textContent).not.toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+    expect(paneElement.textContent).not.toContain(TITLE)
 
     await advance(1_000)
 
     expect(isCodexOnSharedServer).toHaveBeenCalledWith(ptyId)
     expect(paneElement.textContent).toContain('agent status may be wrong')
-    expect(paneElement.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
     expect(paneElement.dataset.topBanner).toBe('')
     expect(paneElement.style.getPropertyValue('--orca-pane-top-banner-height')).toMatch(/px$/)
   })
@@ -109,18 +118,64 @@ describe('CodexSharedServerBanner', () => {
     await advance(1_000)
     expect(paneElement.textContent).toBe('')
     await advance(4_000)
-    expect(paneElement.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+    expect(paneElement.textContent).toContain(TITLE)
     await advance(60_000)
     expect(isCodexOnSharedServer).toHaveBeenCalledTimes(2)
   })
 
-  it('copies the command', async () => {
+  it('shows each command Orca runs, then turns sharing off and reads back success', async () => {
     setState({})
     await renderBanner()
     await advance(1_000)
+    await act(async () => button('Fix').click())
+    expect(document.body.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+    expect(document.body.textContent).toContain(CODEX_STOP_SHARED_SERVER_COMMAND)
+
+    await act(async () => button('Turn off').click())
+
+    expect(disableCodexSharedServerAutoStart).toHaveBeenCalledWith(ptyId)
+    expect(document.body.textContent).toContain('Turned off')
+    expect(() => button('Copy')).toThrow()
+  })
+
+  it('falls back to a copyable command when a step fails', async () => {
+    disableCodexSharedServerAutoStart.mockResolvedValueOnce(false)
+    setState({})
+    await renderBanner()
+    await advance(1_000)
+    await act(async () => button('Fix').click())
+    await act(async () => button('Turn off').click())
+
+    expect(document.body.textContent).toContain("Orca couldn't turn this off.")
+    expect(document.body.textContent).not.toContain('Turned off')
     await act(async () => button('Copy').click())
     expect(writeClipboardText).toHaveBeenCalledWith(CODEX_DISABLE_AUTO_START_COMMAND)
-    expect(paneElement.textContent).toContain('Copied')
+  })
+
+  it('confirms before stopping the server, then hides once it is gone', async () => {
+    setState({})
+    await renderBanner()
+    await advance(1_000)
+    await act(async () => button('Fix').click())
+    await act(async () => button('Stop server').click())
+    expect(stopCodexSharedServer).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Stop the shared server?')
+
+    await act(async () => button('Cancel').click())
+    expect(stopCodexSharedServer).not.toHaveBeenCalled()
+
+    await act(async () => button('Stop server').click())
+    const confirm = Array.from(document.querySelectorAll('button')).filter(
+      (candidate) => candidate.textContent?.trim() === 'Stop server'
+    )
+    isCodexOnSharedServer.mockResolvedValue(false)
+    await act(async () => confirm.at(-1)?.click())
+    expect(stopCodexSharedServer).toHaveBeenCalledWith(ptyId)
+    expect(document.body.textContent).toContain('Stopped')
+
+    await act(async () => button('Done').click())
+    await advance(20_000)
+    expect(paneElement.textContent).toBe('')
   })
 
   it('dismisses for this pane only, and stays dismissed after a remount', async () => {
@@ -163,7 +218,7 @@ describe('CodexSharedServerBanner', () => {
     setState({})
     await renderBanner()
     await advance(1_000)
-    expect(paneElement.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+    expect(paneElement.textContent).toContain(TITLE)
     await act(async () => setState({}, null))
     expect(paneElement.textContent).toBe('')
   })

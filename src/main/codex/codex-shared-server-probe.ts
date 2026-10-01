@@ -81,6 +81,11 @@ export function isCodexSharedServerLive(codexHome: string): Promise<boolean> {
   return live
 }
 
+/** Drops a cached answer so the next ask sees a server the caller just stopped. */
+export function forgetCodexSharedServerProbe(codexHome: string): void {
+  probes.delete(codexHome)
+}
+
 export function resetCodexSharedServerProbesForTests(): void {
   probes.clear()
 }

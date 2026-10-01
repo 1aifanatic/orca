@@ -128,6 +128,9 @@ export type PtyApi = {
   confirmForegroundProcess: (id: string) => Promise<string | null>
   /** Local panes only; absent on paired web clients. */
   isCodexOnSharedServer?: (id: string) => Promise<boolean>
+  /** Runs the fix with the pane's own Codex; true only once verified. Local panes only. */
+  disableCodexSharedServerAutoStart?: (id: string) => Promise<boolean>
+  stopCodexSharedServer?: (id: string) => Promise<boolean>
   getCwd: (id: string) => Promise<string>
   getSize: (id: string) => Promise<{ cols: number; rows: number } | null>
   listSessions: (scope?: PtySessionListScope) => Promise<PtyListedSession[]>
