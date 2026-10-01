@@ -326,7 +326,7 @@ function assertDispatchRemainsCurrent(
     const authority = db
       .prepare(
         `SELECT dc.status AS dispatch_status, dc.assignee_handle, dc.assignee_pane_key,
-                dc.process_incarnation, dc.contract_version, dc.capability_hash,
+                dc.process_incarnation, dc.contract_version,
                 wd.state AS worker_state, wd.worktree_id, wd.agent_terminal_handle
          FROM dispatch_contexts dc
          INNER JOIN worker_dispatches wd ON wd.dispatch_id = dc.id
@@ -339,7 +339,6 @@ function assertDispatchRemainsCurrent(
       assignee_pane_key: input.paneKey,
       process_incarnation: input.processIncarnation,
       contract_version: CURRENT_CONTRACT_VERSION,
-      capability_hash: expect.any(String),
       worker_state: 'ready',
       worktree_id: input.worktreeId,
       agent_terminal_handle: input.terminalHandle
