@@ -79,6 +79,11 @@ describe('workspace delete while a terminal-service version does not answer', ()
       })
     ).rejects.toThrow(WORKTREE_TEARDOWN_FORCE_HINT)
     expect(provider.shutdown).toHaveBeenCalledWith(`${WORKTREE}@@old`, expect.anything())
+    // The listing already found its owner silent, so the verdict does not wait on it again.
+    expect(provider.confirmPtyStopped).not.toHaveBeenCalledWith(
+      `${WORKTREE}@@old`,
+      expect.anything()
+    )
   })
 
   it('refuses when a saved tab of this workspace is bound to an id no answered version listed', async () => {

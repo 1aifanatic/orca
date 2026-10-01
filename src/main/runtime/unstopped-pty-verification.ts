@@ -34,12 +34,14 @@ export type UnstoppedPtyVerdict = PtyLivenessVerdict
 export async function verifyUnstoppedPtys(
   failedPtyIds: readonly string[],
   provider: IPtyProvider,
-  sweepBudgetMs: number
+  sweepBudgetMs: number,
+  /** Ids this removal's listing already tied to a version that did not answer. */
+  silentEvidence: ReadonlySet<string> = new Set()
 ): Promise<UnstoppedPtyVerdict> {
   const verifyBudgetMs = Math.max(WORKTREE_TEARDOWN_VERIFY_GRACE_MS, sweepBudgetMs)
   const verifyDeadline = Date.now() + verifyBudgetMs
   if (provider.confirmPtyStopped) {
-    return await verifyEachWithItsOwner(failedPtyIds, provider, verifyDeadline)
+    return await verifyEachWithItsOwner(failedPtyIds, provider, verifyDeadline, silentEvidence)
   }
   let listError: unknown
   const sessions = await settleBeforeDeadline(
@@ -70,12 +72,16 @@ export async function verifyUnstoppedPtys(
 async function verifyEachWithItsOwner(
   failedPtyIds: readonly string[],
   provider: IPtyProvider,
-  verifyDeadline: number
+  verifyDeadline: number,
+  silentEvidence: ReadonlySet<string>
 ): Promise<UnstoppedPtyVerdict> {
   const stopped = await settleBeforeDeadline(
     () =>
       mapWithConcurrency(failedPtyIds, PER_PTY_VERIFY_CONCURRENCY, (ptyId) =>
-        provider.confirmPtyStopped!(ptyId, { deadlineMs: verifyDeadline }).catch(() => null)
+        // Why no probe: this removal already found the owner silent; asking again only waits it out.
+        silentEvidence.has(ptyId)
+          ? Promise.resolve(null)
+          : provider.confirmPtyStopped!(ptyId, { deadlineMs: verifyDeadline }).catch(() => null)
       ),
     null,
     verifyDeadline
@@ -112,7 +118,8 @@ export async function resolveUnstoppedPtyVerdict(
   provider: IPtyProvider,
   sweepBudgetMs: number,
   providerObservesOwningHost: boolean,
-  runtime?: OrcaRuntimeService
+  runtime?: OrcaRuntimeService,
+  silentEvidence?: ReadonlySet<string>
 ): Promise<UnstoppedPtyVerdict> {
   if (failedPtyIds.length === 0) {
     return { status: 'exited' }
@@ -125,7 +132,7 @@ export async function resolveUnstoppedPtyVerdict(
       }
     )
   }
-  return verifyUnstoppedPtys(failedPtyIds, provider, sweepBudgetMs)
+  return verifyUnstoppedPtys(failedPtyIds, provider, sweepBudgetMs, silentEvidence)
 }
 
 /** Names the blocking PTYs so a wedged removal is diagnosable, not just refused. */

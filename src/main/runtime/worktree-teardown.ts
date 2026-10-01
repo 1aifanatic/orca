@@ -123,6 +123,7 @@ export async function killAllProcessesForWorktree(
   // PTY verdict, so a structured refusal still outranks one.
   const structuredSweep = sweepStructuredSessions(worktreeId, deps, deadline, sweeps)
   const unchecked = new Set<number>()
+  const silentEvidence = new Set<string>()
   void structuredSweep.catch(() => undefined)
   const stopAttempts = new Map<string, Promise<boolean>>()
   const stopPty = (
@@ -188,6 +189,7 @@ export async function killAllProcessesForWorktree(
               deps.onPtyStopped,
               {
                 failClosed: deps.requirePhysicalStop,
+                onSilentEvidence: (ptyIds) => ptyIds.forEach((id) => silentEvidence.add(id)),
                 onUncheckedSource: (protocolVersion) =>
                   protocolVersion !== null && unchecked.add(protocolVersion),
                 ...(deps.persistedPaneSessionIds
@@ -285,7 +287,8 @@ export async function killAllProcessesForWorktree(
       deps.includeProviderInventory !== false ||
         (deps.resolvedConnectionId === undefined &&
           deps.resolvedRuntimeEnvironmentId === undefined),
-      deps.runtime
+      deps.runtime,
+      silentEvidence
     )
     if (verdict.status === 'exited') {
       for (const ptyId of failedPtyIds) {

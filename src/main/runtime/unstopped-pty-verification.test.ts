@@ -38,4 +38,14 @@ describe('verifyUnstoppedPtys with a provider that confirms stops per owner', ()
       verifyUnstoppedPtys(['wt@@a', 'wt@@frozen'], provider, 1_000)
     ).resolves.toMatchObject({ status: 'unverifiable' })
   })
+
+  it('reads an id the listing tied to a silent version as unverifiable without asking its owner', async () => {
+    const provider = providerAnswering({ 'wt@@a': true, 'wt@@silent': true })
+
+    await expect(
+      verifyUnstoppedPtys(['wt@@a', 'wt@@silent'], provider, 1_000, new Set(['wt@@silent']))
+    ).resolves.toMatchObject({ status: 'unverifiable' })
+    expect(provider.confirmPtyStopped).toHaveBeenCalledTimes(1)
+    expect(provider.confirmPtyStopped).not.toHaveBeenCalledWith('wt@@silent', expect.anything())
+  })
 })

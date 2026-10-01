@@ -40,6 +40,8 @@ export async function sweepProviderByPrefix(
   opts: {
     failClosed?: boolean
     onUncheckedSource?: (protocolVersion: number | null) => void
+    /** Ids this listing tied to a version that did not answer; their owner need not be asked again. */
+    onSilentEvidence?: (ptyIds: readonly string[]) => void
     /** Ids this worktree's saved tabs are bound to; evidence for a version that did not answer. */
     persistedPaneSessionIds?: readonly string[]
   } = {}
@@ -122,10 +124,12 @@ function answeredAndLastKnown(
   worktreeId: string,
   opts: {
     onUncheckedSource?: (protocolVersion: number | null) => void
+    onSilentEvidence?: (ptyIds: readonly string[]) => void
     persistedPaneSessionIds?: readonly string[]
   }
 ): Pick<PtyProcessInfo, 'id' | 'cwd' | 'worktreeId'>[] {
   const evidence = silentVersionEvidence(listings, worktreeId, opts.persistedPaneSessionIds)
+  opts.onSilentEvidence?.(evidence)
   if (evidence.length === 0) {
     for (const listing of listings) {
       if (listing.contact === 'unverifiable') {
