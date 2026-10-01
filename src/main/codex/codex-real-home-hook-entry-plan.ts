@@ -3,7 +3,10 @@ import {
   type HookCommandConfig,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
-import type { CodexManagedHookInstallMaterial } from './codex-hook-definition'
+import {
+  getCodexManagedHookTimeoutSeconds,
+  type CodexManagedHookInstallMaterial
+} from './codex-hook-definition'
 import { CODEX_HOOK_COMMAND_FORM, readCodexHookCommandForm } from './codex-hook-command-form'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import type { CodexTrustEntry } from './config-toml-trust'
@@ -200,7 +203,7 @@ export function planRealHomeCodexHookEntries(args: {
         // Why in place: the slot keeps its position, so no user trust key moves.
         const slot = current[keeper.groupIndex]!
         const slotHooks = [...slot.hooks!]
-        const hook = buildManagedCommandHook(command)
+        const hook = buildManagedCommandHook(command, getCodexManagedHookTimeoutSeconds(eventName))
         slotHooks[keeper.handlerIndex] = hook
         definitions = [...current]
         definitions[keeper.groupIndex] = { ...slot, hooks: slotHooks }
@@ -233,7 +236,7 @@ export function planRealHomeCodexHookEntries(args: {
         (handlers.length === 0 && directOrcaUnits.length === 0))
     ) {
       // Why last: no user hook's positional trust key moves.
-      const hook = buildManagedCommandHook(command)
+      const hook = buildManagedCommandHook(command, getCodexManagedHookTimeoutSeconds(eventName))
       definitions = [...definitions, { hooks: [hook] }]
       written = { hook, replaced: null }
     }

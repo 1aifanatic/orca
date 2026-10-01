@@ -30,6 +30,7 @@ import {
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   hasCodexTranscriptSubagents,
+  markCodexLeadTurnInterrupted,
   resolveCodexPaneStatus,
   setCodexMainAgentTurnState
 } from './codex-state'
@@ -162,7 +163,7 @@ export function normalizeCodexEvent(
       ? 'working'
       : eventName === 'PermissionRequest' || isUserInputPreTool
         ? 'waiting'
-        : eventName === 'Stop'
+        : eventName === 'Stop' || eventName === 'Interrupt'
           ? 'done'
           : null
   if (!stateName) {
@@ -170,6 +171,10 @@ export function normalizeCodexEvent(
   }
 
   const agentId = readString(hookPayload, 'agent_id')
+  // Why: Codex fires Interrupt only for the root thread (hook_runtime.rs skips subagents); a child-scoped one must not end the lead turn.
+  if (agentId && eventName === 'Interrupt') {
+    return null
+  }
   const transcriptPath = readFirstString(hookPayload, ['transcript_path', 'transcriptPath'])
   if (eventName === 'SessionStart' && !agentId) {
     // Why: a pane can host a new Codex process after the old one exited without child Stop hooks.
@@ -231,13 +236,18 @@ export function normalizeCodexEvent(
     stateName
   )
   const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
-  const record = setCodexMainAgentTurnState(state, paneKey, {
-    state: ownedState,
-    ...codexOutcomeRestatedByStop(previousLead, ownedState),
-    model:
-      normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
-      (eventName === 'SessionStart' ? undefined : previousLead?.model)
-  })
+  const model =
+    normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
+    (eventName === 'SessionStart' ? undefined : previousLead?.model)
+  // Why: the roster is kept; children an interrupted turn spawned fold in like after an inferred interrupt.
+  const record =
+    eventName === 'Interrupt'
+      ? markCodexLeadTurnInterrupted(state, paneKey, model)
+      : setCodexMainAgentTurnState(state, paneKey, {
+          state: ownedState,
+          ...codexOutcomeRestatedByStop(previousLead, ownedState),
+          model
+        })
   return buildCodexStatusPayload(state, eventName, promptText, paneKey, hookPayload, {
     ...resolveCodexPaneStatus(state, paneKey, record),
     updateLead: true

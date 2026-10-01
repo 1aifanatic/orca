@@ -139,13 +139,17 @@ export function seedCodexStateFromSnapshot(
   }
 }
 
-/** Sync the Codex lead record when the server infers an interrupt, so delayed child events cannot restore stale working state. */
-export function markCodexLeadTurnInterrupted(state: HookListenerState, paneKey: string): void {
+/** Ends the lead turn as cancelled (Codex's Interrupt hook, or a server-inferred interrupt), so delayed child events cannot restore stale working state. */
+export function markCodexLeadTurnInterrupted(
+  state: HookListenerState,
+  paneKey: string,
+  model?: string
+): CodexLeadTurnState {
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
-  setCodexMainAgentTurnState(state, paneKey, {
+  return setCodexMainAgentTurnState(state, paneKey, {
     state: 'done',
     outcome: 'cancellation',
-    model: lead?.model
+    model: model ?? lead?.model
   })
 }
 
@@ -153,7 +157,7 @@ export function codexLeadStateForHookEvent(
   eventName: string | undefined,
   normalizedState?: ParsedAgentStatusPayload['state']
 ): CodexLeadTurnState['state'] | undefined {
-  if (eventName === 'Stop') {
+  if (eventName === 'Stop' || eventName === 'Interrupt') {
     return 'done'
   }
   if (eventName === 'PermissionRequest') {
@@ -205,7 +209,9 @@ export function reconcileRemoteCodexState(
     if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
       roster.clear()
     }
-    if (leadState) {
+    if (eventName === 'Interrupt') {
+      markCodexLeadTurnInterrupted(state, paneKey, payload.model)
+    } else if (leadState) {
       const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
       setCodexMainAgentTurnState(state, paneKey, {
         state: leadState,

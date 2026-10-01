@@ -30,6 +30,7 @@ vi.mock('os', async (importOriginal) => {
 
 import { MANAGED_HOOK_TIMEOUT_MILLISECONDS, MANAGED_HOOK_TIMEOUT_SECONDS } from './installer-utils'
 import { CodexHookService } from '../codex/hook-service'
+import { CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS } from '../codex/codex-trust-identity'
 import { CursorHookService } from '../cursor/hook-service'
 import { CommandCodeHookService } from '../command-code/hook-service'
 import { GeminiHookService } from '../gemini/hook-service'
@@ -64,6 +65,8 @@ const JSON_INSTALLERS = [
   {
     agent: 'codex',
     timeout: MANAGED_HOOK_TIMEOUT_SECONDS,
+    // Why: Codex clamps Interrupt to 3s, so Orca writes that cap instead of the shared budget.
+    eventTimeouts: { Interrupt: CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS },
     configPath: `${REMOTE_HOME}/.codex/hooks.json`,
     install: (sftp: SFTPWrapper) => new CodexHookService().installRemote(sftp, REMOTE_HOME)
   },
@@ -162,13 +165,24 @@ function countManagedCarriersWithTimeout(
 
 describe('managed agent hook timeouts', () => {
   it('writes a config-level timeout on every managed JSON hook entry', async () => {
-    for (const { agent, configPath, install, timeout } of JSON_INSTALLERS) {
+    for (const installer of JSON_INSTALLERS) {
+      const { agent, configPath, install, timeout } = installer
       const { sftp, fs } = createFakeSftp()
       const status = await install(sftp)
       expect(status.state, `${agent} install state`).toBe('installed')
       const raw = fs.files.get(configPath)
       expect(raw, `${agent} config written`).toBeDefined()
-      const carriers = countManagedCarriersWithTimeout(JSON.parse(raw!), timeout)
+      const config = JSON.parse(raw!)
+      for (const [eventName, eventTimeout] of Object.entries(
+        'eventTimeouts' in installer ? installer.eventTimeouts : {}
+      )) {
+        expect(
+          countManagedCarriersWithTimeout(config.hooks[eventName], eventTimeout),
+          `${agent} ${eventName} managed entry`
+        ).toBeGreaterThan(0)
+        delete config.hooks[eventName]
+      }
+      const carriers = countManagedCarriersWithTimeout(config, timeout)
       expect(
         carriers,
         `${agent} should have at least one managed timeout-bearing entry`

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import {
   getSharedManagedScriptPath,
+  MANAGED_HOOK_TIMEOUT_SECONDS,
   writeHooksJson,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
@@ -10,8 +11,10 @@ import { buildCodexHookCommand } from './codex-hook-command-form'
 import { CODEX_HOOK_EVENT_LABEL, getCodexManagedScriptFileName } from './codex-hook-identity'
 import { getManagedScript } from './codex-hook-script'
 import type { CodexEventLabel } from './config-toml-trust'
+import { CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS } from './codex-trust-identity'
 
 // Why: Pre/PostToolUse feed the live in-flight-tool readout; PermissionRequest exits with no decision so Codex still shows its approval UI while Orca flips the pane to waiting.
+// Interrupt (Codex 0.150+) is the only hook an Esc-cancelled turn fires; older Codex ignores the unknown key.
 export const CODEX_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
@@ -20,7 +23,8 @@ export const CODEX_EVENTS = [
   'PostToolUse',
   'SubagentStart',
   'SubagentStop',
-  'Stop'
+  'Stop',
+  'Interrupt'
 ] as const
 
 export function getConfigPath(runtimeHomePath: string = getOrcaManagedCodexHomePath()): string {
@@ -50,7 +54,17 @@ export const CODEX_EVENT_LABEL: Record<(typeof CODEX_EVENTS)[number], CodexEvent
   PostToolUse: CODEX_HOOK_EVENT_LABEL.PostToolUse!,
   SubagentStart: CODEX_HOOK_EVENT_LABEL.SubagentStart!,
   SubagentStop: CODEX_HOOK_EVENT_LABEL.SubagentStop!,
-  Stop: CODEX_HOOK_EVENT_LABEL.Stop!
+  Stop: CODEX_HOOK_EVENT_LABEL.Stop!,
+  Interrupt: CODEX_HOOK_EVENT_LABEL.Interrupt!
+}
+
+// Why: Codex clamps Interrupt to 3s and warns at startup when a hook asks for more.
+export function getCodexManagedHookTimeoutSeconds(
+  eventName: (typeof CODEX_EVENTS)[number]
+): number {
+  return eventName === 'Interrupt'
+    ? CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS
+    : MANAGED_HOOK_TIMEOUT_SECONDS
 }
 
 export const CODEX_MANAGED_EVENT_LABELS = new Set<CodexEventLabel>(

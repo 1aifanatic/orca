@@ -2,7 +2,6 @@ import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
   buildManagedCommandHook,
   createManagedCommandMatcher,
-  MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJson,
   removeManagedCommands,
   writeManagedScript,
@@ -17,6 +16,7 @@ import {
 import {
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
+  getCodexManagedHookTimeoutSeconds,
   getCodexConfigTomlPath,
   getConfigPath,
   getManagedCommand,
@@ -112,7 +112,7 @@ export async function installCodexHooksExclusively(
     const current = Array.isArray(nextHooks[eventName]) ? nextHooks[eventName] : []
     const cleaned = removeManagedCommands(current, isManagedCommand)
     const definition: HookDefinition = {
-      hooks: [buildManagedCommandHook(command)]
+      hooks: [buildManagedCommandHook(command, getCodexManagedHookTimeoutSeconds(eventName))]
     }
     nextHooks[eventName] = [definition, ...cleaned]
     // Why: the status hook must run before user hooks so a slow
@@ -126,7 +126,7 @@ export async function installCodexHooksExclusively(
       groupIndex: 0,
       handlerIndex: 0,
       command,
-      timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
+      timeoutSec: getCodexManagedHookTimeoutSeconds(eventName)
     })
   }
   const trustEntries: CodexTrustEntry[] = [...mirroredTrustEntries, ...managedTrustEntries]

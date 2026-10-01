@@ -25,6 +25,7 @@ function matcherPatternForEvent(
   switch (eventLabel) {
     case 'user_prompt_submit':
     case 'stop':
+    case 'interrupt':
       return undefined
     case 'pre_tool_use':
     case 'permission_request':
@@ -38,11 +39,24 @@ function matcherPatternForEvent(
   }
 }
 
+export const CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS = 3
+
+// Why: Codex hashes the normalized timeout; Interrupt defaults to 1s and clamps to 3s (discovery.rs normalize_command_hook).
+export function normalizeCodexHookTimeoutSec(
+  eventLabel: CodexEventLabel,
+  timeoutSec: number | undefined
+): number {
+  if (eventLabel === 'interrupt') {
+    return Math.min(CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS, Math.max(1, timeoutSec ?? 1))
+  }
+  return Math.max(1, timeoutSec ?? 600)
+}
+
 export function computeCodexTrustedHash(entry: CodexTrustEntry): string {
   const handler: Record<string, unknown> = {
     type: 'command',
     command: entry.command,
-    timeout: Math.max(1, entry.timeoutSec ?? 600),
+    timeout: normalizeCodexHookTimeoutSec(entry.eventLabel, entry.timeoutSec),
     async: entry.async ?? false
   }
   if (entry.statusMessage !== undefined) {
@@ -205,7 +219,8 @@ function isCodexEventLabel(value: string): value is CodexEventLabel {
     value === 'user_prompt_submit' ||
     value === 'subagent_start' ||
     value === 'subagent_stop' ||
-    value === 'stop'
+    value === 'stop' ||
+    value === 'interrupt'
   )
 }
 
