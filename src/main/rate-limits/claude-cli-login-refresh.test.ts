@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import type {
+  ClaudeChildExitVerdict,
   ClaudeStreamJsonConnection,
   ClaudeStreamJsonConnectionHandlers,
   ClaudeStreamJsonLaunch
@@ -23,23 +24,32 @@ const authPreparation: ClaudeRuntimeAuthPreparation = {
 }
 const stillSelected = (): string => authPreparation.provenance
 
-function fakeConnect(getUsage: (handlers: ClaudeStreamJsonConnectionHandlers) => Promise<unknown>) {
+function fakeConnect(
+  getUsage: (handlers: ClaudeStreamJsonConnectionHandlers) => Promise<unknown>,
+  root: ClaudeChildExitVerdict['root'] = 'exited'
+) {
   const seen: { launch?: ClaudeStreamJsonLaunch; closes: number; usageTimeout?: number } = {
     closes: 0
   }
   const connect = vi.fn(
     async (launch: ClaudeStreamJsonLaunch, handlers: ClaudeStreamJsonConnectionHandlers = {}) => {
       seen.launch = launch
+      // Memoized like the real close(), so closes counts children closed, not calls.
+      let closing: Promise<boolean> | null = null
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the refresh only calls getUsage and close.
       return {
         getUsage: (options?: { timeoutMs?: number }) => {
           seen.usageTimeout = options?.timeoutMs
           return getUsage(handlers)
         },
-        close: async () => {
-          seen.closes += 1
-          return true
-        }
+        close: () => {
+          closing ??= (async () => {
+            seen.closes += 1
+            return true
+          })()
+          return closing
+        },
+        exitVerdict: { root, tree: 'exited' }
       } as unknown as ClaudeStreamJsonConnection
     }
   )
@@ -121,6 +131,23 @@ describe('refreshClaudeLoginViaCli', () => {
       message: 'claude stream-json exited (code 1): accept the updated terms'
     })
     expect(seen.closes).toBe(1)
+  })
+
+  it('reports a binary that could not be launched as not launched, not as a failed refresh', async () => {
+    const { connect, seen } = fakeConnect(async (handlers) => {
+      handlers.onFault?.(new Error('spawn /missing/claude ENOENT'))
+      throw new Error('Query closed before response received')
+    }, 'processless')
+
+    await expect(
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: stillSelected,
+        connect,
+        resolveCommand: () => '/missing/claude'
+      })
+    ).resolves.toEqual({ kind: 'not-launched', message: 'spawn /missing/claude ENOENT' })
+    expect(seen.closes).toBeGreaterThanOrEqual(1)
   })
 
   it('closes the child when the fetch is aborted mid-request', async () => {

@@ -25,6 +25,8 @@ export type ClaudeCliLoginRefreshOutcome =
   | { kind: 'failed'; message: string }
   /** Orca never started Claude, so the stored login cannot have changed because of it. */
   | { kind: 'not-started'; message: string }
+  /** The binary could not be launched (missing or not executable); no Claude ever ran. */
+  | { kind: 'not-launched'; message: string }
 
 type ConnectClaude = typeof openClaudeStreamJsonConnection
 
@@ -115,6 +117,11 @@ export async function refreshClaudeLoginViaCli(input: {
     return { kind: 'answered' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // Spawn errors arrive asynchronously after connect resolves; close() settles the verdict.
+    await connection.close()
+    if (connection.exitVerdict.root === 'processless') {
+      return { kind: 'not-launched', message: fault.first?.message ?? message }
+    }
     if (isUnsupportedSubtype(message)) {
       return { kind: 'unsupported', message }
     }

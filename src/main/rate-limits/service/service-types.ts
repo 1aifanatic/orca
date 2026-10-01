@@ -125,7 +125,7 @@ export function normalizePollingInterval(ms: number): number {
 export function isSystemDefaultClaudeAuth(
   authPreparation: ClaudeRuntimeAuthPreparation | undefined
 ): boolean {
-  // Why: fetch cycles treat missing Claude auth as system-default; align the PTY gate so refresh can't trigger auth flows.
+  // Why: fetch cycles treat missing Claude auth as system-default, so the headless login refresh never starts Claude for the user's own login.
   if (!authPreparation) {
     return true
   }

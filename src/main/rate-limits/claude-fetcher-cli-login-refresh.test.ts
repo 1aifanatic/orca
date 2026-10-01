@@ -239,6 +239,29 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
   })
 
+  it('reports Claude as unavailable, and backs off, when its binary cannot be launched', async () => {
+    vi.mocked(refreshClaudeLoginViaCli).mockResolvedValue({
+      kind: 'not-launched',
+      message: 'spawn /fake/bin/claude ENOENT'
+    })
+    vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValue(
+      storedLogin('stale-oauth-token')
+    )
+    netFetchMock.mockResolvedValue(usageError(401, 'authentication_error'))
+    const options = { authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() }
+
+    // Claude never ran, so nothing was learned about the login.
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      status: 'error',
+      usageMetadata: { failureKind: 'cli-unavailable' }
+    })
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      usageMetadata: { failureKind: 'cli-unavailable' }
+    })
+
+    expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
+  })
+
   it('does not start a CLI that lacks get_usage again', async () => {
     vi.mocked(refreshClaudeLoginViaCli).mockResolvedValue({
       kind: 'unsupported',

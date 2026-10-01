@@ -3975,10 +3975,10 @@
             "claude": {
               "signedOut": {
                 "label": "Déconnecté",
-                "message": "Ce compte Claude est déconnecté. Réauthentifiez-le dans Paramètres → Comptes pour voir son utilisation."
+                "message": "Ce compte Claude est déconnecté. Réauthentifiez-le dans Paramètres → Comptes de fournisseurs d'IA pour voir son utilisation."
               },
               "renewFailed": {
-                "message": "Claude n’a pas pu renouveler la connexion de ce compte. Lancez une session Claude sur ce compte pour la renouveler, ou réauthentifiez-le dans Paramètres → Comptes."
+                "message": "Claude n’a pas pu renouveler la connexion de ce compte. Lancez une session Claude sur ce compte pour la renouveler, ou réauthentifiez-le dans Paramètres → Comptes de fournisseurs d'IA."
               }
             }
           },

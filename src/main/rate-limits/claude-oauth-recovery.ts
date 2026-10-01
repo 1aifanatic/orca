@@ -119,11 +119,13 @@ export function makeClaudeUsageClassificationError(input: {
   })
 }
 
-// Both latches die on their own: a login that failed to refresh is skipped until its stored
+// Every latch dies on its own: a login that failed to refresh is skipped until its stored
 // credentials change or the backoff ends (a dead login and a network blip look the same from
-// here), and a CLI without get_usage until the installed binary changes.
+// here), a binary that could not launch until the backoff ends, and a CLI without get_usage
+// until the installed binary changes.
 const FAILED_LOGIN_REFRESH_BACKOFF_MS = 15 * 60_000
 const failedLoginRefreshByProvenance = new Map<string, { state: string; retryAtMs: number }>()
+const unlaunchableCliBinaryRetryAtMs = new Map<string, number>()
 const unsupportedCliBinaries = new Set<string>()
 
 function credentialStateKey(credentials: ClaudeOAuthCredentialReadResult): string {
@@ -142,6 +144,7 @@ function claudeBinaryKey(command: string): string {
 /** Test seam: the latches are process-wide. */
 export function resetClaudeLoginRefreshLatchesForTests(): void {
   failedLoginRefreshByProvenance.clear()
+  unlaunchableCliBinaryRetryAtMs.clear()
   unsupportedCliBinaries.clear()
 }
 
@@ -151,6 +154,8 @@ export type ClaudeLoginRepair =
   | { kind: 'not-renewed' }
   /** Nothing was learned about the login; report the original failure. */
   | { kind: 'unresolved' }
+  /** Claude could not be launched, so the login's state is unknown. */
+  | { kind: 'cli-unavailable' }
 
 /**
  * Lets the account's own Claude CLI refresh its expired login, then retries the usage endpoint
@@ -179,6 +184,9 @@ export async function repairClaudeCredentialsThenRetryOAuth(input: {
   if (unsupportedCliBinaries.has(binary)) {
     return { kind: 'not-renewed' }
   }
+  if (Date.now() < (unlaunchableCliBinaryRetryAtMs.get(binary) ?? 0)) {
+    return { kind: 'cli-unavailable' }
+  }
   recordClaudeUsageAttempt(input.attempts, 'cli')
   const outcome = await refreshClaudeLoginViaCli({
     authPreparation,
@@ -200,6 +208,11 @@ export async function repairClaudeCredentialsThenRetryOAuth(input: {
   if (outcome.kind === 'not-started') {
     // Claude never ran, so there is nothing to re-read and no reason to back off.
     return { kind: 'unresolved' }
+  }
+  if (outcome.kind === 'not-launched') {
+    // Backs off so a missing binary is not spawned on every poll.
+    unlaunchableCliBinaryRetryAtMs.set(binary, Date.now() + FAILED_LOGIN_REFRESH_BACKOFF_MS)
+    return { kind: 'cli-unavailable' }
   }
   if (outcome.kind === 'unsupported') {
     unsupportedCliBinaries.add(binary)
@@ -247,11 +260,15 @@ export async function repairClaudeCredentialsThenRetryOAuth(input: {
 
 /**
  * After Claude failed to renew the login, only the user can: by running Claude on the account
- * (it renews or asks them to sign in) or re-authenticating it.
+ * (it renews or asks them to sign in) or re-authenticating it. A Claude that never launched
+ * says nothing about the login, so that is reported as Claude being unavailable instead.
  */
 export function failureKindAfterClaudeLoginRepair(
   repair: ClaudeLoginRepair,
   failureKind: UsageRateLimitFailureKind
 ): UsageRateLimitFailureKind {
-  return repair.kind === 'not-renewed' ? 'delegated-refresh-required' : failureKind
+  if (repair.kind === 'not-renewed') {
+    return 'delegated-refresh-required'
+  }
+  return repair.kind === 'cli-unavailable' ? 'cli-unavailable' : failureKind
 }

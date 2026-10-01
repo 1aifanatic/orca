@@ -192,12 +192,12 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
       case 'delegated-refresh-required':
         return translate(
           'auto.components.status.bar.tooltip.claude.renewFailed.message',
-          'Claude could not renew this account’s sign-in. Start a Claude session on it to renew, or re-authenticate it in Settings → Accounts.'
+          'Claude could not renew this account’s sign-in. Start a Claude session on it to renew, or re-authenticate it in Settings → AI Provider Accounts.'
         )
       case 'missing-credentials':
         return translate(
           'auto.components.status.bar.tooltip.claude.signedOut.message',
-          'This Claude account is signed out. Re-authenticate it in Settings → Accounts to see its usage.'
+          'This Claude account is signed out. Re-authenticate it in Settings → AI Provider Accounts to see its usage.'
         )
       case 'missing-scope':
         return p.error
