@@ -368,7 +368,7 @@ function parseInjectedIds(text) {
     taskId: /Your task ID is:\s*(task_[A-Za-z0-9_]+)/.exec(text)?.[1] ?? null,
     dispatchId: /--dispatch-id\s+(ctx_[A-Za-z0-9_]+)/.exec(text)?.[1] ?? null,
     coordinatorHandle:
-      /Your coordinator's (?:terminal handle|address) is:\s*(\S+)/.exec(text)?.[1] ?? null
+      /Your coordinator's (?:terminal handle|Orca session ID) is:\s*(\S+)/.exec(text)?.[1] ?? null
   }
 }
 

@@ -116,7 +116,7 @@ function providerIdRefusal(
   orcaSessionId: string,
   store: AgentSessionRecordReader | null
 ): SessionRecipientRefusal {
-  // The conversation's address, which a `/clear`ed session keeps; not the live session's own id.
+  // The conversation's Orca session ID, which a `/clear`ed session keeps; not the live session's.
   const root = isOrcaSessionId(orcaSessionId)
     ? canonicalOrcaSessionId(orcaSessionId, store)
     : orcaSessionId

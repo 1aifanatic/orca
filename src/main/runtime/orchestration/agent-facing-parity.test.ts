@@ -24,10 +24,7 @@ import { OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
 import { OrchestrationStructuredMailboxPointerDelivery } from './structured-mailbox-pointer-delivery'
 import { buildDispatchPreamble } from './preamble'
-import { CORE_COMMAND_SPECS } from '../../../cli/specs/core'
-import { ORCHESTRATION_COMMAND_SPECS } from '../../../cli/specs/orchestration'
-import { ROOT_HELP_TEXT_PRIMARY } from '../../../cli/root-help-text-primary'
-import { formatCliStatus } from '../../../cli/format'
+import { ORCA_SESSION_ID_AS_ADDRESS } from '../../../shared/orca-session-id-wording-test-fixture'
 
 const sent = vi.hoisted((): { preambles: string[] } => ({ preambles: [] }))
 vi.mock('../rpc/methods/orchestration-structured-worker-session', () => ({
@@ -188,9 +185,7 @@ describe('the orchestration guide an agent loads', () => {
 })
 
 describe('agent-read text about an Orca session ID', () => {
-  // The noun only: "address it by that" is a verb, and run:/dispatch:/group addresses are mailboxes.
-  const IDENTITY_AS_ADDRESS =
-    /\b(?:orchestration|session|Orca|coordinator's|your(?: own)?) address\b|caller\.address|naming its address/i
+  // CLI help, specs and status text: src/cli/orca-session-id-wording.test.ts.
   const guideDir = join(process.cwd(), 'skill-guides')
   const guide = [
     join(guideDir, 'orchestration.md'),
@@ -210,13 +205,6 @@ describe('agent-read text about an Orca session ID', () => {
         /'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g
       ) ?? []
   )
-  const status = (caller: Parameters<typeof formatCliStatus>[0]['caller']) =>
-    formatCliStatus({
-      app: { running: true, pid: 1 },
-      runtime: { state: 'ready', reachable: true, runtimeId: 'runtime_1' },
-      graph: { state: 'ready' },
-      caller
-    })
 
   it.each([
     ['the guide and its references', () => guide.map((file) => readFileSync(file, 'utf8'))],
@@ -235,24 +223,10 @@ describe('agent-read text about an Orca session ID', () => {
           )
         )
     ],
-    [
-      'CLI help and specs',
-      () => [
-        JSON.stringify([...CORE_COMMAND_SPECS, ...ORCHESTRATION_COMMAND_SPECS]),
-        ...ROOT_HELP_TEXT_PRIMARY
-      ]
-    ],
-    [
-      'orca status',
-      () => [
-        status({ orcaSessionId: CHAT_ADDRESS, live: true }),
-        status({ live: false, refusal: { code: 'session_not_live', message: 'not running' } })
-      ]
-    ],
     ['the refusals that name a session', () => refusalSources]
   ])('never calls it an address in %s', (_where, texts) => {
     for (const text of texts()) {
-      expect(text).not.toMatch(IDENTITY_AS_ADDRESS)
+      expect(text).not.toMatch(ORCA_SESSION_ID_AS_ADDRESS)
     }
   })
 })
