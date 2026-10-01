@@ -4,6 +4,7 @@ import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 import type * as ProcessTableSnapshotReader from '../../shared/process-table-snapshot-reader'
 import type { SubprocessHandle } from '../daemon/session-subprocess-handle'
 import { TerminalHost } from '../daemon/terminal-host'
+import { proveDaemonShellForeground } from '../providers/shell-foreground-proof'
 import {
   endCommand,
   expectEveryReaderSawTheClear,
@@ -114,7 +115,10 @@ afterEach(async () => {
 })
 
 /** An Orca-launched Codex pane whose PTY is a real daemon session. */
-async function launchDaemonCodexPane(ptyId: string): Promise<DaemonPane> {
+async function launchDaemonCodexPane(
+  ptyId: string,
+  platform: NodeJS.Platform = 'linux'
+): Promise<DaemonPane> {
   const subprocess = createSubprocess()
   const terminalHost = new TerminalHost({ spawnSubprocess: () => subprocess.handle })
   teardowns.push(() => terminalHost.dispose())
@@ -126,8 +130,15 @@ async function launchDaemonCodexPane(ptyId: string): Promise<DaemonPane> {
   })
   const host = await wireCommandEndHost({
     controller: {
-      confirmShellForeground: (id) => terminalHost.confirmShellForeground(id),
-      inspectProcess: (id, options) => terminalHost.inspectProcess(id, options)
+      // The daemon adapter's proof, over a real daemon session instead of its socket.
+      proveShellForeground: (id, options) =>
+        proveDaemonShellForeground({
+          ptyId: id,
+          incarnationId: options?.expectedIncarnationId ?? null,
+          platform,
+          confirmShellForeground: () => terminalHost.confirmShellForeground(id),
+          inspectProcess: () => terminalHost.inspectProcess(id, options)
+        })
     }
   })
   teardowns.push(host.teardown)
@@ -182,4 +193,17 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
       )
     })
   }
+
+  it('on Windows, where the daemon has no foreground evidence, takes the command end as the exit', async () => {
+    const daemonPane = await launchDaemonCodexPane('pty-daemon-windows', 'win32')
+    processTable.rows = paneProcesses('codex')
+
+    await runCommandToItsEnd(daemonPane, 'daemon fact')
+
+    expectEveryReaderSawTheClear(
+      daemonPane.host.server,
+      daemonPane.host.readers,
+      daemonPane.pane.paneKey
+    )
+  })
 })

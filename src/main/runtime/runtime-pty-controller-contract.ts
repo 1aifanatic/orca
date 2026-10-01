@@ -11,6 +11,7 @@ import type { PtyBindingSourceExpectation } from '../persistence'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { PtyProviderBufferSnapshot, PtyProcessInfo, PtySpawnResult } from '../providers/types'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
+import type { ShellForegroundProof } from '../providers/shell-foreground-proof'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 
@@ -122,6 +123,12 @@ export type RuntimePtyController = {
   ): Promise<PtyProcessInspection>
   confirmForegroundProcess?(ptyId: string): Promise<string | null>
   confirmShellForeground?(ptyId: string): Promise<boolean>
+  /** Whether the pane's own shell is back in front, or its host cannot tell; rejects when the host
+   *  cannot be reached. */
+  proveShellForeground?(
+    ptyId: string,
+    options?: { expectedIncarnationId?: PtyIncarnationId }
+  ): Promise<ShellForegroundProof>
   hasChildProcesses?(ptyId: string): Promise<boolean>
   clearBuffer?(ptyId: string): Promise<void>
   resetInputModes?(ptyId: string): Promise<void>

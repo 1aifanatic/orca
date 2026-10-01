@@ -52,7 +52,7 @@ function tempDir(prefix: string): string {
 async function wireLiveAgentHost(userDataPath?: string): Promise<CommandEndHost> {
   const host = await wireCommandEndHost(userDataPath ? { userDataPath } : {})
   teardowns.push(host.teardown)
-  host.shellOwnsForeground.mockResolvedValue(false)
+  host.shellProof.mockResolvedValue('other')
   return host
 }
 

@@ -2,7 +2,11 @@ import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 import type { IPtyProvider, PtyProcessInfo, PtySpawnOptions, PtySpawnResult } from './types'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalOscColorQueryReplyColors } from '../../shared/terminal-osc-color-reply'
-import { toAppSshPtyId, toRelaySshPtyId } from './ssh-pty-id'
+import { parseAppSshPtyId, toAppSshPtyId, toRelaySshPtyId } from './ssh-pty-id'
+import {
+  shellForegroundProofFromInspection,
+  type ShellForegroundProof
+} from './shell-foreground-proof'
 import { createSshPtyAppliedSizeReader } from './ssh-pty-applied-size'
 import type {
   RemoteCliBridgeEnv,
@@ -70,6 +74,17 @@ export class SshPtyProvider implements IPtyProvider {
     id: string,
     options?: { expectedIncarnationId?: string; scanChildProcesses?: boolean }
   ): Promise<PtyProcessInspection> => this.rpcOperations.inspectProcess(id, options)
+  proveShellForeground = async (
+    id: string,
+    options?: { expectedIncarnationId?: string }
+  ): Promise<ShellForegroundProof> => {
+    const requestStartedAtMonotonic = performance.now()
+    return shellForegroundProofFromInspection(await this.inspectProcess(id, options), {
+      ptyId: parseAppSshPtyId(id)?.relayPtyId ?? id,
+      incarnationId: options?.expectedIncarnationId ?? null,
+      requestStartedAtMonotonic
+    })
+  }
   serialize = (ids: string[]): Promise<string> => this.rpcOperations.serialize(ids)
   revive = (state: string): Promise<void> => this.rpcOperations.revive(state)
   getDefaultShell = (): Promise<string> => this.rpcOperations.getDefaultShell()

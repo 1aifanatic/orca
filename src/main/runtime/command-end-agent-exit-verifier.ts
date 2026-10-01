@@ -1,7 +1,5 @@
 import type { AgentProcessVerdict } from '../../shared/agent-process-presence'
-import { admitRemoteForegroundEvidence } from '../../shared/remote-foreground-evidence-admission'
-import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
-import type { RuntimePtyController } from './runtime-pty-controller-contract'
+import type { ShellForegroundProof } from '../providers/shell-foreground-proof'
 
 type CommandEndAgentExitDeps = {
   /** The PTY's pane keys whose host row is live (not a resume remnant), each with that row's
@@ -10,22 +8,26 @@ type CommandEndAgentExitDeps = {
   /** The hook presence check: the row's own agent pid and start time. An `exited` answer has
    *  already cleared that row; null when no hook identified a process. */
   checkHookAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null>
-  /** The PTY's spawned shell owns the foreground with nothing else running; false when its host
-   *  cannot say. */
-  confirmShellOwnsForeground(ptyId: string): Promise<boolean>
+  /** The execution host's answer on the pane's own shell; rejects when the host cannot be reached. */
+  proveShellForeground(ptyId: string): Promise<ShellForegroundProof>
   /** Clears a pane whose agent exited, unless its row changed after `armedRowReceivedAt`. */
   reconcileEndedProcess(paneKey: string, armedRowReceivedAt: number): void
 }
 
 /**
  * Whether the agent behind a command end (OSC 133;D) exited. A full-screen agent's nested shells
- * leak their own 133;D, so the mark alone proves nothing. A live agent pid wins; then the spawned
- * shell owning the foreground with nothing stopped proves the exit. Anything else keeps the row.
+ * leak their own 133;D, so the mark alone proves nothing where the host can look:
+ * 1. a live agent pid keeps the row;
+ * 2. the pane's own shell proven back in front means it exited;
+ * 3. something else in front keeps the row;
+ * 4. a host that cannot be reached keeps it (loss of contact is never evidence of an exit);
+ * 5. a host that answered but cannot tell (WSL, Windows, a host without foreground evidence)
+ *    leaves the mark as the only evidence, so it stands as the exit, as on the desktop pane.
  */
 export async function verifyCommandEndAgentExit(
   ptyId: string,
   paneKeys: Iterable<string>,
-  deps: Pick<CommandEndAgentExitDeps, 'checkHookAgentPresence' | 'confirmShellOwnsForeground'>
+  deps: Pick<CommandEndAgentExitDeps, 'checkHookAgentPresence' | 'proveShellForeground'>
 ): Promise<AgentProcessVerdict> {
   const verdicts = await Promise.all(
     Array.from(paneKeys, (paneKey) => deps.checkHookAgentPresence(paneKey).catch(() => null))
@@ -33,9 +35,14 @@ export async function verifyCommandEndAgentExit(
   if (verdicts.includes('live')) {
     return 'live'
   }
-  return (await deps.confirmShellOwnsForeground(ptyId).catch(() => false))
-    ? 'exited'
-    : 'unverifiable'
+  let proof: ShellForegroundProof
+  try {
+    proof = await deps.proveShellForeground(ptyId)
+  } catch {
+    return 'unverifiable'
+  }
+  // Why TEMPORARY for `unprovable`: a nested shell's mark under a live TUI there drops its row.
+  return proof === 'other' ? 'unverifiable' : 'exited'
 }
 
 /**
@@ -90,44 +97,4 @@ export class CommandEndAgentExitVerifier {
       }
     }
   }
-}
-
-/**
- * A local node-pty answers from a fresh process-table read. The terminal daemon answers its shell
- * confirm from its byte scanner, which only proves a shell after a full-screen exit, and an SSH host
- * has none; both also report fenced foreground evidence (a local node-pty reports none). That
- * evidence proves the exit as the shell's own process group in front with no agent named in it.
- */
-export async function confirmShellOwnsPtyForeground(
-  controller: RuntimePtyController | null,
-  pty: { ptyId: string; incarnationId: string | null } | undefined
-): Promise<boolean> {
-  if (!controller || !pty) {
-    return false
-  }
-  if (await controller.confirmShellForeground?.(pty.ptyId)) {
-    return true
-  }
-  if (!controller.inspectProcess || !pty.incarnationId) {
-    return false
-  }
-  const requestStartedAtMonotonic = performance.now()
-  const inspection = await controller.inspectProcess(pty.ptyId, {
-    expectedIncarnationId: pty.incarnationId
-  })
-  const evidence = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
-    expectedPtyId: parseAppSshPtyId(pty.ptyId)?.relayPtyId ?? pty.ptyId,
-    expectedIncarnationId: pty.incarnationId,
-    requestStartedAtMonotonic,
-    receivedAtMonotonic: performance.now(),
-    lastAuthorityGeneration: null,
-    lastObservationEpoch: -1
-  })
-  // Why TEMPORARY: this evidence cannot see a stopped job, so a Ctrl+Z'd agent reads as exited.
-  return (
-    evidence?.verdict === 'live' &&
-    evidence.processName === null &&
-    evidence.fence.platform === 'posix' &&
-    evidence.fence.foregroundPgid === evidence.fence.shellPid
-  )
 }

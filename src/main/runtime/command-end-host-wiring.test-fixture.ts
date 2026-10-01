@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest'
 import type { AgentStatusClearIpcPayload } from '../../shared/agent-status-types'
-import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
+import type { ShellForegroundProof } from '../providers/shell-foreground-proof'
 import { AgentHookServer } from '../agent-hooks/server'
 import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-status-session-tabs-republish'
 import {
@@ -29,14 +29,8 @@ export type CommandEndHost = {
   runtime: OrcaRuntimeService
   readers: Readers
   spawn: ReturnType<typeof vi.fn>
-  /** The execution host's answer to "does the spawned shell own the foreground, nothing stopped?" */
-  shellOwnsForeground: ReturnType<typeof vi.fn<(ptyId: string) => Promise<boolean>>>
-  /** An SSH host's fenced foreground evidence, keyed to the PTY's incarnation. */
-  inspectProcess: ReturnType<
-    typeof vi.fn<
-      (ptyId: string) => Promise<{ foregroundProcessEvidence?: RemoteForegroundEvidence }>
-    >
-  >
+  /** The execution host's answer on the pane's own shell; reject for a host that can't be reached. */
+  shellProof: ReturnType<typeof vi.fn<(ptyId: string) => Promise<ShellForegroundProof>>>
   teardown: () => void
 }
 
@@ -45,7 +39,7 @@ export async function wireCommandEndHost(
     userDataPath?: string
     server?: AgentHookServer
     /** Replaces the stubbed process answers, e.g. with a real terminal daemon's. */
-    controller?: Pick<RuntimePtyController, 'confirmShellForeground' | 'inspectProcess'>
+    controller?: Pick<RuntimePtyController, 'proveShellForeground'>
   } = {}
 ): Promise<CommandEndHost> {
   const server = options.server ?? new AgentHookServer()
@@ -71,21 +65,13 @@ export async function wireCommandEndHost(
   })
   const uninstallRepublish = installHookStatusSessionTabsRepublish(server, () => runtime)
   const spawn = vi.fn()
-  const shellOwnsForeground = vi.fn<(ptyId: string) => Promise<boolean>>(async () => true)
-  const inspectProcess = vi.fn<
-    (ptyId: string) => Promise<{ foregroundProcessEvidence?: RemoteForegroundEvidence }>
-  >(async () => ({}))
+  const shellProof = vi.fn<(ptyId: string) => Promise<ShellForegroundProof>>(async () => 'shell')
   runtime.setPtyController({
     spawn,
     write: () => true,
     kill: () => true,
     getForegroundProcess: async () => null,
-    confirmShellForeground: shellOwnsForeground,
-    inspectProcess: async (ptyId) => ({
-      foregroundProcess: null,
-      hasChildProcesses: false,
-      ...(await inspectProcess(ptyId))
-    }),
+    proveShellForeground: (ptyId) => shellProof(ptyId),
     ...options.controller
   })
   return {
@@ -93,8 +79,7 @@ export async function wireCommandEndHost(
     runtime,
     readers,
     spawn,
-    shellOwnsForeground,
-    inspectProcess,
+    shellProof,
     teardown: () => {
       unsubscribeClears()
       uninstallRepublish()

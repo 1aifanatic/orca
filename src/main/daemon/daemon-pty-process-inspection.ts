@@ -9,6 +9,10 @@ import {
 } from './types'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import { clientOnlyUnverifiableInspection } from '../../shared/terminal-process-inspection'
+import {
+  proveDaemonShellForeground,
+  type ShellForegroundProof
+} from '../providers/shell-foreground-proof'
 
 export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshots {
   // Why: daemon-backed PTYs can host long-lived agents while detached; cleanup prompts must not treat them as idle shells.
@@ -89,6 +93,27 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
     } catch {
       return false
     }
+  }
+
+  async proveShellForeground(
+    id: string,
+    options?: { expectedIncarnationId?: string }
+  ): Promise<ShellForegroundProof> {
+    if (this.protocolVersion < COMPLETION_PROCESS_INSPECTION_PROTOCOL_VERSION) {
+      return 'unprovable'
+    }
+    return proveDaemonShellForeground({
+      ptyId: id,
+      incarnationId: options?.expectedIncarnationId ?? null,
+      platform: process.platform,
+      confirmShellForeground: async () =>
+        (
+          await this.client.request<{ confirmed: boolean }>('confirmShellForeground', {
+            sessionId: id
+          })
+        ).confirmed === true,
+      inspectProcess: () => this.inspectProcess(id, options)
+    })
   }
 
   async serialize(ids: string[]): Promise<string> {

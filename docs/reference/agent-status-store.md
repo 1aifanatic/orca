@@ -93,21 +93,25 @@ drops the row on a clear and never keeps it as a finished (Done) agent.
 A command end (OSC 133;D) ends a pane's launch authority at once, because every later process in
 that shell inherits the token. It does not prove the agent exited: a full-screen agent's nested
 shells leak their own 133;D. So at every command end of a PTY whose panes hold a live row, the
-runtime asks the execution host again. The hook's own agent process still running keeps the row.
-The pane's shell back in front clears it as an ended process, keeping the resume identity:
-- a local node-pty proves that from a fresh process-table read (the spawned shell in the
-  foreground, no job stopped);
-- the terminal daemon and an SSH relay prove it from their fenced foreground evidence (the
-  shell's own process group in front, no agent named), which cannot see a stopped job; a Windows
-  daemon or relay cannot answer;
-- a WSL pane cannot be inspected from the host, so its command end stands as the exit, as the
-  desktop pane treats it (temporary, until a guest-side proof exists).
+runtime asks the execution host again, and reads its answer in this order:
+1. The hook's own agent process still running keeps the row.
+2. The pane's own shell proven back in front clears it as an ended process, keeping the resume
+   identity. A local node-pty proves that from a fresh process-table read (spawned shell in the
+   foreground, no job stopped); the terminal daemon and an SSH relay from their fenced foreground
+   evidence (the shell's own process group in front, no agent named), which cannot see a stopped
+   job (temporary).
+3. Something else in front keeps the row.
+4. A host that cannot be reached keeps it: loss of contact is never evidence of an exit.
+5. A host that answered but cannot tell (a WSL guest, a Windows daemon or relay, a daemon or relay
+   that predates foreground evidence) leaves the mark as the only evidence, so it stands as the
+   exit, as the desktop pane treats it. Temporary: there a nested shell's 133;D under a live TUI
+   drops its row, until those hosts report shell-owns-the-foreground evidence.
 
-Any other answer keeps the row, and nothing is latched: the PTY's next command end asks again, and
-a confirmed PTY exit clears it. A verdict acts only on the row it checked, so a session that
-started while it was read keeps its row. The clear also records which session ended, so a
-reconnecting SSH relay's replay of that session's cached status is refused; any newer evidence (a
-live event, a new turn, another session) is admitted and drops the record.
+A kept row is not latched: the PTY's next command end asks again, and a confirmed PTY exit clears
+it. A verdict acts only on the row it checked, so a session that started while it was read keeps
+its row. The clear also records which session ended, so a reconnecting SSH relay's replay of that
+session's cached status is refused; any newer evidence (a live event, a new turn, another
+session) is admitted and drops the record.
 
 ## PR 1a: structured sessions publish into the store
 

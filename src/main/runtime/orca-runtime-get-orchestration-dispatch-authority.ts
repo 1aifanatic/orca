@@ -23,10 +23,7 @@ import type { FleetAgentStatusEvidence } from '../../shared/orchestration-fleet-
 import { readOrchestrationFleetAgentStatusSnapshot } from './orchestration-fleet-agent-status-snapshot'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { matchesProcessIncarnation } from './orchestration/worker-terminal-process-liveness'
-import {
-  CommandEndAgentExitVerifier,
-  confirmShellOwnsPtyForeground
-} from './command-end-agent-exit-verifier'
+import { CommandEndAgentExitVerifier } from './command-end-agent-exit-verifier'
 
 export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller {
   /** Every pane key this PTY could be addressed by, including restored receipts. */
@@ -158,14 +155,14 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     },
     checkHookAgentPresence: async (paneKey) =>
       (await this.checkHookAgentPresenceFn?.(paneKey)) ?? null,
-    confirmShellOwnsForeground: (ptyId) => {
-      const pty = this.ptysById.get(ptyId)
-      // Why TEMPORARY: the host cannot inspect a WSL guest's processes, so its command end stands as
-      // the exit, as the desktop pane already treats it; a leaked nested-shell 133;D drops a live row.
-      if (pty && (pty.isWsl || pty.wslDistro || this.wslDistroByPtyId.has(ptyId))) {
-        return Promise.resolve(true)
-      }
-      return confirmShellOwnsPtyForeground(this.ptyController, pty)
+    proveShellForeground: async (ptyId) => {
+      const incarnationId = this.ptysById.get(ptyId)?.incarnationId
+      return (
+        (await this.ptyController?.proveShellForeground?.(
+          ptyId,
+          incarnationId ? { expectedIncarnationId: incarnationId } : undefined
+        )) ?? 'other'
+      )
     },
     reconcileEndedProcess: (paneKey, armedRowReceivedAt) =>
       this.reconcileAgentStatusForEndedProcessFn?.([paneKey], {
