@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     sessionOptionsSnapshot?: SessionOptionDescriptor[]
     attachDisabled?: boolean
     sendButtonDisabled?: boolean
+    isStopping?: boolean
     autocomplete?: { mode: string; items?: { kind: string; name: string }[] }
   } | null,
   modelSwitchOutcome: 'applied' as 'applied' | 'rejected' | 'unknown',
@@ -243,6 +244,23 @@ describe('NativeChatComposer', () => {
     expect(mocks.cancelPendingSends.mock.invocationCallOrder[0]).toBeLessThan(
       onStop.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
     )
+  })
+
+  it("disables Stop while a person's Stop is ending the turn, and says so", () => {
+    const props = {
+      terminalTabId: 'tab-1',
+      paneKey: 'tab-1:leaf-1',
+      targetPtyId: 'pty-1',
+      agent: 'codex' as const,
+      isWorking: true,
+      onStop: vi.fn()
+    }
+    const { rerender } = render(<NativeChatComposer {...props} />)
+    expect(mocks.fieldProps?.sendButtonDisabled).toBe(false)
+
+    rerender(<NativeChatComposer {...props} isStopping />)
+
+    expect(mocks.fieldProps).toMatchObject({ sendButtonDisabled: true, isStopping: true })
   })
 
   it('associates a delayed submit with its optimistic cache entry', () => {

@@ -123,10 +123,17 @@ export function agentStateLabel(state: AgentDotState): string {
   }
 }
 
-// Primary row text: prefer the agent's last message, then the user prompt, then
-// a human-readable state label so a row is never blank. Matches the desktop
-// DashboardAgentRow displayLabel fallback chain.
+// Mirrors NATIVE_CHAT_TURN_STATUS_COPY.stopping, which this file cannot import as a value (see
+// AGENT_STATUS_STALE_AFTER_MS above).
+const STOPPING_LABEL = 'Stopping…'
+
+// Primary row text: "Stopping…" while the host says a person's Stop is ending the turn, else the
+// agent's last message, then the user prompt, then a human-readable state label so a row is never
+// blank. Matches the desktop DashboardAgentRow displayLabel fallback chain.
 export function agentDisplayLabel(row: RuntimeWorktreeAgentRow, now: number): string {
+  if (row.state === 'working' && row.mainAgent?.stopping === true) {
+    return STOPPING_LABEL
+  }
   const message = row.lastAssistantMessage?.trim()
   if (message) {
     return message

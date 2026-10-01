@@ -15083,6 +15083,7 @@
       },
       "status": {
         "responding": "El agente está respondiendo",
+        "stopping": "Deteniendo…",
         "interruptedAfter": "Interrumpido tras {{value0}}",
         "failedAfter": "Falló tras {{value0}}"
       },

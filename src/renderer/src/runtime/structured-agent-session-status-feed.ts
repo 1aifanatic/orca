@@ -86,10 +86,11 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
     handle?.unsubscribe()
     handle = null
   }
+  // A Stop the host was ending is its live state too: with contact lost, no Stopping outlives it.
   const revokeSnapshotOwnership = (): void => {
     let next: Map<string, AgentSessionStatusSummary> | null = null
     for (const [sessionId, summary] of snapshot) {
-      if (!summary.hostExecutionOwned) {
+      if (!summary.hostExecutionOwned && !summary.stopping) {
         continue
       }
       if (!next) {
@@ -99,6 +100,7 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
         hostExecutionOwned: _owned,
         hostExecutionPhase: _phase,
         hostExecutionChild: _child,
+        stopping: _stopping,
         ...retained
       } = summary
       next.set(sessionId, retained)

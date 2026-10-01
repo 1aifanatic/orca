@@ -105,6 +105,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       let sequence = 0
       const journal = {
         snapshot: () => ({ items }),
+        stopMarks: { latest: () => null },
         lastActivityAt: () => 1,
         isReadOnly: false,
         cursor: () => ({ epoch: 1, sequence: (sequence += 1) })
@@ -193,6 +194,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,
+      stopMarks: { latest: () => null },
       cursor: () => ({ epoch: 1, sequence: 1 }),
       snapshot: () => ({
         items: [

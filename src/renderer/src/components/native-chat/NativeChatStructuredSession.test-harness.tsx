@@ -55,6 +55,7 @@ type StructuredSessionMessageListProps = {
   onLinkClick?: (...args: unknown[]) => void
   awaitingInput?: 'shown' | 'unshown' | null
   isWorking?: boolean
+  stopping?: boolean
   runtimeContext?: unknown
   session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
@@ -86,6 +87,7 @@ export function createStructuredSessionMocks() {
       launchSeed?: NativeChatLaunchSeed
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
+      isStopping?: boolean
       onStop?: () => void
     }>(),
     approvalCardProps: initialApprovalCardProps,
@@ -104,6 +106,7 @@ export function createStructuredSessionMocks() {
     turnId: null as string | null,
     // Unset: Stop follows the turn, as against an older host.
     canStop: nullable<boolean>(),
+    stopPressed: false,
     supportsBackgroundTaskStop: false,
     supportsBackgroundTaskStopAll: true,
     backgroundTasks: [] as AgentSessionBackgroundTask[],
@@ -189,6 +192,7 @@ export function createStructuredSessionMocks() {
             },
             turnId: mocks.turnId,
             canStop: mocks.canStop ?? mocks.turnId !== null,
+            stopPressed: mocks.stopPressed,
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
@@ -322,6 +326,7 @@ export function createStructuredSessionMocks() {
     mocks.isWorking = false
     mocks.turnId = null
     mocks.canStop = null
+    mocks.stopPressed = false
     mocks.supportsBackgroundTaskStop = false
     mocks.supportsBackgroundTaskStopAll = true
     mocks.stopBackgroundTask.mockReset()

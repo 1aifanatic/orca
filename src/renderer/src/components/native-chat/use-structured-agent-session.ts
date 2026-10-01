@@ -28,6 +28,7 @@ import {
 } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
+import { useStructuredAgentSessionStopPress } from './use-structured-agent-session-stop-press'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisional-launch'
@@ -142,6 +143,7 @@ export function useStructuredAgentSession(args: {
     enabled: providerVisible
   })
 
+  const stopPress = useStructuredAgentSessionStopPress(sessionId)
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const { outbox } = outboxController
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
@@ -229,16 +231,19 @@ export function useStructuredAgentSession(args: {
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
     canStop,
+    /** This client's Stop request is in flight. */
+    stopPressed: stopPress.pressed,
     stop: () => {
       if (stopsConversation) {
         // Unsent text this client still owns goes back to its composer — a local move.
         // Host-held drafts are never withdrawn by a Stop: the host pauses them and
         // they stay visible as cards, on every device, until the user acts on one.
         outboxController.withdrawUnsent()
-        return mutate('agentSession.cancel', 'agentSession.cancel', {})
+        return stopPress.track(() => mutate('agentSession.cancel', 'agentSession.cancel', {}))
       }
-      return transportState.turnId
-        ? mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
+      const turnId = transportState.turnId
+      return turnId
+        ? stopPress.track(() => mutate('agentSession.cancel', 'agentSession.cancel', { turnId }))
         : Promise.resolve(null)
     },
     queuedMessages: queuedController,

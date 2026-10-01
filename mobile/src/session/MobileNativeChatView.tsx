@@ -13,9 +13,10 @@ import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-ha
 import { ArrowDown, ChevronsDownUp, ChevronsUpDown, Square } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
-import type {
-  NativeChatLiveTurnIndicator,
-  NativeChatSettledTurns
+import {
+  NATIVE_CHAT_TURN_STATUS_COPY,
+  type NativeChatLiveTurnIndicator,
+  type NativeChatSettledTurns
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import { colors } from '../theme/mobile-theme'
@@ -266,6 +267,7 @@ export function MobileNativeChatView({
   // Per-turn status rows: one live indicator while the turn runs, then a settled
   // "Worked for N" row. The structured lane owns them; the bridge lane keeps its
   // three-dot indicator.
+  const stopping = agentWorking === true && turnIndicator?.stopping === true
   const turns = useMobileNativeChatTurnDisclosure({
     messages: data,
     enabled: structuredActivityUi,
@@ -300,6 +302,7 @@ export function MobileNativeChatView({
       <MobileNativeChatTurnActivity
         thinking={turns.active.thinking}
         activityText={turns.activeActivityText}
+        stopping={stopping}
       />
     ) : null
 
@@ -406,14 +409,18 @@ export function MobileNativeChatView({
           </Pressable>
         </View>
         {canStop ? (
+          // A second Stop while one is ending the turn sends nothing.
           <Pressable
             style={({ pressed }) => [styles.stopButton, pressed && styles.pressed]}
             onPress={onStop}
+            disabled={stopping}
             hitSlop={8}
-            accessibilityLabel="Stop the agent"
+            accessibilityLabel={stopping ? NATIVE_CHAT_TURN_STATUS_COPY.stopping : 'Stop the agent'}
           >
             <Square size={13} color={colors.statusRed} strokeWidth={2.4} fill={colors.statusRed} />
-            <Text style={styles.stopLabel}>Stop</Text>
+            <Text style={styles.stopLabel}>
+              {stopping ? NATIVE_CHAT_TURN_STATUS_COPY.stopping : 'Stop'}
+            </Text>
           </Pressable>
         ) : null}
       </View>

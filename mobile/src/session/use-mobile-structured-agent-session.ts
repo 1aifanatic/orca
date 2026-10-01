@@ -20,6 +20,7 @@ import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSession } from './use-mobile-native-chat-session'
 import type { NativeChatLiveTurnIndicator } from '../../../src/shared/native-chat-turn-status'
 import { useMobileStructuredAgentState } from './use-mobile-structured-agent-state'
+import { useMobileStructuredStopPress } from './use-mobile-structured-stop-press'
 import { useMobileStructuredPromptResponses } from './use-mobile-structured-prompt-responses'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
@@ -168,7 +169,14 @@ export function useMobileStructuredAgentSession(args: {
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
   const thinking = isStructuredAgentSessionThinking(state.items)
-  const turnIndicator = useMemo(() => ({ thinking, activityText }), [thinking, activityText])
+  const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence)
+  // The phone reads no session status, so only its own press says "Stopping…".
+  const stopPress = useMobileStructuredStopPress(sessionKey)
+  const stopping = isWorking && stopPress.pressed
+  const turnIndicator = useMemo(
+    () => ({ thinking, activityText, stopping }),
+    [thinking, activityText, stopping]
+  )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(
     () => state.items.find(pendingStructuredApproval) ?? null,
@@ -219,13 +227,13 @@ export function useMobileStructuredAgentSession(args: {
       loadingEarlier: loadingOlder,
       loadEarlier
     },
-    isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+    isWorking,
     turnId,
     turnIndicator,
     ...turnTiming,
     sendWithOutcome,
     cancel: () => {
-      void requestCancel()
+      void stopPress.track(() => requestCancel())
     },
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) =>
       requestCancel(prompt ?? pendingStructuredPromptIdentity(stateRef.current.items)),

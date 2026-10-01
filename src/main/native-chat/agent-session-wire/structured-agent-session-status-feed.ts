@@ -25,6 +25,7 @@ import { structuredAgentSessionProviderSessionMetadata } from './structured-agen
 import { structuredStatusChildWork } from './structured-agent-session-status-child-work'
 import {
   StructuredAgentSessionJournalProjections,
+  type StructuredAgentSessionJournalProjection,
   type StructuredAgentSessionStatusState
 } from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
@@ -156,7 +157,8 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
-  /** Revoke live execution authority while retaining the last projection for reload history. */
+  /** Revoke live execution authority while retaining the last projection for reload history. A
+   *  Stop still ending work is live state too: with the host gone, nothing here is ending it. */
   revokeLive(sessionId: string): void {
     const previous = this.published.get(sessionId)
     if (!previous) {
@@ -166,6 +168,7 @@ export class StructuredAgentSessionStatusFeed {
       hostExecutionOwned: _hostExecutionOwned,
       hostExecutionPhase: _hostExecutionPhase,
       hostExecutionChild: _hostExecutionChild,
+      stopping: _stopping,
       ...retained
     } = previous
     this.published.set(sessionId, retained)
@@ -197,7 +200,7 @@ export class StructuredAgentSessionStatusFeed {
     const record = this.deps.getRecord(sessionId)
     const projection = this.projections.read(source, record)
     this.retireSettledChildrenOnNewTurn(sessionId, session, projection.acceptedSendKey)
-    const summary = this.summaryFor(sessionId, session, source, record, projection.state)
+    const summary = this.summaryFor(sessionId, session, source, record, projection)
     const previous = this.published.get(sessionId)
     if (previous && structuredStatusSummariesEqual(previous, summary)) {
       if (!this.ownership.matchesLocation(sessionId, session.params.location)) {
@@ -250,7 +253,7 @@ export class StructuredAgentSessionStatusFeed {
     session: StatusFeedSession,
     journal: AgentSessionJournal,
     record: AgentSessionRecord | null,
-    state: StructuredAgentSessionStatusState
+    { state, stopping }: Pick<StructuredAgentSessionJournalProjection, 'state' | 'stopping'>
   ): AgentSessionStatusSummary {
     const projected = state.summary
     const providerSession = structuredAgentSessionProviderSessionMetadata(record)
@@ -269,6 +272,8 @@ export class StructuredAgentSessionStatusFeed {
           }
         : {}),
       ...projected,
+      // Only a working session is still being stopped; any other status already ended that work.
+      ...(stopping && projected.status === 'working' ? { stopping: true as const } : {}),
       ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
         ? { rewindBlockedReason: 'outcome-unknown' as const }
         : {}),

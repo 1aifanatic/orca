@@ -59,6 +59,8 @@ export function NativeChatStructuredSession(
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
+  // The host's word, bridged by this client's own press until its Stop event lands.
+  const stopping = controller.canStop && (hostExecution.stopping || controller.stopPressed)
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,
     agent: props.agent,
@@ -291,6 +293,7 @@ export function NativeChatStructuredSession(
             settledTurns={controller.settledTurns}
             awaitingInput={prompt === null ? null : 'shown'}
             turnActivity={controller.turnActivity}
+            stopping={stopping}
             onLinkClick={onLinkClick}
             allowFileUriLinks={onLinkClick !== undefined}
             runtimeContext={imageRuntimeContext}
@@ -393,7 +396,9 @@ export function NativeChatStructuredSession(
           agent={props.agent}
           canSend={!prompt}
           isWorking={controller.canStop}
-          onStop={() => void controller.stop()}
+          isStopping={stopping}
+          // A second Stop while one is ending the turn sends nothing.
+          onStop={() => void (stopping || controller.stop())}
           steerQueued={controller.queuedMessages.steerNewest}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}

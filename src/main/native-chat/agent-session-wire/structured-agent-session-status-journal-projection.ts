@@ -5,6 +5,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { newestAcceptedSendKey } from './structured-agent-session-status-child-work'
+import { structuredAgentSessionStopping } from './structured-agent-session-stopping'
 
 export type StructuredAgentSessionStatusState = ReturnType<
   typeof projectStructuredAgentSessionStatusState
@@ -18,6 +19,8 @@ export type StructuredAgentSessionJournalProjection = {
   state: StructuredAgentSessionStatusState
   /** Null for an unreadable journal, which says nothing about the user's turns. */
   acceptedSendKey: string | null
+  /** A person's Stop is still ending the work it stopped (`structuredAgentSessionStopping`). */
+  stopping: boolean
 }
 
 export class StructuredAgentSessionJournalProjections {
@@ -58,7 +61,8 @@ export class StructuredAgentSessionJournalProjections {
         ),
         acceptedSendKey: snapshot
           ? newestAcceptedSendKey(cursor.epoch, snapshot.submissions ?? [])
-          : null
+          : null,
+        stopping: snapshot ? structuredAgentSessionStopping(journal, snapshot.items) : false
       }
       this.byJournal.set(journal, projection)
     }
