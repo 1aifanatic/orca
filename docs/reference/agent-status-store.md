@@ -110,8 +110,10 @@ runtime asks the execution host again, and reads its answer in this order:
    under a live TUI drops its row, until those hosts report shell-owns-the-foreground evidence.
 
 A kept row is not latched: the PTY's next command end asks again, and a confirmed PTY exit clears
-it. A verdict acts only on the row it checked: a session that started while it was read keeps its
-row, and a row the same session rewrote meanwhile (its own late hook) is checked again. The clear also records which session ended, so a reconnecting SSH relay's replay of that
+it. A verdict acts only on the row it checked. After a proven exit, a row rewritten meanwhile is
+checked again (a new agent then reads as in front, the exiting one's late hook clears); where the
+host cannot tell, only the same session's own rewrite is, and another session's row is left
+alone. The clear also records which session ended, so a reconnecting SSH relay's replay of that
 session's cached status is refused; any newer evidence (a live event, a new turn, another
 session) is admitted and drops the record.
 

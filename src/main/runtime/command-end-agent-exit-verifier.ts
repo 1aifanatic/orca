@@ -58,8 +58,8 @@ function clearsRow(verdict: CommandEndExitVerdict): boolean {
 
 /** Re-asks for an unread answer: past the shared process-table cache's lifetime, then once more. */
 const UNREAD_REASK_DELAYS_MS = [PROCESS_TABLE_SNAPSHOT_MAX_STALENESS_MS + 100, 1_500]
-/** Re-checks after the exiting agent's own late write changed the row mid-check. */
-const SAME_SESSION_RECHECKS = 2
+/** Re-checks after a row was rewritten mid-check (often the exiting agent's own late hook). */
+const REWRITE_RECHECKS = 2
 
 export async function verifyCommandEndAgentExit(
   ptyId: string,
@@ -158,8 +158,8 @@ export class CommandEndAgentExitVerifier {
         this.deps
       )
       if (clearsRow(verdict)) {
-        const rewritten = this.clearUnchangedRows(ptyId, anchors)
-        if (!rewritten || rechecks >= SAME_SESSION_RECHECKS) {
+        const rewritten = this.clearUnchangedRows(ptyId, anchors, verdict)
+        if (!rewritten || rechecks >= REWRITE_RECHECKS) {
           return
         }
         rechecks += 1
@@ -176,15 +176,21 @@ export class CommandEndAgentExitVerifier {
     }
   }
 
-  /** Clears each pane whose row is as armed. True when the same agent session rewrote one mid-check
-   *  (its own late hook), which needs another look; a different session's row is left alone. */
-  private clearUnchangedRows(ptyId: string, anchors: Map<string, CommandEndRowAnchor>): boolean {
+  /** Clears each pane whose row is as armed, and says whether a row rewritten mid-check needs
+   *  another look. After a proven exit any rewrite does: a new agent reads as in front. Where the
+   *  host cannot tell, the look would answer the same, so only the exiting session's own late hook
+   *  earns one and a different session's row is left alone. */
+  private clearUnchangedRows(
+    ptyId: string,
+    anchors: Map<string, CommandEndRowAnchor>,
+    verdict: CommandEndExitVerdict
+  ): boolean {
     const current = this.deps.readLiveRowAnchors(ptyId)
     let rewritten = false
     for (const [paneKey, armed] of anchors) {
       const now = current.get(paneKey)
       if (now && now.receivedAt !== armed.receivedAt) {
-        rewritten ||= sameAgentSession(armed, now)
+        rewritten ||= verdict === 'exited' || sameAgentSession(armed, now)
         continue
       }
       try {

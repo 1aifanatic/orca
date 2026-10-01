@@ -25,8 +25,7 @@ export type ShellForegroundProofOptions = {
 const OTHER_IN_FRONT_REASONS = new Set([
   'multiplexer_boundary',
   'tty_boundary',
-  'ambiguous_foreground_group',
-  'incarnation_mismatch'
+  'ambiguous_foreground_group'
 ])
 
 /** Reads the fenced foreground evidence a terminal daemon or SSH relay inspection carries. */
@@ -37,6 +36,8 @@ export function shellForegroundProofFromInspection(
     incarnationId: string | null
     requestStartedAtMonotonic: number
     notCapturedBefore?: number
+    /** A host on this machine (the terminal daemon): its reply arrives as it is sent. */
+    replyIsLocal?: boolean
   }
 ): ShellForegroundProof {
   // Why throw: a client-only verdict (transport loss) is no answer from the host at all.
@@ -46,23 +47,28 @@ export function shellForegroundProofFromInspection(
   if (!('foregroundProcessEvidence' in inspection) || !inspection.foregroundProcessEvidence) {
     return 'unprovable'
   }
+  const receivedAtMonotonic = performance.now()
   const evidence = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
     expectedPtyId: expected.ptyId,
     expectedIncarnationId: expected.incarnationId,
     requestStartedAtMonotonic: expected.requestStartedAtMonotonic,
-    receivedAtMonotonic: performance.now(),
+    receivedAtMonotonic,
     lastAuthorityGeneration: null,
     lastObservationEpoch: -1
   })
   if (!evidence) {
     return 'unread'
   }
-  // Why the request start: the host serializes after it, and `capturedAgeMs` bounds the capture's
-  // age from above, so this is the earliest the capture can have started. A shared capture that
-  // began before the command end still shows the exiting agent in front.
+  // Why: a shared capture that began before the command end still shows the exiting agent in
+  // front. `capturedAgeMs` runs from the capture's start to its reply, so subtracting it from the
+  // reply's send time gives the start: a local reply is sent as it arrives; a remote one was sent
+  // at the earliest when the request left, which only errs early.
+  const replySentAt = expected.replyIsLocal
+    ? receivedAtMonotonic
+    : expected.requestStartedAtMonotonic
   if (
     expected.notCapturedBefore !== undefined &&
-    expected.requestStartedAtMonotonic - evidence.capturedAgeMs < expected.notCapturedBefore
+    replySentAt - evidence.capturedAgeMs < expected.notCapturedBefore
   ) {
     return 'unread'
   }
@@ -104,6 +110,7 @@ export async function proveDaemonShellForeground(args: {
     ptyId: args.ptyId,
     incarnationId: args.incarnationId,
     requestStartedAtMonotonic,
+    replyIsLocal: true,
     ...(args.notCapturedBefore !== undefined ? { notCapturedBefore: args.notCapturedBefore } : {})
   })
 }

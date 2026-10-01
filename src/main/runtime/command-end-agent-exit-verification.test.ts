@@ -244,10 +244,16 @@ describe('a command end that does not prove the agent exited keeps its row every
     expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
   })
 
-  for (const answerProof of ['shell', 'unprovable'] as const) {
+  for (const [answerProof, looks] of [
+    // After a proven exit the rewritten row gets another look, which finds the new agent in front.
+    ['shell', 2],
+    // Where the host cannot tell, another look would answer the same: the new session is left alone.
+    ['unprovable', 1]
+  ] as const) {
     it(`a session that starts while the check is read keeps its row (${answerProof})`, async () => {
       const host = await wire()
       let answer: (proof: ShellForegroundProof) => void = () => {}
+      host.shellProof.mockResolvedValue('other')
       host.shellProof.mockImplementationOnce(
         () => new Promise<ShellForegroundProof>((resolve) => (answer = resolve))
       )
@@ -267,9 +273,32 @@ describe('a command end that does not prove the agent exited keeps its row every
 
       expect(liveRow(host.server, pane.paneKey)?.prompt).toBe('a different task')
       expect(host.readers.windowClears).toEqual([])
-      expect(host.shellProof).toHaveBeenCalledTimes(1)
+      expect(host.shellProof).toHaveBeenCalledTimes(looks)
     })
   }
+
+  it('an agent without a session id gets a second look at its own late hook after a proven exit', async () => {
+    const host = await wire()
+    let answer: (proof: ShellForegroundProof) => void = () => {}
+    host.shellProof.mockImplementationOnce(
+      () => new Promise<ShellForegroundProof>((resolve) => (answer = resolve))
+    )
+    const pane = await launchAgentPane(host, 'pty-late-hook-no-session')
+    await postHook(host.server, 'claude', pane, {
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'review the PR'
+    })
+    expect(liveRow(host.server, pane.paneKey)?.providerSession).toBeUndefined()
+
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    await postHook(host.server, 'claude', pane, { hook_event_name: 'Stop' })
+    answer('shell')
+    await settle()
+
+    expect(host.shellProof).toHaveBeenCalledTimes(2)
+    expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
+  })
 
   it("the exiting agent's own late hook mid-check gets a second look, which clears it", async () => {
     const host = await wire()

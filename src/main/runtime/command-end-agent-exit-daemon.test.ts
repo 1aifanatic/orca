@@ -25,16 +25,27 @@ const processTable = vi.hoisted(
   (): {
     rows: ProcessTableRow[]
     captures: { rows: ProcessTableRow[]; capturedAgeMs: number }[]
+    reads: number
   } => ({
     rows: [],
-    captures: []
+    captures: [],
+    reads: 0
   })
 )
 vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => ({
   ...(await importOriginal<typeof ProcessTableSnapshotReader>()),
-  // A queued capture is served first, as the shared cache would; then a fresh one.
-  getStrictProcessTableSnapshotWithAge: async () =>
-    processTable.captures.shift() ?? { rows: processTable.rows, capturedAgeMs: 0 }
+  // A queued capture is served first, as the shared cache would. Otherwise a fresh capture, aged
+  // as the host stamps it: from the start of a `ps` that takes time.
+  getStrictProcessTableSnapshotWithAge: async () => {
+    processTable.reads += 1
+    const queued = processTable.captures.shift()
+    if (queued) {
+      return queued
+    }
+    const startedAt = Date.now()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    return { rows: processTable.rows, capturedAgeMs: Date.now() - startedAt }
+  }
 }))
 
 vi.mock('../git/worktree', () => {
@@ -122,6 +133,7 @@ afterEach(async () => {
   }
   processTable.rows = []
   processTable.captures = []
+  processTable.reads = 0
   vi.restoreAllMocks()
 })
 
@@ -192,11 +204,17 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
 
       await runCommandToItsEnd(daemonPane, path)
 
-      expectEveryReaderSawTheClear(
-        daemonPane.host.server,
-        daemonPane.host.readers,
-        daemonPane.pane.paneKey
+      // On the first ask: well before the re-ask would run.
+      await vi.waitFor(
+        () =>
+          expectEveryReaderSawTheClear(
+            daemonPane.host.server,
+            daemonPane.host.readers,
+            daemonPane.pane.paneKey
+          ),
+        { timeout: 400, interval: 20 }
       )
+      expect(processTable.reads).toBe(1)
     })
 
     it(`still in front after a nested shell's marker: the row stays (${path})`, async () => {
@@ -204,6 +222,8 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
       processTable.rows = paneProcesses('codex')
 
       await runCommandToItsEnd(daemonPane, path)
+      await vi.waitFor(() => expect(processTable.reads).toBe(1), { timeout: 400, interval: 20 })
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       expectNoReaderLostTheRow(
         daemonPane.host.server,
