@@ -283,7 +283,8 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
       conn,
       expect.objectContaining({ os: 'linux' }),
       '/home/user',
-      { currentPins: [RUNTIME_SHA] }
+      // The compat runtime stays pinned too, so a rung A connect never collects rung B's.
+      { currentPins: [RUNTIME_SHA, COMPAT_SHA] }
     )
     // Why after: the version pass is what drops the refs that held superseded runtimes.
     expect(vi.mocked(gcOldRelayVersions).mock.invocationCallOrder[0]).toBeLessThan(
@@ -350,6 +351,10 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     expect(result.nodePath).toBe(COMPAT_NODE)
     expect(detachedLaunchCommand(conn)).toContain(`'${COMPAT_NODE}' relay.js --detached`)
     expect(planHostNodeAddonRelay).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(gcRemoteNodeRuntimeStore).toHaveBeenCalledOnce())
+    expect(vi.mocked(gcRemoteNodeRuntimeStore).mock.calls[0]?.[3]).toEqual({
+      currentPins: [RUNTIME_SHA, COMPAT_SHA]
+    })
     warn.mockRestore()
   })
 
