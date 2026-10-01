@@ -512,6 +512,18 @@
               "refreshCliRegistration": "请刷新 CLI 注册状态后重试。"
             }
           }
+        },
+        "launch": {
+          "prompt": {
+            "not": {
+              "delivered": {
+                "notice": {
+                  "message": "代理已启动，但你的提示词未发送。请复制提示词，并在代理就绪后粘贴。",
+                  "copy": "复制提示词"
+                }
+              }
+            }
+          }
         }
       },
       "remotePairingCopy": {

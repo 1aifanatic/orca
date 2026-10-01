@@ -512,6 +512,18 @@
               "refreshCliRegistration": "CLI 등록 상태를 새로 고친 후 다시 시도하세요."
             }
           }
+        },
+        "launch": {
+          "prompt": {
+            "not": {
+              "delivered": {
+                "notice": {
+                  "message": "에이전트가 시작되었지만 프롬프트는 전송되지 않았습니다. 에이전트가 준비되면 복사해서 붙여 넣으세요.",
+                  "copy": "프롬프트 복사"
+                }
+              }
+            }
+          }
         }
       },
       "remotePairingCopy": {

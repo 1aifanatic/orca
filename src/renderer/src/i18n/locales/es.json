@@ -401,6 +401,18 @@
               "refreshCliRegistration": "Actualiza el estado de registro de la CLI e inténtalo de nuevo."
             }
           }
+        },
+        "launch": {
+          "prompt": {
+            "not": {
+              "delivered": {
+                "notice": {
+                  "message": "El agente se inició, pero tu prompt no se envió. Cópialo y pégalo cuando el agente esté listo.",
+                  "copy": "Copiar prompt"
+                }
+              }
+            }
+          }
         }
       },
       "remotePairingCopy": {
