@@ -403,7 +403,7 @@ test('builds a C31 canary that only C31 placement satisfies', () => {
 })
 
 test('records but does not gate organic US-targeted fallbacks during a canary', () => {
-  // Mirrors C31's 2026-10-01 canary: steady US-targeted fallbacks, none targeting Asia.
+  // Mirrors C31's 2026-10-01 canary: US-targeted fallbacks, none targeting Asia.
   const input = canaryInput({}, 'production-gce-c31')
   input.logs.filter((entry) => entry.jsonPayload.role === 'director').forEach((entry) => {
     entry.jsonPayload.regionFallbacksDelta = { 'us-central1': 24 }

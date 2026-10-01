@@ -309,8 +309,8 @@ export function buildProductionCanaryEvidence(input) {
   // Directors show a steady relay_cells lock and pool-wait baseline unrelated to the canary cell.
   const metrics = runtimeMetrics(input.logs, start, end, input.cellId, { gateDirectorDatabase: false })
   assertPassingRuntimeMetrics(metrics, `${canary.label} canary`)
-  // Fallbacks are keyed by the host's target region. US-targeted ones are mostly sticky returns to
-  // existing Asia pins, organic and steady, so only Asia-targeted ones can implicate a new Asia cell.
+  // Fallbacks are keyed by the host's target region. US-targeted ones come from unhinted or
+  // US-preferring hosts an Asia cell cannot cause, so they are recorded but not gated.
   if (number(metrics.asiaRegionFallbacks, 'asiaRegionFallbacks') !== 0) {
     throw new Error(`${canary.label} canary asiaRegionFallbacks must be zero`)
   }
