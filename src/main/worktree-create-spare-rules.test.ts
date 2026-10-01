@@ -28,6 +28,7 @@ import { clearGitCapabilityStateForTests } from './git/git-capability-state'
 import { _resetLocalWorktreeCreateActivityForTests } from './git/local-worktree-create-activity'
 import {
   _resetSparePoolForTests,
+  abortSparesForQuit,
   findSpare,
   spareRepoKey,
   startSpare
@@ -104,11 +105,13 @@ describe('rule 1: a create never waits on an unfinished spare', () => {
     script.resetMode = 'resolve-on-abort'
     spare()
     await vi.waitFor(() => expect(script.resetSignals).toHaveLength(1))
-    await create('/other-repo')
+
+    // Quit stops the build without marking it abandoned, so only the abort itself can refuse it.
+    abortSparesForQuit()
     await _whenSpareDiscardsSettledForTests()
+    await vi.waitFor(() => expect(gitCommands(script, isRemove)).toHaveLength(1))
 
     expect(findSpare(spareRepoKey('/repo'))).toBeUndefined()
-    expect((await create()).preparedCheckout).toEqual({ status: 'miss', reason: 'none' })
   })
 
   it("stops another repo's unfinished spare when a create starts", async () => {

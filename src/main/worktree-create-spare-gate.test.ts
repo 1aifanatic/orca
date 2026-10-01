@@ -42,10 +42,12 @@ import {
   _resetSparePoolForTests,
   abortSparesForQuit,
   findSpare,
+  isSpareHookUnsupported,
   spareRepoKey
 } from './worktree-create-preparation-pool'
 import {
   _resetSpareRequestsForTests,
+  _whenSpareRequestsSettledForTests,
   requestWorktreeCreateSpare,
   SPARE_REQUEST_DEBOUNCE_MS
 } from './worktree-create-preparation'
@@ -89,6 +91,7 @@ afterEach(async () => {
 async function request(base = 'origin/main'): Promise<void> {
   requestWorktreeCreateSpare(store, repo, base)
   await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
+  await _whenSpareRequestsSettledForTests()
 }
 
 async function settle(): Promise<void> {
@@ -177,12 +180,13 @@ describe('what a spare must be able to honor', () => {
     script.hookRunSupported = false
     script.hookFile = process.execPath
     await request()
+    await vi.waitFor(() => expect(isSpareHookUnsupported(KEY)).toBe(true))
     expect(gitCommands(script, isSpareAdd)).toHaveLength(0)
 
     script.hookFile = join(workspaceRoot.value, 'no-such-hook')
     clearGitCapabilityStateForTests()
     await request()
-    await settle()
+    await vi.waitFor(() => expect(findSpare(KEY)?.state).toBe('ready'))
     expect(findSpare(KEY)?.hookRun).toBe(false)
   })
 

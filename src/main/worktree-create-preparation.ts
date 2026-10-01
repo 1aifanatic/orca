@@ -33,6 +33,7 @@ import {
 export const SPARE_REQUEST_DEBOUNCE_MS = 2_000
 
 const pendingRequests = new Map<string, ReturnType<typeof setTimeout>>()
+const runningRequests = new Set<Promise<void>>()
 
 /** Synchronous and fire-and-forget: the composer never waits on a spare. */
 export function requestWorktreeCreateSpare(store: Store, repo: Repo, baseBranch: string): void {
@@ -50,11 +51,13 @@ export function requestWorktreeCreateSpare(store: Store, repo: Repo, baseBranch:
   clearTimeout(pendingRequests.get(repoKey))
   const timer = setTimeout(() => {
     pendingRequests.delete(repoKey)
-    void worktreePreparationGit
+    const running = worktreePreparationGit
       .run(() => startRequestedSpare(store, repo, baseBranch, options, repoKey))
       .catch((error: unknown) => {
         console.warn(`[worktree-create] could not start a spare checkout for ${repo.path}`, error)
       })
+      .finally(() => runningRequests.delete(running))
+    runningRequests.add(running)
   }, SPARE_REQUEST_DEBOUNCE_MS)
   timer.unref?.()
   pendingRequests.set(repoKey, timer)
@@ -114,6 +117,10 @@ async function startRequestedSpare(
     abandonRepoSpare(repoKey)
   }
   startSpare({ repoPath: repo.path, workspaceRoot, oid, hookRun: hook.hookRun, options })
+}
+
+export async function _whenSpareRequestsSettledForTests(): Promise<void> {
+  await Promise.all(runningRequests)
 }
 
 export function _resetSpareRequestsForTests(): void {
