@@ -698,6 +698,32 @@ describe('account CLI handlers', () => {
     )
   })
 
+  it('tells the user which saved Claude accounts need a fresh sign-in', async () => {
+    callMock.mockResolvedValue({
+      id: 'test',
+      ok: true,
+      result: {
+        claude: {
+          accounts: [
+            { id: 'old', email: 'old@example.com', profileReadiness: 'sign-in-required' },
+            { id: 'ok', email: 'ok@example.com', profileReadiness: 'ready' }
+          ],
+          activeAccountId: 'old'
+        },
+        codex: { accounts: [], activeAccountId: null }
+      },
+      _meta: { runtimeId: 'test-runtime' }
+    })
+
+    await ACCOUNT_HANDLERS['account list']({ ...context('claude'), flags: new Map() })
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '  old@example.com (active) (sign in again in Orca Settings > Accounts)\n  ok@example.com\n'
+      )
+    )
+  })
+
   it('lists accounts without forcing a provider usage refresh', async () => {
     // Why: the forced lane bypasses the poll throttle and costs one serial
     // round-trip per managed account, and this output shows no usage numbers.

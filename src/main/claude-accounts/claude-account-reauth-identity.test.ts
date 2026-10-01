@@ -95,7 +95,12 @@ function fixture(accounts: ClaudeManagedAccount[]) {
     selection,
     registration,
     rows,
-    signInAs: (email: string) => (browserLogin = email)
+    signInAs: (email: string) => (browserLogin = email),
+    signInRow: (id: string, email: string) =>
+      writeFileSync(
+        join(profileHome(id), '.claude.json'),
+        JSON.stringify({ oauthAccount: { emailAddress: email, organizationUuid: 'org-1' } })
+      )
   }
 }
 
@@ -137,4 +142,26 @@ it('keeps the original row when a re-sign-in lands on a login another row alread
     ['a', 'a@example.test', 'ready', null],
     ['b', 'b@example.test', 'ready', null]
   ])
+})
+
+it('lets a new sign-in take over a saved account that still needs its fresh sign-in', async () => {
+  const f = fixture([legacy('a', 'a@example.test', 1)])
+  f.settings.activeClaudeManagedAccountId = 'a'
+  f.settings.activeClaudeManagedAccountIdsByRuntime.host = 'a'
+  f.signInAs('a@example.test')
+  await expect(f.registration.add()).resolves.toHaveProperty('accounts')
+  const [row] = f.settings.claudeManagedAccounts
+  expect(f.settings.claudeManagedAccounts).toHaveLength(1)
+  expect(row).toMatchObject({ email: 'a@example.test', createdAt: 1 })
+  expect(row.id).not.toBe('a')
+  expect(f.settings.activeClaudeManagedAccountIdsByRuntime.host).toBe(row.id)
+  expect(f.rows()).toEqual([[row.id, 'a@example.test', 'ready', null]])
+})
+
+it('refuses adding an account that is already saved and signed in, leaving no second row', async () => {
+  const f = fixture([legacy('a', 'a@example.test', 1)])
+  f.signInRow('a', 'a@example.test')
+  f.signInAs('a@example.test')
+  await expect(f.registration.add()).rejects.toThrow('This Claude account is already added.')
+  expect(f.rows()).toEqual([['a', 'a@example.test', 'ready', null]])
 })

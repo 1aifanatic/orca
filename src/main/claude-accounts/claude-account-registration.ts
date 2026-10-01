@@ -6,7 +6,10 @@ import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { ClaudeAccountSelection } from './claude-account-selection'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
-import { getClaudeSelectionTargetForAccount } from './runtime-selection'
+import {
+  getClaudeSelectionTargetForAccount,
+  normalizeClaudeRuntimeSelection
+} from './runtime-selection'
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
 import { prepareClaudeProfileLogin, loginToClaudeProfile } from './claude-profile-login'
@@ -18,9 +21,21 @@ export class ClaudeAccountRegistration {
       store: {
         getSettings: () => Pick<
           GlobalSettings,
-          'claudeManagedAccounts' | 'agentStatusHooksEnabled' | 'disabledTuiAgents'
+          | 'claudeManagedAccounts'
+          | 'activeClaudeManagedAccountId'
+          | 'activeClaudeManagedAccountIdsByRuntime'
+          | 'agentStatusHooksEnabled'
+          | 'disabledTuiAgents'
         >
-        updateSettings: (patch: Pick<GlobalSettings, 'claudeManagedAccounts'>) => unknown
+        updateSettings: (
+          patch: Pick<GlobalSettings, 'claudeManagedAccounts'> &
+            Partial<
+              Pick<
+                GlobalSettings,
+                'activeClaudeManagedAccountId' | 'activeClaudeManagedAccountIdsByRuntime'
+              >
+            >
+        ) => unknown
       }
       rateLimits: Pick<
         RateLimitService,
@@ -129,11 +144,33 @@ export class ClaudeAccountRegistration {
         wslDistro: account.wslDistro ?? null
       }
     )
+    let createdAt = account.createdAt
+    if (isUnfinishedClaudeSignIn(account) && takenByAnother) {
+      const existing = selection.list().accounts.find((entry) => entry.id === takenByAnother.id)
+      if (existing?.profileReadiness === 'ready') {
+        // As before profiles: adding an account that is already signed in adds nothing.
+        this.forget(accountId)
+        await this.publish(target)
+        throw new Error('This Claude account is already added.')
+      }
+      // Why: the saved account still needs its fresh sign-in, and this new profile holds that
+      // login, so the new one takes its place, its selection and its age. Settings only.
+      createdAt = takenByAnother.createdAt
+      this.replaceAccount(takenByAnother.id, accountId)
+    }
     // Why keep the label: signing an account in to a login another account owns must not take
     // that account's identity; this one then shows what it holds and is flagged instead.
     const keepsLabel =
       !isUnfinishedClaudeSignIn(account) &&
-      takenByAnother !== null &&
+      findDuplicateClaudeAccount(
+        store.getSettings().claudeManagedAccounts.filter((entry) => entry.id !== accountId),
+        {
+          email: identity.email,
+          organizationUuid: identity.organizationUuid,
+          managedAuthRuntime: account.managedAuthRuntime ?? 'host',
+          wslDistro: account.wslDistro ?? null
+        }
+      ) !== null &&
       normalizeClaudeEmail(account.email) !== normalizeClaudeEmail(identity.email)
     this.save({
       ...account,
@@ -145,6 +182,7 @@ export class ClaudeAccountRegistration {
             organizationName: identity.organizationName
           }),
       authMethod: 'subscription-oauth',
+      createdAt,
       updatedAt: Date.now(),
       lastAuthenticatedAt: Date.now()
     })
@@ -174,6 +212,24 @@ export class ClaudeAccountRegistration {
       // Publication reports its own UI issue; a stale selection must not block signing in.
       console.warn('[claude-profile] Account selection publication failed:', error)
     }
+  }
+
+  private replaceAccount(previousId: string, nextId: string): void {
+    const settings = this.deps.store.getSettings()
+    const selection = normalizeClaudeRuntimeSelection(settings)
+    const swap = (id: string | null) => (id === previousId ? nextId : id)
+    this.deps.store.updateSettings({
+      claudeManagedAccounts: settings.claudeManagedAccounts.filter(
+        (entry) => entry.id !== previousId
+      ),
+      activeClaudeManagedAccountId: swap(settings.activeClaudeManagedAccountId ?? null),
+      activeClaudeManagedAccountIdsByRuntime: {
+        host: swap(selection.host),
+        wsl: Object.fromEntries(
+          Object.entries(selection.wsl).map(([distro, id]) => [distro, swap(id)])
+        )
+      }
+    })
   }
 
   private forget(accountId: string): void {
