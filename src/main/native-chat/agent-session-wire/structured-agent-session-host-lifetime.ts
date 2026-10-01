@@ -31,7 +31,8 @@ import {
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
-import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import { withTimeout } from '../../../shared/promise-timeout-fallback'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -106,9 +107,9 @@ const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
 
 /**
  * Whether this stop ends work its event must record: a running turn or an unanswered send, a start's
- * own included, read once the sink drained what the provider already said
- * (`isMainAgentWorkingOnceFlushed`). A start that carries no send ends nothing. A person's Stop
- * wrote its own event, and quit and the idle sweep's rest write none.
+ * own included, read once the sink drained what the provider already said. A start that carries
+ * no send ends nothing. A person's Stop wrote its own event, and quit and the idle sweep's rest
+ * write none.
  */
 async function stopEndsWork(
   context: StructuredAgentSessionLifetimeContext,
@@ -120,13 +121,17 @@ async function stopEndsWork(
   if ('recorded' in ending || ending.quit || ending.resting || !child) {
     return false
   }
-  const working = await isMainAgentWorkingOnceFlushed(
-    {
-      journal,
-      fence: child.fence,
-      flushStreamedEvents: () => context.runtimeState.flushEventSink(sessionId)
-    },
-    STOP_EVENT_DRAIN_TIMEOUT_MS
+  // Best effort: the stop goes ahead either way, so a failed or slow drain leaves the journal's
+  // read as it stands rather than calling the agent working.
+  await withTimeout(
+    context.runtimeState.flushEventSink(sessionId).catch(() => undefined),
+    STOP_EVENT_DRAIN_TIMEOUT_MS,
+    undefined
+  )
+  const working = isStructuredAgentSessionMainAgentWorking(
+    journal.activeTurnId(),
+    journal.submissions(),
+    child.fence
   )
   // A host stop of work a person's Stop is already ending must not supersede that Stop's reason.
   return (

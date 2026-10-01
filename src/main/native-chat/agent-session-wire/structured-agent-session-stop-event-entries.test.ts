@@ -3,7 +3,7 @@
 // nothing, quit writes nothing (its resume marker records why), and any later Stop event ends a
 // person's Stop pause.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
@@ -157,6 +157,30 @@ describe('every Stop entry writes its event, with its reason, before it ends the
       state: 'interrupted',
       outcome: 'cancellation'
     })
+  })
+
+  // The drain is best effort: when it fails, the journal as it stands says the agent rests.
+  it('writes nothing when the drain fails as it evicts a chat at rest', async () => {
+    rig = await createQueuedMessageTestRig()
+    const working = await runningTurn()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(working, 'stopped')
+    await journal().appendItem(
+      { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 999 },
+      { kind: 'turn', turnId: 'turn-1', state: 'interrupted', completedAt: Date.now() },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    expect(journal().activeTurnId()).toBeNull()
+    const sink = rig.host['runtimeState'].eventSinkFor(HOST_TEST_SESSION)
+    const drained = sink.drained.bind(sink)
+    vi.spyOn(sink, 'drained')
+      .mockResolvedValueOnce({ ok: false, error: new Error('drain lost once') })
+      .mockImplementation(drained)
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, 'evict')
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
   })
 
   it("writes nothing at quit, whose resume marker's trigger records why", async () => {
