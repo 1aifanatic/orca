@@ -38,6 +38,8 @@ export type StructuredAgentSessionLatestRequest = {
   outcome: AgentJournalTurnOutcome | null
   /** When it settled: the turn's end, or the refusal. Undefined while it runs. */
   settledAt: number | undefined
+  /** A send waiting for its next start: it reads as failed, but that is not its verdict yet. */
+  waiting?: true
 }
 
 /** Null when the journal holds no request with a verdict to give. Accepted and unanswered sends
@@ -118,7 +120,8 @@ function requestOf(
     id: item.itemId,
     turnState: null,
     outcome: 'failure',
-    settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined
+    settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined,
+    ...(isRetryingStructuredAgentSessionStart(submission) ? { waiting: true as const } : {})
   }
 }
 

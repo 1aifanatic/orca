@@ -557,6 +557,30 @@ describe('a request the agent or its start refused', () => {
     ])
   })
 
+  // Its failure is not final while it waits, and a Stop that withdraws it brings back a request
+  // already announced.
+  it('notifies nothing for a send waiting for its next start, nor when a Stop withdraws it', () => {
+    const h = afterSuccessfulTurn()
+    const items = [userEntry('m1', 1), settledTurn, userEntry('m2', 3)]
+    const accepted = sent('m1', { dispatchState: 'accepted' })
+    const waiting = sent('m2', {
+      dispatchState: 'pending',
+      resolvedAt: null,
+      startFailure: {
+        attempts: 1,
+        reason: 'A Claude account switch is in progress.',
+        rejection: { kind: 'accountSwitchInProgress' },
+        failedAt: 30,
+        nextAttemptAt: 15_030
+      }
+    })
+    h.setJournal(items, [accepted, waiting])
+    h.observe()
+    h.setJournal(items, [accepted, refused('m2', DISPATCH_REJECTED_CANCELLED)])
+    h.observe()
+    expect(h.outcomes()).toEqual([['t1', 'success']])
+  })
+
   // A waiting send lets later ones go first, so its final failure can come after their turn ends.
   it.each([
     [

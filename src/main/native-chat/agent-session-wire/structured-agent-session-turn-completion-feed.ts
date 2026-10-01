@@ -125,9 +125,11 @@ export class StructuredAgentSessionTurnCompletionFeed {
     // answered. A pending prompt does not wait (structured chat has no other attention producer):
     // the event says so itself, and answering it keeps the same identity.
     // A withdrawn send leaves the older request latest.
+    // A send waiting for its next start has no verdict yet, so the mark stays where it was.
     if (
       state.owesWork ||
       !request ||
+      request.waiting ||
       (baseline.settled?.kind === request.kind && baseline.settled.id === request.id)
     ) {
       return

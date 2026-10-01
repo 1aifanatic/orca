@@ -114,7 +114,8 @@ describe('a queued message waiting out a failed start', () => {
       id: MESSAGE.itemId,
       turnState: null,
       outcome: 'failure',
-      settledAt: FAILED_AT
+      settledAt: FAILED_AT,
+      waiting: true
     })
   })
 
