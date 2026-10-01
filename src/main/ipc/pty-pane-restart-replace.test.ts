@@ -138,7 +138,7 @@ function installRestartHarness(
     terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-old' }
   }
   const store = {
-    getWorkspaceSession: vi.fn(() => session),
+    getWorkspaceSession: vi.fn((_hostId?: string) => session),
     setWorkspaceSession: vi.fn((next) => {
       session = next
     }),

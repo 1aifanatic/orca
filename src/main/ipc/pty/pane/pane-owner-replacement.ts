@@ -14,8 +14,8 @@ export type ReplacedPaneOwner = {
 /** Caller holds the pane's spawn reservation, so no other spawn can claim the pane meanwhile. */
 export async function stopReplacedPaneOwner(
   deps: {
-    runtime: OrcaRuntimeService | undefined
-    store: Store | undefined
+    runtime?: OrcaRuntimeService
+    store?: Store
     stopReplacedPty: (id: string) => Promise<void>
   },
   args: {
