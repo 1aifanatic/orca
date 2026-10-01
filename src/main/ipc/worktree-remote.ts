@@ -170,6 +170,7 @@ import {
   retireGeneratedWorktreeName
 } from '../worktree-name-retirement'
 import { createRetiredNameLookup } from '../../shared/worktree/retired-name-registry'
+import { findPendingWorktreeRemovalConflict } from '../worktree-background-removal'
 
 const SSH_WORKTREE_CREATE_FETCH_FRESHNESS_MS = 30_000
 const SSH_WORKTREE_CREATE_FETCH_CACHE_MAX = 512
@@ -439,7 +440,8 @@ async function spawnLocalStartupAndSetupTerminals(args: {
       ...(sequencedStartup.viewMode ? { viewMode: sequencedStartup.viewMode } : {}),
       startupCommandDelivery: sequencedStartup.startupCommandDelivery,
       telemetry: sequencedStartup.telemetry,
-      activate: true
+      // Why: the submitting renderer decides whether to open the workspace; activating here yanked users who moved on (#9944).
+      surfaceOwner: false
     })
     startupTerminalHandle = terminal.handle
     startupTerminal = {
@@ -477,14 +479,16 @@ async function spawnLocalStartupAndSetupTerminals(args: {
           direction: setupLaunchMode === 'split-horizontal' ? 'horizontal' : 'vertical',
           command: setupCommand,
           env: setup.envVars,
-          activate: false
+          activate: false,
+          surfaceOwner: false
         })
       } else {
         await runtime.createTerminal(`id:${worktree.id}`, {
           title: 'Setup',
           command: setupCommand,
           env: setup.envVars,
-          activate: false
+          activate: false,
+          surfaceOwner: false
         })
       }
       didSpawnSetup = true
@@ -2627,7 +2631,12 @@ async function performLocalWorktreeCreate(
         computeWorktreePath(effectiveSanitizedName, repo.path, worktreePathSettings, workspaceRoot),
         workspaceRoot
       )
-      if (existsSync(worktreePath)) {
+      // Why the pending check: Git may already have deleted the directory while Orca still owns
+      // the path until its removal settles; take the next name instead of racing it.
+      if (
+        existsSync(worktreePath) ||
+        findPendingWorktreeRemovalConflict(repo.path, { worktreePath })
+      ) {
         continue
       }
 
