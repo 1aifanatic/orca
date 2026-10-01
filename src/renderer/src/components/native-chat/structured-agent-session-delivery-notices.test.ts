@@ -470,3 +470,94 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 })
+
+describe('the notice on a message whose agent start failed', () => {
+  function queued(
+    id: string,
+    startFailure?: AgentJournalSubmission['startFailure']
+  ): AgentJournalSubmission {
+    return {
+      clientMessageId: id,
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'pending',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: null,
+      handoverRecorded: true,
+      ...(startFailure ? { startFailure } : {})
+    }
+  }
+  const transient = { kind: 'accountSwitchInProgress' } as const
+
+  it('says why and that Orca tries again, with no Retry, whoever sent it', () => {
+    const notices = structuredAgentSessionDeliveryNotices(
+      [entry('mine', { state: 'dispatching' })],
+      null,
+      'Claude',
+      () => {},
+      [
+        queued('mine', {
+          attempts: 1,
+          reason: 'Written by the host.',
+          rejection: transient,
+          failedAt: 1,
+          nextAttemptAt: 15_001
+        }),
+        queued('orca', {
+          attempts: 2,
+          reason: 'Written by the host.',
+          rejection: transient,
+          failedAt: 1,
+          nextAttemptAt: 60_001
+        }),
+        queued('waiting')
+      ],
+      []
+    )
+
+    const said =
+      'A Claude account switch is in progress. Try again after it finishes. Orca will try again shortly.'
+    expect(Object.fromEntries(notices)).toEqual({
+      [agentJournalSubmissionKey('mine')]: { text: said },
+      [agentJournalSubmissionKey('orca')]: { text: said }
+    })
+  })
+
+  it("keeps the host's sentence for a failure this build cannot read whole", () => {
+    expect(
+      texts([], null, [
+        queued('mine', {
+          attempts: 1,
+          reason: 'Written by a newer host.',
+          rejection: { kind: 'aNewerKind' },
+          failedAt: 1,
+          nextAttemptAt: 15_001
+        })
+      ])
+    ).toEqual({
+      [agentJournalSubmissionKey('mine')]: 'Written by a newer host. Orca will try again shortly.'
+    })
+  })
+
+  it('offers Retry, and sign-in as the step, once a signed-out start is rejected', () => {
+    const signedOut = { kind: 'notSignedIn' } as const
+    const words = agentSessionFailureWords(signedOut, { surface: 'rejection', agentName: 'Claude' })
+    expect(
+      texts(
+        [
+          entry('mine', {
+            state: 'rejected',
+            lastFailure: structuredAgentSessionRejectedFailure(words)
+          })
+        ],
+        null,
+        [{ ...queued('mine'), dispatchState: 'rejected', ...words }]
+      )
+    ).toEqual({
+      [agentJournalSubmissionKey('mine')]:
+        'Claude is not signed in for the selected account. Sign in first.'
+    })
+  })
+})

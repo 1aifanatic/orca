@@ -17934,6 +17934,7 @@
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
+      "startRetrying": "Orca will try again shortly.",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",

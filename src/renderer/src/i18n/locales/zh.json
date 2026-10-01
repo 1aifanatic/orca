@@ -17747,6 +17747,7 @@
       },
       "dismissDeliveryNotice": "关闭",
       "messageNotSent": "消息未发送",
+      "startRetrying": "Orca 将很快重试。",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "queuedMessages": {
         "alreadySent": "此消息已发送。",

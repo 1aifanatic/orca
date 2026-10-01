@@ -15153,6 +15153,7 @@
       },
       "dismissDeliveryNotice": "Descartar",
       "messageNotSent": "Mensaje no enviado",
+      "startRetrying": "Orca lo intentará de nuevo en breve.",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "subagents": {
         "unnamed": "Subagente"

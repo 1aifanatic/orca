@@ -17782,6 +17782,7 @@
       },
       "dismissDeliveryNotice": "閉じる",
       "messageNotSent": "メッセージは送信されませんでした",
+      "startRetrying": "Orca がまもなく再試行します。",
       "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "queuedMessages": {
         "alreadySent": "このメッセージはすでに送信されています。",

@@ -17846,6 +17846,7 @@
       },
       "dismissDeliveryNotice": "Ignorer",
       "messageNotSent": "Message non envoyé",
+      "startRetrying": "Orca réessaiera sous peu.",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",
