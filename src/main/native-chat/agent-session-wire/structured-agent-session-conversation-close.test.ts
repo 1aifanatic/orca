@@ -248,8 +248,8 @@ describe('a start that never finishes (P2-15)', () => {
     ) {
       if (input.state === 'rejected') {
         order.push(`rejected: ${input.reason}`)
-      } else if (input.state === 'pending' && 'startFailure' in input) {
-        order.push(`pending: ${input.startFailure.reason}`)
+      } else if (input.state === 'pending' && 'startRetry' in input) {
+        order.push(`pending: ${input.startRetry.reason}`)
       }
       return resolve.call(this, input)
     })

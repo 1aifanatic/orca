@@ -78,7 +78,7 @@ it('files nothing and notes nothing while the continuation waits for its next tr
   expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
     {
       dispatchState: 'pending',
-      startFailure: { attempts: 1, reason: 'A Claude account switch is in progress.' }
+      startRetry: { attempts: 1, reason: 'A Claude account switch is in progress.' }
     }
   ])
 })

@@ -429,7 +429,7 @@ describe('a published child that dies while it proves its start', () => {
           reason: TEXT,
           rejection: START_FAILURE
         })
-        expect(await submission(id)).not.toHaveProperty('startFailure')
+        expect(await submission(id)).not.toHaveProperty('startRetry')
       }
       expect(rejectedIn(events, first)).toBe(true)
       expect(dispatch).not.toHaveBeenCalled()
@@ -476,7 +476,7 @@ describe('a start another operation made that dies while a sent message waits on
       reason: TEXT,
       rejection: { kind: 'providerStartFailed' }
     })
-    expect(await submission(id)).not.toHaveProperty('startFailure')
+    expect(await submission(id)).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(rejectedIn(events, id)).toBe(true)
     // The setup's child and the operation's: nothing started again into the same failure.
@@ -557,7 +557,7 @@ describe('a child that ends before its message is handed over', () => {
         detail: { text: 'codex app-server crashed', audience: 'log' }
       }
     })
-    expect(await submission(id)).not.toHaveProperty('startFailure')
+    expect(await submission(id)).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
@@ -845,7 +845,7 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
       reason: text,
       rejection: { kind: 'hostStopped' }
     })
-    expect(first).not.toHaveProperty('startFailure')
+    expect(first).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })

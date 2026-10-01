@@ -212,7 +212,7 @@ describe('a send into a published session whose child ended before startup', () 
         rejection: STARTUP_FAILURE
       })
     )
-    expect((await submission(held))?.startFailure).toBeUndefined()
+    expect((await submission(held))?.startRetry).toBeUndefined()
     expect((await journalStatuses()).slice(rowsBefore)).toEqual([])
     // The failed restart moved the fence twice: the acquisition, and the exit that released it.
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(releasedFence + 2)
@@ -254,7 +254,7 @@ describe('a send while the child of the first start is still proving itself', ()
         rejection: STARTUP_FAILURE
       })
     )
-    expect((await submission(held))?.startFailure).toBeUndefined()
+    expect((await submission(held))?.startRetry).toBeUndefined()
     expect(acquire).toHaveBeenCalledOnce()
     expect(await journalStatuses()).toEqual([])
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(fence + 1)

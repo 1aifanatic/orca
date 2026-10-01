@@ -211,7 +211,7 @@ const ROWS: Row[] = [
       sent('m1', {
         dispatchState: 'pending',
         resolvedAt: null,
-        startFailure: {
+        startRetry: {
           attempts: 2,
           reason: START_FAILURE,
           rejection: { kind: 'accountSwitchInProgress' },

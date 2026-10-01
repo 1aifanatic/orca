@@ -154,7 +154,7 @@ type ContinuationSubmission = {
   dispatchState?: string
   reason?: string | null
   rejection?: UnreadAgentSessionFailureFact
-  startFailure?: unknown
+  startRetry?: unknown
 }
 
 export type StructuredAgentSessionContinuationDeps = {
@@ -330,7 +330,7 @@ async function sendContinuation(
   if (handedOver?.dispatchState === 'rejected') {
     return { done: refusedBy(sessionId, handedOver) }
   }
-  if (handedOver?.dispatchState === 'pending' && handedOver.startFailure !== undefined) {
+  if (handedOver?.dispatchState === 'pending' && handedOver.startRetry !== undefined) {
     return { done: { sessionId, outcome: 'pending', startFailed: true } }
   }
   return {

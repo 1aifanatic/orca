@@ -609,7 +609,7 @@ describe('a request the agent or its start refused', () => {
     const waiting = sent('m2', {
       dispatchState: 'pending',
       resolvedAt: null,
-      startFailure: {
+      startRetry: {
         attempts: 1,
         reason: 'A Claude account switch is in progress.',
         rejection: { kind: 'accountSwitchInProgress' },
@@ -651,7 +651,7 @@ describe('a request the agent or its start refused', () => {
       const waiting = sent('m1', {
         dispatchState: 'pending',
         resolvedAt: null,
-        startFailure: {
+        startRetry: {
           attempts: 1,
           reason: START_FAILURE,
           rejection: { kind: 'accountSwitchInProgress' },

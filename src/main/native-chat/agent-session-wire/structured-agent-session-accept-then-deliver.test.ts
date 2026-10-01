@@ -329,7 +329,7 @@ describe('a start the chat needed and did not get', () => {
         refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
       }
     })
-    expect((await submission(first))?.startFailure).toBeUndefined()
+    expect((await submission(first))?.startRetry).toBeUndefined()
     expect(await errorRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
@@ -422,7 +422,7 @@ describe('a start the chat needed and did not get', () => {
           rejection: expected.failure
         })
       )
-      expect(told().some((entry) => entry.startFailure !== undefined)).toBe(false)
+      expect(told().some((entry) => entry.startRetry !== undefined)).toBe(false)
       expect(await errorRows()).toEqual([])
     }
   )
@@ -448,7 +448,7 @@ describe('a start the chat needed and did not get', () => {
     // The message names the start that failed, not a close or a restart it never met — and never
     // the store's own error, which is Orca's and goes to the log.
     expect(settled).toMatchObject({ rejection: { kind: 'restartFailed' } })
-    expect(settled?.startFailure).toBeUndefined()
+    expect(settled?.startRetry).toBeUndefined()
     expect(settled?.reason).not.toContain('record store write failed')
     expect(await errorRows()).toEqual([])
   })
@@ -559,7 +559,7 @@ describe('a child that exits before its message is handed over', () => {
         rejection: { kind: 'providerExited' }
       })
     )
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
   })

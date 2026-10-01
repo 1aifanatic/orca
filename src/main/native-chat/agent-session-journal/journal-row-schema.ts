@@ -113,11 +113,11 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `pending`: the message waits in the queue because the start it was for was refused. An
    *  older reader ignores the key and reads the row as a handover, so the message ends in doubt,
    *  never as sent or failed. A malformed one is dropped when read, never the row. */
-  startFailure?: JournalStartFailureRecord
+  startRetry?: JournalStartRetryRecord
 }
 
 /** What a failed start's row records; the attempt count and the time are the reducer's. */
-export type JournalStartFailureRecord = {
+export type JournalStartRetryRecord = {
   reason: string
   rejection: AgentSessionFailureFact
   nextAttemptAt: number

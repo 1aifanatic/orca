@@ -84,7 +84,7 @@ function submission(patch: Partial<AgentJournalSubmission> = {}): AgentJournalSu
 }
 
 const RETRYING = submission({
-  startFailure: {
+  startRetry: {
     attempts: 1,
     reason: 'A Claude account switch is in progress.',
     rejection: { kind: 'accountSwitchInProgress' },
@@ -123,7 +123,7 @@ describe('a queued message waiting out a failed start', () => {
     expect(AgentJournalSubmissionSchema.parse(RETRYING)).toEqual(RETRYING)
     const damaged = AgentJournalSubmissionSchema.parse({
       ...RETRYING,
-      startFailure: { attempts: 'one' }
+      startRetry: { attempts: 'one' }
     })
     expect(damaged).toEqual(submission())
   })

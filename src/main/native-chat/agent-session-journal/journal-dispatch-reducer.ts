@@ -10,7 +10,7 @@ import { isFailedStartRejection } from '../../../shared/structured-agent-session
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import { notePersonTurnAccepted, placeHandedOverMessage } from './journal-submission-fold'
-import type { JournalRow, JournalStartFailureRecord } from './journal-row-schema'
+import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
 
 export function applyJournalDispatchRow(
   state: JournalReducerState,
@@ -36,20 +36,19 @@ export function applyJournalDispatchRow(
     delete submission.handedOverAt
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
-  const startFailure =
-    row.state === 'pending' ? readStoredStartFailure(row.startFailure) : undefined
-  if (startFailure) {
+  const startRetry = row.state === 'pending' ? readStoredStartRetry(row.startRetry) : undefined
+  if (startRetry) {
     // Still queued, its start refused before it ran: each refusal is one more attempt. Only a queued
     // message is written this way; nothing handed over waits for another start.
-    submission.startFailure = {
-      attempts: (submission.startFailure?.attempts ?? 0) + 1,
-      ...startFailure,
+    submission.startRetry = {
+      attempts: (submission.startRetry?.attempts ?? 0) + 1,
+      ...startRetry,
       failedAt: row.ts
     }
   } else {
-    delete submission.startFailure
+    delete submission.startRetry
   }
-  if (row.state === 'pending' && !startFailure) {
+  if (row.state === 'pending' && !startRetry) {
     submission.handedOverAt = row.ts
     placeHandedOverMessage(state, submission, row)
   }
@@ -91,7 +90,7 @@ function unreadFailureFact(value: unknown): UnreadAgentSessionFailureFact | unde
 }
 
 /** A failed start as its row recorded it; undefined when anything it needs is malformed. */
-function readStoredStartFailure(value: unknown): JournalStartFailureRecord | undefined {
+function readStoredStartRetry(value: unknown): JournalStartRetryRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined
   }

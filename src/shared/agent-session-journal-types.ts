@@ -428,11 +428,11 @@ export type AgentJournalSubmission = {
   origin?: 'client' | 'host'
   /** On a queued message only: the agent start it was for failed and another is booked. A start
    *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
-  startFailure?: AgentJournalStartFailure
+  startRetry?: AgentJournalStartRetry
 }
 
 /** A delivery attempt whose agent start failed, as the message waiting on the next one keeps it. */
-export type AgentJournalStartFailure = {
+export type AgentJournalStartRetry = {
   /** Starts that failed for this message so far, counted from the rows that recorded them. */
   attempts: number
   /** The sentence `agentSessionFailureWords` gives a message Orca starts again on its own. */

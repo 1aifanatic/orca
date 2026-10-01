@@ -119,7 +119,7 @@ it.each(PROBES)(
         (entry) => entry.clientMessageId === sendEnvelope.clientOperationId
       )
     await eventually(async () => expect(await sent()).toMatchObject({ dispatchState: 'rejected' }))
-    expect((await sent())?.startFailure).toBeUndefined()
+    expect((await sent())?.startRetry).toBeUndefined()
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(await turnStates(host)).toEqual([settled])

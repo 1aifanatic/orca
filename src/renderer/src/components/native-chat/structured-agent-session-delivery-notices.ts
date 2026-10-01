@@ -49,7 +49,7 @@ import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 /** A message waiting for its next start: the failure in the reader's language, with no step of the
  *  person's own to try again, then that Orca will. */
 function startRetryingNoticeText(submission: AgentJournalSubmission, agentName: string): string {
-  const fact = readWholeAgentSessionFailureFact(submission.startFailure?.rejection)
+  const fact = readWholeAgentSessionFailureFact(submission.startRetry?.rejection)
   const reason = fact
     ? agentSessionFailureSentence(
         fact,
@@ -57,7 +57,7 @@ function startRetryingNoticeText(submission: AgentJournalSubmission, agentName: 
         { agentName, orcaRetries: true },
         sayAgentSessionFailureTranslated
       )
-    : (submission.startFailure?.reason ?? '')
+    : (submission.startRetry?.reason ?? '')
   return joinSentences([
     ...(reason ? [reason] : []),
     translate('components.native-chat.startRetrying', 'Orca will try again shortly.')

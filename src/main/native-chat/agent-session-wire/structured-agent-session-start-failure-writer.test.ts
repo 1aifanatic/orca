@@ -236,9 +236,7 @@ function framedStartFailures(clientMessageId: string): unknown[] {
   return frames.flatMap((frame) =>
     frame.type === 'batch'
       ? frame.batch.submissions.flatMap((entry) =>
-          entry.clientMessageId === clientMessageId && entry.startFailure
-            ? [entry.startFailure]
-            : []
+          entry.clientMessageId === clientMessageId && entry.startRetry ? [entry.startRetry] : []
         )
       : []
   )
@@ -299,7 +297,7 @@ describe('a queued message whose start fails', () => {
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'pending',
-        startFailure: {
+        startRetry: {
           attempts: 1,
           reason: WAITING_REASON,
           rejection: TRANSIENT,
@@ -325,7 +323,7 @@ describe('a queued message whose start fails', () => {
         ...TRANSIENT_WORDS
       })
     )
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
   })
 
@@ -355,7 +353,7 @@ describe('a queued message whose start fails', () => {
     const booked: number[] = []
     for (const expected of [NOW + 15_000, NOW + 75_000, NOW + 375_000]) {
       await eventually(async () =>
-        expect((await submission(queued))?.startFailure?.nextAttemptAt).toBe(expected)
+        expect((await submission(queued))?.startRetry?.nextAttemptAt).toBe(expected)
       )
       booked.push(expected)
       await fireRetry()
@@ -367,7 +365,7 @@ describe('a queued message whose start fails', () => {
         ...TRANSIENT_WORDS
       })
     )
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(booked).toEqual([NOW + 15_000, NOW + 75_000, NOW + 375_000])
     // One at setup, then one start per try.
     expect(beforeSpawn).toHaveBeenCalledTimes(5)
@@ -417,7 +415,7 @@ describe('a queued message whose start fails', () => {
   it('lets a later message go first while it waits, then goes itself when its try is due', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
 
     const second = await send(hostTestMessage('second'))
@@ -426,7 +424,7 @@ describe('a queued message whose start fails', () => {
     )
     expect(await submission(first)).toMatchObject({
       dispatchState: 'pending',
-      startFailure: { attempts: 1 }
+      startRetry: { attempts: 1 }
     })
     expect((await submission(first))?.handedOverAt).toBeUndefined()
 
@@ -434,7 +432,7 @@ describe('a queued message whose start fails', () => {
     await eventually(() =>
       expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second, first])
     )
-    expect((await submission(first))?.startFailure).toBeUndefined()
+    expect((await submission(first))?.startRetry).toBeUndefined()
   })
 })
 
@@ -452,7 +450,7 @@ describe('the wake for a message waiting out a refused start', () => {
   it('books nothing for a try that comes due while a /compact runs: its end wakes the loop', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
     await send(structuredAgentSessionCompactBody())
     await eventually(() => expect(compact).toHaveBeenCalledOnce())
@@ -469,10 +467,10 @@ describe('the wake for a message waiting out a refused start', () => {
   it('is booked again when its try comes due during the step that found it not yet due', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
     await settleSteps()
-    const due = (await submission(first))!.startFailure!.nextAttemptAt
+    const due = (await submission(first))!.startRetry!.nextAttemptAt
     const timer = armed().at(-1)!
     expect(timer.dueAt).toBe(due)
 
@@ -493,7 +491,7 @@ describe('the wake for a message waiting out a refused start', () => {
   it('is not booked again for every commit while nothing can go', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
     const second = await send(hostTestMessage('second'))
     await eventually(() =>
@@ -605,7 +603,7 @@ describe('a start that fails while its child exits', () => {
 
     await exitBeforeProof()
     expect(await submission(queued)).toMatchObject({ dispatchState: 'pending' })
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     settleStart(undefined)
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
@@ -617,7 +615,7 @@ describe('a start that fails while its child exits', () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(await submission(queued)).toEqual(recorded)
-    expect(recorded?.startFailure).toBeUndefined()
+    expect(recorded?.startRetry).toBeUndefined()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     expect(await startRows()).toEqual([])
   })
@@ -658,7 +656,7 @@ describe('a start that fails while its child exits', () => {
         rejection: PROVIDER_START_FAILED
       })
     )
-    expect((await submission(handed))?.startFailure).toBeUndefined()
+    expect((await submission(handed))?.startRetry).toBeUndefined()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     // Never in doubt on the way: the child it was handed to took nothing.
     expect(framedStates(handed)).not.toContain('unknown')
@@ -685,7 +683,7 @@ describe('a start whose child took one message and cannot take the next', () => 
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     for (const id of [first, second]) {
       expect(await submission(id)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
-      expect((await submission(id))?.startFailure).toBeUndefined()
+      expect((await submission(id))?.startRetry).toBeUndefined()
       // Never in doubt on the way: the child it was handed to took nothing.
       expect(framedStates(id)).not.toContain('unknown')
     }
@@ -712,7 +710,7 @@ describe('a start whose child took one message and cannot take the next', () => 
       })
     )
     await host.flushStreamedEvents(SESSION)
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(framedStartFailures(queued)).toEqual([])
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     expect(dispatch).toHaveBeenCalledOnce()
@@ -729,7 +727,7 @@ describe('a /compact overtaken while it waits out a refused start', () => {
     await eventually(() => expect(beforeSpawn.mock.calls.length).toBeGreaterThan(calls))
     refuse()
     await eventually(async () =>
-      expect((await submission(command))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(command))?.startRetry).toMatchObject({ attempts: 1 })
     )
     // The account switch ends; the person's next message goes ahead and is still in flight.
     awaitStarted.mockImplementation(async () => undefined)
@@ -761,7 +759,7 @@ describe('a /compact whose start fails at its handover', () => {
     const { id: plain, refuse } = await sendRefused('first')
     refuse()
     await eventually(async () =>
-      expect((await submission(plain))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(plain))?.startRetry).toMatchObject({ attempts: 1 })
     )
     awaitStarted.mockImplementation(async () => undefined)
     compact.mockImplementation(() => {
@@ -781,7 +779,7 @@ describe('a /compact whose start fails at its handover', () => {
         command: 'compact'
       }).reason
     )
-    expect((await submission(plain))?.startFailure?.reason).toBe(WAITING_REASON)
+    expect((await submission(plain))?.startRetry?.reason).toBe(WAITING_REASON)
     const turn = (await host.journalSnapshot(SESSION)).items.find(
       (item) => item.itemId === structuredAgentSessionCommandTurn(command).itemId
     )
@@ -794,7 +792,7 @@ describe('a message waiting for its next try when it can wait no longer', () => 
     const { id: queued, refuse } = await sendRefused('hello')
     refuse()
     await eventually(async () =>
-      expect((await submission(queued))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(queued))?.startRetry).toMatchObject({ attempts: 1 })
     )
     return queued
   }
@@ -861,7 +859,7 @@ describe('what waits on a message whose start failed', () => {
 
     for (const settled of [await handedOver, await answered]) {
       expect(settled?.value).toMatchObject({
-        submission: { dispatchState: 'pending', startFailure: { attempts: 1 } }
+        submission: { dispatchState: 'pending', startRetry: { attempts: 1 } }
       })
     }
   })
@@ -880,7 +878,7 @@ describe('what waits on a message whose start failed', () => {
 
     refuse()
     await eventually(async () =>
-      expect((await submission(queued))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(queued))?.startRetry).toMatchObject({ attempts: 1 })
     )
 
     await eventually(() =>

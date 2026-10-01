@@ -108,7 +108,7 @@ function requestOf(
     }
   }
   const submission = rejected.get(item.itemId)
-  const refusal = submission?.startFailure ?? submission
+  const refusal = submission?.startRetry ?? submission
   if (
     !submission ||
     !refusal ||
@@ -123,7 +123,7 @@ function requestOf(
     id: item.itemId,
     turnState: null,
     outcome: 'failure',
-    settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined,
+    settledAt: submission.startRetry?.failedAt ?? submission.resolvedAt ?? undefined,
     ...(isRetryingStructuredAgentSessionStart(submission) ? { waiting: true as const } : {})
   }
 }

@@ -56,7 +56,7 @@ function blockedOnlyByLaterWork(
 ): boolean {
   const since = submission.acceptedSequence
   // Only a command that waited out a refused start was gone past.
-  if (since === undefined || submission.startFailure === undefined) {
+  if (since === undefined || submission.startRetry === undefined) {
     return false
   }
   const acceptedAfter = (clientMessageId: string): boolean =>
@@ -103,7 +103,7 @@ export function structuredAgentSessionCommandWaitsOnTurn(
 ): boolean {
   const body = journal.itemBody(agentJournalSubmissionKey(submission.clientMessageId))
   return (
-    submission.startFailure !== undefined &&
+    submission.startRetry !== undefined &&
     body?.kind === 'message' &&
     body.command !== undefined &&
     journal.activeTurnId() !== null

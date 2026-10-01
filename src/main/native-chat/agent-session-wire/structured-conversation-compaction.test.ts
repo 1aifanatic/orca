@@ -403,7 +403,7 @@ it('rejects a command whose start failed, saying why on the answer and its messa
     reason: "Codex couldn't restart. Run /compact again.",
     rejection: restartFailed
   })
-  expect(message?.startFailure).toBeUndefined()
+  expect(message?.startRetry).toBeUndefined()
   expect(compact).not.toHaveBeenCalled()
 })
 
@@ -426,7 +426,7 @@ it('takes a command whose start was refused before it ran, which waits on its ow
   )
   expect(message).toMatchObject({
     dispatchState: 'pending',
-    startFailure: { attempts: 1, rejection: { kind: 'accountSwitchInProgress' } }
+    startRetry: { attempts: 1, rejection: { kind: 'accountSwitchInProgress' } }
   })
   expect(compact).not.toHaveBeenCalled()
 })

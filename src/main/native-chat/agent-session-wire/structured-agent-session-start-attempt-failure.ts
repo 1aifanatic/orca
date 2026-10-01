@@ -103,7 +103,7 @@ async function recordStartFailure(
     const nextAttemptAt = refusedBeforeItRan
       ? structuredAgentSessionStartRetryAt(
           words.rejection,
-          (submission.startFailure?.attempts ?? 0) + 1,
+          (submission.startRetry?.attempts ?? 0) + 1,
           ctx.now()
         )
       : null
@@ -113,7 +113,7 @@ async function recordStartFailure(
         : {
             clientMessageId,
             state: 'pending',
-            startFailure: {
+            startRetry: {
               // Orca tries again on its own, so the sentence leaves out trying again.
               reason: structuredAgentSessionStartFailure(cause, { ...context, orcaRetries: true })
                 .reason,
@@ -139,7 +139,7 @@ export function leftoverRejection(
   fallback: AgentJournalDispatchRejection
 ): (submission: AgentJournalSubmission) => AgentJournalDispatchRejection {
   return (submission) => {
-    const fact = readAgentSessionFailureFact(submission.startFailure?.rejection)
+    const fact = readAgentSessionFailureFact(submission.startRetry?.rejection)
     return fact && isSubmissionRejectionFact(fact)
       ? agentSessionFailureWords(fact, {
           ...startFailureWordsContext(journal, record, submission.clientMessageId),
@@ -159,7 +159,7 @@ export function nextDeliverableSubmission(
   for (const submission of journal.submissions()) {
     if (
       isQueuedAgentJournalSubmission(submission) &&
-      (submission.startFailure === undefined || submission.startFailure.nextAttemptAt <= now) &&
+      (submission.startRetry === undefined || submission.startRetry.nextAttemptAt <= now) &&
       (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))
     ) {
       oldest = submission
@@ -177,7 +177,7 @@ export function nextStartRetryAt(
   let earliest: number | null = null
   for (const submission of journal?.submissions() ?? []) {
     const due = isQueuedAgentJournalSubmission(submission)
-      ? submission.startFailure?.nextAttemptAt
+      ? submission.startRetry?.nextAttemptAt
       : undefined
     if (due !== undefined && due > now && (earliest === null || due < earliest)) {
       earliest = due

@@ -116,7 +116,7 @@ describe("a wait for the message's own verdict", () => {
           handoverRecorded: true,
           ...(dispatchState === 'pending'
             ? {
-                startFailure: {
+                startRetry: {
                   attempts: 1,
                   reason: 'A Claude account switch is in progress.',
                   rejection: { kind: 'accountSwitchInProgress' },

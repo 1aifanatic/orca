@@ -138,16 +138,16 @@ async function settled(clientMessageId: string) {
     expect(
       current?.dispatchState !== 'pending' ||
         current.handedOverAt !== undefined ||
-        current.startFailure !== undefined
+        current.startRetry !== undefined
     ).toBe(true)
   })
   const current = await submission(clientMessageId)
-  return current?.startFailure
+  return current?.startRetry
     ? {
         ...current,
         dispatchState: 'retrying',
-        reason: current.startFailure.reason,
-        rejection: current.startFailure.rejection
+        reason: current.startRetry.reason,
+        rejection: current.startRetry.rejection
       }
     : current
 }
@@ -409,7 +409,7 @@ describe('a send with no live owner', () => {
       reason: cause,
       rejection: { kind: 'restartFailed' }
     })
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(dispatch).not.toHaveBeenCalled()
     // Accepted, so the ledger answers a resend with the message rather than a second attempt.
     expect(
@@ -520,7 +520,7 @@ describe('a send with no live owner', () => {
       reason: "Codex couldn't restart. Send your message to try again.",
       rejection: { kind: 'restartFailed', refusal: { code: 'agent_session_operation_invalid' } }
     })
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(acquire).toHaveBeenCalledOnce()
   })
 
@@ -571,7 +571,7 @@ describe('a send with no live owner', () => {
       reason: "Codex couldn't restart.",
       rejection: { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } }
     })
-    expect((await submission(id))?.startFailure?.nextAttemptAt).toBe(NOW + 15_000)
+    expect((await submission(id))?.startRetry?.nextAttemptAt).toBe(NOW + 15_000)
     expect(acquire).not.toHaveBeenCalled()
     expect(await errorStatuses()).toEqual([])
   })

@@ -197,7 +197,7 @@ it('rejects the continuation with its cause when its agent cannot start, filing 
       rejection: { kind: 'historyTooLarge' }
     }
   ])
-  expect((await host.journalSnapshot(SESSION)).submissions[0]).not.toHaveProperty('startFailure')
+  expect((await host.journalSnapshot(SESSION)).submissions[0]).not.toHaveProperty('startRetry')
   expect(acquire).toHaveBeenCalledTimes(1)
   expect(dispatch).not.toHaveBeenCalled()
   expect(closeSession).not.toHaveBeenCalled()
@@ -516,7 +516,7 @@ it('keeps a conflicted claim on the continuation that waits for its next try, fi
     expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
       {
         dispatchState: 'pending',
-        startFailure: {
+        startRetry: {
           rejection: {
             refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
           }

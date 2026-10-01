@@ -44,14 +44,14 @@ function fromDisk(row: Record<string, unknown>): JournalRow {
   return parsed.row
 }
 
-function failedStart(seq: number, startFailure: unknown): JournalRow {
+function failedStart(seq: number, startRetry: unknown): JournalRow {
   return fromDisk({
     kind: 'dispatch',
     clientMessageId: 'cm_1',
     state: 'pending',
     providerItemId: null,
     reason: null,
-    startFailure,
+    startRetry,
     ...base(seq)
   })
 }
@@ -72,7 +72,7 @@ describe('a failed start recorded on its message', () => {
 
     const submission = state.submissions.get('cm_1')!
     expect(isQueuedAgentJournalSubmission(submission)).toBe(true)
-    expect(submission.startFailure).toEqual({
+    expect(submission.startRetry).toEqual({
       attempts: 2,
       reason: RECORD.reason,
       rejection: { kind: 'accountSwitchInProgress' },
@@ -87,7 +87,7 @@ describe('a failed start recorded on its message', () => {
       accepted,
       failedStart(2, { ...RECORD, generation: 'generation-2' })
     ]).submissions.get('cm_1')!
-    expect(submission.startFailure).not.toHaveProperty('generation')
+    expect(submission.startRetry).not.toHaveProperty('generation')
   })
 
   it('clears the record when the message is handed over again, or ends', () => {
@@ -104,7 +104,7 @@ describe('a failed start recorded on its message', () => {
         ...base(3)
       }
     ]).submissions.get('cm_1')!
-    expect(handedOver.startFailure).toBeUndefined()
+    expect(handedOver.startRetry).toBeUndefined()
     expect(handedOver.handedOverAt).toBe(1_003)
 
     const rejected = fold([
@@ -121,7 +121,7 @@ describe('a failed start recorded on its message', () => {
       }
     ]).submissions.get('cm_1')!
     expect(rejected).toMatchObject({ dispatchState: 'rejected', reason: RECORD.reason })
-    expect(rejected.startFailure).toBeUndefined()
+    expect(rejected.startRetry).toBeUndefined()
   })
 
   // A child that never proved its start took nothing it was handed, so no reader may read the
@@ -162,7 +162,7 @@ describe('a failed start recorded on its message', () => {
       failedStart(2, { reason: 'no fact', nextAttemptAt: 'soon' })
     ]).submissions.get('cm_1')!
 
-    expect(submission.startFailure).toBeUndefined()
+    expect(submission.startRetry).toBeUndefined()
     expect(submission.handedOverAt).toBe(1_002)
     expect(isQueuedAgentJournalSubmission(submission)).toBe(false)
   })

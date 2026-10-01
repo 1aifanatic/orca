@@ -31,8 +31,8 @@ export function structuredAgentSessionStartRetryAt(
 export function isRetryingStructuredAgentSessionStart(
   submission: Pick<
     AgentJournalSubmission,
-    'handoverRecorded' | 'dispatchState' | 'handedOverAt' | 'startFailure'
+    'handoverRecorded' | 'dispatchState' | 'handedOverAt' | 'startRetry'
   >
 ): boolean {
-  return submission.startFailure !== undefined && isQueuedAgentJournalSubmission(submission)
+  return submission.startRetry !== undefined && isQueuedAgentJournalSubmission(submission)
 }

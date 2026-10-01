@@ -570,7 +570,7 @@ describe('the notice on each message that did not go through', () => {
 describe('the notice on a message whose agent start failed', () => {
   function queued(
     id: string,
-    startFailure?: AgentJournalSubmission['startFailure']
+    startRetry?: AgentJournalSubmission['startRetry']
   ): AgentJournalSubmission {
     return {
       clientMessageId: id,
@@ -582,7 +582,7 @@ describe('the notice on a message whose agent start failed', () => {
       submittedAt: 1,
       resolvedAt: null,
       handoverRecorded: true,
-      ...(startFailure ? { startFailure } : {})
+      ...(startRetry ? { startRetry } : {})
     }
   }
   const transient = { kind: 'accountSwitchInProgress' } as const

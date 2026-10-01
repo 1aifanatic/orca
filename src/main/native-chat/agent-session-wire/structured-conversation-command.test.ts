@@ -585,7 +585,7 @@ describe("the replacement's first send", () => {
       })
     )
     // The spawn ran here and failed, so no later try is booked.
-    expect((await submissionOf(replacement, clientMessageId))?.startFailure).toBeUndefined()
+    expect((await submissionOf(replacement, clientMessageId))?.startRetry).toBeUndefined()
     expect(await errorRows(replacement)).toEqual([])
     const reason = (await submissionOf(replacement, clientMessageId))?.reason
     expect(reason).toContain("Codex couldn't start.")

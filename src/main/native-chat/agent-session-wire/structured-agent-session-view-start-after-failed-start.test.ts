@@ -184,7 +184,7 @@ describe('a fresh chat whose Claude start fails', () => {
       }
       await settleExits()
       // The message says the provider stopped; its stderr stays out of the sentence.
-      const startFailure =
+      const startRetry =
         'Claude stopped before it finished starting. Send your message to try again.'
       // Opening the chat: the create's start, once. No message waited on it, so nothing is said.
       expect(claude.connections).toHaveLength(1)
@@ -195,9 +195,9 @@ describe('a fresh chat whose Claude start fails', () => {
         (await host.journalSnapshot(SESSION)).submissions.find((s) => s.clientMessageId === sent)
       // The start ran and failed, so the message is rejected at once; no later try is booked.
       await eventually(async () =>
-        expect(await message()).toMatchObject({ dispatchState: 'rejected', reason: startFailure })
+        expect(await message()).toMatchObject({ dispatchState: 'rejected', reason: startRetry })
       )
-      expect((await message())?.startFailure).toBeUndefined()
+      expect((await message())?.startRetry).toBeUndefined()
       await settleExits()
       // The send's own start, once; the message carries why, with no row beside it.
       expect(claude.connections).toHaveLength(2)

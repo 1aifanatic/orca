@@ -113,8 +113,8 @@ export function journalDispatchRowBuilder(
     ...(input.recovered ? { recovered: input.recovered } : {}),
     ...(input.state !== 'pending'
       ? {}
-      : 'startFailure' in input
-        ? { startFailure: input.startFailure }
+      : 'startRetry' in input
+        ? { startRetry: input.startRetry }
         : { turnScope: input.turnScope })
   })
 }

@@ -95,7 +95,7 @@ async function delivered(text: string) {
     expect(
       current?.dispatchState !== 'pending' ||
         current?.handedOverAt !== undefined ||
-        current?.startFailure !== undefined
+        current?.startRetry !== undefined
     ).toBe(true)
   })
   return submission()
@@ -257,7 +257,7 @@ describe('a record an older build left mid terminal handoff', () => {
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
     expect(await delivered('while the terminal still runs')).toMatchObject({
       dispatchState: 'pending',
-      startFailure: {
+      startRetry: {
         reason:
           "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
       }
