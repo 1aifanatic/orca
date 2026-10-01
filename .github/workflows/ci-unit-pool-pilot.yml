@@ -1,0 +1,40 @@
+name: Scoped Vitest pool comparison
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-unit-pool-pilot.yml'
+      - 'config/scripts/ci-unit-pool-pilot.mjs'
+      - 'config/scripts/ci-unit-pool-pilot-files.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-pool-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          node-version: '24'
+      - name: Compare three pool pairs with scope and isolation controls
+        run: node config/scripts/ci-unit-pool-pilot.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unit-pool-comparison-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unit-pool-comparison/
+          if-no-files-found: error
+          retention-days: 7

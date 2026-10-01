@@ -54,6 +54,15 @@ three jobs before runner allocation, avoiding 188 runner-seconds in this case.
 This single-case measurement excludes queues and does not predict savings for
 mixed selections; the existing dedicated SSH, IME, and ordinary E2E routes remain.
 
+A [controlled cancellation trial](https://github.com/stablyai/orca/actions/runs/36853246785)
+verified both condition outcomes. After intentional cancellation, `always()`
+started another 60-second follow-up, while `!cancelled()` skipped it. Cleanup
+and artifact uploads succeeded in both treatments. A separate deliberately
+failed test still ran its later `!cancelled()` test and cleanup. The 60 seconds
+are synthetic condition evidence, not a measurement of a real SSH test's cost.
+Completed comparison workflows are removed after recording their evidence;
+the exact drivers and workflow remain reproducible at the trial's source commit.
+
 The [first full PR validation](https://github.com/stablyai/orca/actions/runs/36849458648)
 passed all five unit shards and both Linux/Windows package checks. Its reports
 contain 10,326 unique files, each once, with zero unhandled errors. Full shard
@@ -61,6 +70,49 @@ job durations ranged from 544 to 581 seconds. They ran a different merged source
 on different allocations from the earlier reference, so comparing their totals
 does not establish an end-to-end speedup. The alternating transcript comparison
 above is the controlled timing evidence.
+
+A [three-pair Windows store comparison](https://github.com/stablyai/orca/actions/runs/36853246494)
+used fresh dependency trees, stores and pnpm metadata before each treatment. The
+middle pair reversed order. Cached totals include archive restoration and both
+unchanged frozen installs; the mobile install ran every existing postinstall
+generator. Setup/reset time and runner queues are excluded.
+
+| Pair | First treatment | Cached total | Registry total | Registry saving |
+| ---- | --------------- | ------------ | -------------- | --------------- |
+| 1    | Cached          | 71.092s      | 37.500s        | 33.592s         |
+| 2    | Registry        | 73.556s      | 39.935s        | 33.621s         |
+| 3    | Cached          | 75.660s      | 37.001s        | 38.659s         |
+
+Treatment medians were 73.556s cached and 37.500s registry; median paired saving
+was 33.621s. Cache restore and step overhead alone cost a median 27.955s. Policy
+and all six generated-output digests matched across all six treatments. Windows
+x64 PR jobs using the mixed root/mobile key now skip its download-store restore;
+PRs already skip store saves. Root-only Windows stores, Windows ARM64/x86, other
+operating systems, non-PR writers, native/Electron caches and frozen-install policy retain their existing
+behavior. The trial covers this mixed install on Windows 2022, not every Windows
+dependency key or a whole PR's elapsed time.
+
+A [three-pair daemon fixture comparison](https://github.com/stablyai/orca/actions/runs/36853246776)
+reset Docker build caches and the fixture/base image before every treatment.
+Warm totals include the existing action's archive restore/load and the unchanged
+daemon descendant oracle; reset time and runner queues are excluded. The middle
+pair again reversed order.
+
+| Pair | First treatment | Cold total | Warm total | Warm saving |
+| ---- | --------------- | ---------- | ---------- | ----------- |
+| 1    | Cold            | 28.984s    | 20.673s    | 8.311s      |
+| 2    | Warm            | 21.798s    | 28.953s    | -7.155s     |
+| 3    | Cold            | 28.964s    | 17.614s    | 11.350s     |
+
+Treatment medians were 28.964s cold and 20.673s warm; median paired saving was
+8.311s. Oracle medians fell from 28.886s to 4.907s, while archive restore/load
+cost 13.025–24.024s (15.766s median) for a 714,643,456-byte archive. BuildKit
+confirmed warm provisioning was cached and cold provisioning was not; every
+treatment used the same immutable base image, reaped the descendant and kept
+the canary alive. The PR keeps restoration in the background during root/mobile
+installation. One serial pair was slower, so the roughly 24s oracle reduction
+is not a guaranteed total runner saving. The drivers and exact workflows remain
+available at source commit `9231d1be6c76ccc1d2fef741a4e68ae29735a5c8`.
 
 Two local cache screens do not justify enabling Node's compile cache. A 96-file
 screen with an explicit worker flush produced a small, noisy difference. A larger
@@ -739,3 +791,59 @@ fixtures, and unknown plugins cold. That requires a validated transitive input
 boundary and mutation policy; hashing every source tree on each lookup would
 also spend the gain. Until that policy and hosted transfer cost are measured,
 the local warm result does not justify adding a persistent cache to CI.
+
+## Test fixture imports: reuse the existing narrow builder
+
+The pointer-drag test imported only `makeWorktree` from `store-test-helpers`,
+which also loads the real store slices. Its existing identical export in
+`worktrees-slice-test-fixtures` supplies the same defaults without that graph.
+Changing this single import preserves the five assertions, fork workers,
+isolation, and disabled filesystem/Node compile caches.
+
+Three local interleaved before/after pairs took 2.066/2.047/2.031 seconds versus
+0.351/0.388/0.353 seconds: the isolated median fell 82.7%, from 2.047 to 0.353
+seconds. Transformed modules fell from 1,086 to 15. This is an isolated test
+result, not a whole-shard estimate: other tests need the store modules anyway.
+A broader 20-file screening sample saved only 0.295 seconds at its median,
+which does not justify splitting the fixture module across those consumers.
+
+Two further import-only reuses passed the same six-run controls. The kanban
+lane test mocks its card component, so switching its builder import reduced
+the isolated median from 2.202 to 0.495 seconds (77.5%) and transformed modules
+from 1,082 to 13, with all six assertions unchanged. The autosave fixture needs
+the real editor slice, but not every store slice: the same import change across
+its three consuming suites reduced the median from 3.027 to 1.301 seconds
+(57.0%), with 1,107 to 320 modules and all 17 assertions unchanged. These
+results also measure isolated file groups; they are not additive shard savings.
+The remaining inspected builder-only imports already load the full store as
+their subject, or use builders whose defaults differ from existing exports.
+
+## Vitest threads: scoped pilot only
+
+Three local interleaved comparisons kept four workers, `isolate: true`, both
+persistent caches disabled, and the same test assertions/module graph. The
+94-file happy-dom renderer cohort passed all 570 assertions: forks took
+17.480/17.382/17.657 seconds and threads 15.048/14.890/15.013 seconds, a 14.1%
+median reduction. A 23-file shared JavaScript cohort passed all 248 assertions,
+with its median falling from 1.435 to 1.274 seconds (11.2%). No main-process
+module or native addon loaded; guards reject native loading, `chdir`, and
+process signals. These Mac/Node 24 timings do not establish a hosted saving.
+
+The [pinned Vitest pool documentation](https://github.com/vitest-dev/vitest/blob/v4.1.11/docs/config/pool.md)
+defaults to forks and documents thread limitations around process APIs and
+native libraries. [Node's worker documentation](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html#new-workerfilename-options)
+also excludes V8 flags from worker `execArgv`. Orca's `--expose-gc` worker flag
+fails with `ERR_WORKER_INVALID_EXEC_ARGV` under threads. The experiment starts
+both parent processes with that flag, retains it on fork workers, and removes
+it only from thread worker arguments; GC availability is checked in every
+test environment. Process, native, lifecycle, and GC-retention tests stay out
+of this comparison.
+
+The temporary `ci-unit-pool-pilot.yml` runs the fixed audited cohorts on the
+same Linux ARM64/four-CPU runner as unit CI. Its driver records source hashes,
+module graphs, all assertion identities/results, and three alternating pairs.
+Single-worker positive isolation controls pass, while disabled isolation,
+missing GC, and forbidden native/process operations must fail in both pools.
+Production keeps forks. Any later adoption needs repeatable hosted gains and
+a deliberate eligible-file policy with conservative fallback; a renderer path
+alone does not prove that future imports avoid process or native behavior.

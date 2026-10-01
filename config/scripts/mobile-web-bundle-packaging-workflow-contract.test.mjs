@@ -87,6 +87,7 @@ function packsWithBeforePack(text) {
 // workflow has to be added here deliberately, with its bundle step, rather than slipping in.
 const EXPECTED_PACKAGING_JOBS = [
   'adhoc-mac-build.yml build-adhoc-mac',
+  'ci-package-cost-pilot.yml appimage_compression',
   'daemon-relocation-spike.yml spike',
   'daily-mac-build.yml build-daily-mac',
   'dev-channel-win-build.yml build-win',

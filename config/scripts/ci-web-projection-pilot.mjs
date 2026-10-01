@@ -82,6 +82,13 @@ function writeJson(name, value) {
   writeFileSync(join(directory, name), `${JSON.stringify(value, null, 2)}\n`)
 }
 
+try {
+  execute('git', ['cat-file', '-e', `${baseSha}^{commit}`], join(directory, 'baseline-commit.log'))
+} catch (error) {
+  throw new Error(`Fetch the original PR base commit ${baseSha} before running this pilot`, {
+    cause: error
+  })
+}
 const baselineSource = Buffer.from(
   execute('git', ['show', `${baseSha}:${projectorRelative}`]).stdout
 )

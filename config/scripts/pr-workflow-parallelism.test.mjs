@@ -300,6 +300,9 @@ describe('PR workflow parallelism', () => {
       steps.findIndex((step) => step.name === 'Install dependencies')
     )
     expect(steps[restoreIndex].uses).toBe('actions/cache/restore@v5')
+    expect(steps[restoreIndex].if).toBe(
+      "github.event_name == 'pull_request' && (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml'))"
+    )
   })
 
   it('uses the repository package-manager version for every direct pnpm setup', () => {

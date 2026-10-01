@@ -80,7 +80,9 @@ runs:
     # PR-local stores compete with reusable build caches for the repository quota.
     - name: Resolve pnpm download store
       id: pnpm-store
-      if: github.event_name == 'pull_request'
+      if: >-
+        github.event_name == 'pull_request' &&
+        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml'))
       shell: bash
       env:
         LOCKFILE_HASH: ${{ hashFiles(inputs.cache-dependency-path) }}
@@ -92,8 +94,11 @@ runs:
         printf 'arch=%s\n' "$(node -p 'require("node:os").arch()')" >> "$GITHUB_OUTPUT"
 
     # Match setup-node's key and path so existing default-branch stores remain reusable.
+    # Hosted Windows x64 mixed installs cost less than restoring their root/mobile store.
     - name: Restore pnpm download store without saving
-      if: github.event_name == 'pull_request'
+      if: >-
+        github.event_name == 'pull_request' &&
+        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml'))
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.pnpm-store.outputs.path }}

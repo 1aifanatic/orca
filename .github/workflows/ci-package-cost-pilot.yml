@@ -15,99 +15,6 @@ env:
   ORCA_BACKGROUND_LAUNCH: '1'
 
 jobs:
-  seed_daemon_fixture:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: daemon-shutdown-descendants
-          save-cache: 'true'
-
-  daemon_fixture:
-    needs: seed_daemon_fixture
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        sample: [1, 2, 3]
-    env:
-      FIXTURE_SAMPLE: ${{ matrix.sample }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-
-      - name: Reset first cold treatment
-        if: matrix.sample != 2
-        env:
-          FIXTURE_TREATMENT: cold
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
-      - name: Start first cold measurement
-        if: matrix.sample != 2
-        id: cold-first
-        env:
-          FIXTURE_TREATMENT: cold
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
-      - name: Measure first cold oracle
-        if: matrix.sample != 2
-        env:
-          FIXTURE_TREATMENT: cold
-          FIXTURE_STARTED: ${{ steps.cold-first.outputs.started }}
-          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ''
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
-
-      - name: Reset warm treatment
-        env:
-          FIXTURE_TREATMENT: warm
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
-      - name: Start warm measurement
-        id: warm-start
-        env:
-          FIXTURE_TREATMENT: warm
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        id: warm-fixture
-        with:
-          fixture: daemon-shutdown-descendants
-      - name: Measure restored warm oracle
-        env:
-          FIXTURE_TREATMENT: warm
-          FIXTURE_STARTED: ${{ steps.warm-start.outputs.started }}
-          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ${{ steps.warm-fixture.outputs.image }}
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
-
-      - name: Reset second cold treatment
-        if: matrix.sample == 2
-        env:
-          FIXTURE_TREATMENT: cold
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
-      - name: Start second cold measurement
-        if: matrix.sample == 2
-        id: cold-second
-        env:
-          FIXTURE_TREATMENT: cold
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
-      - name: Measure second cold oracle
-        if: matrix.sample == 2
-        env:
-          FIXTURE_TREATMENT: cold
-          FIXTURE_STARTED: ${{ steps.cold-second.outputs.started }}
-          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ''
-        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
-
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: daemon-fixture-comparison-${{ matrix.sample }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/daemon-fixture-comparison/
-
   appimage_compression:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -135,7 +42,12 @@ jobs:
           pnpm run build:electron-vite:parallel || status=1
           wait "$relay_pid" || status=1
           exit "$status"
-      - name: Compare web projection on the same renderer
+      - name: Fetch the exact PR baseline commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: git -c credential.helper='!gh auth git-credential' fetch --no-tags --depth=1 origin "$BASE_SHA"
+      - name: Measure web projection on the same renderer
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node config/scripts/ci-web-projection-pilot.mjs
