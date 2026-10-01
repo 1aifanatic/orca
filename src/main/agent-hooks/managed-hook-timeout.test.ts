@@ -30,7 +30,6 @@ vi.mock('os', async (importOriginal) => {
 
 import { MANAGED_HOOK_TIMEOUT_MILLISECONDS, MANAGED_HOOK_TIMEOUT_SECONDS } from './installer-utils'
 import { CodexHookService } from '../codex/hook-service'
-import { CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS } from '../codex/codex-trust-identity'
 import { CursorHookService } from '../cursor/hook-service'
 import { CommandCodeHookService } from '../command-code/hook-service'
 import { GeminiHookService } from '../gemini/hook-service'
@@ -66,7 +65,7 @@ const JSON_INSTALLERS = [
     agent: 'codex',
     timeout: MANAGED_HOOK_TIMEOUT_SECONDS,
     // Why: Codex clamps Interrupt to 3s, so Orca writes that cap instead of the shared budget.
-    eventTimeouts: { Interrupt: CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS },
+    eventTimeouts: { Interrupt: 3 },
     configPath: `${REMOTE_HOME}/.codex/hooks.json`,
     install: (sftp: SFTPWrapper) => new CodexHookService().installRemote(sftp, REMOTE_HOME)
   },

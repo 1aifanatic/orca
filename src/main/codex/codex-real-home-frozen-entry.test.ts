@@ -49,10 +49,7 @@ async function ensureRealHomeCodexHookState(
   await startRealHomeCodexHookEnsure(args)
   return realHomeInternals.settledVerdictForTesting()
 }
-import {
-  getCodexManagedHookInstallMaterial,
-  getCodexManagedHookTimeoutSeconds
-} from './codex-hook-definition'
+import { buildCodexManagedHook, getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
 // Why this file: every Orca instance and build on one HOME shares ~/.codex. The
 // frozen command makes their bytes identical, launches only add a missing
@@ -104,12 +101,7 @@ function everyEvent(command: string): HooksFile {
     hooks: Object.fromEntries(
       events.map((event) => [
         event,
-        [
-          USER_HOOK,
-          {
-            hooks: [{ type: 'command', command, timeout: getCodexManagedHookTimeoutSeconds(event) }]
-          }
-        ]
+        [USER_HOOK, { hooks: [buildCodexManagedHook(command, event)] }]
       ])
     )
   }

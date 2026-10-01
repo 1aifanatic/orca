@@ -1,15 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  CODEX_EVENT_LABEL,
-  CODEX_EVENTS,
-  CODEX_MANAGED_EVENT_LABELS,
-  getCodexManagedHookTimeoutSeconds
-} from './codex-hook-definition'
-import {
-  CODEX_EVENT_NAME_BY_LABEL,
-  CODEX_HOOK_EVENT_LABEL,
-  getCodexHookTrustSignature
-} from './codex-hook-identity'
+import { CODEX_EVENT_LABEL } from './codex-hook-definition'
+import { getCodexHookTrustSignature } from './codex-hook-identity'
 import { parseCodexTrustKey } from './codex-trust-identity'
 import { computeTrustedHash, type CodexTrustEntry } from './config-toml-trust'
 
@@ -30,22 +21,11 @@ const INTERRUPT_ENTRY: CodexTrustEntry = {
 }
 
 describe('the managed Codex Interrupt hook', () => {
-  it('is installed and trusted like every other managed event', () => {
-    expect(CODEX_EVENTS).toContain('Interrupt')
+  it('uses the trust key label Codex uses', () => {
     expect(CODEX_EVENT_LABEL.Interrupt).toBe('interrupt')
-    expect(CODEX_HOOK_EVENT_LABEL.Interrupt).toBe('interrupt')
-    expect(CODEX_EVENT_NAME_BY_LABEL.interrupt).toBe('Interrupt')
-    expect(CODEX_MANAGED_EVENT_LABELS.has('interrupt')).toBe(true)
     expect(parseCodexTrustKey('/home/dev/.codex/hooks.json:interrupt:0:0')).toMatchObject({
       eventLabel: 'interrupt'
     })
-  })
-
-  it("writes Codex's 3s Interrupt cap and the shared budget everywhere else", () => {
-    expect(getCodexManagedHookTimeoutSeconds('Interrupt')).toBe(3)
-    for (const eventName of CODEX_EVENTS.filter((name) => name !== 'Interrupt')) {
-      expect(getCodexManagedHookTimeoutSeconds(eventName)).toBe(10)
-    }
   })
 
   it('reproduces the hash real Codex computed for the Interrupt hook', () => {

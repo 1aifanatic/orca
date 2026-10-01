@@ -1,8 +1,10 @@
 import { join } from 'node:path'
 import {
+  buildManagedCommandHook,
   getSharedManagedScriptPath,
   MANAGED_HOOK_TIMEOUT_SECONDS,
   writeHooksJson,
+  type HookCommandConfig,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { POSIX_HOOK_STDIN_DRAIN_COMMAND } from '../agent-hooks/hook-stdin-contract'
@@ -11,7 +13,7 @@ import { buildCodexHookCommand } from './codex-hook-command-form'
 import { CODEX_HOOK_EVENT_LABEL, getCodexManagedScriptFileName } from './codex-hook-identity'
 import { getManagedScript } from './codex-hook-script'
 import type { CodexEventLabel } from './config-toml-trust'
-import { CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS } from './codex-trust-identity'
+import { normalizeCodexHookTimeoutSec } from './codex-trust-identity'
 
 // Why: Pre/PostToolUse feed the live in-flight-tool readout; PermissionRequest exits with no decision so Codex still shows its approval UI while Orca flips the pane to waiting.
 // Interrupt (Codex 0.150+) is the only hook an Esc-cancelled turn fires; older Codex ignores the unknown key.
@@ -58,13 +60,15 @@ export const CODEX_EVENT_LABEL: Record<(typeof CODEX_EVENTS)[number], CodexEvent
   Interrupt: CODEX_HOOK_EVENT_LABEL.Interrupt!
 }
 
-// Why: Codex clamps Interrupt to 3s and warns at startup when a hook asks for more.
-export function getCodexManagedHookTimeoutSeconds(
+// Why: pre-clamped to Codex's per-event cap (Interrupt: 3s), which Codex warns about at every startup.
+export function buildCodexManagedHook(
+  command: string,
   eventName: (typeof CODEX_EVENTS)[number]
-): number {
-  return eventName === 'Interrupt'
-    ? CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS
-    : MANAGED_HOOK_TIMEOUT_SECONDS
+): HookCommandConfig {
+  return buildManagedCommandHook(
+    command,
+    normalizeCodexHookTimeoutSec(CODEX_EVENT_LABEL[eventName], MANAGED_HOOK_TIMEOUT_SECONDS)
+  )
 }
 
 export const CODEX_MANAGED_EVENT_LABELS = new Set<CodexEventLabel>(

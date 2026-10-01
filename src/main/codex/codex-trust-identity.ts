@@ -39,15 +39,13 @@ function matcherPatternForEvent(
   }
 }
 
-export const CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS = 3
-
 // Why: Codex hashes the normalized timeout; Interrupt defaults to 1s and clamps to 3s (discovery.rs normalize_command_hook).
 export function normalizeCodexHookTimeoutSec(
   eventLabel: CodexEventLabel,
   timeoutSec: number | undefined
 ): number {
   if (eventLabel === 'interrupt') {
-    return Math.min(CODEX_INTERRUPT_HOOK_MAX_TIMEOUT_SECONDS, Math.max(1, timeoutSec ?? 1))
+    return Math.min(3, Math.max(1, timeoutSec ?? 1))
   }
   return Math.max(1, timeoutSec ?? 600)
 }

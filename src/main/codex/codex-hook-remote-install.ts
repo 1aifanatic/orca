@@ -1,7 +1,6 @@
 import type { SFTPWrapper } from 'ssh2'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
-  buildManagedCommandHook,
   createManagedCommandMatcher,
   removeManagedCommands,
   wrapPosixHookCommand,
@@ -18,7 +17,7 @@ import { upsertHookTrustEntriesInContent, type CodexTrustEntry } from './config-
 import {
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
-  getCodexManagedHookTimeoutSeconds,
+  buildCodexManagedHook,
   wrapReadablePosixHookCommand
 } from './codex-hook-definition'
 import { getManagedScript } from './codex-hook-script'
@@ -74,9 +73,8 @@ export async function installCodexHooksRemote(
     for (const eventName of CODEX_EVENTS) {
       const current = Array.isArray(nextHooks[eventName]) ? nextHooks[eventName] : []
       const cleaned = removeManagedCommands(current, isManagedCommand)
-      const definition: HookDefinition = {
-        hooks: [buildManagedCommandHook(command, getCodexManagedHookTimeoutSeconds(eventName))]
-      }
+      const hook = buildCodexManagedHook(command, eventName)
+      const definition: HookDefinition = { hooks: [hook] }
       nextHooks[eventName] = redirectedCodexHome
         ? [definition, ...cleaned]
         : [...cleaned, definition]
@@ -86,7 +84,7 @@ export async function installCodexHooksRemote(
         groupIndex: redirectedCodexHome ? 0 : cleaned.length,
         handlerIndex: 0,
         command,
-        timeoutSec: getCodexManagedHookTimeoutSeconds(eventName)
+        timeoutSec: hook.timeout
       })
     }
 
