@@ -135,7 +135,15 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     params: CreateSupportParams,
     handler: async (params, ctx) => {
       requireStructuredCreateSupportAdmission(ctx)
-      return ctx.runtime.getStructuredAgentSessionCreateSupport(params.worktree, params.agent)
+      const support = await ctx.runtime.getStructuredAgentSessionCreateSupport(
+        params.worktree,
+        params.agent
+      )
+      // Optional: older clients ignore it, and a client seeds its picker with what create will use.
+      const seedOptions = support.supported
+        ? ctx.runtime.structuredAgentSessionLaunchSeedOptions(params.agent)
+        : undefined
+      return seedOptions ? { ...support, seedOptions } : support
     }
   }),
   defineMethod({
