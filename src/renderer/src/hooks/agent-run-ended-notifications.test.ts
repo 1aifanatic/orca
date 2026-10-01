@@ -150,6 +150,8 @@ describe('ended agent run notifications', () => {
     observe(hookStatus('done', 'opencode'))
     vi.advanceTimersByTime(HOOK_DONE_QUIET_MS)
     expect(dispatchTerminalNotification).toHaveBeenCalledTimes(1)
+    // The process tears down after its plugin reported idle.
+    vi.advanceTimersByTime(2_000)
 
     dispatch(endedRunBatch('opencode'))
     vi.advanceTimersByTime(HOOK_DONE_QUIET_MS)

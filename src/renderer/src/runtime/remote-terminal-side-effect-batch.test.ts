@@ -22,6 +22,8 @@ describe('remote terminal side-effect batches', () => {
       parentTabId: 'host-tab',
       leafId: LEAF_ID,
       isActive: true,
+      status: 'ready',
+      terminal: 'host-terminal',
       agentStatus: {
         state: 'working',
         prompt: '',
