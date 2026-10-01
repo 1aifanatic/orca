@@ -18,7 +18,10 @@ import type {
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  isFailedStartRejection
+} from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
 import { isRetryingStructuredAgentSessionStart } from './structured-agent-session-start-retry'
 import {
@@ -123,6 +126,18 @@ function requestOf(
     settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined,
     ...(isRetryingStructuredAgentSessionStart(submission) ? { waiting: true as const } : {})
   }
+}
+
+/** The sends whose start failed for good, by their item keys: each one's failure is final the
+ *  moment it is written, whatever else the session still owes. */
+export function structuredAgentSessionFailedStartIds(
+  submissions: readonly AgentJournalSubmission[]
+): string[] {
+  return submissions.flatMap((submission) =>
+    submission.dispatchState === 'rejected' && isFailedStartRejection(submission)
+      ? [agentJournalSubmissionKey(submission.clientMessageId)]
+      : []
+  )
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

@@ -557,6 +557,49 @@ describe('a request the agent or its start refused', () => {
     ])
   })
 
+  const failedStart = (clientMessageId: string) =>
+    sent(clientMessageId, {
+      dispatchState: 'rejected',
+      reason: "Codex couldn't start.",
+      rejection: { kind: 'startFailed' }
+    })
+
+  it('notifies a failed start once, the moment it is final, though a later send is still owed', () => {
+    const h = harness()
+    h.listen()
+    h.observe()
+    const queued = [userEntry('m1', 1), userEntry('m2', 2)]
+    h.setJournal(queued, [pending('m1'), pending('m2')])
+    h.observe()
+    h.setJournal(queued, [failedStart('m1'), pending('m2')])
+    h.observe()
+    const accepted = sent('m2', { dispatchState: 'accepted' })
+    h.setJournal([...queued, turnItem(turn('t2', 'running'), 3)], [failedStart('m1'), accepted])
+    h.observe()
+    h.setJournal(
+      [...queued, turnItem(turn('t2', 'completed', 'success'), 3)],
+      [failedStart('m1'), accepted]
+    )
+    h.observe()
+    h.observe()
+    expect(h.outcomes()).toEqual([
+      [M1, 'failure'],
+      ['t2', 'success']
+    ])
+  })
+
+  it('notifies a lone failed start exactly once', () => {
+    const h = harness()
+    h.listen()
+    h.observe()
+    h.setJournal([userEntry('m1', 1)], [pending('m1')])
+    h.observe()
+    h.setJournal([userEntry('m1', 1)], [failedStart('m1')])
+    h.observe()
+    h.observe()
+    expect(h.outcomes()).toEqual([[M1, 'failure']])
+  })
+
   // Its failure is not final while it waits, and a Stop that withdraws it brings back a request
   // already announced.
   it('notifies nothing for a send waiting for its next start, nor when a Stop withdraws it', () => {
@@ -591,7 +634,14 @@ describe('a request the agent or its start refused', () => {
         [M1, 'failure']
       ]
     ],
-    ['before the later turn succeeded', 25, [['t2', 'success']]]
+    [
+      'before the later turn succeeded',
+      25,
+      [
+        [M1, 'failure'],
+        ['t2', 'success']
+      ]
+    ]
   ] as const)(
     'notifies the final failure of a send that waited, once, when it comes %s',
     (_order, finalFailureAt, expected) => {
