@@ -107,9 +107,6 @@ export function findPromptAnchorIndexes(normalized: string): {
 }
 
 export function showsScreenProbeBanner(text: string): boolean {
-  if (TEXT_ANCHORS.screenProbeBanners.length === 0) {
-    return false
-  }
   const normalized = text.toLowerCase()
   return TEXT_ANCHORS.screenProbeBanners.some((banner) => normalized.includes(banner))
 }

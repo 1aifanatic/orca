@@ -88,6 +88,14 @@ describe('agent state rules schema', () => {
     [
       'an uppercase anchor literal, which the lowercased tail never contains',
       ruleFile({ textAnchors: [anchor({ find: { lastOf: 'Cursor' } }, { state: 'idle' })] })
+    ],
+    [
+      'an uppercase anchor contains term',
+      ruleFile({
+        textAnchors: [
+          anchor({ find: { lastOf: 'x' }, after: { contains: 'Run' } }, { state: 'idle' })
+        ]
+      })
     ]
   ])('rejects %s', (_label, file) => {
     expect(() => parseAgentStateRuleFiles([file])).toThrow()

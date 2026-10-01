@@ -32,21 +32,24 @@ const SafeRegex = Literal.superRefine((pattern, ctx) => {
   }
 })
 
-const TextTermSchema = z.union([
-  z.object({ regex: SafeRegex, ignoreCase: z.boolean().optional() }).strict(),
-  z.object({ contains: Literal }).strict()
-])
-
-const Terms = z.array(TextTermSchema).min(1).max(MAX_TERMS)
-
 /** A test on one row or one text segment: a single term, or every `all`, some `any`, no `none`. */
-const TextTestSchema = z.union([
-  TextTermSchema,
-  z
-    .object({ all: Terms.optional(), any: Terms.optional(), none: Terms.optional() })
-    .strict()
-    .refine((test) => Boolean(test.all ?? test.any ?? test.none), 'needs all, any or none')
-])
+function textTestSchema(containsLiteral: typeof Literal) {
+  const term = z.union([
+    z.object({ regex: SafeRegex, ignoreCase: z.boolean().optional() }).strict(),
+    z.object({ contains: containsLiteral }).strict()
+  ])
+  const terms = z.array(term).min(1).max(MAX_TERMS)
+  return z.union([
+    term,
+    z
+      .object({ all: terms.optional(), any: terms.optional(), none: terms.optional() })
+      .strict()
+      .refine((test) => Boolean(test.all ?? test.any ?? test.none), 'needs all, any or none')
+  ])
+}
+
+const TextTestSchema = textTestSchema(Literal)
+const TailTextTestSchema = textTestSchema(TailLiteral)
 
 const RowSchema = z.union([TextTestSchema, z.object({ optional: TextTestSchema }).strict()])
 
@@ -136,14 +139,14 @@ const TextAnchorSchema = z
         /** Reads only the last N lines of its input. */
         withinLastLines: z.number().int().min(1).max(64).optional(),
         /** The text from the anchor to the end must pass this. */
-        after: TextTestSchema.optional(),
+        after: TailTextTestSchema.optional(),
         /** Over the lines read, trailing blanks dropped: at least `atLeast` pass, the last one too
          *  when `includingLast`. */
         lines: z
           .object({
             atLeast: z.number().int().min(1).max(MAX_ROWS),
             includingLast: z.boolean(),
-            test: TextTestSchema
+            test: TailTextTestSchema
           })
           .strict()
           .optional()
