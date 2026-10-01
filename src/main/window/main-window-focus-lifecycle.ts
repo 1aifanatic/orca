@@ -22,6 +22,7 @@ import {
 } from '../browser/browser-client-page-renderer-runtime'
 import { registerRendererDocumentNavigation } from './renderer-document-navigation'
 import { createRendererRecoveryReloadWatchdog } from './renderer-recovery-reload-watchdog'
+import { createRendererLaunchFailureBackoff } from './renderer-launch-failure-backoff'
 
 export type MainWindowFocusLifecycle = {
   dispose: () => void
@@ -159,6 +160,7 @@ export function installMainWindowFocusLifecycle(args: {
     windowMs: DEFAULT_RENDERER_RECOVERY_WINDOW_MS,
     maxRecoveries: DEFAULT_RENDERER_RECOVERY_MAX_RECOVERIES
   })
+  const launchFailureBackoff = createRendererLaunchFailureBackoff()
   const clearRendererRecoveryTimer = (): void => {
     if (rendererRecoveryTimer) {
       clearTimeout(rendererRecoveryTimer)
@@ -187,6 +189,8 @@ export function installMainWindowFocusLifecycle(args: {
     ) {
       return
     }
+    const launchFailed = details.reason === 'launch-failed'
+    const launchRetryDelayMs = launchFailed ? launchFailureBackoff.nextDelayMs() : null
     rendererRecoveryTimer = setTimeout(() => {
       rendererRecoveryTimer = null
       if (
@@ -195,6 +199,16 @@ export function installMainWindowFocusLifecycle(args: {
         opts?.shouldRecoverRenderer?.(details, rendererWebContentsId) === false ||
         mainWindow.isDestroyed()
       ) {
+        return
+      }
+      // Why outside the breaker: a refused spawn is not a crash loop; its own bounded backoff owns the budget.
+      if (launchFailed) {
+        const subject = { details, recentRecoveryCount: launchFailureBackoff.attempts() }
+        if (launchRetryDelayMs === null) {
+          recoveryReloadWatchdog.escalate(subject, 'launch-failed')
+        } else {
+          recoveryReloadWatchdog.issue(details, subject.recentRecoveryCount)
+        }
         return
       }
       const recovery = rendererRecoveryCircuitBreaker.registerRecoveryAttempt(Date.now())
@@ -210,7 +224,7 @@ export function installMainWindowFocusLifecycle(args: {
       }
       // Why: a transient renderer/Network Service loss can blank Chromium; reload the app document once to recover.
       recoveryReloadWatchdog.issue(details, recovery.recentRecoveryCount)
-    }, 250)
+    }, launchRetryDelayMs ?? 250)
   }
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     rendererProcessGone = true
@@ -241,6 +255,7 @@ export function installMainWindowFocusLifecycle(args: {
     rendererProcessGone = false
     attachBrowserClientPageRenderer(rendererWebContents)
     clearRendererRecoveryTimer()
+    launchFailureBackoff.reset()
     recoveryReloadWatchdog.notifyDocumentLoaded()
   })
 

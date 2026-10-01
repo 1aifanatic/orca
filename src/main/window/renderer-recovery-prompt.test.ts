@@ -155,4 +155,51 @@ describe('presentRendererRecoveryPrompt', () => {
     expect(shown[0].detail).toContain('repairing now')
     expect(shown[1].detail).toContain('repaired')
   })
+
+  describe('after a renderer launch failure', () => {
+    it('names the process limit when the probe is refused with EAGAIN', async () => {
+      const probeLaunchCapacity = vi.fn(async () => 'EAGAIN')
+      const { run, shown, reload, quit } = harness({
+        failure: 'launch-failed',
+        recentRecoveryCount: 8,
+        probeLaunchCapacity
+      })
+      await run()
+      expect(probeLaunchCapacity).toHaveBeenCalledOnce()
+      // No Restart: app.relaunch needs a free process slot too and silently fails without one.
+      expect(shown[0].buttons).toEqual(['Try Again', 'Quit'])
+      expect(shown[0].defaultId).toBe(0)
+      expect(shown[0].cancelId).toBe(0)
+      expect(shown[0].message).toContain("couldn't start the process")
+      expect(shown[0].detail).toContain('retried 8 times')
+      expect(shown[0].detail).toContain('process limit')
+      expect(shown[0].detail).not.toMatch(/graphics|driver/i)
+      expect(reload).toHaveBeenCalledOnce()
+      expect(quit).not.toHaveBeenCalled()
+    })
+
+    it('drops the graphics-driver blame when the probe could spawn', async () => {
+      const { run, shown, quit } = harness({
+        failure: 'launch-failed',
+        probeLaunchCapacity: async () => 'ok',
+        responses: [1]
+      })
+      await run()
+      expect(shown[0].detail).not.toContain('process limit')
+      expect(shown[0].detail).not.toMatch(/graphics|driver/i)
+      expect(shown[0].detail).toContain('Try Again')
+      expect(quit).toHaveBeenCalledOnce()
+    })
+
+    it('keeps the install-permission diagnosis and its copy button', async () => {
+      const { run, shown } = harness({
+        failure: 'launch-failed',
+        diagnose: () => POISON,
+        probeLaunchCapacity: async () => 'ok'
+      })
+      await run()
+      expect(shown[0].buttons).toEqual(['Try Again', 'Copy Commands', 'Quit'])
+      expect(shown[0].detail).toContain(POISON.detail)
+    })
+  })
 })

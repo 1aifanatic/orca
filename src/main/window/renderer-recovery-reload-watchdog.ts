@@ -24,7 +24,7 @@ const MILESTONE_RANK: Record<RecoveryReloadMilestone, number> = {
   'dom-ready': 2
 }
 
-export type RecoveryExhaustionCause = 'crash-loop' | 'reload-stalled'
+export type RecoveryExhaustionCause = 'crash-loop' | 'reload-stalled' | 'launch-failed'
 
 export type RendererRecoveryReloadWatchdog = {
   /** Issues a recovery reload and arms the stall watchdog. */
