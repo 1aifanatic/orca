@@ -62,6 +62,43 @@ describe('TabStripScrollIndicator', () => {
     expect(indicator.className).toContain('opacity-0')
   })
 
+  it('applies state-specific track and thumb colors across idle, hover, and drag', () => {
+    const scrollContainer = document.createElement('div')
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1000, configurable: true })
+    Object.defineProperty(scrollContainer, 'clientWidth', { value: 400, configurable: true })
+    const scrollContainerRef = createRef<HTMLElement>()
+    ;(scrollContainerRef as React.MutableRefObject<HTMLElement>).current = scrollContainer
+
+    const { getByTestId } = render(
+      <TabStripScrollIndicator metrics={OVERFLOW_METRICS} scrollContainerRef={scrollContainerRef} />
+    )
+    const indicator = getByTestId('tab-strip-scroll-indicator')
+    Object.defineProperty(indicator, 'clientWidth', { value: 400, configurable: true })
+    const thumb = getByTestId('tab-strip-scroll-thumb')
+
+    expect(indicator.className).toContain('bg-transparent')
+    expect(indicator.className).not.toContain('bg-muted-foreground/15')
+    expect(thumb.className).toContain('bg-muted-foreground/60')
+    expect(thumb.className).not.toContain('bg-muted-foreground/80')
+    expect(thumb.className).not.toContain('bg-foreground/70')
+
+    fireEvent.pointerEnter(indicator)
+    expect(indicator.className).toContain('bg-muted-foreground/15')
+    expect(indicator.className).not.toContain('bg-transparent')
+    expect(thumb.className).toContain('bg-muted-foreground/80')
+    expect(thumb.className).not.toContain('bg-muted-foreground/60')
+
+    fireEvent.pointerDown(thumb, { button: 0, clientX: 50 })
+    expect(indicator.className).toContain('bg-muted-foreground/15')
+    expect(thumb.className).toContain('bg-foreground/70')
+    expect(thumb.className).not.toContain('bg-muted-foreground/80')
+
+    fireEvent(window, new MouseEvent('pointerup'))
+    fireEvent.pointerLeave(indicator)
+    expect(indicator.className).toContain('bg-transparent')
+    expect(thumb.className).toContain('bg-muted-foreground/60')
+  })
+
   it('applies pointer-events-none when disabled', () => {
     const { getByTestId } = render(
       <TabStripScrollIndicator metrics={OVERFLOW_METRICS} disabled={true} />
