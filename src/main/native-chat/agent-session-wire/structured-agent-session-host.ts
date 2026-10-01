@@ -126,6 +126,7 @@ export class StructuredAgentSessionHost {
       trackStart: (start) => this.tasks.trackAttach(start),
       ensureProviderChild: (sessionId, startedFor) =>
         ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
+      finishOwedWindDown: (sessionId) => this.lifetime.finishOwedWindDown(sessionId),
       reset: (sessionId, journal, reset) =>
         this.subscribers.reset(
           sessionId,
@@ -171,6 +172,7 @@ export class StructuredAgentSessionHost {
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       open: (sessionId) => this.conversationDelivery.open(sessionId),
       deliveryActive: (sessionId) => this.conversationDelivery.loop.isRunning(sessionId),
+      wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       closeStatus: (sessionId, options) => this.clientDelivery.closeSession(sessionId, options),
       readChildWork: this.clientDelivery.readChildWork
     })

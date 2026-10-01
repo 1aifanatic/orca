@@ -54,6 +54,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     sessionId: string,
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Retries a stop that did not finish; resolves whether nothing is owed now. */
+  finishOwedWindDown: (sessionId: string) => Promise<boolean>
   reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
   clientDelivery: Pick<StructuredAgentSessionClientDelivery, 'publishRestored' | 'readChildWork'>
   flushStreamedEvents: (sessionId: string) => Promise<void>
@@ -65,6 +67,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     serialize: input.serialize,
     trackStart: input.trackStart,
     ensureProviderChild: input.ensureProviderChild,
+    finishOwedWindDown: input.finishOwedWindDown,
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
     abandonQueued: async (sessionId, which) => {

@@ -39,6 +39,10 @@ import {
 } from './structured-agent-session-start-failure-row'
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
+import {
+  recordStructuredAgentSessionWindDownWait,
+  structuredAgentSessionWindDownWaitHolds
+} from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
@@ -53,6 +57,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
     sessionId: string,
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Retries a stop that did not finish; resolves whether nothing is owed now. */
+  finishOwedWindDown: (sessionId: string) => Promise<boolean>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
   /** Rejects queued messages as a completed close of the chat does; false when that failed. */
@@ -171,6 +177,19 @@ export class StructuredAgentSessionDeliveryLoop {
     // A running command takes no input while its child carries it; its end is a commit, which
     // wakes the loop again. With no child it is a gone generation's, which the start below settles.
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
+      return this.stop(sessionId)
+    }
+    // A child a stop could not prove gone takes no input, and none may start beside it: a new
+    // message retries the stop first. Still unproven, it waits, saying why, for the next retry.
+    if (
+      session.owesProviderChildWindDown !== undefined &&
+      (structuredAgentSessionWindDownWaitHolds(session) ||
+        !(await this.deps.finishOwedWindDown(sessionId)))
+    ) {
+      await recordStructuredAgentSessionWindDownWait(session, {
+        fence: this.deps.conversationFence(sessionId),
+        failureTextContext: this.deps.failureTextContext(sessionId)
+      })
       return this.stop(sessionId)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)

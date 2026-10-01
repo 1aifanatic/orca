@@ -250,6 +250,7 @@ async function restore(sessionIds: readonly string[]) {
       serialize: async (_sessionId, task) => task(),
       open,
       deliveryActive: () => false,
+      wakeDelivery: () => undefined,
       closeStatus: () => undefined,
       readChildWork: () => undefined
     })

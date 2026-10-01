@@ -319,6 +319,8 @@ describe('the idle sweep with no child running (P2-22 ii)', () => {
       providerHoldsDispatch: () => false,
       stopAgent,
       stopStartingAgent: stopAgent,
+      finishOwedWindDown: vi.fn(async () => true),
+      wakeDelivery: () => undefined,
       closeConversation,
       onError: (_id, error) => {
         throw error

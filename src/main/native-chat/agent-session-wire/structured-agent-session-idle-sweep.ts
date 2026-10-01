@@ -35,6 +35,10 @@ export type StructuredAgentSessionIdleSweepDeps = {
   providerHoldsDispatch: (sessionId: string) => boolean
   /** Each of these runs inside the session's serialize and never takes it again. */
   stopAgent: (sessionId: string) => Promise<void>
+  /** Retries a stop that did not finish; resolves whether nothing is owed now. */
+  finishOwedWindDown: (sessionId: string) => Promise<boolean>
+  /** Hands a message waiting on that stop to the delivery loop. */
+  wakeDelivery: (sessionId: string) => void
   stopStartingAgent: (sessionId: string) => Promise<void>
   closeConversation: (sessionId: string) => Promise<boolean>
   onError: (sessionId: string, error: unknown) => void
@@ -101,14 +105,13 @@ export class StructuredAgentSessionIdleSweep {
     if (!session || this.deps.isDisposed()) {
       return
     }
-    // A stop that failed after the child was proven gone: finish it now, before the idle test, so
-    // the rows its settlement wrote cannot push the retry out. A message accepted since goes first.
-    if (
-      session.owesProviderChildWindDown !== undefined &&
-      !session.child &&
-      !this.queuedOrDelivering(sessionId, session)
-    ) {
-      await this.deps.stopAgent(sessionId)
+    // A stop that did not finish: retry it now, before the idle test, so the rows its settlement
+    // wrote cannot push the retry out. A running delivery step retries it itself; a message left
+    // waiting on it goes out once it lands.
+    if (session.owesProviderChildWindDown !== undefined && !this.deps.deliveryActive(sessionId)) {
+      if (await this.deps.finishOwedWindDown(sessionId)) {
+        this.deps.wakeDelivery(sessionId)
+      }
       return
     }
     // Owed work is activity, read every tick, so the agent gets a full window once it ends: a child

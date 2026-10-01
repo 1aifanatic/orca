@@ -186,6 +186,29 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   )
 }
 
+/**
+ * Retries the wind-down an earlier stop left owed, with that stop's own cause: a child it could
+ * not prove gone takes no input, so nothing may write to it or start beside it until this lands.
+ * One pass of the stop, bounded by its own step deadline (10 s): a shorter bound would cut a
+ * supervised Claude's exit proof (up to about 7 s) short. Resolves whether nothing is owed now; a
+ * failure is reported, never thrown, and leaves the exit unverifiable, never exited.
+ */
+export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string
+): Promise<boolean> {
+  const owed = context.sessions.get(sessionId)?.owesProviderChildWindDown
+  if (!owed) {
+    return true
+  }
+  try {
+    await stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, { cause: owed.cause })
+  } catch (error) {
+    context.deps.onEventSinkError?.({ sessionId, error })
+  }
+  return context.sessions.get(sessionId)?.owesProviderChildWindDown === undefined
+}
+
 /** A close's cause: the user closing this chat, or the host evicting it (quit, idle, teardown). */
 export type StructuredAgentSessionCloseCause = Extract<
   StructuredAgentSessionStopCause,
