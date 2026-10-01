@@ -39,8 +39,8 @@ export function applyJournalDispatchRow(
   const startFailure =
     row.state === 'pending' ? readStoredStartFailure(row.startFailure) : undefined
   if (startFailure) {
-    // Back in the queue: each failed start this message waited on is one more attempt.
-    delete submission.handedOverAt
+    // Still queued, its start refused before it ran: each refusal is one more attempt. Only a queued
+    // message is written this way; nothing handed over waits for another start.
     submission.startFailure = {
       attempts: (submission.startFailure?.attempts ?? 0) + 1,
       ...startFailure,
@@ -98,7 +98,6 @@ function readStoredStartFailure(value: unknown): JournalStartFailureRecord | und
   const reason = 'reason' in value ? value.reason : undefined
   const rejection = readAgentSessionFailureFact('rejection' in value ? value.rejection : undefined)
   const nextAttemptAt = 'nextAttemptAt' in value ? value.nextAttemptAt : undefined
-  const generation = 'generation' in value ? value.generation : undefined
   if (
     typeof reason !== 'string' ||
     !rejection ||
@@ -110,7 +109,6 @@ function readStoredStartFailure(value: unknown): JournalStartFailureRecord | und
   return {
     reason,
     rejection,
-    nextAttemptAt,
-    ...(typeof generation === 'string' && generation ? { generation } : {})
+    nextAttemptAt
   }
 }

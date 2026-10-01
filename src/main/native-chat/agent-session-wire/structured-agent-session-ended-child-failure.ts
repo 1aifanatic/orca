@@ -10,10 +10,7 @@ import type {
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
-import {
-  submissionsHandedToChild,
-  type StructuredAgentSessionStartAttemptFailure
-} from './structured-agent-session-start-attempt-failure'
+import { submissionsHandedToChild } from './structured-agent-session-start-attempt-failure'
 
 /** A start that died while nothing recorded it — its exit landed between steps, say: the message
  *  that waited on it, and any its child was handed, take its failure rather than starting again. */
@@ -21,7 +18,7 @@ export function startThatFailedUnrecorded(
   session: StructuredAgentSessionHostSession,
   next: AgentJournalSubmission | undefined
 ): {
-  failure: StructuredAgentSessionStartAttemptFailure
+  cause: StructuredAgentSessionStartFailureCause
   waiting: string[]
   ended: StructuredAgentSessionEndedChild
 } | null {
@@ -38,9 +35,7 @@ export function startThatFailedUnrecorded(
     ...(waitedOnIt ? [next.clientMessageId] : []),
     ...submissionsHandedToChild(session.journal, ended.fence)
   ]
-  return waiting.length > 0
-    ? { failure: { generation: ended.generation, cause }, waiting, ended }
-    : null
+  return waiting.length > 0 ? { cause, waiting, ended } : null
 }
 
 function providerEndFailure(

@@ -1,8 +1,8 @@
 // The one writer of a failed agent start: the delivery loop, which records it on the message the
-// start was for and on any message handed to that start's child, which took nothing. A start
-// refused before it ran leaves each in the queue with its next try booked, until out of tries; one
-// that ran and failed ends each `rejected` at once, for the person's Retry. The messages behind it
-// go on meanwhile.
+// start was for and on any message handed to that start's child, which took nothing. Its two
+// entries keep the rule by construction: a start refused before it ran leaves its message in the
+// queue with the next try booked, until out of tries; one that ran and failed can only reject each
+// at once, for the person's Retry. The messages behind it go on meanwhile.
 
 import {
   isSubmissionRejectionFact,
@@ -34,10 +34,11 @@ type StartFailureJournal = Pick<
   'submissions' | 'itemBody' | 'resolveDispatch' | 'appendLifecycleBatch'
 >
 
-export type StructuredAgentSessionStartAttemptFailure = {
-  cause: StructuredAgentSessionStartFailureCause
-  /** The child whose start failed; null when none was published. */
-  generation: string | null
+type StartFailureWriter = {
+  journal: StartFailureJournal
+  fence: number
+  record: AgentSessionRecord | null
+  now: () => number
 }
 
 /** Who the message's sentence names, and the command its own body sends, so the next step is to run
@@ -59,18 +60,36 @@ function startFailureWordsContext(
 }
 
 /**
- * Records `failure` on each of `clientMessageIds` still waiting on it: queued, or handed to the
- * child whose start failed. A message that Stop withdrew meanwhile is left alone.
+ * A start the loop's own start step was refused before it ran, for `startedFor`: the message waits
+ * for its next try, or, a refusal only the person can clear or out of tries, is rejected. The one
+ * place a try is booked.
  */
-export async function recordStructuredAgentSessionStartAttemptFailure(
-  ctx: {
-    journal: StartFailureJournal
-    fence: number
-    record: AgentSessionRecord | null
-    now: () => number
-  },
-  failure: StructuredAgentSessionStartAttemptFailure,
+export function recordStructuredAgentSessionStartRefusal(
+  ctx: StartFailureWriter,
+  cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>,
+  startedFor: string
+): Promise<void> {
+  return recordStartFailure(ctx, cause, [startedFor], true)
+}
+
+/**
+ * A start that ran here and failed: each message it was for, and each it was handed, which it took
+ * nothing of, is rejected at once for the person's Retry. A message that Stop withdrew meanwhile
+ * is left alone.
+ */
+export function rejectStructuredAgentSessionFailedStart(
+  ctx: StartFailureWriter,
+  cause: StructuredAgentSessionStartFailureCause,
   clientMessageIds: readonly string[]
+): Promise<void> {
+  return recordStartFailure(ctx, cause, clientMessageIds, false)
+}
+
+async function recordStartFailure(
+  ctx: StartFailureWriter,
+  cause: StructuredAgentSessionStartFailureCause,
+  clientMessageIds: readonly string[],
+  refusedBeforeItRan: boolean
 ): Promise<void> {
   for (const clientMessageId of new Set(clientMessageIds)) {
     const submission = ctx.journal
@@ -80,12 +99,14 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
       continue
     }
     const context = startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
-    const words = structuredAgentSessionStartFailure(failure.cause, context)
-    const nextAttemptAt = structuredAgentSessionStartRetryAt(
-      words.rejection,
-      (submission.startFailure?.attempts ?? 0) + 1,
-      ctx.now()
-    )
+    const words = structuredAgentSessionStartFailure(cause, context)
+    const nextAttemptAt = refusedBeforeItRan
+      ? structuredAgentSessionStartRetryAt(
+          words.rejection,
+          (submission.startFailure?.attempts ?? 0) + 1,
+          ctx.now()
+        )
+      : null
     await ctx.journal.resolveDispatch(
       nextAttemptAt === null
         ? { clientMessageId, state: 'rejected', ...words, fence: ctx.fence }
@@ -94,13 +115,10 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
             state: 'pending',
             startFailure: {
               // Orca tries again on its own, so the sentence leaves out trying again.
-              reason: structuredAgentSessionStartFailure(failure.cause, {
-                ...context,
-                orcaRetries: true
-              }).reason,
+              reason: structuredAgentSessionStartFailure(cause, { ...context, orcaRetries: true })
+                .reason,
               rejection: words.rejection,
-              nextAttemptAt,
-              ...(failure.generation ? { generation: failure.generation } : {})
+              nextAttemptAt
             },
             fence: ctx.fence
           }

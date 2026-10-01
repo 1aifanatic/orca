@@ -16,6 +16,5 @@ export const AgentJournalStartFailureSchema = z.object({
   reason: z.string(),
   rejection: FailureFact,
   failedAt: z.number(),
-  generation: z.string().min(1).optional(),
   nextAttemptAt: z.number()
 })

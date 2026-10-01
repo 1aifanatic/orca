@@ -307,11 +307,26 @@ describe('a queued message whose start fails', () => {
         }
       })
     )
-    // Refused before it ran: no child, so no generation to name.
-    expect((await submission(queued))?.startFailure?.generation).toBeUndefined()
     expect((await submission(queued))?.handedOverAt).toBeUndefined()
     expect(await startRows()).toEqual([])
     expect(awaitStarted).not.toHaveBeenCalled()
+  })
+
+  // Only the start step's own refusal books a try: a situation that could clear on its own, seen
+  // after the child was spawned, still ends the message at once.
+  it('is rejected at once for any failure after its child was spawned, whatever the failure', async () => {
+    const queued = await sendQueued('hello')
+
+    settleStart(TRANSIENT)
+
+    await eventually(async () =>
+      expect(await submission(queued)).toMatchObject({
+        dispatchState: 'rejected',
+        ...TRANSIENT_WORDS
+      })
+    )
+    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
   })
 
   it('ends a failed child still there when the next message comes, and starts afresh', async () => {

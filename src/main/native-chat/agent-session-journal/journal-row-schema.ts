@@ -120,7 +120,6 @@ export type JournalDispatchRow = JournalRowBase & {
 export type JournalStartFailureRecord = {
   reason: string
   rejection: AgentSessionFailureFact
-  generation?: string
   nextAttemptAt: number
 }
 

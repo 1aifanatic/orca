@@ -439,8 +439,6 @@ export type AgentJournalStartFailure = {
   reason: string
   rejection: UnreadAgentSessionFailureFact
   failedAt: number
-  /** The provider child whose start failed; absent when none was published. */
-  generation?: string
   /** When the next start is due, on the host's clock. */
   nextAttemptAt: number
 }

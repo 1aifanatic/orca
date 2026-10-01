@@ -1,5 +1,5 @@
-// A `pending` dispatch row that records a failed start puts its message back in the queue, and the
-// reducer counts the attempts from those rows; nothing else stores the count.
+// A `pending` dispatch row that records a start refused before it ran keeps its queued message
+// waiting, and the reducer counts the attempts from those rows; nothing else stores the count.
 
 import { describe, expect, it } from 'vitest'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
@@ -57,28 +57,17 @@ function failedStart(seq: number, startFailure: unknown): JournalRow {
 }
 
 const RECORD = {
-  reason: "Codex couldn't start. Send your message to try again.",
-  rejection: { kind: 'startFailed' },
-  generation: 'generation-2',
+  reason: 'A Claude account switch is in progress.',
+  rejection: { kind: 'accountSwitchInProgress' },
   nextAttemptAt: 20_000
 }
 
 describe('a failed start recorded on its message', () => {
-  it('puts a handed-over message back in the queue and counts each failed start', () => {
-    const handedOver: JournalRow = {
-      kind: 'dispatch',
-      clientMessageId: 'cm_1',
-      state: 'pending',
-      providerItemId: null,
-      reason: null,
-      turnScope: AGENT_JOURNAL_THREAD_SCOPE,
-      ...base(2)
-    }
+  it('keeps a queued message in the queue and counts each start refused for it', () => {
     const state = fold([
       accepted,
-      handedOver,
-      failedStart(3, RECORD),
-      failedStart(4, { ...RECORD, nextAttemptAt: 80_000 })
+      failedStart(2, RECORD),
+      failedStart(3, { ...RECORD, nextAttemptAt: 80_000 })
     ])
 
     const submission = state.submissions.get('cm_1')!
@@ -86,11 +75,19 @@ describe('a failed start recorded on its message', () => {
     expect(submission.startFailure).toEqual({
       attempts: 2,
       reason: RECORD.reason,
-      rejection: { kind: 'startFailed' },
-      generation: 'generation-2',
-      failedAt: 1_004,
+      rejection: { kind: 'accountSwitchInProgress' },
+      failedAt: 1_003,
       nextAttemptAt: 80_000
     })
+  })
+
+  // A record a development build wrote names the child whose start failed; nothing reads it.
+  it('drops the child an earlier development build named on the record', () => {
+    const submission = fold([
+      accepted,
+      failedStart(2, { ...RECORD, generation: 'generation-2' })
+    ]).submissions.get('cm_1')!
+    expect(submission.startFailure).not.toHaveProperty('generation')
   })
 
   it('clears the record when the message is handed over again, or ends', () => {

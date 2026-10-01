@@ -16,17 +16,11 @@
 // from the journal.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from '../../../shared/agent-session-failure-words'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostSession,
@@ -37,9 +31,9 @@ import {
   leftoverRejection,
   nextDeliverableSubmission,
   nextStartRetryAt,
-  recordStructuredAgentSessionStartAttemptFailure,
-  submissionsHandedToChild,
-  type StructuredAgentSessionStartAttemptFailure
+  recordStructuredAgentSessionStartRefusal,
+  rejectStructuredAgentSessionFailedStart,
+  submissionsHandedToChild
 } from './structured-agent-session-start-attempt-failure'
 import {
   markProviderChildStartFailed,
@@ -52,38 +46,11 @@ import {
   structuredAgentSessionEndedChildFailure
 } from './structured-agent-session-ended-child-failure'
 import { handOverSubmission } from './structured-agent-session-turns'
+import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
-export type StructuredAgentSessionDeliveryLoopDeps = {
-  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
-  adapter: StructuredAgentSessionAdapter
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** A start step, tracked from enqueue so quit waits for the child it may produce. */
-  trackStart: <T>(start: Promise<T>) => Promise<T>
-  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
-  ensureProviderChild: (
-    sessionId: string,
-    startedFor: string
-  ) => Promise<StructuredAgentSessionResumeOutcome>
-  /** Ends the session's child, whose start failed, as a host stop; for a caller inside `serialize`. */
-  endFailedStart: (sessionId: string) => Promise<void>
-  /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
-  conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
-  abandonQueued: (
-    sessionId: string,
-    which: (submission: AgentJournalSubmission) => boolean
-  ) => Promise<boolean>
-  /** Who the chat's failure sentences name. */
-  failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  onError: (sessionId: string, error: unknown) => void
-  record: (sessionId: string) => AgentSessionRecord | null
-  readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
-  flushStreamedEvents: (sessionId: string) => Promise<void>
-  now: () => number
-  /** Runs `run` after `delayMs`; answers how to cancel it. */
-  setTimer?: (delayMs: number, run: () => void) => () => void
-}
+export type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
 type Step = 'continue' | 'stop'
 
@@ -144,9 +111,7 @@ export class StructuredAgentSessionDeliveryLoop {
             ...(diagnostic ? { diagnostic } : {}),
             ...(newSession ? { newSession: true as const } : {})
           }
-          await this.deps.serialize(sessionId, () =>
-            this.fail(sessionId, { generation: null, cause }, [startedFor])
-          )
+          await this.deps.serialize(sessionId, () => this.refused(sessionId, cause, startedFor))
           continue
         }
         // A child published before it proved its start takes no input yet; waited for outside
@@ -165,11 +130,7 @@ export class StructuredAgentSessionDeliveryLoop {
       await this.deps
         .serialize(sessionId, async () => {
           const next = this.nextDeliverable(sessionId, this.deps.now())
-          await this.fail(
-            sessionId,
-            { generation: null, cause: { hostFault: true } },
-            next ? [next.clientMessageId] : []
-          )
+          await this.fail(sessionId, { hostFault: true }, next ? [next.clientMessageId] : [])
           return this.stop(sessionId)
         })
         .catch((failure: unknown) => {
@@ -209,7 +170,7 @@ export class StructuredAgentSessionDeliveryLoop {
     const next = this.nextDeliverable(sessionId, decidedAt)
     const failedStart = startThatFailedUnrecorded(session, next)
     if (failedStart) {
-      return this.fail(sessionId, failedStart.failure, failedStart.waiting, failedStart.ended)
+      return this.fail(sessionId, failedStart.cause, failedStart.waiting, failedStart.ended)
     }
     const failedChild = childWhoseStartFailed(session, next)
     if (failedChild) {
@@ -268,12 +229,9 @@ export class StructuredAgentSessionDeliveryLoop {
       }
       return this.fail(
         sessionId,
-        {
-          generation: awaited?.generation ?? null,
-          cause: endedFailure ??
-            // Gone with no end observed: nothing says the provider stopped.
-            { failure: startFailure ?? agentSessionFailureFact('startFailed') }
-        },
+        endedFailure ??
+          // Gone with no end observed: nothing says the provider stopped.
+          { failure: startFailure ?? agentSessionFailureFact('startFailed') },
         [waitingFor, ...(awaited ? submissionsHandedToChild(session.journal, awaited.fence) : [])],
         awaitedChild ? undefined : (awaited ?? undefined)
       )
@@ -310,16 +268,35 @@ export class StructuredAgentSessionDeliveryLoop {
     await this.deps.endFailedStart(sessionId)
     return this.fail(
       sessionId,
-      { generation: awaitedChild.generation, cause: unstarted },
+      unstarted,
       submissionsHandedToChild(session.journal, awaitedChild.fence),
       awaitedChild
     )
   }
 
-  /** Records a failed start on the messages it was for; the rest of the queue goes on. */
+  /** The loop's start step was refused before anything ran: the message it was for waits for its
+   *  next try, or is rejected; the rest of the queue goes on. */
+  private async refused(
+    sessionId: string,
+    cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>,
+    startedFor: string
+  ): Promise<'continue'> {
+    const session = this.deps.sessions.get(sessionId)
+    if (session) {
+      await recordStructuredAgentSessionStartRefusal(
+        this.writer(sessionId, session),
+        cause,
+        startedFor
+      )
+    }
+    return 'continue'
+  }
+
+  /** A start that ran and failed: the messages it was for, or was handed, are rejected; the rest
+   *  of the queue goes on. */
   private async fail(
     sessionId: string,
-    failure: StructuredAgentSessionStartAttemptFailure,
+    cause: StructuredAgentSessionStartFailureCause,
     clientMessageIds: readonly string[],
     ended?: StructuredAgentSessionProviderChildIdentity
   ): Promise<'continue'> {
@@ -328,18 +305,22 @@ export class StructuredAgentSessionDeliveryLoop {
       if (ended) {
         markProviderChildStartFailureRecorded(session, ended)
       }
-      await recordStructuredAgentSessionStartAttemptFailure(
-        {
-          journal: session.journal,
-          fence: this.deps.conversationFence(sessionId),
-          record: this.deps.record(sessionId),
-          now: this.deps.now
-        },
-        failure,
+      await rejectStructuredAgentSessionFailedStart(
+        this.writer(sessionId, session),
+        cause,
         clientMessageIds
       )
     }
     return 'continue'
+  }
+
+  private writer(sessionId: string, session: StructuredAgentSessionHostSession) {
+    return {
+      journal: session.journal,
+      fence: this.deps.conversationFence(sessionId),
+      record: this.deps.record(sessionId),
+      now: this.deps.now
+    }
   }
 
   private nextDeliverable(sessionId: string, now: number): AgentJournalSubmission | undefined {
