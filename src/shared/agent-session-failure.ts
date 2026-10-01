@@ -136,7 +136,14 @@ export type AgentSessionFailureFact = {
   attachment?: AgentSessionAttachmentProblem
   /** On `providerRetrying`: why the provider is retrying. */
   retry?: AgentSessionProviderRetry
+  /** On a start failure a message was waiting out: what ended its wait before its next try, the
+   *  chat closing or Orca restarting. Its failure is the start's; the end of its wait was not news. */
+  endedWaiting?: AgentSessionWaitEnd
 }
+
+/** What can end a message's wait for its next start without a try of its own. */
+export const AGENT_SESSION_WAIT_ENDS = ['chatClosed', 'hostRestarted'] as const
+export type AgentSessionWaitEnd = (typeof AGENT_SESSION_WAIT_ENDS)[number]
 
 /** A fact as a row stores it: its kind may be one a newer host added, so only
  *  `readAgentSessionFailureFact` or the rejection classifier may place it. */
@@ -167,6 +174,7 @@ export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
     refusal?: AgentSessionRefusalReference
     attachment?: AgentSessionAttachmentProblem
     retry?: AgentSessionProviderRetry
+    endedWaiting?: AgentSessionWaitEnd
   } = {}
 ): AgentSessionFailureFact & { kind: TKind } {
   // Re-bounded here, so no writer can store more than the cap however it built the detail.
@@ -178,7 +186,8 @@ export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
     ...(detail ? { detail } : {}),
     ...(extra.refusal ? { refusal: extra.refusal } : {}),
     ...(extra.attachment ? { attachment: extra.attachment } : {}),
-    ...(extra.retry ? { retry: extra.retry } : {})
+    ...(extra.retry ? { retry: extra.retry } : {}),
+    ...(extra.endedWaiting ? { endedWaiting: extra.endedWaiting } : {})
   }
 }
 
@@ -235,11 +244,13 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   const refusal = readAgentSessionRefusalReference(value.refusal)
   const attachment = readAttachmentProblem(value.attachment)
   const retry = readProviderRetry(value.retry)
+  const endedWaiting = AGENT_SESSION_WAIT_ENDS.find((end) => end === value.endedWaiting)
   return agentSessionFailureFact(value.kind, {
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
     ...(refusal ? { refusal } : {}),
     ...(attachment ? { attachment } : {}),
-    ...(retry ? { retry } : {})
+    ...(retry ? { retry } : {}),
+    ...(endedWaiting ? { endedWaiting } : {})
   })
 }
 

@@ -10,8 +10,6 @@
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { leftoverRejection } from './structured-agent-session-start-attempt-failure'
 import {
   evictStructuredAgentSession,
@@ -71,11 +69,7 @@ export async function abandonQueuedStructuredAgentSessionMessages(
   return journal
     .rejectQueuedSubmissions(
       structuredAgentSessionConversationFence(deps.store, sessionId),
-      leftoverRejection(
-        journal,
-        deps.store.getRecord(sessionId),
-        agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
-      ),
+      leftoverRejection(journal, deps.store.getRecord(sessionId), 'chatClosed'),
       which
     )
     .then(

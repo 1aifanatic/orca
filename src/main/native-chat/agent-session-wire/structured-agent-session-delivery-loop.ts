@@ -20,7 +20,6 @@ import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import {
   isStructuredAgentSessionPreviousExitUnverifiable,
   type StructuredAgentSessionResumeOutcome
@@ -163,13 +162,7 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     await session.journal.rejectQueuedSubmissions(
       this.deps.conversationFence(sessionId),
-      leftoverRejection(
-        session.journal,
-        this.deps.record(sessionId),
-        agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
-          surface: 'rejection'
-        })
-      ),
+      leftoverRejection(session.journal, this.deps.record(sessionId), 'hostRestarted'),
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )

@@ -799,29 +799,69 @@ describe('a message waiting for its next try when it can wait no longer', () => 
     return queued
   }
 
-  it('reads as failed with its own failure when the chat closes', async () => {
+  // The person ended its wait, so nothing announces it; the chat still reads it as failed.
+  it('reads as failed with its own failure when the chat closes, and notifies nothing', async () => {
     const queued = await retrying()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
 
     await host.close(SESSION, 'user-close')
 
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
+        reason: TRANSIENT_WORDS.reason,
+        rejection: { ...TRANSIENT, endedWaiting: 'chatClosed' }
       })
     )
+    await host.journalSnapshot(SESSION)
+    expect(completions).toEqual([])
   })
 
-  it('reads as failed with its own failure when Orca restarts', async () => {
+  it('reads as failed with its own failure when Orca quits and restarts, and notifies nothing', async () => {
     const queued = await retrying()
+    await host.flushAllStreamedEvents()
+    startHost()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
 
-    await restartHostAndOpen()
+    await host.journalSnapshot(SESSION)
 
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
+        reason: TRANSIENT_WORDS.reason,
+        // Quitting closes the chat first, which ends the wait.
+        rejection: { ...TRANSIENT, endedWaiting: 'chatClosed' }
       })
+    )
+    expect(completions).toEqual([])
+  })
+
+  it('notifies its failure once when its last try fails for good', async () => {
+    const queued = await retrying()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
+    refuseStarts()
+
+    for (let attempt = 2; attempt <= 4; attempt += 1) {
+      await fireRetry()
+      if (attempt < 4) {
+        await eventually(async () =>
+          expect((await submission(queued))?.startRetry).toMatchObject({ attempts: attempt })
+        )
+      }
+    }
+
+    await eventually(async () => expect((await submission(queued))?.dispatchState).toBe('rejected'))
+    expect((await submission(queued))?.rejection).not.toHaveProperty('endedWaiting')
+    await eventually(() =>
+      expect(completions).toEqual([
+        expect.objectContaining({
+          type: 'completion',
+          completion: expect.objectContaining({ outcome: 'failure' })
+        })
+      ])
     )
   })
 

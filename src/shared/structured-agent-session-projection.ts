@@ -25,6 +25,7 @@ import {
   latestStructuredAgentSessionPrompt,
   latestStructuredAgentSessionRequest,
   structuredAgentSessionFailedStartIds,
+  structuredAgentSessionQuietFailedStartIds,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
 import {
@@ -245,13 +246,16 @@ export function projectStructuredAgentSessionStatusState(
   owesWork: boolean
   /** The sends whose start failed for good; see `structuredAgentSessionFailedStartIds`. */
   failedStarts: string[]
+  /** Those that are no news; see `structuredAgentSessionQuietFailedStartIds`. */
+  quietFailedStarts: string[]
 } {
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
     return {
       summary: { status: null, latestPrompt: '' },
       latestRequest: null,
       owesWork: false,
-      failedStarts: []
+      failedStarts: [],
+      quietFailedStarts: []
     }
   }
   const status = projectStructuredAgentSessionStatus(items, submissions, currentFence)
@@ -286,6 +290,7 @@ export function projectStructuredAgentSessionStatusState(
     latestRequest,
     owesWork: status !== 'idle' && owesStructuredAgentSessionWork(items, submissions, currentFence),
     failedStarts: structuredAgentSessionFailedStartIds(submissions),
+    quietFailedStarts: structuredAgentSessionQuietFailedStartIds(items, submissions),
     summary: {
       status,
       latestPrompt: normalizePromptField(latestStructuredAgentSessionPrompt(items)),

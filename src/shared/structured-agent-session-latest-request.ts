@@ -15,6 +15,7 @@ import type {
   AgentJournalTurnLifecycleState,
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import { readAgentSessionFailureFact } from './agent-session-failure'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
@@ -138,6 +139,34 @@ export function structuredAgentSessionFailedStartIds(
       ? [agentJournalSubmissionKey(submission.clientMessageId)]
       : []
   )
+}
+
+/** Of those, the ones that are no news: a conversation command, which is not a request; and a
+ *  message whose wait for its next try the chat's close or a restart ended, which the person did.
+ *  Each still reads as failed in the chat. */
+export function structuredAgentSessionQuietFailedStartIds(
+  items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[]
+): string[] {
+  const failed = new Map(
+    submissions.flatMap((submission) =>
+      submission.dispatchState === 'rejected' && isFailedStartRejection(submission)
+        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission] as const]
+        : []
+    )
+  )
+  const quiet: string[] = []
+  for (const item of items) {
+    const submission = failed.get(item.itemId)
+    if (
+      submission &&
+      (isStructuredAgentSessionCommandEntry(item.body) ||
+        readAgentSessionFailureFact(submission.rejection)?.endedWaiting !== undefined)
+    ) {
+      quiet.push(item.itemId)
+    }
+  }
+  return quiet
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

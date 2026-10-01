@@ -122,9 +122,11 @@ export class StructuredAgentSessionTurnCompletionFeed {
     }
     baseline.sequence = cursor.sequence
     // A send whose start failed for good is announced the moment it is final, whatever else the
-    // session still owes, and only then: never again as the latest request below.
+    // session still owes, and only then: never again as the latest request below. One that is no
+    // news, such as a wait the chat's close ended, is not announced at all.
+    const quiet = new Set(state.quietFailedStarts)
     for (const id of failedStarts) {
-      if (!baseline.failedStarts.has(id)) {
+      if (!baseline.failedStarts.has(id) && !quiet.has(id)) {
         this.announce(session, sessionId, state, id, 'failure')
       }
     }

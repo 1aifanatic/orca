@@ -5,7 +5,9 @@
 // at once, for the person's Retry. The messages behind it go on meanwhile.
 
 import {
+  agentSessionFailureFact,
   isSubmissionRejectionFact,
+  type AgentSessionWaitEnd,
   readAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import {
@@ -131,21 +133,26 @@ async function recordStartFailure(
   }
 }
 
-/** What a queued message is rejected with when it cannot wait any longer — the chat closed, Orca
- *  quit or restarted: the start failure it was waiting out, else `fallback`. */
+/** What a queued message is rejected with when it cannot wait any longer — the chat closed (`end`
+ *  `chatClosed`), Orca quit or restarted (`hostRestarted`): the start failure it was waiting out,
+ *  naming what ended the wait, else `end` itself. */
 export function leftoverRejection(
   journal: Pick<AgentSessionJournal, 'itemBody'>,
   record: AgentSessionRecord | null,
-  fallback: AgentJournalDispatchRejection
+  end: AgentSessionWaitEnd
 ): (submission: AgentJournalSubmission) => AgentJournalDispatchRejection {
   return (submission) => {
     const fact = readAgentSessionFailureFact(submission.startRetry?.rejection)
-    return fact && isSubmissionRejectionFact(fact)
-      ? agentSessionFailureWords(fact, {
-          ...startFailureWordsContext(journal, record, submission.clientMessageId),
-          surface: 'rejection'
-        })
-      : fallback
+    if (!fact || !isSubmissionRejectionFact(fact)) {
+      return agentSessionFailureWords(agentSessionFailureFact(end), { surface: 'rejection' })
+    }
+    return agentSessionFailureWords(
+      { ...fact, endedWaiting: end },
+      {
+        ...startFailureWordsContext(journal, record, submission.clientMessageId),
+        surface: 'rejection'
+      }
+    )
   }
 }
 
