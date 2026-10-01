@@ -108,4 +108,17 @@ describe('Claude accounts section', () => {
     ]
     expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([true, true, false])
   })
+
+  it("names System Default's login and says when an earlier Orca left a saved account there", () => {
+    const markup = render({
+      systemDefault: { email: 'a@example.test', leftByEarlierOrca: true }
+    })
+    expect(markup).toContain('System default: a@example.test')
+    expect(markup).toContain(
+      'An earlier Orca version left a@example.test signed in to your personal Claude login. Select System default and run `claude /login` to sign back in to your own account.'
+    )
+    const own = render({ systemDefault: { email: 'me@example.test', leftByEarlierOrca: false } })
+    expect(own).toContain('System default: me@example.test')
+    expect(own).not.toContain('An earlier Orca version')
+  })
 })

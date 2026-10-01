@@ -15,7 +15,10 @@ import {
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
 import type { ClaudeEnvPatch } from './environment'
-import { withObservedClaudeIdentities } from './claude-account-identity'
+import {
+  describeClaudeSystemDefault,
+  withObservedClaudeIdentities
+} from './claude-account-identity'
 import { provisionClaudeLaunchProfile } from './claude-profile-launch-provisioning'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
 
@@ -264,9 +267,17 @@ export class ClaudeProfileRoutingService {
   /** Never throws: readiness is per account, and a stale pointer is republished in the background. */
   describeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {
     const accounts = withObservedClaudeIdentities(state.accounts, this.owner)
+    const systemDefault = this.owner.systemDefaultIdentity
+      ? { systemDefault: describeClaudeSystemDefault(this.owner.systemDefaultIdentity(), accounts) }
+      : {}
     const issues = this.currentPublishIssues()
     if (this.pointerIsCurrent()) {
-      return { ...state, accounts, ...(issues ? { profileRoutingIssue: issues } : {}) }
+      return {
+        ...state,
+        accounts,
+        ...systemDefault,
+        ...(issues ? { profileRoutingIssue: issues } : {})
+      }
     }
     this.repair ??= this.publish(undefined, 'if-missing')
       .catch(() => {})
@@ -276,6 +287,7 @@ export class ClaudeProfileRoutingService {
     return {
       ...state,
       accounts,
+      ...systemDefault,
       profileRoutingIssue: issues || 'Claude account selection is being published'
     }
   }

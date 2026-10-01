@@ -1,7 +1,8 @@
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
-  ClaudeProfileReadiness
+  ClaudeProfileReadiness,
+  ClaudeSystemDefaultIdentity
 } from '../../shared/managed-account-types'
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
@@ -92,4 +93,22 @@ export function withObservedClaudeIdentities(
       ...(profileIdentityIssue ? { profileIdentityIssue } : {})
     }
   })
+}
+
+/** System Default's login, flagged when an earlier Orca left a saved account's login there. */
+export function describeClaudeSystemDefault(
+  identity: ClaudeLoginIdentity | null,
+  accounts: readonly Pick<ClaudeManagedAccountSummary, 'email' | 'profileEmail'>[]
+): ClaudeSystemDefaultIdentity {
+  const email = normalizeClaudeEmail(identity?.email)
+  return {
+    email: identity?.email ?? null,
+    leftByEarlierOrca:
+      email !== null &&
+      accounts.some(
+        (account) =>
+          normalizeClaudeEmail(account.email) === email ||
+          normalizeClaudeEmail(account.profileEmail) === email
+      )
+  }
 }

@@ -84,7 +84,12 @@ function fixture() {
         entry.profileIdentityIssue
       ])
       .sort(([left], [right]) => String(left).localeCompare(String(right)))
-  return { settings, signIn, selection, rows, account }
+  const signInDefault = (email: string) =>
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: email } })
+    )
+  return { settings, signIn, signInDefault, selection, rows, account }
 }
 
 it('labels each row with the login its profile holds and flags a row holding another login', async () => {
@@ -140,4 +145,20 @@ it('keeps an unfinished sign-in holding an already added login flagged instead o
     'a@example.test',
     'duplicate'
   ])
+})
+
+it("names System Default's own login and flags one an earlier Orca left there", () => {
+  const f = fixture()
+  f.signIn('a', 'a@example.test')
+  expect(f.selection.list().systemDefault).toEqual({ email: null, leftByEarlierOrca: false })
+  f.signInDefault('a@example.test')
+  expect(f.selection.list().systemDefault).toEqual({
+    email: 'a@example.test',
+    leftByEarlierOrca: true
+  })
+  f.signInDefault('mine@example.test')
+  expect(f.selection.list().systemDefault).toEqual({
+    email: 'mine@example.test',
+    leftByEarlierOrca: false
+  })
 })

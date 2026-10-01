@@ -99,6 +99,15 @@ export type ClaudeRateLimitAccountsState = {
   profileRoutingIssue?: string
   /** Sign-ins with no login yet. Kept out of `accounts` on the wire, whose clients require an email. */
   unfinishedAccounts?: ClaudeManagedAccountSummary[]
+  /** The host's own Claude login, read-only. Omitted where it is not read (WSL distros). */
+  systemDefault?: ClaudeSystemDefaultIdentity
+}
+
+export type ClaudeSystemDefaultIdentity = {
+  /** The login Claude's own state file names; null when signed out or unreadable. */
+  email: string | null
+  /** That login is also a saved account, which an earlier Orca copied into this slot. */
+  leftByEarlierOrca: boolean
 }
 
 export type ClaudeManagedAccountRuntimeSelection = {

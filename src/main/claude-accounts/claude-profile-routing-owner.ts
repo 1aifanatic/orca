@@ -36,6 +36,8 @@ export type ClaudeProfileRoutingOwner = {
   readiness: (accountId: string) => ClaudeProfileReadiness
   /** The login Claude recorded in the account's profile, from the same read as readiness. */
   identity?: (accountId: string) => ClaudeLoginIdentity | null
+  /** The host's own (System Default) login, read where Claude itself reads it. */
+  systemDefaultIdentity?: () => ClaudeLoginIdentity | null
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
   prepare: (
     descriptor: ClaudeProfileLaunchDescriptor,

@@ -1,9 +1,11 @@
+import { resolveClaudeGlobalConfigFile } from '../claude/claude-folder-trust-file'
 import {
+  readClaudeLoginState,
   readClaudeProfileIdentity,
   readClaudeProfileReadiness,
   readClaudeProfileOwnership
 } from './claude-profile-readiness'
-import { lstatSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import {
@@ -139,6 +141,15 @@ export function createNativeClaudeProfileRouting(args: {
         describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
       )
     },
+    systemDefaultIdentity: () =>
+      readClaudeLoginState(
+        resolveClaudeGlobalConfigFile({
+          env: { CLAUDE_CONFIG_DIR: args.inheritedConfigDir() ?? undefined },
+          homeDir: args.userHome,
+          style: process.platform === 'win32' ? 'win32' : 'posix',
+          exists: existsSync
+        })
+      ).identity,
     identity: (id) => {
       const account = accountFor(id)
       return account && account.managedAuthRuntime !== 'wsl'

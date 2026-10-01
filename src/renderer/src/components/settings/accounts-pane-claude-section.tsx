@@ -49,6 +49,8 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
     visibleClaudeAccounts,
     wslCapabilitiesLoading
   } = model
+  // Why host only: the host reports its own login, never a WSL distro's.
+  const systemDefault = accountRuntime.runtime === 'host' ? claudeAccounts.systemDefault : undefined
   return (
     <section key="claude-accounts" id="accounts-claude" className="space-y-4 scroll-mt-6">
       <div className="space-y-1">
@@ -173,7 +175,18 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-sm font-medium">
-                  {translate('auto.components.settings.AccountsPane.f2a265f8c7', 'System default')}
+                  {systemDefault?.email
+                    ? translate(
+                        'accounts.claude.systemDefaultNamed',
+                        'System default: {{value0}}',
+                        {
+                          value0: systemDefault.email
+                        }
+                      )
+                    : translate(
+                        'auto.components.settings.AccountsPane.f2a265f8c7',
+                        'System default'
+                      )}
                 </span>
                 {systemClaudeActive ? (
                   <Badge
@@ -193,6 +206,15 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
               </span>
             </div>
           </button>
+          {systemDefault?.leftByEarlierOrca && systemDefault.email ? (
+            <p role="alert" className="text-xs text-muted-foreground">
+              {translate(
+                'accounts.claude.systemDefaultLeftByOrca',
+                'An earlier Orca version left {{value0}} signed in to your personal Claude login. Select System default and run `claude /login` to sign back in to your own account.',
+                { value0: systemDefault.email }
+              )}
+            </p>
+          ) : null}
           {visibleClaudeAccounts.length === 0 ? (
             <div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-xs text-muted-foreground">
               {isRemoteAccountScope
