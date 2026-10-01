@@ -96,13 +96,15 @@ async function manyItems(journal: AgentSessionJournal, count = 8): Promise<void>
  *  commit unsynced. Throws instead of committing when `fail` is set. */
 function onPublish(database: JournalHostDatabase, hook: { after?: () => void; fail?: Error }) {
   let fired = false
+  // Bound before the spy replaces it: the real commit.
+  const commit = database.transaction.bind(database)
   return vi.spyOn(database, 'transaction').mockImplementation((run) => {
     const synced = database.db.pragma('synchronous', { simple: true }) !== 1
     if (synced && !fired && hook.fail) {
       fired = true
       throw hook.fail
     }
-    const out = Reflect.apply(Object.getPrototypeOf(database).transaction, database, [run])
+    const out = commit(run)
     if (synced && !fired) {
       fired = true
       hook.after?.()
@@ -180,11 +182,10 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     const { directory, epoch, rows } = await stageChat('session-quit', manyItems)
     const before = await readFile(legacyJournalDatabaseFile(directory))
     const database = openTestJournalHostDatabase(root)
+    const commit = database.unsyncedTransaction.bind(database)
     const batch = vi.spyOn(database, 'unsyncedTransaction')
     batch.mockImplementation((run) => {
-      const out = Reflect.apply(Object.getPrototypeOf(database).unsyncedTransaction, database, [
-        run
-      ])
+      const out = commit(run)
       // The delete of what an earlier try staged, then two copy batches.
       if (batch.mock.calls.length === 3) {
         database.abortImports()
@@ -225,10 +226,9 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     const trackStaged = (abortAfter?: number) => {
       const database = openTestJournalHostDatabase(root)
       const left: unknown[] = []
+      const commit = database.unsyncedTransaction.bind(database)
       const batch = vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
-        const out = Reflect.apply(Object.getPrototypeOf(database).unsyncedTransaction, database, [
-          run
-        ])
+        const out = commit(run)
         left.push(stagedLeft())
         if (batch.mock.calls.length === abortAfter) {
           database.abortImports()
