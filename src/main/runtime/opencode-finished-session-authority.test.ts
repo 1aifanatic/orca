@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from '../agent-hooks/server'
+import {
+  agentHookLaunchAuthorityRuntimeDeps,
+  agentHookStatusStoreRuntimeDeps,
+  wireRuntimeLaunchAuthorityReader
+} from '../agent-hooks/agent-hook-runtime-deps'
 import { OrcaRuntimeService } from './orca-runtime'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
 
@@ -64,17 +69,8 @@ async function launchOpenCodePane(options: {
     undefined,
     server
       ? {
-          getAgentStatusSnapshot: () =>
-            server.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
-          getAgentProviderSessionSnapshot: () => server.getStatusSnapshot(),
-          getAgentProviderSessionRowsForPane: (paneKey) => server.getStatusSnapshotForPane(paneKey),
-          attestAgentHookCompatibilityAuthority: (candidate) =>
-            server.attestCompatibilityAuthority(candidate),
-          retireAgentHookCompatibilityAuthority: (paneKey, retireOptions) =>
-            server.retirePaneAuthority(paneKey, undefined, retireOptions),
-          checkHookAgentPresence: (paneKey) => server.checkAgentPresence(paneKey),
-          reconcileAgentStatusForEndedProcess: (paneKeys, reconcileOptions) =>
-            server.reconcileEndedProcessForPaneKeys(paneKeys, reconcileOptions)
+          ...agentHookStatusStoreRuntimeDeps(server),
+          ...agentHookLaunchAuthorityRuntimeDeps(server)
         }
       : {
           attestAgentHookCompatibilityAuthority: (candidate) => ({
@@ -83,7 +79,9 @@ async function launchOpenCodePane(options: {
           })
         }
   )
-  server?.setPaneLaunchAuthorityReader((paneKey) => runtime.readPaneLaunchAuthority(paneKey))
+  if (server) {
+    wireRuntimeLaunchAuthorityReader(server, runtime)
+  }
   runtime.setPtyController({
     spawn,
     write: () => true,

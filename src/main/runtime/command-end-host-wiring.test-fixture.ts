@@ -3,11 +3,17 @@ import type { AgentStatusClearIpcPayload } from '../../shared/agent-status-types
 import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
 import { AgentHookServer } from '../agent-hooks/server'
 import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-status-session-tabs-republish'
+import {
+  agentHookLaunchAuthorityRuntimeDeps,
+  agentHookStatusStoreRuntimeDeps,
+  wireRuntimeLaunchAuthorityReader
+} from '../agent-hooks/agent-hook-runtime-deps'
 import { OrcaRuntimeService } from './orca-runtime'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
 
-// The host wiring `main-process-runtime-service.ts` performs, plus every pane-clear reader, for the
-// command-end specs. Callers must mock `../git/worktree` to list WORKTREE_PATH.
+// The host wiring `main-process-runtime-service.ts` performs (through the same builders), plus every
+// pane-clear reader, for the command-end specs. Callers must mock `../git/worktree` to list WORKTREE_PATH.
 
 export const WORKTREE_PATH = '/tmp/worktree-a'
 export const TEST_WORKTREE_ID = `repo-1::${WORKTREE_PATH}`
@@ -35,7 +41,12 @@ export type CommandEndHost = {
 }
 
 export async function wireCommandEndHost(
-  options: { userDataPath?: string; server?: AgentHookServer } = {}
+  options: {
+    userDataPath?: string
+    server?: AgentHookServer
+    /** Replaces the stubbed process answers, e.g. with a real terminal daemon's. */
+    controller?: Pick<RuntimePtyController, 'confirmShellForeground' | 'inspectProcess'>
+  } = {}
 ): Promise<CommandEndHost> {
   const server = options.server ?? new AgentHookServer()
   if (!options.server) {
@@ -46,19 +57,10 @@ export async function wireCommandEndHost(
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shared fixture store implements only the members these runtime paths read.
   const runtime = new OrcaRuntimeService(makeStore() as never, undefined, {
-    getAgentStatusSnapshot: () =>
-      server.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
-    getAgentProviderSessionSnapshot: () => server.getStatusSnapshot(),
-    getAgentProviderSessionRowsForPane: (paneKey) => server.getStatusSnapshotForPane(paneKey),
-    attestAgentHookCompatibilityAuthority: (candidate) =>
-      server.attestCompatibilityAuthority(candidate),
-    retireAgentHookCompatibilityAuthority: (paneKey, retireOptions) =>
-      server.retirePaneAuthority(paneKey, undefined, retireOptions),
-    checkHookAgentPresence: (paneKey) => server.checkAgentPresence(paneKey),
-    reconcileAgentStatusForEndedProcess: (paneKeys, reconcileOptions) =>
-      server.reconcileEndedProcessForPaneKeys(paneKeys, reconcileOptions)
+    ...agentHookStatusStoreRuntimeDeps(server),
+    ...agentHookLaunchAuthorityRuntimeDeps(server)
   })
-  server.setPaneLaunchAuthorityReader((paneKey) => runtime.readPaneLaunchAuthority(paneKey))
+  wireRuntimeLaunchAuthorityReader(server, runtime)
   const readers: Readers = { windowClears: [], subscriberClears: [], republishedWorktrees: [] }
   server.setPaneStatusClearListener((clear) => readers.windowClears.push(clear))
   const unsubscribeClears = server.subscribePaneStatusClear((clear) =>
@@ -83,7 +85,8 @@ export async function wireCommandEndHost(
       foregroundProcess: null,
       hasChildProcesses: false,
       ...(await inspectProcess(ptyId))
-    })
+    }),
+    ...options.controller
   })
   return {
     server,
@@ -137,9 +140,10 @@ export function liveRow(server: AgentHookServer, paneKey: string) {
 export async function launchAgentPane(
   host: Pick<CommandEndHost, 'runtime' | 'spawn'>,
   ptyId: string,
-  agent: 'claude' | 'codex' | 'opencode' = 'claude'
+  agent: 'claude' | 'codex' | 'opencode' = 'claude',
+  incarnationId = `${ptyId}-incarnation`
 ): Promise<{ ptyId: string; paneKey: string; launchToken: string }> {
-  host.spawn.mockResolvedValueOnce({ id: ptyId, incarnationId: `${ptyId}-incarnation` })
+  host.spawn.mockResolvedValueOnce({ id: ptyId, incarnationId })
   await host.runtime.createTerminal(`path:${WORKTREE_PATH}`, {
     command: agent,
     launchConfig: { agentCommand: agent, agentArgs: '', agentEnv: {} },

@@ -9,6 +9,11 @@ import { app } from 'electron'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { getLocalPtyProvider, getSshPtyProvider, clearProviderPtyState } from '../ipc/pty'
 import { agentHookServer } from '../agent-hooks/server'
+import {
+  agentHookLaunchAuthorityRuntimeDeps,
+  agentHookStatusStoreRuntimeDeps,
+  wireRuntimeLaunchAuthorityReader
+} from '../agent-hooks/agent-hook-runtime-deps'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
@@ -92,9 +97,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
       }
     },
     getDesktopWindowStatus,
-    // Why: worktree.ps pulls hook-reported agent status (same source as the desktop sidebar) at query time so mobile shows the same agents.
-    getAgentStatusSnapshot: () =>
-      agentHookServer.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
+    ...agentHookStatusStoreRuntimeDeps(agentHookServer),
+    ...agentHookLaunchAuthorityRuntimeDeps(agentHookServer),
     // Why: structured chats have no hooks, so the host writes their projections here itself; the
     // snapshot above then lists them for the CLI and mobile without a second store.
     structuredAgentStatusSink: {
@@ -107,19 +111,6 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     // Why captured rather than resolved at read: the fleet snapshot remints cached rows on every
     // read, so a row observed under one process otherwise acquires whatever the pane owns now.
     readObservedAgentStatusPaneIdentity: (paneKey) => observedPaneIdentities.read(paneKey),
-    // Why: the filter above hides resume-identity rows from the live-agent views, but
-    // those rows carry the provider session mobile native chat addresses transcripts
-    // by — Pi publishes identity that way and would otherwise be unreachable.
-    getAgentProviderSessionSnapshot: () => agentHookServer.getStatusSnapshot(),
-    getAgentProviderSessionRowsForPane: (paneKey) =>
-      agentHookServer.getStatusSnapshotForPane(paneKey),
-    attestAgentHookCompatibilityAuthority: (candidate) =>
-      agentHookServer.attestCompatibilityAuthority(candidate),
-    retireAgentHookCompatibilityAuthority: (paneKey, options) =>
-      agentHookServer.retirePaneAuthority(paneKey, undefined, options),
-    checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
-    reconcileAgentStatusForEndedProcess: (paneKeys, options) =>
-      agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys, options),
     canRecoverPersistentLocalPtys: () => getDaemonProvider() !== null,
     // Why: evaluated per call, not captured — the RPC server that owns the device registry is
     // constructed with this runtime and does not exist yet at this point.
@@ -163,10 +154,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   })
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
-  // Why: the runtime owns which launch token a pane still honours; ingest derives from it.
-  agentHookServer.setPaneLaunchAuthorityReader((paneKey) =>
-    runtime.readPaneLaunchAuthority(paneKey)
-  )
+  wireRuntimeLaunchAuthorityReader(agentHookServer, runtime)
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )
