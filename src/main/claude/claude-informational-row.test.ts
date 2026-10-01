@@ -60,13 +60,13 @@ async function itemsFor(frames: Record<string, unknown>[]) {
 }
 
 describe('a Claude informational frame', () => {
-  // Claude Code renders these levels as transcript chrome, never as a turn's content.
   it.each(['info', 'notice', 'suggestion'] as const)('writes no row at level %s', async (level) => {
-    expect(await itemsFor([informational(level, 'Model set to Opus 5.5')])).toEqual([])
+    expect(await itemsFor([informational(level, `A ${level} note`)])).toEqual([])
   })
 
   it('writes its own words as one warning row at level warning', async () => {
-    const content = 'Stop hook prevented continuation'
+    const content =
+      'UserPromptSubmit operation blocked by hook: secrets are not allowed\n\nOriginal prompt: deploy it'
     const items = await itemsFor([informational('warning', content)])
 
     expect(items).toEqual([{ kind: 'status', tone: 'warning', text: content }])

@@ -1,6 +1,5 @@
-// What a Claude `system/informational` frame shows. Claude Code renders `info`, `notice` and
-// `suggestion` as transcript chrome; only a `warning` (a Stop hook that refused to continue, say)
-// earns a row, in the frame's own words.
+// Only a `warning` frame (a UserPromptSubmit hook that blocked the prompt, say) earns a row, in its
+// own words; `info`, `notice` (a hook's systemMessage) and `suggestion` are session chrome, not chat rows.
 
 import type { AgentJournalStatusItem } from '../../shared/agent-session-journal-types'
 import {
