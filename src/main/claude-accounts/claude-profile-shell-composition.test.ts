@@ -22,7 +22,13 @@ async function composed(enabled: boolean) {
   const local = await import('../providers/local-pty-shell-ready')
   const daemon = await import('../daemon/shell-ready')
   const powershell = await import('../powershell-osc133-bootstrap')
+  const localBash = await import('../providers/local-pty-shell-ready-bash-rcfile')
+  const daemonBash = await import('../daemon/daemon-bash-shell-ready-rcfile')
   return {
+    bash: [
+      localBash.getBashShellReadyRcfileContent(),
+      daemonBash.getDaemonBashShellReadyRcfileContent()
+    ],
     fish: [
       local.getShellLaunchConfig(FISH, ['ready']).args[2],
       daemon.getShellLaunchConfig(FISH, ['ready']).args[2]
@@ -35,6 +41,12 @@ it('keeps the composed fish and PowerShell startup text dormant with the gate of
   const off = await composed(false)
   for (const text of [...off.fish, off.powershell]) {
     expect(text).not.toContain('claude')
+  }
+  for (const text of off.bash) {
+    expect(text).not.toContain('ORCA_CLAUDE')
+  }
+  for (const text of (await composed(true)).bash) {
+    expect(text).toContain('ORCA_CLAUDE_INJECTED_CONFIG_DIR')
   }
 })
 
