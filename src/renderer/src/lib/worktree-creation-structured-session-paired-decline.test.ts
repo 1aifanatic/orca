@@ -61,7 +61,7 @@ function seedPairedServer(): ReturnType<typeof vi.fn> {
         badgeColor: '#000',
         addedAt: 0,
         executionHostId: 'runtime:server-1'
-      } as never
+      }
     ],
     worktreesByRepo: { 'repo-1': [OTHER, CREATED] },
     tabsByWorktree: {},
