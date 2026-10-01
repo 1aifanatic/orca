@@ -13,8 +13,13 @@ import {
   findHookTrustBlockRanges,
   type HookTrustBlockRange
 } from './config-toml-hook-trust-blocks'
-import { escapeTomlBasicString } from './config-toml-syntax'
+import {
+  CODEX_HOOK_TRUST_KEY,
+  escapeTomlBasicString,
+  parseHookStateTomlHeaderKey
+} from './config-toml-syntax'
 import { applyCheckedCodexConfigTomlEdit } from './codex-config-toml-checked-edit'
+import { readTomlValueAtPath } from './codex-config-toml-document'
 import {
   readTomlAssignmentValue,
   scanTomlStructure,
@@ -156,6 +161,88 @@ function getOwnedHookStatePaths(content: string, keys: readonly string[]): strin
   return [...owned].map((key) => ['hooks', 'state', key])
 }
 
+/**
+ * Moves each hook's trust block to the hook's new key, body bytes unchanged:
+ * only what Codex wrote moves, and no hash is ever computed. Codex hashes a
+ * hook's content, not its path or position, so the moved block stays exactly
+ * as valid as before; a hook with no block keeps none. If any stored key has
+ * an unknown shape, nothing moves and Codex asks the user to review instead.
+ */
+export function moveHookTrustContent(
+  existingContent: string,
+  moves: readonly { oldKey: string; newKey: string }[]
+): string {
+  const existing = stripLeadingBom(existingContent)
+  const touchedKeys = new Set(
+    moves.flatMap(({ oldKey, newKey }) => [oldKey, newKey]).map(normalizeCodexHookTrustLookupKey)
+  )
+  // Why: nothing to move, so a config Codex cannot parse must not turn into a refusal.
+  if (
+    findHookTrustBlockRanges(existing, touchedKeys).length === 0 ||
+    findAllHookTrustBlocks(existing).some(({ key }) => !CODEX_HOOK_TRUST_KEY.test(key))
+  ) {
+    return existingContent
+  }
+  const updated = applyCheckedCodexConfigTomlEdit(
+    existing,
+    (content, table) => {
+      const moved = moves.flatMap(({ oldKey, newKey }) => {
+        const [range] = findHookTrustBlockRanges(
+          content,
+          new Set([normalizeCodexHookTrustLookupKey(oldKey)])
+        )
+        const sourceKey = range
+          ? parseHookStateTomlHeaderKey(content.slice(range.start, range.headerLineEnd))
+          : null
+        return range && sourceKey !== null
+          ? [
+              {
+                sourceKey,
+                newKey,
+                newKeys: getTrustKeyWriteVariants(newKey),
+                body: content.slice(range.contentStart, range.end).trimEnd()
+              }
+            ]
+          : []
+      })
+      let next = stripHookTrustBlocks(content, touchedKeys)
+      if (moved.length > 0) {
+        if (
+          moved.some(({ newKey }) =>
+            usesWindowsCodexPathSeparators(parseCodexTrustKey(newKey)?.sourcePath ?? '')
+          )
+        ) {
+          next = ensureHooksStateParentTable(next)
+        }
+        const blocks = moved.flatMap(({ newKeys, body }) =>
+          newKeys.map(
+            (key) => `[hooks.state.${formatHookStateTableKey(key)}]${body ? `\n${body}` : ''}`
+          )
+        )
+        next = appendTomlBlock(next, blocks.join('\n\n'))
+      }
+      return {
+        content: next,
+        ownedPaths: getOwnedHookStatePaths(content, [
+          ...moves.flatMap(({ oldKey, newKey }) => [oldKey, newKey]),
+          ...moved.flatMap(({ newKeys }) => newKeys)
+        ]),
+        // Why: a move carries the block's values unchanged, so each new key must hold them.
+        expected: table
+          ? moved.flatMap(({ sourceKey, newKeys }) =>
+              newKeys.map((key) => ({
+                path: ['hooks', 'state', key],
+                value: readTomlValueAtPath(table, ['hooks', 'state', sourceKey])
+              }))
+            )
+          : []
+      }
+    },
+    { collapsesOwnedDuplicates: (content) => stripHookTrustBlocks(content, touchedKeys) }
+  )
+  return updated === existing ? existingContent : updated
+}
+
 function upsertTrustBlocks(
   content: string,
   keys: readonly string[],
@@ -167,7 +254,7 @@ function upsertTrustBlocks(
     new Set(keys.map(normalizeCodexHookTrustLookupKey))
   )
   if (ranges.length === 0) {
-    return appendTrustBlocks(content, keys, hash, explicitEnabled ?? true)
+    return appendTomlBlock(content, buildTrustBlocks(keys, hash, explicitEnabled ?? true))
   }
   const enabled = explicitEnabled ?? !ranges.some((range) => isBlockDisabled(content, range))
   const block = buildTrustBlocks(keys, hash, enabled)
@@ -192,17 +279,9 @@ function isBlockDisabled(content: string, range: HookTrustBlockRange): boolean {
   )
 }
 
-function appendTrustBlocks(
-  content: string,
-  keys: readonly string[],
-  hash: string,
-  enabled: boolean
-): string {
-  const block = buildTrustBlocks(keys, hash, enabled)
-  if (content.length === 0) {
-    return `${block}\n`
-  }
-  const separator = content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n'
+function appendTomlBlock(content: string, block: string): string {
+  const separator =
+    content.length === 0 || content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n'
   return `${content}${separator}${block}\n`
 }
 

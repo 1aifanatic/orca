@@ -12,6 +12,7 @@ import {
 } from './codex-trust-identity'
 import { writeTomlConfigAtomically } from './config-toml-atomic-write'
 import {
+  moveHookTrustContent,
   removeHookTrustContent,
   setHookTrustEnabledContent,
   upsertHookTrustContent
@@ -116,6 +117,21 @@ export function upsertHookTrustEntries(
   const updated = withConfigPath(configPath, () =>
     upsertHookTrustEntriesInContent(existing, entries)
   )
+  if (updated !== existing) {
+    writeTomlConfigAtomically(configPath, updated)
+  }
+}
+
+/** Moves hook trust blocks to new keys verbatim; see moveHookTrustContent. */
+export function moveHookTrustEntries(
+  configPath: string,
+  moves: readonly { oldKey: string; newKey: string }[]
+): void {
+  if (moves.length === 0 || !existsSync(configPath)) {
+    return
+  }
+  const existing = readTomlForMutation(configPath)
+  const updated = withConfigPath(configPath, () => moveHookTrustContent(existing, moves))
   if (updated !== existing) {
     writeTomlConfigAtomically(configPath, updated)
   }

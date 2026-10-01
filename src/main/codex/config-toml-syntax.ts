@@ -17,6 +17,9 @@ export function escapeTomlBasicString(value: string): string {
     .replaceAll('\t', '\\t')
 }
 
+// Why: Codex's hook_key is `{source}:{event}:{group}:{handler}` for any label (unchanged 0.141-0.158).
+export const CODEX_HOOK_TRUST_KEY = /^(.+):[a-z_]+:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
+
 // Why (#22592): identity is the decoded key path, so `["hooks"."state"."k"]`
 // and `[hooks.state.'k']` are the same table Codex sees.
 export function parseHookStateTomlHeaderKey(line: string): string | null {
