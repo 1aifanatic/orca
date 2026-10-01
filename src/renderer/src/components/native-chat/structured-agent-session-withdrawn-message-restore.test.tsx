@@ -436,6 +436,7 @@ describe('an open composer', () => {
     expect(result.current.draft).toBe('typed\n\nhello')
   })
 
+  // An unsettled composition reaches the chat only when it settles; the put-back is saved already.
   it('keeps text put back mid-composition through the composed writes, even if it unmounts', () => {
     const { result, unmount } = renderHook(() => useNativeChatDraft(PANE, () => true))
     act(() => appendNativeChatDraftNow(PANE, { text: 'hello' }))
@@ -443,7 +444,7 @@ describe('an open composer', () => {
 
     expect(result.current.draft).toBe('typed')
     unmount()
-    expect(readNativeChatDraftCache(PANE)).toBe('typed\n\nhello')
+    expect(readNativeChatDraftCache(PANE)).toBe('hello')
   })
 
   it('shows images put back while it is open, beside the ones attached', () => {
