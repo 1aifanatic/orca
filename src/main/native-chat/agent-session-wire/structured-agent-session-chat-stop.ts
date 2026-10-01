@@ -51,6 +51,8 @@ export function mutateWithChatStop<TValue>(
   let windDown: StructuredAgentSessionStopWindDown | undefined
   const named = turnId !== undefined ? { turnId } : {}
   const stopEvent = { reason: 'user-stop' as const, caller: caller.callerKey, ...named }
+  // Its own step wrote the Stop's event first.
+  const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
   // The same for every client: once the Stop takes effect its event is written, and the queue's
   // pause follows from it. The cards stay published; no text rides the answer.
   const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>
@@ -64,7 +66,7 @@ export function mutateWithChatStop<TValue>(
       if (child?.phase === 'starting') {
         // A start that may never land is the one thing here Stop has to end; the chat stays.
         await tookEffect()
-        await context.stopAgent(ctx.sessionId)
+        await stopChild()
         return { ok: true, value: { ...named, cancelled: true } }
       }
       // A Stop naming no turn ends nothing more unless the session reads working, by the rule
@@ -86,7 +88,7 @@ export function mutateWithChatStop<TValue>(
         {
           clientOperationId: envelope.clientOperationId,
           ...named,
-          stopChild: () => context.stopAgent(sessionId),
+          stopChild,
           endSession: (owed) => {
             windDown = owed
           },
@@ -111,7 +113,7 @@ export function mutateWithChatStop<TValue>(
       await endStoppedStructuredAgentSession(
         { sessionId, adapter: context.deps.adapter },
         windDown,
-        () => context.stopAgent(sessionId),
+        stopChild,
         (error) => context.deps.onEventSinkError?.({ sessionId, error })
       )
     }

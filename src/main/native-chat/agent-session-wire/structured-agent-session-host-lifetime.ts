@@ -87,28 +87,16 @@ function owedProviderChildWindDown(
     : session.owesProviderChildWindDown
 }
 
-/** How a stop ends the child. A person's Stop wrote its event in its own step (`recorded`); any
- *  other stop names the reason its event records, with the host's text for it. Quit writes none:
- *  its resume marker's trigger records why. */
+/** How a stop ends the child, and why (`lastEndedChild`). A person's Stop wrote its event in its
+ *  own step (`recorded` names its reason); any other stop names the reason its event records, with
+ *  the host's text for it. Quit writes none: its resume marker's trigger records why. */
 export type StructuredAgentSessionStopEnding =
-  | { recorded: true }
+  | { recorded: 'user-stop' }
   | {
       cause: Exclude<StructuredAgentSessionStopCause, 'user-stop'>
       reason?: string
       quit?: true
     }
-
-/** Why the child this stop ends ended, for the delivery loop (`lastEndedChild`): a person's Stop's
- *  reason is its event's, which its own step wrote before it got here. */
-function childEndCause(
-  session: StructuredAgentSessionHostSession,
-  ending: StructuredAgentSessionStopEnding
-): StructuredAgentSessionStopCause {
-  // A failed write of that event leaves the Stop no less the person's.
-  return 'recorded' in ending
-    ? (session.journal.stopMarks.latest()?.event.reason ?? 'user-stop')
-    : ending.cause
-}
 
 /**
  * Writes this stop's event (`JournalStopEvent`) when it ends a running turn or a start: a stop
@@ -182,7 +170,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
-          cause: childEndCause(session, ending),
+          cause: 'recorded' in ending ? ending.recorded : ending.cause,
           reason: ('reason' in ending ? ending.reason : undefined) ?? null,
           duringStartup: stopping.phase === 'starting',
           ...verdict
