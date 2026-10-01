@@ -7,6 +7,24 @@ import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
 
+// Why: a verified process-lifetime Working proves a new agent run, as a hook new-turn event does,
+// and its Done ends that run.
+function processLifetimeEvent(event: {
+  origin?: 'process'
+  payload: ParsedAgentStatusPayload
+  yieldsToHookSince?: number
+}): { processNewTurn: true } | { endedProcessRunStartedAt: number } | undefined {
+  if (event.origin !== 'process') {
+    return undefined
+  }
+  if (event.payload.state === 'working') {
+    return { processNewTurn: true }
+  }
+  return event.payload.state === 'done' && event.yieldsToHookSince !== undefined
+    ? { endedProcessRunStartedAt: event.yieldsToHookSince }
+    : undefined
+}
+
 export abstract class AgentHookServerIngestTerminal extends AgentHookServerIngestNormalization {
   ingestTerminalStatus(event: {
     ptyId?: string
@@ -47,18 +65,7 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       return
     }
     const tabId = paneKey !== physicalPaneKey ? parsedPaneKey?.tabId : reportedTabId
-    // Why: a verified process-lifetime Working proves a new agent run, as a hook new-turn event does;
-    // its Done is the host's own observation of that run's end.
-    const disposition = this.getAgentStatusDisposition(
-      paneKey,
-      event.origin !== 'process'
-        ? undefined
-        : event.payload.state === 'working'
-          ? { processNewTurn: true }
-          : event.payload.state === 'done' && event.yieldsToHookSince !== undefined
-            ? { endedProcessRunStartedAt: event.yieldsToHookSince }
-            : undefined
-    )
+    const disposition = this.getAgentStatusDisposition(paneKey, processLifetimeEvent(event))
     if (disposition === 'suppress') {
       return
     }
@@ -101,11 +108,14 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     const previous = this.state.lastStatusByPaneKey.get(paneKey) as
       | EnrichedAgentHookEventPayload
       | undefined
-    // Why: a hook that reported during this command owns it (OpenCode 1 `run` loads its plugin in-process).
     const hookOwnsCommand =
       event.yieldsToHookSince !== undefined &&
-      previous?.observation?.origin === 'hook' &&
-      previous.receivedAt >= event.yieldsToHookSince
+      previous !== undefined &&
+      this.hookOwnsProcessRun(
+        previous.observation?.origin,
+        previous.receivedAt,
+        event.yieldsToHookSince
+      )
     if (
       hookOwnsCommand ||
       (previous?.payload.agentType === 'claude' &&

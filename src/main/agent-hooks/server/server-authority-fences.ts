@@ -35,18 +35,28 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
         aliasChanged = true
       }
     }
-    this.recordRetiredPaneFence(
-      paneKeys,
-      retiredAliases,
-      this.isClosedAgentStatusTabForPaneKey(ownerPaneKey) ? undefined : retirementId
-    )
-    const authorityChanged = this.revokeHydratedAuthorityForPaneKeys(paneKeys)
     const retiredRows = [...paneKeys].flatMap((key) => {
       const row = this.state.lastStatusByPaneKey.get(key) as
         | EnrichedAgentHookEventPayload
         | undefined
       return row ? [row] : []
     })
+    const liveRow = retiredRows.find((row) => row.paneKey === ownerPaneKey) ?? retiredRows[0]
+    this.recordRetiredPaneFence(
+      paneKeys,
+      retiredAliases,
+      this.isClosedAgentStatusTabForPaneKey(ownerPaneKey) ? undefined : retirementId,
+      liveRow
+        ? {
+            agentType: liveRow.payload.agentType,
+            state: liveRow.payload.state,
+            origin: liveRow.observation?.origin,
+            receivedAt: liveRow.receivedAt
+          }
+        : // Why: a command end retires each of the pane's keys; the later calls find the rows gone.
+          previousFence?.retiredRun
+    )
+    const authorityChanged = this.revokeHydratedAuthorityForPaneKeys(paneKeys)
     const hadStatus = retiredRows.length > 0
     for (const key of paneKeys) {
       this.markPaneClosedForAgentStatus(key)

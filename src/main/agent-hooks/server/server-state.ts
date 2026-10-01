@@ -39,6 +39,7 @@ import type {
   ProviderSessionChangeListener,
   RetiredPaneAlias,
   RetiredPaneFence,
+  RetiredPaneRun,
   ServerAgentStatusListener,
   ServerStatusLineListener,
   StatusChangeListener,
@@ -186,7 +187,8 @@ export abstract class AgentHookServerState {
   protected abstract recordRetiredPaneFence(
     paneKeys: ReadonlySet<string>,
     aliases: readonly RetiredPaneAlias[],
-    retirementId?: string
+    retirementId?: string,
+    retiredRun?: RetiredPaneRun
   ): void
   protected abstract markPaneClosedForAgentStatus(paneKey: string): void
   protected abstract attachStatusTiming(

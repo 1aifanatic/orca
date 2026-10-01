@@ -8,7 +8,8 @@ import {
   CLOSED_AGENT_STATUS_TAB_IDS_MAX,
   RETIRED_PANE_FENCES_MAX
 } from './server-constants'
-import type { RetiredPaneAlias, RetiredPaneFence } from './server-types'
+import type { AgentStatusObservationOrigin } from '../../../shared/agent-status-observation'
+import type { RetiredPaneAlias, RetiredPaneFence, RetiredPaneRun } from './server-types'
 import { AgentHookServerStatusInference } from './server-status-inference'
 
 export abstract class AgentHookServerStatusDisposition extends AgentHookServerStatusInference {
@@ -52,7 +53,7 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       launchToken?: string
       /** A process-lifetime Working: a fresh command whose foreground argv proves a new agent run. */
       processNewTurn?: boolean
-      /** A process-lifetime Done: the host saw the run that started at this time end. */
+      /** A process-lifetime Done: the run that started at this time ended. */
       endedProcessRunStartedAt?: number
     }
   ): 'accept' | 'restart' | 'suppress' {
@@ -111,14 +112,19 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       }
       return 'accept'
     }
-    // Why: the end of a run that was already running when the pane retired is the host's own
-    // observation of the retired command (its 133;D retires it), not a late post from after it.
-    // Accept without lifting the fence, so stale posts stay suppressed.
+    // Why: a run still live when the pane retired (its own 133;D retires it) may settle its row once,
+    // unless a hook owned it, as on a live pane; the fence stays up so late posts stay suppressed.
     if (
       event?.endedProcessRunStartedAt !== undefined &&
-      retirementFence !== undefined &&
-      retirementFence.retiredAt > event.endedProcessRunStartedAt
+      retirementFence?.retiredRun !== undefined &&
+      retirementFence.retiredRun.state !== 'done' &&
+      !this.hookOwnsProcessRun(
+        retirementFence.retiredRun.origin,
+        retirementFence.retiredRun.receivedAt,
+        event.endedProcessRunStartedAt
+      )
     ) {
+      retirementFence.retiredRun = undefined
       return 'accept'
     }
     // Why: command completion retires launch authority but leaves its shell pane reusable.
@@ -159,6 +165,10 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
     ) {
       this.closedAgentStatusPaneKeys.delete(paneKey)
       this.closedAgentStatusPaneKeys.delete(ownerPaneKey)
+      // Why: a new run supersedes the one the retirement captured.
+      if (retirementFence) {
+        retirementFence.retiredRun = undefined
+      }
       const launchToken = event?.launchToken?.trim()
       if (launchToken) {
         this.restartedStatusLaunchTokenHashByPaneKey.set(
@@ -171,6 +181,15 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       return 'restart'
     }
     return 'suppress'
+  }
+
+  // Why: a hook that reported during this command owns it (OpenCode 1 `run` loads its plugin in-process).
+  protected hookOwnsProcessRun(
+    rowOrigin: AgentStatusObservationOrigin | undefined,
+    rowReceivedAt: number,
+    runStartedAt: number
+  ): boolean {
+    return rowOrigin === 'hook' && rowReceivedAt >= runStartedAt
   }
 
   // Why: a fence can span tabs (a pane detached into another tab), and legacy numeric
@@ -193,7 +212,8 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
   protected recordRetiredPaneFence(
     paneKeys: ReadonlySet<string>,
     aliases: readonly RetiredPaneAlias[],
-    retirementId?: string
+    retirementId?: string,
+    retiredRun?: RetiredPaneRun
   ): void {
     const closed = [...paneKeys].some(
       (key) =>
@@ -210,7 +230,7 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       paneKeys: [...paneKeys],
       aliases,
       retirementIdsByPaneKey,
-      retiredAt: Date.now(),
+      ...(retiredRun ? { retiredRun } : {}),
       ...(closed ? { closed: true as const } : {})
     }
     for (const key of paneKeys) {

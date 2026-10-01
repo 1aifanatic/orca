@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
 
@@ -15,6 +15,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   server.stop()
   rmSync(dir, { recursive: true, force: true })
 })
@@ -42,6 +43,10 @@ async function openCodeHook(hookEventName: string): Promise<void> {
 
 function paneState(): string {
   return server.getStatusSnapshotForPane(PANE)[0]?.state ?? 'missing'
+}
+
+function paneReceivedAt(): number | undefined {
+  return server.getStatusSnapshotForPane(PANE)[0]?.receivedAt
 }
 
 async function nextMillisecond(): Promise<void> {
@@ -152,6 +157,84 @@ describe('process-lifetime status', () => {
     server.dropStatusEntriesByTabPrefix('tab-1')
 
     processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('missing')
+  })
+
+  it.each([
+    ['still working', ['SessionBusy']],
+    ['already done', ['SessionBusy', 'SessionIdle']]
+  ])(
+    'keeps the process Done of a hook-owned run out of a retired pane (hook %s)',
+    async (_, hooks) => {
+      const commandStartedAt = Date.now()
+      processLifetime('working', commandStartedAt)
+      for (const hook of hooks) {
+        await openCodeHook(hook)
+      }
+      server.retirePaneAuthority(PANE)
+
+      processLifetime('done', commandStartedAt)
+      expect(paneState()).toBe('missing')
+    }
+  )
+
+  it('keeps the Done when the clock steps back between the run start and its retirement', () => {
+    const commandStartedAt = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(commandStartedAt)
+    processLifetime('working', commandStartedAt)
+    clock.mockReturnValue(commandStartedAt - 60_000)
+    server.retirePaneAuthority(PANE)
+
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('done')
+  })
+
+  // Why: a command end retires each of the pane's keys, so the later retirements find no rows.
+  it('keeps the Done when the pane retires again before the run reports its end', () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    server.retirePaneAuthority(PANE)
+    server.retirePaneAuthority(PANE)
+
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('done')
+  })
+
+  it('settles a retired run once', async () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    server.retirePaneAuthority(PANE)
+    processLifetime('done', commandStartedAt)
+    const settledAt = paneReceivedAt()
+    expect(settledAt).toBeDefined()
+
+    await nextMillisecond()
+    processLifetime('done', commandStartedAt)
+    expect(paneReceivedAt()).toBe(settledAt)
+  })
+
+  it('does not settle a run that had already ended when the pane retired', () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    processLifetime('done', commandStartedAt)
+    server.retirePaneAuthority(PANE)
+
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('missing')
+  })
+
+  it('does not let a run captured before a newer run settle that newer run', () => {
+    const firstStartedAt = Date.now()
+    processLifetime('working', firstStartedAt)
+    server.retirePaneAuthority(PANE)
+    const secondStartedAt = Date.now()
+    processLifetime('working', secondStartedAt)
+    expect(paneState()).toBe('working')
+    // The newer run's row is dismissed, so its retirement captures nothing of its own.
+    server.dropStatusEntry(PANE, { preserveResumeIdentity: false })
+    server.retirePaneAuthority(PANE)
+
+    processLifetime('done', secondStartedAt)
     expect(paneState()).toBe('missing')
   })
 })

@@ -2,9 +2,13 @@ import type { ClaudeStatusLineRateLimits } from '../../../shared/claude-statusli
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import type {
   AgentStatusClearIpcPayload,
-  AgentStatusState
+  AgentStatusState,
+  AgentType
 } from '../../../shared/agent-status-types'
-import type { AgentStatusObservation } from '../../../shared/agent-status-observation'
+import type {
+  AgentStatusObservation,
+  AgentStatusObservationOrigin
+} from '../../../shared/agent-status-observation'
 import type { AgentKind } from '../../../shared/telemetry-events'
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
 
@@ -122,8 +126,16 @@ export type RetiredPaneFence = {
   aliases: readonly RetiredPaneAlias[]
   closed?: true
   retirementIdsByPaneKey: Record<string, string>
-  /** Status observed for a command that was already running at this time is about the retired command, not after it. */
-  retiredAt: number
+  /** What the row this retirement deleted reported; in memory only, consumed when that run ends. */
+  retiredRun?: RetiredPaneRun
+}
+
+/** Which run a pane showed when it retired, and who reported it. */
+export type RetiredPaneRun = {
+  agentType?: AgentType
+  state: AgentStatusState
+  origin?: AgentStatusObservationOrigin
+  receivedAt: number
 }
 
 export type LastStatusFile = {

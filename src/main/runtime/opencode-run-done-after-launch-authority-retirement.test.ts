@@ -152,4 +152,15 @@ describe('OpenCode run Done after its command retires launch authority', () => {
 
     expect(paneState()).toBe('done')
   })
+
+  it('keeps the Done when the wall clock steps back during the run', async () => {
+    const runtime = createRuntime()
+    await runtime.listTerminals()
+    await startOpenCodeRun(runtime)
+
+    vi.setSystemTime(Date.now() - 60_000)
+    runtime.onPtyData(PTY_ID, 'done\x1b]133;D;0\x07', 101)
+
+    expect(paneState()).toBe('done')
+  })
 })
