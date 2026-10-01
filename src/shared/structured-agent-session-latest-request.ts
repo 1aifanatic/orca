@@ -43,8 +43,8 @@ export type StructuredAgentSessionLatestRequest = {
 /** Null when the journal holds no request with a verdict to give. Accepted and unanswered sends
  *  are passed over — the session is working until their turn records — and so are sends that
  *  failed nobody (withdrawn, or left undelivered by a restart or a close). The newest request is
- *  the last in the conversation, unless a send before it failed after that one settled: a message
- *  whose start failed lets later ones go first, so its failure can be the newer news. */
+ *  the last in the conversation, unless a send before it failed for good after that one settled: a
+ *  message whose start failed lets later ones go first, so its failure can be the newer news. */
 export function latestStructuredAgentSessionRequest(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
@@ -63,6 +63,8 @@ export function latestStructuredAgentSessionRequest(
       latest = request
     } else if (
       request?.kind === 'refused-send' &&
+      // Only a failure for good; one still waiting for its next try changes with every try.
+      (item && rejected.get(item.itemId))?.dispatchState === 'rejected' &&
       request.settledAt !== undefined &&
       latest.settledAt !== undefined &&
       request.settledAt > latest.settledAt

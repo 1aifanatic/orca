@@ -201,6 +201,30 @@ const ROWS: Row[] = [
     listed: true
   },
   {
+    name: 'a send still waiting for its next start that failed again after a later turn succeeded',
+    items: [
+      userEntry('m1', 1),
+      userEntry('m2', 2),
+      turn('t2', 3, { state: 'completed', outcome: 'success', completedAt: 40 })
+    ],
+    submissions: [
+      sent('m1', {
+        dispatchState: 'pending',
+        resolvedAt: null,
+        startFailure: {
+          attempts: 2,
+          reason: START_FAILURE,
+          rejection: { kind: 'accountSwitchInProgress' },
+          failedAt: 50,
+          nextAttemptAt: 110
+        }
+      }),
+      sent('m2', { dispatchState: 'accepted' })
+    ],
+    outcome: 'success',
+    listed: true
+  },
+  {
     name: 'a later turn still running after an earlier send failed',
     items: [userEntry('m1', 1), userEntry('m2', 2), turn('t2', 3, { state: 'running' })],
     submissions: [
