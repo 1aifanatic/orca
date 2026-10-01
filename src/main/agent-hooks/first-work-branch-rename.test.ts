@@ -103,6 +103,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // A real journal's sequence only ever advances, so the feed's projection
       // cache must miss on every publish here: this test is about the rename.
       let sequence = 0
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the snapshot, Stop marks, activity clock, read-only flag and cursor served here.
       const journal = {
         snapshot: () => ({ items }),
         stopMarks: { latest: () => null },
@@ -191,6 +192,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName, setRenameError } = makeDeps({
       getRepo: () => ({ id: REPO_ID, kind: 'folder', path: '/workspace/platform' }) as Repo
     })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the read-only flag, activity clock, Stop marks, cursor and snapshot served here.
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,

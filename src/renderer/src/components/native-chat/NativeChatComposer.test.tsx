@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   composerIsComposing: null as (() => boolean) | null,
   attachmentIsComposing: null as (() => boolean) | null,
   flushPendingAttachments: vi.fn(),
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: null until the mocked field renders and records its props.
   fieldProps: null as {
     onSend?: () => void
     onStop?: () => void

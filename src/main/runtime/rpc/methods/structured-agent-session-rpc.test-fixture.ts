@@ -98,6 +98,7 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
       [
         STATUS_SESSION,
         {
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the read-only flag, cursor, activity clock, Stop marks and snapshot served here.
           journal: {
             isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),

@@ -7,8 +7,8 @@ import type { AgentSessionStatusEvent } from '../../../../shared/agent-session-w
 const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted(async () =>
   (await import('./NativeChatStructuredSession.test-harness')).createStructuredSessionMocks()
 )
-const hostStatus = vi.hoisted(() => ({
-  emit: null as ((event: AgentSessionStatusEvent) => void) | null
+const hostStatus = vi.hoisted((): { emit: ((event: AgentSessionStatusEvent) => void) | null } => ({
+  emit: null
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
