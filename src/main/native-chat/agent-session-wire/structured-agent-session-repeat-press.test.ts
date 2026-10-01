@@ -22,7 +22,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
-import { attachForTests } from './structured-agent-session-attach-test-support'
+import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -201,8 +201,7 @@ describe('a press sent again', () => {
     expect(refused.ok ? null : agentSessionRefusalOperationState(refused.refusal.code)).toBe(
       'pending-admission'
     )
-    const fence = store.getRecord(SESSION)!.lease.runtimeFence
-    expect(await attachForTests(host, CALLER, hostTestAttachParams(fence))).toMatchObject({
+    expect(await startAgentForTests(host, SESSION)).toMatchObject({
       ok: true
     })
 

@@ -24,7 +24,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { attachForTests } from './structured-agent-session-attach-test-support'
+import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -263,8 +263,7 @@ describe('a record an older build left mid terminal handoff', () => {
           "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
       }
     })
-    const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-    expect(await attachForTests(host, CALLER, hostTestAttachParams(fence))).toMatchObject({
+    expect(await startAgentForTests(host, SESSION)).toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_conflict', message: quitTerminal }
     })

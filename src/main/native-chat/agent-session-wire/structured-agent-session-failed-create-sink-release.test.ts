@@ -110,19 +110,17 @@ describe('a first start that fails after its child wrote through the unbound sin
       fence: exitedFence,
       acquisitionGeneration: `generation-${exitedFence}`
     })
-    const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     acquire.mockImplementationOnce(async ({ events }) => {
       events?.setActivity?.(null)
       throw cause
     })
 
     // The session stays indexed across this failure: it is a resume, not a create.
-    expect(await attachForTests(host, CALLER, hostTestAttachParams(releasedFence))).toMatchObject({
+    expect(await startAgentForTests(host, SESSION)).toMatchObject({
       ok: false
     })
 
-    const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-    await expect(attachForTests(host, CALLER, hostTestAttachParams(fence))).resolves.toMatchObject({
+    await expect(startAgentForTests(host, SESSION)).resolves.toMatchObject({
       ok: true
     })
     expect(acquire).toHaveBeenCalledTimes(3)

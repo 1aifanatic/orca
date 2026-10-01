@@ -150,7 +150,7 @@ describe('recovery exits', () => {
     await reopenStore()
     openHost({ mintSpawnToken: () => 'spawn-b' })
 
-    expect(await attachForTests(host, CALLER, hostTestAttachParams(2))).toMatchObject({ ok: true })
+    expect(await startAgentForTests(host, SESSION)).toMatchObject({ ok: true })
     expect(acquire).toHaveBeenCalledTimes(2)
   })
 
@@ -167,7 +167,7 @@ describe('recovery exits', () => {
       mintSpawnToken: () => 'spawn-b',
       probeOwner: async () => ({ outcome: 'pid-absent' })
     })
-    expect(await attachForTests(host, CALLER, hostTestAttachParams(2))).toMatchObject({
+    expect(await startAgentForTests(host, SESSION)).toMatchObject({
       ok: false,
       refusal: {
         code: 'agent_session_ownership_unknown',

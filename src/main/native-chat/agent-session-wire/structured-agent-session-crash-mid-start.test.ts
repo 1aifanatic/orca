@@ -147,8 +147,7 @@ describe('a host that dies while its Codex child is starting', () => {
       deathEvidence: { kind: 'pid-absent' }
     })
     // What the next send's delivery does: start at the record's current fence.
-    const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-    expect(await attachForTests(relaunched, CALLER, hostTestAttachParams(fence))).toMatchObject({
+    expect(await startAgentForTests(relaunched, SESSION)).toMatchObject({
       ok: true
     })
     expect(restarted.connections).toHaveLength(1)

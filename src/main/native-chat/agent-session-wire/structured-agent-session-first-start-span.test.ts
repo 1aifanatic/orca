@@ -16,7 +16,7 @@ import {
   HOST_TEST_THREAD as THREAD,
   hostTestAttachParams
 } from './structured-agent-session-host-test-data'
-import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
+import { startAgentForTests } from './structured-agent-session-attach-test-support'
 
 let root: string
 let host: StructuredAgentSessionHost
@@ -73,9 +73,7 @@ it('wraps the first start, and its retry after a failure, but no start once an a
 
   // Put to rest and started again, as the next message after the idle sweep does.
   await host.collaboratorsForTests().lifetime.stopAgent(SESSION, 'evict')
-  expect(
-    await attachForTests(host, { callerKey: 'client-1' }, hostTestAttachParams(2))
-  ).toMatchObject({ ok: true })
+  expect(await startAgentForTests(host, SESSION)).toMatchObject({ ok: true })
   expect(acquire).toHaveBeenCalledTimes(3)
   expect(span).toHaveBeenCalledTimes(2)
 })
