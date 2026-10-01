@@ -150,7 +150,9 @@ describe('Claude invocation account selection', () => {
         : getPosixClaudeShellFunction()
       const relative = [`ORCA_CLAUDE_PROFILE_POINTER=${WSL_CLAUDE_PROFILE_POINTER}`]
       const guestPointer = join(f.root, '.local/share/orca/claude-profiles/selected-wsl')
-      expect(f.run(shell, `${fn}\nclaude x`, relative).status).toBe(1)
+      const unread = f.run(shell, `${fn}\nclaude x`, relative)
+      expect([unread.status, unread.stdout]).toEqual([1, ''])
+      expect(unread.stderr).toContain('Claude account selection is unreadable')
       mkdirSync(join(f.root, '.local/share/orca/claude-profiles'), { recursive: true })
       writeFileSync(guestPointer, f.b)
       expect(f.run(shell, `${fn}\nclaude x`, relative).stdout).toBe(
