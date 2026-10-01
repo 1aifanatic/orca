@@ -7,12 +7,8 @@ import { printResult } from '../format'
 import { RuntimeClientError } from '../runtime-client'
 import { stripElectronRunAsNode } from '../runtime/launch'
 import { rejectRemoteSelectionFlags } from '../remote-selection-flag-rejection'
-import {
-  buildWslExecArgs,
-  buildWslLoginShellCommand,
-  quotePosixShell
-} from '../../shared/wsl-login-shell-command'
-import { CLAUDE_AUTH_ENV_VARS } from '../../shared/claude-auth-env'
+import { buildWslExecArgs, buildWslLoginShellCommand } from '../../shared/wsl-login-shell-command'
+import { claudeLoginHostEnv, claudeLoginWslScript } from '../../shared/claude-login-environment'
 import {
   getVersionManagerBinPaths,
   resolveCliCommand,
@@ -69,7 +65,7 @@ function addAgentNodePaths(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 async function runAgentLoginInTerminal(
   command: string,
   args: string[],
-  extraEnv: Record<string, string>,
+  prepareEnv: (env: NodeJS.ProcessEnv) => NodeJS.ProcessEnv,
   json: boolean,
   session: InteractiveLoginSession
 ): Promise<void> {
@@ -99,19 +95,8 @@ async function runAgentLoginInTerminal(
     // the CLI's own node in front of that seed (stablyai/orca#10932).
     const env = withCliRuntimeOnPath(
       resolvedCommand,
-      addAgentNodePaths({ ...stripElectronRunAsNode(process.env), ...extraEnv })
+      addAgentNodePaths(prepareEnv(stripElectronRunAsNode(process.env)))
     )
-    if (command === 'claude') {
-      for (const key of Object.keys(env)) {
-        const normalized = process.platform === 'win32' ? key.toUpperCase() : key
-        if (
-          CLAUDE_AUTH_ENV_VARS.some((name) => name === normalized) ||
-          normalized === 'ANTHROPIC_CUSTOM_HEADERS'
-        ) {
-          delete env[key]
-        }
-      }
-    }
     const consoleStdio = stdioForWindowsInteractiveChild(json)
     let child: ReturnType<typeof spawn>
     try {
@@ -167,11 +152,13 @@ async function addClaudeAccount({ client, cwd, json }: HandlerContext): Promise<
     async () => {},
     async () => {
       if (config.linuxPath && config.wslDistro) {
-        const script = `exec env ${CLAUDE_AUTH_ENV_VARS.map((key) => `-u ${key}`).join(' ')} -u ANTHROPIC_CUSTOM_HEADERS CLAUDE_CONFIG_DIR=${quotePosixShell(config.linuxPath)} CLAUDE_SECURESTORAGE_CONFIG_DIR=${quotePosixShell(config.linuxPath)} claude auth login --claudeai`
+        const script = claudeLoginWslScript(config.linuxPath, ['auth', 'login', '--claudeai'], {
+          exec: true
+        })
         await runAgentLoginInTerminal(
           'wsl.exe',
           buildWslExecArgs(config.wslDistro, ['/bin/sh', '-c', buildWslLoginShellCommand(script)]),
-          {},
+          (env) => env,
           json,
           session
         )
@@ -179,10 +166,7 @@ async function addClaudeAccount({ client, cwd, json }: HandlerContext): Promise<
         await runAgentLoginInTerminal(
           'claude',
           ['auth', 'login', '--claudeai'],
-          {
-            CLAUDE_CONFIG_DIR: config.windowsPath,
-            CLAUDE_SECURESTORAGE_CONFIG_DIR: config.windowsPath
-          },
+          (env) => claudeLoginHostEnv(env, config.windowsPath),
           json,
           session
         )
@@ -217,7 +201,7 @@ async function addCodexAccount({ client, cwd, json }: HandlerContext): Promise<v
       await runAgentLoginInTerminal(
         'codex',
         ['login', '--device-auth'],
-        { CODEX_HOME: codexHome },
+        (env) => ({ ...env, CODEX_HOME: codexHome }),
         json,
         session
       )

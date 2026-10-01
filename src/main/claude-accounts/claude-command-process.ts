@@ -2,7 +2,7 @@ import {
   buildWslExecArgs,
   buildWslCapturedLoginShellCommand
 } from '../../shared/wsl-login-shell-command'
-import { CLAUDE_AUTH_ENV_VARS } from './environment'
+import { claudeLoginHostEnv, claudeLoginWslScript } from '../../shared/claude-login-environment'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import {
@@ -27,10 +27,6 @@ export type ClaudeCommandOptions = {
   allowFailure?: boolean
   signal?: AbortSignal
   keepStdinOpen?: boolean
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`
 }
 
 export function runClaudeCommandProcess(
@@ -195,14 +191,6 @@ type ClaudeSpawnConfig = {
   readOutput?: (output: string) => string
 }
 
-function claudeConfigDirEnv(configDir: string): NodeJS.ProcessEnv {
-  return {
-    CLAUDE_CONFIG_DIR: configDir,
-    // Why: Claude Code 2.1.220+ hashes this for the Keychain service name.
-    CLAUDE_SECURESTORAGE_CONFIG_DIR: configDir
-  }
-}
-
 function resolveClaudeInvocation(
   args: string[],
   configDir: ClaudeCommandConfig,
@@ -211,7 +199,7 @@ function resolveClaudeInvocation(
 ): ClaudeSpawnConfig {
   if (configDir.linuxPath && configDir.wslDistro) {
     const capture = buildWslCapturedLoginShellCommand(
-      `env ${CLAUDE_AUTH_ENV_VARS.map((key) => `-u ${key}`).join(' ')} -u ANTHROPIC_CUSTOM_HEADERS CLAUDE_CONFIG_DIR=${shellQuote(configDir.linuxPath)} CLAUDE_SECURESTORAGE_CONFIG_DIR=${shellQuote(configDir.linuxPath)} claude ${args.map(shellQuote).join(' ')}`
+      claudeLoginWslScript(configDir.linuxPath, args)
     )
     return {
       command: 'wsl.exe',
@@ -225,37 +213,28 @@ function resolveClaudeInvocation(
     ? {
         command: interactiveLogin.command,
         args: interactiveLogin.args,
-        env: withCliRuntimeOnPath(hostClaudeCommand(), {
-          ...process.env,
-          ...claudeConfigDirEnv(configDir.windowsPath)
-        }),
+        env: withCliRuntimeOnPath(
+          hostClaudeCommand(),
+          claudeLoginHostEnv(process.env, configDir.windowsPath)
+        ),
         windowsVerbatimArguments: false
       }
     : process.platform === 'win32'
       ? {
           ...buildWindowsCommandInvocation(hostClaudeCommand(), args),
-          env: withCliRuntimeOnPath(hostClaudeCommand(), {
-            ...process.env,
-            ...claudeConfigDirEnv(configDir.windowsPath)
-          })
+          env: withCliRuntimeOnPath(
+            hostClaudeCommand(),
+            claudeLoginHostEnv(process.env, configDir.windowsPath)
+          )
         }
       : {
           command: hostClaudeCommand(),
           args,
-          env: withCliRuntimeOnPath(hostClaudeCommand(), {
-            ...process.env,
-            ...claudeConfigDirEnv(configDir.windowsPath)
-          }),
+          env: withCliRuntimeOnPath(
+            hostClaudeCommand(),
+            claudeLoginHostEnv(process.env, configDir.windowsPath)
+          ),
           windowsVerbatimArguments: false
         }
-  for (const key of Object.keys(spawnConfig.env)) {
-    const normalized = process.platform === 'win32' ? key.toUpperCase() : key
-    if (
-      CLAUDE_AUTH_ENV_VARS.some((name) => name === normalized) ||
-      normalized === 'ANTHROPIC_CUSTOM_HEADERS'
-    ) {
-      delete spawnConfig.env[key]
-    }
-  }
   return spawnConfig
 }
