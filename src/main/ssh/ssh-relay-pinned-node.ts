@@ -2,7 +2,7 @@
  * Plan a relay launch on Orca's pinned Node with the orcad slot's prebuilt addons, instead
  * of the host's Node plus a host-side npm install (design D5, D6 rung A, D8.1).
  *
- * Opt-in per host (`SshTarget.remoteRuntime`), POSIX hosts only. Anything this module cannot
+ * Opt-in per host (`SshTarget.remoteRuntime`). Anything this module cannot
  * establish on the client, and every classified refusal from the host, falls back to the
  * legacy host-Node path with a logged reason.
  */
@@ -11,13 +11,18 @@ import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
-import { NODE_RUNTIME_ASSETS, type ServerTarget } from '../../shared/node-runtime-pin'
+import {
+  isWindowsServerTarget,
+  NODE_RUNTIME_ASSETS,
+  type ServerTarget
+} from '../../shared/node-runtime-pin'
 import {
   ORCAD_NODE_PTY_JS_ARTIFACTS,
-  ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE,
   ORCAD_PARCEL_WATCHER_ENTRY,
   ORCAD_PARCEL_WATCHER_NATIVE,
-  orcadNodePtyNativeArtifacts
+  ORCAD_WINDOWS_PROCESS_TREE_FILENAME,
+  orcadNodePtyNativeArtifacts,
+  orcadNodeRuntimeExecutable
 } from '../../shared/orcad-artifacts'
 import {
   DEFAULT_SSH_REMOTE_RUNTIME,
@@ -29,7 +34,8 @@ import { materializeOrcadArtifact } from './orcad-artifact-materializer'
 import {
   resolveOrcadDeploymentTargetFacts,
   UnidentifiedHostLibcError,
-  type GlibcVersion
+  type GlibcVersion,
+  type OrcadDeploymentTargetFacts
 } from './orcad-deployment-target'
 import { remoteNodeRuntimeDir } from './orcad-remote-node-runtime'
 import { fileSha256, materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
@@ -85,7 +91,9 @@ export function pinnedRelayAddonFiles(target: ServerTarget): string[] {
     ...ORCAD_NODE_PTY_JS_ARTIFACTS,
     ...orcadNodePtyNativeArtifacts(target),
     ORCAD_PARCEL_WATCHER_ENTRY,
-    ORCAD_PARCEL_WATCHER_NATIVE
+    ORCAD_PARCEL_WATCHER_NATIVE,
+    // The slot's patched copy, so the process table never falls back to a PowerShell scan.
+    ...(isWindowsServerTarget(target) ? [ORCAD_WINDOWS_PROCESS_TREE_FILENAME] : [])
   ]
 }
 
@@ -100,7 +108,9 @@ export type PinnedRelayAddons = {
 export async function stagePinnedRelayAddons(
   orcadDir: string,
   target: ServerTarget,
-  stagingParent: string = tmpdir()
+  stagingParent: string = tmpdir(),
+  /** Rung C runs on the host's Node, so its dir must not hold a pinned runtime against GC. */
+  options: { runtimeRef: boolean } = { runtimeRef: true }
 ): Promise<PinnedRelayAddons> {
   const dir = await mkdtemp(join(stagingParent, 'orca-relay-addons-'))
   try {
@@ -119,11 +129,13 @@ export async function stagePinnedRelayAddons(
       }
       hash.update(`${file}\0${sha}\n`)
     }
-    const executableSha256 = NODE_RUNTIME_ASSETS[target].executableSha256
-    await writeFile(
-      join(dir, `${RELAY_RUNTIME_REF_PREFIX}${executableSha256}`),
-      `${executableSha256}\n`
-    )
+    if (options.runtimeRef) {
+      const executableSha256 = NODE_RUNTIME_ASSETS[target].executableSha256
+      await writeFile(
+        join(dir, `${RELAY_RUNTIME_REF_PREFIX}${executableSha256}`),
+        `${executableSha256}\n`
+      )
+    }
     return {
       dir,
       digest: hash.digest('hex'),
@@ -135,7 +147,7 @@ export async function stagePinnedRelayAddons(
   }
 }
 
-/** `~/.orca-remote/runtimes/node-<sha>/bin/node`, the sibling store orcad slots use too. */
+/** `~/.orca-remote/runtimes/node-<sha>/bin/node` (`…\\node.exe` on Windows), shared with orcad slots. */
 export function pinnedRelayNodePath(
   host: RemoteHostPlatform,
   remoteRelayDir: string,
@@ -144,7 +156,7 @@ export function pinnedRelayNodePath(
   return joinRemotePath(
     host,
     remoteNodeRuntimeDir(host, remoteRelayDir, target),
-    ...ORCAD_NODE_RUNTIME_POSIX_EXECUTABLE.split('/')
+    ...orcadNodeRuntimeExecutable(target).split('/')
   )
 }
 
@@ -159,17 +171,29 @@ export type PinnedRelayPlan = {
 
 export type RelayRuntimeFallbackReason =
   | PinnedRuntimeRefusal
+  /** Rung C only: the host-Node addon relay is POSIX-only. */
   | 'windows_host_unsupported'
   | 'target_unresolved'
   | 'artifacts_unavailable'
+  /** No runtime exists for this rung and host (rung B before a compat build ships). */
+  | 'runtime_unavailable'
+  /** Rung C found no host Node >= 18 with the addons' N-API level. */
+  | 'host_node_missing'
 
-export type HostNodeRelayPlan = { kind: 'host-node'; fallbackReason?: RelayRuntimeFallbackReason }
+export type HostNodeRelayPlan = {
+  kind: 'host-node'
+  fallbackReason?: RelayRuntimeFallbackReason
+  /** Replayed from a cache rather than proved on this connect. */
+  remembered?: boolean
+}
 
 /** The pinned path cannot run on this host or client; the deploy retries on the host's Node. */
 export class PinnedRelayFallbackError extends Error {
   constructor(
     readonly reason: RelayRuntimeFallbackReason,
-    readonly detail: string
+    readonly detail: string,
+    /** A remembered refusal skips its rung but never proves anything about the next one. */
+    readonly remembered = false
   ) {
     super(`Orca's pinned Node relay is unavailable (${reason}): ${detail}`)
     this.name = 'PinnedRelayFallbackError'
@@ -180,7 +204,7 @@ export function isPinnedRuntimeRefusal(reason: string): reason is PinnedRuntimeR
   return PINNED_RUNTIME_REFUSALS.some((refusal) => refusal === reason)
 }
 
-// Why in memory only: the persisted per-host ladder cache is a later slice (D6).
+// Why also in memory: the persisted decision is written only once the ladder settles.
 const refusals = new Map<string, PinnedRuntimeRefusal>()
 
 function refusalKey(targetId: string, target: ServerTarget): string {
@@ -195,6 +219,11 @@ export function recordPinnedRuntimeRefusal(
   refusals.set(refusalKey(targetId, target), refusal)
 }
 
+/** Forgets a refusal a later rung has disproved, so the next connect retries rung A. */
+export function forgetPinnedRuntimeRefusal(targetId: string, target: ServerTarget): void {
+  refusals.delete(refusalKey(targetId, target))
+}
+
 export function resetPinnedRuntimeRefusalsForTests(): void {
   refusals.clear()
 }
@@ -207,37 +236,56 @@ export function logPinnedRelayFallback(
   return { kind: 'host-node', fallbackReason: reason }
 }
 
+/**
+ * The host's server target, or a fallback when the libc probe answered with nothing known.
+ * Why only an answered probe falls back: a lost channel says nothing about the host, and
+ * descending would launch a second daemon beside a running pinned one, stranding its sessions.
+ */
+export async function resolvePinnedRelayTargetFacts(options: {
+  conn: SshConnection
+  host: RemoteHostPlatform
+  signal?: AbortSignal
+}): Promise<OrcadDeploymentTargetFacts | HostNodeRelayPlan> {
+  try {
+    return await resolveOrcadDeploymentTargetFacts(options)
+  } catch (error) {
+    if (!(error instanceof UnidentifiedHostLibcError)) {
+      throw error
+    }
+    return logPinnedRelayFallback('target_unresolved', error.message)
+  }
+}
+
 export async function planPinnedNodeRelay(options: {
   conn: SshConnection
   host: RemoteHostPlatform
   baseVersion: string
   targetId: string
   signal?: AbortSignal
+  /** Already resolved by the ladder; resolved here when absent. */
+  facts?: OrcadDeploymentTargetFacts
+  /** A refusal persisted for this host under a still-matching key (D6). */
+  persistedRefusal?: (facts: OrcadDeploymentTargetFacts) => PinnedRuntimeRefusal | null
   materializeOrcad?: (target: ServerTarget, signal?: AbortSignal) => Promise<string>
   runtimeCacheRoot?: () => string
 }): Promise<PinnedRelayPlan | HostNodeRelayPlan> {
   const { host, signal } = options
-  if (host.os === 'win32') {
-    return logPinnedRelayFallback(
-      'windows_host_unsupported',
-      'Windows hosts keep the host-Node relay for now'
-    )
-  }
-  let facts
-  try {
-    facts = await resolveOrcadDeploymentTargetFacts({ conn: options.conn, host, signal })
-  } catch (error) {
-    // Why only an answered probe: a lost channel says nothing about the host, and descending
-    // would launch a second daemon beside a running pinned one, stranding its sessions.
-    if (!(error instanceof UnidentifiedHostLibcError)) {
-      throw error
-    }
-    return logPinnedRelayFallback('target_unresolved', error.message)
+  const facts =
+    options.facts ?? (await resolvePinnedRelayTargetFacts({ conn: options.conn, host, signal }))
+  if ('kind' in facts) {
+    return facts
   }
   const { target, glibc } = facts
   const cached = refusals.get(refusalKey(options.targetId, target))
   if (cached) {
-    return logPinnedRelayFallback(cached, 'refused earlier this session')
+    return { ...logPinnedRelayFallback(cached, 'refused earlier this session'), remembered: true }
+  }
+  const persisted = options.persistedRefusal?.(facts)
+  if (persisted) {
+    return {
+      ...logPinnedRelayFallback(persisted, 'refused on an earlier connect'),
+      remembered: true
+    }
   }
   if (glibc && isGlibcBelow(glibc, PINNED_NODE_GLIBC_FLOOR)) {
     recordPinnedRuntimeRefusal(options.targetId, target, 'libc_floor')
