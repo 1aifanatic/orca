@@ -118,7 +118,7 @@ export class ClaudeAccountSelection {
   }
 
   // Why caught with profiles: a rollback failure must not replace the error that caused it.
-  private async rollBackRuntimeAuth(target: ClaudeAccountSelectionTarget): Promise<void> {
+  async rollBackRuntimeAuth(target: ClaudeAccountSelectionTarget): Promise<void> {
     if (!getClaudeProfileRoutingAuthority()) {
       await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback(target)
       return

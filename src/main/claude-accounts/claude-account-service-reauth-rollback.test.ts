@@ -126,7 +126,24 @@ describe('ClaudeAccountService credential capture', () => {
       '{"oldOauth":true}\n'
     )
     expect(store.getSettings().claudeManagedAccounts[0].email).toBe('old@example.com')
-    expect(runtimeAuth.forceMaterializeCurrentSelectionForRollback).toHaveBeenCalled()
+    expect(runtimeAuth.forceMaterializeCurrentSelectionForRollback).toHaveBeenCalledWith({
+      runtime: 'host'
+    })
+    runtimeAuth.forceMaterializeCurrentSelectionForRollback.mockRejectedValue(
+      new Error('rollback failed')
+    )
+    await expect(service.reauthenticateAccount('account-1')).rejects.toThrow('rollback failed')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    profiles.installed = true
+    try {
+      await expect(service.reauthenticateAccount('account-1')).rejects.toThrow('materialize failed')
+    } finally {
+      profiles.installed = false
+    }
+    expect(warn).toHaveBeenCalledWith(
+      '[claude-accounts] Rollback rematerialization failed:',
+      expect.objectContaining({ message: 'rollback failed' })
+    )
   })
 
   it('restores settings without rematerializing when managed-auth rollback write fails', async () => {
