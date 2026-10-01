@@ -79,7 +79,10 @@ function isNativeFileDropRejectedReason(
   reason: unknown
 ): reason is NativeFileDropRejectedPayload['reason'] {
   return (
-    reason === 'paths-too-large' || reason === 'too-many-paths' || reason === 'unresolved-paths'
+    reason === 'paths-too-large' ||
+    reason === 'too-many-paths' ||
+    reason === 'unresolved-paths' ||
+    reason === 'temp-copy-failed'
   )
 }
 

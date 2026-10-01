@@ -198,6 +198,32 @@ describe('createNativeFileDropQueue', () => {
     expect(forwarded).toEqual([{ paths: [FINDER], target: 'editor' }])
   })
 
+  it('drops queued drops from a document that reloaded, and serves the new document', async () => {
+    const copy = deferred<DragTempCopyItemResult[]>()
+    materializeMock
+      .mockReturnValueOnce(copy.promise)
+      .mockImplementation(async (paths: string[]) => paths.map((path) => copied(path)))
+    let document = new AbortController()
+    const forwarded: NativeFileDropPayload[] = []
+    const enqueue = createNativeFileDropQueue({
+      forward: (payload) => forwarded.push(payload),
+      platform: 'darwin',
+      getCopyEnvironment: async () => env,
+      watchRenderer: () => ({ signal: document.signal, dispose: () => undefined })
+    })
+
+    enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
+    await settle()
+    enqueue({ paths: [FINDER], target: 'editor' })
+    document.abort(new Error('reloaded'))
+    document = new AbortController()
+    enqueue({ paths: [FINDER], target: 'composer' })
+    copy.resolve([copied(DRAG_TEMP, COPY)])
+    await settle()
+
+    expect(forwarded).toEqual([{ paths: [FINDER], target: 'composer' }])
+  })
+
   it('reports an unexpected copy error for the whole drop instead of dropping it silently', async () => {
     const { enqueue, forwarded } = createQueue({
       getCopyEnvironment: async () => {

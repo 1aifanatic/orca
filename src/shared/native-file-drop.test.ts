@@ -230,6 +230,15 @@ describe('isNativeFileDropPayload', () => {
         target: 'rejected'
       })
     ).toBe(true)
+    expect(
+      isNativeFileDropPayload({
+        byteLength: 0,
+        pathCount: 1,
+        reason: 'temp-copy-failed',
+        target: 'rejected',
+        commonReason: 'permission-denied'
+      })
+    ).toBe(true)
 
     expect(
       isNativeFileDropPayload({

@@ -19,11 +19,13 @@ import { getDarwinUserTempDir } from './darwin-user-temp-dir'
 const DRAG_TEMP_COPY_TIMEOUT_MS = 2 * 60 * 1000
 export const DRAG_TEMP_COPY_TIMEOUT_REASON = 'Copying the dropped file took too long'
 
+type RendererLifetime = { signal: AbortSignal; dispose: () => void }
+
 type NativeFileDropQueueDeps = {
   forward: (payload: NativeFileDropPayload) => void
   platform: NodeJS.Platform
   getCopyEnvironment: () => Promise<DragTempCopyEnvironment>
-  watchRenderer: () => { signal: AbortSignal; dispose: () => void }
+  watchRenderer: () => RendererLifetime
   copyTimeoutMs?: number
 }
 
@@ -51,7 +53,8 @@ export function registerFileDropRelay(mainWindow: BrowserWindow): void {
     if (isWindowGone() || event.sender !== mainWebContents) {
       return
     }
-    if (!isNativeFileDropPayload(args)) {
+    // Why: only main reports a failed copy; a renderer claiming one is ignored.
+    if (!isNativeFileDropPayload(args) || isTempCopyFailure(args)) {
       return
     }
     enqueue(args)
@@ -79,10 +82,13 @@ export function createNativeFileDropQueue(
       deps.forward(payload)
       return
     }
+    // Why: bind to the document that dropped now, so a reload while this waits discards it.
+    const lifetime = deps.watchRenderer()
     // Why: never reject, or one failed drop would stall every drop queued behind it.
     const next = (tail ?? Promise.resolve())
-      .then(() => copyAndForward(payload, deps))
+      .then(() => copyAndForward(payload, lifetime, deps))
       .catch(() => undefined)
+      .finally(lifetime.dispose)
     tail = next
     void next.then(() => {
       if (tail === next) {
@@ -114,6 +120,10 @@ export async function prepareNativeFileDrop(
   return prepared
 }
 
+function isTempCopyFailure(payload: NativeFileDropPayload): boolean {
+  return payload.target === 'rejected' && payload.reason === 'temp-copy-failed'
+}
+
 function needsDragTempCopy(payload: NativeFileDropPayload, platform: NodeJS.Platform): boolean {
   return (
     payload.target !== 'rejected' &&
@@ -123,9 +133,12 @@ function needsDragTempCopy(payload: NativeFileDropPayload, platform: NodeJS.Plat
 
 async function copyAndForward(
   payload: NativeFileDropPayload,
+  lifetime: RendererLifetime,
   deps: NativeFileDropQueueDeps
 ): Promise<void> {
-  const lifetime = deps.watchRenderer()
+  if (lifetime.signal.aborted) {
+    return
+  }
   const timeout = new AbortController()
   const timer = setTimeout(
     () => timeout.abort(new Error(DRAG_TEMP_COPY_TIMEOUT_REASON)),
@@ -148,7 +161,6 @@ async function copyAndForward(
     return
   } finally {
     clearTimeout(timer)
-    lifetime.dispose()
   }
   // Why: outside the try, so a failed forward is not reported a second time as a failed copy.
   for (const item of prepared) {
