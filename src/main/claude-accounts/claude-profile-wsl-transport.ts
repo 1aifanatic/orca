@@ -13,6 +13,7 @@ import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
+import { ClaudeProfileHostUnreachableError } from './claude-profile-routing-owner'
 
 const responseSchema = z.object({
   ready: z.boolean(),
@@ -150,12 +151,30 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
   }
 }
 
-async function requireRunningWslDistro(distro: string): Promise<void> {
+async function isWslDistroRunning(distro: string): Promise<boolean> {
   const paths = await filterPathsToRunningWslDistrosAsync([toWindowsWslUncPath('/', distro)], {
     requireConfirmed: true
   })
-  if (!paths.length) {
-    throw new Error(
+  return paths.length > 0
+}
+
+/** A pane's own spawn boots its distro; give it a few seconds, probing sparingly. */
+export async function waitForRunningWslDistro(
+  distro: string,
+  delaysMs: readonly number[] = [1_000, 2_000, 4_000]
+): Promise<boolean> {
+  for (const delay of delaysMs) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    if (await isWslDistroRunning(distro)) {
+      return true
+    }
+  }
+  return false
+}
+
+async function requireRunningWslDistro(distro: string): Promise<void> {
+  if (!(await isWslDistroRunning(distro))) {
+    throw new ClaudeProfileHostUnreachableError(
       `WSL distro ${distro} is not running. Start it before choosing a Claude account.`
     )
   }

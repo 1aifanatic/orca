@@ -14,6 +14,7 @@ import {
 } from './runtime-selection'
 import {
   prepareClaudeWslGuest,
+  waitForRunningWslDistro,
   withdrawClaudeWslPointer,
   type ClaudeWslGuest,
   type ClaudeWslProfileResponse
@@ -31,7 +32,8 @@ export type ClaudeProfileSettings = Pick<
 export function createWslClaudeProfileOwner(
   settings: () => ClaudeProfileSettings,
   prepareGuest: (distro: string) => Promise<ClaudeWslGuest> = prepareClaudeWslGuest,
-  withdrawPointer: (distro: string) => Promise<void> = withdrawClaudeWslPointer
+  withdrawPointer: (distro: string) => Promise<void> = withdrawClaudeWslPointer,
+  waitForRunning: (distro: string) => Promise<boolean> = waitForRunningWslDistro
 ): ClaudeProfileRoutingOwner {
   const guests = new Map<string, { guest: ClaudeWslGuest; expires: number }>()
   const inspections = new Map<
@@ -220,6 +222,7 @@ export function createWslClaudeProfileOwner(
         hooksEnabled: false
       })
     },
+    reachable: (target) => waitForRunning(distroFor(target)),
     withdraw: async (target) => {
       const distro = distroFor(target)
       guests.delete(distro.toLowerCase())
@@ -258,6 +261,7 @@ export function withWslClaudeProfileOwner(
     trust: (descriptor, workspace) =>
       forTarget(descriptor.target).trust?.(descriptor, workspace) ?? Promise.resolve(),
     publish: (descriptor) => forTarget(descriptor.target).publish(descriptor),
-    withdraw: (target) => forTarget(target).withdraw(target)
+    withdraw: (target) => forTarget(target).withdraw(target),
+    reachable: (target) => forTarget(target).reachable?.(target) ?? Promise.resolve(true)
   }
 }

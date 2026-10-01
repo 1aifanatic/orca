@@ -5,9 +5,11 @@ import {
 } from '../../shared/claude-profile-routing'
 import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
 import { readClaudeProfilePointer } from './claude-profile-pointer'
-import type {
-  ClaudeProfileLaunchDescriptor,
-  ClaudeProfileRoutingOwner
+import { ClaudeProfilePointerQueue } from './claude-profile-pointer-queue'
+import {
+  ClaudeProfileHostUnreachableError,
+  type ClaudeProfileLaunchDescriptor,
+  type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
@@ -17,9 +19,7 @@ import type { ClaudeEnvPatch } from './environment'
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
   private readonly publishIssues = new Map<string, string>()
-  private readonly publishes = new Map<string, number>()
-  private readonly latestPublishes = new Map<string, Promise<ClaudeProfileLaunchDescriptor>>()
-  private readonly pointerWrites = new Map<string, Promise<unknown>>()
+  private readonly pointers = new ClaudeProfilePointerQueue<ClaudeProfileLaunchDescriptor>()
   /** Targets whose newest publish succeeded; re-derived by every publish, never persisted. */
   private readonly current = new Set<string>()
   private readonly backgroundPublishes = new Map<string, Promise<unknown>>()
@@ -53,11 +53,9 @@ export class ClaudeProfileRoutingService {
     provisioning: 'always' | 'if-missing' = 'always'
   ): Promise<ClaudeProfileLaunchDescriptor> {
     const key = publishKey(target)
-    const generation = (this.publishes.get(key) ?? 0) + 1
-    this.publishes.set(key, generation)
-    const published = this.publishGeneration(key, generation, target, provisioning)
-    this.latestPublishes.set(key, published)
-    return published
+    return this.pointers.start(key, (generation) =>
+      this.publishGeneration(key, generation, target, provisioning)
+    )
   }
   private async publishGeneration(
     key: string,
@@ -81,26 +79,31 @@ export class ClaudeProfileRoutingService {
         throw new Error('Claude account changed while preparing its profile; retry')
       }
       const captured = descriptor
-      const published = await this.mutatePointer(key, generation, () =>
+      const published = await this.pointers.write(key, generation, () =>
         this.owner.publish(captured)
       )
       if (!published) {
         // Why: a newer publish owns the pointer; it speaks for this caller while it names the same profile.
-        const newer = await this.latestPublishes.get(key)
+        const newer = await this.pointers.newest(key)
         if (newer?.configHome !== captured.configHome) {
           throw new Error('Claude account changed while preparing its profile; retry')
         }
         return captured
       }
-      if (generation === this.publishes.get(key)) {
+      if (this.pointers.isNewest(key, generation)) {
         this.publishIssues.delete(key)
         this.current.add(key)
       }
       return descriptor
     } catch (error) {
+      // Why: an unreachable host's pointer is neither stale nor writable, and a withdraw racing
+      // the host coming up could delete a valid one.
+      if (error instanceof ClaudeProfileHostUnreachableError) {
+        throw error
+      }
       // Why: a pointer left naming the previous account would launch it silently. Only the newest
       // target publish, still naming the current selection, speaks for the pointer.
-      if (generation === this.publishes.get(key) && !this.isOvertaken(descriptor)) {
+      if (this.pointers.isNewest(key, generation) && !this.isOvertaken(descriptor)) {
         const message = error instanceof Error ? error.message : String(error)
         this.current.delete(key)
         this.publishIssues.set(
@@ -108,7 +111,7 @@ export class ClaudeProfileRoutingService {
           target?.runtime === 'wsl' ? `WSL ${target.wslDistro ?? 'distro'}: ${message}` : message
         )
         try {
-          await this.mutatePointer(key, generation, async () => {
+          await this.pointers.write(key, generation, async () => {
             await this.owner.withdraw(target)
           })
         } catch (withdrawError) {
@@ -122,46 +125,20 @@ export class ClaudeProfileRoutingService {
    *  that account. Bookkeeping, so it only warns. */
   async retire(target: ClaudeAccountSelectionTarget): Promise<void> {
     const key = publishKey(target)
-    const generation = (this.publishes.get(key) ?? 0) + 1
-    this.publishes.set(key, generation)
     // Why: an in-flight publish this overtakes must not wait on itself as the newest one.
     const retired = Promise.reject(
       new Error('Claude account changed while preparing its profile; retry')
     )
     retired.catch(() => {})
-    this.latestPublishes.set(key, retired)
+    const generation = this.pointers.supersede(key, retired)
     this.current.delete(key)
     this.publishIssues.delete(key)
     try {
-      await this.mutatePointer(key, generation, async () => {
+      await this.pointers.write(key, generation, async () => {
         await this.owner.withdraw(target)
       })
     } catch (error) {
       console.warn('[claude-profile] Pointer withdrawal failed:', error)
-    }
-  }
-  private async mutatePointer(
-    key: string,
-    generation: number,
-    operation: () => Promise<void>
-  ): Promise<boolean> {
-    const previous = this.pointerWrites.get(key) ?? Promise.resolve()
-    const next = previous
-      .catch(() => {})
-      .then(async () => {
-        if (generation !== this.publishes.get(key)) {
-          return false
-        }
-        await operation()
-        return true
-      })
-    this.pointerWrites.set(key, next)
-    try {
-      return await next
-    } finally {
-      if (this.pointerWrites.get(key) === next) {
-        this.pointerWrites.delete(key)
-      }
     }
   }
   private isOvertaken(descriptor: ClaudeProfileLaunchDescriptor | undefined): boolean {
@@ -249,9 +226,19 @@ export class ClaudeProfileRoutingService {
     if (this.current.has(key) || this.backgroundPublishes.has(key)) {
       return
     }
+    const repair = async () => {
+      // Why wait: the pane's own spawn boots a stopped distro; probing first would only refuse.
+      if (!(await (this.owner.reachable?.(target) ?? true))) {
+        return
+      }
+      // Why: a launch or select already publishing this target speaks for it.
+      if (!this.current.has(key) && !this.pointers.busy(key)) {
+        await this.publish(target, 'if-missing')
+      }
+    }
     this.backgroundPublishes.set(
       key,
-      this.publish(target, 'if-missing')
+      repair()
         .catch(() => {})
         .finally(() => this.backgroundPublishes.delete(key))
     )

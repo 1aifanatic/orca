@@ -26,7 +26,12 @@ vi.mock('../wsl-running-path-filter', () => ({
 }))
 vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: mocks.run }))
 vi.mock('../wsl/wsl-pinned-runtime', () => ({ ensureWslPinnedRuntime: mocks.runtime }))
-import { prepareClaudeWslGuest, withdrawClaudeWslPointer } from './claude-profile-wsl-transport'
+import {
+  prepareClaudeWslGuest,
+  waitForRunningWslDistro,
+  withdrawClaudeWslPointer
+} from './claude-profile-wsl-transport'
+import { ClaudeProfileHostUnreachableError } from './claude-profile-routing-owner'
 const EXECUTABLE = '/home/fake/.cache/orca/runtimes/pinned/bin/node'
 const helperCalls = () => mocks.run.mock.calls.filter(([spec]) => spec.program === '/usr/bin/env')
 const helperInput = () => JSON.parse(helperCalls().at(-1)?.[0].input ?? '{}')
@@ -81,7 +86,9 @@ it('runs the helper through the WSL runner with literal argv, stdin JSON and a f
 })
 it('refuses stopped distros before any guest command and again before each request', async () => {
   mocks.running = false
-  await expect(prepareClaudeWslGuest('Stopped')).rejects.toThrow('not running')
+  await expect(prepareClaudeWslGuest('Stopped')).rejects.toBeInstanceOf(
+    ClaudeProfileHostUnreachableError
+  )
   expect(mocks.run).not.toHaveBeenCalled()
   mocks.running = true
   const guest = await prepareClaudeWslGuest('Ubuntu')
@@ -182,4 +189,23 @@ it('withdraws a stale pointer even without a usable pinned runtime', async () =>
     })
   )
   expect(WSL_CLAUDE_PROFILE_POINTER).toBe(`~/${WSL_CLAUDE_PROFILE_POINTER_FROM_HOME}`)
+})
+it('waits a few seconds for a booting distro, probing sparingly, then gives up', async () => {
+  vi.useFakeTimers()
+  try {
+    mocks.running = false
+    const stays = waitForRunningWslDistro('Ubuntu')
+    await vi.advanceTimersByTimeAsync(7_000)
+    await expect(stays).resolves.toBe(false)
+    expect(mocks.runningChecks).toBe(3)
+    const boots = waitForRunningWslDistro('Ubuntu')
+    await vi.advanceTimersByTimeAsync(1_000)
+    mocks.running = true
+    await vi.advanceTimersByTimeAsync(2_000)
+    await expect(boots).resolves.toBe(true)
+    expect(mocks.runningChecks).toBe(5)
+    expect(mocks.run).not.toHaveBeenCalled()
+  } finally {
+    vi.useRealTimers()
+  }
 })

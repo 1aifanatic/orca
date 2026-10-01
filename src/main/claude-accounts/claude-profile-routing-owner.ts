@@ -33,4 +33,11 @@ export type ClaudeProfileRoutingOwner = {
   publish: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<void>
   /** Removes the pointer so the shell refuses visibly; never throws. */
   withdraw: (target?: ClaudeAccountSelectionTarget) => void | Promise<void>
+  /** Resolves false when the host stays unreachable for a short, bounded wait. */
+  reachable?: (target: ClaudeAccountSelectionTarget) => Promise<boolean>
+}
+
+/** The execution host could not be reached, so its pointer cannot be stale or rewritten. */
+export class ClaudeProfileHostUnreachableError extends Error {
+  override name = 'ClaudeProfileHostUnreachableError'
 }

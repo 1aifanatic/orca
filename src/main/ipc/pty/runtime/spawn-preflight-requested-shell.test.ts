@@ -100,8 +100,11 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
 
   it('opens a wsl.exe pane on a stopped routed distro without waiting on the guest', async () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    const stopped = Promise.withResolvers<never>()
-    const prepareGuest = vi.fn(() => stopped.promise)
+    const booting = Promise.withResolvers<boolean>()
+    const reachable = vi.fn(() => booting.promise)
+    const prepareGuest = vi.fn(async (): Promise<never> => {
+      throw new Error('unexpected guest call')
+    })
     const settings = getDefaultSettings('/tmp')
     profiles.authority = new ClaudeProfileRoutingService(
       createWslClaudeProfileOwner(
@@ -123,7 +126,8 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'a' } }
         }),
         prepareGuest,
-        async () => {}
+        async () => {},
+        reachable
       )
     )
     const args: RuntimePtySpawnArgs = {
@@ -137,9 +141,10 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
     await expect(prepareRuntimePtySpawn(ctx)).resolves.toBeNull()
     expect(ctx.codexSelectionTarget).toEqual({ runtime: 'wsl', wslDistro: 'Ubuntu' })
     expect(args.env).toEqual({ KEEP: '1', ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER })
-    // The background republish asked the guest; the pane did not wait for it.
-    expect(prepareGuest).toHaveBeenCalledWith('Ubuntu')
-    stopped.reject(new Error('WSL distro Ubuntu is not running'))
+    // The background republish waits for the pane to boot the distro; the pane did not wait.
+    expect(reachable).toHaveBeenCalledWith('Ubuntu')
+    expect(prepareGuest).not.toHaveBeenCalled()
+    booting.resolve(false)
   })
 
   it('gives a wsl.exe pane in a distro with no Orca account nothing, as before profiles', async () => {
@@ -151,7 +156,8 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
       createWslClaudeProfileOwner(
         () => getDefaultSettings('/tmp'),
         prepareGuest,
-        async () => {}
+        async () => {},
+        async () => true
       )
     )
     const args: RuntimePtySpawnArgs = {

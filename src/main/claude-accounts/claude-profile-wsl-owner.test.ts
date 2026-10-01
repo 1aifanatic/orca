@@ -8,7 +8,10 @@ import {
   type ClaudeProfileSettings
 } from './claude-profile-wsl-owner'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileHostUnreachableError,
+  type ClaudeProfileRoutingOwner
+} from './claude-profile-routing-owner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 import { mergeClaudeProfileReaderRoots } from './claude-profile-reader-roots'
 import {
@@ -93,11 +96,13 @@ function fixture(options: { withHost?: boolean } = {}) {
       return respond(request)
     }
   }))
+  const reachable = vi.fn(async (_distro: string) => true)
   return {
     settings,
     prepare,
     respond,
     calls,
+    reachable,
     routing: new ClaudeProfileRoutingService(
       (() => {
         const wsl = createWslClaudeProfileOwner(
@@ -111,7 +116,8 @@ function fixture(options: { withHost?: boolean } = {}) {
               accountId: null,
               hooksEnabled: false
             })
-          }
+          },
+          reachable
         )
         return options.withHost ? withWslClaudeProfileOwner(hostOwner(), wsl, () => settings) : wsl
       })()
@@ -175,28 +181,59 @@ it('leaves a WSL distro with no Orca account exactly as before profiles', () => 
   expect(f.routing.routes({ runtime: 'wsl', wslDistro: 'ubuntu' })).toBe(true)
   expect(f.prepare).not.toHaveBeenCalled()
 })
-it('opens a routed WSL pane at once and re-derives its publish in the background', async () => {
+it('opens a routed WSL pane at once and re-derives its publish once the distro is up', async () => {
   const f = fixture({ withHost: true })
-  const stopped = Promise.withResolvers<never>()
-  f.prepare.mockImplementationOnce(() => stopped.promise)
+  const booting = Promise.withResolvers<boolean>()
+  f.reachable.mockImplementationOnce(() => booting.promise)
   const pointer = { ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER }
   expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
   expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
-  expect(f.prepare).toHaveBeenCalledTimes(1)
-  stopped.reject(new Error('WSL distro Ubuntu is not running'))
+  // Why: no guest probe before the pane's own spawn has had time to boot the distro.
+  expect(f.reachable).toHaveBeenCalledTimes(1)
+  expect(f.prepare).not.toHaveBeenCalled()
+  booting.resolve(false)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  // Still down after the wait: dropped silently and re-armed for the next pane.
   const issue = () =>
     f.routing.describeAccounts({ accounts: [], activeAccountId: null }).profileRoutingIssue
-  await vi.waitFor(() => expect(issue()).toContain('WSL Ubuntu: WSL distro Ubuntu is not running'))
+  expect(issue()).toBeUndefined()
+  expect(f.prepare).not.toHaveBeenCalled()
   expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
-  await vi.waitFor(() => expect(issue()).toBeUndefined())
+  expect(f.reachable).toHaveBeenCalledTimes(2)
   const home = profileHome('Ubuntu', 'Ubuntu')
-  expect(f.routing.terminalEnv(ubuntu)).toEqual({
-    ...pointer,
-    CLAUDE_CONFIG_DIR: home,
-    ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
-  })
-  expect(f.prepare).toHaveBeenCalledTimes(2)
-  expect(f.calls.filter((call) => call.action === 'setup')).toHaveLength(0)
+  await vi.waitFor(() =>
+    expect(f.routing.terminalEnv(ubuntu)).toEqual({
+      ...pointer,
+      CLAUDE_CONFIG_DIR: home,
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
+    })
+  )
+  expect(f.prepare).toHaveBeenCalledTimes(1)
+  expect(f.calls.filter((call) => call.action === 'withdraw')).toHaveLength(0)
+})
+it('treats an unreachable distro as no answer: no issue and no pointer withdraw', async () => {
+  const f = fixture({ withHost: true })
+  f.prepare.mockRejectedValue(
+    new ClaudeProfileHostUnreachableError('WSL distro Ubuntu is not running.')
+  )
+  await expect(f.routing.startup()).rejects.toThrow('not running')
+  await expect(f.routing.prepare(ubuntu)).rejects.toThrow('not running')
+  expect(
+    f.routing.describeAccounts({ accounts: [], activeAccountId: null }).profileRoutingIssue
+  ).toBeUndefined()
+  expect(f.calls.filter((call) => call.action === 'withdraw')).toHaveLength(0)
+})
+it('lets a pane-triggered publish join a launch already publishing the distro', async () => {
+  const f = fixture()
+  const booting = Promise.withResolvers<boolean>()
+  f.reachable.mockImplementationOnce(() => booting.promise)
+  f.routing.terminalEnv(ubuntu)
+  const launch = f.routing.prepare(ubuntu)
+  booting.resolve(true)
+  await launch
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(f.prepare).toHaveBeenCalledTimes(1)
+  expect(f.calls.filter((call) => call.action === 'inspect')).toHaveLength(1)
 })
 it('keeps the newer selection verified when an older setup lands late', async () => {
   const f = fixture()
