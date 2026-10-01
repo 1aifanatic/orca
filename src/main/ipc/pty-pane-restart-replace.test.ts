@@ -383,6 +383,21 @@ describe('pty:spawn replacing a pane owner', () => {
     expect(leafBinding()).toBe('pty-new')
   })
 
+  it('swaps a binding the renderer withdrew before connecting the replacement', async () => {
+    const { providerSpawn, store, runtime, leafBinding } = installRestartHarness()
+    runtime.createPreAllocatedTerminalHandle.mockImplementationOnce(() => {
+      // A split tab's partial layout map, or an SSH terminated lease, lets the renderer clear land.
+      delete store.getWorkspaceSession().terminalLayoutsByTabId[tabId].ptyIdsByLeafId[leafId]
+      return 'term-restart'
+    })
+    registerWithFakes(mainWindow, runtime, store)
+    await expect(
+      handlers.get('pty:spawn')!(null, restartSpawnArgs({ replacesPtyId: 'pty-old' }))
+    ).resolves.toMatchObject({ id: 'pty-new' })
+    expect(providerSpawn.mock.calls.every(([options]) => !options.attachOnly)).toBe(true)
+    expect(leafBinding()).toBe('pty-new')
+  })
+
   it('clears the stopped binding when the replacement fails, so the remount starts fresh', async () => {
     const { providerSpawn, store, runtime, leafBinding } = installRestartHarness()
     providerSpawn.mockRejectedValueOnce(new Error('spawn failed'))
