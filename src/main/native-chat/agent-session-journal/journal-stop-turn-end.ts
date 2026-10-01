@@ -1,13 +1,22 @@
 // What a Stop decides about the turn it named: the one rule every turn-end write passes through.
 //
-// A turn a person's Stop or close of this chat named, ending with no verdict of its own after that
-// Stop's event, ends as their cancellation. A host stop, an eviction and no Stop at all leave the
-// end as written. It runs where each row is built, inside the journal's serialized write, so it
-// reads every Stop folded before the end: the adapter's settle, the host's fallback and a
-// relaunch's settle all write through it, and every client folds the row it wrote.
+// A turn a person's Stop or close of this chat named, or, when it named none, a turn opened by a
+// send it stopped, ending with no verdict of its own after that Stop's event, ends as their
+// cancellation. A host stop, an eviction and no Stop at all leave the end as written. It runs
+// where each row is built, inside the journal's serialized write, so it reads every Stop folded
+// before the end: the adapter's settle, the host's fallback and a relaunch's settle all write
+// through it, and every client folds the row it wrote.
 
-import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
+import {
+  agentJournalSubmissionKey,
+  parseAgentJournalItemKey
+} from '../../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalItemBody,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalStopEvent } from './journal-row-schema'
 import type { JournalQueuePauseMarks } from './queued-message-pause'
@@ -26,103 +35,121 @@ function stopIsAPersons(reason: JournalStopEvent['reason']): boolean {
   }
 }
 
-type TurnEndState = Pick<JournalReducerState, 'items' | 'queuePauseMarks' | 'submissions'>
+type TurnEndState = Pick<
+  JournalReducerState,
+  'items' | 'queuePauseMarks' | 'submissions' | 'aliases'
+>
+
+/** The send whose journal item `userItemId` (a turn's opener, by its own or its provider key) is. */
+function openingSubmission(
+  state: TurnEndState,
+  userItemId: string | undefined
+): AgentJournalSubmission | undefined {
+  if (userItemId === undefined) {
+    return undefined
+  }
+  const identity = parseAgentJournalItemKey(state.aliases.get(userItemId) ?? userItemId)
+  return identity?.provider === 'orca' && 'clientMessageId' in identity
+    ? state.submissions.get(identity.clientMessageId)
+    : undefined
+}
+
+/** A send a Stop that named no turn stopped: one already handed to the agent at the Stop's
+ *  position, whose turn had not opened. A card the Stop held, or anything sent after it, is not. */
+function isStopTarget(
+  state: TurnEndState,
+  stop: JournalLatestStop,
+  submission: AgentJournalSubmission
+): boolean {
+  if (
+    submission.dispatchState === 'rejected' ||
+    (submission.handoverRecorded === true && submission.handedOverAt === undefined)
+  ) {
+    return false
+  }
+  // A handed-over send's item sits at its handover (`placeHandedOverMessage`).
+  const handedOver = state.items.get(agentJournalSubmissionKey(submission.clientMessageId))
+  return handedOver !== undefined && handedOver.sequence < stop.sequence
+}
 
 /** Whether `stop`, a person's, makes the end of turn `turnId` theirs: it named that turn, or named
- *  none and stopped the turn item `itemId` opened. */
+ *  none and stopped the send that opened it (`userItemId`). */
 function stopIsTurnCancellation(
+  state: TurnEndState,
   stop: JournalLatestStop,
   turnId: string,
-  state: TurnEndState,
-  itemId: string | null
+  userItemId: string | undefined
 ): boolean {
   if (!stopIsAPersons(stop.event.reason)) {
     return false
   }
-  return stop.event.turnId !== undefined
-    ? stop.event.turnId === turnId
-    : turnlessStopStopped(state, stop, itemId)
+  if (stop.event.turnId !== undefined) {
+    return stop.event.turnId === turnId
+  }
+  const opener = openingSubmission(state, userItemId)
+  return opener !== undefined && isStopTarget(state, stop, opener)
 }
 
-/** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
- *  one: unless a send journaled since, of any origin, was not refused, whose turn that is. A Stop
- *  whose stopped send never opens a turn so binds nothing. `itemId` null: a turn not yet opened. */
-function turnlessStopStopped(
-  state: TurnEndState,
-  stop: JournalLatestStop,
-  itemId: string | null
-): boolean {
-  const createdAt = itemId === null ? null : (state.items.get(itemId)?.sequence ?? null)
-  if (createdAt !== null && createdAt <= stop.sequence) {
-    return false
-  }
-  for (const submission of state.submissions.values()) {
-    if (
-      submission.dispatchState !== 'rejected' &&
-      submission.acceptedSequence !== undefined &&
-      submission.acceptedSequence > stop.sequence
-    ) {
-      return false
-    }
-  }
-  for (const [otherId, item] of state.items) {
-    if (
-      otherId !== itemId &&
-      item.body.kind === 'turn' &&
-      item.sequence > stop.sequence &&
-      (createdAt === null || item.sequence < createdAt)
-    ) {
-      return false
-    }
-  }
-  return true
-}
-
-/** THE rule: whether the latest Stop makes turn `turnId` (item `itemId`, null if not yet opened),
- *  ending at `endedAt` with no verdict of its own, a person's cancellation. An exit the provider saw
- *  before the Stop was news, whenever its end is written. */
+/** THE rule: whether the latest Stop makes turn `turnId`, opened by `userItemId` and ending at
+ *  `endedAt` with no verdict of its own, a person's cancellation. An exit the provider saw before
+ *  the Stop was news, whenever its end is written. */
 function stopEndsTurnAsCancellation(
   state: TurnEndState,
   turnId: string,
-  itemId: string | null,
+  userItemId: string | undefined,
   endedAt: number | undefined
 ): boolean {
   const stop = state.queuePauseMarks.latestStop
   return (
     stop !== null &&
-    stopIsTurnCancellation(stop, turnId, state, itemId) &&
+    stopIsTurnCancellation(state, stop, turnId, userItemId) &&
     (endedAt === undefined || endedAt >= stop.event.at)
   )
 }
 
+/** With no turn running, the work in flight is the person's Stop's: every send still unanswered is
+ *  one it stopped. */
+function unansweredSendsAreStopTargets(state: TurnEndState, stop: JournalLatestStop): boolean {
+  const unanswered = [...state.submissions.values()].filter((submission) =>
+    isUnansweredStructuredAgentSessionDispatch(submission)
+  )
+  return (
+    unanswered.length > 0 && unanswered.every((submission) => isStopTarget(state, stop, submission))
+  )
+}
+
 /**
- * Whether a person's Stop decides the end of turn `turnId` (null: the turn a send opens next),
- * by `turnEndAfterStop`'s rule: ending at `endedAt` it is their cancellation, and still running it
- * is theirs to end. For a writer that must choose before the end is written: a host stop must not
- * supersede it, and a Claude error result naming no reason leaves its verdict to it.
+ * Whether a person's Stop decides the end of turn `turnId` (null: the sends in flight with no turn
+ * running), by `turnEndAfterStop`'s rule: ending at `endedAt` it is their cancellation, and still
+ * running it is theirs to end. For a writer that must choose before the end is written: a host
+ * stop must not supersede it, and a Claude error result naming no reason leaves its verdict to it.
  */
 export function personStopDecidesTurn(
   state: TurnEndState,
   turnId: string | null,
-  endedAt?: number
+  endedAt?: number,
+  /** The submission that opened the turn, for one whose rows have yet to land. */
+  openedBy?: string
 ): boolean {
   const stop = state.queuePauseMarks.latestStop
   if (stop === null || !stopIsAPersons(stop.event.reason)) {
     return false
   }
   if (turnId === null) {
-    return stop.event.turnId === undefined && turnlessStopStopped(state, stop, null)
+    return stop.event.turnId === undefined && unansweredSendsAreStopTargets(state, stop)
   }
-  const itemId = [...state.items].find(
-    ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
-  )?.[0]
-  return stopEndsTurnAsCancellation(state, turnId, itemId ?? null, endedAt)
+  const turn = [...state.items.values()]
+    .map((item) => readAgentJournalTurn(item.body))
+    .find((candidate) => candidate?.turnId === turnId)
+  const userItemId =
+    turn?.userItemId ?? (openedBy === undefined ? undefined : agentJournalSubmissionKey(openedBy))
+  return stopEndsTurnAsCancellation(state, turnId, userItemId, endedAt)
 }
 
 /**
  * The body to write for item `itemId`: unchanged unless it ends, with no verdict of its own and no
- * earlier than the latest Stop event, a person's, which named it, or stopped it before it showed,
- * while it was still open (running, or unproven). A provider's own verdict always stands.
+ * earlier than the latest Stop event, a person's, which named it, or stopped the send that opened
+ * it, while it was still open (running, or unproven). A provider's own verdict always stands.
  */
 export function turnEndAfterStop(
   state: TurnEndState,
@@ -137,7 +164,8 @@ export function turnEndAfterStop(
   if (previous && previous.state !== 'running' && previous.state !== 'unverifiable') {
     return body
   }
-  return stopEndsTurnAsCancellation(state, body.turnId, itemId, body.completedAt)
+  const userItemId = body.userItemId ?? previous?.userItemId
+  return stopEndsTurnAsCancellation(state, body.turnId, userItemId, body.completedAt)
     ? { ...body, outcome: 'cancellation' }
     : body
 }

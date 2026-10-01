@@ -47,6 +47,8 @@ export type ClaudeStructuredSessionEvent =
       /** Submission instant of the dispatch this replay acknowledged; the origin
        *  of the turn it opens. Absent when the host cannot name a send. */
       requestedAt?: number
+      /** The submission this replay acknowledged, which opens the turn. */
+      clientMessageId?: string
       /** Host clock at receipt; stamped on turn boundaries only. */
       observedAt?: number
     }

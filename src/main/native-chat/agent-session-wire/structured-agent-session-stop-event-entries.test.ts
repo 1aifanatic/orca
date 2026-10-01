@@ -261,9 +261,7 @@ describe("a person's Stop pause and the Stop events after it", () => {
     await rig.settleAccepted(working, 'stopped')
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     // Orchestration mail starts a turn the host sent, which lifts nothing.
-    const mail = rig.send('mail for the lead', undefined, { internal: true })
-    await mail.result
-    await rig.settleAccepted(mail.id, 'mail')
+    await rig.send('mail for the lead', undefined, { internal: true }).result
     await journal().appendItem(
       { provider: 'codex', threadId: 'thread-1', turnId: 'turn-mail', ordinal: 999 },
       { kind: 'turn', turnId: 'turn-mail', state: 'running', startedAt: 1 },

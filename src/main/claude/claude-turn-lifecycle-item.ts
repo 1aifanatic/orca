@@ -19,6 +19,8 @@ export type ClaudeCurrentTurn = {
   /** Provider key of the user echo, or the lifecycle row itself when provider
    *  output opened a turn with no user row to receive its timing. */
   userItemId: string
+  /** The submission whose send opened the turn, while its echo has yet to land in the journal. */
+  openedBy?: string
   /** Present when the turn is the host's record of a conversation command. */
   command?: ClaudeCommandTurn
 }

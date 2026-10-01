@@ -9,6 +9,7 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity
 } from '../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { agentVerdictDisplayMark } from '../../../shared/agent-main-agent-verdict'
 import { agentTurnVerdict } from '../../../shared/agent-turn-outcome'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -277,24 +278,38 @@ describe('a restart between a Stop and its turn end', () => {
     expect(journal().stopMarks.latest()?.event.turnId).toBeUndefined()
     await rig.settleAccepted(stopped, 'stopped')
     const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    // Codex names the send that opened a turn on its row.
+    const opener = agentJournalSubmissionKey(stopped)
     await journal().appendItem(
       CODEX_TURN,
-      { kind: 'turn', turnId: TURN, state: 'running', startedAt: Date.now() },
+      { kind: 'turn', turnId: TURN, state: 'running', startedAt: Date.now(), userItemId: opener },
       scope
     )
     await journal().appendItem(
       CODEX_TURN,
-      { kind: 'turn', turnId: TURN, state: 'interrupted', completedAt: Date.now() + 1 },
+      {
+        kind: 'turn',
+        turnId: TURN,
+        state: 'interrupted',
+        completedAt: Date.now() + 1,
+        userItemId: opener
+      },
       scope
     )
     expect(settled(TURN).turn).toMatchObject({ outcome: 'cancellation' })
-    // The queue's drain sends as the host, so no person's send voids the Stop.
+    // A send after the Stop, the queue's drain here, opens its own turn.
     const drained = rig.send('drained after the Stop', undefined, { internal: true })
     await drained.result
     await rig.settleAccepted(drained.id, 'drained')
     await journal().appendItem(
       CODEX_NEXT_TURN,
-      { kind: 'turn', turnId: NEXT_TURN, state: 'running', startedAt: Date.now() },
+      {
+        kind: 'turn',
+        turnId: NEXT_TURN,
+        state: 'running',
+        startedAt: Date.now(),
+        userItemId: agentJournalSubmissionKey(drained.id)
+      },
       scope
     )
 

@@ -280,24 +280,18 @@ describe("a person's Stop inside a live turn", () => {
   }
 
   // Whose end it was is the journal's Stop rule to say as it writes the end (`turnEndAfterStop`).
-  it.each([
-    ['naming the turn', stopOf('user-1')],
-    ['naming no turn', { sequence: 9, event: { reason: 'user-stop' as const, at: 1 } }]
-  ])(
-    "leaves an error result with no terminal reason after a person's Stop %s to that Stop",
-    (_label, stop) => {
-      const state = sinkWithStop(stop)
-      const translator = createClaudeJournalTranslator({ sink: state.sink })
-      translator.handle(userTurn('user-1'))
+  it("leaves an error result with no terminal reason after a person's Stop of the turn to that Stop", () => {
+    const state = sinkWithStop(stopOf('user-1'))
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
 
-      translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
 
-      const turn = settledTurn(state.items, 'user-1')
-      expect(turn).toMatchObject({ state: 'interrupted' })
-      expect(turn).not.toHaveProperty('outcome')
-      expect(providerRows(state.items)).toBe(0)
-    }
-  )
+    const turn = settledTurn(state.items, 'user-1')
+    expect(turn).toMatchObject({ state: 'interrupted' })
+    expect(turn).not.toHaveProperty('outcome')
+    expect(providerRows(state.items)).toBe(0)
+  })
 
   it.each([
     ['no terminal reason', cutShort],

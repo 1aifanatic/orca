@@ -12,7 +12,7 @@ export class JournalStopMarks {
   }
 
   /** `personStopDecidesTurn`: a person's Stop decides how turn `turnId` ends. */
-  personStopDecides(turnId: string | null, endedAt?: number): boolean {
-    return personStopDecidesTurn(this.deps.state(), turnId, endedAt)
+  personStopDecides(turnId: string | null, endedAt?: number, openedBy?: string): boolean {
+    return personStopDecidesTurn(this.deps.state(), turnId, endedAt, openedBy)
   }
 }
