@@ -170,7 +170,13 @@ type RuntimeInternals = {
 export function shellPane(
   runtime: OrcaRuntimeService,
   ptyId: string,
-  options: { tabId: string; leafId: string; listingReceipt?: boolean; connectionId?: string }
+  options: {
+    tabId: string
+    leafId: string
+    listingReceipt?: boolean
+    connectionId?: string
+    wslDistro?: string
+  }
 ): { ptyId: string; paneKey: string } {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these protected members exist on the runtime; the listing path that calls them needs a live controller inventory.
   const internals = runtime as unknown as RuntimeInternals
@@ -180,7 +186,8 @@ export function shellPane(
     tabId: options.tabId,
     paneKey,
     incarnationId: `${ptyId}-incarnation`,
-    ...(options.connectionId ? { connectionId: options.connectionId } : {})
+    ...(options.connectionId ? { connectionId: options.connectionId } : {}),
+    ...(options.wslDistro ? { isWsl: true, wslDistro: options.wslDistro } : {})
   })
   if (options.listingReceipt) {
     internals.rememberRestoredOrchestrationAuthority(pty, `term-${ptyId}`, `${ptyId}-incarnation`)

@@ -156,6 +156,18 @@ describe('a command end whose agent exit is verified clears the row for every re
     expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
   })
 
+  it("Claude's own process gone tells each reader once, without a second shell check", async () => {
+    probe.mockResolvedValue('exited')
+    const host = await wire()
+    const pane = await launchAgentPane(host, 'pty-launched-presence-once')
+    await claudeIsWorking(host, pane, CLAUDE_PROCESS)
+
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+    expect(host.readers.windowClears).toEqual([{ paneKey: pane.paneKey }])
+    expect(host.readers.subscriberClears).toEqual([{ paneKey: pane.paneKey }])
+  })
+
   it('a PTY exit clears every reader and keeps no resume identity', async () => {
     const host = await wire()
     const pane = await launchAgentPane(host, 'pty-launched-exit')
@@ -347,6 +359,32 @@ describe("an SSH pane answers from its relay's foreground evidence", () => {
     return pane
   }
 
+  it("a reconnecting relay's replay does not bring the exited agent back", async () => {
+    const host = await wire()
+    host.inspectProcess.mockImplementation(async (ptyId) =>
+      relayEvidence(ptyId, { processName: null, foregroundPgid: 100 })
+    )
+    const pane = await sshAgentPane(host, 'pty-ssh-replay')
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+    expect(liveRow(host.server, pane.paneKey)).toBeUndefined()
+
+    host.server.ingestRemote(
+      {
+        paneKey: pane.paneKey,
+        tabId: TAB,
+        worktreeId: 'wt-1',
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        isReplay: true,
+        providerSession: { key: 'session_id', id: 'claude-session' },
+        payload: { state: 'working', prompt: 'review the PR', agentType: 'claude' }
+      },
+      'conn-1'
+    )
+
+    expect(liveRow(host.server, pane.paneKey)).toBeUndefined()
+  })
+
   it('the shell back in front with no agent named clears the row everywhere', async () => {
     const host = await wire()
     host.inspectProcess.mockImplementation(async (ptyId) =>
@@ -376,4 +414,37 @@ describe("an SSH pane answers from its relay's foreground evidence", () => {
       expectNoReaderLostTheRow(host.server, host.readers, pane.paneKey, 'working')
     })
   }
+})
+
+describe('a WSL pane, whose guest the host cannot inspect', () => {
+  it('takes the command end as the exit, as the desktop pane does', async () => {
+    const host = await wire()
+    host.shellOwnsForeground.mockResolvedValue(false)
+    const pane = shellPane(host.runtime, 'pty-wsl-exit', {
+      tabId: TAB,
+      leafId: LEAF,
+      wslDistro: 'Ubuntu'
+    })
+    await claudeIsWorking(host, pane)
+    host.readers.republishedWorktrees.length = 0
+
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+    expectEveryReaderSawTheClear(host.server, host.readers, pane.paneKey)
+  })
+
+  it('still keeps an agent whose own process the host proves alive', async () => {
+    probe.mockResolvedValue('live')
+    const host = await wire()
+    const pane = shellPane(host.runtime, 'pty-wsl-live-pid', {
+      tabId: TAB,
+      leafId: LEAF,
+      wslDistro: 'Ubuntu'
+    })
+    await claudeIsWorking(host, pane, CLAUDE_PROCESS)
+
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+    expectNoReaderLostTheRow(host.server, host.readers, pane.paneKey, 'working')
+  })
 })

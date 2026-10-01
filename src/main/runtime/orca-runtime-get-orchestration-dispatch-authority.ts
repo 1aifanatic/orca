@@ -158,8 +158,15 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     },
     checkHookAgentPresence: async (paneKey) =>
       (await this.checkHookAgentPresenceFn?.(paneKey)) ?? null,
-    confirmShellOwnsForeground: (ptyId) =>
-      confirmShellOwnsPtyForeground(this.ptyController, this.ptysById.get(ptyId)),
+    confirmShellOwnsForeground: (ptyId) => {
+      const pty = this.ptysById.get(ptyId)
+      // Why TEMPORARY: the host cannot inspect a WSL guest's processes, so its command end stands as
+      // the exit, as the desktop pane already treats it; a leaked nested-shell 133;D drops a live row.
+      if (pty && (pty.isWsl || pty.wslDistro || this.wslDistroByPtyId.has(ptyId))) {
+        return Promise.resolve(true)
+      }
+      return confirmShellOwnsPtyForeground(this.ptyController, pty)
+    },
     reconcileEndedProcess: (paneKey, armedRowReceivedAt) =>
       this.reconcileAgentStatusForEndedProcessFn?.([paneKey], {
         // The shell outlived its agent, so the session stays resumable in place.
