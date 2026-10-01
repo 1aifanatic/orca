@@ -41,6 +41,12 @@ export const FIRST_START_FAILS = {
     { handedOverAt: 20_000 },
     { dispatchState: 'accepted', resolvedAt: 20_001 }
   ],
+  /** The first hand-over's answer is lost, and a late echo proves the agent took it. */
+  unknownThenTaken: [
+    { handedOverAt: 20_000 },
+    { dispatchState: 'unknown' },
+    { dispatchState: 'accepted' }
+  ],
   /** Every start fails; the last try rejects the message. */
   rejectedAfterTries: [
     RETRYING(1),
@@ -63,18 +69,24 @@ export type FirstMessageStream = {
   open: () => boolean
 }
 
-/** Answers the send as accepted-but-queued and hands back the stream the host then publishes. */
+/**
+ * Answers the send as accepted-but-queued and hands back the stream the host then publishes: a
+ * snapshot first, as the host's subscribe always opens, then batches. `opened` is what the message
+ * already is when the reader subscribes, e.g. taken in the gap between the send's answer and then.
+ */
 export function firstMessageStream(
   client: LaunchPromptClientMock,
-  clientMessageId: string
+  clientMessageId: string,
+  opened: Partial<FirstMessage> = {}
 ): Promise<FirstMessageStream> {
-  let current: AgentJournalSubmission = { clientMessageId, ...QUEUED }
+  const answered: AgentJournalSubmission = { clientMessageId, ...QUEUED }
+  let current: AgentJournalSubmission = { ...answered, ...opened }
   client.call.mockResolvedValue({
     ok: true,
     replayed: false,
     fence: 1,
     cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: { clientMessageId, submission: current }
+    value: { clientMessageId, submission: answered }
   })
   return new Promise((resolve) => {
     client.subscribe.mockImplementation(
@@ -96,7 +108,22 @@ export function firstMessageStream(
             }
           })
         queueMicrotask(() => {
-          publish(current)
+          onEvent({
+            type: 'snapshot',
+            sessionId: 'session-1',
+            fence: 2,
+            page: {
+              sessionId: 'session-1',
+              epoch: 'epoch-1',
+              direction: 'tail',
+              items: [],
+              removedItemIds: [],
+              submissions: [current],
+              window: { oldest: null, newest: null, nextCursor: { epoch: 'epoch-1', sequence: 2 } },
+              hasOlder: false,
+              hasNewer: false
+            }
+          })
           resolve({
             next: (change) => {
               current = { ...current, ...change }

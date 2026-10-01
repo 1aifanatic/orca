@@ -193,7 +193,10 @@ export function settleStructuredAgentLaunchPrompt(args: {
     // Admitted is not delivered: the chat's first message starts its agent, which may fail, so
     // a pending answer waits for the message's own final state. A queued draft keeps its old
     // meaning; a dispatch the chat's own outbox ran answered elsewhere.
-    const admitted = await dispatch.promise
+    // An unknown answer is a hand-over nobody can vouch for yet, still owed its final state.
+    const admitted =
+      (await dispatch.promise) ||
+      (answer !== undefined && answer !== 'queued' && answer.dispatchState === 'unknown')
     const verdict =
       answer === undefined || answer === 'queued' ? null : structuredLaunchPromptVerdict(answer)
     const delivered =

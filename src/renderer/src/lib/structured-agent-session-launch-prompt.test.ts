@@ -73,6 +73,40 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     expect(onPromptDelivered).not.toHaveBeenCalled()
   })
 
+  it('keeps waiting through an unknown answer that a late echo then proves taken', async () => {
+    const { stream, result, onPromptDelivered } = launch()
+    const host = await stream
+    const [handedOver, unknown, accepted] = FIRST_START_FAILS.unknownThenTaken
+    host.next(handedOver!)
+    host.next(unknown!)
+    await Promise.resolve()
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+
+    host.next(accepted!)
+    await expect(result).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(onPromptDelivered).toHaveBeenCalledOnce()
+  })
+
+  // The host's subscribe opens with a snapshot, which already carries a verdict reached in the gap
+  // between the send's answer and the read.
+  it.each([
+    ['taken', { dispatchState: 'accepted' as const }, true],
+    ['rejected', { dispatchState: 'rejected' as const, rejection: { kind: 'notSignedIn' } }, false]
+  ])('answers a first message already %s when the read opens', async (_case, opened, delivered) => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    const onPromptDelivered = vi.fn()
+    void firstMessageStream(mocks, stagedEntry!.clientMessageId, opened)
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        options: { prompt: 'review this', onPromptDelivered },
+        stagedEntry
+      })
+    ).resolves.toEqual({ delivered, failureNotified: false })
+    expect(onPromptDelivered).toHaveBeenCalledTimes(delivered ? 1 : 0)
+  })
+
   it('reports undelivered when the session stream fails before a verdict', async () => {
     const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
     void firstMessageStream(mocks, stagedEntry!.clientMessageId)

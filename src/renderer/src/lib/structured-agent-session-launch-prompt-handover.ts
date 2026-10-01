@@ -16,12 +16,12 @@ export function structuredLaunchPromptVerdict(
   switch (submission.dispatchState) {
     case 'accepted':
       return 'taken'
+    // Unknown is a hand-over whose answer was lost, which a late echo can still prove taken.
     case 'pending':
-      return 'waiting'
-    // Rejected is a start that failed for good, or a chat closed first; unknown is a hand-over
-    // nobody can vouch for.
-    case 'rejected':
     case 'unknown':
+      return 'waiting'
+    // A start that failed for good, or a chat closed first.
+    case 'rejected':
       return 'not-taken'
   }
 }
@@ -29,8 +29,9 @@ export function structuredLaunchPromptVerdict(
 // One read per launch prompt, whoever asks.
 const inFlight = new Map<string, Promise<boolean>>()
 
-/** Whether the chat's agent took the launch prompt. Anything that ends the read first (the chat
- *  closing, the stream failing) answers no: the caller keeps what it would have written. */
+/** Whether the chat's agent took the launch prompt: only accepted or rejected answer it. Anything
+ *  that ends the read first (the stream ending or failing) answers no: the caller keeps what it
+ *  would have written. */
 export function awaitStructuredLaunchPromptTaken(
   sessionId: string,
   clientMessageId: string
