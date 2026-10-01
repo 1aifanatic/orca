@@ -215,6 +215,20 @@ export type StructuredAgentSessionStartedEvent = {
   restoreSkippedOptions: readonly string[]
 }
 
+/** A close that gave up proving this child's exit has since seen its root exit. Evidence to retry
+ *  the stop owed for this child, not a verdict: that stop's own proof decides. */
+export type StructuredAgentSessionExitAfterCloseEvent = {
+  type: 'exitAfterClose'
+  sessionId: string
+  fence: number
+  acquisitionGeneration: string
+}
+
+export type StructuredAgentSessionLifecycleEvent =
+  | StructuredAgentSessionEndedEvent
+  | StructuredAgentSessionStartedEvent
+  | StructuredAgentSessionExitAfterCloseEvent
+
 /** Whether the provider child behind an acquisition has proven its start. A publish-first
  *  acquire hands over a `starting` child and the `started` lifecycle event flips it. */
 export type StructuredAgentSessionProviderChildPhase = 'starting' | 'ready'

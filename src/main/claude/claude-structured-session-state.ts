@@ -6,10 +6,10 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type {
+  StructuredAgentSessionExitAfterCloseEvent,
   StructuredAgentSessionStartedEvent,
   StructuredAgentSessionStopCause
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { StructuredAgentSessionExitAfterCloseEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection

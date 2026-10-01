@@ -6,7 +6,7 @@
 // can run a whole reacquisition, so `started` and `exitAfterClose` stay off it: each takes only its
 // own session's serialized step, and is tracked here so the same drain still waits for it.
 
-import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
+import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const LOG_SCOPES = {

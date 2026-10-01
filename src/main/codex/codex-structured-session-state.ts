@@ -20,9 +20,9 @@ import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
 import type {
   StructuredAgentSessionEndedEvent,
+  StructuredAgentSessionExitAfterCloseEvent,
   StructuredAgentSessionStopCause
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { StructuredAgentSessionExitAfterCloseEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type {
   AgentModelCatalogSessionAccess,
