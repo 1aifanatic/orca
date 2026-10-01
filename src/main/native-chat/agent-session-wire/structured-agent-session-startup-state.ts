@@ -35,7 +35,8 @@ export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
-  supportsRecord: (record: AgentSessionRecord) => boolean
+  /** `hostCanSettleRecord` bound to this host's adapter. */
+  canSettle: (record: AgentSessionRecord | null) => record is AgentSessionRecord
   seedStatus: (
     record: AgentSessionRecord,
     stored: { projected: StructuredAgentSessionStatusProjection; lastActivityAt: number }
@@ -96,7 +97,7 @@ function seedStoredStatuses(
       background.push(sessionId)
       continue
     }
-    if (!deps.supportsRecord(record)) {
+    if (!deps.canSettle(record)) {
       continue
     }
     if (!byId.has(sessionId)) {
@@ -136,7 +137,7 @@ async function settleOwedSessions(
     const others: AgentSessionRecord[] = []
     for (const sessionId of readUnsettledJournalSessionIds(database.db)) {
       const record = deps.openDeps.store.getRecord(sessionId)
-      if (!record || !deps.supportsRecord(record)) {
+      if (!deps.canSettle(record)) {
         dropUnreachableStatus(database, sessionId, record)
         continue
       }
@@ -212,7 +213,7 @@ async function settleClosed(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord
 ): Promise<void> {
-  if (deps.isDisposed() || deps.hasSession(record.sessionId)) {
+  if (deps.isDisposed() || deps.hasSession(record.sessionId) || !deps.canSettle(record)) {
     return
   }
   const opened = await openStructuredAgentSessionConversationJournal(deps.openDeps, record, {

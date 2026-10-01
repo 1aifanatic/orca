@@ -507,7 +507,7 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
 })
 
 describe('a stored status no settle here can clear (R2A-4)', () => {
-  it('drops the row of a chat whose record is gone or whose provider this host does not serve', async () => {
+  it('drops the row of a chat whose record is gone or whose provider this host does not serve, so the next boot selects neither', async () => {
     const rig = await newRig()
     await crashMidSend(rig, 'session-gone', false)
     await crashMidSend(rig, 'session-elsewhere', false)
@@ -520,6 +520,15 @@ describe('a stored status no settle here can clear (R2A-4)', () => {
     await rig.boot()
     await startup(rig, listedIds(rig))
 
+    for (const sessionId of ['session-gone', 'session-elsewhere']) {
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
+    }
+    expect(opened(rig, ['session-gone', 'session-elsewhere'])).toEqual([])
+
+    // The obligation died: the next boot finds no row to select and opens neither chat.
+    await rig.crash()
+    await rig.boot()
+    await startup(rig, listedIds(rig))
     for (const sessionId of ['session-gone', 'session-elsewhere']) {
       expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
     }

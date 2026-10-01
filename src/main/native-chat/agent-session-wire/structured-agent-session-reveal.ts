@@ -13,7 +13,10 @@
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sessionTabListed } from './structured-agent-session-host-tabs'
-import { adapterSupportsRecord } from './structured-agent-session-provider-support'
+import {
+  adapterSupportsRecord,
+  hostCanSettleRecord
+} from './structured-agent-session-provider-support'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
 import {
@@ -88,6 +91,8 @@ export function createStructuredAgentSessionHostRestore(
   const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
+  const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
+    hostCanSettleRecord(deps.adapter, record)
   const readRestore: StructuredAgentSessionReadRestoreDeps = {
     openDeps: deps,
     isListed: (sessionId) => sessionTabListed(deps.store, sessionId),
@@ -112,7 +117,7 @@ export function createStructuredAgentSessionHostRestore(
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
     ...createStructuredAgentSessionStartupState({
       openDeps: deps,
-      supportsRecord,
+      canSettle,
       seedStatus,
       resolveRecovery: readRestore.resolveRecovery,
       restoreListed: (records) =>
