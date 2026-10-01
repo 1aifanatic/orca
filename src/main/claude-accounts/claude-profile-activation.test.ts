@@ -122,6 +122,30 @@ it('derives upgrade, draft, ready and unavailable from profile files without rea
   expect(readClaudeProfileReadiness(f.root, profile)).toBe('unavailable')
   expect(readFileSync(legacy, 'utf8')).toBe('SENTINEL-NOT-IMPORTED')
 })
+it("parses a profile's Claude state file once until it changes", () => {
+  const f = fixture()
+  const userHome = join(f.root, 'user')
+  mkdirSync(userHome)
+  const profile = describeClaudeProfile(f.root, 'big', {
+    runtime: 'host',
+    executionHostId: 'local'
+  })
+  prepareClaudeProfileDirectory(f.root, profile, userHome)
+  const state = join(profile.home, '.claude.json')
+  writeFileSync(state, JSON.stringify({ oauthAccount: { emailAddress: 'fake' } }))
+  const parse = vi.spyOn(JSON, 'parse')
+  const stateParses = () =>
+    parse.mock.calls.filter(([text]) => String(text).includes('oauthAccount')).length
+  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+  expect(stateParses()).toBe(1)
+  writeFileSync(state, JSON.stringify({ oauthAccount: null, other: true }))
+  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  rmSync(state)
+  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  writeFileSync(state, JSON.stringify({ oauthAccount: { emailAddress: 'fake' } }))
+  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+})
 it('runs Claude login and status directly in the supplied final home, with no cleanup on failure', async () => {
   const f = fixture()
   const config = { windowsPath: join(f.root, 'final'), linuxPath: null, wslDistro: null }

@@ -1,4 +1,4 @@
-import { lstatSync } from 'node:fs'
+import { lstatSync, statSync, type Stats } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
@@ -49,14 +49,40 @@ export function readClaudeProfileReadiness(
   if (ownership !== 'ready') {
     return ownership
   }
-  const state = readClaudeProfileObject(join(profile.home, '.claude.json'))
-  if (state.kind === 'unavailable') {
-    return 'unavailable'
+  return readClaudeIdentityReadiness(join(profile.home, '.claude.json'))
+}
+
+// Why: Claude's state file grows with history and readiness runs on every resolve.
+const parsedIdentities = new Map<
+  string,
+  { mtimeMs: number; size: number; ino: number; readiness: ClaudeProfileReadiness }
+>()
+
+function readClaudeIdentityReadiness(file: string): ClaudeProfileReadiness {
+  let stat: Stats
+  try {
+    stat = statSync(file)
+  } catch (error) {
+    parsedIdentities.delete(file)
+    return isDefinitiveAbsence(error) ? 'sign-in-required' : 'unavailable'
   }
-  if (state.kind === 'absent' || state.value.oauthAccount == null) {
-    return 'sign-in-required'
+  const cached = parsedIdentities.get(file)
+  if (cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size && cached.ino === stat.ino) {
+    return cached.readiness
   }
-  return typeof state.value.oauthAccount === 'object' && !Array.isArray(state.value.oauthAccount)
-    ? 'ready'
-    : 'unavailable'
+  const state = readClaudeProfileObject(file)
+  if (state.kind !== 'present') {
+    parsedIdentities.delete(file)
+    return state.kind === 'absent' ? 'sign-in-required' : 'unavailable'
+  }
+  const { oauthAccount } = state.value
+  const readiness =
+    oauthAccount == null
+      ? 'sign-in-required'
+      : typeof oauthAccount === 'object' && !Array.isArray(oauthAccount)
+        ? 'ready'
+        : 'unavailable'
+  // Only a parsed file is remembered; a failed read is retried next time.
+  parsedIdentities.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino, readiness })
+  return readiness
 }
