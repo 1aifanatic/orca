@@ -85,6 +85,7 @@ function runtimeStub(): unknown {
     getClientSettings: () => ({ experimentalStructuredNativeChat: true }),
     ensureStructuredAgentSessionHost: async () => undefined,
     getStructuredAgentSessionCreateSupport: async () => ({ supported: true }),
+    structuredAgentSessionLaunchSeedOptions: () => undefined,
     resolveStructuredAgentSessionCreateIntent: async () => {
       const {
         envelope: _envelope,
