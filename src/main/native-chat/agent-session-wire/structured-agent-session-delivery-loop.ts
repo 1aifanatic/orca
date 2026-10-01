@@ -10,9 +10,10 @@
 // would have written them. Stop and the conversation's close are the only other writers of a
 // queued message: a child's exit only ends the child, and this loop reads why.
 //
-// A start that fails is recorded on the message it was for, which waits for its next try while the
-// messages behind it go on; a timer wakes the loop when that try is due. The timer is a cache: every
-// step re-derives what is due from the journal.
+// A start that fails is recorded on the message it was for while the messages behind it go on. One
+// refused before it ran waits for its next try, and a timer wakes the loop when that try is due; one
+// that ran and failed is rejected at once. The timer is a cache: every step re-derives what is due
+// from the journal.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -298,7 +299,7 @@ export class StructuredAgentSessionDeliveryLoop {
       return 'continue'
     }
     // The child had not proven its start, so it took nothing it was handed, this message included:
-    // it is ended, and each goes back in the queue with the start's failure.
+    // it is ended, and each takes the start's failure.
     await this.deps.endFailedStart(sessionId)
     return this.fail(
       sessionId,

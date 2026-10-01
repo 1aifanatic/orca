@@ -24,7 +24,7 @@ import {
   type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
-import { START_REFUSAL_RESUMABLE } from './agent-session-start-resumability'
+import { START_REFUSAL_STAGE } from './agent-session-start-resumability'
 import { joinSentences } from './sentence-joining'
 import {
   DISPATCH_REJECTED_CANCELLED,
@@ -127,7 +127,7 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
     }
     const code = fact.refusal?.code
     return joinSentences(
-      code && !START_REFUSAL_RESUMABLE[code]
+      code && START_REFUSAL_STAGE[code] === 'newChat'
         ? [failed, say('startNewChat')]
         : [failed, ...startRetry(say, context)]
     )

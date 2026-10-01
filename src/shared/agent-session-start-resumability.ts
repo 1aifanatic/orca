@@ -1,4 +1,4 @@
-// Whether a failed start can clear without the person, so starting again later may land. One
+// How far a failed start got, and so whether Orca tries it again on its own or the person does. One
 // classification: the retry schedule and the words both read it.
 
 import type { AgentSessionFailureFact, AgentSessionFailureKind } from './agent-session-failure'
@@ -6,26 +6,31 @@ import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 
 /**
- * Whether a refused start leaves the chat anything to start again from. `false`: this host has
- * nothing to restart it from — no record, or none it can run — so only a new chat continues.
- * A new wire code does not compile until it is classified here.
+ * How far a refused start got, by its wire code. `newChat`: this host has nothing to restart the
+ * chat from — no record, or none it can run — so only a new chat continues. `hostSide`: the start
+ * ran here and failed, which the person retries. `beforeHandoff`: refused before any start, by a
+ * settlement that clears on its own. A new wire code does not compile until it is classified here.
  */
-export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolean> = {
-  execution_owner_reconciling: true,
-  agent_session_conflict: true,
-  agent_session_checkpoint_stale: true,
-  agent_session_ownership_unknown: true,
-  agent_session_operation_capacity: true,
-  structured_agent_session_unsupported: false,
-  agent_session_operation_conflict: true,
-  agent_session_operation_expired: true,
-  agent_session_operation_invalid: true,
-  agent_session_operation_unknown: true,
-  agent_session_item_revision_stale: true,
-  agent_session_already_resolved: true,
-  agent_session_identity_required: false,
-  agent_session_journal_unreadable: true,
-  agent_session_owner_restart_failed: true
+export const START_REFUSAL_STAGE: Record<
+  AgentSessionWireRefusalCode,
+  'newChat' | 'hostSide' | 'beforeHandoff'
+> = {
+  execution_owner_reconciling: 'beforeHandoff',
+  agent_session_conflict: 'beforeHandoff',
+  agent_session_checkpoint_stale: 'beforeHandoff',
+  agent_session_ownership_unknown: 'beforeHandoff',
+  agent_session_operation_capacity: 'beforeHandoff',
+  structured_agent_session_unsupported: 'newChat',
+  agent_session_operation_conflict: 'beforeHandoff',
+  agent_session_operation_expired: 'beforeHandoff',
+  // A failed acquisition: the spawn, the attach or the provider's own start.
+  agent_session_operation_invalid: 'hostSide',
+  agent_session_operation_unknown: 'beforeHandoff',
+  agent_session_item_revision_stale: 'beforeHandoff',
+  agent_session_already_resolved: 'beforeHandoff',
+  agent_session_identity_required: 'newChat',
+  agent_session_journal_unreadable: 'beforeHandoff',
+  agent_session_owner_restart_failed: 'hostSide'
 }
 
 /** Start refusals whose situation is itself what the person reads, with its own next step, and
@@ -51,14 +56,15 @@ export function isTypedStartRefusal(kind: string | undefined): kind is TypedStar
   return kind !== undefined && Object.hasOwn(TYPED_START_REFUSAL_RESUMABLE, kind)
 }
 
-/** Whether a failed start can clear without the person: neither its situation nor its refusal
- *  needs them, so trying it again later may land. */
+/** Whether Orca tries a failed start again on its own: only a start refused before it ran, by a
+ *  situation that clears without the person. One that ran and failed here is the person's to retry
+ *  at once. */
 export function isResumableStartFailure(
   fact: Pick<AgentSessionFailureFact, 'kind' | 'refusal'>
 ): boolean {
+  if (isTypedStartRefusal(fact.kind)) {
+    return TYPED_START_REFUSAL_RESUMABLE[fact.kind]
+  }
   const code = fact.refusal?.code
-  return (
-    (!isTypedStartRefusal(fact.kind) || TYPED_START_REFUSAL_RESUMABLE[fact.kind]) &&
-    (!code || START_REFUSAL_RESUMABLE[code])
-  )
+  return code !== undefined && START_REFUSAL_STAGE[code] === 'beforeHandoff'
 }

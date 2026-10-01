@@ -368,33 +368,39 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
   })
 })
 
-it('leaves a command whose start failed waiting for its next try, saying why on its message (B3)', async () => {
+it('rejects a command whose start failed, saying why on the answer and its message (B3)', async () => {
   await attach()
   await state.host.close(SESSION, 'evict')
   state.acquire.mockRejectedValue(new Error('not signed in'))
   const params = compactParams()
 
-  // Answered at the failure, with nothing of its own to say: the message says it.
+  // The start ran here and failed: answered at once with the cause, and no later try is booked.
+  const restartFailed = expect.objectContaining({ kind: 'restartFailed' })
   const answered = await state.host.conversationCommand(CALLER, params)
-  expect(answered).toMatchObject({ ok: true, value: { command: 'compact', state: 'unknown' } })
-  expect(answered.ok && answered.value.error).toBeFalsy()
+  expect(answered).toMatchObject({
+    ok: true,
+    value: {
+      command: 'compact',
+      state: 'completed',
+      error: "Codex couldn't restart. Run /compact again.",
+      failure: restartFailed
+    }
+  })
   const snapshot = await journal()
   expect(snapshot.items.filter((item) => readAgentJournalTurn(item.body))).toEqual([])
   expect(
     snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
   ).toEqual([])
   // The next step is the command again, not a message.
-  expect(
-    snapshot.submissions.find(
-      (entry) => entry.clientMessageId === params.envelope.clientOperationId
-    )
-  ).toMatchObject({
-    dispatchState: 'pending',
-    startFailure: {
-      reason: "Codex couldn't restart. Run /compact again.",
-      rejection: expect.objectContaining({ kind: 'restartFailed' })
-    }
+  const message = snapshot.submissions.find(
+    (entry) => entry.clientMessageId === params.envelope.clientOperationId
+  )
+  expect(message).toMatchObject({
+    dispatchState: 'rejected',
+    reason: "Codex couldn't restart. Run /compact again.",
+    rejection: restartFailed
   })
+  expect(message?.startFailure).toBeUndefined()
   expect(compact).not.toHaveBeenCalled()
 })
 

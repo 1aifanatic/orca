@@ -403,11 +403,13 @@ describe('a send with no live owner', () => {
 
     const id = await accept(params)
 
+    // It ran here and failed, so it is the person's to send again: no later try is booked.
     expect(await settled(id)).toMatchObject({
-      dispatchState: 'retrying',
+      dispatchState: 'rejected',
       reason: cause,
       rejection: { kind: 'restartFailed' }
     })
+    expect((await submission(id))?.startFailure).toBeUndefined()
     expect(dispatch).not.toHaveBeenCalled()
     // Accepted, so the ledger answers a resend with the message rather than a second attempt.
     expect(
@@ -434,7 +436,7 @@ describe('a send with no live owner', () => {
       refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
     }
     expect(await settled(id)).toMatchObject({
-      dispatchState: 'retrying',
+      dispatchState: 'rejected',
       reason: "Codex couldn't restart. Send your message to try again.",
       rejection
     })
@@ -458,13 +460,13 @@ describe('a send with no live owner', () => {
     await expect(host.send(CALLER, params)).resolves.toMatchObject({
       ok: true,
       replayed: true,
-      value: { submission: { dispatchState: 'pending', startFailure: { attempts: 1 } } }
+      value: { submission: { dispatchState: 'rejected', rejection: { kind: 'restartFailed' } } }
     })
     expect(acquire).toHaveBeenCalledTimes(1)
 
-    // The outbox's Retry rotates the id: a fresh attempt, which goes ahead of the waiting one.
+    // The outbox's Retry rotates the id: a fresh attempt.
     expect(await settled(await accept(sendParams('while signed out')))).toMatchObject({
-      dispatchState: 'retrying'
+      dispatchState: 'rejected'
     })
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(await errorStatuses()).toEqual([])
@@ -475,7 +477,7 @@ describe('a send with no live owner', () => {
     await loseOwner()
     acquire.mockRejectedValueOnce(new Error('Not signed in'))
     expect(await settled(await accept(sendParams('while signed out')))).toMatchObject({
-      dispatchState: 'retrying'
+      dispatchState: 'rejected'
     })
 
     // The user signed in; nothing about the failed attempt is remembered.
@@ -504,7 +506,7 @@ describe('a send with no live owner', () => {
     expect(acquire).toHaveBeenCalledOnce()
   })
 
-  it('books the next try for a spawn that failed after the CLI was found', async () => {
+  it('rejects the message at once for a spawn that failed after the CLI was found', async () => {
     await loseOwner()
     acquire.mockRejectedValueOnce(
       Object.assign(new Error('spawn /usr/local/bin/codex ENOENT'), { code: 'ENOENT' })
@@ -512,15 +514,21 @@ describe('a send with no live owner', () => {
 
     const id = await accept(sendParams('while the install is moving'))
 
-    expect(await settled(id)).toMatchObject({ dispatchState: 'retrying' })
-    expect((await submission(id))?.startFailure?.nextAttemptAt).toBe(NOW + 15_000)
+    // The spawn ran here and failed: the person's to send again, so no later try is booked.
+    expect(await settled(id)).toMatchObject({
+      dispatchState: 'rejected',
+      reason: "Codex couldn't restart. Send your message to try again.",
+      rejection: { kind: 'restartFailed', refusal: { code: 'agent_session_operation_invalid' } }
+    })
+    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect(acquire).toHaveBeenCalledOnce()
   })
 
   it('suggests a new chat only when this host has nothing to restart the chat from', async () => {
     await loseOwner()
     acquire.mockRejectedValue(new Error('Not signed in'))
     const failed = await settled(await accept(sendParams('restart fails')))
-    expect(failed).toMatchObject({ dispatchState: 'retrying' })
+    expect(failed).toMatchObject({ dispatchState: 'rejected' })
     expect(failed?.reason).not.toMatch(/new chat/)
 
     // The adapter cannot run this record where it lives: no retry would bring it back, so the
@@ -556,13 +564,14 @@ describe('a send with no live owner', () => {
 
     const id = await accept(sendParams('owner being settled'))
 
-    // The refusal's prose stays out of the chat; its code rides in the fact.
-    const cause = "Codex couldn't restart. Send your message to try again."
+    // Refused before any start, so Orca tries it again on its own: the words name no step for the
+    // person. The refusal's prose stays out of the chat; its code rides in the fact.
     expect(await settled(id)).toMatchObject({
       dispatchState: 'retrying',
-      reason: cause,
+      reason: "Codex couldn't restart.",
       rejection: { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } }
     })
+    expect((await submission(id))?.startFailure?.nextAttemptAt).toBe(NOW + 15_000)
     expect(acquire).not.toHaveBeenCalled()
     expect(await errorStatuses()).toEqual([])
   })
@@ -578,7 +587,7 @@ describe('a send with no live owner', () => {
 
     // Orca's own fault: reported to the log, and the chat says only that Orca failed.
     expect(await settled(id)).toMatchObject({
-      dispatchState: 'retrying',
+      dispatchState: 'rejected',
       reason: "Orca ran into a problem, so this didn't go through. Try again.",
       rejection: { kind: 'hostFault' }
     })
@@ -656,7 +665,7 @@ describe('a write fenced to an owner the pane has not seen replaced', () => {
     const id = await accept(sendParams('while signed out'))
 
     expect(await settled(id)).toMatchObject({
-      dispatchState: 'retrying',
+      dispatchState: 'rejected',
       rejection: { kind: 'restartFailed' }
     })
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBeGreaterThan(seenFence + 1)

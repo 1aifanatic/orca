@@ -191,11 +191,13 @@ describe('a fresh chat whose Claude start fails', () => {
       expect(await timeline()).toEqual([])
 
       const sent = await send('reply with exactly: alpha')
+      const message = async () =>
+        (await host.journalSnapshot(SESSION)).submissions.find((s) => s.clientMessageId === sent)
+      // The start ran and failed, so the message is rejected at once; no later try is booked.
       await eventually(async () =>
-        expect(
-          (await host.journalSnapshot(SESSION)).submissions.find((s) => s.clientMessageId === sent)
-        ).toMatchObject({ dispatchState: 'pending', startFailure: { reason: startFailure } })
+        expect(await message()).toMatchObject({ dispatchState: 'rejected', reason: startFailure })
       )
+      expect((await message())?.startFailure).toBeUndefined()
       await settleExits()
       // The send's own start, once; the message carries why, with no row beside it.
       expect(claude.connections).toHaveLength(2)

@@ -11,7 +11,6 @@ import type {
 } from './structured-agent-session-host-types'
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import {
-  earliestStartRetryAt,
   submissionsHandedToChild,
   type StructuredAgentSessionStartAttemptFailure
 } from './structured-agent-session-start-attempt-failure'
@@ -78,8 +77,8 @@ export function structuredAgentSessionEndedChildFailure(
 }
 
 /** A child whose start the loop already recorded as failed, still indexed until its end lands:
- *  `wait` while a booked try will wake the loop anyway, `end` once a try is due or none is booked,
- *  so a message can have a fresh start; null when there is no such child. */
+ *  `end` it when a message is ready to go, so that message has a fresh start; `wait` for its end
+ *  otherwise; null when there is no such child. */
 export function childWhoseStartFailed(
   session: StructuredAgentSessionHostSession,
   next: AgentJournalSubmission | undefined
@@ -87,10 +86,7 @@ export function childWhoseStartFailed(
   if (!session.child?.startFailed) {
     return null
   }
-  const due =
-    next !== undefined &&
-    (next.startFailure !== undefined || earliestStartRetryAt(session.journal) === null)
-  return due ? 'end' : 'wait'
+  return next ? 'end' : 'wait'
 }
 
 /** A close of this chat that stopped its child and then did not complete still closed what was

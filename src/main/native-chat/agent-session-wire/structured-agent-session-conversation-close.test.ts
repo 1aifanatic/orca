@@ -246,8 +246,10 @@ describe('a start that never finishes (P2-15)', () => {
       this: AgentSessionJournal,
       input
     ) {
-      if (input.state === 'pending' && 'startFailure' in input) {
-        order.push(`failed start: ${input.startFailure.reason}`)
+      if (input.state === 'rejected') {
+        order.push(`rejected: ${input.reason}`)
+      } else if (input.state === 'pending' && 'startFailure' in input) {
+        order.push(`pending: ${input.startFailure.reason}`)
       }
       return resolve.call(this, input)
     })
@@ -264,13 +266,14 @@ describe('a start that never finishes (P2-15)', () => {
     await vi.waitFor(() =>
       expect(readerSaw(reader.events).submissions).toContainEqual(
         expect.objectContaining({
-          dispatchState: 'pending',
-          startFailure: expect.objectContaining({ reason: stopReason })
+          dispatchState: 'rejected',
+          reason: stopReason,
+          rejection: { kind: 'hostStopped' }
         })
       )
     )
     // One record, written after the stop by the loop, with the stop's own words.
-    expect(order).toEqual(['stopped', `failed start: ${stopReason}`])
+    expect(order).toEqual(['stopped', `rejected: ${stopReason}`])
     const errorRows = reader.events.flatMap((event) =>
       event.type === 'batch'
         ? event.batch.items.filter(

@@ -1,5 +1,5 @@
-// When a message whose agent start failed is tried again. A start failure usually has an end — a
-// sign-in, an account switch, a lease being settled — so the message is owed a few more tries
+// When a message whose agent start was refused before it ran is tried again. Such a refusal usually
+// has an end — an account switch, a lease being settled — so the message is owed a few more tries
 // before it is the person's to act on.
 
 import type { AgentSessionFailureFact } from './agent-session-failure'
@@ -13,8 +13,8 @@ export const STRUCTURED_AGENT_SESSION_START_RETRY_DELAYS_MS: readonly number[] =
 ]
 
 /** When the next start is due after `attempts` failed ones; null when the message is done trying.
- *  A failure only the person can clear — signed out, a setting to fix, a new chat to start — is
- *  done at once: trying again on a timer could not land, and would promise that it might. */
+ *  A start that ran and failed here, or a failure only the person can clear — signed out, a
+ *  setting to fix, a new chat to start — is done at once, with the person's Retry. */
 export function structuredAgentSessionStartRetryAt(
   fact: Pick<AgentSessionFailureFact, 'kind' | 'refusal'>,
   attempts: number,

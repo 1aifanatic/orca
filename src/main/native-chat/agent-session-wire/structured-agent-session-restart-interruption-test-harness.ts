@@ -203,7 +203,7 @@ export async function supersededRefusal(userAnswers?: 'before' | 'after') {
 }
 
 /** A start refusal whose own words send the person to a new chat: the continuation is not tried
- *  again, so the restart list files it at once. */
+ *  again, and its message says why. */
 export function terminalStartRefusal(): AgentSessionAcquisitionRefusal {
   return AgentSessionAcquisitionRefusal.historyTooLarge('the conversation is too large to restore')
 }

@@ -104,13 +104,12 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
 
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: {
-          reason: expect.stringMatching(/^Claude couldn't start\./),
-          rejection: { kind: 'startFailed' }
-        }
+        dispatchState: 'rejected',
+        reason: expect.stringMatching(/^Claude couldn't start\./),
+        rejection: { kind: 'startFailed' }
       })
     )
+    expect(await submission(host, held)).not.toHaveProperty('startFailure')
     expect(await failureRows(host)).toEqual([])
     expect(claude.child(SESSION).calls).not.toContain('send')
   })
@@ -128,10 +127,12 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
 
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: { reason: STOPPED_TEXT, rejection: { kind: 'providerStartFailed' } }
+        dispatchState: 'rejected',
+        reason: STOPPED_TEXT,
+        rejection: { kind: 'providerStartFailed' }
       })
     )
+    expect(await submission(host, held)).not.toHaveProperty('startFailure')
     expect(await failureRows(host)).toEqual([])
   })
 })

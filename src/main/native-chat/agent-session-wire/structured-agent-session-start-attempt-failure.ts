@@ -1,7 +1,8 @@
 // The one writer of a failed agent start: the delivery loop, which records it on the message the
-// start was for and on any message handed to that start's child, which took nothing. Each goes back
-// in the queue with its next try booked, or, out of tries, ends `rejected` in the same words. The
-// messages behind it go on meanwhile.
+// start was for and on any message handed to that start's child, which took nothing. A start
+// refused before it ran leaves each in the queue with its next try booked, until out of tries; one
+// that ran and failed ends each `rejected` at once, for the person's Retry. The messages behind it
+// go on meanwhile.
 
 import {
   isSubmissionRejectionFact,

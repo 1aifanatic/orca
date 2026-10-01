@@ -320,17 +320,16 @@ describe('a start the chat needed and did not get', () => {
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('accepted'))
     // Orca's spawn error goes to the log; the message says what failed, typed. The child is gone,
     // but no exit was observed, so nothing blames the provider.
+    // The start ran here and failed, so it is the person's to retry: rejected at once.
     expect(await submission(first)).toMatchObject({
-      dispatchState: 'pending',
-      startFailure: {
-        attempts: 1,
-        reason: "Codex couldn't restart. Send your message to try again.",
-        rejection: {
-          kind: 'restartFailed',
-          refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
-        }
+      dispatchState: 'rejected',
+      reason: "Codex couldn't restart. Send your message to try again.",
+      rejection: {
+        kind: 'restartFailed',
+        refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
       }
     })
+    expect((await submission(first))?.startFailure).toBeUndefined()
     expect(await errorRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
@@ -343,9 +342,7 @@ describe('a start the chat needed and did not get', () => {
     await accept('first')
     const second = await accept('second')
 
-    await eventually(async () =>
-      expect((await submission(second))?.startFailure).toMatchObject({ attempts: 1 })
-    )
+    await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     await host.flushAllStreamedEvents()
     expect(completions).toEqual([
       {
@@ -366,8 +363,7 @@ describe('a start the chat needed and did not get', () => {
         adapterExtras = { supportsLocation: () => false }
       },
       {
-        // This host has nothing to restart the chat from, so no later try would either.
-        state: 'rejected',
+        // This host has nothing to restart the chat from.
         text: "Codex couldn't restart. Start a new chat to continue.",
         failure: {
           kind: 'restartFailed',
@@ -382,7 +378,6 @@ describe('a start the chat needed and did not get', () => {
       'spawn',
       () => acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT')),
       {
-        state: 'retrying',
         text: "Codex couldn't restart. Send your message to try again.",
         failure: {
           kind: 'restartFailed',
@@ -398,7 +393,6 @@ describe('a start the chat needed and did not get', () => {
         ),
       {
         // No process ever started, so nothing says the provider stopped.
-        state: 'retrying',
         text: "Codex couldn't restart. Send your message to try again.",
         failure: {
           kind: 'restartFailed',
@@ -423,15 +417,13 @@ describe('a start the chat needed and did not get', () => {
             : []
         )
       await eventually(() =>
-        expect(told().at(-1)).toMatchObject(
-          expected.state === 'rejected'
-            ? { dispatchState: 'rejected', reason: expected.text, rejection: expected.failure }
-            : {
-                dispatchState: 'pending',
-                startFailure: { reason: expected.text, rejection: expected.failure }
-              }
-        )
+        expect(told().at(-1)).toMatchObject({
+          dispatchState: 'rejected',
+          reason: expected.text,
+          rejection: expected.failure
+        })
       )
+      expect(told().some((entry) => entry.startFailure !== undefined)).toBe(false)
       expect(await errorRows()).toEqual([])
     }
   )
@@ -452,12 +444,13 @@ describe('a start the chat needed and did not get', () => {
     let settled: AgentJournalSubmission | undefined
     await eventually(async () => {
       settled = await reopened(id)
-      expect(settled?.startFailure).toBeDefined()
+      expect(settled?.dispatchState).toBe('rejected')
     })
     // The message names the start that failed, not a close or a restart it never met — and never
     // the store's own error, which is Orca's and goes to the log.
-    expect(settled).toMatchObject({ dispatchState: 'pending', startFailure: { attempts: 1 } })
-    expect(settled?.startFailure?.reason).not.toContain('record store write failed')
+    expect(settled).toMatchObject({ rejection: { kind: 'restartFailed' } })
+    expect(settled?.startFailure).toBeUndefined()
+    expect(settled?.reason).not.toContain('record store write failed')
     expect(await errorRows()).toEqual([])
   })
 })
@@ -484,9 +477,7 @@ describe('an attach that fails after indexing its child', () => {
       }
       return AgentSessionRecordStore.prototype.recordOperationOutcome.call(store, input)
     })
-    await eventually(async () =>
-      expect((await submission(first))?.startFailure).toMatchObject({ attempts: 1 })
-    )
+    await eventually(async () => expect((await submission(first))?.dispatchState).toBe('rejected'))
     // Nothing was indexed, so nothing had to be taken back: no list ever showed a child.
     expect(host['sessions'].get(SESSION)?.child).toBeNull()
     expect(owned).not.toContain(true)
@@ -564,14 +555,12 @@ describe('a child that exits before its message is handed over', () => {
 
     await eventually(async () =>
       expect(await submission(id)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: {
-          attempts: 1,
-          reason: 'Codex stopped before this message was sent.',
-          rejection: { kind: 'providerExited' }
-        }
+        dispatchState: 'rejected',
+        reason: 'Codex stopped before this message was sent.',
+        rejection: { kind: 'providerExited' }
       })
     )
+    expect((await submission(id))?.startFailure).toBeUndefined()
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
   })

@@ -221,18 +221,19 @@ function exit(child: ReturnType<typeof currentChild>, reason: string, startupUnp
   })
 }
 
-/** Whether a subscriber was told the message waits for its next start, with that start's failure. */
-function retryingIn(events: AgentSessionSubscribeEvent[], id: string): boolean {
+/** Whether a subscriber was told the message was rejected. */
+function rejectedIn(events: AgentSessionSubscribeEvent[], id: string): boolean {
   return events.some(
     (event) =>
       event.type === 'batch' &&
       event.batch.submissions.some(
-        (entry) =>
-          entry.clientMessageId === id &&
-          entry.dispatchState === 'pending' &&
-          entry.startFailure !== undefined
+        (entry) => entry.clientMessageId === id && entry.dispatchState === 'rejected'
       )
   )
+}
+
+async function rejected(id: string): Promise<void> {
+  await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
 }
 
 /** A queued message no start has failed, to read which fallback a per-message rejection names. */
@@ -415,20 +416,22 @@ describe('a published child that dies while it proves its start', () => {
         settled.resolve(START_FAILURE)
       } else {
         settled.resolve(START_FAILURE)
-        await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+        await rejected(first)
         await exit(child, EXIT, true)
       }
 
       // The second goes on to a start of its own, which fails the same way.
-      await eventually(async () => expect((await submission(second))?.startFailure).toBeDefined())
+      await rejected(second)
       expect(await statusRows()).toEqual([])
       for (const id of [first, second]) {
         expect(await submission(id)).toMatchObject({
-          dispatchState: 'pending',
-          startFailure: { attempts: 1, reason: TEXT, rejection: START_FAILURE }
+          dispatchState: 'rejected',
+          reason: TEXT,
+          rejection: START_FAILURE
         })
+        expect(await submission(id)).not.toHaveProperty('startFailure')
       }
-      expect(retryingIn(events, first)).toBe(true)
+      expect(rejectedIn(events, first)).toBe(true)
       expect(dispatch).not.toHaveBeenCalled()
       expect(acquire).toHaveBeenCalledTimes(3)
     }
@@ -466,18 +469,16 @@ describe('a start another operation made that dies while a sent message waits on
     await exited
     const id = params.envelope.clientOperationId
 
-    await eventually(async () => expect((await submission(id))?.startFailure).toBeDefined())
+    await rejected(id)
     await settleLoop()
     expect(await submission(id)).toMatchObject({
-      dispatchState: 'pending',
-      startFailure: {
-        attempts: 1,
-        reason: TEXT,
-        generation: operationChild.acquisitionGeneration
-      }
+      dispatchState: 'rejected',
+      reason: TEXT,
+      rejection: { kind: 'providerStartFailed' }
     })
+    expect(await submission(id)).not.toHaveProperty('startFailure')
     expect(await statusRows()).toEqual([])
-    expect(retryingIn(events, id)).toBe(true)
+    expect(rejectedIn(events, id)).toBe(true)
     // The setup's child and the operation's: nothing started again into the same failure.
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
@@ -546,20 +547,19 @@ describe('a child that ends before its message is handed over', () => {
     const id = await accept('hello')
     const events = await subscribe()
 
-    await eventually(async () => expect((await submission(id))?.startFailure).toBeDefined())
+    await rejected(id)
     // The exit's stderr rides beside the sentence, never in it.
     expect(await submission(id)).toMatchObject({
-      dispatchState: 'pending',
-      startFailure: {
-        reason: 'Codex stopped before this message was sent.',
-        rejection: {
-          kind: 'providerExited',
-          detail: { text: 'codex app-server crashed', audience: 'log' }
-        }
+      dispatchState: 'rejected',
+      reason: 'Codex stopped before this message was sent.',
+      rejection: {
+        kind: 'providerExited',
+        detail: { text: 'codex app-server crashed', audience: 'log' }
       }
     })
+    expect(await submission(id)).not.toHaveProperty('startFailure')
     expect(await statusRows()).toEqual([])
-    expect(retryingIn(events, id)).toBe(true)
+    expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
@@ -666,13 +666,13 @@ describe('a send whose start failed, sent again with the same operation id', () 
     acquire.mockRejectedValueOnce(new Error('spawn claude ENOENT'))
     const fenceBefore = store.getRecord(SESSION)!.lease.runtimeFence
     const params = sendParams('hello')
-    // A failed start is a message waiting for its next try, never a refused send.
+    // A failed start rejects the accepted message, never the send.
     expect(await host.send(CALLER, params)).toMatchObject({
       ok: true,
       value: { submission: { dispatchState: 'pending' } }
     })
     const id = params.envelope.clientOperationId
-    await eventually(async () => expect((await submission(id))?.startFailure).toBeDefined())
+    await rejected(id)
     // The start moved the fence while the message was out.
     expect(store.getRecord(SESSION)!.lease.runtimeFence).toBeGreaterThan(fenceBefore)
     await settleLoop()
@@ -684,7 +684,11 @@ describe('a send whose start failed, sent again with the same operation id', () 
       ok: true,
       replayed: true,
       value: {
-        submission: { clientMessageId: id, dispatchState: 'pending', startFailure: { attempts: 1 } }
+        submission: {
+          clientMessageId: id,
+          dispatchState: 'rejected',
+          rejection: { kind: 'restartFailed' }
+        }
       }
     })
     await settleLoop()
@@ -837,9 +841,11 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     // The sentence is the constructor's, not the reason the stop was given.
     const text = 'Codex never finished starting, so Orca stopped it.'
     expect(first).toMatchObject({
-      dispatchState: 'pending',
-      startFailure: { reason: text, rejection: { kind: 'hostStopped' } }
+      dispatchState: 'rejected',
+      reason: text,
+      rejection: { kind: 'hostStopped' }
     })
+    expect(first).not.toHaveProperty('startFailure')
     expect(await statusRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })

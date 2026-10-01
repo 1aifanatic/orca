@@ -167,10 +167,9 @@ describe('an open chat receives every row its journal commits', () => {
       expect(pane.received().submissions).toContainEqual(
         expect.objectContaining({
           clientMessageId: held,
-          dispatchState: 'pending',
-          startFailure: expect.objectContaining({
-            reason: 'Codex stopped before it finished starting. Send your message to try again.'
-          })
+          dispatchState: 'rejected',
+          reason: 'Codex stopped before it finished starting. Send your message to try again.',
+          rejection: expect.objectContaining({ kind: 'providerStartFailed' })
         })
       )
     )

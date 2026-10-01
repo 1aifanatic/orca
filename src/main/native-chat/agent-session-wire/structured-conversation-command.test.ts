@@ -34,7 +34,6 @@ let hosts: StructuredAgentSessionHost[]
 let adapter: StructuredAgentSessionAdapter
 const compact = vi.fn<NonNullable<StructuredAgentSessionAdapter['compact']>>()
 let acquisitions = 0
-let retryTimers: { dueAt: number; run: () => void; cancelled: boolean }[]
 
 function envelope(method: string, fields: Record<string, unknown>) {
   return {
@@ -72,14 +71,7 @@ async function openHost(): Promise<void> {
     now: () => clock,
     mintSpawnToken: () => `spawn-${acquisitions}`,
     // The owners a restarted host finds died with the process that started them, unless a test says otherwise.
-    probeOwner: async () => ownerProbe,
-    setStartRetryTimer: (delayMs, run) => {
-      const timer = { dueAt: clock + delayMs, run, cancelled: false }
-      retryTimers.push(timer)
-      return () => {
-        timer.cancelled = true
-      }
-    }
+    probeOwner: async () => ownerProbe
   })
   hosts.push(host)
 }
@@ -103,7 +95,6 @@ beforeEach(async () => {
   generation = 0
   clock = HOST_TEST_NOW
   hosts = []
-  retryTimers = []
   compact.mockReset().mockResolvedValue({ state: 'accepted', providerIdentity: null })
   directory = await mkdtemp(join(tmpdir(), 'orca-conversation-command-'))
   adapter = {
@@ -235,17 +226,6 @@ async function submissionOf(sessionId: string, clientMessageId: string) {
   return (await host.journalSnapshot(sessionId)).submissions.find(
     (entry) => entry.clientMessageId === clientMessageId
   )
-}
-
-/** Moves the clock to the booked start retry and lets it fire, as its timer would. */
-function fireStartRetry(): void {
-  const timer = retryTimers.findLast((entry) => !entry.cancelled)
-  if (!timer) {
-    throw new Error('no start retry is booked')
-  }
-  timer.cancelled = true
-  clock = timer.dueAt
-  timer.run()
 }
 
 async function errorRows(sessionId: string): Promise<string[]> {
@@ -591,7 +571,7 @@ describe("the replacement's first send", () => {
     expect(startsFor(replacement)).toBe(2)
   })
 
-  it('keeps the message waiting with why its agent could not start, then starts it again on its own', async () => {
+  it('rejects the message at once with why its agent could not start, and Retry starts it', async () => {
     const replacement = await clearCommits()
     vi.mocked(adapter.acquire).mockRejectedValueOnce(new Error('spawn codex ENOENT'))
     const sent = await sendTo(replacement, 'first message')
@@ -599,18 +579,21 @@ describe("the replacement's first send", () => {
     const clientMessageId = sent.ok ? sent.value.clientMessageId : ''
     await vi.waitFor(async () =>
       expect(await submissionOf(replacement, clientMessageId)).toMatchObject({
-        dispatchState: 'pending',
+        dispatchState: 'rejected',
         // Never ran, so it failed to start, not restart.
-        startFailure: { attempts: 1, rejection: { kind: 'startFailed' } }
+        rejection: { kind: 'startFailed' }
       })
     )
+    // The spawn ran here and failed, so no later try is booked.
+    expect((await submissionOf(replacement, clientMessageId))?.startFailure).toBeUndefined()
     expect(await errorRows(replacement)).toEqual([])
-    const reason = (await submissionOf(replacement, clientMessageId))?.startFailure?.reason
+    const reason = (await submissionOf(replacement, clientMessageId))?.reason
     expect(reason).toContain("Codex couldn't start.")
     expect(reason).not.toContain('/clear')
     expect(adapter.dispatch).not.toHaveBeenCalled()
 
-    fireStartRetry()
+    // Retry resends the same words, which starts the agent and delivers them.
+    expect(await sendTo(replacement, 'first message')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(adapter.dispatch).toHaveBeenCalledTimes(1))
     expect(startsFor(replacement)).toBe(2)
   })

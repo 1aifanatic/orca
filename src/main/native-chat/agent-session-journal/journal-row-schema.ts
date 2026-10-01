@@ -110,7 +110,7 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
-  /** On `pending`: the message goes back in the queue because the start it was for failed. An
+  /** On `pending`: the message waits in the queue because the start it was for was refused. An
    *  older reader ignores the key and reads the row as a handover, so the message ends in doubt,
    *  never as sent or failed. A malformed one is dropped when read, never the row. */
   startFailure?: JournalStartFailureRecord

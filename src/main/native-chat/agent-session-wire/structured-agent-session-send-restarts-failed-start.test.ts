@@ -4,8 +4,8 @@
 // message to the new owner, instead of parking it behind a lease nothing would ever re-acquire.
 //
 // A child is published before it has proven its start, and it owns the send from that moment: the
-// message is handed to it. When the child exits first, the exit settlement rejects the message and
-// writes the cause into the chat, once, and the next send is a fresh restart.
+// message is handed to it. When the child exits first, the exit settlement rejects the message with
+// the cause on it, and the next send is a fresh restart.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -196,26 +196,23 @@ describe('a send into a published session whose child ended before startup', () 
     expect(dispatch).toHaveBeenCalledTimes(2)
   })
 
-  it('puts the held message back in the queue with the cause when the restarted child exits before proving its start', async () => {
+  it('rejects the held message with the cause when the restarted child exits before proving its start', async () => {
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const rowsBefore = (await journalStatuses()).length
 
     const held = await send('still not signed in', releasedFence)
     await exitBeforeProof()
 
-    // The child never proved its start, so it accepted nothing: the message waits for its next try
-    // with the cause on it, and the chat gets no row of its own for it.
+    // The child never proved its start, so it accepted nothing: the message is rejected at once with
+    // the cause on it, no later try is booked, and the chat gets no row of its own for it.
     await vi.waitFor(async () =>
       expect(await submission(held)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: {
-          attempts: 1,
-          reason: 'Codex stopped before it finished starting. Send your message to try again.',
-          rejection: STARTUP_FAILURE
-        }
+        dispatchState: 'rejected',
+        reason: 'Codex stopped before it finished starting. Send your message to try again.',
+        rejection: STARTUP_FAILURE
       })
     )
-    expect((await submission(held))?.handedOverAt).toBeUndefined()
+    expect((await submission(held))?.startFailure).toBeUndefined()
     expect((await journalStatuses()).slice(rowsBefore)).toEqual([])
     // The failed restart moved the fence twice: the acquisition, and the exit that released it.
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(releasedFence + 2)
@@ -244,7 +241,7 @@ describe('a send while the child of the first start is still proving itself', ()
     expect(await journalStatuses()).toEqual([])
   })
 
-  it('goes back in the queue with the cause when that child exits first, and restarts nothing', async () => {
+  it('is rejected with the cause when that child exits first, and restarts nothing', async () => {
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const held = await send('hello')
 
@@ -252,14 +249,12 @@ describe('a send while the child of the first start is still proving itself', ()
 
     await vi.waitFor(async () =>
       expect(await submission(held)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: {
-          attempts: 1,
-          reason: 'Codex stopped before it finished starting. Send your message to try again.',
-          rejection: STARTUP_FAILURE
-        }
+        dispatchState: 'rejected',
+        reason: 'Codex stopped before it finished starting. Send your message to try again.',
+        rejection: STARTUP_FAILURE
       })
     )
+    expect((await submission(held))?.startFailure).toBeUndefined()
     expect(acquire).toHaveBeenCalledOnce()
     expect(await journalStatuses()).toEqual([])
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(fence + 1)

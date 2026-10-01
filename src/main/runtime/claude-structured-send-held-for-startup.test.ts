@@ -1,8 +1,8 @@
 // A Claude chat is published the moment its child spawns, before the CLI has answered initialize.
 // A send in that window — into a fresh start, or into the restart the delivery loop makes for a
 // send after a start that failed — is accepted and stays queued until the child proves its start.
-// When the CLI dies first, the queued message carries the CLI's own diagnostic and waits for its
-// next try, and nothing is left as a delivery nobody can confirm. Against the production runtime,
+// When the CLI dies first, the queued message is rejected with the CLI's own diagnostic, and
+// nothing is left as a delivery nobody can confirm. Against the production runtime,
 // adapter, record store and host, with only the CLI process scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -79,7 +79,7 @@ async function failLatestStart(host: StructuredAgentSessionHost, count: number):
 }
 
 describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
-  it('restarts once, records the diagnostic on the held message when that start dies too, then delivers a new one once the CLI is healthy', async () => {
+  it('restarts once, rejects the held message with the diagnostic when that start dies too, then delivers a new one once the CLI is healthy', async () => {
     claude.behave(SESSION, { initHangs: true })
     const host = await claude.install()
     await expect(host.attach(CALLER, claude.attachParams(SESSION, null))).resolves.toMatchObject({
@@ -99,14 +99,16 @@ describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
     )
     await failLatestStart(host, 2)
 
-    // The cause is on the message, which waits for its next try: not left in doubt, and no row.
+    // The cause is on the message, which is rejected: not left in doubt, and no row.
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'pending',
+        dispatchState: 'rejected',
         // Worded for the user: the message's own notice shows it.
-        startFailure: { reason: STARTUP_TEXT, rejection: { kind: 'providerStartFailed' } }
+        reason: STARTUP_TEXT,
+        rejection: { kind: 'providerStartFailed' }
       })
     )
+    expect(await submission(host, held)).not.toHaveProperty('startFailure')
     expect(await statusRows(host)).toEqual([])
     // The restart moved the fence twice: its acquisition, and the exit that released it.
     expect(fence(host)).toBe(releasedFence + 2)
@@ -143,7 +145,7 @@ describe('a send while the first Claude start is still answering initialize', ()
     expect(await statusRows(host)).toEqual([])
   })
 
-  it('carries the diagnostic when the CLI dies first, and restarts nothing at once', async () => {
+  it('is rejected with the diagnostic when the CLI dies first, and restarts nothing', async () => {
     claude.behave(SESSION, { initHangs: true })
     const host = await claude.install()
     await host.attach(CALLER, claude.attachParams(SESSION, null))
@@ -154,10 +156,12 @@ describe('a send while the first Claude start is still answering initialize', ()
 
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'pending',
-        startFailure: { reason: STARTUP_TEXT, rejection: { kind: 'providerStartFailed' } }
+        dispatchState: 'rejected',
+        reason: STARTUP_TEXT,
+        rejection: { kind: 'providerStartFailed' }
       })
     )
+    expect(await submission(host, held)).not.toHaveProperty('startFailure')
     expect(await statusRows(host)).toEqual([])
     expect(fence(host)).toBe(startedFence + 1)
     expect(claude.children(SESSION)).toHaveLength(1)

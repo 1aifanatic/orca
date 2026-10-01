@@ -24,8 +24,8 @@ afterEach(async () => {
   claude = createScriptedClaudeRuntime([SESSION])
 })
 
-/** The failed-start reasons the open chat was sent on its messages, in a batch or a snapshot. */
-function startFailureTexts(events: AgentSessionSubscribeEvent[]): string[] {
+/** The rejection reasons the open chat was sent on its messages, in a batch or a snapshot. */
+function rejectionTexts(events: AgentSessionSubscribeEvent[]): string[] {
   return events.flatMap((event) => {
     const submissions =
       event.type === 'batch'
@@ -33,7 +33,9 @@ function startFailureTexts(events: AgentSessionSubscribeEvent[]): string[] {
         : event.type === 'snapshot'
           ? event.page.submissions
           : []
-    return submissions.flatMap((entry) => (entry.startFailure ? [entry.startFailure.reason] : []))
+    return submissions.flatMap((entry) =>
+      entry.dispatchState === 'rejected' && entry.reason ? [entry.reason] : []
+    )
   })
 }
 
@@ -73,18 +75,17 @@ describe('a reopened Claude chat whose CLI dies before initialize', () => {
     claude.child(SESSION).exit(scriptedClaudeExitError(DIAGNOSTIC))
     await waitForStructuredAgentSessionRecovery()
 
-    await vi.waitFor(() => expect(startFailureTexts(events)).toContainEqual(STARTUP_TEXT))
-    // Never written, so it did not happen: waiting for its next try, not left in doubt.
+    await vi.waitFor(() => expect(rejectionTexts(events)).toContainEqual(STARTUP_TEXT))
+    // Never written, so it did not happen: rejected with the cause, not left in doubt.
     const submission = (await host.journalSnapshot(SESSION)).submissions.find(
       (entry) => entry.clientMessageId === (sent.ok && sent.value.clientMessageId)
     )
     // The stderr the exit carried is beside the sentence, as a log detail, and never in it.
     expect(submission).toMatchObject({
-      dispatchState: 'pending',
-      startFailure: {
-        reason: STARTUP_TEXT,
-        rejection: { kind: 'providerStartFailed', detail: { text: DIAGNOSTIC, audience: 'log' } }
-      }
+      dispatchState: 'rejected',
+      reason: STARTUP_TEXT,
+      rejection: { kind: 'providerStartFailed', detail: { text: DIAGNOSTIC, audience: 'log' } }
     })
+    expect(submission).not.toHaveProperty('startFailure')
   })
 })

@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import {
+  AGENT_SESSION_FAILURE_KINDS,
+  isSubmissionRejectionFact,
+  readWholeAgentSessionFailureFact,
+  type AgentSessionFailureFact
+} from '../../../../shared/agent-session-failure'
+import {
+  isResumableStartFailure,
+  START_REFUSAL_STAGE
+} from '../../../../shared/agent-session-start-resumability'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
@@ -636,6 +645,27 @@ describe('the notice on a message whose agent start failed', () => {
       })
     }
   )
+
+  it('never tells the person to try again while Orca will, for any start Orca tries again', () => {
+    const codes = Object.entries(START_REFUSAL_STAGE).flatMap(([code, stage]) =>
+      stage === 'beforeHandoff' ? [code] : []
+    )
+    const facts = [
+      { kind: 'accountSwitchInProgress' },
+      ...AGENT_SESSION_FAILURE_KINDS.flatMap((kind) =>
+        codes.map((code) => readWholeAgentSessionFailureFact({ kind, refusal: { code } }))
+      )
+    ].filter(
+      (fact): fact is AgentSessionFailureFact =>
+        fact !== undefined && isSubmissionRejectionFact(fact) && isResumableStartFailure(fact)
+    )
+    expect(facts.length).toBeGreaterThan(codes.length)
+    for (const fact of facts) {
+      const [text] = Object.values(texts([], [retrying('mine', fact)]))
+      expect(text?.endsWith(' Orca will try again shortly.')).toBe(true)
+      expect(text?.replace(' Orca will try again shortly.', '')).not.toMatch(/again|retry/i)
+    }
+  })
 
   it('keeps when to try again beside the Retry once the tries run out', () => {
     const words = agentSessionFailureWords(
