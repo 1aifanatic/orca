@@ -367,7 +367,7 @@ describe('the derivation is versioned (T11)', () => {
   // earlier derivation wrote read as absent and are derived again.
   const GOLDEN = {
     version: 2,
-    digest: '637041b814cfbd16b3d5bd1b0e19f505bba360a3cc2d90f4ad801433b5192346'
+    digest: '33a151ec037c24cbd1bd74cfaacc0bea419d132e1c4878724e416294635bba9b'
   }
 
   it('matches the digest pinned beside its version', async () => {

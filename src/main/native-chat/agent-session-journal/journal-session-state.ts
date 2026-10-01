@@ -11,7 +11,7 @@
 // (queued-message-schema.ts): an older build ignores it and stays writable.
 
 import type Database from '../../sqlite/sync-database'
-import { isAgentJournalTurnOutcome } from '../../../shared/agent-turn-outcome'
+import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'
 import {
   projectStructuredAgentSessionStatusState,
   type StructuredAgentSessionStatusProjection
@@ -285,7 +285,7 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
     return typeof field === 'string' ? field : undefined
   }
   const turnOutcome = source.get('turnOutcome')
-  if (turnOutcome !== undefined && !isAgentJournalTurnOutcome(turnOutcome)) {
+  if (turnOutcome !== undefined && !isAgentTurnOutcome(turnOutcome)) {
     // A verdict this build cannot show: stale, so the chat's open publishes it rather than a
     // row without it.
     return null
@@ -300,7 +300,7 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
     ...(toolName !== undefined ? { toolName } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(lastAssistantMessage !== undefined ? { lastAssistantMessage } : {}),
-    ...(isAgentJournalTurnOutcome(turnOutcome) ? { turnOutcome } : {}),
+    ...(isAgentTurnOutcome(turnOutcome) ? { turnOutcome } : {}),
     ...(typeof statusStartedAt === 'number' ? { statusStartedAt } : {})
   }
 }

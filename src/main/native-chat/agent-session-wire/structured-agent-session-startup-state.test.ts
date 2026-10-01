@@ -114,6 +114,62 @@ describe('seeding statuses from stored state', () => {
     expect(ids.map((sessionId) => statusRows(rig, sessionId).length)).toEqual(seeded)
   })
 
+  it('seeds a crash-cut turn with the verdict its open publishes (T5, interrupted and unconfirmed)', async () => {
+    const rig = await newRig()
+    const ids = ['session-interrupted', 'session-unconfirmed']
+    for (const sessionId of ids) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+      const [{ providerIdentity }] = await Promise.all(
+        rig.adapter.dispatch.mock.results.slice(-1).map((result) => result.value)
+      )
+      const session = rig.host.collaboratorsForTests().sessions.get(sessionId)!
+      // The turn's own row, beside the accepted message the dispatch's identity names.
+      await session.journal.appendItem(
+        { ...providerIdentity, ordinal: 0 },
+        { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+        {
+          fence: rig.store.getRecord(sessionId)!.lease.runtimeFence,
+          turnScope: { kind: 'thread' }
+        }
+      )
+    }
+    await rig.crash()
+    // The unconfirmed chat's owner can never be judged; the other's is proven gone.
+    const probe = async (record: { sessionId: string }) =>
+      record.sessionId === 'session-unconfirmed'
+        ? { outcome: 'indeterminate' as const, reason: 'no start time' }
+        : { outcome: 'pid-absent' as const }
+    rig.probeOwner.mockImplementation(probe)
+    await rig.boot()
+    await startup(rig, ids)
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    closeTestJournalHostDatabases()
+    const readRoot = `${rig.root}-read`
+    await cp(rig.root, readRoot, { recursive: true })
+    const readRig = await newRig(readRoot)
+    readRig.probeOwner.mockImplementation(probe)
+
+    const host = await rig.boot()
+    await host.reconcileRestartLeases()
+    expect(host.seedStoredStatuses(ids)).toEqual([])
+    expect(opened(rig, ids)).toEqual([])
+    await readRig.host.reconcileRestartLeases()
+    for (const sessionId of ids) {
+      await readRig.host.history({ sessionId, direction: 'tail' })
+    }
+
+    for (const sessionId of ids) {
+      expect(latestRestTestStatus(rig, sessionId)).toEqual(latestRestTestStatus(readRig, sessionId))
+    }
+    expect(latestRestTestStatus(rig, 'session-interrupted')).toMatchObject({
+      turnOutcome: 'interruption'
+    })
+    expect(latestRestTestStatus(rig, 'session-unconfirmed')).toMatchObject({
+      turnOutcome: 'unconfirmed'
+    })
+  })
+
   it('has every settled chat in the first snapshot a later subscriber gets (T8, T17)', async () => {
     const rig = await newRig()
     for (const sessionId of ['session-1', 'session-2']) {

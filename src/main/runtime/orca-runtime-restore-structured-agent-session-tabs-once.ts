@@ -5,6 +5,8 @@ import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
 import { seedStructuredAgentSessionTabIndex } from './structured-agent-session-tab-index-seed'
+import { listedStructuredAgentSessionIds } from './structured-agent-session-startup-step'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type {
   RuntimeMobileSessionAgentTab,
   RuntimeMobileSessionTabsSnapshot,
@@ -51,7 +53,10 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   protected async restoreStructuredAgentSessionTabsOnce(): Promise<void> {
     await this.prepareStructuredAgentSessionStartupRestoration()
     const host = getStructuredAgentSessionHost()
-    const listedIds = this.listedStructuredAgentSessionIds(host)
+    const listedIds = listedStructuredAgentSessionIds(
+      host,
+      this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+    )
     for (const worktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId, {
         allowAttachedWindow: true,
@@ -85,8 +90,8 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       this.projectStructuredAgentSessionTab({ ...session, ...quiet })
     }
     // Startup already seeded every settled chat's row and is settling the ones that owe work; this
-    // opens only what stored state could not answer (a stale row, a per-chat file not yet copied, a
-    // draft to drain). Whoever answers with this list starts it, once that answer is out.
+    // opens only what stored state could not answer (a stale row, a per-chat file not yet copied).
+    // Whoever answers with this list starts it, once that answer is out.
     const background = this.structuredAgentSessionBackgroundRestoreIds ?? listedIds
     this.owedStructuredAgentSessionHistoryRestore = host
       ? () =>
