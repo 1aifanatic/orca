@@ -4,6 +4,7 @@ import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-p
 import { getDefaultWslDistro, getWslHome } from '../wsl'
 import {
   getSystemCodexHomePath,
+  resolveOrcaManagedCodexHomePath,
   syncCodexGlobalInstructionsIntoManagedHome,
   syncSystemCodexResourcesIntoManagedHome
 } from '../codex/codex-home-paths'
@@ -19,12 +20,12 @@ import {
   getCodexPaneAccount,
   type CodexPaneHomeRoute
 } from '../codex/codex-pane-account-registry'
-import { isShellStartupEnvProbeSupported } from '../pty/shell-startup-env'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
 import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type { CodexRateLimitHomeResolution } from './runtime-home-service-types'
 import { CodexRuntimeHomeManagedHome } from './runtime-home-service-managed-home'
+import { carryRetiredSystemDefaultMirror } from './retired-mirror-carry'
 
 export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHome {
   getHostCodexHomePathsForSessionDiscovery(): string[] {
@@ -144,18 +145,13 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
   }
 
   // Why: real-home routing applies only to the host system-default selection.
-  // Managed accounts run in their own homes; Windows (no shell-startup probe)
-  // and custom CODEX_HOMEs stay on the mirror until cleanup can be tracked
-  // across old homes.
+  // Managed accounts run in their own homes; custom CODEX_HOMEs stay on the
+  // mirror until cleanup can be tracked across old homes.
   isHostSystemDefaultRealHomeSelected(launchEnv?: NodeJS.ProcessEnv): boolean {
-    const settings = this.store.getSettings()
-    if (
-      normalizeCodexRuntimeSelection(settings).host !== null ||
-      !isShellStartupEnvProbeSupported()
-    ) {
-      return false
-    }
-    return !hasCustomCodexHomeOverrideForLaunch(launchEnv)
+    return (
+      normalizeCodexRuntimeSelection(this.store.getSettings()).host === null &&
+      !hasCustomCodexHomeOverrideForLaunch(launchEnv)
+    )
   }
 
   isHostSystemDefaultRealHome(launchEnv?: NodeJS.ProcessEnv): boolean {
@@ -166,19 +162,35 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
   // managed selection; read-only siblings need that same verdict with the
   // selection ignored rather than cleared.
   protected wouldSystemDefaultRouteToRealHome(launchEnv?: NodeJS.ProcessEnv): boolean {
-    return (
-      isShellStartupEnvProbeSupported() &&
-      !hasCustomCodexHomeOverrideForLaunch(launchEnv) &&
-      this.realHomeLaneGate()
-    )
+    return !hasCustomCodexHomeOverrideForLaunch(launchEnv) && this.realHomeLaneGate()
   }
 
   reconcileLegacySharedHomeForRetainedPanes(): void {
-    if (!this.isHostSystemDefaultRealHome() || !hasRecordedLegacySharedCodexPane()) {
+    if (!this.isHostSystemDefaultRealHome()) {
+      return
+    }
+    // Why win32 only: Windows is the lane retiring now. macOS and Linux left the
+    // mirror in #9501; carrying it today would resurrect long-stale state.
+    if (process.platform === 'win32') {
+      this.carryRetiredSystemDefaultMirror()
+    }
+    if (!hasRecordedLegacySharedCodexPane()) {
       return
     }
     this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
     syncLegacySharedCodexConfigForRetainedPanes()
+  }
+
+  private carryRetiredSystemDefaultMirror(): void {
+    const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
+    carryRetiredSystemDefaultMirror({
+      runtimeHomePath: resolveOrcaManagedCodexHomePath(),
+      systemHomePath: getSystemCodexHomePath(),
+      metadataDir: this.getRuntimeMetadataDir(),
+      mirrorAuthOwnedBySystemDefault:
+        provenance.kind === 'missing' ||
+        (provenance.kind === 'committed' && provenance.provenance.owner === 'system-default')
+    })
   }
 
   /** Preserve refreshed auth from retained legacy WSL panes before restart. */
