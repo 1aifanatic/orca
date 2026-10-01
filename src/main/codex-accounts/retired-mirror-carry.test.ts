@@ -145,7 +145,20 @@ describe('carryRetiredSystemDefaultMirror', () => {
     expect(carry()).toBe(true)
 
     expect(readSystem('config.toml')).toBe(systemConfig)
-    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).not.toContain('[projects.')
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toContain('[projects.')
+  })
+
+  it('keeps a mirror revocation ~/.codex disagrees with for retained panes', () => {
+    mkdirSync(systemHomePath, { recursive: true })
+    const systemConfig = '[projects.\'C:\\\\work\']\ntrust_level = "trusted"\n'
+    const mirrorConfig = '[projects.\'C:\\\\work\']\ntrust_level = "untrusted"\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
+    writeFileSync(join(runtimeHomePath, 'config.toml'), mirrorConfig)
+
+    expect(carry()).toBe(true)
+
+    expect(readSystem('config.toml')).toBe(systemConfig)
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(mirrorConfig)
   })
 
   it("leaves a managed account's MCP credentials out of ~/.codex", () => {
