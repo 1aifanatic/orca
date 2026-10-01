@@ -187,8 +187,13 @@ export class ClaudeProfileRoutingService {
   async startup(): Promise<void> {
     let firstError: unknown
     for (const target of this.owner.targets()) {
+      const key = publishKey(target)
       try {
-        await this.publish(target)
+        // Why: a launch or select already publishing this target speaks for it, and may be
+        // booting a distro this background pass would find stopped and overtake.
+        await (this.pointers.busy(key)
+          ? this.pointers.newest(key)?.catch(() => {})
+          : this.publish(target))
       } catch (error) {
         firstError ??= error
       }
