@@ -150,6 +150,7 @@ describe('verifyPinnedRelayInstall', () => {
   })
 
   it('self-tests rung C on the host Node without the pinned version check or a cached refusal', async () => {
+    vi.mocked(withRuntimeStoreLock).mockClear()
     vi.mocked(execCommand).mockResolvedValue('')
     const run = new RelayRuntimeLadderRun('target-1', null)
     const hostPlan: HostNodeAddonRelayPlan = {
@@ -177,6 +178,8 @@ describe('verifyPinnedRelayInstall', () => {
       { host, expectPinnedVersion: false }
     )
     expect(run.selfTest).toBe('refused')
+    // Rung C runs no managed runtime, so there is nothing to hold under the store lock.
+    expect(withRuntimeStoreLock).not.toHaveBeenCalled()
     // A host Node refusal says nothing about Orca's pinned Node on this host.
     vi.mocked(execCommand).mockResolvedValueOnce('ldd (GNU libc) 2.31')
     const next = await planPinnedNodeRelay({
