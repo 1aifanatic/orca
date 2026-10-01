@@ -4,7 +4,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import { ensureStructuredAgentSessionAgentForOperation } from './structured-agent-session-agent-start'
+import {
+  ensureStructuredAgentSessionAgentForOperation,
+  structuredAgentSessionOperationStartOutcome
+} from './structured-agent-session-agent-start'
 import { recordStructuredAgentSessionOptionIntent } from './structured-agent-session-options-read'
 
 const SESSION = 'session-1'
@@ -36,24 +39,9 @@ describe('an operation whose agent start throws', () => {
   })
 })
 
-describe('an operation whose agent was published before it proved its start', () => {
-  function startingContext(awaitStarted: () => Promise<unknown>) {
-    return {
-      sessions: new Map([[SESSION, { child: { generation: 'g-1', fence: 1, phase: 'starting' } }]]),
-      deps: { adapter: { awaitStarted } }
-    }
-  }
-
-  it('is answered with why that start failed, once it has', async () => {
-    const refused = await ensureStructuredAgentSessionAgentForOperation(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a partial context double; with a child indexed, only `sessions` and the adapter's `awaitStarted` are read.
-      startingContext(async () => ({
-        kind: 'notSignedIn'
-      })) as unknown as StructuredAgentSessionAttachContext,
-      SESSION
-    )
-
-    expect(refused).toMatchObject({
+describe('an operation that waited on the start it caused', () => {
+  it('is answered with why that start failed, once it has', () => {
+    expect(structuredAgentSessionOperationStartOutcome({ kind: 'notSignedIn' })).toMatchObject({
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
@@ -64,14 +52,8 @@ describe('an operation whose agent was published before it proved its start', ()
     })
   })
 
-  it('goes ahead once that start proved itself', async () => {
-    await expect(
-      ensureStructuredAgentSessionAgentForOperation(
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
-        startingContext(async () => undefined) as unknown as StructuredAgentSessionAttachContext,
-        SESSION
-      )
-    ).resolves.toEqual({ ok: true })
+  it('goes ahead once that start proved itself', () => {
+    expect(structuredAgentSessionOperationStartOutcome(undefined)).toEqual({ ok: true })
   })
 })
 

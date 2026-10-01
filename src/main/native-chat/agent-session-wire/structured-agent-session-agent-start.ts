@@ -7,7 +7,8 @@
 
 import {
   providerDiagnosticOf,
-  type ProviderDiagnostic
+  type ProviderDiagnostic,
+  type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import {
   agentSessionRefusalFromReference,
@@ -26,6 +27,7 @@ import type {
 import { terminalOwnerRefusalMessage } from '../../../shared/agent-session-legacy-handoff-lease'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { attachStructuredAgentSessionUnderSerialize } from './structured-agent-session-attach-orchestration'
+import type { AgentSessionMutationSessionPreparation } from './structured-agent-session-mutation-admission'
 import { failedCreateRefusal } from './structured-agent-session-failed-create-refusal'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import { startFailureRefusalReason } from './structured-agent-session-failure-text'
@@ -74,13 +76,13 @@ export async function ensureStructuredAgentSessionAgent(
   )
 }
 
-/** The same, for an operation's admission: a start that throws is that operation's refusal. The
- *  operation answers once the start it caused proved itself, or with why it did not, so a start
- *  that dies after the answer leaves nothing unaccounted for. */
+/** The same, for an operation's admission: a start that throws is that operation's refusal. A child
+ *  still proving its start is `startPending`, which the operation waits for outside the session's
+ *  queue; see `mutateStructuredAgentSession`. */
 export async function ensureStructuredAgentSessionAgentForOperation(
   context: StructuredAgentSessionAttachContext,
   sessionId: string
-): Promise<StructuredAgentSessionResumeOutcome> {
+): Promise<AgentSessionMutationSessionPreparation> {
   const ready = await ensureStructuredAgentSessionAgent(context, sessionId).catch(
     (error: unknown): StructuredAgentSessionResumeOutcome => {
       // The error is Orca's own and goes to the log; the refusal says only that the start failed.
@@ -94,12 +96,21 @@ export async function ensureStructuredAgentSessionAgentForOperation(
       }
     }
   )
-  if (!ready.ok || context.sessions.get(sessionId)?.child?.phase !== 'starting') {
-    return ready
-  }
-  const failure = await context.deps.adapter.awaitStarted?.(sessionId)
+  return ready.ok &&
+    context.sessions.get(sessionId)?.child?.phase === 'starting' &&
+    context.deps.adapter.awaitStarted
+    ? { ok: true, startPending: true }
+    : ready
+}
+
+/** What an operation is told about the start it waited on: go ahead, or why it did not land. The
+ *  operation answers only once that start proved itself, so a start that dies after the answer
+ *  leaves nothing unaccounted for. */
+export function structuredAgentSessionOperationStartOutcome(
+  failure: SubmissionRejectionFact | void
+): StructuredAgentSessionResumeOutcome {
   if (!failure) {
-    return ready
+    return { ok: true }
   }
   return {
     ok: false,

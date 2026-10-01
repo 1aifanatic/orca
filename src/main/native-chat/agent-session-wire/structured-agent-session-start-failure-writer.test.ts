@@ -467,6 +467,61 @@ describe('the wake for a message waiting out a refused start', () => {
   })
 })
 
+describe('an operation that needs the agent the chat does not have running', () => {
+  function changeGoal() {
+    const change = { kind: 'set', objective: 'Ship the parser' } as const
+    return host.changeThreadGoal(CALLER, {
+      envelope: {
+        sessionId: SESSION,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.threadGoal',
+          sessionId: SESSION,
+          fields: { change }
+        })
+      },
+      change
+    })
+  }
+  const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
+  beforeEach(() => {
+    changeThreadGoal.mockClear()
+    Object.assign(host.deps.adapter, { changeThreadGoal, supportsThreadGoal: () => true })
+  })
+
+  // A start that never settles must not hold the chat: a Stop or the idle sweep has to reach it.
+  it("waits for the start it caused outside the chat's queue, then goes ahead", async () => {
+    const changed = changeGoal()
+    await eventually(() => expect(awaitStarted).toHaveBeenCalled())
+
+    let queueFree = false
+    void host.collaboratorsForTests().serialize(SESSION, async () => {
+      queueFree = true
+    })
+    await eventually(() => expect(queueFree).toBe(true))
+    expect(changeThreadGoal).not.toHaveBeenCalled()
+
+    // Once settled, the adapter answers at once for that child.
+    awaitStarted.mockImplementation(async () => undefined)
+    settleStart(undefined)
+    await expect(changed).resolves.toMatchObject({ ok: true, value: { change: 'set' } })
+    expect(changeThreadGoal).toHaveBeenCalledOnce()
+  })
+
+  it('is answered with why the start it waited on failed', async () => {
+    const changed = changeGoal()
+    await eventually(() => expect(awaitStarted).toHaveBeenCalled())
+
+    settleStart(agentSessionFailureFact('notSignedIn'))
+    await expect(changed).resolves.toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_invalid', details: { reason: 'notSignedIn' } }
+    })
+    expect(changeThreadGoal).not.toHaveBeenCalled()
+  })
+})
+
 describe('a start that fails while its child exits', () => {
   it('is recorded once when the exit lands before the loop sees the start fail', async () => {
     const queued = await sendQueued('hello')
