@@ -68,6 +68,50 @@ describe("the status feed's Stopping", () => {
     expect(published.at(-1)).not.toHaveProperty('stopping')
   })
 
+  it('reads a turn waiting on the person as attention, never Stopping', async () => {
+    const journal = await journals.open({
+      identity: {
+        sessionId: SESSION,
+        workspaceId: 'workspace-1',
+        hostId: 'local',
+        agent: 'codex',
+        providerHandle: { kind: 'codex', threadId: 'thread-1' }
+      },
+      stateDirectory: join(root, SESSION)
+    })
+    const fence = agentSessionRecordFixture().lease.runtimeFence
+    const published: AgentSessionStatusSummary[] = []
+    const feed = new StructuredAgentSessionStatusFeed({
+      sessions: new Map([[SESSION, indexedStatusFeedSession({ journal })]]),
+      statusSink: () => ({ publish: (summary) => published.push(summary), forget: () => {} }),
+      getRecord: () => agentSessionRecordFixture(),
+      now: () => 1_000
+    })
+    const turn = { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1' } as const
+    await journal.appendItem(
+      { ...turn, ordinal: 0 },
+      { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1_000 },
+      { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, fence)
+    await journal.appendItem(
+      { ...turn, ordinal: 1 },
+      {
+        kind: 'approval',
+        title: 'Run command?',
+        detail: null,
+        options: [{ id: 'yes', label: 'Allow' }],
+        resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+      },
+      { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+
+    feed.publish(SESSION)
+
+    expect(published.at(-1)).toMatchObject({ status: 'attention' })
+    expect(published.at(-1)).not.toHaveProperty('stopping')
+  })
+
   it('never says Stopping for a stop that was not a person’s', async () => {
     const journal = await journals.open({
       identity: {
