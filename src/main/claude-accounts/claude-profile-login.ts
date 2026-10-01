@@ -12,6 +12,7 @@ import { ClaudeProfileSetupWorker } from './claude-profile-worker'
 import { prepareClaudeWslGuest } from './claude-profile-wsl-transport'
 import { runClaudeCommandProcess, type ClaudeCommandConfig } from './claude-command-process'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
+import { recordClaudeProfileSetupReport } from './claude-profile-setup-issues'
 
 const identitySchema = z
   .object({
@@ -52,6 +53,9 @@ export async function prepareClaudeProfileLogin(
         { action: 'create', distro, accountId, userHome: guest.home, hooksEnabled },
         'boot'
       )
+      if (result.report) {
+        recordClaudeProfileSetupReport(accountId, result.report)
+      }
       if (result.report?.outcome !== 'prepared') {
         throw new Error('Claude profile could not be prepared.')
       }
@@ -80,6 +84,7 @@ export async function prepareClaudeProfileLogin(
       hooksEnabled,
       claudeVersion: (await probeClaudeCliVersionCached(resolveClaudeCommand())) ?? undefined
     })
+    recordClaudeProfileSetupReport(accountId, report)
     if (report.outcome !== 'prepared') {
       throw new Error('Claude profile could not be prepared.')
     }

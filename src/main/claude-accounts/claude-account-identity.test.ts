@@ -162,3 +162,19 @@ it("names System Default's own login and flags one an earlier Orca left there", 
     leftByEarlierOrca: false
   })
 })
+
+it('surfaces the last setup warning on the account row and clears it after a clean setup', async () => {
+  const { recordClaudeProfileSetupReport } = await import('./claude-profile-setup-issues')
+  const f = fixture()
+  f.signIn('a', 'a@example.test')
+  recordClaudeProfileSetupReport('a', {
+    warnings: [{ surface: 'hooks', code: 'failed', detail: 'hook install failed' }]
+  })
+  expect(f.selection.list().accounts.find((entry) => entry.id === 'a')?.profileSetupIssue).toBe(
+    'hooks'
+  )
+  recordClaudeProfileSetupReport('a', { warnings: [] })
+  expect(
+    f.selection.list().accounts.find((entry) => entry.id === 'a')?.profileSetupIssue
+  ).toBeUndefined()
+})

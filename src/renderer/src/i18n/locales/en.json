@@ -18693,7 +18693,10 @@
       "upgradeSignIn": "After upgrading, sign in once for each saved account. Usage may be stale or expired until you start Claude in that account.",
       "wslNotRunning": "{{value0}} is not running, so this account has not been checked yet. Selecting it starts {{value0}}.",
       "wslUnavailable": "Orca could not check this account in {{value0}}. Select it to try again, or sign in again.",
-      "profileUnreadable": "This account's files could not be read. Try again, or sign in again."
+      "profileUnreadable": "This account's files could not be read. Try again, or sign in again.",
+      "setupHooks": "Orca's status hooks could not be added to this account, so its agent status may not update.",
+      "setupLinks": "Some shared Claude settings could not be linked into this account.",
+      "setupPrivateHistory": "This account's chat history is kept separate because it is on a different drive."
     }
   }
 }

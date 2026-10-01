@@ -4,6 +4,7 @@ import type {
   ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
+import { recordClaudeProfileSetupReport } from './claude-profile-setup-issues'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 import type { ClaudeEnvPatch } from './environment'
 import {
@@ -27,6 +28,9 @@ export async function provisionClaudeLaunchProfile(
     }
     console.warn('[claude-profile] Setup failed; launching the already prepared profile:', error)
     return
+  }
+  if (descriptor.profile) {
+    recordClaudeProfileSetupReport(descriptor.profile.accountId, report)
   }
   if (report.outcome === 'refused') {
     throw new Error('Selected Claude profile could not be prepared')

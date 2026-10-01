@@ -6,6 +6,8 @@ export type ClaudeAccountRowState = {
   label: string
   /** Why the row cannot be used as it is; null for a usable row. */
   problem: string | null
+  /** Something to know about a usable account; never blocks it. */
+  notice: string | null
   selectable: boolean
 }
 
@@ -51,9 +53,27 @@ export function getClaudeAccountRowState(
                     "This account's files could not be read. Try again, or sign in again."
                   )
               : null
+  const notice =
+    account.profileSetupIssue === 'hooks'
+      ? translate(
+          'accounts.claude.setupHooks',
+          "Orca's status hooks could not be added to this account, so its agent status may not update."
+        )
+      : account.profileSetupIssue === 'links'
+        ? translate(
+            'accounts.claude.setupLinks',
+            'Some shared Claude settings could not be linked into this account.'
+          )
+        : account.profileSetupIssue === 'private-history'
+          ? translate(
+              'accounts.claude.setupPrivateHistory',
+              "This account's chat history is kept separate because it is on a different drive."
+            )
+          : null
   return {
     label,
     problem,
+    notice,
     // Why these pass: an older host reports no readiness, and selecting a WSL account starts its
     // distro and checks it, refusing with its own reason if it still cannot be used.
     selectable:

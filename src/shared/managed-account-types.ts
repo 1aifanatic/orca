@@ -87,6 +87,8 @@ export type ClaudeManagedAccountSummary = {
   profileEmail?: string
   /** Set when the profile's login is not the row's own, so the row must not be selected. */
   profileIdentityIssue?: 'mismatch' | 'duplicate'
+  /** The account works, but its last profile setup left something the user should know. */
+  profileSetupIssue?: 'hooks' | 'links' | 'private-history'
 }
 
 /** `unverified`: a WSL distro not checked this session (background work never starts one). */

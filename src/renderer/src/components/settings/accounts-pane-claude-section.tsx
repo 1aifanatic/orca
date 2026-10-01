@@ -296,6 +296,8 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                       </div>
                       {row.problem ? (
                         <span className="text-[11px] text-muted-foreground">{row.problem}</span>
+                      ) : row.notice ? (
+                        <span className="text-[11px] text-muted-foreground">{row.notice}</span>
                       ) : (
                         <span className="truncate text-[11px] text-muted-foreground">
                           {account.organizationName

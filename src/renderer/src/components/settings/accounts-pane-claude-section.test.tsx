@@ -156,4 +156,11 @@ describe('Claude accounts section', () => {
     ]
     expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([false, true])
   })
+
+  it('mentions a setup warning on a usable account without blocking it', () => {
+    const markup = render({
+      accounts: [account('hooks', 'h@example.test', { profileSetupIssue: 'hooks' })]
+    })
+    expect(markup).toContain('status hooks could not be added to this account')
+  })
 })

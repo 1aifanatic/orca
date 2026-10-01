@@ -6,6 +6,7 @@ import type {
 } from '../../shared/managed-account-types'
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
+import { getClaudeProfileSetupIssue } from './claude-profile-setup-issues'
 
 export type ClaudeObservedAccount = Pick<
   ClaudeManagedAccount,
@@ -87,8 +88,10 @@ export function withObservedClaudeIdentities(
   const issues = findClaudeAccountIdentityIssues(observed)
   return observed.map(({ observed: identity, ...account }) => {
     const profileIdentityIssue = issues.get(account.id)
+    const profileSetupIssue = getClaudeProfileSetupIssue(account.id)
     return {
       ...account,
+      ...(profileSetupIssue ? { profileSetupIssue } : {}),
       ...(identity ? { profileEmail: identity.email } : {}),
       ...(profileIdentityIssue ? { profileIdentityIssue } : {})
     }
