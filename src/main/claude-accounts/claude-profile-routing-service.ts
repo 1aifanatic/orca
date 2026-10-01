@@ -1,7 +1,4 @@
-import {
-  CLAUDE_PROFILE_POINTER_ENV,
-  requireClaudeProfileRoutingCapability
-} from '../../shared/claude-profile-routing'
+import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
 import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
 import { readClaudeProfilePointer } from './claude-profile-pointer'
 import { ClaudeProfilePointerQueue } from './claude-profile-pointer-queue'
@@ -17,9 +14,12 @@ import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
 import type { ClaudeEnvPatch } from './environment'
 import {
   describeClaudeSystemDefault,
-  withObservedClaudeIdentities
+  findClaudeAccountIdentityRefusal,
+  withObservedClaudeIdentities,
+  type ClaudeObservedAccount
 } from './claude-account-identity'
 import {
+  assertClaudeProfileLaunchable,
   claudeProfileLaunchEnvPatch,
   claudeProfileLaunchPreparation,
   provisionClaudeLaunchProfile
@@ -35,7 +35,10 @@ export class ClaudeProfileRoutingService {
   private readonly current = new Set<string>()
   private readonly backgroundPublishes = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
-  constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
+  constructor(
+    private readonly owner: ClaudeProfileRoutingOwner,
+    private readonly accounts: () => readonly Omit<ClaudeObservedAccount, 'observed'>[] = () => []
+  ) {}
   /** Settings only: a WSL distro is routed while it holds an Orca Claude account. An unrouted one
    *  stays System Default exactly as before profiles: no pointer, no guest call. */
   routes(target?: ClaudeAccountSelectionTarget): boolean {
@@ -48,15 +51,11 @@ export class ClaudeProfileRoutingService {
       .some((entry) => entry.runtime === 'wsl' && entry.wslDistro?.toLowerCase() === distro)
   }
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
-    const descriptor = this.owner.resolve(target)
-    if (descriptor.target.runtime === 'wsl' && !descriptor.target.wslDistro) {
-      throw new Error('Claude profile requires a specific WSL distro')
-    }
-    requireClaudeProfileRoutingCapability(this.owner.capabilities(descriptor.target))
-    if (!descriptor.configHome || !descriptor.readHome || !descriptor.pointerPath) {
-      throw new Error('Claude profile execution host is unavailable')
-    }
-    return descriptor
+    return assertClaudeProfileLaunchable(this.owner.resolve(target), {
+      capabilities: (descriptor) => this.owner.capabilities(descriptor.target),
+      identityRefusal: (accountId) =>
+        findClaudeAccountIdentityRefusal(this.accounts(), accountId, this.owner)
+    })
   }
   /** Select and startup set the profile up (`always`); a launch only sets up one that never was. */
   publish(

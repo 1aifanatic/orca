@@ -6,7 +6,7 @@ import type {
 } from '../../shared/managed-account-types'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
-import { describeClaudeAccountIdentityIssue } from './claude-account-identity'
+import { describeClaudeAccountIdentityRefusal } from '../../shared/claude-account-refusal-copy'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import {
   getClaudeSelectionTargetForAccount,
@@ -116,10 +116,10 @@ export class ClaudeAccountSelection {
       const described = this.list().accounts.find((entry) => entry.id === accountId)
       if (described?.profileIdentityIssue) {
         throw new Error(
-          describeClaudeAccountIdentityIssue(
-            described.profileIdentityIssue,
-            described.profileEmail ?? described.email
-          )
+          describeClaudeAccountIdentityRefusal(described.profileIdentityIssue, {
+            addedAs: described.email,
+            signedInAs: described.profileEmail ?? described.email
+          })
         )
       }
       const accountTarget = getClaudeSelectionTargetForAccount(account)

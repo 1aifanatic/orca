@@ -9,8 +9,32 @@ import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-t
 import type { ClaudeEnvPatch } from './environment'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
-  CLAUDE_PROFILE_POINTER_ENV
+  CLAUDE_PROFILE_POINTER_ENV,
+  requireClaudeProfileRoutingCapability
 } from '../../shared/claude-profile-routing'
+
+/** Refuses a descriptor no launch may use; select applies the same identity rule. */
+export function assertClaudeProfileLaunchable(
+  descriptor: ClaudeProfileLaunchDescriptor,
+  checks: {
+    capabilities: (descriptor: ClaudeProfileLaunchDescriptor) => readonly string[]
+    identityRefusal: (accountId: string) => string | null
+  }
+): ClaudeProfileLaunchDescriptor {
+  if (descriptor.target.runtime === 'wsl' && !descriptor.target.wslDistro) {
+    throw new Error('Claude profile requires a specific WSL distro')
+  }
+  requireClaudeProfileRoutingCapability(checks.capabilities(descriptor))
+  if (!descriptor.configHome || !descriptor.readHome || !descriptor.pointerPath) {
+    throw new Error('Claude profile execution host is unavailable')
+  }
+  // Why: select refuses a row holding another login, so a row already selected must too.
+  const refusal = descriptor.profile && checks.identityRefusal(descriptor.profile.accountId)
+  if (refusal) {
+    throw new Error(refusal)
+  }
+  return descriptor
+}
 
 /** Ownership refusal stops the caller; a worker fault on an already prepared profile only warns. */
 export async function provisionClaudeLaunchProfile(

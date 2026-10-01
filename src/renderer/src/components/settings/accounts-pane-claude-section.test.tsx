@@ -96,6 +96,10 @@ describe('Claude accounts section', () => {
           profileEmail: 'c@example.test',
           profileIdentityIssue: 'duplicate'
         }),
+        account('moved', 'd@example.test', {
+          profileEmail: 'ok@example.test',
+          profileIdentityIssue: 'duplicate'
+        }),
         account('ready', 'ok@example.test', { profileEmail: 'ok@example.test' })
       ]
     })
@@ -103,10 +107,18 @@ describe('Claude accounts section', () => {
       'This account was added as a@example.test but is now signed in as b@example.test.'
     )
     expect(markup).toContain('c@example.test is already added as another account.')
+    expect(markup).toContain(
+      'This account was added as d@example.test but is now signed in as ok@example.test, which is already added as another account. Sign in again as d@example.test, or remove this account.'
+    )
     const selects = [
       ...markup.matchAll(/<button type="button"[^>]*class="flex min-w-0 flex-1[^"]*"[^>]*>/g)
     ]
-    expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([true, true, false])
+    expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([
+      true,
+      true,
+      true,
+      false
+    ])
   })
 
   it("names System Default's login and says when an earlier Orca left a saved account there", () => {

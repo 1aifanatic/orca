@@ -7,6 +7,7 @@ import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-dupli
 import type { ClaudeLoginIdentity, ClaudeLoginState } from './claude-profile-readiness'
 import { getClaudeProfileSetupIssue } from './claude-profile-setup-issues'
 import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
+import { describeClaudeAccountIdentityRefusal } from '../../shared/claude-account-refusal-copy'
 
 export type ClaudeObservedAccount = Pick<
   ClaudeManagedAccount,
@@ -70,14 +71,32 @@ export function findClaudeAccountIdentityIssues(
   return issues
 }
 
-/** Plain refusal for selecting a row whose profile holds a different login. */
-export function describeClaudeAccountIdentityIssue(
-  issue: ClaudeAccountIdentityIssue,
-  observedEmail: string
-): string {
-  return issue === 'duplicate'
-    ? `This account is signed in as ${observedEmail}, which is already added as another account. Sign in again with a different account, or remove this row.`
-    : `This account is signed in as ${observedEmail}. Sign in again to choose the account it uses, or remove this row.`
+/** Why launching or selecting an account is refused for the login its profile holds. */
+export function findClaudeAccountIdentityRefusal(
+  accounts: readonly Omit<ClaudeObservedAccount, 'observed'>[],
+  accountId: string,
+  owner: { profileState: (accountId: string) => ClaudeLoginState }
+): string | null {
+  const observedIdentity = (id: string) => {
+    const state = owner.profileState(id)
+    return state.readiness === 'ready' ? state.identity : null
+  }
+  const account = accounts.find((entry) => entry.id === accountId)
+  const identity = account ? observedIdentity(accountId) : null
+  if (!account || !identity) {
+    return null
+  }
+  const observed = accounts.map((entry) => ({
+    ...entry,
+    observed: entry.id === accountId ? identity : observedIdentity(entry.id)
+  }))
+  const issue = findClaudeAccountIdentityIssues(observed).get(accountId)
+  return issue
+    ? describeClaudeAccountIdentityRefusal(issue, {
+        addedAs: account.email,
+        signedInAs: identity.email
+      })
+    : null
 }
 
 /** Adds each row's readiness and the login its profile holds; derived on every read. */

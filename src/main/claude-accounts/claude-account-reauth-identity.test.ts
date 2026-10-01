@@ -92,6 +92,7 @@ function fixture(accounts: ClaudeManagedAccount[]) {
       .sort(([l], [r]) => String(l).localeCompare(String(r)))
   return {
     settings,
+    routing,
     selection,
     registration,
     rows,
@@ -122,7 +123,7 @@ it('keeps the original row when a re-sign-in lands on a login another row alread
   // The user clicks Sign in again on a@ while the browser is signed in to b@.
   f.signInAs('b@example.test')
   await expect(f.registration.reauthenticate('a')).rejects.toThrow(
-    'Signed in as b@example.test, which is already added as another account. Sign in again as a@example.test, or remove this account.'
+    'This account was added as a@example.test but is now signed in as b@example.test, which is already added as another account. Sign in again as a@example.test, or remove this account.'
   )
   expect(f.rows()).toEqual([
     ['a', 'a@example.test', 'ready', 'duplicate'],
@@ -164,4 +165,21 @@ it('refuses adding an account that is already saved and signed in, leaving no se
   f.signInAs('a@example.test')
   await expect(f.registration.add()).rejects.toThrow('This Claude account is already added.')
   expect(f.rows()).toEqual([['a', 'a@example.test', 'ready', null]])
+})
+
+it('refuses to launch a selected account that is now signed in to another saved account', async () => {
+  const f = fixture([legacy('a', 'a@example.test', 1), legacy('b', 'b@example.test', 2)])
+  f.signInRow('a', 'a@example.test')
+  f.signInRow('b', 'b@example.test')
+  f.settings.activeClaudeManagedAccountId = 'a'
+  f.settings.activeClaudeManagedAccountIdsByRuntime.host = 'a'
+  expect(f.routing.resolve({ runtime: 'host' }).profile?.accountId).toBe('a')
+  // A `/login` in a@'s terminal as b@ leaves the selected row holding b@'s login.
+  f.signInRow('a', 'b@example.test')
+  expect(() => f.routing.resolve({ runtime: 'host' })).toThrow(
+    'This account was added as a@example.test but is now signed in as b@example.test, which is already added as another account. Sign in again as a@example.test, or remove this account.'
+  )
+  await expect(f.routing.publish({ runtime: 'host' })).rejects.toThrow('or remove this account.')
+  f.signInRow('a', 'a@example.test')
+  expect(f.routing.resolve({ runtime: 'host' }).profile?.accountId).toBe('a')
 })

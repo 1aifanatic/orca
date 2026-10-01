@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { translate } from '@/i18n/i18n'
-import { CLAUDE_ACCOUNT_SIGN_IN_REQUIRED } from '../../../../shared/claude-account-refusal-copy'
+import {
+  CLAUDE_ACCOUNT_SIGN_IN_REQUIRED,
+  isClaudeAccountLaunchRefusal
+} from '../../../../shared/claude-account-refusal-copy'
 import { resolveClientEnvironmentFooter } from '@/lib/client-environment-info'
 import { Button } from '@/components/ui/button'
 import { hasClientEnvironmentFooter } from '../../../../shared/client-environment-info'
@@ -94,7 +97,7 @@ export function isExplainedTerminalError(error: string): boolean {
         TERMINAL_HOST_GONE_PATTERN.test(line) ||
         LEGACY_TERMINAL_HOST_GONE_PATTERN.test(line) ||
         SOURCE_RESTORE_REQUIRED_PATTERN.test(line) ||
-        line.includes(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED) ||
+        isClaudeAccountLaunchRefusal(line) ||
         UNREATTACHABLE_SESSION_PATTERNS.some((pattern) => pattern.test(line))
     )
 }
@@ -188,7 +191,7 @@ export function TerminalErrorToast({
 }): React.JSX.Element {
   const ssh = isSshError(error)
   // Why calm styling: a refused account launch is an expected state with a next step, not a crash.
-  const caution = ssh || error.includes(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED)
+  const caution = ssh || isClaudeAccountLaunchRefusal(error)
   const paneOwnerUnverified = isPaneOwnerUnverifiedError(error)
   const showDaemonRestart = !ssh && onRestartDaemon && shouldOfferDaemonRestart(error)
   // Restart cannot recover a session after its owning daemon exits.

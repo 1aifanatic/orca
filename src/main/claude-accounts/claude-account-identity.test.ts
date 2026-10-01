@@ -107,12 +107,12 @@ it('labels each row with the login its profile holds and flags a row holding ano
     ['b', 'bb@example.test', 'a@example.test', 'duplicate']
   ])
   await expect(f.selection.select('b')).rejects.toThrow(
-    'This account is signed in as a@example.test, which is already added as another account.'
+    'This account was added as bb@example.test but is now signed in as a@example.test, which is already added as another account. Sign in again as bb@example.test, or remove this account.'
   )
   f.signIn('b', 'someone-else@example.test')
   expect(f.rows()[1]).toEqual(['b', 'bb@example.test', 'someone-else@example.test', 'mismatch'])
   await expect(f.selection.select('b')).rejects.toThrow(
-    'This account is signed in as someone-else@example.test.'
+    'This account was added as bb@example.test but is now signed in as someone-else@example.test.'
   )
   await expect(f.selection.select('a')).resolves.toHaveProperty('accounts')
 })

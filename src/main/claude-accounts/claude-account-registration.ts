@@ -1,3 +1,4 @@
+import { describeClaudeAccountIdentityRefusal } from '../../shared/claude-account-refusal-copy'
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
 import { randomUUID } from 'node:crypto'
 import type { GlobalSettings } from '../../shared/global-settings-types'
@@ -197,9 +198,10 @@ export class ClaudeAccountRegistration {
       listed.accounts.find((entry) => entry.id === accountId)?.profileIdentityIssue === 'duplicate'
     ) {
       throw new Error(
-        keepsLabel
-          ? `Signed in as ${identity.email}, which is already added as another account. Sign in again as ${account.email}, or remove this account.`
-          : `${identity.email} is already added as another account. Remove this account, or sign in again with a different one.`
+        describeClaudeAccountIdentityRefusal('duplicate', {
+          addedAs: keepsLabel ? account.email : identity.email,
+          signedInAs: identity.email
+        })
       )
     }
     return listed

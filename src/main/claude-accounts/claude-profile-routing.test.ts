@@ -68,7 +68,7 @@ function fixture() {
     prepareClaudeProfileDirectory(dataRoot, profile, home)
     writeFileSync(
       join(profile.home, '.claude.json'),
-      JSON.stringify({ oauthAccount: { emailAddress: 'fake@example.test' } })
+      JSON.stringify({ oauthAccount: { emailAddress: `${profile.accountId}@example.test` } })
     )
   })
   return { root, home, dataRoot, settings, worker, routing, profiles, inherited }

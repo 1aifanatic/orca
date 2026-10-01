@@ -169,6 +169,7 @@ export function createNativeClaudeProfileRouting(args: {
     withdraw: () => withdrawClaudeProfilePointer(pointerPath)
   }
   return new ClaudeProfileRoutingService(
-    args.wsl ? withWslClaudeProfileOwner(native, args.wsl, () => args.store.getSettings()) : native
+    args.wsl ? withWslClaudeProfileOwner(native, args.wsl, () => args.store.getSettings()) : native,
+    () => args.store.getSettings().claudeManagedAccounts
   )
 }
