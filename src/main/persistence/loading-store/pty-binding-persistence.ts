@@ -1,11 +1,11 @@
-import { clearReplacedPaneBinding } from './replaced-pane-binding'
-import { rollbackWorkspaceSessionAfterFailedAsyncWrite } from '../restoring-sessions/workspace-session-write-rollback'
 import { isDeepStrictEqual } from 'node:util'
 import { LOCAL_EXECUTION_HOST_ID, parseExecutionHostId } from '../../../shared/execution-host'
 import { isTerminalLeafId } from '../../../shared/stable-pane-id'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { rollbackFailedPtyBinding } from './pty-binding-write-rollback'
 import { cloneWorkspaceSessionState } from '../restoring-sessions/session-owner-fields'
+import { rollbackWorkspaceSessionAfterFailedAsyncWrite } from '../restoring-sessions/workspace-session-write-rollback'
+import { clearReplacedPaneBinding } from './replaced-pane-binding'
 
 import type { PtyBindingSourceExpectation } from './store'
 

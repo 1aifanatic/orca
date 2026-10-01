@@ -156,7 +156,7 @@ function installRestartHarness(
     }),
     flushOrThrow: vi.fn(),
     runDurableMutation: vi.fn(async <T>(mutate: () => { value: T }) => mutate().value),
-    persistPtyBinding: vi.fn(),
+    getWorkspaceSessionHostIds: vi.fn(() => ['local']),
     getFolderWorkspace: vi.fn(() => undefined),
     getFolderWorkspaces: vi.fn(() => []),
     getProjectGroups: vi.fn(() => []),
@@ -171,14 +171,20 @@ function installRestartHarness(
   const bindingRuntime = {
     state,
     dirtyProfileStateDomains: new Set(),
-    runDurableMutation: store.runDurableMutation
+    runDurableMutation: store.runDurableMutation,
+    writeTimer: null,
+    pendingWrite: null,
+    quitFlushStarted: false,
+    writeGeneration: 0,
+    lastDurableWriteGeneration: 0
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: retirement reads only state, dirty domains, durable mutation and getWorkspaceSession from these fakes.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: binding writes read only state, write bookkeeping, durable mutation and the session partitions from these fakes.
   const bindingArgs = [bindingRuntime, store] as unknown as ConstructorParameters<
     typeof PtyBindingPersistenceOperations
   >
   const bindingOperations = new PtyBindingPersistenceOperations(...bindingArgs)
   const storeWithRetirement = Object.assign(store, {
+    persistPtyBinding: bindingOperations.persistPtyBinding.bind(bindingOperations),
     retirePtyBinding: bindingOperations.retirePtyBinding.bind(bindingOperations)
   })
   const runtime = {
@@ -350,6 +356,10 @@ describe('account restart through renderer connection and host spawn', () => {
         'resumeProviderSession'
       )
       expect(requestTerminalPaneRecovery).not.toHaveBeenCalled()
+      // The replacement's own bind swapped the host's persisted pane binding.
+      expect(
+        host.store.getWorkspaceSession().terminalLayoutsByTabId[tabId].ptyIdsByLeafId[leafId]
+      ).toBe('pty-new')
     } finally {
       for (const binding of bindings.values()) {
         binding.dispose()

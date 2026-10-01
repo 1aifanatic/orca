@@ -59,6 +59,34 @@ const leafId = '12121212-1212-4212-8212-121212121212'
 const paneKey = makePaneKey(tabId, leafId)
 
 type RestartHarness = ReturnType<typeof installRestartHarness>
+type FakeSession = {
+  tabsByWorktree: Record<string, { id: string; worktreeId: string; ptyId: string | null }[]>
+  terminalLayoutsByTabId: Record<
+    string,
+    {
+      root: { type: 'leaf'; leafId: string }
+      activeLeafId: string
+      expandedLeafId: null
+      ptyIdsByLeafId: Record<string, string>
+    }
+  >
+  terminalPtyIncarnationsByPaneKey: Record<string, string>
+}
+
+function seedSession(ptyId: string): FakeSession {
+  return {
+    tabsByWorktree: { [worktreeId]: [{ id: tabId, worktreeId, ptyId }] },
+    terminalLayoutsByTabId: {
+      [tabId]: {
+        root: { type: 'leaf', leafId },
+        activeLeafId: leafId,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [leafId]: ptyId }
+      }
+    },
+    terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-old' }
+  }
+}
 
 function registerWithFakes(
   mainWindow: PtyIpcSuiteFixtures['mainWindow'],
@@ -125,22 +153,9 @@ function installRestartHarness(
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restart path calls only the provider members this fake defines.
   setLocalPtyProvider(provider as unknown as Parameters<typeof setLocalPtyProvider>[0])
-  // A Record, so a test can withdraw the leaf's binding the way a renderer patch does.
-  const ptyIdsByLeafId: Record<string, string> = { [leafId]: 'pty-old' }
-  let session = {
-    tabsByWorktree: { [worktreeId]: [{ id: tabId, worktreeId, ptyId: 'pty-old' }] },
-    terminalLayoutsByTabId: {
-      [tabId]: {
-        root: { type: 'leaf' as const, leafId },
-        activeLeafId: leafId,
-        expandedLeafId: null,
-        ptyIdsByLeafId
-      }
-    },
-    terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-old' }
-  }
+  let session = seedSession('pty-old')
   const store = {
-    getWorkspaceSession: vi.fn((_hostId?: string) => session),
+    getWorkspaceSession: vi.fn((_hostId?: string): FakeSession => session),
     setWorkspaceSession: vi.fn((next) => {
       session = next
     }),
@@ -161,22 +176,33 @@ function installRestartHarness(
         return mutation.value
       }
     ),
-    getWorkspaceSessionHostIds: vi.fn(() => ['local']),
+    getWorkspaceSessionHostIds: vi.fn(() => [
+      'local',
+      ...Object.keys(state.workspaceSessionsByHostId)
+    ]),
     getFolderWorkspace: vi.fn(() => undefined),
     getFolderWorkspaces: vi.fn(() => []),
     getProjectGroups: vi.fn(() => []),
     getRepos: vi.fn(() => [])
   }
-  const state = { workspaceSession: session, workspaceSessionsByHostId: {} }
+  const state: {
+    workspaceSession: FakeSession
+    workspaceSessionsByHostId: Record<string, FakeSession>
+  } = { workspaceSession: session, workspaceSessionsByHostId: {} }
   const durableBindings: (string | undefined)[] = []
   function leafBinding(hostId?: string): string | undefined {
     return store.getWorkspaceSession(hostId).terminalLayoutsByTabId[tabId]?.ptyIdsByLeafId?.[leafId]
   }
-  store.getWorkspaceSession.mockImplementation((hostId?: string) => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each fake partition has the same session shape.
-    const partitions = state.workspaceSessionsByHostId as Record<string, typeof session>
-    return (hostId && partitions[hostId]) || state.workspaceSession
-  })
+  // Like the store, a missing host partition reads as an empty session, never the local one.
+  store.getWorkspaceSession.mockImplementation((hostId?: string) =>
+    hostId && hostId !== 'local'
+      ? (state.workspaceSessionsByHostId[hostId] ?? {
+          tabsByWorktree: {},
+          terminalLayoutsByTabId: {},
+          terminalPtyIncarnationsByPaneKey: {}
+        })
+      : state.workspaceSession
+  )
   const bindingRuntime = {
     state,
     dirtyProfileStateDomains: new Set(),
@@ -225,7 +251,8 @@ function installRestartHarness(
     provider,
     leafBinding,
     durableBindings,
-    boundAtFreshLaunch
+    boundAtFreshLaunch,
+    partitions: state.workspaceSessionsByHostId
   }
 }
 
@@ -466,52 +493,108 @@ describe('pty:spawn replacing a pane owner', () => {
     expect(leafBinding()).toBe('successor')
   })
 
-  it('swaps the direct-SSH host binding without touching the local provider', async () => {
-    const { provider, providerSpawn, shutdown, store, runtime, leafBinding } =
-      installRestartHarness()
+  /** The SSH pane lives only in its host partition; the local leaf keeps an unrelated id. */
+  async function withSshRestart(
+    run: (
+      host: RestartHarness & { oldId: string; newId: string; hostId: string },
+      restart: (extra?: { replacesPtyId?: string }) => Promise<unknown>
+    ) => Promise<void>
+  ): Promise<void> {
+    const harness = installRestartHarness()
     const connectionId = 'restart-ssh'
+    const hostId = 'ssh:restart-ssh'
     const oldId = toAppSshPtyId(connectionId, 'pty-old')
     const newId = toAppSshPtyId(connectionId, 'pty-new')
-    const session = store.getWorkspaceSession()
-    session.terminalLayoutsByTabId[tabId].ptyIdsByLeafId[leafId] = oldId
-    session.tabsByWorktree[worktreeId][0].ptyId = oldId
-    Object.assign(store, {
+    harness.partitions[hostId] = seedSession(oldId)
+    Object.assign(harness.store, {
       markSshRemotePtyLease: vi.fn(),
       upsertSshRemotePtyLease: vi.fn(),
+      removeSshRemotePtyLease: vi.fn(),
       supersedeSshRemotePtyLeasesForBoundPane: vi.fn()
     })
-    providerSpawn.mockResolvedValue({ id: newId, incarnationId: 'inc-new' })
+    let oldAlive = true
+    harness.shutdown.mockImplementation(async () => {
+      oldAlive = false
+    })
+    harness.providerSpawn.mockImplementation(async (options) => {
+      if (!options.attachOnly) {
+        return { id: newId, incarnationId: 'inc-new' }
+      }
+      if (!oldAlive) {
+        throw new TerminalKilledError(oldId)
+      }
+      return { id: oldId, incarnationId: 'inc-old', isReattach: true }
+    })
     registerSshPtyProvider(
       connectionId,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: same fake provider surface used by the local restart fixture.
-      provider as unknown as Parameters<typeof registerSshPtyProvider>[1]
+      harness.provider as unknown as Parameters<typeof registerSshPtyProvider>[1]
     )
     const localSpawn = vi.fn(() => {
       throw new Error('wrong execution host')
     })
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the test must never reach the local provider.
     setLocalPtyProvider({
-      ...provider,
+      ...harness.provider,
       spawn: localSpawn,
       shutdown: localSpawn
     } as unknown as Parameters<typeof setLocalPtyProvider>[0])
-    registerWithFakes(mainWindow, runtime, store)
+    registerWithFakes(mainWindow, harness.runtime, harness.store)
     try {
-      await expect(
-        handlers.get('pty:spawn')!(null, {
-          ...restartSpawnArgs({ replacesPtyId: oldId }),
-          connectionId
-        })
-      ).resolves.toMatchObject({ id: newId })
-      expect(shutdown).toHaveBeenCalledWith(oldId, expect.objectContaining({ immediate: true }))
-      expect(store.persistPtyBinding).toHaveBeenCalledWith(expect.any(Function), 'ssh:restart-ssh')
-      expect(leafBinding('ssh:restart-ssh')).toBe(newId)
+      await run({ ...harness, oldId, newId, hostId }, (extra = {}) =>
+        handlers.get('pty:spawn')!(null, { ...restartSpawnArgs(extra), connectionId })
+      )
       expect(localSpawn).not.toHaveBeenCalled()
-      expect(providerSpawn.mock.calls.every(([options]) => !options.attachOnly)).toBe(true)
+      expect(harness.leafBinding()).toBe('pty-old')
     } finally {
       unregisterSshPtyProvider(connectionId)
     }
+  }
+
+  it('swaps the direct-SSH host binding without touching the local provider', async () => {
+    await withSshRestart(async (host, restart) => {
+      await expect(restart({ replacesPtyId: host.oldId })).resolves.toMatchObject({
+        id: host.newId
+      })
+      expect(host.shutdown).toHaveBeenCalledWith(
+        host.oldId,
+        expect.objectContaining({ immediate: true })
+      )
+      expect(host.store.persistPtyBinding).toHaveBeenCalledWith(expect.any(Function), host.hostId)
+      expect(host.leafBinding(host.hostId)).toBe(host.newId)
+      expect(host.providerSpawn.mock.calls.every(([options]) => !options.attachOnly)).toBe(true)
+    })
   })
+
+  it('reaps a direct-SSH replacement when a successor binds the host pane during its spawn', async () => {
+    await withSshRestart(async (host, restart) => {
+      host.providerSpawn.mockImplementationOnce(async () => {
+        host.partitions[host.hostId].terminalLayoutsByTabId[tabId].ptyIdsByLeafId[leafId] =
+          'successor'
+        return { id: host.newId, incarnationId: 'inc-new' }
+      })
+      await expect(restart({ replacesPtyId: host.oldId })).rejects.toThrow(
+        'terminal_pane_owner_changed'
+      )
+      expect(host.shutdown).toHaveBeenCalledWith(
+        host.newId,
+        expect.objectContaining({ immediate: true })
+      )
+      expect(host.leafBinding(host.hostId)).toBe('successor')
+    })
+  })
+
+  it('clears the direct-SSH stopped binding when the replacement fails, so the remount starts fresh', async () => {
+    await withSshRestart(async (host, restart) => {
+      host.providerSpawn.mockRejectedValueOnce(new Error('spawn failed'))
+      await expect(restart({ replacesPtyId: host.oldId })).rejects.toThrow('spawn failed')
+      const boundAfterFailure = host.leafBinding(host.hostId)
+      await expect(restart()).resolves.toMatchObject({ id: host.newId })
+      expect(boundAfterFailure).toBeUndefined()
+      expect(host.providerSpawn.mock.calls.every(([options]) => !options.attachOnly)).toBe(true)
+    })
+  })
+
   it.each(['darwin', 'linux', 'win32'])(
     'restarts a folder workspace on %s without deleting its pane',
     async (platform) => {

@@ -74,7 +74,7 @@ export function swapReplacedPaneBinding(
       store.getWorkspaceSession(hostId).terminalLayoutsByTabId?.[binding.tabId]?.ptyIdsByLeafId?.[
         binding.leafId
       ]
-    // Why unbound passes: the renderer clears its leaf before connecting, and a split tab's partial map or an SSH terminated lease lets that clear withdraw the binding.
+    // Unbound is ok: the renderer's pre-connect clear can withdraw it (split tab, SSH lease ended).
     return bound === undefined || bound === replaced.ptyId ? binding : null
   }
 }
