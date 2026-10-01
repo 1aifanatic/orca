@@ -186,10 +186,19 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
         { origin: 'process', yieldsToHookSince }
       ),
     // Why the ended-process path: it clears every reader, renderer included. The shell outlived
-    // the run, so the pane keeps its resume identity, as for a confirmed shell foreground.
-    clearEndedRun: (ptyId) =>
+    // the run, so a row that carries a resume identity (a hook-owned OpenCode 1 run) keeps it.
+    clearEndedRun: (ptyId) => {
+      // Why: while this reads `working`, prompt-send verification takes any output as delivery.
+      this.recordAgentPromptLifecycleState(ptyId, null)
       this.reconcileAgentStatusForEndedProcessFn?.(this.collectAgentStatusPaneKeysForPty(ptyId), {
         preserveResumeIdentity: true
+      })
+    },
+    announceEndedRun: (ptyId, run) =>
+      this.recordTerminalSideEffectFact(ptyId, {
+        kind: 'agent-run-ended',
+        agentType: run.agentType,
+        ...(run.interrupted ? { interrupted: true } : {})
       }),
     now: () => Date.now()
   })

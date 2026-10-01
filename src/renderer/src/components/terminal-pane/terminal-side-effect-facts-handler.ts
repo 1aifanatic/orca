@@ -19,6 +19,7 @@ import type {
   TerminalSideEffectBatch,
   TerminalSideEffectFact
 } from '../../../../shared/terminal-side-effect-facts'
+import { observeEndedAgentRunForNotification } from '@/hooks/agent-run-ended-notifications'
 
 // Why: cached once per session — the blocking read should only ever run on
 // the pre-hydration startup path, never per pane bind.
@@ -257,7 +258,25 @@ function drainHandoffFactBuffer(ptyId: string, entry: ConsumerEntry): void {
   }
 }
 
+// Why before the consumer lookup: the run's end must notify like a hook Done does, in panes
+// that have no fact consumer (unmounted, never shown, or a visible remote-runtime pane).
+function announceEndedAgentRuns(batch: TerminalSideEffectBatch): void {
+  if (batch.replay || !batch.paneKey) {
+    return
+  }
+  for (const fact of batch.facts) {
+    if (fact.kind === 'agent-run-ended') {
+      observeEndedAgentRunForNotification({
+        paneKey: batch.paneKey,
+        agentType: fact.agentType,
+        interrupted: fact.interrupted === true
+      })
+    }
+  }
+}
+
 export function dispatchTerminalSideEffectBatch(batch: TerminalSideEffectBatch): void {
+  announceEndedAgentRuns(batch)
   const entry = consumersByPtyId.get(batch.ptyId)
   if (!entry) {
     bufferHandoffFactBatch(batch)

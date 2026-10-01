@@ -320,6 +320,14 @@ export function observeAgentHookCompletionForNotification({
   }
 }
 
+/** The coordinator a live pane's hook lane already has; never creates one. */
+export function getLiveAgentHookCompletionCoordinator(
+  paneKey: string
+): AgentCompletionCoordinator | null {
+  const entry = coordinatorsByPaneKey.get(paneKey)
+  return entry && paneCanReceiveHookCompletion(paneKey) ? entry.coordinator : null
+}
+
 export function resetAgentHookCompletionNotificationCoordinators(): void {
   for (const entry of coordinatorsByPaneKey.values()) {
     entry.coordinator.dispose()

@@ -19,7 +19,7 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
         return
       case 'command-finished':
         // Why before retiring: retirement deletes the pane's rows without telling the renderer.
-        this.openCodeRunLifetime.onCommandFinished(ptyId)
+        this.openCodeRunLifetime.onCommandFinished(ptyId, fact.exitCode)
         this.retirePtyAgentLaunchAuthority(ptyId)
         this.recordTerminalSideEffectFact(ptyId, {
           kind: 'command-finished',

@@ -198,6 +198,12 @@ export function createAgentCompletionHookObserver({
 
   return {
     observeHookStatus,
+    observeAgentRunEnded: (payload: AgentCompletionStatusSnapshot) => {
+      // Why: a run's exit completes only a turn this lane saw open; a hook Done may have announced it.
+      if (state.workingStatusObserved) {
+        observeHookStatus(payload)
+      }
+    },
     seedHookStatus: (payload: AgentCompletionStatusSnapshot) => {
       const { turnCompletedAt, ...unstampedPayload } = payload
       if (isFiniteTurnCompletedAt(turnCompletedAt)) {

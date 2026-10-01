@@ -5,7 +5,7 @@
  * renderer store handler owns notification/unread policy.
  */
 
-import type { ParsedAgentStatusPayload } from './agent-status-types'
+import type { AgentType, ParsedAgentStatusPayload } from './agent-status-types'
 import type { TerminalGitHubPRLink } from './terminal-github-pr-link-detector'
 
 /** Why tagged: stale-clear facts come from main's unthrottled 3s timer, not
@@ -21,6 +21,9 @@ export type TerminalSideEffectFact =
   | { kind: 'agent-exited' }
   /** OSC 133;D — foreground shell command exited (exit code best-effort). */
   | { kind: 'command-finished'; exitCode: number | null }
+  /** An agent run reported only by its process lifetime (`opencode run`) ended. Its row is
+   *  already gone; the exit is the turn's only end, so the renderer announces completion. */
+  | { kind: 'agent-run-ended'; agentType: AgentType; interrupted?: true }
   /** Carries the parsed link so the renderer store consumer never re-parses
    *  the URL (parse drift would break the per-PTY dedupe contract). */
   | { kind: 'pr-link'; link: TerminalGitHubPRLink }

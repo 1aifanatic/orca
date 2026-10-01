@@ -65,6 +65,8 @@ export type AgentCompletionCoordinator = {
   observeTitleWorking: () => void
   observeOutputActivity: () => void
   observeHookStatus: (payload: AgentCompletionStatusSnapshot) => void
+  /** A run reported only by its process lifetime ended: a `done` for the turn still open, if any. */
+  observeAgentRunEnded: (payload: AgentCompletionStatusSnapshot) => void
   seedHookStatus: (payload: AgentCompletionStatusSnapshot) => void
   startProcessTracking: () => void
   /** Another reader saw this agent in the foreground; lets the monitor confirm its exit. */

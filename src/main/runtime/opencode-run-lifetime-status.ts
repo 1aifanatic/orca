@@ -8,6 +8,7 @@ import { FOREGROUND_COMMAND_READS } from '../../shared/foreground-command-settle
 import { isOpenCodeRunCommand } from '../../shared/opencode-headless-command'
 import { isShellProcess } from '../../shared/shell-process-detection'
 
+const SIGINT_EXIT_CODE = 130
 // Launchers that can still exec OpenCode after the first read (`npx`/`bunx opencode-ai run`).
 const OPENCODE_LAUNCHERS = new Set(['node', 'bun', 'bunx', 'npx', 'npm', 'pnpm', 'pnpx', 'yarn'])
 
@@ -34,6 +35,8 @@ type Dependencies = {
   publish(ptyId: string, payload: ParsedAgentStatusPayload, yieldsToHookSince: number): void
   /** The run's process exited back to the shell: retire the pane's row as any ended agent's. */
   clearEndedRun(ptyId: string): void
+  /** The exit is the run's only turn end, so it is what completion notifications announce. */
+  announceEndedRun(ptyId: string, run: { agentType: OpenCodeAgent; interrupted: boolean }): void
   now(): number
 }
 
@@ -57,7 +60,7 @@ export class OpenCodeRunLifetimeStatus {
 
   onCommandStarted(ptyId: string): void {
     // Why: a new command proves the armed one ended even though its 133;D never arrived.
-    this.onCommandFinished(ptyId)
+    this.onCommandFinished(ptyId, null)
     if (
       !this.deps.isObservablePty(ptyId) ||
       (!this.deps.isStatusEnabled('opencode') && !this.deps.isStatusEnabled('opencode2'))
@@ -74,12 +77,17 @@ export class OpenCodeRunLifetimeStatus {
     this.scheduleInspect(ptyId, state, FOREGROUND_COMMAND_READS.settleMs, 0)
   }
 
-  onCommandFinished(ptyId: string): void {
+  onCommandFinished(ptyId: string, exitCode: number | null): void {
     const state = this.commands.get(ptyId)
     this.forgetPty(ptyId)
-    if (state?.armed) {
-      this.deps.clearEndedRun(ptyId)
+    if (!state?.armed) {
+      return
     }
+    this.deps.clearEndedRun(ptyId)
+    this.deps.announceEndedRun(ptyId, {
+      agentType: state.armed,
+      interrupted: exitCode === SIGINT_EXIT_CODE
+    })
   }
 
   forgetPty(ptyId: string): void {

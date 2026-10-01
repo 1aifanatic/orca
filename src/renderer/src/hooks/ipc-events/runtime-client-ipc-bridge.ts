@@ -9,7 +9,7 @@ import {
   refreshRuntimeEnvironmentSshTargetMetadata
 } from '@/runtime/runtime-environment-ssh-state'
 import { subscribeRuntimeClientEvents } from '@/runtime/runtime-client-events'
-import { toRemoteRuntimePtyId } from '@/runtime/runtime-terminal-stream'
+import { toClientTerminalSideEffectBatch } from '@/runtime/remote-terminal-side-effect-batch'
 import { getEnvironmentSshStateGeneration } from '@/store/slices/runtime-environment-ssh'
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
 import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
@@ -82,10 +82,7 @@ export function registerRuntimeClientIpcBridge(
       return
     }
     if (event.type === 'terminalSideEffects') {
-      dispatchTerminalSideEffectBatch({
-        ...event.batch,
-        ptyId: toRemoteRuntimePtyId(event.batch.ptyId, environmentId)
-      })
+      dispatchTerminalSideEffectBatch(toClientTerminalSideEffectBatch(event.batch, environmentId))
       return
     }
     if (event.type === 'nativeChatLaunchDraftResolved') {

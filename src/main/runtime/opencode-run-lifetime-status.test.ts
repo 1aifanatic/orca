@@ -15,6 +15,7 @@ function setup(
 ) {
   const published: Published[] = []
   const events: string[] = []
+  const announced: { ptyId: string; agentType: string; interrupted: boolean }[] = []
   const readForegroundProcessName = vi.fn(async () =>
     options.name === undefined ? 'opencode' : options.name
   )
@@ -33,6 +34,7 @@ function setup(
       events.push(`${ptyId}:${payload.state}`)
     },
     clearEndedRun: (ptyId) => events.push(`${ptyId}:cleared`),
+    announceEndedRun: (ptyId, run) => announced.push({ ptyId, ...run }),
     now: () => clock++
   })
   // pty-1's writes and clears in order, without the pane prefix.
@@ -42,6 +44,7 @@ function setup(
     lifetime,
     published,
     events,
+    announced,
     states,
     readForegroundProcessName,
     readForegroundCommandLine
@@ -67,7 +70,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     expect(states()).toEqual([])
     await settle()
     expect(states()).toEqual(['working'])
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     // Why no Done: Done means a live TUI finished its turn; the run's process has exited.
     expect(states()).toEqual(['working', 'cleared'])
     expect(published.map((entry) => entry.payload.agentType)).toEqual(['opencode'])
@@ -85,23 +88,39 @@ describe('OpenCodeRunLifetimeStatus', () => {
     expect(published[0]?.payload.agentType).toBe('opencode2')
   })
 
+  // Why: the exit is the run's only turn end, so it carries the completion notification.
+  it('announces each ended run, as interrupted only for a Ctrl+C exit', async () => {
+    const { lifetime, announced } = setup()
+    lifetime.onCommandStarted('pty-1')
+    await settle()
+    lifetime.onCommandFinished('pty-1', 130)
+    lifetime.onCommandStarted('pty-1')
+    await settle()
+    lifetime.onCommandFinished('pty-1', 1)
+    expect(announced).toEqual([
+      { ptyId: 'pty-1', agentType: 'opencode', interrupted: true },
+      { ptyId: 'pty-1', agentType: 'opencode', interrupted: false }
+    ])
+  })
+
   it('clears each run once, so a second run in the pane shows Working again', async () => {
-    const { lifetime, states } = setup()
+    const { lifetime, states, announced } = setup()
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
+    lifetime.onCommandFinished('pty-1', 0)
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     expect(states()).toEqual(['working', 'cleared', 'working', 'cleared'])
+    expect(announced).toHaveLength(2)
   })
 
   it('reads no argv unless the foreground process is OpenCode', async () => {
     const { lifetime, states, readForegroundCommandLine } = setup({ name: 'npm' })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
@@ -145,11 +164,12 @@ describe('OpenCodeRunLifetimeStatus', () => {
 
   it('leaves the OpenCode TUI and its other subcommands to their own reporters', async () => {
     for (const commandLine of ['opencode', 'opencode serve', 'opencode attach http://x', null]) {
-      const { lifetime, states } = setup({ commandLine })
+      const { lifetime, states, announced } = setup({ commandLine })
       lifetime.onCommandStarted('pty-1')
       await settle()
-      lifetime.onCommandFinished('pty-1')
+      lifetime.onCommandFinished('pty-1', 0)
       expect(states()).toEqual([])
+      expect(announced).toEqual([])
     }
   })
 
@@ -161,12 +181,13 @@ describe('OpenCodeRunLifetimeStatus', () => {
   })
 
   it('stays silent for a command that finishes before the settle read (`&`, fast exit)', async () => {
-    const { lifetime, states, readForegroundProcessName } = setup()
+    const { lifetime, states, announced, readForegroundProcessName } = setup()
     lifetime.onCommandStarted('pty-1')
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     await settle()
     expect(readForegroundProcessName).not.toHaveBeenCalled()
     expect(states()).toEqual([])
+    expect(announced).toEqual([])
   })
 
   it('never arms from a read that a newer command superseded', async () => {
@@ -180,7 +201,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     )
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     resolveName('opencode')
     await vi.runAllTimersAsync()
     expect(states()).toEqual([])
@@ -190,7 +211,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     const { lifetime, states, readForegroundCommandLine } = setup({ enabledAgents: ['opencode2'] })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     expect(readForegroundCommandLine).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
@@ -206,17 +227,18 @@ describe('OpenCodeRunLifetimeStatus', () => {
     const { lifetime, states, readForegroundProcessName } = setup({ observable: false })
     lifetime.onCommandStarted('pty-1')
     await settle()
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     expect(readForegroundProcessName).not.toHaveBeenCalled()
     expect(states()).toEqual([])
   })
 
   it('clears an armed run when the next command starts without its 133;D', async () => {
-    const { lifetime, states } = setup()
+    const { lifetime, states, announced } = setup()
     lifetime.onCommandStarted('pty-1')
     await settle()
     lifetime.onCommandStarted('pty-1')
     expect(states()).toEqual(['working', 'cleared'])
+    expect(announced).toEqual([{ ptyId: 'pty-1', agentType: 'opencode', interrupted: false }])
     await settle()
     expect(states()).toEqual(['working', 'cleared', 'working'])
   })
@@ -227,7 +249,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     lifetime.onCommandStarted('pty-1')
     await settle()
     lifetime.forgetPty('pty-1')
-    lifetime.onCommandFinished('pty-1')
+    lifetime.onCommandFinished('pty-1', 0)
     expect(states()).toEqual(['working'])
   })
 
@@ -236,7 +258,7 @@ describe('OpenCodeRunLifetimeStatus', () => {
     lifetime.onCommandStarted('pty-1')
     lifetime.onCommandStarted('pty-2')
     await settle()
-    lifetime.onCommandFinished('pty-2')
+    lifetime.onCommandFinished('pty-2', 0)
     expect(events).toEqual(['pty-1:working', 'pty-2:working', 'pty-2:cleared'])
   })
 })
