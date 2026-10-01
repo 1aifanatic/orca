@@ -1,4 +1,4 @@
-import { isOwnedAgentResumeSession } from './agent-resume-identity'
+import { agentResumeIdentityPermits } from './agent-resume-identity'
 import {
   getAgentResumeArgv,
   type AgentProviderSessionMetadata,
@@ -15,7 +15,6 @@ import { buildAgentResumeLaunchCommand } from './agent-resume-launch-command'
 
 export function buildAgentResumeStartupPlan(args: {
   agent: ResumableTuiAgent
-  requireOwnedSession?: boolean
   providerSession: AgentProviderSessionMetadata
   cmdOverrides: Partial<Record<TuiAgent, string>>
   platform: NodeJS.Platform
@@ -28,10 +27,7 @@ export function buildAgentResumeStartupPlan(args: {
   sessionOptionsOverrideAgentArgs?: boolean
   isRemote?: boolean
 }): AgentStartupPlan | null {
-  if (
-    (args.requireOwnedSession || args.providerSession.resumeIdentity !== undefined) &&
-    !isOwnedAgentResumeSession(args.agent, args.providerSession)
-  ) {
+  if (!agentResumeIdentityPermits(args.agent, args.providerSession)) {
     return null
   }
   const argv = getAgentResumeArgv(args.agent, args.providerSession, args.ompResumeFilePath)

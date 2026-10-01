@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   AGENT_RESUME_IDENTITY_ERROR,
+  agentResumeIdentityPermits,
   captureAgentResumeLaunchConfig,
   decodeHookResumeSession,
   isOwnedAgentResumeSession,
-  providerSessionForResumeRequest
+  providerSessionForResumeRequest,
+  savedAgentResumeLaunchConfig
 } from './agent-resume-identity'
 import { normalizeAgentProviderSession, RESUMABLE_TUI_AGENTS } from './agent-session-resume'
 import { buildAgentResumeStartupPlan } from './tui-agent-startup'
@@ -20,7 +22,7 @@ describe('owned resume record', () => {
     expect(session && isOwnedAgentResumeSession(agent, session)).toBe(true)
   })
 
-  it('keeps a legacy row without source unresolved, even with a UUID session id', () => {
+  it('keeps a legacy row without source unresolved, and resumes it as before', () => {
     const session = decodeHookResumeSession(
       { ...locator, id: '0195f2ce-1111-4000-8000-000000000001' },
       undefined,
@@ -31,12 +33,44 @@ describe('owned resume record', () => {
       buildAgentResumeStartupPlan({
         agent: 'claude',
         providerSession: session!,
-        requireOwnedSession: true,
-        cmdOverrides: { claude: 'claude' },
+        cmdOverrides: { claude: '/opt/custom/claude' },
         agentArgs: '--dangerously-skip-permissions',
         platform: 'linux'
+      })?.launchCommand
+    ).toBe(
+      "/opt/custom/claude '--dangerously-skip-permissions' '--resume' '0195f2ce-1111-4000-8000-000000000001'"
+    )
+  })
+
+  it('refuses only unreadable or mismatched ownership, never an absent one', () => {
+    expect(agentResumeIdentityPermits('codex', locator)).toBe(true)
+    expect(agentResumeIdentityPermits('codex', { ...locator, resumeIdentity: null })).toBe(false)
+    const owned = decodeHookResumeSession(locator, 'codex', 'ssh-a')!
+    expect(agentResumeIdentityPermits('codex', owned, 'ssh-a')).toBe(true)
+    expect(agentResumeIdentityPermits('claude', owned, 'ssh-a')).toBe(false)
+    expect(agentResumeIdentityPermits('codex', owned, 'ssh-b')).toBe(false)
+  })
+
+  it('prefers settings captured with the owner, then the record settings', () => {
+    const captured = { agentCommand: 'captured', agentArgs: '', agentEnv: {} }
+    const recordConfig = { agentCommand: 'record', agentArgs: '', agentEnv: {} }
+    const owned = captureAgentResumeLaunchConfig(
+      decodeHookResumeSession(locator, 'codex', null)!,
+      'codex',
+      captured
+    )
+    expect(
+      savedAgentResumeLaunchConfig('codex', { providerSession: owned, launchConfig: recordConfig })
+    ).toBe(owned.resumeIdentity?.launchConfig)
+    expect(
+      savedAgentResumeLaunchConfig('claude', { providerSession: owned, launchConfig: recordConfig })
+    ).toBe(recordConfig)
+    expect(
+      savedAgentResumeLaunchConfig('codex', {
+        providerSession: locator,
+        launchConfig: recordConfig
       })
-    ).toBeNull()
+    ).toBe(recordConfig)
   })
 
   it('refuses a saved mixed identity rather than relabeling it', () => {

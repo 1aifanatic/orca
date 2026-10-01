@@ -315,19 +315,8 @@ describe('createRemoteRuntimePtyTransport', () => {
       command: "claude '--resume' 'provider-session'",
       env: { CLIENT_ONLY: 'must-not-cross' },
       launchAgent: 'claude',
-      agentArgsOverride: '--stale-override',
-      resumeProviderSession: {
-        key: 'session_id',
-        id: 'provider-session',
-        resumeIdentity: {
-          agent: 'claude',
-          connectionId: null,
-          launchConfig: {
-            agentArgs: '--permission-mode plan',
-            agentEnv: { CAPTURED: 'client-only' }
-          }
-        }
-      },
+      agentArgsOverride: '--permission-mode plan',
+      resumeProviderSession: { key: 'session_id', id: 'provider-session' },
       tabId: 'tab-1',
       leafId: '11111111-1111-4111-8111-111111111111'
     })
@@ -357,6 +346,63 @@ describe('createRemoteRuntimePtyTransport', () => {
         params: expect.objectContaining({ command: expect.any(String) })
       })
     )
+  })
+
+  it.each([
+    [
+      'captured args win over the pane override',
+      '--permission-mode plan',
+      '--stale',
+      '--permission-mode plan'
+    ],
+    ['nothing captured keeps the pane override', undefined, '--pane-override', '--pane-override'],
+    [
+      'nothing captured or overridden omits agentArgs for the host defaults',
+      undefined,
+      undefined,
+      undefined
+    ]
+  ] as const)('sends owned resume args: %s', async (_name, captured, override, expected) => {
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    const transport = createRemoteRuntimePtyTransport('env-1', {
+      worktreeId: 'repo1::/remote/wt',
+      command: "claude '--resume' 'provider-session'",
+      launchAgent: 'claude',
+      ...(override !== undefined ? { agentArgsOverride: override } : {}),
+      resumeProviderSession: {
+        key: 'session_id',
+        id: 'provider-session',
+        resumeIdentity: {
+          agent: 'claude',
+          connectionId: null,
+          ...(captured !== undefined
+            ? { launchConfig: { agentArgs: captured, agentEnv: { CAPTURED: 'client-only' } } }
+            : {})
+        }
+      },
+      tabId: 'tab-1',
+      leafId: '11111111-1111-4111-8111-111111111111'
+    })
+
+    await transport.connect({ url: '', callbacks: {} })
+
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'terminal.ensureAgentSession',
+        params: expect.objectContaining({
+          providerSession: { key: 'session_id', id: 'provider-session' },
+          ...(expected !== undefined ? { agentArgs: expected } : {})
+        })
+      })
+    )
+    if (expected === undefined) {
+      expect(runtimeCall).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'terminal.ensureAgentSession',
+          params: expect.objectContaining({ agentArgs: expect.anything() })
+        })
+      )
+    }
   })
 
   it('degrades a Kimi resume to a legacy launch when the host predates the resume capability', async () => {

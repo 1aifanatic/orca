@@ -72,15 +72,7 @@ const record: SleepingAgentSessionRecord = {
   tabId: 'tab-1',
   worktreeId: 'wt-1',
   agent: 'codex',
-  providerSession: {
-    key: 'session_id',
-    id: SESSION_ID,
-    resumeIdentity: {
-      agent: 'codex',
-      connectionId: null,
-      launchConfig: { agentArgs: '--dangerously-bypass-approvals-and-sandbox', agentEnv: {} }
-    }
-  },
+  providerSession: { key: 'session_id', id: SESSION_ID },
   prompt: 'finish the task',
   state: 'done',
   origin: 'worktree-sleep',
@@ -120,26 +112,47 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
   })
 
-  it.each(['unresolved', 'mixed', 'wrong-host'] as const)(
-    'visibly refuses %s ownership without creating a resume tab',
+  it.each(['unreadable', 'mixed', 'wrong-host'] as const)(
+    'visibly refuses %s saved ownership without creating a resume tab',
     async (kind) => {
-      const providerSession = { ...record.providerSession }
-      if (kind === 'unresolved') {
-        delete providerSession.resumeIdentity
-      } else {
-        providerSession.resumeIdentity = {
-          agent: kind === 'mixed' ? 'claude' : 'codex',
-          connectionId: kind === 'wrong-host' ? 'ssh-other' : null
-        }
-      }
+      const resumeIdentity =
+        kind === 'unreadable'
+          ? null
+          : {
+              agent: kind === 'mixed' ? ('claude' as const) : ('codex' as const),
+              connectionId: kind === 'wrong-host' ? 'ssh-other' : null
+            }
       await expect(
-        launch({ ...record, connectionId: null, providerSession })
+        launch({
+          ...record,
+          connectionId: null,
+          providerSession: { ...record.providerSession, resumeIdentity }
+        })
       ).resolves.toBeUndefined()
       expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_ERROR)
       expect(mockCreateTab).not.toHaveBeenCalled()
       expect(store.clearSleepingAgentSession).not.toHaveBeenCalled()
     }
   )
+
+  it('prefers settings captured with the owner over the current settings', async () => {
+    store.settings.terminalWindowsShell = 'powershell.exe'
+    store.settings.agentCmdOverrides = { codex: 'current-codex' }
+
+    await expect(
+      launch({
+        ...record,
+        providerSession: {
+          ...record.providerSession,
+          resumeIdentity: {
+            agent: 'codex',
+            connectionId: null,
+            launchConfig: { agentCommand: 'captured-codex', agentArgs: '', agentEnv: {} }
+          }
+        }
+      })
+    ).resolves.toBe(`captured-codex 'resume' '${SESSION_ID}'`)
+  })
 
   it('quotes the resume argv for a cmd.exe tab', async () => {
     store.settings.terminalWindowsShell = 'cmd.exe'
@@ -194,7 +207,6 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
       providerSession: {
         key: 'session_id',
         id: SESSION_ID,
-        resumeIdentity: { agent: 'omp', connectionId: null },
         transcriptPath: 'C:\\custom sessions\\session.jsonl'
       }
     }
@@ -209,7 +221,6 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
       providerSession: {
         key: 'session_id',
         id: SESSION_ID,
-        resumeIdentity: { agent: 'omp', connectionId: null },
         transcriptPath: '/remote/custom sessions/session.jsonl'
       }
     }

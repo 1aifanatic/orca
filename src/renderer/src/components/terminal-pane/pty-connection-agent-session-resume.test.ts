@@ -170,7 +170,6 @@ describe('connectPanePty', () => {
         ORCA_WORKSPACE_ID: 'wrong-workspace'
       }
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: {
@@ -189,11 +188,7 @@ describe('connectPanePty', () => {
           tabId: 'tab-1',
           worktreeId: 'wt-1',
           agent: 'codex',
-          providerSession: {
-            key: 'session_id',
-            id: 'codex-session-1',
-            resumeIdentity: { agent: 'codex', connectionId: null, launchConfig }
-          },
+          providerSession: { key: 'session_id', id: 'codex-session-1' },
           prompt: 'finish the task',
           state: 'working',
           capturedAt: 1,
@@ -288,7 +283,6 @@ describe('connectPanePty', () => {
     transportFactoryQueue.push(transport)
     const paneKey = makePaneKey('tab-1', LEAF_1)
     const launchConfig = { agentCommand: 'codex', agentArgs: '', agentEnv: {} }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: { 'wt-1': [{ id: 'tab-1', ptyId: null }] },
@@ -356,7 +350,6 @@ describe('connectPanePty', () => {
       agentArgs: '--model gpt-5-mini',
       agentEnv: {}
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: {
@@ -373,11 +366,7 @@ describe('connectPanePty', () => {
           state: 'working',
           prompt: 'finish the task',
           agentType: 'codex',
-          providerSession: {
-            key: 'session_id',
-            id: 'codex-session-1',
-            resumeIdentity: { agent: 'codex', connectionId: null, launchConfig }
-          }
+          providerSession: { key: 'session_id', id: 'codex-session-1' }
         }
       },
       agentLaunchConfigByPaneKey: {
@@ -432,7 +421,6 @@ describe('connectPanePty', () => {
       )
       transportFactoryQueue.push(transport)
       const paneKey = makePaneKey('tab-1', LEAF_1)
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
       mockStoreState = {
         ...mockStoreState,
         tabsByWorktree: {
@@ -448,11 +436,7 @@ describe('connectPanePty', () => {
             state: 'working',
             prompt: 'finish the task',
             agentType: 'claude',
-            providerSession: {
-              key: 'session_id',
-              id: 'claude-session-1',
-              resumeIdentity: { agent: 'claude', connectionId: null }
-            }
+            providerSession: { key: 'session_id', id: 'claude-session-1' }
           }
         },
         sleepingAgentSessionsByPaneKey: {
@@ -461,11 +445,7 @@ describe('connectPanePty', () => {
             tabId: 'tab-1',
             worktreeId: 'wt-1',
             agent: 'claude',
-            providerSession: {
-              key: 'session_id',
-              id: 'claude-session-1',
-              resumeIdentity: { agent: 'claude', connectionId: null }
-            },
+            providerSession: { key: 'session_id', id: 'claude-session-1' },
             prompt: 'finish the task',
             state: 'working',
             capturedAt: 1,
@@ -501,7 +481,7 @@ describe('connectPanePty', () => {
     }
   )
 
-  it('uses owned identity without borrowing stale launch config or current settings', async () => {
+  it('ignores stale live launch config when cold restore identity lookup rejects it', async () => {
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport('fresh-pty')
     transport.connect.mockImplementation(async ({ sessionId }: { sessionId?: string }) => {
@@ -515,7 +495,6 @@ describe('connectPanePty', () => {
     })
     transportFactoryQueue.push(transport)
     const paneKey = makePaneKey('tab-1', LEAF_1)
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: {
@@ -532,11 +511,7 @@ describe('connectPanePty', () => {
           state: 'working',
           prompt: 'finish the task',
           agentType: 'codex',
-          providerSession: {
-            key: 'session_id',
-            id: 'codex-session-1',
-            resumeIdentity: { agent: 'codex', connectionId: null }
-          }
+          providerSession: { key: 'session_id', id: 'codex-session-1' }
         }
       },
       agentLaunchConfigByPaneKey: {
@@ -580,17 +555,19 @@ describe('connectPanePty', () => {
     await flushAsyncTicks(20)
     await new Promise((resolve) => setTimeout(resolve, 70))
 
-    expect(mockStoreState.getAgentLaunchConfigForStatusEntry).not.toHaveBeenCalled()
+    expect(mockStoreState.getAgentLaunchConfigForStatusEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ paneKey, agentType: 'codex' })
+    )
     expect(transport.connect).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'lost-pty',
-        command: "codex 'resume' 'codex-session-1'"
+        command: "codex '--model' 'current' 'resume' 'codex-session-1'"
       })
     )
     expect(mockStoreState.registerAgentLaunchConfig).toHaveBeenCalledWith(
       paneKey,
       expect.objectContaining({
-        agentArgs: ''
+        agentArgs: '--model current'
       }),
       expect.objectContaining({
         agentType: 'codex',
@@ -616,7 +593,6 @@ describe('connectPanePty', () => {
     })
     transportFactoryQueue.push(transport)
     const paneKey = makePaneKey('tab-1', LEAF_2)
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Partial store fixtures provide the status and tab fields read by this mocked connection harness.
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: {
@@ -644,11 +620,7 @@ describe('connectPanePty', () => {
           tabId: 'tab-1',
           worktreeId: 'wt-1',
           agent: 'codex',
-          providerSession: {
-            key: 'session_id',
-            id: 'codex-session-1',
-            resumeIdentity: { agent: 'codex', connectionId: null }
-          },
+          providerSession: { key: 'session_id', id: 'codex-session-1' },
           prompt: 'finish the task',
           state: 'working',
           capturedAt: 1,

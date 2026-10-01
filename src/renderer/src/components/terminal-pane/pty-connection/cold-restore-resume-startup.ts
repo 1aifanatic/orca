@@ -1,6 +1,6 @@
 import {
   AGENT_RESUME_IDENTITY_ERROR,
-  isOwnedAgentResumeSession
+  agentResumeIdentityPermits
 } from '../../../../../shared/agent-resume-identity'
 import { useAppStore } from '@/store'
 import { createBrowserUuid } from '@/lib/browser-uuid'
@@ -11,6 +11,11 @@ import {
   sleepingRecordNamesAnotherExecutionHost
 } from '@/lib/sleeping-record-execution-host-scope'
 import {
+  resolveTuiAgentLaunchArgs,
+  resolveTuiAgentLaunchEnv
+} from '../../../../../shared/tui-agent-launch-defaults'
+import {
+  agentProviderSessionsEqual,
   isResumableTuiAgent,
   normalizeAgentProviderSession
 } from '../../../../../shared/agent-session-resume'
@@ -60,7 +65,7 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       return null
     }
     if (
-      !isOwnedAgentResumeSession(
+      !agentResumeIdentityPermits(
         agent,
         providerSession,
         useLiveEntry ? entry.connectionId : sleepingRecord?.connectionId
@@ -69,7 +74,17 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       session.reportError(AGENT_RESUME_IDENTITY_ERROR)
       return null
     }
-    const launchConfig = providerSession.resumeIdentity?.launchConfig
+    const matchingSleepingLaunchConfig =
+      sleepingRecord?.launchConfig &&
+      (!useLiveEntry ||
+        (sleepingRecord.agent === agent &&
+          agentProviderSessionsEqual(agent, sleepingRecord.providerSession, providerSession)))
+        ? sleepingRecord.launchConfig
+        : undefined
+    const launchConfig =
+      providerSession.resumeIdentity?.launchConfig ??
+      (useLiveEntry && entry ? state.getAgentLaunchConfigForStatusEntry(entry) : undefined) ??
+      matchingSleepingLaunchConfig
     // Why: the resume line is typed into this pane's live shell, so its quoting must
     // follow the tab's effective Windows shell, not the win32 PowerShell default.
     const resumeTarget = resolveAgentResumeLaunchTarget({
@@ -83,10 +98,15 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     const startupPlan = buildAgentResumeStartupPlan({
       agent,
       providerSession,
-      requireOwnedSession: true,
-      cmdOverrides: {},
-      agentArgs: launchConfig !== undefined ? launchConfig.agentArgs : '',
-      agentEnv: launchConfig !== undefined ? launchConfig.agentEnv : {},
+      cmdOverrides: state.settings?.agentCmdOverrides ?? {},
+      agentArgs:
+        launchConfig !== undefined
+          ? launchConfig.agentArgs
+          : resolveTuiAgentLaunchArgs(agent, state.settings?.agentDefaultArgs),
+      agentEnv:
+        launchConfig !== undefined
+          ? launchConfig.agentEnv
+          : resolveTuiAgentLaunchEnv(agent, state.settings?.agentDefaultEnv),
       ...(launchConfig?.agentCommand ? { agentCommand: launchConfig.agentCommand } : {}),
       ...(launchConfig?.ompResumeFilePath
         ? { ompResumeFilePath: launchConfig.ompResumeFilePath }
@@ -95,7 +115,6 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       shell: resumeTarget.shell
     })
     if (!startupPlan) {
-      session.reportError(AGENT_RESUME_IDENTITY_ERROR)
       return null
     }
     const coldRestoreLaunchToken = createBrowserUuid()

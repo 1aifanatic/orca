@@ -1,6 +1,7 @@
 import {
   AGENT_RESUME_IDENTITY_ERROR,
-  isOwnedAgentResumeSession
+  agentResumeIdentityPermits,
+  savedAgentResumeLaunchConfig
 } from '../../../shared/agent-resume-identity'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
@@ -13,6 +14,10 @@ import {
 } from '@/lib/agent-resume-launch-target'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
+import {
+  resolveTuiAgentLaunchArgs,
+  resolveTuiAgentLaunchEnv
+} from '../../../shared/tui-agent-launch-defaults'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import { translate } from '@/i18n/i18n'
 
@@ -67,19 +72,24 @@ export function launchSleepingAgentSession(
   options?: ResumeSleepingAgentSessionsOptions
 ): boolean {
   const state = useAppStore.getState()
-  if (!isOwnedAgentResumeSession(record.agent, record.providerSession, record.connectionId)) {
+  if (!agentResumeIdentityPermits(record.agent, record.providerSession, record.connectionId)) {
     toast.error(AGENT_RESUME_IDENTITY_ERROR)
     return false
   }
-  const launchConfig = record.providerSession.resumeIdentity?.launchConfig
+  const launchConfig = savedAgentResumeLaunchConfig(record.agent, record)
   const resumeTarget = getResumeLaunchTarget(record.worktreeId)
   const startupPlan = buildAgentResumeStartupPlan({
     agent: record.agent,
-    requireOwnedSession: true,
     providerSession: record.providerSession,
-    cmdOverrides: {},
-    agentArgs: launchConfig !== undefined ? launchConfig.agentArgs : '',
-    agentEnv: launchConfig !== undefined ? launchConfig.agentEnv : {},
+    cmdOverrides: state.settings?.agentCmdOverrides ?? {},
+    agentArgs:
+      launchConfig !== undefined
+        ? launchConfig.agentArgs
+        : resolveTuiAgentLaunchArgs(record.agent, state.settings?.agentDefaultArgs),
+    agentEnv:
+      launchConfig !== undefined
+        ? launchConfig.agentEnv
+        : resolveTuiAgentLaunchEnv(record.agent, state.settings?.agentDefaultEnv),
     ...(launchConfig?.agentCommand ? { agentCommand: launchConfig.agentCommand } : {}),
     ...(launchConfig?.ompResumeFilePath
       ? { ompResumeFilePath: launchConfig.ompResumeFilePath }

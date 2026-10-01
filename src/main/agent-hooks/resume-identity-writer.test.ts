@@ -181,7 +181,6 @@ describe('resume identity through authenticated provider hooks', () => {
       buildAgentResumeStartupPlan({
         agent: 'pi',
         providerSession: row.providerSession,
-        requireOwnedSession: true,
         cmdOverrides: {},
         platform: 'linux'
       })?.launchCommand

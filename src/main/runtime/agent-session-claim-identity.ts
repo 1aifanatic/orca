@@ -1,6 +1,6 @@
 import {
   AGENT_RESUME_IDENTITY_ERROR,
-  isOwnedAgentResumeSession
+  agentResumeIdentityPermits
 } from '../../shared/agent-resume-identity'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import {
@@ -68,10 +68,7 @@ export function canonicalizeAgentSessionIdentity(
   if (!providerSession || !getAgentResumeArgv(agent, providerSession)) {
     throw new Error('agent_session_identity_required')
   }
-  if (
-    providerSession.resumeIdentity !== undefined &&
-    !isOwnedAgentResumeSession(agent, providerSession)
-  ) {
+  if (!agentResumeIdentityPermits(agent, providerSession)) {
     throw new Error(AGENT_RESUME_IDENTITY_ERROR)
   }
   if (agent !== 'pi' && agent !== 'prime-agent') {

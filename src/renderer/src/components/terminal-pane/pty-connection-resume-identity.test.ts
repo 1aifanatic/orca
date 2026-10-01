@@ -144,8 +144,8 @@ describe('connectPanePty', () => {
     await restoreTerminalTestGlobals()
   })
 
-  it.each(['legacy', 'mixed'] as const)(
-    'refuses a %s saved identity without typing and still permits a fresh launch',
+  it.each(['unreadable', 'mixed'] as const)(
+    'refuses an %s saved identity without typing and still permits a fresh launch',
     async (kind) => {
       const { connectPanePty } = await import('./pty-connection')
       const paneKey = makePaneKey('tab-1', LEAF_1)
@@ -158,7 +158,7 @@ describe('connectPanePty', () => {
           providerSession: {
             key: 'session_id',
             id: '0195f2ce-1111-4000-8000-000000000001',
-            ...(kind === 'mixed' ? { resumeIdentity: { agent: 'codex', connectionId: null } } : {})
+            resumeIdentity: kind === 'mixed' ? { agent: 'codex', connectionId: null } : null
           },
           prompt: 'saved work',
           state: 'working',

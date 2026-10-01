@@ -1,4 +1,7 @@
-import { captureAgentResumeLaunchConfig } from '../../../../shared/agent-resume-identity'
+import {
+  captureAgentResumeLaunchConfig,
+  savedAgentResumeLaunchConfig
+} from '../../../../shared/agent-resume-identity'
 import type { AppState } from '../types'
 import { resolveAgentStatusLiveEntryMainAgent } from './agent-status-live-entry-main-agent'
 import { resolveAgentStatusLiveEntryStateHistory } from './agent-status-live-entry-state-history'
@@ -179,17 +182,21 @@ export function buildAgentStatusLiveEntry(
     isResumableTuiAgent(identity.agentType) &&
     providerSession !== undefined &&
     getAgentResumeArgv(identity.agentType, providerSession) !== null
+  // Why: a replayed hook row never carries the renderer's capture, so the saved record supplies it.
+  const existingSleepingLaunchConfig = existingSleepingRecord
+    ? savedAgentResumeLaunchConfig(identity.agentType, existingSleepingRecord)
+    : undefined
   const matchedSleepingLaunchConfig =
     (payload.state !== 'done' || retainsResumableRecoveryIdentity) &&
-    existingSleepingRecord?.launchConfig &&
-    existingSleepingRecord.agent === identity.agentType &&
+    existingSleepingLaunchConfig &&
+    existingSleepingRecord?.agent === identity.agentType &&
     providerSession &&
     agentProviderSessionsEqual(
       identity.agentType,
       existingSleepingRecord.providerSession,
       providerSession
     )
-      ? existingSleepingRecord.launchConfig
+      ? existingSleepingLaunchConfig
       : undefined
   const launchConfigSource =
     providerSession?.resumeIdentity?.launchConfig ??
@@ -210,7 +217,8 @@ export function buildAgentStatusLiveEntry(
           ? undefined
           : metadata?.launchToken
             ? metadata.launchConfig
-            : undefined)
+            : undefined) ??
+        matchedSleepingLaunchConfig
     )
   }
   const mainAgent = resolveAgentStatusLiveEntryMainAgent(existing, payload, identity.agentType)

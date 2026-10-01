@@ -95,6 +95,33 @@ export function isOwnedAgentResumeSession(
   )
 }
 
+/** One resume rule: no identity is a record saved before ownership existed and resumes as before;
+ *  `null` (unreadable evidence) or another agent/host refuses. */
+export function agentResumeIdentityPermits(
+  agent: string,
+  session: AgentProviderSessionMetadata,
+  connectionId?: string | null
+): boolean {
+  return (
+    session.resumeIdentity === undefined || isOwnedAgentResumeSession(agent, session, connectionId)
+  )
+}
+
+/** Settings captured with the owner win; a record's top-level config is the pre-identity fallback. */
+export function savedAgentResumeLaunchConfig(
+  agent: string,
+  record: {
+    providerSession: AgentProviderSessionMetadata
+    launchConfig?: SleepingAgentLaunchConfig
+  }
+): SleepingAgentLaunchConfig | undefined {
+  return (
+    (isOwnedAgentResumeSession(agent, record.providerSession)
+      ? record.providerSession.resumeIdentity?.launchConfig
+      : undefined) ?? record.launchConfig
+  )
+}
+
 /** The launch writer attaches only settings already matched to this provider and launch. */
 export function captureAgentResumeLaunchConfig(
   session: AgentProviderSessionMetadata,
@@ -119,7 +146,7 @@ export function providerSessionForResumeRequest(
   agent: string,
   session: AgentProviderSessionMetadata
 ): AgentProviderSessionMetadata {
-  if (session.resumeIdentity !== undefined && !isOwnedAgentResumeSession(agent, session)) {
+  if (!agentResumeIdentityPermits(agent, session)) {
     throw new Error(AGENT_RESUME_IDENTITY_ERROR)
   }
   return {

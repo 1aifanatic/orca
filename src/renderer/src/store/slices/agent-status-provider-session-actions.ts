@@ -1,4 +1,7 @@
-import { captureAgentResumeLaunchConfig } from '../../../../shared/agent-resume-identity'
+import {
+  captureAgentResumeLaunchConfig,
+  savedAgentResumeLaunchConfig
+} from '../../../../shared/agent-resume-identity'
 import type { AgentStatusSlice } from './agent-status-slice-contract'
 import type { AgentStatusRuntime } from './agent-status-runtime'
 import type {
@@ -101,11 +104,10 @@ export function createAgentStatusProviderSessionActions(
           providerSession: captureAgentResumeLaunchConfig(
             providerSession,
             agent,
-            registryMatches
-              ? registryEntry?.launchConfig
-              : existingRecordMatchesProviderSession
-                ? existingRecord.providerSession.resumeIdentity?.launchConfig
-                : undefined
+            (registryMatches ? registryEntry?.launchConfig : undefined) ??
+              (existingRecordMatchesProviderSession
+                ? savedAgentResumeLaunchConfig(agent, existingRecord)
+                : undefined)
           ),
           prompt: '',
           // Why: durable process/session identity, not visible turn state; a non-done value keeps cold restore eligible.
