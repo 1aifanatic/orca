@@ -198,7 +198,10 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       const presence = state.agentPresenceByPaneKey?.[session.cacheKey]?.presence
       requestAgentOwnerCheck(session.cacheKey, presence)
       // A shell back in the foreground is where an exited owner's evidence stops being stale.
-      state.retireEndedAgentPresence(session.cacheKey)
+      // Why not on process-exit: that is the owner's own exit, so retiring there re-shows its leftovers.
+      if (reason !== 'process-exit') {
+        state.retireEndedAgentPresence(session.cacheKey)
+      }
       // Presentation cleanup follows the shell being back, whoever owns the pane.
       const sleepingRecord = session.getSleepingRecordForPane(state)
       if (sleepingRecord) {

@@ -142,6 +142,40 @@ describe('useTabAgent with host presence', () => {
     expect(clearTabLaunchAgent).toHaveBeenCalledWith('tab-1')
   })
 
+  it.each([true, false])(
+    'clears the icon once Claude exits and leaves its own evidence behind, identified=%s',
+    async (identified) => {
+      splitLayout()
+      useAppStore.setState({
+        agentStatusByPaneKey: {
+          [FOCUSED]: { ...codexRow(FOCUSED), state: 'done', agentType: 'claude' }
+        },
+        sleepingAgentSessionsByPaneKey: {
+          [FOCUSED]: {
+            paneKey: FOCUSED,
+            worktreeId: 'wt-1',
+            agent: 'claude',
+            providerSession: { key: 'session_id', id: 's-1' },
+            prompt: '',
+            state: 'done',
+            capturedAt: 1,
+            updatedAt: 1
+          }
+        },
+        ...(identified
+          ? {
+              agentPresenceByPaneKey: {
+                [FOCUSED]: { presence: { ...claude, ended: true }, receivedAt: 1 }
+              }
+            }
+          : {})
+      })
+      await render({ ...tab, title: '✳ Claude Code' })
+      // A pane that never had an identified owner keeps main's guess from the same leftovers.
+      expect(latest).toBe(identified ? null : 'claude')
+    }
+  )
+
   it('shows a later hookless Claude once the shell is back in the exited owner pane', async () => {
     splitLayout()
     useAppStore.setState({
