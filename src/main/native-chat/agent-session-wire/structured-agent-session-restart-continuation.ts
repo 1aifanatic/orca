@@ -31,7 +31,7 @@ import {
 import { AgentSessionPreDispatchError } from './structured-agent-session-operation-settlement'
 import { restartContinuationEnvelope } from './structured-agent-session-restart-continuation-envelope'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
-import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 /**
  * All four dispatch states are preserved, never collapsed into transport success.
@@ -320,14 +320,10 @@ async function sendContinuation(
   }
   const clientMessageId = envelope.clientOperationId
   const handedOver = await deps.awaitHandedOver(sessionId, clientMessageId).catch(() => undefined)
-  // Never handed to a started agent, and no Stop, close or restart took it back: its agent did not
-  // start for it. The message says why, as any message whose start failed does.
+  // Its agent did not start for it: the message says why, as any message whose start failed does.
   if (
     handedOver?.dispatchState === 'rejected' &&
-    classifyDispatchRejection({
-      reason: handedOver.reason ?? null,
-      rejection: handedOver.rejection
-    }).verdict === 'failure'
+    isFailedStartRejection({ reason: handedOver.reason ?? null, rejection: handedOver.rejection })
   ) {
     return { done: { ...refusedBy(sessionId, handedOver), startFailed: true } }
   }
