@@ -33,25 +33,12 @@ function fixture() {
     disabledTuiAgents: []
   }
   const identity: {
-    loggedIn: true
     email: string
-    organizationUuid: undefined
-    organizationName: undefined
-  } = {
-    loggedIn: true as const,
-    email: 'fake@example.test',
-    organizationUuid: undefined,
-    organizationName: undefined
-  }
+    organizationUuid: string | null
+    organizationName: string | null
+  } = { email: 'fake@example.test', organizationUuid: null, organizationName: null }
   const login = vi.fn(async () => {})
-  const readIdentity = vi.fn(async () => ({ ...identity }))
-  const observeIdentity = vi.fn(
-    async (): Promise<{
-      email: string
-      organizationUuid: string | null
-      organizationName: string | null
-    } | null> => null
-  )
+  const observeIdentity = vi.fn(async (): Promise<typeof identity | null> => ({ ...identity }))
   const publish = vi.fn(async () => {})
   const rateLimits = {
     evictInactiveClaudeCache: vi.fn(),
@@ -86,7 +73,6 @@ function fixture() {
     setCancel: vi.fn(),
     prepare,
     login,
-    readIdentity,
     observeIdentity
   })
   return {
@@ -96,7 +82,6 @@ function fixture() {
     login,
     publish,
     prepare,
-    readIdentity,
     observeIdentity,
     rateLimits,
     registration
@@ -316,52 +301,10 @@ it('does not let publication bookkeeping block signing in to a recoverable draft
   expect(f.login).toHaveBeenCalledTimes(1)
   expect(f.settings.claudeManagedAccounts[0].email).toBe('fake@example.test')
 })
-
-it('retains a duplicate login under its own name instead of deleting either profile', async () => {
+it('refuses plainly when the profile holds no login after sign-in', async () => {
   const f = fixture()
-  // Why a fixed clock per add: the row added first keeps the login, so the two must differ.
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(1_000)
-  await f.registration.add()
-  vi.setSystemTime(2_000)
-  await expect(f.registration.add()).rejects.toThrow(
-    'fake@example.test is already added as another account. Remove this row, or sign in again with a different account.'
-  )
-  expect(f.settings.claudeManagedAccounts.map((account) => account.email)).toEqual([
-    'fake@example.test',
-    'fake@example.test'
-  ])
-})
-it("keeps a row's own name when its re-sign-in lands on another row's login", async () => {
-  const f = fixture()
-  await f.registration.add()
-  const first = f.settings.claudeManagedAccounts[0]
-  f.settings.claudeManagedAccounts.push({ ...first, id: 'other', email: 'other@example.test' })
-  f.identity.email = 'other@example.test'
-  await expect(f.registration.reauthenticate(first.id)).rejects.toThrow(
-    'Signed in as other@example.test, which is already added as another account. Sign in again as fake@example.test, or remove this row.'
-  )
-  expect(f.settings.claudeManagedAccounts.find((entry) => entry.id === first.id)?.email).toBe(
-    'fake@example.test'
-  )
-})
-it("reads the login from the profile's own state when the status output is unreadable", async () => {
-  const f = fixture()
-  f.readIdentity.mockRejectedValue(new SyntaxError('Unexpected token w in JSON'))
-  f.observeIdentity.mockResolvedValue({
-    email: 'observed@example.test',
-    organizationUuid: 'org',
-    organizationName: 'Org'
-  })
-  await f.registration.add()
-  expect(f.settings.claudeManagedAccounts[0]).toMatchObject({
-    email: 'observed@example.test',
-    organizationUuid: 'org'
-  })
   f.observeIdentity.mockResolvedValue(null)
-  await expect(
-    f.registration.reauthenticate(f.settings.claudeManagedAccounts[0].id)
-  ).rejects.toThrow(
-    'Claude sign-in finished, but Orca could not tell which account it used. Try Sign in again.'
+  await expect(f.registration.add()).rejects.toThrow(
+    'Claude sign-in finished, but Orca could not read which account it used. Try signing in again.'
   )
 })

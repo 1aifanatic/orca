@@ -103,7 +103,7 @@ export function createWslClaudeProfileOwner(
     }
   }
   const owner: ClaudeProfileRoutingOwner = {
-    refresh: async (target, access) => {
+    refresh: async (target, access, options) => {
       const { distro, accountId } = selected(target)
       const key = distro.toLowerCase()
       const previous = inspections.get(key)
@@ -119,6 +119,7 @@ export function createWslClaudeProfileOwner(
           distro,
           managed,
           accountId,
+          requireManaged: options?.managedGuest,
           accountIds: settings()
             .claudeManagedAccounts.filter((entry) => entry.wslDistro?.toLowerCase() === key)
             .map((entry) => entry.id),

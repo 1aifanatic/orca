@@ -15,7 +15,8 @@ export function withWslClaudeProfileOwner(
       ? wsl
       : native
   return {
-    refresh: (target, access) => forTarget(target).refresh?.(target, access) ?? Promise.resolve(),
+    refresh: (target, access, options) =>
+      forTarget(target).refresh?.(target, access, options) ?? Promise.resolve(),
     resolve: (target) => forTarget(target).resolve(target),
     pointerPath: (target) => forTarget(target).pointerPath(target),
     targets: () => [...native.targets(), ...wsl.targets()],

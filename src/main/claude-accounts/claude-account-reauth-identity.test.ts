@@ -78,13 +78,7 @@ function fixture(accounts: ClaudeManagedAccount[]) {
         join(config.windowsPath, '.claude.json'),
         JSON.stringify({ oauthAccount: { emailAddress: browserLogin, organizationUuid: 'org-1' } })
       )
-    },
-    readIdentity: async () => ({
-      loggedIn: true as const,
-      email: browserLogin,
-      organizationUuid: 'org-1',
-      organizationName: undefined
-    })
+    }
   })
   const rows = () =>
     selection
@@ -123,7 +117,7 @@ it('keeps the original row when a re-sign-in lands on a login another row alread
   // The user clicks Sign in again on a@ while the browser is signed in to b@.
   f.signInAs('b@example.test')
   await expect(f.registration.reauthenticate('a')).rejects.toThrow(
-    'Signed in as b@example.test, which is already added as another account. Sign in again as a@example.test, or remove this row.'
+    'Signed in as b@example.test, which is already added as another account. Sign in again as a@example.test, or remove this account.'
   )
   expect(f.rows()).toEqual([
     ['a', 'a@example.test', 'ready', 'duplicate'],

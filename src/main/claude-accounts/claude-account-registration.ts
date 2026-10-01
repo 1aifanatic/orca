@@ -1,5 +1,4 @@
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
-import { findClaudeAccountIdentityIssues } from './claude-account-identity'
 import { randomUUID } from 'node:crypto'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
@@ -10,11 +9,7 @@ import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import { getClaudeSelectionTargetForAccount } from './runtime-selection'
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
-import {
-  prepareClaudeProfileLogin,
-  loginToClaudeProfile,
-  readClaudeProfileLoginIdentity
-} from './claude-profile-login'
+import { prepareClaudeProfileLogin, loginToClaudeProfile } from './claude-profile-login'
 import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 export class ClaudeAccountRegistration {
@@ -36,7 +31,6 @@ export class ClaudeAccountRegistration {
       setCancel: (cancel: (() => boolean) | null) => void
       prepare?: typeof prepareClaudeProfileLogin
       login?: typeof loginToClaudeProfile
-      readIdentity?: typeof readClaudeProfileLoginIdentity
       observeIdentity?: (
         accountId: string,
         target: ClaudeAccountSelectionTarget
@@ -113,23 +107,30 @@ export class ClaudeAccountRegistration {
     const { store, rateLimits, selection } = this.deps
     const account = selection.requireAccount(accountId)
     const target = getClaudeSelectionTargetForAccount(account)
-    const prepared = await (this.deps.prepare ?? prepareClaudeProfileLogin)(
+    // Why provision again: setup merges onboarding only into a state file the login just created.
+    await (this.deps.prepare ?? prepareClaudeProfileLogin)(accountId, target, store.getSettings())
+    // Why the profile, not `claude auth status`: the status command reads this same field, and
+    // reading it directly costs no process and cannot be garbled by stderr.
+    const identity = await (this.deps.observeIdentity ?? observeClaudeProfileIdentity)(
       accountId,
-      target,
-      store.getSettings()
+      target
     )
-    const identity = await this.readIdentity(accountId, target, prepared.config)
+    if (!identity) {
+      throw new Error(
+        'Claude sign-in finished, but Orca could not read which account it used. Try signing in again.'
+      )
+    }
     const takenByAnother = findDuplicateClaudeAccount(
       store.getSettings().claudeManagedAccounts.filter((entry) => entry.id !== accountId),
       {
         email: identity.email,
-        organizationUuid: identity.organizationUuid ?? null,
+        organizationUuid: identity.organizationUuid,
         managedAuthRuntime: account.managedAuthRuntime ?? 'host',
         wslDistro: account.wslDistro ?? null
       }
     )
-    // Why keep the label: signing a row in to a login another row owns must not take that
-    // row's identity; the row then shows what it holds and is flagged instead.
+    // Why keep the label: signing an account in to a login another account owns must not take
+    // that account's identity; this one then shows what it holds and is flagged instead.
     const keepsLabel =
       !isUnfinishedClaudeSignIn(account) &&
       takenByAnother !== null &&
@@ -140,8 +141,8 @@ export class ClaudeAccountRegistration {
         ? {}
         : {
             email: identity.email,
-            organizationUuid: identity.organizationUuid ?? null,
-            organizationName: identity.organizationName ?? null
+            organizationUuid: identity.organizationUuid,
+            organizationName: identity.organizationName
           }),
       authMethod: 'subscription-oauth',
       updatedAt: Date.now(),
@@ -152,50 +153,18 @@ export class ClaudeAccountRegistration {
     void rateLimits
       .refreshForClaudeAccountChange(undefined, target)
       .catch((error) => console.warn('[claude-profile] Usage unavailable after sign-in:', error))
-    const profiles = getClaudeProfileRoutingAuthority()
-    const issue = findClaudeAccountIdentityIssues(
-      store.getSettings().claudeManagedAccounts.map((entry) => ({
-        ...entry,
-        observed: entry.id === accountId ? identity : (profiles?.observedIdentity(entry.id) ?? null)
-      }))
-    ).get(accountId)
-    if (issue === 'duplicate') {
+    const listed = selection.list()
+    // Why from list(): the row's flag must be the same derivation every surface shows.
+    if (
+      listed.accounts.find((entry) => entry.id === accountId)?.profileIdentityIssue === 'duplicate'
+    ) {
       throw new Error(
         keepsLabel
-          ? `Signed in as ${identity.email}, which is already added as another account. Sign in again as ${account.email}, or remove this row.`
-          : `${identity.email} is already added as another account. Remove this row, or sign in again with a different account.`
+          ? `Signed in as ${identity.email}, which is already added as another account. Sign in again as ${account.email}, or remove this account.`
+          : `${identity.email} is already added as another account. Remove this account, or sign in again with a different one.`
       )
     }
-    return selection.list()
-  }
-
-  // Why the fallback: status output can mix in stderr or omit the email, while Claude's own
-  // state file in the profile still names the login that just finished.
-  private async readIdentity(
-    accountId: string,
-    target: ClaudeAccountSelectionTarget,
-    config: Parameters<typeof readClaudeProfileLoginIdentity>[0]
-  ): Promise<ClaudeLoginIdentity> {
-    try {
-      const status = await (this.deps.readIdentity ?? readClaudeProfileLoginIdentity)(config)
-      return {
-        email: status.email,
-        organizationUuid: status.organizationUuid ?? null,
-        organizationName: status.organizationName ?? null
-      }
-    } catch (error) {
-      const observed = await (this.deps.observeIdentity ?? observeClaudeProfileIdentity)(
-        accountId,
-        target
-      )
-      if (observed) {
-        return observed
-      }
-      console.warn('[claude-profile] Could not read the signed-in Claude account:', error)
-      throw new Error(
-        'Claude sign-in finished, but Orca could not tell which account it used. Try Sign in again.'
-      )
-    }
+    return listed
   }
 
   private async publish(target: ClaudeAccountSelectionTarget): Promise<void> {
@@ -230,7 +199,7 @@ async function observeClaudeProfileIdentity(
 ): Promise<ClaudeLoginIdentity | null> {
   const profiles = getClaudeProfileRoutingAuthority()
   try {
-    await profiles?.refreshForRead(target)
+    await profiles?.refreshForRead(target, { managedGuest: true })
   } catch {
     // The account's readiness carries why its profile could not be read.
   }

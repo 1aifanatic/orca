@@ -18,9 +18,11 @@ export type ClaudeProfileLaunchDescriptor = {
 
 export type ClaudeProfileRoutingOwner = {
   resolve: (target?: ClaudeAccountSelectionTarget) => ClaudeProfileLaunchDescriptor
+  /** `managedGuest`: read through the managed runtime even for System Default (sign-in observation). */
   refresh?: (
     target?: ClaudeAccountSelectionTarget,
-    access?: ClaudeProfileHostAccess
+    access?: ClaudeProfileHostAccess,
+    options?: { managedGuest?: boolean }
   ) => Promise<void>
   pointerPath: (target?: ClaudeAccountSelectionTarget) => string
   targets: () => ClaudeAccountSelectionTarget[]

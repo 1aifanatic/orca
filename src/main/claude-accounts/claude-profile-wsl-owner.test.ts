@@ -556,3 +556,13 @@ it('does not retry a failed managed guest for every System Default launch', asyn
   )
   expect(f.prepare.mock.calls.length).toBe(before + 1)
 })
+it('observes a finished sign-in through the managed guest even after a System Default fallback', async () => {
+  const f = routingFixture(true)
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  f.prepare.mockRejectedValueOnce(new Error('runtime download failed'))
+  await f.routing.publish(ubuntu, 'always', 'boot')
+  const before = f.prepare.mock.calls.length
+  await f.routing.refreshForRead(ubuntu, { managedGuest: true })
+  expect(f.prepare.mock.calls.length).toBe(before + 1)
+  expect(f.routing.observedIdentity('a')).toBeNull()
+})

@@ -22,8 +22,7 @@ vi.mock('./claude-profile-login', () => ({
         reject(new Error('Claude sign-in was cancelled.'))
         return true
       })
-    }).finally(() => setCancel(null)),
-  readClaudeProfileLoginIdentity: async () => ({ loggedIn: true, email: 'x@example.test' })
+    }).finally(() => setCancel(null))
 }))
 
 import { ClaudeAccountService } from './service'

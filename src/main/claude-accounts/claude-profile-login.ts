@@ -1,6 +1,5 @@
 import { homedir } from 'node:os'
 import { posix } from 'node:path'
-import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
@@ -13,22 +12,6 @@ import { prepareClaudeWslGuest } from './claude-profile-wsl-transport'
 import { runClaudeCommandProcess, type ClaudeCommandConfig } from './claude-command-process'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import { recordClaudeProfileSetupReport } from './claude-profile-setup-issues'
-
-const identitySchema = z
-  .object({
-    loggedIn: z.literal(true),
-    email: z.string().min(1),
-    organizationUuid: z.string().nullable().optional(),
-    organizationName: z.string().nullable().optional(),
-    orgId: z.string().nullable().optional(),
-    orgName: z.string().nullable().optional()
-  })
-  .transform((status) => ({
-    loggedIn: status.loggedIn,
-    email: status.email,
-    organizationUuid: status.organizationUuid ?? status.orgId,
-    organizationName: status.organizationName ?? status.orgName
-  }))
 
 /** The profile is final before Claude is started; only Claude writes the login. */
 export async function prepareClaudeProfileLogin(
@@ -115,10 +98,4 @@ export async function loginToClaudeProfile(
   } finally {
     setCancel(null)
   }
-}
-
-export async function readClaudeProfileLoginIdentity(config: ClaudeCommandConfig) {
-  return identitySchema.parse(
-    JSON.parse(await runClaudeCommandProcess(['auth', 'status', '--json'], config, 20_000))
-  )
 }

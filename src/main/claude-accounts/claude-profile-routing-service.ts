@@ -246,8 +246,11 @@ export class ClaudeProfileRoutingService {
     return state.readiness === 'ready' ? state.identity : null
   }
 
-  async refreshForRead(target?: ClaudeAccountSelectionTarget): Promise<void> {
-    await this.owner.refresh?.(target, 'if-running')
+  async refreshForRead(
+    target?: ClaudeAccountSelectionTarget,
+    options?: { managedGuest?: boolean }
+  ): Promise<void> {
+    await this.owner.refresh?.(target, 'if-running', options)
   }
   accountHome(accountId: string): string {
     const { readiness } = this.owner.profileState(accountId)

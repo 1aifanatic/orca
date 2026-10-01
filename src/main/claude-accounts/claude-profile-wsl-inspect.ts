@@ -30,6 +30,8 @@ export async function inspectClaudeWslGuest(args: {
   distro: string
   managed: boolean
   accountId: string | null
+  /** Bypass the System Default fallback: observing a login needs the managed guest's read. */
+  requireManaged?: boolean
   accountIds: string[]
   access?: ClaudeProfileHostAccess
 }): Promise<{ guest: ClaudeWslGuest; result: ClaudeWslProfileResponse }> {
@@ -57,7 +59,8 @@ export async function inspectClaudeWslGuest(args: {
     )
     return { guest, result }
   }
-  const skipManaged = accountId === null && (managedGuestFailures.get(key) ?? 0) > Date.now()
+  const skipManaged =
+    !args.requireManaged && accountId === null && (managedGuestFailures.get(key) ?? 0) > Date.now()
   try {
     const inspected = await inspect(managed && !skipManaged)
     if (managed && !skipManaged) {
@@ -66,7 +69,12 @@ export async function inspectClaudeWslGuest(args: {
     return inspected
   } catch (error) {
     // Why: System Default needs only its pointer; the managed runtime failing must not block it.
-    if (!managed || accountId !== null || error instanceof ClaudeProfileHostUnreachableError) {
+    if (
+      !managed ||
+      accountId !== null ||
+      args.requireManaged ||
+      error instanceof ClaudeProfileHostUnreachableError
+    ) {
       throw error
     }
     console.warn('[claude-profile] WSL System Default publishes without the managed guest:', error)
