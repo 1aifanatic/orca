@@ -526,6 +526,42 @@ describe('openCodexAppServerConnection', () => {
     await expect(connection.close()).resolves.toBe(true)
   })
 
+  it('reports an exit seen after a close gave up, and not one a running close sees', async () => {
+    vi.useFakeTimers()
+    const late = stubChild({ exitOnStdinEnd: false })
+    answerInitialize(late.child)
+    const gaveUp: string[] = []
+    const lateConnection = await openCodexAppServerConnection(
+      { command: 'codex', args: ['app-server'] },
+      {
+        onExit: () => gaveUp.push('exit'),
+        onExitAfterClose: () => gaveUp.push('exit-after-close')
+      },
+      late.spawnImpl
+    )
+    const first = lateConnection.close()
+    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS + 3_500)
+    await expect(first).resolves.toBe(false)
+    late.child.emit('exit', 0, null)
+    expect(gaveUp).toEqual(['exit-after-close'])
+
+    const running = stubChild({ exitOnStdinEnd: false })
+    answerInitialize(running.child)
+    const seen: string[] = []
+    const runningConnection = await openCodexAppServerConnection(
+      { command: 'codex', args: ['app-server'] },
+      {
+        onExit: () => seen.push('exit'),
+        onExitAfterClose: () => seen.push('exit-after-close')
+      },
+      running.spawnImpl
+    )
+    const closing = runningConnection.close()
+    running.child.emit('exit', 0, null)
+    await expect(closing).resolves.toBe(true)
+    expect(seen).toEqual([])
+  })
+
   it.each([1_090_188, 2_900_090])(
     'accepts a realistic %i-byte escaped command completion and keeps processing',
     async (frameBytes) => {

@@ -20,6 +20,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { structuredClaudeLifecycleEvent } from '../../runtime/structured-claude-runtime-adapter'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import type * as EvictionDeadline from './structured-agent-session-eviction-deadline'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_NOW as NOW,
@@ -29,6 +30,18 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+
+// Shortened only by the test of a stop that proves the exit after its deadline.
+const stepDeadline = vi.hoisted((): { ms: number | undefined } => ({ ms: undefined }))
+vi.mock('./structured-agent-session-eviction-deadline', async (importOriginal) => {
+  const actual = await importOriginal<typeof EvictionDeadline>()
+  return {
+    ...actual,
+    withStructuredAgentSessionEvictionDeadline: (
+      ...[steps, timeoutMs]: Parameters<typeof actual.withStructuredAgentSessionEvictionDeadline>
+    ) => actual.withStructuredAgentSessionEvictionDeadline(steps, stepDeadline.ms ?? timeoutMs)
+  }
+})
 
 const CALLER = { callerKey: 'client-1' }
 const CAPABILITIES = ['interrupt_receipt_v1', 'interrupt_cancel_queued_v1', 'msg_lifecycle_v1']
@@ -93,6 +106,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  stepDeadline.ms = undefined
   await adapter.closeAll()
   await host.flushAllStreamedEvents()
   await rm(root, { recursive: true, force: true })
@@ -565,4 +579,78 @@ it('keeps an option change at rest when the Stop proved the exit and only its bo
   expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
   expect(connection.closeCount).toBe(1)
   expect(claude.connections).toHaveLength(1)
+})
+
+it('sends a held message as soon as the old child exits after its retry gave up, with no sweep tick', async () => {
+  const connection = await heldAfterStop()
+
+  // The old process exits now: the connection reports it, and the retry that follows proves it.
+  connection.handlers.onExitAfterClose?.()
+  const resumed = await resumedWith(connection, 'Carry on.')
+
+  expect(connection.closeCount).toBe(3)
+  expect(resumed.closed).toBe(false)
+  expect(owedWindDown()).toBeUndefined()
+})
+
+it('sends a held message as soon as a stop that ran past its deadline proves the exit late', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  stepDeadline.ms = 200
+  // Every close of the old child waits on its exit, which comes after both stop passes gave up.
+  const exited = Promise.withResolvers<void>()
+  const close = connection.close
+  connection.close = async () => {
+    await exited.promise
+    return close()
+  }
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  expect(owedWindDown()).toBeDefined()
+  expect(claude.connections).toHaveLength(1)
+
+  // Both passes already gave up; the retry the late proof starts gets the full deadline.
+  stepDeadline.ms = undefined
+  exited.resolve()
+  const resumed = await resumedWith(connection, 'Carry on.')
+
+  expect(resumed.closed).toBe(false)
+  expect(owedWindDown()).toBeUndefined()
+})
+
+it('ignores an exit report naming another child than the one whose stop is owed', async () => {
+  const connection = await heldAfterStop()
+  const session = host['sessions'].get(SESSION)!
+
+  await host.handleAdapterEvent({
+    type: 'exitAfterClose',
+    sessionId: SESSION,
+    fence: session.child!.fence,
+    acquisitionGeneration: 'an-earlier-child'
+  })
+  await laneDrained()
+
+  expect(connection.closeCount).toBe(2)
+  expect(owedWindDown()).toBeDefined()
+  expect(claude.connections).toHaveLength(1)
+})
+
+it("never lets an old child's late exit report retry a newer child's owed stop", async () => {
+  const old = await heldAfterStop()
+  old.handlers.onExitAfterClose?.()
+  const resumed = await resumedWith(old, 'Carry on.')
+  closeUnprovenFor(resumed, 1)
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  expect(resumed.closeCount).toBe(1)
+  expect(owedWindDown()).toBeDefined()
+
+  // The first child's connection reports its exit again: it names no child whose stop is owed.
+  old.handlers.onExitAfterClose?.()
+  await laneDrained()
+
+  expect(resumed.closeCount).toBe(1)
+  expect(owedWindDown()).toBeDefined()
 })

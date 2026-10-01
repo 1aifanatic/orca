@@ -248,4 +248,57 @@ describe('Claude stream-json close ordering', () => {
     await expect(closing).resolves.toBe(true)
     expect(child.stdin.writableEnded).toBe(true)
   })
+
+  it('reports a root exit seen after a close gave up, and not one a running close sees', async () => {
+    mocks.refresh.mockReset()
+    mocks.proveClaudeChildExit.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    const open = async (child: ChildProcessWithoutNullStreams, reports: string[]) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This injected query exercises only the async iterator used by the connection.
+      const queryImpl = ((params: Parameters<typeof query>[0]) => {
+        params.options?.spawnClaudeCodeProcess?.({
+          command: 'claude',
+          args: [],
+          env: {},
+          signal: new AbortController().signal
+        })
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: async (): Promise<IteratorResult<Record<string, unknown>>> => ({
+              value: undefined,
+              done: true
+            })
+          })
+        }
+      }) as unknown as typeof query
+      return openClaudeStreamJsonConnection(
+        { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+        {
+          onExit: () => reports.push('exit'),
+          onExitAfterClose: () => reports.push('exit-after-close')
+        },
+        () => child,
+        queryImpl
+      )
+    }
+
+    const gaveUp: string[] = []
+    const lateChild = fakeChild()
+    mocks.proveClaudeChildExit.mockResolvedValueOnce(false)
+    const late = await open(lateChild, gaveUp)
+    await expect(late.close()).resolves.toBe(false)
+    lateChild.emit('exit', 0, null)
+    expect(gaveUp).toEqual(['exit-after-close'])
+
+    const running: string[] = []
+    const runningChild = fakeChild()
+    const proof = Promise.withResolvers<boolean>()
+    mocks.proveClaudeChildExit.mockReturnValueOnce(proof.promise)
+    const closing = (await open(runningChild, running)).close()
+    await vi.waitFor(() => expect(mocks.proveClaudeChildExit).toHaveBeenCalledTimes(2))
+    runningChild.emit('exit', 0, null)
+    proof.resolve(true)
+    await expect(closing).resolves.toBe(true)
+    expect(running).toEqual([])
+  })
 })
