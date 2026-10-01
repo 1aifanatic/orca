@@ -158,7 +158,8 @@ export function runClaudeCommandProcess(
           resolvePromise(spawnConfig.readOutput ? spawnConfig.readOutput(output) : output)
           return
         }
-        const trimmedOutput = output.trim()
+        // Why readOutput first: a WSL command's own text sits between capture fences after the rc banner.
+        const trimmedOutput = (spawnConfig.readOutput?.(output).trim() || output).trim()
         rejectPromise(
           new Error(
             trimmedOutput
