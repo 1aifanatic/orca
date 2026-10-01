@@ -20,7 +20,7 @@ import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
 import {
   classifyDispatchRejection,
-  isFailedStartRejection
+  failedBeforeHandover
 } from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
 import { isRetryingStructuredAgentSessionStart } from './structured-agent-session-start-retry'
@@ -134,9 +134,7 @@ export function structuredAgentSessionFailedStartIds(
   submissions: readonly AgentJournalSubmission[]
 ): string[] {
   return submissions.flatMap((submission) =>
-    submission.dispatchState === 'rejected' && isFailedStartRejection(submission)
-      ? [agentJournalSubmissionKey(submission.clientMessageId)]
-      : []
+    failedBeforeHandover(submission) ? [agentJournalSubmissionKey(submission.clientMessageId)] : []
   )
 }
 
@@ -149,7 +147,7 @@ export function structuredAgentSessionQuietFailedStartIds(
 ): string[] {
   const failed = new Map(
     submissions.flatMap((submission) =>
-      submission.dispatchState === 'rejected' && isFailedStartRejection(submission)
+      failedBeforeHandover(submission)
         ? [[agentJournalSubmissionKey(submission.clientMessageId), submission] as const]
         : []
     )

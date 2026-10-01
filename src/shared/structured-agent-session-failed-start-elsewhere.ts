@@ -6,8 +6,7 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import {
-  classifyDispatchRejection,
-  isFailedStartRejection,
+  failedBeforeHandover,
   isRequeueableAgentJournalSubmission
 } from './structured-agent-session-dispatch-rejection'
 
@@ -18,13 +17,10 @@ export function failedStartsSentElsewhere(
   const sentHere = new Set(outbox.map((entry) => entry.clientMessageId))
   return submissions.filter(
     (submission) =>
-      submission.dispatchState === 'rejected' &&
       !sentHere.has(submission.clientMessageId) &&
       // A queued card's message: the card shows it, and its own Retry is the card's.
       submission.queuedMessageId === undefined &&
-      // Orca's own fault on the way to a start is one the start's writer records too.
-      (isFailedStartRejection(submission) ||
-        classifyDispatchRejection(submission).kind === 'hostFault')
+      failedBeforeHandover(submission)
   )
 }
 

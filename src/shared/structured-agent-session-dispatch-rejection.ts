@@ -182,22 +182,30 @@ export function isFailedStartRejection(
   return category === 'startFailed' || kind === 'hostStopped' || kind === 'providerExited'
 }
 
-/** Whether the person's Retry may queue this same message again: rejected for a failed start or an
- *  Orca fault, never handed to any agent, and no queued card's, whose card is its Retry. */
-export function isRequeueableAgentJournalSubmission(
-  submission: Pick<
-    AgentJournalSubmission,
-    'dispatchState' | 'reason' | 'handedOverAt' | 'handoverRecorded' | 'queuedMessageId'
-  > & { rejection?: unknown }
-): boolean {
+type FailedBeforeHandoverFields = Pick<
+  AgentJournalSubmission,
+  'dispatchState' | 'reason' | 'handedOverAt' | 'handoverRecorded'
+> & { rejection?: unknown }
+
+/** Rejected on its way to an agent, which never took it: a failed start, or Orca's own fault before
+ *  any handover. The one rule for where it is drawn, when its failure is announced, whether another
+ *  device shows it, and whether a Retry queues it again. */
+export function failedBeforeHandover(submission: FailedBeforeHandoverFields): boolean {
   return (
     submission.dispatchState === 'rejected' &&
     submission.handedOverAt === undefined &&
     submission.handoverRecorded === true &&
-    submission.queuedMessageId === undefined &&
     (isFailedStartRejection(submission) ||
       classifyDispatchRejection(submission).kind === 'hostFault')
   )
+}
+
+/** Whether the person's Retry may queue this same message again: `failedBeforeHandover`, and no
+ *  queued card's, whose card is its Retry. */
+export function isRequeueableAgentJournalSubmission(
+  submission: FailedBeforeHandoverFields & Pick<AgentJournalSubmission, 'queuedMessageId'>
+): boolean {
+  return submission.queuedMessageId === undefined && failedBeforeHandover(submission)
 }
 
 /**
@@ -205,7 +213,8 @@ export function isRequeueableAgentJournalSubmission(
  * something about it that only they can resolve — the provider or Orca refused its content or
  * attachments, its command did not run, the queue was full, Orca could not hand it over or faulted.
  * One returned because its agent failed to start holds nothing: each card behind it starts the
- * agent again for itself.
+ * agent again for itself. Orca's fault is not `failedBeforeHandover` here on purpose: a card is
+ * returned for it, and the queue waits on the person.
  */
 export function queuedCardHoldsQueue(card: {
   state: string

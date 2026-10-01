@@ -12,6 +12,8 @@ import {
 } from './journal-reducer'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionFailedStartIds } from '../../../shared/structured-agent-session-latest-request'
+import { isRequeueableAgentJournalSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 const EPOCH = 'epoch-1'
 
@@ -228,4 +230,41 @@ describe('a failed start recorded on its message', () => {
     expect(submission).toMatchObject({ dispatchState: 'rejected', reason: RECORD.reason })
     expect(submission).not.toHaveProperty('rejectedByStartKey')
   })
+})
+
+// The delivery loop rejects a waiting message with Orca's own fault when it throws mid-delivery. It
+// is a failure before any handover like a failed start: every reader treats the two alike.
+describe('a waiting message rejected before any handover', () => {
+  const later: JournalRow = {
+    kind: 'item',
+    itemId: 'codex:later-answer',
+    revision: 1,
+    body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'later' }] },
+    ...base(3)
+  }
+  const rejectedWith = (kind: string): JournalRow =>
+    fromDisk({
+      kind: 'dispatch',
+      clientMessageId: 'cm_1',
+      state: 'rejected',
+      providerItemId: null,
+      reason: 'Written by the host.',
+      rejection: { kind },
+      ...base(4)
+    })
+  const message = agentJournalSubmissionKey('cm_1')
+
+  it.each(['accountSwitchInProgress', 'hostFault'])(
+    'for %s: stays below what came while it waited, is announced, and can be queued again',
+    (kind) => {
+      const view = renderJournalState(
+        fold([accepted, failedStart(2, RECORD), later, rejectedWith(kind)])
+      )
+      const submission = view.submissions.find((entry) => entry.clientMessageId === 'cm_1')
+
+      expect(view.items.map((entry) => entry.itemId)).toEqual(['codex:later-answer', message])
+      expect(structuredAgentSessionFailedStartIds(view.submissions)).toEqual([message])
+      expect(submission && isRequeueableAgentJournalSubmission(submission)).toBe(true)
+    }
+  )
 })
