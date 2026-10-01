@@ -455,8 +455,8 @@ describe('structured agent session reducer', () => {
     expect(withoutCapability.backgroundTasks).toBeUndefined()
   })
 
-  // An older host omits the roster when no provider holds the session; a pane resuming from its
-  // cursor must not keep the one it held while away (#24227).
+  // An older host omits the roster only when its records hold no running child; a pane resuming
+  // from its cursor must not keep the one it held while away (#24227).
   it("drops the held roster on a resumed subscription's first batch that omits it", () => {
     const monitoring = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
       type: 'event',

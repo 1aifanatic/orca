@@ -33,18 +33,19 @@ export class StructuredAgentSessionClientDelivery {
     private readonly sessions: Map<string, StructuredAgentSessionHostSession>,
     now: () => number,
     private readonly deps: () => StructuredAgentSessionHostDeps,
-    private readonly onJournalActivity?: (sessionId: string) => void,
-    onAgentStarted?: (sessionId: string) => void,
+    private readonly onJournalActivity: (sessionId: string) => void,
+    onAgentStarted: (sessionId: string) => void,
     /** A session's child records changed; the chat strip republishes from them. */
-    onChildWorkChanged?: (sessionId: string) => void,
-    readBackgroundTasks?: SubscriberFieldHooks['readBackgroundTasks']
+    onChildWorkChanged: (sessionId: string) => void,
+    // Required: an opening frame without the roster reads as "no tasks" to current clients.
+    readBackgroundTasks: NonNullable<SubscriberFieldHooks['readBackgroundTasks']>
   ) {
     this.statusFeed = createStructuredAgentSessionHostStatusFeed({
       sessions,
       now,
       deps,
-      ...(onAgentStarted ? { onAgentStarted } : {}),
-      ...(onChildWorkChanged ? { onChildWorkChanged } : {})
+      onAgentStarted,
+      onChildWorkChanged
     })
     this.turnCompletionFeed = new StructuredAgentSessionTurnCompletionFeed({
       sessions,
@@ -59,7 +60,7 @@ export class StructuredAgentSessionClientDelivery {
       readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(sessions.get(sessionId)?.journal),
-      ...(readBackgroundTasks ? { readBackgroundTasks } : {}),
+      readBackgroundTasks,
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }
@@ -134,7 +135,7 @@ export class StructuredAgentSessionClientDelivery {
     // subscribed, which is the whole reason a backgrounded chat can complete at all. After the
     // status publish, so it reads the projection that publish cached.
     this.turnCompletionFeed.observe(sessionId, journal)
-    this.onJournalActivity?.(sessionId)
+    this.onJournalActivity(sessionId)
   }
 
   private requireJournal(sessionId: string): AgentSessionJournal {
