@@ -4,7 +4,10 @@ import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-sessio
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { useAppStore } from '../../store'
 import { appendNativeChatDraftNow, type NativeChatDraftAttachment } from './native-chat-draft-cache'
-import { resolveNativeChatAttachmentOwnerForWorktree } from './native-chat-attachment-upload'
+import {
+  resolveNativeChatAttachmentOwnerForWorktree,
+  type NativeChatAttachmentOwner
+} from './native-chat-attachment-upload'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 
 /**
@@ -47,18 +50,18 @@ function restoreWithdrawnMessages(
 function withdrawnImageLocation(
   worktreeId: string | undefined
 ): Pick<NativeChatDraftAttachment, 'connectionId' | 'location'> {
-  const owner = worktreeId
+  const owner: NativeChatAttachmentOwner = worktreeId
     ? resolveNativeChatAttachmentOwnerForWorktree(useAppStore.getState(), worktreeId)
-    : null
-  switch (owner?.kind) {
+    : { kind: 'not-ready' }
+  switch (owner.kind) {
     case 'local':
       return { location: 'local' }
     case 'ssh':
       return { connectionId: owner.connectionId, location: 'ssh' }
     case 'runtime':
       return { location: 'runtime' }
-    default:
-      // Not resolved yet: left unknown, so the chip is never wrongly marked missing.
+    case 'not-ready':
+      // Left unknown, so the chip is never wrongly marked missing.
       return {}
   }
 }
