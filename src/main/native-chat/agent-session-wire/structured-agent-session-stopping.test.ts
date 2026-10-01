@@ -187,6 +187,34 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
     expect(status()).toMatchObject({ status: 'working', stopping: true })
   })
 
+  // The newest turn record is the stopped one until the next send's turn opens; it no longer runs.
+  it.each(['names its turn', 'names no turn'])(
+    'reads a send made after a Stop that %s as Working before its turn opens',
+    async (naming) => {
+      rig = await createQueuedMessageTestRig()
+      const stopped = await rig.workingSend()
+      const status = watchStatus()
+      if (naming === 'names its turn') {
+        await rig.settleAccepted(stopped, 'stopped')
+        await turn('turn-1', stopped, 'running')
+        await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+        expect(await namedStop('turn-1')).toMatchObject({ ok: true })
+      } else {
+        expect(await rig.stop()).toMatchObject({ ok: true })
+        await rig.settleAccepted(stopped, 'stopped')
+        await turn('turn-1', stopped, 'running')
+      }
+      await eventually(() => expect(status()).toMatchObject({ status: 'working', stopping: true }))
+      await turn('turn-1', stopped, 'interrupted')
+      await eventually(() => expect(status()?.status).toBe('idle'))
+
+      await rig.workingSend()
+
+      await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+      expect(status()).not.toHaveProperty('stopping')
+    }
+  )
+
   it('never marks a turn that opened after the stopped one ended', async () => {
     const { sent, status } = await runningTurn()
     expect(await rig.stop()).toMatchObject({ ok: true })
