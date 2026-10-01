@@ -9,7 +9,11 @@
 export type AgentOwnershipEvidence = 'present' | 'absent' | 'unknown'
 
 /** Omission requests diagnostic inventory; an explicit null selects only the local provider. */
-export type PtySessionListScope = { connectionId: string | null }
+export type PtySessionListScope = {
+  connectionId: string | null
+  /** Judge `complete` for this worktree: a silent version with no evidence of it leaves it complete. */
+  worktreeId?: string
+}
 
 /**
  * One row of `pty:listSessions`. Shared so the main handler, both preload surfaces, and the

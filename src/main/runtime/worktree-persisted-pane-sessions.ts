@@ -30,3 +30,16 @@ export function persistedPaneSessionIdsForWorktree(
   }
   return [...ids]
 }
+
+/** The per-worktree evidence a scoped session listing weighs, or none when no worktree was named. */
+export function worktreeEvidenceScope(
+  session: Parameters<typeof persistedPaneSessionIdsForWorktree>[0],
+  worktreeId: string | undefined
+): { worktreeId: string; persistedPaneSessionIds: string[] } | undefined {
+  return worktreeId === undefined
+    ? undefined
+    : {
+        worktreeId,
+        persistedPaneSessionIds: persistedPaneSessionIdsForWorktree(session, worktreeId)
+      }
+}

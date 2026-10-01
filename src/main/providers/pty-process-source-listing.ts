@@ -43,6 +43,33 @@ export function answeredProcesses(listings: readonly PtyProcessSourceListing[]):
   return listings.flatMap((listing) => (listing.contact === 'live' ? listing.processes : []))
 }
 
+/**
+ * Ids of `worktreeId` a silent version may hold: its last-known ids (routes and attached ids) for the
+ * worktree, and the worktree's saved tab bindings no answering version listed. Empty when no version
+ * is silent or nothing points at a silent one; then the answered part is complete for this worktree.
+ */
+export function silentVersionEvidence(
+  listings: readonly PtyProcessSourceListing[],
+  worktreeId: string,
+  persistedPaneSessionIds: readonly string[] = []
+): string[] {
+  const silent = listings.filter((listing) => listing.contact === 'unverifiable')
+  if (silent.length === 0) {
+    return []
+  }
+  const answeredIds = new Set(answeredProcesses(listings).map((process) => process.id))
+  const evidence = new Set(persistedPaneSessionIds.filter((id) => !answeredIds.has(id)))
+  const prefix = `${worktreeId}@@`
+  for (const listing of silent) {
+    for (const id of listing.contact === 'unverifiable' ? listing.lastKnownIds : []) {
+      if (id.startsWith(prefix)) {
+        evidence.add(id)
+      }
+    }
+  }
+  return [...evidence]
+}
+
 export function describeListingError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -54,7 +81,9 @@ export function describeListingError(error: unknown): string {
 export async function listAnsweredProcesses(
   provider: IPtyProvider,
   onUnverifiable: (source: { protocolVersion: number | null; reason: string }) => void,
-  nonCurrentDeadlineMs: number
+  nonCurrentDeadlineMs: number,
+  /** Judge completeness for this worktree only: a silent version with no evidence of it is not reported. */
+  forWorktree?: { worktreeId: string; persistedPaneSessionIds: readonly string[] }
 ): Promise<PtyProcessInfo[]> {
   if (!provider.listProcessesBySource) {
     return await provider.listProcesses()
@@ -66,6 +95,13 @@ export async function listAnsweredProcesses(
   )
   if (silentCurrent?.contact === 'unverifiable') {
     throw silentCurrent.error
+  }
+  if (
+    forWorktree &&
+    silentVersionEvidence(listings, forWorktree.worktreeId, forWorktree.persistedPaneSessionIds)
+      .length === 0
+  ) {
+    return answeredProcesses(listings)
   }
   for (const listing of listings) {
     if (listing.contact === 'unverifiable') {

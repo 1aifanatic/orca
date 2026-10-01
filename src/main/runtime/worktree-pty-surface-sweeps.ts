@@ -9,6 +9,7 @@
 import type { IPtyProvider, PtyProcessInfo } from '../providers/types'
 import {
   answeredProcesses,
+  silentVersionEvidence,
   type PtyProcessSourceListing
 } from '../providers/pty-process-source-listing'
 import { listRegisteredPtys } from '../memory/pty-registry'
@@ -124,26 +125,15 @@ function answeredAndLastKnown(
     persistedPaneSessionIds?: readonly string[]
   }
 ): Pick<PtyProcessInfo, 'id' | 'cwd' | 'worktreeId'>[] {
-  const prefix = `${worktreeId}@@`
-  const answered = answeredProcesses(listings)
-  const silent = listings.filter((listing) => listing.contact === 'unverifiable')
-  if (silent.length === 0) {
-    return answered
-  }
-  const answeredIds = new Set(answered.map((session) => session.id))
-  const evidence = new Set(
-    (opts.persistedPaneSessionIds ?? []).filter((id) => !answeredIds.has(id))
-  )
-  for (const listing of silent) {
-    const owned = listing.lastKnownIds.filter((id) => id.startsWith(prefix))
-    if (owned.length === 0 && evidence.size === 0) {
-      opts.onUncheckedSource?.(listing.protocolVersion)
-    }
-    for (const id of owned) {
-      evidence.add(id)
+  const evidence = silentVersionEvidence(listings, worktreeId, opts.persistedPaneSessionIds)
+  if (evidence.length === 0) {
+    for (const listing of listings) {
+      if (listing.contact === 'unverifiable') {
+        opts.onUncheckedSource?.(listing.protocolVersion)
+      }
     }
   }
-  return [...answered, ...[...evidence].map((id) => ({ id, cwd: '', worktreeId }))]
+  return [...answeredProcesses(listings), ...evidence.map((id) => ({ id, cwd: '', worktreeId }))]
 }
 
 export async function sweepRegistryForWorktree(

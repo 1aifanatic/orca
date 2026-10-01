@@ -106,7 +106,7 @@ describe('activation inventory census', () => {
     await expect(
       listActivationPtySessions({ repos: [{ id: 'repo', executionHostId: 'ssh:box' }] }, worktreeId)
     ).resolves.toEqual([{ id: 'ssh:box@@pty-1' }])
-    expect(listSessions).toHaveBeenCalledExactlyOnceWith({ connectionId: 'box' })
+    expect(listSessions).toHaveBeenCalledExactlyOnceWith({ connectionId: 'box', worktreeId })
   })
 
   it('refuses a partial inventory, which the gate reads as blocked, never as empty', async () => {
@@ -150,7 +150,7 @@ describe('activation inventory census', () => {
     await expect(
       listActivationPtySessions({ repos: [{ id: 'repo', executionHostId: 'ssh:box' }] }, worktreeId)
     ).rejects.toThrow('No PTY provider for connection')
-    expect(detached.mock.calls).toEqual([[{ connectionId: 'box' }]])
+    expect(detached.mock.calls).toEqual([[{ connectionId: 'box', worktreeId }]])
 
     const refused = stubListSessions(async () => {
       throw new Error('relay unavailable')

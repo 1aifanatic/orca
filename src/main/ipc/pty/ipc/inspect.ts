@@ -13,6 +13,8 @@ import type {
 } from '../../../../shared/pty-listed-session'
 import { listAnsweredProcesses } from '../../../providers/pty-process-source-listing'
 import { USER_FACING_DAEMON_LISTING_TIMEOUT_MS } from '../../../daemon/daemon-generation-listing'
+import { worktreeEvidenceScope } from '../../../runtime/worktree-persisted-pane-sessions'
+import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import { ptyOwnership } from '../provider/ownership-state'
 import {
   getProviderForPty,
@@ -33,6 +35,8 @@ import {
 
 export function installPtyInspectIpcHandlers(deps: {
   getLocalPtyProviderStartupPromise: (connectionId?: string | null) => Promise<void> | undefined
+  /** The local workspace session, for the saved tab bindings a scoped listing weighs as evidence. */
+  getWorkspaceSession?: () => WorkspaceSessionState | undefined
 }): void {
   const ipcMain = getPtyIpc()
   const { getLocalPtyProviderStartupPromise } = deps
@@ -54,7 +58,8 @@ export function installPtyInspectIpcHandlers(deps: {
         if (
           !scope ||
           (scope.connectionId !== null &&
-            (typeof scope.connectionId !== 'string' || !scope.connectionId.trim()))
+            (typeof scope.connectionId !== 'string' || !scope.connectionId.trim())) ||
+          (scope.worktreeId !== undefined && typeof scope.worktreeId !== 'string')
         ) {
           throw new Error('invalid_pty_session_list_scope')
         }
@@ -76,7 +81,8 @@ export function installPtyInspectIpcHandlers(deps: {
             ? listAnsweredProcesses(
                 provider,
                 (source) => unverifiable.push(source),
-                Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS
+                Date.now() + USER_FACING_DAEMON_LISTING_TIMEOUT_MS,
+                worktreeEvidenceScope(deps.getWorkspaceSession?.(), scope?.worktreeId)
               )
             : scope !== undefined
               ? provider.listProcesses()

@@ -318,7 +318,10 @@ describe('worktree agent activation seam', () => {
       method: 'session.tabs.list',
       params: { worktree: `id:${worktree.id}` }
     })
-    expect(listSessions).toHaveBeenCalledExactlyOnceWith({ connectionId: null })
+    expect(listSessions).toHaveBeenCalledExactlyOnceWith({
+      connectionId: null,
+      worktreeId: worktree.id
+    })
     expect(runtimeCall).toHaveBeenCalledWith({
       method: 'agentSession.handoffStatus',
       params: { sessionId: 'chat-1' }
@@ -355,13 +358,16 @@ describe('worktree agent activation seam', () => {
 
     expect(activateAndRevealWorktree(worktree.id)).toEqual({ primaryTabId: null })
     await expect(waitForWorktreeAgentActivationGateForTests(worktree.id)).resolves.toBe('blocked')
-    expect(listSessions.mock.calls).toEqual([[{ connectionId: 'box' }]])
+    expect(listSessions.mock.calls).toEqual([[{ connectionId: 'box', worktreeId: worktree.id }]])
     expect(useAppStore.getState().tabsByWorktree[worktree.id] ?? []).toHaveLength(0)
 
     listSessions.mockResolvedValue([])
     activateAndRevealWorktree(worktree.id)
     await expect(waitForWorktreeAgentActivationGateForTests(worktree.id)).resolves.toBe('empty')
-    expect(listSessions.mock.calls).toEqual([[{ connectionId: 'box' }], [{ connectionId: 'box' }]])
+    expect(listSessions.mock.calls).toEqual([
+      [{ connectionId: 'box', worktreeId: worktree.id }],
+      [{ connectionId: 'box', worktreeId: worktree.id }]
+    ])
     await vi.waitFor(() =>
       expect(useAppStore.getState().tabsByWorktree[worktree.id] ?? []).toHaveLength(1)
     )
@@ -406,6 +412,9 @@ describe('worktree agent activation seam', () => {
     activateAndRevealWorktree(worktree.id)
     await expect(waitForWorktreeAgentActivationGateForTests(worktree.id)).resolves.toBe('resumed')
     expect(resume).toHaveBeenCalledExactlyOnceWith(worktree.id, { skipClaimKeys: new Set() })
-    expect(listSessions.mock.calls).toEqual([[{ connectionId: 'box' }], [{ connectionId: 'box' }]])
+    expect(listSessions.mock.calls).toEqual([
+      [{ connectionId: 'box', worktreeId: worktree.id }],
+      [{ connectionId: 'box', worktreeId: worktree.id }]
+    ])
   })
 })

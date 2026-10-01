@@ -58,8 +58,8 @@ export async function listActivationPtySessions(
   if (!scope) {
     throw new Error('Activation PTY inventory is unverifiable: no execution-owner route')
   }
-  const listing = await window.api.pty.listSessions(scope)
-  // Why throw: a silent terminal-service version could hold another writer; the gate reads a throw as blocked.
+  const listing = await window.api.pty.listSessions({ ...scope, worktreeId })
+  // Why throw: a silent version with evidence of this worktree could hold another writer; the gate reads a throw as blocked.
   if (!listing.complete) {
     throw new Error('Activation PTY inventory is unverifiable: a terminal service did not answer')
   }

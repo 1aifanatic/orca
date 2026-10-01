@@ -204,4 +204,39 @@ describe('scoped activation PTY inventory', () => {
       )
     }
   })
+
+  it('judges a scoped listing complete for a worktree the silent version holds no evidence of', async () => {
+    installDaemonTestProvider({
+      listProcessesBySource: vi.fn(async () => [
+        { protocolVersion: 36, isCurrent: true, contact: 'live' as const, processes: [] },
+        {
+          protocolVersion: 35,
+          isCurrent: false,
+          contact: 'unverifiable' as const,
+          error: new Error('Request listSessions timed out'),
+          lastKnownIds: ['repo::/old@@a1']
+        }
+      ])
+    })
+    const savedSession = {
+      tabsByWorktree: {
+        'repo::/restored': [{ id: 't1', worktreeId: 'repo::/restored', ptyId: null }]
+      },
+      terminalLayoutsByTabId: { t1: { ptyIdsByLeafId: { l1: 'repo::/restored@@saved' } } }
+    }
+    installPtyInspectIpcHandlers({
+      getLocalPtyProviderStartupPromise: async () => {},
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the evidence reader uses only tabs and layout bindings.
+      getWorkspaceSession: () => savedSession as never
+    })
+    const list = async (worktreeId: string): Promise<unknown> =>
+      await handlers.get('pty:listSessions')!(null, { connectionId: null, worktreeId })
+
+    // A newly added worktree: nothing points at the silent version, so activation is not blocked.
+    await expect(list('repo::/new')).resolves.toMatchObject({ complete: true })
+    // The silent version was last known to hold this worktree's session.
+    await expect(list('repo::/old')).resolves.toMatchObject({ complete: false })
+    // A saved tab is bound to a session no answering version listed.
+    await expect(list('repo::/restored')).resolves.toMatchObject({ complete: false })
+  })
 })
