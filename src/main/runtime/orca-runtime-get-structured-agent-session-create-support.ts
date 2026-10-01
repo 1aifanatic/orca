@@ -25,6 +25,7 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
+import type { StartupStepOutcome } from './structured-agent-session-startup-gate'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   // The history restore a tab restore owes, until a caller that answered with its list starts it.
@@ -310,11 +311,12 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     const gate = this.structuredAgentSessionStartupGate
     gate.stepStarted()
     // Chat commands held for startup go ahead however this ends: when the settle does, or now.
-    let opener: 'nothing to settle' | 'step failed' | null = 'nothing to settle'
+    let ended: StartupStepOutcome | null = 'no chats on disk'
     try {
       if (!this.hasPersistedStructuredAgentSessionStore()) {
         return
       }
+      ended = 'no host'
       // A refused host is no host: startup goes on, and only structured requests are refused.
       await ensureStructuredAgentSessionHostUnlessRefused(() =>
         this.ensureStructuredAgentSessionHost()
@@ -326,17 +328,17 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
             host,
             this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
             (settled) => {
-              opener = null
+              ended = null
               gate.openWhen(settled)
             }
           )
       }
     } catch (error) {
-      opener &&= 'step failed'
+      ended &&= 'step failed'
       throw error
     } finally {
-      if (opener) {
-        gate.open(opener)
+      if (ended) {
+        gate.stepEnded(ended)
       }
     }
   }

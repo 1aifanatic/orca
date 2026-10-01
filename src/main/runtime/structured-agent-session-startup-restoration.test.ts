@@ -2,7 +2,7 @@
 // headless host has its seeded statuses and its settled crashed chats, and no failure in the step
 // (one chat's open, one chat's settlement) costs startup or the other chats.
 
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   closeTestJournalHostDatabases,
   readTestJournalSessionStatus
@@ -84,7 +84,9 @@ it('holds chat commands until the startup settle ends, and then lets them throug
 
   await vi.waitFor(() => expect(gate.ready()).toBeNull())
   expect(timing).toHaveBeenCalledWith(
-    expect.stringMatching(/step started \+\d+ ms, ended \+\d+ ms; opened \+\d+ ms by settle ended$/)
+    expect.stringMatching(
+      /step started \+\d+ ms, ended \+\d+ ms \(settle ended\); opened \+\d+ ms by settle ended$/
+    )
   )
 })
 
@@ -103,26 +105,81 @@ it('opens the gate when the startup step fails, never stranding a command', asyn
   await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
 
   expect(gate.ready()).toBeNull()
-  expect(timing).toHaveBeenCalledWith(expect.stringMatching(/by step failed$/))
+  expect(timing).toHaveBeenCalledOnce()
+  expect(timing).toHaveBeenCalledWith(
+    expect.stringMatching(/\(step failed\); opened \+\d+ ms by step failed$/)
+  )
 })
 
-it('logs one timing line per launch, naming the ceiling when it opened the gate first', async () => {
-  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-  const gate = new StructuredAgentSessionStartupGate(5)
-  gate.hold()
-  gate.stepStarted()
-  let endSettle = () => {}
-  gate.openWhen(new Promise<void>((resolve) => (endSettle = resolve)))
-  await vi.waitFor(() => expect(gate.ready()).toBeNull())
-  // Written once the step is over too, so it carries both times.
-  expect(timing).not.toHaveBeenCalled()
+describe('one timing line per launch, with the real step times whoever opened the gate', () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+  const CEILING_MS = 5
+  let timing: ReturnType<typeof vi.spyOn>
 
-  endSettle()
-  await vi.waitFor(() => expect(timing).toHaveBeenCalledOnce())
-  expect(timing).toHaveBeenCalledWith(
-    expect.stringMatching(/ended \+\d+ ms; opened \+\d+ ms by ceiling$/)
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  })
+
+  /** Exactly one line, for a gate the ceiling opened before the step ended `outcome`. */
+  async function expectOneCeilingLine(outcome: string, started = /\+\d+ ms/): Promise<void> {
+    await vi.waitFor(() => expect(timing).toHaveBeenCalledOnce())
+    await sleep(20)
+    expect(timing).toHaveBeenCalledOnce()
+    const line = String(timing.mock.calls[0]?.[0])
+    expect(line).toMatch(
+      new RegExp(`ended \\+\\d+ ms \\(${outcome}\\); opened \\+\\d+ ms by ceiling$`)
+    )
+    expect(line).toMatch(new RegExp(`step started ${started.source},`))
+  }
+
+  it.each(['settle ended', 'no host', 'step failed'] as const)(
+    'writes it when the step ends after the ceiling: %s',
+    async (outcome) => {
+      const gate = new StructuredAgentSessionStartupGate(CEILING_MS)
+      gate.hold()
+      gate.stepStarted()
+      await vi.waitFor(() => expect(gate.ready()).toBeNull())
+      expect(timing).not.toHaveBeenCalled()
+
+      gate.stepEnded(outcome)
+
+      await expectOneCeilingLine(outcome)
+    }
   )
+
+  it('times a step that starts only after the ceiling', async () => {
+    const gate = new StructuredAgentSessionStartupGate(CEILING_MS)
+    gate.hold()
+    await vi.waitFor(() => expect(gate.ready()).toBeNull())
+    await sleep(10)
+    expect(timing).not.toHaveBeenCalled()
+
+    gate.stepStarted()
+    gate.openWhen(Promise.resolve())
+
+    await expectOneCeilingLine('settle ended', /\+([5-9]|\d{2,}) ms/)
+  })
+
+  it.each([
+    ['throws', 'step failed'],
+    ['builds no host', 'no host']
+  ] as const)('writes it when a slow host build past the ceiling %s', async (how, outcome) => {
+    const runtime = restartedRuntime()
+    const internal = internals(runtime)
+    internal.structuredAgentSessionStartupGate = new StructuredAgentSessionStartupGate(CEILING_MS)
+    internal.ensureStructuredAgentSessionHost = async () => {
+      await sleep(30)
+      if (how === 'throws') {
+        throw new Error('host build failed')
+      }
+    }
+    runtime.holdStructuredAgentSessionCommandsForStartup()
+
+    await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
+
+    await expectOneCeilingLine(outcome)
+  })
 })
 
 it('seeds and settles on a host no client ever lists (T8)', async () => {
