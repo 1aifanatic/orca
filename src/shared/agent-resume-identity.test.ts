@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   resolveResumeAgent,
   decodeHookResumeSession,
-  providerSessionForResumeRequest
+  providerSessionForResumeRequest,
+  sameResumeTarget
 } from './agent-resume-identity'
 import { normalizeAgentProviderSession, RESUMABLE_TUI_AGENTS } from './agent-session-resume'
 import { buildAgentResumeStartupPlan } from './tui-agent-startup'
@@ -105,6 +106,17 @@ describe('owned resume record', () => {
       resumeIdentity: { agent: 'codex' }
     })
     expect(normalizeAgentProviderSession(session)).toEqual(session)
+  })
+
+  it('matches resume targets by owning agent, not display label', () => {
+    const owned = decodeHookResumeSession(locator, 'codex', null)!
+    expect(sameResumeTarget('claude', owned, 'codex', owned)).toBe(true)
+    expect(sameResumeTarget('claude', owned, 'codex', locator)).toBe(true)
+    expect(sameResumeTarget('claude', owned, 'claude', locator)).toBe(false)
+    expect(sameResumeTarget('claude', locator, 'codex', locator)).toBe(false)
+    expect(sameResumeTarget('claude', locator, 'claude', locator)).toBe(true)
+    expect(sameResumeTarget(undefined, locator, undefined, locator)).toBe(false)
+    expect(sameResumeTarget('codex', owned, 'codex', undefined)).toBe(false)
   })
 
   it('projects a validated locator for older strict RPC decoders', () => {

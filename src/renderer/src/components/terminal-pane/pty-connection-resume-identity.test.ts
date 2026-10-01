@@ -241,4 +241,63 @@ describe('connectPanePty', () => {
     )
     expect(mockStoreState.clearSleepingAgentSession).toHaveBeenCalledWith(paneKey)
   })
+
+  it('clears the owner alias of a mixed record once its cold restore resumes the session', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const paneKey = makePaneKey('tab-1', LEAF_1)
+    const base = {
+      worktreeId: 'wt-1',
+      prompt: 'saved work',
+      state: 'working' as const,
+      capturedAt: 1,
+      updatedAt: 1
+    }
+    mockStoreState.sleepingAgentSessionsByPaneKey = {
+      [paneKey]: {
+        ...base,
+        paneKey,
+        tabId: 'tab-1',
+        agent: 'claude',
+        providerSession: mismatchedSession
+      },
+      'alias-tab:leaf-1': {
+        ...base,
+        paneKey: 'alias-tab:leaf-1',
+        tabId: 'alias-tab',
+        agent: 'codex',
+        providerSession: { key: 'session_id', id: SESSION_ID }
+      },
+      'other-tab:leaf-1': {
+        ...base,
+        paneKey: 'other-tab:leaf-1',
+        tabId: 'other-tab',
+        agent: 'claude',
+        providerSession: { key: 'session_id', id: SESSION_ID }
+      }
+    }
+    mockStoreState.tabsByWorktree = { 'wt-1': [{ id: 'tab-1', ptyId: 'lost-pty' }] }
+    const transport = createMockTransport('fresh-pty')
+    transport.connect.mockImplementation(async ({ sessionId }: { sessionId?: string }) =>
+      sessionId
+        ? { id: 'fresh-pty', coldRestore: { scrollback: 'cold-payload', cwd: '/tmp/wt-1' } }
+        : 'fresh-pty'
+    )
+    transportFactoryQueue.push(transport)
+    const deps = createDeps({
+      restoredLeafId: LEAF_1,
+      restoredPtyIdByLeafId: { [LEAF_1]: 'lost-pty' }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing connection harness supplies the pane, manager and dependency methods exercised by connectPanePty.
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await flushAsyncTicks(20)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+
+    expect(transport.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ launchAgent: 'codex' })
+    )
+    expect(mockStoreState.clearSleepingAgentSession).toHaveBeenCalledWith(paneKey)
+    expect(mockStoreState.clearSleepingAgentSession).toHaveBeenCalledWith('alias-tab:leaf-1')
+    // An unlabelled Claude record owns a different transcript, so it stays.
+    expect(mockStoreState.clearSleepingAgentSession).not.toHaveBeenCalledWith('other-tab:leaf-1')
+  })
 })

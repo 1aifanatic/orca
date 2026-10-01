@@ -3,6 +3,7 @@ import type { AgentType } from './agent-status-types'
 import { isRetainedSessionRemnant } from './agent-hook-presence-transition'
 import { normalizedKnownAgentType } from './agent-status-identity'
 import {
+  agentProviderSessionsEqual,
   isResumableTuiAgent,
   normalizeAgentProviderSession,
   type AgentProviderSessionMetadata,
@@ -73,11 +74,29 @@ export function inheritAgentResumeIdentity(
 }
 
 /** The hook route owns the session; older unlabelled records retain their display agent. */
-export function resolveResumeAgent<T extends string>(
+export function resolveResumeAgent<T extends string | undefined>(
   displayAgent: T,
   session: AgentProviderSessionMetadata
 ): T | AgentResumeIdentity['agent'] {
   return session.resumeIdentity?.agent ?? displayAgent
+}
+
+/** Dedupe and claims compare the agent each side would resume, never a display label. */
+export function sameResumeTarget(
+  leftAgent: string | undefined,
+  left: AgentProviderSessionMetadata | undefined,
+  rightAgent: string | undefined,
+  right: AgentProviderSessionMetadata | undefined
+): boolean {
+  if (!left || !right) {
+    return false
+  }
+  const owner = resolveResumeAgent(leftAgent, left)
+  return (
+    owner !== undefined &&
+    owner === resolveResumeAgent(rightAgent, right) &&
+    agentProviderSessionsEqual(owner, left, right)
+  )
 }
 
 /** Strict older RPC decoders accept only the locator, alongside the resolved agent. */
