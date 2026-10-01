@@ -22,9 +22,17 @@ export class ClaudeAccountService {
   private readonly registration: ClaudeAccountRegistration
 
   constructor(
-    store: Store,
-    rateLimits: RateLimitService,
-    private readonly runtimeAuth: ClaudeRuntimeAuthService
+    store: Pick<Store, 'getSettings' | 'updateSettings'>,
+    rateLimits: Pick<
+      RateLimitService,
+      'evictInactiveClaudeCache' | 'refreshForClaudeAccountChange'
+    >,
+    private readonly runtimeAuth: Pick<
+      ClaudeRuntimeAuthService,
+      | 'syncForCurrentSelection'
+      | 'forceMaterializeCurrentSelectionForRollback'
+      | 'getRuntimeConfigDir'
+    >
   ) {
     this.selection = new ClaudeAccountSelection(store, rateLimits, runtimeAuth)
     this.registration = new ClaudeAccountRegistration({
