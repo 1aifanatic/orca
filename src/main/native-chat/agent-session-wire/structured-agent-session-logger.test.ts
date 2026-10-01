@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
+import {
+  AgentSessionRefusalError,
+  agentSessionRefusalError,
+  refuse
+} from '../../../shared/agent-session-wire-refusals'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import {
   STRUCTURED_AGENT_SESSION_LOG_REPEAT_WINDOW_MS as WINDOW_MS,
@@ -81,6 +86,62 @@ describe('a failure that repeats', () => {
       ['agentSession.lease-renewal', 'a'],
       ['agentSession.lease-renewal', 'a']
     ])
+  })
+
+  it('writes a failure whose cause, refusal reason or value differs, and swallows a true repeat', () => {
+    const logger = createStructuredAgentSessionLogger({ now: () => clock })
+    // A refusal's message is its bare code: only the cause tells these two apart.
+    const unreadable = (cause: Error): Error =>
+      new AgentSessionRefusalError(
+        refuse('agent_session_journal_unreadable', { reason: 'journalUnavailable' }),
+        { cause }
+      )
+    const report = (error: unknown): void =>
+      logger.warn('recording an opened chat tab failed', {
+        scope: 'tab-visibility-open',
+        sessionId: 'session-1',
+        error
+      })
+    const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    const failing = Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
+
+    report(unreadable(denied))
+    report(unreadable(denied))
+    report(unreadable(failing))
+    report(
+      agentSessionRefusalError('agent_session_journal_unreadable', { reason: 'journalCorrupt' })
+    )
+    report({ code: 'busy', attempt: 1 })
+    report({ attempt: 1, code: 'busy' })
+    report({ code: 'locked', attempt: 1 })
+
+    expect(
+      written().map((span) => span.attributes['errorCause'] ?? span.attributes['error'])
+    ).toEqual([
+      ['Error: EACCES: permission denied'],
+      ['Error: EIO: i/o error'],
+      undefined,
+      { code: 'busy', attempt: 1 },
+      { code: 'locked', attempt: 1 }
+    ])
+    expect(written()[2]?.attributes).toMatchObject({ refusalReason: 'journalCorrupt' })
+    expect(written()[0]?.attributes).toMatchObject({ refusalReason: 'journalUnavailable' })
+  })
+
+  it('writes the same code as a plain error and as a refusal as two failures', () => {
+    const logger = createStructuredAgentSessionLogger({ now: () => clock })
+    const renew = (error: Error): void =>
+      logger.warn('renewing a chat lease failed', { scope: 'lease-renewal', sessionId: 'a', error })
+    const unreadableRecord = (): Error => new Error('execution_owner_reconciling')
+    const reconciling = (): Error =>
+      agentSessionRefusalError('execution_owner_reconciling', { reason: 'hostReconciling' })
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      renew(unreadableRecord())
+      renew(reconciling())
+    }
+
+    expect(written()).toHaveLength(2)
   })
 
   it('tracks a bounded number of repeating entries', () => {

@@ -5,6 +5,7 @@
 // the host's local trace file (the desktop's `<userData>/logs/main.trace.ndjson`, collected by the
 // diagnostic bundle; orcad's `<data-root>/logs/orcad.trace.ndjson`) and to the console.
 
+import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { startSpan } from '../../observability/tracer'
 import { createStructuredAgentSessionLogRepeats } from './structured-agent-session-log-repeats'
 
@@ -76,23 +77,28 @@ export function createStructuredAgentSessionLogger(options?: {
   const write =
     (level: LogLevel) =>
     (message: string, fields: StructuredAgentSessionLogFields): void => {
-      // The error's own text is in the key: a failure that changes is news, as the read door's is.
-      const { error: keyError } = fields
-      const errorText = keyError instanceof Error ? keyError.message : String(keyError)
+      const { scope, error, ...rest } = fields
+      const attributes = { level, message, ...rest, ...errorAttributes(error) }
+      // Keyed on all the entry writes but its stack: only a failure writing the same entry repeats.
       const suppressed = repeats.admit(
-        JSON.stringify([level, fields.scope, fields.sessionId ?? null, message, errorText])
+        stableJson([
+          scope,
+          attributes,
+          error instanceof Error ? `${error.name}: ${error.message}` : null
+        ])
       )
       if (suppressed === null) {
         return
       }
-      const entry = suppressed > 0 ? { ...fields, suppressed } : fields
-      const { scope, error, ...rest } = entry
       const span = startSpan(`agentSession.${scope}`, {
-        attributes: { level, message, ...rest, ...errorAttributes(error) }
+        attributes: suppressed > 0 ? { ...attributes, suppressed } : attributes
       })
       span.fail(error instanceof Error ? error : message)
       const print = level === 'error' ? console.error : console.warn
-      print(`[agent-session] ${scope}: ${message}`, entry)
+      print(
+        `[agent-session] ${scope}: ${message}`,
+        suppressed > 0 ? { ...fields, suppressed } : fields
+      )
     }
   return neverThrowingStructuredAgentSessionLogger({ warn: write('warn'), error: write('error') })
 }
@@ -123,10 +129,34 @@ function errorAttributes(error: unknown): Record<string, unknown> {
   const code = errorCode(error)
   // node:sqlite's `code` is one generic value; `errcode` tells SQLITE_BUSY from SQLITE_FULL.
   const sqliteCode = errorCode(error, 'errcode')
+  // A refusal's message is its bare code; its reason is wire-safe and tells refusals apart.
+  const details: unknown = isAgentSessionRefusalError(error) ? error.refusal.details : undefined
+  const reason: unknown =
+    typeof details === 'object' && details !== null ? Reflect.get(details, 'reason') : undefined
   return {
     ...(code !== undefined ? { errorCode: code } : {}),
     ...(sqliteCode !== undefined ? { errorErrcode: sqliteCode } : {}),
+    ...(typeof reason === 'string' ? { refusalReason: reason } : {}),
     ...(causes.length > 0 ? { errorCause: causes } : {})
+  }
+}
+
+/** The same value always renders the same: object keys sorted, and no throw on a cycle. */
+function stableJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_key, inner: unknown) => {
+      if (typeof inner === 'bigint') {
+        return String(inner)
+      }
+      if (typeof inner !== 'object' || inner === null || Array.isArray(inner)) {
+        return inner
+      }
+      return Object.fromEntries(
+        Object.entries(inner).sort(([left], [right]) => (left < right ? -1 : 1))
+      )
+    })
+  } catch {
+    return String(value)
   }
 }
 
