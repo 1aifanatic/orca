@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import type * as RecordFile from './orcad-remote-record-file'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,15 +18,24 @@ vi.mock('./ssh-relay-install-transfers', () => ({
   uploadRelayDirectory: vi.fn().mockResolvedValue(undefined),
   writeRelayFile: vi.fn().mockResolvedValue(undefined)
 }))
+vi.mock('./orcad-remote-record-file', async (importOriginal) => ({
+  ...(await importOriginal<typeof RecordFile>()),
+  writeAtomicOrcadRemoteRecord: vi.fn().mockResolvedValue(undefined)
+}))
+vi.mock('./orcad-remote-node-runtime', () => ({
+  ensureRemoteOrcadNodeRuntime: vi.fn().mockResolvedValue(undefined)
+}))
 vi.mock('./orcad-local-build-hash', () => ({
   computeLocalOrcadBuildHash: () => 'abc123def4567890'
 }))
 
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { acquireInstallLock } from './ssh-relay-install-lock'
-import { uploadRelayDirectory, writeRelayFile } from './ssh-relay-install-transfers'
+import { uploadRelayDirectory } from './ssh-relay-install-transfers'
+import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
 import { deployOrcad, type OrcadDeployOptions } from './orcad-remote-deploy'
 import { installOrcadBundle } from './orcad-remote-install'
+import { ensureRemoteOrcadNodeRuntime } from './orcad-remote-node-runtime'
 import {
   abandonInstall,
   finalizeInstall,
@@ -34,6 +44,7 @@ import {
 import { emptyOrcadActivationRecord, withActivatedVersion } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import type { SshConnection } from './ssh-connection'
+import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 
 const mockExec = vi.mocked(execCommand)
 const NEW_VERSION = '0.2.0+bb0100000000'
@@ -101,10 +112,12 @@ type HostScript = {
 function scriptHost(script: HostScript): void {
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
-    if (text.startsWith('cat ') && text.includes('orcad-active.json')) {
+    if (text.includes('__ORCAD_RECORD_PRESENT__') && text.includes('orcad-active.json')) {
       return script.activationRecord
+        ? `__ORCAD_RECORD_PRESENT__\n${script.activationRecord}`
+        : '__ORCAD_RECORD_ABSENT__\n'
     }
-    if (text.includes('.orcad-readiness') && text.startsWith('cat ')) {
+    if (text.includes('.orcad-readiness') && text.startsWith('head -c ')) {
       if (script.readinessAtMs !== undefined && Date.now() < script.readinessAtMs) {
         return ''
       }
@@ -118,8 +131,8 @@ function scriptHost(script: HostScript): void {
         JSON.stringify({
           type: 'orca_profile_state_ready',
           nonce: text.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/)?.[0],
-          runtime: 'bun',
-          runtimeVersion: '1.4.2',
+          runtime: 'node',
+          runtimeVersion: NODE_RUNTIME_PIN.version,
           sqliteVersion: '3.51.0',
           artifactVersion: NEW_VERSION,
           revision: 1
@@ -152,6 +165,7 @@ function options(overrides: Partial<OrcadDeployOptions> = {}): OrcadDeployOption
     host: getRemoteHostPlatform('linux-x64'),
     remoteHome: '/home/u',
     localOrcadDir: '/local/out/orcad',
+    target: 'linux-x64-glibc',
     nodePath: '/usr/bin/node',
     userDataDir: '/home/u/.orca',
     bindHost: '127.0.0.1',
@@ -172,7 +186,12 @@ describe('orcad install lock ownership', () => {
   const remoteDir = `/home/u/.orca-remote/orcad-${NEW_VERSION}`
   const install = (signal?: AbortSignal) =>
     installOrcadBundle(
-      { ...options({ signal }), localOrcadDir: '/local/out/orcad' },
+      {
+        ...options({ signal }),
+        localOrcadDir: '/local/out/orcad',
+        target: 'linux-x64-glibc',
+        nodeRuntimeArchive: async () => '/cache/node.tar.gz'
+      },
       NEW_VERSION,
       remoteDir
     )
@@ -261,8 +280,8 @@ describe('deployOrcad', () => {
       expect(script.log).toEqual(['preflight'])
       expect(
         vi
-          .mocked(writeRelayFile)
-          .mock.calls.some(([, , path]) => path.includes('orcad-active.json'))
+          .mocked(writeAtomicOrcadRemoteRecord)
+          .mock.calls.some(([, path]) => path.includes('orcad-active.json'))
       ).toBe(false)
     }
   )
@@ -285,13 +304,17 @@ describe('deployOrcad', () => {
     expect(vi.mocked(uploadRelayDirectory).mock.calls[0][2]).toContain(`orcad-${NEW_VERSION}`)
   })
 
-  it.each(['linux-arm64', 'darwin-x64'] as const)(
+  it.each([
+    ['linux-arm64', 'linux-arm64-glibc'],
+    ['darwin-x64', 'darwin-x64']
+  ] as const)(
     'marks the %s search binary executable before completing the install',
-    async (platform) => {
+    async (platform, target) => {
       scriptHost({ activationRecord: '', readiness: {}, log: [] })
       await deployOrcad(
         options({
           host: getRemoteHostPlatform(platform),
+          target,
           census: { liveSessions: 1, startedSinceActivation: 0 }
         })
       )
@@ -300,7 +323,13 @@ describe('deployOrcad', () => {
       )
       expect(chmod).toBeGreaterThanOrEqual(0)
       expect(mockExec.mock.calls[chmod]?.[1]).toContain(`/ripgrep/${platform}/rg'`)
-      expect(mockExec.mock.calls[chmod]?.[1]).toContain("/bun-runtime'")
+      expect(mockExec.mock.calls[chmod]?.[1]).not.toContain('bun-runtime')
+      expect(String(mockExec.mock.calls[chmod]?.[1]).includes('/spawn-helper')).toBe(
+        platform === 'darwin-x64'
+      )
+      expect(ensureRemoteOrcadNodeRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({ target, slotDir: `/home/u/.orca-remote/orcad-${NEW_VERSION}` })
+      )
       expect(vi.mocked(uploadRelayDirectory).mock.invocationCallOrder[0]).toBeLessThan(
         mockExec.mock.invocationCallOrder[chmod]
       )
@@ -316,7 +345,9 @@ describe('deployOrcad', () => {
       {
         conn: options().conn,
         host: getRemoteHostPlatform('win32-x64'),
-        localOrcadDir: '/local/out/orcad'
+        localOrcadDir: '/local/out/orcad',
+        target: 'win32-x64',
+        nodeRuntimeArchive: async () => '/cache/node.zip'
       },
       NEW_VERSION,
       `C:/Users/u/.orca-remote/orcad-${NEW_VERSION}`
@@ -333,7 +364,7 @@ describe('deployOrcad', () => {
       if (String(command).startsWith('chmod 755 ')) {
         throw new Error('chmod failed')
       }
-      return ''
+      return String(command).includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''
     })
     await expect(deployOrcad(options())).rejects.toThrow('chmod failed')
     expect(vi.mocked(finalizeInstall)).not.toHaveBeenCalled()
@@ -343,7 +374,7 @@ describe('deployOrcad', () => {
     'restores uploaded executable modes with optional browser %s',
     async (browserTarget) => {
       const directory = mkdtempSync(join(tmpdir(), 'orcad-install-modes-'))
-      const binaries = ['bun-runtime', 'ripgrep/linux-x64/rg']
+      const binaries = ['ripgrep/linux-x64/rg']
       if (browserTarget) {
         binaries.push(`agent-browser-${browserTarget}`)
       }
@@ -365,7 +396,9 @@ describe('deployOrcad', () => {
           {
             conn: options().conn,
             host: getRemoteHostPlatform('linux-x64'),
-            localOrcadDir: directory
+            localOrcadDir: directory,
+            target: 'linux-x64-musl',
+            nodeRuntimeArchive: async () => '/cache/node.tar.gz'
           },
           NEW_VERSION,
           directory
@@ -416,9 +449,9 @@ describe('deployOrcad', () => {
     const result = await deployOrcad(options())
     expect(result).toMatchObject({ outcome: 'installed-and-activated', fullVersion: NEW_VERSION })
     const written = vi
-      .mocked(writeRelayFile)
-      .mock.calls.find((call) => String(call[2]).endsWith('orcad-active.json'))
-    expect(JSON.parse(String(written?.[3]))).toMatchObject({
+      .mocked(writeAtomicOrcadRemoteRecord)
+      .mock.calls.find((call) => String(call[1]).endsWith('orcad-active.json'))
+    expect(JSON.parse(String(written?.[2]))).toMatchObject({
       active: NEW_VERSION,
       previous: OLD_VERSION
     })
@@ -467,8 +500,8 @@ describe('deployOrcad', () => {
     expect(result).toMatchObject({ code: 'orcad_activation_daemon_degraded' })
     expect(
       vi
-        .mocked(writeRelayFile)
-        .mock.calls.some((call) => String(call[2]).endsWith('orcad-active.json'))
+        .mocked(writeAtomicOrcadRemoteRecord)
+        .mock.calls.some((call) => String(call[1]).endsWith('orcad-active.json'))
     ).toBe(false)
   })
 

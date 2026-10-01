@@ -28,10 +28,10 @@ describe('the orchestration address a chat copies', () => {
   })
 
   it("is the host's address for the conversation, not the live session id", async () => {
-    callRuntimeRpc.mockResolvedValue({ address: `session:${ROOT}` })
+    callRuntimeRpc.mockResolvedValue({ address: `orca_session_id:${ROOT}` })
 
     await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, LIVE)).resolves.toBe(
-      `session:${ROOT}`
+      `orca_session_id:${ROOT}`
     )
     expect(callRuntimeRpc).toHaveBeenCalledWith(LOCAL, 'orchestration.sessionAddress', {
       sessionId: LIVE
@@ -42,7 +42,7 @@ describe('the orchestration address a chat copies', () => {
     callRuntimeRpc.mockRejectedValue(failure('method_not_found', 'Unknown method'))
 
     await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, LIVE)).resolves.toBe(
-      `session:${LIVE}`
+      `orca_session_id:${LIVE}`
     )
   })
 

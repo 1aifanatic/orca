@@ -76,7 +76,7 @@ function StructuredChatTab(): ReactNode {
 describe('a structured chat tab', () => {
   beforeEach(() => {
     items.list = []
-    callRuntimeRpc.mockReset().mockResolvedValue({ address: `session:${SESSION}` })
+    callRuntimeRpc.mockReset().mockResolvedValue({ address: `orca_session_id:${SESSION}` })
     Object.assign(window, {
       api: { ui: { writeClipboardText: vi.fn().mockResolvedValue(undefined) } }
     })

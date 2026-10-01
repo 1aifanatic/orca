@@ -28,7 +28,6 @@ import {
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
-const ALREADY_FINISHED = 'The provider had already finished this turn.'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -36,6 +35,9 @@ let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
 let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
+let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
+/** Codex's answer by default: its Stop keeps the child. */
+let stopEndsSession: boolean
 let events: StructuredAgentSessionEventSink | undefined
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
@@ -49,6 +51,8 @@ beforeEach(async () => {
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
   awaitStarted = vi.fn(async () => undefined)
+  closeSession = vi.fn(async () => true)
+  stopEndsSession = false
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
     store,
@@ -74,9 +78,10 @@ beforeEach(async () => {
       },
       dispatch,
       awaitStarted,
-      closeSession: vi.fn(async () => true),
+      closeSession,
       releaseAcquisition: vi.fn(async () => true),
       cancelTurn,
+      stopEndsSession: () => stopEndsSession,
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
     },
@@ -319,7 +324,7 @@ describe('a Stop that names no turn', () => {
 })
 
 describe('a Stop that names its turn, as an older client sends it', () => {
-  it('reaches the provider with that turn and keeps its not-cancelled note', async () => {
+  it('reaches the provider with that turn, and writes no row when it stopped nothing', async () => {
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
     expect(await stop('turn-1')).toMatchObject({
@@ -327,7 +332,7 @@ describe('a Stop that names its turn, as an older client sends it', () => {
       value: { turnId: 'turn-1', cancelled: false }
     })
     expect(cancelTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId: 'turn-1' }))
-    expect(await statusRows()).toEqual([ALREADY_FINISHED])
+    expect(await statusRows()).toEqual([])
   })
 
   async function queueOnHost(): Promise<{ id: string; release: () => void }> {
@@ -363,5 +368,100 @@ describe('a Stop that names its turn, as an older client sends it', () => {
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
     expect(await statusRows()).toEqual([])
+  })
+})
+
+describe('a Stop on a provider whose Stop ends its session', () => {
+  async function handedOver(): Promise<void> {
+    const { id, result } = send('hello')
+    await result
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+  }
+
+  /** The Stop's second step, which ends the child, runs next on the session's lane. */
+  function laneDrained(): Promise<void> {
+    return host['tasks'].serialize(SESSION, async () => {})
+  }
+
+  it('ends the child after the cancel even when the provider refused it, and says only that it was asked', async () => {
+    stopEndsSession = true
+    await handedOver()
+    cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: { detail: { text: 'no active turn to interrupt', audience: 'person' } }
+    })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
+  it('ends the child and says it was asked when the provider declined a Stop naming the live turn', async () => {
+    stopEndsSession = true
+    await handedOver()
+    events!.appendItem(
+      { provider: 'legacy', agent: 'codex', sessionId: SESSION, recordId: 'turn:turn-1' },
+      { kind: 'turn', turnId: 'turn-1', state: 'running' },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await host.flushStreamedEvents(SESSION)
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    // Ending the session stops the turn, so this Stop stopped something and writes its one note.
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
+  it('keeps the child of a provider whose Stop is not a session boundary', async () => {
+    await handedOver()
+    cancelTurn.mockResolvedValueOnce({ cancelled: true })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).not.toHaveBeenCalled()
+  })
+
+  it('leaves the child alone when the Stop named a turn that is no longer live', async () => {
+    stopEndsSession = true
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: false } })
+    await laneDrained()
+
+    expect(closeSession).not.toHaveBeenCalled()
+    // It stopped nothing, so it writes no row.
+    expect(await statusRows()).toEqual([])
+  })
+
+  it("ends the child when the provider's cancel of a Stop naming a turn no longer live fails", async () => {
+    stopEndsSession = true
+    await handedOver()
+    // The interrupt went out and its answer was lost: what it stopped is unknown.
+    cancelTurn.mockRejectedValueOnce(new Error('control request lost'))
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
+  it('ends the child when the provider took a Stop naming a turn that is no longer live', async () => {
+    stopEndsSession = true
+    await handedOver()
+    // The interrupt stopped the follow-up in flight, which has no turn a client could name.
+    cancelTurn.mockResolvedValueOnce({ cancelled: true })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 })

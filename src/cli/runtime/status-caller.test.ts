@@ -117,7 +117,7 @@ describe.skipIf(process.platform === 'win32')('orca status reports its caller ad
   it('asks the host as the session its environment names, and prints what the host resolved', async () => {
     process.env.ORCA_AGENT_SESSION_ID = SESSION
     process.env.ORCA_TERMINAL_HANDLE = 'term_tui'
-    const address = { address: `session:${SESSION}`, live: true }
+    const address = { address: `orca_session_id:${SESSION}`, live: true }
     callerShowReply = { result: { caller: address } }
 
     expect(await statusCaller()).toEqual(address)

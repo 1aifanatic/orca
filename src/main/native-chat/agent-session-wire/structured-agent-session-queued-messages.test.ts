@@ -270,7 +270,7 @@ describe('held drafts', () => {
     // The queue is paused, not the card: it carries no hold of its own.
     expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
     expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.handoff(draftId)).toBeUndefined()
@@ -418,7 +418,7 @@ describe('Stop and Delete', () => {
     await settleAccepted(working, 'a')
     // Evict the handle and reopen (the history read opens the conversation at
     // rest): the pause is derived from what the journal holds, so nothing drains.
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.handoff(draftId)).toBeUndefined()
@@ -728,6 +728,8 @@ describe('/clear', () => {
     if (!replacementId) {
       throw new Error('expected a replacement session')
     }
+    // Nothing to carry, so nothing opened the new conversation.
+    expect(host.hasSession(replacementId)).toBe(false)
     expect(await drafts(replacementId)).toHaveLength(0)
   })
 })

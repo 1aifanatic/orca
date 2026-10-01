@@ -1,3 +1,7 @@
+import {
+  childEndCauseOfEndedEvent,
+  turnVerdictForChildEnd
+} from '../native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict'
 import { createCodexProviderActivityReader } from '../native-chat/agent-session-wire/provider-frame-activity'
 import { CODEX_TOKEN_USAGE_METHOD } from './codex-subagent-activity'
 import {
@@ -14,6 +18,7 @@ import {
 import { CodexJournalTurnBoundaries } from './codex-structured-journal-translation-turn-boundaries'
 import { createCodexJournalTranslatorWriters } from './codex-structured-journal-translation-writers'
 import { publishCodexTurnLifecycle } from './codex-structured-journal-translation-turns'
+import { codexProviderRetryRowBody, isCodexProviderRetryFrame } from './codex-provider-retry-row'
 import { createCodexThreadItemRouter } from './codex-structured-journal-thread-item-routing'
 import { codexThreadStoppedRunning, readCodexTurnId } from './codex-structured-thread-facts'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
@@ -157,14 +162,18 @@ export function createCodexJournalTranslator(
           currentTurnIds: activeTurns.byThread,
           primaryThreadId: deps.primaryThreadId?.() ?? null,
           ordinals: items.ordinals,
-          // The host saw the child go, not what Codex made of the turn, so the row
-          // carries no outcome: the end is observed, the verdict is unknown.
+          // The host saw the child go, not what Codex made of the turn: the verdict is only what
+          // the host's own cause says, a user's stop of this chat or else news.
           settledTurnLifecycle: (threadId, turnId) =>
             turnBoundaries.ownsRecord(threadId, turnId)
-              ? turnBoundaries.settled(threadId, turnId, {
-                  state: 'interrupted',
-                  completedAt: event.observedAt ?? deps.now?.() ?? Date.now()
-                })
+              ? turnBoundaries.settled(
+                  threadId,
+                  turnId,
+                  turnVerdictForChildEnd(
+                    childEndCauseOfEndedEvent(event),
+                    event.observedAt ?? deps.now?.() ?? Date.now()
+                  )
+                )
               : null,
           attributionFor
         })
@@ -246,6 +255,17 @@ export function createCodexJournalTranslator(
         if (routed) {
           return publishActivity(event, routed)
         }
+      }
+      if (isCodexProviderRetryFrame(event)) {
+        // Always journaled, like any error frame: each attempt is evidence, and its publish is
+        // the activity the idle sweep reads.
+        return publishActivity(
+          event,
+          genericFrames.appendFrameRow(event.threadId, event.params, {
+            body: codexProviderRetryRowBody(event.params),
+            classification: 'error-surface'
+          })
+        )
       }
       // A thread that stopped running settles no open turn: Codex clears `running`
       // on every error, and an open turn ends on its `turn/completed`. It releases

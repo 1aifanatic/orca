@@ -164,7 +164,7 @@ describe('useNativeChatContextMenu', () => {
   })
 
   describe('Copy Orchestration Address', () => {
-    const address = 'session:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
+    const address = 'orca_session_id:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
     const writeClipboardText = vi.fn()
 
     beforeEach(() => {

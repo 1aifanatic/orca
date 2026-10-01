@@ -32,7 +32,7 @@ vi.mock('../rpc/methods/orchestration-structured-worker-session', () => ({
 }))
 
 const CHAT_SESSION = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
-const CHAT_ADDRESS = `session:${CHAT_SESSION}`
+const CHAT_ADDRESS = `orca_session_id:${CHAT_SESSION}`
 const TERMINAL_HANDLE = 'term_worker'
 // A structured worker's mailbox address: the handle it was minted.
 const CHAT_WORKER_HANDLE = 'structworker_1'
