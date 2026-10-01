@@ -2,6 +2,7 @@ import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-ref
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { SubscriberFieldHooks } from './agent-session-subscriber-frame-fields'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
 import { tryReadQueuePublication } from './structured-agent-session-queued-publication'
 import type {
@@ -35,7 +36,8 @@ export class StructuredAgentSessionClientDelivery {
     private readonly onJournalActivity?: (sessionId: string) => void,
     onAgentStarted?: (sessionId: string) => void,
     /** A session's child records changed; the chat strip republishes from them. */
-    onChildWorkChanged?: (sessionId: string) => void
+    onChildWorkChanged?: (sessionId: string) => void,
+    readBackgroundTasks?: SubscriberFieldHooks['readBackgroundTasks']
   ) {
     this.statusFeed = createStructuredAgentSessionHostStatusFeed({
       sessions,
@@ -57,6 +59,7 @@ export class StructuredAgentSessionClientDelivery {
       readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(sessions.get(sessionId)?.journal),
+      ...(readBackgroundTasks ? { readBackgroundTasks } : {}),
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }
