@@ -20,7 +20,8 @@ import { openTestJournalHostDatabase } from '../agent-session-journal/journal-ho
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-alpha'
-const OPERATION = `${NOW}-${'1'.padStart(32, '0')}`
+const CREATE = `${NOW}-${'1'.padStart(32, '0')}`
+const OPERATION = `${NOW}-${'2'.padStart(32, '0')}`
 let root: string | null = null
 
 afterEach(async () => {
@@ -31,12 +32,15 @@ afterEach(async () => {
   root = null
 })
 
-function createParams(): AgentSessionAttachParams {
+function attachParams(
+  clientOperationId: string,
+  expectedRuntimeFence: number | null
+): AgentSessionAttachParams {
   const params: AgentSessionAttachParams = {
     envelope: {
       sessionId: SESSION,
-      clientOperationId: OPERATION,
-      expectedRuntimeFence: null,
+      clientOperationId,
+      expectedRuntimeFence,
       payloadFingerprint: ''
     },
     location: {
@@ -63,8 +67,8 @@ function createParams(): AgentSessionAttachParams {
   }
 }
 
-/** The thrown first answer as the wire sends it, and the ledger's replay of the same operation. */
-async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
+/** An attach whose every start fails with `thrown`. */
+async function failingStarts(thrown: AgentSessionPreSpawnError) {
   root = await mkdtemp(join(tmpdir(), 'orca-pre-spawn-first-answer-'))
   const store = await openTestAgentSessionRecordStore(root)
   const unused = async (): Promise<never> => {
@@ -79,22 +83,32 @@ async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
     answerPrompt: unused,
     setOption: unused
   }
-  const input = {
+  const journalDatabase = openTestJournalHostDatabase(root)
+  return (operationId: string, expectedRuntimeFence: number | null) => ({
     store,
     adapter,
-    journalDatabase: openTestJournalHostDatabase(root),
-    openConversation: openTestAttachConversation(openTestJournalHostDatabase(root)),
+    journalDatabase,
+    openConversation: openTestAttachConversation(journalDatabase),
     authority: {
-      spawnToken: 'spawn-a',
+      spawnToken: `spawn-${operationId}`,
       claimKeyId: 'key-1',
-      handoffOperationId: OPERATION,
+      handoffOperationId: operationId,
       probe: { outcome: 'reservation-unused' as const }
     },
     callerKey: 'client-1',
-    params: createParams(),
+    params: attachParams(operationId, expectedRuntimeFence),
     now: () => NOW,
     onAttached: () => {}
-  }
+  })
+}
+
+/** The thrown first answer to a start of a chat that exists, as the wire sends it, and the
+ *  ledger's replay of the same operation. */
+async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
+  const attach = await failingStarts(thrown)
+  // The chat's create stood, at rest, at fence 2.
+  await expect(performAttach(attach(CREATE, null))).resolves.toMatchObject({ ok: true, fence: 2 })
+  const input = attach(OPERATION, 2)
   const first = await performAttach(input).then(
     () => null,
     (error: unknown) => error
@@ -106,7 +120,27 @@ async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
   }
 }
 
-describe('a create that fails before any process spawns', () => {
+describe('a create whose start fails before any process spawns', () => {
+  it('answers with its chat at rest and no failure, for the first message to carry it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const raw = 'A Claude account switch is in progress. Try again after it finishes.'
+    const attach = await failingStarts(
+      new AgentSessionPreSpawnError(new Error(raw), { reason: 'accountSwitchInProgress' })
+    )
+
+    const created = await performAttach(attach(CREATE, null))
+
+    expect(created).toMatchObject({ ok: true, replayed: false, fence: 2 })
+    expect(JSON.stringify(created)).not.toContain(raw)
+    // What failed is kept for the log.
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] provider start failed:',
+      expect.objectContaining({ message: raw })
+    )
+  })
+})
+
+describe('a start of an existing chat that fails before any process spawns', () => {
   it.each<[string, string, AgentSessionPreSpawnReason | undefined, string]>([
     [
       'the managed account env override',

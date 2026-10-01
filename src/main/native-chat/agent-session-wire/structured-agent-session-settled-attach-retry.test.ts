@@ -378,12 +378,9 @@ describe('settled attach retry', () => {
   it('records proven acquisition cleanup as durable death evidence', async () => {
     acquire.mockRejectedValueOnce(new Error('resume rejected'))
 
+    // The create stands, its chat at rest.
     await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
-      ok: false,
-      refusal: {
-        message: "Codex couldn't restart. Send your message to try again.",
-        ownerVerdict: 'exited'
-      }
+      ok: true
     })
 
     expect(releaseAcquisition).toHaveBeenCalledTimes(1)

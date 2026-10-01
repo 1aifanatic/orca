@@ -10,6 +10,8 @@ export type AgentSessionCreatePhase =
   | 'spawn'
   | 'restore_options'
   | 'publish'
+  // A create whose start failed and whose chat stands at rest for its first message to start.
+  | 'start_deferred'
 
 export type AgentSessionCreatePhaseTiming = {
   readonly phase: AgentSessionCreatePhase

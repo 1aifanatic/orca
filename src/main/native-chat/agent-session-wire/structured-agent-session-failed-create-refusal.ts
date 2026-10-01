@@ -6,7 +6,8 @@ import {
   type AgentSessionAttachResult,
   type AgentSessionMutationResult,
   type AgentSessionRefusalDetailsByCode,
-  type AgentSessionWireRefusal
+  type AgentSessionWireRefusal,
+  type AgentSessionWireRefusalCode
 } from '../../../shared/agent-session-wire'
 import type {
   AgentSessionOperationOutcome,
@@ -88,6 +89,12 @@ export function failedAcquisitionSettlement(
       message
     }
   }
+}
+
+/** The code a failed acquisition answers with: a store refusal's own, else the failed start's. */
+export function failedAcquisitionCode(error: unknown): AgentSessionWireRefusalCode {
+  const raw = error instanceof Error ? error.message : String(error)
+  return isAgentSessionWireRefusalCode(raw) ? raw : 'agent_session_operation_invalid'
 }
 
 /** Cleanup proved the child gone after the start failed, whatever failed it. */

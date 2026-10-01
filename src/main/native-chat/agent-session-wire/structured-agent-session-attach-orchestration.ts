@@ -13,7 +13,9 @@ import type {
   AgentSessionMutationResult,
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
-import type { AgentSessionAttachParams } from './structured-agent-session-attach'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionAttachParams, AttachedJournal } from './structured-agent-session-attach'
+import type { StructuredAgentSessionProviderChildPhase } from './structured-agent-session-adapter'
 import { performAttach, type AttachFlowInput } from './structured-agent-session-attach-flow'
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
@@ -123,10 +125,8 @@ async function runAttach(
   // attach makes the child and its sink the session's; any other exit closes the sink with
   // whatever the child queued, and leaves the conversation's child as it was.
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
-  // Read before the reserve clears it: how the previous generation ended decides how whatever it
-  // left running is settled.
+  // Read before the reserve replaces it.
   const priorRecord = context.deps.store.getRecord(sessionId)
-  const priorDeathEvidence = priorRecord?.lease.deathEvidence ?? null
   const attempt: { candidate: AttachCandidate | null; committed: boolean } = {
     candidate: null,
     committed: false
@@ -170,35 +170,18 @@ async function runAttach(
         endReleasedChild(context, sessionId, cause, verdict),
       onAttached: async (attached, acquisitionGeneration, acquiredOwner, providerChildPhase) => {
         const fence = structuredAgentSessionConversationFence(context.deps.store, sessionId)
-        const current = context.sessions.get(sessionId)?.child ?? null
-        const startedFor = acquiredOwner ? options.startedFor : current?.startedFor
-        // A re-attach to a live child keeps the sink that child already writes through.
-        const eventSink = acquiredOwner
-          ? attemptSink
-          : (context.runtimeState.currentEventSink(sessionId) ?? attemptSink)
-        if (acquiredOwner) {
-          // Before the drain: the buffered events are the new child's, never a stale row's.
-          await settleStaleStructuredAgentSessionState({
-            journal: attached.journal,
-            sessionId,
+        // A chat at rest has no child: one indexed here would make its first send skip the start.
+        if (providerChildPhase !== null) {
+          attempt.candidate = await bindAttachedChild(context, sessionId, {
+            attached,
             fence,
             acquisitionGeneration,
-            deathEvidence: priorDeathEvidence,
-            failureTextContext: structuredAgentSessionFailureWordsContext(priorRecord)
+            acquiredOwner,
+            providerChildPhase,
+            attemptSink,
+            startedFor: options.startedFor,
+            priorRecord
           })
-        }
-        await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
-          context.subscribers.publish(sessionId, attached.journal, activity)
-        )
-        attempt.candidate = {
-          sink: eventSink,
-          child: {
-            generation: acquisitionGeneration ?? current?.generation ?? null,
-            fence,
-            // A re-attach to a live child keeps what that child already proved, and its cause.
-            phase: acquiredOwner ? providerChildPhase : (current?.phase ?? 'ready'),
-            ...(startedFor === undefined ? {} : { startedFor })
-          }
         }
         await recoverStructuredRewind(
           context.deps.store,
@@ -217,10 +200,12 @@ async function runAttach(
     })
     const { candidate } = attempt
     const conversation = context.sessions.get(sessionId)
-    if (attached.ok && candidate && conversation) {
-      context.runtimeState.adoptEventSink(sessionId, candidate.sink)
-      attempt.committed = candidate.sink === attemptSink
-      indexProviderChild(conversation, candidate.child)
+    if (attached.ok && conversation) {
+      if (candidate) {
+        context.runtimeState.adoptEventSink(sessionId, candidate.sink)
+        attempt.committed = candidate.sink === attemptSink
+        indexProviderChild(conversation, candidate.child)
+      }
       context.publishStatus?.(sessionId)
     }
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)
@@ -234,6 +219,56 @@ async function runAttach(
 type AttachCandidate = {
   child: StructuredAgentSessionProviderChild
   sink: DeferredStructuredAgentSessionEventSink
+}
+
+/** Binds the attached child's sink to the journal, and names the child the attach would index. */
+async function bindAttachedChild(
+  context: StructuredAgentSessionAttachContext,
+  sessionId: string,
+  args: {
+    attached: AttachedJournal
+    fence: number
+    acquisitionGeneration: string | null
+    acquiredOwner: boolean
+    providerChildPhase: StructuredAgentSessionProviderChildPhase
+    attemptSink: DeferredStructuredAgentSessionEventSink
+    startedFor: string | undefined
+    priorRecord: AgentSessionRecord | null
+  }
+): Promise<AttachCandidate> {
+  const { attached, fence, acquisitionGeneration, acquiredOwner } = args
+  const current = context.sessions.get(sessionId)?.child ?? null
+  const startedFor = acquiredOwner ? args.startedFor : current?.startedFor
+  // A re-attach to a live child keeps the sink that child already writes through.
+  const eventSink = acquiredOwner
+    ? args.attemptSink
+    : (context.runtimeState.currentEventSink(sessionId) ?? args.attemptSink)
+  if (acquiredOwner) {
+    // Before the drain: the buffered events are the new child's, never a stale row's.
+    await settleStaleStructuredAgentSessionState({
+      journal: attached.journal,
+      sessionId,
+      fence,
+      acquisitionGeneration,
+      // Read before the reserve cleared it: how the previous generation ended decides how whatever
+      // it left running is settled.
+      deathEvidence: args.priorRecord?.lease.deathEvidence ?? null,
+      failureTextContext: structuredAgentSessionFailureWordsContext(args.priorRecord)
+    })
+  }
+  await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
+    context.subscribers.publish(sessionId, attached.journal, activity)
+  )
+  return {
+    sink: eventSink,
+    child: {
+      generation: acquisitionGeneration ?? current?.generation ?? null,
+      fence,
+      // A re-attach to a live child keeps what that child already proved, and its cause.
+      phase: acquiredOwner ? args.providerChildPhase : (current?.phase ?? 'ready'),
+      ...(startedFor === undefined ? {} : { startedFor })
+    }
+  }
 }
 
 function endReleasedChild(

@@ -2,9 +2,12 @@ import { refuse } from '../../../shared/agent-session-wire-refusals'
 import { settlePostAcquisitionAttachFailure } from './structured-agent-session-attach-failure'
 import {
   failedAcquisitionRefusal,
-  failedAcquisitionSettlement,
   preSpawnFailureInWords
 } from './structured-agent-session-failed-create-refusal'
+import {
+  isReplayedCreateAtRest,
+  settleFailedStartOfReservation
+} from './structured-agent-session-create-at-rest'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
@@ -55,12 +58,12 @@ export type AttachFlowInput = {
   recordPhase?: AgentSessionCreatePhaseRecorder
   /** Publishes the journal before clients can send against the new owner. `acquiredOwner` is
    *  true only when this attach spawned the provider child, so a re-attach to a live one is not
-   *  mistaken for a cold acquire. */
+   *  mistaken for a cold acquire. A null phase is a chat at rest: it has no child at all. */
   onAttached: (
     attached: AttachedJournal,
     acquisitionGeneration: string | null,
     acquiredOwner: boolean,
-    providerChildPhase: StructuredAgentSessionProviderChildPhase
+    providerChildPhase: StructuredAgentSessionProviderChildPhase | null
   ) => Promise<void> | void
   /** Host-owned provider sink, bound to the journal inside `onAttached`. */
   eventSink?: StructuredAgentSessionEventSink
@@ -103,7 +106,7 @@ export async function performAttach(
   let record: AgentSessionRecord
   let acquisitionGeneration: string | null = null
   let acquiredOwner = false
-  let providerChildPhase: StructuredAgentSessionProviderChildPhase = 'ready'
+  let providerChildPhase: StructuredAgentSessionProviderChildPhase | null = 'ready'
   let reservedRecord: AgentSessionRecord | null = null
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
@@ -167,7 +170,9 @@ export async function performAttach(
       accountHome: record.accountHome,
       ownerAlreadyAdmitted: agentSessionLeaseAdmitsWriter(record.lease)
     })
-    if (!agentSessionLeaseAdmitsWriter(record.lease)) {
+    if (isReplayedCreateAtRest(input, reserved)) {
+      providerChildPhase = null
+    } else if (!agentSessionLeaseAdmitsWriter(record.lease)) {
       const acquired = await withAgentSessionCreatePhase('acquire_owner', input.recordPhase, () =>
         acquireOwner(input, record)
       )
@@ -182,42 +187,36 @@ export async function performAttach(
       newSession: !params.providerHandle
     }
     const spawnToken = reservedRecord?.lease.reservedSpawnToken
-    if (reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted) {
-      // Settle processless proof and failed operation atomically.
-      try {
-        await store.settleFailedAcquisition({
-          sessionId,
-          fence: reservedRecord.lease.runtimeFence,
-          spawnToken,
-          callerKey: input.callerKey,
-          operationId: params.envelope.clientOperationId,
-          ...failedAcquisitionSettlement(error, wording),
-          now: input.now()
-        })
-      } catch (settlementError) {
-        throw new AggregateError(
-          [error, settlementError],
-          'agent session acquisition failure settlement failed'
-        )
-      }
-    }
+    const atRest =
+      reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted
+        ? await settleFailedStartOfReservation(
+            input,
+            error,
+            { fence: reservedRecord.lease.runtimeFence, spawnToken },
+            wording
+          )
+        : null
     input.onAcquisitionFailed?.(error)
-    const failed = failedAcquisitionRefusal(error, wording)
-    const thrown = failed ? error : preSpawnFailureInWords(error, wording)
-    if (failed || thrown !== error) {
-      // The answer carries only its sentence, so what failed is kept here.
+    const failed = atRest ? null : failedAcquisitionRefusal(error, wording)
+    const thrown = failed || atRest ? error : preSpawnFailureInWords(error, wording)
+    if (failed || atRest || thrown !== error) {
+      // The answer carries only its sentence, or none, so what failed is kept here.
       console.warn('[agent-session] provider start failed:', error)
     }
-    return (
-      failed ?? {
-        ok: false,
-        refusal: classifyStoreFailure(
-          thrown,
-          store.getRecord(sessionId)?.lease.runtimeFence ?? null,
-          store.getRecord(sessionId)
-        )
-      }
-    )
+    if (!atRest) {
+      return (
+        failed ?? {
+          ok: false,
+          refusal: classifyStoreFailure(
+            thrown,
+            store.getRecord(sessionId)?.lease.runtimeFence ?? null,
+            store.getRecord(sessionId)
+          )
+        }
+      )
+    }
+    record = atRest
+    providerChildPhase = null
   }
 
   let attached: AttachedJournal
@@ -232,12 +231,18 @@ export async function performAttach(
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
     await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
-    await store.recordOperationOutcome({
-      callerKey: input.callerKey,
-      operationId: params.envelope.clientOperationId,
-      outcome: { status: 'succeeded', sessionId }
-    })
+    if (providerChildPhase !== null) {
+      await store.recordOperationOutcome({
+        callerKey: input.callerKey,
+        operationId: params.envelope.clientOperationId,
+        outcome: { status: 'succeeded', sessionId }
+      })
+    }
   } catch (error) {
+    // A chat at rest was settled with its create: nothing ran to settle again.
+    if (providerChildPhase === null) {
+      throw error
+    }
     return settlePostAcquisitionAttachFailure(input, record, error)
   }
 

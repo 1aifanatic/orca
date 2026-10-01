@@ -1,5 +1,7 @@
-// A durably failed create tells a client what the host proved about the provider process, so a
+// A durably failed start tells a client what the host proved about the provider process, so a
 // client can tell "retry under a new operation" (exited) from "the session may exist" (anything else).
+// A new chat's own create no longer fails this way (it stands at rest), so each start here is of a
+// chat that already exists.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -67,6 +69,20 @@ beforeEach(async () => {
   })
 })
 
+/** A chat whose create left it at rest, at fence 2: its first start failed before anything ran. */
+async function restingChat(): Promise<void> {
+  acquire.mockRejectedValueOnce(new Error('first start failed'))
+  await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
+    ok: true,
+    fence: 2
+  })
+  acquire.mockClear()
+}
+
+function releasedFence(): number {
+  return store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+}
+
 afterEach(async () => {
   await host.flushAllStreamedEvents()
   await rm(root, { recursive: true, force: true })
@@ -86,8 +102,9 @@ describe('failed create owner verdict', () => {
   ])(
     'answers %s as exited on the first call and its replay, and a new operation starts fresh',
     async (_case, failure, situation, message) => {
+      await restingChat()
       acquire.mockRejectedValueOnce(failure())
-      const first = hostTestAttachParams(null)
+      const first = hostTestAttachParams(2)
       // The replay names the same details as the first answer: the ledger kept them beside the code,
       // and the verdict reaches released clients at the top level exactly as before.
       const refusal = {
@@ -101,7 +118,7 @@ describe('failed create owner verdict', () => {
       await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
       expect(acquire).toHaveBeenCalledOnce()
 
-      const retry = hostTestAttachParams(null)
+      const retry = hostTestAttachParams(releasedFence())
       expect(retry.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
       await expect(host.attach(CALLER, retry)).resolves.toMatchObject({ ok: true })
       expect(acquire).toHaveBeenCalledTimes(2)
@@ -121,8 +138,9 @@ describe('failed create owner verdict', () => {
   ])(
     'answers %s as exited on the first call, in the shape its replay takes',
     async (_case, cause, situation, message) => {
+      await restingChat()
       acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRootExitObservedError(cause()))
-      const first = hostTestAttachParams(null)
+      const first = hostTestAttachParams(2)
       // The replay names the same details as the first answer: the ledger kept them beside the code,
       // and the verdict reaches released clients at the top level exactly as before.
       const refusal = {
@@ -136,7 +154,9 @@ describe('failed create owner verdict', () => {
       await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
       expect(acquire).toHaveBeenCalledOnce()
 
-      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
+      await expect(
+        host.attach(CALLER, hostTestAttachParams(releasedFence()))
+      ).resolves.toMatchObject({
         ok: true
       })
       expect(acquire).toHaveBeenCalledTimes(2)
@@ -144,9 +164,10 @@ describe('failed create owner verdict', () => {
   )
 
   it('answers an acquisition refusal with its verdict directly', async () => {
+    await restingChat()
     acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRefusal('not signed in'))
 
-    await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toEqual({
+    await expect(host.attach(CALLER, hostTestAttachParams(2))).resolves.toEqual({
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
