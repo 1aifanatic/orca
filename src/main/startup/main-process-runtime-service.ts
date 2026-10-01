@@ -165,6 +165,9 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   })
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
+  agentHookServer.setPaneTerminalSleepStopProbe((paneKey) =>
+    runtime.isPaneTerminalSleepStopInFlight(paneKey)
+  )
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )

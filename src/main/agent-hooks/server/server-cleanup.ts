@@ -206,7 +206,14 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       if (!disposition) {
         continue
       }
-      this.clearPaneState(resolvedPaneKey, disposition)
+      // Why: an agent ends its session when Orca stops its terminal for sleep; that is Orca
+      // releasing the pane, not the user exiting the agent.
+      this.clearPaneState(
+        resolvedPaneKey,
+        disposition === 'agent-exited' && this.isPaneTerminalSleepStopInFlight?.(resolvedPaneKey)
+          ? 'released'
+          : disposition
+      )
       cleared += 1
     }
     return cleared
