@@ -41,6 +41,7 @@ import {
   withAgentSessionSpan,
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
+import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
 
 export type StructuredAgentSessionAttachOptions = {
   recordPhase?: AgentSessionCreatePhaseRecorder
@@ -66,18 +67,6 @@ export function attachStructuredAgentSessionUnderSerialize(
   return context.tasks.trackAttach(runAttach(context, callerKey, params, options))
 }
 
-/** Startup's settle first, before the chat's lock, which the settle takes too; queued at once when
- *  startup is done, so attaches keep the order they arrived in. */
-function waitThenSerialize<T>(
-  context: StructuredAgentSessionAttachContext,
-  sessionId: string,
-  task: () => Promise<T>
-): Promise<T> {
-  const startup = context.deps.commandsReady?.()
-  const run = () => context.serialize(sessionId, task)
-  return startup ? startup.then(run) : run()
-}
-
 export function attachStructuredAgentSession(
   context: StructuredAgentSessionAttachContext,
   callerKey: string,
@@ -88,7 +77,7 @@ export function attachStructuredAgentSession(
   // evicts, so no child is spawned behind the eviction and orphaned.
   const run = (recordPhase?: AgentSessionCreatePhaseRecorder) =>
     context.tasks.trackAttach(
-      waitThenSerialize(context, sessionId, () =>
+      serializeStructuredAgentSessionCommand(context, sessionId, () =>
         runAttach(context, callerKey, params, { recordPhase })
       )
     )

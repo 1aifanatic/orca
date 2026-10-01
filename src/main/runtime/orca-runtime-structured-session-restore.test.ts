@@ -81,7 +81,7 @@ describe('structured session cold restoration', () => {
     expect(restoreReadableSessions).not.toHaveBeenCalled()
   })
 
-  it('loads records, inventories PTYs, restores ownership, projects tabs, then restores history, once', async () => {
+  it('loads records, then restores ownership and inventories PTYs, projects tabs, then restores history, once', async () => {
     const runtime = new OrcaRuntimeService()
     const hydrate = vi.fn()
     const refresh = vi.fn(async () => new Set<string>())
@@ -129,10 +129,11 @@ describe('structured session cold restoration', () => {
     expect(reconcileRestartLeases).toHaveBeenCalledOnce()
     expect(restoreReadableSessions).toHaveBeenCalledOnce()
     expect(ensureHost).toHaveBeenCalledOnce()
+    // The lease check probes processes, not terminals, so it does not wait for the PTY inventory.
     expect(ensureHost.mock.invocationCallOrder[0]).toBeLessThan(
       refresh.mock.invocationCallOrder[0] ?? Infinity
     )
-    expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(ensureHost.mock.invocationCallOrder[0]).toBeLessThan(
       reconcileRestartLeases.mock.invocationCallOrder[0] ?? Infinity
     )
     expect(reconcileRestartLeases.mock.invocationCallOrder[0]).toBeLessThan(

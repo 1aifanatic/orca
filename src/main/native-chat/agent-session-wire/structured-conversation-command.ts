@@ -38,6 +38,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailureFact } from './structured-agent-session-failure-text'
 import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
+import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -147,7 +148,7 @@ export function runStructuredConversationCommand(
       ? record
       : null
   }
-  return context.serialize(sessionId, () =>
+  return serializeStructuredAgentSessionCommand(context, sessionId, () =>
     admitAndRunAgentSessionMutation({
       store,
       adapter: context.deps.adapter,

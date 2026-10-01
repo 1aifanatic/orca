@@ -18,7 +18,7 @@ import {
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
 import { OrcaRuntimeService } from './orca-runtime'
-import type { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
+import { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
 
 type PrepareInternals = {
   structuredAgentSessionStartupGate: StructuredAgentSessionStartupGate
@@ -75,6 +75,7 @@ it('holds chat commands until the startup settle ends, and then lets them throug
   await rig.boot()
   const runtime = restartedRuntime()
   const gate = internals(runtime).structuredAgentSessionStartupGate
+  const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
   runtime.holdStructuredAgentSessionCommandsForStartup()
   expect(gate.ready()).not.toBeNull()
 
@@ -82,6 +83,9 @@ it('holds chat commands until the startup settle ends, and then lets them throug
   await vi.waitFor(() => expect(owes('session-crashed')).toBe(false))
 
   await vi.waitFor(() => expect(gate.ready()).toBeNull())
+  expect(timing).toHaveBeenCalledWith(
+    expect.stringMatching(/step started \+\d+ ms, ended \+\d+ ms; opened \+\d+ ms by settle ended$/)
+  )
 })
 
 it('opens the gate when the startup step fails, never stranding a command', async () => {
@@ -95,9 +99,30 @@ it('opens the gate when the startup step fails, never stranding a command', asyn
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   runtime.holdStructuredAgentSessionCommandsForStartup()
 
+  const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
   await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
 
   expect(gate.ready()).toBeNull()
+  expect(timing).toHaveBeenCalledWith(expect.stringMatching(/by step failed$/))
+})
+
+it('logs one timing line per launch, naming the ceiling when it opened the gate first', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  const gate = new StructuredAgentSessionStartupGate(5)
+  gate.hold()
+  gate.stepStarted()
+  let endSettle = () => {}
+  gate.openWhen(new Promise<void>((resolve) => (endSettle = resolve)))
+  await vi.waitFor(() => expect(gate.ready()).toBeNull())
+  // Written once the step is over too, so it carries both times.
+  expect(timing).not.toHaveBeenCalled()
+
+  endSettle()
+  await vi.waitFor(() => expect(timing).toHaveBeenCalledOnce())
+  expect(timing).toHaveBeenCalledWith(
+    expect.stringMatching(/ended \+\d+ ms; opened \+\d+ ms by ceiling$/)
+  )
 })
 
 it('seeds and settles on a host no client ever lists (T8)', async () => {

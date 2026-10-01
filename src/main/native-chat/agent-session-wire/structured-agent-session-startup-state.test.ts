@@ -6,6 +6,7 @@ import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import {
@@ -24,8 +25,10 @@ import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal
 import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
 import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
 import { editPersistedTestAgentSessionStore } from '../../runtime/agent-session-record-store-test-harness'
+import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
   createRestTestRig,
+  REST_TEST_CALLER,
   latestRestTestStatus,
   restTestChat,
   restTestOpens,
@@ -510,7 +513,81 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     }
     expect(gate.ready()).toBeNull()
   }, 20_000)
+
+  it('holds a rewind and a /clear sent straight to the host, and a read, then answers them as the settle ends', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const rig = await newRig()
+    const crashed = ['session-a', 'session-b', 'session-c']
+    for (const sessionId of crashed) {
+      await crashMidTurn(rig, sessionId)
+    }
+    await rig.crash()
+    const gate = new StructuredAgentSessionStartupGate(CEILING_MS)
+    gate.hold()
+    await rig.boot({ commandsReady: gate.ready })
+    const listed = listedIds(rig)
+    await rig.host.reconcileRestartLeases()
+    rig.host.seedStoredStatuses(listed)
+    const opensAtBoot = crashed.map((id) => restTestOpens(rig, id))
+    const started = Date.now()
+    const elapsed = () => Date.now() - started
+
+    // Neither takes the RPC's reveal first; /clear is on the chat the settle reaches last.
+    const rewind = rig.host
+      .rewind(REST_TEST_CALLER, rewindParams('session-a', 'missing-item'))
+      .then(elapsed, elapsed)
+    const clear = rig.host
+      .conversationCommand(REST_TEST_CALLER, conversationCommandParams('session-b', 'clear'))
+      .then(elapsed, elapsed)
+    // A read opens a closed chat too, which would settle it ahead of the lease resolution.
+    const read = rig.host.journalSnapshot('session-c').then(elapsed)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    // Held: none has opened its crashed chat ahead of the settle.
+    expect(crashed.map((id) => restTestOpens(rig, id))).toEqual(opensAtBoot)
+    const settled = rig.host.settleOwedSessions(listed)
+    gate.openWhen(settled)
+    const settleEnded = await settled.then(elapsed)
+
+    expect(settleEnded).toBeLessThan(CEILING_MS / 2)
+    for (const at of await Promise.all([rewind, clear, read])) {
+      expect(at).toBeGreaterThanOrEqual(20)
+      expect(at).toBeLessThan(CEILING_MS / 2)
+    }
+  }, 20_000)
 })
+
+function rewindParams(sessionId: string, itemId: string) {
+  return {
+    envelope: {
+      sessionId,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: null,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.rewind',
+        sessionId,
+        fields: { itemId, expectedEpoch: 'epoch-unknown' }
+      })
+    },
+    itemId,
+    expectedEpoch: 'epoch-unknown'
+  }
+}
+
+function conversationCommandParams(sessionId: string, command: 'clear') {
+  return {
+    envelope: {
+      sessionId,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: null,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId,
+        fields: { command }
+      })
+    },
+    command
+  }
+}
 
 describe('a stored status no settle here can clear (R2A-4)', () => {
   it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {

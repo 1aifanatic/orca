@@ -129,6 +129,7 @@ export class OrcaRuntimeWithRuntimeId {
   protected structuredAgentSessionInventoryUnverifiable = false
 
   protected structuredAgentSessionStartupRestorePromise: Promise<void> | null = null
+  protected structuredAgentSessionStartupStepPromise: Promise<void> | null = null
 
   protected mobileSessionTabsChangeSequence = 0
 

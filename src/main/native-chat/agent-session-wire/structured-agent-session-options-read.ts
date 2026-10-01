@@ -18,6 +18,7 @@ import { isCodexTurnOptionKey } from '../../codex/codex-structured-turn-start'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
+import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
 
 type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
 
@@ -96,9 +97,7 @@ export async function readStructuredAgentSessionOptions(
   sessionId: string
 ): Promise<AgentSessionOptionsResult> {
   const { adapter, store } = context.deps
-  // Startup's settle first, before the chat's lock, which the settle takes too.
-  await context.deps.commandsReady?.()
-  const live = await context.serialize(sessionId, async () => {
+  const live = await serializeStructuredAgentSessionCommand(context, sessionId, async () => {
     const session = await context.openConversation(sessionId).catch((error: unknown) => {
       throw journalOpenReadRefusal(error)
     })
