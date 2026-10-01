@@ -19,6 +19,7 @@ import { useNativeChatImageRuntimeContext } from './native-chat-image-runtime-co
 import { useStructuredNativeChatPaneCommands } from './use-structured-native-chat-pane-commands'
 import type { NativeChatStructuredViewProps } from './native-chat-view-types'
 import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSessionStatus'
+import { NativeChatWaitingSubagentsProvider } from './NativeChatWaitingSubagentsProvider'
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
@@ -277,25 +278,27 @@ export function NativeChatStructuredSession(
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
-          <NativeChatMessageList
-            session={session}
-            journalItems={controller.journalItems}
-            journalSubmissions={controller.submissions}
-            subagentRoster={controller.subagentRoster}
-            railOutline={controller.railOutline}
-            isVisible={props.isVisible}
-            isWorking={controller.isWorking}
-            expandSignal={false}
-            fontScale={fontScale.scale}
-            workingStartedAt={controller.workingStartedAt}
-            settledTurns={controller.settledTurns}
-            awaitingInput={prompt === null ? null : 'shown'}
-            turnActivity={controller.turnActivity}
-            onLinkClick={onLinkClick}
-            allowFileUriLinks={onLinkClick !== undefined}
-            runtimeContext={imageRuntimeContext}
-            deliveryNotices={deliveryNotices}
-          />
+          <NativeChatWaitingSubagentsProvider paneKey={paneKey} tasks={controller.backgroundTasks}>
+            <NativeChatMessageList
+              session={session}
+              journalItems={controller.journalItems}
+              journalSubmissions={controller.submissions}
+              subagentRoster={controller.subagentRoster}
+              railOutline={controller.railOutline}
+              isVisible={props.isVisible}
+              isWorking={controller.isWorking}
+              expandSignal={false}
+              fontScale={fontScale.scale}
+              workingStartedAt={controller.workingStartedAt}
+              settledTurns={controller.settledTurns}
+              awaitingInput={prompt === null ? null : 'shown'}
+              turnActivity={controller.turnActivity}
+              onLinkClick={onLinkClick}
+              allowFileUriLinks={onLinkClick !== undefined}
+              runtimeContext={imageRuntimeContext}
+              deliveryNotices={deliveryNotices}
+            />
+          </NativeChatWaitingSubagentsProvider>
         )}
       </div>
       <NativeChatLaunchRetry
