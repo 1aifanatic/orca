@@ -173,6 +173,13 @@ describe('the bundled Codex text anchors', () => {
     expect(isKnownReadyPromptBody(header, 'claude', () => null, true)).toBe(true)
   })
 
+  it("takes no other agent's ready text on a clocked Codex pane, as before the rule files", () => {
+    const cursorPrompt = '>_ openai codex (v0.158.0)\ncursor agent\n→'
+    expect(isKnownReadyPromptBody(cursorPrompt, 'codex', () => null, true)).toBe(false)
+    expect(isKnownReadyPromptBody(cursorPrompt, 'codex', () => null, false)).toBe(true)
+    expect(isKnownReadyPromptBody(cursorPrompt, 'claude', () => null, true)).toBe(true)
+  })
+
   it('settles an unknown pane on the live-screen Codex header at once, even clocked', () => {
     const screen = () => header.split('\n')
     expect(isKnownReadyPromptBody('', null, screen, true)).toBe(true)
