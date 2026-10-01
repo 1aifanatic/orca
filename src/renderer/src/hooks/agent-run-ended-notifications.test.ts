@@ -36,6 +36,15 @@ function hookStatus(
   return { state, prompt: 'fix the bug', agentType }
 }
 
+// The OpenCode 1 plugin's own Done for the run's turn, as the hook lane receives it.
+const pluginDone = {
+  state: 'done' as const,
+  prompt: 'fix the bug',
+  agentType: 'opencode',
+  lastAssistantMessage: 'Fixed the off-by-one in parser.ts',
+  stateStartedAt: 1_000
+}
+
 function endedRunBatch(
   agentType: string,
   options: { interrupted?: true; replay?: true } = {}
@@ -159,16 +168,50 @@ describe('ended agent run notifications', () => {
     expect(dispatchTerminalNotification).toHaveBeenCalledTimes(1)
   })
 
-  it('announces once when the run exits inside the plugin Done’s quiet window', async () => {
+  // Why the payload: it carries the body preview and the notification id that acknowledging the row clears.
+  it('announces the plugin Done’s own turn when the run exits inside its quiet window', async () => {
     const { observe, dispatch } = await load()
     observe(hookStatus('working', 'opencode'))
-    observe(hookStatus('done', 'opencode'))
+    observe(pluginDone)
     vi.advanceTimersByTime(HOOK_DONE_QUIET_MS / 2)
 
     dispatch(endedRunBatch('opencode'))
     vi.advanceTimersByTime(HOOK_DONE_QUIET_MS * 2)
 
     expect(dispatchTerminalNotification).toHaveBeenCalledTimes(1)
+    expect(dispatchTerminalNotification.mock.calls[0]?.[1].agentStatusSnapshot).toEqual(pluginDone)
+  })
+
+  it('announces the plugin Done’s turn when the run’s Ctrl+C exit lands inside its quiet window', async () => {
+    const { observe, dispatch } = await load()
+    observe(hookStatus('working', 'opencode'))
+    observe(pluginDone)
+
+    dispatch(endedRunBatch('opencode', { interrupted: true }))
+    vi.advanceTimersByTime(HOOK_DONE_QUIET_MS)
+
+    expect(dispatchTerminalNotification).toHaveBeenCalledTimes(1)
+    expect(dispatchTerminalNotification.mock.calls[0]?.[1].agentStatusSnapshot).toEqual(pluginDone)
+  })
+
+  // Why: a newer turn drops a pending hook Done for every agent; the run's end must not revive it.
+  it('announces only the newer turn when one cancels the plugin Done the run exited under', async () => {
+    const { observe, dispatch } = await load()
+    observe(hookStatus('working', 'opencode'))
+    observe(pluginDone)
+    dispatch(endedRunBatch('opencode'))
+
+    observe(hookStatus('working', 'opencode'))
+    vi.advanceTimersByTime(HOOK_DONE_QUIET_MS * 2)
+    expect(dispatchTerminalNotification).not.toHaveBeenCalled()
+    dispatch(endedRunBatch('opencode'))
+    vi.advanceTimersByTime(HOOK_DONE_QUIET_MS)
+
+    expect(dispatchTerminalNotification).toHaveBeenCalledTimes(1)
+    expect(dispatchTerminalNotification.mock.calls[0]?.[1].agentStatusSnapshot).toMatchObject({
+      state: 'done',
+      agentType: 'opencode'
+    })
   })
 
   it('lets a new turn in the pane cancel the pending announcement', async () => {

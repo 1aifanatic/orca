@@ -199,8 +199,9 @@ export function createAgentCompletionHookObserver({
   return {
     observeHookStatus,
     observeAgentRunEnded: (payload: AgentCompletionStatusSnapshot) => {
-      // Why: a run's exit completes only a turn this lane saw open; a hook Done may have announced it.
-      if (state.workingStatusObserved) {
+      // Why: a run's exit completes only a turn this lane saw open and no hook Done is completing;
+      // a Done in its quiet window carries the richer payload and the notification id.
+      if (state.workingStatusObserved && state.pendingHookDoneTimer === null) {
         observeHookStatus(payload)
       }
     },
