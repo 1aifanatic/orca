@@ -12,7 +12,6 @@ export type ClaudeRuntimeAuthPreparation = {
   wslLinuxConfigDir?: string | null
   envPatch: ClaudeEnvPatch
   stripAuthEnv: boolean
-  managedRefreshDeferredByLivePty?: boolean
   provenance: string
 }
 

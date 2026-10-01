@@ -154,10 +154,8 @@ export function initializeMainProcessAccountServices(): void {
       .filter((account) => !activeIds.has(account.id) && !isUnfinishedClaudeSignIn(account))
       .map((account) => ({
         id: account.id,
-        managedAuthPath: account.managedAuthPath,
         managedAuthRuntime: account.managedAuthRuntime,
-        wslDistro: account.wslDistro,
-        wslLinuxAuthPath: account.wslLinuxAuthPath
+        wslDistro: account.wslDistro
       }))
   })
   state.rateLimits.setInactiveCodexAccountsResolver(() => {

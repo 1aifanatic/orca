@@ -263,10 +263,8 @@ it('marks inactive usage unavailable, not signed out, when an account profile ca
   )
   const account = {
     id: 'acct',
-    managedAuthPath: '',
     managedAuthRuntime: 'host' as const,
-    wslDistro: null,
-    wslLinuxAuthPath: null
+    wslDistro: null
   }
   expect(await fetchInactiveClaudeAccountUsage(account)).toMatchObject({
     usageMetadata: { failureKind: 'usage-unavailable' }
@@ -305,10 +303,8 @@ it('does not read an inactive WSL account through a stopped distro', async () =>
   runningDistros.filter.mockResolvedValueOnce([])
   const result = await fetchInactiveClaudeAccountUsage({
     id: 'acct',
-    managedAuthPath: '',
     managedAuthRuntime: 'wsl',
-    wslDistro: 'Ubuntu',
-    wslLinuxAuthPath: null
+    wslDistro: 'Ubuntu'
   })
   expect(runningDistros.filter).toHaveBeenCalledWith([home], { requireConfirmed: true })
   expect(result).toMatchObject({ usageMetadata: { failureKind: 'usage-unavailable' } })

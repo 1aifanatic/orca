@@ -235,8 +235,7 @@ describe('provider usage error copy', () => {
       error:
         'Claude usage refresh is waiting for the live Claude terminal to rotate its credentials.',
       usageMetadata: {
-        failureKind: 'deferred-by-live-session',
-        deferredByLiveClaudeSession: true
+        failureKind: 'deferred-by-live-session'
       }
     })
 

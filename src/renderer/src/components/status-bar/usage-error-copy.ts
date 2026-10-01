@@ -100,6 +100,7 @@ export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
   }
   if (p.provider === 'claude') {
     switch (p.usageMetadata?.failureKind) {
+      // Why: only an older host, which still defers a refresh for a live session, reports this.
       case 'deferred-by-live-session':
         return translate(
           'auto.components.status.bar.tooltip.0d8d7cfe15',
@@ -189,6 +190,7 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
   }
   if (p.provider === 'claude') {
     switch (p.usageMetadata?.failureKind) {
+      // Why: only an older host, which still defers a refresh for a live session, reports this.
       case 'deferred-by-live-session':
         return translate(
           'auto.components.status.bar.tooltip.3d3c9c0c1f',

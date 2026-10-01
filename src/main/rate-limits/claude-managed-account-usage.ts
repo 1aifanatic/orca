@@ -4,7 +4,7 @@ import { ClaudeProfileSignInRequiredError } from '../claude-accounts/claude-prof
 import type { InactiveClaudeAccount } from './claude-managed-account-credentials'
 import type { ClaudeManagedAccountUsageOptions } from './claude-usage-fetch-options'
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
-import { makeClaudeUsageResult } from './claude-usage-result'
+import { claudeUsageUnavailable, makeClaudeUsageResult } from './claude-usage-result'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
 
 export async function fetchInactiveClaudeAccountUsage(
@@ -57,10 +57,3 @@ export async function fetchInactiveClaudeAccountUsage(
 }
 
 const INACTIVE_WSL_READ_TIMEOUT_MS = 10_000
-
-function claudeUsageUnavailable(): ProviderRateLimits {
-  return makeClaudeUsageResult('error', 'Claude usage is unavailable right now.', {
-    failureKind: 'usage-unavailable',
-    attemptedSources: []
-  })
-}

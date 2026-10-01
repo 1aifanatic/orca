@@ -7,7 +7,11 @@ import { fetchClaudeOAuthUsage } from './claude-oauth-usage-request'
 import { classifyClaudeOAuthUsageError } from './claude-usage-error-classification'
 import { OAuthUsageError } from './claude-oauth-usage-error'
 import type { ClaudeRateLimitFetchOptions } from './claude-usage-fetch-options'
-import { abortedClaudeRateLimitResult, makeClaudeUsageResult } from './claude-usage-result'
+import {
+  abortedClaudeRateLimitResult,
+  claudeUsageUnavailable,
+  makeClaudeUsageResult
+} from './claude-usage-result'
 
 /** Usage observes the account; only a user-started Claude process may refresh its login. */
 export async function fetchActiveClaudeRateLimits(
@@ -83,12 +87,4 @@ export async function fetchActiveClaudeRateLimits(
       }
     )
   }
-}
-
-// Why plain: the profile/host reason is shown on the account row, not as raw text in usage.
-function claudeUsageUnavailable(): ProviderRateLimits {
-  return makeClaudeUsageResult('error', 'Claude usage is unavailable right now.', {
-    failureKind: 'usage-unavailable',
-    attemptedSources: []
-  })
 }
