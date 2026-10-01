@@ -41,12 +41,7 @@ export async function runRecordedStop<TValue>(
   event: Omit<JournalStopEvent, 'at'>,
   stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
-  const skipped = (error: unknown): void => {
-    console.warn("[agent-session] Stop's event row skipped:", {
-      sessionId: ctx.sessionId,
-      error: error instanceof Error ? error.message : String(error)
-    })
-  }
+  const skipped = (error: unknown): void => report(ctx, 'event row', error)
   return stop(() => {
     try {
       const turnId = structuredAgentSessionStoppedTurnId(ctx.journal, event.turnId) ?? undefined
@@ -94,4 +89,13 @@ export async function stopReachesUnrecordedWork(
         entry.acceptedSequence > inForce.sequence
     )
   return sentSince || structuredAgentSessionStopNamesTurnNotLive(inForce.event.turnId, live)
+}
+
+function report(ctx: AgentSessionTurnContext, step: string, error: unknown): void {
+  ctx.logger.warn(`Stop's ${step} failed`, {
+    scope: 'stop-queued-bookkeeping',
+    sessionId: ctx.sessionId,
+    step,
+    error
+  })
 }

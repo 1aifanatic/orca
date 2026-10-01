@@ -126,8 +126,8 @@ describe("a Stop's event", () => {
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
     expect(warned).toHaveBeenCalledWith(
-      "[agent-session] Stop's event row skipped:",
-      expect.objectContaining({ error: 'the journal threw' })
+      "[agent-session] stop-queued-bookkeeping: Stop's event row failed",
+      expect.objectContaining({ step: 'event row', error: new Error('the journal threw') })
     )
     warned.mockRestore()
   })
