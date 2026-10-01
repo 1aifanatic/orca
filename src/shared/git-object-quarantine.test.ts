@@ -17,6 +17,7 @@ import {
   _settleGitObjectQuarantineSweepsForTests,
   createGitObjectQuarantine,
   GIT_OBJECT_QUARANTINE_DIR_PREFIX,
+  inheritedObjectStore,
   STALE_GIT_OBJECT_QUARANTINE_AGE_MS,
   type GitObjectQuarantineEnv
 } from './git-object-quarantine'
@@ -166,6 +167,67 @@ describe('createGitObjectQuarantine', () => {
     expect(seen?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(expected)
   })
 
+  it.each([
+    ['/repo/.git/objects', '/shared/objects:/more', '/shared/objects:/more:/repo/.git/objects'],
+    ['C:\\repo\\.git\\objects', 'D:\\shared', 'D:\\shared;C:\\repo\\.git\\objects']
+  ])(
+    'appends the real store to inherited alternates for %s, as Git’s own temporary stores do',
+    async (gitPath, inheritedAlternates, expected) => {
+      let seen: GitObjectQuarantineEnv | undefined
+
+      await createGitObjectQuarantine(async () => ({
+        hostPath: objects,
+        gitPath,
+        inheritedAlternates
+      })).run(async (env) => {
+        seen = env
+      })
+
+      expect(seen?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(expected)
+    }
+  )
+
+  it('lists the real store’s own alternates before it, resolved the way Git resolves them', async () => {
+    mkdirSync(join(objects, 'info'))
+    writeFileSync(
+      join(objects, 'info', 'alternates'),
+      '# a comment\n\n/abs/one/objects\n../../sibling/.git/objects\n/odd:dir/objects\n'
+    )
+    let seen: GitObjectQuarantineEnv | undefined
+
+    await createGitObjectQuarantine(async () => ({
+      hostPath: objects,
+      gitPath: '/repo/.git/objects',
+      inheritedAlternates: '/inherited'
+    })).run(async (env) => {
+      seen = env
+    })
+
+    expect(seen?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(
+      [
+        '/inherited',
+        '/abs/one/objects',
+        '/repo/.git/objects/../../sibling/.git/objects',
+        '"/odd:dir/objects"',
+        '/repo/.git/objects'
+      ].join(':')
+    )
+  })
+
+  it.each([
+    ['holds a C-quoted entry', (info: string) => writeFileSync(join(info, 'alternates'), '"/q"\n')],
+    ['cannot be read', (info: string) => mkdirSync(join(info, 'alternates'))]
+  ])('runs unquarantined when the real store’s alternates file %s', async (_label, prepare) => {
+    mkdirSync(join(objects, 'info'))
+    prepare(join(objects, 'info'))
+    const command = vi.fn(async () => 'ok')
+
+    await expect(createGitObjectQuarantine(resolveNative()).run(command)).resolves.toBe('ok')
+
+    expect(command).toHaveBeenCalledWith(undefined)
+    expect(scratchDirs()).toEqual([])
+  })
+
   it('moves packs Git fetched into the scratch dir to the real store, index included', async () => {
     await createGitObjectQuarantine(resolveNative()).run(async (env) => {
       const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
@@ -284,5 +346,18 @@ describe('createGitObjectQuarantine', () => {
         objectsReaddirGate.current = undefined
       }
     })
+  })
+})
+
+describe('inheritedObjectStore', () => {
+  it('passes inherited alternates on, so the quarantine can append to them', () => {
+    expect(inheritedObjectStore({ GIT_ALTERNATE_OBJECT_DIRECTORIES: '/shared' })).toEqual({
+      inheritedAlternates: '/shared'
+    })
+    expect(inheritedObjectStore({})).toEqual({})
+  })
+
+  it('refuses an inherited object dir, which is the store Git reads and writes', () => {
+    expect(inheritedObjectStore({ GIT_OBJECT_DIRECTORY: '/elsewhere/objects' })).toBeUndefined()
   })
 })

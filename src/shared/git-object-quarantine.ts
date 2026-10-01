@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from './cross-platform-path'
 import { removeTree } from './windows-transient-lock-removal'
@@ -20,6 +20,8 @@ export type GitObjectsDirectory = {
   hostPath: string
   /** How the Git child spells the same directory (differs for WSL). */
   gitPath: string
+  /** GIT_ALTERNATE_OBJECT_DIRECTORIES as Git would inherit it unquarantined. */
+  inheritedAlternates?: string
 }
 
 export type GitObjectQuarantine = {
@@ -42,12 +44,86 @@ export function pathApiForGitPath(value: string): typeof posix {
 }
 
 // Why: Git splits this variable on `:` (`;` for Git for Windows) and C-unquotes a leading `"`.
-function alternateObjectDirectoriesValue(gitPath: string): string {
-  const needsQuoting = isWindowsAbsolutePathLike(gitPath) ? /[;"]/ : /[:"\\]/
-  if (!needsQuoting.test(gitPath)) {
-    return gitPath
+function quoteAlternate(path: string, windowsGit: boolean): string {
+  const needsQuoting = windowsGit ? /[;"]/ : /[:"\\]/
+  if (!needsQuoting.test(path)) {
+    return path
   }
-  return `"${gitPath.replace(/[\\"]/g, (char) => `\\${char}`)}"`
+  return `"${path.replace(/[\\"]/g, (char) => `\\${char}`)}"`
+}
+
+/**
+ * Which inherited object-store variables a quarantine can mirror, as `GitObjectsDirectory` fields;
+ * undefined when it cannot: an inherited GIT_OBJECT_DIRECTORY is the store Git reads and writes.
+ */
+export function inheritedObjectStore(
+  env: Record<string, string | undefined>
+): Pick<GitObjectsDirectory, 'inheritedAlternates'> | undefined {
+  if (env.GIT_OBJECT_DIRECTORY !== undefined) {
+    return undefined
+  }
+  const alternates = env.GIT_ALTERNATE_OBJECT_DIRECTORIES
+  return alternates ? { inheritedAlternates: alternates } : {}
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+  )
+}
+
+/** The real store's `info/alternates` entries as Git resolves them, or undefined when they cannot be mirrored. */
+async function readRealStoreAlternates(
+  objects: GitObjectsDirectory
+): Promise<string[] | undefined> {
+  let text: string
+  try {
+    const bytes = await readFile(
+      pathApiForGitPath(objects.hostPath).join(objects.hostPath, 'info', 'alternates')
+    )
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch (error) {
+    return isMissingFileError(error) ? [] : undefined
+  }
+  const windowsGit = isWindowsAbsolutePathLike(objects.gitPath)
+  const entries: string[] = []
+  for (const line of text.split('\n')) {
+    if (!line || line.startsWith('#')) {
+      continue
+    }
+    // Why: Git C-unquotes such a line; running unquarantined beats reimplementing that.
+    if (line.startsWith('"')) {
+      return undefined
+    }
+    const absolute = windowsGit
+      ? isWindowsAbsolutePathLike(line) || /^[\\/]/.test(line)
+      : line.startsWith('/')
+    // Why not normalized: Git appends a relative entry to the store's path and then resolves symlinks.
+    entries.push(absolute ? line : `${objects.gitPath}/${line}`)
+  }
+  return entries
+}
+
+/**
+ * The alternates that let a quarantined Git see exactly what it sees unquarantined, or undefined.
+ * Inherited value first, as Git's own temporary object dirs append. The real store's own alternates
+ * go before the real store: Git links an alternate's alternates one level deeper, and listing them
+ * directly keeps a chain at the nesting depth Git allows without the quarantine.
+ */
+async function quarantineAlternates(objects: GitObjectsDirectory): Promise<string | undefined> {
+  const realAlternates = await readRealStoreAlternates(objects)
+  if (!realAlternates) {
+    return undefined
+  }
+  const windowsGit = isWindowsAbsolutePathLike(objects.gitPath)
+  const entries = [...realAlternates, objects.gitPath].map((entry) =>
+    quoteAlternate(entry, windowsGit)
+  )
+  return [...(objects.inheritedAlternates ? [objects.inheritedAlternates] : []), ...entries].join(
+    windowsGit ? ';' : ':'
+  )
 }
 
 async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
@@ -138,15 +214,16 @@ export function createGitObjectQuarantine(
   return {
     async run(command) {
       const objects = await resolveOnce()
+      const alternates = objects ? await quarantineAlternates(objects) : undefined
       let scratchHostPath: string | undefined
-      if (objects) {
+      if (objects && alternates !== undefined) {
         startSweepOnce(objects.hostPath)
         const path = pathApiForGitPath(objects.hostPath)
         scratchHostPath = await mkdtemp(
           path.join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
         ).catch(() => undefined)
       }
-      if (!objects || !scratchHostPath) {
+      if (!objects || alternates === undefined || !scratchHostPath) {
         // Why: bookkeeping must not block the user's action; run unquarantined.
         return command(undefined)
       }
@@ -156,7 +233,7 @@ export function createGitObjectQuarantine(
             objects.gitPath,
             pathApiForGitPath(scratchHostPath).basename(scratchHostPath)
           ),
-          GIT_ALTERNATE_OBJECT_DIRECTORIES: alternateObjectDirectoriesValue(objects.gitPath)
+          GIT_ALTERNATE_OBJECT_DIRECTORIES: alternates
         })
       } finally {
         await keepFetchedPacks(scratchHostPath, objects.hostPath)

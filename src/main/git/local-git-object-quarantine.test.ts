@@ -3,6 +3,7 @@ import type * as GitObjectQuarantineModule from '../../shared/git-object-quarant
 import type { GitObjectQuarantine, GitObjectsDirectory } from '../../shared/git-object-quarantine'
 import {
   createLocalGitObjectQuarantine,
+  inheritedLocalObjectStore,
   localGitObjectQuarantineProcessEnv,
   localGitObjectsDirectory
 } from './local-git-object-quarantine'
@@ -141,4 +142,37 @@ describe('createLocalGitObjectQuarantine on a Windows host', () => {
 
     await expect(envSeenBy('C:\\wt', { wslDistro: 'Ubuntu' })).resolves.toBeUndefined()
   })
+})
+
+describe('inheritedLocalObjectStore', () => {
+  const ALTERNATES = { GIT_ALTERNATE_OBJECT_DIRECTORIES: '/shared/objects' }
+
+  it('passes native Git’s inherited alternates on and refuses an inherited object dir', () => {
+    expect(inheritedLocalObjectStore(undefined, ALTERNATES, 'darwin')).toEqual({
+      inheritedAlternates: '/shared/objects'
+    })
+    expect(
+      inheritedLocalObjectStore(undefined, { GIT_OBJECT_DIRECTORY: 'C:\\objects' }, 'win32')
+    ).toBeUndefined()
+  })
+
+  it('ignores Windows values WSLENV does not forward, since WSL Git never saw them', () => {
+    expect(inheritedLocalObjectStore('Ubuntu', ALTERNATES, 'win32')).toEqual({})
+    expect(
+      inheritedLocalObjectStore('Ubuntu', { GIT_OBJECT_DIRECTORY: 'C:\\objects' }, 'win32')
+    ).toEqual({})
+  })
+
+  it.each(['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_OBJECT_DIRECTORY/p'])(
+    'runs unquarantined when WSLENV forwards %s to WSL Git',
+    (token) => {
+      const env = {
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: 'C:\\shared',
+        GIT_OBJECT_DIRECTORY: 'C:\\objects',
+        WSLENV: `ORCA_X/u:${token}`
+      }
+
+      expect(inheritedLocalObjectStore('Ubuntu', env, 'win32')).toBeUndefined()
+    }
+  )
 })

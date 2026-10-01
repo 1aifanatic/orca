@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createDivergentRepoFixture,
   type DivergentRepoFixture
@@ -162,5 +163,118 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
 
     expect(scratch).toBeDefined()
     expect(existsSync(scratch ?? '')).toBe(false)
+  })
+})
+
+// Why: the quarantine must leave Git seeing exactly the object stores it sees without it.
+describe('merge-tree quarantine keeps the object stores Git would otherwise see (real Git)', () => {
+  let fixture: DivergentRepoFixture
+
+  beforeEach(() => {
+    __resetPRConflictSummaryCachesForTests()
+    fixture = createDivergentRepoFixture()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    fixture.dispose()
+  })
+
+  const BRANCHES = ['main', 'feature-conflict', 'feature-extra', 'feature-squashed']
+  const fixtureHead = (branch: string): string =>
+    fixture.git(fixture.repoPath, 'rev-parse', branch).trim()
+
+  function emptyRepo(name: string): string {
+    const repo = join(dirname(fixture.repoPath), name)
+    fixture.git(dirname(fixture.repoPath), 'init', '--quiet', repo)
+    return repo
+  }
+
+  /** Points `repo`'s branches at the fixture's commits; their objects must already be reachable. */
+  function addFixtureBranches(repo: string): void {
+    for (const branch of BRANCHES) {
+      fixture.git(repo, 'update-ref', `refs/heads/${branch}`, fixtureHead(branch))
+    }
+    fixture.git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+    fixture.git(repo, 'config', 'branch.feature-extra.base', 'refs/heads/main')
+    fixture.git(repo, 'config', 'branch.feature-squashed.base', 'refs/heads/main')
+  }
+
+  const looseObjectsIn = (repo: string): number => {
+    const objects = join(repo, '.git', 'objects')
+    return readdirSync(objects)
+      .filter((entry) => /^[0-9a-f]{2}$/.test(entry))
+      .reduce((count, entry) => count + readdirSync(join(objects, entry)).length, 0)
+  }
+
+  async function expectUnquarantinedVerdicts(repo: string): Promise<void> {
+    const summary = await getPRConflictSummary(
+      repo,
+      'main',
+      fixtureHead('main'),
+      fixtureHead('feature-conflict')
+    )
+    const extra = await deleteBranchAfterWorktreeRemoval(
+      repo,
+      'feature-extra',
+      fixtureHead('feature-extra'),
+      {}
+    )
+    const squashed = await deleteBranchAfterWorktreeRemoval(
+      repo,
+      'feature-squashed',
+      fixtureHead('feature-squashed'),
+      {}
+    )
+
+    expect(summary?.files).toEqual(['shared.txt'])
+    expect(extra).toEqual({
+      preservedBranch: { branchName: 'feature-extra', head: fixtureHead('feature-extra') }
+    })
+    expect(squashed).toEqual({})
+    expect(fixture.git(repo, 'branch', '--list', 'feature-squashed')).toBe('')
+  }
+
+  it('reads objects reachable only through inherited GIT_ALTERNATE_OBJECT_DIRECTORIES', async () => {
+    const repo = emptyRepo('reached-by-env-alternates')
+    vi.stubEnv('GIT_ALTERNATE_OBJECT_DIRECTORIES', join(fixture.commonDir, 'objects'))
+    addFixtureBranches(repo)
+
+    await expectUnquarantinedVerdicts(repo)
+
+    expect(looseObjectsIn(repo)).toBe(0)
+  })
+
+  it('leaves an inherited GIT_OBJECT_DIRECTORY in charge, writing where Git would', async () => {
+    const repo = emptyRepo('inherited-object-dir')
+    vi.stubEnv('GIT_OBJECT_DIRECTORY', join(fixture.commonDir, 'objects'))
+    addFixtureBranches(repo)
+    const before = fixture.looseObjectCount()
+
+    await expectUnquarantinedVerdicts(repo)
+
+    // Unquarantined, Git writes the merge results into the store it was handed.
+    expect(fixture.looseObjectCount()).toBeGreaterThan(before)
+    expect(fixture.scratchDirectories()).toEqual([])
+  })
+
+  it('reads through an info/alternates chain at the deepest nesting Git accepts', async () => {
+    let linked = join(fixture.commonDir, 'objects')
+    let repo = ''
+    for (let depth = 1; depth <= 6; depth++) {
+      repo = emptyRepo(`alternates-chain-${depth}`)
+      writeFileSync(join(repo, '.git', 'objects', 'info', 'alternates'), `${linked}\n`)
+      linked = join(repo, '.git', 'objects')
+    }
+    addFixtureBranches(repo)
+
+    await expectUnquarantinedVerdicts(repo)
+
+    expect(looseObjectsIn(repo)).toBe(0)
+    // Without the quarantine Git reaches the bottom of this chain too, and no deeper.
+    const squashed = fixtureHead('feature-squashed')
+    expect(fixture.git(repo, 'merge-tree', '--write-tree', 'main', squashed).trim()).toBe(
+      fixture.git(repo, 'rev-parse', 'main^{tree}').trim()
+    )
   })
 })

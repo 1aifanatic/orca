@@ -2,6 +2,7 @@ import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
 import {
   createGitObjectQuarantine,
+  inheritedObjectStore,
   pathApiForGitPath,
   type GitObjectQuarantineEnv,
   type GitObjectsDirectory
@@ -47,6 +48,24 @@ export function localGitObjectQuarantineProcessEnv(
   return env
 }
 
+const OBJECT_STORE_VARIABLES = ['GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']
+
+/** The object-store variables local Git would inherit, or undefined when they cannot be mirrored. */
+export function inheritedLocalObjectStore(
+  wslDistro: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): Pick<GitObjectsDirectory, 'inheritedAlternates'> | undefined {
+  if (platform !== 'win32' || !wslDistro) {
+    return inheritedObjectStore(env)
+  }
+  // Why: wsl.exe forwards only what WSLENV names, maybe path-translated (`/p`); skip rather than guess.
+  const forwarded = new Set((env.WSLENV ?? '').split(':').map((token) => token.split('/')[0]))
+  return OBJECT_STORE_VARIABLES.some((key) => forwarded.has(key) && env[key] !== undefined)
+    ? undefined
+    : {}
+}
+
 /** Scratch object store for throwaway Git writes on the local (native or WSL) host. */
 export function createLocalGitObjectQuarantine(
   repoPath: string,
@@ -54,6 +73,10 @@ export function createLocalGitObjectQuarantine(
 ): LocalGitObjectQuarantine {
   const wslDistro = parseWslPath(repoPath)?.distro ?? options.wslDistro
   const quarantine = createGitObjectQuarantine(async () => {
+    const inherited = inheritedLocalObjectStore(wslDistro)
+    if (!inherited) {
+      return undefined
+    }
     const commonDir = await readRepoCommonDirFromGit(repoPath, {
       ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
       ...(options.signal ? { signal: options.signal } : {}),
@@ -64,7 +87,7 @@ export function createLocalGitObjectQuarantine(
     if (!commonDir || usesHostGitForWslLinkedWorktree(repoPath, options.wslDistro)) {
       return undefined
     }
-    return localGitObjectsDirectory(commonDir, wslDistro)
+    return { ...localGitObjectsDirectory(commonDir, wslDistro), ...inherited }
   })
   return {
     run: (command) =>
