@@ -8,7 +8,8 @@ import { findUnsafePatternReason } from './agent-state-rule-pattern-safety'
  * One file per agent (`<agent>.json` beside this schema), plus `unknown-pane.json` for panes whose
  * agent Orca does not know. Every object is strict, so a misspelled field rejects the file instead
  * of silently dropping a condition. Every rule and anchor is `when` (a region and what it must
- * show) plus `answer`; adding a region, predicate or answer bumps `engineVersion`.
+ * show) plus `answer`. Once a version ships, adding a region, predicate or answer bumps
+ * `engineVersion`; until then version 1 is still being defined.
  */
 const AGENT_STATE_RULES_ENGINE_VERSION = 1
 
@@ -229,6 +230,10 @@ const ProfileSchema = z
 /** The panes no agent file covers: no launch record, and no recognised foreground process. */
 export const UNKNOWN_PANE_RULES_ID = 'unknown-pane'
 
+function hasUniqueIds(entries: readonly { id: string }[]): boolean {
+  return new Set(entries.map((entry) => entry.id)).size === entries.length
+}
+
 export const AgentStateRulesFileSchema = z
   .object({
     id: z.union([
@@ -257,6 +262,10 @@ export const AgentStateRulesFileSchema = z
       (rule) => rule.when.region !== 'text' || idleTextAnchors.has(rule.when.anchor)
     )
   }, "a text rule names one of this file's idle text anchors")
+  .refine(
+    (file) => hasUniqueIds(file.anchors) && hasUniqueIds(file.rules),
+    'anchor ids, and rule ids, are unique within the file'
+  )
 
 export type TextTest = z.infer<typeof TextTestSchema>
 export type ScreenCondition = z.infer<typeof ScreenConditionSchema>

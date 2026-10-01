@@ -17,6 +17,7 @@ import { parseAgentStateRuleFiles } from './agent-state-rules-catalog'
 import { showsIdleTitleAnchor } from './agent-state-title-anchors'
 
 const STRONG_QUIET = { state: 'idle', strength: 'strong', requiresQuiet: true }
+const TITLE = { region: 'title', status: 'idle' }
 
 function rule(id: string, when: Record<string, unknown>, answer: Record<string, unknown>) {
   return { id, why: 'test', priority: 100, when, answer }
@@ -86,7 +87,12 @@ describe('region schema', () => {
       'a title rule on a status other than idle',
       file([rule('a', { region: 'title', status: 'working' }, STRONG_QUIET)])
     ],
-    ['an unknown pane id', { ...file([]), id: 'unknown' }]
+    ['an unknown pane id', { ...file([]), id: 'unknown' }],
+    ['two anchors with one id', file([], { anchors: [READY_ANCHOR, READY_ANCHOR] })],
+    [
+      'two rules with one id',
+      file([rule('a', TITLE, STRONG_QUIET), rule('a', TITLE, STRONG_QUIET)])
+    ]
   ])('rejects %s', (_label, candidate) => {
     expect(() => parseAgentStateRuleFiles([candidate])).toThrow()
   })
