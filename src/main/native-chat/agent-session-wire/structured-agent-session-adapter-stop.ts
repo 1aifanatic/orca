@@ -9,8 +9,8 @@ import type {
 import type { ProviderDiagnostic } from '../../../shared/agent-session-failure'
 
 /** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any.
- *  `turnNotRunning`: it declined because the turn it was asked to stop is not running there; absent,
- *  it could not interrupt that turn, which may run on. */
+ *  `turnNotRunning`: its refusal is the kind it gives for a turn not running there, so the Stop keeps
+ *  the child; absent, it could not interrupt that turn, which may run on. */
 export type AgentSessionCancelOutcome = {
   cancelled: boolean
   refusal?: { detail?: ProviderDiagnostic; turnNotRunning?: true }

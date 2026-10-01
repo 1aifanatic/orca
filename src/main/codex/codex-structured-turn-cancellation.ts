@@ -6,9 +6,10 @@ import type { CodexSession } from './codex-structured-session-state'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-contracts'
 
 /**
- * Codex refuses an interrupt as an invalid request (-32600) only when the named turn is not its
- * active one: no turn running, another turn running, or the thread not loaded. Its other refusal,
- * an internal error (-32603), is an interrupt it could not submit, with the turn still running.
+ * Codex's interrupt handler answers -32600 when the named turn is not its running one (no turn,
+ * another turn, thread not loaded) and -32603 when it could not submit the interrupt. A request it
+ * could not parse, or one before initialize, also answers -32600: read as not running, it keeps the
+ * child, as before.
  */
 function isCodexTurnNotRunningRefusal(error: unknown): boolean {
   return isCodexAppServerRequestError(error) && error.code === -32600
