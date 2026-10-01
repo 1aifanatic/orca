@@ -19,7 +19,7 @@ import {
   orcadTemplateCommonFilenames
 } from '../../src/shared/orcad-artifacts.ts'
 import { orcadAgentBrowserNativeName } from '../../src/shared/orcad-agent-browser-name.ts'
-import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/orcad-bun-runtime.ts'
+import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/node-runtime-pin.ts'
 import { runProcessSync } from './script-child-process.mjs'
 import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { verifyPackagedOrcadTemplate } from './verify-packaged-orcad-template.cjs'
