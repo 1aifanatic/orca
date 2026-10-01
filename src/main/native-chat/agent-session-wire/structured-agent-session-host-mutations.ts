@@ -18,16 +18,8 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
-import {
-  endStoppedStructuredAgentSession,
-  isMainAgentWorkingOnceFlushed,
-  performCancel,
-  type StructuredAgentSessionStopWindDown
-} from './structured-agent-session-turns-cancel'
 import {
   admitAndRunAgentSessionMutation,
   type AgentSessionMutationRequest,
@@ -37,7 +29,6 @@ import {
   openForWrite,
   openWithAgent,
   sendPreparation,
-  structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -48,8 +39,11 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
-import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
+import {
+  answerStructuredAgentSessionPromptOrStop,
+  cancelStructuredAgentSessionPrompt
+} from './structured-agent-session-prompt-cancel'
+import { structuredAgentSessionChatStop } from './structured-agent-session-chat-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -166,53 +160,8 @@ export function cancelStructuredAgentSessionTurn(
       openForWrite(context, params.envelope)
     )
   }
-  const plan = cancelPlan({
-    ...params,
-    stopChild: () => context.stopAgent(params.envelope.sessionId)
-  })
-  // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
-  let windDown: StructuredAgentSessionStopWindDown | undefined
-  // Stop's queue step, the same for every client: once the Stop takes effect the queue is paused.
-  // The cards stay published; nothing is withdrawn and no text ever rides the answer.
-  const stop = (ctx: Parameters<typeof plan.run>[0]) =>
-    runStopWithQueuePause(ctx, async (tookEffect) => {
-      // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
-      const withdrawn = await ctx.journal.rejectQueuedSubmissions(
-        ctx.fence,
-        agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
-      )
-      const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
-      const child = context.sessions.get(ctx.sessionId)?.child
-      if (child?.phase === 'starting') {
-        // A start that may never land is the one thing here Stop has to end; the chat stays.
-        await tookEffect()
-        await context.stopAgent(ctx.sessionId)
-        return { ok: true, value: { ...named, cancelled: true } }
-      }
-      // A Stop naming no turn ends nothing more unless the session reads working, by the rule
-      // every session list and the chat's own Stop read it.
-      const inFlight = params.turnId !== undefined || (await isMainAgentWorkingOnceFlushed(ctx))
-      const record = context.deps.store.getRecord(ctx.sessionId)
-      if (!child || !inFlight) {
-        if (withdrawn.length > 0) {
-          await tookEffect()
-        }
-        return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
-      }
-      await tookEffect()
-      return performCancel(
-        { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
-        {
-          clientOperationId: params.envelope.clientOperationId,
-          ...named,
-          stopChild: () => context.stopAgent(params.envelope.sessionId),
-          endSession: (owed) => {
-            windDown = owed
-          },
-          withdrewQueued: withdrawn.length > 0
-        }
-      )
-    })
+  const plan = cancelPlan(params)
+  const stop = structuredAgentSessionChatStop(context, params.envelope, params.turnId)
   const { prompt } = params
   const stopped = mutateStructuredAgentSession(
     context,
@@ -225,24 +174,13 @@ export function cancelStructuredAgentSessionTurn(
           ? cancelStructuredAgentSessionPrompt(
               ctx,
               { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
-              { stop: () => stop(ctx), interrupt: () => cancelPlan(params).run(ctx) }
+              { stop: () => stop.run(ctx), interrupt: () => plan.run(ctx) }
             )
-          : stop(ctx)
+          : stop.run(ctx)
     },
     openForWrite(context, params.envelope)
   )
-  const { sessionId } = params.envelope
-  // Queued in the Stop's own tick, so a send made meanwhile lands behind the child's end.
-  void context.serialize(sessionId, async () => {
-    if (windDown) {
-      await endStoppedStructuredAgentSession(
-        { sessionId, adapter: context.deps.adapter },
-        windDown,
-        () => context.stopAgent(sessionId),
-        (error) => context.deps.onEventSinkError?.({ sessionId, error })
-      )
-    }
-  })
+  stop.queueChildEnd()
   return stopped
 }
 
@@ -251,13 +189,24 @@ export function respondToStructuredAgentSessionPrompt(
   caller: StructuredAgentSessionCaller,
   params: AgentSessionPromptRequest & { envelope: AgentSessionMutationEnvelope }
 ): Promise<AgentSessionMutationResult<AgentSessionPromptResult>> {
-  return mutateStructuredAgentSession(
+  const plan = promptPlan(params)
+  const stop = structuredAgentSessionChatStop(context, params.envelope)
+  const answered = mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
-    promptPlan(params),
+    {
+      ...plan,
+      run: (ctx) =>
+        answerStructuredAgentSessionPromptOrStop(ctx, params, {
+          stop: () => stop.run(ctx),
+          answer: () => plan.run(ctx)
+        })
+    },
     openForWrite(context, params.envelope)
   )
+  stop.queueChildEnd()
+  return answered
 }
 
 export async function setStructuredAgentSessionOption(

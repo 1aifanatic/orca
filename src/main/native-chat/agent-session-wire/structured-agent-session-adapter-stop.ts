@@ -1,10 +1,9 @@
-// How a provider's Stop, and a prompt card's own Cancel, end what they end. Every member is
-// optional: a provider that declares none keeps its child after a Stop, and its card's Cancel
-// interrupts the turn holding the card.
+// How a provider's Stop, and a prompt card's own controls, end what they end. Every member is
+// optional: a provider that declares none keeps its child after a Stop, its card's Cancel interrupts
+// the turn holding the card, and a card's option goes to it as picked.
 
-/** A card's Cancel as its provider answers it: one of the approval's own options, or the chat's
- *  Stop. */
-export type AgentSessionPromptCancelAnswer = { kind: 'option'; optionId: string } | { kind: 'stop' }
+/** Where a card's control goes: one of the approval's own options, or the chat's Stop. */
+export type AgentSessionPromptRoute = { kind: 'option'; optionId: string } | { kind: 'stop' }
 
 export type StructuredAgentSessionAdapterStop = {
   /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
@@ -15,9 +14,11 @@ export type StructuredAgentSessionAdapterStop = {
    *  `turnId` is not the provider's open turn, else when it ends or the provider's grace, counted
    *  from `stoppedAt` (when the interrupt went out), runs out. */
   awaitStoppedTurnEnd?(sessionId: string, turnId: string, stoppedAt: number): Promise<void>
-  /** How a card's own Cancel is answered. Absent: `cancelTurn` with the prompt. */
-  promptCancelAnswer?(
+  /** Where a card's own Cancel (no `optionId`), or one of its options, goes. Undefined: the Cancel
+   *  goes to `cancelTurn` with the prompt, and the option to `answerPrompt`. */
+  routePromptAnswer?(
     sessionId: string,
-    kind: 'approval' | 'question'
-  ): AgentSessionPromptCancelAnswer | undefined
+    kind: 'approval' | 'question',
+    optionId?: string
+  ): AgentSessionPromptRoute | undefined
 }

@@ -8,8 +8,11 @@ import { createTrackedJournalOpener } from '../agent-session-journal/journal-hos
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { performCancel, type AgentSessionTurnContext } from './structured-agent-session-turns'
-import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
-import type { AgentSessionPromptCancelAnswer } from './structured-agent-session-adapter-stop'
+import {
+  answerStructuredAgentSessionPromptOrStop,
+  cancelStructuredAgentSessionPrompt
+} from './structured-agent-session-prompt-cancel'
+import type { AgentSessionPromptRoute } from './structured-agent-session-adapter-stop'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -218,7 +221,7 @@ describe('performCancel for a pending prompt', () => {
 })
 
 describe("a card's own Cancel, as its provider answers it", () => {
-  async function cancelCard(answer: AgentSessionPromptCancelAnswer | undefined, revision = 1) {
+  async function cancelCard(answer: AgentSessionPromptRoute | undefined, revision = 1) {
     const { journal, itemId } = await pendingPrompt([
       { id: 'allow', label: 'Allow' },
       { id: 'deny', label: 'Deny' }
@@ -231,7 +234,7 @@ describe("a card's own Cancel, as its provider answers it", () => {
     const answerPrompt = vi.fn<StructuredAgentSessionAdapter['answerPrompt']>(async (input) => {
       await input.commit()
     })
-    Object.assign(ctx.adapter, { answerPrompt, promptCancelAnswer: () => answer })
+    Object.assign(ctx.adapter, { answerPrompt, routePromptAnswer: () => answer })
     const routes = {
       stop: vi.fn(async () => ({ ok: true as const, value: { cancelled: true } })),
       interrupt: vi.fn(async () => ({ ok: true as const, value: { cancelled: true } }))
@@ -285,6 +288,62 @@ describe("a card's own Cancel, as its provider answers it", () => {
       ok: false,
       refusal: { code: 'agent_session_item_revision_stale' }
     })
+    expect(routes.stop).not.toHaveBeenCalled()
+  })
+})
+
+describe("a card's option its provider routes to the chat's Stop", () => {
+  async function pick(optionId: string, revision = 1) {
+    const { journal, itemId } = await pendingPrompt([
+      { id: 'allow', label: 'Allow' },
+      { id: 'cancel', label: 'Stop' }
+    ])
+    const ctx = context(
+      journal,
+      vi.fn(async () => ({ cancelled: true })),
+      vi.fn(async () => undefined)
+    )
+    Object.assign(ctx.adapter, {
+      routePromptAnswer: (_sessionId: string, _kind: string, picked?: string) =>
+        picked === 'cancel' ? { kind: 'stop' } : undefined
+    })
+    const routes = {
+      stop: vi.fn(async () => ({ ok: true as const, value: { cancelled: true } })),
+      answer: vi.fn(async () => ({
+        ok: true as const,
+        value: { itemId, revision: 2, resolution: { state: 'resolved' as const } }
+      }))
+    }
+    const result = await answerStructuredAgentSessionPromptOrStop(
+      ctx,
+      { itemId, expectedRevision: revision, kind: 'approval', optionId },
+      routes
+    )
+    return { result, routes, itemId }
+  }
+
+  it("runs the chat's Stop and reports the card as it reads", async () => {
+    const { result, routes, itemId } = await pick('cancel')
+
+    expect(routes.stop).toHaveBeenCalledOnce()
+    expect(routes.answer).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      ok: true,
+      value: { itemId, revision: 1, resolution: { state: 'pending' } }
+    })
+  })
+
+  it('answers any other option as picked', async () => {
+    const { routes } = await pick('allow')
+
+    expect(routes.answer).toHaveBeenCalledOnce()
+    expect(routes.stop).not.toHaveBeenCalled()
+  })
+
+  it('refuses a card that moved on before stopping anything', async () => {
+    const { result, routes } = await pick('cancel', 2)
+
+    expect(result).toMatchObject({ ok: false })
     expect(routes.stop).not.toHaveBeenCalled()
   })
 })

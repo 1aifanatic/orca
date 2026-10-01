@@ -3,7 +3,7 @@ import type {
   AgentSessionPromptResponse,
   AgentSessionQuestionAnswer
 } from '../../shared/agent-session-question-answer'
-import type { AgentSessionPromptCancelAnswer } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
+import type { AgentSessionPromptRoute } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
 import {
   claudePromptQuestions,
   isClaudePromptRecord,
@@ -22,13 +22,18 @@ export {
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
 export type ClaudeApprovalDecision = (typeof CLAUDE_APPROVAL_DECISIONS)[number]
 
-/** A card's own Cancel: an approval is denied as its Deny option denies it, and a question ends the
- *  way the chat's Stop does. Neither interrupts the turn and leaves the child running. */
-export function claudePromptCancelAnswer(
+/** A card's own Cancel denies an approval as its Deny option does, and ends a question the way the
+ *  chat's Stop does; an approval's Stop option is the chat's Stop. Nothing on a card interrupts the
+ *  turn and leaves the child running. */
+export function claudePromptRoute(
   _sessionId: string,
-  kind: 'approval' | 'question'
-): AgentSessionPromptCancelAnswer {
-  return kind === 'approval' ? { kind: 'option', optionId: 'deny' } : { kind: 'stop' }
+  kind: 'approval' | 'question',
+  optionId?: string
+): AgentSessionPromptRoute | undefined {
+  if (optionId === undefined) {
+    return kind === 'approval' ? { kind: 'option', optionId: 'deny' } : { kind: 'stop' }
+  }
+  return kind === 'approval' && optionId === 'cancel' ? { kind: 'stop' } : undefined
 }
 
 function isClaudeApprovalDecision(optionId: string): optionId is ClaudeApprovalDecision {
@@ -103,15 +108,13 @@ function approvalResponse(prompt: ClaudePendingPrompt, optionId: string): Permis
       toolUseID: prompt.toolUseId
     }
   }
+  // `cancel` is the chat's Stop (`claudePromptRoute`), so it never reaches Claude as a reply.
   return {
     behavior: 'deny',
     message:
-      decision === 'cancel'
-        ? 'User stopped this turn.'
-        : prompt.subject?.kind === 'plan'
-          ? 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.'
-          : 'User denied this action.',
-    ...(decision === 'cancel' ? { interrupt: true } : {}),
+      prompt.subject?.kind === 'plan'
+        ? 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.'
+        : 'User denied this action.',
     toolUseID: prompt.toolUseId
   }
 }
