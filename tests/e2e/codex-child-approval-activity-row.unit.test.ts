@@ -4,7 +4,8 @@
 // real one: provider translator, deferred sink, durable journal and host status feed, then the
 // renderer's status bridge, agent-status store and Activity pipeline. The ask is the subagent's,
 // so the session's own status stays at its turn's end while the row waits on the user: from the
-// session's `awaitsUser` alone, or with the child's own record waiting too. Answering it returns the
+// session's `awaitsUserSince` alone, or with the child's own record waiting too, dated by the ask so
+// a read ask stays read through later rows and a reload. Answering it returns the
 // row to done, and nothing the user had already read comes back unread.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -221,99 +222,115 @@ async function openHost(childRecords: boolean) {
     publish()
     translator.resolvePrompt(itemId)
   }
-  return { journal, translator, on, drain, answer, prompts, events, tick, close: deferred.close }
+  return {
+    journal,
+    translator,
+    on,
+    drain,
+    answer,
+    prompts,
+    events,
+    tick,
+    statusStore,
+    close: deferred.close
+  }
 }
 
+/** The parent settles, its subagent asks, and the renderer has every publication so far. */
+async function untilAsked(childRecords: boolean) {
+  const host = await openHost(childRecords)
+  render(createElement(StructuredAgentSessionStatusBridge))
+  await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+  let forwarded = 0
+  /** Forwards what the host published since the last call to the bridge mounted now. */
+  const deliver = (): AgentSessionStatusSummary => {
+    const toRenderer: (event: AgentSessionStatusEvent) => void =
+      mocks.subscribeStatus.mock.calls.at(-1)?.[1]
+    act(() => {
+      for (const event of host.events.slice(forwarded)) {
+        toRenderer(event)
+      }
+    })
+    forwarded = host.events.length
+    const latest = host.events.findLast((event) => event.type === 'status')
+    if (latest?.type !== 'status') {
+      throw new Error('status publication missing')
+    }
+    return latest.session
+  }
+  const paneKey = (): string => Object.keys(store().getState().agentStatusByPaneKey)[0] ?? ''
+
+  await host.journal.appendItem(
+    { provider: 'orca', clientMessageId: 'prompt-1' },
+    { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
+    { fence: 1 }
+  )
+  host.on(CODEX_THREAD, 'turn/started', { turn: { id: 'parent-turn' } })
+  const spawn = {
+    type: 'subAgentActivity',
+    id: 'spawn-child',
+    kind: 'started',
+    agentThreadId: CODEX_CHILD,
+    agentPath: '/root/review'
+  }
+  host.on(CODEX_THREAD, 'item/started', { turnId: 'parent-turn', item: spawn })
+  host.on(CODEX_THREAD, 'item/completed', { turnId: 'parent-turn', item: spawn })
+  host.on(CODEX_CHILD, 'turn/started', { turn: { id: 'child-turn' } })
+  host.on(CODEX_THREAD, 'turn/completed', { turn: { id: 'parent-turn', status: 'completed' } })
+  await host.drain()
+  const settled = deliver()
+  expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
+  store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
+
+  host.translator.handle({
+    type: 'prompt',
+    sessionId: SESSION,
+    threadId: CODEX_CHILD,
+    method: CODEX_COMMAND_APPROVAL_METHOD,
+    params: { command: 'pnpm test', availableDecisions: ['accept', 'decline'] },
+    codexItemId: 'child-exec',
+    promptKey: 'child-approval'
+  })
+  if (childRecords) {
+    host.on(CODEX_CHILD, 'thread/status/changed', {
+      status: { type: 'active', activeFlags: ['waitingOnApproval'] }
+    })
+  }
+  await host.drain()
+  // The journal stamps the child's prompt with its thread, so it is not the session's own ask,
+  // but someone in the session must answer it, since the ask.
+  const asked = deliver()
+  expect(asked).toMatchObject({
+    status: 'idle',
+    awaitsUserSince: expect.any(Number),
+    statusStartedAt: settled.statusStartedAt
+  })
+  // Only the producer under test writes a child record; without it the session's fact is all.
+  expect(asked.children?.map((child) => child.state) ?? []).toEqual(childRecords ? ['waiting'] : [])
+  return { host, deliver, paneKey, settled, asked }
+}
+
+const CASES = [
+  ['with no child record for it', false],
+  ["with the child's own record waiting", true]
+] as const
+
 describe("a Codex subagent's answered approval on the settled parent's Activity row", () => {
-  it.each([
-    ['with no child record for it', false],
-    ["with the child's own record waiting", true]
-  ] as const)(
+  it.each(CASES)(
     'waits on the parent %s, then reads done and leaves the answer read',
     async (_label, childRecords) => {
-      const host = await openHost(childRecords)
-      render(createElement(StructuredAgentSessionStatusBridge))
-      await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-      const toRenderer: (event: AgentSessionStatusEvent) => void =
-        mocks.subscribeStatus.mock.calls[0]?.[1]
-      let forwarded = 0
-      const deliver = (): AgentSessionStatusSummary => {
-        act(() => {
-          for (const event of host.events.slice(forwarded)) {
-            toRenderer(event)
-          }
-        })
-        forwarded = host.events.length
-        const latest = host.events.findLast((event) => event.type === 'status')
-        if (latest?.type !== 'status') {
-          throw new Error('status publication missing')
-        }
-        return latest.session
-      }
-      const paneKey = (): string => Object.keys(store().getState().agentStatusByPaneKey)[0] ?? ''
-      const threads = () =>
-        renderHook(() =>
-          useAgentPaneThreads({
-            query: '',
-            readFilter: 'all',
-            groupBy: 'none',
-            selectedPaneKey: null,
-            showChildAgents: true
-          })
-        ).result.current.allThreads
-
-      await host.journal.appendItem(
-        { provider: 'orca', clientMessageId: 'prompt-1' },
-        { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
-        { fence: 1 }
-      )
-      host.on(CODEX_THREAD, 'turn/started', { turn: { id: 'parent-turn' } })
-      const spawn = {
-        type: 'subAgentActivity',
-        id: 'spawn-child',
-        kind: 'started',
-        agentThreadId: CODEX_CHILD,
-        agentPath: '/root/review'
-      }
-      host.on(CODEX_THREAD, 'item/started', { turnId: 'parent-turn', item: spawn })
-      host.on(CODEX_THREAD, 'item/completed', { turnId: 'parent-turn', item: spawn })
-      host.on(CODEX_CHILD, 'turn/started', { turn: { id: 'child-turn' } })
-      host.on(CODEX_THREAD, 'turn/completed', { turn: { id: 'parent-turn', status: 'completed' } })
-      await host.drain()
-      const settled = deliver()
-      expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
-      store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
-
-      host.translator.handle({
-        type: 'prompt',
-        sessionId: SESSION,
-        threadId: CODEX_CHILD,
-        method: CODEX_COMMAND_APPROVAL_METHOD,
-        params: { command: 'pnpm test', availableDecisions: ['accept', 'decline'] },
-        codexItemId: 'child-exec',
-        promptKey: 'child-approval'
-      })
-      if (childRecords) {
-        host.on(CODEX_CHILD, 'thread/status/changed', {
-          status: { type: 'active', activeFlags: ['waitingOnApproval'] }
-        })
-      }
-      await host.drain()
-      // The journal stamps the child's prompt with its thread, so it is not the session's own ask,
-      // but someone in the session must answer it.
-      const asked = deliver()
-      expect(asked).toMatchObject({
-        status: 'idle',
-        awaitsUser: true,
-        statusStartedAt: settled.statusStartedAt
-      })
-      // Only the producer under test writes a child record; without it the session's fact is all.
-      expect(asked.children?.map((child) => child.state) ?? []).toEqual(
-        childRecords ? ['waiting'] : []
-      )
+      const { host, deliver, paneKey, settled, asked } = await untilAsked(childRecords)
       const waiting = threads()[0]
       expect(waiting && activityThreadStatusId(waiting)).toBe('waiting')
       expect(waiting && activityThreadRowCopy(waiting).needsAttention).toBe(true)
+      // The host's own row, which `worktree ps`, mobile and the dashboard read, folds the same fact.
+      expect(host.statusStore.getStatusSnapshot()).toEqual([
+        expect.objectContaining({
+          state: 'waiting',
+          mainAgent: expect.objectContaining({ state: 'done' }),
+          stateStartedAt: asked.awaitsUserSince
+        })
+      ])
       // The user reads the ask, then answers it.
       store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
       const [approval] = host.prompts
@@ -328,7 +345,7 @@ describe("a Codex subagent's answered approval on the settled parent's Activity 
       const answered = deliver()
       // The host rule under test elsewhere: the answer never re-dates the session's done.
       expect(answered).toMatchObject({ status: 'idle', statusStartedAt: settled.statusStartedAt })
-      expect(answered).not.toHaveProperty('awaitsUser')
+      expect(answered).not.toHaveProperty('awaitsUserSince')
       expect(answered.updatedAt).toBeGreaterThan(asked.updatedAt)
 
       const [row, ...others] = threads()
@@ -345,4 +362,59 @@ describe("a Codex subagent's answered approval on the settled parent's Activity 
       host.close()
     }
   )
+
+  it.each(CASES)(
+    'keeps a read ask read %s through a later row and a reload',
+    async (_label, childRecords) => {
+      const { host, deliver, paneKey, asked } = await untilAsked(childRecords)
+      const pane = paneKey()
+      // Dated by the ask itself, so nothing that lands after the user read it can re-date it.
+      expect(store().getState().agentStatusByPaneKey[pane]?.stateStartedAt).toBe(
+        asked.awaitsUserSince
+      )
+      const readAt = host.tick()
+      store().setState({ acknowledgedAgentsByPaneKey: { [pane]: readAt } })
+      host.on(CODEX_CHILD, 'item/completed', {
+        turnId: 'child-turn',
+        item: { type: 'agentMessage', id: 'child-note', text: 'still waiting' }
+      })
+      await host.drain()
+      const later = deliver()
+      expect(later.updatedAt).toBeGreaterThan(asked.updatedAt)
+      expect(countActivityUnread(store().getState())).toBe(0)
+      // A reload: a fresh bridge over an empty row store holding the persisted read marker.
+      cleanup()
+      resetStructuredAgentSessionStatusFeedsForTests()
+      act(() =>
+        store().setState({
+          agentStatusByPaneKey: {},
+          acknowledgedAgentsByPaneKey: { [pane]: readAt }
+        })
+      )
+      render(createElement(StructuredAgentSessionStatusBridge))
+      await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledTimes(2))
+      const reloaded: (event: AgentSessionStatusEvent) => void =
+        mocks.subscribeStatus.mock.calls[1]?.[1]
+      act(() => reloaded({ type: 'snapshot', sessions: [later] }))
+      expect(store().getState().agentStatusByPaneKey[pane]).toMatchObject({
+        state: 'waiting',
+        stateStartedAt: asked.awaitsUserSince
+      })
+      expect(countActivityUnread(store().getState())).toBe(0)
+      host.translator.dispose()
+      host.close()
+    }
+  )
 })
+
+function threads() {
+  return renderHook(() =>
+    useAgentPaneThreads({
+      query: '',
+      readFilter: 'all',
+      groupBy: 'none',
+      selectedPaneKey: null,
+      showChildAgents: true
+    })
+  ).result.current.allThreads
+}

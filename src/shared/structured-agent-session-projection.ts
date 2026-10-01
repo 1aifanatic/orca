@@ -190,16 +190,22 @@ function isPendingPrompt(item: AgentJournalRenderItem): boolean {
   )
 }
 
-/** Whether a human must answer something in this session: the main agent's own request or a
- *  subagent's. */
-export function structuredAgentSessionAwaitsUser(
+/** When a human started being asked something in this session, the main agent or a subagent: its
+ *  oldest pending prompt. Undefined while nobody is asked. */
+export function structuredAgentSessionAwaitsUserSince(
   items: readonly AgentJournalRenderItem[]
-): boolean {
-  return items.some(isPendingPrompt)
+): number | undefined {
+  let since: number | undefined
+  for (const item of items) {
+    if (isPendingPrompt(item)) {
+      since = Math.min(since ?? item.observedAt, item.observedAt)
+    }
+  }
+  return since
 }
 
 /** The main agent's own status: `attention` is its own request only. A subagent's request is that
- *  subagent's wait, which `structuredAgentSessionAwaitsUser` and its child record carry. */
+ *  subagent's wait, which `structuredAgentSessionAwaitsUserSince` and its child record carry. */
 export function projectStructuredAgentSessionStatus(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = [],
@@ -226,8 +232,8 @@ export type StructuredAgentSessionStatusProjection = {
    *  `status` is idle. */
   turnOutcome?: AgentTurnOutcome
   statusStartedAt?: number
-  /** Someone in the session must answer a prompt, whoever asked. */
-  awaitsUser?: true
+  /** Someone in the session must answer a prompt, whoever asked, since this host time. */
+  awaitsUserSince?: number
 }
 
 /** One projection shared by host and client: null status means "no turn yet", not idle.
@@ -260,7 +266,7 @@ export function projectStructuredAgentSessionStatusState(
     return { summary: { status: null, latestPrompt: '' }, latestRequest: null, owesWork: false }
   }
   const status = projectStructuredAgentSessionStatus(items, submissions, currentFence)
-  const awaitsUser = status === 'attention' || structuredAgentSessionAwaitsUser(items)
+  const awaitsUserSince = structuredAgentSessionAwaitsUserSince(items)
   const statusToolCall = status === 'working' ? statusStructuredAgentSessionToolCall(items) : null
   const toolName = statusToolCall
     ? normalizeOptionalField(statusToolCall.name, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
@@ -299,7 +305,7 @@ export function projectStructuredAgentSessionStatusState(
       ...(lastAssistantMessage ? { lastAssistantMessage } : {}),
       ...(turnOutcome ? { turnOutcome } : {}),
       ...(statusStartedAt !== undefined ? { statusStartedAt } : {}),
-      ...(awaitsUser ? { awaitsUser: true as const } : {})
+      ...(awaitsUserSince !== undefined ? { awaitsUserSince } : {})
     }
   }
 }

@@ -157,7 +157,7 @@ const SUBAGENT_ASKS = {
   workspaceId: 'w',
   agent: 'claude' as const,
   status: 'working' as const,
-  awaitsUser: true as const,
+  awaitsUserSince: 1,
   latestPrompt: 'go',
   updatedAt: 2
 }
@@ -173,17 +173,20 @@ export const statusAwaitsUserSkew = {
     })
     setStructuredAgentSessionHost(installableHost(host))
   },
-  /** Each skew's advertised list and the status it must be published. A current client is
+  /** Each skew's advertised list and the summary fields it must be published. A current client is
    *  the remote list this build sends: the capability is a client's, not one the host lists. */
   clients(baseline: { capabilities: readonly string[] }) {
     const old = baseline.capabilities.filter(
       (c) => c !== AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY
     )
     return [
-      [[...old, STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY], 'attention'],
+      [
+        [...old, STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY],
+        { status: 'attention', statusStartedAt: SUBAGENT_ASKS.awaitsUserSince }
+      ],
       [
         [...remoteRuntimeClientCapabilities([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY])],
-        'working'
+        { status: 'working', awaitsUserSince: SUBAGENT_ASKS.awaitsUserSince }
       ]
     ] as const
   }

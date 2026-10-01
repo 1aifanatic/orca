@@ -84,10 +84,12 @@ function subagentTaskId(name: string): string {
 /** The parent row as the host folds it: the status summary projected from the journal, plus its
  *  children's records. */
 function parentRow(harness: Awaited<ReturnType<typeof producer>>) {
-  const { status, awaitsUser } = projectStructuredAgentSessionStatusSummary(harness.journalItems())
+  const { status, awaitsUserSince } = projectStructuredAgentSessionStatusSummary(
+    harness.journalItems()
+  )
   const row = structuredAgentSessionAgentStatus({
     status: status ?? 'idle',
-    awaitsUser,
+    ...(awaitsUserSince !== undefined ? { awaitsUserSince } : {}),
     childWork: harness.records()
   })
   return { sessionStatus: status, state: row.state, mainAgent: row.mainAgent }

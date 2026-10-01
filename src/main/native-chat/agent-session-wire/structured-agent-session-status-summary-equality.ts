@@ -18,7 +18,7 @@ export function structuredStatusSummariesEqual(
     a.workspaceId === b.workspaceId &&
     a.agent === b.agent &&
     a.status === b.status &&
-    a.awaitsUser === b.awaitsUser &&
+    a.awaitsUserSince === b.awaitsUserSince &&
     a.hostExecutionOwned === b.hostExecutionOwned &&
     a.hostExecutionPhase === b.hostExecutionPhase &&
     a.hostExecutionChild?.generation === b.hostExecutionChild?.generation &&
@@ -52,7 +52,7 @@ function isIdleHeldOpenByChildWork(summary: AgentSessionStatusSummary): boolean 
         status: summary.status,
         childWork: summary.children ?? summary.backgroundTasks,
         turnOutcome: summary.turnOutcome,
-        awaitsUser: summary.awaitsUser
+        awaitsUserSince: summary.awaitsUserSince
       })
     )
   )

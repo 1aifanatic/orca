@@ -1,9 +1,9 @@
 // Transitional: remove once no supported release lacks AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY.
 //
-// A summary's `status` is the main agent's own; a subagent's request rides `awaitsUser`. A client
-// that predates the split reads only `status`, so the host publishes the pre-split summary to it
-// at the RPC boundary only: `attention` whoever asked. The feed and every in-process reader keep
-// the canonical summary.
+// A summary's `status` is the main agent's own; a subagent's request rides `awaitsUserSince`. A
+// client that predates the split reads only `status`, so the host publishes the pre-split summary
+// to it at the RPC boundary only: `attention` whoever asked, dated as before. The feed and every
+// in-process reader keep the canonical summary.
 
 import type {
   AgentSessionStatusEvent,
@@ -22,11 +22,16 @@ function readsAwaitsUser(ctx: StatusReader): boolean {
   )
 }
 
-/** The fields an `attention` summary never carries go with the main agent's own state: a tool line
- *  is a working turn's, a verdict an idle one's, and the clock dated the state replaced here. */
+/** The summary a host published before the split: `attention`, dated by the oldest pending prompt
+ *  when the session's own agent had none, and without the tool line and verdict that only a
+ *  working or idle main agent carries. */
 function legacySummary(summary: AgentSessionStatusSummary): AgentSessionStatusSummary {
-  if (!summary.awaitsUser || summary.status === null || summary.status === 'attention') {
+  const { awaitsUserSince, ...canonical } = summary
+  if (awaitsUserSince === undefined || summary.status === null) {
     return summary
+  }
+  if (summary.status === 'attention') {
+    return canonical
   }
   const {
     toolName: _toolName,
@@ -34,8 +39,8 @@ function legacySummary(summary: AgentSessionStatusSummary): AgentSessionStatusSu
     turnOutcome: _turnOutcome,
     statusStartedAt: _statusStartedAt,
     ...rest
-  } = summary
-  return { ...rest, status: 'attention' }
+  } = canonical
+  return { ...rest, status: 'attention', statusStartedAt: awaitsUserSince }
 }
 
 export function projectStatusAwaitsUserEvent(

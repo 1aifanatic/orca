@@ -50,7 +50,7 @@ export abstract class AgentHookServerIngestStructured extends AgentHookServerIng
       status: summary.status,
       childWork: this.canonicalStatusStore.getChildren(parsed),
       turnOutcome: summary.turnOutcome,
-      awaitsUser: summary.awaitsUser
+      awaitsUserSince: summary.awaitsUserSince
     })
     const { state, workingMode } = agentStatus
     // The main agent's own clock keeps continuity the same way the combined row's does below, dated

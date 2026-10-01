@@ -3,7 +3,7 @@ import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import {
   projectStructuredAgentSessionStatus,
   projectStructuredAgentSessionStatusSummary,
-  structuredAgentSessionAwaitsUser
+  structuredAgentSessionAwaitsUserSince
 } from './structured-agent-session-projection'
 
 function item(
@@ -42,22 +42,22 @@ describe("a subagent's prompt in the session's status", () => {
     const ownPrompt = item('own-prompt', 4, pending)
 
     // Someone has to answer either way; only the session's own prompt is the session waiting.
-    expect(structuredAgentSessionAwaitsUser([running, childPrompt])).toBe(true)
-    expect(structuredAgentSessionAwaitsUser([running])).toBe(false)
+    expect(structuredAgentSessionAwaitsUserSince([running, childPrompt, ownPrompt])).toBe(3)
+    expect(structuredAgentSessionAwaitsUserSince([running])).toBeUndefined()
     expect(projectStructuredAgentSessionStatus([running, childPrompt])).toBe('working')
     expect(projectStructuredAgentSessionStatusSummary([user, running, childPrompt])).toMatchObject({
       status: 'working',
-      awaitsUser: true
+      awaitsUserSince: 3
     })
     expect(projectStructuredAgentSessionStatusSummary([user, childPrompt])).toMatchObject({
       status: 'idle',
-      awaitsUser: true
+      awaitsUserSince: 3
     })
     expect(
       projectStructuredAgentSessionStatusSummary([user, running, childPrompt, ownPrompt])
-    ).toMatchObject({ status: 'attention', awaitsUser: true })
+    ).toMatchObject({ status: 'attention', statusStartedAt: 4, awaitsUserSince: 3 })
     expect(projectStructuredAgentSessionStatusSummary([user, running])).not.toHaveProperty(
-      'awaitsUser'
+      'awaitsUserSince'
     )
   })
 })

@@ -292,9 +292,10 @@ is itself asking. The Codex hook lane feeds it from its child transcripts; the
 structured lanes feed it from child records, which read `waiting` for a Codex
 child thread's `waitingOnApproval` or `waitingOnUserInput` flag and for a
 Claude subagent's pending permission request. The structured lane also states
-the request itself: the status summary's `awaitsUser` (someone in the session
-must answer, whoever asked) is a fold input of its own, so a subagent's request
-makes the row wait even when no child record carries it. Known
+the request itself: the status summary's `awaitsUserSince` (when the oldest
+prompt still pending was raised, whoever asked) is a fold input of its own, so
+a subagent's request makes the row wait even when no child record carries it,
+and it dates that wait. Known
 divergences, pinned by name in the parity table
 (`src/shared/main-agent-status-parity.test.ts`) where they are reachable, so a
 reader does not mistake them for drift:
@@ -309,8 +310,9 @@ reader does not mistake them for drift:
   `blocked` (the session's `attention`), where the hook lane reads it as
   `waiting`. A subagent's prompt, Claude's or Codex's, is not the main agent's:
   its prompt row names the subagent, `status` stays the main agent's own, and
-  `awaitsUser` makes the row wait. A client that predates `awaitsUser` is sent
-  `attention` for either ask (`agent-session.status-awaits-user.v1`).
+  `awaitsUserSince` makes the row wait. A client that predates the split is
+  sent `attention` for either ask, dated as it was before the split
+  (`agent-session.status-awaits-user.v1`).
 - The Codex hook lane drops its roster on a root `Stop` when it tracks no
   child transcripts, so a still-running or still-asking child stops holding
   the row.

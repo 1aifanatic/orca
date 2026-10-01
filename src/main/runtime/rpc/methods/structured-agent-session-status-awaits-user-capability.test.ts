@@ -31,24 +31,26 @@ const SUBAGENT_ASKS: AgentSessionStatusSummary = {
   workspaceId: 'workspace-1',
   agent: 'claude',
   status: 'working',
-  awaitsUser: true,
+  awaitsUserSince: 15,
   latestPrompt: 'go',
   toolName: 'Task',
   statusStartedAt: 10,
   updatedAt: 20
 }
-/** What the host published for the same moment before the split. */
+/** What the host published for the same moment before the split: attention, dated by the
+ *  subagent's ask because the main agent had none. Parity with a pre-split release's projection
+ *  is pinned in tests/e2e/cross-version-wire/cross-version-status-awaits-user.unit.test.ts. */
 const PRE_SPLIT: AgentSessionStatusSummary = {
   sessionId: 'session-1',
   workspaceId: 'workspace-1',
   agent: 'claude',
   status: 'attention',
-  awaitsUser: true,
   latestPrompt: 'go',
+  statusStartedAt: 15,
   updatedAt: 20
 }
 
-describe('awaitsUser capability at the status stream', () => {
+describe('awaitsUserSince capability at the status stream', () => {
   it.each([
     ['legacy reader', STRUCTURED_CLIENT, PRE_SPLIT],
     ['current reader', CURRENT_CLIENT, SUBAGENT_ASKS]
@@ -66,7 +68,7 @@ describe('awaitsUser capability at the status stream', () => {
   })
 })
 
-describe('awaitsUser projection', () => {
+describe('awaitsUserSince projection', () => {
   const status: AgentSessionStatusEvent = { type: 'status', session: SUBAGENT_ASKS }
 
   it("reads a legacy reader `attention` for anyone's request, with the main agent's own fields gone", () => {
@@ -88,7 +90,7 @@ describe('awaitsUser projection', () => {
   })
 
   it('returns the same object when nobody is asked', () => {
-    const { awaitsUser: _awaitsUser, ...plain } = SUBAGENT_ASKS
+    const { awaitsUserSince: _awaitsUserSince, ...plain } = SUBAGENT_ASKS
     const event: AgentSessionStatusEvent = { type: 'snapshot', sessions: [plain, PRE_SPLIT] }
     expect(projectStatusAwaitsUserEvent(event, STRUCTURED_CLIENT)).toBe(event)
   })

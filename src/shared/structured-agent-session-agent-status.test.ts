@@ -59,13 +59,13 @@ describe('structuredAgentSessionAgentStatus', () => {
 
   it("waits on the session's own fact when no child record carries a subagent's request", () => {
     for (const status of ['working', 'idle'] as const) {
-      expect(structuredAgentSessionAgentStatus({ status, awaitsUser: true })).toMatchObject({
+      expect(structuredAgentSessionAgentStatus({ status, awaitsUserSince: 5 })).toMatchObject({
         state: 'waiting',
         mainAgent: { state: status === 'working' ? 'working' : 'done' }
       })
     }
     // The main agent's own request keeps its own vocabulary.
-    expect(structuredAgentSessionAgentStatus({ status: 'attention', awaitsUser: true })).toEqual({
+    expect(structuredAgentSessionAgentStatus({ status: 'attention', awaitsUserSince: 5 })).toEqual({
       state: 'blocked',
       mainAgent: { state: 'blocked' }
     })

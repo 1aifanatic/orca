@@ -188,4 +188,20 @@ describe('the row clock a status writer takes from the host', () => {
       structuredAgentSessionRowStateStartedAt({ state: 'done', mainAgent: { state: 'done' } }, {})
     ).toBeUndefined()
   })
+
+  it("dates a row waiting on someone else's request by that request", () => {
+    const asked = { statusStartedAt: 900, awaitsUserSince: 950 }
+    for (const mainAgent of [{ state: 'working' as const }, { state: 'done' as const }]) {
+      expect(structuredAgentSessionRowStateStartedAt({ state: 'waiting', mainAgent }, asked)).toBe(
+        950
+      )
+    }
+    // A child record alone holds the wait: nothing in the journal dates it.
+    expect(
+      structuredAgentSessionRowStateStartedAt(
+        { state: 'waiting', mainAgent: { state: 'done' } },
+        { statusStartedAt: 900 }
+      )
+    ).toBeUndefined()
+  })
 })

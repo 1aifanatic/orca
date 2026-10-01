@@ -69,7 +69,9 @@ describe('whether a session shows as working', () => {
       expect(shown).toEqual(
         structuredAgentSessionAgentStatus({
           status: summary.status ?? 'idle',
-          awaitsUser: summary.awaitsUser,
+          ...(summary.awaitsUserSince !== undefined
+            ? { awaitsUserSince: summary.awaitsUserSince }
+            : {}),
           childWork
         })
       )

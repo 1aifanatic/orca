@@ -78,7 +78,7 @@ type Story = {
   claude?: { events: Record<string, unknown>[]; expect: Published }
   structured?: {
     status: 'working' | 'attention' | 'idle'
-    awaitsUser?: true
+    awaitsUserSince?: number
     backgroundTasks?: AgentSessionBackgroundTask[]
     turnOutcome?: AgentJournalTurnOutcome
     expect: Published
@@ -214,7 +214,7 @@ const STORIES: Story[] = [
     },
     structured: {
       status: 'working',
-      awaitsUser: true,
+      awaitsUserSince: 1,
       backgroundTasks: [AGENT_TASK],
       expect: { state: 'waiting', mainAgent: { state: 'working' } }
     },
@@ -243,10 +243,10 @@ const STORIES: Story[] = [
       ],
       expect: { state: 'waiting', mainAgent: { state: 'done' } }
     },
-    // The child's request is the session's `awaitsUser`, not the main agent's `attention`.
+    // The child's request is the session's `awaitsUserSince`, not the main agent's `attention`.
     structured: {
       status: 'idle',
-      awaitsUser: true,
+      awaitsUserSince: 1,
       backgroundTasks: [AGENT_TASK],
       expect: { state: 'waiting', mainAgent: { state: 'done' } }
     },
@@ -473,13 +473,17 @@ describe('mainAgent status parity across lanes', () => {
     it.each(storiesFor('structured'))('%s', (_name, lane) => {
       const row = structuredAgentSessionAgentStatus({
         status: lane.status,
-        awaitsUser: lane.awaitsUser,
+        ...(lane.awaitsUserSince !== undefined ? { awaitsUserSince: lane.awaitsUserSince } : {}),
         childWork: lane.backgroundTasks,
         turnOutcome: lane.turnOutcome
       })
       expect(row).toEqual(lane.expect)
       expect(
-        refold(row.mainAgent, agentChildWorkLiveness(lane.backgroundTasks), lane.awaitsUser)
+        refold(
+          row.mainAgent,
+          agentChildWorkLiveness(lane.backgroundTasks),
+          lane.awaitsUserSince !== undefined
+        )
       ).toEqual(row)
     })
   })

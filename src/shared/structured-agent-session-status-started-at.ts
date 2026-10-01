@@ -84,11 +84,15 @@ export function structuredAgentSessionDatedMainAgent<T extends object>(
     : { ...mainAgent, stateStartedAt: summary.statusStartedAt }
 }
 
-/** The row's own start, when the host dated it: the row is showing the main agent's state rather
- *  than one child work holds open. Undefined leaves the writer's own continuity rule in charge. */
+/** The row's own start, when the host dated it: the main agent's state when the row shows it, and
+ *  the session's oldest pending prompt when the row waits on someone else's. Undefined leaves the
+ *  writer's own continuity rule in charge, as for a row child work holds open. */
 export function structuredAgentSessionRowStateStartedAt(
   row: { state: AgentStatusState; mainAgent: Pick<AgentMainAgentStatus, 'state'> },
-  summary: Pick<AgentSessionStatusSummary, 'statusStartedAt'>
+  summary: Pick<AgentSessionStatusSummary, 'statusStartedAt' | 'awaitsUserSince'>
 ): number | undefined {
-  return row.state === row.mainAgent.state ? summary.statusStartedAt : undefined
+  if (row.state === row.mainAgent.state) {
+    return summary.statusStartedAt
+  }
+  return row.state === 'waiting' ? summary.awaitsUserSince : undefined
 }
