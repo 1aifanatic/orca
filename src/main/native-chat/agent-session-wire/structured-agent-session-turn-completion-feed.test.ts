@@ -557,6 +557,70 @@ describe('a request the agent or its start refused', () => {
     ])
   })
 
+  // A waiting send lets later ones go first, so its final failure can come after their turn ends.
+  it.each([
+    [
+      'after the later turn succeeded',
+      50,
+      [
+        ['t2', 'success'],
+        [M1, 'failure']
+      ]
+    ],
+    ['before the later turn succeeded', 25, [['t2', 'success']]]
+  ] as const)(
+    'notifies the final failure of a send that waited, once, when it comes %s',
+    (_order, finalFailureAt, expected) => {
+      const h = harness()
+      h.listen()
+      h.observe()
+      const waiting = sent('m1', {
+        dispatchState: 'pending',
+        resolvedAt: null,
+        startFailure: {
+          attempts: 1,
+          reason: START_FAILURE,
+          rejection: { kind: 'accountSwitchInProgress' },
+          failedAt: 15,
+          nextAttemptAt: 30
+        }
+      })
+      const failed = sent('m1', {
+        dispatchState: 'rejected',
+        reason: START_FAILURE,
+        rejection: { kind: 'accountSwitchInProgress' },
+        resolvedAt: finalFailureAt
+      })
+      const accepted = sent('m2', { dispatchState: 'accepted' })
+      const items = (state: 'running' | 'completed') => [
+        userEntry('m1', 1),
+        userEntry('m2', 2),
+        turnItem(
+          {
+            turnId: 't2',
+            state,
+            ...(state === 'completed' ? { outcome: 'success', completedAt: 40 } : {})
+          },
+          3
+        )
+      ]
+      h.setJournal([userEntry('m1', 1), userEntry('m2', 2)], [waiting, pending('m2')])
+      h.observe()
+      h.setJournal(items('running'), [waiting, accepted])
+      h.observe()
+      if (finalFailureAt < 40) {
+        h.setJournal(items('running'), [failed, accepted])
+        h.observe()
+      }
+      h.setJournal(items('completed'), [finalFailureAt < 40 ? failed : waiting, accepted])
+      h.observe()
+      h.setJournal(items('completed'), [failed, accepted])
+      h.observe()
+      h.observe()
+      expect(h.outcomes()).toEqual(expected)
+    }
+  )
+
   it('does not wait on a send left pending at an older fence', () => {
     const h = harness()
     h.listen()

@@ -42,53 +42,82 @@ export type StructuredAgentSessionLatestRequest = {
 
 /** Null when the journal holds no request with a verdict to give. Accepted and unanswered sends
  *  are passed over — the session is working until their turn records — and so are sends that
- *  failed nobody (withdrawn, or left undelivered by a restart or a close). */
+ *  failed nobody (withdrawn, or left undelivered by a restart or a close). The newest request is
+ *  the last in the conversation, unless a send before it failed after that one settled: a message
+ *  whose start failed lets later ones go first, so its failure can be the newer news. */
 export function latestStructuredAgentSessionRequest(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionLatestRequest | null {
   const rejected = rejectedSubmissionsByItem(submissions)
   const commandTurns = structuredAgentSessionCommandTurnItemIds(items)
+  let latest: StructuredAgentSessionLatestRequest | null = null
+  let unvisitedRefusals = rejected.size
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
-    // A conversation command is not a request: the verdict stays the last real request's.
-    if (
-      !item ||
-      !isRootAgentJournalItem(item) ||
-      commandTurns.has(item.itemId) ||
-      isStructuredAgentSessionCommandEntry(item.body)
-    ) {
-      continue
+    if (item && rejected.has(item.itemId)) {
+      unvisitedRefusals -= 1
     }
-    const turn = readAgentJournalTurn(item.body)
-    if (turn) {
-      return {
-        kind: 'turn',
-        id: turn.turnId,
-        turnState: turn.state,
-        outcome: readAgentJournalTurnOutcome(turn),
-        settledAt: turn.state === 'running' ? undefined : turnEndedAt(item, turn)
-      }
-    }
-    const submission = rejected.get(item.itemId)
-    const refusal = submission?.startFailure ?? submission
-    if (
-      submission &&
-      refusal &&
-      classifyDispatchRejection(refusal).verdict === 'failure' &&
-      // Handed into a running turn (a steer): that turn answers for it.
-      item.turnScope?.kind !== 'turn'
+    const request = item ? requestOf(item, rejected, commandTurns) : null
+    if (!latest) {
+      latest = request
+    } else if (
+      request?.kind === 'refused-send' &&
+      request.settledAt !== undefined &&
+      latest.settledAt !== undefined &&
+      request.settledAt > latest.settledAt
     ) {
-      return {
-        kind: 'refused-send',
-        id: item.itemId,
-        turnState: null,
-        outcome: 'failure',
-        settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined
-      }
+      latest = request
+    }
+    // A running turn is the news whatever settled before it, and nothing older can be newer.
+    if (latest && (latest.turnState === 'running' || unvisitedRefusals === 0)) {
+      return latest
     }
   }
-  return null
+  return latest
+}
+
+function requestOf(
+  item: AgentJournalRenderItem,
+  rejected: ReadonlyMap<string, AgentJournalSubmission>,
+  commandTurns: ReadonlySet<string>
+): StructuredAgentSessionLatestRequest | null {
+  // A conversation command is not a request: the verdict stays the last real request's.
+  if (
+    !isRootAgentJournalItem(item) ||
+    commandTurns.has(item.itemId) ||
+    isStructuredAgentSessionCommandEntry(item.body)
+  ) {
+    return null
+  }
+  const turn = readAgentJournalTurn(item.body)
+  if (turn) {
+    return {
+      kind: 'turn',
+      id: turn.turnId,
+      turnState: turn.state,
+      outcome: readAgentJournalTurnOutcome(turn),
+      settledAt: turn.state === 'running' ? undefined : turnEndedAt(item, turn)
+    }
+  }
+  const submission = rejected.get(item.itemId)
+  const refusal = submission?.startFailure ?? submission
+  if (
+    !submission ||
+    !refusal ||
+    classifyDispatchRejection(refusal).verdict !== 'failure' ||
+    // Handed into a running turn (a steer): that turn answers for it.
+    item.turnScope?.kind === 'turn'
+  ) {
+    return null
+  }
+  return {
+    kind: 'refused-send',
+    id: item.itemId,
+    turnState: null,
+    outcome: 'failure',
+    settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined
+  }
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

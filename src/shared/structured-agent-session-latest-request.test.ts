@@ -187,6 +187,30 @@ const ROWS: Row[] = [
     listed: true
   },
   {
+    name: 'a send whose start failed for good after a later turn succeeded',
+    items: [
+      userEntry('m1', 1),
+      userEntry('m2', 2),
+      turn('t2', 3, { state: 'completed', outcome: 'success', completedAt: 40 })
+    ],
+    submissions: [
+      sent('m1', { dispatchState: 'rejected', reason: START_FAILURE, resolvedAt: 50 }),
+      sent('m2', { dispatchState: 'accepted' })
+    ],
+    outcome: 'failure',
+    listed: true
+  },
+  {
+    name: 'a later turn still running after an earlier send failed',
+    items: [userEntry('m1', 1), userEntry('m2', 2), turn('t2', 3, { state: 'running' })],
+    submissions: [
+      sent('m1', { dispatchState: 'rejected', reason: START_FAILURE, resolvedAt: 50 }),
+      sent('m2', { dispatchState: 'accepted' })
+    ],
+    outcome: null,
+    listed: true
+  },
+  {
     name: 'a steer the provider refused inside a turn that then succeeded',
     items: [
       userEntry('m1', 1),
