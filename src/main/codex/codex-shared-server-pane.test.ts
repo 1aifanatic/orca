@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   getCodexPaneAccount: vi.fn<(ptyId: string) => CodexPaneAccountRecord | null>(),
   probeCodexSharedServer: vi.fn<(home: string) => Promise<'live' | 'absent' | 'unknown'>>(),
   getProcessTableSnapshot: vi.fn(),
-  readWindowsProcessTable: vi.fn()
+  readWindowsProcessTable: vi.fn(),
+  isShellStartupEnvProbeSupported: vi.fn<() => boolean>()
 }))
 vi.mock('./codex-pane-account-registry', () => ({
   getCodexPaneAccount: mocks.getCodexPaneAccount
@@ -23,6 +24,9 @@ vi.mock('../../shared/process-table-snapshot-reader', () => ({
 vi.mock('../windows/windows-process-table', () => ({
   readWindowsProcessTable: mocks.readWindowsProcessTable
 }))
+vi.mock('../pty/shell-startup-env', () => ({
+  isShellStartupEnvProbeSupported: mocks.isShellStartupEnvProbeSupported
+}))
 
 import {
   findPaneCodexCommandLine,
@@ -38,6 +42,7 @@ function row(pid: number, ppid: number, command: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.isShellStartupEnvProbeSupported.mockReturnValue(true)
 })
 
 describe('findPaneCodexCommandLine', () => {
@@ -90,10 +95,6 @@ describe('resolveCodexPaneHome', () => {
       '/rc/codex'
     ],
     [{ selectionKey: 'host', accountId: null, homeRoute: 'custom-home' }, null],
-    [
-      { selectionKey: 'host', accountId: null, homeRoute: 'shared-home' },
-      '/data/orca/codex-runtime-home/home'
-    ],
     [{ selectionKey: 'host', accountId: 'acct', homeRoute: 'account-home' }, null],
     [{ selectionKey: 'wsl:Ubuntu', accountId: null, homeRoute: 'real-home' }, null],
     [{ selectionKey: 'host', accountId: null }, null]
@@ -101,6 +102,23 @@ describe('resolveCodexPaneHome', () => {
     'resolves %o to %s',
     (record, expected) => {
       mocks.getCodexPaneAccount.mockReturnValue(record)
+      expect(resolveCodexPaneHome('pty')).toBe(expected)
+    }
+  )
+
+  // Why: only Windows still routes the default host lane through the promoted mirror.
+  it.each([
+    [false, '/data/orca/codex-runtime-home/home'],
+    [true, null]
+  ])(
+    'names the mirror for a legacy shared-home pane only off the real-home route (probe %s)',
+    (probeSupported, expected) => {
+      mocks.isShellStartupEnvProbeSupported.mockReturnValue(probeSupported)
+      mocks.getCodexPaneAccount.mockReturnValue({
+        selectionKey: 'host',
+        accountId: null,
+        homeRoute: 'shared-home'
+      })
       expect(resolveCodexPaneHome('pty')).toBe(expected)
     }
   )

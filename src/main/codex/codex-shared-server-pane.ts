@@ -7,6 +7,7 @@ import {
 } from '../../shared/process-table-index'
 import { getProcessTableSnapshot } from '../../shared/process-table-snapshot-reader'
 import { readWindowsProcessTable } from '../windows/windows-process-table'
+import { isShellStartupEnvProbeSupported } from '../pty/shell-startup-env'
 import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getCodexPaneAccount } from './codex-pane-account-registry'
 import { probeCodexSharedServer } from './codex-shared-server-probe'
@@ -52,7 +53,8 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
     case 'custom-home':
       return customHome ?? null
     case 'shared-home':
-      return resolveOrcaManagedCodexHomePath()
+      // Why: off Windows the mirror is retired and never promoted, so a fix there would be reverted.
+      return isShellStartupEnvProbeSupported() ? null : resolveOrcaManagedCodexHomePath()
     // Why: an unnamed home (managed account, WSL, pre-route record) skips the warning rather than probing the wrong server.
     case 'account-home':
     case 'wsl-home':

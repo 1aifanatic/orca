@@ -118,7 +118,8 @@ function getStructuredKey(
   bodyTable: string | null
 ): string | null {
   const [first, second, ...rest] = segments
-  if (first === undefined || rest.length > 0) {
+  // Why: a quoted `"tui.theme"` is one key, not the [tui] table's theme.
+  if (first === undefined || rest.length > 0 || segments.some((segment) => segment.includes('.'))) {
     return null
   }
   if (!inPreamble) {
