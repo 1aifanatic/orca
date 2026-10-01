@@ -1,5 +1,7 @@
 /* oxlint-disable max-lines */
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
+import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
+import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 import type { IPty } from 'node-pty'
@@ -127,6 +129,8 @@ import {
 } from './terminal-history'
 import { isFlattenedNodePtyLoaderMessage } from '../main/orcad/node-pty-loader-diagnosis'
 import { collectNodePtyUnavailableDiagnosis } from './node-pty-binding-survey'
+import { describeRelayRuntime } from './relay-runtime-identity'
+import { relayConptyDllSpawnOptions } from './relay-windows-conpty'
 import {
   formatNodePtyUnavailableMessage,
   toTerminalUnavailableCause
@@ -642,6 +646,10 @@ export class PtyHandler {
     }
   }
 
+  private conptyDllSpawnOptions(): { useConptyDll: true } | Record<string, never> {
+    return relayConptyDllSpawnOptions(this.relayNodePtyDir(), describeRelayRuntime().kind)
+  }
+
   /** Where the relay's own node-pty lives — the deployed bundle dir, never cwd. */
   private relayNodePtyDir(): string {
     // Packaged relays live under Resources/relay while runtime dependencies are
@@ -713,6 +721,12 @@ export class PtyHandler {
 
   get configuredGraceTimeMs(): number {
     return this.graceTimeMs
+  }
+
+  private agentPresenceTrigger: ((paneKey: string) => void) | null = null
+
+  setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
+    this.agentPresenceTrigger = listener
   }
 
   /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
@@ -1019,7 +1033,25 @@ export class PtyHandler {
         }
       })
     }
+    const recheckAgentPresence = (): void => {
+      if (managed.paneKey) {
+        this.agentPresenceTrigger?.(managed.paneKey)
+      }
+    }
+    let lastTitleGateKey: string | null = null
+    const presenceTriggers = createTerminalTitleTracker({
+      onTitle: (normalizedTitle, rawTitle, meta) => {
+        // Why: spinner frames arrive several times a second; only a real title change re-checks.
+        const gateKey = getDecorativeTitleGateKey(rawTitle, normalizedTitle)
+        if (gateKey !== lastTitleGateKey && !meta?.staleWorkingTitleClear) {
+          recheckAgentPresence()
+        }
+        lastTitleGateKey = gateKey
+      },
+      onCommandFinished: recheckAgentPresence
+    })
     managed.pty.onData((data: string) => {
+      presenceTriggers.handleChunk(data)
       const startup = managed.startupCommand
       if (startup?.waitForShellReady && startup.outputScanState && !startup.delivered) {
         const scanned = scanShellStartupOutput(startup.outputScanState, data)
@@ -1041,6 +1073,7 @@ export class PtyHandler {
       }
     })
     managed.pty.onExit(({ exitCode }: { exitCode: number }) => {
+      presenceTriggers.dispose()
       managed.physicalExit?.markExited()
       if (managed.disposed) {
         return
@@ -2016,7 +2049,8 @@ export class PtyHandler {
           ...spawnEnv,
           [SHELL_STARTUP_FEATURE_ENV]: '',
           ...shellLaunch.env
-        }
+        },
+        ...this.conptyDllSpawnOptions()
       })
     } catch (error) {
       // Why: Windows loads conpty.node only on first spawn, so handle that late binding failure here.
@@ -3140,7 +3174,8 @@ export class PtyHandler {
           ...spawnEnv,
           [SHELL_STARTUP_FEATURE_ENV]: '',
           ...shellLaunch.env
-        }
+        },
+        ...this.conptyDllSpawnOptions()
       })
     } catch (error) {
       // Why skip rather than retry the host default shell: the stored override
