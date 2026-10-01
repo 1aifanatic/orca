@@ -15,6 +15,10 @@ import type {
 } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+} from '../../shared/agent-session-host-authority'
+import {
   commitAgentSessionAtRestCreate,
   type AgentSessionAtRestCreateRequest
 } from './agent-session-at-rest-create'
@@ -246,6 +250,43 @@ describe('a create over a record an older host left after its start failed', () 
         refusal: expect.objectContaining({ details: { reason: 'sessionExists' } })
       })
     )
+  })
+})
+
+describe('a create retried after its operation row aged out', () => {
+  const LATER =
+    NOW + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 1
+
+  it('answers the record it founded, at rest, under a fresh row the create settles', () => {
+    const state = storeState()
+    const request = createRequest()
+    const { record } = commitAgentSessionAtRestCreate(state, request)
+
+    const retried = commitAgentSessionAtRestCreate(state, { ...request, now: LATER })
+
+    expect(retried).toMatchObject({ replayed: true, record })
+    expect(retried.operationRow).toMatchObject({
+      operationId: request.operation.operationId,
+      outcome: { status: 'pending' }
+    })
+    expect(retried.operationRow.expiresAt).toBeGreaterThan(LATER)
+  })
+
+  it('stays expired for a record that is not the one this create founded', () => {
+    const request = createRequest()
+    const otherHome = { variable: 'CLAUDE_CONFIG_DIR' as const, path: '/home/dev/.claude-work' }
+    for (const founded of [
+      createRequest({ ...request, accountHome: otherHome }),
+      createRequest({ ...request, adoptedHandleLink: adoptedLink() })
+    ]) {
+      const state = storeState()
+      commitAgentSessionAtRestCreate(state, founded)
+      expect(() => commitAgentSessionAtRestCreate(state, { ...request, now: LATER })).toThrow(
+        expect.objectContaining({
+          refusal: expect.objectContaining({ code: 'agent_session_operation_expired' })
+        })
+      )
+    }
   })
 })
 

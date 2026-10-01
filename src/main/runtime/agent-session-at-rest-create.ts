@@ -52,6 +52,16 @@ export function commitAgentSessionAtRestCreate(
 ): AgentSessionAtRestCreateResult {
   const decision = evaluateAgentSessionReserveOperation(state, request)
   if (decision.decision === 'refused') {
+    const existing = state.records.get(request.sessionId)
+    // An aged-out row proves nothing more, and a create starts nothing: the chat it would answer
+    // with is the record already here, under a fresh row the create settles as it would its own.
+    if (
+      decision.code === 'agent_session_operation_expired' &&
+      existing &&
+      sameCreate(existing, request)
+    ) {
+      return recordOperationRow(state, existing, request, true)
+    }
     throw agentSessionRefusalError(decision.code, decision.details)
   }
   if (decision.decision === 'replay') {
@@ -86,13 +96,46 @@ export function commitAgentSessionAtRestCreate(
         lease: { ...founded.lease, runtimeFence: existing.lease.runtimeFence }
       }
     : founded
-  const operationRow = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
   state.records.set(record.sessionId, record)
+  return recordOperationRow(state, record, request, false)
+}
+
+function recordOperationRow(
+  state: AgentSessionStoreState,
+  record: AgentSessionRecord,
+  request: AgentSessionAtRestCreateRequest,
+  replayed: boolean
+): AgentSessionAtRestCreateResult {
+  const operationRow = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
   state.operations.set(
     agentSessionOperationKey(operationRow.callerKey, operationRow.operationId),
     operationRow
   )
-  return { record, operationRow, replayed: false }
+  return { record, operationRow, replayed }
+}
+
+/** The record this create founded: same identity, and the conversation it adopted, if any. */
+function sameCreate(existing: AgentSessionRecord, request: AgentSessionAtRestCreateRequest) {
+  const adoptedRoot = request.adoptedHandleLink
+    ? agentSessionProviderHandleRoot(request.adoptedHandleLink.handle)
+    : null
+  const heldAdoption = existing.providerHandleChain.find((link) => link.origin === 'adopted')
+  return (
+    sameIdentity(existing, request) &&
+    (adoptedRoot === null
+      ? heldAdoption === undefined
+      : heldAdoption !== undefined &&
+        agentSessionProviderHandleRoot(heldAdoption.handle) === adoptedRoot)
+  )
+}
+
+function sameIdentity(existing: AgentSessionRecord, request: AgentSessionAtRestCreateRequest) {
+  return (
+    agentSessionExecutionLocationsEqual(existing.location, request.location) &&
+    existing.provider === request.provider &&
+    existing.accountHome.variable === request.accountHome.variable &&
+    existing.accountHome.path === request.accountHome.path
+  )
 }
 
 /**
@@ -109,10 +152,7 @@ function refoundable(
     !request.adoptedHandleLink &&
     existing.providerHandleChain.length === 0 &&
     agentSessionLeaseOwnerVerdict(existing.lease) === 'exited' &&
-    agentSessionExecutionLocationsEqual(existing.location, request.location) &&
-    existing.provider === request.provider &&
-    existing.accountHome.variable === request.accountHome.variable &&
-    existing.accountHome.path === request.accountHome.path
+    sameIdentity(existing, request)
   )
 }
 

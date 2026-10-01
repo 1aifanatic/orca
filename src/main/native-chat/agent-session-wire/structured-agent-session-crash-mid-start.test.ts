@@ -159,8 +159,9 @@ describe('a host that dies while its Codex child is starting', () => {
   })
 })
 
-// The create committed at rest before its first start ran, so the client's retry of a create it
-// never heard back from replays that chat, and the next message's start is what starts an agent.
+// The create committed at rest before its first start ran. The client's retry of a create it never
+// heard back from answers that chat at rest, even once its operation row has aged out, and the
+// next message's start is what starts an agent.
 describe('a first start cut short by the host dying', () => {
   const PAST_OPERATION_EXPIRY =
     AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 60_000
@@ -214,11 +215,17 @@ describe('a first start cut short by the host dying', () => {
       handoffStage: null,
       runtimeFence: 3
     })
-    if (elapsedMs === 0) {
-      // A retried create replays the chat it made, at rest; it starts nothing.
-      expect(await relaunched.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
-      expect(restarted.connections).toHaveLength(0)
-    }
+    // Before, `_operation_expired` once the row aged out, and the client's relaunch under a new id
+    // was then refused as `sessionExists`.
+    expect(await relaunched.create(CALLER, params)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { sessionId: SESSION }
+    })
+    expect(
+      store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
+    ).toEqual({ status: 'succeeded', sessionId: SESSION })
+    expect(restarted.connections).toHaveLength(0)
 
     expect(await startAgentForTests(relaunched, SESSION)).toMatchObject({
       ok: true,
@@ -233,6 +240,63 @@ describe('a first start cut short by the host dying', () => {
 
     // The next message finds the agent running and never starts a second one.
     await expect(startAgentForTests(relaunched, SESSION)).resolves.toMatchObject({ ok: true })
+    expect(restarted.connections).toHaveLength(1)
+  })
+})
+
+// An older host ran the agent inside its create and died there, leaving the create's row pending.
+describe('a create an older host left pending when it died', () => {
+  it('answers the chat at rest on its retry, settles the row, and starts on the next message', async () => {
+    const params = hostTestAttachParams(null)
+    const operation = {
+      callerKey: CALLER.callerKey,
+      operationId: params.envelope.clientOperationId
+    }
+    const left = await openStore('dying')
+    const identity = {
+      sessionId: SESSION,
+      location: params.location,
+      provider: params.provider,
+      accountHome: params.accountHome
+    }
+    await left.createAtRest({
+      ...identity,
+      claimKeyId: 'key-1',
+      operation: { ...operation, fingerprint: params.envelope.payloadFingerprint },
+      now: NOW
+    })
+    await left.reserveOwner({
+      ...identity,
+      expectedFence: 1,
+      spawnToken: 'spawn-a',
+      claimKeyId: 'key-1',
+      handoffOperationId: operation.operationId,
+      probe: { outcome: 'reservation-unused' },
+      operation: { ...operation, fingerprint: params.envelope.payloadFingerprint },
+      now: NOW
+    })
+    await crash(left)
+
+    const restarted = fakeCodex()
+    const store = await openStore('relaunched')
+    const relaunched = host(
+      'relaunched',
+      store,
+      Object.assign(adapterFor(restarted), { supportsCreate: () => true }),
+      {
+        mintSpawnToken: () => 'spawn-b',
+        probeOwner: async () => ({ outcome: 'indeterminate', reason: 'no token scan' })
+      }
+    )
+    await relaunched.restoreReadableSessions()
+
+    expect(await relaunched.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
+    expect(store.getOperationRow(operation.callerKey, operation.operationId)?.outcome).toEqual({
+      status: 'succeeded',
+      sessionId: SESSION
+    })
+    expect(restarted.connections).toHaveLength(0)
+    expect(await startAgentForTests(relaunched, SESSION)).toMatchObject({ ok: true })
     expect(restarted.connections).toHaveLength(1)
   })
 })
