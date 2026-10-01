@@ -703,13 +703,21 @@ describe('a structured codex session over agentSession.*', () => {
     // The other half of reconnect: a closed chat's next send starts a replacement that resumes the
     // thread this session proved rather than forking a new one, at an advanced fence.
     const reaped = codex.live()
+    const leaseFence = () =>
+      getStructuredAgentSessionHost()?.deps.store.getRecord(SESSION)?.lease.runtimeFence
+    // The create founded fence 1 and the first send's start moved it to 2.
+    expect(leaseFence()).toBe(fence + 1)
     await ok('agentSession.close', { sessionId: SESSION })
     expect(reaped.closed).toBe(true)
+    const closedFence = leaseFence() ?? 0
+    // Still the create's fence: each write names its target, so a client's fence never goes stale.
     await sendToStart(fence, 'again')
-    expect(
-      getStructuredAgentSessionHost()?.deps.store.getRecord(SESSION)?.lease.runtimeFence
-    ).toBeGreaterThan(fence)
+    expect(leaseFence()).toBe(closedFence + 1)
     expect(codex.live().resumedThreadId).toBe(THREAD)
+    // The journal belongs to the session, not to the process that just died.
+    expect(
+      (await getStructuredAgentSessionHost()!.journalSnapshot(SESSION)).items.map(textOf)
+    ).toContain('Two files.')
     expect(await call('agentSession.options', { sessionId: SESSION })).toMatchObject({
       ok: true,
       result: {

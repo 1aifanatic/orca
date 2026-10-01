@@ -18,6 +18,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { StructuredAgentSessionAdapter } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-host'
 import { setStructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { startAgentForTests } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 import type { AgentSessionRecordStore } from '../../../src/main/runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../../src/main/runtime/agent-session-record-store-test-harness'
 import { RuntimeSubscriptionRegistry } from '../../../src/main/runtime/runtime-subscription-registry'
@@ -504,8 +505,10 @@ describe('cross-version structured agent sessions', () => {
       })
       setStructuredAgentSessionHost(host)
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attachParams builds the wire shape the suite feeds every build; the host takes its typed form.
-      const attached = await host.create({ callerKey: 'test' }, attachParams(null) as never)
-      expect(attached.ok).toBe(true)
+      const created = await host.create({ callerKey: 'test' }, attachParams(null) as never)
+      expect(created.ok).toBe(true)
+      // The row is owned once the chat's agent has run its thread, which its first start does.
+      expect(await startAgentForTests(host, SESSION)).toMatchObject({ ok: true })
       createMobileSessionTerminal = vi.fn()
       runtime = {
         ...(runtimeStub() as Record<string, unknown>),
@@ -802,12 +805,13 @@ describe('cross-version structured agent sessions', () => {
         ok: true
       })
       await bootHost('b')
-      const current = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-      expect(current).toBeGreaterThan(created.fence)
+      // Read before the stale send, so the answer is checked against the restarted record's own.
+      const restarted = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+      expect(restarted).toBeGreaterThan(created.fence)
 
       expect(await answer('agentSession.send', sendParams('stale', created.fence))).toMatchObject({
         ok: true,
-        fence: store.getRecord(SESSION)?.lease.runtimeFence
+        fence: restarted
       })
     })
 

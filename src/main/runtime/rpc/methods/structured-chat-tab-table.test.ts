@@ -38,7 +38,6 @@ import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
 import { commitStructuredAgentSessionCreate } from './structured-agent-session-create'
 import { closeStructuredAgentSessionChild } from '../../structured-agent-session-close'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
-import { attachForTests } from '../../../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 const WORKTREE = `id:${HOST_TEST_LOCATION.workspaceId}`
 const SOURCE_TAB = `structured-agent-session-${HOST_TEST_SESSION}`
@@ -486,8 +485,8 @@ describe('a create that reserves its tab', () => {
   })
 
   it('restores no tab for a reserved create that stopped before its tab was published', async () => {
-    const attached = await attachForTests(
-      host,
+    // The host's create committed; the tab it reserved was never published.
+    const attached = await host.create(
       caller,
       hostTestAttachParams(null, {
         envelope: {
@@ -510,13 +509,26 @@ describe('a create that reserves its tab', () => {
     })
   })
 
-  // A create starts no agent, so a start that would fail cannot cost the chat its tab.
-  it('gives the chat its tab even when its agent could not start', async () => {
+  // A create starts no agent; the first message does, and its failure is that message's.
+  it('keeps the chat its tab when its first message cannot start the agent', async () => {
     acquireFails = true
     expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({
       ok: true,
       value: { tabId: 'reserved-tab' }
     })
+    const body = hostTestMessage('first')
+    expect(
+      await host.send(caller, {
+        envelope: envelopeFor('agentSession.send', HOST_TEST_SESSION, { body }),
+        body
+      })
+    ).toMatchObject({ ok: true })
+    await vi.waitFor(async () =>
+      expect((await host.journalSnapshot(HOST_TEST_SESSION)).submissions[0]).toMatchObject({
+        dispatchState: 'rejected'
+      })
+    )
+
     expect(store.getSessionTabId(HOST_TEST_SESSION)).toBe('reserved-tab')
     expect(await createChat('session-bravo', 'reserved-tab')).toMatchObject({ ok: false })
   })
