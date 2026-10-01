@@ -30,7 +30,7 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
   }
 
   // Why: a login, token refresh or MCP OAuth token made inside an Orca pane
-  // lives only in the retiring mirror. False only when ~/.codex moved mid-merge.
+  // lives only in the retiring mirror. Never overwrites anything in ~/.codex.
   private carryRetiredMirrorCredentials(): boolean {
     const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
     // Why committed only: unattributed mirror bytes may be a managed account's.
@@ -38,25 +38,34 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
       return true
     }
     const systemHomePath = getSystemCodexHomePath()
-    const credentialsMerged =
-      isLegacySharedMcpCredentialsClaimedByManagedAccount(this.getRuntimeMetadataDir()) ||
-      mergeMissingCredentials(
+    const seededAuth = provenance.provenance.authJson
+    const systemAuth = this.readSystemDefaultAuth()
+    // Why: MCP tokens carry no account of their own, so they follow only into
+    // a ~/.codex still logged into the mirror's account, or into none yet.
+    const sameAccount =
+      systemAuth === null ||
+      (seededAuth !== null && this.runtimeAuthMatchesSystemDefaultIdentity(systemAuth, seededAuth))
+    if (
+      sameAccount &&
+      !isLegacySharedMcpCredentialsClaimedByManagedAccount(this.getRuntimeMetadataDir())
+    ) {
+      copyFileIfAbsent(
         join(this.getRuntimeHomePath(), '.credentials.json'),
         join(systemHomePath, '.credentials.json')
       )
-    const seededAuth = provenance.provenance.authJson
+    }
     const runtimeAuthPath = this.getRuntimeAuthPath()
     const runtimeAuth = existsSync(runtimeAuthPath) ? readFileSync(runtimeAuthPath, 'utf-8') : null
     if (
       runtimeAuth === null ||
       runtimeAuth === seededAuth ||
       // Why: anything ~/.codex gained or lost since seeding the mirror is newer.
-      this.readSystemDefaultAuth() !== seededAuth ||
+      systemAuth !== seededAuth ||
       // Why: every mirror launch replaced another account's login with ~/.codex's.
       (seededAuth !== null &&
         !this.runtimeAuthMatchesSystemDefaultIdentity(runtimeAuth, seededAuth))
     ) {
-      return credentialsMerged
+      return true
     }
     const systemAuthPath = join(systemHomePath, 'auth.json')
     // Why a refused write is still done: ~/.codex gained a newer login meanwhile.
@@ -65,42 +74,15 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
       // Why: retained mirror panes and ~/.codex now share one refresh token (#5370).
       this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
     }
-    return credentialsMerged
-  }
-}
-
-/**
- * Adds the MCP OAuth entries ~/.codex lacks; Codex keys its fallback store per
- * server. Leaves a store it can't read as a JSON object alone. False when
- * ~/.codex changed underneath, so the carry retries.
- */
-function mergeMissingCredentials(mirrorPath: string, systemPath: string): boolean {
-  if (!existsSync(mirrorPath)) {
     return true
   }
-  const mirror = readFileSync(mirrorPath, 'utf-8')
-  const system = existsSync(systemPath) ? readFileSync(systemPath, 'utf-8') : null
-  let next = mirror
-  if (system !== null) {
-    const systemEntries = parseJsonObject(system)
-    const missing = Object.entries(parseJsonObject(mirror) ?? {}).filter(
-      ([key]) => systemEntries !== null && !Object.hasOwn(systemEntries, key)
-    )
-    if (systemEntries === null || missing.length === 0) {
-      return true
-    }
-    next = JSON.stringify({ ...systemEntries, ...Object.fromEntries(missing) })
-  }
-  return writeFileAtomicallyIfUnchanged(systemPath, system, next, { mode: 0o600 })
 }
 
-function parseJsonObject(contents: string): Record<string, unknown> | null {
-  try {
-    const value: unknown = JSON.parse(contents)
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.fromEntries(Object.entries(value))
-      : null
-  } catch {
-    return null
+// Why all or nothing: a store ~/.codex already has, in any form, is the user's.
+function copyFileIfAbsent(sourcePath: string, targetPath: string): void {
+  if (existsSync(sourcePath) && !existsSync(targetPath)) {
+    writeFileAtomicallyIfUnchanged(targetPath, null, readFileSync(sourcePath, 'utf-8'), {
+      mode: 0o600
+    })
   }
 }

@@ -241,22 +241,60 @@ describe('retiring the Windows system-default mirror', () => {
     expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
   })
 
-  it('adds only the MCP tokens an existing ~/.codex credential store lacks', async () => {
+  it('leaves an existing ~/.codex credential store exactly as it is', async () => {
     await launchOnMirror()
     const systemCredentials = join(getSystemCodexHomePath(), '.credentials.json')
-    writeFileSync(systemCredentials, JSON.stringify({ shared: 'codex-home' }), 'utf-8')
+    writeFileSync(systemCredentials, 'not even json', 'utf-8')
     writeFileSync(
       join(getRuntimeCodexHomePath(), '.credentials.json'),
-      JSON.stringify({ shared: 'mirror', paneOnly: 'mirror' }),
+      JSON.stringify({ paneOnly: 'mirror' }),
       'utf-8'
     )
 
     await upgradeToRealHome()
 
-    expect(JSON.parse(readFileSync(systemCredentials, 'utf-8'))).toEqual({
-      shared: 'codex-home',
-      paneOnly: 'mirror'
-    })
+    expect(readFileSync(systemCredentials, 'utf-8')).toBe('not even json')
+    expect(existsSync(getMarkerPath())).toBe(true)
+  })
+
+  it('keeps MCP credentials out of a ~/.codex logged into another account', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('other@example.com', 'acct-other', 'other'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'my-mcp', 'utf-8')
+
+    await upgradeToRealHome()
+
+    expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
+  })
+
+  it('carries MCP credentials into a ~/.codex still on the same account', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'refreshed-outside'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'my-mcp', 'utf-8')
+
+    await upgradeToRealHome()
+
+    expect(readFileSync(join(getSystemCodexHomePath(), '.credentials.json'), 'utf-8')).toBe(
+      'my-mcp'
+    )
   })
 
   it("leaves a retained pane's mirror config alone until the carry lands", async () => {
