@@ -75,15 +75,9 @@ describe('buildResolveConflictsPrompt', () => {
     expect(prompt).toContain('git fetch <remote> main')
     expect(prompt).toContain('Git lists them once the merge below stops')
     expect(prompt).toContain(
-      'whose branch name is not "main", fetch that branch from its remote and note from git status -sb whether it is ahead or behind. Do not stop or pull because of it.'
+      'the conflicts may already be resolved in local commits that have not been pushed, or the host'
     )
-    expect(prompt).toContain(
-      'if the branch was behind that upstream, say the pull request head has commits this worktree lacks, which must be pulled before pushing'
-    )
-    expect(prompt).toContain(
-      'else if it was ahead, say its unpushed commits appear to already resolve the conflicts'
-    )
-    expect(prompt).toContain('Do not push in any case.')
+    expect(prompt).toContain('may be stale. Do not push.')
     expect(prompt).not.toContain('git fetch origin')
     expect(prompt).toContain('git reset --hard') // safety rule mentions it as forbidden
   })
