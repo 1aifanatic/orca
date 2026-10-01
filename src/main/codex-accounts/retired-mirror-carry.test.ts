@@ -28,8 +28,11 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-function carry(carryMcpCredentials = true): boolean {
-  return carryRetiredMirrorSettings({ runtimeHomePath, systemHomePath }, { carryMcpCredentials })
+function carry(mirrorOwnedBySystemDefault = true): boolean {
+  return carryRetiredMirrorSettings(
+    { runtimeHomePath, systemHomePath },
+    { mirrorOwnedBySystemDefault }
+  )
 }
 
 function readSystem(file: string): string {

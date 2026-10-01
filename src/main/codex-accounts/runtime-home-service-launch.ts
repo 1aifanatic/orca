@@ -1,6 +1,9 @@
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { startSystemCodexSessionBridgeInBackground } from '../codex/codex-session-bridge'
 import {
+  getSystemCodexHomePath,
   resolveOrcaManagedCodexHomePath,
   syncSystemCodexResourcesIntoManagedHome
 } from '../codex/codex-home-paths'
@@ -17,6 +20,10 @@ import { resolveCodexSessionBackfillPaths } from '../codex/codex-session-backfil
 import type { CodexSessionBackfillDate } from '../codex/codex-session-backfill-types'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
 import { CodexRuntimeHomeRouting } from './runtime-home-service-home-routing'
+import { hasRecordedLegacySharedCodexPane } from '../codex/codex-pane-account-registry'
+import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
+import { carryRetiredMirrorSettings, RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
+import type { CodexSharedRuntimeAuthProvenanceStatus } from './runtime-home-service-types'
 
 export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
   protected initializeLastSyncedState(): void {
@@ -127,6 +134,85 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
     await this.startLegacyWslAuthDrain(wslTarget, { throwOnFailure: true })
     this.finishWslLaunchPreparation(wslTarget, homePath)
     return homePath
+  }
+
+  reconcileLegacySharedHomeForRetainedPanes(): void {
+    if (!this.isHostSystemDefaultRealHome()) {
+      return
+    }
+    this.carryRetiredSystemDefaultMirror()
+    if (!hasRecordedLegacySharedCodexPane()) {
+      return
+    }
+    this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
+    syncLegacySharedCodexConfigForRetainedPanes()
+  }
+
+  // Why win32 only: Windows is the lane retiring now. macOS and Linux left the
+  // mirror in #9501; carrying it today would resurrect long-stale state.
+  private getRetiredMirrorCarryMarkerPath(): string | null {
+    return process.platform === 'win32'
+      ? join(this.getRuntimeMetadataDir(), RETIRED_MIRROR_CARRY_MARKER)
+      : null
+  }
+
+  // Why: a system-default launch can still land on the mirror (custom home, or
+  // while the first hook approval runs); what it writes there must carry too.
+  protected rearmRetiredMirrorCarry(): void {
+    const markerPath = this.getRetiredMirrorCarryMarkerPath()
+    if (markerPath) {
+      rmSync(markerPath, { force: true })
+    }
+  }
+
+  private carryRetiredSystemDefaultMirror(): void {
+    const markerPath = this.getRetiredMirrorCarryMarkerPath()
+    if (!markerPath || existsSync(markerPath)) {
+      return
+    }
+    const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
+    const mirrorOwnedBySystemDefault =
+      provenance.kind === 'missing' ||
+      (provenance.kind === 'committed' && provenance.provenance.owner === 'system-default')
+    const settingsCarried = carryRetiredMirrorSettings(
+      {
+        runtimeHomePath: resolveOrcaManagedCodexHomePath(),
+        systemHomePath: getSystemCodexHomePath()
+      },
+      { mirrorOwnedBySystemDefault }
+    )
+    const loginCarried = !mirrorOwnedBySystemDefault || this.carryRetiredMirrorLogin(provenance)
+    if (settingsCarried && loginCarried) {
+      writeFileSync(markerPath, `${JSON.stringify({ carriedAt: Date.now() })}\n`, 'utf-8')
+    }
+  }
+
+  // Why: a login done inside an Orca pane lives only in the mirror. Bytes the
+  // mirror copied from ~/.codex are not one: their absence there is a logout.
+  private carryRetiredMirrorLogin(provenance: CodexSharedRuntimeAuthProvenanceStatus): boolean {
+    try {
+      const runtimeAuthPath = this.getRuntimeAuthPath()
+      if (!existsSync(runtimeAuthPath) || this.readSystemDefaultAuth() !== null) {
+        return true
+      }
+      const runtimeAuth = readFileSync(runtimeAuthPath, 'utf-8')
+      const { mirroredAuthJson } = this.resolveSystemDefaultMirrorClaim(runtimeAuth, provenance)
+      if (
+        mirroredAuthJson !== null &&
+        this.runtimeAuthMatchesSystemDefaultIdentity(runtimeAuth, mirroredAuthJson)
+      ) {
+        return true
+      }
+      this.writeSystemDefaultAuth(runtimeAuth)
+      this.captureSystemDefaultSnapshot({ force: true })
+      // Why: retained mirror panes and ~/.codex now share one refresh token;
+      // this baseline lets the legacy-pane sync keep them in step (#5370).
+      this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
+      return true
+    } catch (error) {
+      console.warn('[codex-runtime-home] Failed to carry the mirror login into ~/.codex:', error)
+      return false
+    }
   }
 
   beginHostSystemDefaultSessionMigrationLaunch(

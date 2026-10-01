@@ -8,13 +8,12 @@ import { loadWindowsNativeRegistry } from '../windows-native-registry'
 const POWERSHELL_EDITIONS = [
   {
     documentsSubdir: 'WindowsPowerShell',
-    psHome: (env: NodeJS.ProcessEnv) =>
-      join(env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0')
+    psHome: () =>
+      join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0')
   },
   {
     documentsSubdir: 'PowerShell',
-    psHome: (env: NodeJS.ProcessEnv) =>
-      join(env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7')
+    psHome: () => join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7')
   }
 ] as const
 const PROFILE_FILES = ['profile.ps1', 'Microsoft.PowerShell_profile.ps1']
@@ -32,33 +31,24 @@ const cache = new Map<string, string[]>()
  * `${env:NAME} = value` lines, no conditionals or dot-sourced files. `$HOME`
  * and `$env:USERPROFILE` expand in double-quoted and bare values; any other
  * expression is returned verbatim, which callers comparing against a known
- * path read as "something else".
+ * path read as "something else". Preview and side-by-side PowerShell 7
+ * installs keep their all-users profile elsewhere and are not read.
  *
  * Memoized: profiles don't change under a running Orca often enough to pay a
  * re-read on every routing check.
  */
-export function readPowerShellProfileEnvAssignments(
-  name: string,
-  userProfile: string,
-  env: NodeJS.ProcessEnv = process.env,
-  documentsDir?: string | null
-): string[] {
+export function readPowerShellProfileEnvAssignments(name: string, userProfile: string): string[] {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     return []
   }
-  const cacheKey = `${name.toLowerCase()}\0${userProfile}\0${documentsDir ?? ''}`
+  const cacheKey = `${name.toLowerCase()}\0${userProfile}`
   const cached = cache.get(cacheKey)
   if (cached) {
     return cached
   }
   const assignment = new RegExp(`^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`, 'i')
   const values: string[] = []
-  const profilePaths = powerShellProfilePaths(
-    userProfile,
-    env,
-    documentsDir === undefined ? readRegistryDocumentsDir(env) : documentsDir
-  )
-  for (const path of profilePaths) {
+  for (const path of powerShellProfilePaths(userProfile)) {
     const content = readProfile(path)
     for (const rawLine of content?.split(/\r?\n/) ?? []) {
       const value = assignment.exec(rawLine.trim())?.[1]
@@ -72,18 +62,14 @@ export function readPowerShellProfileEnvAssignments(
   return values
 }
 
-function powerShellProfilePaths(
-  userProfile: string,
-  env: NodeJS.ProcessEnv,
-  documentsDir: string | null
-): string[] {
+function powerShellProfilePaths(userProfile: string): string[] {
   // Why both: the registry names the real (often OneDrive-redirected) folder,
   // and the default location still counts when that read fails.
-  const documentsDirs = [...new Set([documentsDir, join(userProfile, 'Documents')])].filter(
-    (dir): dir is string => Boolean(dir)
-  )
+  const documentsDirs = [
+    ...new Set([readRegistryDocumentsDir(), join(userProfile, 'Documents')])
+  ].filter((dir): dir is string => Boolean(dir))
   return POWERSHELL_EDITIONS.flatMap((edition) => [
-    ...PROFILE_FILES.map((file) => join(edition.psHome(env), file)),
+    ...PROFILE_FILES.map((file) => join(edition.psHome(), file)),
     ...documentsDirs.flatMap((dir) =>
       PROFILE_FILES.map((file) => join(dir, edition.documentsSubdir, file))
     )
@@ -92,12 +78,12 @@ function powerShellProfilePaths(
 
 // Why the registry: $PROFILE hangs off the Documents known folder, which
 // OneDrive or a policy can move anywhere; this is the same value it resolves.
-function readRegistryDocumentsDir(env: NodeJS.ProcessEnv): string | null {
+function readRegistryDocumentsDir(): string | null {
   try {
     const registry = loadWindowsNativeRegistry()
     const personal = registry.getRegistryKey(registry.HK.CU, USER_SHELL_FOLDERS_KEY)?.Personal
     return typeof personal?.value === 'string'
-      ? expandWindowsEnvironmentVariables(personal.value, env)
+      ? expandWindowsEnvironmentVariables(personal.value, process.env)
       : null
   } catch {
     return null
