@@ -4,9 +4,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { AgentJournalProducerLinkage } from '../../shared/agent-session-journal-types'
 import { projectStructuredAgentSessionStatus } from '../../shared/structured-agent-session-projection'
 import { structuredAgentSessionAgentStatus } from '../../shared/structured-agent-session-agent-status'
-import { producer } from './claude-child-work-producer-harness.test-fixture'
+import { producer, system, toolUse } from './claude-child-work-producer-harness.test-fixture'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 import { PROVIDER_SESSION_ID, type FakeConnection } from './claude-structured-session-test-support'
 
@@ -285,4 +286,58 @@ describe('a Claude subagent waiting on a permission request', () => {
     expect(timeline.every((entry) => entry.endsWith('-> none'))).toBe(true)
     expect(records()).toEqual([])
   })
+})
+
+describe("a nested subagent's prompt row", () => {
+  /** Root spawns agent-a, which spawns agent-n; agent-n's own Bash call is read when `toolCall`. */
+  async function nested(toolCall: 'before' | 'after') {
+    const harness = await startedProducer()
+    const spawn = (id: string, taskId: string, parentRef: string | null) => [
+      toolUse(id, 'Agent', { description: taskId, prompt: 'go' }, parentRef),
+      system('task_started', {
+        task_id: taskId,
+        tool_use_id: id,
+        description: taskId,
+        task_type: 'local_agent'
+      })
+    ]
+    const bash = toolUse('toolu_bash_n', 'Bash', { command: 'touch n' }, 'toolu_n')
+    for (const frame of [
+      ...spawn('toolu_a', 'agent-a', null),
+      ...spawn('toolu_n', 'agent-n', 'toolu_a')
+    ]) {
+      harness.send(frame)
+    }
+    if (toolCall === 'before') {
+      harness.send(bash)
+    }
+    invokeCanUseTool(harness.claude.connections[0]!, 'Bash', 'req-n', 'toolu_bash_n', {
+      input: { command: 'touch n' },
+      agentID: 'agent-n'
+    })
+    harness.send(toolUse('toolu_read_n', 'Read', { file_path: 'n' }, 'toolu_n'))
+    return harness
+  }
+
+  const linkageOf = (item: AgentJournalProducerLinkage | undefined) => ({
+    agentId: item?.agentId,
+    parentAgentId: item?.parentAgentId,
+    providerParentRef: item?.providerParentRef,
+    producerKind: item?.producerKind,
+    attempt: item?.attempt
+  })
+
+  it.each(['before', 'after'] as const)(
+    "carries the linkage the agent's own rows carry, its tool call read %s the request",
+    async (toolCall) => {
+      const harness = await nested(toolCall)
+      const items = harness.journalItems()
+      const approval = items.find((item) => item.body.kind === 'approval')
+      const sibling = items.find(
+        (item) => item.body.kind === 'tool-call' && item.agentId === 'agent-n'
+      )
+      expect(linkageOf(approval)).toEqual(linkageOf(sibling))
+      expect(approval).toMatchObject({ agentId: 'agent-n', parentAgentId: 'agent-a' })
+    }
+  )
 })

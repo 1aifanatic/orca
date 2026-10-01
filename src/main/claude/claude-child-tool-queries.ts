@@ -2,9 +2,12 @@
 // so a child's record, its open operation and its prompt rows all name the agent its rows name.
 
 import type { AgentJournalProducerLinkage } from '../../shared/agent-session-journal-types'
-import { claudePromptAskingChild, type ClaudePendingPrompt } from './claude-prompt-registry'
+import type { ClaudePendingPrompt } from './claude-prompt-registry'
 import type { ClaudeToolUse } from './claude-structured-item-translation'
-import type { ClaudeSubagentLinkageSource } from './claude-subagent-linkage'
+import type {
+  ClaudeAgentLinkageSource,
+  ClaudeSubagentLinkageSource
+} from './claude-subagent-linkage'
 import type { ClaudeToolOriginRegistry } from './claude-tool-origin-registry'
 
 export type ClaudeChildToolQueries = {
@@ -13,7 +16,8 @@ export type ClaudeChildToolQueries = {
   childToolOwner: (toolUseId: string) => string | null
   /** The child a frame's `parent_tool_use_id` names, and its newest call still awaiting a result. */
   childActivity: (parentToolUseId: string) => { agentId: string; openTool: ClaudeToolUse | null }
-  /** The linkage a prompt row carries: the subagent that raised it, or none for the session's own. */
+  /** The linkage a prompt row carries, as the asking agent's other rows carry it; none for the
+   *  session's own agent. */
   promptProducer: (
     prompt: Pick<ClaudePendingPrompt, 'agentId' | 'toolUseId'>
   ) => AgentJournalProducerLinkage
@@ -22,7 +26,7 @@ export type ClaudeChildToolQueries = {
 export function claudeChildToolQueries(deps: {
   tools: ReadonlyMap<string, ClaudeToolUse>
   toolOrigins: Pick<ClaudeToolOriginRegistry, 'childOwnerRef'>
-  linkage: Pick<ClaudeSubagentLinkageSource, 'settledLinkageFor'>
+  linkage: Pick<ClaudeSubagentLinkageSource, 'settledLinkageFor'> & ClaudeAgentLinkageSource
 }): ClaudeChildToolQueries {
   const childToolOwner = (toolUseId: string): string | null => {
     const ownerRef = deps.toolOrigins.childOwnerRef(toolUseId)
@@ -43,8 +47,15 @@ export function claudeChildToolQueries(deps: {
       return { agentId: agentId ?? parentToolUseId, openTool }
     },
     promptProducer: (prompt) => {
-      const agentId = claudePromptAskingChild(prompt, childToolOwner)
-      return agentId === null ? {} : { agentId, producerKind: 'agent' }
+      const ownerRef = deps.toolOrigins.childOwnerRef(prompt.toolUseId)
+      const owner = ownerRef === null ? null : deps.linkage.settledLinkageFor(ownerRef).linkage
+      if (prompt.agentId === undefined) {
+        return owner ?? {}
+      }
+      // The provider names the asker; the gated call's linkage stands only when it names the same.
+      return owner?.agentId === prompt.agentId
+        ? owner
+        : deps.linkage.linkageForAgent(prompt.agentId)
     }
   }
 }
