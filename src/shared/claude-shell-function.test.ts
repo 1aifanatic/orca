@@ -14,7 +14,10 @@ import {
   getFishClaudeShellFunction,
   getPowerShellClaudeShellFunction
 } from './claude-shell-function'
-const FISH = '/opt/homebrew/bin/fish'
+// Why filtered: CI images lack zsh and fish; a missing shell skips rather than exits 127.
+const POSIX_SHELLS = ['/bin/bash', '/bin/zsh'].filter((shell) => existsSync(shell))
+const FISH =
+  ['/opt/homebrew/bin/fish', '/usr/local/bin/fish', '/usr/bin/fish'].find(existsSync) ?? ''
 const roots: string[] = []
 afterEach(() => {
   gate.enabled = true
@@ -67,7 +70,7 @@ function fixture() {
   return { root, a, b, pointer, run }
 }
 describe('Claude invocation account selection', () => {
-  it.each(['/bin/bash', '/bin/zsh'])(
+  it.each(POSIX_SHELLS)(
     'switches the next invocation in the same %s while a running child keeps its home',
     (shell) => {
       const f = fixture()
@@ -80,7 +83,7 @@ describe('Claude invocation account selection', () => {
       expect(result.status).toBe(23)
     }
   )
-  it.each(['/bin/bash', '/bin/zsh'])(
+  it.each(POSIX_SHELLS)(
     'refuses unreadable/missing and malformed selections and keeps explicit default auth in %s',
     (shell) => {
       const f = fixture()
@@ -99,7 +102,7 @@ describe('Claude invocation account selection', () => {
       )
     }
   )
-  it.each(['/bin/bash', '/bin/zsh'])(
+  it.each(POSIX_SHELLS)(
     'in %s a hand-exported CLAUDE_CONFIG_DIR wins; Orca’s own spawn value re-resolves',
     (shell) => {
       const f = fixture()
@@ -115,7 +118,7 @@ describe('Claude invocation account selection', () => {
       expect(f.run(shell, `${fn}\nclaude x`, injected).stdout).toContain(`HOME=${f.a} KEY=none`)
     }
   )
-  it.each(['/bin/bash', '/bin/zsh'])(
+  it.each(POSIX_SHELLS)(
     'in %s leaves claude alone without a routed pane or with the user’s own wrapper',
     (shell) => {
       const f = fixture()
@@ -126,7 +129,7 @@ describe('Claude invocation account selection', () => {
       expect(f.run(shell, wrapper).stdout).toContain('USER-WRAPPER')
     }
   )
-  it.each(['/bin/bash', '/bin/zsh'])('in %s accepts Git Bash drive-form pointers', (shell) => {
+  it.each(POSIX_SHELLS)('in %s accepts Git Bash drive-form pointers', (shell) => {
     const f = fixture()
     for (const value of ['C:\\profile', 'C:/profile']) {
       // The cwd-relative stand-in lets the drive form pass `test -d` on this POSIX host.
@@ -145,7 +148,7 @@ describe('Claude invocation account selection', () => {
       getPowerShellClaudeShellFunction()
     ]).toEqual(['', '', ''])
   })
-  it.skipIf(!existsSync(FISH))('uses the same pointer and override rule in fish', () => {
+  it.skipIf(!FISH)('uses the same pointer and override rule in fish', () => {
     const f = fixture()
     const fn = getFishClaudeShellFunction()
     const result = f.run(FISH, `${fn}\nclaude 'two words'`)

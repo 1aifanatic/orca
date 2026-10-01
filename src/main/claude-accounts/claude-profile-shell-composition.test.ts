@@ -9,7 +9,9 @@ vi.mock('../../shared/claude-profile-routing', async (original) => ({
   ...(await original<typeof ProfileRouting>()),
   claudeProfileRoutingEnabled: () => gate.enabled
 }))
-const FISH = '/opt/homebrew/bin/fish'
+const FISH =
+  ['/opt/homebrew/bin/fish', '/usr/local/bin/fish', '/usr/bin/fish'].find(existsSync) ??
+  '/usr/bin/fish'
 const roots: string[] = []
 afterEach(() => {
   gate.enabled = true
