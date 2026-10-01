@@ -469,6 +469,7 @@ function runtimeMetrics(
   }
 }
 
+// Fleet-level proof that director metrics flowed; the placement check proves the cell itself.
 function assertPassingRuntimeMetrics(metrics, label, region = ASIA_REGION) {
   if (region === US_REGION) {
     if (number(metrics.usSelections, 'US selections') < 1) {

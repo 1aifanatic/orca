@@ -421,7 +421,7 @@ relay_gce_cells = {
     connection_hard_cap         = 3000
     connection_unobserved_bound = 60
   }
-  # US cells at the Asia 3,000-host shape, each its own additive wave in the lightest zones.
+  # US cells at the Asia 3,000-host shape, each its own additive wave: a was lightest, b ties c.
   "production-gce-c32" = {
     hostname                    = "c32"
     region                      = "us-central1"

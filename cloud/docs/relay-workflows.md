@@ -207,8 +207,13 @@ expect `us-central1`. Promotion skips the Asia launch-order gates, which bind As
 The canary aims its load at `us-central1`, reads the cell's own `us-central1` metrics, and
 requires a US selection. It gates neither region's fallbacks: US-targeted fallbacks have a
 nonzero baseline while the US fleet is full, and Asia-targeted ones are not the cell's to cause.
-Both are recorded. Both cells are declared rehome sources and sit in the same-cap migration-only
-list until each one's canary promotes it, then move to the general and fleet pool lists together.
+Both are recorded. The US selection gate is a fleet-level check that director metrics flowed; the
+placement check is what proves the cell. Placement breaks a load-ratio tie by cell ID, so do not
+promote while a same-cap restore has just returned an empty general US cell: the canary control
+would land there and the canary would roll the new cell back. Both cells are declared rehome
+sources and sit in the same-cap migration-only list until each one's canary promotes it, then move
+to the general list. The shadow gate's fleet pool list tracks the 16-connection Asia pools, so
+whether a US cell belongs there is decided at promotion, not assumed.
 Rollback returns
 Asia cells to migration-only; it does not destroy the network or use
 existing-only. The production topology dispatch remains unavailable until the
