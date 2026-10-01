@@ -27,6 +27,8 @@ on:
       - 'config/patches/node-pty*'
       - 'config/patches/@vscode__windows-process-tree*'
       - 'config/scripts/build-windows-process-tree-relay-addon.mjs'
+      - 'config/scripts/relay-windows-process-tree-staging.mjs'
+      - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
       - 'src/shared/relay-windows-breakaway-launch.ts'
       - '!src/**/*.test.ts'
       - 'src/main/ssh/ssh-relay-windows-host-lane.test.ts'
