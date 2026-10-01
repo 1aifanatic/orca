@@ -18,6 +18,7 @@ import { useStructuredSessionChildRowContext } from './use-structured-session-ch
 export type NativeChatSubagentDisplayState = NativeChatSubagentState | 'waiting'
 
 const NO_WAITING: ReadonlySet<string> = new Set()
+const WAITING_KEY_SEPARATOR = '\u0000'
 
 /** Provider ids of the subagents the session's strip shows waiting; empty outside one. */
 export const NativeChatWaitingSubagentsContext = createContext<ReadonlySet<string>>(NO_WAITING)
@@ -38,9 +39,10 @@ export function useNativeChatWaitingSubagents(
 ): ReadonlySet<string> {
   const childRowContext = useStructuredSessionChildRowContext(paneKey)
   const children = backgroundTasks.children
-  return useMemo(() => {
+  // Keyed by its members, so a child frame that changes no wait keeps the set and the rows memoized.
+  const key = useMemo(() => {
     if (!children) {
-      return NO_WAITING
+      return ''
     }
     const waiting = new Set<string>()
     for (const group of buildBackgroundTaskGroupsFromViews(children, childRowContext)) {
@@ -49,8 +51,9 @@ export function useNativeChatWaitingSubagents(
         waiting
       )
     }
-    return waiting.size > 0 ? waiting : NO_WAITING
+    return [...waiting].sort().join(WAITING_KEY_SEPARATOR)
   }, [children, childRowContext])
+  return useMemo(() => (key === '' ? NO_WAITING : new Set(key.split(WAITING_KEY_SEPARATOR))), [key])
 }
 
 /** A journal entry's state, read waiting while the host's record of that child is waiting. Only a

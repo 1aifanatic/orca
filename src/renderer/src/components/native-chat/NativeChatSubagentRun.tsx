@@ -289,18 +289,21 @@ export function NativeChatSubagentRun({
   const verdict = working
     ? subagentStateLabel(verdictState, running > 0 ? running : waitingCount, summary.total)
     : subagentStateLabel(verdictState, summary.settledCount, summary.total)
-  // A child that already failed must not wait for its siblings to be readable.
-  const alertState: NativeChatSubagentDisplayState | null = working
-    ? (summary.adverseState ?? (running > 0 && waitingCount > 0 ? 'waiting' : null))
-    : null
-  const alert =
-    alertState === null
+  // A wait beside working siblings, and a child that already failed, must each be readable without
+  // waiting for the rest; neither hides the other.
+  const waitingAlert =
+    running > 0 && waitingCount > 0
+      ? subagentStateLabel('waiting', waitingCount, summary.total)
+      : null
+  const adverseState = working ? summary.adverseState : null
+  const alerts = [
+    waitingAlert,
+    adverseState === null
       ? null
-      : subagentStateLabel(
-          alertState,
-          alertState === 'waiting' ? waitingCount : summary.adverseCount,
-          summary.total
-        )
+      : subagentStateLabel(adverseState, summary.adverseCount, summary.total)
+  ].filter((alert): alert is string => alert !== null)
+  const dotState: NativeChatSubagentDisplayState =
+    adverseState ?? (waitingAlert === null ? verdictState : 'waiting')
   // A child settled with no terminal stamp — swept by the reopen, or given the
   // provider's verdict after that — stopped being observable at an unknown
   // moment. Measuring to `now` would report the time since the host died as how
@@ -324,11 +327,11 @@ export function NativeChatSubagentRun({
         aria-live="polite"
       >
         <SubagentGlyph />
-        <StatusDot state={alertState ?? verdictState} pulsing={running > 0} />
+        <StatusDot state={dotState} pulsing={running > 0} />
         <span className={cn('min-w-0 truncate', working && 'text-foreground/85')}>{headline}</span>
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
           {verdict}
-          {alert === null ? null : ` +${alert}`}
+          {alerts.map((alert) => ` +${alert}`).join('')}
           {clockStartedAt !== null ? (
             // The row is a live region, and this clock reticks every second: left
             // exposed it announces a new duration every second and buries the

@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../../shared/agent-status-child-work-view'
 import type {
@@ -12,6 +12,7 @@ import type {
 import { NativeChatSubagentRun } from './NativeChatSubagentRun'
 import { NativeChatSubagentSectionHead } from './NativeChatSubagentSectionHead'
 import { NativeChatWaitingSubagentsProvider } from './NativeChatWaitingSubagentsProvider'
+import { useNativeChatWaitingSubagents } from './native-chat-waiting-subagents'
 import { structuredSessionBackgroundTasksView } from './structured-session-background-tasks-view'
 
 vi.mock('@/store', async () => {
@@ -85,19 +86,34 @@ describe('the transcript subagent block beside the strip', () => {
     expect(screen.getByRole('button')).toHaveTextContent('1 working +1 waiting')
   })
 
-  it('goes back to the journal state once the host no longer reports the wait', () => {
+  it('shows a wait and a failed sibling together', () => {
     renderWithHost(
-      [child('task-1', 'working')],
-      <NativeChatSubagentRun block={group([{ id: 'task-1', label: 'touch', state: 'working' }])} />
-    )
-    expect(screen.getByRole('button')).toHaveTextContent('working')
-    cleanup()
-    renderWithHost(
-      [],
+      [child('task-1', 'waiting'), child('task-2', 'working')],
       <NativeChatSubagentRun
-        block={group([{ id: 'task-1', label: 'touch', state: 'completed', settledAt: 5 }])}
+        block={group([
+          { id: 'task-1', label: 'touch', state: 'working' },
+          { id: 'task-2', label: 'read', state: 'working' },
+          { id: 'task-3', label: 'list', state: 'failed', settledAt: 5 }
+        ])}
       />
     )
+    expect(screen.getByRole('button')).toHaveTextContent('1 working +1 waiting +1 failed')
+  })
+
+  it('goes back to the journal state on the same row once the host no longer reports the wait', () => {
+    const running = group([{ id: 'task-1', label: 'touch', state: 'working' }])
+    const view = (children: AgentChildWorkView[], block: NativeChatSubagentGroupBlock) => (
+      <NativeChatWaitingSubagentsProvider paneKey="pane-1" tasks={strip(children)}>
+        <NativeChatSubagentRun block={block} />
+      </NativeChatWaitingSubagentsProvider>
+    )
+    const { rerender } = render(view([child('task-1', 'waiting')], running))
+    expect(screen.getByRole('button')).toHaveTextContent('waiting')
+    // Answered: the host reports the child working again, then its own ending.
+    rerender(view([child('task-1', 'working')], running))
+    expect(screen.getByRole('button')).toHaveTextContent('working')
+    expect(screen.getByRole('button')).not.toHaveTextContent('waiting')
+    rerender(view([], group([{ id: 'task-1', label: 'touch', state: 'completed', settledAt: 5 }])))
     expect(screen.getByRole('button')).toHaveTextContent('completed')
   })
 
@@ -122,5 +138,17 @@ describe('the transcript subagent block beside the strip', () => {
       />
     )
     expect(container.querySelector('.bg-agent-question')).not.toBeNull()
+  })
+
+  it('keeps the same set while a new child frame changes no wait', () => {
+    const { result, rerender } = renderHook(
+      ({ children }) => useNativeChatWaitingSubagents('pane-1', strip(children)),
+      { initialProps: { children: [child('task-1', 'waiting'), child('task-2', 'working')] } }
+    )
+    const first = result.current
+    rerender({ children: [child('task-1', 'waiting'), child('task-2', 'working')] })
+    expect(result.current).toBe(first)
+    rerender({ children: [child('task-1', 'working'), child('task-2', 'working')] })
+    expect(result.current.size).toBe(0)
   })
 })
