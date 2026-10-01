@@ -108,7 +108,8 @@ function envelope(
     | 'agentSession.cancel'
     | 'agentSession.setOption'
     | 'agentSession.queuedMessageSend',
-  fields: object
+  // The fingerprint's own field shape, as the sibling host tests type it.
+  fields: Parameters<typeof computeAgentSessionPayloadFingerprint>[0]['fields']
 ) {
   return {
     sessionId: SESSION,
@@ -117,7 +118,7 @@ function envelope(
     payloadFingerprint: computeAgentSessionPayloadFingerprint({
       method,
       sessionId: SESSION,
-      fields: { ...fields }
+      fields
     })
   }
 }
