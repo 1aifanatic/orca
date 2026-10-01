@@ -37,17 +37,23 @@ export async function runRecordedStop<TValue>(
   event: Omit<JournalStopEvent, 'at'>,
   stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
+  const skipped = (error: unknown): void => {
+    console.warn("[agent-session] Stop's event row skipped:", {
+      sessionId: ctx.sessionId,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
   return stop(() => {
-    const turnId = event.turnId ?? ctx.journal.activeTurnId() ?? undefined
-    return ctx.journal.appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence).then(
-      () => undefined,
-      (error: unknown) => {
-        console.warn("[agent-session] Stop's event row skipped:", {
-          sessionId: ctx.sessionId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    )
+    try {
+      const turnId = event.turnId ?? ctx.journal.activeTurnId() ?? undefined
+      return ctx.journal
+        .appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence)
+        .then(() => undefined, skipped)
+    } catch (error) {
+      // A throw before the append is queued is reported too: the Stop still interrupts.
+      skipped(error)
+      return Promise.resolve()
+    }
   })
 }
 

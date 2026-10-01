@@ -47,8 +47,8 @@ async function queuedDraft(text: string): Promise<string> {
 }
 
 /** The provider's turn row for the working send, which may land after a Stop. */
-async function turnRow(turnId: string, state: 'running' | 'interrupted'): Promise<void> {
-  await journal().appendItem(
+async function turnRow(turnId: string, state: 'running' | 'interrupted') {
+  return journal().appendItem(
     { provider: 'codex', threadId: 'thread-1', turnId, ordinal: 999 },
     { kind: 'turn', turnId, state, startedAt: 1 },
     { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
@@ -97,6 +97,39 @@ describe("a Stop's event", () => {
         at: expect.any(Number)
       }
     ])
+  })
+
+  it("lands before the rows the interrupt causes: the stopped turn's end comes after it", async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    let turnEnd: number | undefined
+    rig.cancelTurn.mockImplementationOnce(async () => {
+      // As a provider answers an interrupt: the stopped turn's end, journaled before it returns.
+      turnEnd = (await turnRow('turn-1', 'interrupted')).cursor.sequence
+      return { cancelled: true }
+    })
+    await rig.stop()
+    const since = journal().readSince({ epoch: journal().epoch, sequence: 0 })
+    const stopRow = since.ok
+      ? since.rows.find((row) => row.kind === 'tombstone' && row.stopEvent)
+      : undefined
+    expect(stopRow?.seq).toBeLessThan(turnEnd ?? 0)
+  })
+
+  it('a write that throws before it is queued is reported, and the Stop still interrupts', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(journal(), 'appendStopEvent').mockImplementation(() => {
+      throw new Error('the journal threw')
+    })
+    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
+    expect(warned).toHaveBeenCalledWith(
+      "[agent-session] Stop's event row skipped:",
+      expect.objectContaining({ error: 'the journal threw' })
+    )
+    warned.mockRestore()
   })
 
   it('at an agent still starting, reaches the journal before the start is ended, and holds a card queued before it', async () => {
