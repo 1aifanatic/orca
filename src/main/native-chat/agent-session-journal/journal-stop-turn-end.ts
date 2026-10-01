@@ -26,10 +26,7 @@ function stopIsAPersons(reason: JournalStopEvent['reason']): boolean {
   }
 }
 
-type TurnEndState = Pick<
-  JournalReducerState,
-  'items' | 'queuePauseMarks' | 'latestPersonTurnSequence'
->
+type TurnEndState = Pick<JournalReducerState, 'items' | 'queuePauseMarks' | 'submissions'>
 
 /** Whether `stop`, a person's, makes the end of turn `turnId` theirs: it named that turn, or named
  *  none and stopped the turn item `itemId` opened. */
@@ -48,19 +45,25 @@ function stopIsTurnCancellation(
 }
 
 /** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
- *  one: unless a send a person made since was accepted, whose turn that is. `itemId` null: a turn
- *  not yet opened. */
+ *  one: unless a send journaled since, of any origin, was not refused, whose turn that is. A Stop
+ *  whose stopped send never opens a turn so binds nothing. `itemId` null: a turn not yet opened. */
 function turnlessStopStopped(
   state: TurnEndState,
   stop: JournalLatestStop,
   itemId: string | null
 ): boolean {
   const createdAt = itemId === null ? null : (state.items.get(itemId)?.sequence ?? null)
-  if (
-    (createdAt !== null && createdAt <= stop.sequence) ||
-    state.latestPersonTurnSequence >= stop.sequence
-  ) {
+  if (createdAt !== null && createdAt <= stop.sequence) {
     return false
+  }
+  for (const submission of state.submissions.values()) {
+    if (
+      submission.dispatchState !== 'rejected' &&
+      submission.acceptedSequence !== undefined &&
+      submission.acceptedSequence > stop.sequence
+    ) {
+      return false
+    }
   }
   for (const [otherId, item] of state.items) {
     if (
@@ -103,19 +106,17 @@ export function personStopDecidesTurn(
   turnId: string | null,
   endedAt?: number
 ): boolean {
-  if (turnId !== null) {
-    const itemId = [...state.items].find(
-      ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
-    )?.[0]
-    return stopEndsTurnAsCancellation(state, turnId, itemId ?? null, endedAt)
-  }
   const stop = state.queuePauseMarks.latestStop
-  return (
-    stop !== null &&
-    stop.event.turnId === undefined &&
-    stopIsAPersons(stop.event.reason) &&
-    turnlessStopStopped(state, stop, null)
-  )
+  if (stop === null || !stopIsAPersons(stop.event.reason)) {
+    return false
+  }
+  if (turnId === null) {
+    return stop.event.turnId === undefined && turnlessStopStopped(state, stop, null)
+  }
+  const itemId = [...state.items].find(
+    ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
+  )?.[0]
+  return stopEndsTurnAsCancellation(state, turnId, itemId ?? null, endedAt)
 }
 
 /**

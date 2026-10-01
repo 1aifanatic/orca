@@ -60,28 +60,6 @@ async function runningTurn(turnId = 'turn-1'): Promise<string> {
   return working
 }
 
-/** The stopped send's turn opens after its turnless Stop and ends cut: the turn that Stop bound. */
-async function stoppedTurnEnded(): Promise<void> {
-  const fence = rig.store.getRecord(HOST_TEST_SESSION)?.lease.runtimeFence ?? 1
-  const scope = { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-  const identity = {
-    provider: 'codex' as const,
-    threadId: 'thread-1',
-    turnId: 'turn-stopped',
-    ordinal: 998
-  }
-  await journal().appendItem(
-    identity,
-    { kind: 'turn', turnId: 'turn-stopped', state: 'running', startedAt: 1 },
-    scope
-  )
-  await journal().appendItem(
-    identity,
-    { kind: 'turn', turnId: 'turn-stopped', state: 'interrupted', completedAt: Date.now() },
-    scope
-  )
-}
-
 async function queuedDraft(text: string): Promise<string> {
   const queued = await rig.send(text, 'queue-if-active').result
   if (!queued.ok || !('queued' in queued.value)) {
@@ -257,10 +235,11 @@ describe("a person's Stop pause and the Stop events after it", () => {
     await queuedDraft('queued behind the turn')
     expect(await rig.stop()).toMatchObject({ ok: true })
     await rig.settleAccepted(working, 'stopped')
-    await stoppedTurnEnded()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     // Orchestration mail starts a turn the host sent, which lifts nothing.
-    await rig.send('mail for the lead', undefined, { internal: true }).result
+    const mail = rig.send('mail for the lead', undefined, { internal: true })
+    await mail.result
+    await rig.settleAccepted(mail.id, 'mail')
     await journal().appendItem(
       { provider: 'codex', threadId: 'thread-1', turnId: 'turn-mail', ordinal: 999 },
       { kind: 'turn', turnId: 'turn-mail', state: 'running', startedAt: 1 },
@@ -285,7 +264,6 @@ describe("a person's Stop pause and the Stop events after it", () => {
     const held = await queuedDraft('queued behind the turn')
     expect(await rig.stop()).toMatchObject({ ok: true })
     await rig.settleAccepted(working, 'stopped')
-    await stoppedTurnEnded()
     // The agent at rest goes, writing nothing; mail then starts a new child, which never lands.
     await idleSweep().tick()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
