@@ -18,10 +18,12 @@ import {
 } from './journal-host-database-test-support'
 import * as JournalOpen from './journal-open'
 import { renderJournalState } from './journal-reducer'
+import { deleteJournalRepairedSuffix } from './journal-repair-marker'
 import {
   deriveJournalSessionStatus,
   isUnsettledJournalSessionStatus,
   readUnsettledJournalSessionIds,
+  writeJournalSessionStatusFromDisk,
   type JournalSessionStatus
 } from './journal-session-state'
 import {
@@ -186,6 +188,28 @@ describe('a chat that opened corrupt stores what a fresh replay derives (T3)', (
     expect(journal.needsRebuild).toBe(false)
     expect(stored(name)).toEqual(freshDerivation(name))
     expect(stored(name)).toMatchObject({ liveChildWork: true })
+  })
+})
+
+describe('a repair writes the status of what it leaves (T10)', () => {
+  it('drops the rejected suffix and the status that described it, in one transaction', async () => {
+    const journal = await write('running tool')
+    const tip = journal.cursor()
+    await journal.close()
+    expect(stored('running tool')).toMatchObject({ status: 'running' })
+
+    deleteJournalRepairedSuffix({
+      database: openTestJournalHostDatabase(root),
+      sessionId: 'running tool',
+      epoch: tip.epoch,
+      fromSeq: tip.sequence,
+      contentFrom: tip.sequence,
+      now: clock + 1,
+      writeStatus: (database) => writeJournalSessionStatusFromDisk(database, 'running tool')
+    })
+
+    expect(stored('running tool')).toEqual(freshDerivation('running tool'))
+    expect(stored('running tool')).toMatchObject({ status: 'idle' })
   })
 })
 

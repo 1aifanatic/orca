@@ -188,8 +188,13 @@ describe('the stored status and the plan agree (T4)', () => {
       state: 'unverifiable',
       startedAt: 50
     })
+    // Written beside the journal, as before the status table: the open writes the status back.
+    openTestJournalHostDatabase(root)
+      .db.prepare('DELETE FROM journal_session_state WHERE session_id = ?')
+      .run('unkeyed')
     const journal = await open('unkeyed')
-    // Rows written beside the journal, as an older build would: the open writes the status back.
+    // As the chat's open does after its settle.
+    journal.backfillSessionStatus()
     expect(readTestJournalSessionStatus(root, 'unkeyed')).not.toBeNull()
     const deathEvidence = CORPUS_DEATH_EVIDENCE['names the writer'] ?? null
     const plan = planOpenSettlement(
