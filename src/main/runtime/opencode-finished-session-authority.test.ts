@@ -53,18 +53,37 @@ type LaunchedOpenCodePane = {
 async function launchOpenCodePane(options: {
   ptyId: string
   getForegroundProcess: () => Promise<string | null>
-  retireAgentHookCompatibilityAuthority?: (paneKey: string) => void
-  attestAgentHookCompatibilityAuthority?: OrcaRuntimeServiceDeps['attestAgentHookCompatibilityAuthority']
+  /** Wires this hook server to the runtime the way `main-process-runtime-service.ts` does. */
+  server?: AgentHookServer
 }): Promise<LaunchedOpenCodePane> {
   const spawn = vi.fn().mockResolvedValue({ id: options.ptyId, incarnationId: 'incarnation-1' })
-  const runtime = new OrcaRuntimeService(makeStore() as never, undefined, {
-    attestAgentHookCompatibilityAuthority:
-      options.attestAgentHookCompatibilityAuthority ??
-      ((candidate) => ({ paneKey: candidate.paneKey, source: 'current_hook' as const })),
-    ...(options.retireAgentHookCompatibilityAuthority
-      ? { retireAgentHookCompatibilityAuthority: options.retireAgentHookCompatibilityAuthority }
-      : {})
-  })
+  const { server } = options
+  const runtime = new OrcaRuntimeService(
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shared fixture store implements only the members these runtime paths read.
+    makeStore() as never,
+    undefined,
+    server
+      ? {
+          getAgentStatusSnapshot: () =>
+            server.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
+          getAgentProviderSessionSnapshot: () => server.getStatusSnapshot(),
+          getAgentProviderSessionRowsForPane: (paneKey) => server.getStatusSnapshotForPane(paneKey),
+          attestAgentHookCompatibilityAuthority: (candidate) =>
+            server.attestCompatibilityAuthority(candidate),
+          retireAgentHookCompatibilityAuthority: (paneKey, retireOptions) =>
+            server.retirePaneAuthority(paneKey, undefined, retireOptions),
+          checkHookAgentPresence: (paneKey) => server.checkAgentPresence(paneKey),
+          reconcileAgentStatusForEndedProcess: (paneKeys, reconcileOptions) =>
+            server.reconcileEndedProcessForPaneKeys(paneKeys, reconcileOptions)
+        }
+      : {
+          attestAgentHookCompatibilityAuthority: (candidate) => ({
+            paneKey: candidate.paneKey,
+            source: 'current_hook' as const
+          })
+        }
+  )
+  server?.setPaneLaunchAuthorityReader((paneKey) => runtime.readPaneLaunchAuthority(paneKey))
   runtime.setPtyController({
     spawn,
     write: () => true,
@@ -90,8 +109,6 @@ async function launchOpenCodePane(options: {
     evidence: { terminalHandle: terminal.handle, paneKey, launchToken }
   }
 }
-
-type OrcaRuntimeServiceDeps = NonNullable<ConstructorParameters<typeof OrcaRuntimeService>[2]>
 
 /** Drain the microtask + timer queues the deferred foreground read chains through. */
 async function settle(ticks = 40): Promise<void> {
@@ -174,9 +191,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
       ptyId: 'pty-opencode-reuse',
       // OpenCode is a TUI: it is still the foreground process when its command completes.
       getForegroundProcess: async () => 'opencode',
-      retireAgentHookCompatibilityAuthority: (paneKey) => server.retirePaneAuthority(paneKey),
-      attestAgentHookCompatibilityAuthority: (candidate) =>
-        server.attestCompatibilityAuthority(candidate)
+      server
     })
     const hookEnv = server.buildPtyEnv()
     const post = (payload: Record<string, unknown>): Promise<Response> =>
@@ -233,9 +248,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
     const pane = await launchOpenCodePane({
       ptyId: 'pty-opencode-session-boundary',
       getForegroundProcess: () => foreground,
-      retireAgentHookCompatibilityAuthority: (paneKey) => server.retirePaneAuthority(paneKey),
-      attestAgentHookCompatibilityAuthority: (candidate) =>
-        server.attestCompatibilityAuthority(candidate)
+      server
     })
     const hookEnv = server.buildPtyEnv()
     // Both sessions post the same launchToken: it lives in the PTY env, so every
@@ -287,7 +300,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
     const pane = await launchOpenCodePane({
       ptyId: 'pty-opencode-restart',
       getForegroundProcess: async () => 'opencode',
-      retireAgentHookCompatibilityAuthority: (paneKey) => first.retirePaneAuthority(paneKey)
+      server: first
     })
     const hookEnv = first.buildPtyEnv()
     await fetch(`http://127.0.0.1:${hookEnv.ORCA_AGENT_HOOK_PORT}/hook/opencode`, {
