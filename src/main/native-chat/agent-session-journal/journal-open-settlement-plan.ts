@@ -10,7 +10,8 @@ import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity,
   AgentJournalRenderItem,
-  AgentJournalSubmission
+  AgentJournalSubmission,
+  AgentJournalTurnLifecycle
 } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -53,7 +54,8 @@ export function owesRecoveredDispatch(submission: AgentJournalSubmission): boole
   )
 }
 
-/** What a chat's settle would have to revise, counted from the same rules the settle applies. */
+/** What a chat's settle would have to revise, counted from the same rules the settle applies, and
+ *  the turn the chat is running. */
 export type JournalSettlementFacts = {
   /** A turn record or tool call still `running`, under a key a settle can revise. */
   runningWork: boolean
@@ -66,36 +68,75 @@ export type JournalSettlementFacts = {
   /** A working subagent roster or live background-task row; not counted on a corrupt load, whose
    *  settle leaves rosters for the rebuild. */
   liveChildWork: boolean
+  /** The newest turn record by sequence, when it is running (`activeStructuredAgentSessionTurnIdBySequence`). */
+  activeTurnId: string | null
+}
+
+type ItemFacts = {
+  running: boolean
+  prompt: boolean
+  roster: boolean
+  turn: AgentJournalTurnLifecycle | null
+}
+
+// Per item object: a write replaces the entry it changes and never edits one, so an object's facts
+// never change, and each append judges only the items it touched.
+const ITEM_FACTS = new WeakMap<AgentJournalRenderItem, ItemFacts>()
+
+function itemFacts(item: AgentJournalRenderItem): ItemFacts {
+  let facts = ITEM_FACTS.get(item)
+  if (!facts) {
+    const running = isRunningJournalTurn(item) || isRunningToolCall(item)
+    const prompt = !running && openSettlementTerminalBody(item) !== null
+    const settlable = (running || prompt) && openSettlementItemIdentity(item) !== null
+    facts = {
+      running: settlable && running,
+      prompt: settlable && prompt,
+      roster: staleSubagentRosterRevision(item) !== null,
+      turn: readAgentJournalTurn(item.body)
+    }
+    ITEM_FACTS.set(item, facts)
+  }
+  return facts
 }
 
 export function journalSettlementFacts(
   fold: Pick<JournalReducerState, 'items' | 'submissions'>,
   options: { settlesRosters: boolean }
 ): JournalSettlementFacts {
-  const facts: JournalSettlementFacts = {
-    runningWork: false,
-    pendingPrompts: false,
-    handedOverSends: 0,
-    queuedSends: 0,
-    liveChildWork: false
-  }
+  let handedOverSends = 0
+  let queuedSends = 0
   for (const submission of fold.submissions.values()) {
     if (isQueuedAgentJournalSubmission(submission)) {
-      facts.queuedSends += 1
+      queuedSends += 1
     } else if (owesRecoveredDispatch(submission)) {
-      facts.handedOverSends += 1
+      handedOverSends += 1
     }
   }
+  let runningWork = false
+  let pendingPrompts = false
+  let liveChildWork = false
+  let newestSequence = 0
+  let newest: AgentJournalTurnLifecycle | null = null
   for (const item of fold.items.values()) {
-    facts.liveChildWork ||= options.settlesRosters && staleSubagentRosterRevision(item) !== null
-    const running = isRunningJournalTurn(item) || isRunningToolCall(item)
-    const prompt = !running && openSettlementTerminalBody(item) !== null
-    if ((running || prompt) && openSettlementItemIdentity(item)) {
-      facts.runningWork ||= running
-      facts.pendingPrompts ||= prompt
+    const facts = itemFacts(item)
+    runningWork ||= facts.running
+    pendingPrompts ||= facts.prompt
+    liveChildWork ||= options.settlesRosters && facts.roster
+    // Ties go to the later item, as the by-sequence reader decides them.
+    if (facts.turn && item.sequence >= newestSequence) {
+      newestSequence = item.sequence
+      newest = facts.turn
     }
   }
-  return facts
+  return {
+    runningWork,
+    pendingPrompts,
+    handedOverSends,
+    queuedSends,
+    liveChildWork,
+    activeTurnId: newest?.state === 'running' ? newest.turnId : null
+  }
 }
 
 function isRunningToolCall(item: Pick<AgentJournalRenderItem, 'body'>): boolean {

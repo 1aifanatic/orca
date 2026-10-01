@@ -7,8 +7,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
+import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import { journalPragmaNumber } from './journal-database'
+import { journalDatabasePath } from './journal-host-database'
+import Database from '../../sqlite/sync-database'
 import {
   createTrackedJournalOpener,
   insertTestJournalRowJson,
@@ -28,6 +31,7 @@ import {
   type JournalSessionStatus
 } from './journal-session-state'
 import {
+  CORPUS_FENCE,
   CORPUS_UNSETTLED,
   JOURNAL_SESSION_STATE_CASES,
   JOURNAL_SESSION_STATE_CORPUS,
@@ -63,7 +67,9 @@ function open(sessionId: string): Promise<AgentSessionJournal> {
     identity: identity(sessionId),
     stateDirectory: root,
     now: () => (clock += 1),
-    mintEpoch: () => `epoch-${sessionId}-${clock}`
+    mintEpoch: () => `epoch-${sessionId}-${clock}`,
+    // As production passes the record's fence.
+    currentFence: () => CORPUS_FENCE
   })
 }
 
@@ -77,7 +83,10 @@ function freshDerivation(sessionId: string): JournalSessionStatus {
   if (!loaded) {
     throw new Error(`no journal for ${sessionId}`)
   }
-  return deriveJournalSessionStatus(loaded.state, { settlesRosters: !loaded.corrupt })
+  return deriveJournalSessionStatus(loaded.state, {
+    settlesRosters: !loaded.corrupt,
+    currentFence: CORPUS_FENCE
+  })
 }
 
 const stored = (sessionId: string) => readTestJournalSessionStatus(root, sessionId)
@@ -152,6 +161,39 @@ describe('the stored status follows every write (T3)', () => {
     expect(stored(name)).toEqual(freshDerivation(name))
     expect(isUnsettledJournalSessionStatus(stored(name)!)).toBe(CORPUS_UNSETTLED[name])
     expect(readUnsettledJournalSessionIds(db()).includes(name)).toBe(CORPUS_UNSETTLED[name])
+    // The active turn the facts pass finds is the by-sequence reader's.
+    expect(stored(name)?.activeTurnId).toBe(
+      activeStructuredAgentSessionTurnIdBySequence(
+        loadTestJournal(root, name)!.state.items.values()
+      )
+    )
+  })
+})
+
+describe('observers hear of a write only once it is committed (T13)', () => {
+  it('tells observers after COMMIT, when another connection already reads the row and its status', async () => {
+    const journal = await open('committed')
+    const seen: { inTransaction: boolean; rows: unknown; status: unknown }[] = []
+    journal.observeCommits(() => {
+      const other = new Database(journalDatabasePath(root), { readonly: true })
+      try {
+        seen.push({
+          inTransaction: db().isTransaction,
+          rows: other
+            .prepare('SELECT COUNT(*) AS n FROM journal_rows WHERE session_id = ?')
+            .get('committed'),
+          status: other
+            .prepare('SELECT lifecycle FROM journal_session_state WHERE session_id = ?')
+            .get('committed')
+        })
+      } finally {
+        other.close()
+      }
+    })
+
+    await note(journal, 'note-1')
+
+    expect(seen).toEqual([{ inTransaction: false, rows: { n: 2 }, status: { lifecycle: 'idle' } }])
   })
 })
 
@@ -209,7 +251,7 @@ describe('a repair writes the status of what it leaves (T10)', () => {
     const journal = await write('running tool')
     const tip = journal.cursor()
     await journal.close()
-    expect(stored('running tool')).toMatchObject({ status: 'running' })
+    expect(stored('running tool')).toMatchObject({ lifecycle: 'running' })
 
     deleteJournalRepairedSuffix({
       database: openTestJournalHostDatabase(root),
@@ -222,7 +264,7 @@ describe('a repair writes the status of what it leaves (T10)', () => {
     })
 
     expect(stored('running tool')).toEqual(freshDerivation('running tool'))
-    expect(stored('running tool')).toMatchObject({ status: 'idle' })
+    expect(stored('running tool')).toMatchObject({ lifecycle: 'idle' })
   })
 })
 
@@ -318,16 +360,49 @@ describe('a failed write leaves the fold equal to the disk (T1)', () => {
   })
 })
 
+describe('a stale fold is never read back inside a transaction (R2W-3)', () => {
+  it('keeps a stale fold on the committed epoch through a roll whose COMMIT fails', async () => {
+    const journal = await write('settled')
+    const committedEpoch = journal.epoch
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    // An append fails and its undo fails too: the fold is stale.
+    vi.mocked(JournalFoldUndo.beginJournalFoldUndo).mockImplementationOnce(() => ({
+      commit: () => undefined,
+      rollback: () => {
+        throw new Error('undo failed')
+      }
+    }))
+    failNextCommit()
+    await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')
+    // The next write is a roll, and its COMMIT fails too.
+    vi.restoreAllMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    failNextCommit()
+
+    await expect(journal.rollEpoch('handle_forked', 3)).rejects.toThrow('COMMIT failed')
+
+    expect(journal.epoch).toBe(committedEpoch)
+    expect(loadTestJournal(root, 'settled')?.state.epoch).toBe(committedEpoch)
+    // An acknowledged append lands where every replay reads it.
+    await note(journal, 'after-roll')
+    expect(
+      [...loadTestJournal(root, 'settled')!.state.items.keys()].some((id) =>
+        id.includes('after-roll')
+      )
+    ).toBe(true)
+  })
+})
+
 describe('epoch writes carry the status (T10)', () => {
   it('writes it for a new epoch, a roll and a replacement, in their transactions', async () => {
     const journal = await open('epochs')
-    expect(stored('epochs')).toMatchObject({ status: 'idle', summary: { status: null } })
+    expect(stored('epochs')).toMatchObject({ lifecycle: 'idle', summary: { status: null } })
     await JOURNAL_SESSION_STATE_CORPUS['running tool'](journal)
-    expect(stored('epochs')).toMatchObject({ status: 'running' })
+    expect(stored('epochs')).toMatchObject({ lifecycle: 'running' })
 
     await journal.rollEpoch('unreconcilable_prefix', 3)
     expect(stored('epochs')).toEqual(freshDerivation('epochs'))
-    expect(stored('epochs')).toMatchObject({ status: 'idle' })
+    expect(stored('epochs')).toMatchObject({ lifecycle: 'idle' })
 
     await journal.replaceEpochItems('legacy_import', 3, [
       {

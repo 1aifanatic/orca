@@ -212,12 +212,12 @@ describe('importing a per-chat journal', () => {
 
   // T10: the copy's publish writes the chat's status for the rows it publishes, in the same
   // transaction, replacing whatever described the rows it replaced.
-  it('writes the chat status in the copy publish, for the rows it published', async () => {
+  it('drops the status of the rows the copy replaced, and the open after it writes the status again', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const { db } = openTestJournalHostDatabase(root)
     db.prepare(
-      `INSERT INTO journal_session_state (session_id, status, active_turn_id, handed_over_sends,
+      `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
         queued_sends, live_child_work, summary_json, last_activity_at)
       VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1)`
     ).run(IDENTITY.sessionId)
@@ -227,6 +227,10 @@ describe('importing a per-chat journal', () => {
       identity: IDENTITY,
       legacyDirectory: legacyDir()
     })
+    expect(readTestJournalSessionStatus(root, IDENTITY.sessionId)).toBeNull()
+
+    // As the chat's open does after its replay.
+    ;(await openChat()).backfillSessionStatus()
 
     const loaded = loadTestJournal(root, IDENTITY.sessionId)!
     expect(readTestJournalSessionStatus(root, IDENTITY.sessionId)).toEqual(

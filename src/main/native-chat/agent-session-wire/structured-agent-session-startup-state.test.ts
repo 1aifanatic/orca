@@ -295,7 +295,7 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     for (const sessionId of ['session-crashed', ...unlisted]) {
       // The unanswered send is now recovered doubt, which projects as no running request.
       expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({
-        status: 'idle',
+        lifecycle: 'idle',
         handedOverSends: 0,
         summary: { status: null }
       })
@@ -393,7 +393,7 @@ describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', 
     await rig.host.settleOwedSessions(listed)
 
     expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
-      status: 'idle',
+      lifecycle: 'idle',
       handedOverSends: 0
     })
     expect(rig.host.hasSession('session-closing')).toBe(false)

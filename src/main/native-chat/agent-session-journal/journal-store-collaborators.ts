@@ -85,17 +85,22 @@ export type JournalStoreCollaborators = {
 
 export function createJournalStoreCollaborators(host: JournalStoreHost): JournalStoreCollaborators {
   const statusProjection = new JournalStatusProjection(host.state)
-  const writeStatus = (db: Database.Database, state: JournalReducerState, corrupt: boolean) =>
+  /** `live`: the store's own fold, whose projection the status feed shares; an epoch's new fold
+   *  projects its own. Decided by the caller, so nothing reads the store's fold inside the
+   *  transaction. */
+  const writeStatus = (
+    db: Database.Database,
+    state: JournalReducerState,
+    corrupt: boolean,
+    live: boolean
+  ) =>
     writeJournalSessionStatus(
       db,
       host.identity.sessionId,
       deriveJournalSessionStatus(state, {
         settlesRosters: !corrupt,
         currentFence: host.currentFence(),
-        // The live fold's projection, shared with the status feed; an epoch's new fold has its own.
-        ...(state === host.state()
-          ? { statusSummary: () => statusProjection.at(host.currentFence()).summary }
-          : {})
+        ...(live ? { statusSummary: () => statusProjection.at(host.currentFence()).summary } : {})
       })
     )
   // The open append's undo: what its row changed in the fold, put back if its transaction fails.
@@ -117,7 +122,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       host.setLoadCorrupt(loaded.corrupt)
       host.adopt(loaded)
     },
-    writeState: writeStatus
+    writeState: (db, state, corrupt) => writeStatus(db, state, corrupt, false)
   })
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
@@ -169,7 +174,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
         undo = beginJournalFoldUndo(host.state())
         applyJournalRow(host.state(), row)
       },
-      writeStatus: (db, row) => writeStatus(db, host.state(), corruptAfter(row)),
+      writeStatus: (db, row) => writeStatus(db, host.state(), corruptAfter(row), true),
       committed: (row) => {
         undo?.commit()
         undo = null
@@ -203,16 +208,23 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
 /** Bookkeeping: a failure leaves the chat without a row, which its next open writes again. */
 function backfillSessionStatus(
   host: JournalStoreHost,
-  writeStatus: (db: Database.Database, state: JournalReducerState, corrupt: boolean) => void
+  writeStatus: (
+    db: Database.Database,
+    state: JournalReducerState,
+    corrupt: boolean,
+    live: boolean
+  ) => void
 ): void {
   const database = host.database()
   if (host.readOnly() || database.readOnly || host.importPending()) {
     return
   }
   try {
+    // Read before the transaction: a stale fold is re-read from disk, never inside one.
+    const state = host.state()
     database.transaction((db) => {
       if (!hasJournalSessionStatus(db, host.identity.sessionId)) {
-        writeStatus(db, host.state(), host.loadCorrupt())
+        writeStatus(db, state, host.loadCorrupt(), true)
       }
     })
   } catch (error) {

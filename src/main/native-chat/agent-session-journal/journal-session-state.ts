@@ -12,7 +12,6 @@
 
 import type Database from '../../sqlite/sync-database'
 import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'
-import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
 import {
   projectStructuredAgentSessionStatusState,
   type StructuredAgentSessionStatusProjection
@@ -23,7 +22,7 @@ import { renderJournalState, type JournalReducerState } from './journal-reducer'
 
 /** Work a gone process can have left: running work, a waiting prompt, unanswered or queued sends,
  *  or live child work. Startup settles exactly these chats. */
-const UNSETTLED = `status <> 'idle' OR handed_over_sends > 0 OR queued_sends > 0 OR live_child_work = 1`
+const UNSETTLED = `lifecycle <> 'idle' OR handed_over_sends > 0 OR queued_sends > 0 OR live_child_work = 1`
 
 /** Recreated, empty, by every migration up to version 5: any row it held may predate writes an
  *  older build made, and an open writes a missing row back. */
@@ -32,7 +31,7 @@ export function createJournalSessionStatusTable(db: Database.Database): void {
 DROP TABLE IF EXISTS journal_session_state;
 CREATE TABLE journal_session_state (
   session_id        TEXT    PRIMARY KEY,
-  status            TEXT    NOT NULL,
+  lifecycle         TEXT    NOT NULL,
   active_turn_id    TEXT,
   handed_over_sends INTEGER NOT NULL,
   queued_sends      INTEGER NOT NULL,
@@ -46,8 +45,10 @@ CREATE INDEX journal_session_state_unsettled ON journal_session_state (session_i
 }
 
 export type JournalSessionStatus = {
-  /** `running` covers a starting turn too: the journal records no separate start. */
-  status: 'idle' | 'running' | 'attention'
+  /** What a settle would revise: work still running (a starting turn included: the journal records
+   *  no separate start) or a prompt waiting. Not the status a session list shows, which is
+   *  `summary.status`: that follows the newest turn and counts unanswered sends as working. */
+  lifecycle: 'idle' | 'running' | 'attention'
   activeTurnId: string | null
   handedOverSends: number
   queuedSends: number
@@ -70,8 +71,8 @@ export function deriveJournalSessionStatus(
 ): JournalSessionStatus {
   const facts = journalSettlementFacts(state, input)
   return {
-    status: facts.runningWork ? 'running' : facts.pendingPrompts ? 'attention' : 'idle',
-    activeTurnId: activeStructuredAgentSessionTurnIdBySequence(state.items.values()),
+    lifecycle: facts.runningWork ? 'running' : facts.pendingPrompts ? 'attention' : 'idle',
+    activeTurnId: facts.activeTurnId,
     handedOverSends: facts.handedOverSends,
     queuedSends: facts.queuedSends,
     liveChildWork: facts.liveChildWork,
@@ -93,22 +94,22 @@ function projectSummary(
 
 export function isUnsettledJournalSessionStatus(status: JournalSessionStatus): boolean {
   return (
-    status.status !== 'idle' ||
+    status.lifecycle !== 'idle' ||
     status.handedOverSends > 0 ||
     status.queuedSends > 0 ||
     status.liveChildWork
   )
 }
 
-const UPSERT_STATUS = `INSERT INTO journal_session_state (session_id, status, active_turn_id,
+const UPSERT_STATUS = `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id,
   handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
-  status = excluded.status, active_turn_id = excluded.active_turn_id,
+  lifecycle = excluded.lifecycle, active_turn_id = excluded.active_turn_id,
   handed_over_sends = excluded.handed_over_sends, queued_sends = excluded.queued_sends,
   live_child_work = excluded.live_child_work, summary_json = excluded.summary_json,
   last_activity_at = excluded.last_activity_at`
-const STATUS_COLUMNS = `st.status AS status, st.active_turn_id AS active_turn_id,
+const STATUS_COLUMNS = `st.lifecycle AS lifecycle, st.active_turn_id AS active_turn_id,
   st.handed_over_sends AS handed_over_sends, st.queued_sends AS queued_sends,
   st.live_child_work AS live_child_work, st.summary_json AS summary_json,
   st.last_activity_at AS last_activity_at`
@@ -121,7 +122,7 @@ export function writeJournalSessionStatus(
 ): void {
   db.prepare(UPSERT_STATUS).run(
     sessionId,
-    status.status,
+    status.lifecycle,
     status.activeTurnId,
     status.handedOverSends,
     status.queuedSends,
@@ -142,6 +143,10 @@ export function writeJournalSessionStatusFromDisk(db: Database.Database, session
       deriveJournalSessionStatus(loaded.state, { settlesRosters: !loaded.corrupt })
     )
   }
+}
+
+export function deleteJournalSessionStatus(db: Database.Database, sessionId: string): void {
+  db.prepare('DELETE FROM journal_session_state WHERE session_id = ?').run(sessionId)
 }
 
 /** Whether the chat has a status row: an open writes one for a chat an older build last wrote. */
@@ -193,13 +198,13 @@ export function readUnsettledJournalSessionIds(db: Database.Database): string[] 
     .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
 }
 
-const STATUSES = ['idle', 'running', 'attention'] as const
+const LIFECYCLES = ['idle', 'running', 'attention'] as const
 
 function parseStatusRow(row: Record<string, unknown>): JournalSessionStatus | null {
-  const status = STATUSES.find((known) => known === row.status)
+  const lifecycle = LIFECYCLES.find((known) => known === row.lifecycle)
   const summary = parseSummary(row.summary_json)
   if (
-    !status ||
+    !lifecycle ||
     !summary ||
     typeof row.handed_over_sends !== 'number' ||
     typeof row.queued_sends !== 'number' ||
@@ -208,7 +213,7 @@ function parseStatusRow(row: Record<string, unknown>): JournalSessionStatus | nu
     return null
   }
   return {
-    status,
+    lifecycle,
     activeTurnId: typeof row.active_turn_id === 'string' ? row.active_turn_id : null,
     handedOverSends: row.handed_over_sends,
     queuedSends: row.queued_sends,
