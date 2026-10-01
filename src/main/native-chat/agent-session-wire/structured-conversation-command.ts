@@ -96,6 +96,7 @@ export function runStructuredConversationCommand(
           const blocked = conversationCommandBlocked(
             ctx,
             record,
+            context.readChildWork(sessionId),
             context.sessions.get(sessionId)?.child ? undefined : 'at-rest'
           )
           if (blocked) {
