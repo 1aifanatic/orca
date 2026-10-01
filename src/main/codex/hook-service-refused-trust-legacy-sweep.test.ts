@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
+import {
+  computeTrustKey,
+  computeTrustedHash,
+  readHookTrustEntriesFromContent,
+  type CodexTrustEntry
+} from './config-toml-trust'
 import { setupCodexHookHomes } from './hook-service-test-harness'
 
 const { getPathMock, homedirMock } = vi.hoisted(() => ({
@@ -38,49 +44,74 @@ function retiredManagedHookCommand(): string {
 
 type HooksFile = { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
 
-function seedRetiredEntryAheadOfUserHook(): { hooksPath: string; tomlPath: string; toml: string } {
+type Seeded = {
+  hooksPath: string
+  tomlPath: string
+  hooks: string
+  toml: string
+  userAtOne: CodexTrustEntry
+  userAtZero: CodexTrustEntry
+  retired: CodexTrustEntry
+}
+
+function trustBlock(entry: CodexTrustEntry): string {
+  return [
+    `[hooks.state."${computeTrustKey(entry).replaceAll('\\', '\\\\')}"]`,
+    `trusted_hash = "${computeTrustedHash(entry)}"`
+  ].join('\n')
+}
+
+/** A retired Orca entry ahead of a user hook, both trusted, in a config.toml headed by `firstLine`. */
+function seedRetiredEntryAheadOfUserHook(firstLine: string): Seeded {
   const systemCodexHome = join(homes.tmpHome, '.codex')
   const hooksPath = join(systemCodexHome, 'hooks.json')
   const tomlPath = join(systemCodexHome, 'config.toml')
   mkdirSync(systemCodexHome, { recursive: true })
-  writeFileSync(
-    hooksPath,
-    `${JSON.stringify(
-      {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: 'command', command: retiredManagedHookCommand() }] },
-            { hooks: [{ type: 'command', command: 'user-stop-hook', timeout: 30 }] }
-          ]
-        }
-      },
-      null,
-      2
-    )}\n`,
-    'utf-8'
-  )
-  // Why `model =`: a hand-broken line no repair may touch, so every config.toml write is refused.
-  const toml = [
-    'model =',
-    '',
-    `[hooks.state."${hooksPath.replaceAll('\\', '\\\\')}:stop:1:0"]`,
-    'trusted_hash = "sha256:user"',
-    ''
-  ].join('\n')
+  const userHook = { type: 'command', command: 'user-stop-hook', timeout: 30 }
+  const hooks = `${JSON.stringify(
+    {
+      hooks: {
+        Stop: [
+          { hooks: [{ type: 'command', command: retiredManagedHookCommand() }] },
+          { hooks: [userHook] }
+        ]
+      }
+    },
+    null,
+    2
+  )}\n`
+  writeFileSync(hooksPath, hooks, 'utf-8')
+  const base = { sourcePath: hooksPath, eventLabel: 'stop' as const, handlerIndex: 0 }
+  const retired = { ...base, groupIndex: 0, command: retiredManagedHookCommand() }
+  const userAtOne = { ...base, groupIndex: 1, command: userHook.command, timeoutSec: 30 }
+  const toml = [firstLine, '', trustBlock(retired), '', trustBlock(userAtOne), ''].join('\n')
   writeFileSync(tomlPath, toml, 'utf-8')
-  return { hooksPath, tomlPath, toml }
+  return {
+    hooksPath,
+    tomlPath,
+    hooks,
+    toml,
+    userAtOne,
+    userAtZero: { ...userAtOne, groupIndex: 0 },
+    retired
+  }
 }
 
-function moveRefusalWarnings(warn: ReturnType<typeof vi.spyOn>): unknown[][] {
+function warnings(warn: ReturnType<typeof vi.spyOn>, text: string): unknown[][] {
   return warn.mock.calls.filter(
-    ([message]) =>
-      typeof message === 'string' && message.includes('Skipped moving shifted user hook trust')
+    ([message]) => typeof message === 'string' && message.includes(text)
   )
 }
+
+const HOOK_SETTINGS = [
+  ['hooks on', true],
+  ['hooks off', false]
+] as const
 
 // Why: the managed mirror copies a hand-broken ~/.codex/config.toml, so its trust
-// write is refused first; that refusal must not skip the sweep of ~/.codex/hooks.json.
-describe('CodexHookService legacy sweep after a refused trust write', () => {
+// write is refused first; the ~/.codex sweep must still run, and while the trust it
+// shifts cannot move, it must wait rather than strand the user's approval.
+describe('CodexHookService retired-entry sweep while config.toml is unreadable', () => {
   let warn: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -89,31 +120,45 @@ describe('CodexHookService legacy sweep after a refused trust write', () => {
     warn.mockRestore()
   })
 
-  it.each([
-    ['hooks on', true],
-    ['hooks off', false]
-  ])(
-    'with %s, removes the retired entry and refuses the trust move once',
+  it.each(HOOK_SETTINGS)('with %s, waits and logs once', async (_label, hooksEnabled) => {
+    // Why `model =`: a hand-broken line no repair may touch.
+    const seeded = seedRetiredEntryAheadOfUserHook('model =')
+    const service = new CodexHookService()
+
+    for (let launch = 0; launch < 2; launch++) {
+      const status = await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
+      expect(status.state).toBe('error')
+      expect(status.detail).not.toContain('..')
+      expect(status.detail).not.toContain('Run /hooks')
+    }
+
+    expect(readFileSync(seeded.hooksPath, 'utf-8')).toBe(seeded.hooks)
+    expect(readFileSync(seeded.tomlPath, 'utf-8')).toBe(seeded.toml)
+    expect(warnings(warn, 'Waiting to remove retired Orca hook entries')).toHaveLength(1)
+    expect(warnings(warn, 'failed to clean legacy Codex hooks')).toHaveLength(0)
+  })
+
+  it.each(HOOK_SETTINGS)(
+    'with %s, sweeps and moves the approval once the file is fixed',
     async (_label, hooksEnabled) => {
-      const { hooksPath, tomlPath, toml } = seedRetiredEntryAheadOfUserHook()
+      const seeded = seedRetiredEntryAheadOfUserHook('model =')
       const service = new CodexHookService()
+      await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
 
-      const first = await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
+      writeFileSync(seeded.tomlPath, seeded.toml.replace('model =', 'model = "gpt-5"'), 'utf-8')
+      await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
 
-      expect(first.state).toBe('error')
-      expect(first.detail).not.toContain('..')
-      expect(first.detail).not.toContain('Run /hooks')
-      const hooks = JSON.parse(readFileSync(hooksPath, 'utf-8')) as HooksFile
+      const hooks = JSON.parse(readFileSync(seeded.hooksPath, 'utf-8')) as HooksFile
       expect(hooks.hooks.Stop).toEqual([
         { hooks: [{ type: 'command', command: 'user-stop-hook', timeout: 30 }] }
       ])
-      expect(readFileSync(tomlPath, 'utf-8')).toBe(toml)
-      expect(moveRefusalWarnings(warn)).toHaveLength(1)
-
-      seedRetiredEntryAheadOfUserHook()
-      await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
-
-      expect(moveRefusalWarnings(warn)).toHaveLength(1)
+      const toml = readFileSync(seeded.tomlPath, 'utf-8')
+      const trust = readHookTrustEntriesFromContent(toml)
+      expect(trust.get(computeTrustKey(seeded.userAtZero))?.trustedHash).toBe(
+        computeTrustedHash(seeded.userAtOne)
+      )
+      expect(trust.has(computeTrustKey(seeded.userAtOne))).toBe(false)
+      expect(toml).not.toContain(computeTrustedHash(seeded.retired))
     }
   )
 })
