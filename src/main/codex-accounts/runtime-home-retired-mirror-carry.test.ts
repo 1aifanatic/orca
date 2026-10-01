@@ -15,6 +15,7 @@ import {
   teardownRuntimeHomeTest,
   testState
 } from './runtime-home-service-test-harness'
+import { LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER } from './legacy-shared-auth-migration'
 import { RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
 import type { CodexRuntimeHomeService } from './runtime-home-service'
 import type { GlobalSettings } from '../../shared/global-settings-types'
@@ -160,6 +161,27 @@ describe('retiring the Windows system-default mirror', () => {
     expect(existsSync(getSystemCodexAuthPath())).toBe(false)
     expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
   })
+
+  it.each(['migrated', 'per-account-present'])(
+    "keeps MCP credentials a managed account's migration claimed (%s) out of ~/.codex",
+    async (outcome) => {
+      await launchOnMirror()
+      writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'managed-mcp', 'utf-8')
+      writeFileSync(
+        join(
+          testState.userDataDir,
+          'codex-runtime-home',
+          LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER
+        ),
+        JSON.stringify({ completedAt: 1, outcome, accountId: 'account-1' })
+      )
+
+      await upgradeToRealHome()
+
+      expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
+      expect(existsSync(getMarkerPath())).toBe(true)
+    }
+  )
 
   it('runs once: a later mirror-lane launch does not reopen the migration', async () => {
     await launchOnMirror()

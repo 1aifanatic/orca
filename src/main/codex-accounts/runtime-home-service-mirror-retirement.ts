@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from '../codex/codex-home-paths'
 import { writeFileAtomicallyIfUnchanged } from './fs-utils'
+import { isLegacySharedMcpCredentialsClaimedByManagedAccount } from './legacy-shared-auth-migration'
 import { carryRetiredMirrorConfig, RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
 import { CodexRuntimeHomeAuthSync } from './runtime-home-service-auth-sync'
 
@@ -39,7 +40,10 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
     const systemHomePath = getSystemCodexHomePath()
     mkdirSync(systemHomePath, { recursive: true, mode: 0o700 })
     const mirrorCredentials = join(this.getRuntimeHomePath(), '.credentials.json')
-    if (existsSync(mirrorCredentials)) {
+    if (
+      existsSync(mirrorCredentials) &&
+      !isLegacySharedMcpCredentialsClaimedByManagedAccount(this.getRuntimeMetadataDir())
+    ) {
       const contents = readFileSync(mirrorCredentials, 'utf-8')
       writeFileAtomicallyIfUnchanged(join(systemHomePath, '.credentials.json'), null, contents, {
         mode: 0o600
