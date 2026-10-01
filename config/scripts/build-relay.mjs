@@ -179,18 +179,6 @@ async function buildRelayBundles(outDir) {
     define: { 'process.env.NODE_ENV': '"production"' }
   })
 
-  await build({
-    entryPoints: [join(ROOT, 'src/main/claude-accounts/claude-profile-wsl-entry.ts')],
-    bundle: true,
-    platform: 'node',
-    target: 'node18',
-    format: 'cjs',
-    outfile: join(outDir, 'claude-profile-wsl.cjs'),
-    external: ['electron'],
-    minify: true,
-    define: { 'process.env.NODE_ENV': '"production"' }
-  })
-
   // Why beside the service: the spawn resolves this child next to its own
   // bundle, and a relay host has no desktop out/main to fall back to.
   await build({
@@ -355,6 +343,19 @@ for (const platform of RELAY_BUILD_PLATFORMS) {
     .slice(0, 12)
   writeFileSync(join(outDir, '.browser-network-version'), `${RELAY_VERSION}+${browserNetworkHash}`)
   console.log(`Built WSL browser network relay → ${outDir}/wsl-browser-network-relay.js`)
+
+  // Why here, not the relay dirs: only the desktop runs it, inside WSL; SSH hosts never upload it.
+  await build({
+    entryPoints: [join(ROOT, 'src/main/claude-accounts/claude-profile-wsl-entry.ts')],
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'cjs',
+    outfile: join(outDir, 'claude-profile-wsl.cjs'),
+    external: ['electron'],
+    minify: true,
+    define: { 'process.env.NODE_ENV': '"production"' }
+  })
 }
 
 console.log('Relay build complete.')
