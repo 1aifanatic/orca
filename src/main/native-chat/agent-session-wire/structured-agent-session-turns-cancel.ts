@@ -32,6 +32,22 @@ export async function isMainAgentWorkingOnceFlushed(
   )
 }
 
+/**
+ * After an interrupt that failed: whether the session still runs what the Stop was sent for. One at
+ * rest, or running a different turn, is not the Stop's to end. A child that exited reads at rest:
+ * its exit ends its turn, and the host's own exit handling waits behind this step.
+ */
+async function stillRunsStoppedTurn(
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
+  stoppedTurnId: string | null
+): Promise<boolean> {
+  if (!(await isMainAgentWorkingOnceFlushed(ctx))) {
+    return false
+  }
+  const activeTurnId = ctx.journal.activeTurnId()
+  return stoppedTurnId === null || activeTurnId === null || activeTurnId === stoppedTurnId
+}
+
 /** What a Stop that ends the provider's session leaves its next serialized step: whether the
  *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
  *  out. No turn id: that step runs right behind the Stop, so no later turn can slip in between. */
@@ -68,8 +84,11 @@ export async function performCancel(
     scope?: 'background-tasks'
     taskId?: string
     prompt?: { itemId: string; expectedRevision: number }
-    /** Ends the provider child, for a running command the provider did not take the Stop on. */
+    /** Ends the provider child, for a running command the provider did not take the Stop on, or a
+     *  turn whose interrupt failed. */
     stopChild?: () => Promise<void>
+    /** A child end after a failed interrupt that did not prove the exit. */
+    onStopChildError?: (error: unknown) => void
     /** Hands the child's end to the Stop's next serialized step, for a provider whose Stop ends
      *  its session. */
     endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
@@ -106,6 +125,8 @@ export async function performCancel(
   const stoppedAt = Date.now()
   // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
   let taken: boolean | undefined
+  // The provider refused the interrupt, or its cancel threw.
+  let interruptFailed = false
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     const outcome: AgentSessionCancelOutcome = stoppedBefore
@@ -132,6 +153,7 @@ export async function performCancel(
           })
     taken = outcome.cancelled
     cancelled = outcome.cancelled
+    interruptFailed = outcome.refusal !== undefined
     if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
@@ -156,6 +178,7 @@ export async function performCancel(
     if (input.prompt) {
       throw error
     }
+    interruptFailed = true
     // The adapter's error is Orca's; the row says only that the stop is unconfirmed.
     note = {
       kind: 'status',
@@ -180,6 +203,22 @@ export async function performCancel(
     await input.stopChild?.()
     cancelled = true
     note = { kind: 'status', text: 'Cancellation requested.' }
+  } else if (
+    !cancelled &&
+    interruptFailed &&
+    input.stopChild &&
+    // An unnamed Stop meant the turn the journal showed when it was sent.
+    (await stillRunsStoppedTurn(ctx, input.turnId ?? liveTurnId))
+  ) {
+    // The interrupt failed and the turn runs on: only the child's end stops it.
+    try {
+      await input.stopChild()
+      cancelled = true
+      note = { kind: 'status', text: 'Cancellation requested.' }
+    } catch (error) {
+      // The child may still be running the turn, so the failed interrupt's row stays true.
+      input.onStopChildError?.(error)
+    }
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()

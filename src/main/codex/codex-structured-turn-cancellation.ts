@@ -7,8 +7,9 @@ import type { CodexJournalTranslationAdmission } from './codex-structured-journa
 
 /**
  * Codex answers a turn's interrupt only as that turn ends, so the answer is what confirms the
- * Stop. The interrupt is the whole Stop: Codex kills the turn's one-shot commands itself and keeps
- * its background terminals running until the thread ends.
+ * Stop. An answered interrupt is the whole Stop: Codex kills the turn's one-shot commands itself
+ * and keeps its background terminals running until the thread ends. A refused or failed one leaves
+ * the host to end the child (`performCancel`).
  */
 export async function interruptCodexTurn(input: {
   session: CodexSession
