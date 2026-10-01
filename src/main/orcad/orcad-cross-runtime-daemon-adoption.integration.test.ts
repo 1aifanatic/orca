@@ -91,6 +91,7 @@ const missing = [
 let root = ''
 let client = ''
 let backupDriver = ''
+let bunProtocolVersion = 0
 const launched = new Set<number>()
 
 /** Without Vitest's markers: daemon-entry.js does not start its server under VITEST. */
@@ -254,6 +255,22 @@ async function backUpProfile(slot: Slot, runtime: string, userDataDir: string): 
   expect(JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '')).toEqual({ ok: true })
 }
 
+/** The protocol the Bun slot's own daemon reports, read from a throwaway launch. */
+async function probeBunDaemonProtocol(): Promise<number> {
+  const probeRoot = mkdtempSync(join(root, 'bun-probe-'))
+  const slot = installSlot(probeRoot, 'Bun', bunSlotSource!)
+  const daemon = (await launch(slot, join(probeRoot, 'data'))).health!.terminalDaemon
+  try {
+    await stop(slot)
+  } finally {
+    if (daemon.pid && isAlive(daemon.pid)) {
+      process.kill(daemon.pid, 'SIGKILL')
+    }
+  }
+  expect(daemon).toMatchObject({ state: 'live', protocolVersion: expect.any(Number) })
+  return daemon.protocolVersion!
+}
+
 // Windows has no orcad launch path (POSIX-only, orcad-remote-host-support.ts), so no inputs.
 const skip = skipForMissingInputs('cross-runtime', posix ? missing : [])
 
@@ -321,7 +338,8 @@ worker.on('error', (error) => { console.error(error); process.exitCode = 1 })
       outfile: client,
       logLevel: 'silent'
     })
-  })
+    bunProtocolVersion = await probeBunDaemonProtocol()
+  }, 180_000)
 
   afterEach(() => {
     for (const pid of launched) {
@@ -336,12 +354,19 @@ worker.on('error', (error) => { console.error(error); process.exitCode = 1 })
     removeTreeSync(root)
   })
 
-  it.each([
+  it.for([
     ['Bun', 'Node'],
     ['Node', 'Bun']
   ] as const)(
     '%s orcad hands its daemon and profile to the %s orcad',
-    async (from: Runtime, to: Runtime) => {
+    { timeout: 240_000 },
+    async ([from, to], context) => {
+      // A daemon at another protocol is never adopted across an update, so there is no hand-over.
+      if (bunProtocolVersion !== PROTOCOL_VERSION) {
+        context.skip(
+          `the Bun orcad's daemon speaks protocol ${bunProtocolVersion}, this checkout ${PROTOCOL_VERSION}`
+        )
+      }
       const caseRoot = mkdtempSync(join(root, `${from}-${to}-`))
       const userDataDir = join(caseRoot, 'data')
       const { slots, nodeRuntime } = installSlots(caseRoot)
@@ -426,7 +451,6 @@ worker.on('error', (error) => { console.error(error); process.exitCode = 1 })
           process.kill(daemonPid, 'SIGKILL')
         }
       }
-    },
-    240_000
+    }
   )
 })
