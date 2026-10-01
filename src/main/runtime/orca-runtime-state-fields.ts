@@ -81,7 +81,10 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
         connectionId: string | null
         terminalProvenance: 'current_runtime' | 'restored'
       }) => AgentHookAuthorityAttestation | null
-      retireAgentHookCompatibilityAuthority?: (paneKey: string) => void
+      retireAgentHookCompatibilityAuthority?: (
+        paneKey: string,
+        options?: { authorityOnly?: boolean; preserveResumeIdentity?: boolean }
+      ) => void
       checkHookAgentPresence?: (
         paneKey: string
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>

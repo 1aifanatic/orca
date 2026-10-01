@@ -83,6 +83,15 @@ with them would be the wrong direction. So the design is not "add a store". It
 is: **route the two producers that bypass the hook server through it, then
 delete the copies.**
 
+## Removing a row
+
+Every host row removal notifies every reader in the same step: a teardown or an ended process
+emits the pane clear, a dismissal emits the status drop. Launch-authority retirement is no
+exception. A command end (OSC 133;D) ends a pane's launch authority at once, because every later
+process in that shell inherits the token, but it removes the pane's rows only after the agent's
+exit is verified (a shell in the foreground, or the hook's own process gone). `unverifiable`
+keeps the rows.
+
 ## PR 1a: structured sessions publish into the store
 
 No renderer behavior changes. The sidebar keeps receiving the same IPC events

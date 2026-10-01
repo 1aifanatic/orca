@@ -23,6 +23,7 @@ import type { FleetAgentStatusEvidence } from '../../shared/orchestration-fleet-
 import { readOrchestrationFleetAgentStatusSnapshot } from './orchestration-fleet-agent-status-snapshot'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { matchesProcessIncarnation } from './orchestration/worker-terminal-process-liveness'
+import { verifyCommandEndAgentExit } from './command-end-agent-exit-verdict'
 
 export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller {
   /** Every pane key this PTY could be addressed by, including restored receipts. */
@@ -125,7 +126,20 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     }
   }
 
-  protected retirePtyAgentLaunchAuthority(ptyId: string): void {
+  /** The launch token this runtime still honours for a pane's PTY; null when it has no live PTY there. */
+  readPaneLaunchAuthority(paneKey: string): { launchTokenHash: string | null } | null {
+    const pty = this.getPtyRecordForPaneKey(paneKey)
+    if (!pty?.connected) {
+      return null
+    }
+    return {
+      launchTokenHash: pty.launchToken
+        ? createHash('sha256').update(pty.launchToken).digest('hex')
+        : null
+    }
+  }
+
+  protected retirePtyAgentLaunchAuthority(ptyId: string, ended: 'command' | 'pty'): void {
     const pty = this.ptysById.get(ptyId)
     if (!pty) {
       return
@@ -141,8 +155,46 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     pty.launchToken = null
     pty.launchIncarnationId = null
     pty.launchAgent = null
+    if (ended === 'pty') {
+      for (const paneKey of paneKeys) {
+        this.retireAgentHookCompatibilityAuthorityFn?.(paneKey)
+      }
+      return
+    }
+    // Why authority now and rows later: the launch token lives on in the shell's environment, but
+    // a 133;D alone never proves the agent exited — a full-screen agent's nested shells leak one.
     for (const paneKey of paneKeys) {
-      this.retireAgentHookCompatibilityAuthorityFn?.(paneKey)
+      this.retireAgentHookCompatibilityAuthorityFn?.(paneKey, { authorityOnly: true })
+    }
+    void this.retirePaneRowsAfterVerifiedAgentExit(pty, paneKeys)
+  }
+
+  protected async retirePaneRowsAfterVerifiedAgentExit(
+    pty: RuntimePtyWorktreeRecord,
+    paneKeys: Set<string>
+  ): Promise<void> {
+    const { ptyId, incarnationId } = pty
+    const controller = this.ptyController
+    const verdict = await verifyCommandEndAgentExit(paneKeys, {
+      readForegroundProcess: async () =>
+        controller
+          ? await (controller.confirmForegroundProcess?.(ptyId) ??
+              controller.getForegroundProcess(ptyId))
+          : null,
+      checkHookAgentPresence: async (paneKey) =>
+        (await this.checkHookAgentPresenceFn?.(paneKey)) ?? null
+    })
+    // Why: a PTY exit or respawn meanwhile settles the pane through its own teardown.
+    if (this.ptysById.get(ptyId) !== pty || !pty.connected || pty.incarnationId !== incarnationId) {
+      return
+    }
+    if (verdict === 'exited') {
+      // The shell outlived its agent, so the session stays resumable in place.
+      for (const paneKey of paneKeys) {
+        this.retireAgentHookCompatibilityAuthorityFn?.(paneKey, { preserveResumeIdentity: true })
+      }
+    } else if (verdict === 'unverifiable') {
+      console.warn('[agent-status] command end: agent exit unverifiable; pane rows kept', { ptyId })
     }
   }
 

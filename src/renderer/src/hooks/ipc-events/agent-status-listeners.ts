@@ -81,11 +81,9 @@ export function registerAgentStatusListeners(args: {
           pendingAgentStatusEvents.splice(index, 1)
         }
       }
-      const store = useAppStore.getState()
-      if (store.agentStatusByPaneKey[data.paneKey]?.state === 'done') {
-        return
-      }
-      store.removeAgentStatus(data.paneKey)
+      // Why no Done exemption: the host clears a pane only when its agent ended or the pane went
+      // away, and an exited agent is not waiting on the user. Retention is presentation policy.
+      useAppStore.getState().removeAgentStatus(data.paneKey)
     }
   )
   if (unsubscribeAgentStatusClear) {

@@ -8,7 +8,44 @@ import type {
 } from './server-types'
 import { AgentHookServerStatusRetries } from './server-status-retries'
 
+/** What the runtime holds for a pane's PTY: the hash of the launch token it still honours, or null
+ *  once that authority ended. Null overall when the runtime has no PTY for the pane. */
+export type PaneLaunchAuthorityReader = (
+  paneKey: string
+) => { launchTokenHash: string | null } | null
+
 export abstract class AgentHookServerAuthorityEvidence extends AgentHookServerStatusRetries {
+  private paneLaunchAuthorityReader: PaneLaunchAuthorityReader | null = null
+
+  setPaneLaunchAuthorityReader(reader: PaneLaunchAuthorityReader | null): void {
+    this.paneLaunchAuthorityReader = reader
+  }
+
+  protected withLiveLaunchToken<T extends { paneKey: string; launchToken?: string }>(event: T): T {
+    const launchToken = this.liveLaunchToken(event.paneKey, event.launchToken)
+    return launchToken === event.launchToken ? event : { ...event, launchToken }
+  }
+
+  /** The event's launch token, or undefined once its authority ended. Every process a shell starts
+   *  inherits the token, so after a command end it proves nothing; a token is honoured while the
+   *  runtime still holds it for the pane or a commitment of this host still vouches for it.
+   *  Derived from that state, never stored: a pane the runtime does not know keeps today's rule. */
+  protected liveLaunchToken(paneKey: string, launchToken: string | undefined): string | undefined {
+    const token = launchToken?.trim()
+    const runtime = token ? this.paneLaunchAuthorityReader?.(paneKey) : null
+    if (!token || !runtime) {
+      return launchToken
+    }
+    const launchTokenHash = createHash('sha256').update(token).digest('hex')
+    const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
+    return runtime.launchTokenHash === launchTokenHash ||
+      this.persistedAuthorityCommitmentsByPaneKey.get(ownerPaneKey)?.launchTokenHash ===
+        launchTokenHash ||
+      this.hydratedLaunchTokenHashByPaneKey.get(ownerPaneKey) === launchTokenHash
+      ? launchToken
+      : undefined
+  }
+
   attestCompatibilityAuthority(candidate: {
     paneKey: string
     launchTokenHash: string

@@ -115,8 +115,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
       agentHookServer.getStatusSnapshotForPane(paneKey),
     attestAgentHookCompatibilityAuthority: (candidate) =>
       agentHookServer.attestCompatibilityAuthority(candidate),
-    retireAgentHookCompatibilityAuthority: (paneKey) =>
-      agentHookServer.retirePaneAuthority(paneKey),
+    retireAgentHookCompatibilityAuthority: (paneKey, options) =>
+      agentHookServer.retirePaneAuthority(paneKey, undefined, options),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys),
@@ -163,6 +163,10 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   })
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
+  // Why: the runtime owns which launch token a pane still honours; ingest derives from it.
+  agentHookServer.setPaneLaunchAuthorityReader((paneKey) =>
+    runtime.readPaneLaunchAuthority(paneKey)
+  )
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )

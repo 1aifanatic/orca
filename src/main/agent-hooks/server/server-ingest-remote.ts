@@ -264,7 +264,10 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
       ...(restartedAuthority?.authorityRestartId
         ? { authorityRestartId: restartedAuthority.authorityRestartId }
         : {}),
-      launchToken: statusDisposition === 'restart' ? undefined : envelope.launchToken,
+      launchToken:
+        statusDisposition === 'restart'
+          ? undefined
+          : this.liveLaunchToken(paneKey, envelope.launchToken),
       tabId,
       worktreeId,
       connectionId: trimmedConnectionId,

@@ -27,6 +27,49 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     return { ...resumeIdentity, providerSessionOnly: true, retainedForLiveness: true }
   }
 
+  protected admitResumeIdentityRemnant(
+    row: EnrichedAgentHookEventPayload
+  ): EnrichedAgentHookEventPayload | null {
+    const retained = this.toRetainedProviderSessionRow(row)
+    if (retained) {
+      admitLegacyAgentStatus(
+        this.state,
+        'main-status-cleanup',
+        retained,
+        AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+      )
+    }
+    return retained
+  }
+
+  /** The launch token lives on in the shell's environment after its command ends, so its authority
+   *  must end now even while the agent may still run: forget what vouched for it, and strip it from
+   *  kept rows so a restart cannot rehydrate it. Ingest then derives that the token is dead. */
+  protected revokePaneLaunchAuthority(paneKey: string): void {
+    const paneKeys = new Set([paneKey, this.resolvePaneKeyAlias(paneKey)])
+    let changed = this.revokeHydratedAuthorityForPaneKeys(paneKeys)
+    for (const key of paneKeys) {
+      changed = this.currentAuthorityObservations.delete(key) || changed
+      const row = this.state.lastStatusByPaneKey.get(key) as
+        | EnrichedAgentHookEventPayload
+        | undefined
+      if (row?.launchToken) {
+        const { launchToken: _launchToken, ...withoutToken } = row
+        admitLegacyAgentStatus(
+          this.state,
+          'main-status-cleanup',
+          withoutToken,
+          AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+        )
+        changed = true
+      }
+    }
+    if (changed) {
+      this.scheduleStatusPersist()
+      this.notifyStatusChangeListeners()
+    }
+  }
+
   /** Drop only the status row (user dismissal); do NOT wipe prompt/tool caches since the pane's agent may still be alive. Use clearPaneState for PTY-teardown. */
   dropStatusEntry(
     paneKey: string,

@@ -8,8 +8,29 @@ import type {
 } from './server-types'
 
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
+  /** Re-admits a dropped row's resume identity; null when it carried no resumable session. */
+  protected abstract admitResumeIdentityRemnant(
+    row: EnrichedAgentHookEventPayload
+  ): EnrichedAgentHookEventPayload | null
+
+  /** Ends only the launch authority a pane's rows vouch for; rows and status fences stay. */
+  protected abstract revokePaneLaunchAuthority(paneKey: string): void
+
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.
-  retirePaneAuthority(paneKey: string, retirementId?: string): void {
+  retirePaneAuthority(
+    paneKey: string,
+    retirementId?: string,
+    options?: {
+      /** A command end: the agent may still be alive, so only its launch authority ends now. */
+      authorityOnly?: boolean
+      /** The pane's shell outlived its agent; keep the remnant as the ended-process clear does. */
+      preserveResumeIdentity?: boolean
+    }
+  ): void {
+    if (options?.authorityOnly) {
+      this.revokePaneLaunchAuthority(paneKey)
+      return
+    }
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
     const previousFence = this.retiredPaneFencesByKey.get(ownerPaneKey)
     const paneKeys = new Set([paneKey, ownerPaneKey])
@@ -64,11 +85,18 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.notifyPaneKeyAliasPersistenceListener()
     }
     for (const row of retiredRows) {
-      this.commitStatusRowMutation(row, undefined)
+      const retained = options?.preserveResumeIdentity ? this.admitResumeIdentityRemnant(row) : null
+      this.commitStatusRowMutation(row, retained)
     }
     if (hadStatus || authorityChanged) {
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
+    }
+    // Why: a removal every reader must hear, like any other pane clear; readers never saw a remnant.
+    for (const row of retiredRows) {
+      if (row.providerSessionOnly !== true) {
+        this.emitPaneStatusCleared({ paneKey: row.paneKey })
+      }
     }
   }
 
