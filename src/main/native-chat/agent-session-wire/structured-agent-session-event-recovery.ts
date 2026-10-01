@@ -1,11 +1,10 @@
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import {
-  stopAgentSessionProviderRoot,
-  type StructuredAgentSessionLifecycleEvent
-} from './structured-agent-session-adapter'
+import { stopAgentSessionProviderRoot } from './structured-agent-session-adapter'
+import type { StructuredAgentSessionLifecycleEvent } from './structured-agent-session-lifecycle-event'
 import type {
   StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession
+  StructuredAgentSessionHostSession,
+  StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import { settleStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
@@ -25,6 +24,10 @@ export class StructuredAgentSessionEventRecovery {
       serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
       now: () => number
       onBarrierError: (sessionId: string, error: unknown) => void
+      finishStopAfterExit: (
+        sessionId: string,
+        child: StructuredAgentSessionProviderChildIdentity
+      ) => Promise<void>
     }
   ) {}
 
@@ -67,6 +70,12 @@ export class StructuredAgentSessionEventRecovery {
   async handle(event: StructuredAgentSessionLifecycleEvent): Promise<void> {
     if (event.type === 'started') {
       return settleStructuredAgentSessionProviderStarted(this.context, event)
+    }
+    if (event.type === 'exitAfterClose') {
+      return this.context.finishStopAfterExit(event.sessionId, {
+        generation: event.acquisitionGeneration,
+        fence: event.fence
+      })
     }
     await settleUnexpectedStructuredAgentSessionExit(this.context, event)
   }

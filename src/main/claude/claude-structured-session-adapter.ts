@@ -32,6 +32,7 @@ import { claudeStoppedRequestEndWait } from './claude-request-end-wait'
 import {
   drainClaudeObservedExits,
   observeClaudeSessionExit,
+  reportClaudeExitAfterClose,
   settleClaudeUnexpectedExit,
   type ClaudeExitLifecycle
 } from './claude-structured-session-exit-lifecycle'
@@ -96,6 +97,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         emit: (session, _events, event) => this.emit(session, event),
         handleExit: (sessionId, attempt, error) =>
           observeClaudeSessionExit(this.exitLifecycle, sessionId, attempt, error),
+        handleExitAfterClose: (sessionId, attempt) =>
+          reportClaudeExitAfterClose(this.exitLifecycle, sessionId, attempt),
         settleExit: (sessionId, exit) =>
           settleClaudeUnexpectedExit(this.exitLifecycle, sessionId, exit)
       }

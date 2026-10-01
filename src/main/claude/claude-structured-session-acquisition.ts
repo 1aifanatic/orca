@@ -205,7 +205,8 @@ export async function acquireClaudeSession({
             childEnded ??= error
             initProof.reject(error)
             callbacks.handleExit(sessionId, attempt, error)
-          }
+          },
+          onExitAfterClose: () => callbacks.handleExitAfterClose(sessionId, attempt)
         }
       )
     )

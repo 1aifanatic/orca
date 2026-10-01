@@ -70,6 +70,26 @@ export function handleCodexSessionExit(input: {
   return true
 }
 
+/** A close that gave up on this child has since seen it exit. The host's retry of that close
+ *  settles it; this only tells the host the retry can land now. */
+export function reportCodexExitAfterClose(input: {
+  sessions: Map<string, CodexSession>
+  sessionId: string
+  connection: CodexAppServerConnection | null
+  onEvent?: (event: CodexStructuredSessionEvent) => void
+}): void {
+  const session = input.sessions.get(input.sessionId)
+  if (!session || session.connection !== input.connection || session.ended) {
+    return
+  }
+  input.onEvent?.({
+    type: 'exitAfterClose',
+    sessionId: input.sessionId,
+    fence: session.fence,
+    acquisitionGeneration: session.acquisitionGeneration
+  })
+}
+
 export async function closeCodexPublishedSession(
   sessions: Map<string, CodexSession>,
   sessionId: string,

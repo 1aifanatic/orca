@@ -217,10 +217,6 @@ export type StructuredAgentSessionStartedEvent = {
   restoreSkippedOptions: readonly string[]
 }
 
-export type StructuredAgentSessionLifecycleEvent =
-  | StructuredAgentSessionEndedEvent
-  | StructuredAgentSessionStartedEvent
-
 /** Whether the provider child behind an acquisition has proven its start. A publish-first
  *  acquire hands over a `starting` child and the `started` lifecycle event flips it. */
 export type StructuredAgentSessionProviderChildPhase = 'starting' | 'ready'

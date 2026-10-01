@@ -66,6 +66,8 @@ export type ClaudeStreamJsonConnectionHandlers = {
   /** A transport/process fault that is not itself first-hand root exit proof. */
   onFault?: (error: Error) => void
   onExit?: (error: Error) => void
+  /** The root exited after a close gave up proving it; no close is running to see that. */
+  onExitAfterClose?: () => void
 }
 
 /**
@@ -212,6 +214,9 @@ export async function openClaudeStreamJsonConnection(
     exitStatus = { code, signal }
     markExited()
     handleUnexpectedEnd()
+    if (closing && !closePromise) {
+      handlers.onExitAfterClose?.()
+    }
   })
 
   const handleUnexpectedEnd = (cause?: Error): void => {

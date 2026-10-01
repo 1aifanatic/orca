@@ -45,6 +45,11 @@ export type StructuredAgentSessionLifetimeContext = {
   publishStatus?: (sessionId: string) => void
   /** Hands the delivery loop what is queued; for a caller inside the session's serialize. */
   wakeDelivery?: (sessionId: string) => void
+  /** Retries, on the session's own lane, the stop owed for `child` once that child is seen gone. */
+  finishStopAfterExit?: (
+    sessionId: string,
+    child: StructuredAgentSessionProviderChildIdentity
+  ) => Promise<void>
   /** Quit-only snapshot taken immediately before the provider child is stopped. */
   restartWitness?: {
     beforeStop: (sessionId: string) => void
@@ -141,6 +146,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   session.owesProviderChildWindDown = owed
   const stopping = session.child
   let settlementError: unknown
+  // A stop step past its deadline still runs; proving the exit after this pass gave up, it has no
+  // caller left to finish the stop.
+  let gaveUp = false
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -166,6 +174,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           ...(owed ? { endedAt: owed.requestedAt } : {}),
           ...verdict
         })
+        if (gaveUp) {
+          void context.finishStopAfterExit?.(sessionId, stopping)
+        }
       }
       context.restartWitness?.stopped(sessionId)
     },
@@ -217,6 +228,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       withStructuredAgentSessionEvictionDeadline(STRUCTURED_AGENT_SESSION_EVICTION_STEPS)
     )
   } catch (error) {
+    gaveUp = true
     if (session.owesProviderChildWindDown === owed && owed) {
       session.owesProviderChildWindDown = { ...owed, failedAt: session.journal.cursor() }
     }
@@ -250,6 +262,21 @@ export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
     context.deps.onEventSinkError?.({ sessionId, error })
   }
   return context.sessions.get(sessionId)?.owesProviderChildWindDown === undefined
+}
+
+/** The stop owed for `child`, retried once that child was seen to exit after its stop gave up, so
+ *  what waited on it goes out now rather than at the sweep's next tick. A report naming any other
+ *  child is stale and touches nothing. */
+export async function finishOwedStructuredAgentSessionWindDownAfterExitUnderSerialize(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string,
+  child: StructuredAgentSessionProviderChildIdentity
+): Promise<void> {
+  const session = context.sessions.get(sessionId)
+  const owed = session && pendingProviderChildWindDown(session)
+  if (owed && sameProviderChild(owed, child)) {
+    await finishOwedStructuredAgentSessionWindDownUnderSerialize(context, sessionId)
+  }
 }
 
 /** A close's cause: the user closing this chat, or the host evicting it (quit, idle, teardown). */

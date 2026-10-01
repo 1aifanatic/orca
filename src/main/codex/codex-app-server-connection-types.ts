@@ -9,6 +9,8 @@ export type CodexAppServerConnectionHandlers = {
   onServerRequest?: (request: CodexAppServerServerRequest) => void
   onUnhandledFrame?: (kind: string, payload: unknown) => void
   onExit?: (error: Error) => void
+  /** The child exited after a close gave up proving it; no close is running to see that. */
+  onExitAfterClose?: () => void
   /** Awaited once the child has a pid and before the handshake; a rejection reaps the child. */
   onSpawned?: (pid: number) => Promise<void>
 }

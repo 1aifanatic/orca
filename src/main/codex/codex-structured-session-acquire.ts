@@ -21,7 +21,8 @@ import { buildCodexStructuredChildEnvironment } from './codex-structured-child-e
 import { openCodexThread } from './codex-structured-thread-open'
 import {
   closeCodexPublishedSession,
-  handleCodexSessionExit
+  handleCodexSessionExit,
+  reportCodexExitAfterClose
 } from './codex-structured-session-close'
 import { restoredCodexSessionOptions } from './codex-structured-session-options'
 import {
@@ -176,7 +177,14 @@ export async function acquireCodexStructuredSession(input: {
           } finally {
             notificationRetries.clear(sessionId, acquisition.connection)
           }
-        }
+        },
+        onExitAfterClose: () =>
+          reportCodexExitAfterClose({
+            sessions,
+            sessionId,
+            connection: acquisition.connection,
+            ...(deps.onEvent ? { onEvent: deps.onEvent } : {})
+          })
       }
     )
     acquisition.connection = connection

@@ -15,13 +15,17 @@ import type { StructuredAgentSessionConversations } from './structured-agent-ses
 import {
   abandonQueuedStructuredAgentSessionMessages,
   closeStructuredAgentSessionConversationUnderSerialize,
+  finishOwedStructuredAgentSessionWindDownAfterExitUnderSerialize,
   finishOwedStructuredAgentSessionWindDownUnderSerialize,
   stopStructuredAgentSessionAgentUnderSerialize,
   type StructuredAgentSessionCloseCause,
   type StructuredAgentSessionLifetimeContext
 } from './structured-agent-session-host-lifetime'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
-import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import type {
+  StructuredAgentSessionHostSession,
+  StructuredAgentSessionProviderChildIdentity
+} from './structured-agent-session-host-types'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
@@ -99,6 +103,20 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   return {
     idleSweep,
     stopAgent,
+    /** The child a stop gave up on was seen to exit; quit's own eviction finishes any after dispose. */
+    finishStopAfterExit: (
+      sessionId: string,
+      child: StructuredAgentSessionProviderChildIdentity
+    ): Promise<void> =>
+      serialize(sessionId, async () => {
+        if (!disposed) {
+          await finishOwedStructuredAgentSessionWindDownAfterExitUnderSerialize(
+            host.context(),
+            sessionId,
+            child
+          )
+        }
+      }).catch((error: unknown) => deps().onEventSinkError?.({ sessionId, error })),
     /** Quit has begun: nothing opens a conversation or sweeps one after this. */
     dispose: (): void => {
       disposed = true

@@ -22,6 +22,7 @@ import type {
   StructuredAgentSessionEndedEvent,
   StructuredAgentSessionStopCause
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionExitAfterCloseEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type {
   AgentModelCatalogSessionAccess,
@@ -70,6 +71,7 @@ export type CodexStructuredSessionEvent =
       promptKey: string
     }
   | StructuredAgentSessionEndedEvent
+  | StructuredAgentSessionExitAfterCloseEvent
   /** Translator-only compatibility for callers that do not participate in host recovery. */
   | { type: 'ended'; sessionId: string; reason: string; observedAt?: number }
 

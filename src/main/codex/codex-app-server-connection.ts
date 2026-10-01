@@ -78,6 +78,7 @@ export async function openCodexAppServerConnection(
   let exited = false
   let exitObserved = false
   let closing = false
+  let closeRunning = false
   let exitReported = false
   const exitProof = new RetryableProcessExitProof()
   /** First terminal cause, or null while the transport is still usable. Set once:
@@ -129,6 +130,9 @@ export async function openCodexAppServerConnection(
     if (exitObserved && !closing && !exitReported) {
       exitReported = true
       handlers.onExit?.(terminalError)
+    } else if (exitObserved && closing && !closeRunning && !exitReported) {
+      exitReported = true
+      handlers.onExitAfterClose?.()
     }
   }
 
@@ -243,7 +247,8 @@ export async function openCodexAppServerConnection(
       return Promise.resolve(true)
     }
     closing = true
-    return exitProof.run(async () => {
+    closeRunning = true
+    const proof = exitProof.run(async () => {
       try {
         child.stdin.end()
       } catch {
@@ -267,6 +272,11 @@ export async function openCodexAppServerConnection(
       dispatcher.failPending(new Error('codex app-server connection closed'))
       return exitObserved
     })
+    const settled = (): void => {
+      closeRunning = false
+    }
+    proof.then(settled, settled)
+    return proof
   }
 
   const connection: CodexAppServerConnection = {

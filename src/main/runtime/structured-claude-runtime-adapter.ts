@@ -8,7 +8,7 @@ import {
   type ClaudeStructuredSessionAdapterDeps
 } from '../claude/claude-structured-session-adapter'
 import { claudeProviderHandleLink } from '../claude/claude-structured-owner-identity'
-import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
 import type { ClaudeStructuredSessionEvent } from '../claude/claude-structured-session-state'
 import {
   recordAgentSessionProviderHandle,
@@ -44,7 +44,7 @@ export type StructuredClaudeRuntimeAdapterDeps = {
 export function structuredClaudeLifecycleEvent(
   event: ClaudeStructuredSessionEvent
 ): StructuredAgentSessionLifecycleEvent | null {
-  if (event.type === 'started') {
+  if (event.type === 'started' || event.type === 'exitAfterClose') {
     return event
   }
   if (

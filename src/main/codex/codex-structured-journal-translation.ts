@@ -144,6 +144,10 @@ export function createCodexJournalTranslator(
       })
     },
     handle: (event) => {
+      // Evidence for the host's retry of a close, never routed here: nothing for the journal.
+      if (event.type === 'exitAfterClose') {
+        return CODEX_JOURNAL_ADMITTED
+      }
       if (event.type === 'ended') {
         const streamAdmission = flushStreams()
         if (!streamAdmission.accepted) {

@@ -160,7 +160,8 @@ export class StructuredAgentSessionHost {
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
-      onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
+      onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error }),
+      finishStopAfterExit: (id, child) => this.lifetime.finishStopAfterExit(id, child)
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
       ...structuredAgentSessionRestartResumeSurfaces(this, this.now),
@@ -195,7 +196,8 @@ export class StructuredAgentSessionHost {
       sessions: this.sessions,
       now: () => this.now(),
       publishStatus: this.clientDelivery.publishStatus,
-      wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId)
+      wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId),
+      finishStopAfterExit: (id, child) => this.lifetime.finishStopAfterExit(id, child)
     } satisfies StructuredAgentSessionLifetimeContext
   }
 
@@ -255,8 +257,7 @@ export class StructuredAgentSessionHost {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
   }
 
-  flushStreamedEvents = (sessionId: string): Promise<void> =>
-    this.runtimeState.flushEventSink(sessionId)
+  flushStreamedEvents = (sessionId: string) => this.runtimeState.flushEventSink(sessionId)
 
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
@@ -329,8 +330,7 @@ export class StructuredAgentSessionHost {
   journalSnapshot = async (sessionId: string): Promise<AgentJournalSnapshot> =>
     (await this.lifetime.conversation(sessionId)).journal.snapshot()
 
-  subscribe = (input: AgentSessionSubscribeInput): Promise<() => void> =>
-    this.backgroundTasks.subscribe(input)
+  subscribe = (input: AgentSessionSubscribeInput) => this.backgroundTasks.subscribe(input)
 
   settleLateDispatch = (input: Parameters<typeof settleStructuredAgentSessionLateDispatch>[1]) =>
     settleStructuredAgentSessionLateDispatch(this.mutationContext(), input)

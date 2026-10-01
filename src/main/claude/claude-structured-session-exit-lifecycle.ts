@@ -22,7 +22,7 @@ export type ClaudeExitLifecycle = {
   exits: Map<string, ClaudeSessionExit>
   /** A settled exit's diagnostic, kept for a send admitted before the host heard of the exit. */
   settledExitErrors: Map<string, Error>
-  deps: Pick<ClaudeStructuredSessionAdapterDeps, 'persistHandle' | 'now'>
+  deps: Pick<ClaudeStructuredSessionAdapterDeps, 'persistHandle' | 'now' | 'onEvent'>
   emit: (session: ClaudeSession, event: ClaudeStructuredSessionEvent) => void
 }
 
@@ -60,6 +60,25 @@ export function observeClaudeSessionExit(
       return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
     })
     .catch(() => undefined)
+}
+
+/** A close that gave up on this child has since seen its root exit. The host's retry of that close
+ *  settles it; this only tells the host the retry can land now. */
+export function reportClaudeExitAfterClose(
+  lifecycle: ClaudeExitLifecycle,
+  sessionId: string,
+  attempt: ClaudeAcquisitionAttempt
+): void {
+  const session = lifecycle.sessions.get(sessionId)
+  if (!session || session.connection !== attempt.connection) {
+    return
+  }
+  lifecycle.deps.onEvent?.({
+    type: 'exitAfterClose',
+    sessionId,
+    fence: session.fence,
+    acquisitionGeneration: session.acquisitionGeneration
+  })
 }
 
 /** Lifecycle recovery is published only after the close ladder ran and proved the tree gone or

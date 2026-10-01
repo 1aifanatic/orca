@@ -9,6 +9,7 @@ import type {
   StructuredAgentSessionStartedEvent,
   StructuredAgentSessionStopCause
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionExitAfterCloseEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection
@@ -67,6 +68,7 @@ export type ClaudeStructuredSessionEvent =
   | { type: 'auth-diagnostic'; sessionId: string; diagnostic: ClaudeAuthDiagnostic }
   /** Startup facts applied and saved options restored; held prompts are about to be written. */
   | StructuredAgentSessionStartedEvent
+  | StructuredAgentSessionExitAfterCloseEvent
   | {
       type: 'ended'
       sessionId: string
@@ -348,5 +350,7 @@ export type ClaudeAcquireCallbacks = {
     event: ClaudeStructuredSessionEvent
   ) => void
   handleExit: (sessionId: string, attempt: ClaudeAcquisitionAttempt, error: Error) => void
+  /** The child's root exited after a close of it gave up proving that. */
+  handleExitAfterClose: (sessionId: string, attempt: ClaudeAcquisitionAttempt) => void
   settleExit: (sessionId: string, exit: ClaudeSessionExit) => Promise<void>
 }
