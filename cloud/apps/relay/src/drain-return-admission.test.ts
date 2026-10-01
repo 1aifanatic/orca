@@ -5,17 +5,22 @@ import {
   type DrainReturnDeferral,
   type DrainReturnGrant
 } from './drain-return-admission.js'
+import { RelayPublicAssignmentAdmission } from './public-assignment-admission.js'
 
 type Timer = { at: number; callback: () => void; cancelled: boolean }
 
 function harness(overrides: { maxQueued?: number; maxRetryAfterSeconds?: number } = {}) {
   let now = 0
   const timers: Timer[] = []
-  const lane = new RelayDrainReturnAdmission({
-    maxConcurrent: 1,
-    maxQueued: overrides.maxQueued ?? 0,
-    waitMs: 3_000,
-    maxRetryAfterSeconds: overrides.maxRetryAfterSeconds ?? 300,
+  const placement = new RelayPublicAssignmentAdmission({
+    maxConcurrent: 2,
+    maxQueued: 8,
+    waitMs: 4_000,
+    minIntervalMs: 5_000,
+    maxDrainReturnConcurrent: 1,
+    maxDrainReturnQueued: overrides.maxQueued ?? 0,
+    drainReturnWaitMs: 3_000,
+    drainReturnMinIntervalMs: DRAIN_RETURN_MIN_RETRY_AFTER_SECONDS * 1_000,
     now: () => now,
     schedule: (callback, delayMs) => {
       const timer = { at: now + delayMs, callback, cancelled: false }
@@ -25,8 +30,14 @@ function harness(overrides: { maxQueued?: number; maxRetryAfterSeconds?: number 
       }
     }
   })
+  const lane = new RelayDrainReturnAdmission(placement, {
+    maxConcurrent: 1,
+    maxRetryAfterSeconds: overrides.maxRetryAfterSeconds ?? 300,
+    now: () => now
+  })
   return {
     lane,
+    placement,
     advance: (ms: number) => {
       now += ms
       for (const timer of timers.filter((entry) => !entry.cancelled && entry.at <= now)) {
@@ -122,13 +133,55 @@ describe('drain-return admission', () => {
     expect(Math.max(...retries)).toBe(3)
   })
 
-  it('defers a host that retries before its interval with the same paced answer', async () => {
+  it('answers a host’s own early retry with its interval, not a place behind the cohort', async () => {
     const { lane } = harness()
     admitted(await lane.acquire(host(0))).lease.release()
 
+    // A row-busy refusal says "retry in 1 s"; that redial is the host's own.
     const repeat = deferred(await lane.acquire(host(0)))
+    expect(repeat).toMatchObject({
+      reason: 'host-rate-limited',
+      retryAfterSeconds: DRAIN_RETURN_MIN_RETRY_AFTER_SECONDS
+    })
 
-    expect(repeat.reason).toBe('host-rate-limited')
-    expect(repeat.retryAfterSeconds).toBeGreaterThanOrEqual(DRAIN_RETURN_MIN_RETRY_AFTER_SECONDS)
+    // And it booked nothing: the next overflow still gets the first slot.
+    admitted(await lane.acquire(host(1)))
+    expect(deferred(await lane.acquire(host(2))).retryAfterSeconds).toBe(2)
+  })
+
+  it('keeps a host’s reserved slot when it comes back early', async () => {
+    const { lane, advance } = harness()
+    admitted(await lane.acquire(host(0)))
+    for (let index = 1; index <= 4; index++) await lane.acquire(host(index))
+    expect(deferred(await lane.acquire(host(5))).retryAfterSeconds).toBe(6)
+
+    advance(1_000)
+    // Early and still full: the same instant, not a new slot after everyone else.
+    expect(deferred(await lane.acquire(host(5))).retryAfterSeconds).toBe(5)
+  })
+
+  it('never holds placement’s last permit', async () => {
+    const { lane } = harness()
+    admitted(await lane.acquire(host(0)))
+
+    // One of two permits is still free, but it is placement's.
+    expect(deferred(await lane.acquire(host(1))).reason).toBe('queue-full')
+  })
+
+  it('lets a queued placement go before a queued drain return', async () => {
+    const { lane, placement } = harness({ maxQueued: 1 })
+    const drain = admitted(await lane.acquire(host(0)))
+    const first = await placement.acquire('placement000001')
+    expect(first).not.toBeNull()
+
+    const queuedPlacement = placement.acquire('placement000002')
+    const queuedDrain = lane.acquire(host(1))
+    drain.lease.release()
+    const second = await queuedPlacement
+    expect(second).not.toBeNull()
+
+    first?.release()
+    expect((await queuedDrain).kind).toBe('admitted')
+    second?.release()
   })
 })

@@ -109,6 +109,7 @@ const EnvSchema = z.object({
     .positive()
     .max(60)
     .default(2),
+  // Borrowed from placement concurrency, which always keeps at least one permit.
   ORCA_RELAY_DRAIN_RETURN_CONCURRENCY: z.coerce.number().int().positive().max(4).default(1),
   ORCA_RELAY_DRAIN_RETURN_QUEUE_MAX: z.coerce.number().int().positive().max(64).default(4),
   ORCA_RELAY_DRAIN_RETURN_WAIT_MS: z.coerce.number().int().positive().max(10_000).default(3_000),

@@ -1333,7 +1333,14 @@ export class RelayAssignmentStore {
       `SELECT assignment.*, cell.cell_url, region.region${
         classify
           ? `, home_admission.admission_state AS home_admission_state,
-         home_admission.roll_isolated_at AS home_roll_isolated_at`
+         home_admission.roll_isolated_at AS home_roll_isolated_at,
+         CASE WHEN home_admission.roll_isolated_at IS NULL THEN 0
+           WHEN EXISTS (
+             SELECT 1 FROM relay_assignment_migrations migration
+             WHERE migration.user_id = assignment.user_id
+               AND migration.relay_host_id = assignment.relay_host_id
+               AND migration.completed_at IS NULL AND migration.aborted_at IS NULL
+           ) THEN 1 ELSE 0 END AS home_open_migrations`
           : ''
       }
        FROM relay_assignments assignment
@@ -1366,6 +1373,7 @@ export class RelayAssignmentStore {
       isCellAdmissionState(homeAdmissionState) &&
       // A migration owns this epoch; the sticky path keeps the pin, so it is not a drain return.
       integer(row, 'migration_leases') === 0 &&
+      integer(row, 'home_open_migrations') === 0 &&
       rollIsolationIsCurrent(
         {
           state: homeAdmissionState,
@@ -8426,8 +8434,8 @@ export class RelayAssignmentStore {
 }
 
 // One predicate for "isolated for a roll in progress", shared by re-placement and
-// the reconnect classification so the drain-return lane admits exactly the hosts
-// whose assign will move them.
+// the reconnect classification so the drain-return lane admits the hosts the
+// re-placement rule would move.
 function rollIsolationIsCurrent(admission: PinnedCellAdmission | undefined, now: number): boolean {
   return (
     admission?.state === ROLL_ISOLATED_ADMISSION &&

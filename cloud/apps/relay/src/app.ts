@@ -40,7 +40,10 @@ import { CELL_ADMISSION_STATES } from './cell-admission-selector.js'
 import { RELAY_MAX_CELL_CAPACITY_REQUESTS, type RelayConfig } from './config.js'
 import type { RelayCredentialStore } from './credential-store.js'
 import { isRelayDatabaseTransientError } from './database.js'
-import { RelayDrainReturnAdmission } from './drain-return-admission.js'
+import {
+  DRAIN_RETURN_MIN_RETRY_AFTER_SECONDS,
+  RelayDrainReturnAdmission
+} from './drain-return-admission.js'
 import { googleMetadataIdentityToken } from './google-metadata-identity-token.js'
 import {
   RelayPublicAssignmentAdmission,
@@ -161,12 +164,22 @@ export function createRelayApp(
   const regionalRehomeIdentityToken =
     operations.regionalRehomeIdentityToken ??
     ((audience: string) => googleMetadataIdentityToken(audience, regionalRehomeFetch))
+  // Drain returns borrow placement permits and always leave placement one, so
+  // placement + sticky still bounds the director's database pool.
+  const drainReturnConcurrency = Math.min(
+    config.drainReturnConcurrency ?? 1,
+    config.publicAssignmentConcurrency - 1
+  )
   const publicAssignmentAdmission = new RelayPublicAssignmentAdmission({
     maxConcurrent: config.publicAssignmentConcurrency,
     maxQueued: config.publicAssignmentQueueMax,
     waitMs: config.publicAssignmentWaitMs,
     maxReservedConcurrent: config.publicResolveConcurrency,
     reservedWaitMs: config.publicResolveWaitMs,
+    maxDrainReturnConcurrent: drainReturnConcurrency,
+    maxDrainReturnQueued: config.drainReturnQueueMax ?? 4,
+    drainReturnWaitMs: config.drainReturnWaitMs ?? 3_000,
+    drainReturnMinIntervalMs: DRAIN_RETURN_MIN_RETRY_AFTER_SECONDS * 1_000,
     minIntervalMs: config.publicAssignmentRetryAfterSeconds * 1_000,
     onRejected: (reason) => operations.recordAssignmentRejectionReason?.('placement', reason)
   })
@@ -191,10 +204,8 @@ export function createRelayApp(
   }
   // Classified server-side from the host's own assignment row, never from a
   // client claim: only a host whose home is roll-isolated reaches this lane.
-  const drainReturnAdmission = new RelayDrainReturnAdmission({
-    maxConcurrent: config.drainReturnConcurrency ?? 1,
-    maxQueued: config.drainReturnQueueMax ?? 4,
-    waitMs: config.drainReturnWaitMs ?? 3_000,
+  const drainReturnAdmission = new RelayDrainReturnAdmission(publicAssignmentAdmission, {
+    maxConcurrent: Math.max(1, drainReturnConcurrency),
     maxRetryAfterSeconds: config.drainReturnMaxRetryAfterSeconds ?? 300
   })
   const deferDrainReturn = (context: Context, retryAfterSeconds: number): Response => {
@@ -335,7 +346,7 @@ export function createRelayApp(
         }
         throw error
       }
-      if (verified?.homeCellRollIsolated) {
+      if (verified?.homeCellRollIsolated && drainReturnConcurrency > 0) {
         // The sticky slot covered only the verification read; the re-placement
         // that follows is the drain lane's work, not the sticky lane's.
         fastLane.release()

@@ -805,6 +805,9 @@ describe('classifying a reconnect whose home is isolated for a roll', () => {
       leases: 1
     })
     expect(await store.resolve(IDENTITY, classify)).not.toHaveProperty('homeCellRollIsolated')
+    // A stalled migration whose lease counter lapsed still owns the epoch.
+    await database.query(`UPDATE relay_assignments SET migration_leases = 0`)
+    expect(await store.resolve(IDENTITY, classify)).not.toHaveProperty('homeCellRollIsolated')
   })
 
   it('reads the classification in the verification query itself', async () => {

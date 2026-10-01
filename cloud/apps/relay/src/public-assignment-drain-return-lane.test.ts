@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RelayAssignment, ResolvedRelayAssignment } from './assignment-store.js'
+import {
+  RelayAssignmentRowBusyError,
+  type RelayAssignment,
+  type ResolvedRelayAssignment
+} from './assignment-store.js'
 import type { RelayConfig } from './config.js'
 
 const fakes = vi.hoisted(() => ({
@@ -147,60 +151,126 @@ describe('drain-return lane', () => {
     expect(outcomes).toEqual(['placement'])
   })
 
-  it('admits one director’s share of a 2,500-host drain without a sticky or placement rejection', async () => {
+  it('answers a drained host’s row-busy redial with the short interval', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    // One of five directors: 500 of 2,500 drained hosts over the 300 s pace
-    // window, beside its share of ordinary reconnects (c29 baseline ~13/s fleet)
-    // and a trickle of new placements.
-    const DRAINED = 500
-    const PACE_WINDOW_MS = 300_000
-    const ORDINARY = 780
-    const PLACEMENTS = 30
-    // Measured c29 2026-10-01: ~860 ms of serialized store time per re-placement.
-    const REPLACE_MS = 860
-    const ORDINARY_MS = 40
-    const drainedHosts = Array.from({ length: DRAINED }, (_, index) => hostId('d', index))
-    const moved = new Set<string>()
-    let storeTail = Promise.resolve()
-    const serialized = async <T>(ms: number, value: () => T): Promise<T> => {
-      const previous = storeTail
-      let release!: () => void
-      storeTail = new Promise((resolve) => (release = resolve))
-      await previous
-      await sleep(ms)
-      release()
-      return value()
-    }
-    const resolve = vi.fn(async ({ relayHostId }: { relayHostId: string }) =>
-      relayHostId.startsWith('d') && !moved.has(relayHostId)
-        ? isolatedHome(relayHostId)
-        : assignment('cell-o', relayHostId)
-    )
+    const holder = 'hhhhhhhhhhhhhhhh'
+    const host = 'bbbbbbbbbbbbbbbb'
+    const holding = deferred<RelayAssignment>()
+    let busy = true
     const assign = vi.fn(async ({ relayHostId }: { relayHostId: string }) => {
-      if (relayHostId.startsWith('d')) {
-        return await serialized(REPLACE_MS, () => {
-          moved.add(relayHostId)
-          return assignment('cell-new', relayHostId)
-        })
+      if (relayHostId === holder) return await holding.promise
+      if (relayHostId === host && busy) {
+        busy = false
+        throw new RelayAssignmentRowBusyError()
       }
-      if (relayHostId.startsWith('p')) {
-        return await serialized(ORDINARY_MS, () => assignment('cell-p', relayHostId))
-      }
-      await sleep(ORDINARY_MS)
-      return assignment('cell-o', relayHostId)
+      return assignment('cell-new', relayHostId)
     })
-    const outcomes = new Map<string, number>()
-    const retryAfters: number[] = []
-    const app = createRelayApp(config({ publicStickyConcurrency: 1, publicStickyQueueMax: 64 }), {
+    const resolve = vi.fn(async ({ relayHostId }: { relayHostId: string }) =>
+      isolatedHome(relayHostId)
+    )
+    const app = createRelayApp(config({ drainReturnQueueMax: 1 }), {
       store: {} as never,
       assignments: { assign, resolve } as never,
       drain: vi.fn(),
-      ready: vi.fn(async () => true),
-      recordAssignmentAdmission: (outcome) =>
-        outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1),
-      recordDrainReturnRetryAfter: (seconds) => retryAfters.push(seconds)
+      ready: vi.fn(async () => true)
     })
+    const request = (relayHostId: string) =>
+      Promise.resolve(
+        app.request('/v1/assign', assignmentRequest(relayHostId, { reconnect: true }))
+      )
+
+    const held = request(holder)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledTimes(1))
+    const queued = request(host)
+    await vi.advanceTimersByTimeAsync(10)
+    // A cohort behind it books the next ten service slots.
+    for (let index = 0; index < 10; index++) {
+      const overflow = await request(hostId('f', index))
+      expect(overflow.status).toBe(503)
+    }
+    await vi.advanceTimersByTimeAsync(2_490)
+    holding.resolve(assignment('cell-new', holder))
+    expect((await held).status).toBe(200)
+    const refused = await queued
+    expect(refused.headers.get('retry-after')).toBe('1')
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    const redial = await request(host)
+
+    // Its own lane interval, not a slot after the ten hosts that came later.
+    expect(redial.status).toBe(503)
+    expect(redial.headers.get('retry-after')).toBe('2')
+  })
+
+  it('admits a 2,500-host drain across five directors without a sticky or placement rejection', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Five directors behind a load balancer that sends each request to any of
+    // them. 2,500 drained hosts over the 300 s pace window, beside ordinary
+    // reconnects (c29 baseline ~13/s) and a trickle of new placements.
+    const DIRECTORS = 5
+    const DRAINED = 2_500
+    const PACE_WINDOW_MS = 300_000
+    const ORDINARY = 3_900
+    const PLACEMENTS = 30
+    // Measured c29 2026-10-01: ~5.8 re-placements/s fleet-wide, bound by the
+    // region's inventory lock, so ~172 ms of lock per re-placement.
+    const INVENTORY_LOCK_MS = 172
+    const ORDINARY_MS = 40
+    const drainedHosts = Array.from({ length: DRAINED }, (_, index) => hostId('d', index))
+    const moved = new Set<string>()
+    const mutex = () => {
+      let tail = Promise.resolve()
+      return async <T>(run: () => Promise<T>): Promise<T> => {
+        const previous = tail
+        let release!: () => void
+        tail = new Promise((done) => (release = done))
+        await previous
+        try {
+          return await run()
+        } finally {
+          release()
+        }
+      }
+    }
+    const inventoryLock = mutex()
+    const outcomes = new Map<string, number>()
+    const retryAfters: number[] = []
+    const apps = Array.from({ length: DIRECTORS }, () => {
+      // serializeAssignment: one placement or re-placement at a time per director.
+      const storeMutex = mutex()
+      const resolve = vi.fn(async ({ relayHostId }: { relayHostId: string }) =>
+        relayHostId.startsWith('d') && !moved.has(relayHostId)
+          ? isolatedHome(relayHostId)
+          : assignment('cell-o', relayHostId)
+      )
+      const assign = vi.fn(async ({ relayHostId }: { relayHostId: string }) => {
+        if (relayHostId.startsWith('o')) {
+          await sleep(ORDINARY_MS)
+          return assignment('cell-o', relayHostId)
+        }
+        return await storeMutex(async () => {
+          await inventoryLock(async () => await sleep(INVENTORY_LOCK_MS))
+          if (relayHostId.startsWith('d')) moved.add(relayHostId)
+          return assignment('cell-new', relayHostId)
+        })
+      })
+      return createRelayApp(config(), {
+        store: {} as never,
+        assignments: { assign, resolve } as never,
+        drain: vi.fn(),
+        ready: vi.fn(async () => true),
+        recordAssignmentAdmission: (outcome) =>
+          outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1),
+        recordDrainReturnRetryAfter: (seconds) => retryAfters.push(seconds)
+      })
+    })
+    let seed = 7
+    const anyDirector = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+      return apps[seed % DIRECTORS]!
+    }
     const landed = new Set<string>()
     const failures: string[] = []
     let inFlight = 0
@@ -208,7 +278,10 @@ describe('drain-return lane', () => {
     const dial = (relayHostId: string, reconnect: boolean): void => {
       inFlight++
       void Promise.resolve(
-        app.request('/v1/assign', assignmentRequest(relayHostId, reconnect ? { reconnect } : {}))
+        anyDirector().request(
+          '/v1/assign',
+          assignmentRequest(relayHostId, reconnect ? { reconnect } : {})
+        )
       ).then((response) => {
         inFlight--
         if (response.status === 200) {
@@ -263,9 +336,9 @@ describe('drain-return lane', () => {
     // Paced returns: fewer than two deferrals per drained host, none past the cap.
     expect(outcomes.get('drain-return-deferred') ?? 0).toBeLessThan(2 * DRAINED)
     expect(Math.max(...retryAfters)).toBeLessThanOrEqual(300)
-    // The cohort finishes at the lane's service rate, not minutes behind it.
-    expect(elapsedMs).toBeLessThan(DRAINED * REPLACE_MS + 60_000)
-  }, 120_000)
+    // The cohort finishes at the inventory lock's rate, not minutes behind it.
+    expect(elapsedMs).toBeLessThan(DRAINED * INVENTORY_LOCK_MS + 60_000)
+  }, 300_000)
 })
 
 function hostId(prefix: string, index: number): string {
