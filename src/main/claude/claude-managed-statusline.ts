@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { readHooksJson, writeManagedScript, type HooksConfig } from '../agent-hooks/installer-utils'
 import { getManagedStatusLineScript } from './statusline-script'
+import { getDefaultSettingsPath } from './claude-profile-hook-target'
 import {
   applyManagedStatusLine,
-  getConfigPath,
   getManagedCommand,
   getStatusLineInstallMarkerPath,
   getStatusLineScriptFileName,
@@ -19,12 +19,13 @@ import {
 export function installManagedStatusLine(
   settings: ClaudeCompatibleHookSettings,
   config: HooksConfig,
-  configDir?: string
+  configDir?: string,
+  userHome?: string
 ): HooksConfig {
   const scriptFileName = getStatusLineScriptFileName(settings)
   if (configDir !== undefined) {
     // Why: a profile follows the default home's slot, so a default opt-out or custom line reaches every profile.
-    const defaults = readHooksJson(getConfigPath(settings))
+    const defaults = readHooksJson(getDefaultSettingsPath(settings, userHome))
     if (!defaults) {
       return config
     }

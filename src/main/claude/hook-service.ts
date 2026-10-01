@@ -24,6 +24,7 @@ import {
 export { getManagedScript }
 import { getManagedStatusLineScript } from './statusline-script'
 import { installManagedStatusLine, retireManagedStatusLine } from './claude-managed-statusline'
+import { profileTargetsDefaultHome } from './claude-profile-hook-target'
 import {
   applyManagedHooks,
   CLAUDE_HOOK_SETTINGS,
@@ -64,6 +65,8 @@ type ClaudeHookInstallOptions = {
 type ClaudeHookTargetOptions = ClaudeHookInstallOptions & {
   /** Explicit managed profile on this host; omitted for the existing default-home behavior. */
   configDir?: string
+  /** The home whose default settings a profile follows; defaults to os.homedir(). */
+  userHome?: string
 }
 
 const DEFAULT_CLAUDE_HOOK_SERVICE_OPTIONS: ClaudeHookServiceOptions = {
@@ -99,7 +102,29 @@ export class ClaudeHookService {
       : (this.options.hookPlan ?? OPENCLAUDE_MANAGED_HOOK_PLAN)
   }
 
+  // Why: a profile destination that is, or links into, the default home would edit System Default's hooks.
+  private refuseDefaultHome(options: ClaudeHookTargetOptions): AgentHookInstallStatus | null {
+    const { configDir, userHome } = options
+    if (
+      configDir === undefined ||
+      !profileTargetsDefaultHome(this.options.settings, configDir, userHome)
+    ) {
+      return null
+    }
+    return {
+      agent: this.options.agent,
+      state: 'error',
+      configPath: getConfigPath(this.options.settings, configDir),
+      managedHooksPresent: false,
+      detail: 'Profile settings resolve to the default home'
+    }
+  }
+
   getStatus(options: ClaudeHookTargetOptions = {}): AgentHookInstallStatus {
+    const refused = this.refuseDefaultHome(options)
+    if (refused) {
+      return refused
+    }
     const configPath = getConfigPath(this.options.settings, options.configDir)
     const scriptPath = getManagedScriptPath(this.options.settings)
     const config = readHooksJson(configPath)
@@ -161,6 +186,10 @@ export class ClaudeHookService {
   }
 
   install(options: ClaudeHookTargetOptions = {}): AgentHookInstallStatus {
+    const refused = this.refuseDefaultHome(options)
+    if (refused) {
+      return refused
+    }
     const configPath = getConfigPath(this.options.settings, options.configDir)
     const scriptPath = getManagedScriptPath(this.options.settings)
     const config = readHooksJson(configPath)
@@ -189,7 +218,12 @@ export class ClaudeHookService {
       writeManagedScript(scriptPath, payload)
     }
     if (plan.statusLine === 'install') {
-      nextConfig = installManagedStatusLine(this.options.settings, nextConfig, options.configDir)
+      nextConfig = installManagedStatusLine(
+        this.options.settings,
+        nextConfig,
+        options.configDir,
+        options.userHome
+      )
     } else if (plan.statusLine === 'retire') {
       nextConfig = retireManagedStatusLine(this.options.settings, nextConfig, options.configDir)
     }
@@ -256,7 +290,11 @@ export class ClaudeHookService {
     }
   }
 
-  remove(options: Pick<ClaudeHookTargetOptions, 'configDir'> = {}): AgentHookInstallStatus {
+  remove(options: Omit<ClaudeHookTargetOptions, 'claudeVersion'> = {}): AgentHookInstallStatus {
+    const refused = this.refuseDefaultHome(options)
+    if (refused) {
+      return refused
+    }
     const configPath = getConfigPath(this.options.settings, options.configDir)
     const config = readHooksJson(configPath)
     if (!config) {

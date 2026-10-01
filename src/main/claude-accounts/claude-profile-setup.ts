@@ -22,7 +22,7 @@ export async function provisionClaudeAccountProfile(args: {
   profile: ClaudeProfileDescriptor
   userHome: string
   /** Null when Orca's Claude hooks are turned off. Runs after the settings merge so its entries survive it. */
-  installHooks: ((configDir: string) => AgentHookInstallStatus) | null
+  installHooks: ((target: { configDir: string; userHome: string }) => AgentHookInstallStatus) | null
   trustKeys?: readonly string[]
   platform?: NodeJS.Platform
 }): Promise<ClaudeProfileSetupReport> {
@@ -62,7 +62,7 @@ export async function provisionClaudeAccountProfile(args: {
     if (!installHooks) {
       return 'absent'
     }
-    const status = installHooks(home)
+    const status = installHooks({ configDir: home, userHome: args.userHome })
     if (status.state !== 'installed') {
       throw new Error(status.detail ?? `Claude hooks ${status.state}`)
     }

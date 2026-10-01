@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
@@ -7,7 +7,12 @@ import {
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
-import { isManagedStatusLine, splitManagedHooks } from '../claude/hook-settings'
+import {
+  CLAUDE_HOOK_SETTINGS,
+  getStatusLineInstallMarkerPath,
+  isManagedStatusLine,
+  splitManagedHooks
+} from '../claude/hook-settings'
 import { assertOutsideDefaultClaudeHomes, readClaudeProfileObject } from './claude-profile-paths'
 import {
   ClaudeProfileSurfaceError,
@@ -53,12 +58,9 @@ const SHARED_STATE_KEYS = ['mcpServers', 'theme']
 function withoutOrcaEntries(settings: Record<string, unknown>): Record<string, unknown> {
   const next = { ...settings }
   if ('hooks' in next) {
+    // Why: Orca-only hooks stay a present `{}`, so removing the user's last hook is a change, not an absence.
     const { user } = splitManagedHooks(next.hooks)
-    if (user === undefined) {
-      delete next.hooks
-    } else {
-      next.hooks = user
-    }
+    next.hooks = user === undefined ? {} : user
   }
   if (isManagedStatusLine(next.statusLine)) {
     delete next.statusLine
@@ -126,11 +128,31 @@ function mergeSettings(
   const desired = pickSettings(input.kind === 'present' ? input.value : {})
   const written = { ...ledger.keys['settings.json'] }
   const changed = mergeClaudeProfileKeys(current, desired, written)
+  // Why: a statusLine Orca shared and the profile never edited follows the default when it goes away.
+  if (
+    !('statusLine' in desired) &&
+    'statusLine' in current &&
+    written.statusLine === JSON.stringify(current.statusLine)
+  ) {
+    delete current.statusLine
+    delete written.statusLine
+    changed.push('statusLine')
+  }
+  const overOrcaLine = changed.includes('statusLine') && isManagedStatusLine(config.statusLine)
   for (const key of changed) {
-    config[key] = key === 'hooks' ? withProfileOrcaHooks(current.hooks, config.hooks) : current[key]
+    if (!(key in current)) {
+      delete config[key]
+    } else {
+      config[key] =
+        key === 'hooks' ? withProfileOrcaHooks(current.hooks, config.hooks) : current[key]
+    }
   }
   if (changed.length > 0) {
     writeFileAtomically(target, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
+  }
+  if (overOrcaLine) {
+    // Why: that marker meant "Orca installed its line here", not a profile opt-out.
+    rmSync(getStatusLineInstallMarkerPath(CLAUDE_HOOK_SETTINGS, dirname(target)), { force: true })
   }
   // Committed only after the write, so a failed write never marks an unwritten value as shared.
   ledger.keys['settings.json'] = written
@@ -158,6 +180,7 @@ async function mergeState(args: {
     SHARED_STATE_KEYS.filter((key) => key in source).map((key) => [key, source[key]])
   )
   let written: Record<string, string> = {}
+  let trustRefused = false
   const outcome = await updateClaudeGlobalConfig(args.target, (current) => {
     const config = { ...current }
     written = { ...args.ledger.keys['.claude.json'] }
@@ -168,7 +191,9 @@ async function mergeState(args: {
       changed = true
     }
     const trust = args.trustKeys.length > 0 ? applyClaudeFolderTrust(config, args.trustKeys) : null
-    if (trust && trust.kind !== 'unchanged') {
+    // Why: a malformed `projects` blocks only trust; onboarding and shared keys still apply.
+    trustRefused = trust?.kind === 'refuse'
+    if (trust?.kind === 'changed') {
       return trust
     }
     return changed ? { kind: 'changed', config } : { kind: 'unchanged' }
@@ -181,6 +206,13 @@ async function mergeState(args: {
     throw new ClaudeProfileSurfaceError(outcome, `Profile Claude state is ${outcome}`)
   }
   args.ledger.keys['.claude.json'] = written
+  if (trustRefused) {
+    const error = new ClaudeProfileSurfaceError(
+      'trust-refused',
+      'Profile `projects` is not an object'
+    )
+    warnClaudeProfile(args.report, '.claude.json', error)
+  }
   return outcome === 'updated' ? 'merged' : 'unchanged'
 }
 

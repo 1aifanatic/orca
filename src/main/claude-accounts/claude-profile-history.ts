@@ -104,7 +104,12 @@ function mergeDirectory(
       }
       throw crossFilesystem()
     }
-    drainDirectory(pending, destination, report, name)
+    try {
+      drainDirectory(pending, destination, report, name)
+    } catch (error) {
+      // Why: an unreadable leftover is reported and kept; it must not stop the share itself.
+      warnClaudeProfile(report, name, error)
+    }
   }
   const current = lstatIfPresent(source)
   if (current?.isSymbolicLink()) {

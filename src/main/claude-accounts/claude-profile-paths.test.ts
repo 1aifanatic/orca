@@ -34,7 +34,7 @@ describe('Claude profile namespace', () => {
   it('binds the new namespace to an account and execution target without touching legacy auth', () => {
     const dir = root()
     const userHome = root()
-    const target = { executionHostId: 'remote-a', runtime: 'wsl', distro: 'Ubuntu' } as const
+    const target = { executionHostId: 'runtime:env-1', runtime: 'wsl', distro: 'Ubuntu' } as const
     const profile = describeClaudeProfile(dir, 'account-a', target)
     expect(profile).toEqual({
       version: 1,
@@ -45,11 +45,11 @@ describe('Claude profile namespace', () => {
     prepareClaudeProfileDirectory(dir, profile, userHome)
     expect(
       JSON.parse(readFileSync(join(dir, 'claude-profiles/account-a/profile.json'), 'utf8'))
-    ).toEqual({ version: 1, accountId: 'account-a', target })
-    // Same target built in another key order still matches its marker.
+    ).toEqual({ version: 1, accountId: 'account-a', runtime: 'wsl', distro: 'Ubuntu' })
+    // The host id is the caller's view of the host, so another caller's spelling is the same profile.
     prepareClaudeProfileDirectory(
       dir,
-      { ...profile, target: { distro: 'Ubuntu', runtime: 'wsl', executionHostId: 'remote-a' } },
+      { ...profile, target: { distro: 'Ubuntu', runtime: 'wsl', executionHostId: 'local' } },
       userHome
     )
     expect(() =>
@@ -67,13 +67,15 @@ describe('Claude profile namespace', () => {
     const userHome = root()
     mkdirSync(join(dir, 'claude-profiles/a'), { recursive: true })
     const marker = join(dir, 'claude-profiles/a/profile.json')
-    writeFileSync(
-      marker,
-      JSON.stringify({ version: 1, accountId: 'a', target: { ...local, executionHostId: 'other' } })
-    )
-    expect(() =>
-      prepareClaudeProfileDirectory(dir, describeClaudeProfile(dir, 'a', local), userHome)
-    ).toThrow('another account')
+    for (const other of [
+      { version: 1, accountId: 'b', runtime: 'host' },
+      { version: 1, accountId: 'a', runtime: 'wsl', distro: 'Ubuntu' }
+    ]) {
+      writeFileSync(marker, JSON.stringify(other))
+      expect(() =>
+        prepareClaudeProfileDirectory(dir, describeClaudeProfile(dir, 'a', local), userHome)
+      ).toThrow('another account')
+    }
     writeFileSync(marker, '{')
     expect(() =>
       prepareClaudeProfileDirectory(dir, describeClaudeProfile(dir, 'a', local), userHome)

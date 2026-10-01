@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type * as FsUtils from '../codex-accounts/fs-utils'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof fs>()
@@ -13,6 +14,11 @@ vi.mock('node:fs', async (original) => {
     symlinkSync: vi.fn(actual.symlinkSync)
   }
 })
+vi.mock('../codex-accounts/fs-utils', async (original) => {
+  const actual = await original<typeof FsUtils>()
+  return { ...actual, writeFileAtomically: vi.fn(actual.writeFileAtomically) }
+})
+import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { shareClaudeProfileHistory } from './claude-profile-history'
 const roots: string[] = []
 function fixture() {
@@ -26,7 +32,15 @@ function fixture() {
   const share = (platform?: NodeJS.Platform) =>
     shareClaudeProfileHistory({ profileHome, userHome, platform })
   const history = (): string => fs.readFileSync(join(defaultHome, 'history.jsonl'), 'utf8')
-  return { profileHome, userHome, defaultHome, share, history }
+  const scrub = (content: string): void => {
+    fs.writeFileSync(join(defaultHome, 'scrubbed'), content)
+    fs.renameSync(join(defaultHome, 'scrubbed'), join(defaultHome, 'history.jsonl'))
+  }
+  const leftovers = (): string[] =>
+    fs
+      .readdirSync(profileHome)
+      .filter((name) => name.startsWith('history.jsonl.orca-profile-merge'))
+  return { profileHome, userHome, defaultHome, share, history, scrub, leftovers }
 }
 afterEach(() => {
   vi.resetAllMocks()
@@ -177,6 +191,70 @@ describe('Claude profile history sharing', () => {
     await f.share()
     expect(f.history()).toBe('a\nb\nc\n')
     expect(fs.lstatSync(join(f.profileHome, 'history.jsonl')).isSymbolicLink()).toBe(true)
+    expect(f.leftovers()).toEqual([])
+  })
+  it('drains a copy left by an interrupted share without replaying the shared history', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\nd2\n')
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl.orca-profile-merge'), 'd1\nd2\nnew\n')
+    await f.share()
+    expect(f.history()).toBe('d1\nd2\nnew\n')
+  })
+  it('removes a leftover name for the shared file so a later scrub stays scrubbed', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
+    fs.linkSync(
+      join(f.defaultHome, 'history.jsonl'),
+      join(f.profileHome, 'history.jsonl.orca-profile-merge')
+    )
+    await f.share()
+    expect(f.leftovers()).toEqual([])
+    f.scrub('a\nb\n')
+    await f.share()
+    expect(f.history()).toBe('a\nb\n')
+  })
+  it('fails closed on an unreadable Windows link record', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
+    await f.share('win32')
+    const record = join(f.profileHome, 'history.jsonl.orca-profile-link')
+    fs.chmodSync(record, 0)
+    f.scrub('a\nb\n')
+    const report = await f.share('win32')
+    fs.chmodSync(record, 0o600)
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: 'history.jsonl', code: 'unreadable' })
+    )
+    expect(f.history()).toBe('a\nb\n')
+  })
+  it('undoes a Windows link whose record could not be written', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
+    vi.mocked(writeFileAtomically).mockImplementationOnce(() => {
+      throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    })
+    const report = await f.share('win32')
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: 'history.jsonl', code: 'link-failed' })
+    )
+    expect(fs.existsSync(join(f.profileHome, 'history.jsonl'))).toBe(false)
+    f.scrub('a\nb\n')
+    await f.share('win32')
+    expect(f.history()).toBe('a\nb\n')
+  })
+  it('still links the profile when an old retained copy cannot be read', async () => {
+    const f = fixture()
+    const old = join(f.profileHome, 'history.jsonl.orca-profile-merge')
+    fs.writeFileSync(old, 'old\n')
+    fs.chmodSync(old, 0)
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'private\n')
+    const report = await f.share()
+    fs.chmodSync(old, 0o600)
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: 'history.jsonl', code: 'unreadable' })
+    )
+    expect(fs.lstatSync(join(f.profileHome, 'history.jsonl')).isSymbolicLink()).toBe(true)
+    expect(f.history()).toBe('private\n')
   })
   it('selects Windows junctions/hardlinks and recognizes an existing hardlink', async () => {
     const f = fixture()

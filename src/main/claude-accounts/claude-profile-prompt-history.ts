@@ -9,6 +9,7 @@ import {
   readSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -69,8 +70,7 @@ function appendHistory(destination: string, bytes: Buffer): void {
 }
 
 /** Bytes a rewrite of the shared file carried over unchanged, cut back to a whole line. */
-function sharedPrefixLength(file: string, destination: string): number {
-  const own = readFileSync(file)
+function sharedPrefixLength(own: Buffer, destination: string): number {
   const shared = readFileSync(destination)
   const limit = Math.min(own.length, shared.length)
   let length = 0
@@ -89,8 +89,10 @@ function isSharedFile(file: string, destination: string): boolean {
 }
 
 function drainHistory(pending: string, destination: string): void {
-  // Why: a pending name for the shared file itself would re-append its own tail forever.
+  // Why: a second name for the shared file holds nothing new, and would replay it once the default is replaced.
   if (isSharedFile(pending, destination)) {
+    unlinkSync(pending)
+    rmSync(`${pending}.offset`, { force: true })
     return
   }
   const content = readFileSync(pending)
@@ -104,6 +106,8 @@ function drainHistory(pending: string, destination: string): void {
     if (!isDefinitiveAbsence(error)) {
       throw error
     }
+    // Why: with no cursor yet (first drain, or a run cut short), a rewrite of the shared file adds only its new lines.
+    offset = sharedPrefixLength(content, destination)
   }
   appendHistory(destination, content.subarray(offset))
   // Advance only after append; a crash can duplicate records, never discard unattempted bytes.
@@ -128,12 +132,25 @@ function nextFreePath(base: string): string {
   }
 }
 
+/** Fails closed: an unreadable record must not read as "no link", which would drain a replaced default back. */
 function readLinkRecord(profile: string): string | null {
   try {
     return readFileSync(join(profile, LINK_RECORD), 'utf8').trim()
-  } catch {
-    return null
+  } catch (error) {
+    if (isDefinitiveAbsence(error)) {
+      return null
+    }
+    throw new ClaudeProfileSurfaceError(
+      'unreadable',
+      `Prompt history link record: ${String(error)}`
+    )
   }
+}
+
+function isReadError(error: unknown): boolean {
+  return (
+    error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')
+  )
 }
 
 function writeLinkRecord(profile: string, shared: BigIntStats): void {
@@ -163,7 +180,17 @@ export function mergeClaudeProfilePromptHistory(
   // Why: directory order is not creation order; generations keep prompts in the order they were written.
   pendings.sort((left, right) => left.generation - right.generation)
   for (const { name } of pendings) {
-    drainHistory(join(profile, name), destination)
+    try {
+      drainHistory(join(profile, name), destination)
+    } catch (error) {
+      // Why: an old retained copy is bookkeeping; it must not keep the profile from being linked.
+      const code = isReadError(error) ? 'unreadable' : 'failed'
+      warnClaudeProfile(
+        report,
+        HISTORY,
+        new ClaudeProfileSurfaceError(code, `${name}: ${String(error)}`)
+      )
+    }
   }
   const current = lstatIfPresent(source)
   if (current?.isSymbolicLink()) {
@@ -191,6 +218,12 @@ export function mergeClaudeProfilePromptHistory(
     aside = nextFreePath(join(profile, replaced ? `${HISTORY}.orca-profile-conflict` : PENDING))
     renameSync(source, aside)
   }
+  const restore = (error: unknown): never => {
+    if (aside && !lstatIfPresent(source)) {
+      renameSync(aside, source)
+    }
+    throw new ClaudeProfileSurfaceError('link-failed', String(error))
+  }
   try {
     if (platform === 'win32') {
       linkSync(destination, source)
@@ -198,23 +231,23 @@ export function mergeClaudeProfilePromptHistory(
       symlinkSync(destination, source)
     }
   } catch (error) {
-    if (aside && !lstatIfPresent(source)) {
-      renameSync(aside, source)
-    }
-    throw new ClaudeProfileSurfaceError('link-failed', String(error))
+    restore(error)
   }
   if (platform === 'win32') {
-    writeLinkRecord(profile, shared)
+    try {
+      writeLinkRecord(profile, shared)
+    } catch (error) {
+      // Why: a link without its record would let a later default replacement drain the old copy back.
+      if (isSharedFile(source, destination)) {
+        unlinkSync(source)
+      }
+      restore(error)
+    }
   }
   if (aside && replaced) {
     const detail = `Shared prompt history was replaced; the old copy is kept at ${aside}`
     warnClaudeProfile(report, HISTORY, new ClaudeProfileSurfaceError('retained-conflict', detail))
-  } else if (aside && isSharedFile(aside, destination)) {
-    // Why: a second name for the shared file holds nothing new, and would replay it if the default is replaced.
-    unlinkSync(aside)
   } else if (aside) {
-    // Why: a CLI that rewrote the shared file (old records + new) must contribute only the new ones.
-    writeFileSync(`${aside}.offset`, `${sharedPrefixLength(aside, destination)}\n`, { mode: 0o600 })
     drainHistory(aside, destination)
   }
   return 'linked'

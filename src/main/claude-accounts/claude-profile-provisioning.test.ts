@@ -183,6 +183,22 @@ describe('dormant Claude profile provisioning', () => {
       expect.objectContaining({ surface: '.claude.json', code: 'unreadable' })
     )
   })
+  it('skips only folder trust when the profile projects value is malformed', async () => {
+    const f = fixture()
+    f.json(join(f.userHome, '.claude.json'), { theme: 'dark' })
+    f.json(join(f.profileHome, '.claude.json'), { userID: 'p', projects: 'bad' })
+    const report = await provision(f, ['/work'])
+    expect(report.surfaces['.claude.json']).toBe('merged')
+    expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({
+      userID: 'p',
+      projects: 'bad',
+      theme: 'dark',
+      hasCompletedOnboarding: true
+    })
+    expect(report.warnings).toEqual([
+      expect.objectContaining({ surface: '.claude.json', code: 'trust-refused' })
+    ])
+  })
   it('skips the state write while Claude holds its lock and records nothing for it', async () => {
     const f = fixture()
     f.json(join(f.userHome, '.claude.json'), { theme: 'dark' })

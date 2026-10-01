@@ -26,6 +26,7 @@ export type ClaudeProfileWarningCode =
   | 'invalid-profile'
   | 'unreadable'
   | 'locked'
+  | 'trust-refused'
   | 'cross-filesystem'
   | 'retained-conflict'
   | 'link-failed'

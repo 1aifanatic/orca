@@ -2,12 +2,14 @@ import { lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import * as hostPath from 'node:path'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { ClaudeProfileSurfaceError } from './claude-profile-report'
 
+/** `executionHostId` routes calls to the host; it is the caller's view, so it is never persisted. */
 export type ClaudeProfileTarget =
-  | { executionHostId: string; runtime: 'host' }
-  | { executionHostId: string; runtime: 'wsl'; distro: string }
+  | { executionHostId: ExecutionHostId; runtime: 'host' }
+  | { executionHostId: ExecutionHostId; runtime: 'wsl'; distro: string }
 
 export type ClaudeProfileDescriptor = {
   version: 1
@@ -58,11 +60,14 @@ export function describeClaudeProfile(
   }
 }
 
-// Fixed key order so the marker compares by value, whatever order the caller built the target in.
-function ownershipRecord(version: unknown, accountId: unknown, target: unknown): string {
-  const fields: Record<string, unknown> = isProfileObject(target) ? target : {}
-  const { executionHostId, runtime, distro } = fields
-  return JSON.stringify({ version, accountId, target: { executionHostId, runtime, distro } })
+// Host-local facts only, in a fixed key order: the marker sits on the execution host's own disk.
+function ownershipRecord(
+  version: unknown,
+  accountId: unknown,
+  runtime: unknown,
+  distro: unknown
+): string {
+  return JSON.stringify({ version, accountId, runtime, distro })
 }
 
 function readOwnershipMarker(file: string): string | null {
@@ -80,8 +85,8 @@ function readOwnershipMarker(file: string): string | null {
   if (marker.kind !== 'present') {
     throw new ClaudeProfileSurfaceError('unreadable', 'Claude profile marker is unreadable')
   }
-  const { version, accountId, target } = marker.value
-  return ownershipRecord(version, accountId, target)
+  const { version, accountId, runtime, distro } = marker.value
+  return ownershipRecord(version, accountId, runtime, distro)
 }
 
 /**
@@ -108,7 +113,8 @@ export function prepareClaudeProfileDirectory(
   assertClaudeProfileDescendant(dataRoot, profile.home)
   assertOutsideDefaultClaudeHomes(profile.home, userHome)
   const markerPath = join(dirname(profile.home), 'profile.json')
-  const record = ownershipRecord(profile.version, profile.accountId, profile.target)
+  const distro = profile.target.runtime === 'wsl' ? profile.target.distro : undefined
+  const record = ownershipRecord(profile.version, profile.accountId, profile.target.runtime, distro)
   const marker = readOwnershipMarker(markerPath)
   if (marker !== null && marker !== record) {
     throw new ClaudeProfileSurfaceError(
