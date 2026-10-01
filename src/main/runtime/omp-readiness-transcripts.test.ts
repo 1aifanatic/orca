@@ -134,6 +134,23 @@ describe('OMP 18.4.5 captured readiness', () => {
     ).toBe(true)
   })
 
+  it("refuses the wizard's splash, which has no step heading yet", async () => {
+    const setup = transcript('omp-18-setup')
+    const splash = setup.slice(0, setup.indexOf('Setup step'))
+    expect(splash).toContain('\x1b[?1049h')
+    const { runtime, handle } = await createTranscriptPane({
+      paneTitle: 'Terminal',
+      foregroundProcess: 'omp',
+      data: splash,
+      launchAgent: 'omp',
+      size: { cols: 120, rows: 40 }
+    })
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;π > capture-cwd\x07', Date.now())
+    const result = runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
+    const assertion = expect(result).rejects.toThrow('timeout')
+    await Promise.all([assertion, vi.advanceTimersByTimeAsync(5_000)])
+  })
+
   it.each(['π - capture-cwd', 'π: capture-cwd'])(
     'refuses %s while the setup wizard is on screen',
     async (title) => {
