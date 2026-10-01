@@ -16,8 +16,8 @@ vi.mock('./orcad-app-paths', () => ({ resolveOrcadInstallRoot: () => fixture.dir
 vi.mock('../persistence/profile-state/profile-state-runtime-preflight', () => ({
   preflightProfileStateRuntime: fixture.sqlite
 }))
-vi.mock('./orcad-bun-native-preflight', () => ({
-  preflightOrcadBunNativeRuntime: vi.fn(async () => {})
+vi.mock('./orcad-runtime-native-preflight', () => ({
+  preflightOrcadNativeRuntime: vi.fn(async () => {})
 }))
 
 beforeEach(async () => {
