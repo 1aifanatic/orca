@@ -8,6 +8,11 @@
  * byte as a key, a canonical-mode write truncates a line
  * past MAX_CANON (1024 on macOS), and cmd caps a line at 8191. Decided here, where the line exists,
  * so the answer is a fact about what was built rather than a prediction of it.
+ *
+ * `startup-line-typed-length.live-shell.test.ts` types lines through Orca's own ready barrier and
+ * submission into real shells, including one whose config outlasts the barrier's 1.5 s cap so the
+ * line lands while the terminal is still line-buffered. Only zsh read a multi-line line whole in
+ * both cases, and only while each of its lines stayed short; a long single line was lost there.
  */
 
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
@@ -15,8 +20,11 @@ import { buildAgentStartupPlan, type AgentStartupPlan } from './tui-agent-startu
 import type { TuiAgent } from './tui-agent'
 
 /** Half of macOS MAX_CANON: a single typed line this long survived every canonical-mode write
- *  measured, and 1 KiB did not. */
+ *  measured, and 1 KiB did not. Also the cap on each line of a multi-line one. */
 export const TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES = 512
+
+/** A multi-line line typed into zsh: the largest measured intact behind a late write (8 KiB). */
+export const ZSH_MULTI_LINE_STARTUP_LINE_BUDGET_BYTES = 8192
 
 const encoder = new TextEncoder()
 
@@ -27,6 +35,8 @@ function typedLineBytes(line: string): number {
 export function startupLineCarriesPrompt(args: {
   agent: TuiAgent
   withPrompt: AgentStartupPlan | null
+  /** The shell the line is typed into, when the host can name it before the spawn. */
+  shellName?: string
 }): boolean {
   const { withPrompt } = args
   if (!withPrompt || withPrompt.followupPrompt !== null) {
@@ -38,7 +48,25 @@ export function startupLineCarriesPrompt(args: {
     return true
   }
   const line = withPrompt.launchCommand
-  return !hasControlByte(line) && typedLineBytes(line) <= TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+  if (!hasControlByte(line)) {
+    return typedLineBytes(line) <= TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+  }
+  return args.shellName === 'zsh' && zshReadsMultiLineWhole(line)
+}
+
+/**
+ * zsh takes a multi-line line as one bracketed paste, and a write that beats its line editor still
+ * reaches it line by line, so each line must fit the terminal's line buffer. bash 3.2 has no
+ * bracketed paste, and fish drops a paste written before its reader is up.
+ */
+function zshReadsMultiLineWhole(line: string): boolean {
+  const lines = line.split('\n')
+  return (
+    lines.every(
+      (part) =>
+        !hasControlByte(part) && typedLineBytes(part) <= TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+    ) && typedLineBytes(line) <= ZSH_MULTI_LINE_STARTUP_LINE_BUDGET_BYTES
+  )
 }
 
 /** Any C0 byte or DEL, not just CR/LF: no quoter escapes them, and a single-line command is written
@@ -64,11 +92,18 @@ type StartupPlanInputs = Omit<
  */
 export function planStartupWithPromptCandidate(
   inputs: StartupPlanInputs,
-  prompt: string
+  prompt: string,
+  shellName?: string
 ): { plan: AgentStartupPlan | null; promptCarried: boolean } {
   if (prompt.trim()) {
     const withPrompt = buildAgentStartupPlan({ ...inputs, prompt, allowEmptyPromptLaunch: true })
-    if (startupLineCarriesPrompt({ agent: inputs.agent, withPrompt })) {
+    if (
+      startupLineCarriesPrompt({
+        agent: inputs.agent,
+        withPrompt,
+        ...(shellName ? { shellName } : {})
+      })
+    ) {
       return { plan: withPrompt, promptCarried: true }
     }
   }

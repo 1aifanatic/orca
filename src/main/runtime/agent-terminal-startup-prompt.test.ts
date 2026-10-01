@@ -17,7 +17,10 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-function runtimeWithAgentLaunch(): {
+// The shell the host names for a local line; bash takes no multi-line line, zsh does.
+function runtimeWithAgentLaunch(
+  options: { terminalDefaultShell?: string; connectionId?: string } = {}
+): {
   runtime: OrcaRuntimeService
   spawn: ReturnType<typeof vi.fn>
 } {
@@ -27,11 +30,13 @@ function runtimeWithAgentLaunch(): {
     store: { getSettings: () => Record<string, unknown> }
     resolveTerminalWorkspaceLaunchScope: (selector: string) => Promise<unknown>
   }
-  internal.store = { getSettings: () => ({}) }
+  internal.store = {
+    getSettings: () => ({ terminalDefaultShell: options.terminalDefaultShell ?? '/bin/bash' })
+  }
   vi.spyOn(internal, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
     id: 'wt-1',
     path: '/repo/app',
-    connectionId: null,
+    connectionId: options.connectionId ?? null,
     repo: null,
     folderWorkspace: null
   })
@@ -79,6 +84,37 @@ describe('a terminal create that is handed a launch prompt', () => {
 
     // Typed into a shell, each newline would be Enter; the caller pastes it once the agent is up.
     expect(spawnedCommand(spawn)).toContain('claude')
+    expect(spawnedCommand(spawn)).not.toContain('summarize')
+    expect(onStartupPromptCarry).toHaveBeenCalledWith(false)
+  })
+
+  it('carries a short-lined multi-line prompt on a local zsh line, so the agent starts with it', async () => {
+    const { runtime, spawn } = runtimeWithAgentLaunch({ terminalDefaultShell: '/bin/zsh' })
+    const onStartupPromptCarry = vi.fn()
+
+    await runtime.createTerminal('id:wt-1', {
+      startupAgent: 'claude',
+      startupPrompt: 'summarize the diff\nthen list the risks',
+      onStartupPromptCarry
+    })
+
+    expect(spawnedCommand(spawn)).toContain('summarize the diff\nthen list the risks')
+    expect(onStartupPromptCarry).toHaveBeenCalledWith(true)
+  })
+
+  it('starts clean on a remote host, whose shell this host cannot name', async () => {
+    const { runtime, spawn } = runtimeWithAgentLaunch({
+      terminalDefaultShell: '/bin/zsh',
+      connectionId: 'ssh-1'
+    })
+    const onStartupPromptCarry = vi.fn()
+
+    await runtime.createTerminal('id:wt-1', {
+      startupAgent: 'claude',
+      startupPrompt: 'summarize the diff\nthen list the risks',
+      onStartupPromptCarry
+    })
+
     expect(spawnedCommand(spawn)).not.toContain('summarize')
     expect(onStartupPromptCarry).toHaveBeenCalledWith(false)
   })
