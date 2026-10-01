@@ -545,6 +545,32 @@ describe('an operation that needs the agent the chat does not have running', () 
     expect(changeThreadGoal).toHaveBeenCalledOnce()
   })
 
+  // Each child that replaced the one waited on is a new start, waited on outside the queue too.
+  it('waits outside the queue for every child that replaced the one it waited on', async () => {
+    const changed = changeGoal()
+    for (const child of ['generation-2', 'generation-3', 'generation-4']) {
+      await eventually(() => expect(generation).toBe(Number(child.split('-')[1])))
+      let queueFree = false
+      void host.collaboratorsForTests().serialize(SESSION, async () => {
+        queueFree = true
+      })
+      await eventually(() => expect(queueFree).toBe(true))
+      if (child === 'generation-4') {
+        break
+      }
+      // That child's start lands and it ends before the call is back in the queue.
+      const settle = settleStart
+      await exitBeforeProof()
+      settle(undefined)
+    }
+    expect(changeThreadGoal).not.toHaveBeenCalled()
+
+    awaitStarted.mockImplementation(async () => undefined)
+    settleStart(undefined)
+    await expect(changed).resolves.toMatchObject({ ok: true, value: { change: 'set' } })
+    expect(changeThreadGoal).toHaveBeenCalledOnce()
+  })
+
   it('is answered with why the start it waited on failed', async () => {
     const changed = changeGoal()
     await eventually(() => expect(awaitStarted).toHaveBeenCalled())

@@ -51,54 +51,44 @@ class AwaitingAgentStart {
   constructor(readonly child: string) {}
 }
 
-/** Waits out a start this many times outside the queue before waiting on it inside. */
-const OUTSIDE_START_WAITS = 2
+type SessionPreparation = (
+  ...args: Parameters<NonNullable<AgentSessionMutationRequest<unknown>['prepareSession']>>
+) => Promise<AgentSessionMutationSessionPreparation>
 
-/** Admits the envelope and runs the plan inside the session's serialize. A start the preparation
- *  makes is waited on outside the queue, as the delivery loop waits, so a Stop or the idle sweep
- *  can reach a start that hangs; the call then re-enters, finding that child there. */
-export async function mutateStructuredAgentSession<TValue>(
-  context: StructuredAgentSessionMutationContext,
-  caller: StructuredAgentSessionCaller,
-  envelope: AgentSessionMutationEnvelope,
-  plan: MutationPlan<TValue>,
-  prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
+/**
+ * Runs a mutation `step` in the session's queue. A preparation that leaves the agent the call needs
+ * proving its start is waited on outside the queue, as the delivery loop waits, so a Stop or the
+ * idle sweep can reach a start that hangs; the step then runs again and finds that child there.
+ * A child that replaced it is waited on the same way: nothing waits for a start inside the queue.
+ */
+export async function serializeAwaitingAgentStart<TValue>(
+  context: Pick<StructuredAgentSessionMutationContext, 'serialize' | 'sessions' | 'deps'>,
+  sessionId: string,
+  step: (
+    prepare: (prepareSession: SessionPreparation) => SessionPreparation
+  ) => Promise<AgentSessionMutationResult<TValue>>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  const { sessionId } = envelope
   const { adapter } = context.deps
   let awaited: string | null = null
-  for (let waits = 0; ; waits += 1) {
-    const prepare: typeof prepareSession =
-      prepareSession &&
-      (async (decision, record) => {
-        const prepared = await prepareSession(decision, record)
-        const child = context.sessions.get(sessionId)?.child
-        if (!prepared.ok || !prepared.startPending || !child || !adapter.awaitStarted) {
-          return prepared
-        }
-        const identity = `${child.generation}:${child.fence}`
-        if (identity !== awaited && waits < OUTSIDE_START_WAITS) {
-          throw new AwaitingAgentStart(identity)
-        }
-        // Already settled for the child waited on: the host's phase trails the adapter's by a step.
-        return structuredAgentSessionOperationStartOutcome(await adapter.awaitStarted(sessionId))
-      })
+  const prepare =
+    (prepareSession: SessionPreparation): SessionPreparation =>
+    async (...args) => {
+      const prepared = await prepareSession(...args)
+      const child = context.sessions.get(sessionId)?.child
+      if (!prepared.ok || !prepared.startPending || !child || !adapter.awaitStarted) {
+        return prepared.ok ? { ok: true } : prepared
+      }
+      const identity = `${child.generation}:${child.fence}`
+      if (identity !== awaited) {
+        throw new AwaitingAgentStart(identity)
+      }
+      // Settled for the child waited on, so this answers at once: the host's phase trails the
+      // adapter's by a step.
+      return structuredAgentSessionOperationStartOutcome(await adapter.awaitStarted(sessionId))
+    }
+  for (;;) {
     try {
-      return await context.serialize(sessionId, () =>
-        admitAndRunAgentSessionMutation({
-          store: context.deps.store,
-          adapter,
-          callerKey: caller.callerKey,
-          envelope,
-          plan,
-          journal: () => context.sessions.get(sessionId)?.journal,
-          prepareSession: prepare,
-          publish: (journal) => context.publish(sessionId, journal),
-          flushStreamedEvents: context.flushStreamedEvents,
-          providerChildPhase: () => context.sessions.get(sessionId)?.child?.phase,
-          now: () => context.now()
-        })
-      )
+      return await context.serialize(sessionId, () => step(prepare))
     } catch (error) {
       if (!(error instanceof AwaitingAgentStart)) {
         throw error
@@ -112,4 +102,31 @@ export async function mutateStructuredAgentSession<TValue>(
       awaited = error.child
     }
   }
+}
+
+/** Admits the envelope and runs the plan inside the session's serialize, a start its preparation
+ *  needs waited on outside it; see `serializeAwaitingAgentStart`. */
+export function mutateStructuredAgentSession<TValue>(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  envelope: AgentSessionMutationEnvelope,
+  plan: MutationPlan<TValue>,
+  prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
+): Promise<AgentSessionMutationResult<TValue>> {
+  const { sessionId } = envelope
+  return serializeAwaitingAgentStart(context, sessionId, (prepare) =>
+    admitAndRunAgentSessionMutation({
+      store: context.deps.store,
+      adapter: context.deps.adapter,
+      callerKey: caller.callerKey,
+      envelope,
+      plan,
+      journal: () => context.sessions.get(sessionId)?.journal,
+      ...(prepareSession ? { prepareSession: prepare(prepareSession) } : {}),
+      publish: (journal) => context.publish(sessionId, journal),
+      flushStreamedEvents: context.flushStreamedEvents,
+      providerChildPhase: () => context.sessions.get(sessionId)?.child?.phase,
+      now: () => context.now()
+    })
+  )
 }

@@ -108,6 +108,10 @@ export async function admitAndRunAgentSessionMutation<TValue>(
       if (!prepared.ok) {
         return prepared
       }
+      // Waited on outside the queue by `serializeAwaitingAgentStart`, which never passes one on.
+      if (prepared.startPending) {
+        throw new Error('an agent start the call needs must be waited on outside the session queue')
+      }
     }
   }
   const journal = request.journal()
