@@ -101,7 +101,10 @@ function eventually<T>(assertion: () => T | Promise<T>): Promise<T> {
   return vi.waitFor(assertion, { timeout: 10_000 })
 }
 
-function envelope(method: 'agentSession.send' | 'agentSession.cancel', fields: object) {
+function envelope(
+  method: 'agentSession.send' | 'agentSession.cancel' | 'agentSession.setOption',
+  fields: object
+) {
   return {
     sessionId: SESSION,
     clientOperationId: hostTestOperationId(),
