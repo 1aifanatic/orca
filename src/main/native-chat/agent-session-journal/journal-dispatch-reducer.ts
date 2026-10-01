@@ -9,7 +9,11 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
-import { notePersonTurnAccepted, placeHandedOverMessage } from './journal-submission-fold'
+import {
+  notePersonTurnAccepted,
+  placeHandedOverMessage,
+  placeQueuedMessageAt
+} from './journal-submission-fold'
 import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
 
 export function applyJournalDispatchRow(
@@ -31,8 +35,13 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.rejection
   }
-  // A failed start's rejection proves its child took nothing it was handed: never handed over.
   if (rejection && isFailedStartRejection({ reason: row.reason, rejection })) {
+    // Drawn below the conversation while it waited, it stays where its failure was written rather
+    // than jump back to where it was accepted, above what came since.
+    if (submission.handedOverAt === undefined) {
+      placeQueuedMessageAt(state, submission, row)
+    }
+    // Its child took nothing it was handed: never handed over.
     delete submission.handedOverAt
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts

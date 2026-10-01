@@ -7,9 +7,11 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journa
 import {
   applyJournalRow,
   createJournalReducerState,
+  renderJournalState,
   type JournalReducerState
 } from './journal-reducer'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 
 const EPOCH = 'epoch-1'
 
@@ -154,6 +156,48 @@ describe('a failed start recorded on its message', () => {
     expect(handedThenRejected({ kind: 'hostStopped' }).handedOverAt).toBeUndefined()
     // The provider refusing what it was handed is no failed start: it was handed over.
     expect(handedThenRejected({ kind: 'providerRejected' }).handedOverAt).toBe(1_002)
+  })
+
+  // Drawn below the conversation while it waited, a message whose start failed for good stays where
+  // its failure was written instead of jumping back above what came since.
+  describe('where a message whose start failed for good is placed', () => {
+    const later: JournalRow = {
+      kind: 'item',
+      itemId: 'codex:later-answer',
+      revision: 1,
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'later' }] },
+      ...base(3)
+    }
+    const failed = (kind: string, seq: number): JournalRow =>
+      fromDisk({
+        kind: 'dispatch',
+        clientMessageId: 'cm_1',
+        state: 'rejected',
+        providerItemId: null,
+        reason: 'Written by the host.',
+        rejection: { kind },
+        ...base(seq)
+      })
+    const order = (rows: JournalRow[]) =>
+      renderJournalState(fold(rows)).items.map((entry) => entry.itemId)
+    const message = agentJournalSubmissionKey('cm_1')
+
+    it('stays below what came while it waited', () => {
+      expect(
+        order([accepted, failedStart(2, RECORD), later, failed('accountSwitchInProgress', 4)])
+      ).toEqual(['codex:later-answer', message])
+    })
+
+    it('is where it was when nothing came after it', () => {
+      expect(order([accepted, failed('providerStartFailed', 2)])).toEqual([message])
+    })
+
+    it('keeps its place for a rejection that is not a failed start', () => {
+      expect(order([accepted, later, failed('cancelled', 4)])).toEqual([
+        message,
+        'codex:later-answer'
+      ])
+    })
   })
 
   it('reads a malformed record as a plain handover: in doubt at the next open, never failed', () => {
