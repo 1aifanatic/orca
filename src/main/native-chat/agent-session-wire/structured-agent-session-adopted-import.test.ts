@@ -215,40 +215,52 @@ describe('adopting a provider conversation on create', () => {
     }
   )
 
-  // The import runs after the at-rest record commits, so its failure rejects the create but the
-  // conversation stays open for the next send.
-  it('rejects a create whose import write fails, and leaves the conversation writable', async () => {
-    root = await mkdtemp(join(tmpdir(), 'orca-adopt-write-failure-'))
-    const transcriptPath = join(root, 'rollout.jsonl')
-    await writeCodexRollout(transcriptPath, 'valid source')
-    vi.spyOn(AgentSessionJournal.prototype, 'replaceEpochItems').mockRejectedValueOnce(
-      new Error('disk write failed')
-    )
-    const sessionAdapter = adapter()
-    await expect(create(transcriptPath, sessionAdapter)).rejects.toThrow('disk write failed')
-    expect(sessionAdapter.acquire).not.toHaveBeenCalled()
-    // Settled as failed: a retry of the same create is told so, not handed an empty chat.
-    expect(await create(transcriptPath, sessionAdapter)).toMatchObject({ ok: false })
+  // The import runs after the at-rest record commits. A create cut short there (a throw, a crash, a
+  // quit) leaves its operation pending, so its replay imports again rather than answering empty.
+  it.each([
+    [
+      'its import write',
+      () =>
+        vi
+          .spyOn(AgentSessionJournal.prototype, 'replaceEpochItems')
+          .mockRejectedValueOnce(new Error('disk write failed')),
+      'disk write failed'
+    ],
+    [
+      'its journal open',
+      (sessionAdapter: StructuredAgentSessionAdapter) => {
+        sessionAdapter.historyFilePath = vi
+          .fn<NonNullable<StructuredAgentSessionAdapter['historyFilePath']>>()
+          .mockRejectedValueOnce(new Error('journal path unavailable'))
+          .mockResolvedValue(null)
+      },
+      'journal path unavailable'
+    ]
+  ] as const)(
+    'imports the history on the replay of a create whose %s failed',
+    async (_case, interrupt, message) => {
+      root = await mkdtemp(join(tmpdir(), 'orca-adopt-interrupted-'))
+      const transcriptPath = join(root, 'rollout.jsonl')
+      await writeCodexRollout(transcriptPath, 'token ORCA-ADOPT-REPLAYED')
+      const sessionAdapter = adapter()
+      interrupt(sessionAdapter)
 
-    const body = { kind: 'message' as const, role: 'user' as const, blocks: [] }
-    const sent = await host!.send(
-      { callerKey: 'client-1' },
-      {
-        envelope: {
-          sessionId: SESSION,
-          clientOperationId: `${NOW}-${'2'.padStart(32, '0')}`,
-          expectedRuntimeFence: null,
-          payloadFingerprint: computeAgentSessionPayloadFingerprint({
-            method: 'agentSession.send',
-            sessionId: SESSION,
-            fields: { body }
-          })
-        },
-        body
+      await expect(create(transcriptPath, sessionAdapter)).rejects.toThrow(message)
+      expect(store?.getOperationRow('client-1', OPERATION)?.outcome).toEqual({ status: 'pending' })
+
+      const replay = await create(transcriptPath, sessionAdapter)
+      expect(replay).toMatchObject({ ok: true, replayed: true })
+      if (!replay.ok) {
+        throw new Error('create replay failed')
       }
-    )
-    expect(sent).toMatchObject({ ok: true, value: { submission: { dispatchState: 'pending' } } })
-  })
+      expect(JSON.stringify(replay.value.page.items)).toContain('ORCA-ADOPT-REPLAYED')
+      expect(store?.getOperationRow('client-1', OPERATION)?.outcome).toEqual({
+        status: 'succeeded',
+        sessionId: SESSION
+      })
+      expect(sessionAdapter.acquire).not.toHaveBeenCalled()
+    }
+  )
 
   it('prepares a valid source once before the record claims it and imports those exact items', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-adopt-once-'))

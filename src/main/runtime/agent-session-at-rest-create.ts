@@ -40,7 +40,8 @@ export type AgentSessionAtRestCreateRequest = AgentSessionRecordIdentity &
 
 export type AgentSessionAtRestCreateResult = {
   record: AgentSessionRecord
-  /** The row a replay answers from; a fresh create's is already settled as succeeded. */
+  /** Pending until the create's journal is open and any adopted history imported; a replay of a
+   *  pending row does both again. */
   operationRow: AgentSessionOperationRow
   replayed: boolean
 }
@@ -85,10 +86,7 @@ export function commitAgentSessionAtRestCreate(
         lease: { ...founded.lease, runtimeFence: existing.lease.runtimeFence }
       }
     : founded
-  const operationRow: AgentSessionOperationRow = {
-    ...pendingAgentSessionOperationRow({ ...request.operation, now: request.now }),
-    outcome: { status: 'succeeded', sessionId: request.sessionId }
-  }
+  const operationRow = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
   state.records.set(record.sessionId, record)
   state.operations.set(
     agentSessionOperationKey(operationRow.callerKey, operationRow.operationId),

@@ -105,6 +105,10 @@ describe('a create at rest', () => {
       deathEvidence: null
     })
     expect(state.records.get(SESSION)).toEqual(record)
+    // Settled by the create once its journal is open; see structured-agent-session-create-at-rest.
+    expect([...state.operations.values()].map((row) => row.outcome)).toEqual([
+      { status: 'pending' }
+    ])
   })
 
   it('replays the record its own operation founded, and writes nothing more', () => {

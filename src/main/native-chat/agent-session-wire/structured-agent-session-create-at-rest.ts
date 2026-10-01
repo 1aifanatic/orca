@@ -88,8 +88,12 @@ async function createAtRest(
   } catch (error) {
     return { ok: false, refusal: classifyStoreFailure(error, null, store.getRecord(sessionId)) }
   }
-  if (created.replayed && created.operationRow.outcome.status !== 'succeeded') {
-    // A create from before chats were created at rest: it answers only as it ended.
+  // Settled only once the journal is open and any adopted history is in it. A create that stopped
+  // short (a throw, a crash, a quit) leaves its row pending, and its replay does that work again:
+  // the import is a no-op on a journal that already holds rows.
+  const settled = created.operationRow.outcome.status === 'succeeded'
+  if (created.replayed && !settled) {
+    // `failed` or `unknown` rows are a create from before chats were created at rest.
     const replay = resolveAgentSessionReplayOutcome({
       operationId: params.envelope.clientOperationId,
       outcome: created.operationRow.outcome,
@@ -111,28 +115,18 @@ async function createAtRest(
     }
   }
   const { journal } = conversation
-  if (!created.replayed) {
-    try {
-      await importAdoptedTranscript(
-        params,
-        { journal, unconfirmedClientMessageIds: [] },
-        created.record,
-        transcript.items
-      )
-    } catch (error) {
-      // Settled before rethrowing, so a retry of this create replays the failure, not a success.
-      await store.recordOperationOutcome({
-        callerKey,
-        operationId: params.envelope.clientOperationId,
-        outcome: {
-          status: 'failed',
-          code: 'agent_session_operation_invalid',
-          details: { reason: 'attachFailed' },
-          message: error instanceof Error ? error.message : String(error)
-        }
-      })
-      throw error
-    }
+  if (!settled) {
+    await importAdoptedTranscript(
+      params,
+      { journal, unconfirmedClientMessageIds: [] },
+      created.record,
+      transcript.items
+    )
+    await store.recordOperationOutcome({
+      callerKey,
+      operationId: params.envelope.clientOperationId,
+      outcome: { status: 'succeeded', sessionId: created.record.sessionId }
+    })
   }
   const fence = created.record.lease.runtimeFence
   const tabId = store.getSessionTabId(created.record.sessionId)
