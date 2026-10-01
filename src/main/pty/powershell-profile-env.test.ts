@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetPowerShellProfileEnvCache,
-  readPowerShellProfileEnvAssignments
+  readPowerShellProfileEnvValues
 } from './powershell-profile-env'
 
 const { registryDocumentsDir } = vi.hoisted(() => {
@@ -42,8 +42,8 @@ function writeProfile(path: string, content: string): void {
   writeFileSync(path, content)
 }
 
-describe('readPowerShellProfileEnvAssignments', () => {
-  it('reads assignments from both editions in load order, $PSHOME first', () => {
+describe('readPowerShellProfileEnvValues', () => {
+  it('keeps the last assignment each edition makes, $PSHOME loading first', () => {
     const root = createRoot()
     const userProfile = join(root, 'me')
     const env = { SystemRoot: join(root, 'Windows'), ProgramFiles: join(root, 'pf') }
@@ -62,8 +62,7 @@ describe('readPowerShellProfileEnvAssignments', () => {
       '  ${env:CODEX_HOME} = $env:USERPROFILE\\.codex-7 # pwsh\n'
     )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', userProfile)).toEqual([
-      'C:\\all-users',
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', userProfile)).toEqual([
       `${userProfile}\\.codex-5`,
       `${userProfile}\\.codex-7`
     ])
@@ -81,7 +80,7 @@ describe('readPowerShellProfileEnvAssignments', () => {
       ])
     )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root)).toEqual(['C:\\utf16'])
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual(['C:\\utf16'])
   })
 
   it('reads the registry-named Documents folder, e.g. one OneDrive redirected', () => {
@@ -98,28 +97,45 @@ describe('readPowerShellProfileEnvAssignments', () => {
       "$env:CODEX_HOME = 'D:\\codex'\n"
     )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', join(root, 'me'))).toEqual([
-      'D:\\codex'
-    ])
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', join(root, 'me'))).toEqual(['D:\\codex'])
   })
 
-  it('keeps literal and unevaluable values, and ignores other names and empties', () => {
+  it('keeps literal and unevaluable values, and ignores other names and comments', () => {
     const root = createRoot()
     writeProfile(
-      join(root, 'Documents', 'PowerShell', 'profile.ps1'),
+      join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1'),
       [
         "$env:CODEX_HOME = '$HOME\\literal # kept'",
-        '$env:CODEX_HOME = (Join-Path $HOME .codex-x)',
-        '$env:CODEX_HOME = $null',
-        "$env:CODEX_HOME = ''",
         "$env:CODEX_HOMEX = 'C:\\other'",
         "# $env:CODEX_HOME = 'C:\\commented'"
       ].join('\n')
     )
+    writeProfile(
+      join(root, 'Documents', 'PowerShell', 'profile.ps1'),
+      '$env:CODEX_HOME = (Join-Path $HOME .codex-x)\n'
+    )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root)).toEqual([
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([
       '$HOME\\literal # kept',
       `(Join-Path ${root} .codex-x)`
     ])
+  })
+
+  it('lets a later profile reset or clear what an earlier one set', () => {
+    const root = createRoot()
+    writeProfile(
+      join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1'),
+      "$env:CODEX_HOME = 'C:\\custom'\n"
+    )
+    writeProfile(
+      join(root, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
+      '$env:CODEX_HOME = "$HOME\\.codex"\n'
+    )
+    writeProfile(
+      join(root, 'Documents', 'PowerShell', 'profile.ps1'),
+      ["$env:CODEX_HOME = 'C:\\custom'", '$env:CODEX_HOME = $null'].join('\n')
+    )
+
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([`${root}\\.codex`])
   })
 })
