@@ -49,6 +49,8 @@ type AccountsListSnapshot = {
 // so one formatter renders either provider's block.
 type AccountsBlock = {
   accounts: readonly { id: string; email: string }[]
+  /** Claude sign-ins with no login yet; a host keeps them out of `accounts`. */
+  unfinishedAccounts?: readonly { id: string }[]
   activeAccountId: string | null
   activeAccountIdsByRuntime?: {
     host: string | null
@@ -58,7 +60,8 @@ type AccountsBlock = {
 
 /** Renders a provider's managed-account list as a human-readable block, marking the active account. */
 function formatAccountsBlock(label: string, block: AccountsBlock): string {
-  if (block.accounts.length === 0) {
+  const unfinished = block.unfinishedAccounts ?? []
+  if (block.accounts.length + unfinished.length === 0) {
     return `No managed ${label} accounts.`
   }
   const activeAccountIds = new Set([
@@ -66,10 +69,16 @@ function formatAccountsBlock(label: string, block: AccountsBlock): string {
     block.activeAccountIdsByRuntime?.host,
     ...Object.values(block.activeAccountIdsByRuntime?.wsl ?? {})
   ])
-  const lines = block.accounts.map(
-    (account) => `  ${account.email}${activeAccountIds.has(account.id) ? ' (active)' : ''}`
-  )
-  return `Managed ${label} accounts (${block.accounts.length}):\n${lines.join('\n')}`
+  const lines = [
+    ...block.accounts.map(
+      (account) =>
+        `  ${account.email || 'Unfinished sign-in'}${activeAccountIds.has(account.id) ? ' (active)' : ''}`
+    ),
+    ...unfinished.map(
+      () => '  Unfinished sign-in (finish or remove it in Orca Settings > Accounts)'
+    )
+  ]
+  return `Managed ${label} accounts (${lines.length}):\n${lines.join('\n')}`
 }
 
 function addAgentNodePaths(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

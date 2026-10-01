@@ -97,6 +97,8 @@ export type ClaudeRateLimitAccountsState = {
   activeAccountIdsByRuntime?: ClaudeManagedAccountRuntimeSelection
   /** Why new launches may not reach the selected account yet; the picker stays usable. */
   profileRoutingIssue?: string
+  /** Sign-ins with no login yet. Kept out of `accounts` on the wire, whose clients require an email. */
+  unfinishedAccounts?: ClaudeManagedAccountSummary[]
 }
 
 export type ClaudeManagedAccountRuntimeSelection = {

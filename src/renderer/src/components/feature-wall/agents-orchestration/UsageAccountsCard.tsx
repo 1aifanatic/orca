@@ -135,7 +135,8 @@ export function UsageAccountsCard(props: {
   }, [fetchRateLimits])
 
   const claudeConnection = getFeatureWallUsageProviderConnection({
-    managedAccountCount: claudeAccounts?.accounts.length,
+    // Why: an unfinished sign-in has no login yet, so it connects nothing.
+    managedAccountCount: claudeAccounts?.accounts.filter((account) => account.email).length,
     provider: rateLimits.claude
   })
   const codexConnection = getFeatureWallUsageProviderConnection({
