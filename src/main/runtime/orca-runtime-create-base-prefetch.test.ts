@@ -12,6 +12,7 @@ vi.mock('../worktree-create-base-prefetch', () => ({
   prefetchWorktreeCreateBase: mocks.prefetchWorktreeCreateBase
 }))
 vi.mock('../worktree-create-preparation', () => ({
+  beginWorktreeCreateSpareRequest: () => ({ seq: 1 }),
   requestWorktreeCreateSpare: mocks.requestWorktreeCreateSpare
 }))
 
@@ -121,7 +122,8 @@ describe('prefetchManagedWorktreeCreateBase (orca-runtime-get-worktree-terminal-
     expect(mocks.requestWorktreeCreateSpare).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ id: 'repo-1' }),
-      'origin/main'
+      'origin/main',
+      { seq: 1 }
     )
   })
 

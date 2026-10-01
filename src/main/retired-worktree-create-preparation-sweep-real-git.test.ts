@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -10,7 +11,7 @@ import {
   writeFile
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { gitExecFileAsync } from './git/runner'
 import type * as GitRunner from './git/runner'
@@ -88,12 +89,14 @@ async function lock(repo: string, path: string, reason: string): Promise<void> {
   await gitExecFileAsync(['worktree', 'lock', '--reason', reason, path], { cwd: repo })
 }
 
+/** Each registration's lock reason, read from Git's admin files (Git 2.25-2.30 list none). */
 async function registrations(repo: string): Promise<Map<string, string>> {
-  const { stdout } = await gitExecFileAsync(['worktree', 'list', '--porcelain'], { cwd: repo })
-  const locks = new Map<string, string>()
-  for (const block of stdout.trim().split('\n\n')) {
-    const path = /^worktree (.+)$/m.exec(block)?.[1] ?? ''
-    locks.set(path, /^locked ?(.*)$/m.exec(block)?.[1] ?? 'unlocked')
+  const adminRoot = join(repo, '.git', 'worktrees')
+  const locks = new Map<string, string>([[repo, 'unlocked']])
+  for (const name of await readdir(adminRoot).catch(() => [])) {
+    const gitFile = (await readFile(join(adminRoot, name, 'gitdir'), 'utf-8')).trim()
+    const lock = await readFile(join(adminRoot, name, 'locked'), 'utf-8').catch(() => null)
+    locks.set(dirname(gitFile), lock === null ? 'unlocked' : lock.trim())
   }
   return locks
 }

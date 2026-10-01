@@ -110,6 +110,7 @@ const { requestWorktreeCreateSpareMock } = vi.hoisted(() => ({
   requestWorktreeCreateSpareMock: vi.fn()
 }))
 vi.mock('../worktree-create-preparation', () => ({
+  beginWorktreeCreateSpareRequest: () => ({ seq: 1 }),
   requestWorktreeCreateSpare: requestWorktreeCreateSpareMock
 }))
 
@@ -217,7 +218,8 @@ describe('registerWorktreeHandlers', () => {
     expect(requestWorktreeCreateSpareMock).toHaveBeenCalledWith(
       store,
       expect.objectContaining({ id: 'repo-1' }),
-      'main'
+      'main',
+      { seq: 1 }
     )
   })
 

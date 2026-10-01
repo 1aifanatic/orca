@@ -44,9 +44,18 @@ import {
 } from './worktree-create-preparation-pool'
 import {
   _resetSpareRequestsForTests,
+  beginWorktreeCreateSpareRequest,
   requestWorktreeCreateSpare,
   SPARE_REQUEST_DEBOUNCE_MS
 } from './worktree-create-preparation'
+
+function requestSpareFor(store: Store, target: Repo, base: string): void {
+  const ticket = beginWorktreeCreateSpareRequest(store, target)
+  if (!ticket) {
+    throw new Error('a local repo always gets a spare request ticket')
+  }
+  requestWorktreeCreateSpare(store, target, base, ticket)
+}
 
 const WSL_HOME = '\\\\wsl.localhost\\Ubuntu\\home\\jin'
 const MIRRORED_ROOT = `${WSL_HOME}\\orca\\workspaces`
@@ -70,7 +79,7 @@ function createSideRootKey(target: Repo): string {
 }
 
 async function requestSpare(target: Repo): Promise<void> {
-  requestWorktreeCreateSpare(store, target, 'origin/main')
+  requestSpareFor(store, target, 'origin/main')
   await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
   await vi.waitFor(() => expect(findSpare(spareRepoKey(target.path))?.state).toBe('ready'))
 }

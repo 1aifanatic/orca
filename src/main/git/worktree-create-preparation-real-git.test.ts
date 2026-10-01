@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as gitRunner from './runner'
 import {
   createWorktreePreparationLockReason,
   WORKTREE_CREATE_PREPARATION_DIRECTORY
@@ -28,6 +29,7 @@ import {
   startSpare
 } from '../worktree-create-preparation-pool'
 import { sweepRetiredWorktreeCreatePreparations } from '../retired-worktree-create-preparation-sweep'
+import { _whenSpareDiscardsSettledForTests } from '../worktree-create-spare-discard'
 
 const roots: string[] = []
 
@@ -58,8 +60,8 @@ async function createRepo(): Promise<{ repoPath: string; root: string }> {
 
 async function readySpare(repoPath: string, root: string): Promise<string> {
   const oid = git(repoPath, ['rev-parse', 'HEAD'])
-  const { hookRun } = await checkSparePostCheckoutHook(repoPath, {})
-  startSpare({ repoPath, workspaceRoot: root, oid, hookRun, options: {} })
+  const { hookRun, hooksPath } = await checkSparePostCheckoutHook(repoPath, {})
+  startSpare({ repoPath, workspaceRoot: root, oid, hookRun, hooksPath, options: {} })
   await vi.waitFor(() => expect(findSpare(spareRepoKey(repoPath))?.state).toBe('ready'), {
     timeout: 20_000
   })
@@ -67,6 +69,7 @@ async function readySpare(repoPath: string, root: string): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   _resetSparePoolForTests()
   _resetOwnedSpareIdsForTests()
   _resetLocalWorktreeCreateActivityForTests()
@@ -108,6 +111,107 @@ describe('spare checkouts with real Git', () => {
       expect(listed.map((worktree) => worktree.branch)).toContain('refs/heads/feature')
     }
   )
+
+  it.runIf(gitMinor >= 36)(
+    'runs a husky-style hook, relative core.hooksPath and all, as a plain add runs it',
+    async () => {
+      const { repoPath, root } = await createRepo()
+      const hookLog = join(root, 'hook.log')
+      await mkdir(join(repoPath, '.husky'))
+      await mkdir(join(repoPath, 'd'))
+      await writeFile(join(repoPath, 'd', 'a.txt'), 'a\n')
+      // The committed hook, and a gitignored stub directory only the main checkout has.
+      await writeFile(
+        join(repoPath, '.husky', 'post-checkout'),
+        `#!/bin/sh\necho "$1 $2 $3|$(cd d && git rev-parse --show-toplevel)|$(cd d && git status --porcelain)" >> "${hookLog}"\n`
+      )
+      await chmod(join(repoPath, '.husky', 'post-checkout'), 0o755)
+      git(repoPath, ['add', '.'])
+      git(repoPath, ['commit', '--quiet', '-m', 'husky'])
+      await mkdir(join(repoPath, '.husky', '_'))
+      await writeFile(join(repoPath, '.husky', '_', '.gitignore'), '*\n')
+      await writeFile(
+        join(repoPath, '.husky', '_', 'post-checkout'),
+        '#!/bin/sh\nexec "$(dirname "$(dirname "$0")")/$(basename "$0")" "$@"\n'
+      )
+      await chmod(join(repoPath, '.husky', '_', 'post-checkout'), 0o755)
+      git(repoPath, ['config', 'core.hooksPath', '.husky/_'])
+      const plain = join(root, 'plain')
+      await addWorktree(repoPath, plain, 'plain', 'main')
+      await readySpare(repoPath, root)
+      const target = join(root, 'feature')
+
+      const result = await runLocalWorktreeCreate(() =>
+        addWorktree(repoPath, target, 'feature', 'main', false, false, {
+          preparedCheckout: { workspaceRoot: root }
+        })
+      )
+
+      expect(result.preparedCheckout).toEqual({ status: 'hit' })
+      const [plainHook, spareHook] = (await readFile(hookLog, 'utf8')).trim().split('\n')
+      expect(spareHook?.replace(target, '<worktree>')).toBe(plainHook?.replace(plain, '<worktree>'))
+      expect(spareHook).toContain(`|${target}|`)
+    }
+  )
+
+  it('runs a plain add into an existing empty directory and leaves the main checkout alone', async () => {
+    const { repoPath, root } = await createRepo()
+    await readySpare(repoPath, root)
+    const target = join(root, 'feature')
+    await mkdir(target)
+
+    const result = await runLocalWorktreeCreate(() =>
+      addWorktree(repoPath, target, 'feature', 'main', false, false, {
+        preparedCheckout: { workspaceRoot: root }
+      })
+    )
+
+    expect(result.preparedCheckout?.status).toBe('miss')
+    expect(git(repoPath, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/main')
+    expect(git(target, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/feature')
+  })
+
+  it('never touches a worktree another create put at the target while the spare moved', async () => {
+    const { repoPath, root } = await createRepo()
+    await readySpare(repoPath, root)
+    const target = join(root, 'feature')
+    const original = gitRunner.gitExecFileAsync
+    vi.spyOn(gitRunner, 'gitExecFileAsync').mockImplementation((args, options) => {
+      if (args.includes('move') && args.at(-1) === target) {
+        git(repoPath, ['worktree', 'add', '--quiet', '-b', 'other', target, 'main'])
+      }
+      return original(args, options)
+    })
+
+    await expect(
+      runLocalWorktreeCreate(() =>
+        addWorktree(repoPath, target, 'feature', 'main', false, false, {
+          preparedCheckout: { workspaceRoot: root }
+        })
+      )
+    ).rejects.toThrow()
+    await _whenSpareDiscardsSettledForTests()
+
+    expect(git(target, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/other')
+    expect(git(target, ['status', '--porcelain'])).toBe('')
+    expect(git(repoPath, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/main')
+  })
+
+  it('builds a ready spare in a repo with submodule.recurse set', async () => {
+    const { repoPath, root } = await createRepo()
+    const sub = join(root, 'sub')
+    git(root, ['init', '--quiet', sub])
+    await writeFile(join(sub, 's.txt'), 's\n')
+    git(sub, ['add', '.'])
+    git(sub, ['-c', 'user.name=T', '-c', 'user.email=t@e', 'commit', '--quiet', '-m', 's'])
+    git(repoPath, ['-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', sub, 'sub'])
+    git(repoPath, ['commit', '--quiet', '-m', 'sub'])
+    git(repoPath, ['config', 'submodule.recurse', 'true'])
+
+    await readySpare(repoPath, root)
+
+    expect(findSpare(spareRepoKey(repoPath))?.state).toBe('ready')
+  })
 
   it.skipIf(process.platform === 'win32')(
     'kills a spare mid-checkout at once, leaving it locked for the sweep',

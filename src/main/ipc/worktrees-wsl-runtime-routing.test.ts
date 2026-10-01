@@ -110,6 +110,7 @@ const { requestWorktreeCreateSpareMock } = vi.hoisted(() => ({
   requestWorktreeCreateSpareMock: vi.fn()
 }))
 vi.mock('../worktree-create-preparation', () => ({
+  beginWorktreeCreateSpareRequest: () => ({ seq: 1 }),
   requestWorktreeCreateSpare: requestWorktreeCreateSpareMock
 }))
 

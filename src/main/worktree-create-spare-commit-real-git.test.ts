@@ -23,10 +23,19 @@ import {
   spareRepoKey
 } from './worktree-create-preparation-pool'
 import {
+  beginWorktreeCreateSpareRequest,
   requestWorktreeCreateSpare,
   SPARE_REQUEST_DEBOUNCE_MS
 } from './worktree-create-preparation'
 import { _resetSpareGateForTests } from './worktree-create-spare-gate'
+
+function requestSpareFor(store: Store, target: Repo, base: string): void {
+  const ticket = beginWorktreeCreateSpareRequest(store, target)
+  if (!ticket) {
+    throw new Error('a local repo always gets a spare request ticket')
+  }
+  requestWorktreeCreateSpare(store, target, base, ticket)
+}
 
 const roots: string[] = []
 
@@ -73,7 +82,7 @@ it('builds the spare at the commit a plain add of the same base uses', async () 
   const repo = { id: 'repo', path: repoPath } as unknown as Repo
   for (const base of ['main', 'origin/main']) {
     _resetSpareGateForTests()
-    requestWorktreeCreateSpare(store, repo, base)
+    requestSpareFor(store, repo, base)
     await new Promise((resolve) => setTimeout(resolve, SPARE_REQUEST_DEBOUNCE_MS))
     await vi.waitFor(() => expect(findSpare(spareRepoKey(repoPath))?.state).toBe('ready'), {
       timeout: 20_000

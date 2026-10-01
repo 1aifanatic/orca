@@ -34,6 +34,7 @@ vi.mock('./project-runtime-git-options', () => ({
 }))
 
 import { clearGitCapabilityStateForTests } from './git/git-capability-state'
+import { runLocalWorktreeCreate } from './git/worktree-create-git-executor'
 import {
   _resetLocalWorktreeCreateActivityForTests,
   holdLocalWorktreeCreate
@@ -48,8 +49,10 @@ import {
 import {
   _resetSpareRequestsForTests,
   _whenSpareRequestsSettledForTests,
+  beginWorktreeCreateSpareRequest,
   requestWorktreeCreateSpare,
-  SPARE_REQUEST_DEBOUNCE_MS
+  SPARE_REQUEST_DEBOUNCE_MS,
+  type SpareRequestTicket
 } from './worktree-create-preparation'
 import {
   _resetSpareGateForTests,
@@ -88,8 +91,17 @@ afterEach(async () => {
   await rm(workspaceRoot.value, { recursive: true, force: true })
 })
 
+/** A composer pick: the ticket when it arrives, the request once its fetch settles. */
+function pick(): SpareRequestTicket {
+  const ticket = beginWorktreeCreateSpareRequest(store, repo)
+  if (!ticket) {
+    throw new Error('a local repo always gets a spare request ticket')
+  }
+  return ticket
+}
+
 async function request(base = 'origin/main'): Promise<void> {
-  requestWorktreeCreateSpare(store, repo, base)
+  requestWorktreeCreateSpare(store, repo, base, pick())
   await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
   await _whenSpareRequestsSettledForTests()
 }
@@ -130,10 +142,26 @@ describe('rule 2: no spare while the machine is busy', () => {
     expect(spareStartRefusal()).toBe('slow_create_cooldown')
   })
 
+  it('does not let a ladder of slightly-under-2x checkouts walk the slow bar up', () => {
+    const slow: number[] = []
+    for (const seconds of [14, 27, 53, 105, 209]) {
+      _resetSpareGateForTests()
+      for (const earlier of [14, 27, 53, 105, 209].filter((value) => value < seconds)) {
+        recordLocalCreateCheckoutDuration(KEY, earlier * 1_000)
+      }
+      vi.setSystemTime(Date.now() + 10 * 60_000)
+      recordLocalCreateCheckoutDuration(KEY, seconds * 1_000)
+      if (spareStartRefusal() === 'slow_create_cooldown') {
+        slow.push(seconds)
+      }
+    }
+    expect(slow).toEqual([53, 105, 209])
+  })
+
   it('builds once for three requests inside the debounce, on the last base', async () => {
-    requestWorktreeCreateSpare(store, repo, 'origin/main')
+    requestWorktreeCreateSpare(store, repo, 'origin/main', pick())
     await vi.advanceTimersByTimeAsync(500)
-    requestWorktreeCreateSpare(store, repo, 'origin/main')
+    requestWorktreeCreateSpare(store, repo, 'origin/main', pick())
     await vi.advanceTimersByTimeAsync(500)
     await request('other')
     await settle()
@@ -197,7 +225,50 @@ describe('what a spare must be able to honor', () => {
 
     abortSparesForQuit()
     expect(script.resetSignals[0]?.aborted).toBe(true)
-    await request('other')
-    expect(gitCommands(script, isSpareAdd)).toHaveLength(1)
+    expect(beginWorktreeCreateSpareRequest(store, repo)).toBeNull()
+  })
+
+  it('spawns no git for a request whose debounce fires after quit', async () => {
+    requestWorktreeCreateSpare(store, repo, 'origin/main', pick())
+    abortSparesForQuit()
+    await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
+    await _whenSpareRequestsSettledForTests()
+
+    expect(script.calls).toHaveLength(0)
+  })
+})
+
+describe('which request a spare follows', () => {
+  it('builds no spare for a request that a create started and finished inside', async () => {
+    const ticket = pick()
+    requestWorktreeCreateSpare(store, repo, 'origin/main', ticket)
+    await runLocalWorktreeCreate(async () => {})
+    await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
+    await _whenSpareRequestsSettledForTests()
+
+    expect(gitCommands(script, isSpareAdd)).toHaveLength(0)
+  })
+
+  it('follows the last pick even when an earlier pick’s fetch ends last', async () => {
+    const slowPick = pick()
+    const fastPick = pick()
+    requestWorktreeCreateSpare(store, repo, 'other', fastPick)
+    await vi.advanceTimersByTimeAsync(500)
+    requestWorktreeCreateSpare(store, repo, 'origin/main', slowPick)
+    await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
+    await _whenSpareRequestsSettledForTests()
+    await settle()
+
+    expect(gitCommands(script, isSpareAdd).map((call) => call.args.at(-1))).toEqual([OID_B])
+  })
+
+  it('says why a request built nothing', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const release = holdLocalWorktreeCreate()
+    await request()
+    release()
+
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('create_in_flight'))
+    info.mockRestore()
   })
 })

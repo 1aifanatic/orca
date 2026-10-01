@@ -24,12 +24,14 @@ vi.mock('./git/runner', () => ({
 
 import { addWorktree } from './git/worktree-add'
 import { runLocalWorktreeCreate } from './git/worktree-create-git-executor'
+import { isOwnedSpareId } from './git/worktree-create-spare-ids'
 import { clearGitCapabilityStateForTests } from './git/git-capability-state'
 import { _resetLocalWorktreeCreateActivityForTests } from './git/local-worktree-create-activity'
 import {
   _resetSparePoolForTests,
   abortSparesForQuit,
   findSpare,
+  hasSpareWork,
   spareRepoKey,
   startSpare
 } from './worktree-create-preparation-pool'
@@ -83,7 +85,7 @@ describe('rule 1: a create never waits on an unfinished spare', () => {
 
     const result = await create()
 
-    expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'none' })
+    expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'not_ready' })
     expect(gitCommands(script, isPlainAdd)).toHaveLength(1)
     expect(script.resetSignals[0]?.aborted).toBe(true)
   })
@@ -154,6 +156,35 @@ describe('rule 1: a create never waits on an unfinished spare', () => {
     releaseResets()
     await vi.waitFor(() => expect(gitCommands(script, isRemove)).toHaveLength(1))
     expect(findSpare(spareRepoKey('/repo', 'Ubuntu'))).toBeUndefined()
+  })
+})
+
+describe('a spare that never got far', () => {
+  it('starts no checkout for a WSL spare abandoned while it was still registering', async () => {
+    let releaseAdd: () => void = () => {}
+    script.spareAddGate = new Promise((resolve) => {
+      releaseAdd = resolve
+    })
+    spare('/repo', OID_A, { wslDistro: 'Ubuntu' })
+    await vi.waitFor(() => expect(gitCommands(script, isSpareAdd)).toHaveLength(1))
+
+    await create('/repo-a')
+    expect(hasSpareWork()).toBe(true)
+    releaseAdd()
+
+    await vi.waitFor(() => expect(gitCommands(script, isRemove)).toHaveLength(1))
+    expect(script.resetSignals).toHaveLength(0)
+    await vi.waitFor(() => expect(hasSpareWork()).toBe(false))
+  })
+
+  it('removes nothing and releases the id when the spare never registered', async () => {
+    spare()
+    const id = findSpare(spareRepoKey('/repo'))?.id ?? ''
+    abortSparesForQuit()
+
+    await vi.waitFor(() => expect(isOwnedSpareId(id)).toBe(false))
+    expect(gitCommands(script, isSpareAdd)).toHaveLength(0)
+    expect(gitCommands(script, isRemove)).toHaveLength(0)
   })
 })
 

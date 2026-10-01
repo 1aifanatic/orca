@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -36,7 +36,7 @@ import {
   spareRepoKey,
   startSpare
 } from '../worktree-create-preparation-pool'
-import { _resetSpareGateForTests } from '../worktree-create-spare-gate'
+import { _resetSpareGateForTests, spareStartRefusal } from '../worktree-create-spare-gate'
 import { _whenSpareDiscardsSettledForTests } from '../worktree-create-spare-discard'
 
 let root = ''
@@ -108,4 +108,35 @@ it('fails the create and leaves the target to background removal when the move b
     join(root, 'feature')
   ])
   expect(gitCommands(script, isPlainAdd)).toHaveLength(0)
+})
+
+it('runs a plain add instead of moving the spare into a path that already exists', async () => {
+  await readySpare()
+  await mkdir(join(root, 'feature'))
+
+  const result = await create('feature')
+
+  expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'finalize_failed' })
+  expect(gitCommands(script, (args) => args[1] === 'move')).toHaveLength(0)
+  expect(gitCommands(script, isPlainAdd)).toHaveLength(1)
+})
+
+it('counts a slow checkout that then failed toward the cooldown', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const scripted = fakeGit(script)
+    gitExecFileAsyncMock.mockImplementation((args: string[], options: object) => {
+      if (isPlainAdd(args)) {
+        vi.setSystemTime(Date.now() + 16_000)
+        return Promise.reject(new Error('checkout failed'))
+      }
+      return scripted(args, options)
+    })
+
+    await expect(create('feature')).rejects.toThrow('checkout failed')
+
+    expect(spareStartRefusal()).toBe('slow_create_cooldown')
+  } finally {
+    vi.useRealTimers()
+  }
 })

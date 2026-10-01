@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 // A scripted stand-in for `gitExecFileAsync` that the spare checkout suites drive: each git command
 // a spare build, handover or plain add runs is recorded, and the slow or failing ones are scripted.
 export const OID_A = 'a'.repeat(40)
@@ -20,6 +23,9 @@ export type FakeGitScript = {
   resetMode: ResetMode
   hookRunSupported: boolean
   hookFile: string
+  hooksDir: string
+  /** When set, the spare's `worktree add` waits for it. */
+  spareAddGate?: Promise<void>
   failing: Set<'move' | 'move-back' | 'symbolic-ref' | 'unlock' | 'remove' | 'hook'>
   calls: GitCall[]
   resetSignals: AbortSignal[]
@@ -31,6 +37,7 @@ export function createFakeGitScript(): FakeGitScript {
     resetMode: 'resolve',
     hookRunSupported: true,
     hookFile: '.git/hooks/post-checkout',
+    hooksDir: '/repo/.git/hooks',
     failing: new Set(),
     calls: [],
     resetSignals: []
@@ -71,13 +78,31 @@ function runReset(script: FakeGitScript, signal: AbortSignal | undefined): Promi
   })
 }
 
+/** Writes the `.git` marker `worktree move` leaves at its destination, naming the spare's admin entry. */
+async function moveSpare(from: string, to: string): Promise<typeof ok> {
+  // Spare ids are `<pid>-<uuid>`; a move back names the spare at its destination.
+  const name = (path: string): string =>
+    path
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .pop() ?? ''
+  const admin = name(from).includes('-') ? name(from) : name(to)
+  await mkdir(to, { recursive: true })
+  await writeFile(join(to, '.git'), `gitdir: /repo/.git/worktrees/${admin}\n`)
+  return ok
+}
+
 function runWorktree(script: FakeGitScript, args: string[]): Promise<typeof ok> {
   const sub = args[1]
+  if (sub === 'add' && args.includes('--detach') && script.spareAddGate) {
+    return script.spareAddGate.then(() => ok)
+  }
   if (sub === 'move') {
-    const back = args.at(-1)?.includes('.orca-preparing')
+    const [from, to] = args.slice(-2)
+    const back = to?.includes('.orca-preparing')
     return script.failing.has(back ? 'move-back' : 'move')
       ? fail('move failed')
-      : Promise.resolve(ok)
+      : moveSpare(from ?? '', to ?? '')
   }
   if (
     (sub === 'unlock' && script.failing.has('unlock')) ||
@@ -90,11 +115,16 @@ function runWorktree(script: FakeGitScript, args: string[]): Promise<typeof ok> 
 
 export function fakeGit(script: FakeGitScript) {
   return (rawArgs: string[], options: Omit<GitCall, 'args'> = {}): Promise<typeof ok> => {
-    const args = rawArgs.filter((arg, index) => !(arg === '-c' || rawArgs[index - 1] === '-c'))
+    // Global options (`-c k=v`, `--work-tree <path>`) come before the command; record the rest.
+    const globals = new Set(['-c', '--work-tree'])
+    const args = rawArgs.filter(
+      (arg, index) => !globals.has(arg) && !globals.has(rawArgs[index - 1] ?? '')
+    )
     script.calls.push({ args, ...options })
     if (args[0] === 'rev-parse') {
-      if (args[1] === '--git-path') {
-        return Promise.resolve({ stdout: `${script.hookFile}\n`, stderr: '' })
+      if (args.includes('--git-path')) {
+        const hooks = args.at(-1) === 'hooks' ? script.hooksDir : script.hookFile
+        return Promise.resolve({ stdout: `${hooks}\n`, stderr: '' })
       }
       const oid = script.refs.get((args.at(-1) ?? '').replace(/\^\{commit\}$/, ''))
       return oid ? Promise.resolve({ stdout: `${oid}\n`, stderr: '' }) : fail('unknown revision')
