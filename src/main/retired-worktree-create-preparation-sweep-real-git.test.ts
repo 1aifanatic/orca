@@ -19,6 +19,7 @@ import {
   holdLocalWorktreeCreate
 } from './git/local-worktree-create-activity'
 import { sweepRetiredWorktreeCreatePreparations } from './retired-worktree-create-preparation-sweep'
+import { _resetOwnedSpareIdsForTests, addOwnedSpareId } from './git/worktree-create-spare-ids'
 import {
   _resetPendingWorktreeRemovalsForTests,
   loadWorktreeRemovalRecords
@@ -39,6 +40,7 @@ const roots: string[] = []
 afterEach(async () => {
   vi.mocked(gitExecFileAsync).mockImplementation(actualGitExecFileAsync)
   _resetLocalWorktreeCreateActivityForTests()
+  _resetOwnedSpareIdsForTests()
   _resetPendingWorktreeRemovalsForTests()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -275,6 +277,42 @@ it('treats a spare naming this process as an older Orca whose pid was reused', a
 
   expect(result).toEqual({ reclaimed: 1, removedDirectories: 0 })
   expect(existsSync(spare)).toBe(false)
+})
+
+it('never touches a spare this process still owns, its own pid notwithstanding', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const workspaceRoot = join(root, 'workspaces')
+  const name = spareName(process.pid, '11111111')
+  const spare = join(workspaceRoot, '.orca-preparing', name)
+  await addSpare(repo, spare, { lockPid: process.pid })
+  addOwnedSpareId(name)
+
+  const result = await sweepRetiredWorktreeCreatePreparations(
+    { workspaceRoots: [workspaceRoot], repos: [{ path: repo }] },
+    { isProcessAlive: () => true }
+  )
+
+  expect(result).toEqual({ reclaimed: 0, removedDirectories: 0 })
+  expect(existsSync(spare)).toBe(true)
+})
+
+it('skips a spare this process starts owning while the sweep waits on a create', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const workspaceRoot = join(root, 'workspaces')
+  const name = spareName(process.pid, '11111111')
+  const spare = join(workspaceRoot, '.orca-preparing', name)
+  await addSpare(repo, spare, { lockPid: process.pid })
+  const release = holdLocalWorktreeCreate()
+
+  const sweep = sweepDeadOwners(workspaceRoot, repo)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  addOwnedSpareId(name)
+  release()
+
+  expect(await sweep).toEqual({ reclaimed: 0, removedDirectories: 0 })
+  expect(existsSync(spare)).toBe(true)
 })
 
 it('waits for a local create to finish before reclaiming anything', async () => {

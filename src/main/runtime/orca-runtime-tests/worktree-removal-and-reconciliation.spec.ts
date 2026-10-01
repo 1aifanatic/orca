@@ -406,6 +406,7 @@ describe('OrcaRuntimeService', () => {
         false,
         false,
         {
+          preparedCheckout: { workspaceRoot: '/tmp/workspaces' },
           remoteTrackingBase: {
             base: 'origin/main',
             branch: 'main',

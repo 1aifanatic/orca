@@ -4,11 +4,15 @@ import type { Repo } from '../../shared/repo-types'
 import { _resetWslCachesForTests, _setWslCachesForTests } from '../wsl'
 
 const mocks = vi.hoisted(() => ({
-  prefetchWorktreeCreateBase: vi.fn()
+  prefetchWorktreeCreateBase: vi.fn(),
+  requestWorktreeCreateSpare: vi.fn()
 }))
 
 vi.mock('../worktree-create-base-prefetch', () => ({
   prefetchWorktreeCreateBase: mocks.prefetchWorktreeCreateBase
+}))
+vi.mock('../worktree-create-preparation', () => ({
+  requestWorktreeCreateSpare: mocks.requestWorktreeCreateSpare
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
@@ -48,6 +52,7 @@ const hostPlatform = process.platform
 
 beforeEach(() => {
   mocks.prefetchWorktreeCreateBase.mockReset().mockResolvedValue(undefined)
+  mocks.requestWorktreeCreateSpare.mockReset()
 })
 
 afterEach(() => {
@@ -97,15 +102,35 @@ describe('prefetchManagedWorktreeCreateBase (orca-runtime-get-worktree-terminal-
     )
   })
 
-  it('only refreshes the base; it never starts a checkout', async () => {
+  it('requests a spare at the base only once the refresh settled, without waiting on it', async () => {
+    setPlatform('darwin')
+    let finishRefresh: (base: string) => void = () => {}
+    mocks.prefetchWorktreeCreateBase.mockReturnValue(
+      new Promise<string>((resolve) => {
+        finishRefresh = resolve
+      })
+    )
+    const runtime = new OrcaRuntimeService(makeStore() as never)
+
+    const prefetch = runtime.prefetchManagedWorktreeCreateBase({ repoSelector: 'repo-1' })
+    await vi.waitFor(() => expect(mocks.prefetchWorktreeCreateBase).toHaveBeenCalledOnce())
+    expect(mocks.requestWorktreeCreateSpare).not.toHaveBeenCalled()
+    finishRefresh('origin/main')
+    await prefetch
+
+    expect(mocks.requestWorktreeCreateSpare).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: 'repo-1' }),
+      'origin/main'
+    )
+  })
+
+  it('requests no spare when the refresh resolved no base', async () => {
     setPlatform('darwin')
     const runtime = new OrcaRuntimeService(makeStore() as never)
 
     await runtime.prefetchManagedWorktreeCreateBase({ repoSelector: 'repo-1' })
 
-    expect(mocks.prefetchWorktreeCreateBase).toHaveBeenCalledOnce()
-    expect(mocks.prefetchWorktreeCreateBase.mock.calls[0]?.[0]).not.toHaveProperty(
-      'prepareCheckout'
-    )
+    expect(mocks.requestWorktreeCreateSpare).not.toHaveBeenCalled()
   })
 })

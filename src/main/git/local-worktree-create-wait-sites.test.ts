@@ -14,7 +14,8 @@ const WAITERS: Record<string, { definedIn: string; callers: string[] }> = {
     callers: [
       'src/main/ipc/worktree-base-directory-notifications.ts',
       'src/main/worktree-trash.ts',
-      'src/main/retired-worktree-create-preparation-sweep.ts'
+      'src/main/retired-worktree-create-preparation-sweep.ts',
+      'src/main/worktree-create-spare-discard.ts'
     ]
   },
   createLocalWorktreeCreateDeferral: {
@@ -24,6 +25,10 @@ const WAITERS: Record<string, { definedIn: string; callers: string[] }> = {
   sweepStaleWorktreeTrash: {
     definedIn: 'src/main/worktree-trash.ts',
     callers: ['src/main/startup/main-process-ready-runtime.ts']
+  },
+  _whenSpareDiscardsSettledForTests: {
+    definedIn: 'src/main/worktree-create-spare-discard.ts',
+    callers: []
   },
   sweepRetiredWorktreeCreatePreparations: {
     definedIn: 'src/main/retired-worktree-create-preparation-sweep.ts',

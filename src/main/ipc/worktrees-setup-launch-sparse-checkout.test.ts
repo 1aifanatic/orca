@@ -142,7 +142,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      {}
+      { preparedCheckout: { workspaceRoot: '/workspace' } }
     )
   })
 

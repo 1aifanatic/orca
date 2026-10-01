@@ -218,6 +218,38 @@ describe('addWorktreeCreatePhaseAttributes', () => {
     expect(attributes['worktree.create.total_ms']).toBe(500)
     expect(attributes['worktree.create.unattributed_ms']).toBe(200)
   })
+
+  it('records a spare checkout hit', () => {
+    const { attributes, span } = capture()
+    addWorktreeCreatePhaseAttributes(span, {
+      totalDurationMs: 900,
+      phases: [{ phase: 'git_worktree_add', startedAtMs: 0, durationMs: 400 }],
+      preparedCheckout: { status: 'hit' }
+    })
+
+    expect(attributes['worktree.create.prepared_checkout']).toBe('hit')
+    expect(attributes['worktree.create.prepared_checkout_miss']).toBeUndefined()
+    expect(attributes['worktree.create.unattributed_ms']).toBe(500)
+  })
+
+  it('records why a create missed the spare checkout', () => {
+    const { attributes, span } = capture()
+    addWorktreeCreatePhaseAttributes(span, {
+      totalDurationMs: 8_000,
+      phases: [],
+      preparedCheckout: { status: 'miss', reason: 'base_moved' }
+    })
+
+    expect(attributes['worktree.create.prepared_checkout']).toBe('miss')
+    expect(attributes['worktree.create.prepared_checkout_miss']).toBe('base_moved')
+  })
+
+  it('stays silent on paths that never consult a spare checkout', () => {
+    const { attributes, span } = capture()
+    addWorktreeCreatePhaseAttributes(span, { totalDurationMs: 10, phases: [] })
+
+    expect(attributes['worktree.create.prepared_checkout']).toBeUndefined()
+  })
 })
 
 describe('agentSession.create tracing', () => {

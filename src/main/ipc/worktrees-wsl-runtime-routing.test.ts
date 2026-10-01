@@ -106,6 +106,12 @@ vi.mock('../runtime/worktree-teardown', async () =>
   (await import('./worktrees-test-module-mocks')).worktreeTeardownModuleMock()
 )
 vi.mock('./pty', async () => (await import('./worktrees-test-module-mocks')).ptyModuleMock())
+const { requestWorktreeCreateSpareMock } = vi.hoisted(() => ({
+  requestWorktreeCreateSpareMock: vi.fn()
+}))
+vi.mock('../worktree-create-preparation', () => ({
+  requestWorktreeCreateSpare: requestWorktreeCreateSpareMock
+}))
 
 /** Every create-path git call, including the base-ref probe now shared with the
  *  speculative prefetch, must read the distro's ref store rather than host git's. */
@@ -199,7 +205,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { wslDistro: 'Ubuntu' }
+      { preparedCheckout: { workspaceRoot: '/workspace' }, wslDistro: 'Ubuntu' }
     )
     expect(resolveDefaultBaseRefWithLocalGitMock).toHaveBeenCalledWith({
       cwd: '/workspace/repo',
@@ -419,7 +425,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { wslDistro: 'Ubuntu' }
+      { preparedCheckout: { workspaceRoot: '/workspace' }, wslDistro: 'Ubuntu' }
     )
   })
 
@@ -552,7 +558,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { wslDistro: 'Ubuntu' }
+      { preparedCheckout: { workspaceRoot: '/workspace' }, wslDistro: 'Ubuntu' }
     )
   })
 

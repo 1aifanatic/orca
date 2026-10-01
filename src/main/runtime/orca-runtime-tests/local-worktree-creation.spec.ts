@@ -222,6 +222,7 @@ describe('OrcaRuntimeService', () => {
         false,
         false,
         {
+          preparedCheckout: { workspaceRoot: '/tmp/workspaces' },
           suggestLocalBaseRefUpdate: true,
           remoteTrackingBase: {
             remote: 'origin',
@@ -340,6 +341,7 @@ describe('OrcaRuntimeService', () => {
         false,
         false,
         {
+          preparedCheckout: { workspaceRoot: '/tmp/workspaces' },
           remoteTrackingBase: {
             remote: 'origin',
             branch: 'main',
@@ -401,7 +403,7 @@ describe('OrcaRuntimeService', () => {
         'develop',
         false,
         false,
-        {}
+        { preparedCheckout: { workspaceRoot: '/tmp/workspaces' } }
       )
     } finally {
       getReposSpy.mockRestore()
@@ -457,7 +459,7 @@ describe('OrcaRuntimeService', () => {
         'team/feature',
         false,
         false,
-        {}
+        { preparedCheckout: { workspaceRoot: '/tmp/workspaces' } }
       )
       expect(gitSpy).not.toHaveBeenCalledWith(
         [
@@ -554,7 +556,7 @@ describe('OrcaRuntimeService', () => {
       'origin/feature/something',
       false,
       false,
-      {}
+      { preparedCheckout: { workspaceRoot: '/tmp/workspaces' } }
     )
     expect(resolveLocalGitUsernameMock).not.toHaveBeenCalled()
     expect(result.worktree).toMatchObject({

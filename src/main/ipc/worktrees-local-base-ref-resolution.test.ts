@@ -276,7 +276,7 @@ describe('registerWorktreeHandlers', () => {
       'develop',
       false,
       false,
-      {}
+      { preparedCheckout: { workspaceRoot: '/workspace' } }
     )
   })
 
@@ -339,7 +339,7 @@ describe('registerWorktreeHandlers', () => {
       'team/feature',
       false,
       false,
-      {}
+      { preparedCheckout: { workspaceRoot: '/workspace' } }
     )
   })
 
@@ -393,7 +393,7 @@ describe('registerWorktreeHandlers', () => {
       'main',
       false,
       false,
-      {}
+      { preparedCheckout: { workspaceRoot: '/workspace' } }
     )
   })
 
@@ -509,6 +509,7 @@ describe('registerWorktreeHandlers', () => {
       false,
       false,
       {
+        preparedCheckout: { workspaceRoot: '/workspace' },
         suggestLocalBaseRefUpdate: true,
         remoteTrackingBase: {
           remote: 'origin',
