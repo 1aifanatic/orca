@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import {
   CODEX_CMD_HOOK_FLAG_MACRO_COMMAND,
   getCodexCmdHookFlagGateScript
@@ -65,7 +66,7 @@ describe.runIf(process.platform === 'win32')('cmd codex status hook flag gate on
 
   afterEach(() => {
     for (const root of roots.splice(0)) {
-      rmSync(root, { recursive: true, force: true })
+      removeTreeSync(root)
     }
   })
 
@@ -121,7 +122,7 @@ describe.runIf(process.platform === 'win32')('cmd codex status hook flag gate on
 
   it('probes and requests nothing while hooks are off, which removes the table', () => {
     const box = sandbox(['codex-cli 9.9.10'])
-    rmSync(box.table, { recursive: true })
+    removeTreeSync(box.table)
     expect(runGate(box)).not.toContain('ORCA_CODEX_HOOK_ARG=')
     expect(existsSync(box.table)).toBe(false)
   })
