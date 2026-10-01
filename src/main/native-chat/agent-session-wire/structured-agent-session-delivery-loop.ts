@@ -180,8 +180,8 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
       return this.stop(sessionId)
     }
-    // Already waiting on a stop that could not prove its child gone: only a new message, or the
-    // sweep, retries it, so the waiting row's own commit does not.
+    // Already waiting on a stop that could not prove its child gone: a new message retries it, and
+    // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
     if (structuredAgentSessionWindDownWaitHolds(session)) {
       return this.stop(sessionId)
     }

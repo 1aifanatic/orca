@@ -22,10 +22,13 @@ import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession,
+  StructuredAgentSessionOwedWindDown,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import {
   endProviderChild,
+  pendingProviderChildWindDown,
+  sameProviderChild,
   structuredAgentSessionConversationFence
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
@@ -40,6 +43,8 @@ export type StructuredAgentSessionLifetimeContext = {
   now: () => number
   /** Re-projects the session's status after its agent stopped and the chat stays. */
   publishStatus?: (sessionId: string) => void
+  /** Hands the delivery loop what is queued; for a caller inside the session's serialize. */
+  wakeDelivery?: (sessionId: string) => void
   /** Quit-only snapshot taken immediately before the provider child is stopped. */
   restartWitness?: {
     beforeStop: (sessionId: string) => void
@@ -87,6 +92,26 @@ function owedProviderChildWindDown(
     : session.owesProviderChildWindDown
 }
 
+/** The stop this pass owes. A retry continues the one already asked for, keeping where it was asked;
+ *  any other stop is a new ask. */
+function owedStop(
+  session: StructuredAgentSessionHostSession,
+  cause: StructuredAgentSessionStopCause
+): StructuredAgentSessionOwedWindDown | undefined {
+  const owed = owedProviderChildWindDown(session)
+  if (!owed) {
+    return undefined
+  }
+  const asked = session.owesProviderChildWindDown
+  const continues = asked !== undefined && asked.cause === cause && sameProviderChild(asked, owed)
+  return {
+    generation: owed.generation,
+    fence: owed.fence,
+    cause,
+    requestedAt: continues ? asked.requestedAt : session.journal.cursor()
+  }
+}
+
 /**
  * The agent goes to rest; the conversation stays. Runs the eviction steps under a deadline. A step
  * that fails — or runs out of time — aborts the rest and leaves the wind-down owed, so the next
@@ -110,8 +135,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   // The obligation OUTLIVES the child. `child` is ended the instant the adapter proves the exit,
   // so a step that aborts after that point would otherwise leave the retry reading "no child
   // here" and skipping the settlement and the lease release it still owes.
-  const owed = owedProviderChildWindDown(session)
-  session.owesProviderChildWindDown = owed ? { ...owed, cause } : undefined
+  const owed = owedStop(session, cause)
+  session.owesProviderChildWindDown = owed
   const stopping = session.child
   let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
@@ -135,6 +160,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           cause,
           reason: ending.reason ?? null,
           duringStartup: stopping.phase === 'starting',
+          // A later retry that proves the exit still ends the child at the Stop it finishes.
+          ...(owed ? { endedAt: owed.requestedAt } : {}),
           ...verdict
         })
       }
@@ -178,6 +205,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       // Whatever ended the child, the row belongs to the conversation: it shows not-running, and
       // only the conversation's close forgets it.
       context.publishStatus?.(sessionId)
+      // The stop's own end hands over what waited on it, whichever caller's retry landed.
+      context.wakeDelivery?.(sessionId)
     }
   }
   await evictStructuredAgentSession(
@@ -191,13 +220,15 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
  * not prove gone takes no input, so nothing may write to it or start beside it until this lands.
  * One pass of the stop, bounded by its own step deadline (10 s): a shorter bound would cut a
  * supervised Claude's exit proof (up to about 7 s) short. Resolves whether nothing is owed now; a
- * failure is reported, never thrown, and leaves the exit unverifiable, never exited.
+ * failure is reported, never thrown, and leaves the exit unverifiable, never exited. Landing, the
+ * stop itself hands over what waited on it.
  */
 export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string
 ): Promise<boolean> {
-  const owed = context.sessions.get(sessionId)?.owesProviderChildWindDown
+  const session = context.sessions.get(sessionId)
+  const owed = session && pendingProviderChildWindDown(session)
   if (!owed) {
     return true
   }

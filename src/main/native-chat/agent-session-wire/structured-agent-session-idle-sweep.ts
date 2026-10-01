@@ -14,6 +14,7 @@ import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-qu
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import { pendingProviderChildWindDown } from './structured-agent-session-provider-child'
 
 export const STRUCTURED_AGENT_SESSION_IDLE_SWEEP_INTERVAL_MS = 5 * 60_000
 export const STRUCTURED_AGENT_SESSION_IDLE_MS = 30 * 60_000
@@ -35,10 +36,8 @@ export type StructuredAgentSessionIdleSweepDeps = {
   providerHoldsDispatch: (sessionId: string) => boolean
   /** Each of these runs inside the session's serialize and never takes it again. */
   stopAgent: (sessionId: string) => Promise<void>
-  /** Retries a stop that did not finish; resolves whether nothing is owed now. */
+  /** Retries a stop that did not finish; landing, it hands over what waited on it. */
   finishOwedWindDown: (sessionId: string) => Promise<boolean>
-  /** Hands a message waiting on that stop to the delivery loop. */
-  wakeDelivery: (sessionId: string) => void
   stopStartingAgent: (sessionId: string) => Promise<void>
   closeConversation: (sessionId: string) => Promise<boolean>
   onError: (sessionId: string, error: unknown) => void
@@ -106,12 +105,9 @@ export class StructuredAgentSessionIdleSweep {
       return
     }
     // A stop that did not finish: retry it now, before the idle test, so the rows its settlement
-    // wrote cannot push the retry out. A running delivery step retries it itself; a message left
-    // waiting on it goes out once it lands.
-    if (session.owesProviderChildWindDown !== undefined && !this.deps.deliveryActive(sessionId)) {
-      if (await this.deps.finishOwedWindDown(sessionId)) {
-        this.deps.wakeDelivery(sessionId)
-      }
+    // wrote cannot push the retry out. A running delivery step retries it itself.
+    if (pendingProviderChildWindDown(session) && !this.deps.deliveryActive(sessionId)) {
+      await this.deps.finishOwedWindDown(sessionId)
       return
     }
     // Owed work is activity, read every tick, so the agent gets a full window once it ends: a child

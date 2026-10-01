@@ -38,8 +38,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   /** PR 1's one open function, for a caller inside the session's serialize. */
   open: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
   deliveryActive: (sessionId: string) => boolean
-  /** For a caller inside the session's serialize. */
-  wakeDelivery: (sessionId: string) => void
   /** The handle closed: `listed` keeps the chat's row in the agent-status store for its tab. */
   closeStatus: (sessionId: string, options: { listed: boolean }) => void
   /** The session's child records, the host's one read of them. */
@@ -78,7 +76,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     now: () => host.context().now(),
     isDisposed: () => disposed,
     deliveryActive: host.deliveryActive,
-    wakeDelivery: host.wakeDelivery,
     childWork: host.readChildWork,
     hasOpenDispatch: (sessionId) => {
       const record = deps().store.getRecord(sessionId)

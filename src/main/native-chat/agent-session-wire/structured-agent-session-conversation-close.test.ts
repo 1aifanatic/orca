@@ -318,7 +318,6 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
       stopAgent,
       stopStartingAgent: stopAgent,
       finishOwedWindDown,
-      wakeDelivery: () => undefined,
       closeConversation: vi.fn(async () => false),
       onError: (_id, error) => {
         throw error

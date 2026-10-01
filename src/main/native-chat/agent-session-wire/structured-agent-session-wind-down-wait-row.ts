@@ -15,6 +15,7 @@ import type {
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
+import { pendingProviderChildWindDown } from './structured-agent-session-provider-child'
 
 /** Keyed by the child the stop could not prove gone, so every send that waits on it shares a row. */
 export function structuredAgentSessionWindDownWaitIdentity(
@@ -28,7 +29,7 @@ export function structuredAgentSessionWindDownWaitIdentity(
 
 type WaitingSession = Pick<
   StructuredAgentSessionHostSession,
-  'journal' | 'owesProviderChildWindDown'
+  'journal' | 'child' | 'owesProviderChildWindDown'
 >
 
 function windDownWaitRow(
@@ -40,10 +41,10 @@ function windDownWaitRow(
 }
 
 /** Every queued message already waited through a retry of the owed stop: its row came after the
- *  newest. Only a new message or the sweep retries again, so the row's own commit, which wakes the
- *  delivery loop, does not. */
+ *  newest. A new message retries again, and a retry that lands wakes the loop itself, so the row's
+ *  own commit, which wakes the delivery loop, does not. */
 export function structuredAgentSessionWindDownWaitHolds(session: WaitingSession): boolean {
-  const owed = session.owesProviderChildWindDown
+  const owed = pendingProviderChildWindDown(session)
   const row = owed && windDownWaitRow(session, owed)
   if (!row) {
     return false
@@ -62,7 +63,7 @@ export async function recordStructuredAgentSessionWindDownWait(
   session: WaitingSession,
   input: { fence: number; failureTextContext: AgentSessionFailureWordsContext }
 ): Promise<void> {
-  const owed = session.owesProviderChildWindDown
+  const owed = pendingProviderChildWindDown(session)
   if (!owed || windDownWaitRow(session, owed)) {
     return
   }

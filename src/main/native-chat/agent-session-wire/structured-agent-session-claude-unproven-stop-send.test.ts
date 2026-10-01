@@ -342,3 +342,80 @@ it('refuses an option change with the exit unverifiable after retrying the stop,
   expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
   expect(claude.connections).toHaveLength(1)
 })
+
+function stopBackgroundTasks() {
+  const fields = { scope: 'background-tasks' as const }
+  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
+}
+
+/** Holds the user's next message on a Stop whose exit stays unproven through the send's retry. */
+async function heldAfterStop(): Promise<FakeConnection> {
+  const connection = await stopWithUnprovenClose(2)
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  expect(connection.closeCount).toBe(2)
+  return connection
+}
+
+it('sends a held message once an option change proves the exit: the stop that lands hands it over', async () => {
+  const connection = await heldAfterStop()
+
+  await expect(setModel('claude-opus-5')).resolves.toMatchObject({ ok: true })
+  expect(connection.closeCount).toBe(3)
+  const resumed = await resumedWith(connection, 'Carry on.')
+  expect(resumed.closed).toBe(false)
+  expect(owedWindDown()).toBeUndefined()
+  expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
+})
+
+it('sends a held message once a background-task stop proves the exit, though that stop finds no agent', async () => {
+  const connection = await heldAfterStop()
+
+  // Proven gone, the old agent has no tasks left to stop, and the message still goes out.
+  await expect(stopBackgroundTasks()).resolves.toMatchObject({
+    ok: false,
+    refusal: { details: { reason: 'noLiveOwner' } }
+  })
+  expect(connection.closeCount).toBe(3)
+  await resumedWith(connection, 'Carry on.')
+  expect(owedWindDown()).toBeUndefined()
+})
+
+it('sends a message held after a tab close whose exit was unproven, rather than rejecting it as closed', async () => {
+  const connection = claude.connections[0]!
+  closeUnprovenFor(connection, 2)
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  expect(owedWindDown()).toMatchObject({ cause: 'user-close' })
+
+  // The chat stays open on the host; the user sends again, and the message waits on that close.
+  const next = await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  expect(connection.closeCount).toBe(2)
+
+  // The close was asked for before this message, so the retry that lands ends nothing it waited on.
+  await host['lifetime'].idleSweep.tick()
+  await laneDrained()
+  expect(await submission(next)).not.toMatchObject({ dispatchState: 'rejected' })
+  await resumedWith(connection, 'Carry on.')
+  expect(owedWindDown()).toBeUndefined()
+})
+
+it('never stops a live child for a wind-down another, earlier child still owes', async () => {
+  const connection = claude.connections[0]!
+  const session = host['sessions'].get(SESSION)!
+  session.owesProviderChildWindDown = {
+    generation: 'an-earlier-child',
+    fence: session.child!.fence,
+    cause: 'user-stop',
+    requestedAt: session.journal.cursor()
+  }
+
+  await send('Carry on.')
+  await eventually(() => expect(wrote(connection, 'Carry on.')).toBe(true))
+  await laneDrained()
+  await host['lifetime'].idleSweep.tick()
+  expect(connection.closeCount).toBe(0)
+  expect(claude.connections).toHaveLength(1)
+})
