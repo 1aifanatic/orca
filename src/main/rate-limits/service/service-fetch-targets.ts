@@ -171,20 +171,15 @@ export abstract class RateLimitServiceFetchTargets extends RateLimitServiceResul
     return { ...stateBeforeReset, codex: scopedCodex, codexTarget: target }
   }
 
-  protected shouldAllowClaudePtyFallback(
+  protected shouldAllowClaudeCliLoginRefresh(
     authPreparation: ClaudeRuntimeAuthPreparation | undefined
   ): boolean {
-    // Why: Windows hidden PTY support is less reliable than host/WSL shells.
+    // Why: Windows managed accounts can live in WSL, which this host-side refresh does not reach.
     if (process.platform === 'win32') {
       return false
     }
-    // Why: system-default Claude isn't Orca-managed; refresh may read existing OAuth but must not launch Claude and trigger auth/browser flows.
+    // Why: a system-default login is the user's own; Orca only reads it and never starts Claude for it.
     return !isSystemDefaultClaudeAuth(authPreparation)
-  }
-
-  protected shouldAllowClaudeUsagePanelSupplement(): boolean {
-    // Why: keep this supplement off on Windows where hidden PTYs are still less reliable.
-    return process.platform !== 'win32'
   }
 
   protected resolveMiniMaxConfig(): MiniMaxResolvedConfig {

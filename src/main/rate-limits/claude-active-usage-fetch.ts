@@ -1,6 +1,4 @@
 import type { ProviderRateLimits } from '../../shared/rate-limit-types'
-import { withMacTailscaleDnsHint } from '../network/macos-tailscale-dns-diagnostic'
-import { completeClaudeOAuthUsageSuccess, fetchClaudeUsageViaCli } from './claude-cli-usage-fetch'
 import {
   readClaudeOAuthCredentials,
   resolveClaudeOAuthCredentialReadOptions
@@ -19,9 +17,10 @@ import {
   classifyClaudeOAuthUsageError
 } from './claude-usage-error-classification'
 import type { ClaudeRateLimitFetchOptions } from './claude-usage-fetch-options'
-import { resolveClaudeUsageRefreshPlan } from './claude-usage-refresh-plan'
 import {
   abortedClaudeRateLimitResult,
+  claudeOAuthUsageSuccess,
+  isManagedClaudeAuth,
   makeClaudeUsageResult,
   metadataForClaudeUsageAttempt,
   recordClaudeUsageAttempt,
@@ -35,11 +34,7 @@ export async function fetchActiveClaudeRateLimits(
     return abortedClaudeRateLimitResult()
   }
   const attempts = { attemptedSources: [] }
-  const allowCliFallback = options?.allowPtyFallback !== false
-  const plan = resolveClaudeUsageRefreshPlan({
-    authPreparation: options?.authPreparation,
-    allowCliFallback
-  })
+  const allowCliLoginRefresh = options?.allowCliLoginRefresh === true
 
   if (options?.authPreparation?.runtime === 'wsl' && !options.authPreparation.wslLinuxConfigDir) {
     return makeClaudeUsageResult(
@@ -60,18 +55,18 @@ export async function fetchActiveClaudeRateLimits(
     return abortedClaudeRateLimitResult()
   }
 
-  if (plan.steps.some((step) => step.source === 'oauth') && oauthCredentials.token) {
+  if (oauthCredentials.token) {
     recordClaudeUsageAttempt(attempts, 'oauth')
     try {
-      const oauthLimits = await fetchClaudeOAuthUsage(oauthCredentials.token, options?.signal)
+      const limits = await fetchClaudeOAuthUsage(oauthCredentials.token, options?.signal)
       if (options?.signal?.aborted) {
         return abortedClaudeRateLimitResult()
       }
-      return await completeClaudeOAuthUsageSuccess({
-        oauthLimits,
+      return claudeOAuthUsageSuccess({
+        limits,
         oauthCredentials,
         attempts,
-        options
+        authPreparation: options?.authPreparation
       })
     } catch (error) {
       warnClaudeUsageFetchFailure(options?.authPreparation, oauthCredentials, error)
@@ -102,7 +97,7 @@ export async function fetchActiveClaudeRateLimits(
         })
       }
 
-      if (classification.shouldAttemptDelegatedRefresh && allowCliFallback) {
+      if (classification.shouldAttemptDelegatedRefresh && allowCliLoginRefresh) {
         const repaired = await repairClaudeCredentialsThenRetryOAuth({
           options,
           attempts,
@@ -110,20 +105,6 @@ export async function fetchActiveClaudeRateLimits(
         })
         if (repaired) {
           return repaired
-        }
-      }
-
-      if (classification.shouldAttemptCliFallback && allowCliFallback) {
-        try {
-          return await fetchClaudeUsageViaCli({
-            authPreparation: options?.authPreparation,
-            oauthCredentials,
-            attempts,
-            networkProxySettings: options?.networkProxySettings,
-            signal: options?.signal
-          })
-        } catch (ptyError) {
-          warnClaudeUsageFetchFailure(options?.authPreparation, oauthCredentials, ptyError)
         }
       }
 
@@ -154,7 +135,7 @@ export async function fetchActiveClaudeRateLimits(
   if (
     oauthCredentials.hasRefreshableCredentials &&
     credentialClassification.shouldAttemptDelegatedRefresh &&
-    allowCliFallback
+    allowCliLoginRefresh
   ) {
     const repaired = await repairClaudeCredentialsThenRetryOAuth({
       options,
@@ -163,41 +144,6 @@ export async function fetchActiveClaudeRateLimits(
     })
     if (repaired) {
       return repaired
-    }
-  }
-
-  if (
-    (oauthCredentials.token ||
-      oauthCredentials.hasRefreshableCredentials ||
-      oauthCredentials.keychainUnavailable) &&
-    credentialClassification.shouldAttemptCliFallback &&
-    allowCliFallback
-  ) {
-    try {
-      return await fetchClaudeUsageViaCli({
-        authPreparation: options?.authPreparation,
-        oauthCredentials,
-        attempts,
-        networkProxySettings: options?.networkProxySettings,
-        signal: options?.signal
-      })
-    } catch (error) {
-      warnClaudeUsageFetchFailure(options?.authPreparation, oauthCredentials, error)
-      return makeClaudeUsageResult(
-        'error',
-        withMacTailscaleDnsHint(error instanceof Error ? error.message : 'Unknown error'),
-        {
-          ...metadataForClaudeUsageAttempt({
-            attemptedSources: attempts.attemptedSources,
-            oauthCredentials,
-            authPreparation: options?.authPreparation,
-            failureKind:
-              credentialClassification.failureKind === 'keychain-unavailable'
-                ? 'keychain-unavailable'
-                : 'cli-unavailable'
-          })
-        }
-      )
     }
   }
 
@@ -223,26 +169,14 @@ export async function fetchActiveClaudeRateLimits(
     })
   }
 
-  if (allowCliFallback && plan.steps.some((step) => step.source === 'cli')) {
-    try {
-      return await fetchClaudeUsageViaCli({
-        authPreparation: options?.authPreparation,
-        oauthCredentials,
-        attempts,
-        networkProxySettings: options?.networkProxySettings,
-        signal: options?.signal
-      })
-    } catch (error) {
-      warnClaudeUsageFetchFailure(options?.authPreparation, oauthCredentials, error)
-    }
-  }
-
-  return makeClaudeUsageResult('unavailable', 'No subscription plan — API key billing', {
-    ...metadataForClaudeUsageAttempt({
-      attemptedSources: attempts.attemptedSources,
-      oauthCredentials,
-      authPreparation: options?.authPreparation,
-      failureKind: 'missing-credentials'
-    })
+  const metadata = metadataForClaudeUsageAttempt({
+    attemptedSources: attempts.attemptedSources,
+    oauthCredentials,
+    authPreparation: options?.authPreparation,
+    failureKind: 'missing-credentials'
   })
+  // A managed account with no login is signed out; without one, the user may bill by API key.
+  return isManagedClaudeAuth(options?.authPreparation)
+    ? makeClaudeUsageResult('error', 'Claude account is signed out', metadata)
+    : makeClaudeUsageResult('unavailable', 'No subscription plan — API key billing', metadata)
 }

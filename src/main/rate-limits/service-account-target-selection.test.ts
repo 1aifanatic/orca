@@ -388,15 +388,14 @@ describe('RateLimitService', () => {
           wslLinuxConfigDir: '/home/jin/.claude',
           stripAuthEnv: true
         }),
-        allowPtyFallback: true,
-        allowUsagePanelSupplement: true,
+        allowCliLoginRefresh: true,
         signal: expect.any(AbortSignal)
       })
     )
     expect(service.getState().claudeTarget).toEqual({ runtime: 'wsl', wslDistro: 'Ubuntu' })
   })
 
-  it('does not use Claude PTY fallback for system-default usage refreshes', async () => {
+  it('does not allow a Claude CLI login refresh for system-default usage refreshes', async () => {
     const service = new RateLimitService()
     service.setClaudeAuthPreparationResolver(async () => ({
       configDir: '/tmp/.claude',
@@ -416,14 +415,13 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: expect.objectContaining({ provenance: 'system' }),
-        allowPtyFallback: false,
-        allowUsagePanelSupplement: true,
+        allowCliLoginRefresh: false,
         signal: expect.any(AbortSignal)
       })
     )
   })
 
-  it('does not use Claude PTY fallback when Claude auth preparation is unavailable', async () => {
+  it('does not allow a Claude CLI login refresh when Claude auth preparation is unavailable', async () => {
     const service = new RateLimitService()
 
     vi.mocked(fetchClaudeRateLimits).mockResolvedValueOnce(okProvider('claude', 10, Date.now()))
@@ -434,14 +432,13 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: undefined,
-        allowPtyFallback: false,
-        allowUsagePanelSupplement: true,
+        allowCliLoginRefresh: false,
         signal: expect.any(AbortSignal)
       })
     )
   })
 
-  it('does not use Claude PTY fallback for WSL system-default usage refreshes', async () => {
+  it('does not allow a Claude CLI login refresh for WSL system-default usage refreshes', async () => {
     const service = new RateLimitService()
     service.setClaudeFetchTarget({ runtime: 'wsl', wslDistro: 'Ubuntu' })
     service.setClaudeAuthPreparationResolver(async () => ({
@@ -462,8 +459,7 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: expect.objectContaining({ provenance: 'wsl:Ubuntu:system' }),
-        allowPtyFallback: false,
-        allowUsagePanelSupplement: true,
+        allowCliLoginRefresh: false,
         signal: expect.any(AbortSignal)
       })
     )
@@ -579,7 +575,7 @@ describe('RateLimitService', () => {
     })
 
     expect(fetchClaudeRateLimits).toHaveBeenLastCalledWith(
-      expect.objectContaining({ allowPtyFallback: true, allowUsagePanelSupplement: true })
+      expect.objectContaining({ allowCliLoginRefresh: true })
     )
 
     expect(service.getState().inactiveClaudeAccounts).not.toEqual(

@@ -3,14 +3,13 @@ import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-au
 
 export type ClaudeRateLimitFetchOptions = {
   authPreparation?: ClaudeRuntimeAuthPreparation
-  allowPtyFallback?: boolean
-  allowUsagePanelSupplement?: boolean
+  /** Let the account's own Claude CLI refresh an expired login; off unless the caller opts in. */
+  allowCliLoginRefresh?: boolean
   networkProxySettings?: NetworkProxySettings
   signal?: AbortSignal
 }
 
 export type ClaudeManagedAccountUsageOptions = {
-  allowUsagePanelSupplement?: boolean
   networkProxySettings?: NetworkProxySettings
   signal?: AbortSignal
 }

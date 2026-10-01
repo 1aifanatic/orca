@@ -1,7 +1,9 @@
+import { realpathSync, statSync } from 'node:fs'
 import type { ProviderRateLimits } from '../../shared/rate-limit-types'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
+import { resolveClaudeCommand } from '../codex-cli/command'
 import { withMacTailscaleDnsHint } from '../network/macos-tailscale-dns-diagnostic'
-import { completeClaudeOAuthUsageSuccess, fetchClaudeUsageViaCli } from './claude-cli-usage-fetch'
+import { refreshClaudeLoginViaCli } from './claude-cli-login-refresh'
 import {
   readClaudeCredentialsFromStrictKeychain,
   readClaudeOAuthCredentials,
@@ -14,14 +16,13 @@ import type { ClaudeUsageErrorClassification } from './claude-usage-error-classi
 import type { ClaudeRateLimitFetchOptions } from './claude-usage-fetch-options'
 import {
   abortedClaudeRateLimitResult,
+  claudeOAuthUsageSuccess,
   isManagedClaudeAuth,
   makeClaudeUsageResult,
-  mergeClaudeUsageWindows,
   metadataForClaudeUsageAttempt,
   recordClaudeUsageAttempt,
   type ClaudeUsageAttemptState,
-  warnClaudeUsageFetchFailure,
-  withClaudeUsageMetadata
+  warnClaudeUsageFetchFailure
 } from './claude-usage-result'
 
 const LIVE_REFRESH_DEFERRED_MESSAGE =
@@ -57,11 +58,11 @@ export async function retryClaudeOAuthWithLegacyKeychain(input: {
     if (input.options?.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
-    return await completeClaudeOAuthUsageSuccess({
-      oauthLimits: limits,
+    return claudeOAuthUsageSuccess({
+      limits,
       oauthCredentials: legacy,
       attempts: input.attempts,
-      options: input.options
+      authPreparation: input.options?.authPreparation
     })
   } catch (error) {
     warnClaudeUsageFetchFailure(input.options?.authPreparation, legacy, error)
@@ -118,55 +119,111 @@ export function makeClaudeUsageClassificationError(input: {
   })
 }
 
+// Both latches die on their own: a login that failed to refresh is skipped until its stored
+// credentials change or the backoff ends (a dead login and a network blip look the same from
+// here), and a CLI without get_usage until the installed binary changes.
+const FAILED_LOGIN_REFRESH_BACKOFF_MS = 15 * 60_000
+const failedLoginRefreshByProvenance = new Map<string, { state: string; retryAtMs: number }>()
+const unsupportedCliBinaries = new Set<string>()
+
+function credentialStateKey(credentials: ClaudeOAuthCredentialReadResult): string {
+  return `${credentials.source}:${credentials.token ?? ''}:${credentials.hasRefreshableCredentials}`
+}
+
+function claudeBinaryKey(command: string): string {
+  try {
+    const real = realpathSync(command)
+    return `${real}:${statSync(real).mtimeMs}`
+  } catch {
+    return command
+  }
+}
+
+/** Test seam: the latches are process-wide. */
+export function resetClaudeLoginRefreshLatchesForTests(): void {
+  failedLoginRefreshByProvenance.clear()
+  unsupportedCliBinaries.clear()
+}
+
+/**
+ * Lets the account's own Claude CLI refresh its expired login, then retries the usage endpoint
+ * with whatever it saved. Null means usage is still unknown and the caller reports why.
+ */
 export async function repairClaudeCredentialsThenRetryOAuth(input: {
   options?: ClaudeRateLimitFetchOptions
   attempts: ClaudeUsageAttemptState
   oauthCredentials: ClaudeOAuthCredentialReadResult
 }): Promise<ProviderRateLimits | null> {
+  const authPreparation = input.options?.authPreparation
   if (input.options?.signal?.aborted) {
     return abortedClaudeRateLimitResult()
   }
-  let cliResult: ProviderRateLimits | null = null
-  try {
-    cliResult = await fetchClaudeUsageViaCli({
-      authPreparation: input.options?.authPreparation,
-      oauthCredentials: input.oauthCredentials,
-      attempts: input.attempts,
-      networkProxySettings: input.options?.networkProxySettings,
-      signal: input.options?.signal
-    })
-  } catch (error) {
-    warnClaudeUsageFetchFailure(input.options?.authPreparation, input.oauthCredentials, error)
+  if (!authPreparation) {
+    return null
+  }
+  const before = credentialStateKey(input.oauthCredentials)
+  const failed = failedLoginRefreshByProvenance.get(authPreparation.provenance)
+  if (failed?.state === before && Date.now() < failed.retryAtMs) {
+    return null
+  }
+  const command = resolveClaudeCommand()
+  const binary = claudeBinaryKey(command)
+  if (unsupportedCliBinaries.has(binary)) {
+    return null
+  }
+  recordClaudeUsageAttempt(input.attempts, 'cli')
+  const outcome = await refreshClaudeLoginViaCli({
+    authPreparation,
+    networkProxySettings: input.options?.networkProxySettings,
+    signal: input.options?.signal,
+    resolveCommand: () => command
+  })
+  if (outcome.kind === 'unsupported') {
+    unsupportedCliBinaries.add(binary)
+  }
+  if (outcome.kind !== 'answered') {
+    warnClaudeUsageFetchFailure(
+      authPreparation,
+      input.oauthCredentials,
+      new Error(`Claude CLI login refresh ${outcome.kind}: ${outcome.message}`)
+    )
   }
 
   if (input.options?.signal?.aborted) {
     return abortedClaudeRateLimitResult()
   }
   const refreshed = await readClaudeOAuthCredentials(
-    resolveClaudeOAuthCredentialReadOptions(input.options?.authPreparation)
+    resolveClaudeOAuthCredentialReadOptions(authPreparation)
   )
   if (input.options?.signal?.aborted) {
     return abortedClaudeRateLimitResult()
   }
-  if (refreshed.token) {
-    recordClaudeUsageAttempt(input.attempts, 'oauth')
-    try {
-      const retry = await fetchClaudeOAuthUsage(refreshed.token, input.options?.signal)
-      if (input.options?.signal?.aborted) {
-        return abortedClaudeRateLimitResult()
-      }
-      return withClaudeUsageMetadata(
-        mergeClaudeUsageWindows(retry, cliResult),
-        metadataForClaudeUsageAttempt({
-          attemptedSources: input.attempts.attemptedSources,
-          oauthCredentials: refreshed,
-          authPreparation: input.options?.authPreparation,
-          source: 'oauth'
-        })
-      )
-    } catch (error) {
-      warnClaudeUsageFetchFailure(input.options?.authPreparation, refreshed, error)
-    }
+  if (credentialStateKey(refreshed) === before) {
+    // The CLI saved nothing new; asking again before the login changes would fail the same way.
+    failedLoginRefreshByProvenance.set(authPreparation.provenance, {
+      state: before,
+      retryAtMs: Date.now() + FAILED_LOGIN_REFRESH_BACKOFF_MS
+    })
+    return null
   }
-  return cliResult
+  failedLoginRefreshByProvenance.delete(authPreparation.provenance)
+  if (!refreshed.token) {
+    return null
+  }
+  recordClaudeUsageAttempt(input.attempts, 'oauth')
+  try {
+    const limits = await fetchClaudeOAuthUsage(refreshed.token, input.options?.signal)
+    if (input.options?.signal?.aborted) {
+      return abortedClaudeRateLimitResult()
+    }
+    return claudeOAuthUsageSuccess({
+      limits,
+      oauthCredentials: refreshed,
+      attempts: input.attempts,
+      authPreparation
+    })
+  } catch (error) {
+    warnClaudeUsageFetchFailure(authPreparation, refreshed, error)
+    return null
+  }
 }

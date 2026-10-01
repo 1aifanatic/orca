@@ -12,7 +12,6 @@ describe('classifyClaudeOAuthUsageError', () => {
     ).toMatchObject({
       failureKind: 'stale-token',
       shouldAttemptDelegatedRefresh: true,
-      shouldAttemptCliFallback: true,
       terminal: false
     })
   })
@@ -23,7 +22,6 @@ describe('classifyClaudeOAuthUsageError', () => {
     ).toMatchObject({
       failureKind: 'rate-limited',
       shouldAttemptDelegatedRefresh: false,
-      shouldAttemptCliFallback: false,
       terminal: true
     })
   })
@@ -42,7 +40,6 @@ describe('classifyClaudeOAuthUsageError', () => {
   it('allows CLI fallback for network-shaped failures', () => {
     expect(classifyClaudeOAuthUsageError(new Error('fetch failed: ENOTFOUND'))).toMatchObject({
       failureKind: 'network',
-      shouldAttemptCliFallback: true,
       shouldAttemptDelegatedRefresh: false
     })
   })
@@ -52,8 +49,7 @@ describe('classifyClaudeCredentialAbsence', () => {
   it('classifies refresh-only credentials as repairable', () => {
     expect(classifyClaudeCredentialAbsence({ hasRefreshableCredentials: true })).toMatchObject({
       failureKind: 'refreshable-credentials-without-token',
-      shouldAttemptDelegatedRefresh: true,
-      shouldAttemptCliFallback: true
+      shouldAttemptDelegatedRefresh: true
     })
   })
 
@@ -65,7 +61,6 @@ describe('classifyClaudeCredentialAbsence', () => {
       })
     ).toMatchObject({
       failureKind: 'keychain-unavailable',
-      shouldAttemptCliFallback: true,
       shouldAttemptDelegatedRefresh: false
     })
   })
