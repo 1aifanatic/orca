@@ -87,20 +87,41 @@ export function owesOpenSettlement(
   const fences = new Set<number>()
   const itemFence = (itemId: string) => fold.itemFences.get(itemId)
   for (const item of fold.items.values()) {
-    owesWork ||= options.settlesRosters && staleSubagentRosterRevision(item) !== null
-    const fence = unverifiableTurnOwnerFence(item, itemFence)
-    const settles =
-      fence !== undefined || isRunningJournalTurn(item) || openSettlementTerminalBody(item) !== null
-    if (!settles || !openSettlementItemIdentity(item)) {
-      continue
-    }
-    if (fence === undefined) {
-      owesWork = true
-    } else {
-      fences.add(fence)
+    const owed = itemOwes(item, itemFence)
+    owesWork ||= owed.settles || (options.settlesRosters && owed.roster)
+    if (owed.unverifiableOwnerFence !== undefined) {
+      fences.add(owed.unverifiableOwnerFence)
     }
   }
   return { owesWork, unverifiableOwnerFences: [...fences].sort((a, b) => a - b) }
+}
+
+type ItemOwes = { settles: boolean; roster: boolean; unverifiableOwnerFence: number | undefined }
+
+// Per item object: a write replaces the object it revises, and an item's creating fence never
+// changes, so each append judges only the items it touched.
+const ITEM_OWES = new WeakMap<AgentJournalRenderItem, ItemOwes>()
+
+function itemOwes(
+  item: AgentJournalRenderItem,
+  itemFence: (itemId: string) => number | undefined
+): ItemOwes {
+  let owes = ITEM_OWES.get(item)
+  if (!owes) {
+    const fence = unverifiableTurnOwnerFence(item, itemFence)
+    const revisable =
+      (fence !== undefined ||
+        isRunningJournalTurn(item) ||
+        openSettlementTerminalBody(item) !== null) &&
+      openSettlementItemIdentity(item) !== null
+    owes = {
+      settles: revisable && fence === undefined,
+      roster: staleSubagentRosterRevision(item) !== null,
+      unverifiableOwnerFence: revisable ? fence : undefined
+    }
+    ITEM_OWES.set(item, owes)
+  }
+  return owes
 }
 
 /** The record-dependent rule, as the plan applies it: an `unverifiable` turn is revised only by
