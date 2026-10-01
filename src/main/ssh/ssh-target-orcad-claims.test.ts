@@ -5,6 +5,7 @@ import {
 } from '../../shared/managed-orcad-ssh-owner'
 import type { SshRemotePtyLease, SshTarget } from '../../shared/ssh-types'
 import { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
+import { emptyDependentStateStore } from './ssh-target-orcad-dependents-fixture'
 
 type SetupOptions = {
   target?: Partial<SshTarget>
@@ -28,9 +29,10 @@ function setup(options: SetupOptions = {}) {
   const folders = (options.folders ?? []).map((f) => ({ ...f, ...rows })) as never
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: preflight reads only id, path, displayName, kind and connectionId.
   const repos = (options.repos ?? []).map((r) => ({ ...r, ...rows })) as never
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: preflight reads only the lease fields it projects.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: preflight reads only ptyId and state.
   const leases = (options.leases ?? []) as never
   const claims = new SshTargetOrcadClaims({
+    ...emptyDependentStateStore(),
     allocateSshTargetGeneration: () => 4,
     flushPendingOrThrowAsync: flush,
     getFolderWorkspaces: () => folders,
@@ -83,9 +85,9 @@ describe('managed orcad SSH target claims', () => {
       'repositories or folder workspaces'
     ],
     [
-      'live or unverifiable terminal leases',
+      'a saved terminal lease',
       { leases: [{ ptyId: 'pty-1', state: 'detached' }] },
-      'live or unverifiable'
+      'terminal-lease ×1 (pty-1 (detached))'
     ],
     [
       'saved port forwards',
@@ -103,14 +105,22 @@ describe('managed orcad SSH target claims', () => {
     expect(current().orcadProvisioning).toBeUndefined()
   })
 
-  it('ignores terminated and expired leases', () => {
+  it('counts terminated and expired leases too, since they still name this host', () => {
     const { claims } = setup({
       leases: [
         { ptyId: 'a', state: 'terminated' },
         { ptyId: 'b', state: 'expired' }
       ]
     })
-    expect(claims.preflight('ssh-1')).toMatchObject({ claimable: true, blockers: [] })
+    expect(claims.preflight('ssh-1').blockers).toEqual([
+      {
+        code: 'orcad_migration_dependent_state',
+        category: 'client-owned-state',
+        dependencies: [
+          { kind: 'terminal-lease', count: 2, names: ['a (terminated)', 'b (expired)'] }
+        ]
+      }
+    ])
   })
 
   it('reports an unknown target as a registration blocker', () => {

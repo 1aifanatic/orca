@@ -8,6 +8,7 @@ import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
+import { emptyDependentStateStore } from './ssh-target-orcad-dependents-fixture'
 
 const mocks = vi.hoisted(() => {
   const state: { store: unknown } = { store: null }
@@ -94,7 +95,7 @@ function setupStore(overrides: { repos?: { connectionId: string }[] } = {}) {
     },
     getFolderWorkspaces: () => [],
     getRepos: () => overrides.repos ?? [],
-    getSshRemotePtyLeases: () => [],
+    ...emptyDependentStateStore(),
     getSshTarget: (id: string) => (id === target.id ? target : undefined),
     getSshTargets: () => [target],
     updateSshTarget: (_id: string, updates: Partial<SshTarget>) => {
@@ -185,6 +186,31 @@ describe('createManagedOrcadEnvironment', () => {
     expect(mocks.connect).not.toHaveBeenCalled()
   })
 
+  it('refuses a host that saved state still references, naming it, before claiming', async () => {
+    const leases = [{ ptyId: 'pty-1', state: 'expired' }]
+    const store = {
+      ...emptyDependentStateStore({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the census reads only ptyId and state.
+        getSshRemotePtyLeases: () => leases as never
+      }),
+      allocateSshTargetGeneration: () => 9,
+      flushPendingOrThrowAsync: async () => {},
+      getFolderWorkspaces: () => [],
+      getRepos: () => [],
+      getSshTarget: () => target,
+      getSshTargets: () => [target],
+      updateSshTarget: (_id: string, updates: Partial<SshTarget>) =>
+        (target = { ...target, ...updates })
+    }
+    mocks.state.store = {
+      getTarget: () => target,
+      getOrcadRuntimeClaims: () => new SshTargetOrcadClaims(store)
+    }
+    await expect(deploy()).rejects.toThrow('terminal-lease ×1 (pty-1 (expired))')
+    expect(target.owner).toBeUndefined()
+    expect(mocks.connect).not.toHaveBeenCalled()
+  })
+
   it('refuses a connected direct SSH session and a taken server name', async () => {
     mocks.hasDirectAuthority.mockReturnValueOnce(true)
     await expect(deploy()).rejects.toThrow('Disconnect this SSH host')
@@ -203,7 +229,7 @@ describe('createManagedOrcadEnvironment', () => {
       },
       getFolderWorkspaces: () => [],
       getRepos: () => [],
-      getSshRemotePtyLeases: () => [],
+      ...emptyDependentStateStore(),
       getSshTarget: () => target,
       getSshTargets: () => [target],
       updateSshTarget: (_id, updates) => (target = { ...target, ...updates })

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import { isRuntimeOwnedSshTarget, SshConnectionStore } from './ssh-connection-store'
 import { createMockStore } from './ssh-connection-store-test-fixture'
+import { emptyDependentStateStore } from './ssh-target-orcad-dependents-fixture'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
   loadUserSshConfigMock: vi.fn(),
@@ -20,7 +21,7 @@ describe('managed orcad ownership of SSH targets', () => {
   let sshStore: SshConnectionStore
 
   beforeEach(() => {
-    mockStore = createMockStore()
+    mockStore = Object.assign(createMockStore(), emptyDependentStateStore())
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture implements the store methods SshConnectionStore calls.
     sshStore = new SshConnectionStore(mockStore as never)
     loadUserSshConfigMock.mockReset()

@@ -1,8 +1,8 @@
 /**
  * Exclusive managed-orcad ownership of an SSH target. A claimed target is hidden from direct SSH
- * surfaces and serves only its environment's tunnel. Only empty targets are claimable: moving a
- * direct SSH host's repositories, folder workspaces or terminals into a managed server is the
- * catalog migration, which this does not do.
+ * surfaces and serves only its environment's tunnel. Only empty targets are claimable, including no
+ * saved sessions, automations, worktree metadata or terminal leases: moving a direct SSH host's
+ * state into a managed server is the catalog migration, which this does not do.
  */
 import type { Store } from '../persistence'
 import {
@@ -14,18 +14,23 @@ import type {
   OrcadMigrationPreflight
 } from '../../shared/orcad-migration-preflight'
 import type { SshTarget } from '../../shared/ssh-types'
+import {
+  collectDependentStateBlockers,
+  dependentStateMessage,
+  type DependentStateStore
+} from './ssh-target-orcad-dependents'
 
-type ClaimStore = Pick<
-  Store,
-  | 'allocateSshTargetGeneration'
-  | 'flushPendingOrThrowAsync'
-  | 'getFolderWorkspaces'
-  | 'getRepos'
-  | 'getSshRemotePtyLeases'
-  | 'getSshTarget'
-  | 'getSshTargets'
-  | 'updateSshTarget'
->
+type ClaimStore = DependentStateStore &
+  Pick<
+    Store,
+    | 'allocateSshTargetGeneration'
+    | 'flushPendingOrThrowAsync'
+    | 'getFolderWorkspaces'
+    | 'getRepos'
+    | 'getSshTarget'
+    | 'getSshTargets'
+    | 'updateSshTarget'
+  >
 
 export class SshTargetOrcadClaims {
   constructor(private readonly store: ClaimStore) {}
@@ -132,24 +137,6 @@ function collectEmptyTargetBlockers(store: ClaimStore, target: SshTarget): Orcad
       folderWorkspaces
     })
   }
-  const terminalLeases = store
-    .getSshRemotePtyLeases(target.id)
-    .filter((lease) => lease.state !== 'terminated' && lease.state !== 'expired')
-    .map(({ ptyId, worktreeId, tabId, leafId, state, updatedAt }) => ({
-      ptyId,
-      worktreeId,
-      tabId,
-      leafId,
-      state,
-      updatedAt
-    }))
-  if (terminalLeases.length > 0) {
-    blockers.push({
-      code: 'orcad_migration_direct_ssh_terminal_leases',
-      category: 'live-or-unverifiable',
-      terminalLeases
-    })
-  }
   if (target.portForwards?.length) {
     blockers.push({
       code: 'orcad_migration_saved_port_forwards',
@@ -157,6 +144,7 @@ function collectEmptyTargetBlockers(store: ClaimStore, target: SshTarget): Orcad
       portForwards: target.portForwards.map((portForward) => ({ ...portForward }))
     })
   }
+  blockers.push(...collectDependentStateBlockers(store, target.id))
   return blockers
 }
 
@@ -173,10 +161,12 @@ export function orcadTargetBlockerMessage(
     case 'orcad_migration_direct_ssh_folder_workspaces':
       return 'This SSH target owns repositories or folder workspaces. A managed server can only be created on a host with no direct SSH projects yet; keep this host in direct SSH mode.'
     case 'orcad_migration_direct_ssh_terminal_leases':
-      return 'This SSH target still owns terminal sessions, live or unverifiable. Close them before converting the host.'
+      return 'This SSH target still owns terminal sessions. Close them before converting the host.'
     case 'orcad_migration_saved_port_forwards':
       return 'This SSH target has saved port forwards. Remove them before converting the host.'
     case 'orcad_migration_dependent_state':
-      return 'This SSH target still has state that a managed server cannot take over yet.'
+      return dependentStateMessage(blocker.dependencies)
+    case 'orcad_migration_dependency_unverifiable':
+      return `Orca could not read its saved ${blocker.sources.join(', ')} state, so it cannot show this SSH target is unused; the target was left in direct SSH mode.`
   }
 }
