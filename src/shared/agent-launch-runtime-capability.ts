@@ -1,5 +1,5 @@
-// Split out of protocol-version.ts, which re-exports every name here; the list below is spread
-// into RUNTIME_CAPABILITIES in this order.
+// Split out of protocol-version.ts, which spreads the list below into RUNTIME_CAPABILITIES in this
+// order. Import these names from here: the mobile recording loader cannot follow `export *`.
 
 /**
  * `agent.launch` exists: one host-side method that decides structured-vs-terminal and creates the

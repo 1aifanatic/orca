@@ -6,10 +6,8 @@ import {
   ZSH_MULTI_LINE_STARTUP_LINE_BUDGET_BYTES
 } from './startup-line-prompt-carry'
 import type { TuiAgent } from './tui-agent'
-import {
-  AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
-  RUNTIME_CAPABILITIES
-} from './protocol-version'
+import { RUNTIME_CAPABILITIES } from './protocol-version'
+import { AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY } from './agent-launch-runtime-capability'
 
 function offer(
   agent: TuiAgent,
