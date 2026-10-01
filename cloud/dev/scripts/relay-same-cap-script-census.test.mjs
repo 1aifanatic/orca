@@ -188,34 +188,6 @@ function drainingBlock() {
   )}\necho "\${PRECHECK_ADMISSION} \${PRECHECK_DRAINING} \${PREDECESSOR_DRAINING_OK}"`
 }
 
-// The three fields gcloud would otherwise default, as the MIG resource declares them.
-function migUpdatePolicy() {
-  const terraform = readFileSync(
-    new URL('../../infra/terraform/relay-gce-cells.tf', import.meta.url),
-    'utf8'
-  )
-  const policy = terraform.split('  update_policy {')[1]?.split('\n  }')[0] ?? ''
-  const method = /replacement_method\s+= "([A-Z]+)"/.exec(policy)?.[1]
-  assert.notEqual(method, undefined, 'the MIG declares no replacement method')
-  // Both fixed bounds come from the topology locals the MIG resource points at.
-  const surgeLocal = /max_surge_fixed\s+= local\.relay_gce_topology\.(\w+)/.exec(policy)?.[1]
-  const unavailableLocal =
-    /max_unavailable_fixed\s+= local\.relay_gce_topology\.(\w+)/.exec(policy)?.[1]
-  assert.notEqual(surgeLocal, undefined, 'the MIG pins no surge local')
-  assert.notEqual(unavailableLocal, undefined, 'the MIG pins no unavailable local')
-  const topology = terraform.split('  relay_gce_topology = {')[1]?.split('\n  }')[0] ?? ''
-  const local = (name) => {
-    const value = new RegExp(`${name}\\s+= (\\d+)`).exec(topology)?.[1]
-    assert.notEqual(value, undefined, `the topology locals pin no ${name}`)
-    return value
-  }
-  return {
-    replacementMethod: method.toLowerCase(),
-    maxSurge: local(surgeLocal),
-    maxUnavailable: local(unavailableLocal)
-  }
-}
-
 // The stage decides the predecessor, the plan's reviewed rollback image, and whether the
 // MIG is rolled explicitly, so run the real block rather than restating its rule.
 function stageBlock() {
@@ -605,7 +577,7 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
     assert.equal(missing, 'resume')
   })
 
-  it('rolls the MIG itself when a stranded plan changes nothing', () => {
+  it('recreates the one stranded instance when a stranded plan changes nothing', () => {
     const apply = workflow
       .split('name: Apply only the selected same-cap template and MIG')[1]
       .split('\n      - id:')[0]
@@ -616,27 +588,43 @@ describe('same-cap roll scripts accept every same-cap cell', () => {
       apply,
       /test "\$\{ROLLBACK_STAGE\}" = stranded \\\n\s+&& test "\$\(jq -er '\.changes' <<< "\$\{PLAN_REVIEW\}"\)" = 0/
     )
-    // gcloud persists all three fields into the MIG's update policy and defaults the
-    // method to substitute here, so every one has to match what Terraform declares or the
-    // recovery drifts the policy and the next targeted plan is refused as an unreviewed
-    // MIG change. Read the declared values rather than restating them.
-    assert.match(apply, /rolling-action replace "\$\{MIG_NAME\}"/)
-    const declared = migUpdatePolicy()
-    assert.deepEqual(declared, {
-      replacementMethod: 'recreate',
-      maxSurge: '0',
-      maxUnavailable: '1'
-    })
+    // A rolling action rewrites the MIG's version name outside Terraform, and the validator then
+    // refuses every later plan for the cell; recreating the instance leaves the MIG untouched.
+    assert.doesNotMatch(apply, /rolling-action/)
     assert.match(
       apply,
-      new RegExp(
-        `--replacement-method ${declared.replacementMethod}` +
-          ` --max-surge ${declared.maxSurge} --max-unavailable ${declared.maxUnavailable}`
-      )
+      /list-instances \\\n\s+"\$\{MIG_NAME\}"[\s\S]*?if length == 1 then \.\[0\]\.instance/
     )
-    // Nothing else may reach the group, and the roll has to be waited on.
-    assert.equal(apply.split('rolling-action').length, 2)
+    assert.match(
+      apply,
+      /recreate-instances "\$\{MIG_NAME\}" \\\n\s+--instances "\$\{STRANDED_INSTANCE\}"/
+    )
+    assert.equal(apply.split('recreate-instances').length, 2)
+    // The recreate has to be waited on, after the apply's own wait.
+    const recreate = apply.indexOf('recreate-instances')
     assert.equal(apply.split('wait-until "${MIG_NAME}" --stable').length, 3)
+    assert.ok(apply.indexOf('wait-until "${MIG_NAME}" --stable', recreate) > recreate)
+  })
+
+  // The stranded branch's instance pick has to refuse anything but exactly one instance.
+  it('picks the stranded instance only from a one-instance MIG', () => {
+    const apply = workflow
+      .split('name: Apply only the selected same-cap template and MIG')[1]
+      .split('\n      - id:')[0]
+    const filter = /jq -er '(if length == 1[\s\S]*?end)'\)"/.exec(apply)?.[1]
+    assert.notEqual(filter, undefined, 'the stranded branch no longer asserts one instance')
+    const pick = (instances) =>
+      spawnSync('jq', ['-er', filter], { input: JSON.stringify(instances), encoding: 'utf8' })
+    const link = (name) =>
+      `https://www.googleapis.com/compute/v1/projects/p/zones/z/instances/${name}`
+    const one = pick([{ instance: link('relay-c29-abcd') }])
+    assert.equal(one.status, 0, one.stderr)
+    assert.equal(one.stdout.trim(), 'relay-c29-abcd')
+    assert.notEqual(pick([]).status, 0)
+    assert.notEqual(
+      pick([{ instance: link('relay-c29-abcd') }, { instance: link('relay-c29-efgh') }]).status,
+      0
+    )
   })
 
   // Run the predicate the job ships rather than restating it, because restating it is how the
