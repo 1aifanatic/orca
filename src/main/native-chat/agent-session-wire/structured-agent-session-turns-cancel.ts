@@ -234,7 +234,7 @@ export async function performCancel(
     interruptFailed &&
     input.stopChild &&
     // An unnamed Stop meant the turn the journal showed when it was sent.
-    (await stillRunsStoppedTurn(ctx, input.turnId ?? liveTurnId))
+    (await stillRunsStoppedTurn(ctx, stoppedTurnId))
   ) {
     // The interrupt failed and the turn runs on: only the child's end stops it.
     let ended: boolean
