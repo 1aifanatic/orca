@@ -46,11 +46,13 @@ export async function prepareWorktreeCreateCheckout(
   }
 ): Promise<boolean> {
   const { signal, isCancelled, onRegistered } = options
+  // Checked before every step: a spare stopped at any point starts nothing more.
+  const stopped = (): boolean => signal.aborted || Boolean(isCancelled?.())
   const metadata = gitMetadataOptions(repoPath, options, resolveWorktreeAddTimeoutMs())
   try {
     return await withRepoRefMaintenancePaused('worktree-prepare', () =>
       runWithGitReadCacheInvalidation(async () => {
-        if (signal.aborted) {
+        if (stopped()) {
           return false
         }
         await gitExecFileAsync(
@@ -68,6 +70,9 @@ export async function prepareWorktreeCreateCheckout(
         onRegistered?.()
         // The add just wrote the marker; drop any pre-create route before later commands route.
         invalidateWslLinkedWorktreeGitRouting(worktreePath)
+        if (stopped()) {
+          return false
+        }
         await gitExecFileAsync(
           [
             ...windowsLongPathGitArgs(repoPath),
@@ -79,7 +84,7 @@ export async function prepareWorktreeCreateCheckout(
           ],
           metadata
         )
-        if (signal.aborted || isCancelled?.()) {
+        if (stopped()) {
           return false
         }
         // Why reset: it materializes files without running the user's post-checkout hook early.

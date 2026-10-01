@@ -2,6 +2,7 @@ import type { LocalGitExecOptions } from '../git/repo-default-base-ref'
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
 import type { GitPushTarget, GitWorktreeInfo } from '../../shared/worktree/types'
 import type { Repo } from '../../shared/repo-types'
+import type { PreparedCheckoutOutcome } from '../../shared/worktree/create-types'
 import { resolveCreatedWorktree } from '../ipc/created-worktree-reconciliation'
 import { normalizeSparseDirectories } from '../ipc/sparse-checkout-directories'
 import { configureCreatedWorktreePushTarget } from '../ipc/worktree-remote'
@@ -60,6 +61,7 @@ export async function createRuntimeLocalGitWorktree(args: {
   configuredPushTarget?: GitPushTarget
   created: GitWorktreeInfo
   addResult: AddWorktreeResult
+  preparedCheckout?: PreparedCheckoutOutcome
 }> {
   let remoteTrackingBase = await args.resolveRemoteTrackingBase(
     args.repo.path,
@@ -194,11 +196,20 @@ export async function createRuntimeLocalGitWorktree(args: {
     args.branchName,
     args.localWorktreeGitOptions
   )
+  // As the IPC create reports it: a sparse or existing-branch create never consults a spare.
+  const preparedCheckout: PreparedCheckoutOutcome | undefined =
+    addResult.preparedCheckout ??
+    (sparseDirectories.length > 0
+      ? { status: 'miss', reason: 'sparse_checkout' }
+      : args.checkoutExistingBranch
+        ? { status: 'miss', reason: 'checkout_existing_branch' }
+        : undefined)
   return {
     remoteTrackingBase,
     sparseDirectories,
     ...(configuredPushTarget ? { configuredPushTarget } : {}),
     created,
-    addResult
+    addResult,
+    ...(preparedCheckout ? { preparedCheckout } : {})
   }
 }

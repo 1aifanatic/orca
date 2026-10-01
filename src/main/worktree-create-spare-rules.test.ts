@@ -186,6 +186,18 @@ describe('a spare that never got far', () => {
     await vi.waitFor(() => expect(hasSpareWork()).toBe(false))
   })
 
+  it('runs neither add nor lock for a WSL spare abandoned before it registered', async () => {
+    spare('/repo', OID_A, { wslDistro: 'Ubuntu' })
+    const id = findSpare(spareRepoKey('/repo', 'Ubuntu'))?.id ?? ''
+
+    await create('/repo-a')
+
+    await vi.waitFor(() => expect(isOwnedSpareId(id)).toBe(false))
+    expect(gitCommands(script, isSpareAdd)).toHaveLength(0)
+    expect(gitCommands(script, (args) => args[1] === 'lock')).toHaveLength(0)
+    expect(script.resetSignals).toHaveLength(0)
+  })
+
   it('removes nothing and releases the id when the spare never registered', async () => {
     spare()
     const id = findSpare(spareRepoKey('/repo'))?.id ?? ''

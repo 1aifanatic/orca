@@ -79,6 +79,7 @@ vi.mock('../ipc/worktree-symlinks', () => ({
 
 import { createRuntimeLocalManagedWorktree } from './runtime-local-worktree-create'
 import { isBackgroundWorkHeldForLocalCreates } from '../git/local-worktree-create-activity'
+import { setActiveSink } from '../observability/tracer'
 
 const worktreePath = resolve('/worktrees', 'app')
 
@@ -256,5 +257,46 @@ describe('runtime create Git priority', () => {
       false,
       expect.objectContaining(options)
     )
+  })
+})
+
+describe('runtime create span', () => {
+  function captureSpans(): unknown[] {
+    const records: unknown[] = []
+    setActiveSink({ push: (record) => records.push(record), flush: () => {}, close: () => {} })
+    return records
+  }
+
+  it('records whether the create used a spare, as the IPC create does', async () => {
+    const records = captureSpans()
+    mocks.add.mockResolvedValue({ preparedCheckout: { status: 'miss', reason: 'not_ready' } })
+    try {
+      await createWorktree()
+    } finally {
+      setActiveSink(null)
+    }
+
+    expect(records).toMatchObject([
+      {
+        name: 'worktree.create',
+        attributes: {
+          'worktree.create.prepared_checkout': 'miss',
+          'worktree.create.prepared_checkout_miss': 'not_ready'
+        }
+      }
+    ])
+  })
+
+  it('records a sparse create as a sparse_checkout miss', async () => {
+    const records = captureSpans()
+    try {
+      await createWorktree({ sparseCheckout: { directories: ['src'] } })
+    } finally {
+      setActiveSink(null)
+    }
+
+    expect(records).toMatchObject([
+      { attributes: { 'worktree.create.prepared_checkout_miss': 'sparse_checkout' } }
+    ])
   })
 })
