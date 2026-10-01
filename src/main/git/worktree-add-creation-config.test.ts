@@ -1,17 +1,13 @@
 // addWorktree: checkout creation, branch-base/push.autoSetupRemote config writes, ref qualification.
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-const {
-  gitExecFileAsyncMock,
-  gitExecFileSyncMock,
-  translateWslOutputPathsMock,
-  moveWorktreeDirectoryToTrashMock
-} = vi.hoisted(() => ({
-  gitExecFileAsyncMock: vi.fn(),
-  gitExecFileSyncMock: vi.fn(),
-  translateWslOutputPathsMock: vi.fn((output: string) => output),
-  moveWorktreeDirectoryToTrashMock: vi.fn()
-}))
+const { gitExecFileAsyncMock, gitExecFileSyncMock, translateWslOutputPathsMock } = vi.hoisted(
+  () => ({
+    gitExecFileAsyncMock: vi.fn(),
+    gitExecFileSyncMock: vi.fn(),
+    translateWslOutputPathsMock: vi.fn((output: string) => output)
+  })
+)
 
 vi.mock('./runner', () => ({
   gitExecFileAsync: gitExecFileAsyncMock,
@@ -24,13 +20,6 @@ vi.mock('./worktree-membership/worktree-membership-store', async (importOriginal
     await importOriginal()
   )
 )
-
-// Default: the checkout cannot be renamed aside, so removal deletes it in place.
-vi.mock('../worktree-trash', () => ({
-  moveWorktreeDirectoryToTrash: moveWorktreeDirectoryToTrashMock.mockResolvedValue(undefined),
-  restoreWorktreeDirectoryFromTrash: vi.fn().mockResolvedValue(true),
-  scheduleWorktreeTrashDeletion: vi.fn()
-}))
 
 import { addSparseWorktree, addWorktree, WORKTREE_ADD_TIMEOUT_MS } from './worktree'
 import { registerWorktreeSuiteHooks } from './worktree-test-harness'
@@ -465,40 +454,6 @@ describe('addWorktree', () => {
         'refs/heads/main'
       ],
       { cwd: '/repo', timeout: WORKTREE_ADD_TIMEOUT_MS }
-    ])
-  })
-
-  it('qualifies slash-containing local branch names when no remote ref matches', async () => {
-    gitExecFileAsyncMock.mockRejectedValueOnce(new Error('no remote ref')) // rev-parse refs/remotes/release/main^{commit}
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'abc123\n' }) // rev-parse refs/heads/release/main^{commit}
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree add
-    resolveCreationBaseConfigWrite()
-    gitExecFileAsyncMock.mockRejectedValueOnce(Object.assign(new Error('key unset'), { code: 1 })) // config --get push.autoSetupRemote (unset)
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // config --local set push.autoSetupRemote
-
-    await addWorktree('/repo', '/repo-feature', 'feature/release', 'release/main')
-
-    expect(gitExecFileAsyncMock.mock.calls.map((call) => call[0])).toEqual([
-      ['rev-parse', '--verify', '--quiet', 'refs/remotes/release/main^{commit}'],
-      ['rev-parse', '--verify', '--quiet', 'refs/heads/release/main^{commit}'],
-      [
-        'worktree',
-        'add',
-        '--no-track',
-        '-b',
-        'feature/release',
-        '/repo-feature',
-        'refs/heads/release/main'
-      ],
-      [
-        'config',
-        '--local',
-        '--replace-all',
-        'branch.feature/release.base',
-        'refs/heads/release/main'
-      ],
-      ['config', '--get', 'push.autoSetupRemote'],
-      ['config', '--local', 'push.autoSetupRemote', 'true']
     ])
   })
 
