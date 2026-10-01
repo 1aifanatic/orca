@@ -197,6 +197,18 @@ reads it beside C27-C29. A later Asia cell stays in the same-cap migration-only 
 fleet pool list until its own promotion, then moves to both together, as its own reviewed wave.
 C31 followed that path and was promoted to general on 2026-10-01, so it is now a same-cap general
 cell and in the fleet pool list beside C27-C30.
+
+C32 and C33 are US cells at that same 3,000-connection shape, in `us-central1-a` and
+`us-central1-b`, and use the same two workflows and the C30 steps, one cell per wave. Each wave's
+region comes from its reviewed zone. A US wave plans no additional-region network, and its template
+carries no region label or region line. Its pool stays at the US default of 10 and emits no pool
+line, because 16 exists only for the asia-east2 round trip. Registration and the runtime check
+expect `us-central1`. Promotion skips the Asia launch-order gates, which bind Asia cells only.
+The canary aims its load at `us-central1`, reads the cell's own `us-central1` metrics, and
+requires a US selection. It gates neither region's fallbacks: US-targeted fallbacks have a
+nonzero baseline while the US fleet is full, and Asia-targeted ones are not the cell's to cause.
+Both are recorded. Both cells are declared rehome sources and sit in the same-cap migration-only
+list until each one's canary promotes it, then move to the general and fleet pool lists together.
 Rollback returns
 Asia cells to migration-only; it does not destroy the network or use
 existing-only. The production topology dispatch remains unavailable until the

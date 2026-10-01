@@ -161,6 +161,65 @@ test('accepts the additive production C31 wave only in asia-east2-b', () => {
   )
 })
 
+// A US cell joins the root region: no additional-region network, no region label or line, and
+// the default pool emits no line, exactly as the startup template renders a root-region cell.
+function usWavePlan(hostname = 'c32', zone = 'us-central1-a') {
+  const plan = productionWavePlan(hostname, zone).slice(3)
+  const template = plan[0].change.after
+  template.labels = { 'orca-relay-cell': `production-gce-${hostname}` }
+  template.network_interface[0].subnetwork = 'projects/p/regions/us-central1/subnetworks/relay'
+  template.metadata_startup_script = template.metadata_startup_script.split('\n')
+    .filter((line) => !/ORCA_RELAY_(?:REGION|DATABASE_POOL_MAX)=/.test(line))
+    .join('\n')
+  return plan
+}
+
+test('accepts the additive US C32 and C33 waves at the root-region shape', () => {
+  const c32Config = { ...productionConfig, cells: ['production-gce-c32'] }
+  const c33Config = { ...productionConfig, cells: ['production-gce-c33'] }
+  assert.deepEqual(
+    validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan() }, c32Config),
+    { environment: 'production', cells: ['production-gce-c32'], changes: 4 }
+  )
+  assert.deepEqual(
+    validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan('c33', 'us-central1-b') }, c33Config),
+    { environment: 'production', cells: ['production-gce-c33'], changes: 4 }
+  )
+  assert.throws(
+    () => validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan('c32', 'us-central1-b') }, c32Config),
+    /fixed-one Asia MIG shape/
+  )
+  const mutate = (edit) => {
+    const plan = usWavePlan()
+    edit(plan[0].change.after)
+    return plan
+  }
+  const asiaLine = "printf 'ORCA_RELAY_REGION=%s\\n' 'asia-east2'"
+  for (const [label, plan] of [
+    ['region label', mutate((after) => { after.labels['orca-relay-region'] = 'us-central1' })],
+    ['region line', mutate((after) => { after.metadata_startup_script = `${asiaLine}\n${after.metadata_startup_script}` })],
+    ['Asia pool', mutate((after) => {
+      after.metadata_startup_script += "\nprintf 'ORCA_RELAY_DATABASE_POOL_MAX=%s\\n' '16'"
+    })],
+    ['Asia subnet', mutate((after) => {
+      after.network_interface[0].subnetwork = 'projects/p/regions/asia-east2/subnetworks/relay'
+    })]
+  ]) {
+    assert.throws(
+      () => validateRelayAsiaTopologyPlan({ resource_changes: plan }, c32Config),
+      /reviewed Asia cell shape/,
+      label
+    )
+  }
+  // A US wave plans no additional-region network, so creating one is an unreviewed change.
+  const withNetwork = [...productionWavePlan('c32', 'us-central1-a').slice(0, 1), ...usWavePlan()]
+  withNetwork[0].change.actions = ['create']
+  assert.throws(
+    () => validateRelayAsiaTopologyPlan({ resource_changes: withNetwork }, c32Config),
+    /unreviewed topology action/
+  )
+})
+
 // The URL map pulls every cell's backend, MIG and template into a targeted plan.
 const liveCellResources = ['instance_template', 'instance_group_manager', 'backend_service']
   .flatMap((kind) => ['production-gce-c1', 'production-gce-c27', 'production-gce-c28', 'production-gce-c29']
@@ -186,9 +245,9 @@ test('accepts live cells the URL map pulls in only while they stay unchanged', (
 })
 
 test('accepts only a reviewed Asia topology wave', () => {
-  const argv = (environment, cellIds, planImage) => [
+  const argv = (environment, cellIds, planImage, region = 'asia-east2') => [
     '--plan-json', 'plan.json', '--environment', environment, '--cell-ids', cellIds,
-    '--region', 'asia-east2', '--image', planImage
+    '--region', region, '--image', planImage
   ]
   for (const cellIds of [
     'production-gce-c27,production-gce-c28,production-gce-c29',
@@ -207,7 +266,9 @@ test('accepts only a reviewed Asia topology wave', () => {
     'production-gce-c27,production-gce-c28,production-gce-c29,production-gce-c30',
     'production-gce-c30,production-gce-c30',
     'production-gce-c30,production-gce-c31',
-    'production-gce-c32'
+    'production-gce-c31,production-gce-c32',
+    'production-gce-c32,production-gce-c33',
+    'production-gce-c34'
   ]) {
     assert.throws(
       () => parseRelayAsiaTopologyPlanArguments(argv('production', cellIds, productionImage)),
@@ -218,6 +279,24 @@ test('accepts only a reviewed Asia topology wave', () => {
   assert.throws(
     () => parseRelayAsiaTopologyPlanArguments(argv('staging', 'production-gce-c30', image)),
     /exact reviewed Asia topology set/
+  )
+  // Each wave's region comes from its reviewed zone, so the workflow must pass that region.
+  for (const cellIds of ['production-gce-c32', 'production-gce-c33']) {
+    assert.equal(
+      parseRelayAsiaTopologyPlanArguments(argv('production', cellIds, productionImage, 'us-central1'))
+        .cells[0],
+      cellIds
+    )
+    assert.throws(
+      () => parseRelayAsiaTopologyPlanArguments(argv('production', cellIds, productionImage)),
+      /--region must be us-central1/
+    )
+  }
+  assert.throws(
+    () => parseRelayAsiaTopologyPlanArguments(
+      argv('production', 'production-gce-c31', productionImage, 'us-central1')
+    ),
+    /--region must be asia-east2/
   )
 })
 
