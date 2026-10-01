@@ -187,11 +187,12 @@ const ROWS: Row[] = [
     listed: true
   },
   {
+    // It waited while m2 went first; failing for good moves it to its refusal row, after t2.
     name: 'a send whose start failed for good after a later turn succeeded',
     items: [
-      userEntry('m1', 1),
       userEntry('m2', 2),
-      turn('t2', 3, { state: 'completed', outcome: 'success', completedAt: 40 })
+      turn('t2', 3, { state: 'completed', outcome: 'success', completedAt: 40 }),
+      userEntry('m1', 4)
     ],
     submissions: [
       sent('m1', { dispatchState: 'rejected', reason: START_FAILURE, resolvedAt: 50 }),
@@ -366,4 +367,36 @@ describe('the sidebar verdict agrees with the rejection classifier', () => {
       expect(latestStructuredAgentSessionRequest([userEntry('m1', 1)], [submission])).toBeNull()
     }
   )
+})
+
+// A refusal sits where it was written; a turn sits where it began and ends later. Where the two
+// disagreed, the one that settled later, or the one still running, is the latest.
+describe('a send that failed for good while a later turn ran', () => {
+  const items = (state: 'running' | 'completed') => [
+    userEntry('m2', 2),
+    turn(
+      't2',
+      3,
+      state === 'running' ? { state } : { state, outcome: 'success', completedAt: 200 }
+    ),
+    userEntry('m1', 4)
+  ]
+  const submissions = [
+    sent('m1', { dispatchState: 'rejected', reason: START_FAILURE, resolvedAt: 100 }),
+    sent('m2', { dispatchState: 'accepted' })
+  ]
+
+  it('reads the turn when it ended after the failure', () => {
+    expect(latestStructuredAgentSessionRequest(items('completed'), submissions)).toMatchObject({
+      kind: 'turn',
+      outcome: 'success'
+    })
+  })
+
+  it('reads the turn while it still runs', () => {
+    expect(latestStructuredAgentSessionRequest(items('running'), submissions)).toMatchObject({
+      kind: 'turn',
+      turnState: 'running'
+    })
+  })
 })

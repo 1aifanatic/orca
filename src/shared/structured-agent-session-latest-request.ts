@@ -47,41 +47,35 @@ export type StructuredAgentSessionLatestRequest = {
 
 /** Null when the journal holds no request with a verdict to give. Accepted and unanswered sends
  *  are passed over — the session is working until their turn records — and so are sends that
- *  failed nobody (withdrawn, or left undelivered by a restart or a close). The newest request is
- *  the last in the conversation, unless a send before it failed for good after that one settled: a
- *  message whose start failed lets later ones go first, so its failure can be the newer news. */
+ *  failed nobody (withdrawn, or left undelivered by a restart or a close).
+ *
+ *  A refused send sits where its refusal was written (a waiting message is moved there when it
+ *  fails for good), so among refusals the last is the newest. A turn sits where it began and ends
+ *  later, so only the newest turn can have ended after a refusal written since it began: the walk
+ *  stops there, and the one that settled later is the newest. A running turn is the news. */
 export function latestStructuredAgentSessionRequest(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionLatestRequest | null {
   const rejected = rejectedSubmissionsByItem(submissions)
   const commandTurns = structuredAgentSessionCommandTurnItemIds(items)
-  let latest: StructuredAgentSessionLatestRequest | null = null
-  let unvisitedRefusals = rejected.size
+  let refusal: StructuredAgentSessionLatestRequest | null = null
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
-    if (item && rejected.has(item.itemId)) {
-      unvisitedRefusals -= 1
-    }
     const request = item ? requestOf(item, rejected, commandTurns) : null
-    if (!latest) {
-      latest = request
-    } else if (
-      request?.kind === 'refused-send' &&
-      // Only a failure for good; one still waiting for its next try changes with every try.
-      (item && rejected.get(item.itemId))?.dispatchState === 'rejected' &&
-      request.settledAt !== undefined &&
-      latest.settledAt !== undefined &&
-      request.settledAt > latest.settledAt
-    ) {
-      latest = request
-    }
-    // A running turn is the news whatever settled before it, and nothing older can be newer.
-    if (latest && (latest.turnState === 'running' || unvisitedRefusals === 0)) {
-      return latest
+    if (request?.kind === 'refused-send') {
+      refusal ??= request
+    } else if (request) {
+      return !refusal ||
+        request.turnState === 'running' ||
+        (request.settledAt !== undefined &&
+          refusal.settledAt !== undefined &&
+          request.settledAt > refusal.settledAt)
+        ? request
+        : refusal
     }
   }
-  return latest
+  return refusal
 }
 
 function requestOf(
