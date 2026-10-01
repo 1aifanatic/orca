@@ -17374,7 +17374,8 @@
         "hostStopped": "{{agent}} の起動が完了しなかったため、Orca が停止しました。",
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
-        "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。"
+        "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
+        "previousExitUnverifiable": "Orca は {{agent}} の前のプロセスが終了したことを確認できませんでした。終了しだいメッセージを送信します。"
       },
       "writeNotice": {
         "notDoneReadHistory": "このチャットの履歴を読み込めませんでした。",

@@ -80,7 +80,9 @@ export const AGENT_SESSION_FAILURE_COPY = {
   hostStopped: '{{agent}} never finished starting, so Orca stopped it.',
   providerRateLimited: '{{agent}} is rate-limited and retrying.',
   providerRetrying: '{{agent}} hit a temporary problem and is retrying.',
-  providerRetryingQuoted: '{{agent}} is retrying: {{detail}}.'
+  providerRetryingQuoted: '{{agent}} is retrying: {{detail}}.',
+  previousExitUnverifiable:
+    "Orca couldn't confirm {{agent}}'s previous process ended. Your message will send once it has."
 } as const
 
 export type AgentSessionFailureCopyId = keyof typeof AGENT_SESSION_FAILURE_COPY
