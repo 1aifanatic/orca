@@ -9,7 +9,7 @@ import { collectHookListings } from './codex-app-server-client'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 import { buildCodexHookDefinitionFlag, buildCodexHookSessionFlag } from './codex-hook-session-flags'
-import { askCodexForHookSessionTrust } from './codex-hook-session-trust'
+import { askCodexForHookSessionTrust, codexTrustsHookSessionFlag } from './codex-hook-session-trust'
 
 // Why this file exists: Orca's status hook rides every native Codex launch as a
 // `-c hooks=...` session flag that also carries Codex's approval of it. Only a
@@ -101,6 +101,22 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     const listings = (await listHooks(flag)).filter((listing) => listing.source === 'sessionFlags')
     expect(listings).toHaveLength(CODEX_EVENTS.length)
     expect(listings.every((listing) => listing.trustStatus === 'trusted')).toBe(true)
+  })
+
+  it("confirms the complete flag with Orca's own pre-publish check", async () => {
+    const trust = await askCodexForHookSessionTrust(binary!, hookCommand)
+    const flag = buildCodexHookSessionFlag(hookCommand, trust!)!
+    const wrong = buildCodexHookSessionFlag(
+      hookCommand,
+      Object.fromEntries(
+        Object.entries(trust!).map(([label, entry]) => [
+          label,
+          { key: entry.key, trustedHash: `sha256:${'0'.repeat(64)}` }
+        ])
+      )
+    )!
+    expect(await codexTrustsHookSessionFlag(binary!, flag, hookCommand)).toBe(true)
+    expect(await codexTrustsHookSessionFlag(binary!, wrong, hookCommand)).toBe(false)
   })
 
   it('puts a flag-defined hook up for review when its approval does not match', async () => {
