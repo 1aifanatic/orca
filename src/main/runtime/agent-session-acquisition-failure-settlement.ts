@@ -34,21 +34,49 @@ export type AgentSessionFailedAcquisitionSettlement = {
   spawnToken: string
   callerKey: string
   operationId: string
-  /** `succeeded` for a create whose chat stands at rest: its lease is released all the same. */
-  outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' | 'succeeded' }>
+  outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' }>
   exitProof: AgentSessionAcquisitionExitProof
   now: number
 }
 
-export type AgentSessionFailedPostAcquisitionAttachmentSettlement = Omit<
+export type AgentSessionFailedPostAcquisitionAttachmentSettlement =
+  AgentSessionFailedAcquisitionSettlement
+
+/** A create whose own start failed with nothing of it left running: its lease is released as for a
+ *  failed acquisition, and the create succeeds, its chat at rest for the first message to start. */
+export type AgentSessionCreateAtRestSettlement = Omit<
   AgentSessionFailedAcquisitionSettlement,
-  'outcome'
-> & { outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' }> }
+  'outcome' | 'exitProof'
+> & { exitProof: Exclude<AgentSessionAcquisitionExitProof, 'unproven'> }
 
 /** Liveness invariant: a settled attach never leaves its reservation in new-owner-proving. */
 export function settleFailedAgentSessionAcquisition(
   state: AgentSessionStoreState,
   args: AgentSessionFailedAcquisitionSettlement
+): AgentSessionRecord {
+  return settleReservationInto(state, args)
+}
+
+export function settleAgentSessionCreateAtRest(
+  state: AgentSessionStoreState,
+  args: AgentSessionCreateAtRestSettlement
+): AgentSessionRecord {
+  const next = settleReservationInto(state, {
+    ...args,
+    outcome: { status: 'succeeded', sessionId: args.sessionId }
+  })
+  // A chat stands at rest only on a lease nothing holds.
+  if (next.lease.claimStatus !== 'released') {
+    throw new Error('agent_session_ownership_unknown')
+  }
+  return next
+}
+
+function settleReservationInto(
+  state: AgentSessionStoreState,
+  args: Omit<AgentSessionFailedAcquisitionSettlement, 'outcome'> & {
+    outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' | 'succeeded' }>
+  }
 ): AgentSessionRecord {
   const operation = state.operations.get(agentSessionOperationKey(args.callerKey, args.operationId))
   if (!operation || operation.outcome.status !== 'pending') {
@@ -59,10 +87,6 @@ export function settleFailedAgentSessionAcquisition(
     throw new Error('agent_session_identity_required')
   }
   const next = settleFailedLease(record, args)
-  // A chat stands at rest only on a lease nothing holds.
-  if (args.outcome.status === 'succeeded' && next.lease.claimStatus !== 'released') {
-    throw new Error('agent_session_ownership_unknown')
-  }
   state.records.set(args.sessionId, next)
   state.operations = settleAgentSessionOperation(state.operations, args)
   return next
@@ -127,7 +151,10 @@ export function settleFailedAgentSessionPostAcquisitionAttachment(
 
 function settleFailedLease(
   record: AgentSessionRecord,
-  args: AgentSessionFailedAcquisitionSettlement
+  args: Pick<
+    AgentSessionFailedAcquisitionSettlement,
+    'fence' | 'spawnToken' | 'operationId' | 'exitProof' | 'now'
+  >
 ): AgentSessionRecord {
   assertFence(record.lease, args.fence)
   if (

@@ -215,7 +215,8 @@ describe('processless structured session reservation', () => {
         throw new AgentSessionPreSpawnError(new Error('workspace no longer exists'))
       })
     } as unknown as StructuredAgentSessionAdapter
-    const settlement = vi.spyOn(store, 'settleFailedAcquisition')
+    const settlement = vi.spyOn(store, 'settleCreateAtRest')
+    const failedSettlement = vi.spyOn(store, 'settleFailedAcquisition')
 
     await expect(
       performAttach({
@@ -236,12 +237,9 @@ describe('processless structured session reservation', () => {
       })
     ).resolves.toMatchObject({ ok: true, replayed: false, fence: 2 })
     expect(settlement).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        exitProof: 'processless',
-        spawnToken: 'spawn-a',
-        outcome: { status: 'succeeded', sessionId: SESSION }
-      })
+      expect.objectContaining({ exitProof: 'processless', spawnToken: 'spawn-a' })
     )
+    expect(failedSettlement).not.toHaveBeenCalled()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,

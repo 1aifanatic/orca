@@ -85,10 +85,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         : true
     },
     failureTextContext: (sessionId) =>
-      structuredAgentSessionFailureWordsContext(
-        deps.store.getRecord(sessionId),
-        sessions.get(sessionId)?.journal
-      ),
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     logger: deps.logger,
     record: (sessionId) => deps.store.getRecord(sessionId),
     readChildWork: input.clientDelivery.readChildWork,

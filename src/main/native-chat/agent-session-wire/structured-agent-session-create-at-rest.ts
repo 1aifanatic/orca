@@ -26,28 +26,28 @@ export async function settleFailedStartOfReservation(
   reservation: { fence: number; spawnToken: string },
   wording: FailedAcquisitionWording
 ): Promise<AgentSessionRecord | null> {
-  const { sessionId } = input.params.envelope
-  const settlement = failedAcquisitionSettlement(error, wording)
-  const atRest =
-    input.params.envelope.expectedRuntimeFence === null &&
-    settlement.exitProof !== 'unproven' &&
-    startFailureKeepsChat(failedAcquisitionCode(error))
+  const { sessionId, expectedRuntimeFence, clientOperationId } = input.params.envelope
+  const { exitProof, outcome } = failedAcquisitionSettlement(error, wording)
+  const settled = {
+    sessionId,
+    ...reservation,
+    callerKey: input.callerKey,
+    operationId: clientOperationId,
+    now: input.now()
+  }
   try {
-    const settle = () =>
-      input.store.settleFailedAcquisition({
-        sessionId,
-        ...reservation,
-        callerKey: input.callerKey,
-        operationId: input.params.envelope.clientOperationId,
-        exitProof: settlement.exitProof,
-        outcome: atRest ? { status: 'succeeded', sessionId } : settlement.outcome,
-        now: input.now()
-      })
-    // Its own phase, so a create that deferred its start still counts as one whose start failed.
-    const settled = atRest
-      ? await withAgentSessionCreatePhase('start_deferred', input.recordPhase, settle)
-      : await settle()
-    return atRest ? settled : null
+    if (
+      expectedRuntimeFence === null &&
+      exitProof !== 'unproven' &&
+      startFailureKeepsChat(failedAcquisitionCode(error))
+    ) {
+      // Its own phase, so a create that deferred its start still counts as one whose start failed.
+      return await withAgentSessionCreatePhase('start_deferred', input.recordPhase, () =>
+        input.store.settleCreateAtRest({ ...settled, exitProof })
+      )
+    }
+    await input.store.settleFailedAcquisition({ ...settled, exitProof, outcome })
+    return null
   } catch (settlementError) {
     throw new AggregateError(
       [error, settlementError],

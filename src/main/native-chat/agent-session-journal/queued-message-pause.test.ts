@@ -27,7 +27,10 @@ import {
   queuePauseHolding,
   resumableQueuePause
 } from './queued-message-pause'
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureFact,
+  type SubmissionRejectionFact
+} from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -595,7 +598,7 @@ describe('which cards the pauses in force hold', () => {
 
   it('a card returned because its agent failed to start blocks nothing behind it; any other return does', () => {
     const failedStart = agentSessionFailureFact('providerMissing')
-    const returned = (rejection: ReturnType<typeof agentSessionFailureFact>) =>
+    const returned = (rejection: SubmissionRejectionFact) =>
       card('returned', 1, {
         state: 'returned',
         returnedRejection: rejection,
