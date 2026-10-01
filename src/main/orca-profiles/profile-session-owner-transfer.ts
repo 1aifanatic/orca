@@ -150,8 +150,7 @@ export function hasTransferredSessionState(session: WorkspaceSessionState): bool
     Object.keys(session.tabGroups ?? {}).length > 0 ||
     Object.keys(session.terminalLayoutsByTabId ?? {}).length > 0 ||
     SESSION_FIELDS_COPIED_BY_OWNER_KEY.some(
-      (field) =>
-        Object.keys((session[field] as Record<string, unknown> | undefined) ?? {}).length > 0
+      (field) => Object.keys(session[field] ?? {}).length > 0
     ) ||
     Object.keys(session.terminalSurfaceTombstonesByPaneKey ?? {}).length > 0 ||
     Object.keys(session.terminalPtyIncarnationsByPaneKey ?? {}).length > 0 ||
