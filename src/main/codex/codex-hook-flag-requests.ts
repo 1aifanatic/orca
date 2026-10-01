@@ -1,5 +1,4 @@
 import { watch, type FSWatcher } from 'node:fs'
-import { CODEX_HOOK_FLAG_REQUEST_SUFFIX } from '../../shared/codex-shell-function'
 import {
   ensureCodexHookFlagTable,
   getCodexHookFlagTablePath,
@@ -45,10 +44,9 @@ export function startCodexHookFlagRequests(options: { isEnabled: () => boolean }
   }
   let watcher: FSWatcher | null = null
   try {
-    watcher = watch(table, (_event, name) => {
-      if (!name || String(name).endsWith(CODEX_HOOK_FLAG_REQUEST_SUFFIX)) {
-        timer ??= setTimeout(drain, DRAIN_DEBOUNCE_MS)
-      }
+    // Why any event: macOS can report a burst under the directory's own name, not the request's.
+    watcher = watch(table, () => {
+      timer ??= setTimeout(drain, DRAIN_DEBOUNCE_MS)
     })
     watcher.on('error', (error) => {
       console.warn('[codex-hook-session] Codex hook flag request watch failed:', error)
