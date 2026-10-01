@@ -37,7 +37,11 @@ export type ClaudeProfileRoutingOwner = {
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
   prepare: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<ClaudeProfileSetupReport>
   publish: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<void>
+  /** Removes the pointer so the shell refuses visibly; never throws. */
+  withdraw: () => void
 }
+
+class ClaudeProfileSelectionChangedError extends Error {}
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
@@ -69,7 +73,9 @@ export class ClaudeProfileRoutingService {
         await this.provision(descriptor)
       }
       if (this.resolve(target).configHome !== descriptor.configHome) {
-        throw new Error('Claude account changed while preparing its profile; retry')
+        throw new ClaudeProfileSelectionChangedError(
+          'Claude account changed while preparing its profile; retry'
+        )
       }
       await this.owner.publish(descriptor)
       this.publishIssue = null
@@ -77,6 +83,11 @@ export class ClaudeProfileRoutingService {
     } catch (error) {
       if (target?.runtime !== 'wsl') {
         this.publishIssue = error instanceof Error ? error.message : String(error)
+        // Why: a pointer left naming the previous account would launch it silently. A newer
+        // selection that raced this one owns the pointer, so that case leaves it alone.
+        if (!(error instanceof ClaudeProfileSelectionChangedError)) {
+          this.owner.withdraw()
+        }
       }
       throw error
     }

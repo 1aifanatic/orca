@@ -201,4 +201,25 @@ describe('native Claude profile authority', () => {
     expect(f.routing.resolve().configHome).toBe(f.inherited.dir)
     expect(f.routing.historyRoots()[0]).toBe(f.inherited.dir)
   })
+  it('withdraws the pointer instead of leaving the previous account selected', async () => {
+    const f = fixture()
+    await f.routing.publish()
+    rmSync(join(f.dataRoot, 'claude-profiles', 'a', 'profile.json'))
+    await expect(f.routing.startup()).rejects.toThrow('fresh sign-in')
+    expect(existsSync(f.routing.pointerPath())).toBe(false)
+    f.settings.activeClaudeManagedAccountId = 'b'
+    await f.routing.publish()
+    f.worker.prepare.mockResolvedValueOnce({ outcome: 'refused', warnings: [], surfaces: {} })
+    await expect(f.routing.publish()).rejects.toThrow('could not be prepared')
+    expect(existsSync(f.routing.pointerPath())).toBe(false)
+    await f.routing.publish()
+    f.worker.prepare.mockImplementationOnce(async () => {
+      f.settings.activeClaudeManagedAccountId = null
+      return { outcome: 'prepared', warnings: [], surfaces: {} }
+    })
+    await expect(f.routing.publish()).rejects.toThrow('changed')
+    expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(f.profiles[1].home)
+    await f.routing.publish()
+    expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(null)
+  })
 })

@@ -9,7 +9,7 @@ import {
   readClaudeProfileObject
 } from './claude-profile-paths'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
-import { publishClaudeProfilePointer } from './claude-profile-pointer'
+import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'
 
@@ -33,6 +33,7 @@ export function createNativeClaudeProfileRouting(args: {
   worker?: Pick<ClaudeProfileSetupWorker, 'prepare'>
 }): ClaudeProfileRoutingService {
   const worker = args.worker ?? new ClaudeProfileSetupWorker()
+  const pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
   const profileFor = (id: string) => {
     const profile = describeClaudeProfile(args.dataRoot, id, {
       executionHostId: 'local',
@@ -75,11 +76,11 @@ export function createNativeClaudeProfileRouting(args: {
         configHome: profile?.home ?? defaultHome,
         readHome: profile?.home ?? defaultHome,
         defaultHome,
-        pointerPath: join(args.dataRoot, 'claude-profiles', 'selected-host'),
+        pointerPath,
         target
       }
     },
-    pointerPath: () => join(args.dataRoot, 'claude-profiles', 'selected-host'),
+    pointerPath: () => pointerPath,
     targets: () => [{ runtime: 'host' }],
     capabilities: () => [CLAUDE_PROFILE_ROUTING_CAPABILITY],
     readHomes: () => {
@@ -133,6 +134,7 @@ export function createNativeClaudeProfileRouting(args: {
       })
     },
     publish: async (descriptor) =>
-      publishClaudeProfilePointer(descriptor.pointerPath, descriptor.profile?.home ?? null)
+      publishClaudeProfilePointer(descriptor.pointerPath, descriptor.profile?.home ?? null),
+    withdraw: () => withdrawClaudeProfilePointer(pointerPath)
   })
 }

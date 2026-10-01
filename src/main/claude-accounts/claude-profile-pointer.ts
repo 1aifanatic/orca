@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, isAbsolute } from 'node:path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 
@@ -11,6 +11,14 @@ export function publishClaudeProfilePointer(file: string, home: string | null): 
   }
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   writeFileAtomically(file, home ?? '', { mode: 0o600 })
+}
+
+export function withdrawClaudeProfilePointer(file: string): void {
+  try {
+    rmSync(file, { force: true })
+  } catch (error) {
+    console.warn('[claude-profile] Could not withdraw the account pointer:', error)
+  }
 }
 
 /** Only an explicitly published empty file selects System Default. */
