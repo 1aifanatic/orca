@@ -1,4 +1,6 @@
+import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop-targets'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalStatusItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
@@ -39,6 +41,8 @@ export async function performCancel(
     /** Whether the host's withdrawal of queued messages for this Stop withdrew any; awaited only
      *  after the interrupt. */
     withdrewQueued?: Promise<boolean>
+    /** The session's child records: a background Stop reaches the tasks they offer a stop. */
+    childWork?: () => readonly AgentChildWorkView[] | undefined
   }
 ): Promise<TurnOutcome<AgentSessionCancelResult>> {
   if (input.prompt) {
@@ -73,7 +77,7 @@ export async function performCancel(
                 await ctx.adapter.stopBackgroundTasks?.({
                   sessionId: ctx.sessionId,
                   fence: ctx.fence,
-                  ...(input.taskId ? { taskId: input.taskId } : {})
+                  taskIds: agentChildWorkStopTargets(input.childWork?.(), input.taskId)
                 })
               )?.cancelled === true
           }

@@ -7301,9 +7301,9 @@
           "80c454e8a6": "Match this to your provider's cache TTL."
         },
         "GeneralEditorSettingsSection": {
-          "f80603d293": "Show local markdown note controls in rich editor mode and agent handoff actions.",
+          "f80603d293": "Show markdown note controls in every markdown view and include markdown notes in agent handoff actions.",
           "4edc104f0f": "Markdown Review Notes",
-          "5f02e6fb21": "Show local markdown review note controls in rich editor mode.",
+          "5f02e6fb21": "Show local markdown review note controls in markdown files.",
           "51161d1647": "Show the minimap overview when editing a file.",
           "6690b1ffb9": "Minimap",
           "5a1ea6eaa2": "Hidden",
@@ -15955,6 +15955,7 @@
             "4300f38145": "Downloading from {{value0}}{{value1}}",
             "31375046b7": "Download from {{value0}}",
             "acbe79fd01": "Grab page element ({{value0}})",
+            "cc4a071d3a": "Annotate page element ({{value0}})",
             "572046436a": "Remote browser",
             "b313a7275b": "Opening remote browser",
             "5f66313863": "annotation",
@@ -16687,6 +16688,7 @@
             "done": "Done",
             "idle": "Idle",
             "unverifiable": "No recent update",
+            "unconfirmed": "Couldn’t confirm",
             "permission": "Needs attention"
           },
           "filtersSection": "Filters",
@@ -17522,7 +17524,8 @@
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
         "hostStopped": "{{agent}} never finished starting, so Orca stopped it.",
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
-        "providerRetrying": "{{agent}} hit a temporary problem and is retrying."
+        "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
+        "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17756,6 +17759,8 @@
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",
+        "interruptedAfter": "Interrupted after {{value0}}",
+        "failedAfter": "Failed after {{value0}}",
         "toggleDetails": "Toggle turn details"
       },
       "backgroundTasks": {
@@ -18202,6 +18207,12 @@
           "unknown": "Unknown host",
           "candidateName": "{{value0}} on {{value1}}"
         }
+      },
+      "creation": {
+        "worktreeReadyToast": "Worktree {{name}} is ready",
+        "workspaceReadyToast": "Workspace {{name}} is ready",
+        "goToWorktree": "Go to worktree",
+        "goToWorkspace": "Go to workspace"
       }
     },
     "agentSessionContinuation": {

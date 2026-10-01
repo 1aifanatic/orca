@@ -7116,9 +7116,9 @@
           "80c454e8a6": "将此与您的提供商的缓存 TTL 相匹配。"
         },
         "GeneralEditorSettingsSection": {
-          "f80603d293": "在富文本编辑器模式和智能体切换操作中显示本地 Markdown 注释控件。",
+          "f80603d293": "在所有 Markdown 视图中显示 Markdown 注释控件，并在智能体切换操作中包含这些注释。",
           "4edc104f0f": "Markdown 评审笔记",
-          "5f02e6fb21": "在富文本编辑器模式下显示本地 Markdown 评审笔记控件。",
+          "5f02e6fb21": "在 Markdown 文件中显示本地 Markdown 评审笔记控件。",
           "51161d1647": "编辑文件时显示小地图概述。",
           "6690b1ffb9": "小地图",
           "5a1ea6eaa2": "隐藏",
@@ -15767,6 +15767,7 @@
             "4300f38145": "从 {{value0}}{{value1}} 下载",
             "31375046b7": "从 {{value0}} 下载",
             "acbe79fd01": "抓取页面元素 ({{value0}})",
+            "cc4a071d3a": "注释页面元素 ({{value0}})",
             "572046436a": "远程浏览器",
             "b313a7275b": "打开远程浏览器",
             "5f66313863": "注释",
@@ -16500,6 +16501,7 @@
             "done": "完成",
             "idle": "空闲",
             "unverifiable": "暂无近期更新",
+            "unconfirmed": "无法确认",
             "permission": "需注意"
           },
           "filtersSection": "筛选",
@@ -17335,7 +17337,8 @@
         "hostFaultTryAgain": "Orca 遇到问题，因此此操作未完成。请重试。",
         "hostStopped": "{{agent}} 始终未完成启动，因此 Orca 已将其停止。",
         "providerRateLimited": "{{agent}} 已被限流，正在重试。",
-        "providerRetrying": "{{agent}} 遇到临时问题，正在重试。"
+        "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
+        "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。"
       },
       "writeNotice": {
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
@@ -17532,6 +17535,8 @@
         "thinking": "思维",
         "workingFor": "已工作 {{value0}}",
         "workedFor": "工作了 {{value0}}",
+        "interruptedAfter": "{{value0}} 后中断",
+        "failedAfter": "{{value0}} 后失败",
         "toggleDetails": "切换回合详情"
       },
       "jumpToLatest": "跳到最新消息",
@@ -18015,6 +18020,12 @@
           "unknown": "未知主机",
           "candidateName": "{{value0}} 在 {{value1}} 上"
         }
+      },
+      "creation": {
+        "worktreeReadyToast": "工作树 {{name}} 已就绪",
+        "workspaceReadyToast": "工作区 {{name}} 已就绪",
+        "goToWorktree": "转到工作树",
+        "goToWorkspace": "转到工作区"
       }
     },
     "agentSessionContinuation": {

@@ -5,7 +5,10 @@ import type {
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionStartedEvent,
+  StructuredAgentSessionStopCause
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection
@@ -19,10 +22,7 @@ import type {
   AgentModelCatalogSessionAccess,
   AgentModelCatalogStore
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
-import type {
-  AgentSessionBackgroundTaskState,
-  AgentSessionFastModeState
-} from '../../shared/agent-session-wire'
+import type { AgentSessionFastModeState } from '../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
@@ -73,6 +73,8 @@ export type ClaudeStructuredSessionEvent =
       failure?: SubmissionRejectionFact
       /** Present for first-hand child exits so the host can fence recovery. */
       cause?: 'unexpected-exit' | 'requested-close'
+      /** Who asked for a close; the translator settles the open turn with it. */
+      stopCause?: StructuredAgentSessionStopCause
       fence?: number
       acquisitionGeneration?: string
       /** Host clock when the end was observed. */
@@ -99,10 +101,6 @@ export type ClaudeStructuredSessionAdapterDeps = {
   onDispatchSettledLate?: (input: { sessionId: string } & ClaudeLateDispatchOutcome) => void
   /** The CLI reported `session_state_changed idle`: its turn is over. */
   onSessionIdle?: (input: { sessionId: string }) => void
-  onBackgroundTasksChanged?: (
-    sessionId: string,
-    state: AgentSessionBackgroundTaskState | null
-  ) => void
   /** What the session's child work did, delivered after the journal handled the frame. */
   onChildWorkEvidence?: (sessionId: string, evidence: AgentChildWorkEvidence[]) => void
   openConnection?: typeof openClaudeStreamJsonConnection
