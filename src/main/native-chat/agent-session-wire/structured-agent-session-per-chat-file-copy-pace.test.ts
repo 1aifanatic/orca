@@ -72,7 +72,11 @@ describe('the copy’s share of each second (C3)', () => {
     expect(settled).not.toHaveBeenCalled()
 
     pace.stop()
-    await waiting
+    const raced = await Promise.race([
+      waiting.then(() => 'ended'),
+      new Promise((resolve) => setTimeout(() => resolve('still waiting'), 200))
+    ])
+    expect(raced).toBe('ended')
     await expect(pace.yieldTask()).resolves.toBeUndefined()
   })
 })
