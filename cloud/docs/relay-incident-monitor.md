@@ -139,7 +139,8 @@ freezes as before.
 A production candidate or multi-target mutation must download the exact
 dry-run artifact by workflow run ID and attempt. It verifies the artifact
 hashes and provenance, requires a green completed 15-minute state no older
-than ten minutes (plus 75 minutes per predecessor same-cap wave), then
+than five minutes when the run is authorized (a same-cap cell job must start
+within five more minutes, plus 75 minutes per predecessor wave), then
 rechecks the live selector and one complete fresh sample of every safety
 signal immediately before running the mutation command.
 The signed state binds `strict` evidence to ordinary mutations and
