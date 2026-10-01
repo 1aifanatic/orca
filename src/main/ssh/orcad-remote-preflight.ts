@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ORCAD_BUN_VERSION } from '../../shared/orcad-bun-runtime'
+import { ORCAD_BUN_RUNTIME_IDENTITY } from '../../shared/orcad-bun-runtime'
 import { orcadBunRuntimeFilename } from '../../shared/orcad-artifacts'
 import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
@@ -41,5 +41,5 @@ export async function preflightInstalledOrcad(options: {
     orcadProfilePreflightCommand(options.host, options.remoteInstallDir, nonce),
     { signal: options.signal, timeoutMs: ORCAD_PROFILE_PREFLIGHT_TIMEOUT_MS }
   )
-  parseOrcadProfilePreflight(output, nonce, ORCAD_BUN_VERSION, options.fullVersion)
+  parseOrcadProfilePreflight(output, nonce, ORCAD_BUN_RUNTIME_IDENTITY, options.fullVersion)
 }
