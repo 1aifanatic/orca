@@ -50,8 +50,15 @@ function streamRefusal(value: unknown): { code?: string; message?: string } | nu
 
 function createFeed(client: RpcClient): MobileStructuredSessionStatusFeed {
   let snapshot: AgentSessionStatusSnapshot = new Map()
-  // `unavailable`: the host refused the method to phones, so this client never asks again.
+  // `unavailable`: the host refused the method to phones; asked again only on a new connection.
   let stream: 'closed' | 'open' | 'unavailable' = 'closed'
+  // Released once the host ends the stream, so the client never replays it on a later session.
+  let releaseStream = (): void => {}
+  const release = (): void => {
+    const pending = releaseStream
+    releaseStream = () => {}
+    pending()
+  }
   const listeners = new Set<() => void>()
   const setSnapshot = (next: AgentSessionStatusSnapshot): void => {
     if (next === snapshot) {
@@ -66,6 +73,7 @@ function createFeed(client: RpcClient): MobileStructuredSessionStatusFeed {
   const onFrame = (raw: unknown): void => {
     if (isStatusEvent(raw)) {
       if (raw.type === 'end') {
+        release()
         stream = 'closed'
         revokeLive()
         return
@@ -75,6 +83,7 @@ function createFeed(client: RpcClient): MobileStructuredSessionStatusFeed {
     }
     const refusal = streamRefusal(raw)
     if (refusal) {
+      release()
       // A host with the feed but from before phones could read it answers `forbidden`.
       stream = isMobileMethodUnavailableError(refusal.code, refusal.message)
         ? 'unavailable'
@@ -85,16 +94,26 @@ function createFeed(client: RpcClient): MobileStructuredSessionStatusFeed {
   const open = (): void => {
     if (stream === 'closed' && listeners.size > 0) {
       stream = 'open'
-      client.subscribe('agentSession.subscribeStatus', {}, onFrame)
+      const dispose = client.subscribe('agentSession.subscribeStatus', {}, onFrame)
+      // A stream that ended inside `subscribe` is released at once.
+      if (stream === 'open') {
+        releaseStream = dispose
+      } else {
+        dispose()
+      }
     }
   }
   // Losing contact is never exit: only what a live host vouches for goes until it answers again.
   client.onStateChange((state) => {
     if (state === 'connected') {
       open()
-    } else {
-      revokeLive()
+      return
     }
+    // The next connection may reach an updated host, so a refusal holds for one connection only.
+    if (stream === 'unavailable') {
+      stream = 'closed'
+    }
+    revokeLive()
   })
   return {
     subscribe: (listener) => {
