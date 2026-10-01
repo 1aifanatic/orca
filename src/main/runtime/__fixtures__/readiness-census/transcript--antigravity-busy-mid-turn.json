@@ -1,0 +1,34 @@
+{
+  "subject": "transcript/antigravity-busy-mid-turn",
+  "description": "antigravity recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-42: now=pending:closed quiet=pending:closed wait=pending",
+      "43: now=pending:closed quiet=ready-strong wait=ready",
+      "44-48: now=pending:closed quiet=pending:closed wait=pending",
+      "49: now=pending:closed quiet=ready-strong wait=ready",
+      "50-61: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0-42: verdict=pending:closed wait=pending",
+      "43: verdict=ready-strong wait=ready",
+      "44-48: verdict=pending:closed wait=pending",
+      "49: verdict=ready-strong wait=ready",
+      "50-61: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": [
+      "0-39: now=pending:open quiet=pending:open wait=ready",
+      "40: now=ready-strong quiet=ready-strong wait=ready",
+      "41-57: now=pending:open quiet=pending:open wait=ready",
+      "58: now=ready-strong quiet=ready-strong wait=ready",
+      "59-61: now=pending:open quiet=pending:open wait=ready"
+    ],
+    "unknown:clockless": [
+      "0-39: verdict=pending:open wait=ready",
+      "40: verdict=ready-strong wait=ready",
+      "41-57: verdict=pending:open wait=ready",
+      "58: verdict=ready-strong wait=ready",
+      "59-61: verdict=pending:open wait=ready"
+    ]
+  }
+}

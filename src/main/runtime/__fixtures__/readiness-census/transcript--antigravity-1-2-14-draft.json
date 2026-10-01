@@ -1,0 +1,18 @@
+{
+  "subject": "transcript/antigravity-1-2-14-draft",
+  "description": "antigravity recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-38: now=pending:closed quiet=pending:closed wait=pending",
+      "39-42: now=pending:closed quiet=ready-strong wait=ready",
+      "43-44: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0-38: verdict=pending:closed wait=pending",
+      "39-42: verdict=ready-strong wait=ready",
+      "43-44: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": ["0-44: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clockless": ["0-44: verdict=pending:open wait=ready"]
+  }
+}

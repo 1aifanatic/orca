@@ -1,0 +1,18 @@
+{
+  "subject": "transcript/antigravity-1-2-14-command-palette",
+  "description": "antigravity recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-38: now=pending:closed quiet=pending:closed wait=pending",
+      "39-42: now=pending:closed quiet=ready-strong wait=ready",
+      "43-52: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0-38: verdict=pending:closed wait=pending",
+      "39-42: verdict=ready-strong wait=ready",
+      "43-52: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": ["0-52: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clockless": ["0-52: verdict=pending:open wait=ready"]
+  }
+}

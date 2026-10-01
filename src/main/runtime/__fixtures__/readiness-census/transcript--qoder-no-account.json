@@ -1,0 +1,29 @@
+{
+  "subject": "transcript/qoder-no-account",
+  "description": "qoder recording at 100x32, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-33: now=pending:closed quiet=pending:closed wait=pending",
+      "34-47: now=working quiet=working wait=pending",
+      "48-61: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0-33: verdict=pending:closed wait=pending",
+      "34-47: verdict=working wait=pending",
+      "48-61: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": [
+      "0: now=pending:open quiet=pending:open wait=ready",
+      "1: now=ready-strong quiet=ready-strong wait=ready",
+      "2-33: now=pending:closed quiet=pending:closed wait=pending",
+      "34-47: now=working quiet=working wait=pending",
+      "48-61: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "unknown:clockless": [
+      "0: verdict=pending:open wait=ready",
+      "1-33: verdict=pending:closed wait=pending",
+      "34-47: verdict=working wait=pending",
+      "48-61: verdict=pending:closed wait=pending"
+    ]
+  }
+}

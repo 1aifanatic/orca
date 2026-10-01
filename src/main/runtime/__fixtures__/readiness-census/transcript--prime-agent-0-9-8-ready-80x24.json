@@ -1,0 +1,20 @@
+{
+  "subject": "transcript/prime-agent-0-9-8-ready-80x24",
+  "description": "prime-agent recording at 80x24, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-28: now=pending:closed quiet=pending:closed wait=pending",
+      "29-40: now=pending:closed quiet=ready-strong wait=ready",
+      "41: now=pending:closed quiet=pending:closed wait=pending",
+      "42-45: now=pending:closed quiet=ready-strong wait=ready"
+    ],
+    "agent:clockless": [
+      "0-28: verdict=pending:closed wait=pending",
+      "29-40: verdict=ready-strong wait=ready",
+      "41: verdict=pending:closed wait=pending",
+      "42-45: verdict=ready-strong wait=ready"
+    ],
+    "unknown:clocked": ["0-45: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clockless": ["0-45: verdict=pending:open wait=ready"]
+  }
+}

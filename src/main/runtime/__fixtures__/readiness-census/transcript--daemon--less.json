@@ -1,0 +1,8 @@
+{
+  "subject": "transcript/daemon/less",
+  "description": "non-agent recording at 90x25, one entry per replayed chunk",
+  "observations": {
+    "unknown:clocked": ["0-124: now=pending:open quiet=pending:open wait=ready"],
+    "unknown:clockless": ["0-124: verdict=pending:open wait=ready"]
+  }
+}

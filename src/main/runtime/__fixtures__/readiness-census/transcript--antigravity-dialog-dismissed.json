@@ -1,0 +1,36 @@
+{
+  "subject": "transcript/antigravity-dialog-dismissed",
+  "description": "antigravity recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-23: now=pending:closed quiet=pending:closed wait=pending",
+      "24: now=pending:closed quiet=ready-strong wait=ready",
+      "25-60: now=pending:closed quiet=pending:closed wait=pending",
+      "61: now=pending:closed quiet=ready-strong wait=ready",
+      "62-63: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0-23: verdict=pending:closed wait=pending",
+      "24: verdict=ready-strong wait=ready",
+      "25-60: verdict=pending:closed wait=pending",
+      "61: verdict=ready-strong wait=ready",
+      "62-63: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": [
+      "0-38: now=pending:open quiet=pending:open wait=ready",
+      "39: now=ready-strong quiet=ready-strong wait=ready",
+      "40-59: now=pending:open quiet=pending:open wait=ready",
+      "60-61: now=ready-strong quiet=ready-strong wait=ready",
+      "62: now=pending:open quiet=pending:open wait=ready",
+      "63: now=ready-strong quiet=ready-strong wait=ready"
+    ],
+    "unknown:clockless": [
+      "0-38: verdict=pending:open wait=ready",
+      "39: verdict=ready-strong wait=ready",
+      "40-59: verdict=pending:open wait=ready",
+      "60-61: verdict=ready-strong wait=ready",
+      "62: verdict=pending:open wait=ready",
+      "63: verdict=ready-strong wait=ready"
+    ]
+  }
+}

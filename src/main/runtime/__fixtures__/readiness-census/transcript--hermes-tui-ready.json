@@ -1,0 +1,35 @@
+{
+  "subject": "transcript/hermes-tui-ready",
+  "description": "hermes recording at 120x31, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-4: now=pending:closed quiet=pending:closed wait=pending",
+      "5-23: now=pending:closed quiet=ready-weak wait=ready",
+      "24-25: now=pending:closed quiet=pending:closed wait=ready",
+      "26-70: now=pending:closed quiet=ready-weak wait=ready",
+      "71: now=pending:closed quiet=pending:closed wait=ready",
+      "72-76: now=pending:closed quiet=ready-weak wait=ready",
+      "77: now=pending:closed quiet=pending:closed wait=ready",
+      "78-227: now=pending:closed quiet=ready-weak wait=ready",
+      "228-229: now=pending:closed quiet=pending:closed wait=ready",
+      "230-257: now=pending:closed quiet=ready-weak wait=ready"
+    ],
+    "agent:clockless": ["0-257: verdict=pending:closed wait=pending"],
+    "unknown:clocked": [
+      "0-4: now=pending:open quiet=pending:open wait=ready",
+      "5-23: now=pending:closed quiet=ready-weak wait=ready",
+      "24-25: now=pending:closed quiet=pending:closed wait=ready",
+      "26-70: now=pending:closed quiet=ready-weak wait=ready",
+      "71: now=pending:closed quiet=pending:closed wait=ready",
+      "72-76: now=pending:closed quiet=ready-weak wait=ready",
+      "77: now=pending:closed quiet=pending:closed wait=ready",
+      "78-227: now=pending:closed quiet=ready-weak wait=ready",
+      "228-229: now=pending:closed quiet=pending:closed wait=ready",
+      "230-257: now=pending:closed quiet=ready-weak wait=ready"
+    ],
+    "unknown:clockless": [
+      "0-4: verdict=pending:open wait=ready",
+      "5-257: verdict=pending:closed wait=pending"
+    ]
+  }
+}

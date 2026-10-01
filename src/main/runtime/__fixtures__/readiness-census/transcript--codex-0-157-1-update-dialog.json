@@ -1,0 +1,24 @@
+{
+  "subject": "transcript/codex-0-157-1-update-dialog",
+  "description": "codex recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-23: now=pending:closed quiet=pending:closed wait=pending",
+      "24: now=pending:closed quiet=ready-strong wait=ready",
+      "25: now=pending:closed quiet=pending:closed wait=pending",
+      "26-33: now=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+    ],
+    "agent:clockless": [
+      "0-25: verdict=pending:closed wait=pending",
+      "26-33: verdict=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+    ],
+    "unknown:clocked": [
+      "0-25: now=pending:open quiet=pending:open wait=ready",
+      "26-33: now=blocked:agent-update-prompt quiet=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+    ],
+    "unknown:clockless": [
+      "0-25: verdict=pending:open wait=ready",
+      "26-33: verdict=blocked:agent-update-prompt wait=blocked:agent-update-prompt"
+    ]
+  }
+}

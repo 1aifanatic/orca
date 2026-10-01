@@ -1,0 +1,22 @@
+{
+  "subject": "transcript/antigravity-1-2-14-trust-dialog",
+  "description": "antigravity recording at 120x40, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0-21: now=pending:closed quiet=pending:closed wait=pending",
+      "22-24: now=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace"
+    ],
+    "agent:clockless": [
+      "0-21: verdict=pending:closed wait=pending",
+      "22-24: verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace"
+    ],
+    "unknown:clocked": [
+      "0-21: now=pending:open quiet=pending:open wait=ready",
+      "22-24: now=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace"
+    ],
+    "unknown:clockless": [
+      "0-21: verdict=pending:open wait=ready",
+      "22-24: verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "subject": "transcript/omp-native-title-win32",
+  "description": "omp recording at 100x30, one entry per replayed chunk",
+  "observations": {
+    "agent:clocked": [
+      "0: now=working quiet=working wait=pending",
+      "1: now=pending:closed quiet=ready-weak wait=ready",
+      "2-3: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "agent:clockless": [
+      "0: verdict=working wait=pending",
+      "1-3: verdict=pending:closed wait=pending"
+    ],
+    "unknown:clocked": [
+      "0: now=working quiet=working wait=pending",
+      "1: now=pending:closed quiet=ready-weak wait=ready",
+      "2-3: now=pending:closed quiet=pending:closed wait=pending"
+    ],
+    "unknown:clockless": [
+      "0: verdict=working wait=pending",
+      "1-3: verdict=pending:closed wait=pending"
+    ]
+  }
+}
