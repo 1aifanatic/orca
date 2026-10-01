@@ -1,245 +1,220 @@
-// Each chat's lifecycle state, stored beside its journal.
+// Each chat's status, stored beside its journal.
 //
-// One row per chat: whether its next open owes settlement work (see
-// journal-open-settlement-plan.ts), and the status summary a session list shows. Written in the
-// SAME transaction as the journal row it describes, and trusted only while its `(epoch, seq)` is the
-// chat's live tip, so a write this build missed (an older build's append, a failed savepoint)
-// reads as stale and the chat is re-derived. Deleting a row is always safe for the same reason.
+// One row per chat, written in the SAME transaction as every journal write that changes the chat,
+// from the fold that write produces: whether work is running or a prompt is waiting, which sends
+// were handed over and never answered or are still queued, live child work, and the status summary
+// a session list shows. A failed status write fails the write it describes, so a row is always the
+// chat's current state. Startup selects the chats a gone process left with work from these rows,
+// and seeds every other chat's status from them.
 //
-// Created at every writable open with no `user_version` bump, as the draft table is
-// (queued-message-schema.ts): an older build ignores it and stays writable.
+// The table arrives with schema version 5, so a build older than that opens the database read-only
+// and never writes a journal row without its status.
 
 import type Database from '../../sqlite/sync-database'
-import { isAgentJournalTurnOutcome } from '../../../shared/agent-turn-outcome'
+import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'
+import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
 import {
   projectStructuredAgentSessionStatusState,
   type StructuredAgentSessionStatusProjection
 } from '../../../shared/structured-agent-session-projection'
-import { owesOpenSettlement, type JournalOwedFacts } from './journal-open-settlement-plan'
+import { journalSettlementFacts } from './journal-open-settlement-plan'
+import { replayJournal } from './journal-open'
 import { renderJournalState, type JournalReducerState } from './journal-reducer'
 
-/** Version of the rules that derive a row. A row of another version reads as absent. Bump it with
- *  any change to what `deriveJournalSessionState` produces; the golden test pins it. */
-export const JOURNAL_SESSION_STATE_VERSION = 1
+/** Work a gone process can have left: running work, a waiting prompt, unanswered or queued sends,
+ *  or live child work. Startup settles exactly these chats. */
+const UNSETTLED = `status <> 'idle' OR handed_over_sends > 0 OR queued_sends > 0 OR live_child_work = 1`
 
-export function ensureJournalSessionStateTable(db: Database.Database): void {
+/** Recreated, empty, by every migration up to version 5: any row it held may predate writes an
+ *  older build made, and an open writes a missing row back. */
+export function createJournalSessionStatusTable(db: Database.Database): void {
   db.exec(`
-CREATE TABLE IF NOT EXISTS journal_session_state (
-  session_id                TEXT    PRIMARY KEY,
-  state_version             INTEGER NOT NULL,
-  epoch                     TEXT    NOT NULL,
-  seq                       INTEGER NOT NULL,
-  owes_work                 INTEGER NOT NULL,
-  unverifiable_owner_fences TEXT,
-  summary_json              TEXT,
-  last_activity_at          INTEGER NOT NULL,
-  written_at                INTEGER NOT NULL
+DROP TABLE IF EXISTS journal_session_state;
+CREATE TABLE journal_session_state (
+  session_id        TEXT    PRIMARY KEY,
+  status            TEXT    NOT NULL,
+  active_turn_id    TEXT,
+  handed_over_sends INTEGER NOT NULL,
+  queued_sends      INTEGER NOT NULL,
+  live_child_work   INTEGER NOT NULL,
+  summary_json      TEXT    NOT NULL,
+  last_activity_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS journal_session_state_owed
-  ON journal_session_state (session_id)
-  WHERE owes_work = 1 OR unverifiable_owner_fences IS NOT NULL;
+CREATE INDEX journal_session_state_unsettled ON journal_session_state (session_id)
+  WHERE ${UNSETTLED};
 `)
 }
 
-export type DerivedJournalSessionState = JournalOwedFacts & {
-  epoch: string
-  seq: number
-  /** Only while nothing is owed: an owing chat is settled and republished by its open. */
-  summary: StructuredAgentSessionStatusProjection | null
+export type JournalSessionStatus = {
+  /** `running` covers a starting turn too: the journal records no separate start. */
+  status: 'idle' | 'running' | 'attention'
+  activeTurnId: string | null
+  handedOverSends: number
+  queuedSends: number
+  liveChildWork: boolean
+  summary: StructuredAgentSessionStatusProjection
   lastActivityAt: number
 }
 
-export type StoredJournalSessionState = DerivedJournalSessionState & {
-  stateVersion: number
-  writtenAt: number
-}
-
-export type JournalSessionStateInput = {
-  /** False while the chat's load is corrupt: its open settles no roster either. */
+export type JournalSessionStatusInput = {
+  /** False while the chat's load is corrupt: its settle leaves rosters for the rebuild. */
   settlesRosters: boolean
   currentFence?: number
+  /** The fold's status summary, when the caller already projects this tip. */
+  statusSummary?: () => StructuredAgentSessionStatusProjection
 }
 
-export function deriveJournalSessionState(
+export function deriveJournalSessionStatus(
   state: JournalReducerState,
-  input: JournalSessionStateInput
-): DerivedJournalSessionState {
-  const facts = owesOpenSettlement(state, input)
-  let summary: StructuredAgentSessionStatusProjection | null = null
-  if (!facts.owesWork) {
-    // Fence-independent here: nothing unanswered or queued is left for the fence to judge.
-    const snapshot = renderJournalState(state)
-    summary = projectStructuredAgentSessionStatusState(
-      snapshot.items,
-      snapshot.submissions,
-      input.currentFence
-    ).summary
-  }
+  input: JournalSessionStatusInput
+): JournalSessionStatus {
+  const facts = journalSettlementFacts(state, input)
   return {
-    ...facts,
-    epoch: state.epoch,
-    seq: state.lastSequence,
-    summary,
+    status: facts.runningWork ? 'running' : facts.pendingPrompts ? 'attention' : 'idle',
+    activeTurnId: activeStructuredAgentSessionTurnIdBySequence(state.items.values()),
+    handedOverSends: facts.handedOverSends,
+    queuedSends: facts.queuedSends,
+    liveChildWork: facts.liveChildWork,
+    summary: input.statusSummary
+      ? input.statusSummary()
+      : projectSummary(state, input.currentFence),
     lastActivityAt: state.lastActivityAt
   }
 }
 
-const UPSERT_STATE = `INSERT INTO journal_session_state (session_id, state_version, epoch, seq,
-  owes_work, unverifiable_owner_fences, summary_json, last_activity_at, written_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(session_id) DO UPDATE SET
-  state_version = excluded.state_version, epoch = excluded.epoch, seq = excluded.seq,
-  owes_work = excluded.owes_work, unverifiable_owner_fences = excluded.unverifiable_owner_fences,
-  summary_json = excluded.summary_json, last_activity_at = excluded.last_activity_at,
-  written_at = excluded.written_at`
-const DELETE_STATE = 'DELETE FROM journal_session_state WHERE session_id = ?'
-const STATE_COLUMNS = `st.state_version AS state_version, st.epoch AS state_epoch, st.seq AS seq,
-  st.owes_work AS owes_work, st.unverifiable_owner_fences AS unverifiable_owner_fences,
-  st.summary_json AS summary_json, st.last_activity_at AS last_activity_at,
-  st.written_at AS written_at`
-const SELECT_STATE = `SELECT ${STATE_COLUMNS} FROM journal_session_state st WHERE st.session_id = ?`
+function projectSummary(
+  state: JournalReducerState,
+  fence: number | undefined
+): StructuredAgentSessionStatusProjection {
+  const snapshot = renderJournalState(state)
+  return projectStructuredAgentSessionStatusState(snapshot.items, snapshot.submissions, fence)
+    .summary
+}
 
-export function writeJournalSessionState(
-  db: Database.Database,
-  sessionId: string,
-  derived: DerivedJournalSessionState,
-  writtenAt: number
-): void {
-  db.prepare(UPSERT_STATE).run(
-    sessionId,
-    JOURNAL_SESSION_STATE_VERSION,
-    derived.epoch,
-    derived.seq,
-    derived.owesWork ? 1 : 0,
-    derived.unverifiableOwnerFences.length > 0
-      ? JSON.stringify(derived.unverifiableOwnerFences)
-      : null,
-    derived.summary ? JSON.stringify(derived.summary) : null,
-    derived.lastActivityAt,
-    writtenAt
+export function isUnsettledJournalSessionStatus(status: JournalSessionStatus): boolean {
+  return (
+    status.status !== 'idle' ||
+    status.handedOverSends > 0 ||
+    status.queuedSends > 0 ||
+    status.liveChildWork
   )
 }
 
-export function deleteJournalSessionState(db: Database.Database, sessionId: string): void {
-  db.prepare(DELETE_STATE).run(sessionId)
-}
+const UPSERT_STATUS = `INSERT INTO journal_session_state (session_id, status, active_turn_id,
+  handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(session_id) DO UPDATE SET
+  status = excluded.status, active_turn_id = excluded.active_turn_id,
+  handed_over_sends = excluded.handed_over_sends, queued_sends = excluded.queued_sends,
+  live_child_work = excluded.live_child_work, summary_json = excluded.summary_json,
+  last_activity_at = excluded.last_activity_at`
+const STATUS_COLUMNS = `st.status AS status, st.active_turn_id AS active_turn_id,
+  st.handed_over_sends AS handed_over_sends, st.queued_sends AS queued_sends,
+  st.live_child_work AS live_child_work, st.summary_json AS summary_json,
+  st.last_activity_at AS last_activity_at`
 
-/** This build's row for the chat, or null when there is none or another version wrote it. */
-export function readJournalSessionState(
+/** Inside the transaction that wrote the rows it describes. */
+export function writeJournalSessionStatus(
   db: Database.Database,
-  sessionId: string
-): StoredJournalSessionState | null {
-  const row = db.prepare(SELECT_STATE).get(sessionId)
-  return row ? parseStoredState(row) : null
+  sessionId: string,
+  status: JournalSessionStatus
+): void {
+  db.prepare(UPSERT_STATUS).run(
+    sessionId,
+    status.status,
+    status.activeTurnId,
+    status.handedOverSends,
+    status.queuedSends,
+    status.liveChildWork ? 1 : 0,
+    JSON.stringify(status.summary),
+    status.lastActivityAt
+  )
 }
 
-/** A chat's stored state beside its live tip, for the startup seed. */
-export type JournalSessionStateAtTip = {
+/** For a write that publishes rows it did not fold (a per-chat file's copy, a repair): the status
+ *  of what a replay of them reads, written in the same transaction. */
+export function writeJournalSessionStatusFromDisk(db: Database.Database, sessionId: string): void {
+  const loaded = replayJournal(db, sessionId)
+  if (loaded) {
+    writeJournalSessionStatus(
+      db,
+      sessionId,
+      deriveJournalSessionStatus(loaded.state, { settlesRosters: !loaded.corrupt })
+    )
+  }
+}
+
+/** Whether the chat has a status row: an open writes one for a chat an older build last wrote. */
+export function hasJournalSessionStatus(db: Database.Database, sessionId: string): boolean {
+  return (
+    db.prepare('SELECT 1 FROM journal_session_state WHERE session_id = ?').get(sessionId) !==
+    undefined
+  )
+}
+
+/** A chat's stored status for the startup seed: null when the chat has a journal but no row. */
+export type StoredJournalSessionStatus = {
   sessionId: string
-  /** Null when absent, of another version, behind the tip, or older than a repair. */
-  current: StoredJournalSessionState | null
+  status: JournalSessionStatus | null
 }
 
 // Bounded well under SQLite's host-parameter limit.
 const IN_LIST_CHUNK = 500
 
 /** One query per chunk of ids; ids with no journal yet are not returned. */
-export function readJournalSessionStatesAtTip(
+export function readJournalSessionStatuses(
   db: Database.Database,
   sessionIds: readonly string[]
-): JournalSessionStateAtTip[] {
-  const results: JournalSessionStateAtTip[] = []
+): StoredJournalSessionStatus[] {
+  const results: StoredJournalSessionStatus[] = []
   for (let start = 0; start < sessionIds.length; start += IN_LIST_CHUNK) {
     const chunk = sessionIds.slice(start, start + IN_LIST_CHUNK)
     const rows = db
       .prepare(
-        `SELECT s.session_id AS session_id, s.epoch AS live_epoch,
-  (SELECT MAX(r.seq) FROM journal_rows r
-    WHERE r.session_id = s.session_id AND r.epoch = s.epoch) AS tip,
-  (SELECT p.repaired_at FROM journal_repairs p
-    WHERE p.session_id = s.session_id AND p.epoch = s.epoch) AS repaired_at,
-  ${STATE_COLUMNS}
+        `SELECT s.session_id AS session_id, ${STATUS_COLUMNS}
 FROM journal_sessions s LEFT JOIN journal_session_state st ON st.session_id = s.session_id
 WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
       )
       .all(...chunk)
     for (const row of rows) {
-      if (typeof row.session_id !== 'string') {
-        continue
+      if (typeof row.session_id === 'string') {
+        results.push({ sessionId: row.session_id, status: parseStatusRow(row) })
       }
-      const stored = parseStoredState(row)
-      const atTip =
-        stored !== null &&
-        stored.epoch === row.live_epoch &&
-        stored.seq === row.tip &&
-        (typeof row.repaired_at !== 'number' || row.repaired_at <= stored.writtenAt)
-      results.push({ sessionId: row.session_id, current: atTip ? stored : null })
     }
   }
   return results
 }
 
-/** Every chat this build's rows say may owe work at open, through the partial index. */
-export function readOwedJournalSessionStates(
-  db: Database.Database
-): (JournalOwedFacts & { sessionId: string })[] {
+/** Every chat whose stored status says a gone process left it work, through the partial index. */
+export function readUnsettledJournalSessionIds(db: Database.Database): string[] {
   return db
-    .prepare(
-      `SELECT session_id, owes_work, unverifiable_owner_fences FROM journal_session_state
-WHERE (owes_work = 1 OR unverifiable_owner_fences IS NOT NULL) AND state_version = ?`
-    )
-    .all(JOURNAL_SESSION_STATE_VERSION)
-    .flatMap((row) =>
-      typeof row.session_id === 'string'
-        ? [
-            {
-              sessionId: row.session_id,
-              owesWork: row.owes_work === 1,
-              unverifiableOwnerFences: parseFences(row.unverifiable_owner_fences)
-            }
-          ]
-        : []
-    )
-}
-
-/** Chats with a draft the drain would send on open: waiting, not held, and the queue unpaused. */
-export function readSessionsWithDrainableDrafts(db: Database.Database): Set<string> {
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT q.session_id AS session_id FROM queued_messages q
-WHERE q.state = 'waiting' AND q.hold_reason IS NULL
-  AND NOT EXISTS (SELECT 1 FROM queued_message_pauses p WHERE p.session_id = q.session_id)`
-    )
+    .prepare(`SELECT session_id FROM journal_session_state WHERE ${UNSETTLED}`)
     .all()
-  return new Set(
-    rows.flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
-  )
+    .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
 }
 
-function parseStoredState(row: Record<string, unknown>): StoredJournalSessionState | null {
+const STATUSES = ['idle', 'running', 'attention'] as const
+
+function parseStatusRow(row: Record<string, unknown>): JournalSessionStatus | null {
+  const status = STATUSES.find((known) => known === row.status)
+  const summary = parseSummary(row.summary_json)
   if (
-    row.state_version !== JOURNAL_SESSION_STATE_VERSION ||
-    typeof row.state_epoch !== 'string' ||
-    typeof row.seq !== 'number' ||
-    typeof row.last_activity_at !== 'number' ||
-    typeof row.written_at !== 'number'
+    !status ||
+    !summary ||
+    typeof row.handed_over_sends !== 'number' ||
+    typeof row.queued_sends !== 'number' ||
+    typeof row.last_activity_at !== 'number'
   ) {
     return null
   }
-  const owesWork = row.owes_work === 1
-  const summary = owesWork ? null : parseSummary(row.summary_json)
-  if (!owesWork && !summary) {
-    return null
-  }
   return {
-    stateVersion: JOURNAL_SESSION_STATE_VERSION,
-    epoch: row.state_epoch,
-    seq: row.seq,
-    owesWork,
-    unverifiableOwnerFences: parseFences(row.unverifiable_owner_fences),
+    status,
+    activeTurnId: typeof row.active_turn_id === 'string' ? row.active_turn_id : null,
+    handedOverSends: row.handed_over_sends,
+    queuedSends: row.queued_sends,
+    liveChildWork: row.live_child_work === 1,
     summary,
-    lastActivityAt: row.last_activity_at,
-    writtenAt: row.written_at
+    lastActivityAt: row.last_activity_at
   }
 }
 
@@ -254,27 +229,23 @@ function parseJson(value: unknown): unknown {
   }
 }
 
-function parseFences(value: unknown): number[] {
-  const parsed = parseJson(value)
-  return Array.isArray(parsed)
-    ? parsed.filter((fence): fence is number => Number.isSafeInteger(fence))
-    : []
+const SUMMARY_STATUSES = ['idle', 'working', 'attention'] as const
+
+function parseSummaryStatus(
+  value: unknown
+): StructuredAgentSessionStatusProjection['status'] | undefined {
+  return value === null ? null : SUMMARY_STATUSES.find((status) => status === value)
 }
 
-const STATUSES = ['idle', 'working', 'attention'] as const
-
-function parseStatus(value: unknown): StructuredAgentSessionStatusProjection['status'] | undefined {
-  return value === null ? null : STATUSES.find((status) => status === value)
-}
-
-/** Known keys only: a newer writer's extra keys are ignored rather than trusted. */
+/** Known keys only. A value this build cannot read makes the row unreadable, so the chat is opened
+ *  and publishes what its open derives rather than a row missing that field. */
 function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | null {
   const parsed = parseJson(value)
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     return null
   }
   const source = new Map(Object.entries(parsed))
-  const status = parseStatus(source.get('status'))
+  const status = parseSummaryStatus(source.get('status'))
   const latestPrompt = source.get('latestPrompt')
   if (status === undefined || typeof latestPrompt !== 'string') {
     return null
@@ -284,6 +255,9 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
     return typeof field === 'string' ? field : undefined
   }
   const turnOutcome = source.get('turnOutcome')
+  if (turnOutcome !== undefined && !isAgentTurnOutcome(turnOutcome)) {
+    return null
+  }
   const statusStartedAt = source.get('statusStartedAt')
   const toolName = text('toolName')
   const toolInput = text('toolInput')
@@ -294,26 +268,7 @@ function parseSummary(value: unknown): StructuredAgentSessionStatusProjection | 
     ...(toolName !== undefined ? { toolName } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(lastAssistantMessage !== undefined ? { lastAssistantMessage } : {}),
-    ...(isAgentJournalTurnOutcome(turnOutcome) ? { turnOutcome } : {}),
+    ...(isAgentTurnOutcome(turnOutcome) ? { turnOutcome } : {}),
     ...(typeof statusStartedAt === 'number' ? { statusStartedAt } : {})
   }
-}
-
-/**
- * The open's re-derive: rewrites the chat's row when it is absent, another version's, off the
- * fold's tip, or older than a repair. What an older build, an import, a repair or a failed
- * savepoint left behind is caught here. Bookkeeping: the caller logs a failure and goes on.
- */
-export function ensureJournalSessionStateCurrent(
-  db: Database.Database,
-  state: JournalReducerState,
-  input: JournalSessionStateInput,
-  now: number
-): boolean {
-  const [stored] = readJournalSessionStatesAtTip(db, [state.sessionId])
-  if (stored?.current?.epoch === state.epoch && stored.current.seq === state.lastSequence) {
-    return false
-  }
-  writeJournalSessionState(db, state.sessionId, deriveJournalSessionState(state, input), now)
-  return true
 }

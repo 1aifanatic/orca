@@ -23,11 +23,12 @@ import {
   liveTestJournalRows,
   loadTestJournal,
   openTestJournalHostDatabase,
-  readTestJournalRows
+  readTestJournalRows,
+  readTestJournalSessionStatus
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { readJournalSessionState } from './journal-session-state'
+import { deriveJournalSessionStatus } from './journal-session-state'
 import { readJournalSessionEpoch, type JournalStoredRow } from './journal-row-table'
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -209,15 +210,16 @@ describe('importing a per-chat journal', () => {
     expect(await leftovers()).toEqual([])
   })
 
-  // T10: the stored state described rows the copy replaced, so the copy's publish drops it.
-  it('drops the chat stored state in the copy publish, and nothing else writes one', async () => {
+  // T10: the copy's publish writes the chat's status for the rows it publishes, in the same
+  // transaction, replacing whatever described the rows it replaced.
+  it('writes the chat status in the copy publish, for the rows it published', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const { db } = openTestJournalHostDatabase(root)
     db.prepare(
-      `INSERT INTO journal_session_state (session_id, state_version, epoch, seq, owes_work,
-        unverifiable_owner_fences, summary_json, last_activity_at, written_at)
-      VALUES (?, 1, 'stale-epoch', 9, 1, NULL, NULL, 1, 1)`
+      `INSERT INTO journal_session_state (session_id, status, active_turn_id, handed_over_sends,
+        queued_sends, live_child_work, summary_json, last_activity_at)
+      VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1)`
     ).run(IDENTITY.sessionId)
 
     await importPerSessionJournal({
@@ -226,12 +228,10 @@ describe('importing a per-chat journal', () => {
       legacyDirectory: legacyDir()
     })
 
-    expect(readJournalSessionState(db, IDENTITY.sessionId)).toBeNull()
-    expect(
-      db
-        .prepare('SELECT COUNT(*) AS n FROM journal_session_state WHERE session_id = ?')
-        .get(IDENTITY.sessionId)
-    ).toEqual({ n: 0 })
+    const loaded = loadTestJournal(root, IDENTITY.sessionId)!
+    expect(readTestJournalSessionStatus(root, IDENTITY.sessionId)).toEqual(
+      deriveJournalSessionStatus(loaded.state, { settlesRosters: !loaded.corrupt })
+    )
   })
 
   // T-B3: the upgrade restart is the restart that produced the offers. A new epoch or renumbered

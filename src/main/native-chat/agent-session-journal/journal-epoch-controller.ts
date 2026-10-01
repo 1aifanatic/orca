@@ -22,7 +22,7 @@ export class JournalEpochController {
       highestFence: () => number
       cursor: () => AgentJournalCursor
       adopt: (loaded: JournalLoad) => void
-      /** The chat's stored state for the new epoch, inside its transaction. */
+      /** The chat's status for the new epoch, inside its transaction. */
       writeState: JournalEpochStateWriter
     }
   ) {}

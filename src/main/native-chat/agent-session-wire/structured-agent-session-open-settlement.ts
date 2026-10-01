@@ -9,16 +9,16 @@ import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
-import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
-  isLeftoverQueuedSubmission,
   isRunningJournalTurn,
+  openSettlementItemIdentity,
   openSettlementTerminalBody,
   owesRecoveredDispatch
 } from '../agent-session-journal/journal-open-settlement-plan'
@@ -84,7 +84,7 @@ export function planOpenSettlement(
       .filter(owesRecoveredDispatch)
       .map((submission) => submission.clientMessageId),
     leftoverQueued: submissions
-      .filter(isLeftoverQueuedSubmission)
+      .filter(isQueuedAgentJournalSubmission)
       .map((submission) => submission.clientMessageId),
     goneGeneration: options.acquisition
       ? null
@@ -132,7 +132,7 @@ export function planGoneGenerationSettlement(input: {
     turnVerdictFromDeathEvidence(input.deathEvidence, input.itemFence(item.itemId))
   const mutations: JournalLifecycleMutationInput[] = []
   for (const item of items) {
-    const identity = parseAgentJournalItemKey(item.itemId)
+    const identity = openSettlementItemIdentity(item)
     const body = openSettlementTerminalBody(item)
     if (identity && body) {
       mutations.push({
@@ -225,8 +225,8 @@ export async function appendOpenSettlement(
     if (plan.recoveredDispatches.length > 0) {
       await journal.markPendingSubmissionsUnknown(fence)
     }
-    // Nothing indexes a conversation with a row queued (a handle closes only with none), so one
-    // found here was accepted by a process that is gone.
+    // A conversation's close abandons what it queued first, so a queued row found here was
+    // accepted by a process that is gone.
     if (plan.leftoverQueued.length > 0) {
       const leftovers = new Set(plan.leftoverQueued)
       await journal.rejectQueuedSubmissions(
@@ -250,10 +250,13 @@ export async function appendOpenSettlement(
   }
 }
 
-/** Work that means the provider was MID-RESPONSE. A pending approval or question is the provider
- *  waiting on the user, so dying while one sits there interrupted nothing. */
+/** Work that means the provider was MID-RESPONSE, and that this settle revises. A pending approval
+ *  or question is the provider waiting on the user, so dying while one sits there interrupted
+ *  nothing. */
 function isInProgressItem(item: AgentJournalRenderItem): boolean {
   return (
-    isRunningJournalTurn(item) || (item.body.kind === 'tool-call' && item.body.state === 'running')
+    (isRunningJournalTurn(item) ||
+      (item.body.kind === 'tool-call' && item.body.state === 'running')) &&
+    openSettlementItemIdentity(item) !== null
   )
 }

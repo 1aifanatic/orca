@@ -57,7 +57,7 @@ describe('the restore pass after the tab list', () => {
 
     // What closing the tab does.
     await host.setSessionTabVisibility(LAST, false)
-    await host.close(LAST)
+    await host.close(LAST, 'user-close')
     const publishedAtClose = publishedFor(LAST)
     release()
     await pass

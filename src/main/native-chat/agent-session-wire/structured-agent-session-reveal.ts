@@ -120,6 +120,7 @@ export function createStructuredAgentSessionHostRestore(
     openDeps: deps,
     supportsRecord,
     seedStatus,
+    resolveRecovery: readRestore.resolveRecovery,
     restoreListed: (records) =>
       restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
     serialize: rest.serialize,
@@ -131,7 +132,7 @@ export function createStructuredAgentSessionHostRestore(
     store: deps.store,
     serialize: rest.serialize,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
-    settleCopied: startup.settleCopiedUnlisted,
+    settleCopied: startup.settleCopied,
     isHostChatWorkActive: () => startup.isSettling() || restorer.isRestoring,
     isDisposed: rest.isDisposed,
     now: () => deps.now?.() ?? Date.now(),

@@ -3,7 +3,7 @@
 // One transaction: discard the old epoch's rows, insert the epoch row plus the
 // replacement items, move the session projection, retire any repair marker
 // — this republished history is exactly what the marker was holding out for —
-// and store the chat's state for the new epoch.
+// and write the chat's status for the new epoch.
 
 import type {
   AgentJournalItemBody,
@@ -85,7 +85,7 @@ export function replaceJournalEpoch(input: {
       insertJournalRow(db, sessionId, row)
     }
     publishJournalSessionEpoch(db, input.identity, epoch)
-    input.writeState(db, state)
+    input.writeState(db, state, false)
   })
 
   // COMMIT landed: on disk the superseded rows are gone and this epoch is the

@@ -26,7 +26,7 @@ import {
 } from '../../../shared/structured-agent-session-live-turn'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
 import type { JournalHostDatabase } from './journal-host-database'
-import type { JournalLoad } from './journal-open'
+import { replayJournal, type JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
@@ -56,6 +56,10 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
+import type {
+  JournalStatusProjection,
+  JournalStatusProjectionState
+} from './journal-status-projection'
 import type { AgentJournalEpochReason } from './journal-row-schema'
 import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
@@ -73,23 +77,26 @@ export class AgentSessionJournal {
   private readonly now: () => number
   private readonly mintEpoch: () => string
 
-  private state: JournalReducerState
+  private fold: JournalReducerState
+  /** A failed append's re-read from disk failed too: the fold may hold a row that never committed. */
+  private foldStale = false
   private readOnly = false
   private malformedRows = 0
-  private openedCorrupt = false
+  /** A fresh replay would report the history corrupt: it is still owed a rebuild. */
+  private loadCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
-  private onStranded: (() => void) | null = null
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
   private readonly epochController: JournalEpochController
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly restore: () => Promise<void>
-  /** Rewrites the chat's stored state if it does not describe this fold. Bookkeeping: never
+  /** Writes the chat's status if it has none (an older build last wrote it). Bookkeeping: never
    *  fails the open that calls it. */
-  readonly ensureSessionState: () => void
+  readonly backfillSessionStatus: () => void
   readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
+  private readonly statusProjection: JournalStatusProjection
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
 
@@ -98,7 +105,7 @@ export class AgentSessionJournal {
     this.database = options.database
     this.now = options.now ?? (() => Date.now())
     this.mintEpoch = options.mintEpoch ?? randomUUID
-    this.state = createJournalReducerState(options.identity.sessionId, '')
+    this.fold = createJournalReducerState(options.identity.sessionId, '')
     // Serializes sequence assignment with the durable write behind it.
     this.queue = new JournalWriteQueue(options.identity.sessionId)
     const collaborators = createJournalStoreCollaborators({
@@ -124,15 +131,14 @@ export class AgentSessionJournal {
       replaceState: (state) => {
         this.state = state
       },
-      strand: () => {
-        this.queue.markClosed()
-        this.onStranded?.()
+      markFoldStale: () => {
+        this.foldStale = true
       },
-      openedCorrupt: () => this.openedCorrupt,
+      loadCorrupt: () => this.loadCorrupt,
       currentFence: options.currentFence ?? (() => undefined),
       importPending: () => this.queue.owing,
-      setOpenedCorrupt: (corrupt) => {
-        this.openedCorrupt = corrupt
+      setLoadCorrupt: (corrupt) => {
+        this.loadCorrupt = corrupt
       },
       notifyCommitted: () => this.onCommitted?.(),
       malformedRows: () => this.malformedRows,
@@ -148,8 +154,26 @@ export class AgentSessionJournal {
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
     this.queuedMessages = collaborators.queuedMessages
     this.restore = collaborators.restore
-    this.ensureSessionState = collaborators.ensureSessionState
+    this.backfillSessionStatus = collaborators.backfillSessionStatus
     this.readSince = collaborators.readSince
+    this.statusProjection = collaborators.statusProjection
+  }
+
+  /** Re-read from disk first while stale, so no reader or writer gets a fold the disk never held. */
+  private get state(): JournalReducerState {
+    if (this.foldStale) {
+      const reloaded = replayJournal(this.database.db, this.identity.sessionId)
+      if (!reloaded) {
+        throw new Error(`agent-session journal ${this.identity.sessionId} is gone`)
+      }
+      this.state = reloaded.state
+    }
+    return this.fold
+  }
+
+  private set state(state: JournalReducerState) {
+    this.fold = state
+    this.foldStale = false
   }
 
   get isReadOnly(): boolean {
@@ -177,7 +201,7 @@ export class AgentSessionJournal {
 
   /** The open replayed an unusable prefix: the chat is owed a rebuild from provider history. */
   get needsRebuild(): boolean {
-    return this.openedCorrupt
+    return this.loadCorrupt
   }
 
   async open(): Promise<void> {
@@ -196,11 +220,6 @@ export class AgentSessionJournal {
    *  without its writer saying so. One listener: a later call replaces it. It must not throw. */
   observeCommits(listener: () => void): void {
     this.onCommitted = listener
-  }
-
-  /** Told once this handle closed itself because its connection was stranded mid-append. */
-  observeStranded(listener: () => void): void {
-    this.onStranded = listener
   }
 
   /**
@@ -222,6 +241,10 @@ export class AgentSessionJournal {
   })
 
   snapshot = (): AgentJournalSnapshot => renderJournalState(this.state)
+
+  /** The status projection at this tip, projected once per commit for every reader. */
+  statusState = (fence: number | undefined): JournalStatusProjectionState =>
+    this.statusProjection.at(fence)
 
   /** Visits reduced items without allocating and sorting a full snapshot. */
   visitItems = (

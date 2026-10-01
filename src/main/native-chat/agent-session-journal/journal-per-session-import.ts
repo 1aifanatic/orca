@@ -21,7 +21,11 @@
 // new epoch the next open's import could not reconcile. A file that was never written holds no
 // history and is deleted whenever it is found.
 
-import { deleteJournalSessionState } from './journal-session-state'
+import {
+  deriveJournalSessionStatus,
+  writeJournalSessionStatus,
+  type JournalSessionStatus
+} from './journal-session-state'
 import { existsSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
@@ -80,6 +84,8 @@ export type PerSessionJournalImport = {
   outcome: PerSessionJournalImportOutcome
   /** `imported` only: the copy's own fold, exactly what a replay of the published chat returns. */
   load?: JournalLoad
+  /** `imported` only: the status row the publish wrote from that fold. */
+  status?: JournalSessionStatus
 }
 
 type ImportInput = {
@@ -160,7 +166,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> 
   }
   // The open's replay of what was just copied is a long task of its own; don't add this one to it.
   await yieldToEventLoop()
-  return { outcome: 'imported', load: copied.load }
+  return { outcome: 'imported', load: copied.load, status: copied.status }
 }
 
 /**
@@ -195,8 +201,13 @@ export async function previewPerSessionJournal(
   }
 }
 
-/** What a first copy hands back: the copy's load, and the file as the copy's last read of it left it. */
-type CopiedJournal = { load: JournalLoad; verifiedFile: PerChatFileState | null }
+/** What a first copy hands back: its load and the status it published, and the file as the copy's
+ *  last read of it left it. */
+type CopiedJournal = {
+  load: JournalLoad
+  status: JournalSessionStatus
+  verifiedFile: PerChatFileState | null
+}
 
 /**
  * Batches under the file's epoch, which no reader follows until the chat's pointer names it. Once
@@ -244,6 +255,7 @@ async function copyLegacyJournal(
     legacyRowBatches(source, sessionId, epoch, batchRows)
   )
   const verifiedFile = statPerChatFile(input.legacyDirectory)
+  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   assertImportNotAborted(input.database, sessionId)
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
@@ -257,8 +269,8 @@ async function copyLegacyJournal(
     }
     writePerSessionImportMarker(db, sessionId, legacy)
     deleteJournalCopyFailure(db, sessionId)
-    // Whatever was stored described the rows this copy replaced; the next open re-derives it.
-    deleteJournalSessionState(db, sessionId)
+    // From the copy's own fold, which is what a replay of these rows reads: no second fold here.
+    writeJournalSessionStatus(db, sessionId, status)
   })
-  return { load, verifiedFile }
+  return { load, status, verifiedFile }
 }

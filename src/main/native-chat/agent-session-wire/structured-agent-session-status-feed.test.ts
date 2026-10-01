@@ -636,25 +636,25 @@ describe('StructuredAgentSessionStatusFeed', () => {
       { kind: 'status', text: 'Working', turnLifecycle: { turnId: 'turn-1', state: 'running' } },
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
-    const snapshot = vi.spyOn(journal, 'snapshot')
     let taskState: 'working' | 'waiting' = 'working'
     const { feed, events } = feedFor(new Map([[SESSION, { journal }]]), null, undefined, () => ({
       state: 'monitoring',
       tasks: [{ id: 'child', kind: 'agent', state: taskState }]
     }))
+    const projected = feed.statusState(SESSION)
     for (let tick = 1; tick <= 100; tick++) {
       taskState = tick % 2 === 1 ? 'waiting' : 'working'
       feed.publish(SESSION)
+      expect(feed.statusState(SESSION)).toBe(projected)
     }
     expect(events).toHaveLength(101)
-    expect(snapshot).toHaveBeenCalledTimes(1)
     expect(events.at(-1)).toMatchObject({
       type: 'status',
       session: { status: 'working', backgroundTasks: [{ state: 'working' }] }
     })
     await journal.appendTombstone(TURN_IDENTITY, { fence: 1 })
     feed.publish(SESSION)
-    expect(snapshot).toHaveBeenCalledTimes(2)
+    expect(feed.statusState(SESSION)).not.toBe(projected)
     expect(events.at(-1)).toMatchObject({ type: 'status', session: { status: 'idle' } })
   })
 

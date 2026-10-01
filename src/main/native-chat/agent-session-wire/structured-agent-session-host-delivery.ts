@@ -3,6 +3,7 @@
 // with a message queued has a delivery loop — and the open is where a loop for leftovers wakes.
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import { abandonQueuedStructuredAgentSessionMessages } from './structured-agent-session-host-lifetime'
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -65,6 +66,12 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     ensureProviderChild: input.ensureProviderChild,
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
+    abandonQueued: async (sessionId, which) => {
+      const session = sessions.get(sessionId)
+      return session
+        ? abandonQueuedStructuredAgentSessionMessages(deps, sessionId, session.journal, which)
+        : true
+    },
     failureTextContext: (sessionId) =>
       structuredAgentSessionFailureWordsContext(
         deps.store.getRecord(sessionId),
@@ -131,8 +138,15 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       loop.dispose()
       stopResettling()
     },
-    open: (sessionId, options) =>
-      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
+    open: async (sessionId, options) => {
+      // Every command that opens a chat waits for startup's settle, as `conversation()` does.
+      await deps.commandsReady?.()
+      return openStructuredAgentSessionConversation(
+        { deps, sessions, adoptOpened },
+        sessionId,
+        options
+      )
+    }
   }
 }
 

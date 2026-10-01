@@ -23,10 +23,7 @@ import {
 } from '../agent-session-journal/journal-copy-failures'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { JournalLoad } from '../agent-session-journal/journal-open'
-import {
-  owesOnOpen,
-  owesOpenSettlement
-} from '../agent-session-journal/journal-open-settlement-plan'
+import { isUnsettledJournalSessionStatus } from '../agent-session-journal/journal-session-state'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { isPerSessionJournalSetAside } from '../agent-session-journal/journal-per-session-reimport'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -256,11 +253,11 @@ export class StructuredAgentSessionPerChatFileCopy {
     } else {
       this.count('deleted')
     }
-    // An older build left it mid-turn: settled now from the copy's fold, so no later startup
-    // replays it. A damaged fold is left to its open, the only place a repair is written.
-    const current = this.deps.store.getRecord(sessionId) ?? record
-    if (!open && result.load && copiedChatOwesSettle(result.load, current)) {
-      await this.deps.settleCopied(current, result.load)
+    // An older build left it with work: settled now, from the copy's fold, by the same rule the
+    // startup settle selects by, so no later startup opens it. A newer build's rows stay unwritten.
+    const { load, status } = result
+    if (!open && load && status && !load.readOnly && isUnsettledJournalSessionStatus(status)) {
+      await this.deps.settleCopied(this.deps.store.getRecord(sessionId) ?? record, load)
     }
   }
 
@@ -335,12 +332,4 @@ export class StructuredAgentSessionPerChatFileCopy {
       this.timer = null
     }
   }
-}
-
-function copiedChatOwesSettle(loaded: JournalLoad, record: AgentSessionRecord): boolean {
-  if (loaded.corrupt || loaded.readOnly || loaded.truncateFrom !== undefined) {
-    return false
-  }
-  const owed = owesOpenSettlement(loaded.state, { settlesRosters: true })
-  return owesOnOpen(owed, record.lease.deathEvidence)
 }

@@ -10,7 +10,9 @@ import type { JournalHostDatabase } from '../agent-session-journal/journal-host-
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   StructuredAgentSessionAdapter,
-  StructuredAgentSessionProviderChildPhase
+  StructuredAgentSessionChildEndCause,
+  StructuredAgentSessionProviderChildPhase,
+  StructuredAgentSessionStopCause
 } from './structured-agent-session-adapter'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
@@ -35,6 +37,11 @@ export type StructuredAgentSessionProviderChildIdentity = {
   readonly fence: number
 }
 
+/** A wind-down still owed, with the cause of the stop that owes it: a retry finishes that stop. */
+export type StructuredAgentSessionOwedWindDown = StructuredAgentSessionProviderChildIdentity & {
+  readonly cause: StructuredAgentSessionStopCause
+}
+
 /** The provider process behind a conversation. Written only in
  *  `structured-agent-session-provider-child`. */
 export type StructuredAgentSessionProviderChild = StructuredAgentSessionProviderChildIdentity & {
@@ -50,12 +57,7 @@ export type StructuredAgentSessionProviderChild = StructuredAgentSessionProvider
  *  `stopAgentSessionProviderRoot`; an observed exit's root is gone by definition. */
 export type StructuredAgentSessionStopVerdict = { rootGone: boolean }
 
-export type StructuredAgentSessionChildEndCause =
-  | 'user-stop'
-  | 'host-stop'
-  | 'exit'
-  | 'attach-failed'
-  | 'evict'
+export type { StructuredAgentSessionChildEndCause }
 
 /** How the conversation's last child ended. In memory only: the delivery loop reads it to tell a
  *  Stop from a failure. */
@@ -87,7 +89,7 @@ export type StructuredAgentSessionHostSession = {
   /** The wind-down this host still owes for a child it started: settling that generation's work
    *  and handing the lease back. Outlives `child`, which ends the moment the adapter proves the
    *  exit — an eviction that aborts after that point must still finish it on the next close. */
-  owesProviderChildWindDown?: StructuredAgentSessionProviderChildIdentity
+  owesProviderChildWindDown?: StructuredAgentSessionOwedWindDown
   lastEndedChild?: StructuredAgentSessionEndedChild
 }
 
@@ -122,6 +124,9 @@ export type StructuredAgentSessionHostDeps = {
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
+  /** Pending while host startup settles the chats a gone process left with work: every chat
+   *  command waits for it, and none is refused. Null or absent once open. */
+  commandsReady?: () => Promise<void> | null
   /** Lease bookkeeping run for startup or a read (the reconcile, or resolving a chat's recovery)
    *  that refused or threw, once per distinct failure. Startup and the read carry on: the next
    *  attach or send reconciles and resolves recovery again before it acts. */

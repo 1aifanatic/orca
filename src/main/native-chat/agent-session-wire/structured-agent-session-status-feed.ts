@@ -44,8 +44,11 @@ export type StructuredAgentSessionStatusSubscriber = {
   emit: (event: AgentSessionStatusEvent) => void
 }
 
+/** All the feed reads of a chat's journal. */
+type StatusFeedJournal = Pick<AgentSessionJournal, 'isReadOnly' | 'lastActivityAt' | 'statusState'>
+
 type StatusFeedSession = {
-  journal: AgentSessionJournal
+  journal: StatusFeedJournal
   params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }
   child?: Pick<StructuredAgentSessionProviderChild, 'phase' | 'generation' | 'fence'> | null
 }
@@ -104,17 +107,6 @@ export class StructuredAgentSessionStatusFeed {
   )
   private readonly subscribers = new Map<string, StructuredAgentSessionStatusSubscriber>()
   private readonly published = new Map<string, AgentSessionStatusSummary>()
-  // Task progress must not sort and scan an unchanged conversation. Journal identity owns cleanup.
-  private readonly journalProjections = new WeakMap<
-    AgentSessionJournal,
-    {
-      epoch: string
-      sequence: number
-      readOnly: boolean
-      fence: number | undefined
-      state: StructuredAgentSessionStatusState
-    }
-  >()
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
 
@@ -183,7 +175,7 @@ export class StructuredAgentSessionStatusFeed {
    *  so the completion feed follows the same request without snapshotting the journal again. */
   statusState(
     sessionId: string,
-    journal?: AgentSessionJournal
+    journal?: StatusFeedJournal
   ): StructuredAgentSessionStatusState | null {
     const session = this.deps.sessions.get(sessionId)
     const source = journal ?? session?.journal
@@ -191,7 +183,7 @@ export class StructuredAgentSessionStatusFeed {
   }
 
   /** Re-projects one session after its journal changed; equal projections are not re-sent. */
-  publish(sessionId: string, journal?: AgentSessionJournal, options?: { replay?: boolean }): void {
+  publish(sessionId: string, journal?: StatusFeedJournal, options?: { replay?: boolean }): void {
     const session = this.deps.sessions.get(sessionId)
     if (!session) {
       return
@@ -233,7 +225,7 @@ export class StructuredAgentSessionStatusFeed {
   private summaryFor(
     sessionId: string,
     session: StatusFeedSession,
-    journal: AgentSessionJournal
+    journal: StatusFeedJournal
   ): AgentSessionStatusSummary {
     const record = this.deps.getRecord(sessionId)
     return structuredAgentSessionStatusSummary({
@@ -291,38 +283,16 @@ export class StructuredAgentSessionStatusFeed {
   }
 
   private projectionFor(
-    journal: AgentSessionJournal,
+    journal: StatusFeedJournal,
     record: AgentSessionRecord | null
   ): StructuredAgentSessionStatusState {
-    // An unreadable journal projects as "no turn": the chat itself shows the reset.
-    const cursor = journal.cursor()
-    const readOnly = journal.isReadOnly
     // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
     const fence = record?.lease.runtimeFence
-    let projection = this.journalProjections.get(journal)
-    if (
-      !projection ||
-      projection.epoch !== cursor.epoch ||
-      projection.sequence !== cursor.sequence ||
-      projection.readOnly !== readOnly ||
-      projection.fence !== fence
-    ) {
-      // A journalled submission bumps `lastSequence`, so the send-time working
-      // signal reaches the cache; the lease fence does not, hence the extra key.
-      const snapshot = readOnly ? null : journal.snapshot()
-      projection = {
-        ...cursor,
-        readOnly,
-        fence,
-        state: projectStructuredAgentSessionStatusState(
-          snapshot?.items ?? [],
-          snapshot?.submissions ?? [],
-          fence
-        )
-      }
-      this.journalProjections.set(journal, projection)
-    }
-    return projection.state
+    // An unreadable journal projects as "no turn": the chat itself shows the reset. Otherwise
+    // the journal's own projection, once per commit and fence, which its stored state reads too.
+    return journal.isReadOnly
+      ? projectStructuredAgentSessionStatusState([], [], fence)
+      : journal.statusState(fence)
   }
 
   /** A failing sink must never cost the subscribers their status event. */

@@ -10,7 +10,7 @@ import {
   resolveStructuredAgentSessionAdoptionForCreate
 } from './structured-agent-session-create-adoption'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
+import { runStructuredAgentSessionStartupStep } from './structured-agent-session-startup-step'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -281,59 +281,39 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   protected async prepareStructuredAgentSessionStartupRestorationOnce(): Promise<void> {
-    if (!this.hasPersistedStructuredAgentSessionStore()) {
-      return
-    }
-    // Durable agent records must exist before daemon inventory can be reconciled against them.
-    // A refused host is no host: startup goes on, and only structured requests are refused.
-    await ensureStructuredAgentSessionHostUnlessRefused(() =>
-      this.ensureStructuredAgentSessionHost()
-    )
-    await this.refreshMobileSessionPtyRecords()
-    const host = getStructuredAgentSessionHost()
-    // Death evidence the lease check writes must exist before the settle takes its verdicts. A
-    // failed check leaves them `unverifiable`, which is safe, so the steps below still run.
-    let leaseFailure: { error: unknown } | null = null
+    // Chat commands held for startup go ahead however this ends: when the settle does, or now.
+    let settling = false
     try {
-      await host?.reconcileRestartLeases()
-    } catch (error) {
-      leaseFailure = { error }
-    }
-    if (typeof host?.seedStoredStatuses === 'function') {
-      const listedIds = this.listedStructuredAgentSessionIds(host)
-      this.structuredAgentSessionBackgroundRestoreIds = host.seedStoredStatuses(listedIds)
-      // Un-awaited: nothing waits on a crashed chat's settle, and it never rejects.
-      void host.settleOwedSessions(listedIds)
-      // Latched on the host: a second startup pass after a lease failure starts no second job.
-      host.startPerChatFileCopy?.({
-        listedIds,
-        isRuntimeChatWorkActive: () =>
-          this.structuredAgentSessionStartupChatWork.isActive(
-            this.owedStructuredAgentSessionHistoryRestore !== null
+      if (!this.hasPersistedStructuredAgentSessionStore()) {
+        return
+      }
+      // Durable agent records must exist before daemon inventory can be reconciled against them.
+      // A refused host is no host: startup goes on, and only structured requests are refused.
+      await ensureStructuredAgentSessionHostUnlessRefused(() =>
+        this.ensureStructuredAgentSessionHost()
+      )
+      await this.refreshMobileSessionPtyRecords()
+      const host = getStructuredAgentSessionHost()
+      if (host) {
+        this.structuredAgentSessionBackgroundRestoreIds =
+          await runStructuredAgentSessionStartupStep(
+            host,
+            this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
+            (settled) => {
+              settling = true
+              this.structuredAgentSessionStartupGate.openWhen(settled)
+            },
+            () =>
+              this.structuredAgentSessionStartupChatWork.isActive(
+                this.owedStructuredAgentSessionHistoryRestore !== null
+              )
           )
-      })
+      }
+    } finally {
+      if (!settling) {
+        this.structuredAgentSessionStartupGate.open()
+      }
     }
-    if (leaseFailure) {
-      throw leaseFailure.error
-    }
-  }
-
-  /** The chats with a tab, for the startup step and the tab restore alike: the host's persisted
-   *  tab index, or before it is recorded, the saved workspace session's. */
-  protected listedStructuredAgentSessionIds(host): string[] {
-    const persistedVisibleIndex =
-      typeof host?.getPersistedVisibleSessionTabIndex === 'function'
-        ? host.getPersistedVisibleSessionTabIndex()
-        : { present: false, sessionIds: [] }
-    if (persistedVisibleIndex.present) {
-      return persistedVisibleIndex.sessionIds
-    }
-    const profileIds = collectSavedStructuredAgentSessionIds(
-      this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
-    )
-    // Unrecorded, the profile's chats join the tabs chats opened while the import was owed left.
-    // First: after a /clear the profile's chat would take their tab id, so seeds hit tabIdTaken.
-    return [...new Set([...persistedVisibleIndex.sessionIds, ...profileIds])]
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {
