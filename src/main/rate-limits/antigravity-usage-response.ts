@@ -213,3 +213,41 @@ export function parseAntigravityUsageStdout(stdout: string): AntigravityUsageRea
   }
   return null
 }
+
+/**
+ * True when the envelope shows agy ran a model turn instead of answering a command.
+ *
+ * Why this matters: in print mode an *unrecognised* slash command is not an error — agy sends the
+ * text to the model as an ordinary prompt. On a build of agy that does not know `/usage`, polling
+ * would quietly start a conversation and spend the user's quota every cycle while Orca reported
+ * "did not report a quota". A real command reply carries an empty `conversation_id` and
+ * `num_turns: 0`; a prompt carries a conversation id and at least one turn.
+ */
+export function didRunModelTurn(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false
+  }
+  const turns = value.num_turns
+  if (typeof turns === 'number' && turns > 0) {
+    return true
+  }
+  return readString(value.conversation_id) !== null
+}
+
+/** Scans agy stdout for evidence that the quota read was answered by the model, not by a command. */
+export function stdoutShowsModelTurn(stdout: string): boolean {
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{')) {
+      continue
+    }
+    try {
+      if (didRunModelTurn(JSON.parse(trimmed))) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+  return false
+}

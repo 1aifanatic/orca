@@ -8,7 +8,7 @@ import {
   ANTIGRAVITY_USAGE_TIMEOUT_MS,
   antigravityCommandName
 } from './antigravity-usage-command'
-import { parseAntigravityUsageStdout } from './antigravity-usage-response'
+import { parseAntigravityUsageStdout, stdoutShowsModelTurn } from './antigravity-usage-response'
 
 /**
  * Observed verbatim in agy's own log when the keyring holds no session. agy exits 0 and prints this
@@ -16,6 +16,23 @@ import { parseAntigravityUsageStdout } from './antigravity-usage-response'
  * "answered nothing".
  */
 const NOT_SIGNED_IN_MARKER = 'not logged into antigravity'
+
+const UNSUPPORTED_USAGE_COMMAND_REASON =
+  'Antigravity usage is not available. This version of the Antigravity CLI answers `/usage` as a prompt instead of a command, so Orca stopped asking rather than spend quota on it. Update `agy` and restart Orca.'
+
+/**
+ * Latched once agy answers the quota read with a model turn.
+ *
+ * Why latch instead of retrying: the evidence that this agy cannot answer `/usage` is the same
+ * event that spends a turn of the user's quota. Retrying on a cadence would keep paying for the
+ * same discovery, so the probe is abandoned for the rest of the process's life.
+ */
+let usageCommandUnsupported = false
+
+/** Clears the unsupported latch. Tests only — a live process has no way back. */
+export function resetAntigravityUsageSupportForTests(): void {
+  usageCommandUnsupported = false
+}
 
 export type AntigravityUsageDependencies = {
   /** Injected so tests exercise the classification without spawning agy. */
@@ -82,6 +99,9 @@ export async function fetchAntigravityRateLimits(
   options: FetchAntigravityRateLimitsOptions = {}
 ): Promise<ProviderRateLimits> {
   const now = options.now ?? Date.now
+  if (usageCommandUnsupported) {
+    return unavailable(UNSUPPORTED_USAGE_COMMAND_REASON, 'usage-unavailable', now())
+  }
   const run = options.runCommand ?? runProcess
   const resolve = options.resolveCommand ?? resolveCommandOnLocalPath
   const platform = options.platform ?? process.platform
@@ -136,6 +156,12 @@ export async function fetchAntigravityRateLimits(
   }
 
   const reading = parseAntigravityUsageStdout(result.stdout)
+  // Why the successful read is checked first: a real reading can never be evidence of a prompt, so
+  // ordering it ahead of the turn check makes a false latch impossible.
+  if (!reading && stdoutShowsModelTurn(result.stdout)) {
+    usageCommandUnsupported = true
+    return unavailable(UNSUPPORTED_USAGE_COMMAND_REASON, 'usage-unavailable', now())
+  }
   if (!reading) {
     // Why a non-zero exit is reported only here: `runProcess` treats the exit code as data, and agy
     // exits 0 for a signed-out read, so the code only adds detail once the payload is missing.

@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
-import { fetchAntigravityRateLimits } from './antigravity-usage-fetcher'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  fetchAntigravityRateLimits,
+  resetAntigravityUsageSupportForTests
+} from './antigravity-usage-fetcher'
 import { ANTIGRAVITY_USAGE_ARGS } from './antigravity-usage-command'
 import type { ProcessResult } from '../../shared/child-process/process-spec'
 
@@ -66,6 +69,10 @@ function harness(
 }
 
 describe('fetchAntigravityRateLimits', () => {
+  beforeEach(() => {
+    resetAntigravityUsageSupportForTests()
+  })
+
   it('publishes the CLI reading as Antigravity usage', async () => {
     const result = await harness({ result: processResult({ stdout: USAGE_ENVELOPE }) }).fetch()
 
@@ -175,5 +182,69 @@ describe('fetchAntigravityRateLimits', () => {
     // 60-minute per-model window and left `weekly` null — exactly backwards (#22511).
     expect(result.session).toBeNull()
     expect(result.weekly).not.toBeNull()
+  })
+})
+
+/**
+ * Captured when agy treated `/usage` as a prompt instead of a command: a conversation was started,
+ * a turn was spent, and the account answered RESOURCE_EXHAUSTED. This is the exact shape the
+ * unsupported latch has to recognise.
+ */
+const MODEL_TURN_ENVELOPE = JSON.stringify({
+  conversation_id: '28a5ca91-301f-4050-8efc-9c82c4e64df3',
+  status: 'ERROR',
+  response: '',
+  error: 'Individual quota reached. Please upgrade your subscription to increase your limits.',
+  num_turns: 1
+})
+
+describe('agy versions that answer /usage as a prompt', () => {
+  beforeEach(() => {
+    resetAntigravityUsageSupportForTests()
+  })
+
+  it('reports the quota read as unavailable instead of as a parse failure', async () => {
+    const result = await harness({
+      result: processResult({ stdout: MODEL_TURN_ENVELOPE })
+    }).fetch()
+
+    expect(result.status).toBe('unavailable')
+    expect(result.usageMetadata?.failureKind).toBe('usage-unavailable')
+    expect(result.error).toContain('answers `/usage` as a prompt')
+  })
+
+  it('never spawns agy again once a turn was spent', async () => {
+    const h = harness({ result: processResult({ stdout: MODEL_TURN_ENVELOPE }) })
+    await h.fetch()
+    expect(h.runCommand).toHaveBeenCalledTimes(1)
+
+    // Why: the evidence costs a turn of the user's quota, so rediscovering it on a 15-minute
+    // cadence would keep paying for the same answer.
+    await h.fetch()
+    await h.fetch()
+    expect(h.runCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not latch when the usage payload parsed, whatever else the envelope says', async () => {
+    const h = harness({
+      result: processResult({ stdout: `${USAGE_ENVELOPE}\n${MODEL_TURN_ENVELOPE}` })
+    })
+    const first = await h.fetch()
+    const second = await h.fetch()
+
+    expect(first.status).toBe('ok')
+    expect(second.status).toBe('ok')
+    expect(h.runCommand).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not latch on an empty or unparsable answer', async () => {
+    const h = harness({ result: processResult({ code: 2, stdout: 'unknown flag' }) })
+    const first = await h.fetch()
+    const second = await h.fetch()
+
+    // Why: a transient failure is not evidence that the command is unsupported.
+    expect(first.status).toBe('error')
+    expect(second.status).toBe('error')
+    expect(h.runCommand).toHaveBeenCalledTimes(2)
   })
 })
