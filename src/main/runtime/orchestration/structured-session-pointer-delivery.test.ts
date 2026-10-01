@@ -70,6 +70,17 @@ describe('structured session gate facts', () => {
     })
   })
 
+  // A subagent's request is not the main agent's status, but the human it waits on is the same.
+  it("holds delivery while a subagent's request waits on a human", () => {
+    const subagentAsks = { ...pendingApproval(), observedAt: 5, agentId: 'task-1' }
+    const facts = structuredSessionGateFacts([subagentAsks, ...transcript(3)])
+    expect(facts).toEqual({ turnRunning: false, awaitingHuman: true })
+    expect(decideStructuredSessionPointerDelivery({ session: facts })).toEqual({
+      deliver: false,
+      retain: 'awaiting-human'
+    })
+  })
+
   it('reports a prompt raised mid-turn as both busy and awaiting a human', () => {
     expect(
       structuredSessionGateFacts([
