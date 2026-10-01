@@ -11,7 +11,10 @@ import {
   structuredAgentSessionCommandWasStopped,
   structuredAgentSessionStopNoteIdentity
 } from './structured-agent-session-command-turn'
-import { settledPrompt, validatePendingPrompt } from './structured-agent-session-prompt-state'
+import {
+  answerCancelOfSettledPrompt,
+  validatePendingPrompt
+} from './structured-agent-session-prompt-state'
 import {
   STOP_NOTE_CANCELLATION_REQUESTED,
   structuredAgentSessionNamedTurnScope
@@ -86,16 +89,7 @@ export async function performCancel(
   if (input.prompt) {
     const validated = validatePendingPrompt(ctx, input.prompt)
     if (!validated.ok) {
-      // Another Cancel of a prompt already cancelled: nothing is left to do.
-      return settledPrompt(ctx, input.prompt.itemId)?.prompt.resolution.state === 'cancelled'
-        ? {
-            ok: true,
-            value: {
-              ...(input.turnId !== undefined ? { turnId: input.turnId } : {}),
-              cancelled: false
-            }
-          }
-        : validated
+      return answerCancelOfSettledPrompt(ctx, { ...input, prompt: input.prompt }, validated)
     }
   }
   let cancelled = false
@@ -156,12 +150,9 @@ export async function performCancel(
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
       cancelled = true
       note = null
-    } else if (!cancelled && input.turnId !== undefined) {
-      // Nothing was left to stop: a Stop that ends nothing writes no row.
-      note = null
     } else if (!cancelled && input.prompt) {
       note = null
-    } else if (!cancelled) {
+    } else if (!cancelled && input.turnId === undefined) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
       const detail = outcome.refusal?.detail
       note = {
@@ -200,6 +191,10 @@ export async function performCancel(
     await input.stopChild?.()
     cancelled = true
     note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
+  }
+  if (!cancelled && taken === false && input.turnId !== undefined) {
+    // Nothing was left of the turn it named and nothing else ended: a Stop that ends nothing writes no row.
+    note = null
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()

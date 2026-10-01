@@ -398,6 +398,25 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
+  it('ends the child and says it was asked when the provider declined a Stop naming the live turn', async () => {
+    stopEndsSession = true
+    await handedOver()
+    events!.appendItem(
+      { provider: 'legacy', agent: 'codex', sessionId: SESSION, recordId: 'turn:turn-1' },
+      { kind: 'turn', turnId: 'turn-1', state: 'running' },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await host.flushStreamedEvents(SESSION)
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    // Ending the session stops the turn, so this Stop stopped something and writes its one note.
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
   it('keeps the child of a provider whose Stop is not a session boundary', async () => {
     await handedOver()
     cancelTurn.mockResolvedValueOnce({ cancelled: true })
@@ -416,7 +435,8 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     await laneDrained()
 
     expect(closeSession).not.toHaveBeenCalled()
-    expect(await statusRows()).toEqual([ALREADY_FINISHED])
+    // It stopped nothing, so it writes no row.
+    expect(await statusRows()).toEqual([])
   })
 
   it("ends the child when the provider's cancel of a Stop naming a turn no longer live fails", async () => {
