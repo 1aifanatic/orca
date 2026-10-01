@@ -149,16 +149,18 @@ export class ClaudeAccountRegistration {
     let createdAt = account.createdAt
     if (isUnfinishedClaudeSignIn(account) && takenByAnother) {
       const existing = selection.list().accounts.find((entry) => entry.id === takenByAnother.id)
-      if (existing?.profileReadiness === 'ready') {
+      if (existing?.profileReadiness === 'ready' && !existing.profileIdentityIssue) {
         // As before profiles: adding an account that is already signed in adds nothing.
         this.forget(accountId)
         await this.publish(target)
         throw new Error('This Claude account is already added.')
       }
-      // Why: the saved account still needs its fresh sign-in, and this new profile holds that
-      // login, so the new one takes its place, its selection and its age. Settings only.
-      createdAt = takenByAnother.createdAt
-      this.replaceAccount(takenByAnother.id, accountId)
+      // Why: a saved account still needing its fresh sign-in is replaced by this profile, which
+      // holds that login (settings only). One holding another login stays, flagged, beside it.
+      if (existing?.profileReadiness !== 'ready') {
+        createdAt = takenByAnother.createdAt
+        this.replaceAccount(takenByAnother.id, accountId)
+      }
     }
     // Why keep the label: signing an account in to a login another account owns must not take
     // that account's identity; this one then shows what it holds and is flagged instead.

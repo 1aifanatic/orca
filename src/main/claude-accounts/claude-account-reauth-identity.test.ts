@@ -174,6 +174,22 @@ it('refuses adding an account that is already saved and signed in, leaving no se
   expect(f.rows()).toEqual([['a', 'a@example.test', 'ready', null]])
 })
 
+it('adds a login whose saved account now holds another login, keeping that one flagged', async () => {
+  const f = fixture([legacy('x', 'a@example.test', 1)])
+  // A `/login` in x's terminal left x signed in as c@, so no account holds a@.
+  f.signInRow('x', 'c@example.test')
+  expect(f.rows()).toEqual([['x', 'a@example.test', 'ready', 'mismatch']])
+  f.signInAs('a@example.test')
+  await expect(f.registration.add()).resolves.toHaveProperty('accounts')
+  const added = f.settings.claudeManagedAccounts.find((entry) => entry.id !== 'x')
+  expect(f.rows()).toEqual(
+    [
+      ['x', 'a@example.test', 'ready', 'mismatch'],
+      [added?.id, 'a@example.test', 'ready', null]
+    ].sort(([l], [r]) => String(l).localeCompare(String(r)))
+  )
+})
+
 it('refuses to launch a selected account that is now signed in to another saved account', async () => {
   const f = fixture([legacy('a', 'a@example.test', 1), legacy('b', 'b@example.test', 2)])
   f.signInRow('a', 'a@example.test')
