@@ -70,16 +70,12 @@ export function readPowerShellProfileEnvAssignments(name: string, userProfile: s
 }
 
 function powerShellProfilePaths(userProfile: string): string[] {
-  // Why both: the registry names the real (often OneDrive-redirected) folder,
-  // and the default location still counts when that read fails.
-  const documentsDirs = [
-    ...new Set([readRegistryDocumentsDir(), join(userProfile, 'Documents')])
-  ].filter((dir): dir is string => Boolean(dir))
+  // Why the registry: it names the folder PowerShell loads from, which OneDrive
+  // or folder redirection may have moved; the default is only a fallback.
+  const documentsDir = readRegistryDocumentsDir() ?? join(userProfile, 'Documents')
   return POWERSHELL_EDITIONS.flatMap((edition) => [
     ...PROFILE_FILES.map((file) => join(edition.psHome(), file)),
-    ...documentsDirs.flatMap((dir) =>
-      PROFILE_FILES.map((file) => join(dir, edition.documentsSubdir, file))
-    )
+    ...PROFILE_FILES.map((file) => join(documentsDir, edition.documentsSubdir, file))
   ])
 }
 
@@ -99,8 +95,12 @@ function readRegistryDocumentsDir(): string | null {
 
 function readProfile(path: string): string | null {
   try {
-    // Why strip the BOM: PowerShell 5.1's editor saves profiles as UTF-8 with one.
-    return readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+    const bytes = readFileSync(path)
+    // Why: Windows PowerShell 5.1's `>` and Out-File write UTF-16LE with a BOM.
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+      return bytes.subarray(2).toString('utf16le')
+    }
+    return bytes.toString('utf8').replace(/^\uFEFF/, '')
   } catch {
     return null
   }

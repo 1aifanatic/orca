@@ -133,6 +133,21 @@ describe('carryRetiredSystemDefaultMirror', () => {
     expect(readSystem('.credentials.json')).toBe('user-mcp')
   })
 
+  it('respects a project ~/.codex declares inline, keeping the file valid TOML', () => {
+    mkdirSync(systemHomePath, { recursive: true })
+    const systemConfig = 'projects.\'C:\\work\' = { trust_level = "untrusted" }\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
+    writeFileSync(
+      join(runtimeHomePath, 'config.toml'),
+      '[projects.\'C:\\work\']\ntrust_level = "trusted"\n'
+    )
+
+    expect(carry()).toBe(true)
+
+    expect(readSystem('config.toml')).toBe(systemConfig)
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).not.toContain('[projects.')
+  })
+
   it("leaves a managed account's MCP credentials out of ~/.codex", () => {
     writeFileSync(join(runtimeHomePath, '.credentials.json'), 'managed-mcp')
 

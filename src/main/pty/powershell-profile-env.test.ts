@@ -69,10 +69,30 @@ describe('readPowerShellProfileEnvAssignments', () => {
     ])
   })
 
+  it('reads UTF-16LE profiles written by Windows PowerShell 5.1', () => {
+    const root = createRoot()
+    const profilePath = join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1')
+    writeProfile(profilePath, '')
+    writeFileSync(
+      profilePath,
+      Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from("$env:CODEX_HOME = 'C:\\utf16'\r\n", 'utf16le')
+      ])
+    )
+
+    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root)).toEqual(['C:\\utf16'])
+  })
+
   it('reads the registry-named Documents folder, e.g. one OneDrive redirected', () => {
     const root = createRoot()
     const documentsDir = join(root, 'OneDrive', 'Dokumente')
     registryDocumentsDir.value = documentsDir
+    // PowerShell loads only the redirected folder, so a stale default is ignored.
+    writeProfile(
+      join(root, 'me', 'Documents', 'PowerShell', 'profile.ps1'),
+      "$env:CODEX_HOME = 'C:\\stale'\n"
+    )
     writeProfile(
       join(documentsDir, 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
       "$env:CODEX_HOME = 'D:\\codex'\n"
