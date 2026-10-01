@@ -94,6 +94,7 @@ export class ClaudeAccountSelection {
     const nextActiveId =
       settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host
     const target = getClaudeSelectionTargetForAccount(account)
+    const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
     this.store.updateSettings({
       claudeManagedAccounts: nextAccounts,
       activeClaudeManagedAccountId: nextActiveId,
@@ -101,6 +102,7 @@ export class ClaudeAccountSelection {
     })
     await this.syncRuntimeAuthAfterRemoval(target)
     this.rateLimits.evictInactiveClaudeCache(accountId)
+    this.refreshUsageInBackground(wasSelected ? accountId : undefined, target)
     return this.list()
   }
 
@@ -151,10 +153,20 @@ export class ClaudeAccountSelection {
       await this.rollBackRuntimeAuth(effectiveTarget ?? { runtime: 'host' })
       throw error
     }
-    void this.rateLimits
-      .refreshForClaudeAccountChange(outgoingAccountId, effectiveTarget)
-      .catch((error) => console.warn('[claude-profile] Usage unavailable after selection:', error))
+    this.refreshUsageInBackground(outgoingAccountId, effectiveTarget)
     return this.list()
+  }
+
+  /** Bookkeeping: a usage failure never undoes the account change that triggered it. */
+  refreshUsageInBackground(
+    outgoingAccountId: string | null | undefined,
+    target: ClaudeAccountSelectionTarget | undefined
+  ): void {
+    void this.rateLimits
+      .refreshForClaudeAccountChange(outgoingAccountId ?? undefined, target)
+      .catch((error) =>
+        console.warn('[claude-profile] Usage unavailable after account change:', error)
+      )
   }
 
   // Why: a distro that no longer exists has no pointer anyone can launch, so its bookkeeping must

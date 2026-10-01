@@ -58,6 +58,10 @@ function fixture() {
     } | null> => null
   )
   const publish = vi.fn(async () => {})
+  const rateLimits = {
+    evictInactiveClaudeCache: vi.fn(),
+    refreshForClaudeAccountChange: vi.fn(async () => {})
+  }
   const provision = vi.fn(async () => {})
   const prepare = vi.fn(async (id: string) => ({
     config: {
@@ -83,7 +87,7 @@ function fixture() {
       list: () => ({ accounts: settings.claudeManagedAccounts, activeAccountId: null })
     },
     runtimeAuth: { syncForCurrentSelection: publish },
-    rateLimits: { evictInactiveClaudeCache: vi.fn() },
+    rateLimits,
     setCancel: vi.fn(),
     prepare,
     login,
@@ -99,6 +103,7 @@ function fixture() {
     prepare,
     readIdentity,
     observeIdentity,
+    rateLimits,
     registration
   }
 }
@@ -114,6 +119,13 @@ it('retains a recoverable draft when login is interrupted, then retries the same
   expect(f.settings.claudeManagedAccounts).toHaveLength(1)
   expect(f.settings.claudeManagedAccounts[0].email).toBe('fake@example.test')
   expect(f.prepare.mock.calls.every(([id]) => id === draft.id)).toBe(true)
+})
+it('refreshes active usage after a sign-in finishes', async () => {
+  const f = fixture()
+  await f.registration.add()
+  expect(f.rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith(undefined, {
+    runtime: 'host'
+  })
 })
 it('leaves no draft row when profile preparation fails before any login', async () => {
   const f = fixture()
@@ -263,6 +275,10 @@ it('retains profile files when unregistering, and keeps settings selection when 
     host: string | null
     wsl: Record<string, string | null>
   } = { host: account.id, wsl: {} }
+  const usage = {
+    evictInactiveClaudeCache: vi.fn(),
+    refreshForClaudeAccountChange: vi.fn().mockRejectedValue(new Error('usage unavailable'))
+  }
   const selection = new ClaudeAccountSelection(
     {
       getSettings: () => ({
@@ -282,10 +298,7 @@ it('retains profile files when unregistering, and keeps settings selection when 
         }
       }
     },
-    {
-      evictInactiveClaudeCache: vi.fn(),
-      refreshForClaudeAccountChange: vi.fn().mockRejectedValue(new Error('usage unavailable'))
-    },
+    usage,
     {
       syncForCurrentSelection: async () => {},
       forceMaterializeCurrentSelectionForRollback: async () => {}
@@ -293,7 +306,10 @@ it('retains profile files when unregistering, and keeps settings selection when 
   )
   await selection.select(null)
   expect(activeClaudeManagedAccountId).toBeNull()
+  await selection.select(account.id)
+  usage.refreshForClaudeAccountChange.mockClear()
   await selection.remove(account.id)
+  expect(usage.refreshForClaudeAccountChange).toHaveBeenCalledWith(account.id, { runtime: 'host' })
   expect(f.settings.claudeManagedAccounts).toEqual([])
   expect(readFileSync(credentials, 'utf8')).toBe('owned-by-fake-Claude')
 })

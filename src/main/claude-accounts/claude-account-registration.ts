@@ -25,7 +25,10 @@ export class ClaudeAccountRegistration {
         >
         updateSettings: (patch: Pick<GlobalSettings, 'claudeManagedAccounts'>) => unknown
       }
-      rateLimits: Pick<RateLimitService, 'evictInactiveClaudeCache'>
+      rateLimits: Pick<
+        RateLimitService,
+        'evictInactiveClaudeCache' | 'refreshForClaudeAccountChange'
+      >
       runtimeAuth: Pick<ClaudeRuntimeAuthService, 'syncForCurrentSelection'>
       selection: Pick<ClaudeAccountSelection, 'requireAccount' | 'list'>
       setCancel: (cancel: (() => boolean) | null) => void
@@ -124,6 +127,9 @@ export class ClaudeAccountRegistration {
     })
     rateLimits.evictInactiveClaudeCache(accountId)
     await this.publish(target)
+    void rateLimits
+      .refreshForClaudeAccountChange(undefined, target)
+      .catch((error) => console.warn('[claude-profile] Usage unavailable after sign-in:', error))
     const duplicate = findDuplicateClaudeAccount(
       store.getSettings().claudeManagedAccounts.filter((entry) => entry.id !== accountId),
       {
