@@ -6,6 +6,7 @@
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   EMPTY_STRUCTURED_AGENT_SESSION,
   type StructuredAgentSessionState
@@ -183,5 +184,124 @@ describe('a saved structured draft on relaunch', () => {
     )
 
     expect(cache.readNativeChatDraftCache(CHAT)).toBe('ship it')
+  })
+})
+
+describe('a saved terminal-agent chat draft on relaunch', () => {
+  const PANE_CHAT = 'pane:tab-1:leaf-1'
+  const PANE_KEY = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(PANE_CHAT)}`
+
+  function turn(id: string, text: string, role: 'user' | 'assistant' = 'user'): NativeChatMessage {
+    return { id, role, blocks: [{ type: 'text', text }], timestamp: null, source: 'transcript' }
+  }
+
+  /** Types a draft with the agent's transcript read as `seen`, and saves it. */
+  async function saveTerminalDraft(seen: NativeChatMessage[], text: string): Promise<void> {
+    const { cache, hook } = await relaunch()
+    renderHook(() => hook.useNativeChatPaneDraftTranscript(PANE_CHAT, 'ready', seen))
+    cache.appendNativeChatDraftNow(PANE_CHAT, { text })
+  }
+
+  async function relaunchWith(
+    phase: 'loading' | 'awaiting' | 'ready' | 'error',
+    seen: NativeChatMessage[]
+  ) {
+    const modules = await relaunch()
+    renderHook(() => modules.hook.useNativeChatPaneDraftTranscript(PANE_CHAT, phase, seen))
+    return modules.cache
+  }
+
+  // (a)
+  it('is dropped, on disk too, when the transcript shows it typed after it was saved', async () => {
+    await saveTerminalDraft([turn('u1', 'earlier')], 'ship it')
+
+    const cache = await relaunchWith('ready', [
+      turn('u1', 'earlier'),
+      turn('a1', 'ok', 'assistant'),
+      turn('u2', 'ship it')
+    ])
+
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('')
+    expect(localStorage.getItem(PANE_KEY)).toBeNull()
+  })
+
+  // (b)
+  it('is kept when the matching turn is the one it was saved after', async () => {
+    await saveTerminalDraft([turn('u1', 'ship it')], 'ship it')
+
+    const cache = await relaunchWith('ready', [turn('u1', 'ship it')])
+
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('ship it')
+  })
+
+  // (c)
+  it('waits for the transcript, then decides', async () => {
+    await saveTerminalDraft([], 'ship it')
+
+    const { cache, hook } = await relaunch()
+    const view = renderHook(
+      ({ phase, seen }) => hook.useNativeChatPaneDraftTranscript(PANE_CHAT, phase, seen),
+      {
+        initialProps: {
+          phase: 'loading' as 'loading' | 'ready',
+          seen: [] as NativeChatMessage[]
+        }
+      }
+    )
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('')
+    view.rerender({ phase: 'ready', seen: [turn('u1', 'ship it')] })
+
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('')
+    expect(localStorage.getItem(PANE_KEY)).toBeNull()
+  })
+
+  // (d) An unreadable transcript, or none behind the pane yet, proves nothing.
+  it.each(['error', 'awaiting'] as const)(
+    'is restored when the transcript is %s',
+    async (phase) => {
+      await saveTerminalDraft([], 'ship it')
+
+      const cache = await relaunchWith(phase, [])
+
+      expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('ship it')
+    }
+  )
+
+  // (e)
+  it('is kept when the transcript shows different text', async () => {
+    await saveTerminalDraft([], 'ship it')
+
+    const cache = await relaunchWith('ready', [turn('u1', 'hold it')])
+
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('ship it')
+  })
+
+  it('is kept when the turn it was saved after is gone, as after /clear', async () => {
+    await saveTerminalDraft([turn('u1', 'earlier')], 'ship it')
+
+    const cache = await relaunchWith('ready', [turn('n1', 'ship it')])
+
+    expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('ship it')
+  })
+
+  // The launch seed the input line holds comes back with the draft it was saved with.
+  it('keeps its input-line seed when it is restored', async () => {
+    const { cache, hook } = await relaunch()
+    renderHook(() => hook.useNativeChatPaneDraftTranscript(PANE_CHAT, 'ready', []))
+    cache.writeNativeChatDraftTuiInputSeed(PANE_CHAT, {
+      agent: 'claude',
+      text: 'issue',
+      createdAt: 1
+    })
+    cache.appendNativeChatDraftNow(PANE_CHAT, { text: 'issue edited' })
+
+    const next = await relaunchWith('ready', [])
+
+    expect(next.readNativeChatDraftCache(PANE_CHAT)).toBe('issue edited')
+    expect(next.readNativeChatDraftTuiInputSeed(PANE_CHAT)).toEqual({
+      agent: 'claude',
+      text: 'issue',
+      createdAt: 1
+    })
   })
 })

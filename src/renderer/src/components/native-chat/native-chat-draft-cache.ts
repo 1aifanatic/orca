@@ -15,15 +15,13 @@ import {
   resetNativeChatDraftStorageForTests,
   scheduleNativeChatDraftPersist,
   type NativeChatDraftAttachment,
-  type NativeChatDraftSentBaseline,
+  type NativeChatDraftHistoryBaseline,
   type NativeChatDraftWriteResult,
   type NativeChatTuiInputSeed,
   type PersistedNativeChatDraft
 } from './native-chat-draft-storage'
-import { draftWasSentAfterSaving, type NativeChatSentHistory } from './native-chat-draft-sent-match'
 
 export type { NativeChatDraftAttachment, NativeChatDraftWriteResult, NativeChatTuiInputSeed }
-export type { NativeChatSentHistory }
 
 /**
  * The chat a draft belongs to. A structured chat is its session, whichever pane shows it. A chat
@@ -45,8 +43,8 @@ const EMPTY_ATTACHMENTS: readonly NativeChatDraftChip[] = []
 const draftCache = new Map<string, DraftEntry>()
 // Saved drafts that can be checked against what the chat's host accepted; shown only once checked.
 const heldDrafts = new Map<string, DraftEntry>()
-// The newest host row each chat's view has seen; saved with the draft as its sent baseline.
-const latestSeenSends = new Map<string, NativeChatDraftSentBaseline>()
+// What each chat's view has seen of its history; saved with the draft.
+const latestSeenHistory = new Map<string, NativeChatDraftHistoryBaseline>()
 let hydrated = false
 
 let observingOtherWindows = false
@@ -57,7 +55,7 @@ function drafts(): Map<string, DraftEntry> {
     for (const [draftKey, draft] of loadPersistedNativeChatDrafts(
       NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
     )) {
-      if (draft.sentBaseline) {
+      if (draft.sentBaseline || draft.transcriptBaseline) {
         heldDrafts.set(draftKey, draft)
       } else {
         draftCache.set(draftKey, draft)
@@ -134,11 +132,10 @@ export function discardNativeChatDrafts(ended: {
 
 function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
   const entry = drafts().get(draftKey)
-  const sentBaseline = latestSeenSends.get(draftKey) ?? entry?.sentBaseline
   return entry
     ? {
         ...entry,
-        ...(sentBaseline ? { sentBaseline } : {}),
+        ...latestSeenHistory.get(draftKey),
         attachments: entry.attachments.flatMap(({ pending, ...attachment }) =>
           pending ? [] : [attachment]
         )
@@ -273,22 +270,22 @@ export function appendNativeChatDraftNow(
   return persistNow(draftKey)
 }
 
-export function noteNativeChatDraftLatestSend(
+export function noteNativeChatDraftHistoryBaseline(
   draftKey: string,
-  latest: NativeChatDraftSentBaseline
+  baseline: NativeChatDraftHistoryBaseline
 ): void {
-  latestSeenSends.set(draftKey, latest)
+  latestSeenHistory.set(draftKey, baseline)
 }
 
 /**
- * Shows a saved draft held at launch, unless the host accepted a message with its exact content
- * after the draft was saved: then the send happened and only its clear was lost (a crash right
- * after Enter), so the draft is dropped for good. `null` history (unreachable, or none to read)
- * restores it, since losing contact is not proof the message was sent.
+ * Shows a saved draft held at launch, unless `wasSent` finds it in the chat's history after the
+ * draft was saved: then the send happened and only its clear was lost (a crash right after
+ * Enter), so the draft is dropped for good. `null` (the history is unreachable, or there is none
+ * to read) restores it, since losing contact is not proof the message was sent.
  */
 export function settleHeldNativeChatDraft(
   draftKey: string,
-  history: NativeChatSentHistory | null
+  wasSent: ((draft: PersistedNativeChatDraft) => boolean) | null
 ): void {
   // Loads what was saved, if no view has read it yet.
   drafts()
@@ -297,13 +294,18 @@ export function settleHeldNativeChatDraft(
     return
   }
   heldDrafts.delete(draftKey)
-  if (history && draftWasSentAfterSaving(held, history)) {
+  if (wasSent?.(held)) {
     // Disk now holds whatever this window has, which no longer includes the sent text.
     persistNow(draftKey)
     return
   }
-  if (held.sentBaseline && !latestSeenSends.has(draftKey)) {
-    latestSeenSends.set(draftKey, held.sentBaseline)
+  const { sentBaseline, transcriptBaseline, tuiInputSeed } = held
+  if (!latestSeenHistory.has(draftKey)) {
+    latestSeenHistory.set(draftKey, { sentBaseline, transcriptBaseline })
+  }
+  const current = readEntry(draftKey)
+  if (tuiInputSeed && !current.tuiInputSeed) {
+    setEntry(draftKey, { ...current, tuiInputSeed })
   }
   appendNativeChatDraftNow(draftKey, { text: held.text, attachments: held.attachments })
 }
@@ -350,7 +352,7 @@ const documentCache = new Map<string, { text: string; document: JSONContent }>()
 export function clearNativeChatDraftCacheForTests(): void {
   draftCache.clear()
   heldDrafts.clear()
-  latestSeenSends.clear()
+  latestSeenHistory.clear()
   documentCache.clear()
   hydrated = false
   resetNativeChatDraftStorageForTests()

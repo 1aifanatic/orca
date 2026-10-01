@@ -1,11 +1,16 @@
 import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
 import { structuredAgentSessionSendBody } from '../../../../shared/structured-agent-session-outbox'
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type {
   NativeChatDraftSentBaseline,
   PersistedNativeChatDraft
 } from './native-chat-draft-storage'
+import {
+  nativeChatPendingContentKey,
+  nativeChatUserMessageContentKey
+} from './native-chat-pending-occurrence'
 
-/** What a chat's view has seen of its host's history. */
+/** What a structured chat's view has seen of its host's history. */
 export type NativeChatSentHistory = {
   /** The newest row seen; saved with the draft. */
   latest: NativeChatDraftSentBaseline
@@ -46,4 +51,34 @@ function sameSentMessage(left: AgentJournalMessageItem, right: AgentJournalMessa
       )
     )
   return left.role === 'user' && content(left) === content(right)
+}
+
+/**
+ * Whether a chat over a terminal agent's transcript shows the draft typed as a user turn after
+ * the last one seen when it was saved. The content key is the one a sent message's own bubble is
+ * matched to its transcript turn by.
+ */
+export function draftWasTypedAfterSaving(
+  draft: Pick<PersistedNativeChatDraft, 'text' | 'attachments' | 'transcriptBaseline'>,
+  messages: readonly NativeChatMessage[]
+): boolean {
+  const baseline = draft.transcriptBaseline
+  if (!baseline) {
+    return false
+  }
+  const userTurns = messages.filter((message) => message.role === 'user')
+  const after =
+    baseline.lastUserTurnId === null
+      ? 0
+      : userTurns.findIndex((turn) => turn.id === baseline.lastUserTurnId) + 1
+  // The turn it was saved after is gone (another session after /clear, or an older page): the
+  // order cannot be told, so the draft is kept.
+  if (after === 0 && baseline.lastUserTurnId !== null) {
+    return false
+  }
+  const draftKey = nativeChatPendingContentKey({
+    text: draft.text,
+    imagePaths: draft.attachments.map(({ path }) => path)
+  })
+  return userTurns.slice(after).some((turn) => nativeChatUserMessageContentKey(turn) === draftKey)
 }

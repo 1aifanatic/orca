@@ -3,6 +3,7 @@
 // put-back is saved at once, so a crash right after Enter cannot bring back text already sent.
 
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import type { NativeChatLaunchDraftTurnBaseline } from './native-chat-launch-draft-resolution'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 
 /**
@@ -39,7 +40,15 @@ export type PersistedNativeChatDraft = {
   attachments: readonly NativeChatDraftAttachment[]
   tuiInputSeed?: NativeChatTuiInputSeed
   sentBaseline?: NativeChatDraftSentBaseline
+  /** A chat over a terminal agent: its transcript's user turns as seen when the draft was saved. */
+  transcriptBaseline?: NativeChatLaunchDraftTurnBaseline
 }
+
+/** What a chat's view has seen of its history, saved with the draft as it is written. */
+export type NativeChatDraftHistoryBaseline = Pick<
+  PersistedNativeChatDraft,
+  'sentBaseline' | 'transcriptBaseline'
+>
 
 export function isEmptyNativeChatDraft(draft: PersistedNativeChatDraft): boolean {
   return draft.text === '' && draft.attachments.length === 0 && !draft.tuiInputSeed
@@ -212,6 +221,19 @@ function parseSentBaseline(value: unknown): { sentBaseline?: NativeChatDraftSent
     : {}
 }
 
+function parseTranscriptBaseline(value: unknown): {
+  transcriptBaseline?: NativeChatLaunchDraftTurnBaseline
+} {
+  if (!isRecord(value)) {
+    return {}
+  }
+  const { userTurnCount, lastUserTurnId } = value
+  return typeof userTurnCount === 'number' &&
+    (typeof lastUserTurnId === 'string' || lastUserTurnId === null)
+    ? { transcriptBaseline: { userTurnCount, lastUserTurnId } }
+    : {}
+}
+
 function parseStoredDraft(
   raw: string | null
 ): (PersistedNativeChatDraft & { savedAt: number }) | null {
@@ -223,7 +245,7 @@ function parseStoredDraft(
     if (!isRecord(value)) {
       return null
     }
-    const { text, attachments, tuiInputSeed, sentBaseline, savedAt } = value
+    const { text, attachments, tuiInputSeed, sentBaseline, transcriptBaseline, savedAt } = value
     if (typeof text !== 'string' || !Array.isArray(attachments)) {
       return null
     }
@@ -233,7 +255,8 @@ function parseStoredDraft(
         .map(parseAttachment)
         .filter((attachment): attachment is NativeChatDraftAttachment => attachment !== null),
       ...parseTuiInputSeed(tuiInputSeed),
-      ...parseSentBaseline(sentBaseline)
+      ...parseSentBaseline(sentBaseline),
+      ...parseTranscriptBaseline(transcriptBaseline)
     }
     return isEmptyNativeChatDraft(draft)
       ? null
