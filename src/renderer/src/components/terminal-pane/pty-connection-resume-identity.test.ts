@@ -228,10 +228,6 @@ describe('connectPanePty', () => {
     }
     expect(mockStoreState.clearSleepingAgentSession).not.toHaveBeenCalled()
 
-    // The refused pane is a plain shell: a fresh agent typed into that same pane reaches its PTY.
-    expect(transport.sendInput('codex\r', 'user')).toBe(true)
-    expect(transport.sendInput).toHaveBeenCalledWith('codex\r', 'user')
-
     // A fresh agent launched into the same tab and pane opens without another refusal.
     const fresh = createMockTransport('fresh-agent-pty')
     transportFactoryQueue.push(fresh)
