@@ -128,7 +128,7 @@ describe.skipIf(process.platform === 'win32')('orca status reports its caller ad
       agentSessionId: SESSION,
       terminalHandle: 'term_tui'
     })
-    expect(await status(false)).toContain(`caller: session:${SESSION}`)
+    expect(await status(false)).toContain(`caller: orca_session_id:${SESSION}`)
   })
 
   it('asks the host about the terminal handle a PTY agent carries', async () => {
