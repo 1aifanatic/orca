@@ -22,7 +22,7 @@ export function isMirroredAgentStatusOwnedBy(
 }
 
 export function toMirroredPaneKey(
-  surface: TerminalSurface,
+  surface: Pick<TerminalSurface, 'parentTabId' | 'leafId'>,
   leafId = surface.leafId
 ): string | null {
   if (!isTerminalLeafId(leafId)) {
