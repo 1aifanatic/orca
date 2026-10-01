@@ -13,37 +13,6 @@ function storageKey(sessionId: string): string {
   return `${OUTBOX_PREFIX}${encodeURIComponent(sessionId)}`
 }
 
-const RETIRED_PREFIX = 'orca:desktopStructuredAgentSessionRetiredIds:v1:'
-// Bounded: an id matters only while its rejected row is still near the chat's end.
-const MAX_RETIRED_IDS = 200
-
-/** The ids this desktop's Retry sent again under a new id, on a host that cannot queue a message
- *  again in place. Their rejected rows stay in the journal; the chat here never draws them again. */
-export function readRetiredStructuredAgentSessionMessageIds(
-  sessionId: string
-): ReadonlySet<string> {
-  try {
-    const value: unknown = JSON.parse(
-      localStorage.getItem(`${RETIRED_PREFIX}${encodeURIComponent(sessionId)}`) ?? '[]'
-    )
-    return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [])
-  } catch {
-    return new Set()
-  }
-}
-
-export function retireStructuredAgentSessionMessageId(sessionId: string, id: string): void {
-  const ids = [...readRetiredStructuredAgentSessionMessageIds(sessionId), id]
-  try {
-    localStorage.setItem(
-      `${RETIRED_PREFIX}${encodeURIComponent(sessionId)}`,
-      JSON.stringify(ids.slice(-MAX_RETIRED_IDS))
-    )
-  } catch {
-    // Best effort: unsaved, the old row shows again as a read-only "not sent" message.
-  }
-}
-
 export function readOutbox(
   sessionId: string,
   options: { recoverDispatching?: boolean } = {}

@@ -8,8 +8,7 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import {
   commitStructuredAgentSessionOutbox,
-  getStructuredAgentSessionOutbox,
-  retireStructuredAgentSessionMessageId
+  getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 
 export function retryStructuredAgentSessionOutboxEntry(args: {
@@ -50,10 +49,7 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
     )
     if (!commitStructuredAgentSessionOutbox(sessionId, rotated, { onlyIfSaved: true })) {
       setError('Message could not be saved to the outbox')
-      return
     }
-    // The rejected original stays in the journal; this chat never draws it beside its resend.
-    retireStructuredAgentSessionMessageId(sessionId, clientMessageId)
     return
   }
   const retryAfterUnknownSubmittedAt =
