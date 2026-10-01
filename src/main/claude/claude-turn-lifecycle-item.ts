@@ -45,14 +45,15 @@ export type ClaudeTurnEnd = {
 export function claudeTurnEndForResult(
   message: Record<string, unknown>,
   completedAt: number,
-  stoppedByPerson = false
+  leftToStop = false
 ): ClaudeTurnEnd {
-  const outcome = claudeResultOutcome(message, stoppedByPerson)
+  const outcome = claudeResultOutcome(message, leftToStop)
   const durationMs = message.duration_ms
   return {
-    state: outcome === 'cancellation' ? 'interrupted' : 'completed',
+    // No verdict: an interrupted end, which a person's Stop of it makes their cancellation.
+    state: outcome === undefined || outcome === 'cancellation' ? 'interrupted' : 'completed',
     completedAt,
-    outcome,
+    ...(outcome !== undefined ? { outcome } : {}),
     ...(typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0
       ? { durationMs }
       : {})

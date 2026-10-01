@@ -31,20 +31,28 @@ type TurnEndState = Pick<
   'items' | 'queuePauseMarks' | 'latestPersonTurnSequence'
 >
 
+/** Whether the latest Stop is a person's that names turn `turnId` or names none: an end that gives
+ *  no verdict of its own is then theirs to decide, here, where its row is built. */
+export function personStopMayNameTurn(stop: JournalLatestStop | null, turnId: string): boolean {
+  return (
+    stop !== null &&
+    stopIsAPersons(stop.event.reason) &&
+    (stop.event.turnId === undefined || stop.event.turnId === turnId)
+  )
+}
+
 /** Whether `stop` makes the end of turn `turnId` a person's cancellation: a person's Stop or close
- *  that named that turn (`opened`: or named none, and stopped the turn item `itemId` opened). */
-export function stopIsTurnCancellation(
-  stop: JournalLatestStop | null,
+ *  that named that turn, or named none and stopped the turn item `itemId` opened. */
+function stopIsTurnCancellation(
+  stop: JournalLatestStop,
   turnId: string,
-  opened?: { state: TurnEndState; itemId: string }
+  state: TurnEndState,
+  itemId: string
 ): boolean {
-  if (stop === null || !stopIsAPersons(stop.event.reason)) {
-    return false
-  }
-  if (stop.event.turnId !== undefined || !opened) {
-    return stop.event.turnId === turnId
-  }
-  return turnlessStopStopped(opened.state, stop, opened.itemId)
+  return (
+    personStopMayNameTurn(stop, turnId) &&
+    (stop.event.turnId !== undefined || turnlessStopStopped(state, stop, itemId))
+  )
 }
 
 /** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
@@ -93,7 +101,7 @@ export function turnEndAfterStop(
     return body
   }
   const stop = state.queuePauseMarks.latestStop
-  if (!stop || !stopIsTurnCancellation(stop, body.turnId, { state, itemId })) {
+  if (!stop || !stopIsTurnCancellation(stop, body.turnId, state, itemId)) {
     return body
   }
   // An exit the provider saw before the Stop was news, whenever its end is written.

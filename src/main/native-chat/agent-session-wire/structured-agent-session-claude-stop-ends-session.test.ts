@@ -362,6 +362,28 @@ it('reads a Stop pressed before Claude echoed the send as interrupted, not as a 
   expect(await agentStatus()).toMatchObject({ mainAgent: { outcome: 'cancellation' } })
 })
 
+// CLIs before 2.1.91 end an interrupted turn with an error result that names no reason.
+it("reads an older CLI's error end after a Stop pressed before the echo as interrupted, not failed", async () => {
+  const connection = claude.connections[0]!
+  const { terminal_reason: _reason, ...olderResult } = INTERRUPTED_RESULT
+  claude.routes.interrupt = () => {
+    setTimeout(() => {
+      const written = connection.sent.find((message) => message.type === 'user')!
+      frame(connection, { ...written, uuid: written.uuid })
+      frame(connection, olderResult)
+      frame(connection, { type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    }, 5)
+    return { still_queued: [], cancelled: [] }
+  }
+  await sendUnechoed(connection)
+
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
+
+  expect(await turnOutcome()).toBe('cancellation')
+  expect(await agentStatus()).toMatchObject({ mainAgent: { outcome: 'cancellation' } })
+})
+
 it('ends the child once the grace runs out when Claude says nothing after a Stop before the echo', async () => {
   const connection = claude.connections[0]!
   const eventsAtClose = stopEventsAtClose(connection)

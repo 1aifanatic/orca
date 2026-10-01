@@ -52,11 +52,11 @@ export function isSettledClaudeResultKind(kind: string): boolean {
  */
 export function claudeResultFailure(
   message: Record<string, unknown>,
-  stoppedByPerson = false
+  leftToStop = false
 ): { text: string | null } | null {
   // A cancellation is not a fault and earns no error row; the outcome classifier
   // owns that distinction so this reader cannot drift from the turn's verdict.
-  if (claudeResultOutcome(message, stoppedByPerson) !== 'failure') {
+  if (claudeResultOutcome(message, leftToStop) !== 'failure') {
     return null
   }
   const result = claudeText(message.result)?.trim()
