@@ -6,6 +6,11 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 
 const OUTBOX_PREFIX = 'orca:desktopStructuredAgentSessionOutbox:v1:'
 
@@ -29,6 +34,30 @@ export function readRetiredStructuredAgentSessionMessageIds(
     return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [])
   } catch {
     return new Set()
+  }
+}
+
+/** The journal's sends, and their rows, less those this desktop retired: what this chat draws and
+ *  words. Both go: a row whose send is missing would be drawn as a delivered message. */
+export function withoutRetiredStructuredAgentSessionMessages(
+  journal: {
+    items: readonly AgentJournalRenderItem[]
+    submissions: readonly AgentJournalSubmission[]
+  },
+  retired: ReadonlySet<string>
+): {
+  items: readonly AgentJournalRenderItem[]
+  submissions: readonly AgentJournalSubmission[]
+} {
+  if (retired.size === 0) {
+    return journal
+  }
+  const keys = new Set([...retired].map(agentJournalSubmissionKey))
+  return {
+    items: journal.items.filter((item) => !keys.has(item.itemId)),
+    submissions: journal.submissions.filter(
+      (submission) => !retired.has(submission.clientMessageId)
+    )
   }
 }
 
