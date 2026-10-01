@@ -43,7 +43,7 @@ export function NativeChatCopyOrcaSessionIdMenuItem({
           )}
         </DropdownMenuItem>
       </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8} className="max-w-[220px] text-pretty">
+      <TooltipContent side="right" sideOffset={8} className="max-w-[220px]">
         {translate(
           'components.native-chat.contextMenu.orcaSessionIdTooltip',
           "Orca's ID for this chat, separate from agent CLIs' own session IDs. Agents use it to refer to each other through Orca."

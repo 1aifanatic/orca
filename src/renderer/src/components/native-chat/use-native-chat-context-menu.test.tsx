@@ -56,7 +56,7 @@ vi.mock('@/i18n/i18n', () => ({
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
 
-const tooltips = vi.hoisted(() => ({ list: [] as ReactNode[] }))
+const tooltips = vi.hoisted((): { list: ReactNode[] } => ({ list: [] }))
 vi.mock('@/components/ui/tooltip', () => {
   const Pass = ({ children }: { children?: ReactNode }) => children
   return {
