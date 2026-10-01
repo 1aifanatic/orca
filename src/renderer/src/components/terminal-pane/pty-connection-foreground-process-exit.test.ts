@@ -232,7 +232,7 @@ describe('connectPanePty process-exit retirement', () => {
       agentEvidence: 'process-read'
     })
 
-    const ended = { ...owner, ended: true }
+    const ended = { ...owner, ended: true } satisfies AgentProcessPresence
     mockStoreState.agentPresenceByPaneKey = { [cacheKey]: { presence: ended, receivedAt: 2 } }
     const { publishAgentPresence } = await import('@/lib/agent-presence-transitions')
     publishAgentPresence(cacheKey, ended)
