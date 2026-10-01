@@ -157,7 +157,11 @@ describe('Claude live prompt ownership', () => {
       throw new Error('expected the question card')
     }
 
-    await adapter.dismissPrompt({
+    const dismiss = adapter.dismissPrompt
+    if (!dismiss) {
+      throw new Error('expected Claude to dismiss a card')
+    }
+    await dismiss({
       sessionId: 'session-1',
       itemId: card,
       fence: 7,

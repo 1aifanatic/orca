@@ -12,6 +12,8 @@ import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-se
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
+import type { AgentStatusStructuredSessionSubject } from '../../../shared/agent-status-subject'
+import { AgentHookServer } from '../../agent-hooks/server'
 import {
   ClaudeControlRequestError,
   runClaudeControl
@@ -51,6 +53,9 @@ let queued: string[]
 let claude: ReturnType<typeof fakeClaude>
 let events: ClaudeStructuredSessionEvent[]
 let sinkErrors: unknown[]
+// The host's status row and child records, as the app's hook server holds them.
+let server: AgentHookServer
+let statusSubject: AgentStatusStructuredSessionSubject | undefined
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-stop-ends-session-'))
@@ -58,6 +63,8 @@ beforeEach(async () => {
   queued = []
   events = []
   sinkErrors = []
+  server = new AgentHookServer()
+  statusSubject = undefined
   claude = fakeClaude({
     replayUuid: null,
     routes: {
@@ -87,6 +94,8 @@ beforeEach(async () => {
       }
     },
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
+    onChildWorkEvidence: (sessionId, evidence) =>
+      host.publishChildWorkEvidence(sessionId, evidence),
     openConnection: claude.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW
@@ -99,6 +108,16 @@ beforeEach(async () => {
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
     onEventSinkError: ({ error }) => sinkErrors.push(error),
+    statusSink: {
+      publish: (summary, subject) => {
+        statusSubject = subject
+        server.ingestStructuredStatus(summary, subject)
+      },
+      forget: (subject) => server.dropStructuredStatus(subject),
+      publishChildWork: (subject, evidence, provider) =>
+        server.ingestStructuredChildWork(subject, evidence, provider),
+      readChildWork: (subject) => server.getStructuredChildWorkViews(subject)
+    },
     now: () => NOW
   })
   const params = hostTestAttachParams(null, {
@@ -271,6 +290,10 @@ async function sendUnechoed(connection: FakeConnection): Promise<string> {
   return clientMessageId
 }
 
+function childRecords() {
+  return statusSubject ? server.getStructuredChildWorkViews(statusSubject) : []
+}
+
 async function agentStatus() {
   await host.flushStreamedEvents(SESSION)
   const { items, submissions } = await host.journalSnapshot(SESSION)
@@ -282,8 +305,8 @@ async function agentStatus() {
   return summary.status
     ? structuredAgentSessionAgentStatus({
         status: summary.status,
-        backgroundTasks: undefined,
-        turnOutcome: summary.turnOutcome
+        turnOutcome: summary.turnOutcome,
+        childWork: childRecords()
       })
     : null
 }
@@ -418,15 +441,25 @@ it('ends background work Claude runs when the Stop ends the child', async () => 
     task_type: 'local_agent',
     is_backgrounded: true
   })
-  expect(adapter.backgroundTaskState(SESSION)).toMatchObject({ state: 'monitoring' })
+  const background = { providerId: 'background-1', kind: 'agent' }
+  // The host's child record, which the strip, the sidebar and Monitoring all read.
+  expect(childRecords()).toEqual([
+    expect.objectContaining({ ...background, state: 'working', membership: 'live' })
+  ])
 
   await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   frame(connection, INTERRUPTED_RESULT)
   await laneDrained()
-
-  // The work ran inside Claude's process, so it ends with it, and nothing holds it any more.
+  // The work ran inside Claude's process, so it ends with it: its record settles, and the chat
+  // reads done, Interrupted, with nothing left for Monitoring.
+  expect(childRecords()).toEqual([
+    expect.objectContaining({ ...background, state: 'done', membership: 'settled' })
+  ])
+  expect(await agentStatus()).toEqual({
+    state: 'done',
+    mainAgent: { state: 'done', outcome: 'cancellation' }
+  })
   expect(connection.closed).toBe(true)
-  expect(adapter.backgroundTaskState(SESSION)).toBeUndefined()
 })
 
 it('starts a new child for the next send after a Stop, on the same Claude conversation', async () => {
