@@ -315,6 +315,31 @@ describe('a failure is logged, never thrown (S1)', () => {
       expect.objectContaining({ error: expect.any(Error) })
     )
   })
+
+  it('ends the missing-row phase, logged, when the chats it owes cannot be read', async () => {
+    const rig = await newRig()
+    await createChats(rig, ['session-rowless'], { listed: false })
+    await rig.crash()
+    openTestJournalHostDatabase(rig.root).db.prepare('DELETE FROM journal_session_state').run()
+    await rig.boot()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const store = {
+      getRecord: () => {
+        throw new Error('records unreadable')
+      },
+      listRecords: () => rig.store.listRecords()
+    }
+
+    await runToEnd(rig, copyJob(rig, { listedIds: [], store }))
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('reading chats without a status failed'),
+      expect.any(Error)
+    )
+    // It ended as a job that finished, not one a failure stopped.
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('old chat files copied'), {})
+  })
 })
 
 describe('what the job never touches (T13, T14, T18)', () => {

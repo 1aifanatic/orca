@@ -286,4 +286,37 @@ describe('starting and stopping (T17b, T6)', () => {
     expect(database.importsAborted).toBe(true)
     expect(hasPerChatFile(rig, 'session-a')).toBe(true)
   })
+
+  it('logs a start that fails, and startup goes on', async () => {
+    const rig = await newRig()
+    await createChats(rig, ['session-rowless'], { listed: false })
+    await rig.crash()
+    db(rig).prepare('DELETE FROM journal_session_state').run()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const control = createStructuredAgentSessionPerChatFileCopyControl({
+      database: openTestJournalHostDatabase(rig.root),
+      store: {
+        getRecord: () => {
+          throw new Error('records unreadable')
+        },
+        listRecords: () => []
+      },
+      serialize: async (_sessionId, task) => task(),
+      openJournal: () => undefined,
+      settleCopied: async () => undefined,
+      isHostChatWorkActive: () => false,
+      isDisposed: () => false,
+      now: () => 0,
+      appVersion: '1.0.0'
+    })
+
+    expect(() =>
+      control.start({ listedIds: [], isRuntimeChatWorkActive: () => false })
+    ).not.toThrow()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('starting the copy of old chat files failed'),
+      expect.any(Error)
+    )
+    await control.stop()
+  })
 })
