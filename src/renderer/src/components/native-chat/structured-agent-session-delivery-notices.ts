@@ -63,20 +63,27 @@ function startRetryingNoticeText(submission: AgentJournalSubmission, agentName: 
   ])
 }
 
-/** The facts the chat's loaded start-failure rows state. */
+/** A loaded start-failure row an older host wrote: the failure it states, and when. */
+export type StatedStartFailure = {
+  itemId: string
+  fact: AgentSessionFailureFact
+  observedAt: number
+}
+
+/** What the chat's loaded start-failure rows state. */
 export function structuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[]
-): AgentSessionFailureFact[] {
-  const facts: AgentSessionFailureFact[] = []
+): StatedStartFailure[] {
+  const stated: StatedStartFailure[] = []
   for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
       if (fact) {
-        facts.push(fact)
+        stated.push({ itemId: item.itemId, fact, observedAt: item.observedAt })
       }
     }
   }
-  return facts
+  return stated
 }
 
 /** Whether two facts are one failure: a start's row and the messages it rejected share one. */
@@ -97,15 +104,37 @@ export function sameAgentSessionFailureFact(
   )
 }
 
-/** Whether a loaded start-failure row already states this failure. Matching is identity, not
+/** Whether one of these start-failure rows already states this failure. Matching is identity, not
  *  wording: what this build can read is enough. */
 export function agentSessionFailureStatedByStartRow(
   failure: unknown,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly StatedStartFailure[]
 ): boolean {
   const fact = readAgentSessionFailureFact(failure)
   return (
-    fact !== undefined && startFailures.some((stated) => sameAgentSessionFailureFact(stated, fact))
+    fact !== undefined &&
+    startFailures.some((stated) => sameAgentSessionFailureFact(stated.fact, fact))
+  )
+}
+
+/** Whether the row of the start that rejected this message already says why: the same failure,
+ *  written after the message was sent and no later than its rejection, as the older host wrote
+ *  both. An older row with an equal failure is another start's. */
+function rejectionStatedByItsStartRow(
+  recorded: AgentJournalSubmission | undefined,
+  startFailures: readonly StatedStartFailure[]
+): boolean {
+  const resolvedAt = recorded?.resolvedAt
+  return (
+    recorded !== undefined &&
+    resolvedAt !== null &&
+    resolvedAt !== undefined &&
+    agentSessionFailureStatedByStartRow(
+      recorded.rejection,
+      startFailures.filter(
+        ({ observedAt }) => observedAt >= recorded.submittedAt && observedAt <= resolvedAt
+      )
+    )
   )
 }
 
@@ -113,7 +142,7 @@ function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
   recorded: AgentJournalSubmission | undefined,
-  startFailures: readonly AgentSessionFailureFact[],
+  startFailures: readonly StatedStartFailure[],
   failedHere: ReadonlySet<string>
 ): string {
   // A send attempted before a Stop and then interrupted may already be with the host.
@@ -139,10 +168,7 @@ function deliveryNoticeText(
   if (structuredAgentSessionEntryHeldForRetry(entry) && !failedHere.has(entry.clientMessageId)) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
-  if (
-    entry.state === 'rejected' &&
-    agentSessionFailureStatedByStartRow(recorded?.rejection, startFailures)
-  ) {
+  if (entry.state === 'rejected' && rejectionStatedByItsStartRow(recorded, startFailures)) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
   return agentSessionWriteNoticeText(
@@ -164,7 +190,7 @@ export function structuredAgentSessionDeliveryNotices(
    *  whose queued ones may be waiting out a failed start. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
-  startFailures: readonly AgentSessionFailureFact[],
+  startFailures: readonly StatedStartFailure[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
   failedHere: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
