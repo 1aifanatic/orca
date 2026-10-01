@@ -16,6 +16,7 @@ import {
 } from './windows-install-dir-acl-recovery'
 import { logStartupMilestone } from './startup-diagnostics'
 import { notifyMainWindowBecameVisible } from '../window/main-window-visibility'
+import { installRendererGpuStallWatchdog } from '../window/renderer-gpu-stall-watchdog'
 import { setTrayAttention } from '../tray/system-tray'
 import {
   createSystemTrayDeferred,
@@ -183,6 +184,7 @@ export function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}
       recordCrashBreadcrumb('renderer_reload_requested', { ignoreCache })
   })
   state.mainWindow = window
+  const disposeGpuStallWatchdog = installRendererGpuStallWatchdog(window)
   window.on('show', resumeSyntheticTitleSpinnerTimer)
   window.on('restore', resumeSyntheticTitleSpinnerTimer)
   window.on('hide', stopSyntheticTitleSpinnerTimer)
@@ -203,6 +205,7 @@ export function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}
       })
   })
   window.on('closed', () => {
+    disposeGpuStallWatchdog()
     if (state.mainWindow === window) {
       state.mainWindow = null
     }
