@@ -152,6 +152,22 @@ function interruptFailure(failure: 'internal error' | 'unanswered'): Error {
     : new CodexAppServerTimeoutError('codex app-server turn/interrupt exceeded 30000ms')
 }
 
+/** The journal's writes wait a moment, so frames Orca received are not yet in the journal. */
+function holdJournalWrites(): void {
+  const journal = host['sessions'].get(SESSION)!.journal
+  const released = new Promise((resolve) => setTimeout(resolve, 20))
+  const appendItem = journal.appendItem.bind(journal)
+  const appendLifecycleBatch = journal.appendLifecycleBatch.bind(journal)
+  vi.spyOn(journal, 'appendItem').mockImplementation(async (...args) => {
+    await released
+    return appendItem(...args)
+  })
+  vi.spyOn(journal, 'appendLifecycleBatch').mockImplementation(async (...args) => {
+    await released
+    return appendLifecycleBatch(...args)
+  })
+}
+
 /** Codex picked the follow-up's turn and answered the send, and has not started it. */
 async function followUpUnopened(): Promise<void> {
   const sent = await send('and then this')
@@ -331,6 +347,7 @@ describe('a Codex Stop whose interrupt failed', () => {
   it("decides on Codex's frames received before the interrupt failed, not on the journal's last write", async () => {
     await runningTurn()
     codex.routes['turn/interrupt'] = () => {
+      holdJournalWrites()
       turns.end('completed')
       notify('turn/started', { threadId: THREAD, turn: { id: 'turn-2', status: 'inProgress' } })
       throw interruptFailure('internal error')
