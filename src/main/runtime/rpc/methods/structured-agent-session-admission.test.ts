@@ -1,7 +1,7 @@
 // The host's own structured-chat setting is its user's launch preference, not admission control:
 // a paired client that can read structured sessions reaches every method whatever that setting says.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
@@ -184,5 +184,44 @@ describe('a client that leaves the launch mode to the host', () => {
     const response = await call(create.method, create.params, RELEASED_PHONE, SETTING_OFF)
 
     expect(response).toMatchObject({ ok: true })
+  })
+})
+
+// A paired client's picker shows the saved selection create will start the chat with.
+describe("createSupport's launch seed", () => {
+  const SEED = { model: 'opus', effort: 'high' }
+
+  it('carries the seed create will use when the chat is supported', async () => {
+    const seedOptions = vi.fn(() => SEED)
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      MODE_CHOOSING_CLIENT,
+      { ...SETTING_ON, structuredAgentSessionLaunchSeedOptions: seedOptions }
+    )
+
+    expect(response).toMatchObject({ ok: true, result: { supported: true, seedOptions: SEED } })
+    expect(seedOptions).toHaveBeenCalledWith('codex')
+  })
+
+  it('carries none when the chat is not supported', async () => {
+    const seedOptions = vi.fn(() => SEED)
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      MODE_CHOOSING_CLIENT,
+      {
+        ...SETTING_ON,
+        getStructuredAgentSessionCreateSupport: vi.fn(async () => ({
+          supported: false,
+          reason: 'wsl'
+        })),
+        structuredAgentSessionLaunchSeedOptions: seedOptions
+      }
+    )
+
+    expect(response).toMatchObject({ ok: true, result: { supported: false, reason: 'wsl' } })
+    expect(response).not.toMatchObject({ result: { seedOptions: expect.anything() } })
+    expect(seedOptions).not.toHaveBeenCalled()
   })
 })
