@@ -122,12 +122,16 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
     return false
   }
   // Why move, not copy: once ~/.codex holds a table, a later mirror pass takes it
-  // from there and a removal the user makes there sticks. Pruning every table it
-  // holds verbatim keeps an interrupted move retryable; a table it names
-  // differently stays, since a retained pane still runs on the mirror's version.
+  // from there and a removal the user makes there sticks; pruning everything it
+  // holds keeps an interrupted move retryable. A project it names differently
+  // stays, so a retained pane keeps its own revocation; an MCP server it names
+  // goes, since the mirror merge already prefers ~/.codex's version.
   const heldBlocks = new Set(getTomlSections(nextConfig).map(({ block }) => block.trim()))
-  const owned = getTomlSections(runtimeConfig).filter(
-    ({ header, block }) => isCarriedTable(header) && heldBlocks.has(block.trim())
+  const nextOwns = readTableOwnership(nextConfig)
+  const owned = getTomlSections(runtimeConfig).filter(({ header, block }) =>
+    isRuntimeProjectTomlSection(header)
+      ? heldBlocks.has(block.trim())
+      : getMcpServerTomlSectionName(header) !== null && nextOwns(header)
   )
   return (
     owned.length === 0 ||
