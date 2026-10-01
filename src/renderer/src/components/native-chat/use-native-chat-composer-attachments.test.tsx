@@ -478,7 +478,7 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
-  it('excludes a pending chip from the scope cache while a settled chip persists', async () => {
+  it('keeps a pending chip and its preview in the pane, out of the shared draft', async () => {
     const probe = await renderProbe('pty-1')
     let pendingId: string | null = null
     act(() => {
@@ -491,7 +491,10 @@ describe('useNativeChatComposerAttachments', () => {
     const cached = readNativeChatDraftAttachments('pty-1')
     expect(cached.some((attachment) => attachment.id === pendingId)).toBe(false)
     expect(cached).toMatchObject([{ path: '/tmp/settled.png' }])
-    expect(cached[0]?.previewUrl).toBeUndefined()
+    expect(cached[0]).not.toHaveProperty('previewUrl')
+    expect(probe.latest().imageAttachments).toContainEqual(
+      expect.objectContaining({ id: pendingId, previewUrl: 'blob:preview-1', pending: true })
+    )
     act(() => probe.root.unmount())
   })
 
