@@ -14,6 +14,7 @@ import { parseJournalRow, type JournalRow } from './journal-row-schema'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionFailedStartIds } from '../../../shared/structured-agent-session-latest-request'
 import { isRequeueableAgentJournalSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { nextDeliverableSubmission } from '../agent-session-wire/structured-agent-session-start-attempt-failure'
 
 const EPOCH = 'epoch-1'
 
@@ -267,4 +268,47 @@ describe('a waiting message rejected before any handover', () => {
       expect(submission && isRequeueableAgentJournalSubmission(submission)).toBe(true)
     }
   )
+})
+
+// A Retry queues the message again behind what was queued before it: it is drawn where it now waits,
+// in the order the queue sends.
+describe('a message queued again by its Retry', () => {
+  const sent = (clientMessageId: string, seq: number): JournalRow => ({
+    ...accepted,
+    clientMessageId,
+    payloadFingerprint: `fp_${clientMessageId}`,
+    ...base(seq)
+  })
+  const dispatch = (clientMessageId: string, seq: number, fields: Record<string, unknown>) =>
+    fromDisk({
+      kind: 'dispatch',
+      clientMessageId,
+      providerItemId: null,
+      reason: null,
+      ...fields,
+      ...base(seq)
+    })
+
+  it('is drawn behind a message queued before the Retry, and that one goes first', () => {
+    const view = renderJournalState(
+      fold([
+        sent('cm_1', 1),
+        dispatch('cm_1', 2, {
+          state: 'rejected',
+          reason: 'Codex could not start.',
+          rejection: { kind: 'providerStartFailed' }
+        }),
+        sent('cm_2', 3),
+        dispatch('cm_1', 4, { state: 'pending', requeued: true })
+      ])
+    )
+
+    expect(view.items.map((entry) => entry.itemId)).toEqual([
+      agentJournalSubmissionKey('cm_2'),
+      agentJournalSubmissionKey('cm_1')
+    ])
+    expect(
+      nextDeliverableSubmission({ submissions: () => view.submissions }, 10_000)
+    ).toMatchObject({ clientMessageId: 'cm_2' })
+  })
 })

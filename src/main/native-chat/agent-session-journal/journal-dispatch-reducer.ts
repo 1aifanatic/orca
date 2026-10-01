@@ -28,8 +28,11 @@ import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
  *  queued again under its own id, accepted anew at the Retry's row: never handed over, no failure,
  *  no booked try. Its acceptance moves because every "accepted before" rule — what an earlier
  *  process left queued, what a close or Stop took, what a stop it waits on precedes — must read the
- *  Retry as the person's latest ask. Any other row for a settled message still changes nothing. */
+ *  Retry as the person's latest ask, and it is drawn there too, so it shows behind messages queued
+ *  before the Retry, in the order they go. Any other row for a settled message still changes
+ *  nothing. */
 function requeueRejectedSubmission(
+  state: JournalReducerState,
   submission: AgentJournalSubmission | undefined,
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
@@ -38,6 +41,7 @@ function requeueRejectedSubmission(
   }
   submission.fence = row.fence
   submission.acceptedSequence = row.seq
+  placeQueuedMessageAt(state, submission, row)
   submission.dispatchState = 'pending'
   submission.providerItemId = null
   submission.reason = null
@@ -54,7 +58,7 @@ export function applyJournalDispatchRow(
 ): void {
   const submission = state.submissions.get(row.clientMessageId)
   if (row.requeued === true) {
-    requeueRejectedSubmission(submission, row)
+    requeueRejectedSubmission(state, submission, row)
     return
   }
   // Shared with the queued-draft returned hook: a row ignored here must not alter a draft.
