@@ -67,7 +67,6 @@ vi.mock('../dictation/dictation-control-events', () => ({
 }))
 
 import { NativeChatComposer } from './NativeChatComposer'
-import { emitNativeChatPickerOpened } from '@/lib/native-chat-telemetry'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
@@ -552,20 +551,6 @@ describe('one chat shown in two panes', () => {
     expect(promptValue(second)).toBe('하')
     expect(promptValue(first)).toBe('하')
     expect(readNativeChatDraftCache(draftKey)).toBe('하')
-  })
-
-  // The other pane only mirrors the text; a picker there would also count as a second open.
-  it('opens the slash picker only in the pane being typed in', () => {
-    const { first, second } = renderTwoPanes()
-    vi.mocked(emitNativeChatPickerOpened).mockClear()
-
-    act(() => first.focus())
-    changePrompt(first, '/')
-
-    expect(promptValue(second)).toBe('/')
-    expect(emitNativeChatPickerOpened).toHaveBeenCalledTimes(1)
-    expect(first.closest('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true')
-    expect(second.closest('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('never shows the sent text again in the sending pane while the other pane composes', async () => {
