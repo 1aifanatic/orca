@@ -292,4 +292,85 @@ describe('display surfaces after the stale-working title clear', () => {
       }
     }
   )
+
+  // Synthetic: prompt verification behind a standing clear judges against the baseline main had.
+  it.each([
+    ['mounted', 'output only', false],
+    ['mountedEcho', 'output only', false],
+    ['rendererless', 'output only', false],
+    ['mounted', 'a new spinner frame', true],
+    ['mountedEcho', 'a new spinner frame', true],
+    ['rendererless', 'a new spinner frame', true]
+  ] as const)(
+    'a prompt sent behind a cleared spinner (%s) answered by %s settles as on main',
+    async (mode, _after, spinnerFrame) => {
+      vi.useFakeTimers()
+      try {
+        const ptyId = mode === 'rendererless' ? 'bg-pty' : 'pty-1'
+        const runtime = new OrcaRuntimeService(store)
+        runtime.setPtyController({
+          spawn: vi.fn().mockResolvedValue({ id: ptyId }),
+          write: (_ptyId, data) => {
+            if (data === '\r') {
+              runtime.onPtyData(
+                ptyId,
+                spinnerFrame ? '\x1b]0;⠙ Claude Code\x07' : '\r\n',
+                Date.now()
+              )
+            }
+            return true
+          },
+          kill: () => true,
+          getForegroundProcess: async () => 'claude'
+        })
+        let handle: string
+        if (mode === 'rendererless') {
+          runtime.attachWindow(1)
+          runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
+          handle = (
+            await runtime.createTerminal(`id:${TEST_WORKTREE_ID}`, {
+              tabId: 'bg-tab',
+              leafId: HEADLESS_LEAF_ID
+            })
+          ).handle
+        } else {
+          syncSinglePty(runtime, ptyId, { tabTitle: 'Terminal 1', paneTitle: null })
+          runtime.onPtyData(ptyId, 'boot\r\n', Date.now())
+          handle = (await runtime.listTerminals()).terminals[0]?.handle ?? ''
+        }
+        runtime.onPtyData(ptyId, '\x1b]0;⠋ Claude Code\x07', Date.now())
+        if (mode !== 'rendererless') {
+          syncSinglePty(runtime, ptyId, { tabTitle: '⠋ Claude Code', paneTitle: '⠋ Claude Code' })
+        }
+        runtime.onPtyData(ptyId, 'still running\r\n', Date.now())
+        await vi.advanceTimersByTimeAsync(3_000)
+        if (mode === 'mountedEcho') {
+          syncSinglePty(runtime, ptyId, { tabTitle: 'Claude Code', paneTitle: 'Claude Code' })
+        }
+        if (spinnerFrame) {
+          // The receipt path takes no output as evidence, so only a new turn settles it.
+          const submission = runtime.sendTerminalAgentPrompt(handle, 'review this', {
+            inputKind: 'driving',
+            acceptQueued: true,
+            requestId: `after-clear-${mode}`
+          })
+          await vi.advanceTimersByTimeAsync(20_000)
+          await expect(submission).resolves.toMatchObject({
+            prompt: { stages: ['input_accepted', 'turn_started'] }
+          })
+        } else {
+          // Output after Enter is not a turn start, so a swallowed Enter still reads as stalled.
+          const submission = runtime.sendTerminalAgentPrompt(handle, 'review this', {
+            inputKind: 'driving'
+          })
+          const rejected = expect(submission).rejects.toThrow('agent_prompt_stalled')
+          // Past the 30 s effect window.
+          await vi.advanceTimersByTimeAsync(40_000)
+          await rejected
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 })

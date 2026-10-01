@@ -107,7 +107,8 @@ export function getLeafDisplayRecord<T extends LeafStatusRecord>(
 /**
  * The prompt lifecycle as display shows it. Main recorded the clear's status there as well, so a
  * title snapshot projected through the clear is only comparable with a lifecycle projected the
- * same way. Only display and blocked-dialog checks may read it, never readiness or delivery.
+ * same way. Display, blocked-dialog checks and prompt-submission verification read it; readiness
+ * and delivery never do.
  */
 export function getDisplayPromptLifecycle(
   lifecycle: { status: AgentStatus | null; updatedAt: number } | null | undefined,

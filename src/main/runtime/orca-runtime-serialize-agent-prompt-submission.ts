@@ -3,6 +3,7 @@ import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selecti
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
+import { getDisplayPromptLifecycle } from './runtime-worktree-status-projection'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { hasCompatibleAgentTitleIdentity } from '../../shared/agent-title-owner'
 import type { PtyForegroundProcessRead } from './runtime-terminal-contracts'
@@ -264,7 +265,12 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     const outputSequence = this.getPtyOutputSequence(ptyId)
     const explicit = this.getFreshExplicitAgentStatusForPty(handle, ptyId)
     const explicitFloor = this.agentPromptExplicitStatusFloorByPtyId.get(ptyId)
-    const lifecycle = this.agentPromptLifecycleByPtyId.get(ptyId)
+    const nativeLifecycle = this.agentPromptLifecycleByPtyId.get(ptyId)
+    // Why projected: verification compares against main's baseline, which held a stale-working clear.
+    const lifecycle = getDisplayPromptLifecycle(
+      nativeLifecycle,
+      this.getPtyTitleDisplayClear(ptyId)
+    )
     const ptyStatus =
       lifecycle || explicitFloor === undefined
         ? (this.ptysById.get(ptyId)?.lastAgentStatus ?? null)
@@ -294,7 +300,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     return {
       generation: this.getPtyLifecycleGeneration(ptyId),
       permissionSequence: this.agentPromptPermissionSequenceByPtyId.get(ptyId) ?? 0,
-      workingSequence: lifecycle?.workingSequence ?? 0,
+      workingSequence: nativeLifecycle?.workingSequence ?? 0,
       explicitWorkingStartedAt: explicit?.status === 'working' ? explicit.stateStartedAt : null,
       outputSequence,
       status

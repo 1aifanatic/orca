@@ -52,9 +52,8 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
 
   /**
    * The title snapshot and prompt lifecycle the blocked-dialog check compares, both as display
-   * shows them: after a stale-working clear main compared the cleared pair, and comparing a
-   * renderer's echoed clear with the native lifecycle hid a dialog painted later. It can only
-   * report a wait on the user, never idle.
+   * shows them, so the check reaches main's verdict: main compared the pair a stale-working clear
+   * left, and comparing a renderer's echoed clear with the native lifecycle hid a later dialog.
    */
   protected getTerminalWaitPermissionInputs(
     handle: string,
