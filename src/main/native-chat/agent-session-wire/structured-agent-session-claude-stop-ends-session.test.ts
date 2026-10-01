@@ -568,12 +568,16 @@ const BRANCH_QUESTION = {
 async function ask(
   connection: FakeConnection,
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<{
   answered: ReturnType<typeof invokeCanUseTool>
   card: { itemId: string; expectedRevision: number }
 }> {
-  const answered = invokeCanUseTool(connection, toolName, 'permission-1', 'tool-1', { input })
+  const answered = invokeCanUseTool(connection, toolName, 'permission-1', 'tool-1', {
+    input,
+    ...(signal ? { signal } : {})
+  })
   const card = await eventually(async () => {
     await host.flushStreamedEvents(SESSION)
     const item = (await host.journalSnapshot(SESSION)).items.find(
@@ -627,12 +631,21 @@ it("answers an approval card's Cancel as its Deny, and the turn and child go on"
 it("ends a question card's Cancel the way the chat's Stop does, and the next send resumes", async () => {
   const connection = claude.connections[0]!
   const turnId = await openTurn(connection)
-  const { answered, card } = await ask(connection, 'AskUserQuestion', BRANCH_QUESTION)
+  const request = new AbortController()
+  const { answered, card } = await ask(
+    connection,
+    'AskUserQuestion',
+    BRANCH_QUESTION,
+    request.signal
+  )
 
   await expect(cancelCard(turnId, card)).resolves.toMatchObject({
     ok: true,
     value: { turnId, cancelled: true }
   })
+  // As Claude does once interrupted: it cancels the request it was holding.
+  request.abort()
+  await host.flushStreamedEvents(SESSION)
   // Settled with the Stop's first step, before the child ends: not answerable meanwhile.
   expect(connection.closed).toBe(false)
   const cancelledHere = { state: 'cancelled', resolvedBy: CALLER.callerKey }
