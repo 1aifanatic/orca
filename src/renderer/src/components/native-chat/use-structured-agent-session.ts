@@ -130,7 +130,7 @@ export function useStructuredAgentSession(args: {
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
   })
-  const { retry, retryInPlace } = useStructuredAgentSessionRetryInPlace({
+  const { retry, retryInPlace, retryHeld } = useStructuredAgentSessionRetryInPlace({
     target,
     mutate,
     submissions: transportState.submissions,
@@ -245,6 +245,7 @@ export function useStructuredAgentSession(args: {
       outboxController.send(...input),
     retry,
     retryInPlace,
+    retryHeld,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,

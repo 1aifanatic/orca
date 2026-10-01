@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 
 const capability = vi.hoisted(() => ({
   state: 'supported' as 'supported' | 'unsupported' | 'unknown'
@@ -18,6 +19,7 @@ vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
 
 const { useStructuredAgentSessionRetryInPlace } =
   await import('./use-structured-agent-session-retry-in-place')
+const { withHeldRetries } = await import('./use-structured-agent-session-delivery-notices')
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
 
@@ -107,17 +109,43 @@ describe('a Retry press', () => {
       capability.state = 'unknown'
       const { result, rerender } = render([rejected({ kind: 'providerStartFailed' })])
 
-      result.current.retry(ID)
-      result.current.retry(ID)
+      act(() => result.current.retry(ID))
+      act(() => result.current.retry(ID))
       expect(mutate).not.toHaveBeenCalled()
       expect(outboxRetry).not.toHaveBeenCalled()
       expect(result.current.retryInPlace).toBeUndefined()
+      // Shown as pending meanwhile, so it reads as taken rather than dead.
+      expect([...result.current.retryHeld]).toEqual([ID])
 
       capability.state = answered
       act(() => rerender())
 
       expect(mutate).toHaveBeenCalledTimes(inPlace ? 1 : 0)
       expect(outboxRetry).toHaveBeenCalledTimes(inPlace ? 0 : 1)
+      expect(result.current.retryHeld.size).toBe(0)
     }
   )
+})
+
+describe('the notice of a held Retry', () => {
+  it('keeps its Retry, shown as pending, and leaves every other notice as it was', () => {
+    const onRetry = vi.fn()
+    const notices = new Map([
+      [agentJournalSubmissionKey(ID), { text: 'Codex stopped.', onRetry }],
+      [agentJournalSubmissionKey('other'), { text: 'Codex stopped.', onRetry }]
+    ])
+
+    const marked = withHeldRetries(notices, new Set([ID]))
+
+    expect(marked.get(agentJournalSubmissionKey(ID))).toEqual({
+      text: 'Codex stopped.',
+      onRetry,
+      retryPending: true
+    })
+    expect(marked.get(agentJournalSubmissionKey('other'))).toEqual({
+      text: 'Codex stopped.',
+      onRetry
+    })
+    expect(withHeldRetries(notices, new Set())).toBe(notices)
+  })
 })

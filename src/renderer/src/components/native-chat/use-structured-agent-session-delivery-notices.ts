@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import {
   failedStartsSentElsewhere,
   retryableFailedStartsSentElsewhere
@@ -16,7 +18,13 @@ const NO_IDS: ReadonlySet<string> = new Set()
 export function useStructuredAgentSessionDeliveryNotices(
   controller: Pick<
     ReturnType<typeof useStructuredAgentSession>,
-    'retry' | 'retryInPlace' | 'outbox' | 'submissions' | 'journalItems' | 'failedHere'
+    | 'retry'
+    | 'retryInPlace'
+    | 'retryHeld'
+    | 'outbox'
+    | 'submissions'
+    | 'journalItems'
+    | 'failedHere'
   >,
   agentLabel: string
 ) {
@@ -84,5 +92,27 @@ export function useStructuredAgentSessionDeliveryNotices(
       canResend
     ]
   )
-  return deliveryNotices
+  return useMemo(
+    () => withHeldRetries(deliveryNotices, controller.retryHeld),
+    [deliveryNotices, controller.retryHeld]
+  )
+}
+
+/** A Retry pressed while the host has not said how it can take it shows as pending until it has. */
+export function withHeldRetries(
+  notices: ReadonlyMap<string, NativeChatDeliveryNotice>,
+  held: ReadonlySet<string>
+): ReadonlyMap<string, NativeChatDeliveryNotice> {
+  if (held.size === 0) {
+    return notices
+  }
+  const marked = new Map(notices)
+  for (const clientMessageId of held) {
+    const key = agentJournalSubmissionKey(clientMessageId)
+    const notice = marked.get(key)
+    if (notice?.onRetry) {
+      marked.set(key, { ...notice, retryPending: true })
+    }
+  }
+  return marked
 }
