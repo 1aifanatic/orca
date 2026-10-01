@@ -24,6 +24,7 @@ export class StructuredAgentSessionStartupGate {
   private pending: Promise<void> | null = null
   private release: (() => void) | null = null
   private ceiling: ReturnType<typeof setTimeout> | null = null
+  private held = false
   // One timing line per launch, for the startup measurements. The step's times are recorded
   // whenever they happen, whoever opened the gate; the line is written once the gate is open and
   // the step is over.
@@ -39,11 +40,13 @@ export class StructuredAgentSessionStartupGate {
     private readonly now: () => number = Date.now
   ) {}
 
-  /** Closes the gate until it is opened; a no-op while it is closed. Before any request is served. */
+  /** Closes the gate until it is opened, once per launch, before any request is served. */
   hold(): void {
-    if (this.pending) {
+    // One-shot: re-closing after it opened could hold /clear's replacement attach under a chat lock.
+    if (this.held) {
       return
     }
+    this.held = true
     this.heldAt = this.now()
     this.pending = new Promise((resolve) => {
       this.release = resolve

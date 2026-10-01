@@ -111,6 +111,20 @@ it('opens the gate when the startup step fails, never stranding a command', asyn
   )
 })
 
+it('closes the gate once per launch: a hold after it opened leaves it open', async () => {
+  const gate = new StructuredAgentSessionStartupGate()
+  gate.hold()
+  gate.hold()
+  vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  gate.stepStarted()
+  gate.stepEnded('no chats on disk')
+  expect(gate.ready()).toBeNull()
+
+  gate.hold()
+
+  expect(gate.ready()).toBeNull()
+})
+
 describe('one timing line per launch, with the real step times whoever opened the gate', () => {
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const CEILING_MS = 5
