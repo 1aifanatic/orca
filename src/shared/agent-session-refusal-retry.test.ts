@@ -103,3 +103,24 @@ describe("the owner's verdict decides a retry's operation id only as a floor", (
     expect(agentSessionOwnerVerdictAllowsFreshOperationId('exited', 'unverifiable')).toBe(true)
   })
 })
+
+describe('a refused message sent from another surface', () => {
+  const fromNotes = { ...entry, source: 'surface' as const }
+
+  it('keeps its id, since only its source sends it again', () => {
+    const refused = requeueStructuredAgentSessionSendRefusal(
+      fromNotes,
+      { kind: 'refused', code: 'agent_session_operation_invalid' },
+      () => 'message-2'
+    )
+    expect(refused).toMatchObject({ clientMessageId: 'message-1', state: 'rejected' })
+    expect(retried('exited')).toMatchObject({ clientMessageId: 'message-2' })
+    expect(
+      requeueStructuredAgentSessionSendRefusal(
+        fromNotes,
+        storedOwnershipRefusal('exited'),
+        () => 'message-2'
+      )
+    ).toMatchObject({ clientMessageId: 'message-1', state: 'queued' })
+  })
+})
