@@ -13,7 +13,7 @@ import type {
 import {
   mutateStructuredAgentSession,
   type StructuredAgentSessionMutationContext
-} from './structured-agent-session-host-mutations'
+} from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import { runStopWithQueuePause } from './structured-agent-session-queued-stop'
