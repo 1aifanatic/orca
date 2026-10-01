@@ -8,7 +8,7 @@
 // (the listing's lock reason needs 2.31+), and a kept entry costs only file reads per launch, save
 // a never-checked-out spare holding added files, which Git re-checks each time.
 
-import { lstat, mkdtemp, readdir, readFile, rm, rmdir } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, readFile, realpath, rm, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
@@ -169,9 +169,10 @@ async function reclaimSpareDirectory(
   ownerPid: number,
   hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>
 ): Promise<keyof SweepResult | null> {
-  // A delete the user asked for (a spare they adopted) owns the path, and its startup finish ends
-  // it. Never follow a symlink out of the folder.
-  if (isWorktreeRemovalPendingAt(sparePath) || !(await lstat(sparePath)).isDirectory()) {
+  // A user's delete owns the path (Git records it resolved); never follow a symlink out of the folder.
+  const resolvedPath = await realpath(sparePath).catch(() => sparePath)
+  const owned = isWorktreeRemovalPendingAt(sparePath) || isWorktreeRemovalPendingAt(resolvedPath)
+  if (owned || !(await lstat(sparePath)).isDirectory()) {
     return null
   }
   const hasDotGit = (await nullWhenMissing(lstat(join(sparePath, '.git')))) !== null

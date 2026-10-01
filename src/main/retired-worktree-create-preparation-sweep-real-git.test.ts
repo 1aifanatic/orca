@@ -1,5 +1,14 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -401,6 +410,42 @@ it('leaves a spare the user was deleting to that delete’s own startup finish',
     removedDirectories: 0
   })
   expect(existsSync(join(adoptedSpare, 'file.txt'))).toBe(true)
+})
+
+it('matches that delete through a symlinked workspace root, where Git records the real path', async () => {
+  const root = await makeRoot()
+  const repo = await makeRepo(root, 'repo')
+  const realRoot = join(root, 'real-workspaces')
+  const linkedRoot = join(root, 'linked-workspaces')
+  await mkdir(realRoot)
+  await symlink(realRoot, linkedRoot, 'junction')
+  const name = spareName(DEAD_PID, '11111111')
+  const linkedSpare = join(linkedRoot, '.orca-preparing', name)
+  await addSpare(repo, linkedSpare)
+  await rm(join(linkedSpare, '.git'))
+  // The record holds the path as Git lists it, which resolves the link.
+  const recordedPath = [...(await registrations(repo)).keys()].find((path) => path.endsWith(name))
+  const profileDirectory = await makeRoot()
+  await writeWorktreeRemovalRecords(profileDirectory, () => [
+    {
+      worktreeId: `repo::${linkedSpare}`,
+      repoId: 'repo',
+      repoPath: repo,
+      worktreePath: recordedPath ?? '',
+      branch: '',
+      head: '',
+      deleteBranch: false,
+      force: true,
+      requestedAt: 1
+    }
+  ])
+  await loadWorktreeRemovalRecords(profileDirectory)
+
+  expect(await sweepDeadOwners(linkedRoot, repo)).toEqual({
+    reclaimed: 0,
+    removedDirectories: 0
+  })
+  expect(existsSync(join(linkedSpare, 'file.txt'))).toBe(true)
 })
 
 it('holds each deletion for a create that starts mid-sweep', async () => {
