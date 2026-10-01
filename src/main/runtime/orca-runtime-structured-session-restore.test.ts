@@ -5,8 +5,21 @@ import { OrcaRuntimeService } from './orca-runtime'
 
 afterEach(() => setStructuredAgentSessionHost(null))
 
+/** The host members startup restoration reaches, beyond the seed and settle every test gets. */
+type StartupHostMembers = Partial<
+  Pick<
+    StructuredAgentSessionHost,
+    | 'reconcileRestartLeases'
+    | 'restoreReadableSessions'
+    | 'listSessionTabs'
+    | 'getPersistedVisibleSessionTabIndex'
+    | 'setSessionTabVisibility'
+    | 'close'
+  >
+>
+
 /** A host offering the startup step's seed and settle, plus the members a test drives. */
-function installStartupHost(members: object): void {
+function installStartupHost(members: StartupHostMembers): void {
   const host = {
     seedStoredStatuses: (ids: readonly string[]) => [...ids],
     settleOwedSessions: async () => undefined,
