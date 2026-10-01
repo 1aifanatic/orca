@@ -66,6 +66,7 @@ import {
   CODEX_ACCOUNT_IMPORT_CAPABILITY,
   CLAUDE_PROFILE_LOGIN_CAPABILITY
 } from '../../shared/protocol-version'
+import { ACCOUNT_IMPORT_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 
 function successfulChild(): EventEmitter {
   const child = new EventEmitter()
@@ -519,6 +520,21 @@ describe('account CLI handlers', () => {
     )
     expect(callMock).toHaveBeenCalledWith('status.get')
     expect(spawnMock).not.toHaveBeenCalled()
+  })
+
+  it('still adds Codex through an older host that advertises only the retired import capability', async () => {
+    callMock.mockResolvedValue({
+      id: 'test',
+      ok: true,
+      result: { capabilities: [ACCOUNT_IMPORT_RUNTIME_CAPABILITY] },
+      _meta: { runtimeId: 'test-runtime' }
+    })
+    spawnMock.mockImplementation(() => {
+      throw new Error('stop after the capability gate')
+    })
+
+    await expect(ACCOUNT_HANDLERS['account add'](context('codex'))).rejects.toThrow()
+    expect(spawnMock).toHaveBeenCalled()
   })
 
   it.each(['claude', 'codex'] as const)(

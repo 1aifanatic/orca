@@ -25,6 +25,7 @@ import {
 } from '../../shared/windows-batch-spawn'
 import { stdioForWindowsInteractiveChild } from '../../shared/windows-console-input'
 import {
+  ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
   CODEX_ACCOUNT_IMPORT_CAPABILITY,
   CLAUDE_PROFILE_LOGIN_CAPABILITY
 } from '../../shared/protocol-version'
@@ -284,11 +285,12 @@ async function assertAccountImportSupported(
   agent: 'claude' | 'codex'
 ): Promise<void> {
   const status = await client.call<RuntimeStatus>('status.get')
-  if (
-    !status.result.capabilities?.includes(
-      agent === 'claude' ? CLAUDE_PROFILE_LOGIN_CAPABILITY : CODEX_ACCOUNT_IMPORT_CAPABILITY
-    )
-  ) {
+  // Why both for Codex: older hosts advertise only the retired import capability yet still add Codex homes.
+  const accepted =
+    agent === 'claude'
+      ? [CLAUDE_PROFILE_LOGIN_CAPABILITY]
+      : [CODEX_ACCOUNT_IMPORT_CAPABILITY, ACCOUNT_IMPORT_RUNTIME_CAPABILITY]
+  if (!accepted.some((capability) => status.result.capabilities?.includes(capability))) {
     throw new RuntimeClientError(
       'incompatible_runtime',
       'Update the Orca CLI to add accounts, and make sure the Orca execution host is up to date.'
