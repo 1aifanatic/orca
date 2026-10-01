@@ -45,9 +45,9 @@ export async function sendStructuredConversationCommand(input: {
       return { accepted: false, error: null }
     }
     const { value } = outcome
-    // The chat's own start failed and its loaded row already says why, as for a message that start
-    // rejected. A /clear's failed start is its new chat's, whose row this pane never shows, and a
-    // command this build doesn't know may be either, so its host's words are shown.
+    // An older host wrote a failed start as a row of its own: when the chat's loaded row already
+    // says why, it is not said twice. A /clear's failed start is its new chat's, whose row this pane
+    // never shows, and a command this build doesn't know may be either, so its host's words show.
     if (
       isAgentSessionConversationCommand(value.command) &&
       value.command !== 'clear' &&

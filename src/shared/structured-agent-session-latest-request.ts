@@ -5,7 +5,8 @@
 // A request is either a turn, whose record carries the provider's verdict, or a send that never
 // became one because the agent or its start refused it. A send its handover placed inside a
 // running turn (a steer) is not a request of its own: the turn it joined answers for it. Nor is a
-// conversation command.
+// conversation command. A message waiting out a failed start reads as that failure until its next
+// try: nothing runs for it meanwhile.
 
 import type {
   AgentJournalRenderItem,
@@ -19,6 +20,7 @@ import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
+import { isRetryingStructuredAgentSessionStart } from './structured-agent-session-start-retry'
 import {
   isStructuredAgentSessionCommandEntry,
   isStructuredAgentSessionCommandRow,
@@ -69,9 +71,11 @@ export function latestStructuredAgentSessionRequest(
       }
     }
     const submission = rejected.get(item.itemId)
+    const refusal = submission?.startFailure ?? submission
     if (
       submission &&
-      classifyDispatchRejection(submission).verdict === 'failure' &&
+      refusal &&
+      classifyDispatchRejection(refusal).verdict === 'failure' &&
       // Handed into a running turn (a steer): that turn answers for it.
       item.turnScope?.kind !== 'turn'
     ) {
@@ -80,7 +84,7 @@ export function latestStructuredAgentSessionRequest(
         id: item.itemId,
         turnState: null,
         outcome: 'failure',
-        settledAt: submission.resolvedAt ?? undefined
+        settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined
       }
     }
   }
@@ -110,18 +114,23 @@ export function hasStructuredAgentSessionRequest(
       (submission) =>
         submission.dispatchState === 'accepted' ||
         isUnansweredStructuredAgentSessionDispatch(submission, currentFence) ||
+        isRetryingStructuredAgentSessionStart(submission) ||
         (submission.dispatchState === 'rejected' &&
           classifyDispatchRejection(submission).verdict === 'failure')
     )
   )
 }
 
+/** Rejected sends, and queued ones waiting out a failed start. */
 function rejectedSubmissionsByItem(
   submissions: readonly AgentJournalSubmission[]
 ): Map<string, AgentJournalSubmission> {
   const rejected = new Map<string, AgentJournalSubmission>()
   for (const submission of submissions) {
-    if (submission.dispatchState === 'rejected') {
+    if (
+      submission.dispatchState === 'rejected' ||
+      isRetryingStructuredAgentSessionStart(submission)
+    ) {
       rejected.set(agentJournalSubmissionKey(submission.clientMessageId), submission)
     }
   }

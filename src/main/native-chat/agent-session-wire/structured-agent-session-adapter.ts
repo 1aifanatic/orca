@@ -1,3 +1,4 @@
+import type { TypedStartRefusal } from '../../../shared/agent-session-start-resumability'
 import type {
   AgentSessionRewindReason,
   AgentSessionRewindSupport
@@ -128,7 +129,7 @@ export type AgentSessionAcquisition = {
 /** A refusal before spawn that a person can act on; the site that refused names it. */
 export type AgentSessionPreSpawnReason = Extract<
   AgentSessionRefusalReason<'agent_session_operation_invalid'>,
-  'managedAccountEnvOverride' | 'accountSwitchInProgress' | 'managedAccountUnsupported'
+  TypedStartRefusal
 >
 
 /** Acquisition failed with first-hand proof that no provider process existed. */

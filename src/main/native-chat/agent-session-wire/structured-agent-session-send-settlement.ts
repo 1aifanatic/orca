@@ -4,6 +4,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import { isRetryingStructuredAgentSessionStart } from '../../../shared/structured-agent-session-start-retry'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { isStructuredAgentSessionCommandTurnId } from './structured-agent-session-command-turn'
 
@@ -18,7 +19,8 @@ type SettledSend = {
 type SendSettlement = SettledSend | 'pending' | 'missing'
 
 /** What ends a wait: the provider's answer, the host handing the message over, or either that or
- *  the message waiting behind a running command, which hands nothing over until it ends. */
+ *  the message waiting behind a running command, which hands nothing over until it ends. A failed
+ *  start recorded on the message ends each: the host answers it now, while it waits for its next try. */
 export type SendSettlementPoint = 'answered' | 'handed-over' | 'handed-over-or-behind-command'
 
 export type SendSettlementWaitOptions = {
@@ -57,10 +59,11 @@ function settledSend(
     return 'missing'
   }
   const waiting =
-    until === 'answered'
+    !isRetryingStructuredAgentSessionStart(submission) &&
+    (until === 'answered'
       ? submission.dispatchState === 'pending'
       : isQueuedAgentJournalSubmission(submission) &&
-        !(until === 'handed-over-or-behind-command' && runningCommand(journal))
+        !(until === 'handed-over-or-behind-command' && runningCommand(journal)))
   return waiting ? 'pending' : { cursor: journal.cursor(), value: { clientMessageId, submission } }
 }
 

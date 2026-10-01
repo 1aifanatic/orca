@@ -115,7 +115,7 @@ it('a Stop that fails after withdrawing a consumed draft releases it, and it sen
     .mockImplementation(async function (this: AgentSessionJournal, ...args) {
       const withdrawn = await withdraw.apply(this, args)
       // Only the Stop's own withdrawal fails, after it landed; the delivery loop's pass through.
-      if (args[1].rejection.kind === 'cancelled') {
+      if (typeof args[1] !== 'function' && args[1].rejection.kind === 'cancelled') {
         throw new Error('disk full')
       }
       return withdrawn

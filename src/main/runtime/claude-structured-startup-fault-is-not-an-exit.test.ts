@@ -1,6 +1,6 @@
 // A Claude start can fail on Orca's side while the CLI is still running: a saved option it can't
-// restore, or an init frame naming another session. Orca ends that child itself, so the chat must
-// not say Claude stopped on its own; only an exit Orca saw says that. Against the production
+// restore, or an init frame naming another session. Orca ends that child itself, so the message the
+// start was for must not say Claude stopped on its own; only an exit Orca saw says that. Against the production
 // runtime, adapter, record store and host, with only the CLI process scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -75,7 +75,7 @@ async function released(host: StructuredAgentSessionHost): Promise<void> {
 }
 
 describe('a Claude start that Orca fails while the CLI is still running', () => {
-  it('reads as a start that could not happen when a saved option cannot be restored', async () => {
+  it('ends the start quietly when a saved option cannot be restored and no message waited on it', async () => {
     claude.behave(SESSION, { optionWritesFail: true })
     const host = await claude.install()
     await expect(
@@ -87,12 +87,11 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
     await released(host)
 
     expect(claude.child(SESSION).calls).toContain('set_permission_mode')
-    expect(await failureRows(host)).toEqual([
-      { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
-    ])
+    // Nothing waited on the open's start: the first message says why, when there is one.
+    expect(await failureRows(host)).toEqual([])
   })
 
-  it('rejects a held message as a start that could not happen when init names another session', async () => {
+  it('records on a held message a start that could not happen when init names another session', async () => {
     claude.behave(SESSION, { initHangs: true, initNamesForeignSession: true })
     const host = await claude.install()
     await expect(host.attach(CALLER, claude.attachParams(SESSION, null))).resolves.toMatchObject({
@@ -105,14 +104,14 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
 
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'rejected',
-        reason: expect.stringMatching(/^Claude couldn't start\./),
-        rejection: { kind: 'startFailed' }
+        dispatchState: 'pending',
+        startFailure: {
+          reason: expect.stringMatching(/^Claude couldn't start\./),
+          rejection: { kind: 'startFailed' }
+        }
       })
     )
-    expect(await failureRows(host)).toEqual([
-      { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
-    ])
+    expect(await failureRows(host)).toEqual([])
     expect(claude.child(SESSION).calls).not.toContain('send')
   })
 
@@ -129,11 +128,10 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
 
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
-        dispatchState: 'rejected',
-        reason: STOPPED_TEXT,
-        rejection: { kind: 'providerStartFailed' }
+        dispatchState: 'pending',
+        startFailure: { reason: STOPPED_TEXT, rejection: { kind: 'providerStartFailed' } }
       })
     )
-    expect(await failureRows(host)).toEqual([{ text: STOPPED_TEXT, kind: 'providerStartFailed' }])
+    expect(await failureRows(host)).toEqual([])
   })
 })

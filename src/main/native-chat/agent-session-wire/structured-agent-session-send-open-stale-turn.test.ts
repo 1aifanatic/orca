@@ -118,8 +118,8 @@ it.each(PROBES)(
       expect(
         (await host.journalSnapshot(SESSION)).submissions.find(
           (entry) => entry.clientMessageId === sendEnvelope.clientOperationId
-        )
-      ).toMatchObject({ dispatchState: 'rejected' })
+        )?.startFailure
+      ).toMatchObject({ attempts: 1 })
     )
 
     expect(acquire).toHaveBeenCalledOnce()

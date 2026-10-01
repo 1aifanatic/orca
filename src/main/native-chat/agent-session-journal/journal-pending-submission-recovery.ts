@@ -35,39 +35,16 @@ export async function markJournalPendingSubmissionsUnknown(
   return unresolved.map((entry) => entry.clientMessageId)
 }
 
-/** Settles every submission a child that never proved its start left unanswered as `rejected`:
- *  such a child accepted nothing, so each is provably unwritten and safe to send again. A queued
- *  submission was never handed to that child; the delivery loop settles it. */
-export async function rejectJournalPendingSubmissions(
-  journal: AgentSessionJournal,
-  fence: number,
-  rejection: AgentJournalDispatchRejection
-): Promise<string[]> {
-  const unwritten = journal
-    .submissions()
-    .filter(
-      (entry) =>
-        !isQueuedAgentJournalSubmission(entry) &&
-        (entry.dispatchState === 'pending' ||
-          (entry.dispatchState === 'unknown' && entry.recovered !== true))
-    )
-  for (const entry of unwritten) {
-    await journal.resolveDispatch({
-      clientMessageId: entry.clientMessageId,
-      state: 'rejected',
-      ...rejection,
-      fence,
-      recovered: true
-    })
-  }
-  return unwritten.map((entry) => entry.clientMessageId)
-}
+/** A rejection for every queued message alike, or one worded per message. */
+export type JournalQueuedRejection =
+  | AgentJournalDispatchRejection
+  | ((submission: AgentJournalSubmission) => AgentJournalDispatchRejection)
 
 /** Rejects queued submissions — accepted, never handed over, so provably unwritten. */
 export async function rejectJournalQueuedSubmissions(
   journal: AgentSessionJournal,
   fence: number,
-  rejection: AgentJournalDispatchRejection,
+  rejection: JournalQueuedRejection,
   which: (submission: AgentJournalSubmission) => boolean = () => true
 ): Promise<string[]> {
   const queued = journal
@@ -77,7 +54,7 @@ export async function rejectJournalQueuedSubmissions(
     await journal.resolveDispatch({
       clientMessageId: entry.clientMessageId,
       state: 'rejected',
-      ...rejection,
+      ...(typeof rejection === 'function' ? rejection(entry) : rejection),
       fence,
       recovered: true
     })

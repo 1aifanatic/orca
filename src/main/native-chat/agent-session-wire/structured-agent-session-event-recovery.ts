@@ -22,6 +22,7 @@ export class StructuredAgentSessionEventRecovery {
       flushLifecycle: (sessionId: string) => Promise<StructuredAgentSessionSinkBarrier>
       publishFence: (sessionId: string, session: StructuredAgentSessionHostSession) => void
       publishStatus?: (sessionId: string) => void
+      wakeDelivery?: (sessionId: string) => void
       serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
       now: () => number
       onBarrierError: (sessionId: string, error: unknown) => void

@@ -3,7 +3,11 @@
 // with a message queued has a delivery loop — and the open is where a loop for leftovers wakes.
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { abandonQueuedStructuredAgentSessionMessages } from './structured-agent-session-host-lifetime'
+import {
+  abandonQueuedStructuredAgentSessionMessages,
+  stopStructuredAgentSessionAgentUnderSerialize,
+  type StructuredAgentSessionLifetimeContext
+} from './structured-agent-session-host-lifetime'
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -14,6 +18,7 @@ import {
 } from './structured-agent-session-conversation-open'
 import type { StructuredAgentSessionClientDelivery } from './structured-agent-session-client-delivery'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
+import { setStartRetryTimer } from './structured-agent-session-start-attempt-failure'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -54,6 +59,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     sessionId: string,
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
+  /** For ending a child whose start failed, as a host stop. */
+  lifetimeContext: () => StructuredAgentSessionLifetimeContext
   reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
   clientDelivery: Pick<StructuredAgentSessionClientDelivery, 'publishRestored' | 'readChildWork'>
   flushStreamedEvents: (sessionId: string) => Promise<void>
@@ -65,6 +72,10 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     serialize: input.serialize,
     trackStart: input.trackStart,
     ensureProviderChild: input.ensureProviderChild,
+    endFailedStart: (sessionId) =>
+      stopStructuredAgentSessionAgentUnderSerialize(input.lifetimeContext(), sessionId, {
+        cause: 'host-stop'
+      }),
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
     abandonQueued: async (sessionId, which) => {
@@ -74,15 +85,13 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         : true
     },
     failureTextContext: (sessionId) =>
-      structuredAgentSessionFailureWordsContext(
-        deps.store.getRecord(sessionId),
-        sessions.get(sessionId)?.journal
-      ),
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error }),
     record: (sessionId) => deps.store.getRecord(sessionId),
     readChildWork: input.clientDelivery.readChildWork,
     flushStreamedEvents: input.flushStreamedEvents,
-    now: () => deps.now?.() ?? Date.now()
+    now: () => deps.now?.() ?? Date.now(),
+    setTimer: (delayMs, run) => (deps.setStartRetryTimer ?? setStartRetryTimer)(delayMs, run)
   })
   const adoptOpened = async (
     sessionId: string,

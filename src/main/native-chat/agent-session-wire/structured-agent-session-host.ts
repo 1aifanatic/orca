@@ -125,6 +125,7 @@ export class StructuredAgentSessionHost {
       trackStart: (start) => this.tasks.trackAttach(start),
       ensureProviderChild: (sessionId, startedFor) =>
         ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
+      lifetimeContext: () => this.lifetimeContext(),
       reset: (sessionId, journal, reset) =>
         this.subscribers.reset(
           sessionId,
@@ -156,6 +157,7 @@ export class StructuredAgentSessionHost {
           structuredAgentSessionConversationFence(deps.store, sessionId)
         ),
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
+      wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
       onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })

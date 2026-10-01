@@ -70,7 +70,8 @@ function oldestActionableQueuedMessage(
   }
   for (const row of rows) {
     if (row.state === 'returned') {
-      // A returned card blocks everything after it until the user acts.
+      // A returned card blocks everything after it until the user acts. A card whose message is
+      // waiting out a failed start is not returned and holds nothing: the cards behind it go.
       return null
     }
     if (row.state === 'waiting' && row.holdReason === null) {

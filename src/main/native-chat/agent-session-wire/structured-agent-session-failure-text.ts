@@ -5,7 +5,6 @@ import {
   agentSessionFailureFact,
   providerDiagnosticOf,
   type SubmissionRejectionFact,
-  type AgentSessionFailureKind,
   type ProviderDiagnostic
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-refusal-details'
@@ -15,25 +14,25 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import {
+  isTypedStartRefusal,
+  type TypedStartRefusal
+} from '../../../shared/agent-session-start-resumability'
+import {
   agentSessionRefusalReference,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 
-/** Start refusals whose situation is itself what the person reads, with its own next step. */
-const TYPED_START_REFUSALS = [
-  'notSignedIn',
-  'historyTooLarge',
-  'managedAccountEnvOverride',
-  'accountSwitchInProgress',
-  'managedAccountUnsupported'
-] as const satisfies readonly (AgentSessionFailureKind &
-  AgentSessionRefusalReason<'agent_session_operation_invalid'>)[]
+function typedStartRefusal(reason: string | undefined): TypedStartRefusal | undefined {
+  return isTypedStartRefusal(reason) ? reason : undefined
+}
 
-function typedStartRefusal(
-  reason: string | undefined
-): (typeof TYPED_START_REFUSALS)[number] | undefined {
-  return TYPED_START_REFUSALS.find((typed) => typed === reason)
+/** The refusal reason an operation answers with when the start it needed failed: the typed
+ *  situation, or that the provider stopped while starting. */
+export function startFailureRefusalReason(
+  fact: Pick<SubmissionRejectionFact, 'kind'>
+): AgentSessionRefusalReason<'agent_session_operation_invalid'> {
+  return typedStartRefusal(fact.kind) ?? 'providerStartFailed'
 }
 
 /** Marks the error an adapter observed its child's exit with, where it observed it. */
@@ -124,8 +123,7 @@ export type StructuredAgentSessionStartFailureCause =
   /** Already typed where it was observed. */
   | { failure: SubmissionRejectionFact }
 
-/** A start failure's row repeats the sentence its rejected messages carry: both are about the
- *  messages the start was for. */
+/** A failed start in the words the message it was for carries. */
 export type StructuredAgentSessionStartFailureWords = AgentJournalDispatchRejection
 
 /** The fact a failed start records, for a writer that words it on its own surface. */
@@ -150,8 +148,8 @@ export function structuredAgentSessionStartFailureFact(
   return cause.failure
 }
 
-/** The one place a failed start is worded: the error row and every message it rejects carry this
- *  sentence and this fact, whichever writer saw the start fail. */
+/** The one place a failed start is worded: each message it was for carries this sentence and this
+ *  fact, waiting for its next try or rejected. */
 export function structuredAgentSessionStartFailure(
   cause: StructuredAgentSessionStartFailureCause,
   context: AgentSessionFailureWordsContext = {}

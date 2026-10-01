@@ -29,7 +29,6 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   handOverStructuredAgentSessionCommand,
@@ -80,13 +79,13 @@ function invalid(
 /** A thrown adapter error is indistinguishable from a lost reply, so it settles as `unknown`
  *  rather than as a rejection — unless the child had not proven its start. Such a child has
  *  accepted nothing (input is written only after it initializes), so a dispatch it could not
- *  take is provably unwritten and is rejected with the cause the adapter gave. */
+ *  take is provably unwritten: its start failed, with the cause the adapter gave. */
 async function dispatchSafely(
   ctx: AgentSessionHandoverContext,
   clientMessageId: string,
   body: AgentJournalMessageItem,
   requestedAt: number
-): Promise<AgentSessionDispatchOutcome> {
+): Promise<AgentSessionDispatchOutcome | { state: 'startFailed'; cause: { error: unknown } }> {
   try {
     return await ctx.adapter.dispatch({
       sessionId: ctx.sessionId,
@@ -97,10 +96,7 @@ async function dispatchSafely(
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
-      return {
-        state: 'rejected',
-        ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
-      }
+      return { state: 'startFailed', cause: { error } }
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
@@ -170,11 +166,13 @@ export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverC
 /**
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
  * after it leaves a message in doubt, never one that reads as queued and so provably unwritten.
+ * Returns the cause when the child's start failed at the handover, leaving the message handed over
+ * for the delivery loop to put back in the queue with that failure.
  */
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,
   submission: AgentJournalSubmission
-): Promise<void> {
+): Promise<{ error: unknown } | null> {
   const { clientMessageId } = submission
   const body = ctx.journal.itemBody(agentJournalSubmissionKey(clientMessageId))
   if (body?.kind !== 'message') {
@@ -184,11 +182,10 @@ export async function handOverSubmission(
       ...agentSessionFailureWords(agentSessionFailureFact('hostFault'), { surface: 'rejection' }),
       fence: ctx.fence
     })
-    return
+    return null
   }
   if (body.command) {
-    await handOverStructuredAgentSessionCommand(ctx, submission, body)
-    return
+    return handOverStructuredAgentSessionCommand(ctx, submission, body)
   }
   // The message joins the turn running at handover, a steer, or opens its own.
   await ctx.journal.resolveDispatch({
@@ -205,9 +202,12 @@ export async function handOverSubmission(
     body,
     structuredAgentSessionHandoverOrigin(ctx.journal, submission)
   )
+  if (outcome.state === 'startFailed') {
+    return outcome.cause
+  }
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
-    return
+    return null
   }
   try {
     await ctx.journal.resolveDispatch(
@@ -243,6 +243,7 @@ export async function handOverSubmission(
     }
     throw error
   }
+  return null
 }
 
 function requireSubmission(

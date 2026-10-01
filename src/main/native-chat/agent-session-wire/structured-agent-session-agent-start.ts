@@ -28,6 +28,8 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import { attachStructuredAgentSessionUnderSerialize } from './structured-agent-session-attach-orchestration'
 import { failedCreateRefusal } from './structured-agent-session-failed-create-refusal'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
+import { startFailureRefusalReason } from './structured-agent-session-failure-text'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import {
   structuredAgentSessionResumeOperationId,
   structuredAgentSessionResumeParams
@@ -72,22 +74,42 @@ export async function ensureStructuredAgentSessionAgent(
   )
 }
 
-/** The same, for an operation's admission: a start that throws is that operation's refusal. */
-export function ensureStructuredAgentSessionAgentForOperation(
+/** The same, for an operation's admission: a start that throws is that operation's refusal. The
+ *  operation answers once the start it caused proved itself, or with why it did not, so a start
+ *  that dies after the answer leaves nothing unaccounted for. */
+export async function ensureStructuredAgentSessionAgentForOperation(
   context: StructuredAgentSessionAttachContext,
   sessionId: string
 ): Promise<StructuredAgentSessionResumeOutcome> {
-  return ensureStructuredAgentSessionAgent(context, sessionId).catch((error: unknown) => {
-    // The error is Orca's own and goes to the log; the refusal says only that the start failed.
-    console.warn('[agent-session] starting the agent for an operation failed:', error)
-    return {
-      ok: false,
-      refusal: refuseUnclassified(
-        'agent_session_owner_restart_failed',
-        agentSessionWriteNoticeEnglish(['restartFailed'])
-      )
+  const ready = await ensureStructuredAgentSessionAgent(context, sessionId).catch(
+    (error: unknown): StructuredAgentSessionResumeOutcome => {
+      // The error is Orca's own and goes to the log; the refusal says only that the start failed.
+      console.warn('[agent-session] starting the agent for an operation failed:', error)
+      return {
+        ok: false,
+        refusal: refuseUnclassified(
+          'agent_session_owner_restart_failed',
+          agentSessionWriteNoticeEnglish(['restartFailed'])
+        )
+      }
     }
-  })
+  )
+  if (!ready.ok || context.sessions.get(sessionId)?.child?.phase !== 'starting') {
+    return ready
+  }
+  const failure = await context.deps.adapter.awaitStarted?.(sessionId)
+  if (!failure) {
+    return ready
+  }
+  return {
+    ok: false,
+    refusal: refuse(
+      'agent_session_operation_invalid',
+      { reason: startFailureRefusalReason(failure) },
+      agentSessionFailureWords(failure, { surface: 'row' }).text
+    ),
+    ...(failure.detail ? { diagnostic: failure.detail } : {})
+  }
 }
 
 async function startStructuredAgentSessionAgent(

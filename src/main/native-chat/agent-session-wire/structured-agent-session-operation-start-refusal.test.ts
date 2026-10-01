@@ -36,6 +36,45 @@ describe('an operation whose agent start throws', () => {
   })
 })
 
+describe('an operation whose agent was published before it proved its start', () => {
+  function startingContext(awaitStarted: () => Promise<unknown>) {
+    return {
+      sessions: new Map([[SESSION, { child: { generation: 'g-1', fence: 1, phase: 'starting' } }]]),
+      deps: { adapter: { awaitStarted } }
+    }
+  }
+
+  it('is answered with why that start failed, once it has', async () => {
+    const refused = await ensureStructuredAgentSessionAgentForOperation(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a partial context double; with a child indexed, only `sessions` and the adapter's `awaitStarted` are read.
+      startingContext(async () => ({
+        kind: 'notSignedIn'
+      })) as unknown as StructuredAgentSessionAttachContext,
+      SESSION
+    )
+
+    expect(refused).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'notSignedIn' },
+        message:
+          'The agent is not signed in for the selected account. Sign in, then send your message again.'
+      }
+    })
+  })
+
+  it('goes ahead once that start proved itself', async () => {
+    await expect(
+      ensureStructuredAgentSessionAgentForOperation(
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
+        startingContext(async () => undefined) as unknown as StructuredAgentSessionAttachContext,
+        SESSION
+      )
+    ).resolves.toEqual({ ok: true })
+  })
+})
+
 describe('an option picked while the chat is at rest', () => {
   it('refuses a key the provider would not accept as a rejected option', async () => {
     const persistOptions = vi.fn(async () => {})

@@ -8,8 +8,8 @@ import {
 
 const NO_FACTS: readonly AgentSessionFailureFact[] = []
 
-/** What the loaded start-failure rows state, read only while `enabled`. Held while unchanged, so a
- *  streaming turn does not rebuild every row's delivery notice. */
+/** What the loaded start-failure rows an older host wrote state, read only while `enabled`. Held
+ *  while unchanged, so a streaming turn does not rebuild every row's delivery notice. */
 export function useStructuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[],
   enabled: boolean
