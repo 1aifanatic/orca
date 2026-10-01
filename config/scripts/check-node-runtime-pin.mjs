@@ -2,15 +2,20 @@
 // Static, offline consistency gate for src/shared/node-runtime-pin.ts; update-node-runtime-pin.mjs owns the network.
 
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseAllDocuments } from 'yaml'
-import {
+import { nodeDistArchiveName, windowsImportLibFile } from './node-dist-archive-name.mjs'
+
+// Why require: an ESM import of a .ts file under a typeless package.json prints MODULE_TYPELESS_PACKAGE_JSON.
+const {
+  COMPAT_SERVER_TARGETS,
   NODE_RUNTIME_ASSETS,
+  NODE_RUNTIME_COMPAT_ASSETS,
   NODE_RUNTIME_PIN,
   SERVER_TARGETS
-} from '../../src/shared/node-runtime-pin.ts'
-import { nodeDistArchiveName } from './update-node-runtime-pin.mjs'
+} = createRequire(import.meta.url)('../../src/shared/node-runtime-pin.ts')
 
 const SHA256 = /^[0-9a-f]{64}$/
 const ASSET_SOURCES = new Set(['official', 'unofficial'])
@@ -38,7 +43,48 @@ export function lockfileRootImporter(contents) {
   return importer
 }
 
-export function findNodeRuntimePinProblems({ pin, assets, targets, packageJson, rootImporter }) {
+function findAssetTableProblems({ pin, assets, targets, table, targetList }) {
+  const problems = []
+  const expected = new Set(targets)
+  for (const target of targets) {
+    if (!Object.hasOwn(assets, target)) {
+      problems.push(`${table} has no entry for ${target}`)
+    }
+  }
+  for (const [target, asset] of Object.entries(assets)) {
+    if (!expected.has(target)) {
+      problems.push(`${table} has ${target}, which is not in ${targetList}`)
+      continue
+    }
+    if (!ASSET_SOURCES.has(asset.source)) {
+      problems.push(`${target}: source must be official or unofficial, got ${asset.source}`)
+    }
+    const expectedArchive = nodeDistArchiveName(pin.version, target)
+    if (asset.archive !== expectedArchive) {
+      problems.push(`${target}: archive ${asset.archive} is not ${expectedArchive}`)
+    }
+    if (!SHA256.test(asset.archiveSha256 ?? '')) {
+      problems.push(`${target}: archiveSha256 is not a 64-character hex SHA-256`)
+    }
+    if (!SHA256.test(asset.executableSha256 ?? '')) {
+      problems.push(`${target}: executableSha256 is not a 64-character hex SHA-256`)
+    }
+    if (!Number.isInteger(asset.executableSize) || asset.executableSize <= 0) {
+      problems.push(`${target}: executableSize must be a positive integer`)
+    }
+  }
+  return problems
+}
+
+export function findNodeRuntimePinProblems({
+  pin,
+  assets,
+  targets,
+  compatAssets = {},
+  compatTargets = [],
+  packageJson,
+  rootImporter
+}) {
   const problems = []
   const declaredElectron =
     packageJson.devDependencies?.electron ?? packageJson.dependencies?.electron
@@ -72,35 +118,36 @@ export function findNodeRuntimePinProblems({ pin, assets, targets, packageJson, 
   if (pin.headers?.file !== `node-v${pin.version}-headers.tar.gz`) {
     problems.push(`NODE_RUNTIME_PIN.headers.file ${pin.headers?.file} is not for ${pin.version}`)
   }
+  for (const target of targets.filter((name) => name.startsWith('win32-'))) {
+    const lib = pin.windowsImportLibs?.[target]
+    if (lib?.file !== windowsImportLibFile(target)) {
+      problems.push(
+        `NODE_RUNTIME_PIN.windowsImportLibs.${target}.file is not ${windowsImportLibFile(target)}`
+      )
+    }
+    if (!SHA256.test(lib?.sha256 ?? '')) {
+      problems.push(
+        `NODE_RUNTIME_PIN.windowsImportLibs.${target}.sha256 is not a 64-character hex SHA-256`
+      )
+    }
+  }
 
-  const expected = new Set(targets)
-  for (const target of targets) {
-    if (!Object.hasOwn(assets, target)) {
-      problems.push(`NODE_RUNTIME_ASSETS has no entry for ${target}`)
-    }
-  }
-  for (const [target, asset] of Object.entries(assets)) {
-    if (!expected.has(target)) {
-      problems.push(`NODE_RUNTIME_ASSETS has ${target}, which is not in SERVER_TARGETS`)
-      continue
-    }
-    if (!ASSET_SOURCES.has(asset.source)) {
-      problems.push(`${target}: source must be official or unofficial, got ${asset.source}`)
-    }
-    const expectedArchive = nodeDistArchiveName(pin.version, target)
-    if (asset.archive !== expectedArchive) {
-      problems.push(`${target}: archive ${asset.archive} is not ${expectedArchive}`)
-    }
-    if (!SHA256.test(asset.archiveSha256 ?? '')) {
-      problems.push(`${target}: archiveSha256 is not a 64-character hex SHA-256`)
-    }
-    if (!SHA256.test(asset.executableSha256 ?? '')) {
-      problems.push(`${target}: executableSha256 is not a 64-character hex SHA-256`)
-    }
-    if (!Number.isInteger(asset.executableSize) || asset.executableSize <= 0) {
-      problems.push(`${target}: executableSize must be a positive integer`)
-    }
-  }
+  problems.push(
+    ...findAssetTableProblems({
+      pin,
+      assets,
+      targets,
+      table: 'NODE_RUNTIME_ASSETS',
+      targetList: 'SERVER_TARGETS'
+    }),
+    ...findAssetTableProblems({
+      pin,
+      assets: compatAssets,
+      targets: compatTargets,
+      table: 'NODE_RUNTIME_COMPAT_ASSETS',
+      targetList: 'COMPAT_SERVER_TARGETS'
+    })
+  )
   return problems
 }
 
@@ -109,6 +156,8 @@ export function main(root = resolve(import.meta.dirname, '../..')) {
     pin: NODE_RUNTIME_PIN,
     assets: NODE_RUNTIME_ASSETS,
     targets: SERVER_TARGETS,
+    compatAssets: NODE_RUNTIME_COMPAT_ASSETS,
+    compatTargets: COMPAT_SERVER_TARGETS,
     packageJson: JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')),
     rootImporter: lockfileRootImporter(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'))
   })

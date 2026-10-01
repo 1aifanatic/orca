@@ -57,7 +57,7 @@ export type StructuredAgentSessionLifetimeContext = {
   }
 }
 
-type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkError'> & {
+type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
 }
 
@@ -80,7 +80,11 @@ export async function abandonQueuedStructuredAgentSessionMessages(
     .then(
       () => true,
       (error: unknown) => {
-        deps.onEventSinkError?.({ sessionId, error })
+        deps.logger.warn('rejecting queued messages of a closed chat failed', {
+          scope: 'queued-abandon',
+          sessionId,
+          error
+        })
         return false
       }
     )
@@ -145,7 +149,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedStop(session, cause, ending.retry === true)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
-  let settlementError: unknown
   // A stop step past its deadline still runs; proving the exit after this pass gave up, it has no
   // caller left to finish the stop.
   let gaveUp = false
@@ -156,6 +159,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     owesProviderChildWindDown: owed !== undefined,
     eventSink: context.runtimeState.eventSinkFor(sessionId),
     adapter: context.deps.adapter,
+    logger: context.deps.logger,
     // The adapter settles its own open turn with this, so who asked travels with the stop.
     stopCause: cause,
     ...(context.restartWitness
@@ -194,15 +198,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         // Only a turn no adapter settled: one with no close, or whose settle threw.
         verdict: turnVerdictForChildEnd(cause, context.now()),
-        showUnexpectedExitOutcome: false,
-        onError: (id, error) => {
-          settlementError = error
-          context.deps.onEventSinkError?.({ sessionId: id, error })
-        }
+        showUnexpectedExitOutcome: false
       })
-      if (!settled) {
+      if (!settled.ok) {
+        context.deps.logger.warn("settling a closed agent's work failed", {
+          scope: 'close-settlement',
+          sessionId,
+          error: settled.error
+        })
         // Without the cause the log names the step and nothing else.
-        throw new Error('dead generation work settlement failed', { cause: settlementError })
+        throw new Error('dead generation work settlement failed', { cause: settled.error })
       }
     },
     releaseLease: async () => {
@@ -260,7 +265,11 @@ export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
       retry: true
     })
   } catch (error) {
-    context.deps.onEventSinkError?.({ sessionId, error })
+    context.deps.logger.warn('retrying an unfinished agent stop failed', {
+      scope: 'owed-stop-retry',
+      sessionId,
+      error
+    })
   }
   return context.sessions.get(sessionId)?.owesProviderChildWindDown === undefined
 }

@@ -321,8 +321,14 @@ describe('the idle sweep with no child running (P2-22 ii)', () => {
       stopStartingAgent: stopAgent,
       finishOwedWindDown: vi.fn(async () => true),
       closeConversation,
-      onError: (_id, error) => {
-        throw error
+      // A failed step fails the test.
+      logger: {
+        warn: (_message, fields) => {
+          throw fields.error
+        },
+        error: (_message, fields) => {
+          throw fields.error
+        }
       }
     })
     await sweep.tick()

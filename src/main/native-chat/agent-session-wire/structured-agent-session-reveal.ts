@@ -84,7 +84,7 @@ export function createStructuredAgentSessionHostRestore(
     ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
     now
   })
-  const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
+  const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,

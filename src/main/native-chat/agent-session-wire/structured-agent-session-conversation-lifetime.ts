@@ -29,6 +29,7 @@ import type {
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
+import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionConversationLifetime = ReturnType<
   typeof createStructuredAgentSessionConversationLifetime
@@ -50,7 +51,9 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   let disposed = false
   const { sessions, serialize } = host
   const deps = () => host.context().deps
-  const readRefusals = createJournalOpenReadRefusals()
+  const readRefusals = createJournalOpenReadRefusals(
+    deferredStructuredAgentSessionLogger(() => deps().logger)
+  )
   // The owed copy fails as an open does: the reader gets the classified refusal, never its text.
   const whenImported = (sessionId: string, session: StructuredAgentSessionHostSession) =>
     session.journal.whenImported().catch((error: unknown) => {
@@ -96,7 +99,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         cause: 'host-stop'
       }),
     closeConversation,
-    onError: (sessionId, error) => deps().onEventSinkError?.({ sessionId, error }),
+    logger: deps().logger,
     ...deps().idleSweep
   })
 
@@ -116,7 +119,13 @@ export function createStructuredAgentSessionConversationLifetime(host: {
             child
           )
         }
-      }).catch((error: unknown) => deps().onEventSinkError?.({ sessionId, error })),
+      }).catch((error: unknown) =>
+        deps().logger.warn('finishing a stop after its child exited failed', {
+          scope: 'stop-after-exit',
+          sessionId,
+          error
+        })
+      ),
     /** Quit has begun: nothing opens a conversation or sweeps one after this. */
     dispose: (): void => {
       disposed = true

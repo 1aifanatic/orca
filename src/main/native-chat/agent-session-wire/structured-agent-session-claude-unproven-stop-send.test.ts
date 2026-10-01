@@ -22,6 +22,7 @@ import { structuredClaudeLifecycleEvent } from '../../runtime/structured-claude-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import type * as EvictionDeadline from './structured-agent-session-eviction-deadline'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -51,12 +52,12 @@ let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
 let store: AgentSessionRecordStore
 let claude: ReturnType<typeof fakeClaude>
-let sinkErrors: unknown[]
+let log: ReturnType<typeof recordingStructuredAgentSessionLogger>
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-unproven-stop-send-'))
   resetHostTestOperationIds()
-  sinkErrors = []
+  log = recordingStructuredAgentSessionLogger()
   claude = fakeClaude({
     replayUuid: null,
     routes: { interrupt: () => ({ still_queued: [], cancelled: [] }) }
@@ -91,7 +92,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
-    onEventSinkError: ({ error }) => sinkErrors.push(error),
+    logger: log.logger,
     now: () => NOW
   })
   const params = hostTestAttachParams(null, {
@@ -575,7 +576,7 @@ it('keeps an option change at rest when the Stop proved the exit and only its bo
   drained.mockResolvedValueOnce(barrierLost)
   await expect(setModel('claude-opus-5')).resolves.toMatchObject({ ok: true })
   expect(owedWindDown()).toBeDefined()
-  expect(sinkErrors).toHaveLength(2)
+  expect(log.scopes().filter((scope) => scope === 'owed-stop-retry')).toHaveLength(1)
   expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
   expect(connection.closeCount).toBe(1)
   expect(claude.connections).toHaveLength(1)

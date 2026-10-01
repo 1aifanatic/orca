@@ -60,7 +60,11 @@ export function structuredAgentSessionWindDownWaitHolds(session: WaitingSession)
 /** Written once per child, so every message that waits on it shares the row. */
 export async function recordStructuredAgentSessionWindDownWait(
   session: WaitingSession,
-  input: { fence: number; failureTextContext: AgentSessionFailureWordsContext }
+  sessionId: string,
+  input: {
+    conversationFence: (sessionId: string) => number
+    failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
+  }
 ): Promise<void> {
   const owed = pendingProviderChildWindDown(session)
   if (!owed || windDownWaitRow(session, owed)) {
@@ -68,12 +72,12 @@ export async function recordStructuredAgentSessionWindDownWait(
   }
   const identity = structuredAgentSessionWindDownWaitIdentity(owed)
   const words = agentSessionFailureWords(agentSessionFailureFact('previousExitUnverifiable'), {
-    ...input.failureTextContext,
+    ...input.failureTextContext(sessionId),
     surface: 'row'
   })
   await session.journal.appendItem(
     identity,
     { kind: 'status', tone: 'warning', ...words },
-    { fence: input.fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    { fence: input.conversationFence(sessionId), turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
 }

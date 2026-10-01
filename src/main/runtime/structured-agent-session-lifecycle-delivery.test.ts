@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
 
 it("keeps a late exit report off the exit chain, so its wait on its own session holds up no other session's exit, and drain still waits for it", async () => {
@@ -11,6 +12,7 @@ it("keeps a late exit report off the exit chain, so its wait on its own session 
       }
       handled.push(`${event.type}:${event.sessionId}`)
     },
+    logger: recordingStructuredAgentSessionLogger().logger,
     drainObservedExits: async () => {}
   })
 

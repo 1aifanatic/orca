@@ -7,10 +7,17 @@
 // own session's serialized step, and is tracked here so the same drain still waits for it.
 
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-lifecycle-event'
+import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
+
+const LOG_SCOPES = {
+  started: 'lifecycle-started',
+  ended: 'lifecycle-exit',
+  exitAfterClose: 'lifecycle-exit-after-close'
+} as const satisfies Record<StructuredAgentSessionLifecycleEvent['type'], string>
 
 export function createStructuredAgentSessionLifecycleDelivery(input: {
   handle: (event: StructuredAgentSessionLifecycleEvent) => Promise<void> | undefined
-  onError?: (input: { scope: string; error: unknown }) => void
+  logger: StructuredAgentSessionLogger
   /** Exits the adapter has observed but not yet published. */
   drainObservedExits: () => Promise<void>
 }): {
@@ -24,8 +31,11 @@ export function createStructuredAgentSessionLifecycleDelivery(input: {
     try {
       await input.handle(event)
     } catch (error) {
-      const scope = event.type === 'ended' ? 'exit' : event.type
-      input.onError?.({ scope: `structured-agent-session-${scope}:${event.sessionId}`, error })
+      input.logger.warn(`delivering a provider ${event.type} event to the host failed`, {
+        scope: LOG_SCOPES[event.type],
+        sessionId: event.sessionId,
+        error
+      })
     }
   }
   return {
