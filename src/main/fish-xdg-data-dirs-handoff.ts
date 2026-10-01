@@ -48,10 +48,8 @@ export function getFishXdgDataDirsLaunchEnv(
 
 // Why a function: its variables stay function-scoped, so nothing but the
 // restored XDG_DATA_DIRS and the codex hook outlives this file.
-// Why the vendor-dir cleanup: fish derived its search paths from the prefixed
-// value before any snippet ran, so restoring the env var alone leaves Orca's dir
-// in them. Why codex waits for fish_prompt: config.fish has not run yet, and the
-// user's own codex function or PATH entry must be seen first, as in wrapped panes.
+// Why codex waits for fish_prompt: config.fish has not run yet, and the user's
+// own codex function or PATH entry must be seen first, as in wrapped panes.
 export function getFishVendorConfSnippet(): string {
   return `# Orca-generated. Loaded only because Orca put this directory on
 # XDG_DATA_DIRS for one fish launch; the first thing it does is take it off.
