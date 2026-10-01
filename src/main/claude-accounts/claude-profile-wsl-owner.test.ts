@@ -440,7 +440,119 @@ it('shows an upgraded WSL account as needing sign-in once selecting it has check
       : result
   })
   await expect(f.routing.publish(debian, 'always', 'boot')).rejects.toThrow(
-    'Selected WSL Claude account needs a fresh sign-in'
+    'Sign in again to use this account.'
   )
   expect(readinessOf()).toBe('sign-in-required')
+})
+
+function routingFixture(withAccount: boolean) {
+  const settings: ClaudeProfileSettings = {
+    claudeManagedAccounts: withAccount
+      ? [
+          {
+            id: 'a',
+            email: 'a@example.test',
+            authMethod: 'subscription-oauth',
+            managedAuthRuntime: 'wsl',
+            wslDistro: 'Ubuntu',
+            managedAuthPath: '/unused',
+            createdAt: 0,
+            updatedAt: 0,
+            lastAuthenticatedAt: 0
+          }
+        ]
+      : [],
+    activeClaudeManagedAccountId: null,
+    activeClaudeManagedAccountIdsByRuntime: {
+      host: null,
+      wsl: { Ubuntu: withAccount ? 'a' : null }
+    },
+    agentStatusHooksEnabled: false,
+    disabledTuiAgents: []
+  }
+  const calls: ClaudeWslProfileRequest[] = []
+  const guest = (distro: string) => ({
+    home: `/home/${distro}`,
+    request: async (request: ClaudeWslProfileRequest) => {
+      calls.push(request)
+      return {
+        ready: true,
+        provisioned: true,
+        readiness: Object.fromEntries(
+          settings.claudeManagedAccounts.map((a) => [a.id, 'ready' as const])
+        ),
+        homes: [],
+        historyHomes: { projects: [], transcripts: [] },
+        report: { outcome: 'prepared' as const, surfaces: {}, warnings: [] }
+      }
+    }
+  })
+  const prepare = vi.fn(async (distro: string) => guest(distro))
+  const prepareDefault = vi.fn(async (distro: string) => guest(distro))
+  const owner = createWslClaudeProfileOwner(
+    () => settings,
+    prepare,
+    async () => {},
+    async () => true,
+    prepareDefault
+  )
+  return {
+    settings,
+    prepare,
+    prepareDefault,
+    owner,
+    calls,
+    routing: new ClaudeProfileRoutingService(owner)
+  }
+}
+
+it('unroutes a distro once its last account is removed', async () => {
+  const f = routingFixture(true)
+  await f.routing.publish(ubuntu, 'always', 'boot')
+  f.settings.claudeManagedAccounts = []
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  expect(f.routing.routes(ubuntu)).toBe(false)
+  expect(f.routing.terminalEnv(ubuntu)).toEqual({})
+})
+it('leaves a distro unrouted after a failed first Add forgets its draft', async () => {
+  const f = routingFixture(false)
+  f.settings.claudeManagedAccounts = [
+    {
+      id: 'd',
+      email: '',
+      authMethod: 'unknown',
+      managedAuthRuntime: 'wsl',
+      wslDistro: 'Ubuntu',
+      managedAuthPath: '',
+      createdAt: 0,
+      updatedAt: 0,
+      lastAuthenticatedAt: 0
+    }
+  ]
+  await f.routing.publish(ubuntu, 'always', 'boot')
+  f.settings.claudeManagedAccounts = []
+  expect(f.routing.routes(ubuntu)).toBe(false)
+  expect(f.routing.terminalEnv(ubuntu)).toEqual({})
+})
+it('does not retry a failed managed guest for every System Default launch', async () => {
+  const f = routingFixture(true)
+  f.prepare.mockRejectedValue(new Error('runtime download failed'))
+  await expect(f.routing.publish(ubuntu, 'always', 'boot')).rejects.toThrow(
+    'runtime download failed'
+  )
+  expect(f.prepareDefault).not.toHaveBeenCalled()
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  await expect(f.routing.publish(ubuntu, 'always', 'boot')).resolves.toMatchObject({
+    profile: null
+  })
+  const before = f.prepare.mock.calls.length
+  await f.routing.publish(ubuntu, 'if-missing', 'boot')
+  await f.routing.publish(ubuntu, 'if-missing', 'boot')
+  expect(f.prepare.mock.calls.length).toBe(before)
+  // Selecting the managed account again still tries its own guest.
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = 'a'
+  await expect(f.routing.publish(ubuntu, 'always', 'boot')).rejects.toThrow(
+    'runtime download failed'
+  )
+  expect(f.prepare.mock.calls.length).toBe(before + 1)
 })

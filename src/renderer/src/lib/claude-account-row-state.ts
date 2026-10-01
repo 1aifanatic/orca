@@ -43,8 +43,8 @@ export function getClaudeAccountRowState(
             ? translate('accounts.claude.signInRequired', 'Sign in again to use this account')
             : readiness === 'unverified'
               ? translate(
-                  'accounts.claude.wslNotRunning',
-                  '{{value0}} is not running, so this account has not been checked yet. Selecting it starts {{value0}}.',
+                  'accounts.claude.wslNotChecked',
+                  'Orca has not checked this account in {{value0}} yet. Selecting it checks it, starting {{value0}} if it is stopped.',
                   { value0: account.wslDistro || 'WSL' }
                 )
               : readiness === 'unavailable'

@@ -145,7 +145,7 @@ describe('Claude accounts section', () => {
       ]
     })
     expect(markup).toContain(
-      'Ubuntu is not running, so this account has not been checked yet. Selecting it starts Ubuntu.'
+      'Orca has not checked this account in Ubuntu yet. Selecting it checks it, starting Ubuntu if it is stopped.'
     )
     expect(markup).toContain(
       'This account&#x27;s files could not be read. Try again, or sign in again.'
@@ -167,7 +167,7 @@ describe('Claude accounts section', () => {
   it('says account switching may not reach terminals from before the update while they run', () => {
     expect(render()).not.toContain('from before this Orca update')
     expect(render({ olderTerminalsRunning: true })).toContain(
-      'Some terminals are still running from before this Orca update.'
+      'Some terminals are still running from before this Orca update and keep the Claude account they started with. Close all terminals once to finish the update.'
     )
   })
 

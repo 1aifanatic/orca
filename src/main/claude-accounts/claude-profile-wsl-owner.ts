@@ -1,4 +1,5 @@
 import { prepareClaudeWslDefaultGuest } from './claude-profile-wsl-default'
+import { inspectClaudeWslGuest, type ClaudeWslGuestCache } from './claude-profile-wsl-inspect'
 import { posix } from 'node:path'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
 import {
@@ -9,7 +10,6 @@ import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hoo
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
 import {
-  ClaudeProfileHostUnreachableError,
   ClaudeProfileSignInRequiredError,
   type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
@@ -21,7 +21,6 @@ import {
   prepareClaudeWslGuest,
   waitForRunningWslDistro,
   withdrawClaudeWslPointer,
-  type ClaudeWslGuest,
   type ClaudeWslProfileResponse
 } from './claude-profile-wsl-transport'
 
@@ -41,8 +40,10 @@ export function createWslClaudeProfileOwner(
   waitForRunning: (distro: string) => Promise<boolean> = waitForRunningWslDistro,
   prepareDefault: typeof prepareClaudeWslDefaultGuest = prepareClaudeWslDefaultGuest
 ): ClaudeProfileRoutingOwner {
-  const seen = new Set<string>()
-  const guests = new Map<string, { guest: ClaudeWslGuest; expires: number; managed: boolean }>()
+  // Why: a managed guest that failed to start is not retried for System Default until it expires
+  // or the user acts; each retry could wait out the full prepare timeout first.
+  const managedGuestFailures = new Map<string, number>()
+  const guests: ClaudeWslGuestCache = new Map()
   const inspections = new Map<
     string,
     { accountId: string | null; home: string; result: ClaudeWslProfileResponse }
@@ -105,64 +106,31 @@ export function createWslClaudeProfileOwner(
     refresh: async (target, access) => {
       const { distro, accountId } = selected(target)
       const key = distro.toLowerCase()
-      seen.add(distro)
       const previous = inspections.get(key)
       try {
         const managed = settings().claudeManagedAccounts.some(
           (entry) => entry.managedAuthRuntime === 'wsl' && entry.wslDistro?.toLowerCase() === key
         )
-        const inspect = async (useManaged: boolean) => {
-          const cached = guests.get(key)
-          const guest =
-            cached && cached.managed === useManaged && cached.expires > Date.now()
-              ? cached.guest
-              : await (useManaged ? prepareGuest : prepareDefault)(distro, access)
-          if (guest !== cached?.guest) {
-            guests.set(key, { guest, expires: Date.now() + 600_000, managed: useManaged })
-          }
-          const result = await guest.request(
-            {
-              action: 'inspect',
-              distro,
-              accountId,
-              accountIds: settings()
-                .claudeManagedAccounts.filter((entry) => entry.wslDistro?.toLowerCase() === key)
-                .map((entry) => entry.id),
-              userHome: guest.home,
-              hooksEnabled: false
-            },
-            access
-          )
-          return { guest, result }
-        }
-        let inspected: Awaited<ReturnType<typeof inspect>>
-        try {
-          inspected = await inspect(managed)
-        } catch (error) {
-          // Why: System Default needs only its pointer; the managed runtime failing must not block it.
-          if (
-            !managed ||
-            accountId !== null ||
-            error instanceof ClaudeProfileHostUnreachableError
-          ) {
-            throw error
-          }
-          console.warn(
-            '[claude-profile] WSL System Default publishes without the managed guest:',
-            error
-          )
-          inspected = await inspect(false)
-        }
-        const { guest, result } = inspected
+        const { guest, result } = await inspectClaudeWslGuest({
+          guests,
+          managedGuestFailures,
+          prepareGuest,
+          prepareDefault,
+          distro,
+          managed,
+          accountId,
+          accountIds: settings()
+            .claudeManagedAccounts.filter((entry) => entry.wslDistro?.toLowerCase() === key)
+            .map((entry) => entry.id),
+          access
+        })
         // Why: an inspect that lands after a newer selection must not replace its verification.
         if (selectedAccountId(target) === accountId) {
           inspections.set(key, { accountId, home: guest.home, result })
         }
         if (!result.ready) {
           throw accountId && result.readiness?.[accountId] === 'sign-in-required'
-            ? new ClaudeProfileSignInRequiredError(
-                'Selected WSL Claude account needs a fresh sign-in'
-              )
+            ? new ClaudeProfileSignInRequiredError()
             : new Error('Selected WSL Claude account could not be checked')
         }
       } catch (error) {
@@ -191,14 +159,14 @@ export function createWslClaudeProfileOwner(
     },
     // Why guest-relative: the claude function expands it, so a pane needs no guest home.
     pointerPath: () => WSL_CLAUDE_PROFILE_POINTER,
+    // Settings only, as Step 3 had it: a distro stops being routed once its last account goes.
     targets: () =>
       [
-        ...new Set([
-          ...seen,
-          ...settings().claudeManagedAccounts.flatMap((account) =>
+        ...new Set(
+          settings().claudeManagedAccounts.flatMap((account) =>
             account.managedAuthRuntime === 'wsl' && account.wslDistro ? [account.wslDistro] : []
           )
-        ])
+        )
       ].map((wslDistro) => ({ runtime: 'wsl', wslDistro })),
     capabilities: () => [CLAUDE_PROFILE_ROUTING_CAPABILITY],
     readHomes: (target, surface) => {
