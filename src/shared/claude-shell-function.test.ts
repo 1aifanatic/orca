@@ -180,7 +180,12 @@ describe('Claude invocation account selection', () => {
     expect(script).toContain('[IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER)')
     expect(script).toContain('$env:CLAUDE_CONFIG_DIR -eq $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR')
     expect(script).toContain("throw 'Selected Claude profile")
-    expect(script).toContain('finally { foreach')
+    expect(script).toContain('finally {')
+    // .NET 9+ turns a $null/'' SetEnvironmentVariable into an empty variable, not a removal.
+    expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
+    expect(script).toContain(
+      'if ($null -eq $saved[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }'
+    )
     expect(script).toContain('$input | & $binary.Source @args')
   })
 })

@@ -103,7 +103,7 @@ function Global:claude {
             if ($orcaClaudeHome) {
                 if ($orcaClaudeHome -match '[\\r\\n\\x00]' -or -not [IO.Path]::IsPathRooted($orcaClaudeHome) -or -not [IO.Directory]::Exists($orcaClaudeHome)) { throw 'Selected Claude profile is missing or invalid.' }
                 foreach ($name in $names) {
-                    if ($name -ne 'ANTHROPIC_CUSTOM_HEADERS' -or $env:ANTHROPIC_CUSTOM_HEADERS -match '${authHeaderWords}') { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+                    if ($name -ne 'ANTHROPIC_CUSTOM_HEADERS' -or $env:ANTHROPIC_CUSTOM_HEADERS -match '${authHeaderWords}') { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
                 }
                 $env:CLAUDE_CONFIG_DIR = $orcaClaudeHome
                 $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR = $orcaClaudeHome
@@ -113,7 +113,13 @@ function Global:claude {
         if ($MyInvocation.ExpectingInput) { $input | & $binary.Source @args } else { & $binary.Source @args }
         $global:LASTEXITCODE = $LASTEXITCODE
     } catch { $global:LASTEXITCODE = 1; Write-Error $_ -ErrorAction Continue }
-    finally { foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') } }
+    finally {
+        # Why Remove-Item: on .NET 9+ a $null value (passed as "") creates the variable empty instead of deleting it.
+        foreach ($name in $names) {
+            if ($null -eq $saved[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        }
+    }
 }
 }
 Remove-Variable orcaClaudeCommand -ErrorAction SilentlyContinue
