@@ -23,7 +23,7 @@ const SUBMISSION = {
   submittedAt: 1,
   resolvedAt: null,
   handoverRecorded: true
-}
+} satisfies Partial<AgentJournalSubmission>
 const COMPACT: AgentJournalMessageItem = {
   kind: 'message',
   role: 'user',
