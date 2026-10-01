@@ -67,7 +67,7 @@ function fixture() {
     },
     {
       evictInactiveClaudeCache: vi.fn(),
-      refreshForClaudeAccountChange: vi.fn(async () => {})
+      refreshForClaudeAccountChange: vi.fn().mockResolvedValue(undefined)
     },
     {
       syncForCurrentSelection: async () => {},

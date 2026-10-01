@@ -159,7 +159,12 @@ export class ClaudeAccountRegistration {
     config: Parameters<typeof readClaudeProfileLoginIdentity>[0]
   ): Promise<ClaudeLoginIdentity> {
     try {
-      return await (this.deps.readIdentity ?? readClaudeProfileLoginIdentity)(config)
+      const status = await (this.deps.readIdentity ?? readClaudeProfileLoginIdentity)(config)
+      return {
+        email: status.email,
+        organizationUuid: status.organizationUuid ?? null,
+        organizationName: status.organizationName ?? null
+      }
     } catch (error) {
       const observed = await (this.deps.observeIdentity ?? observeClaudeProfileIdentity)(
         accountId,

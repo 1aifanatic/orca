@@ -48,7 +48,7 @@ function fixture() {
     organizationUuid: undefined,
     organizationName: undefined
   }
-  const login = vi.fn(async () => identity)
+  const login = vi.fn(async () => {})
   const readIdentity = vi.fn(async () => ({ ...identity }))
   const observeIdentity = vi.fn(
     async (): Promise<{
@@ -60,7 +60,7 @@ function fixture() {
   const publish = vi.fn(async () => {})
   const rateLimits = {
     evictInactiveClaudeCache: vi.fn(),
-    refreshForClaudeAccountChange: vi.fn(async () => {})
+    refreshForClaudeAccountChange: vi.fn().mockResolvedValue(undefined)
   }
   const provision = vi.fn(async () => {})
   const prepare = vi.fn(async (id: string) => ({
