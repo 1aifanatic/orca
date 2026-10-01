@@ -188,11 +188,8 @@ export function createClaudeAccountActionRunner(
           action === 'adding' && previousActiveAccountId === nextActiveAccountId
         const previousLabel = getClaudeAccountLabel(claudeAccounts, previousActiveAccountId)
         const nextLabel = getClaudeAccountLabel(next, nextActiveAccountId)
-        // Why: re-signing in the selected account to the same login would read "a@ → a@".
-        const signedInAgain =
-          action.startsWith('reauth:') &&
-          previousActiveAccountId === nextActiveAccountId &&
-          previousLabel === nextLabel
+        // Why: a re-sign-in, or an Add replacing the selected account, would read "a@ → a@".
+        const signedInAgain = nextActiveAccountId !== null && previousLabel === nextLabel
         toast.info(
           translate('auto.components.settings.AccountsPane.f921d32606', 'Claude account updated.'),
           {

@@ -65,4 +65,27 @@ describe('Claude account action toasts', () => {
         'new@example.test is signed in again. The next Claude you start uses it. Running sessions keep their account.'
     })
   })
+
+  it('says signed in again when an Add replaces the selected account that needed sign-in', async () => {
+    const legacy = {
+      ...added,
+      accounts: [{ ...added.accounts[0], id: 'legacy' }],
+      activeAccountId: 'legacy'
+    }
+    const run = createClaudeAccountActionRunner({
+      settings: getDefaultSettings('/tmp'),
+      accountRuntime: { runtime: 'host', wslDistro: null, label: 'This device' },
+      isRemoteAccountScope: true,
+      claudeAccounts: legacy,
+      setClaudeAccounts: vi.fn(),
+      setClaudeAction: vi.fn(),
+      fetchSettings: vi.fn(async () => {}),
+      recordFeatureInteraction: vi.fn()
+    })
+    await run('adding', async () => ({ ...added, activeAccountId: 'new' }))
+    expect(toast.info).toHaveBeenCalledWith(expect.any(String), {
+      description:
+        'new@example.test is signed in again. The next Claude you start uses it. Running sessions keep their account.'
+    })
+  })
 })
