@@ -26,8 +26,8 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
 
 /** With no catalog for the account, the list a running child falls back to: Claude's built-in
- *  models. A Codex child answers nothing without its catalog, so none, and the client keeps its
- *  own defaults as it does when a live read fails. */
+ *  models. A Codex child has no such list, so none: the client fills the current model from its
+ *  own unknown-model defaults, unchanged from before this list was shared. */
 function restingFallbackModels(
   provider: AgentSessionRecord['provider']
 ): AgentSessionModelOption[] | null {
@@ -53,8 +53,12 @@ async function readStructuredAgentSessionOptionsAtRest(
     saved.fastMode === undefined
       ? null
       : decodeStructuredAgentSessionOptionValue('fastMode', saved.fastMode)
-  // An unknown model is one the client already treats as unconfirmed.
-  const model = saved.model ?? models.find((entry) => entry.isDefault)?.id ?? ''
+  // An unknown model is one the client already treats as unconfirmed. Only a real listing names the
+  // account's default; a built-in list's default is a guess, so with none the client keeps its own.
+  const model =
+    saved.model ??
+    (catalog.origin === 'unknown' ? undefined : models.find((entry) => entry.isDefault)?.id) ??
+    ''
   // As a live child answers: the pick, else what Claude runs for this model when none is sent.
   // A live Codex child answers only the effort its thread reported, never the model's default.
   const effort =

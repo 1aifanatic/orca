@@ -282,6 +282,27 @@ describe('Claude effort default at rest', () => {
     expect(pickerEffort(resting)).toBe('high')
   })
 
+  it('names no model at rest with no pick and no catalog, so the client keeps what the child ran', async () => {
+    // The CLI's default model, reported live; the chat never picked one.
+    const child = await startChild(new AgentModelCatalogStore(), undefined, [], {
+      runs: 'opus',
+      lists: []
+    })
+    const live = await child.readOptions({ sessionId: SESSION, fence: 7 })
+
+    const resting = await readAtRest(new AgentModelCatalogStore(), restingRecord({}))
+
+    // The built-in list's default is a guess, not this account's: nothing to name.
+    expect(resting.current.model).toBe('')
+    const seed = getAgentSessionOptionCatalog('claude')!
+    const state = [live, resting].reduce(
+      (current, answer) => applyStructuredAgentSessionOptions(current, seed, answer),
+      createStructuredAgentSessionOptionState('claude', seed)
+    )
+    const model = structuredAgentSessionOptionSnapshot(state).find((row) => row.id === 'model')
+    expect(model?.kind.type === 'select' ? model.kind.currentValue : undefined).toBe('opus')
+  })
+
   it("keeps a Codex model's effort at rest with no catalog yet, from the client's own defaults", async () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read and the catalog key touch only these fields.
     const record = {
