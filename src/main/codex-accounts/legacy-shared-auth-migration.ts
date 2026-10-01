@@ -12,6 +12,34 @@ export const LEGACY_SHARED_AUTH_MIGRATION_MARKER = 'per-account-auth-migration-v
 export const LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER =
   'per-account-mcp-creds-migration-v1.json'
 
+/**
+ * Whether the MCP carry proved the shared mirror's .credentials.json belongs
+ * to a managed account. The copy it made leaves the original in the mirror.
+ */
+export function isLegacySharedMcpCredentialsClaimedByManagedAccount(metadataDir: string): boolean {
+  const contents = readRegularFile(
+    join(metadataDir, LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER)
+  )
+  if (contents === null) {
+    return false
+  }
+  let marker: unknown
+  try {
+    marker = JSON.parse(contents)
+  } catch {
+    marker = null
+  }
+  // Why: a malformed claim must not hand possibly-managed tokens to ~/.codex.
+  if (!marker || typeof marker !== 'object' || !('outcome' in marker)) {
+    return true
+  }
+  return (
+    (marker.outcome === 'migrated' || marker.outcome === 'per-account-present') &&
+    'accountId' in marker &&
+    typeof marker.accountId === 'string'
+  )
+}
+
 type LegacySharedAuthMigrationOptions = {
   activeHostAccountId: string | null
   hostAccounts: readonly CodexManagedAccount[]
