@@ -47,6 +47,7 @@ import {
   structuredAgentSessionWindDownWaitHolds
 } from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -69,7 +70,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   ) => Promise<boolean>
   /** Who the chat's failure sentences name. */
   failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  onError: (sessionId: string, error: unknown) => void
+  logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
   flushStreamedEvents: (sessionId: string) => Promise<void>
@@ -146,14 +147,22 @@ export class StructuredAgentSessionDeliveryLoop {
       }
     } catch (error) {
       // The error is Orca's own and goes to the log; the chat says only that Orca failed.
-      this.deps.onError(sessionId, error)
+      this.deps.logger.warn('delivering a queued message failed', {
+        scope: 'delivery-loop',
+        sessionId,
+        error
+      })
       const cause = { hostFault: true } as const
       await this.deps
         .serialize(sessionId, () => this.fail(sessionId, { startKey: null, cause }))
         .catch((failure: unknown) => {
           // Rows left queued are rejected by the next open, or by the next loop an accept wakes.
           this.running.delete(sessionId)
-          this.deps.onError(sessionId, failure)
+          this.deps.logger.warn('recording a failed delivery failed', {
+            scope: 'delivery-loop-fail',
+            sessionId,
+            error: failure
+          })
         })
     }
   }
@@ -184,7 +193,8 @@ export class StructuredAgentSessionDeliveryLoop {
     // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
     // Another operation's retry may have failed first, so the row is made sure of here too.
     if (structuredAgentSessionWindDownWaitHolds(session)) {
-      return this.waitOnUnprovenExit(sessionId, session)
+      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
+      return this.stop(sessionId)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)
     if (failedStart) {
@@ -193,8 +203,9 @@ export class StructuredAgentSessionDeliveryLoop {
     const ready = await this.deps.ensureProviderChild(sessionId, oldest.clientMessageId)
     if (!ready.ok && isStructuredAgentSessionPreviousExitUnverifiable(ready.refusal)) {
       // The start retried that stop first and still could not prove the exit: the message waits,
-      // saying why, rather than being refused.
-      return this.waitOnUnprovenExit(sessionId, session)
+      // saying why, rather than being refused. The row is written once per unproven child.
+      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
+      return this.stop(sessionId)
     }
     if (!ready.ok) {
       return ready
@@ -299,18 +310,6 @@ export class StructuredAgentSessionDeliveryLoop {
         submission.acceptedSequence !== undefined &&
         submission.acceptedSequence <= ended.endedAt.sequence
     )
-  }
-
-  /** The row is written once per unproven child, so this is idempotent. */
-  private async waitOnUnprovenExit(
-    sessionId: string,
-    session: StructuredAgentSessionHostSession
-  ): Promise<'stop'> {
-    await recordStructuredAgentSessionWindDownWait(session, {
-      fence: this.deps.conversationFence(sessionId),
-      failureTextContext: this.deps.failureTextContext(sessionId)
-    })
-    return this.stop(sessionId)
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. */

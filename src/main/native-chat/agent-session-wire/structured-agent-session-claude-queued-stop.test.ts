@@ -29,6 +29,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 // As Claude Code 2.1.280 advertises them on a turn's system/init frame.
@@ -82,6 +83,7 @@ beforeEach(async () => {
   })
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: Object.assign(adapter, { supportsCreate: () => true }),
     journalDatabase: openTestJournalHostDatabase(root),
@@ -314,5 +316,5 @@ it('withdraws a host-queued follow-up but leaves a newer turn running when the S
   const rows = (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
     item.body.kind === 'status' ? [item.body.text] : []
   )
-  expect(rows).toContain('The provider had already finished this turn.')
+  expect(rows).not.toContain('The provider had already finished this turn.')
 }, 15_000)

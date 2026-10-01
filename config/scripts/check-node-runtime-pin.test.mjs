@@ -21,7 +21,8 @@ function validInput() {
     version: '24.21.0',
     electron: '43.7.5',
     napi: 10,
-    headers: { file: 'node-v24.21.0-headers.tar.gz', sha256: HASH }
+    headers: { file: 'node-v24.21.0-headers.tar.gz', sha256: HASH },
+    windowsImportLibs: { 'win32-x64': { file: 'win-x64/node.lib', sha256: HASH } }
   }
   const targets = ['linux-x64-glibc', 'win32-x64']
   const assets = {
@@ -112,6 +113,36 @@ describe('findNodeRuntimePinProblems', () => {
       'linux-x64-glibc: executableSha256 is not a 64-character hex SHA-256',
       'linux-x64-glibc: executableSize must be a positive integer'
     ])
+  })
+  it('rejects a missing or mistargeted Windows node.lib', () => {
+    const input = validInput()
+    input.pin.windowsImportLibs['win32-x64'] = { file: 'win-arm64/node.lib', sha256: 'x' }
+    expect(findNodeRuntimePinProblems(input)).toEqual([
+      'NODE_RUNTIME_PIN.windowsImportLibs.win32-x64.file is not win-x64/node.lib',
+      'NODE_RUNTIME_PIN.windowsImportLibs.win32-x64.sha256 is not a 64-character hex SHA-256'
+    ])
+  })
+  it('checks the compat table against its own target list', () => {
+    const input = validInput()
+    input.compatTargets = ['linux-x64-glibc217']
+    input.compatAssets = {
+      'linux-x64-glibc217': {
+        source: 'unofficial',
+        archive: 'node-v24.21.0-linux-x64.tar.gz',
+        archiveSha256: HASH,
+        executableSha256: HASH,
+        executableSize: 1
+      },
+      'linux-x64-glibc': input.assets['linux-x64-glibc']
+    }
+    expect(findNodeRuntimePinProblems(input)).toEqual([
+      'linux-x64-glibc217: archive node-v24.21.0-linux-x64.tar.gz is not node-v24.21.0-linux-x64-glibc-217.tar.gz',
+      'NODE_RUNTIME_COMPAT_ASSETS has linux-x64-glibc, which is not in COMPAT_SERVER_TARGETS'
+    ])
+    delete input.compatAssets['linux-x64-glibc217']
+    expect(findNodeRuntimePinProblems(input)).toContain(
+      'NODE_RUNTIME_COMPAT_ASSETS has no entry for linux-x64-glibc217'
+    )
   })
   it("rejects another target's archive", () => {
     const input = validInput()
