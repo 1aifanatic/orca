@@ -15,15 +15,13 @@
 // Then, under the same budget and gate, every chat already in the database gets the status row the
 // version 5 migration left it without (structured-agent-session-status-backfill-step.ts).
 
-import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
   classifyJournalBackgroundFailure,
   forgetJournalBackgroundFailure,
-  journalBackgroundFailureStands,
-  perChatFileInput,
-  recordJournalBackgroundFailure
+  perChatFileCopyFailureStands,
+  recordPerChatFileCopyFailure
 } from '../agent-session-journal/journal-background-failures'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
@@ -39,6 +37,7 @@ import {
   createStructuredAgentSessionStatusBackfill,
   settleWrittenChat
 } from './structured-agent-session-status-backfill-step'
+import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import { StructuredAgentSessionPerChatFileQueue } from './structured-agent-session-per-chat-file-queue'
 import {
   removeEmptyPerChatDirectories,
@@ -81,6 +80,8 @@ export type PerChatFileCopyDeps = {
   /** Free bytes on the state directory's volume; null when unknown. */
   freeBytes?: (directory: string) => Promise<number | null>
   importJournal?: typeof importPerSessionJournal
+  /** The copy's share of the main thread; a test supplies its own clock. */
+  pace?: StructuredAgentSessionPerChatFileCopyPace
   intervalMs?: number
   startDelayMs?: number
   runBudgetMs?: number
@@ -108,15 +109,20 @@ export class StructuredAgentSessionPerChatFileCopy {
   private readonly logged = new Set<string>()
   private readonly tally = new Map<TallyKey, number>()
   private readonly backfill: ReturnType<typeof createStructuredAgentSessionStatusBackfill>
+  private readonly pace: StructuredAgentSessionPerChatFileCopyPace
 
   constructor(private readonly deps: PerChatFileCopyDeps) {
     this.startedAt = deps.now()
+    this.pace = deps.pace ?? new StructuredAgentSessionPerChatFileCopyPace()
     this.queue = new StructuredAgentSessionPerChatFileQueue({
       ...deps,
       onLeftover: () => this.count('leftovers'),
       onOrphan: () => this.count('orphans')
     })
-    this.backfill = createStructuredAgentSessionStatusBackfill(deps)
+    this.backfill = createStructuredAgentSessionStatusBackfill({
+      ...deps,
+      yieldTask: this.pace.yieldTask
+    })
   }
 
   start(): void {
@@ -133,6 +139,7 @@ export class StructuredAgentSessionPerChatFileCopy {
   async stop(): Promise<void> {
     this.finished = true
     this.clearTimer()
+    this.pace.stop()
     await this.running?.catch(() => undefined)
   }
 
@@ -163,6 +170,7 @@ export class StructuredAgentSessionPerChatFileCopy {
 
   private async run(): Promise<void> {
     const began = this.deps.now()
+    this.pace.begin()
     const budgetMs = this.deps.runBudgetMs ?? PER_CHAT_FILE_COPY_RUN_BUDGET_MS
     const maxChats = this.deps.runMaxChats ?? PER_CHAT_FILE_COPY_RUN_MAX_CHATS
     let copies = 0
@@ -187,7 +195,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       if (step === 'copied' || step === 'backfilled') {
         copies += 1
       }
-      await yieldToEventLoop()
+      await this.pace.yieldTask()
     }
   }
 
@@ -231,9 +239,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       this.count('setAside')
       return null
     }
-    const { appVersion } = this.deps
-    const input = perChatFileInput(file)
-    if (journalBackgroundFailureStands(db, { sessionId, step: 'copy', input, appVersion })) {
+    if (perChatFileCopyFailureStands(db, { sessionId, file, appVersion: this.deps.appVersion })) {
       this.count('skipped')
       return null
     }
@@ -266,7 +272,8 @@ export class StructuredAgentSessionPerChatFileCopy {
     const result = await (this.deps.importJournal ?? importPerSessionJournal)({
       database: this.deps.database,
       identity,
-      legacyDirectory
+      legacyDirectory,
+      yieldTask: this.pace.yieldTask
     })
     if (result.outcome === 'imported') {
       this.count('copied')
@@ -297,13 +304,9 @@ export class StructuredAgentSessionPerChatFileCopy {
     if (kind === 'transient') {
       this.queue.retry(record)
     } else {
-      recordJournalBackgroundFailure(this.deps.database.db, {
+      recordPerChatFileCopyFailure(this.deps.database.db, {
         sessionId,
-        step: 'copy',
-        readInput: () => {
-          const file = statPerChatFile(legacyDirectory)
-          return file && perChatFileInput(file)
-        },
+        legacyDirectory,
         appVersion: this.deps.appVersion,
         error,
         failedAt: this.deps.now()

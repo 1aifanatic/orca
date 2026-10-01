@@ -14,7 +14,7 @@
 import { isTransientSqliteContention } from '../../sqlite/sqlite-read-failure'
 import type Database from '../../sqlite/sync-database'
 import { JournalImportAbortedError } from './journal-open-failure'
-import type { PerChatFileState } from './journal-per-session-source'
+import { statPerChatFile, type PerChatFileState } from './journal-per-session-source'
 
 export type JournalBackgroundStep = 'copy' | 'status'
 
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS journal_background_failures (
 }
 
 /** The `copy` step's input: the file and its WAL as they stand. */
-export function perChatFileInput(file: PerChatFileState): string {
+function perChatFileInput(file: PerChatFileState): string {
   return `${file.dbSize}:${file.dbMtimeMs}:${file.walSize ?? '-'}:${file.walMtimeMs ?? '-'}`
 }
 
@@ -116,6 +116,36 @@ export function journalBackgroundFailureStands(
 ): boolean {
   const row = db.prepare(SELECT_FAILURE).get(key.sessionId, key.step)
   return row?.input === key.input && row.app_version === key.appVersion
+}
+
+/** The `copy` step's give-up, keyed to the chat's per-chat file as it stands now. */
+export function recordPerChatFileCopyFailure(
+  db: Database.Database,
+  input: { sessionId: string; legacyDirectory: string } & Omit<
+    Parameters<typeof recordJournalBackgroundFailure>[1],
+    'sessionId' | 'step' | 'readInput'
+  >
+): void {
+  recordJournalBackgroundFailure(db, {
+    ...input,
+    step: 'copy',
+    readInput: () => {
+      const file = statPerChatFile(input.legacyDirectory)
+      return file && perChatFileInput(file)
+    }
+  })
+}
+
+export function perChatFileCopyFailureStands(
+  db: Database.Database,
+  key: { sessionId: string; file: PerChatFileState; appVersion: string }
+): boolean {
+  return journalBackgroundFailureStands(db, {
+    sessionId: key.sessionId,
+    step: 'copy',
+    input: perChatFileInput(key.file),
+    appVersion: key.appVersion
+  })
 }
 
 export function deleteJournalBackgroundFailure(db: Database.Database, key: FailureKey): void {

@@ -33,6 +33,8 @@ type CopyCheckInput = {
   batchRows: number
   /** Where the copy came from, for the log line. */
   legacyDirectory: string
+  /** Ends each batch's task. */
+  yieldTask?: () => Promise<void>
 }
 
 /** Mismatches already logged, so a chat refused on every open logs once. */
@@ -77,7 +79,7 @@ async function readCopyFacts(
   let first = true
   for (const batch of batches) {
     if (!first) {
-      await yieldToEventLoop()
+      await (input.yieldTask ?? yieldToEventLoop)()
     }
     first = false
     assertImportNotAborted(input.database, input.sessionId)

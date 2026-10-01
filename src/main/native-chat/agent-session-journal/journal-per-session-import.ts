@@ -75,6 +75,8 @@ type PerSessionJournalImportDeps = {
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
   batchRows?: number
+  /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
+  yieldTask?: () => Promise<void>
 }
 
 export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported' | 'kept'
@@ -164,7 +166,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> 
     return { outcome: 'already-imported' }
   }
   // The open's replay of what was just copied is a long task of its own; don't add this one to it.
-  await yieldToEventLoop()
+  await (input.yieldTask ?? yieldToEventLoop)()
   return { outcome: 'imported', load: copied.load, status: copied.status }
 }
 
@@ -222,6 +224,7 @@ async function copyLegacyJournal(
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
+  const yieldTask = input.yieldTask ?? yieldToEventLoop
   // What an earlier try that stopped midway left, a batch per task as the copy's own rows go in.
   for (let deleted = batchRows; deleted === batchRows;) {
     assertImportNotAborted(input.database, sessionId)
@@ -229,13 +232,13 @@ async function copyLegacyJournal(
       deleteUnpublishedJournalRows(db, sessionId, batchRows)
     )
     if (deleted > 0) {
-      await yieldToEventLoop()
+      await yieldTask()
     }
   }
   let first = true
   for (const batch of legacyRowBatches(source, sessionId, epoch, batchRows)) {
     if (!first) {
-      await yieldToEventLoop()
+      await yieldTask()
     }
     first = false
     assertImportNotAborted(input.database, sessionId)
@@ -258,7 +261,8 @@ async function copyLegacyJournal(
       epoch,
       repairedFrom: repair?.epoch === epoch ? Number(repair.content_from) : null,
       batchRows,
-      legacyDirectory: input.legacyDirectory
+      legacyDirectory: input.legacyDirectory,
+      yieldTask
     },
     legacyRowBatches(source, sessionId, epoch, batchRows)
   )

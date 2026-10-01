@@ -33,6 +33,7 @@ import {
   PER_CHAT_FILE_COPY_INTERVAL_MS
 } from './structured-agent-session-per-chat-file-copy'
 import { startStructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy-control'
+import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
@@ -204,6 +205,32 @@ describe('waiting for startup chat work (T16)', () => {
     listing = false
     await job.tick()
     expect(fake).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('the copy’s share of the main thread (C3)', () => {
+  it('hands its pace to every copy, so a chat’s batches are paced too', async () => {
+    const rig = await newRig()
+    await stubChats(rig, 2, true)
+    const pace = new StructuredAgentSessionPerChatFileCopyPace()
+    const fake = costlyImport(rig, 1)
+
+    await runToEnd(rig, copyJob(rig, { importJournal: fake, pace }))
+
+    expect(fake).toHaveBeenCalledTimes(2)
+    for (const [input] of fake.mock.calls) {
+      expect(input.yieldTask).toBe(pace.yieldTask)
+    }
+  })
+
+  it('ends the wait of its pace at quit', async () => {
+    const rig = await newRig()
+    const pace = new StructuredAgentSessionPerChatFileCopyPace()
+    const stop = vi.spyOn(pace, 'stop')
+
+    await copyJob(rig, { pace }).stop()
+
+    expect(stop).toHaveBeenCalledOnce()
   })
 })
 

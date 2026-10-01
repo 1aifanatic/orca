@@ -28,6 +28,7 @@ import {
   type PerChatJournalRepair
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
+import { backfillJournalSessionStatus } from './journal-session-status-backfill'
 import {
   deriveJournalSessionStatus,
   isUnsettledJournalSessionStatus
@@ -324,6 +325,36 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     const db = openTestJournalHostDatabase(root).db
     expect([...iterateJournalEpochRows(db, 'session-crash', epoch)]).toEqual(rows)
     expect(db.prepare('SELECT count(*) AS n FROM journal_rows').get()).toEqual({ n: rows.length })
+  })
+})
+
+describe('each task’s end, paced by the background copy (C3)', () => {
+  it('ends every copy, delete and verify batch through the caller’s yield', async () => {
+    const { directory, rows } = await stageChat('session-paced', manyItems)
+    const yieldTask = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
+
+    const result = await importChat('session-paced', directory, { batchRows: 2, yieldTask })
+
+    expect(result.outcome).toBe('imported')
+    // Between copy batches, between each side's verify batches, and after the publish.
+    const batches = Math.ceil(rows.length / 2) + (rows.length % 2 === 0 ? 1 : 0)
+    expect(yieldTask.mock.calls.length).toBeGreaterThanOrEqual(3 * (batches - 1) + 1)
+  })
+
+  it('ends every fold batch of a missing status row through the caller’s yield', async () => {
+    const { directory } = await stageChat('session-rowless', manyItems)
+    await importChat('session-rowless', directory)
+    const database = openTestJournalHostDatabase(root)
+    database.db.prepare('DELETE FROM journal_session_state').run()
+    const yieldTask = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
+
+    const written = await backfillJournalSessionStatus(database, 'session-rowless', {
+      batchRows: 2,
+      yieldTask
+    })
+
+    expect(written).not.toBeNull()
+    expect(yieldTask.mock.calls.length).toBeGreaterThan(1)
   })
 })
 

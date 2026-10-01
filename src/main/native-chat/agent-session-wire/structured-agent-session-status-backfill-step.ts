@@ -35,7 +35,10 @@ type StatusBackfillDeps = Pick<
   | 'isDisposed'
   | 'now'
   | 'appVersion'
->
+> & {
+  /** Ends each of the phase's tasks, as the copy's pace allows. */
+  yieldTask: () => Promise<void>
+}
 
 /** The chats the phase owes a row, in the order it writes them. */
 export function readStatusBackfillOwed(
@@ -82,7 +85,9 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
     if (deps.isDisposed() || deps.database.importsAborted || deps.openJournal(sessionId)) {
       return false
     }
-    const written = await backfillJournalSessionStatus(deps.database, sessionId)
+    const written = await backfillJournalSessionStatus(deps.database, sessionId, {
+      yieldTask: deps.yieldTask
+    })
     if (written) {
       await settleWrittenChat(deps, sessionId, written)
     }

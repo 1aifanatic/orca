@@ -52,7 +52,14 @@ export function journalStatusInput(db: Database.Database, sessionId: string): st
 export async function backfillJournalSessionStatus(
   database: JournalHostDatabase,
   sessionId: string,
-  batchRows = IMPORT_BATCH_ROWS
+  {
+    batchRows = IMPORT_BATCH_ROWS,
+    yieldTask = () => yieldToEventLoop()
+  }: {
+    batchRows?: number
+    /** Ends each batch's task: the next macrotask by default; the background copy paces here. */
+    yieldTask?: () => Promise<void>
+  } = {}
 ): Promise<{ load: JournalLoad; status: JournalSessionStatus } | null> {
   const epoch = readJournalSessionEpoch(database.db, sessionId)
   if (epoch === null || hasJournalSessionStatus(database.db, sessionId)) {
@@ -75,7 +82,7 @@ export async function backfillJournalSessionStatus(
     }
     afterSeq = last.seq
     // A batch per task: a long chat's whole replay in one task holds up every other chat.
-    await yieldToEventLoop()
+    await yieldTask()
   }
   const load = fold.finish()
   return database.transaction((db) => {
