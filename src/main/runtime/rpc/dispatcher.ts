@@ -116,6 +116,7 @@ export class RpcDispatcher {
             : undefined,
           requestId: request.id,
           clientId: options?.clientId,
+          trustedLocalCallerId: options?.trustedLocalCallerId,
           clientKind: options?.clientKind,
           clientCapabilities: options?.clientCapabilities,
           updateClientCapabilities: options?.updateClientCapabilities,

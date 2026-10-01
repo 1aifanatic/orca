@@ -105,6 +105,7 @@ async function agentLaunchIntent(
     ...(params.cwd ? { cwd: params.cwd } : {}),
     ...(params.launchSource ? { launchSource: params.launchSource } : {}),
     ...(params.paneKey ? { paneKey: params.paneKey } : {}),
+    ...(params.viewMode ? { viewMode: params.viewMode } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {})
   }
 }
@@ -150,22 +151,25 @@ async function runAgentLaunch(
   terminalSpawn?: TerminalSpawnDispatch
 ): Promise<AgentLaunchResult> {
   const callerNavigationId = agentLaunchCallerNavigationId(intent.target, context)
-  const result = await executeAgentLaunch({
+  return executeAgentLaunch({
     runtime: context.runtime,
     intent,
     surfaces: agentLaunchSurfaceFactory(
       context,
       attachOperationId,
       operationCallerKey,
-      callerNavigationId === null,
+      callerNavigationId !== null,
       terminalSpawn
     ),
-    workspaces: agentLaunchWorkspaceFactory(context, intent.agent)
+    workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
+    // The tab is shown as it is published, not after a prompt that can take a minute to land.
+    ...(callerNavigationId !== null
+      ? {
+          onSurfacePublished: (surface) =>
+            selectAgentLaunchTabForCaller(context.runtime, surface, callerNavigationId)
+        }
+      : {})
   })
-  if (callerNavigationId !== null) {
-    selectAgentLaunchTabForCaller(context.runtime, result, callerNavigationId)
-  }
-  return result
 }
 
 /**

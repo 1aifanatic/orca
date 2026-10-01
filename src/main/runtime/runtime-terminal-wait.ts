@@ -58,6 +58,8 @@ export class RuntimeTerminalWait {
       condition?: RuntimeTerminalWaitCondition
       timeoutMs?: number
       signal?: AbortSignal
+      /** Main-internal, never on the wire: see `TerminalWaiter.launchReadiness`. */
+      launchReadiness?: boolean
     }
   ): Promise<RuntimeTerminalWaitResult> {
     const condition = options?.condition ?? 'exit'
@@ -94,7 +96,8 @@ export class RuntimeTerminalWait {
           reject,
           timeout: null,
           cancelIdlePoll: null,
-          abortCleanup: null
+          abortCleanup: null,
+          ...(options?.launchReadiness ? { launchReadiness: true } : {})
         }
         if (!this.waiters.bindAbort(waiter, options?.signal)) {
           reject(new Error('request_aborted'))
@@ -184,7 +187,8 @@ export class RuntimeTerminalWait {
         reject,
         timeout: null,
         cancelIdlePoll: null,
-        abortCleanup: null
+        abortCleanup: null,
+        ...(options?.launchReadiness ? { launchReadiness: true } : {})
       }
 
       if (!this.waiters.bindAbort(waiter, options?.signal)) {

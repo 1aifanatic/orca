@@ -19,7 +19,8 @@ import { terminalShellOverrideRefusal } from './terminal-shell-override-host-sup
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtime-resolution'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
-import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
+import { agentPromptRidesLaunchCommand } from '../../shared/tui-agent-startup'
+import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt-carry'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 
@@ -215,8 +216,13 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       return opts
     }
 
-    const startupPlan = buildAgentStartupPlan({
-      ...resolveAgentStartupPlanInputs({
+    // A prompt this launch command cannot carry has nowhere to go from here — the create returns
+    // options, not a live PTY — so refuse rather than spawn the agent and drop the text.
+    if (opts.startupPrompt && !agentPromptRidesLaunchCommand(agent)) {
+      throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
+    }
+    const { plan: startupPlan, promptCarried } = planStartupWithPromptCandidate(
+      resolveAgentStartupPlanInputs({
         agent,
         settings,
         platform,
@@ -226,9 +232,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
         windowsShellOverride: opts.shellOverride,
         sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
       }),
-      prompt: opts.startupPrompt ?? '',
-      allowEmptyPromptLaunch: true
-    })
+      opts.startupPrompt ?? ''
+    )
     if (!startupPlan) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare
       // shell that never reaches agent readiness.
@@ -237,10 +242,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       }
       return opts
     }
-    // A prompt this launch command cannot carry has nowhere to go from here — the create returns
-    // options, not a live PTY — so refuse rather than spawn the agent and drop the text.
-    if (opts.startupPrompt && startupPlan.followupPrompt) {
-      throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
+    if (opts.startupPrompt) {
+      opts.onStartupPromptCarry?.(promptCarried)
     }
 
     return {
