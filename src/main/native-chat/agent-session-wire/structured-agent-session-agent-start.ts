@@ -74,6 +74,17 @@ export async function finishOwedStructuredAgentSessionStop(
   }
 }
 
+/** The same, for an operation the running child performs, which starts none: only an exit still
+ *  unproven, its child still on record, holds it back. A proven exit owes only bookkeeping, which
+ *  gates no such operation: its retry was reported, and the operation goes on as with none owed. */
+export async function finishOwedStructuredAgentSessionStopForProviderWrite(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string
+): Promise<StructuredAgentSessionResumeOutcome> {
+  const settled = await finishOwedStructuredAgentSessionStop(context, sessionId)
+  return settled.ok || context.sessions.get(sessionId)?.child ? settled : { ok: true }
+}
+
 export function isStructuredAgentSessionPreviousExitUnverifiable(
   refusal: AgentSessionWireRefusal
 ): boolean {

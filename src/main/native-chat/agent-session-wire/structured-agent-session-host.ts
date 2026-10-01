@@ -25,7 +25,7 @@ import type { StructuredAgentSessionLifetimeContext } from './structured-agent-s
 import {
   ensureStructuredAgentSessionAgent,
   ensureStructuredAgentSessionAgentForOperation,
-  finishOwedStructuredAgentSessionStop
+  finishOwedStructuredAgentSessionStopForProviderWrite
 } from './structured-agent-session-agent-start'
 import {
   createStructuredAgentSessionConversationLifetime,
@@ -285,7 +285,7 @@ export class StructuredAgentSessionHost {
       ensureAgent: (sessionId) =>
         ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),
       finishOwedStop: (sessionId) =>
-        finishOwedStructuredAgentSessionStop(this.attachContext(), sessionId),
+        finishOwedStructuredAgentSessionStopForProviderWrite(this.attachContext(), sessionId),
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       stopAgent: (sessionId) => this.lifetime.stopAgent(sessionId, 'user-stop'),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),

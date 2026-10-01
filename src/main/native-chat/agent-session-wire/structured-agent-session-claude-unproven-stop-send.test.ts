@@ -539,3 +539,29 @@ it('notes why a message waits when another operation failed its retry before the
   expect(await waitRows()).toHaveLength(1)
   expect(claude.connections).toHaveLength(1)
 })
+
+it('keeps an option change at rest when the Stop proved the exit and only its bookkeeping keeps failing', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  // The close proves the exit; draining what the old agent wrote fails for the Stop.
+  const barrierLost = { ok: false as const, error: new Error('drain barrier lost') }
+  const drained = vi
+    .spyOn(host['runtimeState'].eventSinkFor(SESSION), 'drained')
+    .mockResolvedValueOnce(barrierLost)
+    .mockResolvedValueOnce(barrierLost)
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
+  await laneDrained()
+  expect(connection.closeCount).toBe(1)
+  expect(host['sessions'].get(SESSION)?.child).toBeNull()
+  expect(owedWindDown()).toBeDefined()
+
+  // The option change's retry of that bookkeeping fails again: reported, and the pick still lands.
+  drained.mockResolvedValueOnce(barrierLost)
+  await expect(setModel('claude-opus-5')).resolves.toMatchObject({ ok: true })
+  expect(owedWindDown()).toBeDefined()
+  expect(sinkErrors).toHaveLength(2)
+  expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
+  expect(connection.closeCount).toBe(1)
+  expect(claude.connections).toHaveLength(1)
+})
