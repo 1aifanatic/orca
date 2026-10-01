@@ -14,6 +14,7 @@ import {
   removeWorktreeLinkedPaths
 } from '../ipc/worktree-symlinks'
 import { cleanupUnusedWorktreePushTargetRemote } from '../ipc/worktree-remote'
+import { settleKeptBranch } from '../source-control/forge-merged-branch-cleanup'
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
 import {
   formatWorktreeRemovalError,
@@ -260,7 +261,14 @@ export async function finishRuntimeLocalWorktreeRemoval(
   } finally {
     await gate.finish(completed)
   }
-  await cleanupRemovedWorktreePushTarget(args)
+  removalResult = await settleKeptBranch({
+    result: removalResult ?? {},
+    repo,
+    worktreeId: args.target.id,
+    pushTarget: args.removedPushTarget,
+    store: args.store,
+    localGitOptions: localOptions
+  })
   args.finishRemoval(removalResult, true, refreshed.head)
   return removalResult ?? {}
 }

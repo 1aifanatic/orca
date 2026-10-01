@@ -17,6 +17,7 @@ import { withWorktreeRemoveStageSpan } from '../../../observability/instrumentat
 import { findRegisteredDeletableWorktree } from '../../../worktree-removal-safety'
 import { CLIENT_REMOVAL_HOME } from '../../../worktree-removal-home-guard'
 import { cleanupUnusedWorktreePushTargetRemote } from '../../worktree-remote'
+import { settleKeptBranch } from '../../../source-control/forge-merged-branch-cleanup'
 import {
   findExistingWorktreeSymlinkPaths,
   removeWorktreeLinkedPaths
@@ -287,13 +288,14 @@ async function finishLocalWorktreeRemoval({
   } finally {
     await removalGate.finish(removalCompleted)
   }
-  await cleanupUnusedWorktreePushTargetRemote(
-    repo.path,
-    args.worktreeId,
-    removedPushTarget,
+  removalResult = await settleKeptBranch({
+    result: removalResult ?? {},
+    repo,
+    worktreeId: args.worktreeId,
+    pushTarget: removedPushTarget,
     store,
-    localWorktreeGitOptions
-  )
+    localGitOptions: localWorktreeGitOptions
+  })
   rememberPreservedBranchCleanupTarget(
     args.worktreeId,
     removalHostId,

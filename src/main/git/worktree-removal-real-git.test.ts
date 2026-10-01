@@ -87,6 +87,33 @@ describe('worktree removal against the real Git binary', () => {
     expect(await git(['branch', '--list', 'feature'], repoPath)).toBe('')
   })
 
+  // Why: branch cleanup asks the review host only when `-d` refuses; these pin when Git refuses.
+  it('deletes a pushed branch while its remote-tracking ref exists, and keeps it once pruned', async () => {
+    const originPath = join(scratchDir, 'origin.git')
+    await git(['init', '-q', '--bare', originPath], scratchDir)
+    await git(['remote', 'add', 'origin', originPath], repoPath)
+    await writeFile(join(worktreePath, 'work.txt'), 'work\n')
+    await git(['add', 'work.txt'], worktreePath)
+    await git(['commit', '-qm', 'work'], worktreePath)
+    await git(['push', '-q', '--set-upstream', 'origin', 'feature'], worktreePath)
+    const siblingPath = join(workspaceRoot, 'repo', 'sibling')
+    await git(['worktree', 'add', '-q', siblingPath, '-b', 'sibling'], repoPath)
+    await writeFile(join(siblingPath, 'sibling.txt'), 'sibling\n')
+    await git(['add', 'sibling.txt'], siblingPath)
+    await git(['commit', '-qm', 'sibling'], siblingPath)
+    await git(['push', '-q', '--set-upstream', 'origin', 'sibling'], siblingPath)
+    const siblingHead = (await git(['rev-parse', 'HEAD'], siblingPath)).trim()
+    await git(['branch', '-r', '-d', 'origin/sibling'], repoPath)
+
+    await expect(removeWorktree(repoPath, worktreePath, false)).resolves.toEqual({})
+    await expect(removeWorktree(repoPath, siblingPath, false)).resolves.toEqual({
+      preservedBranch: { branchName: 'sibling', head: siblingHead }
+    })
+
+    expect(await git(['branch', '--list', 'feature'], repoPath)).toBe('')
+    expect(await git(['rev-parse', 'refs/heads/sibling'], repoPath)).toBe(`${siblingHead}\n`)
+  })
+
   it('refuses to delete a dirty checkout', async () => {
     await writeFile(join(worktreePath, 'seed.txt'), 'edited\n')
 

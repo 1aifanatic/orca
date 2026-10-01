@@ -3,7 +3,6 @@ import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
 import { isBranchCheckedOutInWorktreeError } from '../shared/git-branch-delete-refusal'
 import { assertWorktreeUnlockedForRemoval } from '../shared/worktree/removal'
 import { isSubmoduleWorktreeRemovalRefusal } from '../shared/worktree/submodule-removal'
-import { deleteAlreadyMergedRelayBranchAfterSafeDeleteFailure } from './git-handler-branch-cleanup'
 import type { GitExec } from './git-handler-ops'
 import type { GitCapabilityCache } from '../shared/git-capability-cache'
 import { readRelayWorktreeList } from './git-handler-worktree-list'
@@ -176,27 +175,6 @@ export async function removeWorktreeOp(
     }
     return {}
   } catch (error) {
-    if (!forceBranchDelete && branchHead) {
-      try {
-        if (
-          await deleteAlreadyMergedRelayBranchAfterSafeDeleteFailure(
-            git,
-            repoPath,
-            branchName,
-            branchHead,
-            capabilities
-          )
-        ) {
-          return {}
-        }
-      } catch (alreadyMergedDeleteError) {
-        // Why: worktree is gone; preserve branch recovery on cleanup races.
-        console.warn(
-          `relay removeWorktree: failed to delete already-merged local branch "${branchName}" after removing worktree`,
-          alreadyMergedDeleteError
-        )
-      }
-    }
     // Expected when the branch still has unmerged/unpublished commits: keep it.
     console.warn(
       `relay removeWorktree: preserved local branch "${branchName}" after removing worktree (not fully merged)`,
