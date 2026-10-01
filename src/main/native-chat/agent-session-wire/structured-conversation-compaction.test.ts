@@ -17,7 +17,10 @@ import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-w
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import {
+  AgentSessionPreSpawnError,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import { structuredAgentSessionCommandTurn } from './structured-agent-session-command-turn'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
@@ -401,6 +404,30 @@ it('rejects a command whose start failed, saying why on the answer and its messa
     rejection: restartFailed
   })
   expect(message?.startFailure).toBeUndefined()
+  expect(compact).not.toHaveBeenCalled()
+})
+
+it('takes a command whose start was refused before it ran, which waits on its own message', async () => {
+  await attach()
+  await state.host.close(SESSION, 'evict')
+  state.acquire.mockRejectedValue(
+    new AgentSessionPreSpawnError(new Error('account switch in progress'), {
+      reason: 'accountSwitchInProgress'
+    })
+  )
+  const params = compactParams()
+
+  // Started, in this reply's meaning: the composer is done with it, and its message says why.
+  const answered = await state.host.conversationCommand(CALLER, params)
+  expect(answered).toMatchObject({ ok: true, value: { command: 'compact', state: 'completed' } })
+  expect(answered.ok && answered.value.error).toBeFalsy()
+  const message = (await journal()).submissions.find(
+    (entry) => entry.clientMessageId === params.envelope.clientOperationId
+  )
+  expect(message).toMatchObject({
+    dispatchState: 'pending',
+    startFailure: { attempts: 1, rejection: { kind: 'accountSwitchInProgress' } }
+  })
   expect(compact).not.toHaveBeenCalled()
 })
 
