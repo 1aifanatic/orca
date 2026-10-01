@@ -96,6 +96,9 @@ export type StructuredAgentSessionStopEnding =
       cause: Exclude<StructuredAgentSessionStopCause, 'user-stop'>
       reason?: string
       quit?: true
+      /** The idle sweep judged the agent resting (`owesWork`): a send it retires unanswered is
+       *  no work its event records. */
+      resting?: true
     }
 
 /** How long a host stop waits for the session's sink before it judges whether the stop ends work. */
@@ -104,7 +107,7 @@ const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
 /**
  * Whether this stop ends work its event must record: a start, or a running turn or unanswered send
  * read once the sink drained what the provider already said (`isMainAgentWorkingOnceFlushed`). A
- * person's Stop wrote its own event, and quit writes none.
+ * person's Stop wrote its own event, and quit and the idle sweep's rest write none.
  */
 async function stopEndsWork(
   context: StructuredAgentSessionLifetimeContext,
@@ -113,7 +116,7 @@ async function stopEndsWork(
   ending: StructuredAgentSessionStopEnding
 ): Promise<boolean> {
   const { child, journal } = session
-  if ('recorded' in ending || ending.quit || !child) {
+  if ('recorded' in ending || ending.quit || ending.resting || !child) {
     return false
   }
   return (

@@ -80,7 +80,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     },
     providerHoldsDispatch: (sessionId) => deps().adapter.holdsDispatch?.(sessionId) === true,
     // The host puts an idle agent to rest: a turn it cuts short is news, not the user's Stop.
-    stopAgent: (sessionId) => stopAgent(sessionId, { cause: 'evict' }),
+    stopAgent: (sessionId) => stopAgent(sessionId, { cause: 'evict', resting: true }),
     // A host stop: the delivery loop waiting on this child writes the one error row and rejects
     // what is queued with it, both worded from the hostStopped fact.
     stopStartingAgent: (sessionId) =>
