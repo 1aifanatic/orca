@@ -301,10 +301,10 @@ function rankTuiIdleEvidence(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? WORKING
       : { kind: 'pending', quietForeground: 'closed' }
   }
-  // OMP paints `π >` one render tick before its setup wizard opens, so the title counts only once
-  // it has stood a quiescence window on a screen read clear of the wizard. Why title age, not
-  // output quiet: OMP re-asserts bracketed paste every second once a terminal answers its probe.
-  // Unreadable, the screen cannot rule setup out, and no lane, the weak one included, may.
+  // OMP paints `π >` before the rest of its startup runs and its setup wizard opens, so the title
+  // counts only once it has stood a quiescence window on a screen read clear of the wizard. Why
+  // title age, not output quiet: OMP re-asserts bracketed paste every second once a terminal
+  // answers its probe. Unreadable, the screen cannot rule setup out, and no lane may settle.
   if (input.agent === 'omp' && isOmpIdleStateTitle(input.record.lastOscTitle)) {
     return input.titleObservedAtEpochMs !== null &&
       Date.now() - input.titleObservedAtEpochMs >= input.quiescenceMs &&
