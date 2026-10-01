@@ -6,6 +6,7 @@ import type {
 import { createAgentCompletionCoordinator } from './agent-completion-coordinator'
 import {
   createDeferred,
+  HOOK_DONE_QUIET_MS,
   processResult,
   useAgentCompletionCoordinatorLifecycle
 } from './agent-completion-coordinator-test-harness'
@@ -159,6 +160,69 @@ describe('completion from the recorded process owner', () => {
     feed.set(undefined)
     await vi.advanceTimersByTimeAsync(10)
     expect(dispatchCompletion).not.toHaveBeenCalled()
+    coordinator.dispose()
+  })
+
+  it.each([
+    ['a resumed owner that never ran a turn', [], 0],
+    ['a turn cut short by the exit', ['⠋ Claude working'], 1]
+  ])('announces the exit of %s only for a turn not yet notified', (_case, titles, expected) => {
+    const feed = presenceFeed(owner)
+    const dispatchCompletion = vi.fn()
+    const coordinator = createAgentCompletionCoordinator({
+      paneKey: 'tab:leaf',
+      getPtyId: () => 'pty',
+      getSettings: () => null,
+      isLive: () => true,
+      getAgentPresence: feed.get,
+      subscribeAgentPresence: feed.subscribe,
+      checkAgentPresence: vi.fn(async (): Promise<AgentProcessVerdict> => 'live'),
+      inspectProcess: vi.fn(async () => processResult(null, false)),
+      dispatchCompletion
+    })
+    coordinator.startProcessTracking()
+    // Claude's idle frame is run evidence without a turn.
+    coordinator.observeTitle('✳ Claude Code')
+    for (const title of titles) {
+      coordinator.observeTitle(title)
+    }
+    feed.set({ ...owner, ended: true })
+    expect(dispatchCompletion).toHaveBeenCalledTimes(expected)
+    coordinator.dispose()
+  })
+
+  it('does not announce the exit again once its turn was notified', async () => {
+    const feed = presenceFeed(owner)
+    const dispatchCompletion = vi.fn()
+    const coordinator = createAgentCompletionCoordinator({
+      paneKey: 'tab:leaf',
+      getPtyId: () => 'pty',
+      getSettings: () => null,
+      isLive: () => true,
+      getAgentPresence: feed.get,
+      subscribeAgentPresence: feed.subscribe,
+      checkAgentPresence: vi.fn(async (): Promise<AgentProcessVerdict> => 'live'),
+      inspectProcess: vi.fn(async () => processResult(null, false)),
+      dispatchCompletion
+    })
+    coordinator.startProcessTracking()
+    coordinator.observeHookStatus({
+      state: 'working',
+      prompt: 'p',
+      agentType: 'claude',
+      stateStartedAt: 1
+    })
+    coordinator.observeHookStatus({
+      state: 'done',
+      prompt: 'p',
+      agentType: 'claude',
+      stateStartedAt: 2
+    })
+    await vi.advanceTimersByTimeAsync(HOOK_DONE_QUIET_MS)
+    expect(dispatchCompletion).toHaveBeenCalledTimes(1)
+
+    feed.set({ ...owner, ended: true })
+    expect(dispatchCompletion).toHaveBeenCalledTimes(1)
     coordinator.dispose()
   })
 })
