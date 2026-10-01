@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, posix as pathPosix } from 'node:path'
 import { parseWslUncPath, toLinuxPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
@@ -179,6 +179,12 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
     }
     this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
     syncLegacySharedCodexConfigForRetainedPanes()
+  }
+
+  // Why: a system-default launch can still land on the mirror (custom home, or
+  // while the first hook approval runs); what it writes there must carry too.
+  protected rearmRetiredMirrorCarry(): void {
+    rmSync(join(this.getRuntimeMetadataDir(), RETIRED_MIRROR_CARRY_MARKER), { force: true })
   }
 
   // Why win32 only: Windows is the lane retiring now. macOS and Linux left the
