@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type Dispatch,
   type RefObject,
   type SetStateAction
@@ -69,7 +70,12 @@ export function useNativeChatPickerState(args: {
     setActiveSuggestion
   } = args
   const profile = useMemo(() => getNativeChatAgentProfile(agent), [agent])
-  const skillPickerTriggered = isSkillPickerTriggered(draft.slice(0, caret), profile)
+  // Another pane on the same chat mirrors this text; only the one being typed in completes it.
+  const hasKeyboard = useSyncExternalStore(subscribeToDocumentFocus, () => {
+    const active = document.activeElement
+    return !active || active === document.body || (textareaRef.current?.contains?.(active) ?? true)
+  })
+  const skillPickerTriggered = hasKeyboard && isSkillPickerTriggered(draft.slice(0, caret), profile)
   const discovery = useNativeChatSkills(agent, terminalTabId, skillPickerTriggered)
   const listboxId = `native-chat-picker-${useId().replaceAll(':', '')}`
   const dismissalContext = `${draftScopeKey}:${agent}`
@@ -77,17 +83,19 @@ export function useNativeChatPickerState(args: {
   const skillOriginRef = useRef<string | null>(null)
   const lastOpenKeyRef = useRef<string | null>(null)
   const autocomplete = useMemo(
-    () =>
-      deriveComposerAutocomplete(
-        draft,
-        caret,
-        agentCommands,
-        discovery.skills,
-        profile,
-        discovery,
-        dismissed?.context === dismissalContext ? dismissed.triggerKey : null,
-        sessionSkillNames
-      ),
+    (): ComposerAutocomplete =>
+      hasKeyboard
+        ? deriveComposerAutocomplete(
+            draft,
+            caret,
+            agentCommands,
+            discovery.skills,
+            profile,
+            discovery,
+            dismissed?.context === dismissalContext ? dismissed.triggerKey : null,
+            sessionSkillNames
+          )
+        : { mode: 'none' },
     [
       agentCommands,
       caret,
@@ -95,6 +103,7 @@ export function useNativeChatPickerState(args: {
       dismissed,
       discovery,
       draft,
+      hasKeyboard,
       profile,
       sessionSkillNames
     ]
@@ -206,5 +215,14 @@ export function useNativeChatPickerState(args: {
     completeItem,
     dismiss,
     handleDraftOrCaretChange
+  }
+}
+
+function subscribeToDocumentFocus(onChange: () => void): () => void {
+  document.addEventListener('focusin', onChange)
+  document.addEventListener('focusout', onChange)
+  return () => {
+    document.removeEventListener('focusin', onChange)
+    document.removeEventListener('focusout', onChange)
   }
 }
