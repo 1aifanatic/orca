@@ -1,5 +1,8 @@
 import { claudeProfileRoutingEnabled } from './claude-profile-routing'
 const authHeaderWords = 'authorization|x-api-key|api-key|bearer'
+// Why one text: a missing pointer means Orca withdrew it (sign-in needed, host down), never a corrupt file.
+const NO_ACCOUNT_READY =
+  'No Claude account is ready for this terminal. Open Orca Settings > Accounts to sign in again or choose System default.'
 const posixAuthHeaderPattern = authHeaderWords
   .split('|')
   .map((word) => `*${word.replace(/[a-z]/g, (letter) => `[${letter}${letter.toUpperCase()}]`)}*`)
@@ -24,7 +27,7 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
       command claude "$@"; return
     fi
     if [ ! -f "$__orca_claude_pointer" ] || [ ! -r "$__orca_claude_pointer" ]; then
-      printf '%s\\n' 'Claude account selection is unreadable; choose an account again.' >&2; return 1
+      printf '%s\\n' '${NO_ACCOUNT_READY}' >&2; return 1
     fi
     __orca_claude_home="$(LC_ALL=C tr '\\000' '\\n' < "$__orca_claude_pointer" && printf '.')" || { printf '%s\\n' 'Claude account selection is unreadable.' >&2; return 1; }
     __orca_claude_home="\${__orca_claude_home%.}"
@@ -62,7 +65,7 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
       set pointer "$HOME/"(string sub -s 3 -- "$pointer")
     end
     if not test -f "$pointer"; or not test -r "$pointer"
-      echo 'Claude account selection is unreadable; choose an account again.' >&2; return 1
+      echo '${NO_ACCOUNT_READY}' >&2; return 1
     end
     # Why read -z: it keeps newlines for the check below and exists before fish 3.4's collect flags.
     set -l profile ''
@@ -106,7 +109,8 @@ function Global:claude {
     try {
         if (-not $env:CLAUDE_CONFIG_DIR -or $env:CLAUDE_CONFIG_DIR -eq $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR) {
             if (-not $env:ORCA_CLAUDE_PROFILE_POINTER) { throw 'Claude account selection is unreadable.' }
-            $orcaClaudeHome = [IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER)
+            if (-not [IO.File]::Exists($env:ORCA_CLAUDE_PROFILE_POINTER)) { throw '${NO_ACCOUNT_READY}' }
+            try { $orcaClaudeHome = [IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER) } catch { throw 'Claude account selection is unreadable.' }
             if ($orcaClaudeHome) {
                 if ($orcaClaudeHome -match '[\\r\\n\\x00]' -or -not [IO.Path]::IsPathRooted($orcaClaudeHome) -or -not [IO.Directory]::Exists($orcaClaudeHome)) { throw 'Selected Claude profile is missing or invalid.' }
                 foreach ($name in $names) {
