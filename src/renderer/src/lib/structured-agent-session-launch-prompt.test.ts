@@ -36,7 +36,11 @@ function sendAnswer(clientMessageId: string, handoverRecorded = true) {
     cursor: { epoch: 'epoch-1', sequence: 1 },
     value: {
       clientMessageId,
-      submission: { clientMessageId, ...PENDING, ...(handoverRecorded ? { handoverRecorded } : {}) }
+      submission: {
+        clientMessageId,
+        ...PENDING,
+        ...(handoverRecorded ? { handoverRecorded: true as const } : {})
+      }
     }
   }
 }
@@ -94,7 +98,12 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     mocks.call.mockResolvedValue(sendAnswer(clientMessageId))
     publishes(
       frame('snapshot', { clientMessageId, ...PENDING, handoverRecorded: true }),
-      frame('batch', { clientMessageId, ...PENDING, handoverRecorded: true, handedOverAt: 5 })
+      frame('batch', {
+        clientMessageId,
+        ...PENDING,
+        handoverRecorded: true as const,
+        handedOverAt: 5
+      })
     )
 
     await expect(
@@ -149,7 +158,7 @@ describe('settleStructuredAgentLaunchPrompt', () => {
       const onPromptDelivered = vi.fn()
       const clientMessageId = stagedEntry!.clientMessageId
       mocks.call.mockResolvedValue(sendAnswer(clientMessageId))
-      const queued = { clientMessageId, ...PENDING, handoverRecorded: true }
+      const queued = { clientMessageId, ...PENDING, handoverRecorded: true as const }
       publishes(
         frame('snapshot', queued),
         frame('batch', {

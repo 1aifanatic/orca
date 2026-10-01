@@ -43,7 +43,7 @@ const PENDING = {
   reason: null,
   submittedAt: 1,
   resolvedAt: null,
-  handoverRecorded: true
+  handoverRecorded: true as const
 }
 
 function comment(overrides: Partial<PRComment>): PRComment {
@@ -77,7 +77,7 @@ function resolution(): PendingPRCommentAiAck {
         comment: comment({ id: 20, url: 'https://github.com/acme/widgets/pull/42#issuecomment-9' })
       }
     ],
-    githubTarget: { ...target, prRepo: { owner: 'acme', name: 'widgets' } },
+    githubTarget: { ...target, prRepo: { owner: 'acme', repo: 'widgets' } },
     githubResolveTarget: target
   }
 }
