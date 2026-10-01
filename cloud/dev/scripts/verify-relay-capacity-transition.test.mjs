@@ -1466,3 +1466,23 @@ test('restart progress prints every counter the gate reads', async () => {
     }
   })
 })
+
+test('a draining cell still fails closed on malformed handshake counters', async (t) => {
+  for (const [name, state] of [
+    ['negative in-flight', { inFlightConnections: -1 }],
+    ['fractional reserved', { reservedConnectionUnits: 0.5 }],
+    ['non-numeric reserved', { reservedConnectionUnits: 'unknown' }]
+  ]) {
+    await t.test(name, async () => {
+      await assert.rejects(
+        verifyCapacityTransition(pacedRestartConfig, {
+          fetch: harness({ ...strandedCell, ...state }),
+          token: 'masked-token',
+          progress: () => {},
+          ...fakeClock()
+        }),
+        /live runtime count is invalid/
+      )
+    })
+  }
+})
