@@ -81,6 +81,15 @@ function getDelegatedCliRefreshProvider(
   return p.provider === 'grok' || p.provider === 'kimi' ? p.provider : null
 }
 
+/** System Default's login expired on the server: Claude refreshes it the next time it runs. */
+export function isClaudeUsageWaitingForClaude(p: ProviderRateLimits): boolean {
+  return (
+    p.provider === 'claude' &&
+    p.usageMetadata?.failureKind === 'stale-token' &&
+    p.usageMetadata.authProvenance === 'system'
+  )
+}
+
 export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
   const delegatedCliProvider = getDelegatedCliRefreshProvider(p)
   if (delegatedCliProvider === 'grok') {
@@ -98,10 +107,12 @@ export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
         )
       // Why: Orca never refreshes a Claude login; only an older host that still does reports the other kinds.
       case 'stale-token':
-        return translate(
-          'auto.components.status.bar.tooltip.claude.expired.label',
-          'Sign-in expired'
-        )
+        return isClaudeUsageWaitingForClaude(p)
+          ? translate(
+              'auto.components.status.bar.tooltip.claude.waiting.label',
+              'Updates when Claude runs'
+            )
+          : translate('auto.components.status.bar.tooltip.claude.expired.label', 'Sign-in expired')
       case 'refreshable-credentials-without-token':
       case 'delegated-refresh-required':
         return translate('auto.components.status.bar.tooltip.1804cd8c3f', 'Refreshing sign-in')
@@ -184,10 +195,15 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
           'Claude usage will refresh after the live Claude terminal rotates its credentials.'
         )
       case 'stale-token':
-        return translate(
-          'auto.components.status.bar.tooltip.claude.expired.message',
-          'Claude usage has expired. Start Claude in this account to refresh it.'
-        )
+        return isClaudeUsageWaitingForClaude(p)
+          ? translate(
+              'auto.components.status.bar.tooltip.claude.waiting.message',
+              'Claude usage updates the next time Claude runs.'
+            )
+          : translate(
+              'auto.components.status.bar.tooltip.claude.expired.message',
+              'Claude usage has expired. Start Claude in this account to refresh it.'
+            )
       case 'refreshable-credentials-without-token':
       case 'delegated-refresh-required':
         return translate(

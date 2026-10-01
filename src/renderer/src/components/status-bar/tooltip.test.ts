@@ -261,6 +261,20 @@ describe('provider usage error copy', () => {
     )
   })
 
+  it('tells a System Default user calmly that usage updates when Claude next runs', () => {
+    const p = provider({
+      error: 'Invalid OAuth token.',
+      usageMetadata: {
+        failureKind: 'stale-token',
+        attemptedSources: ['oauth'],
+        authProvenance: 'system'
+      }
+    })
+
+    expect(getProviderUsageStatusLabel(p)).toBe('Updates when Claude runs')
+    expect(getProviderUsageErrorMessage(p)).toBe('Claude usage updates the next time Claude runs.')
+  })
+
   it('keeps refresh copy for failure kinds only a refreshing older host reports', () => {
     const p = provider({
       error: 'Claude OAuth access token unavailable',

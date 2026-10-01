@@ -35,7 +35,6 @@ export async function fetchActiveClaudeRateLimits(
   // Why: System Default with no Claude login is an API-key or non-Claude user, not a signed-out account.
   if (
     !credentials.token &&
-    !credentials.expired &&
     !credentials.unavailable &&
     !credentials.hasRefreshableCredentials &&
     metadata.authProvenance === 'system'
@@ -49,18 +48,12 @@ export async function fetchActiveClaudeRateLimits(
   if (!credentials.token) {
     return makeClaudeUsageResult(
       'error',
-      credentials.expired
-        ? 'Claude usage has expired. Start Claude in this account to refresh it.'
-        : credentials.unavailable
-          ? 'Claude usage is unavailable.'
-          : 'Sign in again to use this account.',
+      credentials.unavailable
+        ? 'Claude usage is unavailable.'
+        : 'Sign in again to use this account.',
       {
         ...metadata,
-        failureKind: credentials.expired
-          ? 'stale-token'
-          : credentials.unavailable
-            ? 'keychain-unavailable'
-            : 'missing-credentials',
+        failureKind: credentials.unavailable ? 'keychain-unavailable' : 'missing-credentials',
         attemptedSources: []
       }
     )
@@ -74,7 +67,10 @@ export async function fetchActiveClaudeRateLimits(
     return makeClaudeUsageResult(
       'error',
       failureKind === 'stale-token'
-        ? 'Claude usage has expired. Start Claude in this account to refresh it.'
+        ? // Why: Claude refreshes its own login when it next runs; System Default has no "account".
+          metadata.authProvenance === 'system'
+          ? 'Claude usage updates the next time Claude runs.'
+          : 'Claude usage has expired. Start Claude in this account to refresh it.'
         : (failureKind === 'rate-limited' || failureKind === 'missing-scope') &&
             error instanceof OAuthUsageError
           ? error.message

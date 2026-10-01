@@ -60,7 +60,7 @@ function systemDefault() {
     }
   }
 }
-it('never refreshes an expired inactive token or launches a usage CLI', async () => {
+it('lets the server decide a locally expired token and never refreshes it', async () => {
   const f = profile()
   const file = join(f.home, '.credentials.json')
   writeFileSync(
@@ -72,11 +72,24 @@ it('never refreshes an expired inactive token or launches a usage CLI', async ()
   vi.stubGlobal('fetch', () => {
     throw new Error('No refresh endpoint')
   })
+  calls.usage.mockRejectedValue(new OAuthUsageError('Invalid OAuth token.', 401, true, null))
   expect(await fetchActiveClaudeRateLimits(f.options)).toMatchObject({
     status: 'error',
+    error: 'Claude usage has expired. Start Claude in this account to refresh it.',
     usageMetadata: { failureKind: 'stale-token' }
   })
-  expect(calls.usage).not.toHaveBeenCalled()
+  expect(calls.usage.mock.calls.map(([token]) => token)).toEqual(['expired-fake'])
+  const system = systemDefault()
+  writeFileSync(
+    join(system.home, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'expired-default', expiresAt: 1 } })
+  )
+  calls.usage.mockResolvedValueOnce({ provider: 'claude', status: 'ok' })
+  expect(await fetchActiveClaudeRateLimits(system.options)).toMatchObject({ status: 'ok' })
+  expect(await fetchActiveClaudeRateLimits(system.options)).toMatchObject({
+    error: 'Claude usage updates the next time Claude runs.',
+    usageMetadata: { failureKind: 'stale-token' }
+  })
 })
 it('reads only the requested scoped Keychain, with no unsuffixed fallback', async () => {
   const f = profile()

@@ -20,7 +20,6 @@ export type ClaudeOAuthCredentialReadResult = {
   source: ClaudeOAuthCredentialSource
   keychainUnavailable?: boolean
   unavailable?: boolean
-  expired?: boolean
 }
 type ClaudeOAuthCredentialReadOptions = {
   credentialsFileConfigDir?: string
@@ -32,8 +31,7 @@ const schema = z.object({
   claudeAiOauth: z
     .object({
       accessToken: z.string().optional(),
-      refreshToken: z.string().optional(),
-      expiresAt: z.number().optional()
+      refreshToken: z.string().optional()
     })
     .optional()
 })
@@ -43,12 +41,11 @@ export function parseClaudeOAuthCredentialsJson(
 ): ClaudeOAuthCredentialReadResult {
   try {
     const oauth = schema.parse(JSON.parse(raw)).claudeAiOauth
-    const expired = oauth?.expiresAt !== undefined && oauth.expiresAt <= Date.now()
+    // Why: expiresAt is not authoritative for the usage endpoint; let the server decide.
     return {
-      token: expired ? null : oauth?.accessToken || null,
+      token: oauth?.accessToken || null,
       hasRefreshableCredentials: Boolean(oauth?.refreshToken),
-      source,
-      expired
+      source
     }
   } catch {
     return { ...emptyClaudeOAuthCredentialReadResult(), unavailable: true }
@@ -88,11 +85,10 @@ async function readClaudeKeychainCredentials(
     return scoped
   }
   const legacy = await readClaudeCredentialsFromStrictKeychain(undefined, 'legacy-keychain')
-  // Why: as before profiles, a usable token wins over an expired or unreadable item.
+  // Why: as before profiles, a token wins over an unreadable item.
   const candidates = [scoped, legacy]
   return (
     candidates.find((candidate) => candidate.token) ??
-    candidates.find((candidate) => candidate.expired) ??
     candidates.find((candidate) => candidate.unavailable) ??
     legacy
   )
@@ -104,7 +100,7 @@ export async function readClaudeOAuthCredentials(
     process.platform === 'darwin'
       ? await readClaudeKeychainCredentials(options)
       : emptyClaudeOAuthCredentialReadResult()
-  if (keychain.token || keychain.expired) {
+  if (keychain.token) {
     return keychain
   }
   try {
