@@ -8,7 +8,10 @@ import {
   fakeClaude,
   identityFor
 } from '../../claude/claude-structured-session-test-support'
-import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import {
+  foundAndReserveTestAgentSessionRecord,
+  openTestAgentSessionRecordStore
+} from '../../runtime/agent-session-record-store-test-harness'
 import {
   createTrackedJournalOpener,
   openTestJournalHostDatabase
@@ -37,7 +40,7 @@ describe('Claude root-exit stop', () => {
       unprovenCloseVerdict: { root: 'exited', tree: 'unverifiable' }
     })
     const adapter = adapterFor(claude)
-    const reservation = await store.reserveOwner({
+    const reservation = await foundAndReserveTestAgentSessionRecord(store, {
       sessionId: 'session-1',
       location: {
         executionHostId: 'local',
@@ -47,7 +50,6 @@ describe('Claude root-exit stop', () => {
       },
       provider: 'claude',
       accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: root },
-      expectedFence: null,
       spawnToken: 'spawn-1',
       claimKeyId: 'key-1',
       handoffOperationId: null,

@@ -51,7 +51,9 @@ beforeEach(async () => {
         link: {
           linkId: `link-${fence}`,
           handle: { provider: 'codex' as const, threadId: THREAD },
-          origin: fence > 1 ? ('resumed' as const) : ('created' as const),
+          origin: store.getRecord(SESSION)?.providerHandleChain.length
+            ? ('resumed' as const)
+            : ('created' as const),
           mintedAtFence: fence,
           observedAt: NOW
         }

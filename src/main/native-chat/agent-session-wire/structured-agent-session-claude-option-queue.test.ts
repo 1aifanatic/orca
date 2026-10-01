@@ -63,6 +63,7 @@ function adapter(): StructuredAgentSessionAdapter {
     }
   })
   return {
+    supportsCreate: (_location, agent) => agent === 'claude',
     acquire,
     dispatch: vi.fn(),
     cancelTurn: vi.fn(async () => ({ cancelled: true })),

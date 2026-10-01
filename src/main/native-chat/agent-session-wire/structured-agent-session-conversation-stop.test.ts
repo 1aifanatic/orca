@@ -176,13 +176,13 @@ describe('a Stop that names no turn', () => {
     expect(stopped).toEqual({
       ok: true,
       replayed: false,
-      fence: 1,
+      fence: 2,
       cursor: expect.anything(),
       value: { cancelled: true }
     })
     expect(cancelTurn).toHaveBeenCalledTimes(1)
     expect(cancelTurn.mock.calls[0]![0]).not.toHaveProperty('turnId')
-    expect(cancelTurn.mock.calls[0]![0]).toMatchObject({ sessionId: SESSION, fence: 1 })
+    expect(cancelTurn.mock.calls[0]![0]).toMatchObject({ sessionId: SESSION, fence: 2 })
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 

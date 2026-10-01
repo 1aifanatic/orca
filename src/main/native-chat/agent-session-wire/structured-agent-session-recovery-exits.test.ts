@@ -22,7 +22,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { attachForTests } from './structured-agent-session-attach-test-support'
+import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -130,16 +130,20 @@ afterEach(async () => {
 describe('recovery exits', () => {
   it('releases an ownerless unproven acquisition, so the next start goes ahead', async () => {
     acquire.mockRejectedValueOnce(new Error('simulated crash before identity commit'))
-    await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).rejects.toThrow(
-      'agent_session_acquisition_exit_unproven'
-    )
+    expect(await attachForTests(host, CALLER, hostTestAttachParams(null))).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_ownership_unknown',
+        message: 'agent_session_acquisition_exit_unproven'
+      }
+    })
     // No owner was recorded, and the adapter closed the stdio of anything it spawned.
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
       handoffOperationId: null,
       ownerProcess: null,
-      runtimeFence: 2,
+      runtimeFence: 3,
       reservedSpawnToken: null,
       deathEvidence: null
     })
@@ -164,15 +168,19 @@ describe('recovery exits', () => {
       mintSpawnToken: () => 'spawn-b',
       probeOwner: async () => ({ outcome: 'pid-absent' })
     })
-    await expect(attachForTests(host, CALLER, hostTestAttachParams(2))).rejects.toThrow(
-      'agent_session_acquisition_exit_unproven'
-    )
+    expect(await attachForTests(host, CALLER, hostTestAttachParams(2))).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_ownership_unknown',
+        message: 'agent_session_acquisition_exit_unproven'
+      }
+    })
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'reserved',
       handoffStage: 'recovering',
       handoffOperationId: null,
       ownerProcess: { spawnToken: 'spawn-b' },
-      runtimeFence: 3,
+      runtimeFence: 4,
       reservedSpawnToken: 'spawn-b'
     })
 
@@ -193,7 +201,7 @@ describe('recovery exits', () => {
       handoffOperationId: null,
       ownerProcess: null,
       reservedSpawnToken: null,
-      runtimeFence: 4
+      runtimeFence: 5
     })
 
     // The ordinary native recovery path remains: the next start resumes it.
@@ -202,7 +210,7 @@ describe('recovery exits', () => {
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'live',
       handoffStage: null,
-      runtimeFence: 5,
+      runtimeFence: 6,
       ownerProcess: { spawnToken: 'spawn-c' }
     })
   })
@@ -224,18 +232,14 @@ describe('recovery exits', () => {
       stopOwnerProcess
     })
 
-    const stale = await attachForTests(host, CALLER, hostTestAttachParams(1))
-    expect(stale).toMatchObject({
-      ok: false,
-      refusal: { code: 'agent_session_checkpoint_stale', currentFence: 2 }
-    })
-    expect(stopOwnerProcess).toHaveBeenCalledWith(4242, 'SIGTERM')
-    const retried = await attachForTests(host, CALLER, hostTestAttachParams(2))
+    // The start reconciles the lease first: the orphan is stopped, then a fresh child is spawned.
+    const retried = await startAgentForTests(host, SESSION)
     expect(retried).toMatchObject({ ok: true })
+    expect(stopOwnerProcess).toHaveBeenCalledWith(4242, 'SIGTERM')
     // A fresh child was spawned; the orphan pid's lease did not survive as the owner.
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      runtimeFence: 3,
+      runtimeFence: 4,
       claimStatus: 'live',
       handoffStage: null
     })
@@ -274,7 +278,7 @@ describe('recovery exits', () => {
 
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      runtimeFence: 3,
+      runtimeFence: 4,
       claimStatus: 'live',
       handoffStage: null,
       ownerProcess: { spawnToken: 'spawn-b' }
@@ -289,7 +293,7 @@ describe('recovery exits', () => {
         linkId: 'link-outgoing',
         handle: { provider: 'codex', threadId: THREAD },
         origin: 'created',
-        mintedAtFence: 1,
+        mintedAtFence: 2,
         observedAt: NOW
       }
     })
@@ -309,7 +313,7 @@ describe('recovery exits', () => {
           overlapDriven = true
           await outgoingStore.renewLease({
             sessionId: SESSION,
-            fence: 1,
+            fence: 2,
             childProbe: probe,
             now: NOW + 1
           })
@@ -321,7 +325,7 @@ describe('recovery exits', () => {
 
     await host.restoreReadableSessions()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      runtimeFence: 2,
+      runtimeFence: 3,
       claimStatus: 'released',
       ownerProcess: null
     })
@@ -334,7 +338,7 @@ describe('recovery exits', () => {
         linkId: 'link-replacement',
         handle: { provider: 'codex', threadId: THREAD },
         origin: 'resumed',
-        mintedAtFence: 3,
+        mintedAtFence: 4,
         observedAt: NOW + 2
       }
     })
@@ -342,7 +346,7 @@ describe('recovery exits', () => {
     await startAgent()
 
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      runtimeFence: 3,
+      runtimeFence: 4,
       claimStatus: 'live',
       handoffStage: null,
       ownerProcess: { pid: replacement.process.pid, spawnToken: 'spawn-b' }

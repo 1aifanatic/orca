@@ -87,6 +87,18 @@ export async function performAttach(
     )
   })
   const sessionId = params.envelope.sessionId
+  const expectedFence = params.envelope.expectedRuntimeFence
+  if (expectedFence === null) {
+    // A record is founded only by its create; a start names the fence of the record it read.
+    return {
+      ok: false,
+      refusal: refuse(
+        'agent_session_operation_invalid',
+        { reason: 'requestMalformed' },
+        'An agent start names the fence of the session record it starts.'
+      )
+    }
+  }
   const admitted = admitAttachOrRefuse(params)
   if (!admitted.ok) {
     return admitted
@@ -110,6 +122,7 @@ export async function performAttach(
         reserveRequestFor({
           sessionId,
           params,
+          expectedFence,
           authority: input.authority,
           callerKey: input.callerKey,
           fingerprint: admitted.fingerprint,

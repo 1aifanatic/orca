@@ -1,9 +1,6 @@
-// Attach: reserve the session record, then open its journal.
-//
-// `create` and `ensure` are the same transition with a different starting
-// point — a null expected fence means "no session exists yet". Both go through
-// the record store's compare-and-swap, which also owns the idempotency row, so
-// a retried attach replays instead of reserving a second owner.
+// Attach: reserve an existing session record for an agent start, then open its journal. A record is
+// founded only by its create (`structured-agent-session-create-at-rest`); the attach goes through the
+// record store's compare-and-swap at the fence the start read.
 
 import type {
   AgentSessionJournalIdentity,
@@ -289,6 +286,7 @@ export function adoptedProviderHandleLink(
 export function reserveRequestFor(input: {
   sessionId: string
   params: AgentSessionAttachParams
+  expectedFence: number
   authority: AgentSessionAttachAuthority
   callerKey: string
   fingerprint: string
@@ -301,12 +299,9 @@ export function reserveRequestFor(input: {
     provider: params.provider,
     accountHome: params.accountHome,
     ...(params.options ? { options: params.options } : {}),
-    ...(params.envelope.expectedRuntimeFence === null && params.surfaceTabId
-      ? { surfaceTabId: params.surfaceTabId }
-      : {}),
     ...(authority.launchArgs ? { launchArgs: authority.launchArgs } : {}),
     ...(authority.launchEnv ? { launchEnv: authority.launchEnv } : {}),
-    expectedFence: params.envelope.expectedRuntimeFence,
+    expectedFence: input.expectedFence,
     spawnToken: authority.spawnToken,
     claimKeyId: authority.claimKeyId,
     handoffOperationId: authority.handoffOperationId,

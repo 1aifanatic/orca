@@ -6,7 +6,10 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import type { AgentSessionOptionsResult } from '../../../shared/agent-session-wire'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import {
+  foundTestAgentSessionRecord,
+  openTestAgentSessionRecordStore
+} from '../../runtime/agent-session-record-store-test-harness'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
@@ -36,7 +39,7 @@ afterEach(async () => {
 
 function attachParams(
   operationId: string,
-  expectedRuntimeFence: number | null,
+  expectedRuntimeFence: number,
   options?: Readonly<Record<string, string>>
 ): AgentSessionAttachParams {
   const params: AgentSessionAttachParams = {
@@ -106,6 +109,25 @@ function adapter(input: {
   }
 }
 
+/** The store with the record a create founds at rest (fence 1), which the first start reserves. */
+async function foundedStore(
+  directory: string,
+  options?: Readonly<Record<string, string>>
+): Promise<AgentSessionRecordStore> {
+  const store = await openTestAgentSessionRecordStore(directory)
+  const { location, provider, accountHome } = attachParams(CREATE_OPERATION, 1)
+  await foundTestAgentSessionRecord(store, {
+    sessionId: SESSION,
+    location,
+    provider,
+    accountHome,
+    ...(options ? { options } : {}),
+    claimKeyId: 'key-1',
+    now: NOW
+  })
+  return store
+}
+
 function expectSettledAttachLease(record: AgentSessionRecord | null): void {
   expect(record).not.toBeNull()
   const lease = record!.lease
@@ -117,7 +139,7 @@ function expectSettledAttachLease(record: AgentSessionRecord | null): void {
 describe('structured session acquisition options', () => {
   it('samples provider history before acquiring a replacement child', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-history-before-acquire-'))
-    const initialStore = await openTestAgentSessionRecordStore(root)
+    const initialStore = await foundedStore(root)
     let childAcquired = false
     const historyWindow = (): ProviderHistoryWindow => ({
       items: [],
@@ -161,7 +183,7 @@ describe('structured session acquisition options', () => {
         probe: { outcome: 'reservation-unused' }
       },
       callerKey: 'client-1',
-      params: attachParams(CREATE_OPERATION, null),
+      params: attachParams(CREATE_OPERATION, 1),
       now: () => NOW,
       onAttached: (attached) => {
         firstJournal = attached.journal
@@ -176,7 +198,7 @@ describe('structured session acquisition options', () => {
         role: 'user',
         blocks: [{ type: 'text', text: 'deploy the thing' }]
       } satisfies AgentJournalMessageItem,
-      fence: 1
+      fence: 2
     })
     await firstJournal!.close()
     const store = await openTestAgentSessionRecordStore(root)
@@ -213,9 +235,9 @@ describe('structured session acquisition options', () => {
 
   it('persists create defaults before the first provider acquisition', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-create-options-'))
-    const store = await openTestAgentSessionRecordStore(root)
-    const sessionAdapter = adapter({ origin: 'created' })
     const options = { model: 'gpt-5.6-sol', effort: 'medium', fastMode: 'false' }
+    const store = await foundedStore(root, options)
+    const sessionAdapter = adapter({ origin: 'created' })
     const recordPhase = vi.fn<AgentSessionCreatePhaseRecorder>()
 
     const created = await performAttach({
@@ -229,7 +251,7 @@ describe('structured session acquisition options', () => {
         probe: { outcome: 'reservation-unused' }
       },
       callerKey: 'client-1',
-      params: attachParams(CREATE_OPERATION, null, options),
+      params: attachParams(CREATE_OPERATION, 1, options),
       now: () => NOW,
       recordPhase,
       onAttached: () => {}
@@ -242,9 +264,9 @@ describe('structured session acquisition options', () => {
     expect(store.getRecord(SESSION)?.options).toEqual(options)
   })
 
-  it('replays a create retried after the host re-resolved different options', async () => {
+  it('replays a start retried after the host re-resolved different options', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-create-retry-'))
-    const store = await openTestAgentSessionRecordStore(root)
+    const store = await foundedStore(root, { model: 'gpt-5.6-sol', effort: 'medium' })
     const sessionAdapter = adapter({ origin: 'created' })
     const attempt = async (options: Readonly<Record<string, string>>, spawnToken: string) =>
       performAttach({
@@ -258,13 +280,13 @@ describe('structured session acquisition options', () => {
           probe: { outcome: 'reservation-unused' }
         },
         callerKey: 'client-1',
-        params: attachParams(CREATE_OPERATION, null, options),
+        params: attachParams(CREATE_OPERATION, 1, options),
         now: () => NOW,
         onAttached: () => {}
       })
 
     const created = await attempt({ model: 'gpt-5.6-sol', effort: 'medium' }, 'spawn-a')
-    // Why: the user may reselect a model between an unknown-outcome create and the
+    // Why: the user may reselect a model between an unknown-outcome attempt and the
     // retry that reuses its operation id; the retry must replay, not conflict.
     const retried = await attempt({ model: 'gpt-5.5', effort: 'high' }, 'spawn-b')
 
@@ -275,7 +297,7 @@ describe('structured session acquisition options', () => {
 
   it('persists provider options before proving a resumed legacy record', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-acquisition-options-'))
-    const store = await openTestAgentSessionRecordStore(root)
+    const store = await foundedStore(root)
 
     const created = await performAttach({
       store,
@@ -288,7 +310,7 @@ describe('structured session acquisition options', () => {
         probe: { outcome: 'reservation-unused' }
       },
       callerKey: 'client-1',
-      params: attachParams(CREATE_OPERATION, null),
+      params: attachParams(CREATE_OPERATION, 1),
       now: () => NOW,
       onAttached: () => {}
     })
@@ -342,7 +364,7 @@ describe('structured session acquisition options', () => {
 
   it('clears a rejected Fast restore instead of retaining the prior encoded value', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-acquisition-fast-restore-'))
-    const store = await openTestAgentSessionRecordStore(root)
+    const store = await foundedStore(root, { model: 'gpt-standard', fastMode: 'true' })
     const sessionAdapter = adapter({
       origin: 'created',
       options: { current: { model: 'gpt-standard' }, models: [] },
@@ -360,7 +382,7 @@ describe('structured session acquisition options', () => {
         probe: { outcome: 'reservation-unused' }
       },
       callerKey: 'client-1',
-      params: attachParams(CREATE_OPERATION, null, {
+      params: attachParams(CREATE_OPERATION, 1, {
         model: 'gpt-standard',
         fastMode: 'true'
       }),
@@ -374,7 +396,7 @@ describe('structured session acquisition options', () => {
 
   it('releases an acquisition when provider options cannot be read', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-acquisition-options-failure-'))
-    const store = await openTestAgentSessionRecordStore(root)
+    const store = await foundedStore(root)
     const releaseAcquisition = vi.fn(async () => true)
     const failingAdapter: StructuredAgentSessionAdapter = {
       ...adapter({ origin: 'created' }),
@@ -396,7 +418,7 @@ describe('structured session acquisition options', () => {
           probe: { outcome: 'reservation-unused' }
         },
         callerKey: 'client-1',
-        params: attachParams(CREATE_OPERATION, null),
+        params: attachParams(CREATE_OPERATION, 1),
         now: () => NOW,
         onAttached: () => {}
       })
@@ -425,7 +447,7 @@ describe('structured session acquisition options', () => {
     ] as const)('atomically settles the lease and operation after %s', async (_case, cleanup) => {
       const exitProven = cleanup === true
       root = await mkdtemp(join(tmpdir(), `orca-acquisition-${failurePoint}-`))
-      const store = await openTestAgentSessionRecordStore(root)
+      const store = await foundedStore(root)
       const base = adapter({
         origin: 'created',
         options: { current: { model: 'gpt-5.6-terra' }, models: [] }
@@ -473,11 +495,7 @@ describe('structured session acquisition options', () => {
           ? { historyFilePath: vi.fn().mockRejectedValueOnce(injected).mockResolvedValue(null) }
           : {})
       }
-      const perform = (
-        target: AgentSessionRecordStore,
-        operationId: string,
-        fence: number | null
-      ) =>
+      const perform = (target: AgentSessionRecordStore, operationId: string, fence: number) =>
         performAttach({
           store: target,
           adapter: failingAdapter,
@@ -499,7 +517,7 @@ describe('structured session acquisition options', () => {
 
       // A proven exit before the journal opens is answered once, as the refusal its replay gives;
       // no exit was observed, so it names no situation.
-      const failed = perform(store, CREATE_OPERATION, null)
+      const failed = perform(store, CREATE_OPERATION, 1)
       await (exitProven && failurePoint !== 'journal'
         ? expect(failed).resolves.toEqual({
             ok: false,
@@ -531,26 +549,26 @@ describe('structured session acquisition options', () => {
 
       if (exitProven) {
         expect(failedRecord?.lease).toMatchObject({
-          runtimeFence: 2,
+          runtimeFence: 3,
           claimStatus: 'released',
           handoffStage: null,
           handoffOperationId: null,
           ownerProcess: null,
           reservedSpawnToken: null
         })
-        await expect(perform(reopened, RESUME_OPERATION, 2)).resolves.toMatchObject({ ok: true })
+        await expect(perform(reopened, RESUME_OPERATION, 3)).resolves.toMatchObject({ ok: true })
         expectSettledAttachLease(reopened.getRecord(SESSION))
       } else if (failurePoint === 'proof' || failurePoint === 'journal') {
         // A recorded owner goes to recovery, which concludes about it before the next start.
         expect(failedRecord?.lease).toMatchObject({
-          runtimeFence: 1,
+          runtimeFence: 2,
           claimStatus: failurePoint === 'journal' ? 'live' : 'reserved',
           handoffStage: 'recovering',
           // The settled operation must not stay named by the lease as an in-flight transfer.
           handoffOperationId: null,
           reservedSpawnToken: 'spawn-a'
         })
-        await expect(perform(reopened, RESUME_OPERATION, 1)).resolves.toMatchObject({
+        await expect(perform(reopened, RESUME_OPERATION, 2)).resolves.toMatchObject({
           ok: false,
           refusal: { code: 'agent_session_ownership_unknown' }
         })
@@ -558,7 +576,7 @@ describe('structured session acquisition options', () => {
         // No owner was recorded, and the adapter closed the stdio of anything it spawned: released,
         // with no death evidence, since nothing proved one.
         expect(failedRecord?.lease).toMatchObject({
-          runtimeFence: 2,
+          runtimeFence: 3,
           claimStatus: 'released',
           handoffStage: null,
           handoffOperationId: null,
@@ -566,53 +584,8 @@ describe('structured session acquisition options', () => {
           reservedSpawnToken: null,
           deathEvidence: null
         })
-        await expect(perform(reopened, RESUME_OPERATION, 2)).resolves.toMatchObject({ ok: true })
+        await expect(perform(reopened, RESUME_OPERATION, 3)).resolves.toMatchObject({ ok: true })
       }
     })
-  })
-})
-
-describe('the tab a create reserves', () => {
-  async function openStore() {
-    root = await mkdtemp(join(tmpdir(), 'orca-surface-tab-id-'))
-    return openTestAgentSessionRecordStore(root)
-  }
-
-  function attachWith(store: AgentSessionRecordStore, surfaceTabId?: string) {
-    return performAttach({
-      store,
-      adapter: adapter({ origin: 'created' }),
-      openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
-      authority: {
-        spawnToken: 'spawn-a',
-        claimKeyId: 'key-1',
-        handoffOperationId: CREATE_OPERATION,
-        probe: { outcome: 'reservation-unused' }
-      },
-      callerKey: 'client-1',
-      // Beside the fingerprinted fields, like `options`: which tab shows the chat is not which
-      // conversation this attaches to.
-      params: {
-        ...attachParams(CREATE_OPERATION, null),
-        ...(surfaceTabId ? { surfaceTabId } : {})
-      },
-      now: () => NOW,
-      onAttached: () => {}
-    })
-  }
-
-  it('takes no tab at attach, then answers a retry naming another tab with the one it was given', async () => {
-    const store = await openStore()
-    const created = await attachWith(store, 'chat-tab-1')
-    // Publishing the tab takes the id, so a create that never gets there leaves nothing behind.
-    expect(created.ok && created.value.tabId).toBeUndefined()
-    expect(store.getSessionTabId(SESSION)).toBeNull()
-
-    await store.setSessionTabVisibility(SESSION, true, 'chat-tab-1')
-    expect(await attachWith(store, 'chat-tab-2')).toMatchObject({
-      ok: true,
-      value: { tabId: 'chat-tab-1' }
-    })
-    expect(store.getSessionTabId(SESSION)).toBe('chat-tab-1')
   })
 })

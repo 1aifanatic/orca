@@ -25,7 +25,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { attachForTests } from './structured-agent-session-attach-test-support'
+import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const CHILD_PID = 4321
@@ -159,22 +159,22 @@ describe('a host that dies while its Codex child is starting', () => {
   })
 })
 
-// The client keeps a create it never heard back from and retries it under the same operation id, so
-// that replay, not a fresh start, is what the user's Retry and first send go through.
-describe('a create replayed after the host that ran it died', () => {
+// The create committed at rest before its first start ran, so the client's retry of a create it
+// never heard back from replays that chat, and the next message's start is what starts an agent.
+describe('a first start cut short by the host dying', () => {
   const PAST_OPERATION_EXPIRY =
     AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 60_000
 
   it.each([
     ['its child was recorded', adapterThatNeverFinishesStarting, 0],
     [
-      'its child was recorded, and its operation row has since expired',
+      'its child was recorded, and its operation rows have since expired',
       adapterThatNeverFinishesStarting,
       PAST_OPERATION_EXPIRY
     ],
     ['nothing was recorded beyond the reservation', adapterThatNeverSpawns, 0],
     [
-      'nothing was recorded, and its operation row has since expired',
+      'nothing was recorded, and its operation rows have since expired',
       adapterThatNeverSpawns,
       PAST_OPERATION_EXPIRY
     ]
@@ -212,28 +212,27 @@ describe('a create replayed after the host that ran it died', () => {
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
-      runtimeFence: 2
+      runtimeFence: 3
     })
+    if (elapsedMs === 0) {
+      // A retried create replays the chat it made, at rest; it starts nothing.
+      expect(await relaunched.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
+      expect(restarted.connections).toHaveLength(0)
+    }
 
-    const replayed = await attachForTests(relaunched, CALLER, params)
-    // Before, `agent_session_ownership_unknown` while the row was pending, then `_operation_expired`.
-    expect(replayed.ok ? null : replayed.refusal.code).toBeNull()
-    expect(replayed).toMatchObject({ ok: true, value: { sessionId: SESSION, fence: 3 } })
+    expect(await startAgentForTests(relaunched, SESSION)).toMatchObject({
+      ok: true,
+      value: { sessionId: SESSION, fence: 4 }
+    })
     expect(restarted.connections).toHaveLength(1)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'live',
-      runtimeFence: 3,
+      runtimeFence: 4,
       ownerProcess: { spawnToken: 'spawn-b' }
     })
-    expect(
-      store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
-    ).toEqual({ status: 'succeeded', sessionId: SESSION })
 
-    // Settled now: the same id replays that answer and never starts a second agent.
-    await expect(attachForTests(relaunched, CALLER, params)).resolves.toMatchObject({
-      ok: true,
-      replayed: true
-    })
+    // The next message finds the agent running and never starts a second one.
+    await expect(startAgentForTests(relaunched, SESSION)).resolves.toMatchObject({ ok: true })
     expect(restarted.connections).toHaveLength(1)
   })
 })

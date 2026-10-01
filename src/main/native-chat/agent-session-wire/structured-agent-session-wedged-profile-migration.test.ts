@@ -563,7 +563,7 @@ describe('already-wedged profiles become usable on load', () => {
     ).toBe(false)
   })
 
-  it("leaves the live generation's running turn alone on a re-attach", async () => {
+  it("leaves the live generation's running turn alone on a second start", async () => {
     await seedStore(wedgedRecord({ claimStatus: 'released', handoffStage: null }))
     // The child this host spawns stays provably alive across the second attach.
     openHost({
@@ -578,8 +578,8 @@ describe('already-wedged profiles become usable on load', () => {
       { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
 
-    // A reconnecting client replays its attach; the same operation admits the live owner.
-    expect(await attachForTests(host, CALLER, params)).toMatchObject({ ok: true, replayed: true })
+    // The next start, a second message's, finds the agent running and leaves it alone.
+    expect(await attachForTests(host, CALLER, params)).toMatchObject({ ok: true })
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(turnLifecycle('turn-2')).toEqual({ turnId: 'turn-2', state: 'running', startedAt: NOW })
