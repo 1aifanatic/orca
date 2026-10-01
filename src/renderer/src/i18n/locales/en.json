@@ -18566,7 +18566,8 @@
       "stopFailed": "Orca couldn't stop the server.",
       "confirmStopTitle": "Stop the shared server?",
       "confirmStopDescription": "This closes any open Codex sessions that share it, including ones outside Orca.",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "runs": "Runs"
     }
   },
   "fileExplorer": {

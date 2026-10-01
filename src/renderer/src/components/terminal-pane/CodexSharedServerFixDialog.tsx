@@ -95,38 +95,41 @@ function FixStep({
   warning?: string
 }): React.JSX.Element {
   return (
-    <div className="flex gap-3">
-      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-        {step}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{title}</p>
-            {/* Why always shown: the user sees exactly what Orca runs on their behalf. */}
-            <code className="font-mono text-xs break-all text-muted-foreground">{command}</code>
-          </div>
-          {/* Why a fixed width: the label swaps while running, and the row must not shift. */}
-          <div className="flex w-28 shrink-0 justify-end">
-            {status === 'done' ? (
-              <span className="flex h-6 items-center gap-1 text-xs font-medium text-status-success">
-                <Check className="size-3.5" aria-hidden="true" />
-                {doneLabel}
-              </span>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                disabled={status === 'running'}
-                onClick={onAction}
-              >
-                {status === 'running' ? <Loader2 className="animate-spin" /> : null}
-                {status === 'running' ? runningLabel : actionLabel}
-              </Button>
-            )}
-          </div>
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3.5">
+      <div className="flex items-center gap-3">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+          {step}
+        </span>
+        <p className="min-w-0 flex-1 text-sm font-medium">{title}</p>
+        {/* Why a fixed width: the label swaps while running, and the row must not shift. */}
+        <div className="flex w-28 shrink-0 justify-end">
+          {status === 'done' ? (
+            <span className="flex h-6 items-center gap-1 text-xs font-medium text-status-success">
+              <Check className="size-3.5" aria-hidden="true" />
+              {doneLabel}
+            </span>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={status === 'running'}
+              onClick={onAction}
+            >
+              {status === 'running' ? <Loader2 className="animate-spin" /> : null}
+              {status === 'running' ? runningLabel : actionLabel}
+            </Button>
+          )}
         </div>
+      </div>
+      <div className="flex min-w-0 flex-col gap-1 pl-8">
+        {/* Why always shown: the user sees exactly what Orca runs on their behalf. */}
+        <p className="flex min-w-0 items-baseline gap-1.5 text-xs text-muted-foreground">
+          {translate('terminal.codexSharedServerBanner.runs', 'Runs')}
+          <code className="min-w-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono break-all">
+            {command}
+          </code>
+        </p>
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
         {warning ? <p className="text-xs text-status-warning">{warning}</p> : null}
         {status === 'failed' ? (
@@ -214,7 +217,7 @@ export function CodexSharedServerFixDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <FixStep
             step={1}
             title={translate(
