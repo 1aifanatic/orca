@@ -278,7 +278,7 @@ jobs:
               EXPECTED_REGION=us-central1
               EXPECTED_DATABASE_POOL_MAX=
               ;;
-            c27|c28|c29|c30)
+            c27|c28|c29|c30|c31)
               EXPECTED_HARD_CAP=3000
               EXPECTED_REGION=asia-east2
               EXPECTED_DATABASE_POOL_MAX=16
@@ -538,8 +538,9 @@ jobs:
             --expected-image-digests "${PREDECESSOR_IMAGE_DIGEST}"
 
       # Hosts drained with nowhere to go keep redialling and pin the cell empty (c28, 2026-10-01).
+      # Every run that drains (apply, rollback) checks first; verify reads the same answer; a resume drains nothing.
       - name: Require free general-cell slots for the selected cell's hosts
-        if: ${{ inputs.mode == 'canary-apply' || inputs.mode == 'batch-apply' }}
+        if: ${{ env.ROLLBACK_RESUME != 'true' }}
         env:
           ORCA_RELAY_ADMIN_ID_TOKEN: ${{ steps.deploy-auth.outputs.id_token }}
         run: |

@@ -144,6 +144,13 @@ function changesMobileWebApp(changedFiles) {
 
 const CROSS_VERSION_WIRE_PREFIXES = [
   'tests/e2e/cross-version-wire/',
+  'config/scripts/stable-release-tags',
+  // The R1 daemon protocol crossing gate runs in this job.
+  'config/scripts/daemon-protocol-facts',
+  'config/scripts/check-daemon-protocol-crossing',
+  // R3 runtime launcher protocol ratchet; a bump always routes here via the protocol file.
+  'config/scripts/check-runtime-launcher-protocol-ratchet',
+  'src/main/daemon/daemon-protocol-version.ts',
   'src/shared/protocol-version',
   'src/shared/terminal-stream-protocol',
   'src/shared/browser-client-host-protocol',

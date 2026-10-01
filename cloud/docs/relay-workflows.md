@@ -166,11 +166,13 @@ atomically register the new cells as migration-only, binding every mutation to
 the exact live selector generation and a durable attempt ID. Deploy and verify
 the director configuration only after registration, then promote C27 alone before C28/C29.
 
-The production Asia set is C27-C30. C27-C29 launched as one wave; C30 is an additive wave of its
-own at the same shape. Its plan names C30's template, MIG, and backend plus the shared URL map, and
-the URL map pulls every existing cell's backend, MIG, and template into the plan. Committed images
-lag what same-cap rolls serve, so the workflow first reads each non-target cell's served image out
-of its live template in state and plans that cell at it. It reads the committed cell map from a
+The production Asia set is C27-C31. C27-C29 launched as one wave; C30 and C31 are each an additive
+wave of their own at the same shape, and C31 takes `asia-east2-b` so the five cells spread 2/2/1
+across the zones. The C30 steps below apply to C31 unchanged, with C31 in place of C30. C30's plan
+names its template, MIG, and backend plus the shared URL map, and the URL map pulls every existing
+cell's backend, MIG, and template into the plan. Committed images lag what same-cap rolls serve,
+so the workflow first reads each non-target cell's served image out of its live template in state
+and plans that cell at it. It reads the committed cell map from a
 no-refresh, unlocked plan over the same targets, not `terraform console`. Console evaluates every
 output against state, so `relay_gce_cell_deployments` wraps each per-cell resource lookup in
 `try`: until C30's topology apply, console succeeds and that output shows C30 with null MIG,
@@ -185,10 +187,16 @@ C30: the evidence must show the canary control was placed on C30, read C30's own
 and bind the selector generation, and any failure returns C30 to migration-only. The SQL-failure and
 database-pool rules read C30's own metrics only. Director values are recorded under
 `director`-prefixed names but do not fail the canary, because directors show a steady baseline of
-`relay_cells` lock refusals and pool waits unrelated to C30. C30 was promoted to general on
+`relay_cells` lock refusals and pool waits unrelated to C30. Director region fallbacks are keyed by
+the host's target region, and the canary fails on any Asia-targeted one. US-targeted fallbacks are
+recorded but not gated: they are placement-lane requests from unhinted or US-preferring hosts, which
+an Asia cell cannot cause. Staging still requires exactly its one
+intentional fallback. C30 was promoted to general on
 2026-09-23, so the same-cap job now rolls it as a general cell and the shadow gate's fleet pool list
 reads it beside C27-C29. A later Asia cell stays in the same-cap migration-only list and out of the
 fleet pool list until its own promotion, then moves to both together, as its own reviewed wave.
+C31 followed that path and was promoted to general on 2026-10-01, so it is now a same-cap general
+cell and in the fleet pool list beside C27-C30.
 Rollback returns
 Asia cells to migration-only; it does not destroy the network or use
 existing-only. The production topology dispatch remains unavailable until the
@@ -402,8 +410,10 @@ sets and the two migration-only US 600/60 cells, C17 and C18, without changing a
 shape. Use `canary-apply` for exactly one cell. A successful canary
 seals its commit, target and rollback digests, selector generation, and durable rehome generation;
 `batch-apply` accepts only that same authority and rolls two to four cells sequentially. Both apply
-modes first refuse a cell whose hosts (controls) exceed 80% of the free slots on the other fresh
-general cells, since drained hosts with nowhere to go keep redialling and pin the cell. A cell's free
+modes and `rollback` first refuse a cell whose hosts (controls) exceed 80% of the free slots on the
+other fresh general cells, since drained hosts with nowhere to go keep redialling and pin the cell.
+`verify` runs the same read-only check, so it reports the headroom answer before an apply is
+dispatched; a rollback that resumes after its restart drains nothing and skips it. A cell's free
 slots are its normal admission pause minus the larger of observed connections and enforced units,
 minus outstanding control reservations; each moved host also brings its splices, which the 20%
 margin covers. Each cell is isolated, drained until restart-safe, replaced
