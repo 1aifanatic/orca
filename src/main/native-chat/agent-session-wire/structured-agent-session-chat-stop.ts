@@ -86,6 +86,8 @@ export function mutateWithChatStop<TValue>(
           ...named,
           stopChild: () => context.stopAgent(sessionId),
           onStopChildError: (error) => context.deps.onEventSinkError?.({ sessionId, error }),
+          // The host drops its child only once the exit is proven, and nothing else runs meanwhile.
+          childReleased: () => context.sessions.get(sessionId)?.child !== child,
           endSession: (owed) => {
             windDown = owed
           },

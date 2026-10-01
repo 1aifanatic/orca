@@ -6,6 +6,15 @@ import type {
   AgentJournalApprovalItem,
   AgentJournalQuestionItem
 } from '../../../shared/agent-session-journal-types'
+import type { ProviderDiagnostic } from '../../../shared/agent-session-failure'
+
+/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any.
+ *  `turnNotRunning`: it declined because the turn it was asked to stop is not running there; absent,
+ *  it could not interrupt that turn, which may run on. */
+export type AgentSessionCancelOutcome = {
+  cancelled: boolean
+  refusal?: { detail?: ProviderDiagnostic; turnNotRunning?: true }
+}
 
 /** Where a card's Cancel goes: a dismissal (`dismissPrompt`), or the chat's Stop. */
 export type AgentSessionPromptCancelRoute = { kind: 'dismiss' } | { kind: 'stop' }

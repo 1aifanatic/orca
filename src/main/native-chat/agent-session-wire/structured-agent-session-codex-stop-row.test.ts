@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-connection'
+import { CodexAppServerTimeoutError } from '../../codex/codex-app-server-session'
 import {
   THREAD_ID as THREAD,
   adapterFor,
@@ -134,13 +135,31 @@ async function journalRows() {
   }
 }
 
-function refused(message: string): CodexAppServerRequestError {
+/** Codex's -32600 states the named turn is not running; its -32603 is an interrupt it could not
+ *  submit, the turn still running. */
+function refused(message: string, code: -32600 | -32603 = -32600): CodexAppServerRequestError {
   return new CodexAppServerRequestError(
     'turn/interrupt',
-    -32600,
+    code,
     `codex app-server turn/interrupt failed: ${message}`,
     message
   )
+}
+
+function interruptFailure(failure: 'internal error' | 'unanswered'): Error {
+  return failure === 'internal error'
+    ? refused('failed to interrupt turn: channel closed', -32603)
+    : new CodexAppServerTimeoutError('codex app-server turn/interrupt exceeded 30000ms')
+}
+
+/** Codex picked the follow-up's turn and answered the send, and has not started it. */
+async function followUpUnopened(): Promise<void> {
+  const sent = await send('and then this')
+  if (!sent.ok) {
+    throw new Error(JSON.stringify(sent.refusal))
+  }
+  await vi.waitFor(() => expect(turns.turnId).toBe('turn-2'))
+  await host.flushStreamedEvents(SESSION)
 }
 
 /** Whether the Stop ended the child: the host's stop, which proves the exit, with the user's cause. */
@@ -172,8 +191,8 @@ describe('a Codex Stop that Codex answered', () => {
 
 describe('a Codex Stop whose interrupt failed', () => {
   it.each([
-    ['refused, naming no turn', undefined, 'refused'],
-    ['refused, naming its turn', 'turn-1', 'refused'],
+    ['Codex could not submit it, naming no turn', undefined, 'internal error'],
+    ['Codex could not submit it, naming its turn', 'turn-1', 'internal error'],
     ['unanswered, naming no turn', undefined, 'unanswered'],
     ['unanswered, naming its turn', 'turn-1', 'unanswered']
   ] as const)(
@@ -181,9 +200,7 @@ describe('a Codex Stop whose interrupt failed', () => {
     async (_case, turnId, failure) => {
       await runningTurn()
       codex.routes['turn/interrupt'] = () => {
-        throw failure === 'refused'
-          ? refused('turn is not interruptible')
-          : new Error('codex app-server turn/interrupt exceeded 30000ms')
+        throw interruptFailure(failure)
       }
 
       const stopped = await stop(turnId)
@@ -223,6 +240,30 @@ describe('a Codex Stop whose interrupt failed', () => {
     }
   )
 
+  // Codex marks the turn ended before it writes the frame, so its refusal can come first.
+  it.each([
+    ['naming no turn', undefined],
+    ['naming its turn', 'turn-1']
+  ] as const)(
+    "keeps the child when Codex's refusal arrives before the turn's end, %s",
+    async (_case, turnId) => {
+      await runningTurn()
+      codex.routes['turn/interrupt'] = () => {
+        setTimeout(() => turns.end('completed'), 2)
+        throw refused('no active turn to interrupt')
+      }
+
+      const stopped = await stop(turnId)
+      await vi.waitFor(async () => expect((await journalRows()).turns).toEqual(['completed']))
+      await host.flushStreamedEvents(SESSION)
+
+      expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+      expect(childEndedByStop()).toBe(false)
+      expect(codex.connections.at(-1)?.closed).toBe(false)
+      expect((await journalRows()).outcomes).toEqual(['success'])
+    }
+  )
+
   it.each([
     ['naming no turn', undefined],
     ['naming its turn', 'turn-1']
@@ -258,6 +299,49 @@ describe('a Codex Stop whose interrupt failed', () => {
     expect(childEndedByStop()).toBe(false)
     expect(codex.connections.at(-1)?.closed).toBe(false)
     expect((await journalRows()).statuses).toEqual(['The provider had already finished this turn.'])
+  })
+
+  // A phone names the turn it shows; a follow-up from elsewhere is not that Stop's to end.
+  it.each([
+    ['Codex refused it', 'refused'],
+    ['the interrupt went unanswered', 'unanswered']
+  ] as const)(
+    'keeps the child when a Stop names a turn that ended and a follow-up has not opened, %s',
+    async (_case, failure) => {
+      await runningTurn()
+      turns.end('completed')
+      await vi.waitFor(async () => expect((await journalRows()).turns).toEqual(['completed']))
+      await followUpUnopened()
+      codex.routes['turn/interrupt'] =
+        failure === 'refused'
+          ? turns.routes['turn/interrupt']
+          : () => {
+              throw interruptFailure('unanswered')
+            }
+
+      const stopped = await stop('turn-1')
+      await host.flushStreamedEvents(SESSION)
+
+      expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+      expect(childEndedByStop()).toBe(false)
+      expect(codex.connections.at(-1)?.closed).toBe(false)
+    }
+  )
+
+  it("decides on Codex's frames received before the interrupt failed, not on the journal's last write", async () => {
+    await runningTurn()
+    codex.routes['turn/interrupt'] = () => {
+      turns.end('completed')
+      notify('turn/started', { threadId: THREAD, turn: { id: 'turn-2', status: 'inProgress' } })
+      throw interruptFailure('internal error')
+    }
+
+    const stopped = await stop('turn-1')
+    await host.flushStreamedEvents(SESSION)
+
+    expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+    expect(childEndedByStop()).toBe(false)
+    expect((await journalRows()).turns).toEqual(['completed', 'running'])
   })
 
   it('leaves a child that exited during the interrupt to its exit', async () => {
