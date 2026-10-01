@@ -7,6 +7,7 @@ import {
   type NativeChatTranscriptAgent
 } from '../../shared/native-chat-agent-support'
 import { isWslUncPath } from '../../shared/wsl-paths'
+import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
 import { walkSessionFiles } from '../ai-vault/session-scanner-discovery'
 import { OMP_SESSION_ARTIFACT_DIR_PATTERN } from '../ai-vault/session-scanner-omp-subagent-transcripts'
 import { resolveOmpSessionsDir } from '../ai-vault/omp-session-root'
@@ -172,10 +173,23 @@ async function resolveSessionFileById(
   if (transcriptAgent === 'claude') {
     // An explicit root is the caller naming the exact account tree its session pinned;
     // adding a fallback there could resolve a different account's transcript.
-    return resolveClaudeSessionFile(
-      trimmedId,
-      options.claudeProjectsDir ? [options.claudeProjectsDir] : claudeProjectsDirs(),
-      signal
+    if (options.claudeProjectsDir) {
+      return resolveClaudeSessionFile(trimmedId, [options.claudeProjectsDir], signal)
+    }
+    // Why a second tier: WSL profile roots are read only after host roots miss, and only in
+    // running distros, like Codex's WSL homes.
+    const dirs = claudeProjectsDirs()
+    return (
+      (await resolveClaudeSessionFile(
+        trimmedId,
+        dirs.filter((dir) => !isWslUncPath(dir)),
+        signal
+      )) ??
+      resolveClaudeSessionFile(
+        trimmedId,
+        await filterPathsToRunningWslDistrosAsync(dirs.filter(isWslUncPath)),
+        signal
+      )
     )
   }
   if (transcriptAgent === 'codex') {
