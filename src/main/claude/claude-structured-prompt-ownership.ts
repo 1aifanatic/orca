@@ -9,7 +9,7 @@ import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resoluti
 import { buildClaudePromptReply, claudePromptDismissal } from './claude-structured-prompt-replies'
 import type { ClaudeSession } from './claude-structured-session-state'
 import type { ClaudePendingPrompt } from './claude-prompt-registry'
-import { CLAUDE_STOP_GRACE_MS } from './claude-turn-end-wait'
+import { CLAUDE_STOP_GRACE_MS } from './claude-request-end-wait'
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 
 type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
@@ -196,10 +196,11 @@ export async function dismissClaudeStructuredPrompt(input: {
   if (!session || !claim) {
     throw new AgentSessionPromptUnavailableError(request.itemId)
   }
+  // Before the commit: Claude's own cancel of the request, landing while the host writes, must
+  // not write after it. The host commits on every path, so forgetting first loses nothing.
+  session.translator?.journalPrompts.resolve(claim.found.prompt.promptKey)
   try {
     await request.commit()
-    // The card is the user's now: nothing Claude does to its request writes it again.
-    session.translator?.journalPrompts.resolve(claim.found.prompt.promptKey)
     if (request.answer && session.prompts.ownsClaim(claim)) {
       await answerClaudePrompt(session, claim, claudePromptDismissal(claim.found.prompt))
     }

@@ -19,7 +19,7 @@ import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session
 import { closeProcessRegistry } from '../../shared/child-process/close-process-registry'
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
-import { settleClaudeTurnEndWaiters } from './claude-turn-end-wait'
+import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 
 /** The root's own exit was seen first-hand. The lease follows the root, so a descendant
  *  left unverified or seen alive does not hold it. */

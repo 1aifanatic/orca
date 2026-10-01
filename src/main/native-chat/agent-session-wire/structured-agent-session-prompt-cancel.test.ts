@@ -40,10 +40,19 @@ afterEach(async () => {
 })
 
 async function pendingPrompt(
-  options = [{ id: 'allow', label: 'Allow' }]
+  options = [{ id: 'allow', label: 'Allow' }],
+  /** Raise the card in a turn that is still running, rather than on the conversation. */
+  inLiveTurn = false
 ): Promise<{ journal: AgentSessionJournal; itemId: string }> {
   root = await mkdtemp(join(tmpdir(), 'orca-prompt-cancel-'))
   const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+  const turn = inLiveTurn
+    ? await journal.appendItem(
+        { ...PROMPT_IDENTITY, ordinal: 0 },
+        { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1 },
+        { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+      )
+    : null
   const item = await journal.appendItem(
     PROMPT_IDENTITY,
     {
@@ -58,7 +67,10 @@ async function pendingPrompt(
         resolvedAt: null
       }
     },
-    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    {
+      fence: 1,
+      turnScope: turn ? { kind: 'turn', turnItemId: turn.itemId } : AGENT_JOURNAL_THREAD_SCOPE
+    }
   )
   return { journal, itemId: item.itemId }
 }
@@ -224,12 +236,16 @@ describe("a card's own Cancel, as its provider answers it", () => {
   async function cancelCard(
     answer: AgentSessionPromptCancelRoute | undefined,
     revision = 1,
-    endsSession = true
+    endsSession = true,
+    inLiveTurn = true
   ) {
-    const { journal, itemId } = await pendingPrompt([
-      { id: 'allow', label: 'Allow' },
-      { id: 'deny', label: 'Deny' }
-    ])
+    const { journal, itemId } = await pendingPrompt(
+      [
+        { id: 'allow', label: 'Allow' },
+        { id: 'deny', label: 'Deny' }
+      ],
+      inLiveTurn
+    )
     const ctx = context(
       journal,
       vi.fn(async () => ({ cancelled: true })),
@@ -344,6 +360,20 @@ describe("a card's own Cancel, as its provider answers it", () => {
     expect(journal.snapshot().items.find((item) => item.itemId === itemId)?.body).toMatchObject({
       resolution: { state: 'cancelled', resolvedBy: 'client-1' }
     })
+  })
+
+  it('dismisses a card a turn that is no longer live raised, and stops nothing', async () => {
+    const { result, routes, dismissPrompt, card } = await cancelCard(
+      { kind: 'stop' },
+      1,
+      true,
+      false
+    )
+
+    expect(result).toEqual({ ok: true, value: { turnId: 'turn-1', cancelled: true } })
+    expect(routes.stop).not.toHaveBeenCalled()
+    expect(dismissPrompt).toHaveBeenCalledWith(expect.objectContaining({ answer: true }))
+    expect(card).toMatchObject({ resolution: { state: 'cancelled', resolvedBy: 'client-1' } })
   })
 
   it('refuses a card that moved on before choosing a route', async () => {

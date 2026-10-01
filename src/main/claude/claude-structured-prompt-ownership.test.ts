@@ -10,7 +10,13 @@ import { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
 import { claudeQuestionItems } from './claude-structured-prompt-items'
 import type { ClaudePendingPrompt } from './claude-structured-prompt-replies'
 import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
-import { USER_MESSAGE, acquired, fakeClaude } from './claude-structured-session-test-support'
+import {
+  USER_MESSAGE,
+  acquired,
+  adapterFor,
+  fakeClaude,
+  identityFor
+} from './claude-structured-session-test-support'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -128,6 +134,39 @@ describe('Claude live prompt ownership', () => {
       behavior: 'allow',
       toolUseID: 'tool-1'
     })
+  })
+
+  it("keeps the user's dismissal when Claude cancels the request while the host records it", async () => {
+    const claude = fakeClaude({ replayUuid: 'turn-1' })
+    const recorded = lifecycleRecorder()
+    const adapter = adapterFor(claude)
+    await adapter.acquire({
+      identity: identityFor(),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      events: recorded.sink
+    })
+    await startTurn(adapter)
+    const request = new AbortController()
+    invokeCanUseTool(claude.connections[0]!, 'AskUserQuestion', 'permission-1', 'tool-1', {
+      input: { questions: [{ question: 'Which branch?', options: [{ label: 'main' }] }] },
+      signal: request.signal
+    })
+    const [card] = [...recorded.bodies].find(([, body]) => body.kind === 'question') ?? []
+    if (!card) {
+      throw new Error('expected the question card')
+    }
+
+    await adapter.dismissPrompt({
+      sessionId: 'session-1',
+      itemId: card,
+      fence: 7,
+      answer: false,
+      // Claude's own cancel lands mid-commit, as an interrupt's can.
+      commit: async () => request.abort()
+    })
+
+    expect(recorded.bodies.get(card)).toMatchObject({ resolution: { state: 'pending' } })
   })
 
   it('drops resolved prompt bodies instead of retaining them for the session lifetime', () => {

@@ -19,10 +19,10 @@ export type StructuredAgentSessionAdapterStop = {
    *  turn that is no longer live and the cancel answered that it did not take it; the next send
    *  resumes the conversation. Absent or false keeps the child after a Stop. */
   stopEndsSession?(sessionId: string): boolean
-  /** What a Stop that ends the session waits on before it ends the child: resolves at once when
-   *  `turnId` is not the provider's open turn, else when it ends or the provider's grace, counted
-   *  from `stoppedAt` (when the interrupt went out), runs out. */
-  awaitStoppedTurnEnd?(sessionId: string, turnId: string, stoppedAt: number): Promise<void>
+  /** What a Stop that ends the session waits on before it ends the child: resolves once the provider
+   *  has nothing in flight, a send it has not answered included, or when its grace, counted from
+   *  `stoppedAt` (when the interrupt went out), runs out. */
+  awaitStoppedRequestEnd?(sessionId: string, stoppedAt: number): Promise<void>
   /** Where the pending card's own Cancel goes. Undefined: `cancelTurn` with the prompt. */
   routePromptCancel?(input: {
     sessionId: string

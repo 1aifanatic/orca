@@ -28,7 +28,7 @@ import {
   type ClaudeStructuredSessionEvent
 } from './claude-structured-session-state'
 import { closeAllClaudeSessions, closeClaudeSession } from './claude-structured-session-close'
-import { claudeStoppedTurnEndWait } from './claude-turn-end-wait'
+import { claudeStoppedRequestEndWait } from './claude-request-end-wait'
 import {
   drainClaudeObservedExits,
   observeClaudeSessionExit,
@@ -203,7 +203,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   // Stop is a session boundary for Claude: an interrupt can answer while background work keeps the
   // CLI running, and a refused one leaves the turn running.
   stopEndsSession = (): boolean => true
-  awaitStoppedTurnEnd = claudeStoppedTurnEndWait(this.sessions)
+  awaitStoppedRequestEnd = claudeStoppedRequestEndWait(this.sessions)
   routePromptCancel = claudePromptCancelRoute
   dismissPrompt: StructuredAgentSessionAdapter['dismissPrompt'] = (request) =>
     dismissClaudeStructuredPrompt({ request, sessions: this.sessions })

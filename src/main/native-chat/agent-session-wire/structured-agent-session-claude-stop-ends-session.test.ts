@@ -10,11 +10,13 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
+import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
+import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
 import {
   ClaudeControlRequestError,
   runClaudeControl
 } from '../../claude/claude-agent-sdk-control-requests'
-import { CLAUDE_STOP_GRACE_MS } from '../../claude/claude-turn-end-wait'
+import { CLAUDE_STOP_GRACE_MS } from '../../claude/claude-request-end-wait'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import type { ClaudeStructuredSessionEvent } from '../../claude/claude-structured-session-state'
 import {
@@ -264,6 +266,77 @@ it('answers on the interrupt, ends the child once the stopped turn ends, and res
     leafUuid: 'stopped-turn-leaf'
   })
 })
+
+/** Sends a message Claude takes but has not echoed yet: no turn row, the chat still working. */
+async function sendUnechoed(connection: FakeConnection): Promise<string> {
+  const clientMessageId = await send('Write a long reply.')
+  await eventually(() => expect(wrote(connection, 'Write a long reply.')).toBe(true))
+  return clientMessageId
+}
+
+async function agentStatus() {
+  await host.flushStreamedEvents(SESSION)
+  const { items, submissions } = await host.journalSnapshot(SESSION)
+  const { summary } = projectStructuredAgentSessionStatusState(
+    items,
+    submissions,
+    store.getRecord(SESSION)!.lease.runtimeFence
+  )
+  return summary.status
+    ? structuredAgentSessionAgentStatus({
+        status: summary.status,
+        backgroundTasks: undefined,
+        turnOutcome: summary.turnOutcome
+      })
+    : null
+}
+
+it('reads a Stop pressed before Claude echoed the send as interrupted, not as a finished turn', async () => {
+  const connection = claude.connections[0]!
+  // As Claude winds down a request interrupted before its echo: echo, marker, aborted result, idle.
+  claude.routes.interrupt = () => {
+    setTimeout(() => {
+      const written = connection.sent.find((message) => message.type === 'user')!
+      frame(connection, { ...written, uuid: written.uuid })
+      frame(connection, {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '[Request interrupted by user]' }]
+        },
+        parent_tool_use_id: null,
+        uuid: 'interrupted-marker'
+      })
+      frame(connection, INTERRUPTED_RESULT)
+      frame(connection, { type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    }, 5)
+    return { still_queued: [], cancelled: [] }
+  }
+  const clientMessageId = await sendUnechoed(connection)
+
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
+
+  expect(connection.closed).toBe(true)
+  expect(await dispatch(clientMessageId)).toMatchObject({ state: 'accepted' })
+  expect(await turnOutcome()).toBe('cancellation')
+  expect(await agentStatus()).toMatchObject({ mainAgent: { outcome: 'cancellation' } })
+})
+
+it('ends the child once the grace runs out when Claude says nothing after a Stop before the echo', async () => {
+  const connection = claude.connections[0]!
+  claude.routes.interrupt = () => ({ still_queued: [], cancelled: [] })
+  const clientMessageId = await sendUnechoed(connection)
+
+  const asked = Date.now()
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
+
+  // As before the wait: the send Claude never answered is doubt once its child ends.
+  expect(connection.closed).toBe(true)
+  expect(Date.now() - asked).toBeLessThan(CLAUDE_STOP_GRACE_MS + 1_500)
+  expect(await dispatch(clientMessageId)).toMatchObject({ state: 'unknown' })
+}, 15_000)
 
 it('withdraws a follow-up Claude queued behind the turn before the child ends, never doubt', async () => {
   const connection = claude.connections[0]!
@@ -695,6 +768,35 @@ it("declines a question card's Cancel itself when the Stop finds nothing to stop
   expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
   expect(connection.closed).toBe(false)
   expect(await statusTexts()).toEqual([])
+})
+
+it('dismisses a question card a finished turn raised, leaving the turn running now alone', async () => {
+  const connection = claude.connections[0]!
+  const earlier = await openTurn(connection)
+  // Asked in the first turn, then outlived it, as a background agent's question might.
+  const { answered, card } = await ask(connection, 'AskUserQuestion', BRANCH_QUESTION)
+  frame(connection, { type: 'result', subtype: 'success', is_error: false, uuid: 'result-1' })
+  await eventually(async () =>
+    expect(
+      activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
+    ).toBeNull()
+  )
+  const running = await openTurn(connection, 'Now something else.')
+  expect(running).not.toBe(earlier)
+
+  await expect(cancelCard(earlier, card)).resolves.toMatchObject({ ok: true })
+  await laneDrained()
+
+  expect(await answered.promise).toMatchObject({ behavior: 'deny' })
+  expect(await cardResolution(card.itemId)).toMatchObject({
+    state: 'cancelled',
+    resolvedBy: CALLER.callerKey
+  })
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
+  expect(connection.closed).toBe(false)
+  expect(activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)).toBe(
+    running
+  )
 })
 
 it('dismisses a plan card on its Cancel: Claude is told to wait for the user, and keeps running', async () => {

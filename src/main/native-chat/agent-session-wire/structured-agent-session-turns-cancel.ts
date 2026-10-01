@@ -30,9 +30,10 @@ export async function isMainAgentWorkingOnceFlushed(
   )
 }
 
-/** What a Stop that ends the provider's session leaves its next serialized step: the turn the
- *  provider took the Stop on, and when the interrupt went out. */
-export type StructuredAgentSessionStopWindDown = { turnId: string | null; stoppedAt: number }
+/** What a Stop that ends the provider's session leaves its next serialized step: whether the
+ *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
+ *  out. No turn id: that step runs right behind the Stop, so no later turn can slip in between. */
+export type StructuredAgentSessionStopWindDown = { waitsForProvider: boolean; stoppedAt: number }
 
 /**
  * A session-ending Stop's second step, queued behind its first in the same tick so nothing sent
@@ -46,8 +47,8 @@ export async function endStoppedStructuredAgentSession(
   onError: (error: unknown) => void
 ): Promise<void> {
   try {
-    if (windDown.turnId !== null) {
-      await ctx.adapter.awaitStoppedTurnEnd?.(ctx.sessionId, windDown.turnId, windDown.stoppedAt)
+    if (windDown.waitsForProvider) {
+      await ctx.adapter.awaitStoppedRequestEnd?.(ctx.sessionId, windDown.stoppedAt)
     }
     await stopChild()
   } catch (error) {
@@ -162,7 +163,9 @@ export async function performCancel(
     endsSession &&
     (input.turnId === undefined || input.turnId === liveTurnId || taken !== false)
   ) {
-    input.endSession?.({ turnId: taken === true ? liveTurnId : null, stoppedAt })
+    // An interrupt the provider took is worth waiting on, turn row or not: a Stop before the echo
+    // has none, and the echo still opens the turn the Stop interrupted.
+    input.endSession?.({ waitsForProvider: taken === true, stoppedAt })
     cancelled = true
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {

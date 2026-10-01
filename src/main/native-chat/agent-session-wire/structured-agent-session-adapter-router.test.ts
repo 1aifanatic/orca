@@ -189,17 +189,17 @@ describe('StructuredAgentSessionAdapterRouter.stopEndsSession', () => {
     expect(router.stopEndsSession('session-1')).toBe(true)
   })
 
-  it("waits on the session's live owner for the stopped turn, and on nothing with none", async () => {
+  it("waits on the session's live owner to wind the Stop down, and on nothing with none", async () => {
     const claude = adapterOf(vi.fn(async () => true))
-    claude.awaitStoppedTurnEnd = vi.fn(async () => undefined)
+    claude.awaitStoppedRequestEnd = vi.fn(async () => undefined)
     const codex = adapterOf(vi.fn(async () => false))
     const router = new StructuredAgentSessionAdapterRouter({ claude, codex }, async () => {})
 
-    await router.awaitStoppedTurnEnd('session-1', 'turn-1', 5)
-    expect(claude.awaitStoppedTurnEnd).not.toHaveBeenCalled()
+    await router.awaitStoppedRequestEnd('session-1', 5)
+    expect(claude.awaitStoppedRequestEnd).not.toHaveBeenCalled()
     await router.acquire({ identity: claudeIdentity('session-1'), fence: 1, spawnToken: 'spawn-1' })
-    await router.awaitStoppedTurnEnd('session-1', 'turn-1', 5)
-    expect(claude.awaitStoppedTurnEnd).toHaveBeenCalledWith('session-1', 'turn-1', 5)
+    await router.awaitStoppedRequestEnd('session-1', 5)
+    expect(claude.awaitStoppedRequestEnd).toHaveBeenCalledWith('session-1', 5)
   })
 
   it("answers a card's Cancel as the session's live owner does, and leaves it to cancelTurn with none", async () => {

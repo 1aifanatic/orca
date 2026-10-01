@@ -2,7 +2,7 @@ import type {
   ClaudeSession,
   ClaudeStructuredSessionAdapterDeps
 } from './claude-structured-session-state'
-import { settleClaudeTurnEndWaiters } from './claude-turn-end-wait'
+import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 
 /**
  * Record a completed turn: its leaf becomes the one close and exit persist, and the durable point

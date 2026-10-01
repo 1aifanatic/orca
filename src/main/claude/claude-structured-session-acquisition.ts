@@ -9,7 +9,7 @@ import { openClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { buildClaudePermissionCallbacks } from './claude-structured-inbound-control'
 import { resolveClaudeReplayTurn } from './claude-replay-turn-resolution'
 import { claudeSessionStateEndsTurn } from './claude-session-state-turn-over'
-import { settleClaudeTurnEndWaiters } from './claude-turn-end-wait'
+import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import {
   readClaudeCapabilities,
   readClaudeFrameString,
