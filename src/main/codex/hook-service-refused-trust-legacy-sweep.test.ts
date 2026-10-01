@@ -42,8 +42,6 @@ function retiredManagedHookCommand(): string {
   return `if [ -x ${quoted} ]; then /bin/sh ${quoted}; fi`
 }
 
-type HooksFile = { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
-
 type Seeded = {
   hooksPath: string
   tomlPath: string
@@ -148,10 +146,9 @@ describe('CodexHookService retired-entry sweep while config.toml is unreadable',
       writeFileSync(seeded.tomlPath, seeded.toml.replace('model =', 'model = "gpt-5"'), 'utf-8')
       await service.prepareRuntimeHomeForLaunch(undefined, undefined, hooksEnabled)
 
-      const hooks = JSON.parse(readFileSync(seeded.hooksPath, 'utf-8')) as HooksFile
-      expect(hooks.hooks.Stop).toEqual([
-        { hooks: [{ type: 'command', command: 'user-stop-hook', timeout: 30 }] }
-      ])
+      expect(JSON.parse(readFileSync(seeded.hooksPath, 'utf-8'))).toMatchObject({
+        hooks: { Stop: [{ hooks: [{ type: 'command', command: 'user-stop-hook', timeout: 30 }] }] }
+      })
       const toml = readFileSync(seeded.tomlPath, 'utf-8')
       const trust = readHookTrustEntriesFromContent(toml)
       expect(trust.get(computeTrustKey(seeded.userAtZero))?.trustedHash).toBe(
