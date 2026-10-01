@@ -57,9 +57,18 @@ export function readClaudeProfileIdentity(
   dataRoot: string,
   profile: ClaudeProfileDescriptor
 ): ClaudeLoginIdentity | null {
-  return readClaudeProfileOwnership(dataRoot, profile) === 'ready'
-    ? readClaudeLoginState(join(profile.home, '.claude.json')).identity
-    : null
+  return readClaudeProfileState(dataRoot, profile).identity
+}
+
+/** Readiness and identity from one ownership read and one (memoized) state-file read. */
+export function readClaudeProfileState(
+  dataRoot: string,
+  profile: ClaudeProfileDescriptor
+): ClaudeLoginState {
+  const ownership = readClaudeProfileOwnership(dataRoot, profile)
+  return ownership === 'ready'
+    ? readClaudeLoginState(join(profile.home, '.claude.json'))
+    : { readiness: ownership, identity: null }
 }
 
 export type ClaudeLoginIdentity = {
@@ -68,7 +77,10 @@ export type ClaudeLoginIdentity = {
   organizationName: string | null
 }
 
-type ClaudeLoginState = { readiness: ClaudeProfileReadiness; identity: ClaudeLoginIdentity | null }
+export type ClaudeLoginState = {
+  readiness: ClaudeProfileReadiness
+  identity: ClaudeLoginIdentity | null
+}
 
 // Why: Claude's state file grows with history and readiness runs on every resolve.
 const parsedLoginStates = new Map<

@@ -178,3 +178,10 @@ it('surfaces the last setup warning on the account row and clears it after a cle
     f.selection.list().accounts.find((entry) => entry.id === 'a')?.profileSetupIssue
   ).toBeUndefined()
 })
+
+it('does not read the personal Claude state file when no account is saved', () => {
+  const f = fixture()
+  f.signInDefault('me@example.test')
+  f.settings.claudeManagedAccounts = []
+  expect(f.selection.list().systemDefault).toBeUndefined()
+})

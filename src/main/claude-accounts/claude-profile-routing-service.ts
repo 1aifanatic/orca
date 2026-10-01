@@ -264,9 +264,13 @@ export class ClaudeProfileRoutingService {
   /** Never throws: readiness is per account, and a stale pointer is republished in the background. */
   describeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {
     const accounts = withObservedClaudeIdentities(state.accounts, this.owner)
-    const systemDefault = this.owner.systemDefaultIdentity
-      ? { systemDefault: describeClaudeSystemDefault(this.owner.systemDefaultIdentity(), accounts) }
-      : {}
+    // Why only with accounts: the personal state file is large, and the notice needs a saved account.
+    const systemDefault =
+      this.owner.systemDefaultIdentity && accounts.length > 0
+        ? {
+            systemDefault: describeClaudeSystemDefault(this.owner.systemDefaultIdentity(), accounts)
+          }
+        : {}
     const issues = this.currentPublishIssues()
     if (this.pointerIsCurrent()) {
       return {

@@ -35,6 +35,15 @@ export function withWslClaudeProfileOwner(
     },
     readiness: (id) => ownerOf(id).readiness(id),
     identity: (id) => ownerOf(id).identity?.(id) ?? null,
+    profileState: (id) => {
+      const owner = ownerOf(id)
+      return (
+        owner.profileState?.(id) ?? {
+          readiness: owner.readiness(id),
+          identity: owner.identity?.(id) ?? null
+        }
+      )
+    },
     systemDefaultIdentity: () => native.systemDefaultIdentity?.() ?? null,
     prepare: (descriptor, access) => forTarget(descriptor.target).prepare(descriptor, access),
     trust: (descriptor, workspace, access) =>

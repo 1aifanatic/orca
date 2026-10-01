@@ -1,9 +1,10 @@
 import { resolveClaudeGlobalConfigFile } from '../claude/claude-folder-trust-file'
 import {
   readClaudeLoginState,
-  readClaudeProfileIdentity,
   readClaudeProfileReadiness,
-  readClaudeProfileOwnership
+  readClaudeProfileOwnership,
+  readClaudeProfileState,
+  type ClaudeLoginState
 } from './claude-profile-readiness'
 import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -70,6 +71,15 @@ export function createNativeClaudeProfileRouting(args: {
   }
   const accountFor = (id: string) =>
     args.store.getSettings().claudeManagedAccounts.find((entry) => entry.id === id)
+  const profileStateFor = (id: string): ClaudeLoginState => {
+    const account = accountFor(id)
+    return !account || account.managedAuthRuntime === 'wsl'
+      ? { readiness: 'unsupported', identity: null }
+      : readClaudeProfileState(
+          args.dataRoot,
+          describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
+        )
+  }
   const native: ClaudeProfileRoutingOwner = {
     resolve(target = { runtime: 'host' }) {
       if (target.runtime === 'wsl') {
@@ -133,16 +143,9 @@ export function createNativeClaudeProfileRouting(args: {
       }
     },
     accountHome: (id) => profileFor(id).home,
-    readiness: (id) => {
-      const account = accountFor(id)
-      if (!account || account.managedAuthRuntime === 'wsl') {
-        return 'unsupported'
-      }
-      return readClaudeProfileReadiness(
-        args.dataRoot,
-        describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
-      )
-    },
+    readiness: (id) => profileStateFor(id).readiness,
+    identity: (id) => profileStateFor(id).identity,
+    profileState: (id) => profileStateFor(id),
     systemDefaultIdentity: () =>
       readClaudeLoginState(
         resolveClaudeGlobalConfigFile({
@@ -152,15 +155,6 @@ export function createNativeClaudeProfileRouting(args: {
           exists: existsSync
         })
       ).identity,
-    identity: (id) => {
-      const account = accountFor(id)
-      return account && account.managedAuthRuntime !== 'wsl'
-        ? readClaudeProfileIdentity(
-            args.dataRoot,
-            describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
-          )
-        : null
-    },
     prepare: async (descriptor) => {
       if (!descriptor.profile) {
         throw new Error('System Default does not require profile setup')
