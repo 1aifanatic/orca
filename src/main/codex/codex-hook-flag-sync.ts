@@ -18,6 +18,7 @@ import {
   takeCodexHookFlagRequests
 } from './codex-hook-flag-table'
 import {
+  _internals as derivationInternals,
   deriveCodexHookFlagEntry,
   readCodexHookFlagCheck,
   readCodexVersion
@@ -36,18 +37,29 @@ import {
 const WATCH_DEBOUNCE_MS = 100
 // Why a cap: one entry per Codex version ever seen would otherwise accumulate.
 const MAX_TABLE_ENTRIES = 8
+// Why retried soon: a timeout at a loaded boot must not cost status until a restart.
+const TRANSIENT_FAILURE_RETRY_MS = 60_000
+const MISSING = 'missing'
 
 type WatchTable = (path: string, onChange: () => void) => FSWatcher
-type Known = { fingerprint: string; version: string | null; failure: string | null }
+type Known = {
+  fingerprint: string
+  version: string | null
+  failure: string | null
+  /** Per set of requested versions without an entry; '' is a sync with none. */
+  failures: Map<string, { retryAt: number }>
+}
 
 let config: { isEnabled: () => boolean; watch: WatchTable } | null = null
 // Why: the CLI's process has no store; its toggle passes the setting it just saved.
 let intent = false
 // Why keyed by path: a fingerprint change (update, reinstall) re-derives that binary only.
-const known = new Map<string, Known>()
+// Why replaced, not cleared, at the opt-out: a run from before it keeps writing the old map.
+let known = new Map<string, Known>()
 const pendingPaths = new Set<string>()
 let running: Promise<void> | null = null
 let rerun = false
+let spawnSyncScheduled = false
 let watcher: FSWatcher | null = null
 let debounce: ReturnType<typeof setTimeout> | null = null
 
@@ -85,7 +97,7 @@ export function syncCodexHookFlags(
     }
     if (!isEnabledNow()) {
       closeWatcher()
-      known.clear()
+      known = new Map()
       pendingPaths.clear()
       removeCodexHookFlagTable()
       return Promise.resolve()
@@ -105,15 +117,7 @@ export function syncCodexHookFlags(
       return running
     }
     const after = options.after ?? Promise.resolve()
-    running = after
-      .catch(() => {})
-      .then(runUntilSettled)
-      .catch((error: unknown) => {
-        console.warn('[codex-hook-session] Codex hook flag sync failed:', error)
-      })
-      .finally(() => {
-        running = null
-      })
+    running = after.catch(() => {}).then(runUntilSettled)
     return running
   } catch (error) {
     console.warn('[codex-hook-session] Codex hook flag sync failed:', error)
@@ -123,8 +127,13 @@ export function syncCodexHookFlags(
 
 /** A native pane spawned: syncs on the next tick, off the spawn's path, in the app's process only. */
 export function scheduleCodexHookFlagSync(): void {
-  if (config) {
-    setImmediate(() => void syncCodexHookFlags())
+  // Why once: one spawn builds its env through several builders, each of which asks.
+  if (config && !spawnSyncScheduled) {
+    spawnSyncScheduled = true
+    setImmediate(() => {
+      spawnSyncScheduled = false
+      void syncCodexHookFlags()
+    })
   }
 }
 
@@ -156,7 +165,8 @@ export async function learnCodexHookFlagVersion(): Promise<void> {
   known.set(normalizeRuntimePathForComparison(codexPath), {
     fingerprint: await fingerprintCodex(codexPath),
     version,
-    failure: version ? null : `${codexPath} did not report its version`
+    failure: version ? null : `${codexPath} did not report its version`,
+    failures: new Map()
   })
 }
 
@@ -176,49 +186,90 @@ function ensureCodexHookScripts(): boolean {
 }
 
 async function runUntilSettled(): Promise<void> {
-  do {
+  for (;;) {
     rerun = false
-    await syncOnce()
-  } while (rerun && isEnabledNow())
+    try {
+      await syncOnce()
+    } catch (error) {
+      console.warn('[codex-hook-session] Codex hook flag sync failed:', error)
+    }
+    // Why decided and cleared in one step: a call in between would mark a finished run.
+    if (!rerun || !isEnabledNow()) {
+      running = null
+      return
+    }
+  }
 }
 
 async function syncOnce(): Promise<void> {
   const mainPath = resolveCodexCommand()
-  const targets = new Set<string>([mainPath])
+  const targets = new Map<string, Set<string>>([[mainPath, new Set()]])
+  const target = (path: string): Set<string> => {
+    const requested = targets.get(path) ?? new Set<string>()
+    targets.set(path, requested)
+    return requested
+  }
   for (const path of pendingPaths) {
-    targets.add(resolveCodexProbePath(path))
+    target(resolveCodexProbePath(path))
   }
   pendingPaths.clear()
   for (const request of takeCodexHookFlagRequests()) {
     // Why main's codex for a request without a usable path: cmd.exe cannot name its binary.
-    targets.add(readRequestedCodexPath(request.codexPath) ?? mainPath)
+    target(readRequestedCodexPath(request.codexPath) ?? mainPath).add(request.codexVersion)
   }
-  await Promise.all([...targets].map(syncBinary))
+  await Promise.all([...targets].map(([path, requested]) => syncBinary(path, requested)))
   const isCurrent = await readCodexHookFlagCheck()
-  if (isEnabledNow() && codexHookFlagTableExists()) {
+  // Why only with a known definition: an unknown one proves no entry stale.
+  if (isCurrent && isEnabledNow() && codexHookFlagTableExists()) {
     pruneCodexHookFlagEntries((entry) => isCurrent(entry.flag), MAX_TABLE_ENTRIES)
   }
 }
 
-async function syncBinary(codexPath: string): Promise<void> {
+async function syncBinary(codexPath: string, requested: ReadonlySet<string>): Promise<void> {
+  const answers = known
   const key = normalizeRuntimePathForComparison(codexPath)
   const fingerprint = await fingerprintCodex(codexPath)
-  const previous = known.get(key)
-  // Why skip a cached failure: the same bytes would fail again; a new binary or a toggle retries.
+  const stored = answers.get(key)
+  const previous = stored?.fingerprint === fingerprint ? stored : undefined
+  // Why the requested versions count: a shim's bytes stay the same when the codex behind it updates.
+  const wanted = [...requested].filter((version) => readCodexHookFlagEntry(version) === null)
   if (
-    previous?.fingerprint === fingerprint &&
-    (previous.failure !== null ||
-      (previous.version !== null && readCodexHookFlagEntry(previous.version) !== null))
+    previous?.version &&
+    wanted.length === 0 &&
+    readCodexHookFlagEntry(previous.version) !== null
   ) {
     return
   }
-  const result = await deriveCodexHookFlagEntry(
-    codexPath,
-    () => isEnabledNow() && codexHookFlagTableExists()
-  )
-  if (isEnabledNow()) {
-    known.set(key, { fingerprint, version: result.codexVersion, failure: result.failure })
+  const failureKey = wanted.sort().join('\n')
+  // Why skip a cached failure: the same bytes asked the same question; a new binary, a toggle or its retry time asks again.
+  if ((previous?.failures.get(failureKey)?.retryAt ?? 0) > Date.now()) {
+    return
   }
+  const result =
+    fingerprint === MISSING
+      ? { codexVersion: null, entry: null, failure: `${codexPath} was not found`, transient: false }
+      : await deriveCodexHookFlagEntry(
+          codexPath,
+          () => isEnabledNow() && codexHookFlagTableExists()
+        )
+  // Why: an opt-out meanwhile replaced the map, and its answer belongs to the old setting.
+  if (answers !== known || !isEnabledNow()) {
+    return
+  }
+  const failure =
+    result.failure ??
+    (wanted.length > 0 && result.codexVersion && !wanted.includes(result.codexVersion)
+      ? `${codexPath} reports ${result.codexVersion}, not ${wanted.join(', ')}`
+      : null)
+  const failures = previous?.failures ?? new Map<string, { retryAt: number }>()
+  if (failure) {
+    failures.set(failureKey, {
+      retryAt: result.transient ? Date.now() + TRANSIENT_FAILURE_RETRY_MS : Number.POSITIVE_INFINITY
+    })
+  } else {
+    failures.delete(failureKey)
+  }
+  answers.set(key, { fingerprint, version: result.codexVersion, failure, failures })
 }
 
 // Why these fields: they change when an update or reinstall replaces the binary behind the path.
@@ -228,7 +279,7 @@ async function fingerprintCodex(codexPath: string): Promise<string> {
     const info = await stat(realPath)
     return `${realPath}:${info.size}:${info.mtimeMs}:${info.ino}`
   } catch {
-    return 'missing'
+    return MISSING
   }
 }
 
@@ -278,9 +329,14 @@ export const _internals = {
     closeWatcher()
     config = null
     intent = false
-    known.clear()
+    known = new Map()
     pendingPaths.clear()
     running = null
     rerun = false
+    spawnSyncScheduled = false
+    derivationInternals.resetForTesting()
+  },
+  forgetHookCommandForTesting(): void {
+    derivationInternals.resetForTesting()
   }
 }

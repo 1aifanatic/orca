@@ -10,7 +10,7 @@ import type { BuildPtyHostEnvOptions } from './types'
 
 /**
  * Points a native pane's codex function at Orca's flag table, which each launch
- * reads. Set whatever the settings say: the table is empty while Codex hooks
+ * reads. Set whatever the settings say: the table is absent while Codex hooks
  * are off, and the pointer stays valid across Orca restarts, so a pane the
  * daemon keeps follows every later change. WSL guests run a Linux Codex whose
  * hash this process never asked for, and keep their installed hooks.

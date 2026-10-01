@@ -36,7 +36,13 @@ import {
 } from './codex-hook-flag-table'
 
 /** hooks/list for a definition-only flag (untrusted), or for the full flag (trusted). */
-function listingFor(command: string, flag: string, hashPrefix = 'sha256:'): unknown {
+/** Codex's answer: an approval in the flag (either spelling) reads trusted unless `full` overrides it. */
+function listingFor(
+  command: string,
+  flag: string,
+  hashPrefix = 'sha256:',
+  full: { trusted?: boolean; enabled?: boolean } = {}
+): unknown {
   const approved = /state\s*=/.test(flag)
   return {
     data: [
@@ -47,9 +53,9 @@ function listingFor(command: string, flag: string, hashPrefix = 'sha256:'): unkn
             key: `/<session-flags>/config.toml:${label}:0:0`,
             command,
             currentHash: `${hashPrefix}${label}`,
-            trustStatus: approved ? 'trusted' : 'untrusted',
+            trustStatus: approved && (full.trusted ?? true) ? 'trusted' : 'untrusted',
             source: 'sessionFlags',
-            enabled: !/state\s*=.*enabled\s*=\s*false/.test(flag)
+            enabled: approved ? (full.enabled ?? true) : true
           }
         })
       }
@@ -142,10 +148,7 @@ describe('codex hook session trust', () => {
 
   it('publishes nothing when Codex does not trust the complete flag', async () => {
     answerVersion('codex-cli 0.159.2')
-    answerSession((command, flag) => {
-      const listing = listingFor(command, flag)
-      return flag.includes('state=') ? listingFor(command, flag.replace('state=', 'x=')) : listing
-    })
+    answerSession((command, flag) => listingFor(command, flag, 'sha256:', { trusted: false }))
 
     expect(await deriveEntry()).toBeNull()
     expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
@@ -153,9 +156,7 @@ describe('codex hook session trust', () => {
 
   it('publishes nothing when Codex lists the approved hook as switched off', async () => {
     answerVersion('codex-cli 0.159.2')
-    answerSession((command, flag) =>
-      listingFor(command, flag.includes('state=') ? `${flag} enabled=false` : flag)
-    )
+    answerSession((command, flag) => listingFor(command, flag, 'sha256:', { enabled: false }))
 
     expect(await deriveEntry()).toBeNull()
     expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
@@ -252,7 +253,8 @@ describe('codex hook session trust', () => {
     expect(await deriveCodexHookFlagEntry('/opt/codex/bin/codex', () => true)).toEqual({
       codexVersion: null,
       entry: null,
-      failure: '/opt/codex/bin/codex did not report its version'
+      failure: '/opt/codex/bin/codex did not report its version',
+      transient: false
     })
   })
 

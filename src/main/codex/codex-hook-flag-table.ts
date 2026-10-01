@@ -37,7 +37,7 @@ export type CodexHookFlagEntry = {
   noDaemon: boolean
 }
 
-export type CodexHookFlagRequest = {
+type CodexHookFlagRequest = {
   codexVersion: string
   /** Absolute path of the requesting launch's codex; null when the carrier could not tell. */
   codexPath: string | null

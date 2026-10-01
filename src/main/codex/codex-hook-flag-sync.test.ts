@@ -12,26 +12,46 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as CodexHookFlagTable from './codex-hook-flag-table'
 
-const mocks = vi.hoisted(() => ({
-  runProcess: vi.fn(),
-  runCodexAppServerSession: vi.fn(),
-  mainPath: ''
-}))
+const mocks = vi.hoisted(() => {
+  const state: { mainPath: string; afterPrune: (() => void) | null; tableCreations: number } = {
+    mainPath: '',
+    afterPrune: null,
+    tableCreations: 0
+  }
+  return { runProcess: vi.fn(), runCodexAppServerSession: vi.fn(), state }
+})
 
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: mocks.runProcess }))
 vi.mock('./codex-app-server-session', () => ({
   runCodexAppServerSession: mocks.runCodexAppServerSession
 }))
 vi.mock('../codex-cli/command', () => ({
-  resolveCodexCommand: () => mocks.mainPath,
+  resolveCodexCommand: () => mocks.state.mainPath,
   withCliRuntimeOnPath: (_path: string, env: NodeJS.ProcessEnv) => env
 }))
+// Why: lets a test land a call at a chosen microtask after a run's last step.
+vi.mock('./codex-hook-flag-table', async (importOriginal) => {
+  const table = await importOriginal<typeof CodexHookFlagTable>()
+  return {
+    ...table,
+    createCodexHookFlagTable: (...args: Parameters<typeof table.createCodexHookFlagTable>) => {
+      mocks.state.tableCreations += 1
+      table.createCodexHookFlagTable(...args)
+    },
+    pruneCodexHookFlagEntries: (...args: Parameters<typeof table.pruneCodexHookFlagEntries>) => {
+      table.pruneCodexHookFlagEntries(...args)
+      mocks.state.afterPrune?.()
+    }
+  }
+})
 
 import {
   _internals,
   getKnownCodexHookFlag,
   learnCodexHookFlagVersion,
+  scheduleCodexHookFlagSync,
   startCodexHookFlagSync,
   syncCodexHookFlags,
   syncCodexHookFlagsWithin
@@ -61,6 +81,9 @@ class FakeWatcher extends EventEmitter {
 
 const canDenyWrites = process.platform !== 'win32' && process.getuid?.() !== 0
 const versions = new Map<string, string | null>()
+// Why: the 8.3 lookup's answer, for the Windows cases; null is a failed lookup.
+let shortPath: () => string | null = () => null
+let listedCommand: () => string = () => getManagedCommand(getManagedScriptPath())
 
 function listingFor(flag: string): unknown {
   const approved = /state\s*=/.test(flag)
@@ -71,7 +94,7 @@ function listingFor(flag: string): unknown {
           const label = CODEX_EVENT_LABEL[eventName]
           return {
             key: `/<session-flags>/config.toml:${label}:0:0`,
-            command: getManagedCommand(getManagedScriptPath()),
+            command: listedCommand(),
             currentHash: `sha256:${label}`,
             trustStatus: approved ? 'trusted' : 'untrusted',
             source: 'sessionFlags',
@@ -101,16 +124,18 @@ describe('syncCodexHookFlags', () => {
     return path
   }
 
+  function fakeWatch(onChange: () => void = () => {}): FSWatcher {
+    const watcher = new FakeWatcher()
+    watchers.push({ watcher, fire: onChange })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the code under test calls only on/close/unref, which FakeWatcher implements.
+    return watcher as unknown as FSWatcher
+  }
+
   function start(pathReady?: Promise<unknown>): Promise<void> {
     stop = startCodexHookFlagSync({
       isEnabled: () => enabled,
       pathReady,
-      watch: (_path, onChange) => {
-        const watcher = new FakeWatcher()
-        watchers.push({ watcher, fire: onChange })
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the code under test calls only on/close/unref, which FakeWatcher implements.
-        return watcher as unknown as FSWatcher
-      }
+      watch: (_path, onChange) => fakeWatch(onChange)
     })
     return syncCodexHookFlagsWithin(5_000)
   }
@@ -129,17 +154,28 @@ describe('syncCodexHookFlags', () => {
     enabled = true
     watchers = []
     versions.clear()
-    mocks.mainPath = writeBinary(join(root, 'bin', 'codex'))
-    versions.set(mocks.mainPath, 'codex-cli 0.159.2')
+    mocks.state.mainPath = writeBinary(join(root, 'bin', 'codex'))
+    versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
     mocks.runProcess.mockReset()
+    shortPath = () => null
+    listedCommand = () => getManagedCommand(getManagedScriptPath())
+    mocks.state.afterPrune = null
     mocks.runProcess.mockImplementation(async ({ program, args }) => {
+      if (/cmd\.exe$/i.test(program)) {
+        const path = shortPath()
+        return path === null
+          ? { code: 1, stdout: '', stderr: '', signal: null, timedOut: false }
+          : { code: 0, stdout: `${path}\r\n`, stderr: '', signal: null, timedOut: false }
+      }
       if (args[0] === '--help') {
         return { code: 0, stdout: 'Usage: codex [--no-daemon]', stderr: '', signal: null }
       }
       const version = versions.get(program) ?? null
-      return version === null
-        ? { code: 1, stdout: '', stderr: 'boom', signal: null, timedOut: false }
-        : { code: 0, stdout: `${version}\n`, stderr: '', signal: null, timedOut: false }
+      return version === 'timeout'
+        ? { code: null, stdout: '', stderr: '', signal: 'SIGTERM', timedOut: true }
+        : version === null
+          ? { code: 1, stdout: '', stderr: 'boom', signal: null, timedOut: false }
+          : { code: 0, stdout: `${version}\n`, stderr: '', signal: null, timedOut: false }
     })
     mocks.runCodexAppServerSession.mockReset()
     mocks.runCodexAppServerSession.mockImplementation(async (invocation, body) =>
@@ -226,8 +262,8 @@ describe('syncCodexHookFlags', () => {
     expect(versionCalls()).toHaveLength(1)
 
     // Why new bytes: an update replaces the binary behind the same path.
-    writeBinary(mocks.mainPath, 'codex, updated')
-    versions.set(mocks.mainPath, 'codex-cli 0.160.0')
+    writeBinary(mocks.state.mainPath, 'codex, updated')
+    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
     await syncCodexHookFlags()
 
     expect(versionCalls()).toHaveLength(2)
@@ -257,7 +293,7 @@ describe('syncCodexHookFlags', () => {
     await syncCodexHookFlags()
     expect(versionCalls()).toHaveLength(2)
 
-    writeBinary(mocks.mainPath, 'codex, reinstalled')
+    writeBinary(mocks.state.mainPath, 'codex, reinstalled')
     await syncCodexHookFlags()
     expect(versionCalls()).toHaveLength(3)
   })
@@ -352,6 +388,188 @@ describe('syncCodexHookFlags', () => {
       expect(existsSync(table())).toBe(true)
     }
   )
+
+  // Why S1: a version manager's shim keeps its bytes when the codex behind it updates.
+  it('derives for a requested version without an entry, whatever the fingerprint says', async () => {
+    await start()
+    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
+    writeFileSync(join(table(), 'codex-cli 0.160.0.request'), `${mocks.state.mainPath}\n`)
+
+    await syncCodexHookFlags()
+
+    expect(entryFor('codex-cli 0.160.0')).not.toBeNull()
+  })
+
+  it('caches that a binary answers another version than requested, for that binary only', async () => {
+    await start()
+    writeFileSync(join(table(), 'codex-cli 0.160.0.request'), `${mocks.state.mainPath}\n`)
+    await syncCodexHookFlags()
+    const calls = versionCalls().length
+
+    writeFileSync(join(table(), 'codex-cli 0.160.0.request'), `${mocks.state.mainPath}\n`)
+    await syncCodexHookFlags()
+
+    expect(versionCalls()).toHaveLength(calls)
+  })
+
+  // Why S4: a boot-time timeout must not cost status for the life of the process.
+  it('retries a transient failure soon, and a request for a version at once', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    versions.set(mocks.state.mainPath, 'timeout')
+    await start()
+    expect(getKnownCodexHookFlag()?.failure).toContain('did not report its version')
+    versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
+
+    await syncCodexHookFlags()
+    expect(entryFor('codex-cli 0.159.2')).toBeNull()
+    vi.setSystemTime(Date.now() + 61_000)
+    await syncCodexHookFlags()
+    expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
+  })
+
+  it('lets a request naming the version retry a binary whose plain sync failed', async () => {
+    versions.set(mocks.state.mainPath, 'timeout')
+    await start()
+    versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
+    writeFileSync(join(table(), 'codex-cli 0.159.2.request'), `${mocks.state.mainPath}\n`)
+
+    await syncCodexHookFlags()
+
+    expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
+  })
+
+  it('forgets a failure from a derivation an opt-out overtook', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    mocks.runCodexAppServerSession.mockImplementationOnce(async () => {
+      await gate
+      throw new Error('timed out')
+    })
+    const first = start()
+    await vi.waitFor(() => expect(mocks.runCodexAppServerSession).toHaveBeenCalled())
+    enabled = false
+    await syncCodexHookFlags()
+    enabled = true
+    void syncCodexHookFlags()
+
+    release()
+    await first
+
+    // Why: the run after the toggle asks again instead of reusing the old run's failure.
+    expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
+  })
+
+  // Why S5: a call landing between a run's last check and its end must still be served.
+  it.each([0, 1, 2, 3, 4, 6, 8])(
+    'serves a call landing %i microtasks after a run’s last step',
+    async (hops) => {
+      await start()
+      const pane = writeBinary(join(root, 'pane', 'codex'))
+      versions.set(pane, 'codex-cli 0.150.1')
+      mocks.state.afterPrune = () => {
+        mocks.state.afterPrune = null
+        let later: Promise<void> = Promise.resolve()
+        for (let hop = 0; hop < hops; hop += 1) {
+          later = later.then(() => {})
+        }
+        void later.then(() => syncCodexHookFlags({ codexPath: pane }))
+      }
+
+      await syncCodexHookFlags()
+      await vi.waitFor(() => expect(entryFor('codex-cli 0.150.1')).not.toBeNull())
+    }
+  )
+
+  it('returns from a bounded wait while a sync is still running', async () => {
+    mocks.runCodexAppServerSession.mockImplementation(() => new Promise(() => {}))
+    startCodexHookFlagSync({ isEnabled: () => enabled, watch: () => fakeWatch() })
+
+    const started = Date.now()
+    await syncCodexHookFlagsWithin(50)
+
+    expect(Date.now() - started).toBeLessThan(2_000)
+  })
+
+  it('syncs once for a pane spawn that asks several times', async () => {
+    await start()
+    const creations = mocks.state.tableCreations
+
+    // Why three: one spawn builds its env through several builders, each of which asks.
+    scheduleCodexHookFlagSync()
+    scheduleCodexHookFlagSync()
+    scheduleCodexHookFlagSync()
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(mocks.state.tableCreations).toBe(creations + 1)
+  })
+
+  describe('on Windows, under a profile path only an 8.3 name can carry', () => {
+    const hostPlatform = process.platform
+    let shortRoot: string
+
+    beforeEach(() => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      vi.stubEnv('HOME', join(root, 'John Smith'))
+      vi.stubEnv('USERPROFILE', join(root, 'John Smith'))
+      shortRoot = join(root, 'JOHNSM~1')
+      const shortScript = () => getManagedScriptPath().replace(join(root, 'John Smith'), shortRoot)
+      shortPath = () => {
+        mkdirSync(join(shortScript(), '..'), { recursive: true })
+        writeFileSync(shortScript(), 'x')
+        return shortScript()
+      }
+      listedCommand = () => getManagedCommand(shortScript())
+    })
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
+    })
+
+    const cmdCalls = () =>
+      mocks.runProcess.mock.calls.filter(([options]) => /cmd\.exe$/i.test(options.program)).length
+
+    // Why S2: the 8.3 lookup spawns cmd.exe, a process per pane spawn otherwise.
+    it('spawns nothing on a sync that finds nothing new', async () => {
+      await start()
+      expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
+      const spawned = mocks.runProcess.mock.calls.length
+
+      for (let sync = 0; sync < 5; sync += 1) {
+        await syncCodexHookFlags()
+      }
+
+      expect(mocks.runProcess.mock.calls.length).toBe(spawned)
+    })
+
+    it('spawns no cmd.exe on each sync while codex is not installed', async () => {
+      rmSync(mocks.state.mainPath)
+      shortPath = () => null
+      await start()
+      const lookups = cmdCalls()
+
+      for (let sync = 0; sync < 5; sync += 1) {
+        await syncCodexHookFlags()
+      }
+
+      expect(cmdCalls()).toBe(lookups)
+      expect(versionCalls()).toEqual([])
+    })
+
+    // Why S3: a definition the lookup failed to learn proves no entry stale.
+    it('prunes nothing while its 8.3 lookup fails', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      await start()
+      const before = readdirSync(table())
+      _internals.forgetHookCommandForTesting()
+      shortPath = () => null
+
+      await syncCodexHookFlags()
+
+      expect(readdirSync(table())).toEqual(before)
+    })
+  })
 
   describe("in the CLI's process", () => {
     it('follows the saved setting without deriving, and does nothing when given none', async () => {

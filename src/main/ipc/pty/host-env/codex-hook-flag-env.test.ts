@@ -58,7 +58,7 @@ afterEach(() => {
 })
 
 describe('Codex status hook flag table in the pane env', () => {
-  // Why whatever the settings: the table is empty while hooks are off, and a pane
+  // Why whatever the settings: the table is absent while hooks are off, and a pane
   // opened then must still find the flag once they turn back on.
   it.each([
     ['hooks are on', {}],
