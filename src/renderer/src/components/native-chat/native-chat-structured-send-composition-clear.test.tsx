@@ -197,8 +197,7 @@ describe('structured send racing the next IME composition', () => {
     expect(promptValue(input)).toBe('가')
   })
 
-  // Clearing optimistically before the RPC would lose the draft here, which is why the clear
-  // stays on the acceptance path and is instead replayed at settlement.
+  // The message is cleared just before the transport takes it, so a refusal must put it back.
   it('keeps the draft when the send is rejected', async () => {
     const structured = transport({ send: vi.fn(() => false) })
     renderComposer(structured)
@@ -211,6 +210,7 @@ describe('structured send racing the next IME composition', () => {
     expect(promptValue(input)).toBe('안녕')
   })
 
+  // Like any put-back, the refused message lands after what was composed meanwhile.
   it('keeps the draft when a rejected send races the next composition', async () => {
     const dispatch = deferred()
     const structured = transport({
@@ -232,7 +232,7 @@ describe('structured send racing the next IME composition', () => {
     })
     fireEvent.compositionEnd(input, { data: '하' })
 
-    expect(promptValue(input)).toBe('안녕하')
+    expect(promptValue(input)).toBe('하\n\n안녕')
   })
 
   // A rejected command still reports its error, and the composer keeps the text to retry.
@@ -330,6 +330,30 @@ describe('the draft saved to disk', () => {
     await act(async () => pressEnter(input))
 
     expect(localStorage.getItem(key)).toBeNull()
+  })
+
+  // The saved draft and the outbox entry share storage; a large draft must not crowd out the send.
+  it('frees the saved draft before the message is handed over, and puts it back if refused', async () => {
+    const saved = (): string | null =>
+      localStorage.getItem(`orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`)
+    const seenBySend: (string | null)[] = []
+    const structured = transport({
+      send: vi.fn(() => {
+        seenBySend.push(saved())
+        return false
+      })
+    })
+    renderComposer(structured)
+    const input = textarea()
+    changePrompt(input, 'a long message')
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(saved()).not.toBeNull()
+
+    await act(async () => pressEnter(input))
+
+    expect(seenBySend).toEqual([null])
+    expect(promptValue(input)).toBe('a long message')
+    expect(JSON.parse(saved() ?? 'null')).toMatchObject({ text: 'a long message' })
   })
 
   // Sending would hand the agent a path to nothing; the chip says so and Send waits for its removal.

@@ -10,9 +10,12 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { restoreNativeChatDraftIfEmpty } from './native-chat-draft-cache'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
+  /** The chat's draft (`nativeChatDraftKey`), where a refused message is put back. */
+  draftKey: string
   draft?: string
   imageAttachments: readonly NativeChatComposerImageAttachment[]
   structuredTransport?: NativeChatStructuredComposerTransport
@@ -23,10 +26,12 @@ export type UseNativeChatStructuredComposerSendArgs = {
   setCaret: (caret: number) => void
 }
 
-/** Send through the structured journal transport, clearing the composer only
- *  once the transport accepts (the PTY path has its own sibling hook). */
+/** Send through the structured journal transport (the PTY path has its own sibling hook). A
+ *  message clears the composer before the transport takes it and is put back if refused; a host
+ *  command clears it only once accepted. */
 export function useNativeChatStructuredComposerSend({
   agent,
+  draftKey,
   draft,
   imageAttachments,
   structuredTransport,
@@ -56,33 +61,61 @@ export function useNativeChatStructuredComposerSend({
         return
       }
       const submitted = composition.current
-      void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
-        .then(({ accepted, error }) => {
-          structuredTransport.onError(error)
-          if (!accepted) {
-            return
+      const clearComposer = (): void => {
+        setDraft('')
+        setCaret(0)
+        clearSkillOrigin()
+        clearImageAttachments()
+      }
+      let cleared = false
+      // A refused message goes back, unless something was typed since.
+      const putBack = (): void => {
+        if (cleared) {
+          restoreNativeChatDraftIfEmpty(draftKey, {
+            text,
+            attachments: attachments.map(({ id, path, connectionId }) =>
+              connectionId ? { id, path, connectionId } : { id, path }
+            )
+          })
+        }
+      }
+      void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments, () => {
+        // Why first: the saved draft shares storage with the outbox entry this send appends, so a
+        // large draft still on disk could make that append, and the send, fail.
+        cleared = true
+        clearComposer()
+      })
+        .then(
+          ({ accepted, error }) => {
+            structuredTransport.onError(error)
+            if (!accepted) {
+              putBack()
+              return
+            }
+            emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
+            // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
+            // `accepted`, and only from this hook: the outbox dispatcher retries and would re-fire,
+            // and orchestration's own pointer nudges never reach the composer at all.
+            reportStructuredSessionUserInput(
+              structuredTransport.sessionId,
+              structuredTransport.runtimeEnvironmentId
+            )
+            setHistory((previous) => pushHistory(previous, text))
+            if (
+              cleared ||
+              (hostCommand &&
+                (composition.current.draft !== submitted.draft ||
+                  composition.current.imageAttachments !== submitted.imageAttachments))
+            ) {
+              return
+            }
+            clearComposer()
+          },
+          (error: unknown) => {
+            putBack()
+            throw error
           }
-          emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
-          // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
-          // `accepted`, and only from this hook: the outbox dispatcher retries and would re-fire,
-          // and orchestration's own pointer nudges never reach the composer at all.
-          reportStructuredSessionUserInput(
-            structuredTransport.sessionId,
-            structuredTransport.runtimeEnvironmentId
-          )
-          setHistory((previous) => pushHistory(previous, text))
-          if (
-            hostCommand &&
-            (composition.current.draft !== submitted.draft ||
-              composition.current.imageAttachments !== submitted.imageAttachments)
-          ) {
-            return
-          }
-          setDraft('')
-          setCaret(0)
-          clearSkillOrigin()
-          clearImageAttachments()
-        })
+        )
         .catch((error) =>
           structuredTransport.onError(error instanceof Error ? error.message : String(error))
         )
@@ -91,6 +124,7 @@ export function useNativeChatStructuredComposerSend({
       agent,
       clearImageAttachments,
       clearSkillOrigin,
+      draftKey,
       imageAttachments,
       setCaret,
       setDraft,
