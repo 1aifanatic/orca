@@ -3,10 +3,10 @@ import type { OrchestrationSessionAddressResult } from '../../../shared/orchestr
 import { callRuntimeRpc, RuntimeRpcCallError, type RuntimeClientTarget } from './runtime-rpc-client'
 
 /**
- * The address other agents reach a chat at: its conversation's, which the host derives from the
- * session records and which `/clear` keeps. Null for an id that is not an Orca session id.
+ * A chat's Orca session ID: its `/clear` root's, which the host derives from the session records.
+ * Null for an id that is not an Orca session id.
  */
-export async function resolveStructuredSessionOrchestrationAddress(
+export async function resolveStructuredSessionOrcaSessionId(
   target: RuntimeClientTarget,
   sessionId: string
 ): Promise<string | null> {
@@ -19,9 +19,9 @@ export async function resolveStructuredSessionOrchestrationAddress(
       'orchestration.sessionAddress',
       { sessionId }
     )
-    return result.address
+    return result.orcaSessionId
   } catch (error) {
-    // Why: a host that predates the method has no /clear lineage, so there the live id is the address.
+    // Why: a host that predates the method routes the current session's ID to the same chat.
     if (error instanceof RuntimeRpcCallError && error.code === 'method_not_found') {
       return formatOrcaSessionAddress(sessionId)
     }

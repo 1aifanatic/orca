@@ -13,8 +13,8 @@ import {
 import { resolveRunScope } from './run-scope'
 import { DispatchParams, DispatchShowParams } from '../schemas'
 import {
-  resolveDispatchAssigneeParty,
-  resolveOrchestrationParty
+  orcaSessionIdOrHandle,
+  resolveDispatchAssigneeParty
 } from '../../../../orchestration/orchestration-party'
 
 export const ORCHESTRATION_DISPATCH_METHODS = [
@@ -65,8 +65,8 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: 'ctx_dryrun',
           canDispatchSubWorkers: previewDepth < maxDepth,
           taskSpec: task.spec,
-          coordinatorHandle: params.from ?? 'coordinator',
-          workerHandle: assignee ?? 'worker',
+          coordinatorHandle: orcaSessionIdOrHandle(params.from ?? 'coordinator', db),
+          workerHandle: assignee ? orcaSessionIdOrHandle(assignee, db) : 'worker',
           devMode: params.devMode,
           ...(assignee ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(assignee) } : {})
         })
@@ -146,8 +146,8 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         dispatchId: ctx.id,
         canDispatchSubWorkers: ctx.depth < runtime.getNestedWorkerMaxDepth(),
         taskSpec: task.spec,
-        coordinatorHandle: params.from ?? 'coordinator',
-        workerHandle: to,
+        coordinatorHandle: orcaSessionIdOrHandle(params.from ?? 'coordinator', db),
+        workerHandle: orcaSessionIdOrHandle(to, db),
         devMode: params.devMode,
         cliCommand: runtime.getTerminalOrchestrationCliCommand(to)
       })
@@ -204,11 +204,8 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           dispatchId: ctx?.id ?? 'ctx_preview',
           canDispatchSubWorkers: (ctx?.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
           taskSpec: task.spec,
-          // Why: `from` is not bound at the entry here; a `/clear`ed chat's live id names its root.
-          coordinatorHandle: params.from
-            ? resolveOrchestrationParty(params.from, db).address
-            : 'coordinator',
-          workerHandle,
+          coordinatorHandle: orcaSessionIdOrHandle(params.from ?? 'coordinator', db),
+          workerHandle: orcaSessionIdOrHandle(workerHandle, db),
           devMode: params.devMode,
           ...(ctx ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(workerHandle) } : {})
         })

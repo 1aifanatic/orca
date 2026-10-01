@@ -17396,9 +17396,10 @@
   "components": {
     "native-chat": {
       "contextMenu": {
-        "orchestrationAddressCopied": "Adresse d'orchestration copiée",
-        "orchestrationAddressCopyFailed": "Impossible de copier l'adresse d'orchestration",
-        "copyOrchestrationAddress": "Copier l'adresse d'orchestration"
+        "copyOrcaSessionId": "Copier l'ID de session Orca",
+        "orcaSessionIdCopied": "ID de session Orca copié",
+        "orcaSessionIdCopyFailed": "Impossible de copier l'ID de session Orca",
+        "orcaSessionIdTooltip": "L'ID qu'Orca attribue à ce chat, distinct des ID de session propres aux CLI des agents. Les agents l'utilisent pour se désigner entre eux via Orca."
       },
       "failureWords": {
         "theAgent": "L'agent",

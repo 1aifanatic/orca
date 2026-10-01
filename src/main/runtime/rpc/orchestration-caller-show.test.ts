@@ -25,7 +25,7 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
   getStructuredAgentSessionHost: () => hostRef.current
 }))
 
-describe('orchestration.callerShow: the caller learns its own address from the host', () => {
+describe('orchestration.callerShow: a session learns its Orca session ID from the host', () => {
   let h: SessionCallerHarness
 
   beforeEach(() => {
@@ -41,7 +41,7 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     return orchestrationRequest('orchestration.callerShow', {}, options)
   }
 
-  it('answers a chat with session:<id>, even in terminal view where it also carries a pane', async () => {
+  it('answers a chat with its Orca session ID, even in terminal view where it also carries a pane', async () => {
     const response = await h.dispatch(
       callerShow({
         sessionId: SESSION_X,
@@ -50,11 +50,11 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     )
 
     expect(resultOf(response)).toEqual({
-      caller: { address: ADDRESS_X, live: true }
+      caller: { orcaSessionId: ADDRESS_X, live: true }
     })
   })
 
-  it('answers a structured worker with the one address its preamble and its mail show', async () => {
+  it('answers a structured worker with the Orca session ID its preamble names, whose mail is keyed by its handle', async () => {
     const handle = mintStructuredWorkerHandle()
     structuredWorkerIdentities.register({
       handle,
@@ -85,11 +85,12 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     )
     const checked = resultOf(await asX('orchestration.check', { all: true, format: true }))
 
-    expect(shown).toEqual({ caller: { address: handle, live: true } })
-    expect(preamble).toContain(`Your orchestration address is: ${handle}\n`)
+    expect(shown).toEqual({ caller: { orcaSessionId: ADDRESS_Y, live: true } })
+    expect(preamble).toContain(`Your coordinator's Orca session ID is: ${ADDRESS_X}\n`)
+    expect(preamble).toContain(`Your Orca session ID is: ${ADDRESS_Y}\n`)
+    expect(preamble).not.toContain(handle)
+    // Storage is unchanged: the mail it sends as either spelling is keyed by its minted handle.
     expect(checked.messages).toEqual([expect.objectContaining({ from_handle: handle })])
-    expect(checked.formatted).toContain(`(${handle})`)
-    expect(JSON.stringify({ preamble, checked })).not.toContain(ADDRESS_Y)
   })
 
   it('refuses a session that is not running, with the same code every orchestration verb gets', async () => {
@@ -118,72 +119,15 @@ describe('orchestration.callerShow: the caller learns its own address from the h
     expect(response).toMatchObject({ ok: false, error: { code: CODES.hostBoundary } })
   })
 
-  it('answers a terminal agent with the handle its environment carries, and whether it is live', async () => {
-    const probe = vi
-      .spyOn(h.runtime, 'resolveTerminalIdentity')
-      .mockImplementation((handle) => ({ handle, live: handle === 'term_live' }))
-
-    const live = await h.dispatch(callerShow({ evidence: { terminalHandle: 'term_live' } }))
-    const stale = await h.dispatch(callerShow({ evidence: { terminalHandle: 'term_stale' } }))
-
-    expect(resultOf(live)).toEqual({
-      caller: { address: 'term_live', live: true }
-    })
-    expect(resultOf(stale)).toEqual({
-      caller: { address: 'term_stale', live: false }
-    })
-    expect(probe).toHaveBeenCalledTimes(2)
-  })
-
-  it("answers the carried handle after a window reload, the mailbox the agent's own check reads", async () => {
-    vi.spyOn(h.runtime, 'resolveTerminalIdentity').mockImplementation((handle) => ({
-      handle,
-      live: handle === 'term_new'
-    }))
-    // The reload reminted this pane as term_new; the process still carries term_old.
-    vi.spyOn(h.runtime, 'resolveTerminalPane').mockReturnValue({
-      handle: 'term_new',
-      tabId: 'tab_1',
-      leafId: 'leaf_1',
-      ptyId: null,
-      connected: true
-    })
-    const evidence = { terminalHandle: 'term_old', paneKey: 'tab_1:leaf_1' }
-
-    expect(resultOf(await h.dispatch(callerShow({ evidence })))).toEqual({
-      caller: { address: 'term_old', live: false }
-    })
-    // A peer mails the address `orca status` advertised.
-    h.db.insertMessage({ from: 'term_peer', to: 'term_old', subject: 'hello' })
-    // What `orca orchestration check` sends from that process.
-    const checked = resultOf(
-      await h.dispatch(
-        orchestrationRequest(
-          'orchestration.check',
-          { terminal: 'term_old', terminalPaneKey: evidence.paneKey },
-          { evidence }
-        )
-      )
+  it('answers null for a terminal agent, whose status stays as it was', async () => {
+    const response = await h.dispatch(
+      callerShow({ evidence: { terminalHandle: 'term_live', paneKey: 'tab_1:leaf_1' } })
     )
-
-    expect(checked).toMatchObject({ count: 1 })
-  })
-
-  it('answers null for a pane key alone, from which the mailbox verbs have no identity', async () => {
-    vi.spyOn(h.runtime, 'resolveTerminalPane').mockReturnValue({
-      handle: 'term_new',
-      tabId: 'tab_1',
-      leafId: 'leaf_1',
-      ptyId: null,
-      connected: true
-    })
-
-    const response = await h.dispatch(callerShow({ evidence: { paneKey: 'tab_1:leaf_1' } }))
 
     expect(resultOf(response)).toEqual({ caller: null })
   })
 
-  it('gives the menu the exact address each session of a cleared chat acts as', async () => {
+  it('gives the menu the Orca session ID each session of a cleared chat acts as', async () => {
     const cleared = sessionRecord(SESSION_X)
     h.records.set(SESSION_X, {
       ...cleared,
@@ -203,12 +147,12 @@ describe('orchestration.callerShow: the caller learns its own address from the h
       )
       const acting = resultOf(await h.dispatch(callerShow({ sessionId })))
       // One derivation: the conversation's root, which the successor copies and acts as too.
-      expect(shown.address).toBe(ADDRESS_X)
-      expect(acting.caller).toMatchObject({ address: shown.address })
+      expect(shown.orcaSessionId).toBe(ADDRESS_X)
+      expect(acting.caller).toMatchObject({ orcaSessionId: shown.orcaSessionId })
     }
   })
 
-  it('refuses an address for an id that is not an Orca session id', async () => {
+  it('refuses an id that is not an Orca session ID', async () => {
     const response = await h.dispatch(
       orchestrationRequest('orchestration.sessionAddress', { sessionId: 'not an id' })
     )

@@ -138,18 +138,15 @@ export function formatCliStatus(status: CliStatusResult): string {
     `runtimeConnectionState: ${status.runtime.connectionState ?? 'unknown'}`,
     `runtimeId: ${status.runtime.runtimeId ?? 'none'}`,
     `graphState: ${status.graph.state}`,
-    ...(status.caller === undefined ? [] : [`caller: ${formatStatusCaller(status.caller)}`])
+    ...(status.caller === undefined ? [] : [`orcaSessionId: ${formatStatusCaller(status.caller)}`])
   ].join('\n')
 }
 
 function formatStatusCaller(caller: CliStatusCaller): string {
-  if (caller === null) {
-    return 'none'
-  }
   if ('refusal' in caller) {
     return `none (refused: ${caller.refusal.code})`
   }
-  return `${caller.address}${caller.live ? '' : ' (not live)'}`
+  return `${caller.orcaSessionId}${caller.live ? '' : ' (not live)'}`
 }
 
 export function formatStatus(status: CliStatusResult): string {

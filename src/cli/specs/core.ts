@@ -20,7 +20,7 @@ export const CORE_COMMAND_SPECS: CommandSpec[] = [
     usage: 'orca status [--json]',
     allowedFlags: [...GLOBAL_FLAGS],
     notes: [
-      "caller is this agent's orchestration address, as Orca resolved it from its environment; null outside an Orca agent."
+      "caller.orcaSessionId is this agent's Orca session ID, as Orca resolved it, when the agent runs as an Orca session; otherwise caller is omitted."
     ],
     examples: ['orca status', 'orca status --json']
   },

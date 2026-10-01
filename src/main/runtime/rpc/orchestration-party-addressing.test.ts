@@ -210,17 +210,17 @@ describe('every target param resolves both spellings of a party to one canonical
     expect(messages).toEqual([expect.objectContaining({ subject: 'z' })])
   })
 
-  it('sessionAddress: a chat is its session address, and a worker is its mailbox handle', async () => {
+  it('sessionAddress: any session, a worker too, is its Orca session ID', async () => {
     expect(await as(undefined, 'orchestration.sessionAddress', { sessionId: SESSION_Z })).toEqual({
-      address: ADDRESS_Z
+      orcaSessionId: ADDRESS_Z
     })
     expect(await as(undefined, 'orchestration.sessionAddress', { sessionId: SESSION_Y })).toEqual({
-      address: handle
+      orcaSessionId: ADDRESS_Y
     })
   })
 })
 
-describe('a /clear-ed chat is shown the address it had before the clear', () => {
+describe('a /clear-ed chat is shown the Orca session ID it had before the clear', () => {
   const PROVIDER_ID_Z = 'd00dfeed-1122-4334-8556-778899aabbcc'
 
   /** Z continued X after a /clear, so X's address is Z's. */
@@ -239,7 +239,7 @@ describe('a /clear-ed chat is shown the address it had before the clear', () => 
     h.records.set(SESSION_Z, sessionRecord(SESSION_Z, { providerId: PROVIDER_ID_Z }))
   }
 
-  it('in a dispatch preview its own live address would fill in', async () => {
+  it('in a dispatch preview its own live Orca session ID would fill in', async () => {
     clearXIntoZ()
     const runId = await chatRun(SESSION_Z)
     const task = h.db.createTask({ runId, spec: 'work' })
@@ -250,7 +250,7 @@ describe('a /clear-ed chat is shown the address it had before the clear', () => 
       from: ADDRESS_Z
     })
 
-    expect(preamble).toContain(`Your coordinator's address is: ${ADDRESS_X}\n`)
+    expect(preamble).toContain(`Your coordinator's Orca session ID is: ${ADDRESS_X}\n`)
     expect(preamble).not.toContain(SESSION_Z)
   })
 

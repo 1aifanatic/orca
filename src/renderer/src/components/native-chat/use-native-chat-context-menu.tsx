@@ -31,7 +31,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { isMacPlatform, nativeChatToggleShortcutLabel } from './native-chat-shortcut'
 import { TabWorkspaceLayoutMenuSection } from '@/components/tab-bar/TabWorkspaceLayoutMenuSection'
-import { NativeChatCopyAddressMenuItem } from './NativeChatCopyAddressMenuItem'
+import { NativeChatCopyOrcaSessionIdMenuItem } from './NativeChatCopyOrcaSessionIdMenuItem'
 import type { TabSplitDirection } from '@/store/slices/tabs'
 
 type NativeChatContextMenuState = {
@@ -53,8 +53,8 @@ type UseNativeChatContextMenuArgs = {
     groupId: string
     shortcutLabels?: Partial<Record<TabSplitDirection, string>>
   }
-  /** A structured chat tab's address; a chat in a terminal pane is that terminal's agent. */
-  resolveOrchestrationAddress?: () => Promise<string | null>
+  /** A structured chat tab's Orca session ID; a chat in a terminal pane is that terminal's agent. */
+  resolveOrcaSessionId?: () => Promise<string | null>
 }
 
 export type NativeChatContextMenuActions = {
@@ -107,7 +107,7 @@ export function useNativeChatContextMenu({
   showTerminalPaneActions = true,
   splitShortcutLabels,
   workspaceLayout,
-  resolveOrchestrationAddress
+  resolveOrcaSessionId
 }: UseNativeChatContextMenuArgs): {
   onContextMenuCapture: MouseEventHandler<HTMLElement>
   onSelectionCapture: () => void
@@ -324,10 +324,10 @@ export function useNativeChatContextMenu({
                 </>
               ) : null}
             </>
-          ) : resolveOrchestrationAddress ? (
+          ) : resolveOrcaSessionId ? (
             <>
               <DropdownMenuSeparator />
-              <NativeChatCopyAddressMenuItem resolveAddress={resolveOrchestrationAddress} />
+              <NativeChatCopyOrcaSessionIdMenuItem resolveOrcaSessionId={resolveOrcaSessionId} />
             </>
           ) : null}
         </DropdownMenuContent>

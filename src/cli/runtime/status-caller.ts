@@ -15,23 +15,26 @@ const SESSION_REFUSAL_CODES = new Set<string>(
 const CALLER_SHOW_TIMEOUT_MS = 10_000
 
 /**
- * This process's orchestration address, resolved by the host from the identity the orchestration
- * envelope carries. `undefined` when nothing could be resolved: an older host, or a failed call.
+ * This process's Orca session ID, resolved by the host from the session id its environment carries.
+ * `undefined` when there is none to show: not a session, an older host, or a failed call.
  */
 export async function resolveCliStatusCaller(
   client: Pick<RuntimeClient, 'call'>
 ): Promise<CliStatusCaller | undefined> {
   const sessionId = readInjectedAgentSessionId()
-  // Why always asked: the host decides "no identity" from the same envelope every verb sends.
+  // Why: terminal agents have no Orca session ID yet, so their status stays exactly as it was.
+  if (!sessionId) {
+    return undefined
+  }
   try {
     const response = await client.call<OrchestrationCallerShowResult>(
       'orchestration.callerShow',
       undefined,
       { timeoutMs: CALLER_SHOW_TIMEOUT_MS }
     )
-    return response.result.caller
+    return response.result.caller ?? undefined
   } catch (error) {
-    if (sessionId && error instanceof RuntimeClientError && SESSION_REFUSAL_CODES.has(error.code)) {
+    if (error instanceof RuntimeClientError && SESSION_REFUSAL_CODES.has(error.code)) {
       return { live: false, refusal: { code: error.code, message: error.message } }
     }
     return undefined

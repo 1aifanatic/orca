@@ -17297,9 +17297,10 @@
   "components": {
     "native-chat": {
       "contextMenu": {
-        "orchestrationAddressCopied": "已复制编排地址",
-        "orchestrationAddressCopyFailed": "复制编排地址失败",
-        "copyOrchestrationAddress": "复制编排地址"
+        "copyOrcaSessionId": "复制 Orca 会话 ID",
+        "orcaSessionIdCopied": "已复制 Orca 会话 ID",
+        "orcaSessionIdCopyFailed": "无法复制 Orca 会话 ID",
+        "orcaSessionIdTooltip": "Orca 为此聊天分配的 ID，独立于智能体 CLI 自身的会话 ID。智能体通过 Orca 用它来相互指代。"
       },
       "failureWords": {
         "theAgent": "智能体",

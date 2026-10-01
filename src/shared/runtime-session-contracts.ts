@@ -128,7 +128,7 @@ export type CliStatusResult = {
   graph: {
     state: RuntimeGraphStatus | 'not_running' | 'starting'
   }
-  /** This process's orchestration address, resolved by the host; see `CliStatusCaller`. */
+  /** This process's Orca session ID when it runs as an Orca session; see `CliStatusCaller`. */
   caller?: CliStatusCaller
 }
 

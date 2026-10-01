@@ -7,7 +7,7 @@ vi.mock('./runtime-rpc-client', async (importOriginal) => ({
 }))
 
 import { RuntimeRpcCallError } from './runtime-rpc-result'
-import { resolveStructuredSessionOrchestrationAddress } from './structured-session-orchestration-address'
+import { resolveStructuredSessionOrcaSessionId } from './structured-session-orca-session-id'
 
 const LIVE = '7e3b9d15-2c4a-4f86-a0b1-5c9e2d7f3b64'
 const ROOT = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
@@ -22,15 +22,15 @@ function failure(code: string, message: string): RuntimeRpcCallError {
   })
 }
 
-describe('the orchestration address a chat copies', () => {
+describe('the Orca session ID a chat copies', () => {
   beforeEach(() => {
     callRuntimeRpc.mockReset()
   })
 
-  it("is the host's address for the conversation, not the live session id", async () => {
-    callRuntimeRpc.mockResolvedValue({ address: `orca_session_id:${ROOT}` })
+  it("is the host's Orca session ID for the conversation, not the live session's", async () => {
+    callRuntimeRpc.mockResolvedValue({ orcaSessionId: `orca_session_id:${ROOT}` })
 
-    await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, LIVE)).resolves.toBe(
+    await expect(resolveStructuredSessionOrcaSessionId(LOCAL, LIVE)).resolves.toBe(
       `orca_session_id:${ROOT}`
     )
     expect(callRuntimeRpc).toHaveBeenCalledWith(LOCAL, 'orchestration.sessionAddress', {
@@ -38,10 +38,10 @@ describe('the orchestration address a chat copies', () => {
     })
   })
 
-  it('is the live id on a host that predates the method, where it is the address', async () => {
+  it("is the live session's on a host that predates the method", async () => {
     callRuntimeRpc.mockRejectedValue(failure('method_not_found', 'Unknown method'))
 
-    await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, LIVE)).resolves.toBe(
+    await expect(resolveStructuredSessionOrcaSessionId(LOCAL, LIVE)).resolves.toBe(
       `orca_session_id:${LIVE}`
     )
   })
@@ -49,13 +49,11 @@ describe('the orchestration address a chat copies', () => {
   it('surfaces any other failure instead of guessing', async () => {
     callRuntimeRpc.mockRejectedValue(failure('runtime_unavailable', 'down'))
 
-    await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, LIVE)).rejects.toThrow('down')
+    await expect(resolveStructuredSessionOrcaSessionId(LOCAL, LIVE)).rejects.toThrow('down')
   })
 
   it('asks nothing for an id that is not an Orca session id', async () => {
-    await expect(resolveStructuredSessionOrchestrationAddress(LOCAL, 'not an id')).resolves.toBe(
-      null
-    )
+    await expect(resolveStructuredSessionOrcaSessionId(LOCAL, 'not an id')).resolves.toBe(null)
     expect(callRuntimeRpc).not.toHaveBeenCalled()
   })
 })

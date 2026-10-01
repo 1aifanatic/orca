@@ -254,7 +254,7 @@ describe('orchestration session callers at the dispatch entry', () => {
     })
 
     it('a terminal handle presented as a session id', async () => {
-      await expectRefusedWithNoEffects('term_4f2c9a0b', CODES.unknown, /not an Orca session id/)
+      await expectRefusedWithNoEffects('term_4f2c9a0b', CODES.unknown, /not an Orca session ID/)
     })
 
     it("a provider's session id, with a hint naming the Orca id", async () => {

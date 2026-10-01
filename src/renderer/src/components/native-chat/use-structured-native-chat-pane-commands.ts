@@ -3,7 +3,7 @@ import { useAppStore } from '@/store'
 import { formatShortcutLabel } from '@/hooks/useShortcutLabel'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { isOrcaSessionId } from '../../../../shared/orca-session-address'
-import { resolveStructuredSessionOrchestrationAddress } from '../../runtime/structured-session-orchestration-address'
+import { resolveStructuredSessionOrcaSessionId } from '../../runtime/structured-session-orca-session-id'
 import type { RuntimeClientTarget } from '../../runtime/runtime-rpc-client'
 import type { NativeChatComposerHandle } from './NativeChatComposer'
 import { useNativeChatPasteBridge } from './use-native-chat-paste-bridge'
@@ -35,10 +35,10 @@ export function useStructuredNativeChatPaneCommands({
   target: RuntimeClientTarget
 }) {
   const keybindings = useAppStore((state) => state.keybindings)
-  const resolveOrchestrationAddress = useMemo(
+  const resolveOrcaSessionId = useMemo(
     () =>
       isOrcaSessionId(sessionId)
-        ? () => resolveStructuredSessionOrchestrationAddress(target, sessionId)
+        ? () => resolveStructuredSessionOrcaSessionId(target, sessionId)
         : undefined,
     [sessionId, target]
   )
@@ -51,7 +51,7 @@ export function useStructuredNativeChatPaneCommands({
       onPaste: pasteClipboardIntoComposer
     },
     enabled: isVisible,
-    resolveOrchestrationAddress,
+    resolveOrcaSessionId,
     showTerminalPaneActions: terminalPaneActions !== undefined,
     splitShortcutLabels: {
       right: formatShortcutLabel('terminal.splitRight', keybindings),

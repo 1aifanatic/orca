@@ -56,6 +56,19 @@ vi.mock('@/i18n/i18n', () => ({
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
 
+const tooltips = vi.hoisted(() => ({ list: [] as ReactNode[] }))
+vi.mock('@/components/ui/tooltip', () => {
+  const Pass = ({ children }: { children?: ReactNode }) => children
+  return {
+    Tooltip: Pass,
+    TooltipTrigger: Pass,
+    TooltipContent: ({ children }: { children?: ReactNode }) => {
+      tooltips.list.push(children)
+      return null
+    }
+  }
+})
+
 vi.mock('@/components/tab-bar/TabWorkspaceLayoutMenuSection', () => ({
   TabWorkspaceLayoutMenuSection: () => 'Move Tab to Split'
 }))
@@ -77,12 +90,12 @@ function Harness({
   onSwitchToTerminal,
   structured = false,
   enabled = true,
-  orchestrationAddress
+  orcaSessionId
 }: {
   onSwitchToTerminal?: () => void
   structured?: boolean
   enabled?: boolean
-  orchestrationAddress?: string
+  orcaSessionId?: string
 }) {
   const rootRef = createRef<HTMLDivElement>()
   const { menu } = useNativeChatContextMenu({
@@ -91,8 +104,7 @@ function Harness({
     onSwitchToTerminal,
     showTerminalPaneActions: !structured,
     workspaceLayout: structured ? { unifiedTabId: 'chat-tab', groupId: 'group-1' } : undefined,
-    resolveOrchestrationAddress:
-      orchestrationAddress === undefined ? undefined : async () => orchestrationAddress,
+    resolveOrcaSessionId: orcaSessionId === undefined ? undefined : async () => orcaSessionId,
     actions: {
       ...emptyNativeChatContextMenuActions,
       onPaste: vi.fn()
@@ -163,14 +175,15 @@ describe('useNativeChatContextMenu', () => {
     expect(getSelection).not.toHaveBeenCalled()
   })
 
-  describe('Copy Orchestration Address', () => {
-    const address = 'orca_session_id:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
+  describe('Copy Orca Session ID', () => {
+    const orcaSessionId = 'orca_session_id:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
     const writeClipboardText = vi.fn()
 
     beforeEach(() => {
       writeClipboardText.mockReset().mockResolvedValue(undefined)
       toasts.success.mockReset()
       toasts.error.mockReset()
+      tooltips.list = []
       Object.assign(window, { api: { ui: { writeClipboardText } } })
     })
 
@@ -178,34 +191,39 @@ describe('useNativeChatContextMenu', () => {
       return items.list.map((candidate) => childrenText(candidate.children))
     }
 
-    function addressItem(): ItemProps | undefined {
+    function copyItem(): ItemProps | undefined {
       return items.list.find(
-        (candidate) => childrenText(candidate.children) === 'Copy Orchestration Address'
+        (candidate) => childrenText(candidate.children) === 'Copy Orca Session ID'
       )
     }
 
-    it('copies the address in a chat tab', async () => {
-      renderToStaticMarkup(<Harness structured orchestrationAddress={address} />)
+    it('copies the Orca session ID in a chat tab, explaining what it is', async () => {
+      renderToStaticMarkup(<Harness structured orcaSessionId={orcaSessionId} />)
 
-      addressItem()?.onSelect?.()
+      copyItem()?.onSelect?.()
 
-      await vi.waitFor(() => expect(toasts.success).toHaveBeenCalledOnce())
-      expect(writeClipboardText).toHaveBeenCalledWith(address)
+      await vi.waitFor(() => expect(toasts.success).toHaveBeenCalledWith('Orca session ID copied'))
+      expect(writeClipboardText).toHaveBeenCalledWith(orcaSessionId)
+      expect(tooltips.list.map(childrenText)).toContain(
+        "Orca's ID for this chat, separate from agent CLIs' own session IDs. Agents use it to refer to each other through Orca."
+      )
     })
 
-    it('is absent for a chat with no orchestration address', () => {
+    it('is absent for a chat with no Orca session ID', () => {
       renderToStaticMarkup(<Harness structured />)
 
-      expect(labels()).not.toContain('Copy Orchestration Address')
+      expect(labels()).not.toContain('Copy Orca Session ID')
     })
 
     it('reports a failed copy instead of claiming success', async () => {
       writeClipboardText.mockRejectedValue(new Error('denied'))
-      renderToStaticMarkup(<Harness structured orchestrationAddress={address} />)
+      renderToStaticMarkup(<Harness structured orcaSessionId={orcaSessionId} />)
 
-      addressItem()?.onSelect?.()
+      copyItem()?.onSelect?.()
 
-      await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledOnce())
+      await vi.waitFor(() =>
+        expect(toasts.error).toHaveBeenCalledWith('Unable to copy Orca session ID')
+      )
       expect(toasts.success).not.toHaveBeenCalled()
     })
   })

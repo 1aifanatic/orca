@@ -77,6 +77,15 @@ export function resolveOrchestrationParty(
   }
 }
 
+/** How a preamble names a party: a session by its Orca session ID (its `/clear` root), else its handle. */
+export function orcaSessionIdOrHandle(
+  address: string,
+  db: OrchestrationDb | null | undefined
+): string {
+  const { orcaSessionId } = resolveOrchestrationParty(address, db)
+  return orcaSessionId === null ? address : formatOrcaSessionAddress(orcaSessionId)
+}
+
 /** A caller named by a param: naming a chat's address proves nothing, unlike its own session id. */
 export function resolveDeclaredCallerParty(
   address: string,
@@ -86,7 +95,7 @@ export function resolveDeclaredCallerParty(
   if (party.terminalHandle === null) {
     throw new OrchestrationError(
       CODES.chatNotDeclarable,
-      `Agent session ${party.orcaSessionId} is a chat, and a chat is identified only by the session id its own environment sends, never by naming its address. No effects were applied.`,
+      `Agent session ${party.orcaSessionId} is a chat, and a chat is identified only by the Orca session ID its own environment sends, never by naming it. No effects were applied.`,
       NO_EFFECTS
     )
   }

@@ -34,6 +34,10 @@ vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/components/ui/tooltip', () => {
+  const Pass = ({ children }: { children?: ReactNode }) => children
+  return { Tooltip: Pass, TooltipTrigger: Pass, TooltipContent: () => null }
+})
 vi.mock('@/components/tab-bar/TabWorkspaceLayoutMenuSection', () => ({
   TabWorkspaceLayoutMenuSection: () => null
 }))
@@ -76,17 +80,17 @@ function StructuredChatTab(): ReactNode {
 describe('a structured chat tab', () => {
   beforeEach(() => {
     items.list = []
-    callRuntimeRpc.mockReset().mockResolvedValue({ address: `orca_session_id:${SESSION}` })
+    callRuntimeRpc.mockReset().mockResolvedValue({ orcaSessionId: `orca_session_id:${SESSION}` })
     Object.assign(window, {
       api: { ui: { writeClipboardText: vi.fn().mockResolvedValue(undefined) } }
     })
   })
 
-  it("offers Copy Orchestration Address, asking the tab's host for this session's address", async () => {
+  it("offers Copy Orca Session ID, asking the tab's host for this session's Orca session ID", async () => {
     renderToStaticMarkup(<StructuredChatTab />)
 
     const item = items.list.find(
-      (candidate) => childrenText(candidate.children) === 'Copy Orchestration Address'
+      (candidate) => childrenText(candidate.children) === 'Copy Orca Session ID'
     )
     item?.onSelect?.()
 

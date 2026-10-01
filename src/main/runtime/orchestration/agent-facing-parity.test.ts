@@ -1,9 +1,9 @@
 /**
  * A chat agent and a terminal agent run the same orchestration process: the same preamble, the
- * same pointer text and the same guide. The one difference is the address string, which the agent
- * treats as opaque. Orca absorbs everything else host-side.
+ * same pointer text and the same guide. The one difference is how each is named: a terminal by its
+ * handle, exactly as on main, and a session by its Orca session ID. Orca absorbs everything else.
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -23,6 +23,11 @@ import {
 import { OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
 import { OrchestrationStructuredMailboxPointerDelivery } from './structured-mailbox-pointer-delivery'
+import { buildDispatchPreamble } from './preamble'
+import { CORE_COMMAND_SPECS } from '../../../cli/specs/core'
+import { ORCHESTRATION_COMMAND_SPECS } from '../../../cli/specs/orchestration'
+import { ROOT_HELP_TEXT_PRIMARY } from '../../../cli/root-help-text-primary'
+import { formatCliStatus } from '../../../cli/format'
 
 const sent = vi.hoisted((): { preambles: string[] } => ({ preambles: [] }))
 vi.mock('../rpc/methods/orchestration-structured-worker-session', () => ({
@@ -34,12 +39,13 @@ vi.mock('../rpc/methods/orchestration-structured-worker-session', () => ({
 const CHAT_SESSION = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 const CHAT_ADDRESS = `orca_session_id:${CHAT_SESSION}`
 const TERMINAL_HANDLE = 'term_worker'
-// A structured worker's mailbox address: the handle it was minted.
+// A structured worker's mailbox key: the handle it was minted, which its preamble never shows.
 const CHAT_WORKER_HANDLE = 'structworker_1'
-// `skill-guides/orchestration.md` on main before chats could orchestrate, plus the one address line.
+// `skill-guides/orchestration.md` on main, plus the one Orca session ID line.
 const MAIN_KERNEL_LINES = 198 + 1
 
 const db = new OrchestrationDb(':memory:')
+const SELF_LINE = `\nYour Orca session ID is: ${CHAT_ADDRESS}`
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
 
 afterEach(() => {
@@ -93,6 +99,7 @@ async function renderPreamble(worker: 'chat' | 'terminal'): Promise<string> {
   const prompts: string[] = []
   await deliverWorkerDispatchPreamble({
     runtime: runtime(prompts),
+    db,
     structuredSession: worker === 'chat' ? structuredSession() : null,
     terminalHandle: worker === 'chat' ? CHAT_WORKER_HANDLE : TERMINAL_HANDLE,
     dispatchId: 'ctx_1',
@@ -132,15 +139,15 @@ async function renderChatPointer(mailbox: string): Promise<string> {
   return texts[0]!
 }
 
-describe('a chat agent and a terminal agent see the same text but for the address', () => {
-  it('renders one worker preamble', async () => {
+describe('a chat agent and a terminal agent see the same text but for how each is named', () => {
+  it("teaches a chat worker a terminal worker's preamble but for its identity lines", async () => {
     const chat = await renderPreamble('chat')
     const terminal = await renderPreamble('terminal')
 
-    expect(chat).toContain(`Your orchestration address is: ${CHAT_WORKER_HANDLE}\n`)
-    expect(chat.split(CHAT_WORKER_HANDLE).join('<address>')).toBe(
-      terminal.split(TERMINAL_HANDLE).join('<address>')
-    )
+    expect(terminal).not.toContain('Orca session ID')
+    expect(chat).toContain(`Your task ID is: task_1${SELF_LINE}\n`)
+    expect(chat).not.toContain(CHAT_WORKER_HANDLE)
+    expect(chat.replace(SELF_LINE, '').split(CHAT_ADDRESS).join(TERMINAL_HANDLE)).toBe(terminal)
   })
 
   it.each([
@@ -171,9 +178,81 @@ describe('a chat agent and a terminal agent see the same text but for the addres
 describe('the orchestration guide an agent loads', () => {
   const kernel = readFileSync(join(process.cwd(), 'skill-guides', 'orchestration.md'), 'utf8')
 
-  it('has no chat-only section and grows only by the address line', () => {
+  it('has no chat-only section and grows only by the Orca session ID line', () => {
     expect(kernel.split('\n').length - 1).toBeLessThanOrEqual(MAIN_KERNEL_LINES)
     expect(kernel).not.toMatch(/chat|session:<id>|ORCA_CLI_COMMAND|\/clear|end your turn/i)
-    expect(kernel).toContain('`ORCA status --json` shows your own orchestration address')
+    expect(kernel).toContain(
+      '`ORCA status --json` shows your Orca session ID as `caller.orcaSessionId` when you have one.'
+    )
+  })
+})
+
+describe('agent-read text about an Orca session ID', () => {
+  // The noun only: "address it by that" is a verb, and run:/dispatch:/group addresses are mailboxes.
+  const IDENTITY_AS_ADDRESS =
+    /\b(?:orchestration|session|Orca|coordinator's|your(?: own)?) address\b|caller\.address|naming its address/i
+  const guideDir = join(process.cwd(), 'skill-guides')
+  const guide = [
+    join(guideDir, 'orchestration.md'),
+    ...readdirSync(join(guideDir, 'orchestration', 'references')).map((name) =>
+      join(guideDir, 'orchestration', 'references', name)
+    )
+  ]
+  // Refusals an agent reads: the string literals of the files that word them.
+  const refusalSources = [
+    'orchestration/orchestration-party.ts',
+    'rpc/orchestration-session-caller.ts',
+    'rpc/methods/orchestration/messaging/session-recipient.ts',
+    'rpc/methods/orchestration/caller-show.ts'
+  ].flatMap(
+    (file) =>
+      readFileSync(join(process.cwd(), 'src', 'main', 'runtime', file), 'utf8').match(
+        /'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g
+      ) ?? []
+  )
+  const status = (caller: Parameters<typeof formatCliStatus>[0]['caller']) =>
+    formatCliStatus({
+      app: { running: true, pid: 1 },
+      runtime: { state: 'ready', reachable: true, runtimeId: 'runtime_1' },
+      graph: { state: 'ready' },
+      caller
+    })
+
+  it.each([
+    ['the guide and its references', () => guide.map((file) => readFileSync(file, 'utf8'))],
+    [
+      'the preamble, for every pairing of kinds',
+      () =>
+        [CHAT_ADDRESS, 'term_coord'].flatMap((coordinatorHandle) =>
+          [CHAT_ADDRESS, TERMINAL_HANDLE].map((workerHandle) =>
+            buildDispatchPreamble({
+              taskId: 'task_1',
+              dispatchId: 'ctx_1',
+              taskSpec: 'do it',
+              coordinatorHandle,
+              workerHandle
+            })
+          )
+        )
+    ],
+    [
+      'CLI help and specs',
+      () => [
+        JSON.stringify([...CORE_COMMAND_SPECS, ...ORCHESTRATION_COMMAND_SPECS]),
+        ...ROOT_HELP_TEXT_PRIMARY
+      ]
+    ],
+    [
+      'orca status',
+      () => [
+        status({ orcaSessionId: CHAT_ADDRESS, live: true }),
+        status({ live: false, refusal: { code: 'session_not_live', message: 'not running' } })
+      ]
+    ],
+    ['the refusals that name a session', () => refusalSources]
+  ])('never calls it an address in %s', (_where, texts) => {
+    for (const text of texts()) {
+      expect(text).not.toMatch(IDENTITY_AS_ADDRESS)
+    }
   })
 })
