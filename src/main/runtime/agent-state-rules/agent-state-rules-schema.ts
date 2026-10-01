@@ -108,7 +108,7 @@ const RuleAnswerSchema = z.discriminatedUnion('state', [
       requiresQuiet: z.boolean(),
       /** On a pane with no output clock (restored or adopted), quiet cannot be measured: a strong
        *  quiet rule is believed at once there, unless it says `skip` (then it does not apply). */
-      withoutClock: z.enum(['believe', 'skip']).optional()
+      withoutClock: z.literal('skip').optional()
     })
     .strict()
     .refine(
@@ -131,7 +131,7 @@ const AgentStateRuleSchema = z
   })
   .strict()
 
-const NAMED_TEXT_ANCHORS = ['antigravity-text-composer', 'codex-provisional-startup'] as const
+const NAMED_TEXT_ANCHORS = ['antigravity-text-composer'] as const
 const NAMED_TITLE_PREDICATES = ['opencode-native-title'] as const
 
 const AGENT_BLOCKED_REASONS = [
@@ -176,14 +176,14 @@ const TextAnchorConditionSchema = z
   .strict()
 
 /**
- * A pane title, like a text anchor read whatever agent the pane runs: an adopted pane has no
- * known agent, and a pane can run another agent than it launched. Only an idle title (`status`)
- * can carry one; `match` is a test, or a named engine predicate shared with other title readers.
+ * A title the shared classifier already calls idle, marked as an agent's own rest title. Like a
+ * text anchor it is read whatever agent the pane runs: an adopted pane has no known agent, and a
+ * pane can run another agent than it launched. `match` is a test, or a named engine predicate
+ * shared with other title readers.
  */
 const TitleAnchorConditionSchema = z
   .object({
     region: z.literal('title'),
-    status: z.enum(['idle']),
     match: z.union([
       TextTestSchema,
       z.object({ predicate: z.enum(NAMED_TITLE_PREDICATES) }).strict()

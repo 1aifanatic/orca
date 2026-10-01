@@ -77,7 +77,7 @@ describe('region schema', () => {
           {
             id: 't',
             why: 'test',
-            when: { region: 'title', status: 'idle', match: { contains: '◇' } },
+            when: { region: 'title', match: { contains: '◇' } },
             answer: { state: 'live' }
           }
         ]
@@ -200,9 +200,9 @@ describe('the bundled title anchors', () => {
     }
   )
 
-  it('reads a title only while the title classifier calls it idle', () => {
-    expect(showsIdleTitleAnchor('✳ Claude Code', 'idle')).toBe(true)
-    expect(showsIdleTitleAnchor('✳ Claude Code', 'working')).toBe(false)
+  it('marks an agent rest title only when an anchor matches it', () => {
+    expect(showsIdleTitleAnchor('✳ Claude Code')).toBe(true)
+    expect(showsIdleTitleAnchor('Claude Code')).toBe(false)
   })
 
   it('leaves a name-only title to the agent idle-title rule', () => {

@@ -21,8 +21,15 @@
     },
     {
       "id": "provisional_startup",
-      "why": "0.157 paints a provisional header (`model: loading`) while its daemon starts and discards input typed behind it, so no ready text may settle a wait until the live chat paints its footer.",
-      "when": { "region": "text", "find": { "predicate": "codex-provisional-startup" } },
+      "why": "0.157 paints a provisional header (`model: loading`) while its daemon starts and discards input typed behind it, so no ready text may settle a wait until the live chat paints a footer row, each of which draws a `·`. Read from the text because 0.157 leaves its alternate screen while the daemon starts; a later model repaint rewrites only the value, never the label.",
+      "when": {
+        "region": "text",
+        "find": { "lastOf": "openai codex" },
+        "after": {
+          "all": [{ "regex": "model:\\s+loading" }],
+          "none": [{ "regex": "model:\\s+loading[\\s\\S]*·" }]
+        }
+      },
       "answer": { "state": "hold" }
     }
   ],

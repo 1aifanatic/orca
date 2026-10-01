@@ -5,13 +5,13 @@
     {
       "id": "idle_title_glyph",
       "why": "Claude Code prefixes its title with `✳` at rest; a working title carries a spinner instead.",
-      "when": { "region": "title", "status": "idle", "match": { "regex": "^✳" } },
+      "when": { "region": "title", "match": { "regex": "^✳" } },
       "answer": { "state": "idle" }
     },
     {
       "id": "idle_title_ascii",
       "why": "Claude Code's ASCII rest prefix, `* ` (`. ` while working).",
-      "when": { "region": "title", "status": "idle", "match": { "regex": "^\\* " } },
+      "when": { "region": "title", "match": { "regex": "^\\* " } },
       "answer": { "state": "idle" }
     }
   ],
