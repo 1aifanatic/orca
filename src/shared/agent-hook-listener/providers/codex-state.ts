@@ -66,12 +66,17 @@ export function setCodexMainAgentTurnState(
   return record
 }
 
-/** A root Stop that lands on an already finished turn (late, after an inferred cancel) restates
- *  that turn, so it keeps the recorded verdict; only a new turn clears it. */
-export function codexOutcomeRestatedByStop(
+/** Interrupt is Codex's own cancel verdict. A root Stop that lands on an already finished turn
+ *  (late, after an inferred cancel) restates that turn, so it keeps the recorded verdict; only a
+ *  new turn clears it. */
+export function codexLeadOutcomeForEvent(
+  eventName: unknown,
   previous: CodexLeadTurnState | undefined,
   nextState: CodexLeadTurnState['state']
 ): Pick<CodexLeadTurnState, 'outcome'> {
+  if (eventName === 'Interrupt') {
+    return { outcome: 'cancellation' }
+  }
   return nextState === 'done' && previous?.state === 'done' && previous.outcome
     ? { outcome: previous.outcome }
     : {}
@@ -139,17 +144,13 @@ export function seedCodexStateFromSnapshot(
   }
 }
 
-/** Ends the lead turn as cancelled (Codex's Interrupt hook, or a server-inferred interrupt), so delayed child events cannot restore stale working state. */
-export function markCodexLeadTurnInterrupted(
-  state: HookListenerState,
-  paneKey: string,
-  model?: string
-): CodexLeadTurnState {
+/** Sync the Codex lead record when the server infers an interrupt, so delayed child events cannot restore stale working state. */
+export function markCodexLeadTurnInterrupted(state: HookListenerState, paneKey: string): void {
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
-  return setCodexMainAgentTurnState(state, paneKey, {
+  setCodexMainAgentTurnState(state, paneKey, {
     state: 'done',
     outcome: 'cancellation',
-    model: model ?? lead?.model
+    model: lead?.model
   })
 }
 
@@ -209,13 +210,11 @@ export function reconcileRemoteCodexState(
     if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
       roster.clear()
     }
-    if (eventName === 'Interrupt') {
-      markCodexLeadTurnInterrupted(state, paneKey, payload.model)
-    } else if (leadState) {
+    if (leadState) {
       const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
       setCodexMainAgentTurnState(state, paneKey, {
         state: leadState,
-        ...codexOutcomeRestatedByStop(previousLead, leadState),
+        ...codexLeadOutcomeForEvent(eventName, previousLead, leadState),
         model: payload.model ?? previousLead?.model
       })
     }

@@ -61,15 +61,6 @@ describe("Codex's Interrupt hook", () => {
     })
   })
 
-  it('does not end the main turn on a child-scoped Interrupt', () => {
-    startTurn()
-    post({ hook_event_name: 'SubagentStart', agent_id: 'child', agent_type: 'worker' })
-
-    expect(post({ ...INTERRUPT, agent_id: 'child' })).toBeNull()
-    expect(state.codexLeadStateByPaneKey.get(PANE_KEY)?.state).toBe('working')
-    expect(state.codexSubagentRosterByPaneKey.get(PANE_KEY)?.has('child')).toBe(true)
-  })
-
   it('keeps live child work in the row while the main agent reads cancelled', () => {
     startTurn()
     post({ hook_event_name: 'SubagentStart', agent_id: 'child', agent_type: 'worker' })
