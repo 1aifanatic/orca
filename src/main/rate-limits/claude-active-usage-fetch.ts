@@ -28,6 +28,20 @@ export async function fetchActiveClaudeRateLimits(
     credentialSource: credentials.source,
     authProvenance: options?.authPreparation?.provenance ?? 'system'
   }
+  // Why: System Default with no Claude login is an API-key or non-Claude user, not a signed-out account.
+  if (
+    !credentials.token &&
+    !credentials.expired &&
+    !credentials.unavailable &&
+    !credentials.hasRefreshableCredentials &&
+    metadata.authProvenance === 'system'
+  ) {
+    return makeClaudeUsageResult('unavailable', 'No subscription plan — API key billing', {
+      ...metadata,
+      failureKind: 'missing-credentials',
+      attemptedSources: []
+    })
+  }
   if (!credentials.token) {
     return makeClaudeUsageResult(
       'error',

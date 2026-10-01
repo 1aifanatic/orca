@@ -41,6 +41,17 @@ function profile() {
   }
   return { home, options }
 }
+function systemDefault() {
+  const home = mkdtempSync(join(tmpdir(), 'claude-usage-default-'))
+  roots.push(home)
+  calls.keychain.mockResolvedValue(null)
+  return {
+    home,
+    options: {
+      authPreparation: { configDir: home, envPatch: {}, stripAuthEnv: false, provenance: 'system' }
+    }
+  }
+}
 it('never refreshes an expired inactive token or launches a usage CLI', async () => {
   const f = profile()
   const file = join(f.home, '.credentials.json')
@@ -117,5 +128,16 @@ it('treats an unreadable credential file as unavailable, not a missing login', a
   mkdirSync(join(f.home, '.credentials.json'))
   expect(await fetchActiveClaudeRateLimits(f.options)).toMatchObject({
     usageMetadata: { failureKind: 'keychain-unavailable' }
+  })
+})
+it('hides Claude usage for System Default with no Claude login, instead of asking to sign in again', async () => {
+  const f = systemDefault()
+  expect(await fetchActiveClaudeRateLimits(f.options)).toMatchObject({
+    status: 'unavailable',
+    usageMetadata: { failureKind: 'missing-credentials' }
+  })
+  expect(await fetchActiveClaudeRateLimits(profile().options)).toMatchObject({
+    status: 'error',
+    error: 'Sign in again to use this account.'
   })
 })
