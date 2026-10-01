@@ -30,6 +30,26 @@ export async function isMainAgentWorkingOnceFlushed(
   )
 }
 
+/** The provider refused the interrupt and `turnId` runs on: its Stop event must not end it
+ *  (`turnEndAfterStop`). Only where nothing then ends the child. Bookkeeping: reported, never thrown. */
+async function recordStopRefusal(
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'sessionId'>,
+  turnId: string | null
+): Promise<void> {
+  const stop = ctx.journal.stopMarks.latest()
+  if (!stop || stop.refused || turnId === null || stop.event.turnId !== turnId) {
+    return
+  }
+  await ctx.journal.stopMarks
+    .appendRefusal({ turnId, stopAt: stop.event.at }, ctx.fence)
+    .catch((error: unknown) => {
+      console.warn("[agent-session] a refused Stop's answer row skipped:", {
+        sessionId: ctx.sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+}
+
 export async function performCancel(
   ctx: AgentSessionTurnContext,
   input: {
@@ -52,6 +72,7 @@ export async function performCancel(
     }
   }
   let cancelled = false
+  let refused = false
   let note: AgentJournalStatusItem | null = { kind: 'status', text: 'Cancellation requested.' }
   // The turn the Stop names, read before the cancel settles it: the note reports on that turn.
   const turnScope = ctx.journal.liveTurnScope()
@@ -102,6 +123,7 @@ export async function performCancel(
       note = null
     } else if (!cancelled) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
+      refused = true
       const detail = outcome.refusal?.detail
       note = {
         kind: 'status',
@@ -125,6 +147,9 @@ export async function performCancel(
     await input.stopChild?.()
     cancelled = true
     note = { kind: 'status', text: 'Cancellation requested.' }
+  }
+  if (refused && !cancelled && !input.scope) {
+    await recordStopRefusal(ctx, liveTurnId)
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()

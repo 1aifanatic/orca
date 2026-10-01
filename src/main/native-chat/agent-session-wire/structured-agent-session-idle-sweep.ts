@@ -122,11 +122,10 @@ export class StructuredAgentSessionIdleSweep {
     }
     if (session.child) {
       // A start that has been quiet this long is not coming: the host stops it, with its reason.
-      if (session.child.phase === 'starting') {
-        await this.deps.stopStartingAgent(sessionId)
-        return
-      }
-      await this.deps.stopAgent(sessionId)
+      // The close below keeps a conversation whose delivery loop still owes that start's rows.
+      await (session.child.phase === 'starting'
+        ? this.deps.stopStartingAgent(sessionId)
+        : this.deps.stopAgent(sessionId))
     }
     await this.deps.closeConversation(sessionId)
   }

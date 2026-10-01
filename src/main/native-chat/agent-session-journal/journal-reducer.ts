@@ -35,6 +35,7 @@ import {
   foldJournalQueuePauseMark,
   type JournalQueuePauseMarks
 } from './queued-message-pause'
+import { foldJournalStopRefusal, type JournalStopRefusalMark } from './journal-stop-turn-end'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -64,6 +65,8 @@ export type JournalReducerState = {
   latestPersonTurnSequence: number
   /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
   queuePauseMarks: JournalQueuePauseMarks
+  /** The latest refusal of a Stop, what keeps a refused Stop from ending its turn. */
+  latestStopRefusal: JournalStopRefusalMark | null
 }
 
 export function createJournalReducerState(sessionId: string, epoch: string): JournalReducerState {
@@ -83,7 +86,8 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     appliedSettlementIds: new Set(),
     derivedTurnScope: new JournalDerivedTurnScope(),
     latestPersonTurnSequence: 0,
-    queuePauseMarks: createJournalQueuePauseMarks()
+    queuePauseMarks: createJournalQueuePauseMarks(),
+    latestStopRefusal: null
   }
 }
 
@@ -111,6 +115,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
   }
   if (isJournalStopOrResumeRow(row)) {
     foldJournalQueuePauseMark(state.queuePauseMarks, row)
+    foldJournalStopRefusal(state, row)
     return
   }
   if (row.kind === 'tombstone') {

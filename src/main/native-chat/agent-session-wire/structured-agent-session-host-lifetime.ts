@@ -32,6 +32,7 @@ import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-ses
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import { turnVerdictForChildEnd } from './structured-agent-session-stale-turn-verdict'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -87,6 +88,47 @@ function owedProviderChildWindDown(
     : session.owesProviderChildWindDown
 }
 
+/** How a stop ends the child: its cause, the host's text for it, and whether it is quit, whose
+ *  resume marker's trigger already records why, so it writes no Stop event. */
+export type StructuredAgentSessionStopEnding = {
+  cause: StructuredAgentSessionStopCause
+  reason?: string
+  quit?: true
+}
+
+/**
+ * Writes this stop's event (`JournalStopEvent`) when it ends a running turn or a start: a stop
+ * that ends nothing writes nothing. A person's Stop wrote its own before it reached here, and quit
+ * writes none. Issued before the kill and never awaited by it: bookkeeping, reported on failure.
+ */
+function recordStopEvent(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string,
+  session: StructuredAgentSessionHostSession,
+  ending: StructuredAgentSessionStopEnding
+): Promise<void> {
+  const { child, journal } = session
+  const turnId = journal.activeTurnId()
+  if (
+    ending.cause === 'user-stop' ||
+    ending.quit ||
+    !child ||
+    (child.phase !== 'starting' &&
+      !isStructuredAgentSessionMainAgentWorking(turnId, journal.submissions(), child.fence))
+  ) {
+    return Promise.resolve()
+  }
+  return journal
+    .appendStopEvent(
+      { reason: ending.cause, ...(turnId !== null ? { turnId } : {}) },
+      structuredAgentSessionConversationFence(context.deps.store, sessionId)
+    )
+    .then(
+      () => undefined,
+      (error: unknown) => context.deps.onEventSinkError?.({ sessionId, error })
+    )
+}
+
 /**
  * The agent goes to rest; the conversation stays. Runs the eviction steps under a deadline. A step
  * that fails — or runs out of time — aborts the rest and leaves the wind-down owed, so the next
@@ -97,12 +139,13 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string,
   // Required: an omitted cause must not default to the user's cancellation.
-  ending: { cause: StructuredAgentSessionStopCause; reason?: string }
+  ending: StructuredAgentSessionStopEnding
 ): Promise<void> {
   const session = context.sessions.get(sessionId)
   if (!session) {
     return
   }
+  const recorded = recordStopEvent(context, sessionId, session, ending)
   // A retry finishes the stop that ended the child, so the turn that stop cut keeps its cause.
   const cause = session.child
     ? ending.cause
@@ -143,6 +186,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     acknowledgeRelease: () => context.deps.adapter.acknowledgeSessionRelease?.(sessionId),
     discardSink: () => context.runtimeState.discardEventSink(sessionId),
     settleWork: async () => {
+      // Folded before the fallback's end is built, so the end reads it (`turnEndAfterStop`).
+      await recorded
       const fence =
         owed?.fence ?? structuredAgentSessionConversationFence(context.deps.store, sessionId)
       const settled = await settleStructuredAgentSessionDeadGeneration({
@@ -250,7 +295,10 @@ export async function evictOwnedStructuredAgentSessions(
     ownedSessionIds.map(async (sessionId) => {
       try {
         await context.serialize(sessionId, () =>
-          stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, { cause: 'evict' })
+          stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, {
+            cause: 'evict',
+            quit: true
+          })
         )
         retainOnFailure.delete(sessionId)
       } catch (error) {

@@ -1,0 +1,224 @@
+// Every way a host stop or close begins writes the Stop's event with its reason, before it ends the
+// child, and only when it ends work: a running turn, or a start. A stop that ends nothing writes
+// nothing, quit writes nothing (its resume marker records why), and any later Stop event ends a
+// person's Stop pause.
+
+import { afterEach, describe, expect, it } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
+import { HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
+import {
+  createQueuedMessageTestRig,
+  eventually,
+  type QueuedMessageTestRig
+} from './structured-agent-session-queued-message-rig.test-fixture'
+
+let rig: QueuedMessageTestRig
+
+afterEach(() => rig.dispose())
+
+/** Swept only when a test ticks it. */
+const MANUAL_IDLE_SWEEP = { idleMs: 0, intervalMs: 60 * 60 * 1000 }
+
+function journal() {
+  const open = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+  if (!open) {
+    throw new Error('expected the conversation open')
+  }
+  return open
+}
+
+/** Every Stop event in the live epoch, oldest first. */
+function stopEvents(): JournalStopEvent[] {
+  const since = journal().readSince({ epoch: journal().epoch, sequence: 0 })
+  if (!since.ok) {
+    throw new Error(`expected rows, got reset ${since.reset}`)
+  }
+  return since.rows.flatMap((row) =>
+    row.kind === 'tombstone' && row.stopEvent ? [row.stopEvent] : []
+  )
+}
+
+/** The Stop events as the provider's close finds them, or null when no close ran. */
+function stopEventsAtClose(): { events: JournalStopEvent[] | null } {
+  const seen: { events: JournalStopEvent[] | null } = { events: null }
+  rig.closeSession.mockImplementationOnce(async () => {
+    seen.events = stopEvents()
+    return true
+  })
+  return seen
+}
+
+async function runningTurn(turnId = 'turn-1'): Promise<string> {
+  const working = await rig.workingSend()
+  await journal().appendItem(
+    { provider: 'codex', threadId: 'thread-1', turnId, ordinal: 999 },
+    { kind: 'turn', turnId, state: 'running', startedAt: 1 },
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
+  return working
+}
+
+async function queuedDraft(text: string): Promise<string> {
+  const queued = await rig.send(text, 'queue-if-active').result
+  if (!queued.ok || !('queued' in queued.value)) {
+    throw new Error(`expected a queued receipt: ${JSON.stringify(queued)}`)
+  }
+  return queued.value.queued.messageId
+}
+
+function idleSweep() {
+  return rig.host.collaboratorsForTests().lifetime.idleSweep
+}
+
+/** Holds every start until the returned release. */
+function holdStart(): () => void {
+  let release: () => void = () => undefined
+  rig.awaitStarted.mockImplementation(
+    () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+  )
+  return () => release()
+}
+
+describe('every Stop entry writes its event, with its reason, before it ends the child', () => {
+  it.each([
+    // A person closing this chat: its tab, its launch, or a /clear that replaces it.
+    ['user-close' as const],
+    // A worktree teardown, an orchestration stop, a discarded half-started worker, a tab cleanup.
+    ['evict' as const]
+  ])('a %s close of a running turn', async (cause) => {
+    rig = await createQueuedMessageTestRig()
+    await runningTurn()
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, cause)
+
+    expect(atClose.events).toEqual([{ reason: cause, turnId: 'turn-1', at: expect.any(Number) }])
+  })
+
+  it("a person's Stop of a running turn", async () => {
+    rig = await createQueuedMessageTestRig()
+    await runningTurn()
+    let atInterrupt: JournalStopEvent[] = []
+    rig.cancelTurn.mockImplementationOnce(async () => {
+      atInterrupt = stopEvents()
+      return { cancelled: true }
+    })
+
+    await rig.stop()
+
+    expect(atInterrupt).toEqual([
+      expect.objectContaining({ reason: 'user-stop', turnId: 'turn-1', at: expect.any(Number) })
+    ])
+  })
+
+  it('the idle sweep stopping a start that never landed', async () => {
+    rig = await createQueuedMessageTestRig({
+      starting: true,
+      restartable: true,
+      idleSweep: MANUAL_IDLE_SWEEP
+    })
+    holdStart()
+    rig.send('work on this')
+    await eventually(async () =>
+      expect(rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child?.phase).toBe(
+        'starting'
+      )
+    )
+    const atClose = stopEventsAtClose()
+
+    await idleSweep().tick()
+
+    expect(atClose.events).toEqual([{ reason: 'host-stop', at: expect.any(Number) }])
+  })
+
+  it('writes nothing when it ends nothing: a close of a chat at rest', async () => {
+    rig = await createQueuedMessageTestRig()
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, 'user-close')
+
+    expect(atClose.events).toEqual([])
+  })
+
+  it("writes nothing at quit, whose resume marker's trigger records why", async () => {
+    rig = await createQueuedMessageTestRig()
+    await runningTurn()
+    const atClose = stopEventsAtClose()
+
+    await rig.host.flushAllStreamedEvents({ trigger: 'quit' })
+
+    expect(atClose.events).toEqual([])
+  })
+})
+
+describe("a person's Stop pause and the Stop events after it", () => {
+  it('holds through an idle eviction of the chat at rest, which writes nothing', async () => {
+    rig = await createQueuedMessageTestRig({ idleSweep: MANUAL_IDLE_SWEEP })
+    const working = await rig.workingSend()
+    const held = await queuedDraft('queued behind the turn')
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(working, 'stopped')
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    const atClose = stopEventsAtClose()
+
+    await idleSweep().tick()
+
+    expect(rig.closeSession).toHaveBeenCalledTimes(1)
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.handoff(held)).toBeUndefined()
+  })
+
+  it('ends when a host eviction ends a running turn: that Stop event is later', async () => {
+    rig = await createQueuedMessageTestRig()
+    const working = await rig.workingSend()
+    await queuedDraft('queued behind the turn')
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(working, 'stopped')
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    // Orchestration mail starts a turn the host sent, which lifts nothing.
+    await rig.send('mail for the lead', undefined, { internal: true }).result
+    await journal().appendItem(
+      { provider: 'codex', threadId: 'thread-1', turnId: 'turn-mail', ordinal: 999 },
+      { kind: 'turn', turnId: 'turn-mail', state: 'running', startedAt: 1 },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    const atClose = stopEventsAtClose()
+
+    await rig.host.close(HOST_TEST_SESSION, 'evict')
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop', 'evict'])
+    expect(await rig.queuePause()).not.toEqual({ reason: 'stopped' })
+  })
+
+  it('ends when the host stops a start that never landed: that Stop event is later', async () => {
+    rig = await createQueuedMessageTestRig({
+      starting: true,
+      restartable: true,
+      idleSweep: MANUAL_IDLE_SWEEP
+    })
+    const working = await rig.workingSend()
+    const held = await queuedDraft('queued behind the turn')
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(working, 'stopped')
+    // The agent at rest goes, writing nothing; mail then starts a new child, which never lands.
+    await idleSweep().tick()
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    holdStart()
+    rig.send('mail for the lead', undefined, { internal: true })
+    await eventually(async () =>
+      expect(rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child?.phase).toBe(
+        'starting'
+      )
+    )
+    const atClose = stopEventsAtClose()
+
+    await idleSweep().tick()
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop', 'host-stop'])
+    expect(await rig.handoff(held)).toBeUndefined()
+    expect(await rig.queuePause()).not.toEqual({ reason: 'stopped' })
+  })
+})

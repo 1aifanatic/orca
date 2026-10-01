@@ -91,13 +91,11 @@ describe("a Stop's queue pause", () => {
 
   it('survives a restart, and a send made after the Stop still ends it when its turn starts there', async () => {
     const draftId = await stoppedDraft()
-    const inFlight = await handedOverUserSend('sent before the restart')
-    // Derived from the journal, not remembered: a restart forgets nothing it needs.
-    await rig.restartHostProcess()
+    // Derived from the journal, not remembered: a restart forgets nothing it needs. Quit writes no
+    // Stop event, so the process dying is that restart; `restartHostProcess` closes with an
+    // eviction, whose event would end the pause itself.
+    rig.crashRestartHostProcess()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
-    await rig.settleAccepted(inFlight, 'after-restart')
-    // The Stop's pause is over; the restart's own lasts until a turn asked for since it.
-    await eventually(async () => expect(await rig.queuePause()).toEqual({ reason: 'restarted' }))
     const next = rig.send('sent after the restart')
     await next.result
     await rig.settleAccepted(next.id, 'next')

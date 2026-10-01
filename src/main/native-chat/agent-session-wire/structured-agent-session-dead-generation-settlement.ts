@@ -28,6 +28,7 @@ import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-re
 import {
   provenUnverifiableTurnRevisions,
   runningTurnLifecycleRevisions,
+  stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
@@ -216,7 +217,11 @@ export async function settleStaleStructuredAgentSessionState(input: {
   const items = journal.snapshot().items
   // Each turn is judged by the evidence only if it names that turn's owner.
   const verdictFor = (item: AgentJournalRenderItem) =>
-    turnVerdictFromDeathEvidence(input.deathEvidence, journal.itemFence(item.itemId))
+    turnVerdictFromDeathEvidence(
+      input.deathEvidence,
+      journal.itemFence(item.itemId),
+      stopFoundTurnLiveAt(journal, item)
+    )
   // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`

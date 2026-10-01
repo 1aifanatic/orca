@@ -38,7 +38,12 @@ export type QueuedMessageTestRig = Awaited<ReturnType<typeof createQueuedMessage
 /** `restartable`: a child started for a chat whose chain already names a thread resumes it, so a
  *  chat whose child closed or died can start another. `starting`: every child stays starting. */
 export async function createQueuedMessageTestRig(
-  options: { restartable?: true; starting?: true } = {}
+  options: {
+    restartable?: true
+    starting?: true
+    /** Lets a test sweep idle chats on its own `tick`. */
+    idleSweep?: { idleMs: number; intervalMs: number }
+  } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
@@ -102,7 +107,8 @@ export async function createQueuedMessageTestRig(
       journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-1',
-      now: () => NOW
+      now: () => NOW,
+      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {})
     })
   let host = makeHost()
   expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
