@@ -245,12 +245,12 @@ describe("a person's Stop inside a live turn", () => {
     return { ...state, sink: { ...state.sink, journalLatestStop: () => stop } }
   }
 
+  // A Claude Stop ends the child, so no refusal ever answers its event.
   function stopOf(
     turnId: string,
-    reason: JournalStopEvent['reason'] = 'user-stop',
-    refused = false
+    reason: JournalStopEvent['reason'] = 'user-stop'
   ): JournalLatestStop {
-    return { sequence: 9, event: { reason, turnId, at: 1 }, refused }
+    return { sequence: 9, event: { reason, turnId, at: 1 }, refused: false }
   }
 
   function settledTurn(items: ReturnType<typeof sinkState>['items'], turnId: string) {
@@ -342,16 +342,6 @@ describe("a person's Stop inside a live turn", () => {
     translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
 
     expect(providerRows(state.items)).toBe(1)
-  })
-
-  it('reads a Stop the CLI refused as no Stop', () => {
-    const state = sinkWithStop(stopOf('user-1', 'user-stop', true))
-    const translator = createClaudeJournalTranslator({ sink: state.sink })
-    translator.handle(userTurn('user-1'))
-
-    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
-
-    expect(settledTurn(state.items, 'user-1')).toMatchObject({ outcome: 'failure' })
   })
 
   it.each(['host-stop', 'evict'] as const)('does not read a %s as the person asking', (reason) => {

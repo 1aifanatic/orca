@@ -7,7 +7,7 @@ const {
   ORCAD_TEMPLATE_TARGETS_DIR,
   orcadTemplateCommonFilenames
 } = require('../../src/shared/orcad-artifacts.ts')
-const { ORCAD_TEMPLATE_TARGETS } = require('../../src/shared/orcad-bun-runtime.ts')
+const { ORCAD_TEMPLATE_TARGETS } = require('../../src/shared/node-runtime-pin.ts')
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 const BROWSER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/

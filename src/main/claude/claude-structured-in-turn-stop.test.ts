@@ -1,6 +1,6 @@
-// A user's Stop inside a live Claude chat interrupts the turn and keeps the session. The turn's end
-// then comes from the CLI's result frame, which CLIs before 2.1.91 send with no terminal_reason; the
-// host's Stop event, written before the interrupt, says whose end it was.
+// A user's Stop inside a live Claude chat interrupts the turn before the host ends its child. The
+// turn's end then comes from the CLI's result frame, which CLIs before 2.1.91 send with no
+// terminal_reason; the host's Stop event, written before the interrupt, says whose end it was.
 
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
@@ -30,8 +30,9 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
   bodies: Map<string, AgentJournalItemBody>
   connection: FakeConnection
   turnId: string
-  /** What the host's Stop writes before the interrupt, and its refusal answer after one. */
-  stopEvent: (turnId: string, refused?: boolean) => void
+  /** What the host's Stop writes before the interrupt. Its child's end follows, so no refusal
+   *  ever answers it. */
+  stopEvent: (turnId: string) => void
 }> {
   const bodies = new Map<string, AgentJournalItemBody>()
   let latestStop: JournalLatestStop | null = null
@@ -62,11 +63,11 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
   if (!turnId) {
     throw new Error('expected a running turn')
   }
-  const stopEvent = (stoppedTurnId: string, refused = false) => {
+  const stopEvent = (stoppedTurnId: string) => {
     latestStop = {
       sequence: 9,
       event: { reason: 'user-stop', turnId: stoppedTurnId, at: 1 },
-      refused
+      refused: false
     }
   }
   return { adapter, bodies, connection, turnId, stopEvent }
@@ -174,11 +175,12 @@ describe("a user's Stop inside a live Claude chat", () => {
     expect(settled(bodies, nextTurnId)).toMatchObject({ state: 'completed', outcome: 'failure' })
   })
 
+  // The Stop ends the child next, so the turn it was asked for reads Interrupted however it ends.
   it.each([
     ['naming the turn', true],
     ['naming no turn', false]
   ] as const)(
-    'keeps a failure the turn reaches after the CLI refused the interrupt, %s',
+    'reads a turn the CLI refused to interrupt as the user stopping it, %s',
     async (_label, named) => {
       const claude = fakeClaude({
         routes: {
@@ -193,12 +195,10 @@ describe("a user's Stop inside a live Claude chat", () => {
       await expect(
         adapter.cancelTurn({ sessionId: 'session-1', ...(named ? { turnId } : {}), fence: 7 })
       ).resolves.toEqual({ cancelled: false })
-      // The host answers the refused interrupt on the Stop's event.
-      stopEvent(turnId, true)
       connection.handlers.onMessage?.(CUT_SHORT)
 
-      expect(settled(bodies, turnId)).toMatchObject({ state: 'completed', outcome: 'failure' })
-      expect(providerRows(bodies)).toHaveLength(1)
+      expect(settled(bodies, turnId)).toMatchObject({ outcome: 'cancellation' })
+      expect(providerRows(bodies)).toHaveLength(0)
     }
   )
 })

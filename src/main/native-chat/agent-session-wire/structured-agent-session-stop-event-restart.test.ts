@@ -49,8 +49,11 @@ function journal() {
 }
 
 /** A send the provider is working on, with its turn running since half a minute ago. */
-async function runningTurn(identity: AgentJournalItemIdentity): Promise<void> {
-  rig = await createQueuedMessageTestRig()
+async function runningTurn(
+  identity: AgentJournalItemIdentity,
+  options: { stopEndsSession?: true } = {}
+): Promise<void> {
+  rig = await createQueuedMessageTestRig(options)
   await rig.workingSend()
   await journal().appendItem(
     identity,
@@ -174,6 +177,21 @@ describe('a restart between a Stop and its turn end', () => {
     expect(turn).not.toHaveProperty('outcome')
     expect(label).toMatch(/^Failed after /)
     expect(mark).toBe('failed')
+  })
+
+  // Claude's Stop ends its child whatever the interrupt answered, so only Codex writes a refusal.
+  it('reads Interrupted after N when the provider refused a Stop that ends its child', async () => {
+    await runningTurn(CLAUDE_TURN, { stopEndsSession: true })
+    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
+    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    // The Stop's next step on the session's lane ends the child.
+    await rig.host['tasks'].serialize(HOST_TEST_SESSION, async () => {})
+    expect(rig.closeSession).toHaveBeenCalled()
+    expect(journal().stopMarks.latest()).toMatchObject({ refused: false })
+
+    await restartAndSettle()
+
+    expect(settled().turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
 
   it('reads a turn a send made after a Stop pressed before any turn showed as no Stop of its', async () => {
