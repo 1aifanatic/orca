@@ -164,7 +164,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     // Host state must not disagree with the adapter for the steps in between.
     onProviderChildStopped: (verdict) => {
       if (stopping) {
-        endProviderChild(session, {
+        const ended = endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
           cause,
@@ -174,7 +174,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           ...(owed ? { endedAt: owed.requestedAt } : {}),
           ...verdict
         })
-        if (gaveUp) {
+        // Passes that joined one hung close all prove it; only the one that ended the child asks.
+        if (ended && gaveUp) {
           void context.finishStopAfterExit?.(sessionId, stopping)
         }
       }

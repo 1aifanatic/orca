@@ -621,6 +621,41 @@ it('sends a held message as soon as a stop that ran past its deadline proves the
   expect(owedWindDown()).toBeUndefined()
 })
 
+it('retries an owed stop once when several passes gave up on one hung close and its exit lands', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  stepDeadline.ms = 200
+  const exited = Promise.withResolvers<void>()
+  const close = connection.close
+  connection.close = async () => {
+    await exited.promise
+    return close()
+  }
+  // The Stop, the held send's retry and two sweep ticks each give up on the same close.
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  await host['lifetime'].idleSweep.tick()
+  await host['lifetime'].idleSweep.tick()
+  await laneDrained()
+  const releases = vi
+    .spyOn(store, 'transitionHandoff')
+    .mockRejectedValueOnce(new Error('record store busy'))
+
+  stepDeadline.ms = undefined
+  exited.resolve()
+  await eventually(() => expect(releases).toHaveBeenCalled())
+  await laneDrained()
+  await laneDrained()
+
+  // The one retry failed; the sweep or the next action retries it, not every pass that gave up.
+  expect(releases).toHaveBeenCalledOnce()
+  expect(owedWindDown()).toBeDefined()
+  expect(claude.connections).toHaveLength(1)
+})
+
 it('ignores an exit report naming another child than the one whose stop is owed', async () => {
   const connection = await heldAfterStop()
   const session = host['sessions'].get(SESSION)!
