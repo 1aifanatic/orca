@@ -1,6 +1,4 @@
-// Why: a launch-failed renderer never ran — the OS refused the spawn (macOS exit 1003 under an exhausted
-// per-user process limit). That lasts minutes, so 3 reloads in ~750ms only burned the breaker; space retries
-// out over ~2 minutes instead, so Orca heals itself once headroom returns.
+// Why: a refused renderer spawn (e.g. macOS 1003 at the process limit) lasts minutes, so retry over ~2 min, not the breaker's 750ms.
 export const RENDERER_LAUNCH_FAILURE_RETRY_DELAYS_MS: readonly number[] = [
   250, 1_000, 2_000, 4_000, 8_000, 15_000, 30_000, 60_000
 ]

@@ -191,6 +191,46 @@ describe('presentRendererRecoveryPrompt', () => {
       expect(quit).toHaveBeenCalledOnce()
     })
 
+    it('probes once even when Copy Commands re-shows the box', async () => {
+      const probeLaunchCapacity = vi.fn(async () => 'ok')
+      const { run, shown, reload } = harness({
+        failure: 'launch-failed',
+        diagnose: () => POISON,
+        probeLaunchCapacity,
+        responses: [1, 1, 0]
+      })
+      await run()
+      expect(shown).toHaveLength(3)
+      expect(probeLaunchCapacity).toHaveBeenCalledOnce()
+      expect(reload).toHaveBeenCalledOnce()
+    })
+
+    it('shows nothing when the app starts quitting during the probe', async () => {
+      let quitting = false
+      const { run, shown, reload } = harness({
+        failure: 'launch-failed',
+        isQuitting: () => quitting,
+        probeLaunchCapacity: async () => {
+          quitting = true
+          return 'EAGAIN'
+        }
+      })
+      await run()
+      expect(shown).toEqual([])
+      expect(reload).not.toHaveBeenCalled()
+    })
+
+    it('does not probe once the app is already quitting', async () => {
+      const probeLaunchCapacity = vi.fn(async () => 'ok')
+      const { run } = harness({
+        failure: 'launch-failed',
+        isQuitting: () => true,
+        probeLaunchCapacity
+      })
+      await run()
+      expect(probeLaunchCapacity).not.toHaveBeenCalled()
+    })
+
     it('keeps the install-permission diagnosis and its copy button', async () => {
       const { run, shown } = harness({
         failure: 'launch-failed',

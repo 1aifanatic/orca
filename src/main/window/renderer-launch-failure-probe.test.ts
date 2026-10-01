@@ -54,17 +54,20 @@ describe('probeRendererLaunchCapacity', () => {
     )
   })
 
-  it('spawns an absolute System32 binary on Windows, never a shell', async () => {
-    runProcessMock.mockResolvedValue({
-      code: 0,
-      signal: null,
-      stdout: '',
-      stderr: '',
-      timedOut: false
+  // Windows EDR scores a short-lived child per operation; the breadcrumb still records the launch failure.
+  it('skips the spawn on Windows', async () => {
+    await expect(probeRendererLaunchCapacity('win32')).resolves.toBe('skipped')
+    expect(runProcessMock).not.toHaveBeenCalled()
+  })
+
+  it('never rejects when the breadcrumb write throws', async () => {
+    runProcessMock.mockRejectedValue(spawnError('EAGAIN'))
+    recordDurableCrashBreadcrumbMock.mockImplementation(() => {
+      throw new Error('disk full')
     })
-    await probeRendererLaunchCapacity('win32')
-    const [spec] = runProcessMock.mock.calls[0] ?? []
-    expect(spec.program).toMatch(/System32[\\/]whoami\.exe$/i)
+    await expect(recordRendererLaunchFailureProbe({ exitCode: 1003 }, 90_000)).resolves.toBe(
+      'EAGAIN'
+    )
   })
 
   it('records the refused spawn as a durable breadcrumb', async () => {

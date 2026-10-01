@@ -1,8 +1,7 @@
 import { runProcess } from '../../shared/child-process/run-process'
-import { windowsSystem32Binary } from '../../shared/child-process/windows-system-binary'
 import { recordDurableCrashBreadcrumb } from '../crash-reporting/durable-crash-breadcrumb'
 
-/** 'ok' when a throwaway child could start, otherwise the spawn errno (EAGAIN = per-user process limit). */
+/** 'ok' when a throwaway child could start, the spawn errno (EAGAIN = per-user process limit), or 'skipped' on Windows. */
 export type RendererLaunchProbeResult = string
 
 const PROBE_TIMEOUT_MS = 5_000
@@ -13,16 +12,6 @@ export function classifyLaunchProbeError(error: unknown): RendererLaunchProbeRes
   return typeof code === 'string' && ERRNO_CODE.test(code) ? code : 'unknown'
 }
 
-function probeCommand(platform: NodeJS.Platform): {
-  program: string
-  args: string[]
-} {
-  return platform === 'win32'
-    ? { program: windowsSystem32Binary('whoami.exe'), args: [] }
-    : // Why /bin/sh: the one binary every POSIX host (including NixOS) has at a fixed path.
-      { program: '/bin/sh', args: ['-c', 'exit 0'] }
-}
-
 /**
  * Chromium reports any failed helper spawn as launch-failed (macOS exit 1003 = LAUNCH_RESULT_FAILURE),
  * so spawn an unrelated child to learn whether the OS is refusing every new process.
@@ -30,10 +19,15 @@ function probeCommand(platform: NodeJS.Platform): {
 export async function probeRendererLaunchCapacity(
   platform: NodeJS.Platform = process.platform
 ): Promise<RendererLaunchProbeResult> {
+  // Why skip Windows: a short-lived child per failed launch is the per-operation spawn burst EDR scores (windows-edr-posture.md).
+  if (platform === 'win32') {
+    return 'skipped'
+  }
   try {
-    // Exit status is irrelevant: a child that started proves spawn headroom.
+    // Exit status is irrelevant: a child that started proves spawn headroom. /bin/sh is at a fixed path on every POSIX host.
     await runProcess({
-      ...probeCommand(platform),
+      program: '/bin/sh',
+      args: ['-c', 'exit 0'],
       timeoutMs: PROBE_TIMEOUT_MS,
       maxOutputBytes: 4096
     })
@@ -58,11 +52,16 @@ export function recordRendererLaunchFailureProbe(
   ) {
     return lastProbe.result
   }
+  // Never rejects: callers fire-and-forget it from the render-process-gone handler.
   const result = probeRendererLaunchCapacity().then((spawnError) => {
-    recordDurableCrashBreadcrumb('renderer_launch_failed_probe', {
-      spawnError,
-      exitCode: details.exitCode ?? null
-    })
+    try {
+      recordDurableCrashBreadcrumb('renderer_launch_failed_probe', {
+        spawnError,
+        exitCode: details.exitCode ?? null
+      })
+    } catch {
+      // Diagnostics only.
+    }
     return spawnError
   })
   lastProbe = { startedAt: now, result }

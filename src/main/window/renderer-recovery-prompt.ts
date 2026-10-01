@@ -24,10 +24,14 @@ export async function presentRendererRecoveryPrompt(
 ): Promise<void> {
   const stalled = deps.failure === 'reload-stalled'
   const launchFailed = deps.failure === 'launch-failed'
+  if (deps.isQuitting()) {
+    return
+  }
+  // Probed once: Copy Commands re-shows the box and must not spawn again. The loop re-checks quitting after it.
+  const launchProbe = launchFailed ? await deps.probeLaunchCapacity?.() : undefined
   // Copying must preserve the only available recovery surface.
   while (!deps.isQuitting()) {
     const diagnosis = deps.diagnose()
-    const launchProbe = launchFailed ? await deps.probeLaunchCapacity?.() : undefined
     // Why no Restart button: relaunching needs a free process slot too, and app.relaunch fails silently without one.
     const buttons = [
       launchFailed
