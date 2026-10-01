@@ -1,4 +1,3 @@
-import { readAgentResumeIdentity, type AgentResumeIdentity } from './agent-resume-identity'
 import type { AgentHookSource } from './agent-hook-relay'
 import type { AgentStatusState } from './agent-status-types'
 import type { AgentMainAgentStatus } from './main-agent-status'
@@ -30,6 +29,10 @@ export const RESUMABLE_TUI_AGENTS = [
 export type ResumableTuiAgent = (typeof RESUMABLE_TUI_AGENTS)[number]
 
 export type AgentProviderSessionKey = 'session_id' | 'conversation_id'
+
+export type AgentResumeIdentity = {
+  agent: ResumableTuiAgent
+}
 
 export type AgentProviderSessionMetadata = {
   /** The provider that owns this locator, from the hook route; absent on records saved before it. */
@@ -153,6 +156,13 @@ function withTranscriptPath(
 
 export function isResumableTuiAgent(value: unknown): value is ResumableTuiAgent {
   return typeof value === 'string' && RESUMABLE_TUI_AGENT_SET.has(value)
+}
+
+/** A malformed identity reads as absent so it can be re-derived, never stored as a refusal. */
+function readAgentResumeIdentity(raw: unknown): AgentResumeIdentity | undefined {
+  return raw && typeof raw === 'object' && 'agent' in raw && isResumableTuiAgent(raw.agent)
+    ? { agent: raw.agent }
+    : undefined
 }
 
 export function normalizeAgentProviderSession(raw: unknown): AgentProviderSessionMetadata | null {

@@ -30,7 +30,8 @@ vi.mock('sonner', () => ({
 }))
 
 import { toast } from 'sonner'
-import { createTestStore } from './store-test-helpers'
+import { createTestStore, makeTab } from './store-test-helpers'
+import { getDefaultSettings } from '../../../../shared/constants'
 import { sleepingAgentSessionsByPaneKeySchema } from '../../../../shared/workspace-session-sleeping-agents'
 import { decodeHookResumeSession } from '../../../../shared/agent-resume-identity'
 import { buildAgentStartupPlan } from '../../../../shared/tui-agent-startup'
@@ -50,7 +51,7 @@ const SETTINGS = {
 function resetStore(): TestStore {
   holder.store = createTestStore()
   const store = holder.store
-  store.setState({ settings: { ...store.getState().settings, ...SETTINGS } })
+  store.setState({ settings: { ...getDefaultSettings('/tmp'), ...SETTINGS } })
   return store
 }
 
@@ -133,17 +134,12 @@ function coldRestore(): { command?: string; env?: Record<string, string> } | nul
 }
 
 function wake(record: SleepingAgentSessionRecord): string | undefined {
-  const createTab = vi.fn(() => ({ id: 'resumed-tab' }))
+  const createTab = vi.fn<AppState['createTab']>((worktreeId) =>
+    makeTab({ id: 'resumed-tab', worktreeId })
+  )
   currentStore().setState({ createTab })
   expect(launchSleepingAgentSession(record, { suppressNavigation: true })).toBe(true)
-  const options: unknown = createTab.mock.calls.at(-1)?.at(3)
-  if (!options || typeof options !== 'object' || !('pendingStartup' in options)) {
-    return undefined
-  }
-  const pending = options.pendingStartup
-  return pending && typeof pending === 'object' && 'command' in pending
-    ? String(pending.command)
-    : undefined
+  return createTab.mock.calls.at(-1)?.[3]?.pendingStartup?.command
 }
 
 describe('launch settings across the resume-identity upgrade', () => {

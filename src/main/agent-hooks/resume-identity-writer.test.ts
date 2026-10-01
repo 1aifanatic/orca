@@ -79,7 +79,7 @@ describe('resume identity through authenticated provider hooks', () => {
       throw new Error('Missing owner')
     }
     const startup = buildAgentResumeStartupPlan({
-      agent: row.agentType,
+      agent: 'claude',
       providerSession: row.providerSession,
       cmdOverrides: {},
       platform: 'linux'

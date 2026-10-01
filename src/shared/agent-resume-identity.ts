@@ -1,24 +1,14 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
+import type { AgentType } from './agent-status-types'
 import {
   isResumableTuiAgent,
   normalizeAgentProviderSession,
   type AgentProviderSessionMetadata,
-  type ResumableTuiAgent
+  type AgentResumeIdentity
 } from './agent-session-resume'
-
-export type AgentResumeIdentity = {
-  agent: ResumableTuiAgent
-}
 
 export const AGENT_RESUME_IDENTITY_ERROR =
   'Cannot resume this session because its agent ownership could not be verified. The saved session is preserved. You can start a fresh agent separately.'
-
-/** A malformed identity reads as absent so it can be re-derived, never stored as a refusal. */
-export function readAgentResumeIdentity(raw: unknown): AgentResumeIdentity | undefined {
-  return raw && typeof raw === 'object' && 'agent' in raw && isResumableTuiAgent(raw.agent)
-    ? { agent: raw.agent }
-    : undefined
-}
 
 /** Only the saved hook route can establish a legacy session's provider. */
 export function decodeHookResumeSession(
@@ -41,10 +31,11 @@ export function decodeHookResumeSession(
 export function inheritAgentResumeIdentity(
   incoming: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined,
-  agent: string
+  agent: AgentType | undefined
 ): AgentHookEventPayload {
   // Why: only a previous row of the displayed agent is an owner; otherwise the event's own session stands.
   const owner =
+    agent !== undefined &&
     previous?.payload.agentType === agent &&
     (agent !== incoming.payload.agentType || incoming.toolAgentId)
       ? previous
