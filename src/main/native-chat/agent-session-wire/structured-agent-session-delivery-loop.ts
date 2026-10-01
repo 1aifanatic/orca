@@ -164,7 +164,7 @@ export class StructuredAgentSessionDeliveryLoop {
       this.deps.onError(sessionId, error)
       await this.deps
         .serialize(sessionId, async () => {
-          const next = this.nextDeliverable(sessionId)
+          const next = this.nextDeliverable(sessionId, this.deps.now())
           await this.fail(
             sessionId,
             { generation: null, cause: { hostFault: true } },
@@ -204,7 +204,9 @@ export class StructuredAgentSessionDeliveryLoop {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
     }
-    const next = this.nextDeliverable(sessionId)
+    // One clock read decides the step: what may go now, and from when a later try is booked.
+    const decidedAt = this.deps.now()
+    const next = this.nextDeliverable(sessionId, decidedAt)
     const failedStart = startThatFailedUnrecorded(session, next)
     if (failedStart) {
       return this.fail(sessionId, failedStart.failure, failedStart.waiting, failedStart.ended)
@@ -213,12 +215,12 @@ export class StructuredAgentSessionDeliveryLoop {
     if (failedChild) {
       return failedChild === 'end'
         ? this.deps.endFailedStart(sessionId).then(() => 'continue')
-        : this.stop(sessionId)
+        : this.stop(sessionId, decidedAt)
     }
     // A running command takes no input while its child carries it; its end is a commit, which
     // wakes the loop again. With no child it is a gone generation's, which the start below settles.
     if (!next || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
-      return this.stop(sessionId)
+      return this.stop(sessionId, decidedAt)
     }
     const ready = await this.deps.ensureProviderChild(sessionId, next.clientMessageId)
     if (!ready.ok) {
@@ -276,9 +278,10 @@ export class StructuredAgentSessionDeliveryLoop {
         awaitedChild ? undefined : (awaited ?? undefined)
       )
     }
-    const next = this.nextDeliverable(sessionId)
+    const decidedAt = this.deps.now()
+    const next = this.nextDeliverable(sessionId, decidedAt)
     if (!next) {
-      return this.stop(sessionId)
+      return this.stop(sessionId, decidedAt)
     }
     const unstarted = await handOverSubmission(
       {
@@ -335,23 +338,23 @@ export class StructuredAgentSessionDeliveryLoop {
     return 'continue'
   }
 
-  private nextDeliverable(sessionId: string): AgentJournalSubmission | undefined {
+  private nextDeliverable(sessionId: string, now: number): AgentJournalSubmission | undefined {
     const session = this.deps.sessions.get(sessionId)
-    return session ? nextDeliverableSubmission(session.journal, this.deps.now()) : undefined
+    return session ? nextDeliverableSubmission(session.journal, now) : undefined
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. Books a
-   *  wake for the next message waiting out a failed start; one already due and held by a running
-   *  command is woken by that command's end. */
-  private stop(sessionId: string): 'stop' {
+   *  wake for the next message waiting out a failed start, judged at `decidedAt`, the time the step
+   *  decided nothing could go; one already due then and held by a running command is woken by that
+   *  command's end. */
+  private stop(sessionId: string, decidedAt: number = this.deps.now()): 'stop' {
     this.running.delete(sessionId)
     this.retryTimers.get(sessionId)?.()
     this.retryTimers.delete(sessionId)
-    const now = this.deps.now()
-    const due = nextStartRetryAt(this.deps.sessions.get(sessionId)?.journal, now)
+    const due = nextStartRetryAt(this.deps.sessions.get(sessionId)?.journal, decidedAt)
     if (due !== null && !this.disposed) {
       const setTimer = this.deps.setTimer ?? setStartRetryTimer
-      const cancel = setTimer(due - now, () => {
+      const cancel = setTimer(Math.max(0, due - this.deps.now()), () => {
         this.retryTimers.delete(sessionId)
         void this.deps
           .serialize(sessionId, async () => this.wake(sessionId))

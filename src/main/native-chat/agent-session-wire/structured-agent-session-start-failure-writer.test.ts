@@ -73,6 +73,8 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let generation = 0
 let clock = NOW
+// The wall clock moves on between two reads: the read after this one sees this time.
+let advanceAfterRead: number | null = null
 let timers: { dueAt: number; run: () => void; cancelled: boolean }[] = []
 let settleStart: (failure: SubmissionRejectionFact | undefined) => void = () => {}
 // Runs before each spawn; throwing refuses that start before it ran.
@@ -131,7 +133,14 @@ function startHost(): void {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${generation + 1}`,
-    now: () => clock,
+    now: () => {
+      const read = clock
+      if (advanceAfterRead !== null) {
+        clock = advanceAfterRead
+        advanceAfterRead = null
+      }
+      return read
+    },
     setStartRetryTimer: (delayMs, run) => {
       const timer = { dueAt: clock + delayMs, run, cancelled: false }
       timers.push(timer)
@@ -257,6 +266,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   generation = 0
   clock = NOW
+  advanceAfterRead = null
   timers = []
   frames = []
   beforeSpawn = vi.fn(async () => undefined)
@@ -437,6 +447,32 @@ describe('the wake for a message waiting out a refused start', () => {
 
     expect(armed()).toEqual([])
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  // A timer can fire a moment before the clock reaches its due time, which the clock then reaches
+  // during the step it woke.
+  it('is booked again when its try comes due during the step that found it not yet due', async () => {
+    const { id: first, refuse } = await sendRefused('first')
+    refuse()
+    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    awaitStarted.mockImplementation(async () => undefined)
+    await settleSteps()
+    const due = (await submission(first))!.startFailure!.nextAttemptAt
+    const timer = armed().at(-1)!
+    expect(timer.dueAt).toBe(due)
+
+    timer.cancelled = true
+    clock = due - 1
+    advanceAfterRead = due
+    timer.run()
+    await settleSteps()
+
+    expect(clock).toBe(due)
+    expect(armed()).toHaveLength(1)
+    await fireRetry()
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([first])
+    )
   })
 
   it('is not booked again for every commit while nothing can go', async () => {
