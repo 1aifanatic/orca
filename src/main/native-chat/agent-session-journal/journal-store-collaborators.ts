@@ -42,6 +42,8 @@ export type JournalStoreHost = {
   serialize: <T>(run: () => Promise<T>) => Promise<T>
   /** Leave a chat still in its per-chat file uncopied until its first use. */
   deferPerSessionImport: boolean
+  /** A fold of the chat the opener already holds, used in place of the open's replay. */
+  suppliedLoad: JournalLoad | null
   /** Work the chat's next write waits for. */
   owe: (work: () => Promise<void>) => void
   database: () => JournalHostDatabase

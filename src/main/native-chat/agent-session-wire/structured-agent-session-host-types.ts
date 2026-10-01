@@ -115,6 +115,8 @@ export type StructuredAgentSessionHostDeps = {
     provider: AgentSessionRecord['provider']
   ) => Promise<Record<string, string> | undefined> | Record<string, string> | undefined
   now?: () => number
+  /** Keys a recorded give-up of an old chat file's copy; read from the app when absent. */
+  appVersion?: string
   /** The idle sweep's period and window. Tests drive these; production takes the defaults. */
   idleSweep?: { intervalMs?: number; idleMs?: number }
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */

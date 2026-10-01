@@ -25,12 +25,14 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
+import { StructuredAgentSessionStartupChatWork } from './structured-agent-session-startup-chat-work'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   // The history restore a tab restore owes, until a caller that answered with its list starts it.
   protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
   // Listed chats startup could not answer from stored state; null until it has run.
   protected structuredAgentSessionBackgroundRestoreIds: string[] | null = null
+  protected structuredAgentSessionStartupChatWork = new StructuredAgentSessionStartupChatWork()
 
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
@@ -241,8 +243,9 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   restoreStructuredAgentSessionTabs(): Promise<void> {
-    this.structuredAgentSessionTabRestorePromise ??=
-      this.restoreStructuredAgentSessionTabsOnce().then(
+    this.structuredAgentSessionTabRestorePromise ??= this.structuredAgentSessionStartupChatWork
+      .trackListing(() => this.restoreStructuredAgentSessionTabsOnce())
+      .then(
         () => {
           // Only a host's answer is final: without one, the next caller restores again, so a journal
           // that opens later republishes the chats.
@@ -264,7 +267,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     const owed = this.owedStructuredAgentSessionHistoryRestore
     this.owedStructuredAgentSessionHistoryRestore = null
     if (owed) {
-      setImmediate(owed)
+      this.structuredAgentSessionStartupChatWork.startRestoreSoon(owed)
     }
   }
 
@@ -301,6 +304,14 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       this.structuredAgentSessionBackgroundRestoreIds = host.seedStoredStatuses(listedIds)
       // Un-awaited: nothing waits on a crashed chat's settle, and it never rejects.
       void host.settleOwedSessions(listedIds)
+      // Latched on the host: a second startup pass after a lease failure starts no second job.
+      host.startPerChatFileCopy?.({
+        listedIds,
+        isRuntimeChatWorkActive: () =>
+          this.structuredAgentSessionStartupChatWork.isActive(
+            this.owedStructuredAgentSessionHistoryRestore !== null
+          )
+      })
     }
     if (leaseFailure) {
       throw leaseFailure.error

@@ -16,6 +16,7 @@ import {
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
 import { ensureJournalSessionStateTable } from './journal-session-state'
+import { ensureJournalCopyFailuresTable } from './journal-copy-failures'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -130,9 +131,10 @@ export function openJournalDatabase(
     // Outside `migrateJournalSchema` on purpose: its early return skips a db
     // already at the current version, and this table must exist at EVERY
     // writable open with no `user_version` bump (see `ensureQueuedMessagesTable`). So must each
-    // chat's stored state.
+    // chat's stored state, and each recorded give-up of a per-chat file copy.
     ensureQueuedMessagesTable(probe)
     ensureJournalSessionStateTable(probe)
+    ensureJournalCopyFailuresTable(probe)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
     return { db: probe, readOnly: false, legacyRecordImportOwed }

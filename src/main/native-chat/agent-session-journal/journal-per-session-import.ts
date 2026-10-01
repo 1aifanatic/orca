@@ -1,4 +1,5 @@
-// Copying a chat's per-chat journal file into the host's one database, on that chat's open.
+// Copying a chat's per-chat journal file into the host's one database: on that chat's open, or
+// from the background copy (structured-agent-session-per-chat-file-copy.ts).
 //
 // Not `journal-legacy-import.ts`, which reads the PROVIDER's own transcript. This reads Orca's own
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
@@ -10,24 +11,31 @@
 // The rows go in under the file's epoch, which the chat's pointer does not name yet, so no reader
 // sees them. Once they read back as the file does (every row's sequence, time and bytes), one
 // transaction publishes the chat's pointer with its repair and import markers, so the chat is
-// imported all at once or not at all. A try that stops midway leaves only unpublished rows, which
-// the next try deletes before it copies again. A copy that does not read back as the file is never
-// published: the file stays, and the chat is refused as unreadable.
+// imported all at once or not at all. A try that stops midway (a quit, a crash) leaves only
+// unpublished rows, which the next try deletes before it copies again. A copy that does not read
+// back as the file is never published: the file stays, and the chat is refused as unreadable.
 //
-// Only after that commit is the file deleted, its connection closed first. A read that fails
-// leaves the file where it is for the next open, and the open is refused rather than served empty:
-// an empty chat founded here would take a new epoch the next open's import could not reconcile.
+// Only after that commit is the file deleted, its connection closed first, and only while it is
+// still as the copy's last read left it. A read that fails leaves the file where it is for the next
+// open, and the open is refused rather than served empty: an empty chat founded here would take a
+// new epoch the next open's import could not reconcile. A file that was never written holds no
+// history and is deleted whenever it is found.
 
-import { createHash } from 'node:crypto'
 import { deleteJournalSessionState } from './journal-session-state'
 import { existsSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
+import {
+  deleteJournalCopyFailure,
+  samePerChatFileState,
+  statPerChatFile,
+  type PerChatFileState
+} from './journal-copy-failures'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLoad } from './journal-open'
-import { JournalImportMismatchError, journalOpenRefusalError } from './journal-open-failure'
 import { legacyJournalDatabaseFile } from './journal-paths'
+import { assertImportNotAborted, verifyCopiedJournal } from './journal-per-session-copy-check'
 import {
   planPerSessionImport,
   isPerSessionJournalSetAside,
@@ -44,15 +52,11 @@ import {
   openLegacySource,
   readLegacyHead,
   readLegacyRepair,
-  retireLegacyJournal,
-  type ImportBatch
+  retireLegacyJournal
 } from './journal-per-session-source'
-import { parseJournalRow } from './journal-row-schema'
-import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
   deleteUnpublishedJournalRows,
   publishJournalSessionEpoch,
-  readJournalRowsAfter,
   readJournalSessionEpoch
 } from './journal-row-table'
 
@@ -72,6 +76,12 @@ type PerSessionJournalImportDeps = {
 
 export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported' | 'kept'
 
+export type PerSessionJournalImport = {
+  outcome: PerSessionJournalImportOutcome
+  /** `imported` only: the copy's own fold, exactly what a replay of the published chat returns. */
+  load?: JournalLoad
+}
+
 type ImportInput = {
   database: JournalHostDatabase
   identity: AgentSessionJournalIdentity
@@ -81,9 +91,7 @@ type ImportInput = {
 /** Imports in flight, by database and chat: a second open of the same chat waits for the first. */
 const importsInFlight = new WeakMap<JournalHostDatabase, Map<string, Promise<unknown>>>()
 
-export function importPerSessionJournal(
-  input: ImportInput
-): Promise<PerSessionJournalImportOutcome> {
+export function importPerSessionJournal(input: ImportInput): Promise<PerSessionJournalImport> {
   let inFlight = importsInFlight.get(input.database)
   if (!inFlight) {
     inFlight = new Map()
@@ -101,51 +109,58 @@ export function importPerSessionJournal(
   return run
 }
 
-async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOutcome> {
+async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> {
   const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
   if (!existsSync(sourcePath)) {
-    return 'absent'
+    return { outcome: 'absent' }
   }
   const { sessionId } = input.identity
   if (isPerSessionJournalSetAside(input.database.db, sessionId)) {
-    return 'kept'
+    return { outcome: 'kept' }
   }
   const published = readJournalSessionEpoch(input.database.db, sessionId) !== null
   const source = (input.openSource ?? openLegacySource)(sourcePath)
   let legacy: PerSessionJournalHead | null
   let plan: PerSessionImportPlan | null = null
+  let copied: CopiedJournal | null = null
   try {
     legacy = readLegacyHead(source, sessionId)
     if (legacy) {
       plan = planPerSessionImport({ db: input.database.db, sessionId, legacy, published })
       if (plan.kind === 'first') {
-        await copyLegacyJournal(input, source, legacy)
+        copied = await copyLegacyJournal(input, source, legacy)
       }
     }
   } finally {
     source.close()
   }
   if (!legacy) {
-    // Never written. Left in place while its chat is unfounded: that open's empty chat may still
-    // owe the notice about a pre-SQLite transcript beside it.
-    if (!published) {
-      return 'absent'
-    }
+    // Never written: no history, so nothing to copy. A pre-SQLite transcript beside it stays, and
+    // the chat's open still finds it there (the directory goes only once it is empty).
     retireLegacyJournal(input.legacyDirectory, input.remove)
-    return 'already-imported'
+    return { outcome: published ? 'already-imported' : 'absent' }
   }
   if (plan?.kind === 'kept') {
     setAsidePerSessionJournal(input.database.db, sessionId, legacy)
-    return 'kept'
+    return { outcome: 'kept' }
   }
-  // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
-  retireLegacyJournal(input.legacyDirectory, input.remove)
-  if (plan?.kind === 'copied') {
-    return 'already-imported'
+  if (
+    copied &&
+    !samePerChatFileState(copied.verifiedFile, statPerChatFile(input.legacyDirectory))
+  ) {
+    // Written since the copy's last read (an older build on a shared profile): kept, so its next
+    // try finds a head past the import marker and sets it aside rather than losing those rows.
+    console.warn(`[agent-session-journal] ${input.legacyDirectory} changed after its copy; kept`)
+  } else {
+    // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
+    retireLegacyJournal(input.legacyDirectory, input.remove)
+  }
+  if (!copied) {
+    return { outcome: 'already-imported' }
   }
   // The open's replay of what was just copied is a long task of its own; don't add this one to it.
   await yieldToEventLoop()
-  return 'imported'
+  return { outcome: 'imported', load: copied.load }
 }
 
 /**
@@ -180,6 +195,9 @@ export async function previewPerSessionJournal(
   }
 }
 
+/** What a first copy hands back: the copy's load, and the file as the copy's last read of it left it. */
+type CopiedJournal = { load: JournalLoad; verifiedFile: PerChatFileState | null }
+
 /**
  * Batches under the file's epoch, which no reader follows until the chat's pointer names it. Once
  * the rows read back as the file does, one transaction publishes the pointer with the chat's repair
@@ -189,7 +207,7 @@ async function copyLegacyJournal(
   input: ImportInput,
   source: Database.Database,
   legacy: PerSessionJournalHead
-): Promise<void> {
+): Promise<CopiedJournal> {
   const { sessionId } = input.identity
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
@@ -199,6 +217,7 @@ async function copyLegacyJournal(
     if (!first) {
       await yieldToEventLoop()
     }
+    assertImportNotAborted(input.database, sessionId)
     // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
     input.database.unsyncedTransaction((db) => {
       if (first) {
@@ -213,7 +232,19 @@ async function copyLegacyJournal(
     })
     first = false
   }
-  await verifyCopiedJournal(input, legacyRowBatches(source, sessionId, epoch, batchRows), epoch)
+  const load = await verifyCopiedJournal(
+    {
+      database: input.database,
+      sessionId,
+      epoch,
+      repairedFrom: repair?.epoch === epoch ? Number(repair.content_from) : null,
+      batchRows,
+      legacyDirectory: input.legacyDirectory
+    },
+    legacyRowBatches(source, sessionId, epoch, batchRows)
+  )
+  const verifiedFile = statPerChatFile(input.legacyDirectory)
+  assertImportNotAborted(input.database, sessionId)
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
     if (repair) {
@@ -225,81 +256,9 @@ async function copyLegacyJournal(
       )
     }
     writePerSessionImportMarker(db, sessionId, legacy)
+    deleteJournalCopyFailure(db, sessionId)
     // Whatever was stored described the rows this copy replaced; the next open re-derives it.
     deleteJournalSessionState(db, sessionId)
   })
-}
-
-/** Mismatches already logged, so a chat refused on every open logs once. */
-const loggedMismatches = new Set<string>()
-
-/**
- * The copied rows, read back from the host's database, against a second read of what was copied:
- * the same rows, byte for byte, and the same epoch, tip, row count, items and submissions, or the
- * copy is refused and never published. Both reads go a batch at a time, so no check holds the main
- * thread longer than a copy batch does.
- */
-async function verifyCopiedJournal(
-  input: ImportInput,
-  expected: Iterable<ImportBatch>,
-  epoch: string
-): Promise<void> {
-  const { sessionId } = input.identity
-  const want = await copyFacts(sessionId, expected)
-  const got = await copyFacts(sessionId, copiedBatches(input, epoch))
-  if (want === got) {
-    return
-  }
-  const error = new JournalImportMismatchError(
-    `per-chat journal of ${sessionId} read back as ${got} after its copy, not ${want}`
-  )
-  if (!loggedMismatches.has(`${sessionId}\n${want}\n${got}`)) {
-    loggedMismatches.add(`${sessionId}\n${want}\n${got}`)
-    console.error(`[agent-session-journal] ${error.message}; ${input.legacyDirectory} is kept`)
-  }
-  throw journalOpenRefusalError(error)
-}
-
-/** Epoch, tip, row count, items, submissions and a digest of every row, folded a batch at a time. */
-async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Promise<string> {
-  const state = createJournalReducerState(sessionId, '')
-  const content = createHash('sha256')
-  let epoch: string | null = null
-  let tip = 0
-  let rows = 0
-  let first = true
-  for (const batch of batches) {
-    if (!first) {
-      await yieldToEventLoop()
-    }
-    first = false
-    rows += batch.rows.length
-    for (const row of batch.rows) {
-      tip = Math.max(tip, row.seq)
-      // Length-framed, so no two different rows hash the same stream.
-      content.update(`${row.seq}:${row.ts}:${row.rowJson.length}:`).update(row.rowJson)
-      const parsed = parseJournalRow(row.rowJson)
-      if (parsed.ok) {
-        epoch ??= parsed.row.epoch
-        applyJournalRow(state, parsed.row)
-      }
-    }
-  }
-  return `${epoch}:${tip}:${rows}:${state.items.size}:${state.submissions.size}:${content.digest('hex')}`
-}
-
-function* copiedBatches(input: ImportInput, epoch: string): Generator<ImportBatch> {
-  const { sessionId } = input.identity
-  const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
-  let afterSeq = Number.MIN_SAFE_INTEGER
-  for (;;) {
-    const rows = readJournalRowsAfter(input.database.db, sessionId, epoch, afterSeq, batchRows)
-    const lastSeq = rows.at(-1)?.seq
-    const last = rows.length < batchRows || lastSeq === undefined
-    yield { rows, last }
-    if (last) {
-      return
-    }
-    afterSeq = lastSeq
-  }
+  return { load, verifiedFile }
 }

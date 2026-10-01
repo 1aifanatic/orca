@@ -13,6 +13,7 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { JournalLoad } from '../agent-session-journal/journal-open'
 import { owesOnOpen } from '../agent-session-journal/journal-open-settlement-plan'
 import {
   readJournalSessionStatesAtTip,
@@ -46,18 +47,28 @@ export type StructuredAgentSessionStartupState = {
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat that owes work, once per host. Never rejects. */
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
+  /** The settle step has started and not finished. */
+  isSettling: () => boolean
+  /** Settles a chat the background copy just copied, from the copy's load, with no replay. For a
+   *  caller inside the chat's serialize. */
+  settleCopiedUnlisted: (record: AgentSessionRecord, loaded: JournalLoad) => Promise<void>
 }
 
 export function createStructuredAgentSessionStartupState(
   deps: StructuredAgentSessionStartupStateDeps
 ): StructuredAgentSessionStartupState {
   let settling: Promise<void> | null = null
+  let settled = false
   return {
     seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
     settleOwedSessions: (listedIds) => {
-      settling ??= settleOwedSessions(deps, listedIds)
+      settling ??= settleOwedSessions(deps, listedIds).finally(() => {
+        settled = true
+      })
       return settling
-    }
+    },
+    isSettling: () => settling !== null && !settled,
+    settleCopiedUnlisted: (record, loaded) => settleUnlisted(deps, record, loaded)
   }
 }
 
@@ -174,13 +185,15 @@ async function settleOwedSessions(
 /** A chat with no tab: settled and closed, never indexed, so it gets no status row. */
 async function settleUnlisted(
   deps: StructuredAgentSessionStartupStateDeps,
-  record: AgentSessionRecord
+  record: AgentSessionRecord,
+  loaded?: JournalLoad
 ): Promise<void> {
   if (deps.isDisposed() || deps.hasSession(record.sessionId)) {
     return
   }
   const opened = await openStructuredAgentSessionConversationJournal(deps.openDeps, record, {
-    deferPerSessionImport: true
+    deferPerSessionImport: true,
+    ...(loaded ? { loaded } : {})
   })
   await opened.session.journal.close()
 }

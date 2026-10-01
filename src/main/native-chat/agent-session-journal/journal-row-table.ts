@@ -20,6 +20,7 @@ const SELECT_ROWS_AFTER = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER_LIMITED = `${SELECT_ROWS_AFTER} LIMIT ?`
 const DELETE_SUFFIX = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq >= ?'
+const SELECT_TIP = 'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_EPOCH = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_UNPUBLISHED = `DELETE FROM journal_rows WHERE session_id = ?
 AND epoch IS NOT (SELECT epoch FROM journal_sessions WHERE session_id = ?)`
@@ -27,6 +28,12 @@ AND epoch IS NOT (SELECT epoch FROM journal_sessions WHERE session_id = ?)`
 export function readJournalSessionEpoch(db: Database.Database, sessionId: string): string | null {
   const epoch = db.prepare(SELECT_EPOCH).get(sessionId)?.epoch
   return typeof epoch === 'string' ? epoch : null
+}
+
+/** The highest sequence stored under `epoch`, or 0 with none. */
+export function readJournalTip(db: Database.Database, sessionId: string, epoch: string): number {
+  const tip = db.prepare(SELECT_TIP).get(sessionId, epoch)?.tip
+  return typeof tip === 'number' ? tip : 0
 }
 
 /** Points the chat at `epoch`. Only an epoch change writes this row. */

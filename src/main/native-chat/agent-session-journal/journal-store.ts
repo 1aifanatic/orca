@@ -108,6 +108,7 @@ export class AgentSessionJournal {
       mintEpoch: this.mintEpoch,
       serialize: (run) => this.queue.serialize(run),
       deferPerSessionImport: options.deferPerSessionImport === true,
+      suppliedLoad: options.loaded ?? null,
       owe: (work) => this.queue.owe(work),
       database: () => this.database,
       state: () => this.state,

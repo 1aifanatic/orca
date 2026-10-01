@@ -15,6 +15,7 @@ import { openJournalStoreState } from './journal-store-open'
 import { deleteJournalRepairedSuffix } from './journal-repair-marker'
 import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
 import { AgentSessionJournalError } from './journal-write-guards'
+import { readJournalSessionEpoch, readJournalTip } from './journal-row-table'
 
 export async function restoreJournalStore(
   host: JournalStoreHost,
@@ -32,8 +33,10 @@ export async function restoreJournalStore(
   const preview = host.deferPerSessionImport ? await previewPerSessionJournal(source) : null
   if (preview) {
     host.owe(async () => {
-      await importPerSessionJournal(source)
-      const imported = replayJournal(source.database.db, host.identity.sessionId)
+      // The copy's own fold is what a replay would return; another copy first means a replay.
+      const imported =
+        (await importPerSessionJournal(source)).load ??
+        replayJournal(source.database.db, host.identity.sessionId)
       if (!imported) {
         throw new Error(`per-chat journal of ${host.identity.sessionId} was gone before its copy`)
       }
@@ -46,7 +49,10 @@ export async function restoreJournalStore(
   return openJournalStoreState({
     legacyDirectory: host.legacyDirectory,
     replay: () => {
-      const loaded = preview ?? replayJournal(host.database().db, host.identity.sessionId)
+      const loaded =
+        preview ??
+        suppliedLoadAtHead(host) ??
+        replayJournal(host.database().db, host.identity.sessionId)
       host.setOpenedCorrupt(loaded?.corrupt ?? false)
       return loaded
     },
@@ -75,6 +81,22 @@ export async function restoreJournalStore(
     setMalformedRows: host.setMalformedRows,
     readOnly: host.readOnly
   })
+}
+
+/** The fold the opener already holds (a background copy's), in place of a replay while the chat is
+ *  still exactly where that fold left it; anything written since means a replay. */
+function suppliedLoadAtHead(host: JournalStoreHost): JournalLoad | null {
+  const loaded = host.suppliedLoad
+  if (!loaded) {
+    return null
+  }
+  const { db } = host.database()
+  const { sessionId } = host.identity
+  const epoch = readJournalSessionEpoch(db, sessionId)
+  return epoch === loaded.state.epoch &&
+    readJournalTip(db, sessionId, epoch) === loaded.state.lastSequence
+    ? loaded
+    : null
 }
 
 /**

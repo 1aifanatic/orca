@@ -27,11 +27,17 @@ import {
 } from './structured-agent-session-startup-state'
 import { StructuredAgentSessionRestartRestoreGate } from './structured-agent-session-restart-restore-gate'
 import {
+  createStructuredAgentSessionPerChatFileCopyControl,
+  type PerChatFileCopyStart
+} from './structured-agent-session-per-chat-file-copy-control'
+import { getAppEnvironment, hasAppEnvironment } from '../../../shared/app-environment'
+import {
   createReaderReconcile,
   reportEachFailureOnce
 } from './structured-agent-session-restart-reconcile'
 import type {
   StructuredAgentSessionHostDeps,
+  StructuredAgentSessionHostSession,
   StructuredAgentSessionReveal
 } from './structured-agent-session-host-types'
 
@@ -68,23 +74,28 @@ export async function revealStructuredAgentSession(
 }
 
 /** The host's startup restore: reconcile, then seed and settle from the state stored beside each
- *  journal, then open in the background what that state cannot answer. Its lease bookkeeping is a
- *  reader's, which never fails a read or startup; startup shares it. */
+ *  journal, then open in the background what that state cannot answer, and copy every chat still in
+ *  an old per-chat file. Its lease bookkeeping is a reader's, which never fails a read or startup;
+ *  startup shares it. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     StructuredAgentSessionReadRestoreDeps,
-    'openDeps' | 'reconcile' | 'resolveRecovery' | 'isListed'
+    'openDeps' | 'reconcile' | 'resolveRecovery' | 'isListed' | 'hasSession'
   > & {
     reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
     resolveRecovery: (sessionId: string) => Promise<unknown>
     seedStatus: StructuredAgentSessionStartupStateDeps['seedStatus']
+    sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
   }
 ): {
   reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
+  startPerChatFileCopy: (input: PerChatFileCopyStart) => void
+  stopPerChatFileCopy: () => Promise<void>
 } & StructuredAgentSessionStartupState {
-  const { reconcileLeases, resolveRecovery, seedStatus, ...rest } = wiring
+  const { reconcileLeases, resolveRecovery, seedStatus, sessions, ...wired } = wiring
+  const rest = { ...wired, hasSession: (sessionId: string) => sessions.has(sessionId) }
   const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
@@ -105,20 +116,35 @@ export function createStructuredAgentSessionHostRestore(
   }
   const restorer = new StructuredAgentSessionReadableRestorer({ ...readRestore, supportsRecord })
   const gate = new StructuredAgentSessionRestartRestoreGate()
+  const startup = createStructuredAgentSessionStartupState({
+    openDeps: deps,
+    supportsRecord,
+    seedStatus,
+    restoreListed: (records) =>
+      restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
+    serialize: rest.serialize,
+    hasSession: rest.hasSession,
+    isDisposed: rest.isDisposed
+  })
+  const perChatFileCopy = createStructuredAgentSessionPerChatFileCopyControl({
+    database: deps.journalDatabase,
+    store: deps.store,
+    serialize: rest.serialize,
+    openJournal: (sessionId) => sessions.get(sessionId)?.journal,
+    settleCopied: startup.settleCopiedUnlisted,
+    isHostChatWorkActive: () => startup.isSettling() || restorer.isRestoring,
+    isDisposed: rest.isDisposed,
+    now: () => deps.now?.() ?? Date.now(),
+    appVersion:
+      deps.appVersion ?? (hasAppEnvironment() ? getAppEnvironment().getVersion() : 'unknown')
+  })
   return {
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
-    ...createStructuredAgentSessionStartupState({
-      openDeps: deps,
-      supportsRecord,
-      seedStatus,
-      restoreListed: (records) =>
-        restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
-      serialize: rest.serialize,
-      hasSession: rest.hasSession,
-      isDisposed: rest.isDisposed
-    })
+    ...startup,
+    startPerChatFileCopy: perChatFileCopy.start,
+    stopPerChatFileCopy: perChatFileCopy.stop
   }
 }
