@@ -50,7 +50,7 @@ export function fakeCodexAppServer(routes: Record<string, CodexTestRoute> = {}):
   routes: Record<string, CodexTestRoute>
 } {
   const connections: FakeConnection[] = []
-  const openConnection = (async (launch, handlers = {}) => {
+  const openConnection: typeof openCodexAppServerConnection = async (launch, handlers = {}) => {
     const connection: FakeConnection = {
       launch,
       handlers,
@@ -72,7 +72,7 @@ export function fakeCodexAppServer(routes: Record<string, CodexTestRoute> = {}):
     }
     connections.push(connection)
     return connection
-  }) as typeof openCodexAppServerConnection
+  }
   routes['thread/start'] ??= () => ({
     thread: { id: CODEX_TEST_THREAD_ID, path: '/rollouts/abc.jsonl' }
   })

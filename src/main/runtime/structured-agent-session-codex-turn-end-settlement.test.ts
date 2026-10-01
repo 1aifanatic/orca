@@ -36,7 +36,10 @@ import {
 } from './structured-agent-session-runtime'
 
 // The turns a send or Stop is waiting on to open, so a test knows the wait began.
-const openWaits = vi.hoisted(() => ({ turnIds: [] as string[] }))
+const openWaits = vi.hoisted(() => {
+  const turnIds: string[] = []
+  return { turnIds }
+})
 vi.mock('../codex/codex-structured-turn-open-wait', async (importOriginal) => {
   const actual = await importOriginal<typeof CodexTurnOpenWait>()
   return {
