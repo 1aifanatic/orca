@@ -48,7 +48,9 @@ const context = {
 
 beforeEach(() => {
   vi.mocked(execCommand).mockReset()
-  vi.mocked(ensureRemoteOrcadNodeRuntime).mockReset().mockResolvedValue(undefined)
+  vi.mocked(ensureRemoteOrcadNodeRuntime)
+    .mockReset()
+    .mockResolvedValue('/home/u/.orca-remote/runtimes/node-test/bin/node')
   vi.mocked(runPinnedRuntimeSelfTest).mockReset()
   resetPinnedRuntimeRefusalsForTests()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
