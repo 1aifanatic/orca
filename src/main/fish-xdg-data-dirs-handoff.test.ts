@@ -207,9 +207,12 @@ describe.skipIf(!fish.available)('fish vendor snippet in a real fish', () => {
 
   // Why separate: before 4.7 fish's unset default was its own data dir, so only the env is exact.
   it('restores an unset XDG_DATA_DIRS and drops its own dir from fish paths', () => {
+    // Why a baseline: a distro vendor snippet (Ubuntu's snapd) may set XDG_DATA_DIRS itself.
+    const envLines = (output: string) =>
+      output.split('\n').filter((line) => /^(xdg=|XDG_DATA_DIRS=|child-clean)/.test(line))
+    const withoutOrca = runFish(['-c', STATE_PROBE], {})
     const output = runFish(['-c', STATE_PROBE], getFishXdgDataDirsLaunchEnv(root, undefined))
-    expect(output).toContain('xdg=unset')
-    expect(output).toContain('child-clean')
+    expect(envLines(output)).toEqual(envLines(withoutOrca))
     expect(output).not.toContain('marker-left')
     expect(output).not.toContain(root)
   })
