@@ -1,5 +1,6 @@
 import type * as ProfileRouting from '../../shared/claude-profile-routing'
 import type * as Os from 'node:os'
+import * as fs from 'node:fs'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +24,7 @@ import { discoverAiVaultSessionSources } from '../ai-vault/session-scanner-sourc
 import { isolatedScanRoots } from '../ai-vault/session-scanner-test-fixtures'
 import { localAiVaultScanRoots } from '../ai-vault/cached-session-list'
 import { discoverRetiredWorktreeNames } from '../worktree-retirement-discovery'
+import { claudeProjectsRootDirs } from '../ai-vault/session-scanner-roots'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 
 const roots: string[] = []
@@ -107,4 +109,14 @@ it('hands an installed owner’s profile roots to the scan request', async () =>
     join(profile.home, 'projects')
   ])
   expect(new OrcaRuntimeService().getStatus().capabilities).toContain('claude.profile-routing.v1')
+})
+
+it('merges WSL guest roots verbatim, never realpathing a UNC path', () => {
+  const realpath = vi.spyOn(fs.realpathSync, 'native')
+  const guest = '\\\\wsl.localhost\\Ubuntu\\home\\u'
+  const roots = claudeProjectsRootDirs({ wslHomeDirs: [guest] })
+  expect(roots).toContain(join(guest, '.claude', 'projects'))
+  expect(realpath.mock.calls.filter(([path]) => String(path).startsWith('\\\\wsl'))).toEqual([])
+  expect(realpath).toHaveBeenCalled()
+  realpath.mockRestore()
 })

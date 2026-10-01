@@ -1,7 +1,10 @@
 import { lstatSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import { CLAUDE_PROFILE_ROUTING_CAPABILITY } from '../../shared/claude-profile-routing'
+import {
+  CLAUDE_INJECTED_CONFIG_DIR_ENV,
+  CLAUDE_PROFILE_ROUTING_CAPABILITY
+} from '../../shared/claude-profile-routing'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import {
   describeClaudeProfile,
@@ -12,6 +15,14 @@ import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'
+
+/** The legacy resolver's home, except a value an outer Orca injected (its twin still marks it). */
+export function systemDefaultClaudeHome(env: NodeJS.ProcessEnv, userHome: string): string {
+  const inherited = env.CLAUDE_CONFIG_DIR?.trim()
+  return inherited && inherited !== env[CLAUDE_INJECTED_CONFIG_DIR_ENV]?.trim()
+    ? inherited
+    : join(userHome, '.claude')
+}
 
 /** An owning runtime uses its own settings and paths, including when a paired client calls it. */
 export function createNativeClaudeProfileRouting(args: {
@@ -84,14 +95,16 @@ export function createNativeClaudeProfileRouting(args: {
     targets: () => [{ runtime: 'host' }],
     capabilities: () => [CLAUDE_PROFILE_ROUTING_CAPABILITY],
     readHomes: () => {
+      // Why ~/.claude too: step-1 setup pools every profile's history there, whatever System Default is.
+      const shared = [args.defaultHome(), join(args.userHome, '.claude')]
       let ids: string[]
       try {
         ids = readdirSync(join(args.dataRoot, 'claude-profiles'))
       } catch {
-        return [args.defaultHome()]
+        return shared
       }
       return [
-        args.defaultHome(),
+        ...shared,
         ...ids.flatMap((id) => {
           try {
             return [profileFor(id).home]

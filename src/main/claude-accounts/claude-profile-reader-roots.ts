@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
+import { isWslUncPath } from '../../shared/wsl-paths'
 import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 
 /** This host's profile `<surface>` dirs; empty where no owner is installed (workers, child processes). */
@@ -33,7 +34,9 @@ export function mergeClaudeProfileReaderRoots(
   return [...legacy, ...candidates].filter((path) => {
     let canonical: string
     try {
-      canonical = realpathSync.native(path)
+      // Why verbatim: a host profile never aliases a WSL guest root, and a UNC realpath is a
+      // blocking 9P round trip that this process must not make outside the WSL gate.
+      canonical = isWslUncPath(path) ? path : realpathSync.native(path)
     } catch {
       canonical = resolve(path)
     }

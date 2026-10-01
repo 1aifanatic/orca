@@ -41,11 +41,10 @@ export type ClaudeProfileRoutingOwner = {
   withdraw: () => void
 }
 
-class ClaudeProfileSelectionChangedError extends Error {}
-
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
   private publishIssue: string | null = null
+  private hostPublishes = 0
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
@@ -64,8 +63,11 @@ export class ClaudeProfileRoutingService {
     target?: ClaudeAccountSelectionTarget,
     provisioning: 'always' | 'if-missing' = 'always'
   ): Promise<ClaudeProfileLaunchDescriptor> {
+    const onHost = target?.runtime !== 'wsl'
+    const generation = onHost ? ++this.hostPublishes : this.hostPublishes
+    let descriptor: ClaudeProfileLaunchDescriptor | undefined
     try {
-      const descriptor = this.resolve(target)
+      descriptor = this.resolve(target)
       if (
         descriptor.profile &&
         (provisioning === 'always' || !this.owner.isProvisioned(descriptor))
@@ -73,23 +75,31 @@ export class ClaudeProfileRoutingService {
         await this.provision(descriptor)
       }
       if (this.resolve(target).configHome !== descriptor.configHome) {
-        throw new ClaudeProfileSelectionChangedError(
-          'Claude account changed while preparing its profile; retry'
-        )
+        throw new Error('Claude account changed while preparing its profile; retry')
       }
       await this.owner.publish(descriptor)
-      this.publishIssue = null
+      if (onHost && generation === this.hostPublishes) {
+        this.publishIssue = null
+      }
       return descriptor
     } catch (error) {
-      if (target?.runtime !== 'wsl') {
+      // Why: a pointer left naming the previous account would launch it silently. Only the newest
+      // host publish, still naming the current selection, speaks for the pointer.
+      if (onHost && generation === this.hostPublishes && !this.isOvertaken(descriptor)) {
         this.publishIssue = error instanceof Error ? error.message : String(error)
-        // Why: a pointer left naming the previous account would launch it silently. A newer
-        // selection that raced this one owns the pointer, so that case leaves it alone.
-        if (!(error instanceof ClaudeProfileSelectionChangedError)) {
-          this.owner.withdraw()
-        }
+        this.owner.withdraw()
       }
       throw error
+    }
+  }
+  private isOvertaken(descriptor: ClaudeProfileLaunchDescriptor | undefined): boolean {
+    try {
+      return (
+        descriptor !== undefined &&
+        this.resolve(descriptor.target).configHome !== descriptor.configHome
+      )
+    } catch {
+      return false
     }
   }
   /** Ownership refusal stops the caller; a worker fault on an already prepared profile only warns. */
@@ -177,6 +187,18 @@ export class ClaudeProfileRoutingService {
       return readClaudeProfilePointer(descriptor.pointerPath) === (descriptor.profile?.home ?? null)
     } catch {
       return false
+    }
+  }
+  /** Never throws: skill roots for every provider read this, and only Claude launches may refuse
+   *  an unresolvable account; WSL keeps the legacy home until guest profiles exist. */
+  configDirOr(target: ClaudeAccountSelectionTarget | undefined, legacy: () => string): string {
+    if (target?.runtime === 'wsl') {
+      return legacy()
+    }
+    try {
+      return this.resolve(target).readHome
+    } catch {
+      return legacy()
     }
   }
   historyRoots(target?: ClaudeAccountSelectionTarget): string[] {

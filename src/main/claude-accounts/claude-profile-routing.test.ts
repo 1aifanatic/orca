@@ -10,7 +10,11 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createNativeClaudeProfileRouting } from './claude-profile-native-owner'
+import {
+  createNativeClaudeProfileRouting,
+  systemDefaultClaudeHome
+} from './claude-profile-native-owner'
+import { resolveSkillProviderRoots } from '../runtime/runtime-skill-install-authority'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
 import { publishClaudeProfilePointer, readClaudeProfilePointer } from './claude-profile-pointer'
 import { requireClaudeProfileRoutingCapability } from '../../shared/claude-profile-routing'
@@ -200,6 +204,7 @@ describe('native Claude profile authority', () => {
     f.inherited.dir = join(f.root, 'user-own-claude')
     expect(f.routing.resolve().configHome).toBe(f.inherited.dir)
     expect(f.routing.historyRoots()[0]).toBe(f.inherited.dir)
+    expect(f.routing.historyRoots()).toContain(join(f.home, '.claude'))
   })
   it('withdraws the pointer instead of leaving the previous account selected', async () => {
     const f = fixture()
@@ -221,5 +226,57 @@ describe('native Claude profile authority', () => {
     expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(f.profiles[1].home)
     await f.routing.publish()
     expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(null)
+  })
+  it('keeps a newer selection’s pointer when an overtaken publish fails', async () => {
+    const f = fixture()
+    const setup = Promise.withResolvers<ClaudeProfileSetupReport>()
+    f.worker.prepare.mockImplementationOnce(() => setup.promise)
+    const startup = f.routing.startup()
+    f.settings.activeClaudeManagedAccountId = null
+    await f.routing.publish()
+    setup.reject(new Error('Claude profile setup timed out'))
+    await expect(startup).rejects.toThrow('timed out')
+    expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(null)
+    expect(f.routing.describeAccounts({ accounts: [], activeAccountId: null })).not.toHaveProperty(
+      'profileRoutingIssue'
+    )
+    mkdirSync(join(f.profiles[1].home, 'projects'))
+    f.settings.activeClaudeManagedAccountId = 'a'
+    const launchSetup = Promise.withResolvers<ClaudeProfileSetupReport>()
+    f.worker.prepare.mockImplementationOnce(() => launchSetup.promise)
+    const launch = f.routing.prepare()
+    f.settings.activeClaudeManagedAccountId = 'b'
+    await f.routing.publish()
+    launchSetup.reject(new Error('Claude profile worker exited (1)'))
+    await expect(launch).rejects.toThrow('exited')
+    expect(readClaudeProfilePointer(f.routing.pointerPath())).toBe(f.profiles[1].home)
+  })
+  it('skill roots never fail for other providers when Claude cannot resolve', async () => {
+    const f = fixture()
+    const host = {
+      getClaudeConfigDirectory: (
+        target: { runtime: 'host' } | { runtime: 'wsl'; wslDistro: string }
+      ) => f.routing.configDirOr(target, () => '/legacy-claude')
+    }
+    expect(host.getClaudeConfigDirectory({ runtime: 'host' })).toBe(f.profiles[0].home)
+    expect(host.getClaudeConfigDirectory({ runtime: 'wsl', wslDistro: 'Ubuntu' })).toBe(
+      '/legacy-claude'
+    )
+    f.settings.activeClaudeManagedAccountId = 'unknown'
+    const roots = await resolveSkillProviderRoots(host, {
+      scope: 'global',
+      homeDirectory: f.home
+    })
+    expect(roots.claude).toBe(join('/legacy-claude', 'skills'))
+  })
+  it('System Default ignores a config dir an outer Orca injected', () => {
+    expect(systemDefaultClaudeHome({ CLAUDE_CONFIG_DIR: '/own' }, '/home/u')).toBe('/own')
+    expect(
+      systemDefaultClaudeHome(
+        { CLAUDE_CONFIG_DIR: '/outer/profile', ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/outer/profile' },
+        '/home/u'
+      )
+    ).toBe(join('/home/u', '.claude'))
+    expect(systemDefaultClaudeHome({}, '/home/u')).toBe(join('/home/u', '.claude'))
   })
 })

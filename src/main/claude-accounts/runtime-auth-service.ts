@@ -2,7 +2,10 @@ import { homedir } from 'node:os'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
-import { createNativeClaudeProfileRouting } from './claude-profile-native-owner'
+import {
+  createNativeClaudeProfileRouting,
+  systemDefaultClaudeHome
+} from './claude-profile-native-owner'
 import {
   installClaudeProfileRoutingAuthority,
   getClaudeProfileRoutingAuthority
@@ -27,7 +30,7 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
           store,
           dataRoot: getAppEnvironment().getPath('userData'),
           userHome: homedir(),
-          defaultHome: () => this.pathResolver.getRuntimePaths().configDir,
+          defaultHome: () => systemDefaultClaudeHome(process.env, homedir()),
           claudeVersion: () => probeClaudeCliVersionCached(resolveClaudeCommand())
         })
       )
@@ -95,8 +98,8 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   }
 
   getRuntimeConfigDir(target?: ClaudeAccountSelectionTarget): string {
-    const profiles = getClaudeProfileRoutingAuthority()
-    return profiles ? profiles.resolve(target).readHome : this.getPreparation(target).configDir
+    const legacy = () => this.getPreparation(target).configDir
+    return getClaudeProfileRoutingAuthority()?.configDirOr(target, legacy) ?? legacy()
   }
 
   private initializeLastSyncedState(): void {
