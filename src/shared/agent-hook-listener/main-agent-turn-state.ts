@@ -34,6 +34,4 @@ export type CodexLeadTurnState = {
   /** When `state` first appeared; the root's own clock, published as `mainAgent.stateStartedAt`. */
   stateStartedAt: number
   model?: string
-  /** Codex's `turn_id` from the turn's UserPromptSubmit; an Interrupt naming another turn is stale. */
-  turnId?: string
 }

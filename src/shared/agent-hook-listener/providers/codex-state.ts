@@ -18,7 +18,6 @@ import {
   type CodexSubagentTranscriptState
 } from '../../codex-subagent-transcript'
 import type { CodexLeadTurnState, HookListenerState } from '../listener-state'
-import { readString } from '../tool-input-preview'
 
 export function getOrCreateCodexSubagentRoster(
   state: HookListenerState,
@@ -57,27 +56,14 @@ export function setCodexMainAgentTurnState(
 ): CodexLeadTurnState {
   const previous = state.codexLeadStateByPaneKey.get(paneKey)
   const continued = continueMainAgentStatus(previous, next, now)
-  const turnId = 'turnId' in next ? next.turnId : previous?.turnId
   const record: CodexLeadTurnState = {
     state: next.state,
     ...(continued.outcome ? { outcome: continued.outcome } : {}),
     stateStartedAt: continued.stateStartedAt,
-    model: next.model,
-    ...(turnId ? { turnId } : {})
+    model: next.model
   }
   state.codexLeadStateByPaneKey.set(paneKey, record)
   return record
-}
-
-/** An Interrupt replayed after the next turn started names the old turn; missing ids are accepted. */
-export function isStaleCodexInterrupt(
-  state: HookListenerState,
-  paneKey: string,
-  hookPayload: Record<string, unknown>
-): boolean {
-  const turnId = readString(hookPayload, 'turn_id')
-  const currentTurnId = state.codexLeadStateByPaneKey.get(paneKey)?.turnId
-  return turnId !== undefined && currentTurnId !== undefined && turnId !== currentTurnId
 }
 
 /** Interrupt is Codex's own cancel verdict. A root Stop that lands on an already finished turn
