@@ -7,6 +7,7 @@ import type {
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
 import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from './live-pty-gate'
+import { describeClaudeAccountIdentityIssue } from './claude-account-identity'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import {
   getClaudeSelectionTargetForAccount,
@@ -43,7 +44,43 @@ export class ClaudeAccountSelection {
 
   list(): ClaudeRateLimitAccountsState {
     const profiles = getClaudeProfileRoutingAuthority()
-    return profiles ? profiles.describeAccounts(this.snapshot()) : this.snapshot()
+    if (!profiles) {
+      return this.snapshot()
+    }
+    const described = profiles.describeAccounts(this.snapshot())
+    const now = Date.now()
+    // Why: a login that finished after Orca stopped waiting (or quit) needs no second sign-in.
+    const completed = described.accounts.flatMap((summary) => {
+      const identity =
+        !summary.email && summary.profileEmail && !summary.profileIdentityIssue
+          ? profiles.observedIdentity(summary.id)
+          : null
+      const account = identity ? this.findAccount(summary.id) : undefined
+      return identity && account
+        ? [
+            {
+              ...account,
+              email: identity.email,
+              organizationUuid: identity.organizationUuid,
+              organizationName: identity.organizationName,
+              authMethod: 'subscription-oauth' as const,
+              updatedAt: now,
+              lastAuthenticatedAt: now
+            }
+          ]
+        : []
+    })
+    if (completed.length === 0) {
+      return described
+    }
+    const ids = new Set(completed.map((account) => account.id))
+    this.store.updateSettings({
+      claudeManagedAccounts: [
+        ...this.store.getSettings().claudeManagedAccounts.filter((entry) => !ids.has(entry.id)),
+        ...completed
+      ]
+    })
+    return profiles.describeAccounts(this.snapshot())
   }
 
   async remove(accountId: string): Promise<ClaudeRateLimitAccountsState> {
@@ -74,6 +111,15 @@ export class ClaudeAccountSelection {
     let effectiveTarget = target
     if (accountId !== null) {
       const account = this.requireAccount(accountId)
+      const described = this.list().accounts.find((entry) => entry.id === accountId)
+      if (described?.profileIdentityIssue) {
+        throw new Error(
+          describeClaudeAccountIdentityIssue(
+            described.profileIdentityIssue,
+            described.profileEmail ?? described.email
+          )
+        )
+      }
       const accountTarget = getClaudeSelectionTargetForAccount(account)
       const requestedTarget = normalizeClaudeAccountSelectionTarget(target ?? accountTarget)
       const normalizedAccountTarget = normalizeClaudeAccountSelectionTarget(accountTarget)
@@ -141,10 +187,12 @@ export class ClaudeAccountSelection {
     }
   }
 
+  private findAccount(accountId: string): ClaudeManagedAccount | undefined {
+    return this.store.getSettings().claudeManagedAccounts.find((entry) => entry.id === accountId)
+  }
+
   requireAccount(accountId: string): ClaudeManagedAccount {
-    const account = this.store
-      .getSettings()
-      .claudeManagedAccounts.find((entry) => entry.id === accountId)
+    const account = this.findAccount(accountId)
     if (!account) {
       throw new Error('That Claude account no longer exists.')
     }

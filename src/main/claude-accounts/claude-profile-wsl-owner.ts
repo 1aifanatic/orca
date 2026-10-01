@@ -195,6 +195,13 @@ export function createWslClaudeProfileOwner(
         : undefined
       return inspection?.result.readiness?.[accountId] ?? 'unavailable'
     },
+    identity: (accountId) => {
+      const account = settings().claudeManagedAccounts.find((entry) => entry.id === accountId)
+      const inspection = account?.wslDistro
+        ? inspections.get(account.wslDistro.toLowerCase())
+        : undefined
+      return inspection?.result.identities?.[accountId] ?? null
+    },
     prepare: async (descriptor, access) => {
       const distro = distroFor(descriptor.target)
       const guest = guestFor(distro)
@@ -220,6 +227,7 @@ export function createWslClaudeProfileOwner(
           result: {
             ...result,
             readiness: inspections.get(distro.toLowerCase())?.result.readiness,
+            identities: inspections.get(distro.toLowerCase())?.result.identities,
             homes: inspections.get(distro.toLowerCase())?.result.homes,
             historyHomes: inspections.get(distro.toLowerCase())?.result.historyHomes
           }

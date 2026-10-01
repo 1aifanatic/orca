@@ -1,4 +1,8 @@
-import { readClaudeProfileReadiness, readClaudeProfileOwnership } from './claude-profile-readiness'
+import {
+  readClaudeProfileIdentity,
+  readClaudeProfileReadiness,
+  readClaudeProfileOwnership
+} from './claude-profile-readiness'
 import { lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
@@ -134,6 +138,15 @@ export function createNativeClaudeProfileRouting(args: {
         args.dataRoot,
         describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
       )
+    },
+    identity: (id) => {
+      const account = accountFor(id)
+      return account && account.managedAuthRuntime !== 'wsl'
+        ? readClaudeProfileIdentity(
+            args.dataRoot,
+            describeClaudeProfile(args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
+          )
+        : null
     },
     prepare: async (descriptor) => {
       if (!descriptor.profile) {

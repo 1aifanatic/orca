@@ -37,13 +37,26 @@ function fixture() {
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
-  const identity = {
+  const identity: {
+    loggedIn: true
+    email: string
+    organizationUuid: undefined
+    organizationName: undefined
+  } = {
     loggedIn: true as const,
     email: 'fake@example.test',
     organizationUuid: undefined,
     organizationName: undefined
   }
   const login = vi.fn(async () => identity)
+  const readIdentity = vi.fn(async () => ({ ...identity }))
+  const observeIdentity = vi.fn(
+    async (): Promise<{
+      email: string
+      organizationUuid: string | null
+      organizationName: string | null
+    } | null> => null
+  )
   const publish = vi.fn(async () => {})
   const provision = vi.fn(async () => {})
   const prepare = vi.fn(async (id: string) => ({
@@ -74,9 +87,20 @@ function fixture() {
     setCancel: vi.fn(),
     prepare,
     login,
-    readIdentity: async () => identity
+    readIdentity,
+    observeIdentity
   })
-  return { root, settings, login, publish, prepare, registration }
+  return {
+    root,
+    settings,
+    identity,
+    login,
+    publish,
+    prepare,
+    readIdentity,
+    observeIdentity,
+    registration
+  }
 }
 it('enables profile routing', () => expect(claudeProfileRoutingEnabled()).toBe(true))
 it('retains a recoverable draft when login is interrupted, then retries the same final home', async () => {
@@ -277,10 +301,47 @@ it('does not let publication bookkeeping block signing in to a recoverable draft
   expect(f.settings.claudeManagedAccounts[0].email).toBe('fake@example.test')
 })
 
-it('retains a duplicate login as a recoverable draft instead of deleting either profile', async () => {
+it('retains a duplicate login under its own name instead of deleting either profile', async () => {
   const f = fixture()
   await f.registration.add()
-  await expect(f.registration.add()).rejects.toThrow('already added')
-  expect(f.settings.claudeManagedAccounts).toHaveLength(2)
-  expect(f.settings.claudeManagedAccounts.filter((account) => account.email === '')).toHaveLength(1)
+  await expect(f.registration.add()).rejects.toThrow(
+    'fake@example.test is already added as another account. Remove this row, or sign in again with a different account.'
+  )
+  expect(f.settings.claudeManagedAccounts.map((account) => account.email)).toEqual([
+    'fake@example.test',
+    'fake@example.test'
+  ])
+})
+it('names the login a re-sign-in actually used, even when another row already has it', async () => {
+  const f = fixture()
+  await f.registration.add()
+  const first = f.settings.claudeManagedAccounts[0]
+  f.settings.claudeManagedAccounts.push({ ...first, id: 'other', email: 'other@example.test' })
+  f.identity.email = 'other@example.test'
+  await expect(f.registration.reauthenticate(first.id)).rejects.toThrow(
+    'Signed in as other@example.test, which is already added as another account. Sign in again as fake@example.test, or remove this row.'
+  )
+  expect(f.settings.claudeManagedAccounts.find((entry) => entry.id === first.id)?.email).toBe(
+    'other@example.test'
+  )
+})
+it("reads the login from the profile's own state when the status output is unreadable", async () => {
+  const f = fixture()
+  f.readIdentity.mockRejectedValue(new SyntaxError('Unexpected token w in JSON'))
+  f.observeIdentity.mockResolvedValue({
+    email: 'observed@example.test',
+    organizationUuid: 'org',
+    organizationName: 'Org'
+  })
+  await f.registration.add()
+  expect(f.settings.claudeManagedAccounts[0]).toMatchObject({
+    email: 'observed@example.test',
+    organizationUuid: 'org'
+  })
+  f.observeIdentity.mockResolvedValue(null)
+  await expect(
+    f.registration.reauthenticate(f.settings.claudeManagedAccounts[0].id)
+  ).rejects.toThrow(
+    'Claude sign-in finished, but Orca could not tell which account it used. Try Sign in again.'
+  )
 })

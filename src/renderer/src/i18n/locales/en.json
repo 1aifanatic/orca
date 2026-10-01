@@ -18687,7 +18687,9 @@
       "draft": "Unfinished sign-in",
       "signInRequired": "Sign in again to use this account",
       "unavailable": "Account unavailable. Try again when its host is reachable.",
-      "signInAgain": "Sign in again"
+      "signInAgain": "Sign in again",
+      "identityDuplicate": "{{value0}} is already added as another account. Sign in again with a different account, or remove this row.",
+      "identityMismatch": "This account was added as {{value0}} but is now signed in as {{value1}}. Sign in again to choose which account it uses."
     }
   }
 }

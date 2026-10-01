@@ -9,6 +9,11 @@ export function withWslClaudeProfileOwner(
 ): ClaudeProfileRoutingOwner {
   const forTarget = (target?: ClaudeAccountSelectionTarget) =>
     target?.runtime === 'wsl' ? wsl : native
+  const ownerOf = (id: string) =>
+    settings().claudeManagedAccounts.find((account) => account.id === id)?.managedAuthRuntime ===
+    'wsl'
+      ? wsl
+      : native
   return {
     refresh: (target, access) => forTarget(target).refresh?.(target, access) ?? Promise.resolve(),
     resolve: (target) => forTarget(target).resolve(target),
@@ -28,12 +33,8 @@ export function withWslClaudeProfileOwner(
       }
       return home
     },
-    readiness: (id) =>
-      (settings().claudeManagedAccounts.find((account) => account.id === id)?.managedAuthRuntime ===
-      'wsl'
-        ? wsl
-        : native
-      ).readiness(id),
+    readiness: (id) => ownerOf(id).readiness(id),
+    identity: (id) => ownerOf(id).identity?.(id) ?? null,
     prepare: (descriptor, access) => forTarget(descriptor.target).prepare(descriptor, access),
     trust: (descriptor, workspace, access) =>
       forTarget(descriptor.target).trust?.(descriptor, workspace, access) ?? Promise.resolve(),

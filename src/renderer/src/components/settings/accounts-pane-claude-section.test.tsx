@@ -84,4 +84,28 @@ describe('Claude accounts section', () => {
     expect(removes).toHaveLength(4)
     expect(removes.filter((button) => button.includes('disabled=""'))).toEqual([])
   })
+
+  it('names the login each profile holds and blocks selecting a row holding another login', () => {
+    const markup = render({
+      accounts: [
+        account('mismatch', 'a@example.test', {
+          profileEmail: 'b@example.test',
+          profileIdentityIssue: 'mismatch'
+        }),
+        account('duplicate', 'c@example.test', {
+          profileEmail: 'c@example.test',
+          profileIdentityIssue: 'duplicate'
+        }),
+        account('ready', 'ok@example.test', { profileEmail: 'ok@example.test' })
+      ]
+    })
+    expect(markup).toContain(
+      'This account was added as a@example.test but is now signed in as b@example.test.'
+    )
+    expect(markup).toContain('c@example.test is already added as another account.')
+    const selects = [
+      ...markup.matchAll(/<button type="button"[^>]*class="flex min-w-0 flex-1[^"]*"[^>]*>/g)
+    ]
+    expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([true, true, false])
+  })
 })

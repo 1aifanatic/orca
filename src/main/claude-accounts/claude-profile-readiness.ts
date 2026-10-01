@@ -49,40 +49,83 @@ export function readClaudeProfileReadiness(
   if (ownership !== 'ready') {
     return ownership
   }
-  return readClaudeIdentityReadiness(join(profile.home, '.claude.json'))
+  return readClaudeLoginState(join(profile.home, '.claude.json')).readiness
 }
 
+/** The login Claude itself recorded in an owned profile; read-only and never a credential. */
+export function readClaudeProfileIdentity(
+  dataRoot: string,
+  profile: ClaudeProfileDescriptor
+): ClaudeLoginIdentity | null {
+  return readClaudeProfileOwnership(dataRoot, profile) === 'ready'
+    ? readClaudeLoginState(join(profile.home, '.claude.json')).identity
+    : null
+}
+
+export type ClaudeLoginIdentity = {
+  email: string
+  organizationUuid: string | null
+  organizationName: string | null
+}
+
+type ClaudeLoginState = { readiness: ClaudeProfileReadiness; identity: ClaudeLoginIdentity | null }
+
 // Why: Claude's state file grows with history and readiness runs on every resolve.
-const parsedIdentities = new Map<
+const parsedLoginStates = new Map<
   string,
-  { mtimeMs: number; size: number; ino: number; readiness: ClaudeProfileReadiness }
+  { mtimeMs: number; size: number; ino: number; state: ClaudeLoginState }
 >()
 
-function readClaudeIdentityReadiness(file: string): ClaudeProfileReadiness {
+/** Reads a Claude state file's `oauthAccount`; present/absent/unavailable, parsed once per change. */
+export function readClaudeLoginState(file: string): ClaudeLoginState {
   let stat: Stats
   try {
     stat = statSync(file)
   } catch (error) {
-    parsedIdentities.delete(file)
-    return isDefinitiveAbsence(error) ? 'sign-in-required' : 'unavailable'
+    parsedLoginStates.delete(file)
+    return {
+      readiness: isDefinitiveAbsence(error) ? 'sign-in-required' : 'unavailable',
+      identity: null
+    }
   }
-  const cached = parsedIdentities.get(file)
+  const cached = parsedLoginStates.get(file)
   if (cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size && cached.ino === stat.ino) {
-    return cached.readiness
+    return cached.state
   }
-  const state = readClaudeProfileObject(file)
-  if (state.kind !== 'present') {
-    parsedIdentities.delete(file)
-    return state.kind === 'absent' ? 'sign-in-required' : 'unavailable'
+  const read = readClaudeProfileObject(file)
+  if (read.kind !== 'present') {
+    parsedLoginStates.delete(file)
+    return {
+      readiness: read.kind === 'absent' ? 'sign-in-required' : 'unavailable',
+      identity: null
+    }
   }
-  const { oauthAccount } = state.value
-  const readiness =
-    oauthAccount == null
-      ? 'sign-in-required'
-      : typeof oauthAccount === 'object' && !Array.isArray(oauthAccount)
-        ? 'ready'
-        : 'unavailable'
+  const state = loginStateFrom(read.value.oauthAccount)
   // Only a parsed file is remembered; a failed read is retried next time.
-  parsedIdentities.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino, readiness })
-  return readiness
+  parsedLoginStates.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino, state })
+  return state
+}
+
+function loginStateFrom(oauthAccount: unknown): ClaudeLoginState {
+  if (oauthAccount == null) {
+    return { readiness: 'sign-in-required', identity: null }
+  }
+  if (typeof oauthAccount !== 'object' || Array.isArray(oauthAccount)) {
+    return { readiness: 'unavailable', identity: null }
+  }
+  const text = (key: string): string | null => {
+    const value: unknown = Reflect.get(oauthAccount, key)
+    return typeof value === 'string' && value.trim() ? value.trim() : null
+  }
+  const email = text('emailAddress')
+  return {
+    readiness: 'ready',
+    identity: email
+      ? {
+          email,
+          organizationUuid: text('organizationUuid'),
+          organizationName: text('organizationName')
+        }
+      : null
+  }
 }

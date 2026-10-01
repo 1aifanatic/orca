@@ -12,6 +12,7 @@ import {
 } from './provider-account-visibility'
 import { formatAccountTimestamp, getClaudeAccountRuntimeLabel } from './accounts-pane-runtime'
 import type { AccountsPaneSectionModel } from './accounts-pane-types'
+import { getClaudeAccountRowState } from '@/lib/claude-account-row-state'
 
 export type ClaudeAccountsSectionModel = Pick<
   AccountsPaneSectionModel,
@@ -216,6 +217,7 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
               )
               const isReauthing = claudeAction === `reauth:${account.id}`
               const isBusy = claudeAction !== 'idle' || accountRuntimeUnavailable
+              const row = getClaudeAccountRowState(account)
 
               return (
                 <div
@@ -241,18 +243,11 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                           accountRuntimeView
                         )
                       }}
-                      disabled={
-                        isBusy ||
-                        (account.profileReadiness !== undefined &&
-                          account.profileReadiness !== 'ready')
-                      }
+                      disabled={isBusy || !row.selectable}
                       className="flex min-w-0 flex-1 flex-col gap-0.5 text-left disabled:cursor-default"
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-medium">
-                          {account.email ||
-                            translate('accounts.claude.draft', 'Unfinished sign-in')}
-                        </span>
+                        <span className="truncate text-sm font-medium">{row.label}</span>
                         <Badge
                           variant="outline"
                           className="h-4 shrink-0 rounded px-1.5 text-[10px] font-medium leading-none text-foreground/70"
@@ -271,21 +266,15 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                           </Badge>
                         ) : null}
                       </div>
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {account.profileReadiness === 'sign-in-required'
-                          ? translate(
-                              'accounts.claude.signInRequired',
-                              'Sign in again to use this account'
-                            )
-                          : account.profileReadiness === 'unavailable'
-                            ? translate(
-                                'accounts.claude.unavailable',
-                                'Account unavailable. Try again when its host is reachable.'
-                              )
-                            : account.organizationName
-                              ? `${account.organizationName} · ${formatAccountTimestamp(account.lastAuthenticatedAt)}`
-                              : formatAccountTimestamp(account.lastAuthenticatedAt)}
-                      </span>
+                      {row.problem ? (
+                        <span className="text-[11px] text-muted-foreground">{row.problem}</span>
+                      ) : (
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {account.organizationName
+                            ? `${account.organizationName} · ${formatAccountTimestamp(account.lastAuthenticatedAt)}`
+                            : formatAccountTimestamp(account.lastAuthenticatedAt)}
+                        </span>
+                      )}
                     </button>
                     <div className="flex shrink-0 items-center justify-end gap-1 max-md:w-full max-md:flex-wrap">
                       <Button

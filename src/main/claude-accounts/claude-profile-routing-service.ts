@@ -14,8 +14,10 @@ import {
 } from './claude-profile-routing-owner'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
-import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import type { ClaudeEnvPatch } from './environment'
+import { withObservedClaudeIdentities } from './claude-account-identity'
+import { provisionClaudeLaunchProfile } from './claude-profile-launch-provisioning'
+import type { ClaudeLoginIdentity } from './claude-profile-readiness'
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
@@ -69,7 +71,7 @@ export class ClaudeProfileRoutingService {
         descriptor.profile &&
         (provisioning === 'always' || !this.owner.isProvisioned(descriptor))
       ) {
-        await this.provision(descriptor, access)
+        await provisionClaudeLaunchProfile(this.owner, descriptor, access)
       }
       if (this.resolve(target).configHome !== descriptor.configHome) {
         throw new Error('Claude account changed while preparing its profile; retry')
@@ -148,26 +150,6 @@ export class ClaudeProfileRoutingService {
       )
     } catch {
       return false
-    }
-  }
-  /** Ownership refusal stops the caller; a worker fault on an already prepared profile only warns. */
-  private async provision(
-    descriptor: ClaudeProfileLaunchDescriptor,
-    access: ClaudeProfileHostAccess
-  ): Promise<void> {
-    const provisioned = this.owner.isProvisioned(descriptor)
-    let report: ClaudeProfileSetupReport
-    try {
-      report = await this.owner.prepare(descriptor, access)
-    } catch (error) {
-      if (!provisioned || descriptor.target.runtime === 'wsl') {
-        throw error
-      }
-      console.warn('[claude-profile] Setup failed; launching the already prepared profile:', error)
-      return
-    }
-    if (report.outcome === 'refused') {
-      throw new Error('Selected Claude profile could not be prepared')
     }
   }
   /** Part of a Claude launch, so it may boot the distro the launch just prepared. */
@@ -260,6 +242,12 @@ export class ClaudeProfileRoutingService {
       ...(home ? { CLAUDE_CONFIG_DIR: home, [CLAUDE_INJECTED_CONFIG_DIR_ENV]: home } : {})
     }
   }
+  /** The login Claude recorded in the account's profile, as last read; never a credential. */
+  observedIdentity(accountId: string): ClaudeLoginIdentity | null {
+    return this.owner.readiness(accountId) === 'ready'
+      ? (this.owner.identity?.(accountId) ?? null)
+      : null
+  }
   async refreshForRead(target?: ClaudeAccountSelectionTarget): Promise<void> {
     await this.owner.refresh?.(target, 'if-running')
   }
@@ -275,10 +263,7 @@ export class ClaudeProfileRoutingService {
   }
   /** Never throws: readiness is per account, and a stale pointer is republished in the background. */
   describeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {
-    const accounts = state.accounts.map((account) => ({
-      ...account,
-      profileReadiness: this.owner.readiness(account.id)
-    }))
+    const accounts = withObservedClaudeIdentities(state.accounts, this.owner)
     const issues = this.currentPublishIssues()
     if (this.pointerIsCurrent()) {
       return { ...state, accounts, ...(issues ? { profileRoutingIssue: issues } : {}) }

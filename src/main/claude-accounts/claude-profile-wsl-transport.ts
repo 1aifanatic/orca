@@ -24,6 +24,16 @@ import {
 const responseSchema = z.object({
   ready: z.boolean(),
   readiness: z.record(z.string(), z.enum(['ready', 'sign-in-required', 'unavailable'])).optional(),
+  identities: z
+    .record(
+      z.string(),
+      z.object({
+        email: z.string().min(1),
+        organizationUuid: z.string().nullable(),
+        organizationName: z.string().nullable()
+      })
+    )
+    .optional(),
   provisioned: z.boolean(),
   homes: z.array(z.string().startsWith('/')).optional(),
   historyHomes: z

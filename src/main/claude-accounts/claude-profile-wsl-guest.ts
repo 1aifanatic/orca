@@ -1,4 +1,4 @@
-import { readClaudeProfileReadiness } from './claude-profile-readiness'
+import { readClaudeProfileIdentity, readClaudeProfileReadiness } from './claude-profile-readiness'
 import { lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { z } from 'zod'
@@ -127,21 +127,29 @@ export async function runClaudeWslProfileRequest(request: ClaudeWslProfileReques
       })
       historyHomes[surface] = [...new Set(roots)]
     }
-    const readiness = Object.fromEntries(
-      (request.accountIds ?? (accountId ? [accountId] : [])).map((id) => [
-        id,
-        readClaudeProfileReadiness(
-          dataRoot,
+    const profiles = (request.accountIds ?? (accountId ? [accountId] : [])).map(
+      (id) =>
+        [
+          id,
           describeClaudeProfile(dataRoot, id, { executionHostId: 'local', runtime: 'wsl', distro })
-        )
-      ])
+        ] as const
+    )
+    const readiness = Object.fromEntries(
+      profiles.map(([id, entry]) => [id, readClaudeProfileReadiness(dataRoot, entry)])
+    )
+    const identities = Object.fromEntries(
+      profiles.flatMap(([id, entry]) => {
+        const identity = readClaudeProfileIdentity(dataRoot, entry)
+        return identity ? [[id, identity]] : []
+      })
     )
     return {
       ready: accountId ? readiness[accountId] === 'ready' : true,
       provisioned,
       homes,
       historyHomes,
-      readiness
+      readiness,
+      identities
     }
   }
   if (!ready && request.action !== 'create') {

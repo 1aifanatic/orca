@@ -83,6 +83,10 @@ export type ClaudeManagedAccountSummary = {
   lastAuthenticatedAt: number
   /** Set only by a host that routes Claude through account profiles. */
   profileReadiness?: ClaudeProfileReadiness
+  /** The login Claude itself recorded in this account's profile, when readable. */
+  profileEmail?: string
+  /** Set when the profile's login is not the row's own, so the row must not be selected. */
+  profileIdentityIssue?: 'mismatch' | 'duplicate'
 }
 
 export type ClaudeProfileReadiness = 'ready' | 'sign-in-required' | 'unsupported' | 'unavailable'

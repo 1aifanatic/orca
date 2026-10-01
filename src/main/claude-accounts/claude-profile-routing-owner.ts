@@ -1,6 +1,7 @@
 import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import type { ClaudeProfileDescriptor } from './claude-profile-paths'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
+import type { ClaudeLoginIdentity } from './claude-profile-readiness'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 
 export type ClaudeProfileLaunchDescriptor = {
@@ -33,6 +34,8 @@ export type ClaudeProfileRoutingOwner = {
   isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
   accountHome?: (accountId: string) => string
   readiness: (accountId: string) => ClaudeProfileReadiness
+  /** The login Claude recorded in the account's profile, from the same read as readiness. */
+  identity?: (accountId: string) => ClaudeLoginIdentity | null
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
   prepare: (
     descriptor: ClaudeProfileLaunchDescriptor,
