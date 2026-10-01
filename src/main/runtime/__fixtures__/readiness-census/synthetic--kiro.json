@@ -1,5 +1,5 @@
 {
-  "description": "kiro: title x first-party status on a painted screen; screen x foreground under the titles that leave the low lanes open. Each read clocked and clockless.",
+  "description": "kiro: title x first-party status on a painted screen; screen x foreground under the titles that leave the low lanes open; dialog order x title. Each read clocked and clockless.",
   "cases": {
     "title=working-spinner status=none screen=present fg=agent clock=clocked": "now=working edge=working quiet=working wait=pending",
     "title=working-spinner status=none screen=present fg=agent clock=clockless": "verdict=working wait=pending",
@@ -62,6 +62,18 @@
     "title=none status=none screen=absent fg=agent clock=clocked": "now=pending:after-paint edge=pending:after-paint quiet=pending:after-paint wait=pending",
     "title=none status=none screen=absent fg=agent clock=clockless": "verdict=pending:after-paint wait=pending",
     "title=none status=none screen=absent fg=shell clock=clocked": "now=pending:after-paint edge=pending:after-paint quiet=pending:after-paint wait=pending",
-    "title=none status=none screen=absent fg=shell clock=clockless": "verdict=pending:after-paint wait=pending"
+    "title=none status=none screen=absent fg=shell clock=clockless": "verdict=pending:after-paint wait=pending",
+    "title=working-spinner status=none screen=dialog-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=working-spinner status=none screen=dialog-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=working-spinner status=none screen=ready-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=working-spinner status=none screen=ready-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=name-only status=none screen=dialog-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=name-only status=none screen=dialog-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=name-only status=none screen=ready-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=name-only status=none screen=ready-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=none status=none screen=dialog-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=none status=none screen=dialog-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=none status=none screen=ready-last fg=agent clock=clocked": "now=blocked:agent-trust-workspace edge=blocked:agent-trust-workspace quiet=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start",
+    "title=none status=none screen=ready-last fg=agent clock=clockless": "verdict=blocked:agent-trust-workspace wait=blocked:agent-trust-workspace@start"
   }
 }

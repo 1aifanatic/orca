@@ -17,7 +17,7 @@ describe('readiness census: synthetic evidence matrix', () => {
     }
     const diff = checkCensusCases(
       `synthetic/${agent}`,
-      `${agent}: title x first-party status on a painted screen; screen x foreground under the titles that leave the low lanes open. Each read clocked and clockless.`,
+      `${agent}: title x first-party status on a painted screen; screen x foreground under the titles that leave the low lanes open; dialog order x title. Each read clocked and clockless.`,
       observations
     )
     expect(diff).toBe('')

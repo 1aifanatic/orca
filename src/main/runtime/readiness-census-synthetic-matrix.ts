@@ -25,8 +25,9 @@ type StatusVariant =
   | 'blocked-fresh'
   | 'blocked-stale'
 /** present: painted on the PTY's grid. untrusted: painted, but the PTY reports another grid.
- *  absent: nothing painted. */
-type ScreenVariant = 'present' | 'untrusted' | 'absent'
+ *  absent: nothing painted. dialog-last / ready-last: a workspace-trust dialog painted after,
+ *  or before, the ready screen (blocked arbitration is by text position). */
+type ScreenVariant = 'present' | 'untrusted' | 'absent' | 'dialog-last' | 'ready-last'
 type ForegroundVariant = 'agent' | 'shell'
 
 type SyntheticCase = {
@@ -98,6 +99,8 @@ const READY_SCREEN_FIXTURES: Partial<
 }
 
 const NEUTRAL_COMPOSER = '\x1b[2J\x1b[H╭────╮\r\n│ >  │\r\n╰────╯'
+const TRUST_DIALOG =
+  '\r\nDo you trust the files in this folder?\r\n❯ 1. Yes, proceed\r\n  2. No, exit\r\n'
 
 // Why strip titles and statuses: the matrix's own title and status variants must be the only ones.
 // oxlint-disable-next-line no-control-regex -- OSC sequences are delimited by ESC and BEL.
@@ -118,8 +121,9 @@ function readyScreen(agent: TuiAgent): ReadyScreen {
  * painted screen with the agent in the foreground. Screen trust, foreground and clock only gate
  * the lower lanes (quiet ready screen, screen-decides gate, weak title, quiet process), which run
  * only when no title or status decided, so they are fully crossed under the two titles that
- * leave those lanes open (name-only, none). The clock is crossed everywhere: each case is read
- * both clocked and clockless.
+ * leave those lanes open (name-only, none). A blocking dialog outranks every title, and which
+ * of dialog and ready screen came last decides it, so both orders are crossed with every title.
+ * The clock is crossed everywhere: each case is read both clocked and clockless.
  */
 export function syntheticCases(agent: TuiAgent): SyntheticCase[] {
   const cases = new Map<string, SyntheticCase>()
@@ -140,7 +144,26 @@ export function syntheticCases(agent: TuiAgent): SyntheticCase[] {
       }
     }
   }
+  for (const title of TITLE_VARIANTS) {
+    for (const screen of ['dialog-last', 'ready-last'] as const) {
+      add({ title, status: 'none', screen, foreground: 'agent' })
+    }
+  }
   return [...cases.values()]
+}
+
+function screenChunks(variant: ScreenVariant, screen: ReadyScreen): readonly string[] {
+  switch (variant) {
+    case 'absent':
+      return []
+    case 'dialog-last':
+      return [...screen.chunks, TRUST_DIALOG]
+    case 'ready-last':
+      return [TRUST_DIALOG, ...screen.chunks]
+    case 'present':
+    case 'untrusted':
+      return screen.chunks
+  }
 }
 
 function caseLabel(entry: SyntheticCase): string {
@@ -177,10 +200,8 @@ export async function runSyntheticCase(
     await feedPane(runtime, statusOsc(agent, state), at)
     at += AGENT_STATUS_STALE_AFTER_MS + 60_000
   }
-  if (entry.screen !== 'absent') {
-    for (const chunk of screen.chunks) {
-      await feedPane(runtime, chunk, at)
-    }
+  for (const chunk of screenChunks(entry.screen, screen)) {
+    await feedPane(runtime, chunk, at)
   }
   const title = titleFor(agent, entry.title)
   if (title) {
