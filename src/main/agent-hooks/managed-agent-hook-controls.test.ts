@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   statusCodex: vi.fn(),
   refreshClaude: vi.fn(),
   refreshCodex: vi.fn(),
-  enableCodex: vi.fn(),
+  syncCodex: vi.fn(),
+  prepareCodexStatus: vi.fn(async () => {}),
   probeClaudeVersion: vi.fn()
 }))
 
@@ -45,11 +46,13 @@ vi.mock('./managed-agent-hook-registry', () => ({
     ['claude', mocks.refreshClaude],
     ['codex', mocks.refreshCodex]
   ],
-  MANAGED_AGENT_HOOK_ENABLERS: [['codex', mocks.enableCodex]]
+  MANAGED_AGENT_HOOK_SETTING_SYNCS: [['codex', mocks.syncCodex]],
+  MANAGED_AGENT_HOOK_STATUS_PREPARERS: [['codex', mocks.prepareCodexStatus]]
 }))
 
 import {
   applyAgentStatusHooksEnabled,
+  readManagedAgentHookStatuses,
   installManagedAgentHooks,
   removeManagedAgentHooksAsync,
   resolveStartupManagedHookAction,
@@ -281,37 +284,19 @@ describe('managed agent hook controls', () => {
   })
 
   // Why: a codex installed later must still find Codex hooks on when it first misses.
-  it("turns Codex's hooks on even when the codex CLI is not found", async () => {
+  it("syncs Codex's hooks on even when the codex CLI is not found", async () => {
     mocks.detect.mockResolvedValue({})
 
     await applyAgentStatusHooksEnabled(true, { agentCmdOverrides: {} })
 
-    expect(mocks.enableCodex).toHaveBeenCalledTimes(1)
+    expect(mocks.syncCodex).toHaveBeenCalledWith(true)
     expect(mocks.installCodex).not.toHaveBeenCalled()
   })
 
-  // Why the order: launches between ON and the slow install must already find the table.
-  it("turns Codex's hooks on before its installer runs", async () => {
-    mocks.detect.mockResolvedValue({ codex: { state: 'found' } })
-    const order: string[] = []
-    mocks.enableCodex.mockImplementation(() => order.push('enable'))
-    mocks.detect.mockImplementation(async () => {
-      order.push('detect')
-      return { codex: { state: 'found' } }
-    })
-    mocks.installCodex.mockImplementation(() => {
-      order.push('install')
-      return status('codex', 'installed')
-    })
-
-    await applyAgentStatusHooksEnabled(true, { agentCmdOverrides: {} })
-
-    expect(order).toEqual(['enable', 'detect', 'install'])
-  })
-
-  it('does not turn on a disabled agent, or one a newer update turned off', async () => {
+  it('syncs Codex off for the global switch, a disabled Codex, or a newer update that turned it off', async () => {
     mocks.detect.mockResolvedValue({})
 
+    await applyAgentStatusHooksEnabled(false)
     await applyAgentStatusHooksEnabled(true, {
       agentCmdOverrides: {},
       disabledTuiAgents: ['codex']
@@ -321,9 +306,26 @@ describe('managed agent hook controls', () => {
       { agentCmdOverrides: {} },
       { shouldContinue: (agent) => agent !== 'codex' }
     )
-    await applyAgentStatusHooksEnabled(false)
 
-    expect(mocks.enableCodex).not.toHaveBeenCalled()
+    expect(mocks.syncCodex.mock.calls).toEqual([[false], [false], [false]])
+  })
+
+  it('learns what status depends on before reading it', async () => {
+    const order: string[] = []
+    mocks.prepareCodexStatus.mockImplementation(async () => {
+      // Why after a tick: the CLI's version probe answers asynchronously.
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      order.push('prepare')
+    })
+    mocks.statusCodex.mockImplementation(() => {
+      order.push('status')
+      return status('codex', 'installed')
+    })
+    mocks.statusClaude.mockReturnValue(status('claude', 'installed'))
+
+    await readManagedAgentHookStatuses()
+
+    expect(order).toEqual(['prepare', 'status'])
   })
 
   it('removes every managed hook when the global setting is off', async () => {

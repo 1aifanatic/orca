@@ -7,12 +7,11 @@ import { CODEX_SHARED_SERVER_ARGS, codexArgsOverrideHooks } from '../../shared/c
 import {
   codexHookFlagTableExists,
   readCodexHookFlagEntry,
-  requestCodexHookFlagEntry,
   resolveCodexProbePath,
   type CodexHookFlagEntry
 } from '../codex/codex-hook-flag-table'
 import { codexHomeHoldsOrcaFileEntry } from '../codex/codex-hook-file-entry-probe'
-import { nudgeCodexHookFlagRequests } from '../codex/codex-hook-flag-requests'
+import { syncCodexHookFlags } from '../codex/codex-hook-flag-sync'
 
 const CODEX_EXECUTABLE = /^codex(\.(exe|cmd|bat|ps1))?$/i
 const SHARED_SERVER_ARGS: ReadonlySet<string> = new Set(CODEX_SHARED_SERVER_ARGS)
@@ -111,7 +110,7 @@ function quoteHookFlag(flag: string, shell: 'posix' | 'powershell' | 'cmd'): str
   return shell === 'cmd' ? `"${flag}"` : quoteStartupArg(flag, shell)
 }
 
-/** The table entry for the version this binary reports; a miss asks Orca to derive one. */
+/** The table entry for the version this binary reports; a miss syncs for this binary. */
 async function readHookFlagEntryFor(
   executable: string,
   table: string,
@@ -140,10 +139,9 @@ async function readHookFlagEntryFor(
       return entry
     }
   }
-  const lastVersion = versions.at(-1)
-  if (lastVersion) {
-    requestCodexHookFlagEntry(lastVersion, program, table)
-    nudgeCodexHookFlagRequests()
+  // Why: Orca derives this binary's entry, so a later launch carries it.
+  if (versions.length > 0) {
+    void syncCodexHookFlags({ codexPath: program })
   }
   return null
 }

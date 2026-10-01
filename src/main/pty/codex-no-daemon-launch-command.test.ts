@@ -1,7 +1,10 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+const { syncCodexHookFlags } = vi.hoisted(() => ({ syncCodexHookFlags: vi.fn(async () => {}) }))
+vi.mock('../codex/codex-hook-flag-sync', () => ({ syncCodexHookFlags }))
+
 import { planCodexNoDaemonLaunch, type LocalCodexLaunch } from './codex-no-daemon-launch-command'
 import { publishCodexHookFlagEntry } from '../codex/codex-hook-flag-table'
 
@@ -156,8 +159,9 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
 
   it('never carries another version’s entry, and asks Orca for its own', async () => {
     const codex = writeVersionedCodex('codex-cli 9.9.10')
+    syncCodexHookFlags.mockClear()
     await expect(plan(`${codex} resume --last`)).resolves.toBe(`${codex} resume --last`)
-    expect(readFileSync(join(table, 'codex-cli 9.9.10.request'), 'utf-8').trim()).toBe(codex)
+    expect(syncCodexHookFlags).toHaveBeenCalledWith({ codexPath: codex })
   })
 
   it('carries nothing into a home that still holds an Orca file entry', async () => {

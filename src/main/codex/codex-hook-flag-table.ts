@@ -228,26 +228,6 @@ export function resolveCodexProbePath(codexPath: string): string {
   return existsSync(sibling) ? sibling : codexPath
 }
 
-/** What an Orca-side launch writes on a miss, the same request a pane's codex function writes. */
-export function requestCodexHookFlagEntry(
-  codexVersion: string,
-  codexPath: string,
-  table = getCodexHookFlagTablePath()
-): void {
-  if (!isCodexHookFlagEntryName(codexVersion)) {
-    return
-  }
-  try {
-    writeFileSync(
-      join(table, `${codexVersion}${CODEX_HOOK_FLAG_REQUEST_SUFFIX}`),
-      `${codexPath}\n`,
-      'utf-8'
-    )
-  } catch {
-    // Why: a missing table means no Orca is listening; the next start derives anyway.
-  }
-}
-
 /** Reads and deletes every pending request. Unusable names and anything but a file are skipped. */
 export function takeCodexHookFlagRequests(
   table = getCodexHookFlagTablePath()

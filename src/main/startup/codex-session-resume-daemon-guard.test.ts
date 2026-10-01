@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   removeRealHomeCodexHookEntries: vi.fn(async () => 'removed' as const),
   prepareCodexSessionResume: vi.fn(),
   prepareLegacySharedCodexSessionResume: vi.fn(),
-  awaitCodexHookSessionFlags: vi.fn(async () => {})
+  syncCodexHookFlagsWithin: vi.fn(async () => {})
 }))
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/orca-user-data') } }))
@@ -37,8 +37,8 @@ vi.mock('../codex/codex-home-paths', async (importOriginal) => ({
   getSystemCodexHomePath: () => mocks.systemHomePath,
   getOrcaManagedCodexHomePath: () => mocks.sharedHomePath
 }))
-vi.mock('../codex/codex-hook-session-trust', () => ({
-  awaitCodexHookSessionFlags: mocks.awaitCodexHookSessionFlags
+vi.mock('../codex/codex-hook-flag-sync', () => ({
+  syncCodexHookFlagsWithin: mocks.syncCodexHookFlagsWithin
 }))
 vi.mock('../codex/codex-session-resume-preparation', () => ({
   prepareCodexSessionResume: mocks.prepareCodexSessionResume
@@ -149,11 +149,11 @@ describe('Codex session resume daemon socket guard', () => {
   })
 
   // Why: at a cold restore the resume can beat the start's derivation of the flag it needs.
-  it('waits, bounded, for a flag derivation in flight before resuming while hooks are on', async () => {
+  it('syncs the flags, waiting at most 3 s, before resuming while hooks are on', async () => {
     mocks.hooksEnabled = true
     mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ agent: 'codex', state: 'installed' })
     let settle!: () => void
-    mocks.awaitCodexHookSessionFlags.mockImplementation(
+    mocks.syncCodexHookFlagsWithin.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           settle = resolve
@@ -169,7 +169,7 @@ describe('Codex session resume daemon socket guard', () => {
     settle()
     await pending
 
-    expect(mocks.awaitCodexHookSessionFlags).toHaveBeenCalledWith(3_000)
+    expect(mocks.syncCodexHookFlagsWithin).toHaveBeenCalledWith(3_000)
   })
 
   it('does not wait for a flag while Codex hooks are off', async () => {
@@ -177,6 +177,6 @@ describe('Codex session resume daemon socket guard', () => {
 
     await resume()
 
-    expect(mocks.awaitCodexHookSessionFlags).not.toHaveBeenCalled()
+    expect(mocks.syncCodexHookFlagsWithin).not.toHaveBeenCalled()
   })
 })

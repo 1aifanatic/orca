@@ -1,5 +1,5 @@
 import { getCodexHookFlagTablePath } from '../../../codex/codex-hook-flag-table'
-import { nudgeCodexHookFlagRequests } from '../../../codex/codex-hook-flag-requests'
+import { scheduleCodexHookFlagSync } from '../../../codex/codex-hook-flag-sync'
 import { ORCA_CODEX_HOOK_FLAGS_ENV } from '../../../../shared/codex-shell-function'
 import {
   getCodexCmdHookFlagGateEnvValue,
@@ -27,8 +27,8 @@ export function applyCodexHookSessionFlagEnv(
     return
   }
   baseEnv[ORCA_CODEX_HOOK_FLAGS_ENV] = getCodexHookFlagTablePath()
-  // Why each spawn: a request the file watch missed is served before this pane's codex runs again.
-  nudgeCodexHookFlagRequests()
+  // Why each spawn: serves a request the file watch missed, and a codex installed or updated meanwhile.
+  scheduleCodexHookFlagSync()
   if (process.platform === 'win32') {
     baseEnv[ORCA_CODEX_HOOK_GATE_ENV] = getCodexCmdHookFlagGateEnvValue()
   } else {

@@ -4,18 +4,15 @@ import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-script-refresh'
-import { writeManagedScript } from '../agent-hooks/installer-utils'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getManagedScriptPath } from './codex-hook-definition'
-import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 import {
-  getCodexHookSessionFlagFailure,
-  getDefaultCodexHookFlagVersion,
-  refreshCodexHookSessionFlags
-} from './codex-hook-session-trust'
-import { reconcileCodexHookFlagTable } from './codex-hook-flag-requests'
+  getKnownCodexHookFlag,
+  learnCodexHookFlagVersion,
+  syncCodexHookFlags
+} from './codex-hook-flag-sync'
 import { listCodexHookFlagEntries } from './codex-hook-flag-table'
 import {
   refreshCodexRuntimeUserHooksExclusively,
@@ -23,6 +20,8 @@ import {
 } from './codex-hook-local-maintenance'
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
+import { writeManagedScript } from '../agent-hooks/installer-utils'
+import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -191,14 +190,14 @@ export class CodexHookService {
 
   /**
    * Native Codex's status hook is ready when the flag table holds an entry for
-   * the codex this process resolves (any entry where that version is unknown,
-   * as in the CLI's process). Read from disk.
+   * the version of the codex this process resolves (any entry while that
+   * version is unknown). The entries are read from disk.
    */
   getStatus(): AgentHookInstallStatus {
-    const current = getDefaultCodexHookFlagVersion()
+    const known = getKnownCodexHookFlag()
     const versions = listCodexHookFlagEntries()
       .map((entry) => entry.codexVersion)
-      .filter((version) => current === null || version === current)
+      .filter((version) => !known?.version || version === known.version)
     return {
       agent: 'codex',
       state: versions.length > 0 ? 'installed' : 'not_installed',
@@ -207,37 +206,41 @@ export class CodexHookService {
       detail:
         versions.length > 0
           ? `Carried as a session flag for ${versions.join(', ')}`
-          : (getCodexHookSessionFlagFailure() ?? 'Codex has not reported its hook trust yet')
+          : (known?.failure ?? 'Codex has not reported its hook trust yet')
     }
   }
 
   /**
-   * The setting turning on, whether or not codex is installed yet: a later
-   * launch's miss then asks for its entry instead of running plain codex.
+   * Every change of the setting, on or off, whether or not codex is installed
+   * yet. `enabled` is read only in the CLI's process; the app reads its store.
    */
-  openSessionFlagTable(): void {
-    reconcileCodexHookFlagTable(true)
+  syncSessionFlags(enabled: boolean): void {
+    void syncCodexHookFlags({ enabled })
+  }
+
+  /** The CLI's process: learns the codex version that status reports on. */
+  learnStatusVersion(): Promise<void> {
+    return learnCodexHookFlagVersion()
   }
 
   /**
-   * App start and the setting turning on: publishes the flag for the resolved
-   * Codex, deploys the hook script, and removes Orca's entries from ~/.codex
-   * and the shared managed home. The only ~/.codex writes are those removals.
+   * App start and the setting turning on, when codex is installed: removes
+   * Orca's entries from ~/.codex and the shared managed home. The flag itself
+   * is syncCodexHookFlags' job, so this cleanup never gates status.
    */
   async installSessionFlags(): Promise<AgentHookInstallStatus> {
-    // Why started first and awaited last: cleanup below may throw, and must never stop the flag.
-    const flags = refreshCodexHookSessionFlags()
     try {
+      // Why here too: like every managed agent's installer, it deploys its shared scripts.
       writeManagedScript(getManagedScriptPath(), getManagedScript())
-      ensureCodexCmdHookFlagGate()
-      // Why the retired-form sweep first: it finds their trust through the entries
-      // it removes, and the removal below strips those entries too.
-      await cleanupLegacyManagedHookRepresentations()
-      await removeRealHomeCodexHookEntries()
-      await this.refreshRuntimeUserHooks()
-    } finally {
-      await flags
+    } catch (error) {
+      console.warn('[codex-hook-service] could not write the Codex hook script:', error)
     }
+    ensureCodexCmdHookFlagGate()
+    // Why the retired-form sweep first: it finds their trust through the entries
+    // it removes, and the removal below strips those entries too.
+    await cleanupLegacyManagedHookRepresentations()
+    await removeRealHomeCodexHookEntries()
+    await this.refreshRuntimeUserHooks()
     return this.getStatus()
   }
 
@@ -276,10 +279,8 @@ export class CodexHookService {
     return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, () => this.getStatus())
   }
 
+  // Why no table work: the setting change that led here already ran syncSessionFlags.
   remove(): Promise<AgentHookInstallStatus> {
-    // Why outside the trust lane: open panes read the table at their next launch,
-    // so this is what stops them, and it never waits behind a launch's refresh.
-    reconcileCodexHookFlagTable(false)
     return runExclusivelyForRuntimeAndSystemTrustConfig(getOrcaManagedCodexHomePath(), () =>
       removeCodexHooksExclusively(() => this.getStatus())
     )

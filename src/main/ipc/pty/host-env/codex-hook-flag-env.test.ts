@@ -23,6 +23,8 @@ vi.mock('../../../agent-hooks/wsl-hook-relay-manager', () => ({
 vi.mock('../../../pi/titlebar-extension-service', () => ({
   piTitlebarExtensionService: { buildPtyEnv: () => ({}), buildFreshOmpEnv: () => ({}) }
 }))
+const { scheduleCodexHookFlagSync } = vi.hoisted(() => ({ scheduleCodexHookFlagSync: vi.fn() }))
+vi.mock('../../../codex/codex-hook-flag-sync', () => ({ scheduleCodexHookFlagSync }))
 vi.mock('../../../cli/orca-cli-child-path', () => ({ prependOrcaCliDirToChildPath: () => {} }))
 vi.mock('../../../cli/wsl-managed-cli', () => ({
   getManagedWslCliDir: () => undefined,
@@ -74,5 +76,15 @@ describe('Codex status hook flag table in the pane env', () => {
     for (const key of Object.keys(INHERITED)) {
       expect(env[key]).toBeUndefined()
     }
+  })
+
+  // Why: a request the file watch missed, or a codex updated meanwhile, is served on the next spawn.
+  it('schedules a flag sync for each native pane, but not for a WSL guest', () => {
+    scheduleCodexHookFlagSync.mockClear()
+    buildPtyHostEnv('pane-1', {}, options)
+    expect(scheduleCodexHookFlagSync).toHaveBeenCalledOnce()
+
+    buildPtyHostEnv('pane-2', {}, { ...options, isWsl: true })
+    expect(scheduleCodexHookFlagSync).toHaveBeenCalledOnce()
   })
 })

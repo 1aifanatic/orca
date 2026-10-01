@@ -30,7 +30,8 @@ export type ManagedAgentHookInstaller = readonly [
     options?: ManagedAgentHookInstallOptions
   ) => AgentHookInstallStatus | Promise<AgentHookInstallStatus>
 ]
-export type ManagedAgentHookEnabler = readonly [HookInstallAgent, () => void]
+export type ManagedAgentHookSettingSync = readonly [HookInstallAgent, (enabled: boolean) => void]
+export type ManagedAgentHookStatusPreparer = readonly [HookInstallAgent, () => Promise<void>]
 export type ManagedAgentHookScriptRefresher = readonly [HookInstallAgent, () => Promise<void>]
 export type ManagedAgentHookRemover = readonly [
   HookInstallAgent,
@@ -64,10 +65,15 @@ export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[]
   ['dsh', () => dshHookService.install()]
 ]
 
-// Why: runs whenever the setting turns an agent on, even when its CLI is not
-// found and its installer is skipped, for state a later launch must find.
-export const MANAGED_AGENT_HOOK_ENABLERS: readonly ManagedAgentHookEnabler[] = [
-  ['codex', () => codexHookService.openSessionFlagTable()]
+// Why: runs on every change of the setting, on or off, even when the agent's CLI
+// is not found and its installer is skipped, for state a later launch reads.
+export const MANAGED_AGENT_HOOK_SETTING_SYNCS: readonly ManagedAgentHookSettingSync[] = [
+  ['codex', (enabled) => codexHookService.syncSessionFlags(enabled)]
+]
+
+// Why: a status that depends on the agent CLI's version learns it first in the CLI's process.
+export const MANAGED_AGENT_HOOK_STATUS_PREPARERS: readonly ManagedAgentHookStatusPreparer[] = [
+  ['codex', () => codexHookService.learnStatusVersion()]
 ]
 
 // Why: covers the shared launcher/statusline scripts under ~/.orca/agent-hooks — the files a

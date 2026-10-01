@@ -13,10 +13,10 @@ import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
 import { getCodexHookTrustSignature } from './codex-hook-identity'
 import { setupCodexHookHomes } from './hook-service-test-harness'
 
-const { getPathMock, homedirMock, refreshCodexHookSessionFlagsMock } = vi.hoisted(() => ({
+const { getPathMock, homedirMock, deriveCodexHookFlagEntryMock } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
   homedirMock: vi.fn<() => string>(),
-  refreshCodexHookSessionFlagsMock: vi.fn(async () => null)
+  deriveCodexHookFlagEntryMock: vi.fn(async () => null)
 }))
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
@@ -27,7 +27,7 @@ vi.mock('os', async (importOriginal) => {
 // Why: deriving the flags spawns the machine's real codex.
 vi.mock('./codex-hook-session-trust', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  refreshCodexHookSessionFlags: refreshCodexHookSessionFlagsMock
+  deriveCodexHookFlagEntry: deriveCodexHookFlagEntryMock
 }))
 
 import { CodexHookService, getCodexManagedHookInstallMaterial } from './hook-service'
@@ -197,7 +197,7 @@ describe('the real ~/.codex under session-flag hooks', () => {
     )
 
     expect(snapshotRealCodexHome()).toEqual(before)
-    expect(refreshCodexHookSessionFlagsMock).not.toHaveBeenCalled()
+    expect(deriveCodexHookFlagEntryMock).not.toHaveBeenCalled()
   })
 
   it("loses an older build's entry and trust at app start, keeping the user's approval", async () => {
@@ -206,7 +206,6 @@ describe('the real ~/.codex under session-flag hooks', () => {
     await new CodexHookService().installSessionFlags()
 
     expectOrcaEntryStrippedAndUserTrustMoved()
-    expect(refreshCodexHookSessionFlagsMock).toHaveBeenCalledOnce()
   })
 
   it('leaves a ~/.codex with no Orca entry byte-identical at app start', async () => {

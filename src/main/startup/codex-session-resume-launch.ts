@@ -5,14 +5,14 @@ import { prepareCodexSessionResume } from '../codex/codex-session-resume-prepara
 import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
-import { awaitCodexHookSessionFlags } from '../codex/codex-hook-session-trust'
+import { syncCodexHookFlagsWithin } from '../codex/codex-hook-flag-sync'
 import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { mainProcessState as state } from './main-process-state'
 
-// Why bounded: at a cold restore the resume may beat the start's flag derivation, but never waits long on it.
+// Why bounded: a resume waits for its flag after a Codex update or at a cold restore, never long.
 const RESUME_FLAG_WAIT_MS = 3_000
 
 export async function prepareCodexSessionResumeForLaunch(args: {
@@ -26,7 +26,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
     return null
   }
   const flagsSettled = isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
-    ? awaitCodexHookSessionFlags(RESUME_FLAG_WAIT_MS)
+    ? syncCodexHookFlagsWithin(RESUME_FLAG_WAIT_MS)
     : Promise.resolve()
   const systemHomePath = getSystemCodexHomePath()
   // Why: codexSessionSourceHome is import-only; treating it as CODEX_HOME would mutate history sources and bypass account auth.
