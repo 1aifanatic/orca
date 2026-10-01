@@ -17,6 +17,7 @@ import {
   setSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 type SelectionSettings = Pick<
   GlobalSettings,
@@ -51,7 +52,7 @@ export class ClaudeAccountSelection {
     // Why: a login that finished after Orca stopped waiting (or quit) needs no second sign-in.
     const completed = described.accounts.flatMap((summary) => {
       const identity =
-        !summary.email && summary.profileEmail && !summary.profileIdentityIssue
+        isUnfinishedClaudeSignIn(summary) && summary.profileEmail && !summary.profileIdentityIssue
           ? profiles.observedIdentity(summary.id)
           : null
       const account = identity ? this.findAccount(summary.id) : undefined

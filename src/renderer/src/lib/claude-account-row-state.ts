@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { isUnfinishedClaudeSignIn } from '../../../shared/claude-unfinished-sign-in'
 import type { ClaudeManagedAccountSummary } from '../../../shared/managed-account-types'
 
 export type ClaudeAccountRowState = {
@@ -15,10 +16,10 @@ export type ClaudeAccountRowState = {
 export function getClaudeAccountRowState(
   account: ClaudeManagedAccountSummary
 ): ClaudeAccountRowState {
+  const unfinished = isUnfinishedClaudeSignIn(account)
   const label =
     account.profileEmail ||
-    account.email ||
-    translate('accounts.claude.draft', 'Unfinished sign-in')
+    (unfinished ? translate('accounts.claude.draft', 'Unfinished sign-in') : account.email)
   const readiness = account.profileReadiness
   const problem =
     account.profileIdentityIssue === 'duplicate'

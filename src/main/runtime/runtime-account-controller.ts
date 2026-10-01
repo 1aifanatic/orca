@@ -13,6 +13,7 @@ import type { CodexRateLimitResetOutcome, RateLimitState } from '../../shared/ra
 import type { CodexResetCreditExpectedScope } from '../../shared/codex-reset-credit-scope'
 import type { CommitMessageAgentEnvironmentResolvers } from '../text-generation/commit-message-agent-environment'
 import type { ClaudeAccountSelectionTarget } from '../claude-accounts/runtime-selection'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 export type RuntimeAccountServices = {
   claudeAccounts: ClaudeAccountService
@@ -185,12 +186,12 @@ export class RuntimeAccountController {
 // Why: an unfinished sign-in has no email yet, and paired clients that require one (shipped mobile
 // builds) reject the whole snapshot, Codex included. Local Settings reads the service directly.
 function toWireClaudeAccounts(state: ClaudeRateLimitAccountsState): ClaudeRateLimitAccountsState {
-  const unfinishedAccounts = state.accounts.filter((account) => !account.email)
+  const unfinishedAccounts = state.accounts.filter(isUnfinishedClaudeSignIn)
   return unfinishedAccounts.length === 0
     ? state
     : {
         ...state,
-        accounts: state.accounts.filter((account) => account.email),
+        accounts: state.accounts.filter((account) => !isUnfinishedClaudeSignIn(account)),
         unfinishedAccounts
       }
 }

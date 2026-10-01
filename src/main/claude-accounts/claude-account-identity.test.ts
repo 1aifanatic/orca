@@ -185,3 +185,10 @@ it('does not read the personal Claude state file when no account is saved', () =
   f.settings.claudeManagedAccounts = []
   expect(f.selection.list().systemDefault).toBeUndefined()
 })
+
+it('does not read the personal Claude state file when only an unfinished sign-in exists', () => {
+  const f = fixture()
+  f.signInDefault('me@example.test')
+  f.settings.claudeManagedAccounts = [f.account('draft', '', 0)]
+  expect(f.selection.list().systemDefault).toBeUndefined()
+})

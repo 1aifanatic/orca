@@ -25,6 +25,7 @@ import {
   provisionClaudeLaunchProfile
 } from './claude-profile-launch-preparation'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
@@ -266,7 +267,7 @@ export class ClaudeProfileRoutingService {
     const accounts = withObservedClaudeIdentities(state.accounts, this.owner)
     // Why only with accounts: the personal state file is large, and the notice needs a saved account.
     const systemDefault =
-      this.owner.systemDefaultIdentity && accounts.length > 0
+      this.owner.systemDefaultIdentity && !accounts.every(isUnfinishedClaudeSignIn)
         ? {
             systemDefault: describeClaudeSystemDefault(this.owner.systemDefaultIdentity(), accounts)
           }

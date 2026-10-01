@@ -14,6 +14,7 @@ import type {
 } from '../../../../../shared/managed-account-types'
 import { getFeatureWallUsageProviderConnection } from '../feature-wall-usage-tracking'
 import { translate } from '@/i18n/i18n'
+import { isUnfinishedClaudeSignIn } from '../../../../../shared/claude-unfinished-sign-in'
 
 type ConnectAction = 'idle' | 'adding'
 
@@ -136,7 +137,9 @@ export function UsageAccountsCard(props: {
 
   const claudeConnection = getFeatureWallUsageProviderConnection({
     // Why: an unfinished sign-in has no login yet, so it connects nothing.
-    managedAccountCount: claudeAccounts?.accounts.filter((account) => account.email).length,
+    managedAccountCount: claudeAccounts?.accounts.filter(
+      (account) => !isUnfinishedClaudeSignIn(account)
+    ).length,
     provider: rateLimits.claude
   })
   const codexConnection = getFeatureWallUsageProviderConnection({

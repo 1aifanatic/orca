@@ -15,6 +15,7 @@ import {
   loginToClaudeProfile,
   readClaudeProfileLoginIdentity
 } from './claude-profile-login'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 export class ClaudeAccountRegistration {
   constructor(
@@ -130,7 +131,7 @@ export class ClaudeAccountRegistration {
     // Why keep the label: signing a row in to a login another row owns must not take that
     // row's identity; the row then shows what it holds and is flagged instead.
     const keepsLabel =
-      Boolean(account.email) &&
+      !isUnfinishedClaudeSignIn(account) &&
       takenByAnother !== null &&
       normalizeClaudeEmail(account.email) !== normalizeClaudeEmail(identity.email)
     this.save({

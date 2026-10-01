@@ -3,6 +3,7 @@ import type { ClaudeAccountAddTarget, ClaudeAccountService } from '../claude-acc
 import type { ClaudeAccountSelectionTarget } from '../claude-accounts/runtime-selection'
 import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
 import { daemonHostsTerminalsWithoutClaudeAccountFunction } from '../daemon/daemon-provider-state'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 export function registerClaudeAccountHandlers(
   claudeAccounts: ClaudeAccountService,
@@ -15,7 +16,7 @@ export function registerClaudeAccountHandlers(
     const resolved = await state
     // Why only with an account: with none saved (drafts hold no login), every terminal already
     // uses the personal login.
-    if (!resolved.accounts.some((account) => account.email)) {
+    if (resolved.accounts.every(isUnfinishedClaudeSignIn)) {
       return resolved
     }
     return olderTerminalsRunning() ? { ...resolved, olderTerminalsRunning: true } : resolved

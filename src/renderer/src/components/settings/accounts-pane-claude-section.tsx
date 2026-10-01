@@ -13,6 +13,7 @@ import {
 import { formatAccountTimestamp, getClaudeAccountRuntimeLabel } from './accounts-pane-runtime'
 import type { AccountsPaneSectionModel } from './accounts-pane-types'
 import { getClaudeAccountRowState } from '@/lib/claude-account-row-state'
+import { isUnfinishedClaudeSignIn } from '../../../../shared/claude-unfinished-sign-in'
 
 export type ClaudeAccountsSectionModel = Pick<
   AccountsPaneSectionModel,
@@ -53,7 +54,8 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
   const systemDefault = accountRuntime.runtime === 'host' ? claudeAccounts.systemDefault : undefined
   // Why derived: the notice ends once every saved account has been signed in again.
   const needsUpgradeSignIn = claudeAccounts.accounts.some(
-    (account) => account.email && account.profileReadiness === 'sign-in-required'
+    (account) =>
+      !isUnfinishedClaudeSignIn(account) && account.profileReadiness === 'sign-in-required'
   )
   return (
     <section key="claude-accounts" id="accounts-claude" className="space-y-4 scroll-mt-6">

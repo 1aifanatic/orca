@@ -39,6 +39,7 @@ import {
   withInteractiveLoginCleanup
 } from './interactive-login-interruption'
 import { getWslAccountTarget } from './account-wsl-location'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 // Why: add returns just that provider's state; list returns the full snapshot.
 type AccountsListSnapshot = {
@@ -73,7 +74,7 @@ function formatAccountsBlock(label: string, block: AccountsBlock): string {
   const lines = [
     ...block.accounts.map(
       (account) =>
-        `  ${account.email || 'Unfinished sign-in'}${activeAccountIds.has(account.id) ? ' (active)' : ''}`
+        `  ${isUnfinishedClaudeSignIn(account) ? 'Unfinished sign-in' : account.email}${activeAccountIds.has(account.id) ? ' (active)' : ''}`
     ),
     ...unfinished.map(
       () => '  Unfinished sign-in (finish or remove it in Orca Settings > Accounts)'

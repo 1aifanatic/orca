@@ -7,6 +7,7 @@ import type {
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
 import type { ClaudeLoginIdentity, ClaudeLoginState } from './claude-profile-readiness'
 import { getClaudeProfileSetupIssue } from './claude-profile-setup-issues'
+import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
 export type ClaudeObservedAccount = Pick<
   ClaudeManagedAccount,
@@ -32,14 +33,14 @@ export function findClaudeAccountIdentityIssues(
 ): Map<string, ClaudeAccountIdentityIssue> {
   const consistent = (account: ClaudeObservedAccount) =>
     !account.observed ||
-    !account.email ||
+    isUnfinishedClaudeSignIn(account) ||
     (normalizeClaudeEmail(account.observed.email) === normalizeClaudeEmail(account.email) &&
       (!account.organizationUuid ||
         !account.observed.organizationUuid ||
         account.organizationUuid === account.observed.organizationUuid))
   const rank = (account: ClaudeObservedAccount) => [
     consistent(account) ? 0 : 1,
-    account.email ? 0 : 1,
+    isUnfinishedClaudeSignIn(account) ? 1 : 0,
     account.createdAt,
     account.lastAuthenticatedAt
   ]
