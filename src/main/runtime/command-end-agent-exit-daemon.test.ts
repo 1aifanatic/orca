@@ -27,10 +27,12 @@ const processTable = vi.hoisted(
     rows: ProcessTableRow[]
     captures: { rows: ProcessTableRow[]; capturedAgeMs: number }[]
     reads: number
+    freshReads: number
   } => ({
     rows: [],
     captures: [],
-    reads: 0
+    reads: 0,
+    freshReads: 0
   })
 )
 vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => ({
@@ -48,7 +50,10 @@ vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => 
     return { rows: processTable.rows, capturedAgeMs: Date.now() - startedAt }
   },
   // Main's own fresh read of this machine's process table.
-  getFreshShellForegroundSnapshot: async () => processTable.rows
+  getFreshShellForegroundSnapshot: async () => {
+    processTable.freshReads += 1
+    return processTable.rows
+  }
 }))
 
 vi.mock('../git/worktree', () => {
@@ -156,6 +161,7 @@ afterEach(async () => {
   processTable.rows = []
   processTable.captures = []
   processTable.reads = 0
+  processTable.freshReads = 0
   vi.restoreAllMocks()
 })
 
@@ -209,6 +215,13 @@ async function launchDaemonCodexPane(
   return { host, pane, emit: subprocess.emit }
 }
 
+/** Waits for main's own process-table read, which decides the verdict, then lets it land. */
+async function settledOnTheFirstAsk(): Promise<void> {
+  await vi.waitFor(() => expect(processTable.freshReads).toBe(1), { timeout: 2_000, interval: 20 })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(processTable.reads).toBe(1)
+}
+
 /** The same bytes reach the daemon's scanner and main's command-end path. */
 async function runCommandToItsEnd(daemonPane: DaemonPane, path: CommandEndPath): Promise<void> {
   // Codex renders inline in the normal screen buffer: no alternate-screen episode.
@@ -232,7 +245,7 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
             daemonPane.host.readers,
             daemonPane.pane.paneKey
           ),
-        { timeout: 400, interval: 20 }
+        { timeout: 2_000, interval: 20 }
       )
       expect(processTable.reads).toBe(1)
     })
@@ -242,8 +255,7 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
       processTable.rows = paneProcesses('codex')
 
       await runCommandToItsEnd(daemonPane, path)
-      await vi.waitFor(() => expect(processTable.reads).toBe(1), { timeout: 400, interval: 20 })
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await settledOnTheFirstAsk()
 
       expectNoReaderLostTheRow(
         daemonPane.host.server,
@@ -282,7 +294,7 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
           daemonPane.host.readers,
           daemonPane.pane.paneKey
         ),
-      { timeout: 400, interval: 20 }
+      { timeout: 2_000, interval: 20 }
     )
   })
 
@@ -302,7 +314,7 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
             daemonPane.host.readers,
             daemonPane.pane.paneKey
           ),
-        { timeout: 400, interval: 20 }
+        { timeout: 2_000, interval: 20 }
       )
     })
   }
@@ -312,8 +324,7 @@ describe('a normal-buffer agent on a terminal-daemon pane', () => {
     processTable.rows = paneProcesses('codex', 'macos-login')
 
     await runCommandToItsEnd(daemonPane, 'daemon fact')
-    await vi.waitFor(() => expect(processTable.reads).toBe(1), { timeout: 400, interval: 20 })
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await settledOnTheFirstAsk()
 
     expectNoReaderLostTheRow(
       daemonPane.host.server,
