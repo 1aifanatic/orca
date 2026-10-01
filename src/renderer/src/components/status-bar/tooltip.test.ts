@@ -273,6 +273,18 @@ describe('provider usage error copy', () => {
     )
   })
 
+  it('tells the user a selected Claude account needs signing in again', () => {
+    const p = provider({
+      error: 'Sign in again to use this account.',
+      usageMetadata: { failureKind: 'missing-credentials' }
+    })
+
+    expect(getProviderUsageStatusLabel(p)).toBe('Sign in again')
+    expect(getProviderUsageErrorMessage(p)).toBe(
+      'The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default.'
+    )
+  })
+
   it('uses structured network copy for Claude usage failures', () => {
     const p = provider({
       error: 'Network error while refreshing OAuth usage: ECONNRESET',

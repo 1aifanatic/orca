@@ -112,7 +112,9 @@ export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
       case 'cli-unavailable':
       case 'usage-unavailable':
         return translate('auto.components.status.bar.tooltip.f8b8dbed85', 'Usage unavailable')
+      // Why: the host reports this only for a selected account whose own profile has no login.
       case 'missing-credentials':
+        return translate('accounts.claude.usageSignInLabel', 'Sign in again')
       case 'missing-scope':
       case 'no-subscription':
       case 'parse':
@@ -204,6 +206,11 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
           'auto.components.status.bar.tooltip.cabdc2a9e0',
           'Claude sign-in credentials could not be read.'
         )
+      case 'missing-credentials':
+        return translate(
+          'accounts.claude.usageSignInMessage',
+          'The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default.'
+        )
       case 'server':
       case 'parse':
       case 'usage-unavailable':
@@ -212,7 +219,6 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
           'auto.components.status.bar.tooltip.a7517cccb6',
           'Claude usage is unavailable right now.'
         )
-      case 'missing-credentials':
       case 'no-subscription':
       case 'rate-limited':
       case 'unknown':

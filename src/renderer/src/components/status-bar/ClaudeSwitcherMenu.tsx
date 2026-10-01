@@ -116,12 +116,20 @@ export function ClaudeSwitcherMenu({
     })
   }, [loadAccounts, claudeAccountSyncKey])
 
-  const handleOpenChange = useCallback((nextOpen: boolean): void => {
-    setOpen(nextOpen)
-    if (!nextOpen) {
-      setAccountsExpanded(false)
-    }
-  }, [])
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean): void => {
+      setOpen(nextOpen)
+      if (!nextOpen) {
+        setAccountsExpanded(false)
+        return
+      }
+      // Why reload: readiness and the login each profile holds change without a settings change.
+      void loadAccounts().catch((error) => {
+        console.error('Failed to load Claude accounts for status bar:', error)
+      })
+    },
+    [loadAccounts]
+  )
 
   // Why: fetch inactive-account usage only on switcher expansion; remote-owned accounts have no local cache to fill.
   const handleAccountsExpandedToggle = useCallback((): void => {
