@@ -37,15 +37,13 @@ import { wslTranscriptFsRefusal, type WslTranscriptFsError } from './wsl-transcr
 // Why both roots and not just that one: adopting the variable would otherwise hide every
 // transcript written before it was set. Same managed-then-default shape as
 // codexSessionsDirs below, de-duped so the usual case still scans once.
-function claudeProjectsDirs(): string[] {
+function claudeProjectsDirs(): { legacy: string[]; all: string[] } {
   const candidates = [
     join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude'), 'projects'),
     join(homedir(), '.claude', 'projects')
   ]
-  return claudeProfileReaderRoots(
-    candidates.filter((dir, index) => candidates.indexOf(dir) === index),
-    'projects'
-  )
+  const legacy = candidates.filter((dir, index) => candidates.indexOf(dir) === index)
+  return { legacy, all: claudeProfileReaderRoots(legacy, 'projects') }
 }
 
 // Why: Orca launches Codex with ORCA_CODEX_HOME pointing at its own managed
@@ -176,18 +174,19 @@ async function resolveSessionFileById(
     if (options.claudeProjectsDir) {
       return resolveClaudeSessionFile(trimmedId, [options.claudeProjectsDir], signal)
     }
-    // Why a second tier: WSL profile roots are read only after host roots miss, and only in
-    // running distros, like Codex's WSL homes.
-    const dirs = claudeProjectsDirs()
+    // Why a second tier: WSL profile roots are read only after the others miss, and only in
+    // running distros, like Codex's WSL homes. Legacy roots keep their order, unfiltered.
+    const { legacy, all } = claudeProjectsDirs()
+    const guestProfile = (dir: string) => !legacy.includes(dir) && isWslUncPath(dir)
     return (
       (await resolveClaudeSessionFile(
         trimmedId,
-        dirs.filter((dir) => !isWslUncPath(dir)),
+        all.filter((dir) => !guestProfile(dir)),
         signal
       )) ??
       resolveClaudeSessionFile(
         trimmedId,
-        await filterPathsToRunningWslDistrosAsync(dirs.filter(isWslUncPath)),
+        await filterPathsToRunningWslDistrosAsync(all.filter(guestProfile)),
         signal
       )
     )
