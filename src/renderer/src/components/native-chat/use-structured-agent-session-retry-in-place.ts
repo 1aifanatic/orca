@@ -1,9 +1,10 @@
 // A Retry of a message no agent ever took. A host that can queues that same message again, under its
 // own id, so the chat never holds two copies and a second press from anywhere sends nothing more.
-// An older host cannot: this desktop's own message is sent again as a new one, from its outbox, and
-// one sent elsewhere has no Retry here.
+// A host known not to: this desktop's own message is sent again as a new one, from its outbox, and
+// one sent elsewhere has no Retry here. Until the host has said which, a press waits for the answer:
+// a new copy sent then would leave the original with a live Retry once the host says it can.
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { AGENT_SESSION_RETRY_MESSAGE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { isRequeueableAgentJournalSubmission } from '../../../../shared/structured-agent-session-dispatch-rejection'
@@ -19,15 +20,14 @@ export function useStructuredAgentSessionRetryInPlace(args: {
   outboxRetry: (clientMessageId: string) => void
 }): {
   retry: (clientMessageId: string) => void
-  /** Undefined where the host cannot queue a message again. */
+  /** Undefined where the host is not known to queue a message again. */
   retryInPlace: ((clientMessageId: string) => void) | undefined
 } {
   const { mutate, outboxRetry, submissions } = args
-  const capable =
-    useStructuredAgentSessionHostCapabilityState(
-      args.target,
-      AGENT_SESSION_RETRY_MESSAGE_RUNTIME_CAPABILITY
-    ) === 'supported'
+  const capability = useStructuredAgentSessionHostCapabilityState(
+    args.target,
+    AGENT_SESSION_RETRY_MESSAGE_RUNTIME_CAPABILITY
+  )
   const retryInPlace = useCallback(
     (clientMessageId: string) => {
       // The stream's `pending` moves the message back to sending; nothing is set here, or a snapshot
@@ -36,13 +36,34 @@ export function useStructuredAgentSessionRetryInPlace(args: {
     },
     [mutate]
   )
-  const retry = (clientMessageId: string): void => {
+  // Presses made while the host has not answered, carried out once it has.
+  const held = useRef(new Set<string>())
+  const route = (clientMessageId: string): void => {
     const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
-    if (capable && submission && isRequeueableAgentJournalSubmission(submission)) {
-      retryInPlace(clientMessageId)
-    } else {
+    if (!submission || !isRequeueableAgentJournalSubmission(submission)) {
       outboxRetry(clientMessageId)
+    } else if (capability === 'supported') {
+      retryInPlace(clientMessageId)
+    } else if (capability === 'unsupported') {
+      outboxRetry(clientMessageId)
+    } else {
+      held.current.add(clientMessageId)
     }
   }
-  return { retry, retryInPlace: capable ? retryInPlace : undefined }
+  const routeRef = useRef(route)
+  // Declared first, so the answer below routes with this render's view of the messages.
+  useEffect(() => {
+    routeRef.current = route
+  })
+  useEffect(() => {
+    if (capability === 'unknown' || held.current.size === 0) {
+      return
+    }
+    const presses = [...held.current]
+    held.current.clear()
+    for (const clientMessageId of presses) {
+      routeRef.current(clientMessageId)
+    }
+  }, [capability])
+  return { retry: route, retryInPlace: capability === 'supported' ? retryInPlace : undefined }
 }
