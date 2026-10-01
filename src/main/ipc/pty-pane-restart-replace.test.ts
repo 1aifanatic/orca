@@ -541,7 +541,7 @@ describe('pty:spawn replacing a pane owner', () => {
     } as unknown as Parameters<typeof setLocalPtyProvider>[0])
     registerWithFakes(mainWindow, harness.runtime, harness.store)
     try {
-      await run({ ...harness, oldId, newId, hostId }, (extra = {}) =>
+      await run({ ...harness, oldId, newId, hostId }, async (extra = {}) =>
         handlers.get('pty:spawn')!(null, { ...restartSpawnArgs(extra), connectionId })
       )
       expect(localSpawn).not.toHaveBeenCalled()
