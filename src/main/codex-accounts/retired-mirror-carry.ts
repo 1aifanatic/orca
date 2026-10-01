@@ -125,8 +125,9 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
   // from there and a removal the user makes there sticks. Pruning every table it
   // holds verbatim keeps an interrupted move retryable; a table it names
   // differently stays, since a retained pane still runs on the mirror's version.
+  const heldBlocks = new Set(getTomlSections(nextConfig).map(({ block }) => block.trim()))
   const owned = getTomlSections(runtimeConfig).filter(
-    ({ header, block }) => isCarriedTable(header) && nextConfig.includes(block.trim())
+    ({ header, block }) => isCarriedTable(header) && heldBlocks.has(block.trim())
   )
   return (
     owned.length === 0 ||
