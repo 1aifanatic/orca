@@ -244,7 +244,7 @@ describe('materializeDragTempPaths', () => {
     const missing = join(providerDir, 'gone.png')
 
     expect(await materializeDragTempPaths([missing], env)).toEqual([
-      { sourcePath: missing, status: 'skipped', reason: 'missing' }
+      { sourcePath: missing, status: 'failed', reason: 'missing' }
     ])
   })
 
@@ -257,7 +257,7 @@ describe('materializeDragTempPaths', () => {
       const results = await materializeDragTempPaths([source], env)
 
       expect(results).toEqual([
-        { sourcePath: source, status: 'skipped', reason: 'permission-denied' }
+        { sourcePath: source, status: 'failed', reason: 'permission-denied' }
       ])
       expect(await copyDirs()).toEqual([])
     }
@@ -271,7 +271,7 @@ describe('materializeDragTempPaths', () => {
     const [accepted, uncopied] = await materializeDragTempPaths([atLimit, overLimit], env)
 
     expect(importedPath(accepted)).not.toBe(atLimit)
-    expect(uncopied).toEqual({ sourcePath: overLimit, status: 'imported', destPath: overLimit })
+    expect(uncopied).toEqual({ sourcePath: overLimit, status: 'uncopied', reason: 'too-large' })
     expect(await copyDirs()).toHaveLength(1)
   })
 
@@ -287,7 +287,7 @@ describe('materializeDragTempPaths', () => {
 
     expect(importedPath(results[0])).toBe(finder)
     expect(importedPath(results[1])).not.toBe(first)
-    expect(importedPath(results[2])).toBe(second)
+    expect(results[2]).toEqual({ sourcePath: second, status: 'uncopied', reason: 'storage-full' })
     expect(importedPath(results[3])).not.toBe(third)
     expect(await copyDirs()).toHaveLength(2)
   })
@@ -303,7 +303,7 @@ describe('materializeDragTempPaths', () => {
     const [thirdDrop] = await materializeDragTempPaths([third], env)
 
     expect(importedPath(firstDrop)).not.toBe(first)
-    expect(importedPath(secondDrop)).toBe(second)
+    expect(secondDrop).toMatchObject({ status: 'uncopied', reason: 'storage-full' })
     expect(importedPath(thirdDrop)).not.toBe(third)
     expect(await copyDirs()).toHaveLength(2)
   })
@@ -313,12 +313,12 @@ describe('materializeDragTempPaths', () => {
     fsFaults.beforeCopyWrite = () => appendFileSync(source, '-grown')
 
     expect(await materializeDragTempPaths([source], env)).toEqual([
-      { sourcePath: source, status: 'failed', reason: 'File changed while it was being copied' }
+      { sourcePath: source, status: 'failed', reason: 'changed' }
     ])
     expect(await readdir(env.copyRoot)).toEqual([])
   })
 
-  it('reports a full disk in plain words, without the errno, and leaves no copy behind', async () => {
+  it('reports a full disk as a reason token, logging the errno, and leaves no copy behind', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const source = await dragTempFile('shot.png', 'png')
     fsFaults.writeError = Object.assign(new Error('ENOSPC: no space left on device, write'), {
@@ -326,23 +326,19 @@ describe('materializeDragTempPaths', () => {
     })
 
     expect(await materializeDragTempPaths([source], env)).toEqual([
-      {
-        sourcePath: source,
-        status: 'failed',
-        reason: 'Not enough disk space to copy the dropped file'
-      }
+      { sourcePath: source, status: 'failed', reason: 'out-of-space' }
     ])
     expect(await readdir(env.copyRoot)).toEqual([])
     expect(warn).toHaveBeenCalledWith(expect.any(String), { code: 'ENOSPC' })
   })
 
-  it('hides unexpected errno tokens from the reason', async () => {
+  it('reports an unexpected errno as a generic copy failure', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const source = await dragTempFile('shot.png', 'png')
     fsFaults.writeError = Object.assign(new Error('EIO: i/o error, write'), { code: 'EIO' })
 
     expect(await materializeDragTempPaths([source], env)).toEqual([
-      { sourcePath: source, status: 'failed', reason: 'Could not copy the dropped file' }
+      { sourcePath: source, status: 'failed', reason: 'copy-failed' }
     ])
   })
 
@@ -376,10 +372,7 @@ describe('materializeDragTempPaths', () => {
 
     const [result] = await materializeDragTempPaths([source], env)
 
-    expect(result).toMatchObject({ sourcePath: source, status: 'failed' })
-    expect(result.status === 'failed' && result.reason).toBe(
-      'Could not create Orca storage for dropped files'
-    )
+    expect(result).toEqual({ sourcePath: source, status: 'failed', reason: 'storage-unavailable' })
   })
 
   it.skipIf(!canChangePermissions)('refuses a copy root other users can read', async () => {
@@ -388,11 +381,7 @@ describe('materializeDragTempPaths', () => {
     await chmod(env.copyRoot, 0o755)
 
     expect(await materializeDragTempPaths([source], env)).toEqual([
-      {
-        sourcePath: source,
-        status: 'failed',
-        reason: 'Orca drop storage is not a private directory'
-      }
+      { sourcePath: source, status: 'failed', reason: 'storage-not-private' }
     ])
   })
 
@@ -404,6 +393,24 @@ describe('materializeDragTempPaths', () => {
     await expect(materializeDragTempPaths([source], env, controller.signal)).rejects.toThrow(
       'renderer gone'
     )
+    expect(await copyDirs()).toEqual([])
+  })
+
+  it('removes copies it already made when aborted partway through a drop', async () => {
+    const first = await dragTempFile('a.png', 'a')
+    const second = await dragTempFile('b.png', 'b')
+    const controller = new AbortController()
+    let writes = 0
+    fsFaults.beforeCopyWrite = () => {
+      writes += 1
+      if (writes === 2) {
+        controller.abort(new Error('timed out'))
+      }
+    }
+
+    await expect(
+      materializeDragTempPaths([first, second], env, controller.signal)
+    ).rejects.toThrow()
     expect(await copyDirs()).toEqual([])
   })
 })

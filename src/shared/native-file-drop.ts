@@ -43,9 +43,27 @@ export type NativeFileDropRejectedPayload = {
   pathCount: number
   reason: NativeFileDropRejectionReason
   target: 'rejected'
-  /** Skip-reason token or failure message shared by every unprepared file. */
-  commonReason?: string
+  /** Why every file in a `temp-copy-failed` drop went uncopied, when they share one reason. */
+  commonReason?: NativeFileDropCopyFailureReason
 }
+
+// Why tokens: the renderer owns the localized copy; main never sends display text.
+export const NATIVE_FILE_DROP_COPY_FAILURE_REASONS = [
+  'missing',
+  'permission-denied',
+  'changed',
+  'out-of-space',
+  'storage-unavailable',
+  'storage-not-private',
+  'copy-failed',
+  'timed-out',
+  'busy',
+  // The original was handed over uncopied, so only main's children can read it.
+  'too-large',
+  'storage-full'
+] as const
+
+export type NativeFileDropCopyFailureReason = (typeof NATIVE_FILE_DROP_COPY_FAILURE_REASONS)[number]
 
 /** What path validation alone can reject a drop for. */
 export type NativeFileDropSizeRejectionReason = 'paths-too-large' | 'too-many-paths'
@@ -84,6 +102,12 @@ function isNativeFileDropRejectedReason(
     reason === 'unresolved-paths' ||
     reason === 'temp-copy-failed'
   )
+}
+
+function isNativeFileDropCopyFailureReason(
+  reason: unknown
+): reason is NativeFileDropCopyFailureReason {
+  return NATIVE_FILE_DROP_COPY_FAILURE_REASONS.some((known) => known === reason)
 }
 
 function isNativeFileDropTarget(target: unknown): target is NativeFileDropPayload['target'] {
@@ -266,7 +290,9 @@ export function isNativeFileDropPayload(value: unknown): value is NativeFileDrop
     return (
       isNonNegativeFiniteNumber(payload.byteLength) &&
       isNonNegativeFiniteNumber(payload.pathCount) &&
-      isNativeFileDropRejectedReason(payload.reason)
+      isNativeFileDropRejectedReason(payload.reason) &&
+      (payload.commonReason === undefined ||
+        isNativeFileDropCopyFailureReason(payload.commonReason))
     )
   }
 

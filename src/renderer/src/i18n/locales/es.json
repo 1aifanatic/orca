@@ -733,6 +733,23 @@
             "totalTooLarge": "{{fileName}} superaría el total de {{maxSize}} de archivos adjuntos."
           }
         }
+      },
+      "dropSkipReason": {
+        "missing": "Ya no está en su ruta original.",
+        "symlink": "Los enlaces simbólicos no se pueden adjuntar.",
+        "permissionDenied": "Permiso denegado.",
+        "unsupported": "Tipo de archivo no compatible."
+      },
+      "dropTempCopyFailure": {
+        "changed": "El archivo cambió mientras Orca lo copiaba. Vuelve a soltarlo.",
+        "outOfSpace": "No hay suficiente espacio en disco para copiar los archivos soltados.",
+        "storageUnavailable": "Orca no pudo crear el almacenamiento para los archivos soltados.",
+        "storageNotPrivate": "Otros usuarios pueden leer el almacenamiento de Orca para archivos soltados, así que no se copió nada.",
+        "timedOut": "La copia tardó demasiado. Vuelve a soltar los archivos.",
+        "busy": "Todavía se están copiando demasiados archivos soltados. Espera un momento y vuelve a intentarlo.",
+        "tooLarge": "Es demasiado grande para copiarlo, así que Orca usó el original. Es posible que los agentes de la terminal no puedan abrirlo.",
+        "storageFull": "El almacenamiento de Orca para archivos soltados está lleno, así que Orca usó el original. Es posible que los agentes de la terminal no puedan abrirlo.",
+        "generic": "Vuelve a soltar los archivos."
       }
     },
     "hooks": {
@@ -761,8 +778,12 @@
         "nativeDropTooManyPaths": "Has soltado demasiados archivos.",
         "nativeDropPathsTooLargeDescription": "Suelta menos archivos o usa una lista de rutas más corta.",
         "nativeDropPathsTooLarge": "La lista de rutas soltadas es demasiado grande.",
-        "nativeDropTempCopyFailed": "Orca no pudo copiar {{value0}} archivo(s) soltado(s).",
-        "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects."
+        "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects.",
+        "nativeDropUnresolvedPathsDescription": "Guárdalos primero en el disco y luego suelta los archivos guardados.",
+        "nativeDropUnresolvedPaths": "Orca no pudo leer una ruta para los archivos soltados.",
+        "nativeDropTempCopyFailed": "Orca no pudo copiar {{count}} archivos soltados.",
+        "nativeDropTempCopyFailed_one": "Orca no pudo copiar {{count}} archivo soltado.",
+        "nativeDropTempCopyFailed_other": "Orca no pudo copiar {{count}} archivos soltados."
       },
       "useIpcEvents": {
         "0e3cf53060": "Pestaña del navegador {{value0}} no encontrada",

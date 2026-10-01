@@ -38,11 +38,19 @@ vi.mock('./darwin-user-temp-dir', () => ({
 
 import {
   createNativeFileDropQueue,
-  DRAG_TEMP_COPY_TIMEOUT_REASON,
+  MAX_PENDING_DRAG_TEMP_COPIES,
   registerFileDropRelay
 } from './native-file-drop-relay'
 
 const DRAG_TEMP = join('/', 'var', 'T', 'TemporaryItems', 'NSIRD_screencaptureui_1', 'Shot.png')
+const OTHER_DRAG_TEMP = join(
+  '/',
+  'var',
+  'T',
+  'TemporaryItems',
+  'NSIRD_screencaptureui_1',
+  'Other.png'
+)
 const COPY = join('/', 'var', 'T', 'orca-drops-501', 'orca-drop-abc123', 'Shot.png')
 const FINDER = join('/', 'Users', 'me', 'Desktop', 'notes.txt')
 const env = { platform: 'darwin' as const, sourceTempRoot: '/var/T', copyRoot: '/var/T/drops' }
@@ -125,36 +133,71 @@ describe('createNativeFileDropQueue', () => {
     ])
   })
 
-  it('holds a later plain drop until an earlier copy finishes', async () => {
+  it('forwards a later plain drop without waiting on an earlier copy', async () => {
     const copy = deferred<DragTempCopyItemResult[]>()
-    materializeMock
-      .mockReturnValueOnce(copy.promise)
-      .mockImplementation(async (paths: string[]) => paths.map((path) => copied(path)))
+    materializeMock.mockReturnValueOnce(copy.promise)
     const { enqueue, forwarded } = createQueue()
 
     enqueue({ paths: [DRAG_TEMP], target: 'composer' })
     enqueue({ paths: [FINDER], target: 'editor' })
-    await settle()
-    expect(forwarded).toEqual([])
+    expect(forwarded).toEqual([{ paths: [FINDER], target: 'editor' }])
 
     copy.resolve([copied(DRAG_TEMP, COPY)])
     await settle()
 
     expect(forwarded).toEqual([
-      { paths: [COPY], target: 'composer' },
-      { paths: [FINDER], target: 'editor' }
+      { paths: [FINDER], target: 'editor' },
+      { paths: [COPY], target: 'composer' }
+    ])
+  })
+
+  it('copies drag-temp drops one at a time, in arrival order', async () => {
+    const copy = deferred<DragTempCopyItemResult[]>()
+    materializeMock
+      .mockReturnValueOnce(copy.promise)
+      .mockResolvedValueOnce([copied(OTHER_DRAG_TEMP, COPY)])
+    const { enqueue, forwarded } = createQueue()
+
+    enqueue({ paths: [DRAG_TEMP], target: 'composer' })
+    enqueue({ paths: [OTHER_DRAG_TEMP], target: 'terminal' })
+    await settle()
+    expect(materializeMock).toHaveBeenCalledTimes(1)
+
+    copy.resolve([copied(DRAG_TEMP, COPY)])
+    await settle()
+
+    expect(forwarded.map((payload) => payload.target)).toEqual(['composer', 'terminal'])
+  })
+
+  it('hands an uncopied file over as its original and still reports it', async () => {
+    materializeMock.mockResolvedValue([
+      { sourcePath: DRAG_TEMP, status: 'uncopied', reason: 'too-large' }
+    ])
+    const { enqueue, forwarded } = createQueue()
+
+    enqueue({ paths: [DRAG_TEMP], target: 'composer' })
+    await settle()
+
+    expect(forwarded).toEqual([
+      { paths: [DRAG_TEMP], target: 'composer' },
+      {
+        byteLength: 0,
+        pathCount: 1,
+        reason: 'temp-copy-failed',
+        target: 'rejected',
+        commonReason: 'too-large'
+      }
     ])
   })
 
   it('forwards what it could copy and reports the rest with their shared reason', async () => {
-    const other = join('/', 'var', 'T', 'TemporaryItems', 'NSIRD_screencaptureui_1', 'Other.png')
     materializeMock.mockResolvedValue([
       copied(DRAG_TEMP, COPY),
-      { sourcePath: other, status: 'skipped', reason: 'permission-denied' }
+      { sourcePath: OTHER_DRAG_TEMP, status: 'failed', reason: 'permission-denied' }
     ])
     const { enqueue, forwarded } = createQueue()
 
-    enqueue({ paths: [DRAG_TEMP, other], target: 'composer', scopeKey: 'pane-1' })
+    enqueue({ paths: [DRAG_TEMP, OTHER_DRAG_TEMP], target: 'composer', scopeKey: 'pane-1' })
     await settle()
 
     expect(forwarded).toEqual([
@@ -171,8 +214,8 @@ describe('createNativeFileDropQueue', () => {
 
   it('reports a drop that lost every file, with no shared reason when they differ', async () => {
     materializeMock.mockResolvedValue([
-      { sourcePath: DRAG_TEMP, status: 'skipped', reason: 'missing' },
-      { sourcePath: DRAG_TEMP, status: 'failed', reason: 'File changed while it was being copied' }
+      { sourcePath: DRAG_TEMP, status: 'failed', reason: 'missing' },
+      { sourcePath: DRAG_TEMP, status: 'failed', reason: 'changed' }
     ])
     const { enqueue, forwarded } = createQueue()
 
@@ -202,7 +245,7 @@ describe('createNativeFileDropQueue', () => {
     const copy = deferred<DragTempCopyItemResult[]>()
     materializeMock
       .mockReturnValueOnce(copy.promise)
-      .mockImplementation(async (paths: string[]) => paths.map((path) => copied(path)))
+      .mockImplementation(async (paths: string[]) => paths.map((path) => copied(path, COPY)))
     let document = new AbortController()
     const forwarded: NativeFileDropPayload[] = []
     const enqueue = createNativeFileDropQueue({
@@ -214,37 +257,36 @@ describe('createNativeFileDropQueue', () => {
 
     enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
     await settle()
-    enqueue({ paths: [FINDER], target: 'editor' })
+    enqueue({ paths: [OTHER_DRAG_TEMP], target: 'editor' })
     document.abort(new Error('reloaded'))
     document = new AbortController()
-    enqueue({ paths: [FINDER], target: 'composer' })
+    enqueue({ paths: [OTHER_DRAG_TEMP], target: 'composer' })
     copy.resolve([copied(DRAG_TEMP, COPY)])
     await settle()
 
-    expect(forwarded).toEqual([{ paths: [FINDER], target: 'composer' }])
+    expect(forwarded).toEqual([{ paths: [COPY], target: 'composer' }])
   })
 
-  it('reports an unexpected copy error for the whole drop instead of dropping it silently', async () => {
+  it('still delivers the ordinary paths of a drop whose copy stage failed outright', async () => {
     const { enqueue, forwarded } = createQueue({
       getCopyEnvironment: async () => {
         throw new Error('no temp path')
       }
     })
 
-    enqueue({ paths: [FINDER, DRAG_TEMP], target: 'composer' })
+    enqueue({ paths: [FINDER, DRAG_TEMP], target: 'composer', scopeKey: 'pane-1' })
     await settle()
-    enqueue({ paths: [FINDER], target: 'editor' })
 
     expect(forwarded).toEqual([
-      { byteLength: 0, pathCount: 2, reason: 'temp-copy-failed', target: 'rejected' },
-      { paths: [FINDER], target: 'editor' }
+      { paths: [FINDER], target: 'composer', scopeKey: 'pane-1' },
+      { byteLength: 0, pathCount: 1, reason: 'temp-copy-failed', target: 'rejected' }
     ])
   })
 
-  it('passes a rejected drop through in order behind a pending copy', async () => {
-    const copy = deferred<DragTempCopyItemResult[]>()
-    materializeMock.mockReturnValueOnce(copy.promise)
-    const { enqueue, forwarded } = createQueue()
+  it('forwards a rejected drop at once, without waiting on the copy environment', () => {
+    const getCopyEnvironment = vi.fn(() => new Promise<typeof env>(() => undefined))
+    const { enqueue, forwarded } = createQueue({ getCopyEnvironment })
+    enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
     const rejected: NativeFileDropPayload = {
       byteLength: 0,
       pathCount: 300,
@@ -252,38 +294,58 @@ describe('createNativeFileDropQueue', () => {
       target: 'rejected'
     }
 
-    enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
     enqueue(rejected)
-    copy.resolve([copied(DRAG_TEMP, COPY)])
-    await settle()
 
-    expect(forwarded).toEqual([{ paths: [COPY], target: 'terminal' }, rejected])
+    expect(forwarded).toEqual([rejected])
   })
 
-  it('gives up on a hung copy, says why, and serves the drops behind it', async () => {
+  it('gives up on a hung copy, says why, and serves the copies behind it', async () => {
     let copySignal: AbortSignal | undefined
     materializeMock.mockImplementationOnce((_paths, _env, signal: AbortSignal) => {
       copySignal = signal
       return new Promise(() => undefined)
     })
-    materializeMock.mockResolvedValueOnce([copied(FINDER)])
+    materializeMock.mockResolvedValueOnce([copied(OTHER_DRAG_TEMP, COPY)])
     const { enqueue, forwarded } = createQueue({ copyTimeoutMs: 5 })
 
-    enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
-    enqueue({ paths: [FINDER], target: 'editor' })
+    enqueue({ paths: [FINDER, DRAG_TEMP], target: 'terminal' })
+    enqueue({ paths: [OTHER_DRAG_TEMP], target: 'editor' })
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     expect(copySignal?.aborted).toBe(true)
     expect(forwarded).toEqual([
+      { paths: [FINDER], target: 'terminal' },
       {
         byteLength: 0,
         pathCount: 1,
         reason: 'temp-copy-failed',
         target: 'rejected',
-        commonReason: DRAG_TEMP_COPY_TIMEOUT_REASON
+        commonReason: 'timed-out'
       },
-      { paths: [FINDER], target: 'editor' }
+      { paths: [COPY], target: 'editor' }
     ])
+  })
+
+  it('refuses drag-temp files past the pending-copy limit but keeps their ordinary paths', async () => {
+    materializeMock.mockReturnValue(new Promise(() => undefined))
+    const { enqueue, forwarded, controller } = createQueue()
+
+    for (let i = 0; i < MAX_PENDING_DRAG_TEMP_COPIES; i += 1) {
+      enqueue({ paths: [DRAG_TEMP], target: 'terminal' })
+    }
+    enqueue({ paths: [FINDER, DRAG_TEMP], target: 'composer' })
+
+    expect(forwarded).toEqual([
+      { paths: [FINDER], target: 'composer' },
+      {
+        byteLength: 0,
+        pathCount: 1,
+        reason: 'temp-copy-failed',
+        target: 'rejected',
+        commonReason: 'busy'
+      }
+    ])
+    controller.abort(new Error('test done'))
   })
 
   it('does not report a copied drop as a failed copy when forwarding it throws', async () => {

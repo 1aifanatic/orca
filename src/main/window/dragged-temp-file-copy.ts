@@ -1,8 +1,8 @@
 import { constants, createWriteStream, type Dir, type Stats } from 'node:fs'
 import { lstat, mkdtemp, open, opendir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import type { ImportSkipReason } from '../../shared/filesystem-import-result-types'
+import type { NativeFileDropCopyFailureReason } from '../../shared/native-file-drop'
 import {
   formatByteCeiling,
   REMOTE_IMPORT_MAX_FILE_BYTES,
@@ -18,7 +18,6 @@ import {
 // Why: macOS screenshot thumbnails live in `$TMPDIR/TemporaryItems/NSIRD_*`,
 // which only processes attributed to Orca main may open. The detached PTY
 // daemon is not, so agents in local terminals get EPERM on the original path.
-// See docs/reference/macos-dropped-temp-file-materialization.md.
 
 const TEMPORARY_ITEMS_SEGMENT = 'TemporaryItems'
 const DRAG_PROVIDER_DIR_PREFIX = 'NSIRD_'
@@ -41,8 +40,9 @@ export type DragTempCopyEnvironment = {
 
 export type DragTempCopyItemResult =
   | { sourcePath: string; status: 'imported'; destPath: string }
-  | { sourcePath: string; status: 'skipped'; reason: ImportSkipReason }
-  | { sourcePath: string; status: 'failed'; reason: string }
+  /** Handed over as the original path; only main's children can open it. */
+  | { sourcePath: string; status: 'uncopied'; reason: 'too-large' | 'storage-full' }
+  | { sourcePath: string; status: 'failed'; reason: NativeFileDropCopyFailureReason }
 
 export function getDragTempCopyRoot(appTempRoot: string): string {
   return getOwnedTempStagingRoot(appTempRoot, COPY_ROOT_NAME)
@@ -69,25 +69,40 @@ export async function materializeDragTempPaths(
     env.platform === 'darwin'
       ? REMOTE_IMPORT_MAX_TOTAL_BYTES - (await measureRetainedCopyBytes(env.copyRoot))
       : 0
-  for (const sourcePath of paths) {
-    signal?.throwIfAborted()
-    // Why: reuse one copy so composer de-duplication still sees equal paths.
-    const previous = completed.get(sourcePath)
-    if (previous) {
-      results.push(previous)
-      continue
+  try {
+    for (const sourcePath of paths) {
+      signal?.throwIfAborted()
+      // Why: reuse one copy so composer de-duplication still sees equal paths.
+      const previous = completed.get(sourcePath)
+      if (previous) {
+        results.push(previous)
+        continue
+      }
+      const { result, copiedBytes } = await materializeDragTempPath(
+        sourcePath,
+        remainingBytes,
+        env,
+        signal
+      )
+      remainingBytes -= copiedBytes
+      completed.set(sourcePath, result)
+      results.push(result)
     }
-    const { result, copiedBytes } = await materializeDragTempPath(
-      sourcePath,
-      remainingBytes,
-      env,
-      signal
-    )
-    remainingBytes -= copiedBytes
-    completed.set(sourcePath, result)
-    results.push(result)
+    signal?.throwIfAborted()
+    return results
+  } catch (error) {
+    // Why: a caller that gave up never hands these out; don't hold budget until the sweep.
+    await removeCopies(completed.values())
+    throw error
   }
-  return results
+}
+
+async function removeCopies(results: Iterable<DragTempCopyItemResult>): Promise<void> {
+  for (const result of results) {
+    if (result.status === 'imported' && result.destPath !== result.sourcePath) {
+      await rm(dirname(result.destPath), { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
 }
 
 export async function materializeDragTempPath(
@@ -129,7 +144,7 @@ export async function materializeDragTempPath(
     try {
       const opened = await handle.stat()
       if (!opened.isFile() || !isSameSnapshot(opened, inspected)) {
-        throw new DropCopyError('File changed while it was being copied')
+        throw new DropCopyError('changed')
       }
       const size = opened.size
       if (size > REMOTE_IMPORT_MAX_FILE_BYTES || size > remainingBytes) {
@@ -139,7 +154,8 @@ export async function materializeDragTempPath(
           bytes: formatByteCeiling(size),
           remaining: formatByteCeiling(Math.max(remainingBytes, 0))
         })
-        return passThrough
+        const reason = size > REMOTE_IMPORT_MAX_FILE_BYTES ? 'too-large' : 'storage-full'
+        return { result: { sourcePath, status: 'uncopied', reason }, copiedBytes: 0 }
       }
       signal?.throwIfAborted()
 
@@ -159,7 +175,7 @@ export async function materializeDragTempPath(
       const written = await lstat(destPath)
       const afterRead = await handle.stat()
       if (written.size !== size || !isSameSnapshot(afterRead, opened)) {
-        throw new DropCopyError('File changed while it was being copied')
+        throw new DropCopyError('changed')
       }
       // Why: a caller that gave up mid-copy never hands this path out; don't retain it.
       signal?.throwIfAborted()
@@ -281,7 +297,7 @@ function isPathWithin(root: string, candidate: string): boolean {
 async function createCopyDirectory(copyRoot: string): Promise<string> {
   try {
     if (!(await ensureOwnedTempStagingRoot(copyRoot))) {
-      throw new DropCopyError('Orca drop storage is not a private directory')
+      throw new DropCopyError('storage-not-private')
     }
     return await mkdtemp(join(copyRoot, COPY_DIR_PREFIX))
   } catch (error) {
@@ -290,11 +306,7 @@ async function createCopyDirectory(copyRoot: string): Promise<string> {
     }
     // Why: a storage fault must not read as a missing or unreadable dropped file.
     console.warn('[drop] could not create drop storage', { code: errorCode(error) })
-    throw new DropCopyError(
-      isOutOfSpace(errorCode(error))
-        ? OUT_OF_SPACE_MESSAGE
-        : 'Could not create Orca storage for dropped files'
-    )
+    throw new DropCopyError(isOutOfSpace(errorCode(error)) ? 'out-of-space' : 'storage-unavailable')
   }
 }
 
@@ -312,32 +324,33 @@ function imported(sourcePath: string, destPath: string): DragTempCopyItemResult 
   return { sourcePath, status: 'imported', destPath }
 }
 
-class DropCopyError extends Error {}
-
-function classifyFailure(sourcePath: string, error: unknown): DragTempCopyItemResult {
-  const code = errorCode(error)
-  if (code === 'ENOENT') {
-    return { sourcePath, status: 'skipped', reason: 'missing' }
+class DropCopyError extends Error {
+  constructor(readonly reason: NativeFileDropCopyFailureReason) {
+    super(reason)
   }
-  if (code === 'EPERM' || code === 'EACCES') {
-    return { sourcePath, status: 'skipped', reason: 'permission-denied' }
-  }
-  return { sourcePath, status: 'failed', reason: describeFailure(error, code) }
 }
 
-const OUT_OF_SPACE_MESSAGE = 'Not enough disk space to copy the dropped file'
+function classifyFailure(sourcePath: string, error: unknown): DragTempCopyItemResult {
+  return { sourcePath, status: 'failed', reason: failureReason(error) }
+}
 
 function isOutOfSpace(code: string | undefined): boolean {
   return code === 'ENOSPC' || code === 'EDQUOT'
 }
 
-/** User-facing failure copy: no file path and no errno token; the code goes to the log. */
-function describeFailure(error: unknown, code: string | undefined): string {
+function failureReason(error: unknown): NativeFileDropCopyFailureReason {
   if (error instanceof DropCopyError) {
-    return error.message
+    return error.reason
+  }
+  const code = errorCode(error)
+  if (code === 'ENOENT') {
+    return 'missing'
+  }
+  if (code === 'EPERM' || code === 'EACCES') {
+    return 'permission-denied'
   }
   console.warn('[drop] could not copy a drag-temp file', { code })
-  return isOutOfSpace(code) ? OUT_OF_SPACE_MESSAGE : 'Could not copy the dropped file'
+  return isOutOfSpace(code) ? 'out-of-space' : 'copy-failed'
 }
 
 function errorCode(error: unknown): string | undefined {

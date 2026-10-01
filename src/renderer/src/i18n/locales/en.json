@@ -1026,6 +1026,17 @@
         "symlink": "Symbolic links cannot be attached.",
         "permissionDenied": "Permission denied.",
         "unsupported": "Unsupported file type."
+      },
+      "dropTempCopyFailure": {
+        "changed": "The file changed while Orca was copying it. Try the drop again.",
+        "outOfSpace": "Not enough disk space to copy the dropped files.",
+        "storageUnavailable": "Orca couldn't create storage for dropped files.",
+        "storageNotPrivate": "Orca's storage for dropped files can be read by other users, so nothing was copied.",
+        "timedOut": "Copying took too long. Try the drop again.",
+        "busy": "Too many drops are still being copied. Wait a moment, then try again.",
+        "tooLarge": "Too large to copy, so Orca used the original. Terminal agents may not be able to open it.",
+        "storageFull": "Orca's storage for dropped files is full, so Orca used the original. Terminal agents may not be able to open it.",
+        "generic": "Try the drop again."
       }
     },
     "hooks": {
@@ -1061,7 +1072,9 @@
         "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects.",
         "nativeDropUnresolvedPathsDescription": "Save them to disk first, then drop the saved files.",
         "nativeDropUnresolvedPaths": "Orca couldn't read a path for the dropped files.",
-        "nativeDropTempCopyFailed": "Orca couldn't copy {{value0}} dropped {{value1}}."
+        "nativeDropTempCopyFailed": "Orca couldn't copy {{count}} dropped files.",
+        "nativeDropTempCopyFailed_one": "Orca couldn't copy {{count}} dropped file.",
+        "nativeDropTempCopyFailed_other": "Orca couldn't copy {{count}} dropped files."
       },
       "useIpcEvents": {
         "0e3cf53060": "Browser tab {{value0}} not found",

@@ -125,16 +125,14 @@ describe('shouldUploadRemoteEditorFileDrop', () => {
       })
     ).toEqual({ description: 'Permission denied.', title: "Orca couldn't copy 1 dropped file." })
     expect(
-      getNativeFileDropRejectionMessage({
-        ...rejection,
-        pathCount: 2,
-        commonReason: 'File is 3 GiB, over the 2 GiB per-file limit for dropped files'
-      }).description
-    ).toBe('File is 3 GiB, over the 2 GiB per-file limit for dropped files')
-    expect(getNativeFileDropRejectionMessage({ ...rejection, pathCount: 2 })).toEqual({
-      description: 'Save them to disk first, then drop the saved files.',
+      getNativeFileDropRejectionMessage({ ...rejection, pathCount: 2, commonReason: 'timed-out' })
+    ).toEqual({
+      description: 'Copying took too long. Try the drop again.',
       title: "Orca couldn't copy 2 dropped files."
     })
+    expect(getNativeFileDropRejectionMessage({ ...rejection, pathCount: 2 }).description).toBe(
+      'Try the drop again.'
+    )
   })
 
   it('names the drop whose file items carried no readable path (#15782)', () => {

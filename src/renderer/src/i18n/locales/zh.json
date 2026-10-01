@@ -900,6 +900,17 @@
         "symlink": "无法附加符号链接。",
         "permissionDenied": "没有访问权限。",
         "unsupported": "不支持的文件类型。"
+      },
+      "dropTempCopyFailure": {
+        "changed": "Orca 复制时文件发生了变化。请重新拖放。",
+        "outOfSpace": "磁盘空间不足，无法复制拖放的文件。",
+        "storageUnavailable": "Orca 无法为拖放的文件创建存储位置。",
+        "storageNotPrivate": "Orca 用于拖放文件的存储位置可被其他用户读取，因此未复制任何内容。",
+        "timedOut": "复制耗时过长。请重新拖放。",
+        "busy": "仍有太多拖放正在复制。请稍候再试。",
+        "tooLarge": "文件太大，无法复制，因此 Orca 使用了原始文件。终端中的代理可能无法打开它。",
+        "storageFull": "Orca 用于拖放文件的存储空间已满，因此 Orca 使用了原始文件。终端中的代理可能无法打开它。",
+        "generic": "请重新拖放。"
       }
     },
     "hooks": {
@@ -934,8 +945,10 @@
         "nativeDropPathsTooLarge": "拖放的路径列表过大。",
         "ownerChanged": "无法确认哪个主机拥有此工作区。请在它重新连接后重试。",
         "nativeDropUnresolvedPathsDescription": "首先将它们保存到磁盘，然后删除保存的文件。",
-        "nativeDropTempCopyFailed": "Orca 无法复制 {{value0}} 个拖放的文件。",
-        "nativeDropUnresolvedPaths": "Orca 无法读取已删除文件的路径。"
+        "nativeDropUnresolvedPaths": "Orca 无法读取已删除文件的路径。",
+        "nativeDropTempCopyFailed": "Orca 无法复制 {{count}} 个拖放的文件。",
+        "nativeDropTempCopyFailed_one": "Orca 无法复制 {{count}} 个拖放的文件。",
+        "nativeDropTempCopyFailed_other": "Orca 无法复制 {{count}} 个拖放的文件。"
       },
       "useIpcEvents": {
         "0e3cf53060": "未找到浏览器选项卡 {{value0}}",

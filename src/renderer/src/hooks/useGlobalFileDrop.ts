@@ -20,7 +20,7 @@ import {
   type NativeFileDropRejectedPayload
 } from '../../../shared/native-file-drop'
 import { captureWorktreeSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
-import { describeDropSkipReason } from '@/lib/drop-skip-reason-copy'
+import { describeDropTempCopyFailure } from '@/lib/drop-temp-copy-failure-copy'
 
 export function getEditorFileDropSettingsForWorktree(
   store: WorktreeRuntimeOwnerState,
@@ -210,17 +210,11 @@ export function getNativeFileDropRejectionMessage(data: NativeFileDropRejectedPa
 } {
   if (data.reason === 'temp-copy-failed') {
     return {
-      // Why: main strips paths from these reasons, so a shared one is safe to show as-is.
-      description:
-        (data.commonReason && (describeDropSkipReason(data.commonReason) ?? data.commonReason)) ||
-        translate(
-          'auto.hooks.useGlobalFileDrop.nativeDropUnresolvedPathsDescription',
-          'Save them to disk first, then drop the saved files.'
-        ),
+      description: describeDropTempCopyFailure(data.commonReason),
       title: translate(
         'auto.hooks.useGlobalFileDrop.nativeDropTempCopyFailed',
-        "Orca couldn't copy {{value0}} dropped {{value1}}.",
-        { value0: data.pathCount, value1: data.pathCount === 1 ? 'file' : 'files' }
+        "Orca couldn't copy {{count}} dropped files.",
+        { count: data.pathCount }
       )
     }
   }
