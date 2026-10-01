@@ -39,7 +39,7 @@ type RetiredMirrorHomes = {
  */
 export function carryRetiredMirrorSettings(
   homes: RetiredMirrorHomes,
-  options: { carryMcpCredentials: boolean }
+  options: { mirrorOwnedBySystemDefault: boolean }
 ): boolean {
   // Why first: a fresh user may have no ~/.codex until Codex first runs there.
   mkdirSync(homes.systemHomePath, { recursive: true, mode: 0o700 })
@@ -47,14 +47,17 @@ export function carryRetiredMirrorSettings(
     () => promoteCodexRuntimeSettingsToSystem(homes) !== null,
     () => promoteCodexRuntimeHookApprovalsToSystem(homes.runtimeHomePath),
     () => carryMirrorOnlyConfig(homes),
-    // Why: MCP OAuth tokens live beside auth.json, so a sign-in done inside an
-    // Orca pane exists only in the mirror.
-    () =>
-      !options.carryMcpCredentials ||
-      copyIfAbsent(
-        join(homes.runtimeHomePath, '.credentials.json'),
-        join(homes.systemHomePath, '.credentials.json')
-      )
+    () => {
+      // Why: MCP OAuth tokens live beside auth.json, so a sign-in done inside an
+      // Orca pane exists only in the mirror.
+      if (options.mirrorOwnedBySystemDefault) {
+        copyIfAbsent(
+          join(homes.runtimeHomePath, '.credentials.json'),
+          join(homes.systemHomePath, '.credentials.json')
+        )
+      }
+      return true
+    }
   ]
   return steps.map(runStep).every(Boolean)
 }
@@ -146,9 +149,8 @@ function selectMirrorOnlyTables(
     .map((section) => section.block)
 }
 
-function copyIfAbsent(sourcePath: string, targetPath: string): boolean {
+function copyIfAbsent(sourcePath: string, targetPath: string): void {
   if (existsSync(sourcePath) && !existsSync(targetPath)) {
     writeFileAtomically(targetPath, readFileSync(sourcePath, 'utf-8'), { mode: 0o600 })
   }
-  return true
 }

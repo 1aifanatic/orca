@@ -1,16 +1,31 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetPowerShellProfileEnvCache,
   readPowerShellProfileEnvAssignments
 } from './powershell-profile-env'
 
+const { registryDocumentsDir } = vi.hoisted(() => {
+  const state: { value?: string } = {}
+  return { registryDocumentsDir: state }
+})
+
+// Why: the Documents known folder comes from the registry, absent off Windows.
+vi.mock('../windows-native-registry', () => ({
+  loadWindowsNativeRegistry: () => ({
+    HK: { CU: 1, LM: 2 },
+    getRegistryKey: () => ({ Personal: { value: registryDocumentsDir.value } })
+  })
+}))
+
 const roots: string[] = []
 
 afterEach(() => {
   __resetPowerShellProfileEnvCache()
+  vi.unstubAllEnvs()
+  registryDocumentsDir.value = undefined
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true })
   }
@@ -32,6 +47,8 @@ describe('readPowerShellProfileEnvAssignments', () => {
     const root = createRoot()
     const userProfile = join(root, 'me')
     const env = { SystemRoot: join(root, 'Windows'), ProgramFiles: join(root, 'pf') }
+    vi.stubEnv('SystemRoot', env.SystemRoot)
+    vi.stubEnv('ProgramFiles', env.ProgramFiles)
     writeProfile(
       join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'profile.ps1'),
       "$env:CODEX_HOME = 'C:\\all-users'\n"
@@ -45,7 +62,7 @@ describe('readPowerShellProfileEnvAssignments', () => {
       '  ${env:CODEX_HOME} = $env:USERPROFILE\\.codex-7 # pwsh\n'
     )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', userProfile, env)).toEqual([
+    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', userProfile)).toEqual([
       'C:\\all-users',
       `${userProfile}\\.codex-5`,
       `${userProfile}\\.codex-7`
@@ -55,14 +72,15 @@ describe('readPowerShellProfileEnvAssignments', () => {
   it('reads the registry-named Documents folder, e.g. one OneDrive redirected', () => {
     const root = createRoot()
     const documentsDir = join(root, 'OneDrive', 'Dokumente')
+    registryDocumentsDir.value = documentsDir
     writeProfile(
       join(documentsDir, 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
       "$env:CODEX_HOME = 'D:\\codex'\n"
     )
 
-    expect(
-      readPowerShellProfileEnvAssignments('CODEX_HOME', join(root, 'me'), {}, documentsDir)
-    ).toEqual(['D:\\codex'])
+    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', join(root, 'me'))).toEqual([
+      'D:\\codex'
+    ])
   })
 
   it('keeps literal and unevaluable values, and ignores other names and empties', () => {
@@ -79,7 +97,7 @@ describe('readPowerShellProfileEnvAssignments', () => {
       ].join('\n')
     )
 
-    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root, {})).toEqual([
+    expect(readPowerShellProfileEnvAssignments('CODEX_HOME', root)).toEqual([
       '$HOME\\literal # kept',
       `(Join-Path ${root} .codex-x)`
     ])

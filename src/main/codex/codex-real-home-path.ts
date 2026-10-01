@@ -43,24 +43,20 @@ export function hasCustomCodexHomeOverrideForLaunch(launchEnv?: NodeJS.ProcessEn
 export function getCustomCodexHomeOverrideForLaunch(
   launchEnv?: NodeJS.ProcessEnv
 ): CustomCodexHomeOverrideForLaunch | null {
-  const effectiveEnv = launchEnv
-    ? {
-        CODEX_HOME: getLaunchEnvValue(launchEnv, 'CODEX_HOME'),
-        ORCA_CODEX_HOME: getLaunchEnvValue(launchEnv, 'ORCA_CODEX_HOME')
-      }
-    : process.env
+  const effectiveEnv = {
+    CODEX_HOME: getLaunchEnvValue(launchEnv, 'CODEX_HOME'),
+    ORCA_CODEX_HOME: getLaunchEnvValue(launchEnv, 'ORCA_CODEX_HOME')
+  }
   if (hasCustomCodexHomeOverride(effectiveEnv)) {
     return {
       source: 'environment',
       context: { codexHome: effectiveEnv.CODEX_HOME!.trim() }
     }
   }
-  const readLaunchEnv = (key: LaunchEnvKey): string | undefined =>
-    launchEnv ? getLaunchEnvValue(launchEnv, key) : process.env[key]
   // Why USERPROFILE: Windows has no HOME, and PowerShell profiles hang off it.
-  const home = readLaunchEnv(process.platform === 'win32' ? 'USERPROFILE' : 'HOME')
-  const shell = readLaunchEnv('SHELL')
-  const configHome = readLaunchEnv('XDG_CONFIG_HOME')
+  const home = getLaunchEnvValue(launchEnv, process.platform === 'win32' ? 'USERPROFILE' : 'HOME')
+  const shell = getLaunchEnvValue(launchEnv, 'SHELL')
+  const configHome = getLaunchEnvValue(launchEnv, 'XDG_CONFIG_HOME')
   const shellCodexHome = readShellStartupCodexHome(home, shell, configHome)
   if (!home || !shellCodexHome || !hasCustomCodexHomeOverride({ CODEX_HOME: shellCodexHome })) {
     return null
@@ -144,8 +140,11 @@ type LaunchEnvKey =
   | 'SHELL'
   | 'XDG_CONFIG_HOME'
 
-function getLaunchEnvValue(launchEnv: NodeJS.ProcessEnv, key: LaunchEnvKey): string | undefined {
-  return Object.hasOwn(launchEnv, key) ? launchEnv[key] : process.env[key]
+function getLaunchEnvValue(
+  launchEnv: NodeJS.ProcessEnv | undefined,
+  key: LaunchEnvKey
+): string | undefined {
+  return launchEnv && Object.hasOwn(launchEnv, key) ? launchEnv[key] : process.env[key]
 }
 
 function normalizePathForComparison(value: string): string {
