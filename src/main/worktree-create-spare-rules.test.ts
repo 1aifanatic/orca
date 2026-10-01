@@ -233,6 +233,16 @@ describe('rule 3: a create never builds another spare', () => {
     expect(findSpare(spareRepoKey('/repo'))).toBeUndefined()
   })
 
+  it('keeps at most three spares on the machine, dropping the oldest', async () => {
+    for (const repoPath of ['/repo-1', '/repo-2', '/repo-3', '/repo-4']) {
+      spare(repoPath)
+    }
+    await spareReady('/repo-4')
+
+    expect(findSpare(spareRepoKey('/repo-1'))).toBeUndefined()
+    expect(findSpare(spareRepoKey('/repo-2'))?.state).toBe('ready')
+  })
+
   it('keeps one spare per repo when a second base is requested', async () => {
     spare('/repo', OID_A)
     spare('/repo', OID_B)

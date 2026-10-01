@@ -20,6 +20,8 @@ import { recordSpareBuildDuration } from './worktree-create-spare-gate'
 import { hasPendingSpareDiscards, scheduleSpareDiscard } from './worktree-create-spare-discard'
 
 export const WORKTREE_CREATE_PREPARATION_TTL_MS = 5 * 60_000
+/** A disk bound: each spare is a full checkout, so at most this many repos keep one at a time. */
+export const WORKTREE_CREATE_PREPARATION_LIMIT = 3
 
 /** A spare's own git runs at status priority, below anything a user is waiting on. */
 export const worktreePreparationGit = createGitOperationExecutor('status')
@@ -208,6 +210,13 @@ export function startSpare(args: StartSpareArgs): void {
   const existing = spares.get(key)
   if (existing) {
     abandonSpare(existing)
+  }
+  // Map order is insertion order, so the first entry is the oldest spare.
+  for (const oldest of spares.values()) {
+    if (spares.size < WORKTREE_CREATE_PREPARATION_LIMIT) {
+      break
+    }
+    abandonSpare(oldest)
   }
   hookUnsupportedRepos.delete(key)
   const id = `${process.pid}-${randomUUID()}`
