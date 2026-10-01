@@ -106,7 +106,7 @@ export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFul
 
     const claude = await fetchClaudeRateLimits({
       authPreparation: claudeAuthPreparation,
-      allowCliLoginRefresh: this.shouldAllowClaudeCliLoginRefresh(claudeAuthPreparation),
+      cliLoginRefresh: this.claudeCliLoginRefreshPermit(claudeAuthPreparation, claudeTarget),
       networkProxySettings: this.networkProxySettingsResolver?.(),
       signal
     }).catch((err): ProviderRateLimits => ({

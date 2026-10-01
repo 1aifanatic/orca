@@ -13,6 +13,7 @@ import {
   toErrorMessage
 } from './service-types'
 import type { CodexRateLimitResetOutcome } from '../../../shared/rate-limit-types'
+import type { ClaudeCliLoginRefreshPermit } from '../claude-usage-fetch-options'
 
 const CODEX_RESET_REFRESH_RETRIES = 3
 const CODEX_RESET_REFRESH_DELAY_MS = 250
@@ -171,15 +172,20 @@ export abstract class RateLimitServiceFetchTargets extends RateLimitServiceResul
     return { ...stateBeforeReset, codex: scopedCodex, codexTarget: target }
   }
 
-  protected shouldAllowClaudeCliLoginRefresh(
-    authPreparation: ClaudeRuntimeAuthPreparation | undefined
-  ): boolean {
+  protected claudeCliLoginRefreshPermit(
+    authPreparation: ClaudeRuntimeAuthPreparation | undefined,
+    target: NormalizedClaudeAccountSelectionTarget
+  ): ClaudeCliLoginRefreshPermit | undefined {
     // Why: Windows managed accounts can live in WSL, which this host-side refresh does not reach.
     if (process.platform === 'win32') {
-      return false
+      return undefined
     }
+    const reader = this.claudeAuthProvenanceReader
     // Why: a system-default login is the user's own; Orca only reads it and never starts Claude for it.
-    return !isSystemDefaultClaudeAuth(authPreparation)
+    if (isSystemDefaultClaudeAuth(authPreparation) || !reader) {
+      return undefined
+    }
+    return { readCurrentAuthProvenance: () => reader(target) }
   }
 
   protected resolveMiniMaxConfig(): MiniMaxResolvedConfig {

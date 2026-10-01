@@ -1,5 +1,5 @@
 import { realpathSync, statSync } from 'node:fs'
-import type { ProviderRateLimits } from '../../shared/rate-limit-types'
+import type { ProviderRateLimits, UsageRateLimitFailureKind } from '../../shared/rate-limit-types'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { withMacTailscaleDnsHint } from '../network/macos-tailscale-dns-diagnostic'
@@ -145,42 +145,48 @@ export function resetClaudeLoginRefreshLatchesForTests(): void {
   unsupportedCliBinaries.clear()
 }
 
+export type ClaudeLoginRepair =
+  | { kind: 'result'; result: ProviderRateLimits }
+  /** Claude had its chance at this login, now or within the backoff, and it is still expired. */
+  | { kind: 'not-renewed' }
+  /** Nothing was learned about the login; report the original failure. */
+  | { kind: 'unresolved' }
+
 /**
  * Lets the account's own Claude CLI refresh its expired login, then retries the usage endpoint
- * with whatever it saved. Null means usage is still unknown and the caller reports why.
+ * with whatever it saved.
  */
 export async function repairClaudeCredentialsThenRetryOAuth(input: {
   options?: ClaudeRateLimitFetchOptions
   attempts: ClaudeUsageAttemptState
   oauthCredentials: ClaudeOAuthCredentialReadResult
-}): Promise<ProviderRateLimits | null> {
+}): Promise<ClaudeLoginRepair> {
   const authPreparation = input.options?.authPreparation
+  const permit = input.options?.cliLoginRefresh
   if (input.options?.signal?.aborted) {
-    return abortedClaudeRateLimitResult()
+    return { kind: 'result', result: abortedClaudeRateLimitResult() }
   }
-  if (!authPreparation) {
-    return null
+  if (!authPreparation || !permit) {
+    return { kind: 'unresolved' }
   }
   const before = credentialStateKey(input.oauthCredentials)
   const failed = failedLoginRefreshByProvenance.get(authPreparation.provenance)
   if (failed?.state === before && Date.now() < failed.retryAtMs) {
-    return null
+    return { kind: 'not-renewed' }
   }
   const command = resolveClaudeCommand()
   const binary = claudeBinaryKey(command)
   if (unsupportedCliBinaries.has(binary)) {
-    return null
+    return { kind: 'not-renewed' }
   }
   recordClaudeUsageAttempt(input.attempts, 'cli')
   const outcome = await refreshClaudeLoginViaCli({
     authPreparation,
+    readCurrentAuthProvenance: permit.readCurrentAuthProvenance,
     networkProxySettings: input.options?.networkProxySettings,
     signal: input.options?.signal,
     resolveCommand: () => command
   })
-  if (outcome.kind === 'unsupported') {
-    unsupportedCliBinaries.add(binary)
-  }
   if (outcome.kind !== 'answered') {
     warnClaudeUsageFetchFailure(
       authPreparation,
@@ -188,42 +194,64 @@ export async function repairClaudeCredentialsThenRetryOAuth(input: {
       new Error(`Claude CLI login refresh ${outcome.kind}: ${outcome.message}`)
     )
   }
-
   if (input.options?.signal?.aborted) {
-    return abortedClaudeRateLimitResult()
+    return { kind: 'result', result: abortedClaudeRateLimitResult() }
   }
+  if (outcome.kind === 'not-started') {
+    // Claude never ran, so there is nothing to re-read and no reason to back off.
+    return { kind: 'unresolved' }
+  }
+  if (outcome.kind === 'unsupported') {
+    unsupportedCliBinaries.add(binary)
+    return { kind: 'not-renewed' }
+  }
+
   const refreshed = await readClaudeOAuthCredentials(
     resolveClaudeOAuthCredentialReadOptions(authPreparation)
   )
   if (input.options?.signal?.aborted) {
-    return abortedClaudeRateLimitResult()
+    return { kind: 'result', result: abortedClaudeRateLimitResult() }
   }
   if (credentialStateKey(refreshed) === before) {
-    // The CLI saved nothing new; asking again before the login changes would fail the same way.
+    // Claude ran and saved nothing new; asking again before the login changes would fail the same way.
     failedLoginRefreshByProvenance.set(authPreparation.provenance, {
       state: before,
       retryAtMs: Date.now() + FAILED_LOGIN_REFRESH_BACKOFF_MS
     })
-    return null
+    return { kind: 'not-renewed' }
   }
   failedLoginRefreshByProvenance.delete(authPreparation.provenance)
   if (!refreshed.token) {
-    return null
+    return { kind: 'unresolved' }
   }
   recordClaudeUsageAttempt(input.attempts, 'oauth')
   try {
     const limits = await fetchClaudeOAuthUsage(refreshed.token, input.options?.signal)
     if (input.options?.signal?.aborted) {
-      return abortedClaudeRateLimitResult()
+      return { kind: 'result', result: abortedClaudeRateLimitResult() }
     }
-    return claudeOAuthUsageSuccess({
-      limits,
-      oauthCredentials: refreshed,
-      attempts: input.attempts,
-      authPreparation
-    })
+    return {
+      kind: 'result',
+      result: claudeOAuthUsageSuccess({
+        limits,
+        oauthCredentials: refreshed,
+        attempts: input.attempts,
+        authPreparation
+      })
+    }
   } catch (error) {
     warnClaudeUsageFetchFailure(authPreparation, refreshed, error)
-    return null
+    return { kind: 'unresolved' }
   }
+}
+
+/**
+ * After Claude failed to renew the login, only the user can: by running Claude on the account
+ * (it renews or asks them to sign in) or re-authenticating it.
+ */
+export function failureKindAfterClaudeLoginRepair(
+  repair: ClaudeLoginRepair,
+  failureKind: UsageRateLimitFailureKind
+): UsageRateLimitFailureKind {
+  return repair.kind === 'not-renewed' ? 'delegated-refresh-required' : failureKind
 }

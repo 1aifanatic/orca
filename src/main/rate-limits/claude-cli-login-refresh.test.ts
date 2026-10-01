@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import type {
   ClaudeStreamJsonConnection,
@@ -20,6 +21,7 @@ const authPreparation: ClaudeRuntimeAuthPreparation = {
   stripAuthEnv: true,
   provenance: 'managed:account-1'
 }
+const stillSelected = (): string => authPreparation.provenance
 
 function fakeConnect(getUsage: (handlers: ClaudeStreamJsonConnectionHandlers) => Promise<unknown>) {
   const seen: { launch?: ClaudeStreamJsonLaunch; closes: number; usageTimeout?: number } = {
@@ -45,6 +47,10 @@ function fakeConnect(getUsage: (handlers: ClaudeStreamJsonConnectionHandlers) =>
 }
 
 describe('refreshClaudeLoginViaCli', () => {
+  afterEach(() => {
+    endClaudeAuthSwitch()
+  })
+
   it('asks the account’s own Claude for usage in an isolated session-less child, then closes it', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'ambient-key')
     const { connect, seen } = fakeConnect(async () => ({ rate_limits_available: true }))
@@ -52,6 +58,7 @@ describe('refreshClaudeLoginViaCli', () => {
     await expect(
       refreshClaudeLoginViaCli({
         authPreparation,
+        readCurrentAuthProvenance: stillSelected,
         networkProxySettings: { httpProxyUrl: 'http://proxy.test:8080' },
         connect,
         resolveCommand: () => '/fake/bin/claude'
@@ -86,7 +93,12 @@ describe('refreshClaudeLoginViaCli', () => {
     })
 
     await expect(
-      refreshClaudeLoginViaCli({ authPreparation, connect, resolveCommand: () => '/fake/claude' })
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: stillSelected,
+        connect,
+        resolveCommand: () => '/fake/claude'
+      })
     ).resolves.toMatchObject({ kind: 'unsupported' })
     expect(seen.closes).toBe(1)
   })
@@ -98,7 +110,12 @@ describe('refreshClaudeLoginViaCli', () => {
     })
 
     await expect(
-      refreshClaudeLoginViaCli({ authPreparation, connect, resolveCommand: () => '/fake/claude' })
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: stillSelected,
+        connect,
+        resolveCommand: () => '/fake/claude'
+      })
     ).resolves.toEqual({
       kind: 'failed',
       message: 'claude stream-json exited (code 1): accept the updated terms'
@@ -116,6 +133,7 @@ describe('refreshClaudeLoginViaCli', () => {
     await expect(
       refreshClaudeLoginViaCli({
         authPreparation,
+        readCurrentAuthProvenance: stillSelected,
         connect,
         signal: controller.signal,
         resolveCommand: () => '/fake/claude'
@@ -130,8 +148,86 @@ describe('refreshClaudeLoginViaCli', () => {
     const { connect } = fakeConnect(async () => ({}))
 
     await expect(
-      refreshClaudeLoginViaCli({ authPreparation, connect, signal: controller.signal })
-    ).resolves.toMatchObject({ kind: 'failed' })
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: stillSelected,
+        connect,
+        signal: controller.signal
+      })
+    ).resolves.toMatchObject({ kind: 'not-started' })
     expect(connect).not.toHaveBeenCalled()
+  })
+
+  it('starts nothing when aborted while an account switch settles', async () => {
+    const controller = new AbortController()
+    const { connect } = fakeConnect(async () => ({}))
+    beginClaudeAuthSwitch()
+
+    const outcome = refreshClaudeLoginViaCli({
+      authPreparation,
+      readCurrentAuthProvenance: stillSelected,
+      connect,
+      signal: controller.signal,
+      resolveCommand: () => '/fake/claude'
+    })
+    controller.abort()
+    endClaudeAuthSwitch()
+
+    await expect(outcome).resolves.toEqual({ kind: 'not-started', message: 'aborted' })
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  it('starts nothing when the switch it waited for selected another login', async () => {
+    const { connect } = fakeConnect(async () => ({}))
+    let selected = authPreparation.provenance
+    beginClaudeAuthSwitch()
+
+    const outcome = refreshClaudeLoginViaCli({
+      authPreparation,
+      readCurrentAuthProvenance: () => selected,
+      connect,
+      resolveCommand: () => '/fake/claude'
+    })
+    // The user switched back to their own login; the runtime home now holds it.
+    selected = 'system'
+    endClaudeAuthSwitch()
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'not-started',
+      message: 'the selected Claude account changed'
+    })
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  it('starts nothing when the account changed before the refresh began', async () => {
+    const { connect } = fakeConnect(async () => ({}))
+
+    await expect(
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: () => 'managed:account-2',
+        connect,
+        resolveCommand: () => '/fake/claude'
+      })
+    ).resolves.toMatchObject({ kind: 'not-started' })
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  it('reports a connection that never started Claude as not started', async () => {
+    const connect = vi.fn(async () => {
+      throw new Error('query() returned without spawning a child')
+    })
+
+    await expect(
+      refreshClaudeLoginViaCli({
+        authPreparation,
+        readCurrentAuthProvenance: stillSelected,
+        connect,
+        resolveCommand: () => '/fake/claude'
+      })
+    ).resolves.toEqual({
+      kind: 'not-started',
+      message: 'query() returned without spawning a child'
+    })
   })
 })

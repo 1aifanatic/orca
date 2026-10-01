@@ -5,6 +5,7 @@ import {
 } from './claude-oauth-credentials'
 import {
   canRetryClaudeOAuthWithLegacyKeychain,
+  failureKindAfterClaudeLoginRepair,
   makeClaudeUsageClassificationError,
   makeLiveClaudeUsageDeferredResult,
   repairClaudeCredentialsThenRetryOAuth,
@@ -34,7 +35,6 @@ export async function fetchActiveClaudeRateLimits(
     return abortedClaudeRateLimitResult()
   }
   const attempts = { attemptedSources: [] }
-  const allowCliLoginRefresh = options?.allowCliLoginRefresh === true
 
   if (options?.authPreparation?.runtime === 'wsl' && !options.authPreparation.wslLinuxConfigDir) {
     return makeClaudeUsageResult(
@@ -97,20 +97,22 @@ export async function fetchActiveClaudeRateLimits(
         })
       }
 
-      if (classification.shouldAttemptDelegatedRefresh && allowCliLoginRefresh) {
-        const repaired = await repairClaudeCredentialsThenRetryOAuth({
+      let failureKind = classification.failureKind
+      if (classification.shouldAttemptDelegatedRefresh) {
+        const repair = await repairClaudeCredentialsThenRetryOAuth({
           options,
           attempts,
           oauthCredentials
         })
-        if (repaired) {
-          return repaired
+        if (repair.kind === 'result') {
+          return repair.result
         }
+        failureKind = failureKindAfterClaudeLoginRepair(repair, failureKind)
       }
 
       return makeClaudeUsageClassificationError({
         error,
-        classification,
+        classification: { ...classification, failureKind },
         attempts,
         oauthCredentials,
         authPreparation: options?.authPreparation
@@ -132,19 +134,20 @@ export async function fetchActiveClaudeRateLimits(
     })
   }
 
+  let absenceFailureKind = credentialClassification.failureKind
   if (
     oauthCredentials.hasRefreshableCredentials &&
-    credentialClassification.shouldAttemptDelegatedRefresh &&
-    allowCliLoginRefresh
+    credentialClassification.shouldAttemptDelegatedRefresh
   ) {
-    const repaired = await repairClaudeCredentialsThenRetryOAuth({
+    const repair = await repairClaudeCredentialsThenRetryOAuth({
       options,
       attempts,
       oauthCredentials
     })
-    if (repaired) {
-      return repaired
+    if (repair.kind === 'result') {
+      return repair.result
     }
+    absenceFailureKind = failureKindAfterClaudeLoginRepair(repair, absenceFailureKind)
   }
 
   if (oauthCredentials.keychainUnavailable) {
@@ -164,7 +167,7 @@ export async function fetchActiveClaudeRateLimits(
         attemptedSources: attempts.attemptedSources,
         oauthCredentials,
         authPreparation: options?.authPreparation,
-        failureKind: credentialClassification.failureKind
+        failureKind: absenceFailureKind
       })
     })
   }

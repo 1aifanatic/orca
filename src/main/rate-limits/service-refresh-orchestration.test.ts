@@ -452,7 +452,7 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: undefined,
-        allowCliLoginRefresh: false,
+        cliLoginRefresh: undefined,
         signal: expect.any(AbortSignal)
       })
     )

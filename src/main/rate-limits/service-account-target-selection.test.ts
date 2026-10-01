@@ -371,7 +371,9 @@ describe('RateLimitService', () => {
       stripAuthEnv: target?.runtime === 'wsl',
       provenance: target?.runtime === 'wsl' ? 'managed:wsl-account:wsl:Ubuntu' : 'system'
     }))
+    const provenanceReader = vi.fn(() => 'system')
     service.setClaudeAuthPreparationResolver(resolver)
+    service.setClaudeAuthProvenanceReader(provenanceReader)
     service.setClaudeFetchTarget({ runtime: 'wsl', wslDistro: 'Ubuntu' })
 
     vi.mocked(fetchClaudeRateLimits).mockResolvedValueOnce(okProvider('claude', 10, Date.now()))
@@ -388,10 +390,14 @@ describe('RateLimitService', () => {
           wslLinuxConfigDir: '/home/jin/.claude',
           stripAuthEnv: true
         }),
-        allowCliLoginRefresh: true,
+        cliLoginRefresh: { readCurrentAuthProvenance: expect.any(Function) },
         signal: expect.any(AbortSignal)
       })
     )
+    // The refresh re-reads the login selected for the fetch's own target, not the default one.
+    const permit = vi.mocked(fetchClaudeRateLimits).mock.calls[0]?.[0]?.cliLoginRefresh
+    expect(permit?.readCurrentAuthProvenance()).toBe('system')
+    expect(provenanceReader).toHaveBeenCalledWith({ runtime: 'wsl', wslDistro: 'Ubuntu' })
     expect(service.getState().claudeTarget).toEqual({ runtime: 'wsl', wslDistro: 'Ubuntu' })
   })
 
@@ -415,7 +421,7 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: expect.objectContaining({ provenance: 'system' }),
-        allowCliLoginRefresh: false,
+        cliLoginRefresh: undefined,
         signal: expect.any(AbortSignal)
       })
     )
@@ -432,7 +438,7 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: undefined,
-        allowCliLoginRefresh: false,
+        cliLoginRefresh: undefined,
         signal: expect.any(AbortSignal)
       })
     )
@@ -459,7 +465,7 @@ describe('RateLimitService', () => {
     expect(fetchClaudeRateLimits).toHaveBeenCalledWith(
       expect.objectContaining({
         authPreparation: expect.objectContaining({ provenance: 'wsl:Ubuntu:system' }),
-        allowCliLoginRefresh: false,
+        cliLoginRefresh: undefined,
         signal: expect.any(AbortSignal)
       })
     )
@@ -562,6 +568,7 @@ describe('RateLimitService', () => {
       stripAuthEnv: target?.runtime === 'wsl',
       provenance: target?.runtime === 'wsl' ? 'managed:wsl-account-1:wsl:Ubuntu' : 'system'
     }))
+    service.setClaudeAuthProvenanceReader(() => 'managed:wsl-account-1:wsl:Ubuntu')
 
     vi.mocked(fetchClaudeRateLimits)
       .mockResolvedValueOnce(okProvider('claude', 20, Date.now()))
@@ -575,7 +582,9 @@ describe('RateLimitService', () => {
     })
 
     expect(fetchClaudeRateLimits).toHaveBeenLastCalledWith(
-      expect.objectContaining({ allowCliLoginRefresh: true })
+      expect.objectContaining({
+        cliLoginRefresh: { readCurrentAuthProvenance: expect.any(Function) }
+      })
     )
 
     expect(service.getState().inactiveClaudeAccounts).not.toEqual(

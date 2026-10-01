@@ -40,6 +40,8 @@ export type KimiHomeResolver = () => Promise<KimiHomeResolution>
 export type ClaudeAuthPreparationResolver = (
   target?: ClaudeAccountSelectionTarget
 ) => Promise<ClaudeRuntimeAuthPreparation>
+/** The provenance of the login now selected for a target, read without syncing. */
+export type ClaudeAuthProvenanceReader = (target?: ClaudeAccountSelectionTarget) => string
 
 export type OpenCodeGoRateLimitConfig = {
   sessionCookie: string

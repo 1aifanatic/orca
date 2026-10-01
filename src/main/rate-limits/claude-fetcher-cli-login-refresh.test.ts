@@ -8,6 +8,7 @@ import {
 } from '../claude-accounts/keychain'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import type * as CodexCliCommand from '../codex-cli/command'
+import type { ClaudeCliLoginRefreshPermit } from './claude-usage-fetch-options'
 
 const { netFetchMock, readFileMock, resolveProxyMock, setProxyMock, appGetPathMock } = vi.hoisted(
   () => ({
@@ -74,6 +75,11 @@ function managedAuth(
   }
 }
 
+// The login this fetch was prepared for is still the selected one.
+function refreshPermit(): ClaudeCliLoginRefreshPermit {
+  return { readCurrentAuthProvenance: () => 'managed:account-1' }
+}
+
 function storedLogin(accessToken: string | undefined, expiresInMs = -60_000): string {
   return JSON.stringify({
     claudeAiOauth: {
@@ -124,7 +130,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     const before = Date.now()
     const result = await fetchClaudeRateLimits({
       authPreparation: managedAuth(),
-      allowCliLoginRefresh: true
+      cliLoginRefresh: refreshPermit()
     })
     expect(result).toMatchObject({
       status: 'error',
@@ -155,7 +161,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     netFetchMock.mockResolvedValueOnce(usage(14, 27))
 
     await expect(
-      fetchClaudeRateLimits({ authPreparation, allowCliLoginRefresh: true })
+      fetchClaudeRateLimits({ authPreparation, cliLoginRefresh: refreshPermit() })
     ).resolves.toMatchObject({
       status: 'ok',
       session: { usedPercent: 14 },
@@ -174,12 +180,36 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     )
   })
 
-  it('reports the expired login, and backs off, when the CLI saved nothing new', async () => {
+  it('says the user must renew the login, and backs off, when Claude saved nothing new', async () => {
     vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValue(
       storedLogin('stale-oauth-token')
     )
     netFetchMock.mockResolvedValue(usageError(401, 'authentication_error'))
-    const options = { authPreparation: managedAuth(), allowCliLoginRefresh: true }
+    const options = { authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() }
+
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      status: 'error',
+      usageMetadata: { failureKind: 'delegated-refresh-required' }
+    })
+    // Still true during the backoff: nothing is renewing the login.
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      usageMetadata: { failureKind: 'delegated-refresh-required' }
+    })
+
+    // The usage answer is never trusted: only the stored login decides, so one probe per backoff.
+    expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not back off when Claude was never started', async () => {
+    vi.mocked(refreshClaudeLoginViaCli).mockResolvedValue({
+      kind: 'not-started',
+      message: 'the selected Claude account changed'
+    })
+    vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValue(
+      storedLogin('stale-oauth-token')
+    )
+    netFetchMock.mockResolvedValue(usageError(401, 'authentication_error'))
+    const options = { authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() }
 
     await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
       status: 'error',
@@ -187,7 +217,25 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     })
     await fetchClaudeRateLimits(options)
 
-    // The usage answer is never trusted: only the stored login decides, so one probe per backoff.
+    expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(2)
+  })
+
+  it('backs off when Claude started but exited before answering', async () => {
+    vi.mocked(refreshClaudeLoginViaCli).mockResolvedValue({
+      kind: 'failed',
+      message: 'claude stream-json exited (code 1)'
+    })
+    vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValue(
+      storedLogin('stale-oauth-token')
+    )
+    netFetchMock.mockResolvedValue(usageError(401, 'authentication_error'))
+    const options = { authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() }
+
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      usageMetadata: { failureKind: 'delegated-refresh-required' }
+    })
+    await fetchClaudeRateLimits(options)
+
     expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
   })
 
@@ -196,15 +244,17 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
       kind: 'unsupported',
       message: 'Unsupported control request subtype: get_usage'
     })
+    // A changed login does not lift the per-binary latch.
     vi.mocked(readActiveClaudeKeychainCredentialsStrict)
-      .mockResolvedValueOnce(storedLogin('stale-oauth-token'))
       .mockResolvedValueOnce(storedLogin('stale-oauth-token'))
       .mockResolvedValueOnce(storedLogin('other-stale-token'))
     netFetchMock.mockResolvedValue(usageError(401, 'authentication_error'))
-    const options = { authPreparation: managedAuth(), allowCliLoginRefresh: true }
+    const options = { authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() }
 
     await fetchClaudeRateLimits(options)
-    await fetchClaudeRateLimits(options)
+    await expect(fetchClaudeRateLimits(options)).resolves.toMatchObject({
+      usageMetadata: { failureKind: 'delegated-refresh-required' }
+    })
 
     expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
   })
@@ -229,7 +279,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     netFetchMock.mockResolvedValueOnce(new Response('temporary failure', { status: 500 }))
 
     await expect(
-      fetchClaudeRateLimits({ authPreparation: managedAuth(), allowCliLoginRefresh: true })
+      fetchClaudeRateLimits({ authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() })
     ).resolves.toMatchObject({ status: 'error', error: 'OAuth API returned 500' })
     expect(refreshClaudeLoginViaCli).not.toHaveBeenCalled()
   })
@@ -243,7 +293,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     await expect(
       fetchClaudeRateLimits({
         authPreparation: managedAuth({ managedRefreshDeferredByLivePty: true }),
-        allowCliLoginRefresh: true
+        cliLoginRefresh: refreshPermit()
       })
     ).resolves.toMatchObject({
       status: 'error',
@@ -257,7 +307,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
     await expect(
       fetchClaudeRateLimits({
         authPreparation: managedAuth({ managedRefreshDeferredByLivePty: true }),
-        allowCliLoginRefresh: true
+        cliLoginRefresh: refreshPermit()
       })
     ).resolves.toMatchObject({
       status: 'error',
@@ -277,7 +327,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
       .mockResolvedValueOnce(storedLogin('refreshed-oauth-token', 60_000))
 
     await expect(
-      fetchClaudeRateLimits({ authPreparation: managedAuth(), allowCliLoginRefresh: true })
+      fetchClaudeRateLimits({ authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() })
     ).resolves.toMatchObject({ status: 'ok', session: { usedPercent: 12 } })
     expect(refreshClaudeLoginViaCli).toHaveBeenCalledTimes(1)
   })
@@ -296,7 +346,7 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
 
   it('shows a signed-out managed account as an error, never by starting Claude', async () => {
     await expect(
-      fetchClaudeRateLimits({ authPreparation: managedAuth(), allowCliLoginRefresh: true })
+      fetchClaudeRateLimits({ authPreparation: managedAuth(), cliLoginRefresh: refreshPermit() })
     ).resolves.toMatchObject({
       status: 'error',
       error: 'Claude account is signed out',
@@ -318,7 +368,9 @@ describe('fetchClaudeRateLimits without a hidden interactive Claude', () => {
       new Error('security timed out after 3000ms')
     )
 
-    await expect(fetchClaudeRateLimits({ allowCliLoginRefresh: true })).resolves.toMatchObject({
+    await expect(
+      fetchClaudeRateLimits({ cliLoginRefresh: refreshPermit() })
+    ).resolves.toMatchObject({
       status: 'error',
       error: 'Claude Keychain credentials unavailable',
       usageMetadata: { failureKind: 'keychain-unavailable', attemptedSources: [] }

@@ -131,7 +131,10 @@ describe('fetchClaudeRateLimits', () => {
     )
 
     await expect(
-      fetchClaudeRateLimits({ authPreparation, allowCliLoginRefresh: true })
+      fetchClaudeRateLimits({
+        authPreparation,
+        cliLoginRefresh: { readCurrentAuthProvenance: () => authPreparation.provenance }
+      })
     ).resolves.toMatchObject({
       provider: 'claude',
       status: 'ok',
@@ -155,7 +158,10 @@ describe('fetchClaudeRateLimits', () => {
       JSON.stringify({ claudeAiOauth: { accessToken: 'oauth-token' } })
     )
 
-    const result = await fetchClaudeRateLimits({ authPreparation, allowCliLoginRefresh: true })
+    const result = await fetchClaudeRateLimits({
+      authPreparation,
+      cliLoginRefresh: { readCurrentAuthProvenance: () => authPreparation.provenance }
+    })
 
     expect(result).toMatchObject({ status: 'ok', session: { usedPercent: 12 } })
     expect(result.fableWeekly ?? null).toBeNull()

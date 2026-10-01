@@ -11,6 +11,7 @@ import {
   type CodexHomePathResolver,
   type KimiHomeResolver,
   type ClaudeAuthPreparationResolver,
+  type ClaudeAuthProvenanceReader,
   type OpenCodeGoRateLimitConfig,
   type MiniMaxRateLimitConfig,
   type GeminiCliOAuthEnabledResolver,
@@ -94,6 +95,7 @@ export abstract class RateLimitServiceState {
   // Why: resolved per cycle — the local-account runtime policy can flip between fetches.
   protected kimiHomeResolver: KimiHomeResolver | null = null
   protected claudeAuthPreparationResolver: ClaudeAuthPreparationResolver | null = null
+  protected claudeAuthProvenanceReader: ClaudeAuthProvenanceReader | null = null
   protected claudeFetchTarget: NormalizedClaudeAccountSelectionTarget = {
     runtime: 'host',
     wslDistro: null

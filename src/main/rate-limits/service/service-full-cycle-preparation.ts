@@ -183,7 +183,10 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
           ? Promise.resolve(previousState.claude as ProviderRateLimits)
           : fetchClaudeRateLimits({
               authPreparation: claudeAuthPreparation,
-              allowCliLoginRefresh: this.shouldAllowClaudeCliLoginRefresh(claudeAuthPreparation),
+              cliLoginRefresh: this.claudeCliLoginRefreshPermit(
+                claudeAuthPreparation,
+                claudeTarget
+              ),
               networkProxySettings: this.networkProxySettingsResolver?.(),
               signal
             }),

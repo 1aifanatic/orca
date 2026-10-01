@@ -6,7 +6,7 @@ import {
 import { OAuthUsageError } from './claude-oauth-usage-error'
 
 describe('classifyClaudeOAuthUsageError', () => {
-  it('treats OAuth unauthorized as stale-token repair/fallback', () => {
+  it('treats OAuth unauthorized as a stale token Claude may renew', () => {
     expect(
       classifyClaudeOAuthUsageError(new OAuthUsageError('Invalid OAuth token', 401, true))
     ).toMatchObject({
@@ -37,7 +37,7 @@ describe('classifyClaudeOAuthUsageError', () => {
     })
   })
 
-  it('allows CLI fallback for network-shaped failures', () => {
+  it('reports network-shaped failures without asking Claude to renew the login', () => {
     expect(classifyClaudeOAuthUsageError(new Error('fetch failed: ENOTFOUND'))).toMatchObject({
       failureKind: 'network',
       shouldAttemptDelegatedRefresh: false

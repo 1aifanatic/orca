@@ -1,7 +1,10 @@
 import { buildConfiguredProxyEnv, type NetworkProxySettings } from '../../shared/network-proxy'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
-import { whenClaudeAuthSwitchSettles } from '../claude-accounts/live-pty-gate'
+import {
+  isClaudeAuthSwitchInProgress,
+  whenClaudeAuthSwitchSettles
+} from '../claude-accounts/live-pty-gate'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import { withoutInheritedClaudeConfigDir } from '../claude/claude-config-dir-pin'
 import {
@@ -18,7 +21,10 @@ export type ClaudeCliLoginRefreshOutcome =
   | { kind: 'answered' }
   /** The installed CLI has no `get_usage`; retrying the same binary cannot change that. */
   | { kind: 'unsupported'; message: string }
+  /** Claude started but never answered (it exited, timed out, or was stopped). */
   | { kind: 'failed'; message: string }
+  /** Orca never started Claude, so the stored login cannot have changed because of it. */
+  | { kind: 'not-started'; message: string }
 
 type ConnectClaude = typeof openClaudeStreamJsonConnection
 
@@ -34,17 +40,29 @@ function isUnsupportedSubtype(message: string): boolean {
  */
 export async function refreshClaudeLoginViaCli(input: {
   authPreparation: ClaudeRuntimeAuthPreparation
+  readCurrentAuthProvenance: () => string
   networkProxySettings?: NetworkProxySettings
   signal?: AbortSignal
   connect?: ConnectClaude
   resolveCommand?: () => string
 }): Promise<ClaudeCliLoginRefreshOutcome> {
   if (input.signal?.aborted) {
-    return { kind: 'failed', message: 'aborted' }
+    return { kind: 'not-started', message: 'aborted' }
   }
   // A switch re-materializes the runtime credentials this child would refresh.
   if (!(await whenClaudeAuthSwitchSettles())) {
-    return { kind: 'failed', message: 'a Claude account switch is in progress' }
+    return { kind: 'not-started', message: 'a Claude account switch is in progress' }
+  }
+  if (input.signal?.aborted) {
+    return { kind: 'not-started', message: 'aborted' }
+  }
+  // Every login shares the runtime home, so after a switch the child would refresh whichever
+  // account is now selected, possibly the user's own system login.
+  if (
+    isClaudeAuthSwitchInProgress() ||
+    input.readCurrentAuthProvenance() !== input.authPreparation.provenance
+  ) {
+    return { kind: 'not-started', message: 'the selected Claude account changed' }
   }
   const command = (input.resolveCommand ?? resolveClaudeCommand)()
   const launch: ClaudeStreamJsonLaunch = {
@@ -84,6 +102,12 @@ export async function refreshClaudeLoginViaCli(input: {
         fault.first ??= error
       }
     })
+  } catch (error) {
+    input.signal?.removeEventListener('abort', closeOnAbort)
+    // The connection throws only before a child exists.
+    return { kind: 'not-started', message: error instanceof Error ? error.message : String(error) }
+  }
+  try {
     if (input.signal?.aborted) {
       return { kind: 'failed', message: 'aborted' }
     }
