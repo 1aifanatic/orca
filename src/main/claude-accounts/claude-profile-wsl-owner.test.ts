@@ -396,3 +396,26 @@ it('admits a guest UNC history root verbatim beside the legacy roots', () => {
     guest
   ])
 })
+
+it('publishes System Default in a routed distro without the managed guest runtime', async () => {
+  const f = fixture()
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  const prepareGuest = vi.fn(async (): Promise<never> => {
+    throw new Error('Pinned guest runtime could not be prepared')
+  })
+  const routing = new ClaudeProfileRoutingService(
+    createWslClaudeProfileOwner(
+      () => f.settings,
+      prepareGuest,
+      async () => {},
+      f.reachable,
+      f.prepare
+    )
+  )
+  await expect(routing.publish(ubuntu, 'always', 'boot')).resolves.toMatchObject({ profile: null })
+  expect(f.calls.at(-1)).toMatchObject({ action: 'publish', distro: 'Ubuntu', accountId: null })
+  // A runtime failure never blocks choosing System Default, and leaves no routing issue behind.
+  expect(
+    routing.describeAccounts({ accounts: [], activeAccountId: null }).profileRoutingIssue ?? ''
+  ).not.toContain('Ubuntu')
+})

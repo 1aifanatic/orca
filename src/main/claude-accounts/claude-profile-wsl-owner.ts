@@ -8,7 +8,10 @@ import {
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileHostUnreachableError,
+  type ClaudeProfileRoutingOwner
+} from './claude-profile-routing-owner'
 import {
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
@@ -101,27 +104,49 @@ export function createWslClaudeProfileOwner(
         const managed = settings().claudeManagedAccounts.some(
           (entry) => entry.managedAuthRuntime === 'wsl' && entry.wslDistro?.toLowerCase() === key
         )
-        const cached = guests.get(key)
-        const guest =
-          cached && cached.managed === managed && cached.expires > Date.now()
-            ? cached.guest
-            : await (managed ? prepareGuest : prepareDefault)(distro, access)
-        if (guest !== cached?.guest) {
-          guests.set(key, { guest, expires: Date.now() + 600_000, managed })
+        const inspect = async (useManaged: boolean) => {
+          const cached = guests.get(key)
+          const guest =
+            cached && cached.managed === useManaged && cached.expires > Date.now()
+              ? cached.guest
+              : await (useManaged ? prepareGuest : prepareDefault)(distro, access)
+          if (guest !== cached?.guest) {
+            guests.set(key, { guest, expires: Date.now() + 600_000, managed: useManaged })
+          }
+          const result = await guest.request(
+            {
+              action: 'inspect',
+              distro,
+              accountId,
+              accountIds: settings()
+                .claudeManagedAccounts.filter((entry) => entry.wslDistro?.toLowerCase() === key)
+                .map((entry) => entry.id),
+              userHome: guest.home,
+              hooksEnabled: false
+            },
+            access
+          )
+          return { guest, result }
         }
-        const result = await guest.request(
-          {
-            action: 'inspect',
-            distro,
-            accountId,
-            accountIds: settings()
-              .claudeManagedAccounts.filter((entry) => entry.wslDistro?.toLowerCase() === key)
-              .map((entry) => entry.id),
-            userHome: guest.home,
-            hooksEnabled: false
-          },
-          access
-        )
+        let inspected: Awaited<ReturnType<typeof inspect>>
+        try {
+          inspected = await inspect(managed)
+        } catch (error) {
+          // Why: System Default needs only its pointer; the managed runtime failing must not block it.
+          if (
+            !managed ||
+            accountId !== null ||
+            error instanceof ClaudeProfileHostUnreachableError
+          ) {
+            throw error
+          }
+          console.warn(
+            '[claude-profile] WSL System Default publishes without the managed guest:',
+            error
+          )
+          inspected = await inspect(false)
+        }
+        const { guest, result } = inspected
         // Why: an inspect that lands after a newer selection must not replace its verification.
         if (selectedAccountId(target) === accountId) {
           inspections.set(key, { accountId, home: guest.home, result })
