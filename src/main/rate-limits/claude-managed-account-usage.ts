@@ -29,7 +29,6 @@ export async function fetchInactiveClaudeAccountUsage(
       configDir: home,
       runtime: account.managedAuthRuntime,
       wslDistro: account.wslDistro,
-      wslLinuxConfigDir: account.wslLinuxAuthPath,
       envPatch: { CLAUDE_CONFIG_DIR: home },
       stripAuthEnv: true,
       provenance: `profile:${account.id}`

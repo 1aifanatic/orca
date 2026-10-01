@@ -82,6 +82,8 @@ export class ClaudeAccountRegistration {
       }
       throw error
     }
+    // Why repoint the legacy fields: an older Orca's ownership checks refuse this path, so a
+    // downgrade falls back to System Default instead of resuming its legacy token replay.
     this.save({
       ...account,
       managedAuthPath: prepared.config.windowsPath,
