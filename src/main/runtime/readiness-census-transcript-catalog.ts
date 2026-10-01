@@ -1,14 +1,11 @@
 // Every recorded agent screen the readiness census replays, with the grid and process it ran under.
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { GROK_STARTUP_PTY_TRACE } from '../../shared/__fixtures__/grok-startup-pty-trace'
 import { GROK_INLINE_STARTUP_PTY_TRACE } from '../../shared/__fixtures__/grok-inline-startup-pty-trace'
 import type { GrokStartupTraceChunk } from '../../shared/__fixtures__/grok-startup-pty-trace'
-import {
-  readRuntimeFixture,
-  splitTranscriptIntoChunks
-} from './agent-transcript-replay-test-harness'
+import { splitTranscriptIntoChunks } from './agent-transcript-replay-test-harness'
 
 export type CensusTranscript = {
   name: string
@@ -19,16 +16,48 @@ export type CensusTranscript = {
   rows: number
   /** Recorded PTY chunk boundaries when the capture kept them, else the replay harness's. */
   chunks: () => readonly string[]
-  /** Which panes replay it; a long recording splits them across workers. Default: both. */
-  panes?: 'agent' | 'unknown'
 }
 
-type FixtureMeta = { cols: number; rows: number }
+/** One replay: a recording on a pane that knows its agent, or on an agent-unknown pane. */
+export type CensusPane = { transcript: CensusTranscript; pane: 'agent' | 'unknown' }
+
+type Recorder = { agent: TuiAgent | null; foregroundProcess: string; grid?: Grid }
+type Grid = { cols: number; rows: number }
 
 const RUNTIME_FIXTURES = join(__dirname, '__fixtures__')
 const DAEMON_FIXTURES = join(__dirname, '..', 'daemon', '__fixtures__', 'pty-transcripts')
 
-function readMeta(dir: string, name: string): FixtureMeta {
+// Why by name prefix: an unlisted recording fails here instead of escaping the census.
+const RUNTIME_RECORDERS: readonly (readonly [string, Recorder])[] = [
+  ['antigravity-', { agent: 'antigravity', foregroundProcess: 'agy' }],
+  ['claude-', { agent: 'claude', foregroundProcess: 'claude' }],
+  ['cline-', { agent: 'cline', foregroundProcess: 'cline' }],
+  ['codex-', { agent: 'codex', foregroundProcess: 'codex' }],
+  // Clipboard copies of screens with no meta.json, at the runtime emulator's default grid.
+  [
+    'cursor-agent-',
+    { agent: 'cursor', foregroundProcess: 'cursor-agent', grid: { cols: 80, rows: 24 } }
+  ],
+  ['dsh-', { agent: 'dsh', foregroundProcess: 'dsh-tui' }],
+  ['freebuff-', { agent: 'freebuff', foregroundProcess: 'freebuff' }],
+  ['hermes-', { agent: 'hermes', foregroundProcess: 'hermes' }],
+  ['muse-', { agent: 'muse', foregroundProcess: 'muse' }],
+  ['omp-', { agent: 'omp', foregroundProcess: 'omp' }],
+  ['prime-agent-', { agent: 'prime-agent', foregroundProcess: 'prime-agent' }],
+  ['qoder-', { agent: 'qoder', foregroundProcess: 'qodercli' }],
+  ['zcode-', { agent: 'zcode', foregroundProcess: 'zcode' }]
+]
+
+// less, nano and vim are non-agent controls for the agent-unknown pane.
+const DAEMON_RECORDERS: Readonly<Record<string, Recorder>> = {
+  opencode: { agent: 'opencode', foregroundProcess: 'opencode' },
+  'opencode-run': { agent: 'opencode', foregroundProcess: 'opencode' },
+  less: { agent: null, foregroundProcess: 'less' },
+  nano: { agent: null, foregroundProcess: 'nano' },
+  vim: { agent: null, foregroundProcess: 'vim' }
+}
+
+function readGrid(dir: string, name: string): Grid {
   const meta: unknown = JSON.parse(readFileSync(join(dir, `${name}.meta.json`), 'utf8'))
   if (
     typeof meta !== 'object' ||
@@ -44,13 +73,13 @@ function readMeta(dir: string, name: string): FixtureMeta {
 }
 
 /** `<name>.timing.json` holds each recorded chunk as [ms since spawn, UTF-16 length]. */
-function recordedChunks(name: string, data: string): readonly string[] {
-  let timing: unknown
-  try {
-    timing = JSON.parse(readFileSync(join(RUNTIME_FIXTURES, `${name}.timing.json`), 'utf8'))
-  } catch {
+function recordedChunks(dir: string, name: string): readonly string[] {
+  const data = readFileSync(join(dir, `${name}.txt`), 'utf8')
+  const timingPath = join(dir, `${name}.timing.json`)
+  if (!existsSync(timingPath)) {
     return splitTranscriptIntoChunks(data)
   }
+  const timing: unknown = JSON.parse(readFileSync(timingPath, 'utf8'))
   const lengths =
     typeof timing === 'object' && timing !== null && 'chunks' in timing ? timing.chunks : undefined
   if (!Array.isArray(lengths)) {
@@ -72,37 +101,31 @@ function recordedChunks(name: string, data: string): readonly string[] {
   return chunks
 }
 
-function runtimeTranscript(
-  name: string,
-  agent: TuiAgent,
-  foregroundProcess: string
-): CensusTranscript {
-  const { cols, rows } = readMeta(RUNTIME_FIXTURES, name)
-  return {
-    name,
-    agent,
-    foregroundProcess,
-    cols,
-    rows,
-    chunks: () => recordedChunks(name, readRuntimeFixture(name))
-  }
-}
-
-function daemonTranscript(
-  name: string,
-  agent: TuiAgent | null,
-  foregroundProcess: string
-): CensusTranscript {
-  const { cols, rows } = readMeta(DAEMON_FIXTURES, name)
-  return {
-    name: `daemon/${name}`,
-    agent,
-    foregroundProcess,
-    cols,
-    rows,
-    chunks: () =>
-      splitTranscriptIntoChunks(readFileSync(join(DAEMON_FIXTURES, `${name}.txt`), 'utf8'))
-  }
+function recordedTranscripts(
+  dir: string,
+  prefix: string,
+  recorderFor: (name: string) => Recorder | undefined
+): CensusTranscript[] {
+  return readdirSync(dir)
+    .filter((file) => file.endsWith('.txt'))
+    .map((file) => file.slice(0, -'.txt'.length))
+    .map((name) => {
+      const recorder = recorderFor(name)
+      if (!recorder) {
+        throw new Error(
+          `${name}: no census recorder; add one in readiness-census-transcript-catalog`
+        )
+      }
+      const { cols, rows } = recorder.grid ?? readGrid(dir, name)
+      return {
+        name: `${prefix}${name}`,
+        agent: recorder.agent,
+        foregroundProcess: recorder.foregroundProcess,
+        cols,
+        rows,
+        chunks: () => recordedChunks(dir, name)
+      }
+    })
 }
 
 // Why filler of the recorded length: the trace elides marker-free animation frames to a byte count.
@@ -118,186 +141,47 @@ function grokTranscript(name: string, trace: readonly GrokStartupTraceChunk[]): 
   }
 }
 
-function fixtureNames(prefix: string): string[] {
-  return FIXTURE_NAMES.filter((name) => name.startsWith(prefix))
+export const CENSUS_TRANSCRIPTS: readonly CensusTranscript[] = [
+  ...recordedTranscripts(
+    RUNTIME_FIXTURES,
+    '',
+    (name) => RUNTIME_RECORDERS.find(([prefix]) => name.startsWith(prefix))?.[1]
+  ),
+  ...recordedTranscripts(DAEMON_FIXTURES, 'daemon/', (name) => DAEMON_RECORDERS[name]),
+  grokTranscript('startup', GROK_STARTUP_PTY_TRACE),
+  grokTranscript('inline-startup', GROK_INLINE_STARTUP_PTY_TRACE)
+].toSorted((a, b) => a.name.localeCompare(b.name))
+
+export const CENSUS_PANES: readonly CensusPane[] = CENSUS_TRANSCRIPTS.flatMap((transcript) => [
+  ...(transcript.agent ? [{ transcript, pane: 'agent' as const }] : []),
+  { transcript, pane: 'unknown' as const }
+])
+
+export function censusPaneSubject({ transcript, pane }: CensusPane): string {
+  return `transcript/${transcript.name}@${pane}`
 }
 
-// Why a literal list, not a directory scan: a new recording must be added (and its baseline
-// generated) deliberately; the coverage test below fails on a fixture nobody listed.
-export const FIXTURE_NAMES = [
-  'antigravity-1-2-14-busy-streaming',
-  'antigravity-1-2-14-busy-thinking',
-  'antigravity-1-2-14-command-palette',
-  'antigravity-1-2-14-draft',
-  'antigravity-1-2-14-model-picker',
-  'antigravity-1-2-14-picker-dismissed',
-  'antigravity-1-2-14-ready',
-  'antigravity-1-2-14-ready-80x24',
-  'antigravity-1-2-14-ready-accept-edits',
-  'antigravity-1-2-14-ready-plan',
-  'antigravity-1-2-14-trust-dialog',
-  'antigravity-1-2-14-turn-ended',
-  'antigravity-busy-mid-turn',
-  'antigravity-busy-turn-ended',
-  'antigravity-dialog-command-palette',
-  'antigravity-dialog-dismissed',
-  'antigravity-dialog-model-picker',
-  'antigravity-dialog-trust-workspace',
-  'antigravity-ready-account-info-hidden',
-  'antigravity-ready-api-key-gemini-model',
-  'claude-dialog-trust-workspace',
-  'claude-dialog-trust-workspace-answered',
-  'claude-dialog-trust-workspace-narrow',
-  'cline-3-0-65-win32-startup',
-  'cline-3-0-66-busy-streaming',
-  'cline-3-0-66-draft',
-  'cline-3-0-66-permission',
-  'cline-3-0-66-promo',
-  'cline-3-0-66-ready',
-  'cline-3-0-66-ready-80x24',
-  'cline-3-0-66-ready-plan',
-  'cline-3-0-66-slash-menu',
-  'cline-3-0-66-turn-ended',
-  'codex-0-150-1-turn',
-  'codex-0-155-1-timed-turn',
-  'codex-0-157-1-timed-sleep-turn',
-  'codex-0-157-1-update-dialog',
-  'codex-0-158-0-approval',
-  'codex-0-158-0-timed-turn',
-  'codex-0-158-0-trustprompt',
-  'codex-0157-config-override-embedded-warning',
-  'codex-0157-effort-override-embedded-warning',
-  'codex-0157-fresh-home-daemon-install',
-  'codex-0157-hooks-review-dialog',
-  'codex-0157-model-retired-dialog',
-  'codex-0157-no-daemon-effort-override',
-  'codex-0157-plain-ready',
-  'codex-0157-update-available-dialog',
-  'codex-0158-fresh-home-greeting',
-  'codex-0158-hooks-review-dialog',
-  'codex-0158-model-announcement-dialog',
-  'codex-0158-model-retired-dialog',
-  'codex-0158-update-available-dialog',
-  'cursor-agent-approval-prompt',
-  'cursor-agent-idle-after-approval',
-  'cursor-agent-long-tool-call',
-  'dsh-tui-ready-no-key',
-  'freebuff-lifecycle',
-  'freebuff-login',
-  'freebuff-ready',
-  'freebuff-trust',
-  'hermes-tui-ready',
-  'muse-empty-folder-ready',
-  'omp-native-title-win32',
-  'prime-agent-0-9-5-ready',
-  'prime-agent-0-9-5-turn',
-  'prime-agent-0-9-8-busy-streaming',
-  'prime-agent-0-9-8-draft',
-  'prime-agent-0-9-8-ready',
-  'prime-agent-0-9-8-ready-80x24',
-  'prime-agent-0-9-8-ready-after-question',
-  'prime-agent-0-9-8-slash-menu',
-  'prime-agent-0-9-8-tool-turn',
-  'prime-agent-0-9-8-trace-question',
-  'prime-agent-0-9-8-turn-ended',
-  'qoder-no-account',
-  'qoder-ready',
-  'qoder-trust-dialog',
-  'zcode-composer-ready',
-  'zcode-missing-tui'
-] as const
+/** Test files the replays spread across; each file is one vitest worker. */
+export const CENSUS_SHARD_COUNT = 6
 
-// Why 80x24: the Cursor files are clipboard copies of screens with no meta.json; this is the
-// grid the runtime's emulator defaults to (agent-transcript-pane-test-harness.ts).
-function cursorTranscript(name: string): CensusTranscript {
-  return {
-    name,
-    agent: 'cursor',
-    foregroundProcess: 'cursor-agent',
-    cols: 80,
-    rows: 24,
-    chunks: () => splitTranscriptIntoChunks(readRuntimeFixture(name))
+/** Shard `shard`'s (1-based) replays: longest first onto the lightest shard, so one long recording
+ *  does not land beside others. */
+export function censusShard(shard: number): CensusPane[] {
+  const shards = Array.from(
+    { length: CENSUS_SHARD_COUNT },
+    (): { frames: number; panes: CensusPane[] } => ({
+      frames: 0,
+      panes: []
+    })
+  )
+  const byLength = CENSUS_PANES.map((pane) => ({
+    pane,
+    frames: pane.transcript.chunks().length
+  })).toSorted((a, b) => b.frames - a.frames)
+  for (const { pane, frames } of byLength) {
+    const lightest = shards.reduce((min, shard) => (shard.frames < min.frames ? shard : min))
+    lightest.frames += frames
+    lightest.panes.push(pane)
   }
+  return shards[shard - 1]?.panes ?? []
 }
-
-export type CensusFamily =
-  | 'antigravity'
-  | 'cline'
-  | 'codex'
-  | 'prime-agent'
-  | 'claude-cursor-qoder'
-  | 'prime-agent-question-agent'
-  | 'prime-agent-question-unknown'
-  | 'long-startups'
-  | 'others'
-
-export function censusTranscripts(family: CensusFamily): CensusTranscript[] {
-  switch (family) {
-    case 'antigravity':
-      return fixtureNames('antigravity-').map((name) =>
-        runtimeTranscript(name, 'antigravity', 'agy')
-      )
-    case 'cline':
-      return fixtureNames('cline-').map((name) => runtimeTranscript(name, 'cline', 'cline'))
-    case 'codex':
-      return fixtureNames('codex-').map((name) => runtimeTranscript(name, 'codex', 'codex'))
-    case 'prime-agent':
-      // Why apart: ready-after-question alone is ~600 KB, so it gets its own worker.
-      return fixtureNames('prime-agent-')
-        .filter((name) => name !== 'prime-agent-0-9-8-ready-after-question')
-        .map((name) => runtimeTranscript(name, 'prime-agent', 'prime-agent'))
-    case 'claude-cursor-qoder':
-      return [
-        ...fixtureNames('claude-').map((name) => runtimeTranscript(name, 'claude', 'claude')),
-        ...fixtureNames('cursor-agent-').map(cursorTranscript),
-        ...fixtureNames('qoder-').map((name) => runtimeTranscript(name, 'qoder', 'qodercli'))
-      ]
-    case 'prime-agent-question-agent':
-    case 'prime-agent-question-unknown': {
-      // Why one pane group per worker: this ~600 KB recording is ~9k frames.
-      const panes = family === 'prime-agent-question-agent' ? 'agent' : 'unknown'
-      const transcript = runtimeTranscript(
-        'prime-agent-0-9-8-ready-after-question',
-        'prime-agent',
-        'prime-agent'
-      )
-      return [{ ...transcript, name: `${transcript.name}@${panes}`, panes }]
-    }
-    case 'long-startups':
-      return [
-        runtimeTranscript('zcode-composer-ready', 'zcode', 'zcode'),
-        runtimeTranscript('freebuff-lifecycle', 'freebuff', 'freebuff')
-      ]
-    case 'others':
-      return [
-        runtimeTranscript('dsh-tui-ready-no-key', 'dsh', 'dsh-tui'),
-        ...fixtureNames('freebuff-')
-          .filter((name) => name !== 'freebuff-lifecycle')
-          .map((name) => runtimeTranscript(name, 'freebuff', 'freebuff')),
-        runtimeTranscript('hermes-tui-ready', 'hermes', 'hermes'),
-        runtimeTranscript('muse-empty-folder-ready', 'muse', 'muse'),
-        runtimeTranscript('omp-native-title-win32', 'omp', 'omp'),
-        runtimeTranscript('zcode-missing-tui', 'zcode', 'zcode'),
-        daemonTranscript('opencode', 'opencode', 'opencode'),
-        daemonTranscript('opencode-run', 'opencode', 'opencode'),
-        // Non-agent screens: controls for the agent-unknown pane.
-        daemonTranscript('less', null, 'less'),
-        daemonTranscript('nano', null, 'nano'),
-        daemonTranscript('vim', null, 'vim'),
-        grokTranscript('startup', GROK_STARTUP_PTY_TRACE),
-        grokTranscript('inline-startup', GROK_INLINE_STARTUP_PTY_TRACE)
-      ]
-  }
-}
-
-export const CENSUS_FAMILIES: readonly CensusFamily[] = [
-  'antigravity',
-  'cline',
-  'codex',
-  'prime-agent',
-  'claude-cursor-qoder',
-  'prime-agent-question-agent',
-  'prime-agent-question-unknown',
-  'long-startups',
-  'others'
-]

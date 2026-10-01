@@ -2,14 +2,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-export const UPDATE_CENSUS_ENV = 'UPDATE_READINESS_CENSUS'
+const UPDATE_CENSUS_ENV = 'UPDATE_READINESS_CENSUS'
 const BASELINE_DIR = join(__dirname, '__fixtures__', 'readiness-census')
 
 /** Per pane (or matrix row group), one observation per frame (or case). */
 export type CensusObservations = Record<string, readonly string[]>
 
 /** One committed baseline file: per-frame observations, or named synthetic cases. */
-type CensusBaselineFile = { subject: string; description: string } & (
+type CensusBaselineFile = { description: string } & (
   | {
       /** Lines of `<first>-<last>: <observation>`, or `<index>: <observation>` for one frame. */
       observations: Record<string, string[]>
@@ -112,14 +112,13 @@ function readOrWriteBaseline(
   }
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
   const stored: unknown =
-    typeof parsed === 'object' && parsed !== null
-      ? Object.entries(parsed).find(([key]) => key === field)?.[1]
+    typeof parsed === 'object' && parsed !== null && field in parsed
+      ? Reflect.get(parsed, field)
       : undefined
   if (typeof stored !== 'object' || stored === null) {
     return { message: `${subject}: baseline at ${path} has no ${field}` }
   }
-  const entries: Record<string, unknown> = Object.fromEntries(Object.entries(stored))
-  return { stored: entries }
+  return { stored: Object.fromEntries(Object.entries(stored)) }
 }
 
 function formatFailure(diff: readonly string[]): string {
@@ -148,7 +147,7 @@ export function checkCensusBaseline(
   const observations = Object.fromEntries(
     Object.entries(actual).map(([key, values]) => [key, runLengthEncode(values)])
   )
-  const read = readOrWriteBaseline(subject, 'observations', { subject, description, observations })
+  const read = readOrWriteBaseline(subject, 'observations', { description, observations })
   if ('message' in read) {
     return read.message
   }
@@ -168,7 +167,7 @@ export function checkCensusCases(
   description: string,
   actual: Record<string, string>
 ): string {
-  const read = readOrWriteBaseline(subject, 'cases', { subject, description, cases: actual })
+  const read = readOrWriteBaseline(subject, 'cases', { description, cases: actual })
   if ('message' in read) {
     return read.message
   }

@@ -1,42 +1,68 @@
-// One census suite per transcript family; see readiness-census-codex.test.ts for what it pins.
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+// The transcript half of the readiness census: each recording replayed chunk by chunk into a pane.
+import { describe, expect, it, vi } from 'vitest'
+import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import { checkCensusBaseline } from './readiness-census-baseline'
-import { censusTranscripts, type CensusFamily } from './readiness-census-transcript-catalog'
-import { replayCensusTranscript } from './readiness-census-transcript-replay'
+import {
+  closePane,
+  feedPane,
+  observePane,
+  useCensusEnvironment
+} from './readiness-census-pane-probe'
+import {
+  censusPaneSubject,
+  censusShard,
+  type CensusPane
+} from './readiness-census-transcript-catalog'
 
-// Why per transcript: the longest replays take several seconds under full-suite load.
-const TRANSCRIPT_TIMEOUT_MS = 120_000
+// Why 50 ms: at WAIT_BLOCKED_CHECK_MIN_INTERVAL_MS the runtime's blocked scan runs inline rather
+// than on a wall-clock timer, and 50 ms x the longest transcript stays far inside the 30-minute
+// first-party status freshness window. Elapsed time between chunks reaches no other rule.
+const FRAME_MS = 50
+const BASE_TIME_MS = Date.UTC(2026, 0, 1)
+// Why per replay: the longest takes several seconds alone, longer under full-suite load.
+const REPLAY_TIMEOUT_MS = 120_000
 
-export function describeTranscriptCensus(family: CensusFamily): void {
-  describe(`readiness census: ${family} transcripts`, () => {
-    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
-    beforeAll(() => {
-      // Why darwin for every recording: verdicts must not depend on the CI host, and all but one
-      // capture (a Cline Windows startup, whose screen carries no platform branch) ran on POSIX.
-      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
-      // Why only these: xterm's write queue runs on real setTimeout, while the clock and the idle
-      // poll's shared interval must be stepped by the census itself.
-      vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
-    })
-    afterAll(() => {
-      vi.useRealTimers()
-      if (platform) {
-        Object.defineProperty(process, 'platform', platform)
-      }
-    })
+async function replayCensusPane({
+  transcript,
+  pane
+}: CensusPane): Promise<Record<'clocked' | 'clockless', string[]>> {
+  vi.setSystemTime(BASE_TIME_MS)
+  const { runtime, handle } = await createTranscriptPane({
+    paneTitle: 'Terminal',
+    foregroundProcess: transcript.foregroundProcess,
+    data: '',
+    ...(pane === 'agent' && transcript.agent ? { launchAgent: transcript.agent } : {}),
+    size: { cols: transcript.cols, rows: transcript.rows }
+  })
+  const frames: Record<'clocked' | 'clockless', string[]> = { clocked: [], clockless: [] }
+  for (const [index, chunk] of transcript.chunks().entries()) {
+    // Why each frame restarts from its own time: every frame is a branch point, and a clock
+    // carried past the previous frame's quiet probe would age first-party statuses.
+    const at = BASE_TIME_MS + (index + 1) * FRAME_MS
+    await feedPane(runtime, chunk, at)
+    const observed = await observePane(runtime, handle, at)
+    frames.clocked.push(observed.clocked)
+    frames.clockless.push(observed.clockless)
+  }
+  closePane(runtime)
+  return frames
+}
 
-    it.each(censusTranscripts(family).map((transcript) => [transcript.name, transcript] as const))(
+export function describeTranscriptCensusShard(shard: number): void {
+  describe(`readiness census: transcripts, shard ${shard}`, () => {
+    useCensusEnvironment()
+    it.each(censusShard(shard).map((pane) => [censusPaneSubject(pane), pane] as const))(
       '%s',
-      async (_name, transcript) => {
-        const frames = await replayCensusTranscript(transcript)
+      async (subject, pane) => {
+        const { transcript } = pane
         const diff = checkCensusBaseline(
-          `transcript/${transcript.name}`,
-          `${transcript.agent ?? 'non-agent'} recording at ${transcript.cols}x${transcript.rows}, one entry per replayed chunk`,
-          frames
+          subject,
+          `${transcript.agent ?? 'non-agent'} recording at ${transcript.cols}x${transcript.rows} replayed on the ${pane.pane} pane, one entry per chunk`,
+          await replayCensusPane(pane)
         )
         expect(diff).toBe('')
       },
-      TRANSCRIPT_TIMEOUT_MS
+      REPLAY_TIMEOUT_MS
     )
   })
 }

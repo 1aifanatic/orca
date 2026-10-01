@@ -3,19 +3,17 @@ import { vi } from 'vitest'
 import { AGENT_STATUS_STALE_AFTER_MS } from '../../shared/agent-status-freshness'
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
-import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
+import { isTuiAgent, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import {
   readRuntimeFixture,
   splitTranscriptIntoChunks
 } from './agent-transcript-replay-test-harness'
-import {
-  asClocklessPane,
-  CENSUS_QUIET_EDGE_MS,
-  CENSUS_QUIET_MS,
-  evaluatePaneVerdict,
-  probePaneWait
-} from './readiness-census-pane-probe'
+import { closePane, feedPane, observePane } from './readiness-census-pane-probe'
+
+export const CENSUS_AGENTS: readonly TuiAgent[] = Object.keys(TUI_AGENT_CONFIG)
+  .filter(isTuiAgent)
+  .toSorted()
 
 type TitleVariant = 'native-idle' | 'working-spinner' | 'name-only' | 'synthetic-ready' | 'none'
 type StatusVariant =
@@ -174,46 +172,28 @@ export async function runSyntheticCase(
   let at = BASE_TIME_MS
   vi.setSystemTime(at)
   const { runtime, handle } = await createTranscriptPane(options)
-  const feed = async (chunk: string): Promise<void> => {
-    let painted: Promise<void> = Promise.resolve()
-    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, chunk, at, chunk.length, false, (completion) => {
-      painted = completion
-    })
-    await painted
-  }
   const [state, freshness] = entry.status.split('-')
   if (freshness === 'stale') {
-    await feed(statusOsc(agent, state))
+    await feedPane(runtime, statusOsc(agent, state), at)
     at += AGENT_STATUS_STALE_AFTER_MS + 60_000
-    vi.setSystemTime(at)
   }
   if (entry.screen !== 'absent') {
     for (const chunk of screen.chunks) {
-      await feed(chunk)
+      await feedPane(runtime, chunk, at)
     }
   }
   const title = titleFor(agent, entry.title)
   if (title) {
-    await feed(`\x1b]0;${title}\x07`)
+    await feedPane(runtime, `\x1b]0;${title}\x07`, at)
   }
   if (freshness === 'fresh') {
-    await feed(statusOsc(agent, state))
+    await feedPane(runtime, statusOsc(agent, state), at)
   }
   // Why after painting: an untrusted grid is one the TUI painted for, but the PTY no longer has.
   options.size = { cols: screen.cols, rows: screen.rows }
-  const now = evaluatePaneVerdict(runtime, handle)
-  vi.setSystemTime(at + CENSUS_QUIET_EDGE_MS)
-  const edge = evaluatePaneVerdict(runtime, handle)
-  vi.setSystemTime(at + CENSUS_QUIET_MS)
-  const quiet = evaluatePaneVerdict(runtime, handle)
-  const wait = await probePaneWait(runtime, handle)
-  const clockless = await asClocklessPane(runtime, handle, TRANSCRIPT_PANE_PTY_ID, async () => {
-    const verdict = evaluatePaneVerdict(runtime, handle)
-    return `verdict=${verdict} wait=${await probePaneWait(runtime, handle)}`
-  })
+  const { clocked, clockless } = await observePane(runtime, handle, at)
+  closePane(runtime)
+
   const label = caseLabel(entry)
-  return {
-    [`${label} clock=clocked`]: `now=${now} edge=${edge} quiet=${quiet} wait=${wait}`,
-    [`${label} clock=clockless`]: clockless
-  }
+  return { [`${label} clock=clocked`]: clocked, [`${label} clock=clockless`]: clockless }
 }

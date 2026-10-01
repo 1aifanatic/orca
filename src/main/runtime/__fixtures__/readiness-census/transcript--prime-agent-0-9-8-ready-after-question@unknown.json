@@ -1,8 +1,7 @@
 {
-  "subject": "transcript/prime-agent-0-9-8-ready-after-question@unknown",
-  "description": "prime-agent recording at 120x40, one entry per replayed chunk",
+  "description": "prime-agent recording at 120x40 replayed on the unknown pane, one entry per chunk",
   "observations": {
-    "unknown:clocked": ["0-8960: now=pending:open edge=pending:open quiet=pending:open wait=ready"],
-    "unknown:clockless": ["0-8960: verdict=pending:open wait=ready"]
+    "clocked": ["0-8960: now=pending:open edge=pending:open quiet=pending:open wait=ready@poll"],
+    "clockless": ["0-8960: verdict=pending:open wait=ready@poll"]
   }
 }
