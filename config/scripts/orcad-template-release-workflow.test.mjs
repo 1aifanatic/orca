@@ -105,7 +105,11 @@ describe('orcad template release wiring (design D2)', () => {
     }
 
     const macSteps = releaseMac.jobs['build-mac'].steps
-    const macDownload = stepIndex(macSteps, (step) => step.uses === 'actions/download-artifact@v8')
+    // Why by name: the mac job also downloads the relay Windows process-tree addons.
+    const macDownload = stepIndex(
+      macSteps,
+      (step) => step.uses === 'actions/download-artifact@v8' && step.with?.name === 'orcad-template'
+    )
     expect(macSteps[macDownload].with).toMatchObject({
       name: 'orcad-template',
       path: 'out/orcad-template',
