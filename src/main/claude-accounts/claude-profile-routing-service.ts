@@ -139,8 +139,8 @@ export class ClaudeProfileRoutingService {
       throw error
     }
   }
-  /** A distro that lost its last account: panes opened while it was routed must stop launching
-   *  that account. Bookkeeping, so it only warns. */
+  /** A distro that lost its last account: panes opened while it was routed fall back to System
+   *  Default, as new panes there do. Bookkeeping, so it only warns. */
   async retire(
     target: ClaudeAccountSelectionTarget,
     access: ClaudeProfileHostAccess
@@ -156,7 +156,7 @@ export class ClaudeProfileRoutingService {
     this.publishIssues.delete(key)
     try {
       await this.pointers.write(key, generation, async () => {
-        await this.owner.withdraw(target, access)
+        await (this.owner.retire?.(target, access) ?? this.owner.withdraw(target, access))
       })
     } catch (error) {
       console.warn('[claude-profile] Pointer withdrawal failed:', error)

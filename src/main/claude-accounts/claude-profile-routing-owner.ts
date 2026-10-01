@@ -60,6 +60,8 @@ export type ClaudeProfileRoutingOwner = {
   ) => void | Promise<void>
   /** Resolves false when the host stays unreachable for a short, bounded wait. */
   reachable?: (target: ClaudeAccountSelectionTarget) => Promise<boolean>
+  /** A target that is no longer routed returns to System Default; withdraws when absent. */
+  retire?: (target: ClaudeAccountSelectionTarget, access: ClaudeProfileHostAccess) => Promise<void>
 }
 
 /** User-initiated work may boot a stopped WSL distro, as a legacy spawn or \\wsl$ write does;

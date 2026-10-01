@@ -489,10 +489,11 @@ function routingFixture(withAccount: boolean) {
   })
   const prepare = vi.fn(async (distro: string) => guest(distro))
   const prepareDefault = vi.fn(async (distro: string) => guest(distro))
+  const withdraw = vi.fn(async () => {})
   const owner = createWslClaudeProfileOwner(
     () => settings,
     prepare,
-    async () => {},
+    withdraw,
     async () => true,
     prepareDefault
   )
@@ -500,6 +501,7 @@ function routingFixture(withAccount: boolean) {
     settings,
     prepare,
     prepareDefault,
+    withdraw,
     owner,
     calls,
     routing: new ClaudeProfileRoutingService(owner)
@@ -513,6 +515,17 @@ it('unroutes a distro once its last account is removed', async () => {
   f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
   expect(f.routing.routes(ubuntu)).toBe(false)
   expect(f.routing.terminalEnv(ubuntu)).toEqual({})
+})
+it('leaves open panes on System Default, not refusing, once the last account is removed', async () => {
+  const f = routingFixture(true)
+  await f.routing.publish(ubuntu, 'always', 'boot')
+  f.settings.claudeManagedAccounts = []
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = null
+  f.calls.length = 0
+  await f.routing.retire(ubuntu, 'boot')
+  expect(f.withdraw).not.toHaveBeenCalled()
+  expect(f.prepareDefault).toHaveBeenCalledWith('Ubuntu', 'boot')
+  expect(f.calls).toEqual([expect.objectContaining({ action: 'publish', accountId: null })])
 })
 it('leaves a distro unrouted after a failed first Add forgets its draft', async () => {
   const f = routingFixture(false)

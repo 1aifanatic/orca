@@ -265,6 +265,18 @@ export function createWslClaudeProfileOwner(
       )
     },
     reachable: (target) => waitForRunning(distroFor(target)),
+    // Why publish, not remove: panes opened while the distro was routed keep reading this
+    // pointer, and an empty one runs System Default there instead of refusing every `claude`.
+    retire: async (target, access) => {
+      const distro = distroFor(target)
+      guests.delete(distro.toLowerCase())
+      inspections.delete(distro.toLowerCase())
+      const guest = await prepareDefault(distro, access)
+      await guest.request(
+        { action: 'publish', distro, userHome: guest.home, accountId: null, hooksEnabled: false },
+        access
+      )
+    },
     withdraw: async (target, access) => {
       const distro = distroFor(target)
       guests.delete(distro.toLowerCase())

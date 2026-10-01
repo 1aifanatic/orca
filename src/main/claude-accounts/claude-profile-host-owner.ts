@@ -41,6 +41,10 @@ export function withWslClaudeProfileOwner(
       forTarget(descriptor.target).trust?.(descriptor, workspace, access) ?? Promise.resolve(),
     publish: (descriptor, access) => forTarget(descriptor.target).publish(descriptor, access),
     withdraw: (target, access) => forTarget(target).withdraw(target, access),
+    retire: async (target, access) => {
+      const owner = forTarget(target)
+      await (owner.retire ? owner.retire(target, access) : owner.withdraw(target, access))
+    },
     reachable: (target) => forTarget(target).reachable?.(target) ?? Promise.resolve(true)
   }
 }
