@@ -76,14 +76,14 @@ export function useNativeChatComposerAttachments({
     if (unchecked.length === 0) {
       return
     }
-    const ids = unchecked.map((attachment) => attachment.id)
+    const ids = new Set(unchecked.map((attachment) => attachment.id))
     ids.forEach((id) => checkedIdsRef.current.add(id))
     setCheckingIds((previous) => new Set([...previous, ...ids]))
     void findMissingNativeChatAttachments(unchecked).then((missing) => {
       if (missing.size > 0) {
         setMissingIds((previous) => new Set([...previous, ...missing]))
       }
-      setCheckingIds((previous) => new Set([...previous].filter((id) => !ids.includes(id))))
+      setCheckingIds((previous) => new Set([...previous].filter((id) => !ids.has(id))))
     })
   }, [shared])
 
