@@ -413,6 +413,60 @@ describe('a queued message whose start fails', () => {
   })
 })
 
+/** Lets every serialized step a fired wake queued run to its end. */
+async function settleSteps(): Promise<void> {
+  const { serialize } = host.collaboratorsForTests()
+  for (let step = 0; step < 3; step += 1) {
+    await serialize(SESSION, async () => undefined)
+  }
+}
+
+const armed = (): typeof timers => timers.filter((timer) => !timer.cancelled)
+
+describe('the wake for a message waiting out a refused start', () => {
+  it('books nothing for a try that comes due while a /compact runs: its end wakes the loop', async () => {
+    const { id: first, refuse } = await sendRefused('first')
+    refuse()
+    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    awaitStarted.mockImplementation(async () => undefined)
+    await send(structuredAgentSessionCompactBody())
+    await eventually(() => expect(compact).toHaveBeenCalledOnce())
+
+    await fireRetry()
+    await settleSteps()
+
+    expect(armed()).toEqual([])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('is not booked again for every commit while nothing can go', async () => {
+    const { id: first, refuse } = await sendRefused('first')
+    refuse()
+    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    awaitStarted.mockImplementation(async () => undefined)
+    const second = await send(hostTestMessage('second'))
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
+    )
+    await settleSteps()
+    const booked = timers.length
+    const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+    const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+
+    for (let chunk = 0; chunk < 10; chunk += 1) {
+      await journal.appendItem(
+        { provider: 'orca', clientMessageId: `chunk-${chunk}` },
+        { kind: 'status', text: `chunk ${chunk}` },
+        { fence, turnScope: { kind: 'thread' } }
+      )
+      await settleSteps()
+    }
+
+    expect(timers.length).toBe(booked)
+    expect(armed()).toHaveLength(1)
+  })
+})
+
 describe('a start that fails while its child exits', () => {
   it('is recorded once when the exit lands before the loop sees the start fail', async () => {
     const queued = await sendQueued('hello')

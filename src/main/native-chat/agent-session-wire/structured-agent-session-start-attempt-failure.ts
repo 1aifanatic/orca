@@ -150,16 +150,18 @@ export function nextDeliverableSubmission(
   return oldest
 }
 
-/** When the earliest message waiting out a failed start is due; null when none waits. */
-export function earliestStartRetryAt(
-  journal: Pick<AgentSessionJournal, 'submissions'> | undefined
+/** When the earliest message waiting out a failed start comes due after `now`; null when none
+ *  does. One already due is the loop's to take, or waits on what holds it, never on a timer. */
+export function nextStartRetryAt(
+  journal: Pick<AgentSessionJournal, 'submissions'> | undefined,
+  now: number
 ): number | null {
   let earliest: number | null = null
   for (const submission of journal?.submissions() ?? []) {
     const due = isQueuedAgentJournalSubmission(submission)
       ? submission.startFailure?.nextAttemptAt
       : undefined
-    if (due !== undefined && (earliest === null || due < earliest)) {
+    if (due !== undefined && due > now && (earliest === null || due < earliest)) {
       earliest = due
     }
   }

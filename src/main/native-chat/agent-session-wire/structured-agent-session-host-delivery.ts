@@ -18,7 +18,10 @@ import {
 } from './structured-agent-session-conversation-open'
 import type { StructuredAgentSessionClientDelivery } from './structured-agent-session-client-delivery'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
-import { setStartRetryTimer } from './structured-agent-session-start-attempt-failure'
+import {
+  nextDeliverableSubmission,
+  setStartRetryTimer
+} from './structured-agent-session-start-attempt-failure'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -110,10 +113,12 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   }
   const wakesQueued = new Set<string>()
   const afterCommit = (sessionId: string, journal: AgentSessionJournal): void => {
+    // A message waiting out a failed start has its own wake booked; only one that may go now needs
+    // this one.
     if (
       wakesQueued.has(sessionId) ||
       structuredAgentSessionCommandRunning(journal) ||
-      !journal.submissions().some(isQueuedAgentJournalSubmission)
+      !nextDeliverableSubmission(journal, deps.now?.() ?? Date.now())
     ) {
       return
     }

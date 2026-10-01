@@ -33,10 +33,10 @@ import type {
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import {
-  earliestStartRetryAt,
   setStartRetryTimer,
   leftoverRejection,
   nextDeliverableSubmission,
+  nextStartRetryAt,
   recordStructuredAgentSessionStartAttemptFailure,
   submissionsHandedToChild,
   type StructuredAgentSessionStartAttemptFailure
@@ -341,15 +341,17 @@ export class StructuredAgentSessionDeliveryLoop {
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. Books a
-   *  wake for the earliest message waiting out a failed start. */
+   *  wake for the next message waiting out a failed start; one already due and held by a running
+   *  command is woken by that command's end. */
   private stop(sessionId: string): 'stop' {
     this.running.delete(sessionId)
     this.retryTimers.get(sessionId)?.()
     this.retryTimers.delete(sessionId)
-    const due = earliestStartRetryAt(this.deps.sessions.get(sessionId)?.journal)
+    const now = this.deps.now()
+    const due = nextStartRetryAt(this.deps.sessions.get(sessionId)?.journal, now)
     if (due !== null && !this.disposed) {
       const setTimer = this.deps.setTimer ?? setStartRetryTimer
-      const cancel = setTimer(Math.max(0, due - this.deps.now()), () => {
+      const cancel = setTimer(due - now, () => {
         this.retryTimers.delete(sessionId)
         void this.deps
           .serialize(sessionId, async () => this.wake(sessionId))
