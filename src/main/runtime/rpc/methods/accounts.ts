@@ -1,4 +1,3 @@
-import { claudeProfileRoutingEnabled } from '../../../../shared/claude-profile-routing'
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
   AccountsUnsubscribeParams,
@@ -26,16 +25,6 @@ let accountsSubscriptionSeq = 0
 // `orca account add` CLI can register accounts on a headless host; it is gated
 // to the local runtime connection, never a mobile device token. See #1438.
 export const ACCOUNT_METHODS = [
-  defineMethod({
-    name: 'accounts.selectClaudeProfile',
-    params: SelectAccountParams,
-    handler: async (params, { runtime }) => {
-      if (!claudeProfileRoutingEnabled()) {
-        throw new Error('This host does not support Claude profile selection yet')
-      }
-      return runtime.selectClaudeAccount(params.accountId)
-    }
-  }),
   defineMethod({
     name: 'accounts.list',
     params: ListAccountsParams,

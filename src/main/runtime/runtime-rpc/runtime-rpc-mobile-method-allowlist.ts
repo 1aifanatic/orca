@@ -1,6 +1,11 @@
-import { MOBILE_ACCOUNT_RPC_METHODS } from './runtime-rpc-mobile-account-methods'
 export const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
-  ...MOBILE_ACCOUNT_RPC_METHODS,
+  'accounts.list',
+  'accounts.consumeCodexResetCredit',
+  'accounts.selectClaude',
+  'accounts.selectCodex',
+  'accounts.selectCodexForTarget',
+  'accounts.subscribe',
+  'accounts.unsubscribe',
   'agent.launch',
   'agent.launchReplay',
   'aiVault.listSessions',
