@@ -347,6 +347,16 @@ test('same-cap freshness is decided at gate authorization, not cell startup', as
     await writeFile(marker, `${JSON.stringify({ ...recorded, authorizedAt: '2026-07-28T12:00:00Z' })}\n`)
     await assert.rejects(cellAt(marker, 60_000), /does not match this run/)
 
+    // The pre-change marker held only the run ID; it is not authority.
+    await writeFile(marker, '777\n')
+    await assert.rejects(cellAt(marker, 60_000), /does not match this run/)
+
+    // The gate's own bound at its exact edge.
+    await ageState(5 * 60_000)
+    await assert.doesNotReject(authorize())
+    await ageState(5 * 60_000 + 1)
+    await assert.rejects(authorize(), /authority is incomplete or stale/)
+
     // 6 min old when the gate authorizes: fails, and records nothing to consume.
     await ageState(6 * 60_000)
     const staleMarker = join(authorizationDirectory, 'stale')
@@ -399,21 +409,39 @@ test('same-cap freshness is decided at gate authorization, not cell startup', as
 })
 
 test('the same-cap gate authorizes on the evidence before it is consumed', async () => {
+  const stepOf = (workflow, name) => {
+    const start = workflow.indexOf(`- name: ${name}`)
+    assert.ok(start > 0, name)
+    const next = workflow.indexOf('\n      - ', start + 1)
+    return { start, body: workflow.slice(start, next < 0 ? undefined : next) }
+  }
   const gate = await readFile(relayWorkflowUrl('deploy-relay-production-same-cap.yml'), 'utf8')
-  const record = gate.indexOf('--record-authorization')
-  assert.ok(record > 0)
-  assert.match(gate, /--consumer-run-id "\$\{GITHUB_RUN_ID\}"/)
-  assert.ok(gate.indexOf('name: relay-monitor-dry-run-') < record)
-  assert.ok(gate.indexOf('Reject previously consumed aggregate safety evidence') < record)
-  assert.ok(record < gate.indexOf('Consume aggregate safety evidence for this exact wave'))
-  assert.doesNotMatch(gate, /printf '%s\\n' "\$\{GITHUB_RUN_ID\}"/)
+  const reject = stepOf(gate, 'Reject previously consumed aggregate safety evidence')
+  const download = stepOf(gate, 'Download private aggregate monitor evidence')
+  const authorize = stepOf(gate, 'Authorize this run on fresh monitor evidence')
+  const consume = stepOf(gate, 'Consume aggregate safety evidence for this exact wave')
+  assert.match(reject.body, /test "\$\{GITHUB_RUN_ATTEMPT\}" = 1/)
+  assert.doesNotMatch(reject.body, /GITHUB_RUN_ID/)
+  assert.match(authorize.body, /verify-authority/)
+  assert.match(authorize.body, /--consumer-run-id "\$\{GITHUB_RUN_ID\}"/)
+  assert.match(authorize.body, /--record-authorization/)
+  assert.doesNotMatch(authorize.body, /--wave-index/)
+  assert.ok(reject.start < download.start)
+  assert.ok(download.start < authorize.start)
+  assert.ok(authorize.start < consume.start)
   const job = await readFile(relayWorkflowUrl('deploy-relay-production-same-cap-job.yml'), 'utf8')
-  const verify = job.indexOf('--authorization "${RUNNER_TEMP}/relay-same-cap-monitor-authority/')
-  assert.ok(verify > 0)
-  assert.match(job, /--consumer-run-id "\$\{GITHUB_RUN_ID\}"/)
-  assert.ok(job.indexOf("Download this wave's single-use safety authority") < verify)
-  assert.ok(verify < job.indexOf('Recheck aggregate SQL, pool, reconnect'))
-  assert.ok(verify < job.indexOf('uses: ./.github/actions/cloud-sql-rollout-lease'))
+  const marker = stepOf(job, "Download this wave's single-use safety authority")
+  const attempt = stepOf(job, 'Require safety evidence consumed by this workflow')
+  const verify = stepOf(job, 'Verify monitor evidence provenance')
+  assert.match(marker.body, /run-id: \$\{\{ github\.run_id \}\}/)
+  assert.match(attempt.body, /test "\$\{GITHUB_RUN_ATTEMPT\}" = 1/)
+  assert.match(verify.body, /--consumer-run-id "\$\{GITHUB_RUN_ID\}"/)
+  assert.match(verify.body, /--authorization "\$\{RUNNER_TEMP\}\/relay-same-cap-monitor-authority\//)
+  assert.match(verify.body, /--wave-index "\$\{WAVE_INDEX\}"/)
+  assert.ok(marker.start < verify.start)
+  assert.ok(attempt.start < verify.start)
+  assert.ok(verify.start < job.indexOf('uses: ./.github/actions/cloud-sql-rollout-lease'))
+  assert.ok(verify.start < job.indexOf('Recheck aggregate SQL, pool, reconnect'))
 })
 
 test('binds migration policies to their exact mutations', async () => {

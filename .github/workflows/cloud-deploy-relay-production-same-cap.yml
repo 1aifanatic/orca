@@ -205,6 +205,8 @@ jobs:
         run: |
           [[ "${MONITOR_RUN_ID}" =~ ^[1-9][0-9]*$ ]]
           [[ "${MONITOR_RUN_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]
+          # Cell jobs refuse a re-run attempt, so a re-run gate must not burn the evidence.
+          test "${GITHUB_RUN_ATTEMPT}" = 1
           MARKER_NAME="relay-same-cap-monitor-consumed-${MONITOR_RUN_ID}-${MONITOR_RUN_ATTEMPT}"
           COUNT="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${MARKER_NAME}&per_page=1" \
             --jq '.total_count')"
