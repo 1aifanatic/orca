@@ -21,6 +21,7 @@ const roots: string[] = []
 afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'claude-activation-'))
@@ -318,7 +319,11 @@ it('does not let publication bookkeeping block signing in to a recoverable draft
 
 it('retains a duplicate login under its own name instead of deleting either profile', async () => {
   const f = fixture()
+  // Why a fixed clock per add: the row added first keeps the login, so the two must differ.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(1_000)
   await f.registration.add()
+  vi.setSystemTime(2_000)
   await expect(f.registration.add()).rejects.toThrow(
     'fake@example.test is already added as another account. Remove this row, or sign in again with a different account.'
   )
@@ -327,7 +332,7 @@ it('retains a duplicate login under its own name instead of deleting either prof
     'fake@example.test'
   ])
 })
-it('names the login a re-sign-in actually used, even when another row already has it', async () => {
+it("keeps a row's own name when its re-sign-in lands on another row's login", async () => {
   const f = fixture()
   await f.registration.add()
   const first = f.settings.claudeManagedAccounts[0]
@@ -337,7 +342,7 @@ it('names the login a re-sign-in actually used, even when another row already ha
     'Signed in as other@example.test, which is already added as another account. Sign in again as fake@example.test, or remove this row.'
   )
   expect(f.settings.claudeManagedAccounts.find((entry) => entry.id === first.id)?.email).toBe(
-    'other@example.test'
+    'fake@example.test'
   )
 })
 it("reads the login from the profile's own state when the status output is unreadable", async () => {

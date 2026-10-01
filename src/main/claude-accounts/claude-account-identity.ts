@@ -10,7 +10,13 @@ import { getClaudeProfileSetupIssue } from './claude-profile-setup-issues'
 
 export type ClaudeObservedAccount = Pick<
   ClaudeManagedAccount,
-  'id' | 'email' | 'organizationUuid' | 'managedAuthRuntime' | 'wslDistro' | 'lastAuthenticatedAt'
+  | 'id'
+  | 'email'
+  | 'organizationUuid'
+  | 'managedAuthRuntime'
+  | 'wslDistro'
+  | 'createdAt'
+  | 'lastAuthenticatedAt'
 > & { observed: { email: string; organizationUuid: string | null } | null }
 
 export type ClaudeAccountIdentityIssue = 'mismatch' | 'duplicate'
@@ -18,7 +24,8 @@ export type ClaudeAccountIdentityIssue = 'mismatch' | 'duplicate'
 /**
  * Compares each row's stored identity with the login its profile actually holds. Exactly one row
  * per login stays clean: a row whose profile matches its label outranks one that does not, a
- * signed-in row outranks an unfinished one, then the earlier sign-in wins.
+ * signed-in row outranks an unfinished one, then the row added first wins, so signing in again
+ * never moves the flag onto the original row.
  */
 export function findClaudeAccountIdentityIssues(
   accounts: readonly ClaudeObservedAccount[]
@@ -33,6 +40,7 @@ export function findClaudeAccountIdentityIssues(
   const rank = (account: ClaudeObservedAccount) => [
     consistent(account) ? 0 : 1,
     account.email ? 0 : 1,
+    account.createdAt,
     account.lastAuthenticatedAt
   ]
   const outranks = (left: ClaudeObservedAccount, right: ClaudeObservedAccount) => {

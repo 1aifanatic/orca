@@ -1,4 +1,5 @@
-import { findDuplicateClaudeAccount } from './claude-duplicate-account'
+import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
+import { findClaudeAccountIdentityIssues } from './claude-account-identity'
 import { randomUUID } from 'node:crypto'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
@@ -117,12 +118,30 @@ export class ClaudeAccountRegistration {
       store.getSettings()
     )
     const identity = await this.readIdentity(accountId, target, prepared.config)
-    // Why saved before the duplicate check: the row must name the login its profile now holds.
+    const takenByAnother = findDuplicateClaudeAccount(
+      store.getSettings().claudeManagedAccounts.filter((entry) => entry.id !== accountId),
+      {
+        email: identity.email,
+        organizationUuid: identity.organizationUuid ?? null,
+        managedAuthRuntime: account.managedAuthRuntime ?? 'host',
+        wslDistro: account.wslDistro ?? null
+      }
+    )
+    // Why keep the label: signing a row in to a login another row owns must not take that
+    // row's identity; the row then shows what it holds and is flagged instead.
+    const keepsLabel =
+      Boolean(account.email) &&
+      takenByAnother !== null &&
+      normalizeClaudeEmail(account.email) !== normalizeClaudeEmail(identity.email)
     this.save({
       ...account,
-      email: identity.email,
-      organizationUuid: identity.organizationUuid ?? null,
-      organizationName: identity.organizationName ?? null,
+      ...(keepsLabel
+        ? {}
+        : {
+            email: identity.email,
+            organizationUuid: identity.organizationUuid ?? null,
+            organizationName: identity.organizationName ?? null
+          }),
       authMethod: 'subscription-oauth',
       updatedAt: Date.now(),
       lastAuthenticatedAt: Date.now()
@@ -132,18 +151,16 @@ export class ClaudeAccountRegistration {
     void rateLimits
       .refreshForClaudeAccountChange(undefined, target)
       .catch((error) => console.warn('[claude-profile] Usage unavailable after sign-in:', error))
-    const duplicate = findDuplicateClaudeAccount(
-      store.getSettings().claudeManagedAccounts.filter((entry) => entry.id !== accountId),
-      {
-        email: identity.email,
-        organizationUuid: identity.organizationUuid ?? null,
-        managedAuthRuntime: account.managedAuthRuntime ?? 'host',
-        wslDistro: account.wslDistro ?? null
-      }
-    )
-    if (duplicate) {
+    const profiles = getClaudeProfileRoutingAuthority()
+    const issue = findClaudeAccountIdentityIssues(
+      store.getSettings().claudeManagedAccounts.map((entry) => ({
+        ...entry,
+        observed: entry.id === accountId ? identity : (profiles?.observedIdentity(entry.id) ?? null)
+      }))
+    ).get(accountId)
+    if (issue === 'duplicate') {
       throw new Error(
-        account.email && account.email !== identity.email
+        keepsLabel
           ? `Signed in as ${identity.email}, which is already added as another account. Sign in again as ${account.email}, or remove this row.`
           : `${identity.email} is already added as another account. Remove this row, or sign in again with a different account.`
       )
