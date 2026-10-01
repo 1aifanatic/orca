@@ -172,10 +172,6 @@ export const SendParams = z
      *  older host refuses it: clients send it only when `agent-session.queued-messages.v1` is
      *  advertised. Participates in the operation fingerprint, never the body fingerprint. */
     delivery: z.literal('queue-if-active').optional(),
-    /** The rejected message this send is the person's Retry of. Strict object, so an older host
-     *  refuses it: clients send it only when `agent-session.send-retries.v1` is advertised. In
-     *  neither fingerprint: it names what the message stands for, not what it says. */
-    retries: Identifier('Invalid retried message id').optional(),
     body: z
       .object({
         kind: z.literal('message'),

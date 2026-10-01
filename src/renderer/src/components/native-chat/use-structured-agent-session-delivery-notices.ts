@@ -44,7 +44,7 @@ export function useStructuredAgentSessionDeliveryNotices(
     if (words === undefined) {
       retryRef.current(clientMessageId)
     } else {
-      resendRef.current.send(words, [], clientMessageId)
+      resendRef.current.send(words)
     }
   }, [])
   const canResend = useCallback(

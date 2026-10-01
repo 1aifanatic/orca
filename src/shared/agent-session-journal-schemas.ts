@@ -325,8 +325,7 @@ export const AgentJournalSubmissionSchema = z.object({
   // A malformed one drops the field, never the submission.
   startRetry: AgentJournalStartRetrySchema.optional().catch(undefined),
   // Listed, or the parse strips it: this schema drops unknown keys.
-  queuedMessageId: z.string().min(1).optional(),
-  retries: z.string().min(1).optional().catch(undefined)
+  queuedMessageId: z.string().min(1).optional()
 })
 
 export function isAgentJournalResolution(value: unknown): value is AgentJournalResolution {

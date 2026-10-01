@@ -180,9 +180,7 @@ export function appendStructuredAgentSessionOutboxMessage(
   sessionId: string,
   text: string,
   attachments: readonly StructuredAgentSessionAttachment[] = [],
-  source?: 'launch',
-  /** The rejected message this one sends again. */
-  retries?: string
+  source?: 'launch'
 ): StructuredAgentSessionOutboxEntry | null {
   const entry = {
     ...createStructuredAgentSessionOutboxEntry({
@@ -192,8 +190,7 @@ export function appendStructuredAgentSessionOutboxMessage(
       attachments,
       queuedAt: Date.now()
     }),
-    ...(source ? { source } : {}),
-    ...(retries ? { retries } : {})
+    ...(source ? { source } : {})
   }
   return commitStructuredAgentSessionOutbox(
     sessionId,

@@ -126,9 +126,6 @@ export type JournalSubmissionRow = JournalRowBase & {
    *  continuation, a launch prompt, the queue's automatic drain. Absent on rows from before it
    *  was recorded. Older readers keep the key and ignore it. */
   origin?: JournalSubmissionOrigin
-  /** The rejected message this one sends again (`AgentJournalSubmission.retries`). Older readers
-   *  keep the key and ignore it. */
-  retries?: string
 }
 
 export type JournalSubmissionOrigin = 'client' | 'host'

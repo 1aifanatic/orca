@@ -5,12 +5,10 @@ import { describe, expect, it } from 'vitest'
 import {
   createStructuredAgentSessionOutboxEntry,
   parseStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionSendMutation,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import {
   structuredAgentSessionEntryAttempt,
-  structuredAgentSessionEntryForRetriesHost,
   type StructuredAgentSessionQueueCapability
 } from './structured-agent-session-outbox-delivery'
 
@@ -89,31 +87,5 @@ describe('a replay of an attempted id', () => {
     expect(
       read && structuredAgentSessionEntryAttempt(read, host('supported')).wire.sentDelivery
     ).toBe(null)
-  })
-})
-
-describe('a Retry of a rejected message', () => {
-  const retry = entry({ retries: 'op-0' })
-
-  it('names the message it sends again, outside the fingerprint, to a host that records it', () => {
-    const sent = structuredAgentSessionSendMutation(
-      structuredAgentSessionEntryForRetriesHost(retry, true),
-      1
-    )
-    expect(sent.retries).toBe('op-0')
-    expect(sent.envelope.payloadFingerprint).toBe(
-      structuredAgentSessionSendMutation(entry(), 1).envelope.payloadFingerprint
-    )
-  })
-
-  it('names nothing to a host that would refuse the field, and keeps it on the stored entry', () => {
-    expect(
-      structuredAgentSessionSendMutation(structuredAgentSessionEntryForRetriesHost(retry, false), 1)
-    ).not.toHaveProperty('retries')
-    expect(retry.retries).toBe('op-0')
-  })
-
-  it('keeps the link through storage', () => {
-    expect(parseStructuredAgentSessionOutboxEntry(retry, 'session-1')?.retries).toBe('op-0')
   })
 })

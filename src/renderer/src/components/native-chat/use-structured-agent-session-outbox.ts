@@ -42,11 +42,8 @@ import {
 } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
   structuredAgentSessionEntryAttempt,
-  structuredAgentSessionEntryForRetriesHost,
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
-import { AGENT_SESSION_SEND_RETRIES_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import { useStructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
 
@@ -84,10 +81,6 @@ export function useStructuredAgentSessionOutbox(args: {
     target
   } = args
   const { capability: queueCapability, enabled: queueEnabled } = queueDelivery
-  const retriesCapability = useStructuredAgentSessionHostCapabilityState(
-    target,
-    AGENT_SESSION_SEND_RETRIES_RUNTIME_CAPABILITY
-  )
   // What resends and drops a send in flight besides a Retry or a new send; see the hook.
   const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
   const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(sessionId, composerScopeKey)
@@ -231,10 +224,7 @@ export function useStructuredAgentSessionOutbox(args: {
       enabled: queueEnabled
     })
     const dispatch = dispatchStructuredAgentSessionOutboxEntry({
-      next: structuredAgentSessionEntryForRetriesHost(
-        attempt.wire,
-        retriesCapability === 'supported'
-      ),
+      next: attempt.wire,
       entries: current.map((entry) => (entry === next ? attempt.stored : entry)),
       sessionId,
       target,
@@ -258,7 +248,6 @@ export function useStructuredAgentSessionOutbox(args: {
     outbox,
     queueCapability,
     queueEnabled,
-    retriesCapability,
     sessionId,
     target
   ])
@@ -271,19 +260,12 @@ export function useStructuredAgentSessionOutbox(args: {
   })
 
   const send = useCallback(
-    (
-      text: string,
-      attachments: readonly { path: string; previewUri: string }[] = [],
-      /** The rejected message this one sends again. */
-      retries?: string
-    ): boolean => {
+    (text: string, attachments: readonly { path: string; previewUri: string }[] = []): boolean => {
       if (!text.trim() && attachments.length === 0) {
         return false
       }
       // Whether it asks to be queued is decided when it first goes out.
-      if (
-        !appendStructuredAgentSessionOutboxMessage(sessionId, text, attachments, undefined, retries)
-      ) {
+      if (!appendStructuredAgentSessionOutboxMessage(sessionId, text, attachments)) {
         setError('Message could not be saved to the outbox')
         return false
       }
