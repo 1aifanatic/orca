@@ -333,9 +333,17 @@ describe('startStructuredAgentLaunch', () => {
       worktreeId,
       'claude',
       undefined,
+      undefined,
       undefined
     )
-    expect(mocks.createIntent).toHaveBeenNthCalledWith(2, worktreeId, 'codex', undefined, undefined)
+    expect(mocks.createIntent).toHaveBeenNthCalledWith(
+      2,
+      worktreeId,
+      'codex',
+      undefined,
+      undefined,
+      undefined
+    )
     expect(mocks.launch).toHaveBeenCalledTimes(2)
     expect(vi.mocked(mocks.launch).mock.calls.map(([intent]) => intent.params.agent)).toEqual([
       'claude',
