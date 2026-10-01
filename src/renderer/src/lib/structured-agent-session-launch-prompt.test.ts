@@ -6,80 +6,30 @@ import {
   mutateStructuredAgentSessionLaunchPrompt
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() }))
+const mocks = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
   subscribeStructuredAgentSession: mocks.subscribe
 }))
 
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { settleStructuredAgentLaunchPrompt } from './structured-agent-session-launch-prompt'
+import { awaitStructuredLaunchPromptTaken } from './structured-agent-session-launch-prompt-handover'
+import {
+  FIRST_START_FAILS,
+  firstMessageStream,
+  play
+} from './structured-agent-session-launch-prompt-test-support'
 
-const PENDING = {
-  fence: 1,
-  payloadFingerprint: 'fingerprint',
-  dispatchState: 'pending' as const,
-  providerItemId: null,
-  reason: null,
-  submittedAt: 1,
-  resolvedAt: null
-}
-
-/** The host's answer at acceptance; a host that predates the hand-over record omits it. */
-function sendAnswer(clientMessageId: string, handoverRecorded = true) {
-  return {
-    ok: true,
-    replayed: false,
-    fence: 1,
-    cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: {
-      clientMessageId,
-      submission: {
-        clientMessageId,
-        ...PENDING,
-        ...(handoverRecorded ? { handoverRecorded: true as const } : {})
-      }
-    }
-  }
-}
-
-function frame(
-  type: 'snapshot' | 'batch',
-  submission: AgentJournalSubmission
-): AgentSessionSubscribeEvent {
-  const cursor = { epoch: 'epoch-1', sequence: 2 }
-  return type === 'batch'
-    ? {
-        type,
-        sessionId: 'session-1',
-        batch: { cursor, items: [], removedItemIds: [], submissions: [submission] }
-      }
-    : {
-        type,
-        sessionId: 'session-1',
-        fence: 2,
-        page: {
-          sessionId: 'session-1',
-          epoch: 'epoch-1',
-          direction: 'tail',
-          items: [],
-          removedItemIds: [],
-          submissions: [submission],
-          window: { oldest: null, newest: null, nextCursor: cursor },
-          hasOlder: false,
-          hasNewer: false
-        }
-      }
-}
-
-/** The session's publication after the send, frame by frame, as the host would stream it. */
-function publishes(...events: AgentSessionSubscribeEvent[]): void {
-  mocks.subscribe.mockImplementation(async (_target, _params, onEvent) => {
-    queueMicrotask(() => events.forEach((event) => onEvent(event)))
-    return { unsubscribe: mocks.unsubscribe }
+function launch(onPromptDelivered = vi.fn()) {
+  const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+  const stream = firstMessageStream(mocks, stagedEntry!.clientMessageId)
+  const result = settleStructuredAgentLaunchPrompt({
+    launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+    options: { prompt: 'review this', onPromptDelivered },
+    stagedEntry
   })
+  return { stagedEntry, stream, result: result!, onPromptDelivered }
 }
 
 describe('settleStructuredAgentLaunchPrompt', () => {
@@ -91,34 +41,63 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     )
   })
 
-  it('reports a launch prompt delivered once the host hands it over, retaining it for the provider echo', async () => {
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
-    const onPromptDelivered = vi.fn()
-    const clientMessageId = stagedEntry!.clientMessageId
-    mocks.call.mockResolvedValue(sendAnswer(clientMessageId))
-    publishes(
-      frame('snapshot', { clientMessageId, ...PENDING, handoverRecorded: true }),
-      frame('batch', {
-        clientMessageId,
-        ...PENDING,
-        handoverRecorded: true as const,
-        handedOverAt: 5
-      })
-    )
+  it('reports a launch prompt delivered only once the agent a retried start brought up takes it', async () => {
+    const { stream, result, onPromptDelivered } = launch()
+    const host = await stream
+    const [retry, handedOver, accepted] = FIRST_START_FAILS.retriedThenTaken
 
-    await expect(
-      settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-        options: { prompt: 'review this', onPromptDelivered },
-        stagedEntry
-      })
-    ).resolves.toEqual({ delivered: true, failureNotified: false })
-
-    expect(onPromptDelivered).toHaveBeenCalledOnce()
+    host.next(retry!)
+    host.next(handedOver!)
+    await Promise.resolve()
+    // Still waiting: nothing outward has happened, and the entry waits for the provider echo.
+    expect(onPromptDelivered).not.toHaveBeenCalled()
     const persisted = JSON.parse(localStorage.getItem(localStorage.key(0)!) ?? '[]') as {
       state: string
     }[]
     expect(persisted).toMatchObject([{ state: 'dispatching' }])
+
+    host.next(accepted!)
+    await expect(result).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(onPromptDelivered).toHaveBeenCalledOnce()
+    expect(host.open()).toBe(false)
+  })
+
+  it.each([
+    ['rejected after its tries', FIRST_START_FAILS.rejectedAfterTries],
+    ['withdrawn when its chat closes mid-wait', FIRST_START_FAILS.chatClosed]
+  ])('reports a launch prompt %s undelivered', async (_case, outcome) => {
+    const { stream, result, onPromptDelivered } = launch()
+    play(await stream, outcome)
+
+    await expect(result).resolves.toEqual({ delivered: false, failureNotified: false })
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+  })
+
+  it('reports undelivered when the session stream fails before a verdict', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    void firstMessageStream(mocks, stagedEntry!.clientMessageId)
+    mocks.subscribe.mockImplementation(async (_target, _params, _onEvent, onError) => {
+      queueMicrotask(() => onError(new Error('stream closed')))
+      return { unsubscribe: vi.fn() }
+    })
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        options: { prompt: 'review this' },
+        stagedEntry
+      })
+    ).resolves.toEqual({ delivered: false, failureNotified: false })
+  })
+
+  it('reads one launch prompt once, however many ask', async () => {
+    const stream = firstMessageStream(mocks, 'message-1')
+    const first = awaitStructuredLaunchPromptTaken('session-1', 'message-1')
+    const second = awaitStructuredLaunchPromptTaken('session-1', 'message-1')
+    play(await stream, FIRST_START_FAILS.retriedThenTaken)
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true])
+    expect(mocks.subscribe).toHaveBeenCalledOnce()
   })
 
   it('drops the previous attempt failure when the launch path sends the message again', async () => {
@@ -151,69 +130,4 @@ describe('settleStructuredAgentLaunchPrompt', () => {
 
   // Whatever the start's failure (signed out, not installed, the agent exiting as it started), it
   // ends as the message's rejection; nothing that writes on delivery may run.
-  it.each(['notSignedIn', 'providerMissing', 'providerExited'])(
-    'reports a launch prompt whose start failed (%s) undelivered, after a retried start',
-    async (kind) => {
-      const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
-      const onPromptDelivered = vi.fn()
-      const clientMessageId = stagedEntry!.clientMessageId
-      mocks.call.mockResolvedValue(sendAnswer(clientMessageId))
-      const queued = { clientMessageId, ...PENDING, handoverRecorded: true as const }
-      publishes(
-        frame('snapshot', queued),
-        frame('batch', {
-          ...queued,
-          startFailure: {
-            attempts: 1,
-            reason: 'An account switch is in progress.',
-            rejection: { kind: 'accountSwitchInProgress' },
-            failedAt: 2,
-            nextAttemptAt: 15_002
-          }
-        }),
-        frame('batch', { ...queued, dispatchState: 'rejected', rejection: { kind } })
-      )
-
-      await expect(
-        settleStructuredAgentLaunchPrompt({
-          launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-          options: { prompt: 'review this', onPromptDelivered },
-          stagedEntry
-        })
-      ).resolves.toEqual({ delivered: false, failureNotified: false })
-      expect(onPromptDelivered).not.toHaveBeenCalled()
-      expect(mocks.unsubscribe).toHaveBeenCalledOnce()
-    }
-  )
-
-  it('counts a pending answer from a host that predates the hand-over record as handed over', async () => {
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
-    mocks.call.mockResolvedValue(sendAnswer(stagedEntry!.clientMessageId, false))
-
-    await expect(
-      settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-        options: { prompt: 'review this' },
-        stagedEntry
-      })
-    ).resolves.toEqual({ delivered: true, failureNotified: false })
-    expect(mocks.subscribe).not.toHaveBeenCalled()
-  })
-
-  it('reports undelivered when the session stream fails before a verdict', async () => {
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
-    mocks.call.mockResolvedValue(sendAnswer(stagedEntry!.clientMessageId))
-    mocks.subscribe.mockImplementation(async (_target, _params, _onEvent, onError) => {
-      queueMicrotask(() => onError(new Error('stream closed')))
-      return { unsubscribe: mocks.unsubscribe }
-    })
-
-    await expect(
-      settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-        options: { prompt: 'review this' },
-        stagedEntry
-      })
-    ).resolves.toEqual({ delivered: false, failureNotified: false })
-  })
 })

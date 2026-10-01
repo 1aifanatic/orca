@@ -18,8 +18,8 @@ import {
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
-  awaitStructuredLaunchPromptHandover,
-  structuredLaunchPromptHandover
+  awaitStructuredLaunchPromptTaken,
+  structuredLaunchPromptVerdict
 } from '@/lib/structured-agent-session-launch-prompt-handover'
 
 export type StructuredPromptDeliveryResult = {
@@ -190,13 +190,18 @@ export function settleStructuredAgentLaunchPrompt(args: {
           answer = answered
         })
     )
-    // Admitted is not delivered: the chat's first message starts its agent, which may fail. A
-    // queued draft keeps its old meaning; a dispatch the chat's own outbox ran answered elsewhere.
+    // Admitted is not delivered: the chat's first message starts its agent, which may fail, so
+    // a pending answer waits for the message's own final state. A queued draft keeps its old
+    // meaning; a dispatch the chat's own outbox ran answered elsewhere.
+    const admitted = await dispatch.promise
+    const verdict =
+      answer === undefined || answer === 'queued' ? null : structuredLaunchPromptVerdict(answer)
     const delivered =
-      (await dispatch.promise) &&
+      admitted &&
       (answer === 'queued' ||
-        (answer !== undefined && structuredLaunchPromptHandover(answer) === 'handed-over') ||
-        (await awaitStructuredLaunchPromptHandover(entry.sessionId, entry.clientMessageId)))
+        verdict === 'taken' ||
+        (verdict !== 'not-taken' &&
+          (await awaitStructuredLaunchPromptTaken(entry.sessionId, entry.clientMessageId))))
     if (delivered) {
       args.options.onPromptDelivered?.()
     }

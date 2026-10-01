@@ -1,6 +1,15 @@
+// @vitest-environment happy-dom
+
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildNotesSendTargetModeId, NotesSendMenu } from './NotesSendMenu'
+import { enqueueStructuredAgentSessionLaunchPrompt } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
+import {
+  FIRST_START_FAILS,
+  firstMessageStream,
+  play
+} from '@/lib/structured-agent-session-launch-prompt-test-support'
 
 type ReactElementLike = {
   type: unknown
@@ -23,6 +32,12 @@ const storeMocks = vi.hoisted(() => ({
   state: {
     agentSendPopoverTargetMode: null as { id: string } | null
   }
+}))
+
+const client = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
+vi.mock('@/runtime/structured-agent-session-client', () => ({
+  callStructuredAgentSession: client.call,
+  subscribeStructuredAgentSession: client.subscribe
 }))
 
 vi.mock('react', async () => {
@@ -435,5 +450,62 @@ describe('NotesSendMenu', () => {
     expect(storeMocks.closeAgentSendPopoverTargetMode).toHaveBeenCalledWith(
       buildNotesSendTargetModeId(['markdown-notes', 'wt-1', 'README.md', 'rail'])
     )
+  })
+})
+
+// Sent to a new chat, whose first message starts its agent: the notes are marked sent only once
+// the agent takes the prompt, and a start that never does (or a chat closed mid-wait) keeps them.
+describe('NotesSendMenu sending to a new chat', () => {
+  async function sendToNewChat(onDelivered: (notes: readonly TestNote[]) => void) {
+    resetHookRuntime()
+    storeMocks.openAgentSendPopoverTargetMode.mockReset()
+    localStorage.clear()
+    const tree = renderMenu({ onDelivered })
+    const openChange = findByType(tree, 'DropdownMenu').props.onOpenChange
+    if (typeof openChange !== 'function') {
+      throw new Error('the menu takes no open change')
+    }
+    openChange(true)
+    const mode: { prompt: string; onPromptDelivered: () => void } =
+      storeMocks.openAgentSendPopoverTargetMode.mock.calls[0][0]
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', mode.prompt)
+    const host = firstMessageStream(client, stagedEntry!.clientMessageId)
+    const delivery = settleStructuredAgentLaunchPrompt({
+      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      options: {
+        prompt: mode.prompt,
+        promptDelivery: 'submit-after-ready',
+        onPromptDelivered: mode.onPromptDelivered
+      },
+      stagedEntry
+    })!
+    return { stream: await host, delivery }
+  }
+
+  it('marks the notes sent once, after a retried start takes the prompt', async () => {
+    const onDelivered = vi.fn()
+    const { stream, delivery } = await sendToNewChat(onDelivered)
+    const [retry, handedOver, accepted] = FIRST_START_FAILS.retriedThenTaken
+    stream.next(retry!)
+    stream.next(handedOver!)
+    await Promise.resolve()
+    expect(onDelivered).not.toHaveBeenCalled()
+
+    stream.next(accepted!)
+    await expect(delivery).resolves.toMatchObject({ delivered: true })
+    expect(onDelivered).toHaveBeenCalledOnce()
+    expect(onDelivered).toHaveBeenCalledWith([{ id: 'note-1' }])
+  })
+
+  it.each([
+    ['rejected after its tries', FIRST_START_FAILS.rejectedAfterTries],
+    ['withdrawn when its chat closes mid-wait', FIRST_START_FAILS.chatClosed]
+  ])('keeps the notes when the first message is %s', async (_case, end) => {
+    const onDelivered = vi.fn()
+    const { stream, delivery } = await sendToNewChat(onDelivered)
+    play(stream, end)
+
+    await expect(delivery).resolves.toMatchObject({ delivered: false })
+    expect(onDelivered).not.toHaveBeenCalled()
   })
 })

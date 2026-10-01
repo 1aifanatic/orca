@@ -14,13 +14,20 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn()
 }))
 
+const launchClient = vi.hoisted(() => ({ subscribe: vi.fn() }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.call
+  callStructuredAgentSession: mocks.call,
+  subscribeStructuredAgentSession: launchClient.subscribe
 }))
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { enqueueStructuredAgentSessionLaunchPrompt } from './structured-agent-session-outbox-storage'
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
+import {
+  FIRST_START_FAILS,
+  firstMessageStream,
+  play
+} from '@/lib/structured-agent-session-launch-prompt-test-support'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
@@ -210,9 +217,17 @@ describe('structured agent session outbox admission', () => {
       // The launch settlement dispatches outside this hook's single-flight, so nothing may race it.
       expect(sentTexts()).not.toContain('after launch')
 
+      // A pending launch prompt is delivered once the agent takes it.
+      const taken = firstMessageStream(
+        { call: vi.fn(), subscribe: launchClient.subscribe },
+        stagedEntry.clientMessageId
+      )
       await act(async () =>
         admission.resolve(submissionResult(stagedEntry.clientMessageId, dispatchState, 1))
       )
+      if (dispatchState === 'pending') {
+        play(await taken, FIRST_START_FAILS.retriedThenTaken)
+      }
       await expect(delivery).resolves.toEqual({ delivered: true, failureNotified: false })
 
       await waitFor(() => expect(sentTexts()).toContain('after launch'))

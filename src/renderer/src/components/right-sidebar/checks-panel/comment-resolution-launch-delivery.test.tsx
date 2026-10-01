@@ -2,7 +2,7 @@
 
 // "Resolve comments with AI" writes to GitHub (fixing replies, resolved threads) only once the
 // launch prompt reaches the agent. The chat's first message starts that agent, so a start that
-// fails must post nothing and hand the comments back for a retry.
+// fails must post nothing and hand the comments back for a retry; one a retry clears posts once.
 
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,10 +23,14 @@ vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: mocks.lau
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: mocks.toastSuccess } }))
 
-import type { AgentJournalSubmission } from '../../../../../shared/agent-session-journal-types'
 import type { PRComment } from '../../../../../shared/github/comment-types'
 import { enqueueStructuredAgentSessionLaunchPrompt } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
+import {
+  FIRST_START_FAILS,
+  firstMessageStream,
+  play
+} from '@/lib/structured-agent-session-launch-prompt-test-support'
 import {
   clearPendingPRCommentAiAck,
   type PendingPRCommentAiAck
@@ -35,16 +39,6 @@ import { runSourceControlAgentActionStart } from '../runSourceControlAgentAction
 import { useChecksPanelAiAcknowledgement } from './use-checks-panel-ai-acknowledgement'
 
 const REVIEW_KEY = 'repo-1::42::sha-1'
-const PENDING = {
-  fence: 1,
-  payloadFingerprint: 'fingerprint',
-  dispatchState: 'pending' as const,
-  providerItemId: null,
-  reason: null,
-  submittedAt: 1,
-  resolvedAt: null,
-  handoverRecorded: true as const
-}
 
 function comment(overrides: Partial<PRComment>): PRComment {
   return {
@@ -115,39 +109,10 @@ function acknowledgement() {
   return { model, hook }
 }
 
-/** The new chat's first message, as the host answers it (accepted) and then publishes it. */
-function hostAnswers(clientMessageId: string, final: Partial<AgentJournalSubmission>): void {
-  const submission = { clientMessageId, ...PENDING }
-  mocks.call.mockResolvedValue({
-    ok: true,
-    replayed: false,
-    fence: 1,
-    cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: { clientMessageId, submission }
-  })
-  mocks.subscribe.mockImplementation(async (_target, _params, onEvent) => {
-    queueMicrotask(() =>
-      onEvent({
-        type: 'batch',
-        sessionId: 'session-1',
-        batch: {
-          cursor: { epoch: 'epoch-1', sequence: 3 },
-          items: [],
-          removedItemIds: [],
-          submissions: [{ ...submission, ...final }]
-        }
-      })
-    )
-    return { unsubscribe: vi.fn() }
-  })
-}
-
-async function resolveCommentsWithAi(
-  hook: ReturnType<typeof acknowledgement>['hook'],
-  firstMessageEndsAs: Partial<AgentJournalSubmission>
-) {
+/** Starts the launch; the first message's stream is the host's to play. */
+function resolveCommentsWithAi(hook: ReturnType<typeof acknowledgement>['hook']) {
   const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'Fix the comments')
-  hostAnswers(stagedEntry!.clientMessageId, firstMessageEndsAs)
+  const host = firstMessageStream(mocks, stagedEntry!.clientMessageId)
   mocks.launchAgentInNewTab.mockImplementation(() => ({
     surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
     promptDeliveryResult: settleStructuredAgentLaunchPrompt({
@@ -156,7 +121,7 @@ async function resolveCommentsWithAi(
       stagedEntry
     })
   }))
-  return act(() =>
+  const launched = act(() =>
     runSourceControlAgentActionStart({
       selectedAgent: 'claude',
       trimmedCommandInput: 'Fix the comments',
@@ -181,6 +146,7 @@ async function resolveCommentsWithAi(
       onClose: vi.fn()
     })
   )
+  return { host, launched }
 }
 
 describe('Resolve comments with AI, when the chat starts on its first message', () => {
@@ -193,31 +159,55 @@ describe('Resolve comments with AI, when the chat starts on its first message', 
     cleanup()
   })
 
-  it.each(['notSignedIn', 'providerMissing', 'providerExited'])(
-    'posts no reply and resolves no thread when the start fails (%s), and hands the comments back',
-    async (kind) => {
-      const { model, hook } = acknowledgement()
-      await expect(
-        resolveCommentsWithAi(hook, { dispatchState: 'rejected', rejection: { kind } })
-      ).resolves.toBe(false)
+  function expectNothingPosted(model: ReturnType<typeof acknowledgement>['model']) {
+    expect(model.addPRReviewCommentReply).not.toHaveBeenCalled()
+    expect(model.addPRConversationComment).not.toHaveBeenCalled()
+    expect(model.resolveReviewThread).not.toHaveBeenCalled()
+    expect(mocks.toastSuccess).not.toHaveBeenCalled()
+  }
 
-      expect(model.addPRReviewCommentReply).not.toHaveBeenCalled()
-      expect(model.addPRConversationComment).not.toHaveBeenCalled()
-      expect(model.resolveReviewThread).not.toHaveBeenCalled()
-      expect(mocks.toastSuccess).not.toHaveBeenCalled()
-      // Handed back for a retry, not consumed.
-      expect(model.pendingCommentResolutionRef.current).toMatchObject({
-        reviewContextKey: REVIEW_KEY
-      })
-    }
-  )
-
-  it('posts its reply and resolves its thread exactly once when the agent takes the prompt', async () => {
+  it('posts its reply and resolves its thread exactly once, after a retried start takes the prompt', async () => {
     const { model, hook } = acknowledgement()
-    await expect(resolveCommentsWithAi(hook, { handedOverAt: 5 })).resolves.toBe(true)
+    const { host, launched } = resolveCommentsWithAi(hook)
+    const stream = await host
+    const [retry, handedOver, accepted] = FIRST_START_FAILS.retriedThenTaken
 
+    await act(async () => {
+      stream.next(retry!)
+      stream.next(handedOver!)
+    })
+    // The agent is still starting: nothing is posted, and the comments stay claimed.
+    expectNothingPosted(model)
+    expect(model.claimedCommentResolutionRef.current).toMatchObject({
+      reviewContextKey: REVIEW_KEY
+    })
+
+    stream.next(accepted!)
+    await expect(launched).resolves.toBe(true)
     await vi.waitFor(() => expect(model.resolveReviewThread).toHaveBeenCalledTimes(1))
     expect(model.addPRConversationComment).toHaveBeenCalledTimes(1)
     expect(model.pendingCommentResolutionRef.current).toBeNull()
+  })
+
+  it.each([
+    ['rejected after its tries', FIRST_START_FAILS.rejectedAfterTries],
+    ['withdrawn when its chat closes mid-wait', FIRST_START_FAILS.chatClosed],
+    ...['notSignedIn', 'providerMissing', 'providerExited'].map(
+      (kind) =>
+        [
+          `refused at once (${kind})`,
+          [{ dispatchState: 'rejected' as const, rejection: { kind } }]
+        ] as const
+    )
+  ])('posts nothing when the first message is %s, and hands the comments back', async (_c, end) => {
+    const { model, hook } = acknowledgement()
+    const { host, launched } = resolveCommentsWithAi(hook)
+    play(await host, end)
+
+    await expect(launched).resolves.toBe(false)
+    expectNothingPosted(model)
+    expect(model.pendingCommentResolutionRef.current).toMatchObject({
+      reviewContextKey: REVIEW_KEY
+    })
   })
 })
