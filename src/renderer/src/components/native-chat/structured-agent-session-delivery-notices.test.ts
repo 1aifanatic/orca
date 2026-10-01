@@ -600,7 +600,7 @@ describe('the notice on a message sent from elsewhere that was not sent', () => 
   })
 
   it('offers no Retry on notes the host refused and the chat holds, since their source sends them again', () => {
-    const refused = { kind: 'refused' as const, code: 'agent_session_operation_capacity' }
+    const refused = { kind: 'refused', code: 'agent_session_operation_capacity' } as const
     const notices = structuredAgentSessionDeliveryNotices(
       [
         entry('notes', { source: 'surface', state: 'queued', lastFailure: refused }),
