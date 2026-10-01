@@ -317,7 +317,8 @@ export async function sweepRetiredWorktreeCreatePreparations(
   deps: RetiredPreparationSweepDeps = {}
 ): Promise<SweepResult> {
   const isProcessAlive = deps.isProcessAlive ?? isProcessAliveDefault
-  // This build never creates spares, so one naming this process is an older Orca's reused pid.
+  // A spare naming this process that it does not own (owned ones were skipped above) is an older
+  // Orca's, whose pid this process reused.
   const isOwnerRunning = (pid: number): boolean => pid !== process.pid && isProcessAlive(pid)
   const hostByCommonDir = new Map<string, WorktreeGitHost>()
   for (const repo of targets.repos) {

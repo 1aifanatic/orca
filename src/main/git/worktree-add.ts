@@ -172,12 +172,14 @@ async function performAddWorktree(
     // Why: settle the overlapped refresh inside the caller's ref-maintenance pause before reporting the failure.
     await pendingLocalBaseRefRefresh
     throw error
-  }
-  if (!noCheckout) {
-    recordLocalCreateCheckoutDuration(
-      spareRepoKey(repoPath, options.wslDistro),
-      Date.now() - checkoutStartedAt
-    )
+  } finally {
+    // A slow checkout that then failed still says the disk is busy.
+    if (!noCheckout) {
+      recordLocalCreateCheckoutDuration(
+        spareRepoKey(repoPath, options.wslDistro),
+        Date.now() - checkoutStartedAt
+      )
+    }
   }
   if (options.checkoutExistingBranch) {
     return preparedCheckout ? { preparedCheckout } : {}

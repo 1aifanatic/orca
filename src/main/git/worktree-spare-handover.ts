@@ -1,7 +1,7 @@
 // A create's use of a ready spare: claim it synchronously, then hand it over with the same result a
 // plain `git worktree add -b` gives. Nothing here waits on a spare or deletes a tree; a failed
 // handover puts the spare back where it was and leaves its removal to background work.
-import { mkdir } from 'node:fs/promises'
+import { lstat, mkdir, readFile } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { windowsLongPathGitArgs } from '../../shared/windows-long-path-git-args'
@@ -13,6 +13,7 @@ import {
   preparationPathKey,
   spareRepoKey,
   takeReadySpare,
+  takeSpareStoppedForCreate,
   type SpareEntry
 } from '../worktree-create-preparation-pool'
 import { scheduleSpareDiscard } from '../worktree-create-spare-discard'
@@ -47,6 +48,10 @@ export async function createFromReadySpare(
   const repoKey = spareRepoKey(request.repoPath, request.options.wslDistro)
   const candidate = findSpare(repoKey)
   if (!candidate) {
+    // Rule 1 shows up here: this create's start stopped a spare that was still building.
+    if (takeSpareStoppedForCreate(repoKey)) {
+      return { status: 'miss', reason: 'not_ready' }
+    }
     return { status: 'miss', reason: isSpareHookUnsupported(repoKey) ? 'hook_unsupported' : 'none' }
   }
   if (candidate.state !== 'ready') {
@@ -97,16 +102,46 @@ async function moveWorktree(
   }
 }
 
+function pathOps(path: string): typeof posix {
+  return isWindowsAbsolutePathLike(path) ? win32 : posix
+}
+
+/** Whether `<path>/.git` names this spare's admin entry: the move landed at the path itself. */
+async function holdsSpare(path: string, spare: SpareEntry): Promise<boolean> {
+  try {
+    const marker = await readFile(toHostFilesystemPath(pathOps(path).join(path, '.git')), 'utf8')
+    const gitDir = /^gitdir:\s*(.+)$/m.exec(marker)?.[1]?.trim().replace(/\\/g, '/') ?? ''
+    return gitDir.endsWith(`/worktrees/${spare.id}`)
+  } catch {
+    return false
+  }
+}
+
 /** True when the worktree now exists at the target; false when the caller should run a plain add. */
 async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Promise<boolean> {
   const { repoPath, worktreePath, branch, options } = request
   try {
-    const parent = (isWindowsAbsolutePathLike(worktreePath) ? win32 : posix).dirname(worktreePath)
-    await mkdir(toHostFilesystemPath(parent), { recursive: true })
+    await mkdir(toHostFilesystemPath(pathOps(worktreePath).dirname(worktreePath)), {
+      recursive: true
+    })
+    // `worktree move` into an existing directory lands inside it, so only a free path qualifies.
+    const occupied = await lstat(toHostFilesystemPath(worktreePath)).then(
+      () => true,
+      (error: unknown) => !(error instanceof Error && 'code' in error && error.code === 'ENOENT')
+    )
+    if (occupied) {
+      discardAt(spare, spare.preparedPath)
+      return false
+    }
     await moveWorktree(repoPath, spare.preparedPath, worktreePath, options)
   } catch (error) {
     console.warn('[worktree-create] spare checkout could not be moved; using a plain add', error)
     discardAt(spare, spare.preparedPath)
+    return false
+  }
+  if (!(await holdsSpare(worktreePath, spare))) {
+    // The path appeared after the check and the spare went inside it; never touch what is there.
+    discardAt(spare, pathOps(worktreePath).join(worktreePath, spare.id))
     return false
   }
   let branchCreated = false
@@ -135,12 +170,21 @@ async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Pr
   try {
     if (spare.hookRun) {
       // The arguments a plain add gives: no previous HEAD, the new HEAD, a branch checkout.
+      // The hooks directory the repo resolves, as a plain add does, and the new worktree as the
+      // work tree, so git calls from the hook's subdirectories see the checkout a plain add gives.
       const nullOid = '0'.repeat(spare.oid.length)
-      await git(
-        ['hook', 'run', '--ignore-missing', 'post-checkout', '--', nullOid, spare.oid, '1'],
-        worktreePath,
-        options
-      )
+      const hooksPath = spare.hooksPath ? ['-c', `core.hooksPath=${spare.hooksPath}`] : []
+      const hook = [
+        'hook',
+        'run',
+        '--ignore-missing',
+        'post-checkout',
+        '--',
+        nullOid,
+        spare.oid,
+        '1'
+      ]
+      await git([...hooksPath, '--work-tree', worktreePath, ...hook], worktreePath, options)
     }
   } catch (error) {
     // As on the plain path: a failing hook fails the create and keeps the worktree.
@@ -161,6 +205,9 @@ async function putSpareBack(
   const { repoPath, worktreePath, branch, options } = request
   if (branchCreated) {
     await git(['branch', '-D', '--', branch], repoPath, options).catch(() => {})
+  }
+  if (!(await holdsSpare(worktreePath, spare))) {
+    return
   }
   try {
     await moveWorktree(repoPath, worktreePath, spare.preparedPath, options)

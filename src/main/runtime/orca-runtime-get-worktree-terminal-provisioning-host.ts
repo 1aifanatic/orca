@@ -8,7 +8,10 @@ import type { TerminalCreateOptions } from './runtime-terminal-contracts'
 import type { WorktreeStartupReadinessHost } from './runtime-worktree-startup-readiness'
 import { prefetchWorktreeCreateBase } from '../worktree-create-base-prefetch'
 import { getWorktreeCreatePrefetchGitOptions } from '../project-runtime-git-options'
-import { requestWorktreeCreateSpare } from '../worktree-create-preparation'
+import {
+  beginWorktreeCreateSpareRequest,
+  requestWorktreeCreateSpare
+} from '../worktree-create-preparation'
 
 export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRuntimeWithActivateManagedWorktree {
   protected getWorktreeTerminalProvisioningHost(): WorktreeTerminalProvisioningHost {
@@ -50,6 +53,8 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
 
     const repo = await this.resolveRepoSelector(args.repoSelector)
     const store = this.requireStore()
+    // Taken before the fetch, so a later pick outranks an earlier one whose fetch ends last.
+    const spareTicket = beginWorktreeCreateSpareRequest(store, repo)
     const base = await prefetchWorktreeCreateBase({
       repo,
       baseBranch: args.baseBranch,
@@ -57,8 +62,8 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
       gitOptions: getWorktreeCreatePrefetchGitOptions(store, repo)
     })
     // After the refresh settles, so the spare is built at the commit the create will use.
-    if (base) {
-      requestWorktreeCreateSpare(store, repo, base)
+    if (base && spareTicket) {
+      requestWorktreeCreateSpare(store, repo, base, spareTicket)
     }
   }
 }

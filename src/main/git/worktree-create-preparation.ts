@@ -38,9 +38,14 @@ export async function prepareWorktreeCreateCheckout(
   worktreePath: string,
   oid: string,
   lockReason: string,
-  options: GitWorktreeExecOptions & { signal: AbortSignal }
+  options: GitWorktreeExecOptions & {
+    signal: AbortSignal
+    /** Stops before the checkout without killing anything. */
+    isCancelled?: () => boolean
+    onRegistered?: () => void
+  }
 ): Promise<boolean> {
-  const { signal } = options
+  const { signal, isCancelled, onRegistered } = options
   const metadata = gitMetadataOptions(repoPath, options, resolveWorktreeAddTimeoutMs())
   try {
     return await withRepoRefMaintenancePaused('worktree-prepare', () =>
@@ -60,6 +65,7 @@ export async function prepareWorktreeCreateCheckout(
           ],
           metadata
         )
+        onRegistered?.()
         // The add just wrote the marker; drop any pre-create route before later commands route.
         invalidateWslLinkedWorktreeGitRouting(worktreePath)
         await gitExecFileAsync(
@@ -73,14 +79,21 @@ export async function prepareWorktreeCreateCheckout(
           ],
           metadata
         )
-        if (signal.aborted) {
+        if (signal.aborted || isCancelled?.()) {
           return false
         }
         // Why reset: it materializes files without running the user's post-checkout hook early.
-        await gitExecFileAsync([...windowsLongPathGitArgs(worktreePath), 'reset', '--hard', oid], {
-          ...gitExecOptions(worktreePath, options),
-          timeout: resolveWorktreeAddTimeoutMs()
-        })
+        // `--no-recurse-submodules`, as `worktree add` checks out: submodule.recurse must not apply.
+        await gitExecFileAsync(
+          [
+            ...windowsLongPathGitArgs(worktreePath),
+            'reset',
+            '--hard',
+            '--no-recurse-submodules',
+            oid
+          ],
+          { ...gitExecOptions(worktreePath, options), timeout: resolveWorktreeAddTimeoutMs() }
+        )
         return !signal.aborted
       })
     )
@@ -174,9 +187,15 @@ async function isRunnableHookFile(path: string): Promise<boolean> {
 export async function checkSparePostCheckoutHook(
   repoPath: string,
   options: GitWorktreeExecOptions
-): Promise<{ honorable: boolean; hookRun: boolean }> {
+): Promise<{ honorable: boolean; hookRun: boolean; hooksPath?: string }> {
   if (await supportsHookRun(repoPath, options)) {
-    return { honorable: true, hookRun: true }
+    // Resolved in the repo, as a plain add resolves it: a relative core.hooksPath (husky's
+    // gitignored `.husky/_`) names a directory only the main checkout has. `--path-format` is 2.31+.
+    const { stdout } = await gitExecFileAsync(
+      ['rev-parse', '--path-format=absolute', '--git-path', 'hooks'],
+      gitExecOptions(repoPath, options)
+    )
+    return { honorable: true, hookRun: true, hooksPath: stdout.trim() }
   }
   const { stdout } = await gitExecFileAsync(
     ['rev-parse', '--git-path', 'hooks/post-checkout'],

@@ -24,35 +24,89 @@ import {
   worktreePreparationGit
 } from './worktree-create-preparation-pool'
 import {
+  localCreatesStarted,
   mayAbandonSpareForBaseChange,
   recordSpareAbandonedForBaseChange,
-  spareStartRefusal
+  spareStartRefusal,
+  type SpareStartRefusal
 } from './worktree-create-spare-gate'
 
 /** Only the last base picked in a quiet stretch builds, so flipping through bases costs nothing. */
 export const SPARE_REQUEST_DEBOUNCE_MS = 2_000
 
+/** Taken when the composer's prefetch arrives, before its fetch, so later picks win. */
+export type SpareRequestTicket = {
+  repoKey: string
+  seq: number
+  createsStarted: number
+  options: GitWorktreeExecOptions
+}
+
+type SpareSkipReason =
+  | 'quitting'
+  | 'superseded'
+  | 'create_started'
+  | 'abandon_window'
+  | SpareStartRefusal
+  | 'hook_unsupported'
+
 const pendingRequests = new Map<string, ReturnType<typeof setTimeout>>()
 const runningRequests = new Set<Promise<void>>()
+const latestSeqByRepo = new Map<string, number>()
 
-/** Synchronous and fire-and-forget: the composer never waits on a spare. */
-export function requestWorktreeCreateSpare(store: Store, repo: Repo, baseBranch: string): void {
+function skip(repoPath: string, reason: SpareSkipReason): void {
+  console.info(`[worktree-create] no spare checkout for ${repoPath}: ${reason}`)
+}
+
+/** Null for a repo that never gets a spare (SSH, folder, a runtime awaiting repair, quitting). */
+export function beginWorktreeCreateSpareRequest(
+  store: Store,
+  repo: Repo
+): SpareRequestTicket | null {
   if (repo.connectionId || isFolderRepo(repo) || isSpareQuitting()) {
-    return
+    return null
   }
   let options: GitWorktreeExecOptions
   try {
     options = getLocalProjectWorktreeGitOptions(store, repo)
   } catch {
-    // A project runtime awaiting repair runs no Git.
-    return
+    return null
   }
   const repoKey = spareRepoKey(repo.path, options.wslDistro)
-  clearTimeout(pendingRequests.get(repoKey))
+  const seq = (latestSeqByRepo.get(repoKey) ?? 0) + 1
+  latestSeqByRepo.set(repoKey, seq)
+  return { repoKey, seq, createsStarted: localCreatesStarted(), options }
+}
+
+/** Why this request may no longer build: a later pick, a create since it arrived, or quit. */
+function staleReason(ticket: SpareRequestTicket): SpareSkipReason | null {
+  if (isSpareQuitting()) {
+    return 'quitting'
+  }
+  if (latestSeqByRepo.get(ticket.repoKey) !== ticket.seq) {
+    return 'superseded'
+  }
+  // A create since the request arrived ends it: building after that create would be a re-arm.
+  return localCreatesStarted() === ticket.createsStarted ? null : 'create_started'
+}
+
+/** Synchronous and fire-and-forget: the composer never waits on a spare. */
+export function requestWorktreeCreateSpare(
+  store: Store,
+  repo: Repo,
+  baseBranch: string,
+  ticket: SpareRequestTicket
+): void {
+  const stale = staleReason(ticket)
+  if (stale) {
+    skip(repo.path, stale)
+    return
+  }
+  clearTimeout(pendingRequests.get(ticket.repoKey))
   const timer = setTimeout(() => {
-    pendingRequests.delete(repoKey)
+    pendingRequests.delete(ticket.repoKey)
     const running = worktreePreparationGit
-      .run(() => startRequestedSpare(store, repo, baseBranch, options, repoKey))
+      .run(() => startRequestedSpare(store, repo, baseBranch, ticket))
       .catch((error: unknown) => {
         console.warn(`[worktree-create] could not start a spare checkout for ${repo.path}`, error)
       })
@@ -60,7 +114,7 @@ export function requestWorktreeCreateSpare(store: Store, repo: Repo, baseBranch:
     runningRequests.add(running)
   }, SPARE_REQUEST_DEBOUNCE_MS)
   timer.unref?.()
-  pendingRequests.set(repoKey, timer)
+  pendingRequests.set(ticket.repoKey, timer)
 }
 
 async function resolveSpareCommit(
@@ -82,11 +136,13 @@ async function startRequestedSpare(
   store: Store,
   repo: Repo,
   baseBranch: string,
-  options: GitWorktreeExecOptions,
-  repoKey: string
+  ticket: SpareRequestTicket
 ): Promise<void> {
+  const { repoKey, options } = ticket
   // The gate comes before anything is abandoned: a refused request keeps the existing spare.
-  if (spareStartRefusal()) {
+  const refused = staleReason(ticket) ?? spareStartRefusal()
+  if (refused) {
+    skip(repo.path, refused)
     return
   }
   const workspaceRoot = await computeWorkspaceRootAsync(
@@ -100,23 +156,37 @@ async function startRequestedSpare(
   const existing = findSpare(repoKey)
   const sameSpare =
     existing?.oid === oid && existing.workspaceRootKey === preparationPathKey(workspaceRoot)
-  if (sameSpare || (existing && !mayAbandonSpareForBaseChange(repoKey))) {
+  if (sameSpare) {
+    return
+  }
+  if (existing && !mayAbandonSpareForBaseChange(repoKey)) {
+    skip(repo.path, 'abandon_window')
     return
   }
   const hook = await checkSparePostCheckoutHook(repo.path, options)
   if (!hook.honorable) {
     noteSpareHookUnsupported(repoKey)
+    skip(repo.path, 'hook_unsupported')
     return
   }
   // Re-checked after the awaits: a create may have started, or another request replaced the spare.
-  if (spareStartRefusal() || isSpareQuitting() || findSpare(repoKey) !== existing) {
+  const late = staleReason(ticket) ?? spareStartRefusal()
+  if (late || findSpare(repoKey) !== existing) {
+    skip(repo.path, late ?? 'superseded')
     return
   }
   if (existing) {
     recordSpareAbandonedForBaseChange(repoKey)
     abandonRepoSpare(repoKey)
   }
-  startSpare({ repoPath: repo.path, workspaceRoot, oid, hookRun: hook.hookRun, options })
+  startSpare({
+    repoPath: repo.path,
+    workspaceRoot,
+    oid,
+    hookRun: hook.hookRun,
+    ...(hook.hooksPath ? { hooksPath: hook.hooksPath } : {}),
+    options
+  })
 }
 
 export async function _whenSpareRequestsSettledForTests(): Promise<void> {
@@ -128,4 +198,5 @@ export function _resetSpareRequestsForTests(): void {
     clearTimeout(timer)
   }
   pendingRequests.clear()
+  latestSeqByRepo.clear()
 }

@@ -12,7 +12,7 @@ import {
 } from '../shared/worktree/create-preparation'
 import { createGitOperationExecutor } from './git/command-runner/git-operation-executor'
 import { prepareWorktreeCreateCheckout } from './git/worktree-create-preparation'
-import { addOwnedSpareId } from './git/worktree-create-spare-ids'
+import { addOwnedSpareId, releaseOwnedSpareId } from './git/worktree-create-spare-ids'
 import type { GitWorktreeExecOptions } from './git/worktree-operation-options'
 import { toHostFilesystemPath } from './host-tree-removal'
 import { parseWslPath } from './wsl'
@@ -38,6 +38,10 @@ export type SpareEntry = {
   options: GitWorktreeExecOptions
   /** Whether the handover runs `post-checkout` through `git hook run`. */
   hookRun: boolean
+  /** The repo's hooks directory, absolute in Git's own path space, for that `git hook run`. */
+  hooksPath?: string
+  /** Set once the spare's `worktree add` ran; before that there is nothing to remove. */
+  registered: boolean
   state: SpareState
   controller: AbortController
   expiration: ReturnType<typeof setTimeout>
@@ -48,12 +52,17 @@ export type StartSpareArgs = {
   workspaceRoot: string
   oid: string
   hookRun: boolean
+  hooksPath?: string
   options: GitWorktreeExecOptions
 }
 
 const spares = new Map<string, SpareEntry>()
 // Repos whose last request built nothing because the handover could not honor `post-checkout`.
 const hookUnsupportedRepos = new Set<string>()
+// Repos whose spare was still building when a create started, for that create's miss reason.
+const stoppedForCreate = new Set<string>()
+// Builds whose git may still be running, abandoned WSL ones included.
+let buildsRunning = 0
 let quitting = false
 
 /** Case-folded on Windows, so the building and claiming sides key on the same path. */
@@ -78,6 +87,10 @@ function pathOps(path: string): Pick<typeof posix, 'join'> {
 }
 
 function discard(entry: SpareEntry): void {
+  if (!entry.registered) {
+    releaseOwnedSpareId(entry.id)
+    return
+  }
   scheduleSpareDiscard({
     id: entry.id,
     repoPath: entry.repoPath,
@@ -118,7 +131,7 @@ export function isSpareHookUnsupported(repoKey: string): boolean {
 
 /** Building spares or discards still running; repo maintenance must not start meanwhile. */
 export function hasSpareWork(): boolean {
-  return hasPendingSpareDiscards() || [...spares.values()].some((s) => s.state === 'building')
+  return hasPendingSpareDiscards() || buildsRunning > 0
 }
 
 /** Every create start, machine-wide: an unfinished spare is a second checkout on the same disk. */
@@ -126,9 +139,15 @@ export function abandonUnfinishedSpares(): void {
   // Deleting the current entry while iterating a Map is safe.
   for (const entry of spares.values()) {
     if (entry.state === 'building') {
+      stoppedForCreate.add(entry.key)
       abandonSpare(entry)
     }
   }
+}
+
+/** Whether a create start stopped this repo's unfinished spare; reported once. */
+export function takeSpareStoppedForCreate(repoKey: string): boolean {
+  return stoppedForCreate.delete(repoKey)
 }
 
 export function abandonRepoSpare(repoKey: string): void {
@@ -193,7 +212,15 @@ async function buildSpare(entry: SpareEntry, workspaceRoot: string): Promise<boo
     entry.preparedPath,
     entry.oid,
     createWorktreePreparationLockReason(entry.id),
-    { ...entry.options, signal: entry.controller.signal }
+    {
+      ...entry.options,
+      signal: entry.controller.signal,
+      // A WSL spare is never killed, but one abandoned before its checkout must not start it.
+      isCancelled: () => entry.state === 'abandoned',
+      onRegistered: () => {
+        entry.registered = true
+      }
+    }
   )
   if (ready) {
     recordSpareBuildDuration(entry.key, Date.now() - startedAt)
@@ -219,6 +246,7 @@ export function startSpare(args: StartSpareArgs): void {
     abandonSpare(oldest)
   }
   hookUnsupportedRepos.delete(key)
+  stoppedForCreate.delete(key)
   const id = `${process.pid}-${randomUUID()}`
   const root = pathOps(args.workspaceRoot).join(
     args.workspaceRoot,
@@ -233,6 +261,8 @@ export function startSpare(args: StartSpareArgs): void {
     preparedPath: pathOps(root).join(root, id),
     options: args.options,
     hookRun: args.hookRun,
+    ...(args.hooksPath ? { hooksPath: args.hooksPath } : {}),
+    registered: false,
     state: 'building',
     controller: new AbortController(),
     expiration: setTimeout(() => abandonSpare(entry), WORKTREE_CREATE_PREPARATION_TTL_MS)
@@ -240,6 +270,7 @@ export function startSpare(args: StartSpareArgs): void {
   entry.expiration.unref?.()
   addOwnedSpareId(id)
   spares.set(key, entry)
+  buildsRunning += 1
   void worktreePreparationGit
     .run(() => buildSpare(entry, args.workspaceRoot))
     .catch((error: unknown) => {
@@ -249,6 +280,7 @@ export function startSpare(args: StartSpareArgs): void {
       return false
     })
     .then((ready) => {
+      buildsRunning -= 1
       if (ready && entry.state === 'building') {
         entry.state = 'ready'
         return
@@ -269,5 +301,7 @@ export function _resetSparePoolForTests(): void {
   }
   spares.clear()
   hookUnsupportedRepos.clear()
+  stoppedForCreate.clear()
+  buildsRunning = 0
   quitting = false
 }
