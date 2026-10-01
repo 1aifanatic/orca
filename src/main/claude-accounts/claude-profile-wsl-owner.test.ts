@@ -1,4 +1,3 @@
-import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +13,7 @@ import {
   type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
+import type { ClaudeWslProfileResponse } from './claude-profile-wsl-transport'
 import { mergeClaudeProfileReaderRoots } from './claude-profile-reader-roots'
 import {
   CLAUDE_PROFILE_ROUTING_CAPABILITY,
@@ -81,7 +81,7 @@ function fixture(options: { withHost?: boolean } = {}) {
   const respond = vi.fn(async (request: ClaudeWslProfileRequest) => ({
     ready: true,
     provisioned: true,
-    readiness: Object.fromEntries<ClaudeProfileReadiness>(
+    readiness: Object.fromEntries<NonNullable<ClaudeWslProfileResponse['readiness']>[string]>(
       settings.claudeManagedAccounts.map((account) => [account.id, 'ready' as const])
     ),
     homes: [
