@@ -28,10 +28,14 @@ import {
   setTestUserDataPath
 } from './local-pty-shell-ready-test-harness'
 
-const ZSH_PATH =
-  process.platform === 'win32'
-    ? ''
-    : (spawnSync('sh', ['-c', 'command -v zsh'], { encoding: 'utf8' }).stdout ?? '').trim()
+function findZsh(): string {
+  if (process.platform === 'win32') {
+    return ''
+  }
+  return (spawnSync('sh', ['-c', 'command -v zsh'], { encoding: 'utf8' }).stdout ?? '').trim()
+}
+
+const ZSH_PATH = findZsh()
 
 /** Lines of prompt text, each `perLine` bytes. */
 function promptLines(lineCount: number, perLine: number): string {
