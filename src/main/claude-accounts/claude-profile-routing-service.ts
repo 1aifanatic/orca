@@ -50,6 +50,7 @@ export type ClaudeProfileRoutingOwner = {
 export class ClaudeProfileRoutingService {
   private readonly publishIssues = new Map<string, string>()
   private readonly publishes = new Map<string, number>()
+  private readonly latestPublishes = new Map<string, Promise<ClaudeProfileLaunchDescriptor>>()
   private readonly pointerWrites = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
@@ -65,13 +66,23 @@ export class ClaudeProfileRoutingService {
     return descriptor
   }
   /** Select and startup set the profile up (`always`); a launch only sets up one that never was. */
-  async publish(
+  publish(
     target?: ClaudeAccountSelectionTarget,
     provisioning: 'always' | 'if-missing' = 'always'
   ): Promise<ClaudeProfileLaunchDescriptor> {
-    const key = target?.runtime === 'wsl' ? `wsl:${target.wslDistro?.toLowerCase()}` : 'host'
+    const key = publishKey(target)
     const generation = (this.publishes.get(key) ?? 0) + 1
     this.publishes.set(key, generation)
+    const published = this.publishGeneration(key, generation, target, provisioning)
+    this.latestPublishes.set(key, published)
+    return published
+  }
+  private async publishGeneration(
+    key: string,
+    generation: number,
+    target: ClaudeAccountSelectionTarget | undefined,
+    provisioning: 'always' | 'if-missing'
+  ): Promise<ClaudeProfileLaunchDescriptor> {
     let descriptor: ClaudeProfileLaunchDescriptor | undefined
     try {
       if (this.owner.refresh) {
@@ -92,7 +103,12 @@ export class ClaudeProfileRoutingService {
         this.owner.publish(captured)
       )
       if (!published) {
-        throw new Error('Claude account publication was superseded; retry')
+        // Why: a newer publish owns the pointer; it speaks for this caller while it names the same profile.
+        const newer = await this.latestPublishes.get(key)
+        if (newer?.configHome !== captured.configHome) {
+          throw new Error('Claude account changed while preparing its profile; retry')
+        }
+        return captured
       }
       if (generation === this.publishes.get(key)) {
         this.publishIssues.delete(key)
@@ -102,7 +118,11 @@ export class ClaudeProfileRoutingService {
       // Why: a pointer left naming the previous account would launch it silently. Only the newest
       // target publish, still naming the current selection, speaks for the pointer.
       if (generation === this.publishes.get(key) && !this.isOvertaken(descriptor)) {
-        this.publishIssues.set(key, error instanceof Error ? error.message : String(error))
+        const message = error instanceof Error ? error.message : String(error)
+        this.publishIssues.set(
+          key,
+          target?.runtime === 'wsl' ? `WSL ${target.wslDistro ?? 'distro'}: ${message}` : message
+        )
         try {
           await this.mutatePointer(key, generation, async () => {
             await this.owner.withdraw(target)
@@ -200,14 +220,19 @@ export class ClaudeProfileRoutingService {
     }
   }
   /**
-   * A host pane's spawn env: its children keep this account until the pane reopens, while the
-   * claude function re-reads the pointer. Never throws, so a non-Claude pane always opens.
+   * A pane's spawn env: its children keep this account until the pane reopens, while the claude
+   * function re-reads the pointer. Makes no guest call and never throws, so a non-Claude pane
+   * always opens; a WSL pane gets nothing until its distro's guest home is known.
    */
   terminalEnv(target?: ClaudeAccountSelectionTarget): ClaudeEnvPatch {
     try {
       return this.envPatch(this.resolve(target))
     } catch {
-      return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
+      try {
+        return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
+      } catch {
+        return {}
+      }
     }
   }
   // Why no CLAUDE_CONFIG_DIR for System Default: the user's inherited value must pass through.
@@ -224,14 +249,9 @@ export class ClaudeProfileRoutingService {
       ...account,
       profileReadiness: this.owner.readiness(account.id)
     }))
+    const issues = this.currentPublishIssues()
     if (this.pointerIsCurrent()) {
-      return {
-        ...state,
-        accounts,
-        ...(this.publishIssues.size
-          ? { profileRoutingIssue: [...this.publishIssues.values()].join('; ') }
-          : {})
-      }
+      return { ...state, accounts, ...(issues ? { profileRoutingIssue: issues } : {}) }
     }
     this.repair ??= this.publish(undefined, 'if-missing')
       .catch(() => {})
@@ -241,9 +261,16 @@ export class ClaudeProfileRoutingService {
     return {
       ...state,
       accounts,
-      profileRoutingIssue:
-        [...this.publishIssues.values()].join('; ') || 'Claude account selection is being published'
+      profileRoutingIssue: issues || 'Claude account selection is being published'
     }
+  }
+  // Why: a target no longer routed (accounts removed, distro-less shell) has no publish to clear it.
+  private currentPublishIssues(): string {
+    const routed = new Set(['host', ...this.owner.targets().map(publishKey)])
+    return [...this.publishIssues]
+      .filter(([key]) => routed.has(key))
+      .map(([, issue]) => issue)
+      .join('; ')
   }
   private pointerIsCurrent(): boolean {
     try {
@@ -254,7 +281,7 @@ export class ClaudeProfileRoutingService {
     }
   }
   /** Never throws: skill roots for every provider read this, and only Claude launches may refuse
-   *  an unresolvable account; WSL keeps the legacy home until guest profiles exist. */
+   *  an unresolvable account; a WSL distro not yet inspected this session reads the legacy home. */
   configDirOr(target: ClaudeAccountSelectionTarget | undefined, legacy: () => string): string {
     try {
       return this.resolve(target).readHome
@@ -268,4 +295,8 @@ export class ClaudeProfileRoutingService {
   ): string[] {
     return [...new Set(this.owner.readHomes(target, surface))]
   }
+}
+
+function publishKey(target?: ClaudeAccountSelectionTarget): string {
+  return target?.runtime === 'wsl' ? `wsl:${target.wslDistro?.toLowerCase()}` : 'host'
 }

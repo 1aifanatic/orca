@@ -31,9 +31,11 @@ export function createWslClaudeProfileOwner(
   withdrawPointer: (distro: string) => Promise<void> = withdrawClaudeWslPointer
 ): ClaudeProfileRoutingOwner {
   const guests = new Map<string, { guest: ClaudeWslGuest; expires: number }>()
+  // Why kept past the runtime cache: panes compute the pointer path without a guest call.
+  const homes = new Map<string, string>()
   const inspections = new Map<
     string,
-    { accountId: string | null; result: ClaudeWslProfileResponse }
+    { accountId: string | null; home: string; result: ClaudeWslProfileResponse }
   >()
   const distroFor = (target?: ClaudeAccountSelectionTarget) => {
     const distro = target?.wslDistro?.trim()
@@ -70,43 +72,61 @@ export function createWslClaudeProfileOwner(
     }
     return guest.guest
   }
+  const profileFor = (home: string, accountId: string, distro: string) =>
+    describeClaudeProfile(posix.join(home, '.local/share/orca'), accountId, {
+      executionHostId: 'local',
+      runtime: 'wsl',
+      distro
+    })
+  const selectedAccountId = (target?: ClaudeAccountSelectionTarget) => {
+    try {
+      return selected(target).accountId
+    } catch {
+      return undefined
+    }
+  }
   const owner: ClaudeProfileRoutingOwner = {
     refresh: async (target) => {
       const { distro, accountId } = selected(target)
-      const cached = guests.get(distro.toLowerCase())
-      const guest =
-        cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
-      if (guest !== cached?.guest) {
-        guests.set(distro.toLowerCase(), { guest, expires: Date.now() + 600_000 })
+      const key = distro.toLowerCase()
+      let result: ClaudeWslProfileResponse
+      let guest: ClaudeWslGuest
+      try {
+        const cached = guests.get(key)
+        guest = cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
+        if (guest !== cached?.guest) {
+          guests.set(key, { guest, expires: Date.now() + 600_000 })
+          homes.set(key, guest.home)
+        }
+        result = await guest.request({
+          action: 'inspect',
+          distro,
+          accountId,
+          userHome: guest.home,
+          hooksEnabled: false
+        })
+      } catch (error) {
+        // Why: roots, readiness and a possibly broken runtime must not outlive the failure.
+        guests.delete(key)
+        inspections.delete(key)
+        throw error
       }
-      const result = await guest.request({
-        action: 'inspect',
-        distro,
-        accountId,
-        userHome: guest.home,
-        hooksEnabled: false
-      })
-      inspections.set(distro.toLowerCase(), { accountId, result })
+      // Why: an inspect that lands after a newer selection must not replace its verification.
+      if (selectedAccountId(target) === accountId) {
+        inspections.set(key, { accountId, home: guest.home, result })
+      }
       if (!result.ready) {
         throw new Error('Selected WSL Claude account needs a fresh sign-in')
       }
     },
     resolve(target) {
       const { distro, accountId } = selected(target)
-      const guest = guestFor(distro)
       const inspected = inspections.get(distro.toLowerCase())
       if (inspected?.accountId !== accountId || !inspected.result.ready) {
         throw new Error('WSL Claude profile is not verified')
       }
-      const dataRoot = posix.join(guest.home, '.local/share/orca')
-      const profile = accountId
-        ? describeClaudeProfile(dataRoot, accountId, {
-            executionHostId: 'local',
-            runtime: 'wsl',
-            distro
-          })
-        : null
-      const defaultHome = posix.join(guest.home, '.claude')
+      const profile = accountId ? profileFor(inspected.home, accountId, distro) : null
+      const defaultHome = posix.join(inspected.home, '.claude')
       return {
         profile,
         configHome: profile?.home ?? defaultHome,
@@ -116,11 +136,14 @@ export function createWslClaudeProfileOwner(
         target: { runtime: 'wsl', wslDistro: distro }
       }
     },
-    pointerPath: (target) =>
-      posix.join(
-        guestFor(distroFor(target)).home,
-        '.local/share/orca/claude-profiles/selected-wsl'
-      ),
+    pointerPath: (target) => {
+      const distro = distroFor(target)
+      const home = homes.get(distro.toLowerCase())
+      if (!home) {
+        throw new Error(`WSL distro ${distro} has not provided its Claude profile paths`)
+      }
+      return posix.join(home, '.local/share/orca/claude-profiles/selected-wsl')
+    },
     targets: () =>
       [
         ...new Set(
@@ -142,14 +165,23 @@ export function createWslClaudeProfileOwner(
     },
     isProvisioned: ({ target }) =>
       inspections.get(distroFor(target).toLowerCase())?.result.provisioned ?? false,
+    // Why per account: the guest's inspect lists every owned profile, not only the selected one.
     readiness: (accountId) => {
       const account = settings().claudeManagedAccounts.find((entry) => entry.id === accountId)
       const inspection = account?.wslDistro
         ? inspections.get(account.wslDistro.toLowerCase())
         : undefined
-      return inspection?.accountId === accountId && inspection.result.ready
-        ? 'ready'
-        : 'sign-in-required'
+      try {
+        return inspection &&
+          account?.wslDistro &&
+          inspection.result.homes?.includes(
+            profileFor(inspection.home, accountId, account.wslDistro).home
+          )
+          ? 'ready'
+          : 'sign-in-required'
+      } catch {
+        return 'sign-in-required'
+      }
     },
     prepare: async (descriptor) => {
       const distro = distroFor(descriptor.target)
@@ -166,6 +198,7 @@ export function createWslClaudeProfileOwner(
       }
       inspections.set(distro.toLowerCase(), {
         accountId: descriptor.profile?.accountId ?? null,
+        home: guest.home,
         result: {
           ...result,
           homes: inspections.get(distro.toLowerCase())?.result.homes,

@@ -229,11 +229,8 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.expectedWslDistro
   )
   if (!args.connectionId) {
-    const profiles = getClaudeProfileRoutingAuthority()
-    const profileEnv =
-      profiles && initialSelectionTarget.runtime === 'wsl'
-        ? (await profiles.prepare(initialSelectionTarget)).envPatch
-        : profiles?.terminalEnv()
+    // Why no guest call: a WSL pane must open even when its distro is stopped; launches publish.
+    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv(initialSelectionTarget)
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }
