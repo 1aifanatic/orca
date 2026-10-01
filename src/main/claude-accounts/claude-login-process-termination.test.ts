@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, expect, it, vi } from 'vitest'
 
-const spawned = vi.hoisted(() => [] as { program: string; args: string[] }[])
+const spawned = vi.hoisted((): { program: string; args: string[] }[] => [])
 vi.mock('../../shared/child-process/run-process', () => ({
   spawnProcess: (options: { program: string; args: string[] }) => {
     spawned.push(options)
@@ -29,8 +29,7 @@ it('cancels a Windows login by ending its whole process tree with taskkill', asy
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
   const child = { pid: 4242, kill: vi.fn() }
   const afterKill = vi.fn()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: termination reads only pid and kill.
-  terminateClaudeProcess(child as never, null, afterKill)
+  terminateClaudeProcess(child, null, afterKill)
   await vi.waitFor(() => expect(afterKill).toHaveBeenCalledOnce())
   expect(spawned).toEqual([
     expect.objectContaining({ program: 'taskkill.exe', args: ['/pid', '4242', '/t', '/f'] })
@@ -42,12 +41,7 @@ it('cancels a Windows login through the relayed login PID, not the wrapper', asy
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
   const child = { pid: 1, kill: vi.fn() }
   const afterKill = vi.fn()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: termination reads only pid and kill.
-  terminateClaudeProcess(
-    child as never,
-    { waitForTerminationPid: async () => 777 } as never,
-    afterKill
-  )
+  terminateClaudeProcess(child, { waitForTerminationPid: async () => 777 }, afterKill)
   await vi.waitFor(() => expect(afterKill).toHaveBeenCalledOnce())
   expect(spawned[0]?.args).toEqual(['/pid', '777', '/t', '/f'])
 })

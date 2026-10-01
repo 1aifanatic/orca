@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
+import type {
+  ClaudeManagedAccount,
+  ClaudeManagedAccountRuntimeSelection
+} from '../../shared/managed-account-types'
+import type { GlobalSettings } from '../../shared/global-settings-types'
 import { ClaudeAccountSelection } from './claude-account-selection'
 import { ClaudeAccountRegistration } from './claude-account-registration'
 import { createNativeClaudeProfileRouting } from './claude-profile-native-owner'
@@ -25,12 +29,18 @@ function fixture(accounts: ClaudeManagedAccount[]) {
   const dataRoot = join(root, 'data')
   mkdirSync(home)
   mkdirSync(dataRoot)
-  const settings = {
+  const settings: Pick<
+    GlobalSettings,
+    | 'claudeManagedAccounts'
+    | 'activeClaudeManagedAccountId'
+    | 'agentStatusHooksEnabled'
+    | 'disabledTuiAgents'
+  > & { activeClaudeManagedAccountIdsByRuntime: ClaudeManagedAccountRuntimeSelection } = {
     claudeManagedAccounts: accounts,
-    activeClaudeManagedAccountId: null as string | null,
-    activeClaudeManagedAccountIdsByRuntime: { host: null as string | null, wsl: {} },
+    activeClaudeManagedAccountId: null,
+    activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: {} },
     agentStatusHooksEnabled: false,
-    disabledTuiAgents: [] as []
+    disabledTuiAgents: []
   }
   const routing = createNativeClaudeProfileRouting({
     store: { getSettings: () => settings },

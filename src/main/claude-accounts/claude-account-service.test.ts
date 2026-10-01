@@ -3,9 +3,7 @@ import { getDefaultSettings } from '../../shared/constants'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 
-const login = vi.hoisted(() => ({
-  cancelled: [] as string[]
-}))
+const login = vi.hoisted((): { cancelled: string[] } => ({ cancelled: [] }))
 vi.mock('./claude-profile-login', () => ({
   prepareClaudeProfileLogin: async (id: string) => ({
     config: { windowsPath: `/profiles/${id}/home`, linuxPath: null, wslDistro: null },

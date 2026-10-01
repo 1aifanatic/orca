@@ -15,7 +15,7 @@ import {
   inheritedClaudeConfigDir
 } from './claude-profile-native-owner'
 import type * as FsUtils from '../codex-accounts/fs-utils'
-const writeFailure = vi.hoisted(() => ({ error: null as Error | null }))
+const writeFailure = vi.hoisted((): { error: Error | null } => ({ error: null }))
 vi.mock('../codex-accounts/fs-utils', async (importOriginal) => {
   const actual = await importOriginal<typeof FsUtils>()
   return {
