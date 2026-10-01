@@ -2,20 +2,26 @@ import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type * as FsUtils from '../codex-accounts/fs-utils'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof fs>()
-  return {
-    ...actual,
-    readFileSync: vi.fn(actual.readFileSync),
-    symlinkSync: vi.fn(actual.symlinkSync)
-  }
+  return { ...actual, symlinkSync: vi.fn(actual.symlinkSync) }
 })
+vi.mock('../codex-accounts/fs-utils', async (original) => {
+  const actual = await original<typeof FsUtils>()
+  return { ...actual, writeFileAtomically: vi.fn(actual.writeFileAtomically) }
+})
+import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { provisionClaudeProfile } from './claude-profile-provisioning'
 
+const MANAGED_STATUS_LINE = {
+  type: 'command',
+  command: '"$HOME/.orca/agent-hooks/claude-statusline.sh"'
+}
 const roots: string[] = []
 function fixture() {
-  const root = fs.mkdtempSync(join(tmpdir(), 'claude-profile-setup-'))
+  const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'claude-profile-setup-')))
   roots.push(root)
   const userHome = join(root, 'user')
   const profileHome = join(root, 'profile')
@@ -23,9 +29,11 @@ function fixture() {
   fs.mkdirSync(source, { recursive: true })
   fs.mkdirSync(profileHome)
   const json = (file: string, value: unknown): void => fs.writeFileSync(file, JSON.stringify(value))
-  const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8'))
+  const read = (file: string): Record<string, unknown> => JSON.parse(fs.readFileSync(file, 'utf8'))
   return { root, userHome, profileHome, source, json, read }
 }
+const provision = (f: { profileHome: string; userHome: string }, trustKeys?: string[]) =>
+  provisionClaudeProfile({ profileHome: f.profileHome, userHome: f.userHome, trustKeys })
 afterEach(() => {
   vi.clearAllMocks()
   for (const dir of roots.splice(0)) {
@@ -34,14 +42,14 @@ afterEach(() => {
 })
 
 describe('dormant Claude profile provisioning', () => {
-  it('links resources, keeps private directories and sees later global installs', () => {
+  it('links resources, keeps private directories and sees later global installs', async () => {
     const f = fixture()
     for (const name of ['skills', 'plugins', 'agents', 'commands', 'output-styles']) {
       fs.mkdirSync(join(f.source, name))
     }
     fs.mkdirSync(join(f.profileHome, 'agents'))
     fs.writeFileSync(join(f.profileHome, 'agents/mine.md'), 'private')
-    const report = provisionClaudeProfile(f)
+    const report = await provision(f)
     expect(report.surfaces.agents).toBe('user-owned')
     for (const name of ['skills', 'plugins', 'commands', 'output-styles']) {
       expect(fs.realpathSync(join(f.profileHome, name))).toBe(fs.realpathSync(join(f.source, name)))
@@ -50,7 +58,7 @@ describe('dormant Claude profile provisioning', () => {
     expect(fs.readFileSync(join(f.profileHome, 'skills/new.md'), 'utf8')).toBe('new skill')
     expect(fs.readFileSync(join(f.profileHome, 'agents/mine.md'), 'utf8')).toBe('private')
   })
-  it('shares future settings keys but excludes auth and hooks; profile edits survive reprovision', () => {
+  it('shares future settings keys but excludes auth and hooks; profile edits survive reprovision', async () => {
     const f = fixture()
     f.json(join(f.source, 'settings.json'), {
       futureFeature: true,
@@ -69,7 +77,7 @@ describe('dormant Claude profile provisioning', () => {
       }
     })
     fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'source')
-    provisionClaudeProfile(f)
+    await provision(f)
     expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({
       futureFeature: true,
       model: 'a',
@@ -83,39 +91,57 @@ describe('dormant Claude profile provisioning', () => {
     fs.writeFileSync(join(f.profileHome, 'CLAUDE.md'), 'private instructions')
     f.json(join(f.source, 'settings.json'), { model: 'b', futureFeature: false })
     fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'updated source')
-    provisionClaudeProfile(f)
+    await provision(f)
     expect(f.read(join(f.profileHome, 'settings.json'))).toMatchObject({
       model: 'private',
       futureFeature: false
     })
     expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe('private instructions')
   })
-  it('requires existing state, merges MCP/theme/onboarding/trust without copying login fields or reading credentials', () => {
+  it('re-adds a shared key the profile deleted and leaves a linked settings file alone', async () => {
     const f = fixture()
-    const credentials = [
-      join(f.source, '.credentials.json'),
-      join(f.profileHome, '.credentials.json')
-    ]
-    for (const file of credentials) {
-      fs.writeFileSync(file, 'SYNTHETIC_CREDENTIAL_BYTES')
-    }
+    f.json(join(f.source, 'settings.json'), { model: 'a', theme: 'x' })
+    await provision(f)
+    f.json(join(f.profileHome, 'settings.json'), { theme: 'x' })
+    await provision(f)
+    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'a', theme: 'x' })
+    const elsewhere = join(f.root, 'elsewhere.json')
+    f.json(elsewhere, { mine: true })
+    fs.rmSync(join(f.profileHome, 'settings.json'))
+    fs.symlinkSync(elsewhere, join(f.profileHome, 'settings.json'))
+    expect((await provision(f)).surfaces['settings.json']).toBe('user-owned')
+    expect(f.read(elsewhere)).toEqual({ mine: true })
+  })
+  it('keeps Orca managed statusLine out of the merge but shares a user statusLine over it', async () => {
+    const f = fixture()
+    f.json(join(f.source, 'settings.json'), { statusLine: MANAGED_STATUS_LINE, model: 'a' })
+    await provision(f)
+    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'a' })
+    f.json(join(f.profileHome, 'settings.json'), { model: 'a', statusLine: MANAGED_STATUS_LINE })
+    const custom = { type: 'command', command: 'my-statusline' }
+    f.json(join(f.source, 'settings.json'), { statusLine: custom, model: 'a' })
+    await provision(f)
+    expect(f.read(join(f.profileHome, 'settings.json')).statusLine).toEqual(custom)
+  })
+  it('requires existing state, merges MCP/theme/onboarding/trust and never copies or writes credentials', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.source, '.credentials.json'), 'SOURCE_CREDENTIAL_BYTES')
     f.json(join(f.userHome, '.claude.json'), {
       mcpServers: { local: { command: 'example' } },
       theme: 'dark',
       oauthAccount: { email: 'source' },
       userID: 'source-id'
     })
-    provisionClaudeProfile(f)
+    await provision(f)
     expect(fs.existsSync(join(f.profileHome, '.claude.json'))).toBe(false)
+    expect(fs.existsSync(join(f.profileHome, '.credentials.json'))).toBe(false)
+    fs.writeFileSync(join(f.profileHome, '.credentials.json'), 'PROFILE_CREDENTIAL_BYTES')
     f.json(join(f.profileHome, '.claude.json'), {
       oauthAccount: { email: 'profile' },
       userID: 'profile-id',
       projects: { '/work': { allowedTools: ['Read'] } }
     })
-    vi.mocked(fs.readFileSync).mockClear()
-    provisionClaudeProfile({ ...f, trustKeys: ['/work'] })
-    const reads = vi.mocked(fs.readFileSync).mock.calls.map(([file]) => String(file))
-    expect(reads.some((file) => credentials.includes(file))).toBe(false)
+    await provision(f, ['/work'])
     expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({
       oauthAccount: { email: 'profile' },
       userID: 'profile-id',
@@ -124,28 +150,115 @@ describe('dormant Claude profile provisioning', () => {
       hasCompletedOnboarding: true,
       projects: { '/work': { allowedTools: ['Read'], hasTrustDialogAccepted: true } }
     })
-    for (const file of credentials) {
-      expect(fs.readFileSync(file, 'utf8')).toBe('SYNTHETIC_CREDENTIAL_BYTES')
+    expect(fs.readFileSync(join(f.source, '.credentials.json'), 'utf8')).toBe(
+      'SOURCE_CREDENTIAL_BYTES'
+    )
+    expect(fs.readFileSync(join(f.profileHome, '.credentials.json'), 'utf8')).toBe(
+      'PROFILE_CREDENTIAL_BYTES'
+    )
+    for (const name of fs.readdirSync(f.profileHome)) {
+      const file = join(f.profileHome, name)
+      if (fs.lstatSync(file).isFile()) {
+        expect(fs.readFileSync(file, 'utf8')).not.toContain('SOURCE_CREDENTIAL_BYTES')
+      }
     }
-    expect(fs.readFileSync(join(f.profileHome, '.orca-profile.json'), 'utf8')).not.toContain(
-      'SYNTHETIC_CREDENTIAL_BYTES'
+  })
+  it('still forces onboarding and trust when the personal state is unreadable', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.userHome, '.claude.json'), '{"theme": "da')
+    f.json(join(f.profileHome, '.claude.json'), { userID: 'p' })
+    const report = await provision(f, ['/work'])
+    expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({
+      userID: 'p',
+      hasCompletedOnboarding: true,
+      projects: { '/work': { hasTrustDialogAccepted: true } }
+    })
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: '.claude.json', code: 'unreadable' })
     )
   })
-  it('uses Windows junctions through platform injection (native Windows remains unverified)', () => {
+  it('skips the state write while Claude holds its lock and records nothing for it', async () => {
+    const f = fixture()
+    f.json(join(f.userHome, '.claude.json'), { theme: 'dark' })
+    f.json(join(f.profileHome, '.claude.json'), { userID: 'p' })
+    fs.mkdirSync(join(f.profileHome, '.claude.json.lock'))
+    const report = await provision(f)
+    expect(report.surfaces['.claude.json']).toBe('failed')
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: '.claude.json', code: 'locked' })
+    )
+    expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({ userID: 'p' })
+    fs.rmdirSync(join(f.profileHome, '.claude.json.lock'))
+    expect((await provision(f)).surfaces['.claude.json']).toBe('merged')
+    expect(f.read(join(f.profileHome, '.claude.json')).theme).toBe('dark')
+  })
+  it('records a shared value only after its write succeeded', async () => {
+    const f = fixture()
+    f.json(join(f.source, 'settings.json'), { theme: 'dark' })
+    await provision(f)
+    f.json(join(f.source, 'settings.json'), { theme: 'light' })
+    vi.mocked(writeFileAtomically).mockImplementationOnce(() => {
+      throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    })
+    expect((await provision(f)).surfaces['settings.json']).toBe('failed')
+    expect((await provision(f)).surfaces['settings.json']).toBe('merged')
+    expect(f.read(join(f.profileHome, 'settings.json')).theme).toBe('light')
+  })
+  it('resets an unreadable ledger instead of blocking every surface', async () => {
     const f = fixture()
     fs.mkdirSync(join(f.source, 'skills'))
-    provisionClaudeProfile({ ...f, platform: 'win32' })
+    f.json(join(f.source, 'settings.json'), { model: 'a' })
+    fs.writeFileSync(join(f.profileHome, '.orca-profile.json'), '')
+    const report = await provision(f)
+    expect(report.surfaces.skills).toBe('linked')
+    expect(report.surfaces['settings.json']).toBe('merged')
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: 'ledger', code: 'unreadable' })
+    )
+    expect(f.read(join(f.profileHome, '.orca-profile.json')).keys).toEqual({
+      'settings.json': { model: '"a"' }
+    })
+  })
+  it('keys shared values by surface, so another spelling of the profile keeps sharing', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'v1')
+    f.json(join(f.source, 'settings.json'), { model: 'a' })
+    await provision(f)
+    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'v2')
+    f.json(join(f.source, 'settings.json'), { model: 'b' })
+    const aliasRoot = fs.mkdtempSync(join(tmpdir(), 'claude-profile-alias-'))
+    roots.push(aliasRoot)
+    const alias = join(aliasRoot, 'link')
+    fs.symlinkSync(f.root, alias)
+    const report = await provisionClaudeProfile({
+      profileHome: join(alias, 'profile'),
+      userHome: f.userHome
+    })
+    expect(report.surfaces['CLAUDE.md']).toBe('synced')
+    expect(f.read(join(f.profileHome, 'settings.json')).model).toBe('b')
+  })
+  it('uses Windows junctions through platform injection (native Windows remains unverified)', async () => {
+    const f = fixture()
+    fs.mkdirSync(join(f.source, 'skills'))
+    await provisionClaudeProfile({ ...f, platform: 'win32' })
     expect(fs.symlinkSync).toHaveBeenCalledWith(
       fs.realpathSync(join(f.source, 'skills')),
       join(f.profileHome, 'skills'),
       'junction'
     )
   })
-  it('refuses default-home aliases and leaves malformed profile state unchanged', () => {
+  it('refuses default-home aliases and nesting, and leaves malformed profile state unchanged', async () => {
     const f = fixture()
-    expect(() => provisionClaudeProfile({ ...f, profileHome: f.source })).toThrow()
+    for (const profileHome of [f.source, join(f.source, 'inner'), f.userHome]) {
+      await expect(provisionClaudeProfile({ profileHome, userHome: f.userHome })).rejects.toThrow(
+        'separate directories'
+      )
+    }
+    expect(fs.existsSync(join(f.source, 'inner'))).toBe(false)
     fs.writeFileSync(join(f.profileHome, '.claude.json'), '{bad')
-    expect(provisionClaudeProfile(f).warnings['.claude.json']).toBeDefined()
+    expect((await provision(f)).warnings).toContainEqual(
+      expect.objectContaining({ surface: '.claude.json', code: 'unreadable' })
+    )
     expect(fs.readFileSync(join(f.profileHome, '.claude.json'), 'utf8')).toBe('{bad')
   })
 })

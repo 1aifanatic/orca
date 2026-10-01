@@ -10,30 +10,36 @@ import {
   unlinkSync
 } from 'node:fs'
 import { dirname } from 'node:path'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
-import { isMissingProfileFile, readClaudeProfileObject } from './claude-profile-paths'
+import { readClaudeProfileObject } from './claude-profile-paths'
+import type { ClaudeProfileSurfaceOutcome } from './claude-profile-report'
 
-export type ProfileSurfaceOutcome =
-  | 'linked'
-  | 'synced'
-  | 'merged'
-  | 'unchanged'
-  | 'user-owned'
-  | 'absent'
+/** Keyed by surface name, not path, so another spelling of the same profile keeps its history. */
 export type ClaudeProfileLedger = {
   version: 1
   files: Record<string, string>
   keys: Record<string, Record<string, string>>
 }
 
-export function readClaudeProfileLedger(file: string): ClaudeProfileLedger {
-  const result = readClaudeProfileObject(file)
-  if (result.kind === 'unavailable') {
-    throw result.error
-  }
+/** Orca's own bookkeeping: an unreadable or linked ledger starts empty (nothing shared is overwritten) and is rewritten. */
+export function readClaudeProfileLedger(file: string): {
+  ledger: ClaudeProfileLedger
+  readable: boolean
+} {
   const ledger: ClaudeProfileLedger = { version: 1, files: {}, keys: {} }
-  if (result.kind === 'absent') {
-    return ledger
+  try {
+    if (lstatSync(file).isSymbolicLink()) {
+      return { ledger, readable: false }
+    }
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      return { ledger, readable: false }
+    }
+  }
+  const result = readClaudeProfileObject(file)
+  if (result.kind !== 'present') {
+    return { ledger, readable: result.kind === 'absent' }
   }
   const { files, keys } = result.value
   if (files && typeof files === 'object') {
@@ -57,19 +63,19 @@ export function readClaudeProfileLedger(file: string): ClaudeProfileLedger {
       ledger.keys[surface] = values
     }
   }
-  return ledger
+  return { ledger, readable: true }
 }
 
 export function linkClaudeProfileDirectory(
   source: string,
   target: string,
   platform: NodeJS.Platform
-): ProfileSurfaceOutcome {
+): ClaudeProfileSurfaceOutcome {
   let canonical: string
   try {
     canonical = realpathSync(source)
   } catch (error) {
-    if (isMissingProfileFile(error)) {
+    if (isDefinitiveAbsence(error)) {
       return 'absent'
     }
     throw error
@@ -78,7 +84,7 @@ export function linkClaudeProfileDirectory(
   try {
     entry = lstatSync(target)
   } catch (error) {
-    if (!isMissingProfileFile(error)) {
+    if (!isDefinitiveAbsence(error)) {
       throw error
     }
   }
@@ -86,7 +92,7 @@ export function linkClaudeProfileDirectory(
     try {
       return realpathSync(target) === canonical ? 'unchanged' : 'user-owned'
     } catch (error) {
-      if (!isMissingProfileFile(error)) {
+      if (!isDefinitiveAbsence(error)) {
         throw error
       }
       unlinkSync(target)
@@ -105,13 +111,14 @@ export function linkClaudeProfileDirectory(
 export function syncClaudeProfileFile(
   source: string,
   target: string,
+  surface: string,
   ledger: ClaudeProfileLedger
-): ProfileSurfaceOutcome {
+): ClaudeProfileSurfaceOutcome {
   let desired: string
   try {
     desired = readFileSync(source, 'utf8')
   } catch (error) {
-    if (isMissingProfileFile(error)) {
+    if (isDefinitiveAbsence(error)) {
       return 'absent'
     }
     throw error
@@ -123,19 +130,19 @@ export function syncClaudeProfileFile(
     }
     const current = hash(readFileSync(target, 'utf8'))
     if (current === hash(desired)) {
-      ledger.files[target] = current
+      ledger.files[surface] = current
       return 'unchanged'
     }
-    if (ledger.files[target] !== current) {
+    if (ledger.files[surface] !== current) {
       return 'user-owned'
     }
   } catch (error) {
-    if (!isMissingProfileFile(error)) {
+    if (!isDefinitiveAbsence(error)) {
       throw error
     }
   }
   writeFileAtomically(target, desired, { mode: 0o600 })
-  ledger.files[target] = hash(desired)
+  ledger.files[surface] = hash(desired)
   return 'synced'
 }
 

@@ -1,5 +1,9 @@
 import { lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import * as hostPath from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import { writeFileAtomically } from '../codex-accounts/fs-utils'
+import { ClaudeProfileSurfaceError } from './claude-profile-report'
 
 export type ClaudeProfileTarget =
   | { executionHostId: string; runtime: 'host' }
@@ -17,10 +21,6 @@ export type ClaudeProfileRead<T> =
   | { kind: 'absent' }
   | { kind: 'unavailable'; error: unknown }
 
-export function isMissingProfileFile(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT'
-}
-
 function isProfileObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -33,17 +33,18 @@ export function readClaudeProfileObject(file: string): ClaudeProfileRead<Record<
     }
     return { kind: 'present', value }
   } catch (error) {
-    return isMissingProfileFile(error) ? { kind: 'absent' } : { kind: 'unavailable', error }
+    return isDefinitiveAbsence(error) ? { kind: 'absent' } : { kind: 'unavailable', error }
   }
 }
 
-/** dataRoot belongs to the execution host (the guest's Orca data root for WSL). */
+/** dataRoot belongs to the execution host: for WSL it is the guest's Linux data root. */
 export function describeClaudeProfile(
   dataRoot: string,
   accountId: string,
   target: ClaudeProfileTarget
 ): ClaudeProfileDescriptor {
-  if (!isAbsolute(dataRoot) || !/^[a-zA-Z0-9_-]+$/.test(accountId)) {
+  const path = target.runtime === 'wsl' ? hostPath.posix : hostPath
+  if (!path.isAbsolute(dataRoot) || !/^[a-zA-Z0-9_-]+$/.test(accountId)) {
     throw new Error('Invalid Claude profile location')
   }
   if (!target.executionHostId || (target.runtime === 'wsl' && !target.distro)) {
@@ -53,27 +54,81 @@ export function describeClaudeProfile(
     version: 1,
     accountId,
     target,
-    home: join(dataRoot, 'claude-profiles', accountId, 'home')
+    home: path.join(dataRoot, 'claude-profiles', accountId, 'home')
   }
 }
 
-/** Validate every existing component before creating anything beneath the trusted data root. */
+// Fixed key order so the marker compares by value, whatever order the caller built the target in.
+function ownershipRecord(version: unknown, accountId: unknown, target: unknown): string {
+  const fields: Record<string, unknown> = isProfileObject(target) ? target : {}
+  const { executionHostId, runtime, distro } = fields
+  return JSON.stringify({ version, accountId, target: { executionHostId, runtime, distro } })
+}
+
+function readOwnershipMarker(file: string): string | null {
+  try {
+    if (!lstatSync(file).isFile()) {
+      throw new ClaudeProfileSurfaceError('invalid-profile', 'Claude profile marker is not a file')
+    }
+  } catch (error) {
+    if (isDefinitiveAbsence(error)) {
+      return null
+    }
+    throw error
+  }
+  const marker = readClaudeProfileObject(file)
+  if (marker.kind !== 'present') {
+    throw new ClaudeProfileSurfaceError('unreadable', 'Claude profile marker is unreadable')
+  }
+  const { version, accountId, target } = marker.value
+  return ownershipRecord(version, accountId, target)
+}
+
+/**
+ * The only gate before writing into a profile: namespace, containment, no linked components,
+ * outside Claude's default homes, and an ownership marker beside the home. Refuses before creating anything.
+ */
 export function prepareClaudeProfileDirectory(
   dataRoot: string,
-  profile: ClaudeProfileDescriptor
+  profile: ClaudeProfileDescriptor,
+  userHome: string
 ): void {
-  const expected = describeClaudeProfile(dataRoot, profile.accountId, profile.target)
+  let expected: ClaudeProfileDescriptor
+  try {
+    expected = describeClaudeProfile(dataRoot, profile.accountId, profile.target)
+  } catch (error) {
+    throw new ClaudeProfileSurfaceError('invalid-profile', String(error))
+  }
   if (profile.version !== 1 || profile.home !== expected.home) {
-    throw new Error('Claude profile does not match its account namespace')
+    throw new ClaudeProfileSurfaceError(
+      'invalid-profile',
+      'Claude profile does not match its account namespace'
+    )
   }
   assertClaudeProfileDescendant(dataRoot, profile.home)
+  assertOutsideDefaultClaudeHomes(profile.home, userHome)
+  const markerPath = join(dirname(profile.home), 'profile.json')
+  const record = ownershipRecord(profile.version, profile.accountId, profile.target)
+  const marker = readOwnershipMarker(markerPath)
+  if (marker !== null && marker !== record) {
+    throw new ClaudeProfileSurfaceError(
+      'invalid-profile',
+      'Claude profile belongs to another account or target'
+    )
+  }
   mkdirSync(profile.home, { recursive: true, mode: 0o700 })
+  if (marker === null) {
+    writeFileAtomically(markerPath, `${record}\n`, { mode: 0o600 })
+  }
 }
 
 export function assertClaudeProfileDescendant(root: string, destination: string): void {
   const suffix = relative(resolve(root), resolve(destination))
   if (!suffix || suffix === '..' || suffix.startsWith(`..${sep}`) || isAbsolute(suffix)) {
-    throw new Error('Claude profile destination escapes its root')
+    throw new ClaudeProfileSurfaceError(
+      'invalid-profile',
+      'Claude profile destination escapes its root'
+    )
   }
   // The caller owns root; links below it must not redirect profile writes.
   let cursor = resolve(root)
@@ -81,39 +136,52 @@ export function assertClaudeProfileDescendant(root: string, destination: string)
     cursor = join(cursor, part)
     try {
       if (lstatSync(cursor).isSymbolicLink()) {
-        throw new Error('Claude profile path contains a link')
+        throw new ClaudeProfileSurfaceError(
+          'invalid-profile',
+          'Claude profile path contains a link'
+        )
       }
     } catch (error) {
-      if (!isMissingProfileFile(error)) {
+      if (!isDefinitiveAbsence(error)) {
         throw error
       }
     }
   }
 }
 
-export function assertDistinctClaudeProfile(profile: string, defaultHome: string): void {
-  const canonical = (file: string): string => {
-    try {
-      return realpathSync(file)
-    } catch (error) {
-      if (!isMissingProfileFile(error)) {
-        throw error
-      }
-      return resolve(file)
+/** Resolves links in the deepest existing ancestor so a not-yet-created path cannot hide behind one. */
+function canonicalPath(file: string): string {
+  const resolved = resolve(file)
+  try {
+    return realpathSync(resolved)
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      throw error
     }
+    const parent = dirname(resolved)
+    return parent === resolved ? resolved : join(canonicalPath(parent), basename(resolved))
   }
-  const left = canonical(profile)
-  const right = canonical(defaultHome)
+}
+
+export function assertDistinctClaudeProfile(profile: string, defaultHome: string): void {
+  const left = canonicalPath(profile)
+  const right = canonicalPath(defaultHome)
   for (const [root, destination] of [
     [left, right],
     [right, left]
-  ]) {
-    if (root === undefined || destination === undefined) {
-      throw new Error('Missing profile path')
-    }
+  ] as const) {
     const suffix = relative(root, destination)
     if (!suffix || (!suffix.startsWith(`..${sep}`) && suffix !== '..' && !isAbsolute(suffix))) {
-      throw new Error('Claude profile and default home must be separate directories')
+      throw new ClaudeProfileSurfaceError(
+        'invalid-profile',
+        'Claude profile and default home must be separate directories'
+      )
     }
   }
+}
+
+/** Claude's default homes: a profile may never be, contain, or sit inside either one. */
+export function assertOutsideDefaultClaudeHomes(profileHome: string, userHome: string): void {
+  assertDistinctClaudeProfile(profileHome, join(userHome, '.claude'))
+  assertDistinctClaudeProfile(profileHome, join(userHome, '.config', 'claude'))
 }

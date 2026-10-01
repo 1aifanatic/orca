@@ -1,25 +1,37 @@
 import { existsSync, lstatSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
   applyClaudeFolderTrust,
-  resolveClaudeGlobalConfigFile
+  resolveClaudeGlobalConfigFile,
+  updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
+import { isManagedStatusLine } from '../claude/hook-settings'
+import { assertOutsideDefaultClaudeHomes, readClaudeProfileObject } from './claude-profile-paths'
 import {
-  assertDistinctClaudeProfile,
-  isMissingProfileFile,
-  readClaudeProfileObject
-} from './claude-profile-paths'
+  ClaudeProfileSurfaceError,
+  createClaudeProfileReport,
+  runClaudeProfileSurface,
+  warnClaudeProfile,
+  type ClaudeProfileReport,
+  type ClaudeProfileSurfaceOutcome
+} from './claude-profile-report'
 import {
   linkClaudeProfileDirectory,
   mergeClaudeProfileKeys,
   readClaudeProfileLedger,
   syncClaudeProfileFile,
-  type ClaudeProfileLedger,
-  type ProfileSurfaceOutcome
+  type ClaudeProfileLedger
 } from './claude-profile-sharing'
 
-const RESOURCE_DIRS = ['skills', 'plugins', 'agents', 'commands', 'output-styles'] as const
+export const CLAUDE_PROFILE_RESOURCE_DIRS = [
+  'skills',
+  'plugins',
+  'agents',
+  'commands',
+  'output-styles'
+] as const
 const PRIVATE_KEYS = new Set([
   'hooks',
   'apiKeyHelper',
@@ -33,11 +45,16 @@ const PRIVATE_ENV = new Set([
   'ANTHROPIC_AUTH_TOKEN',
   'CLAUDE_CODE_OAUTH_TOKEN'
 ])
+const SHARED_STATE_KEYS = ['mcpServers', 'theme']
 
 function pickSettings(source: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(source)
-      .filter(([key]) => !PRIVATE_KEYS.has(key))
+      // Why: Orca's managed statusLine belongs to the profile's hook installer; a user's own line is shared.
+      .filter(
+        ([key, value]) =>
+          !PRIVATE_KEYS.has(key) && !(key === 'statusLine' && isManagedStatusLine(value))
+      )
       .map(([key, value]) => {
         if (key === 'env' && value && typeof value === 'object' && !Array.isArray(value)) {
           return [
@@ -50,143 +67,157 @@ function pickSettings(source: Record<string, unknown>): Record<string, unknown> 
   )
 }
 
-function mergeFile(args: {
+function isLink(file: string): boolean {
+  try {
+    return lstatSync(file).isSymbolicLink()
+  } catch (error) {
+    if (isDefinitiveAbsence(error)) {
+      return false
+    }
+    throw error
+  }
+}
+
+function mergeSettings(
+  source: string,
+  target: string,
+  ledger: ClaudeProfileLedger
+): ClaudeProfileSurfaceOutcome {
+  if (isLink(target)) {
+    return 'user-owned'
+  }
+  const existing = readClaudeProfileObject(target)
+  const input = readClaudeProfileObject(source)
+  if (existing.kind === 'unavailable' || input.kind === 'unavailable') {
+    throw new ClaudeProfileSurfaceError('unreadable', 'Claude settings.json is unreadable')
+  }
+  const config = existing.kind === 'present' ? { ...existing.value } : {}
+  const desired = pickSettings(input.kind === 'present' ? input.value : {})
+  const written = { ...ledger.keys['settings.json'] }
+  if ('statusLine' in desired && isManagedStatusLine(config.statusLine)) {
+    // Why: the profile's managed line is the installer's, so a user's own line from the default replaces it.
+    written.statusLine = JSON.stringify(config.statusLine)
+  }
+  const changed = mergeClaudeProfileKeys(config, desired, written)
+  if (changed) {
+    writeFileAtomically(target, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
+  }
+  // Committed only after the write, so a failed write never marks an unwritten value as shared.
+  ledger.keys['settings.json'] = written
+  return changed ? 'merged' : existing.kind === 'absent' ? 'absent' : 'unchanged'
+}
+
+async function mergeState(args: {
   source: string
   target: string
   ledger: ClaudeProfileLedger
-  state: boolean
   trustKeys: readonly string[]
-}): ProfileSurfaceOutcome {
-  try {
-    if (lstatSync(args.target).isSymbolicLink()) {
-      return 'user-owned'
-    }
-  } catch (error) {
-    if (!isMissingProfileFile(error)) {
-      throw error
-    }
+  report: ClaudeProfileReport
+}): Promise<ClaudeProfileSurfaceOutcome> {
+  if (isLink(args.target)) {
+    return 'user-owned'
   }
-  const existing = readClaudeProfileObject(args.target)
-  if (existing.kind === 'unavailable') {
-    throw existing.error
+  const input = readClaudeProfileObject(args.source)
+  if (input.kind === 'unavailable') {
+    // Why: onboarding and trust don't depend on the personal state; only its shared keys wait.
+    const error = new ClaudeProfileSurfaceError('unreadable', 'Personal Claude state is unreadable')
+    warnClaudeProfile(args.report, '.claude.json', error)
   }
-  if (args.state && existing.kind === 'absent') {
+  const source = input.kind === 'present' ? input.value : {}
+  const desired = Object.fromEntries(
+    SHARED_STATE_KEYS.filter((key) => key in source).map((key) => [key, source[key]])
+  )
+  let written: Record<string, string> = {}
+  const outcome = await updateClaudeGlobalConfig(args.target, (current) => {
+    const config = { ...current }
+    written = { ...args.ledger.keys['.claude.json'] }
+    let changed = mergeClaudeProfileKeys(config, desired, written)
+    // Why: otherwise first launch opens the onboarding wizard, where a stray Enter starts a login that rebinds the profile.
+    if (config.hasCompletedOnboarding !== true) {
+      config.hasCompletedOnboarding = true
+      changed = true
+    }
+    const trust = args.trustKeys.length > 0 ? applyClaudeFolderTrust(config, args.trustKeys) : null
+    if (trust && trust.kind !== 'unchanged') {
+      return trust
+    }
+    return changed ? { kind: 'changed', config } : { kind: 'unchanged' }
+  })
+  if (outcome === 'missing-config') {
+    // Why: no state file means no completed login; writing one would fabricate an account.
     return 'absent'
   }
-  const source = readClaudeProfileObject(args.source)
-  if (source.kind === 'unavailable') {
-    throw source.error
+  if (outcome === 'locked' || outcome === 'unreadable') {
+    throw new ClaudeProfileSurfaceError(outcome, `Profile Claude state is ${outcome}`)
   }
-  const config = existing.kind === 'present' ? existing.value : {}
-  const input = source.kind === 'present' ? source.value : {}
-  const desired = args.state
-    ? Object.fromEntries(
-        Object.entries(input).filter(([key]) => key === 'mcpServers' || key === 'theme')
-      )
-    : pickSettings(input)
-  const written = args.ledger.keys[args.target] ?? {}
-  let changed = mergeClaudeProfileKeys(config, desired, written)
-  args.ledger.keys[args.target] = written
-  if (args.state && config.hasCompletedOnboarding !== true) {
-    config.hasCompletedOnboarding = true
-    changed = true
-  }
-  const trust =
-    args.state && args.trustKeys.length > 0
-      ? applyClaudeFolderTrust(config, args.trustKeys)
-      : { kind: 'unchanged' as const }
-  if (trust.kind === 'refuse') {
-    throw new Error('Profile project trust state is unreadable')
-  }
-  if (trust.kind === 'changed') {
-    changed = true
-  }
-  if (!changed) {
-    return existing.kind === 'absent' ? 'absent' : 'unchanged'
-  }
-  writeFileAtomically(
-    args.target,
-    `${JSON.stringify(trust.kind === 'changed' ? trust.config : config, null, 2)}\n`,
-    { mode: 0o600 }
-  )
-  return 'merged'
+  args.ledger.keys['.claude.json'] = written
+  return outcome === 'updated' ? 'merged' : 'unchanged'
 }
 
-/** Explicit execution-host paths only; callers schedule this after login, never while copying auth. */
-export function provisionClaudeProfile(args: {
+/** Shares the personal ~/.claude config into a profile. Execution-host paths; never touches credentials. */
+export async function provisionClaudeProfile(args: {
   profileHome: string
   userHome: string
   platform?: NodeJS.Platform
   trustKeys?: readonly string[]
-}): { surfaces: Record<string, ProfileSurfaceOutcome>; warnings: Record<string, string> } {
-  const defaultHome = join(args.userHome, '.claude')
-  assertDistinctClaudeProfile(args.profileHome, defaultHome)
-  assertDistinctClaudeProfile(args.profileHome, join(args.userHome, '.config', 'claude'))
+}): Promise<ClaudeProfileReport> {
+  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome)
   mkdirSync(args.profileHome, { recursive: true, mode: 0o700 })
+  const platform = args.platform ?? process.platform
+  const defaultHome = join(args.userHome, '.claude')
+  const report = createClaudeProfileReport()
   const ledgerPath = join(args.profileHome, '.orca-profile.json')
-  try {
-    if (lstatSync(ledgerPath).isSymbolicLink()) {
-      throw new Error('Profile ledger is user-owned')
-    }
-  } catch (error) {
-    if (!isMissingProfileFile(error)) {
-      throw error
-    }
+  const { ledger, readable } = readClaudeProfileLedger(ledgerPath)
+  const recorded = JSON.stringify(ledger)
+  if (!readable) {
+    const error = new ClaudeProfileSurfaceError(
+      'unreadable',
+      'Profile ledger was unreadable; reset'
+    )
+    warnClaudeProfile(report, 'ledger', error)
   }
-  const ledger = readClaudeProfileLedger(ledgerPath)
-  const surfaces: Record<string, ProfileSurfaceOutcome> = {}
-  const warnings: Record<string, string> = {}
-  const attempt = (name: string, operation: () => ProfileSurfaceOutcome): void => {
-    try {
-      surfaces[name] = operation()
-    } catch (error) {
-      warnings[name] = error instanceof Error ? error.message : String(error)
-    }
-  }
-  for (const name of RESOURCE_DIRS) {
-    attempt(name, () =>
-      linkClaudeProfileDirectory(
-        join(defaultHome, name),
-        join(args.profileHome, name),
-        args.platform ?? process.platform
-      )
+  for (const name of CLAUDE_PROFILE_RESOURCE_DIRS) {
+    await runClaudeProfileSurface(report, name, () =>
+      linkClaudeProfileDirectory(join(defaultHome, name), join(args.profileHome, name), platform)
     )
   }
-  attempt('CLAUDE.md', () =>
+  await runClaudeProfileSurface(report, 'CLAUDE.md', () =>
     syncClaudeProfileFile(
       join(defaultHome, 'CLAUDE.md'),
       join(args.profileHome, 'CLAUDE.md'),
+      'CLAUDE.md',
       ledger
     )
   )
-  attempt('settings.json', () =>
-    mergeFile({
-      source: join(defaultHome, 'settings.json'),
-      target: join(args.profileHome, 'settings.json'),
-      ledger,
-      state: false,
-      trustKeys: []
-    })
+  await runClaudeProfileSurface(report, 'settings.json', () =>
+    mergeSettings(
+      join(defaultHome, 'settings.json'),
+      join(args.profileHome, 'settings.json'),
+      ledger
+    )
   )
   const statePath = (configDir: string | undefined): string =>
     resolveClaudeGlobalConfigFile({
       env: { CLAUDE_CONFIG_DIR: configDir },
       homeDir: args.userHome,
-      style: process.platform === 'win32' ? 'win32' : 'posix',
+      style: platform === 'win32' ? 'win32' : 'posix',
       exists: existsSync
     })
-  attempt('.claude.json', () =>
-    mergeFile({
+  await runClaudeProfileSurface(report, '.claude.json', () =>
+    mergeState({
       source: statePath(undefined),
       target: statePath(args.profileHome),
       ledger,
-      state: true,
-      trustKeys: args.trustKeys ?? []
+      trustKeys: args.trustKeys ?? [],
+      report
     })
   )
-  attempt('ledger', () => {
+  await runClaudeProfileSurface(report, 'ledger', () => {
+    if (readable && JSON.stringify(ledger) === recorded) {
+      return 'unchanged'
+    }
     writeFileAtomically(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 })
     return 'synced'
   })
-  return { surfaces, warnings }
+  return report
 }

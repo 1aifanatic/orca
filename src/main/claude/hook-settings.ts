@@ -194,9 +194,22 @@ export function getStatusLineSlotState(
   return isManagedCommand(currentCommand) ? 'managed' : 'user'
 }
 
+/** Matched by script name, so Orca's line from any platform counts. */
+export function isManagedStatusLine(value: unknown, settings = CLAUDE_HOOK_SETTINGS): boolean {
+  return (
+    getStatusLineSlotState({ statusLine: value }, getStatusLineScriptFileName(settings)) ===
+    'managed'
+  )
+}
+
 // Why: records that the managed statusline was installed once, so a later empty slot reads as user opt-out.
-export function getStatusLineInstallMarkerPath(settings = CLAUDE_HOOK_SETTINGS): string {
-  return getSharedManagedScriptPath(`${getStatusLineScriptBaseName(settings)}.installed`)
+export function getStatusLineInstallMarkerPath(
+  settings = CLAUDE_HOOK_SETTINGS,
+  configDir?: string
+): string {
+  return configDir === undefined
+    ? getSharedManagedScriptPath(`${getStatusLineScriptBaseName(settings)}.installed`)
+    : join(configDir, '.orca-statusline.installed')
 }
 
 // Why: statusLine is a single settings slot, not a hooks array — never overwrite a
