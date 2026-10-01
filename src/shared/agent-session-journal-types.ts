@@ -395,6 +395,10 @@ export type AgentJournalDispatchState = (typeof AGENT_JOURNAL_DISPATCH_STATES)[n
 
 /** The write-ahead submission row, projected. `unknown` is a displayed state:
  *  the turn reads as delivery unconfirmed, never as sent and never as failed. */
+/** What can end a queued message's wait for its next start without a try of its own. */
+export const AGENT_JOURNAL_REJECTION_CAUSES = ['chatClosed', 'hostRestarted'] as const
+export type AgentJournalRejectionCause = (typeof AGENT_JOURNAL_REJECTION_CAUSES)[number]
+
 export type AgentJournalSubmission = {
   clientMessageId: string
   /** Execution fence of the latest dispatch attempt or recovery. */
@@ -426,6 +430,10 @@ export type AgentJournalSubmission = {
   /** Host-only: who asked for this turn — a person over the client send RPC, or Orca itself.
    *  A person's turn is what ends a Stop's queue pause. */
   origin?: 'client' | 'host'
+  /** Host-only, on `rejected`: what ended the message's wait for its next start before a try of
+   *  its own — the chat closing or Orca restarting. `rejection` stays the start failure it was
+   *  waiting out; this says its end was the person's doing, not news. */
+  rejectionCause?: AgentJournalRejectionCause
   /** On a queued message only: the agent start it was for failed and another is booked. A start
    *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
   startRetry?: AgentJournalStartRetry

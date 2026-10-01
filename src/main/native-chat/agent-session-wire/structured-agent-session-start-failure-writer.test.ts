@@ -811,7 +811,8 @@ describe('a message waiting for its next try when it can wait no longer', () => 
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'rejected',
         reason: TRANSIENT_WORDS.reason,
-        rejection: { ...TRANSIENT, endedWaiting: 'chatClosed' }
+        rejection: TRANSIENT,
+        rejectionCause: 'chatClosed'
       })
     )
     await host.journalSnapshot(SESSION)
@@ -832,7 +833,8 @@ describe('a message waiting for its next try when it can wait no longer', () => 
         dispatchState: 'rejected',
         reason: TRANSIENT_WORDS.reason,
         // Quitting closes the chat first, which ends the wait.
-        rejection: { ...TRANSIENT, endedWaiting: 'chatClosed' }
+        rejection: TRANSIENT,
+        rejectionCause: 'chatClosed'
       })
     )
     expect(completions).toEqual([])
@@ -854,7 +856,7 @@ describe('a message waiting for its next try when it can wait no longer', () => 
     }
 
     await eventually(async () => expect((await submission(queued))?.dispatchState).toBe('rejected'))
-    expect((await submission(queued))?.rejection).not.toHaveProperty('endedWaiting')
+    expect(await submission(queued)).not.toHaveProperty('rejectionCause')
     await eventually(() =>
       expect(completions).toEqual([
         expect.objectContaining({

@@ -7,7 +7,6 @@
 import {
   agentSessionFailureFact,
   isSubmissionRejectionFact,
-  type AgentSessionWaitEnd,
   readAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import {
@@ -16,7 +15,10 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRejectionCause,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { structuredAgentSessionStartRetryAt } from '../../../shared/structured-agent-session-start-retry'
@@ -135,24 +137,26 @@ async function recordStartFailure(
 
 /** What a queued message is rejected with when it cannot wait any longer — the chat closed (`end`
  *  `chatClosed`), Orca quit or restarted (`hostRestarted`): the start failure it was waiting out,
- *  naming what ended the wait, else `end` itself. */
+ *  with what ended the wait as the submission's `rejectionCause`, else `end` itself. */
 export function leftoverRejection(
   journal: Pick<AgentSessionJournal, 'itemBody'>,
   record: AgentSessionRecord | null,
-  end: AgentSessionWaitEnd
-): (submission: AgentJournalSubmission) => AgentJournalDispatchRejection {
+  end: AgentJournalRejectionCause
+): (
+  submission: AgentJournalSubmission
+) => AgentJournalDispatchRejection & { rejectionCause?: AgentJournalRejectionCause } {
   return (submission) => {
     const fact = readAgentSessionFailureFact(submission.startRetry?.rejection)
     if (!fact || !isSubmissionRejectionFact(fact)) {
       return agentSessionFailureWords(agentSessionFailureFact(end), { surface: 'rejection' })
     }
-    return agentSessionFailureWords(
-      { ...fact, endedWaiting: end },
-      {
+    return {
+      ...agentSessionFailureWords(fact, {
         ...startFailureWordsContext(journal, record, submission.clientMessageId),
         surface: 'rejection'
-      }
-    )
+      }),
+      rejectionCause: end
+    }
   }
 }
 

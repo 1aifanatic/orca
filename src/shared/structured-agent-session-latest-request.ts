@@ -15,7 +15,6 @@ import type {
   AgentJournalTurnLifecycleState,
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
-import { readAgentSessionFailureFact } from './agent-session-failure'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
@@ -160,8 +159,7 @@ export function structuredAgentSessionQuietFailedStartIds(
     const submission = failed.get(item.itemId)
     if (
       submission &&
-      (isStructuredAgentSessionCommandEntry(item.body) ||
-        readAgentSessionFailureFact(submission.rejection)?.endedWaiting !== undefined)
+      (isStructuredAgentSessionCommandEntry(item.body) || submission.rejectionCause !== undefined)
     ) {
       quiet.push(item.itemId)
     }

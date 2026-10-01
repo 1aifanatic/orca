@@ -12,6 +12,7 @@ import {
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
   type AgentJournalProducerLinkage,
+  type AgentJournalRejectionCause,
   type AgentJournalTurnScope,
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
@@ -149,6 +150,9 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `pending`: the person's Retry of a message rejected before any agent took it, which queues
    *  the same message again. An older reader, for which `rejected` is final, ignores the row. */
   requeued?: true
+  /** On `rejected`: `AgentJournalSubmission.rejectionCause`. Older readers keep the key and ignore
+   *  it. */
+  rejectionCause?: AgentJournalRejectionCause
 }
 
 /** What a failed start's row records; the attempt count and the time are the reducer's. */

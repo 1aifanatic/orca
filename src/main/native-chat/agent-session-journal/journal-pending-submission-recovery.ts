@@ -1,5 +1,8 @@
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRejectionCause,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { DISPATCH_DOUBT_HOST_RESTARTED } from './journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from './journal-store'
@@ -36,9 +39,13 @@ export async function markJournalPendingSubmissionsUnknown(
 }
 
 /** A rejection for every queued message alike, or one worded per message. */
+type JournalQueuedRejectionWords = AgentJournalDispatchRejection & {
+  rejectionCause?: AgentJournalRejectionCause
+}
+
 export type JournalQueuedRejection =
-  | AgentJournalDispatchRejection
-  | ((submission: AgentJournalSubmission) => AgentJournalDispatchRejection)
+  | JournalQueuedRejectionWords
+  | ((submission: AgentJournalSubmission) => JournalQueuedRejectionWords)
 
 /** Rejects queued submissions — accepted, never handed over, so provably unwritten. */
 export async function rejectJournalQueuedSubmissions(

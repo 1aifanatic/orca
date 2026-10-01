@@ -498,7 +498,7 @@ describe('a request the agent or its start refused', () => {
     ['Orca restarted', 'hostRestarted']
   ] as const)(
     'notifies nothing for a send whose wait for its next start ended because %s',
-    (_end, endedWaiting) => {
+    (_end, rejectionCause) => {
       const h = afterSuccessfulTurn()
       const items = [userEntry('m1', 1), settledTurn, userEntry('m2', 3)]
       const accepted = sent('m1', { dispatchState: 'accepted' })
@@ -517,7 +517,8 @@ describe('a request the agent or its start refused', () => {
       const ended = sent('m2', {
         dispatchState: 'rejected',
         reason: 'A Claude account switch is in progress. Try again after it finishes.',
-        rejection: { ...waitFailure, endedWaiting },
+        rejection: waitFailure,
+        rejectionCause,
         resolvedAt: 40
       })
       h.setJournal(items, [accepted, waiting])

@@ -6,7 +6,10 @@ import {
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_REJECTION_CAUSES,
+  type AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import {
   isFailedStartRejection,
   isRequeueableAgentJournalSubmission
@@ -36,6 +39,7 @@ function requeueRejectedSubmission(
   submission.reason = null
   submission.resolvedAt = null
   delete submission.rejection
+  delete submission.rejectionCause
   delete submission.startRetry
   delete submission.recovered
 }
@@ -62,6 +66,14 @@ export function applyJournalDispatchRow(
     submission.rejection = rejection
   } else {
     delete submission.rejection
+  }
+  const rejectionCause = AGENT_JOURNAL_REJECTION_CAUSES.find(
+    (cause) => row.state === 'rejected' && cause === row.rejectionCause
+  )
+  if (rejectionCause) {
+    submission.rejectionCause = rejectionCause
+  } else {
+    delete submission.rejectionCause
   }
   if (rejection && isFailedStartRejection({ reason: row.reason, rejection })) {
     // Drawn below the conversation while it waited, it stays where its failure was written rather
