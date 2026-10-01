@@ -65,9 +65,9 @@ export async function getPsProcessIdentityAsync(pid: number): Promise<PsProcessI
 }
 
 // Why the process table, not a per-PID CIM query: that forked powershell.exe at
-// every startup (300-800ms cold, worse under Defender); a fresh snapshot is ~12ms
-// in-process. Timed under ORCA_STARTUP_DIAGNOSTICS so the cold-start benchmark can
-// attribute startup cost to these checks.
+// every startup (300-800ms cold); the native snapshot reads off-thread, with no child.
+// Timed under ORCA_STARTUP_DIAGNOSTICS so the cold-start benchmark can attribute
+// startup cost to these checks.
 export async function queryWindowsProcessIdentity(
   pid: number
 ): Promise<WindowsProcessIdentity | null> {

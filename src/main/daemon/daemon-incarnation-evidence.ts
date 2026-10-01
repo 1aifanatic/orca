@@ -27,8 +27,7 @@ export {
   type DaemonProcessProbeDependencies,
   type ExactDaemonIncarnation,
   type LinuxStatEvidence,
-  type ProcessSignalEvidence,
-  type WindowsProcessEvidence
+  type ProcessSignalEvidence
 } from './daemon-incarnation-evidence-types'
 
 const POSIX_START_TIME_TOLERANCE_MS = 1_500
@@ -199,7 +198,7 @@ async function probeWindowsProcess(
   signal: ProcessSignalEvidence,
   dependencies: DaemonProcessProbeDependencies
 ): Promise<DaemonProcessEvidence> {
-  const identity = await (dependencies.queryWindowsProcess ?? readWindowsProcess)(
+  const identity = await (dependencies.readWindowsProcess ?? readWindowsProcess)(
     exactIncarnation.identity.pid
   )
   if (identity.status === 'missing') {
