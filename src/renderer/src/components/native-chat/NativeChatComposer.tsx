@@ -10,6 +10,7 @@ import {
   type HistoryState
 } from './native-chat-composer-state'
 import { useNativeChatDraft } from './use-native-chat-draft'
+import { nativeChatDraftKey } from './native-chat-draft-cache'
 import { useNativeChatLaunchDraftAdoption } from './use-native-chat-launch-draft-adoption'
 import { NativeChatComposerField } from './NativeChatComposerField'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
@@ -71,13 +72,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     },
     ref
   ): React.JSX.Element {
-    // Scope key shared with image attachments so an unsent draft + its attached
-    // images survive both TUI/GUI toggles and PTY replacement on reconnect.
-    // Why: local, SSH, and runtime reconnects can replace or temporarily clear
-    // the PTY id. Pane identity is the stable ownership key for unsent input.
+    // The unsent text and images belong to the chat, shared by every view of it; the pane key
+    // stays the identity of this editor and its drop target. Why not the PTY id: local, SSH,
+    // and runtime reconnects can replace or temporarily clear it.
+    const draftKey = nativeChatDraftKey({ sessionId: structuredTransport?.sessionId, paneKey })
     const imeEnterGesture = useImeEnterGestureOwnership()
     const { draft, setDraft, flushDraftAppends } = useNativeChatDraft(
-      paneKey,
+      draftKey,
       imeEnterGesture.isComposing
     )
     const [caret, setCaret] = useState(draft.length)
@@ -154,7 +155,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     }, [])
 
     const attachments = useNativeChatComposerAttachments({
-      attachmentScopeKey: paneKey,
+      attachmentScopeKey: draftKey,
       allowWithoutTarget: Boolean(structuredTransport),
       caret,
       disabled,

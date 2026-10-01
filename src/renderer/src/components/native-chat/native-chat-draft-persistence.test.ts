@@ -116,15 +116,6 @@ describe('composer draft persistence', () => {
     expect(next.readNativeChatDraftCache(SCOPE)).toBe('')
   })
 
-  it('writes the clear at once when the editor reports it first', () => {
-    cache.writeNativeChatDraftCache(SCOPE, 'sent text')
-    vi.advanceTimersByTime(300)
-
-    cache.writeNativeChatDraftDocument(SCOPE, '', { type: 'doc' })
-
-    expect(saved(SCOPE)).toBeNull()
-  })
-
   it('writes text put back at once and reports that it reached disk', async () => {
     const result = cache.appendNativeChatDraftNow(SCOPE, {
       text: 'withdrawn',
@@ -161,6 +152,17 @@ describe('composer draft persistence', () => {
 
     expect(next.readNativeChatDraftCache('chat-a')).toBe('for a')
     expect(next.readNativeChatDraftCache('chat-b')).toBe('for b')
+  })
+
+  it('names a structured chat by its session, whichever pane shows it', async () => {
+    const before = cache.nativeChatDraftKey({ sessionId: 's1', paneKey: 'tab-1:leaf-1' })
+    cache.appendNativeChatDraftNow(before, { text: 'follows the chat' })
+
+    const next = await relaunch()
+    const after = next.nativeChatDraftKey({ sessionId: 's1', paneKey: 'tab-9:leaf-9' })
+
+    expect(next.readNativeChatDraftCache(after)).toBe('follows the chat')
+    expect(next.nativeChatDraftKey({ paneKey: 'tab-1:leaf-1' })).not.toBe(before)
   })
 
   it('keeps the draft in memory and reports memory-only when storage throws', () => {

@@ -8,6 +8,7 @@ import type {
 } from '../../../../shared/native-chat-session-options'
 import { clearNativeChatSessionOptionCacheForTests } from './native-chat-session-option-cache'
 import { clearNativeChatModelEnrichmentForTests } from './native-chat-session-option-enrichment'
+import type * as NativeChatDraftCacheModule from './native-chat-draft-cache'
 
 const mocks = vi.hoisted(() => ({
   cancelPendingSends: vi.fn(),
@@ -103,7 +104,8 @@ vi.mock('./use-native-chat-draft', () => ({
     return { draft: mocks.draft, setDraft: mocks.setDraft, flushDraftAppends: () => {} }
   }
 }))
-vi.mock('./native-chat-draft-cache', () => ({
+vi.mock('./native-chat-draft-cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof NativeChatDraftCacheModule>()),
   readNativeChatDraftCache: () => ''
 }))
 vi.mock('./NativeChatComposerField', () => ({
@@ -536,7 +538,7 @@ describe('NativeChatComposer', () => {
       />
     )
 
-    expect(new Set(mocks.draftScopeKeys)).toEqual(new Set(['tab-1:leaf-1']))
+    expect(new Set(mocks.draftScopeKeys)).toEqual(new Set(['pane:tab-1:leaf-1']))
     expect(view.getByTestId('native-chat-composer-field')).toBe(field)
   })
 

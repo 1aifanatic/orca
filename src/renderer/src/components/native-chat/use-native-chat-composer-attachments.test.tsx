@@ -305,6 +305,26 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
+  it('shares settled chips with every view of the chat, but keeps pending chips local', async () => {
+    const first = await renderProbe('session:chat-1', true)
+    const second = await renderProbe('session:chat-1', true)
+
+    await act(async () => {
+      first.latest().attachResolvedPaths(['/tmp/shared.png'])
+    })
+    act(() => {
+      first.latest().beginPendingImageAttachment('blob:preview-1')
+    })
+    expect(second.latest().imageAttachments).toMatchObject([{ path: '/tmp/shared.png' }])
+
+    const id = second.latest().imageAttachments[0]?.id ?? ''
+    act(() => second.latest().removeImageAttachment(id))
+
+    expect(first.latest().imageAttachments).toMatchObject([{ pending: true }])
+    act(() => first.root.unmount())
+    act(() => second.root.unmount())
+  })
+
   it('removes an attached image chip cleanly', async () => {
     const probe = await renderProbe('pty-1')
     await act(async () => {

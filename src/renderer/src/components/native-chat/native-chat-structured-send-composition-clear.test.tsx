@@ -70,6 +70,7 @@ import { NativeChatComposer } from './NativeChatComposer'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
+  nativeChatDraftKey,
   readNativeChatDraftCache
 } from './native-chat-draft-cache'
 
@@ -100,7 +101,7 @@ function transport(
     optionSnapshot: [],
     onError: vi.fn(),
     runtime: 'remote',
-    sessionId: 'session-test',
+    sessionId: `session-${paneCounter + 1}`,
     runtimeEnvironmentId: null,
     ...overrides
   }
@@ -110,18 +111,23 @@ function textarea(): HTMLTextAreaElement {
   return screen.getByRole('textbox') as HTMLTextAreaElement
 }
 
-function pressEnter(input: HTMLTextAreaElement): void {
+function pressEnter(input: HTMLElement): void {
   fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, isComposing: false })
 }
 
 let paneCounter = 0
 
+// The chat draft of the composer rendered last.
+let draftKey = ''
+
 function renderComposer(structuredTransport: NativeChatStructuredComposerTransport): void {
   paneCounter += 1
+  const paneKey = `tab-${paneCounter}:structured`
+  draftKey = nativeChatDraftKey({ sessionId: structuredTransport.sessionId, paneKey })
   render(
     <NativeChatComposer
       terminalTabId={`tab-${paneCounter}`}
-      paneKey={`tab-${paneCounter}:structured`}
+      paneKey={paneKey}
       targetPtyId={null}
       agent="codex"
       structuredTransport={structuredTransport}
@@ -251,7 +257,7 @@ describe('a withdrawn message put back during an IME composition', () => {
   // wrote the draft without the text, after its outbox entry had already been dropped.
   it('shows the text once the composition settles, after what was composed', () => {
     renderComposer(transport())
-    const pane = `tab-${paneCounter}:structured`
+    const pane = draftKey
     const input = textarea()
     changePrompt(input, 'abc')
 
@@ -268,7 +274,7 @@ describe('a withdrawn message put back during an IME composition', () => {
   // Settling spends the held text; a later write or composition must not add it again.
   it('shows the text once, however much is typed or composed after', () => {
     renderComposer(transport())
-    const pane = `tab-${paneCounter}:structured`
+    const pane = draftKey
     const input = textarea()
     changePrompt(input, 'abc')
     fireEvent.compositionStart(input)
@@ -290,7 +296,7 @@ describe('a withdrawn message put back during an IME composition', () => {
     const dispatch = deferred()
     const structured = transport({ dispatchCommand: vi.fn(() => dispatch.promise) })
     renderComposer(structured)
-    const pane = `tab-${paneCounter}:structured`
+    const pane = draftKey
     const input = textarea()
     changePrompt(input, '안녕')
     pressEnter(input)
@@ -315,7 +321,7 @@ describe('the draft saved to disk', () => {
   // A clear left to the typing delay would let a crash right after Enter bring the sent text back.
   it('is removed the moment the send is accepted', async () => {
     renderComposer(transport())
-    const key = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(`tab-${paneCounter}:structured`)}`
+    const key = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`
     const input = textarea()
     changePrompt(input, 'ship it')
     act(() => window.dispatchEvent(new Event('pagehide')))
@@ -324,5 +330,115 @@ describe('the draft saved to disk', () => {
     await act(async () => pressEnter(input))
 
     expect(localStorage.getItem(key)).toBeNull()
+  })
+})
+
+describe('one chat shown in two panes', () => {
+  beforeEach(() => clearNativeChatDraftCacheForTests())
+
+  function renderTwoPanes(): {
+    first: HTMLElement
+    second: HTMLElement
+    structured: NativeChatStructuredComposerTransport
+  } {
+    const structured = transport()
+    paneCounter += 1
+    const panes = [`tab-${paneCounter}:first`, `tab-${paneCounter}:second`]
+    draftKey = nativeChatDraftKey({ sessionId: structured.sessionId, paneKey: panes[0] })
+    render(
+      <>
+        {panes.map((paneKey) => (
+          <NativeChatComposer
+            key={paneKey}
+            terminalTabId={`tab-${paneCounter}`}
+            paneKey={paneKey}
+            targetPtyId={null}
+            agent="codex"
+            structuredTransport={structured}
+          />
+        ))}
+      </>
+    )
+    const [first, second] = screen.getAllByRole('textbox')
+    return { first, second, structured }
+  }
+
+  it('shows typing from either pane in the other, losing no keystrokes', () => {
+    const { first, second } = renderTwoPanes()
+
+    changePrompt(first, 'hello')
+    expect(promptValue(second)).toBe('hello')
+    changePrompt(second, 'hello world')
+    expect(promptValue(first)).toBe('hello world')
+    changePrompt(first, 'hello world!')
+
+    expect(promptValue(second)).toBe('hello world!')
+    expect(readNativeChatDraftCache(draftKey)).toBe('hello world!')
+  })
+
+  it('empties every pane when one sends', async () => {
+    const { first, second, structured } = renderTwoPanes()
+    changePrompt(first, 'ship it')
+
+    await act(async () => pressEnter(second))
+
+    expect(structured.send).toHaveBeenCalledWith('ship it', [])
+    expect(promptValue(first)).toBe('')
+    expect(promptValue(second)).toBe('')
+  })
+
+  it('shows text put back by a Stop in every pane', () => {
+    const { first, second } = renderTwoPanes()
+
+    act(() => appendNativeChatDraftNow(draftKey, { text: 'withdrawn' }))
+
+    expect(promptValue(first)).toBe('withdrawn')
+    expect(promptValue(second)).toBe('withdrawn')
+  })
+
+  // The live composition owns its field, as against every programmatic draft: the other pane's
+  // text must neither break the composition nor be written over it until it settles.
+  it('leaves a composition intact when the other pane writes mid-composition', () => {
+    const { first, second } = renderTwoPanes()
+    changePrompt(second, 'abc')
+
+    fireEvent.compositionStart(second)
+    changePrompt(second, 'abc안')
+    changePrompt(first, 'from the other pane')
+    expect(promptValue(second)).toBe('abc안')
+    changePrompt(second, 'abc안녕')
+    fireEvent.compositionEnd(second, { data: '안녕' })
+
+    expect(promptValue(second)).toBe('abc안녕')
+    expect(promptValue(first)).toBe('abc안녕')
+    expect(readNativeChatDraftCache(draftKey)).toBe('abc안녕')
+  })
+
+  it('keeps the settled composition when the other pane wrote after its last keystroke', () => {
+    const { first, second } = renderTwoPanes()
+    changePrompt(second, 'abc')
+
+    fireEvent.compositionStart(second)
+    changePrompt(second, 'abc안')
+    changePrompt(first, 'from the other pane')
+    fireEvent.compositionEnd(second, { data: '안' })
+
+    expect(promptValue(second)).toBe('abc안')
+    expect(promptValue(first)).toBe('abc안')
+    expect(readNativeChatDraftCache(draftKey)).toBe('abc안')
+  })
+
+  it('keeps only the composed segment when the other pane sends mid-composition', async () => {
+    const { first, second } = renderTwoPanes()
+    changePrompt(first, 'sent')
+
+    fireEvent.compositionStart(second)
+    await act(async () => pressEnter(first))
+    changePrompt(second, 'sent하')
+    fireEvent.compositionEnd(second, { data: '하' })
+
+    expect(promptValue(second)).toBe('하')
+    expect(promptValue(first)).toBe('하')
+    expect(readNativeChatDraftCache(draftKey)).toBe('하')
   })
 })

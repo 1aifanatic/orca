@@ -1,8 +1,7 @@
 import type { JSONContent } from '@tiptap/react'
-// Module-level cache for the composer's unsent message (text and image attachments), keyed by
-// stable pane scope. The composer unmounts when the pane toggles back to the hosted terminal, so
-// without this the draft would be lost on every TUI/GUI round-trip. The cache is backed by disk
-// (native-chat-draft-storage) so the draft also survives quitting Orca.
+// One unsent message (text and image attachments) per chat, shared by every view of that chat and
+// saved to disk (native-chat-draft-storage) so it survives quitting Orca. Views mirror it and
+// subscribe to changes, so typing in one pane shows in every other pane on the same chat.
 
 import {
   NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX,
@@ -20,98 +19,105 @@ import {
 
 export type { NativeChatDraftAttachment, NativeChatDraftWriteResult }
 
-type DraftEntry = {
-  text: string
-  /** Rich editor state; memory only, rebuilt from the text after a restart. */
-  document?: JSONContent
-  attachments: readonly NativeChatDraftAttachment[]
+/**
+ * The chat a draft belongs to. A structured chat is its session, whichever pane shows it. A chat
+ * over a terminal agent has no stable session (it changes on `/clear` and on resume), and its
+ * agent lives in exactly one pane, so the pane is the chat.
+ */
+export function nativeChatDraftKey(chat: { sessionId?: string; paneKey: string }): string {
+  return chat.sessionId ? `session:${chat.sessionId}` : `pane:${chat.paneKey}`
 }
 
+type DraftEntry = { text: string; attachments: readonly NativeChatDraftAttachment[] }
+
+const EMPTY_ATTACHMENTS: readonly NativeChatDraftAttachment[] = []
 const draftCache = new Map<string, DraftEntry>()
 let hydrated = false
 
 function drafts(): Map<string, DraftEntry> {
   if (!hydrated) {
     hydrated = true
-    for (const [scopeKey, draft] of loadPersistedNativeChatDrafts(
+    for (const [draftKey, draft] of loadPersistedNativeChatDrafts(
       NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
     )) {
-      draftCache.set(scopeKey, { text: draft.text, attachments: draft.attachments })
+      draftCache.set(draftKey, { text: draft.text, attachments: draft.attachments })
     }
   }
   return draftCache
 }
 
-function readEntry(scopeKey: string): DraftEntry {
-  return drafts().get(scopeKey) ?? { text: '', attachments: [] }
+function readEntry(draftKey: string): DraftEntry {
+  return drafts().get(draftKey) ?? { text: '', attachments: EMPTY_ATTACHMENTS }
 }
 
-function setEntry(scopeKey: string, entry: DraftEntry): void {
-  // An empty draft carries no state worth retaining; drop it so a stale scope never resurrects it.
+/** A view's own writes carry its token so it is not told about them; other views are. */
+const changeListeners = new Map<string, Set<(writer: object | undefined) => void>>()
+
+function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefined): void {
+  // An empty draft carries no state worth retaining; drop it so a stale key never resurrects it.
   if (entry.text === '' && entry.attachments.length === 0) {
-    drafts().delete(scopeKey)
-    return
+    drafts().delete(draftKey)
+  } else {
+    setBoundedScopeCacheEntry(drafts(), draftKey, entry, (evicted) =>
+      persistNativeChatDraftNow(evicted, null)
+    )
   }
-  setBoundedScopeCacheEntry(drafts(), scopeKey, entry, (evicted) =>
-    persistNativeChatDraftNow(evicted, null)
-  )
+  changeListeners.get(draftKey)?.forEach((listener) => listener(writer))
 }
 
-function persistedDraft(scopeKey: string): PersistedNativeChatDraft | null {
-  const entry = drafts().get(scopeKey)
+function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
+  const entry = drafts().get(draftKey)
   return entry ? { text: entry.text, attachments: entry.attachments } : null
 }
 
-function persistNow(scopeKey: string): NativeChatDraftWriteResult {
-  return persistNativeChatDraftNow(scopeKey, persistedDraft(scopeKey))
+function persistNow(draftKey: string): NativeChatDraftWriteResult {
+  return persistNativeChatDraftNow(draftKey, persistedDraft(draftKey))
+}
+
+export function readNativeChatDraftCache(draftKey: string): string {
+  return readEntry(draftKey).text
 }
 
 /** Typing waits for a pause; emptying the text (the clear at send) is written at once. */
-function persistTextEdit(scopeKey: string, text: string): void {
-  if (text === '') {
-    persistNow(scopeKey)
+export function writeNativeChatDraftCache(draftKey: string, draft: string, writer?: object): void {
+  setEntry(draftKey, { ...readEntry(draftKey), text: draft }, writer)
+  if (draft === '') {
+    persistNow(draftKey)
   } else {
-    scheduleNativeChatDraftPersist(scopeKey, persistedDraft(scopeKey))
+    scheduleNativeChatDraftPersist(draftKey, persistedDraft(draftKey))
   }
 }
 
-export function readNativeChatDraftCache(scopeKey: string): string {
-  return readEntry(scopeKey).text
+export function readNativeChatDraftAttachments(
+  draftKey: string
+): readonly NativeChatDraftAttachment[] {
+  return readEntry(draftKey).attachments
 }
 
-export function writeNativeChatDraftCache(scopeKey: string, draft: string): void {
-  const current = readEntry(scopeKey)
-  setEntry(scopeKey, {
-    text: draft,
-    document: current.text === draft ? current.document : undefined,
-    attachments: current.attachments
-  })
-  persistTextEdit(scopeKey, draft)
-}
-
-export function readNativeChatDraftAttachments(scopeKey: string): NativeChatDraftAttachment[] {
-  return [...readEntry(scopeKey).attachments]
-}
-
-/** Attachment changes are discrete, so they are written at once. */
+/** Settled attachments only; a view keeps its own pending chips and previews. Written at once. */
 export function writeNativeChatDraftAttachments(
-  scopeKey: string,
-  attachments: readonly NativeChatDraftAttachment[]
+  draftKey: string,
+  attachments: readonly NativeChatDraftAttachment[],
+  writer?: object
 ): void {
-  setEntry(scopeKey, { ...readEntry(scopeKey), attachments: [...attachments] })
-  persistNow(scopeKey)
+  setEntry(draftKey, { ...readEntry(draftKey), attachments: [...attachments] }, writer)
+  persistNow(draftKey)
+}
+
+/** Fires when another writer changes the chat's draft. */
+export function subscribeToNativeChatDraft(
+  draftKey: string,
+  listener: (writer: object | undefined) => void
+): () => void {
+  return subscribe(changeListeners, draftKey, listener)
 }
 
 export function appendNativeChatDraftText(draft: string, text: string): string {
   return draft === '' ? text : `${draft.trimEnd()}\n\n${text}`
 }
 
-// Only a write from outside the composer notifies; its own writes already hold the content.
+// A composing view cannot show appended text until its IME settles, so it is told what was added.
 const textAppendListeners = new Map<string, Set<(text: string) => void>>()
-const attachmentAppendListeners = new Map<
-  string,
-  Set<(appended: readonly NativeChatDraftAttachment[]) => void>
->()
 
 export type NativeChatDraftContent = {
   text: string
@@ -119,98 +125,92 @@ export type NativeChatDraftContent = {
 }
 
 /**
- * Puts content back after whatever is in the composer, writes it to disk at once, and shows it in
- * a mounted composer. The result says whether it reached disk.
+ * Puts content back after whatever is in the chat's draft, writes it to disk at once, and shows it
+ * in every view of the chat. The result says whether it reached disk.
  */
 export function appendNativeChatDraftNow(
-  scopeKey: string,
+  draftKey: string,
   content: NativeChatDraftContent
 ): NativeChatDraftWriteResult {
   const attachments = content.attachments ?? []
-  const current = readEntry(scopeKey)
-  const text =
-    content.text === '' ? current.text : appendNativeChatDraftText(current.text, content.text)
-  setEntry(scopeKey, {
-    text,
-    document: text === current.text ? current.document : undefined,
-    attachments: [...current.attachments, ...attachments]
-  })
-  const result = persistNow(scopeKey)
+  const current = readEntry(draftKey)
   if (content.text !== '') {
-    textAppendListeners.get(scopeKey)?.forEach((listener) => listener(content.text))
+    textAppendListeners.get(draftKey)?.forEach((listener) => listener(content.text))
   }
-  if (attachments.length > 0) {
-    attachmentAppendListeners.get(scopeKey)?.forEach((listener) => listener(attachments))
-  }
-  return result
+  setEntry(
+    draftKey,
+    {
+      text:
+        content.text === '' ? current.text : appendNativeChatDraftText(current.text, content.text),
+      attachments: [...current.attachments, ...attachments]
+    },
+    undefined
+  )
+  return persistNow(draftKey)
 }
 
-/** Puts content back only into an empty composer, so nothing the user typed since is touched. */
+/** Puts content back only into an empty draft, so nothing the user typed since is touched. */
 export function restoreNativeChatDraftIfEmpty(
-  scopeKey: string,
+  draftKey: string,
   content: NativeChatDraftContent
 ): NativeChatDraftWriteResult | 'composer-not-empty' {
-  const current = readEntry(scopeKey)
+  const current = readEntry(draftKey)
   if (current.text !== '' || current.attachments.length > 0) {
     return 'composer-not-empty'
   }
-  return appendNativeChatDraftNow(scopeKey, content)
+  return appendNativeChatDraftNow(draftKey, content)
 }
 
 function subscribe<T>(
-  listenersByScope: Map<string, Set<(value: T) => void>>,
-  scopeKey: string,
+  listenersByKey: Map<string, Set<(value: T) => void>>,
+  key: string,
   listener: (value: T) => void
 ): () => void {
-  const listeners = listenersByScope.get(scopeKey) ?? new Set()
-  listenersByScope.set(scopeKey, listeners)
+  const listeners = listenersByKey.get(key) ?? new Set()
+  listenersByKey.set(key, listeners)
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
-    if (listeners.size === 0 && listenersByScope.get(scopeKey) === listeners) {
-      listenersByScope.delete(scopeKey)
+    if (listeners.size === 0 && listenersByKey.get(key) === listeners) {
+      listenersByKey.delete(key)
     }
   }
 }
 
 export function subscribeToNativeChatDraftAppend(
-  scopeKey: string,
+  draftKey: string,
   listener: (text: string) => void
 ): () => void {
-  return subscribe(textAppendListeners, scopeKey, listener)
+  return subscribe(textAppendListeners, draftKey, listener)
 }
 
-export function subscribeToNativeChatDraftAttachmentAppend(
-  scopeKey: string,
-  listener: (appended: readonly NativeChatDraftAttachment[]) => void
-): () => void {
-  return subscribe(attachmentAppendListeners, scopeKey, listener)
-}
+// Rich editor state belongs to the pane's editor, not the chat; memory only.
+const documentCache = new Map<string, { text: string; document: JSONContent }>()
 
 /** Clears memory and the saved drafts on disk. */
 export function clearNativeChatDraftCacheForTests(): void {
   draftCache.clear()
+  documentCache.clear()
   hydrated = false
   resetNativeChatDraftStorageForTests()
 }
 
 export function readNativeChatDraftDocument(
-  scopeKey: string,
+  paneKey: string,
   text: string
 ): JSONContent | undefined {
-  const cached = readEntry(scopeKey)
-  return cached.text === text ? cached.document : undefined
+  const cached = documentCache.get(paneKey)
+  return cached?.text === text ? cached.document : undefined
 }
 
 export function writeNativeChatDraftDocument(
-  scopeKey: string,
+  paneKey: string,
   text: string,
   document: JSONContent
 ): void {
-  setEntry(scopeKey, {
-    text,
-    document: text ? document : undefined,
-    attachments: readEntry(scopeKey).attachments
-  })
-  persistTextEdit(scopeKey, text)
+  if (!text) {
+    documentCache.delete(paneKey)
+    return
+  }
+  setBoundedScopeCacheEntry(documentCache, paneKey, { text, document })
 }
