@@ -17407,6 +17407,7 @@
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
         "signInThenSend": "Connectez-vous, puis renvoyez votre message.",
         "providerMissing": "{{agent}} n'est pas installé.",
+        "installFirst": "Installez-le d'abord.",
         "installThenRetry": "Installez-le, puis réessayez.",
         "installThenRunCommand": "Installez-le, puis relancez /{{command}}.",
         "installThenSend": "Installez-le, puis renvoyez votre message.",

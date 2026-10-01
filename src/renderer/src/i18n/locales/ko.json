@@ -17343,6 +17343,7 @@
         "signInThenRunCommand": "로그인한 다음 /{{command}}을(를) 다시 실행하세요.",
         "signInThenSend": "로그인한 다음 메시지를 다시 보내세요.",
         "providerMissing": "{{agent}}이(가) 설치되어 있지 않습니다.",
+        "installFirst": "먼저 설치하세요.",
         "installThenRetry": "설치한 다음 다시 시도하세요.",
         "installThenRunCommand": "설치한 다음 /{{command}}을(를) 다시 실행하세요.",
         "installThenSend": "설치한 다음 메시지를 다시 보내세요.",

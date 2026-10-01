@@ -14,7 +14,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { settleStructuredAgentLaunchPrompt } from './structured-agent-session-launch-prompt'
-import { awaitStructuredLaunchPromptTaken } from './structured-agent-session-launch-prompt-handover'
+import { awaitStructuredSourcedMessageTaken } from './structured-agent-session-sourced-message-taken'
 import {
   FIRST_START_FAILS,
   firstMessageStream,
@@ -128,8 +128,8 @@ describe('settleStructuredAgentLaunchPrompt', () => {
 
   it('reads one launch prompt once, however many ask', async () => {
     const stream = firstMessageStream(mocks, 'message-1')
-    const first = awaitStructuredLaunchPromptTaken('session-1', 'message-1')
-    const second = awaitStructuredLaunchPromptTaken('session-1', 'message-1')
+    const first = awaitStructuredSourcedMessageTaken('session-1', 'message-1')
+    const second = awaitStructuredSourcedMessageTaken('session-1', 'message-1')
     play(await stream, FIRST_START_FAILS.retriedThenTaken)
 
     await expect(Promise.all([first, second])).resolves.toEqual([true, true])

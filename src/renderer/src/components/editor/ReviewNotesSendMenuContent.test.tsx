@@ -682,37 +682,55 @@ describe('ReviewNotesSendMenuContent', () => {
     })
   })
 
-  it('keeps selected-target note failures undelivered and uses selected wording', async () => {
-    const statusPaneKey = makePaneKey(TAB_A, LEAF_A)
-    const onPromptDelivered = vi.fn()
-    harness.sendMessageToAgent.mockResolvedValue({ status: 'not-ready' })
-    setStore({
-      tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
-      terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
-    })
-    harness.noteTargets = [
-      {
-        paneKey: statusPaneKey,
-        tabId: TAB_A,
-        messageTarget: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
-        agentType: 'claude',
-        tabTitle: 'Terminal 1',
-        status: 'eligible'
-      }
+  it.each([
+    ['a terminal not ready', { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A }, 'not-ready'],
+    // A chat's agent starts on the notes: they wait for it, and stay unsent when it never takes them.
+    [
+      'a chat whose agent did not take them',
+      { kind: 'structured-session', sessionId: 'c1' },
+      'not-taken'
     ]
+  ] as const)(
+    'keeps notes to %s undelivered, in selected wording',
+    async (_case, target, status) => {
+      const onPromptDelivered = vi.fn()
+      let answer!: (result: { status: typeof status }) => void
+      harness.sendMessageToAgent.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+      const successes = () =>
+        toast.getToasts().filter((entry) => 'type' in entry && entry.type === 'success').length
+      const before = successes()
+      setStore({
+        tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
+        terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
+      })
+      harness.noteTargets = [
+        {
+          paneKey: makePaneKey(TAB_A, LEAF_A),
+          tabId: TAB_A,
+          messageTarget: target,
+          agentType: 'claude',
+          tabTitle: 'Terminal 1',
+          status: 'eligible'
+        }
+      ]
 
-    const tree = render({ onPromptDelivered })
-    ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
-    await flushMicrotasks()
+      const tree = render({ onPromptDelivered })
+      ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
+      await flushMicrotasks()
+      expect(onPromptDelivered).not.toHaveBeenCalled()
+      answer({ status })
+      await flushMicrotasks()
 
-    expect(onPromptDelivered).not.toHaveBeenCalled()
-    expect(harness.track).not.toHaveBeenCalled()
-    // Why: a failure must replace the 'Sending notes...' loading toast, not keep its spinner.
-    const settled = toast
-      .getToasts()
-      .find((entry) => 'title' in entry && entry.title === 'selected:not-ready')
-    expect(settled && 'type' in settled ? settled.type : undefined).toBe('info')
-  })
+      expect(onPromptDelivered).not.toHaveBeenCalled()
+      expect(harness.track).not.toHaveBeenCalled()
+      expect(successes()).toBe(before)
+      // Why: a failure must replace the 'Sending notes...' loading toast, not keep its spinner.
+      const settled = toast
+        .getToasts()
+        .find((entry) => 'title' in entry && entry.title === `selected:${status}`)
+      expect(settled && 'type' in settled ? settled.type : undefined).toBe('info')
+    }
+  )
 
   it('keeps selected-target thrown send errors undelivered', async () => {
     const statusPaneKey = makePaneKey(TAB_A, LEAF_A)

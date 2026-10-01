@@ -17308,6 +17308,7 @@
         "signInThenRunCommand": "请登录，然后重新运行 /{{command}}。",
         "signInThenSend": "请登录，然后重新发送您的消息。",
         "providerMissing": "{{agent}} 未安装。",
+        "installFirst": "请先安装。",
         "installThenRetry": "请安装，然后重试。",
         "installThenRunCommand": "请安装，然后重新运行 /{{command}}。",
         "installThenSend": "请安装，然后重新发送您的消息。",

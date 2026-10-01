@@ -569,7 +569,7 @@ describe('the notice on each message that did not go through', () => {
 
 // A launch prompt belongs to where it was sent from (notes, review comments, a fix action), which
 // still holds it as unsent once the host rejects it for good: that is where it goes again.
-describe('the notice on a launch prompt the host rejected for good', () => {
+describe('the notice on a message sent from elsewhere that was not sent', () => {
   const notInstalled = {
     kind: 'rejected' as const,
     reason: "Claude isn't installed.",
@@ -593,20 +593,18 @@ describe('the notice on a launch prompt the host rejected for good', () => {
     const launch = notices.get(agentJournalSubmissionKey('launch'))
     expect(launch?.onRetry).toBeUndefined()
     expect(launch?.text).toBe(
-      "Not sent: Claude isn't installed. Install it, then retry. Send it again from where you started it."
+      "Not sent: Claude isn't installed. Install it first. Send it again from where you started it."
     )
     // A message typed in the chat keeps its own Retry.
     expect(notices.get(agentJournalSubmissionKey('typed'))?.onRetry).toBeTypeOf('function')
   })
 
-  it('keeps Retry on a launch prompt only held, not rejected', () => {
+  it('offers no Retry on notes the host refused and the chat holds, since their source sends them again', () => {
+    const refused = { kind: 'refused' as const, code: 'agent_session_operation_capacity' }
     const notices = structuredAgentSessionDeliveryNotices(
       [
-        entry('launch', {
-          source: 'launch',
-          state: 'queued',
-          lastFailure: { kind: 'refused', code: 'agent_session_operation_capacity' }
-        })
+        entry('notes', { source: 'surface', state: 'queued', lastFailure: refused }),
+        entry('typed', { state: 'queued', lastFailure: refused })
       ],
       'Claude',
       vi.fn(),
@@ -615,7 +613,10 @@ describe('the notice on a launch prompt the host rejected for good', () => {
       NOT_FAILED_HERE
     )
 
-    expect(notices.get(agentJournalSubmissionKey('launch'))?.onRetry).toBeTypeOf('function')
+    const notes = notices.get(agentJournalSubmissionKey('notes'))
+    expect(notes?.onRetry).toBeUndefined()
+    expect(notes?.text).toMatch(/Send it again from where you started it\.$/)
+    expect(notices.get(agentJournalSubmissionKey('typed'))?.onRetry).toBeTypeOf('function')
   })
 })
 

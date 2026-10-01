@@ -180,14 +180,17 @@ function deliveryNoticeText(
   )
 }
 
-/** A launch prompt the host rejected for good belongs to where it was sent from (notes, review
- *  comments, a fix action): that source still holds it as unsent and is where it goes again, so a
- *  Retry here would deliver it while the source never learns it went. */
+/** A message sent from elsewhere (a launch's prompt, review notes) and not sent belongs to where it
+ *  came from: that source still holds it as unsent and is where it goes again, so a Retry here
+ *  would deliver it while the source never learns it went. */
 function sentFromSource(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return entry.source === 'launch' && entry.state === 'rejected'
+  return (
+    entry.source !== undefined &&
+    (entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry))
+  )
 }
 
-function launchPromptNotSentText(reason: string): string {
+function sourcedMessageNotSentText(reason: string): string {
   return joinSentences([
     translate('components.native-chat.launchPromptNotSent', 'Not sent: {{reason}}', { reason }),
     translate(
@@ -230,7 +233,9 @@ export function structuredAgentSessionDeliveryNotices(
       const retryControl = stalledFrom === -1 || index <= stalledFrom
       const text = deliveryNoticeText(
         entry,
-        { agentName, retryControl: retryControl || sentFromSource(entry) },
+        sentFromSource(entry)
+          ? { agentName, retryControl: true, sourceRetries: true }
+          : { agentName, retryControl },
         rejected.get(entry.clientMessageId),
         startFailures,
         failedHere
@@ -238,7 +243,7 @@ export function structuredAgentSessionDeliveryNotices(
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         sentFromSource(entry)
-          ? { text: launchPromptNotSentText(text) }
+          ? { text: sourcedMessageNotSentText(text) }
           : retryControl
             ? { text, onRetry: () => retry(entry.clientMessageId) }
             : { text }

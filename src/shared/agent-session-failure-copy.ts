@@ -24,6 +24,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
   signInThenRunCommand: 'Sign in, then run /{{command}} again.',
   signInThenSend: 'Sign in, then send your message again.',
   providerMissing: "{{agent}} isn't installed.",
+  installFirst: 'Install it first.',
   installThenRetry: 'Install it, then retry.',
   installThenRunCommand: 'Install it, then run /{{command}} again.',
   installThenSend: 'Install it, then send your message again.',

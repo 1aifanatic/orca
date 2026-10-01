@@ -8,6 +8,8 @@ export type ActiveAgentNotesSendStatus =
   | 'not-ready'
   | 'not-writable'
   | 'partial-submit-failed'
+  /** The chat's agent never took the message: its start failed, or the chat closed first. */
+  | 'not-taken'
 
 export type ActiveAgentNotesSendFailureCode =
   | 'empty'
@@ -34,6 +36,7 @@ export type ActiveAgentNotesSendFailureCode =
   | 'runtime-unverifiable'
   | 'runtime-timeout'
   | 'session-outbox-unsaved'
+  | 'session-message-not-taken'
 
 export type ActiveAgentNotesSendResult = {
   status: ActiveAgentNotesSendStatus
@@ -71,6 +74,9 @@ export function activeAgentNotesSendFailureMessage(
       break
     case 'not-writable':
       message = `The ${target} agent did not accept the notes.`
+      break
+    case 'not-taken':
+      message = `The ${target} agent did not take the notes; its chat says why.`
       break
     case 'partial-submit-failed':
       message = options.explicitTarget

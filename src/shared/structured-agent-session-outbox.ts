@@ -23,6 +23,8 @@ export type StructuredAgentSessionOutboxState =
   | 'unconfirmed'
   | 'rejected'
 
+export type StructuredAgentSessionOutboxSource = 'launch' | 'surface'
+
 export type StructuredAgentSessionOutboxEntry = {
   clientMessageId: string
   sessionId: string
@@ -32,7 +34,9 @@ export type StructuredAgentSessionOutboxEntry = {
   queuedAt: number
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
-  source?: 'launch'
+  /** Sent from outside the chat, which owns sending it again: a launch's prompt (`launch`), or a
+   *  message another surface sent to this chat (`surface`), such as review notes. */
+  source?: StructuredAgentSessionOutboxSource
   /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
    *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
@@ -186,8 +190,13 @@ export function requeueStructuredAgentSessionSendRefusal(
   const ownerExited =
     refusal.code === 'agent_session_ownership_unknown' &&
     agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
+  // Its source sends it again as a new message, never this entry, so its id stays what it waits on.
+  if (entry.source !== undefined && refusalSettled) {
+    return { ...entry, state: 'rejected' }
+  }
   if (
     !(refusalSettled || ownerExited) ||
+    entry.source !== undefined ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
@@ -295,7 +304,7 @@ export function parseStructuredAgentSessionOutboxEntry(
       typeof entry.retryAfterUnknownSubmittedAt === 'number'
         ? entry.retryAfterUnknownSubmittedAt
         : null,
-    ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
+    ...(entry.source === 'launch' || entry.source === 'surface' ? { source: entry.source } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

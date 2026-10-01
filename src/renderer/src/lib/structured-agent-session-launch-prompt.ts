@@ -18,9 +18,9 @@ import {
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
-  awaitStructuredLaunchPromptTaken,
-  structuredLaunchPromptVerdict
-} from '@/lib/structured-agent-session-launch-prompt-handover'
+  awaitStructuredSourcedMessageTaken,
+  structuredSourcedMessageVerdict
+} from '@/lib/structured-agent-session-sourced-message-taken'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -198,13 +198,13 @@ export function settleStructuredAgentLaunchPrompt(args: {
       (await dispatch.promise) ||
       (answer !== undefined && answer !== 'queued' && answer.dispatchState === 'unknown')
     const verdict =
-      answer === undefined || answer === 'queued' ? null : structuredLaunchPromptVerdict(answer)
+      answer === undefined || answer === 'queued' ? null : structuredSourcedMessageVerdict(answer)
     const delivered =
       admitted &&
       (answer === 'queued' ||
         verdict === 'taken' ||
         (verdict !== 'not-taken' &&
-          (await awaitStructuredLaunchPromptTaken(entry.sessionId, entry.clientMessageId))))
+          (await awaitStructuredSourcedMessageTaken(entry.sessionId, entry.clientMessageId))))
     if (delivered) {
       args.options.onPromptDelivered?.()
     }
