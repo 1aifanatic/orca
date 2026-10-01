@@ -8,7 +8,6 @@ import type {
 import type { AgentSessionTurnActivity } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
-import type { JournalLatestStop } from '../agent-session-journal/journal-stop-turn-end'
 import { estimateStructuredAgentSessionItemBytes } from './structured-agent-session-event-sink-estimate'
 import { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
@@ -136,8 +135,9 @@ export type StructuredAgentSessionEventSink = {
   journalEpoch?(): string | null
   /** The bound journal's producer linkage; null until bound. */
   journalLinkage?(): StructuredAgentSessionLinkageJournal | null
-  /** The bound journal's latest Stop event (`JournalStopMarks.latest`); null until bound. */
-  journalLatestStop?(): JournalLatestStop | null
+  /** Whether the bound journal's Stop rule makes turn `turnId`, ending at `endedAt` with no verdict
+   *  of its own, a person's cancellation (`personStopDecidesTurn`); false until bound. */
+  journalStopDecidesTurn?(turnId: string, endedAt: number): boolean
   appendLifecycleBatch?(
     settlementId: string,
     mutations: readonly JournalLifecycleMutationInput[],
@@ -280,7 +280,7 @@ export function createDeferredStructuredAgentSessionEventSink(
       ...resolvedAppend,
       journalEpoch: queue.journalEpoch,
       journalLinkage: queue.journalLinkage,
-      journalLatestStop: queue.journalLatestStop,
+      journalStopDecidesTurn: queue.journalStopDecidesTurn,
       appendLifecycleBatch: (settlementId, mutations, options = {}) => {
         const admission = appendLifecycleBatch(settlementId, mutations, options)
         if (!admission.accepted) {

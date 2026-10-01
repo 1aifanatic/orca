@@ -31,28 +31,20 @@ type TurnEndState = Pick<
   'items' | 'queuePauseMarks' | 'latestPersonTurnSequence'
 >
 
-/** Whether the latest Stop is a person's that names turn `turnId` or names none: an end that gives
- *  no verdict of its own is then theirs to decide, here, where its row is built. */
-export function personStopMayNameTurn(stop: JournalLatestStop | null, turnId: string): boolean {
-  return (
-    stop !== null &&
-    stopIsAPersons(stop.event.reason) &&
-    (stop.event.turnId === undefined || stop.event.turnId === turnId)
-  )
-}
-
-/** Whether `stop` makes the end of turn `turnId` a person's cancellation: a person's Stop or close
- *  that named that turn, or named none and stopped the turn item `itemId` opened. */
+/** Whether `stop`, a person's, makes the end of turn `turnId` theirs: it named that turn, or named
+ *  none and stopped the turn item `itemId` opened. */
 function stopIsTurnCancellation(
   stop: JournalLatestStop,
   turnId: string,
   state: TurnEndState,
   itemId: string | null
 ): boolean {
-  return (
-    personStopMayNameTurn(stop, turnId) &&
-    (stop.event.turnId !== undefined || turnlessStopStopped(state, stop, itemId))
-  )
+  if (!stopIsAPersons(stop.event.reason)) {
+    return false
+  }
+  return stop.event.turnId !== undefined
+    ? stop.event.turnId === turnId
+    : turnlessStopStopped(state, stop, itemId)
 }
 
 /** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
@@ -83,20 +75,47 @@ function turnlessStopStopped(
   return true
 }
 
-/** Whether a person's Stop already decides the end of what runs now: the live turn `turnId`, or
- *  with none, the turn a send opens next. A host stop of that work must not supersede it. */
-export function personStopInForce(state: TurnEndState, turnId: string | null): boolean {
+/** THE rule: whether the latest Stop makes turn `turnId` (item `itemId`, null if not yet opened),
+ *  ending at `endedAt` with no verdict of its own, a person's cancellation. An exit the provider saw
+ *  before the Stop was news, whenever its end is written. */
+function stopEndsTurnAsCancellation(
+  state: TurnEndState,
+  turnId: string,
+  itemId: string | null,
+  endedAt: number | undefined
+): boolean {
   const stop = state.queuePauseMarks.latestStop
-  if (!stop || !stopIsAPersons(stop.event.reason)) {
-    return false
+  return (
+    stop !== null &&
+    stopIsTurnCancellation(stop, turnId, state, itemId) &&
+    (endedAt === undefined || endedAt >= stop.event.at)
+  )
+}
+
+/**
+ * Whether a person's Stop decides the end of turn `turnId` (null: the turn a send opens next),
+ * by `turnEndAfterStop`'s rule: ending at `endedAt` it is their cancellation, and still running it
+ * is theirs to end. For a writer that must choose before the end is written: a host stop must not
+ * supersede it, and a Claude error result naming no reason leaves its verdict to it.
+ */
+export function personStopDecidesTurn(
+  state: TurnEndState,
+  turnId: string | null,
+  endedAt?: number
+): boolean {
+  if (turnId !== null) {
+    const itemId = [...state.items].find(
+      ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
+    )?.[0]
+    return stopEndsTurnAsCancellation(state, turnId, itemId ?? null, endedAt)
   }
-  if (turnId === null) {
-    return stop.event.turnId === undefined && turnlessStopStopped(state, stop, null)
-  }
-  const itemId = [...state.items].find(
-    ([, item]) => readAgentJournalTurn(item.body)?.turnId === turnId
-  )?.[0]
-  return stopIsTurnCancellation(stop, turnId, state, itemId ?? null)
+  const stop = state.queuePauseMarks.latestStop
+  return (
+    stop !== null &&
+    stop.event.turnId === undefined &&
+    stopIsAPersons(stop.event.reason) &&
+    turnlessStopStopped(state, stop, null)
+  )
 }
 
 /**
@@ -117,11 +136,7 @@ export function turnEndAfterStop(
   if (previous && previous.state !== 'running' && previous.state !== 'unverifiable') {
     return body
   }
-  const stop = state.queuePauseMarks.latestStop
-  if (!stop || !stopIsTurnCancellation(stop, body.turnId, state, itemId)) {
-    return body
-  }
-  // An exit the provider saw before the Stop was news, whenever its end is written.
-  const endedAfterStop = body.completedAt === undefined || body.completedAt >= stop.event.at
-  return endedAfterStop ? { ...body, outcome: 'cancellation' } : body
+  return stopEndsTurnAsCancellation(state, body.turnId, itemId, body.completedAt)
+    ? { ...body, outcome: 'cancellation' }
+    : body
 }

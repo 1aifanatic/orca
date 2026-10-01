@@ -13,9 +13,9 @@ import { claudeText } from './claude-structured-item-translation'
 const CLAUDE_ABORTED_TERMINAL_REASONS = new Set(['aborted_streaming', 'aborted_tools'])
 
 /** A success-subtype result still carries `is_error` for an API error, so the flag
- *  is what decides, never the subtype. `leftToStop`: a person's Stop may name this turn
- *  (`personStopMayNameTurn`), so an error end with no abort reason gives no verdict (undefined):
- *  older CLIs name no reason, and the journal's Stop rule decides as the end is written. */
+ *  is what decides, never the subtype. `leftToStop`: the journal's Stop rule makes this turn's end
+ *  a person's cancellation (`personStopDecidesTurn`), so an error end with no abort reason gives no
+ *  verdict (undefined): older CLIs name no reason, and that rule writes it with the end. */
 export function claudeResultOutcome(
   message: Record<string, unknown>,
   leftToStop = false

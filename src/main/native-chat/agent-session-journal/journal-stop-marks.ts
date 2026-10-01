@@ -2,7 +2,7 @@
 // the turn-end rule reads (`journal-stop-turn-end.ts`), and whether a person's still decides.
 
 import type { JournalReducerState } from './journal-reducer'
-import { personStopInForce, type JournalLatestStop } from './journal-stop-turn-end'
+import { personStopDecidesTurn, type JournalLatestStop } from './journal-stop-turn-end'
 
 export class JournalStopMarks {
   constructor(private readonly deps: { state: () => JournalReducerState }) {}
@@ -11,8 +11,8 @@ export class JournalStopMarks {
     return this.deps.state().queuePauseMarks.latestStop
   }
 
-  /** `personStopInForce`: a person's Stop already decides what runs now. */
-  personStopInForce(turnId: string | null): boolean {
-    return personStopInForce(this.deps.state(), turnId)
+  /** `personStopDecidesTurn`: a person's Stop decides how turn `turnId` ends. */
+  personStopDecides(turnId: string | null, endedAt?: number): boolean {
+    return personStopDecidesTurn(this.deps.state(), turnId, endedAt)
   }
 }

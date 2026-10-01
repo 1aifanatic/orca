@@ -15,7 +15,6 @@ import {
 } from './claude-structured-provider-fallback'
 import { claudeTurnEndForResult } from './claude-turn-lifecycle-item'
 import { claudeFrameParentRef, isRootClaudeFrame } from './claude-turn-opening'
-import { personStopMayNameTurn } from '../native-chat/agent-session-journal/journal-stop-turn-end'
 
 export type ClaudeResultJournalContext = Pick<
   ClaudeMessageJournalContext,
@@ -57,11 +56,10 @@ export function journalClaudeResult(
   }
   // Read before the settle below closes it: the result reports that turn's end.
   const endedTurnScope = turn.turnScope
-  // Read before the settle below closes the turn: an error end a person's Stop may have caused is
-  // the journal's to decide as it writes the end (`turnEndAfterStop`).
+  // Read before the settle below closes the turn: an error end the journal's Stop rule makes a
+  // person's cancellation is theirs to decide as the end is written (`turnEndAfterStop`).
   const turnId = settlesTurn ? turn.id : null
-  const leftToStop =
-    turnId !== null && personStopMayNameTurn(sink.journalLatestStop?.() ?? null, turnId)
+  const leftToStop = turnId !== null && sink.journalStopDecidesTurn?.(turnId, observedAt) === true
   if (settlesTurn) {
     prompts.retryPendingCancellations()
     turn.suppressReopenOnFailure(message.is_error === true)

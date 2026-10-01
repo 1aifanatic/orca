@@ -8,7 +8,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import type { JournalLatestStop } from '../native-chat/agent-session-journal/journal-stop-turn-end'
+import { personStopDecidesTurn } from '../native-chat/agent-session-journal/journal-stop-turn-end'
+import { createJournalReducerState } from '../native-chat/agent-session-journal/journal-reducer'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
 import {
   PROVIDER_SESSION_ID,
@@ -36,7 +37,7 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
   stopEvent: (turnId: string) => void
 }> {
   const bodies = new Map<string, AgentJournalItemBody>()
-  let latestStop: JournalLatestStop | null = null
+  const journal = createJournalReducerState('session-1', 'epoch-1')
   const adapter = adapterFor(claude)
   await adapter.acquire({
     identity: identityFor(),
@@ -46,7 +47,7 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
       appendItem: (identity, body) => bodies.set(agentJournalItemKey(identity), body),
       appendTombstone: (identity) => bodies.delete(agentJournalItemKey(identity)),
       publish: vi.fn(),
-      journalLatestStop: () => latestStop
+      journalStopDecidesTurn: (turnId, endedAt) => personStopDecidesTurn(journal, turnId, endedAt)
     }
   })
   await adapter.dispatch({
@@ -65,7 +66,10 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
     throw new Error('expected a running turn')
   }
   const stopEvent = (stoppedTurnId: string) => {
-    latestStop = { sequence: 9, event: { reason: 'user-stop', turnId: stoppedTurnId, at: 1 } }
+    journal.queuePauseMarks.latestStop = {
+      sequence: 9,
+      event: { reason: 'user-stop', turnId: stoppedTurnId, at: 1 }
+    }
   }
   return { adapter, bodies, connection, turnId, stopEvent }
 }

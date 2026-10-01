@@ -13,7 +13,11 @@ import { describeNativeChatTurnStatus } from '../../shared/native-chat-turn-stat
 import { selectStructuredAgentSettledTurns } from '../../shared/structured-agent-session-turn-timing'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type { JournalStopEvent } from '../native-chat/agent-session-journal/journal-row-schema'
-import type { JournalLatestStop } from '../native-chat/agent-session-journal/journal-stop-turn-end'
+import {
+  personStopDecidesTurn,
+  type JournalLatestStop
+} from '../native-chat/agent-session-journal/journal-stop-turn-end'
+import { createJournalReducerState } from '../native-chat/agent-session-journal/journal-reducer'
 import { claudeResultOutcome } from './claude-result-outcome'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
 import { claudeResultFailure } from './claude-structured-provider-fallback'
@@ -239,10 +243,19 @@ describe("a person's Stop inside a live turn", () => {
   // Claude CLIs before 2.1.91 send no terminal_reason, and later ones may omit it.
   const cutShort = { type: 'result', subtype: 'error_during_execution', is_error: true }
 
-  /** A sink whose journal's latest Stop event is `stop`, as the host's would answer. */
+  /** A sink whose journal's latest Stop event is `stop`, answering by the journal's own rule. */
   function sinkWithStop(stop: JournalLatestStop | null) {
     const state = sinkState()
-    return { ...state, sink: { ...state.sink, journalLatestStop: () => stop } }
+    const journal = createJournalReducerState('orca-session', 'epoch-1')
+    journal.queuePauseMarks.latestStop = stop
+    return {
+      ...state,
+      sink: {
+        ...state.sink,
+        journalStopDecidesTurn: (turnId: string, endedAt: number) =>
+          personStopDecidesTurn(journal, turnId, endedAt)
+      }
+    }
   }
 
   function stopOf(

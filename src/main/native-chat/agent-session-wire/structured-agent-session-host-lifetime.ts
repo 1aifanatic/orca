@@ -131,7 +131,7 @@ async function stopEndsWork(
   // A host stop of work a person's Stop is already ending must not supersede that Stop's reason.
   return (
     working &&
-    (ending.cause === 'user-close' || !journal.stopMarks.personStopInForce(journal.activeTurnId()))
+    (ending.cause === 'user-close' || !journal.stopMarks.personStopDecides(journal.activeTurnId()))
   )
 }
 

@@ -198,3 +198,45 @@ it('reads a follow-up the child end cut as interrupted when the Stop named the t
   expect(cut?.turnId).not.toBe(ended)
   expect(cut).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
 }, 15_000)
+
+// The Stop bound only the turn it stopped: a later turn's error end is the provider's own.
+it("keeps an older CLI's error end on a later turn a failure, with its error text, after a turnless Stop", async () => {
+  const stopped = claude.connections[0]!
+  claude.routes.interrupt = () => {
+    setTimeout(() => {
+      echoLatest(stopped)
+      frame(stopped, { type: 'result', subtype: 'error_during_execution', is_error: true })
+      frame(stopped, { type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    }, 5)
+    return { still_queued: [], cancelled: [] }
+  }
+  await sendUnechoed(stopped, 'Write a long reply.')
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await laneDrained()
+  expect(await lastTurn()).toMatchObject({ outcome: 'cancellation' })
+
+  // The next send starts a new child on the same conversation.
+  const body = hostTestMessage('Carry on.')
+  expect(
+    await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  ).toMatchObject({ ok: true })
+  const resumed = await eventually(() => {
+    const started = claude.connections.at(-1)!
+    expect(started).not.toBe(stopped)
+    expect(started.sent.some((message) => JSON.stringify(message).includes('Carry on.'))).toBe(true)
+    return started
+  })
+  echoLatest(resumed)
+  frame(resumed, {
+    type: 'result',
+    subtype: 'error_during_execution',
+    is_error: true,
+    result: 'API Error: overloaded'
+  })
+
+  await eventually(async () =>
+    expect(await lastTurn()).toMatchObject({ state: 'completed', outcome: 'failure' })
+  )
+  const { items } = await host.journalSnapshot(SESSION)
+  expect(JSON.stringify(items.map((item) => item.body))).toContain('API Error: overloaded')
+})
