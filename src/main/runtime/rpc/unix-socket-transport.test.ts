@@ -8,10 +8,18 @@ class FakeSocket extends EventEmitter {
   destroyed = false
   writable = true
   readonly writes: string[] = []
+  private idleTimer: NodeJS.Timeout | undefined
 
   setEncoding(): void {}
   setNoDelay(): void {}
-  setTimeout(): void {}
+  // Why: mirrors net.Socket, where the callback is added once and setTimeout(0) disarms without removing it.
+  setTimeout(ms: number, onTimeout?: () => void): void {
+    if (onTimeout) {
+      this.once('timeout', onTimeout)
+    }
+    clearTimeout(this.idleTimer)
+    this.idleTimer = ms > 0 ? setTimeout(() => this.emit('timeout'), ms) : undefined
+  }
   end(): void {}
 
   write(data: string): boolean {
@@ -116,5 +124,40 @@ describe('UnixSocketTransport', () => {
 
     vi.advanceTimersByTime(500)
     expect(socket.writes).toHaveLength(1)
+  })
+
+  it('keeps a connection open past the idle timeout while a dispatch is in flight', () => {
+    const transport = new UnixSocketTransport({ endpoint: 'test-pipe', kind: 'named-pipe' })
+    const socket = new FakeSocket()
+    let replyLater: ((response: string) => void) | undefined
+    transport.onMessage((_msg, reply) => {
+      replyLater = reply
+    })
+    ;(transport as unknown as UnixSocketTransportInternals).handleConnection(
+      socket as unknown as Socket
+    )
+    socket.emit('data', '{"id":"slow","method":"browser.snapshot"}\n')
+
+    vi.advanceTimersByTime(90_000)
+    expect(socket.destroyed).toBe(false)
+    expect(socket.writes).toEqual([])
+
+    replyLater?.('ok')
+    expect(socket.writes).toEqual(['ok\n'])
+
+    vi.advanceTimersByTime(29_999)
+    expect(socket.destroyed).toBe(false)
+    vi.advanceTimersByTime(1)
+    expect(socket.destroyed).toBe(true)
+    expect(socket.writes).toEqual(['ok\n'])
+  })
+
+  it('still closes a connection that never sends a complete line', () => {
+    const { socket, received } = createReceiver()
+    socket.emit('data', '{"id":"partial"')
+
+    vi.advanceTimersByTime(30_000)
+    expect(received).toEqual([])
+    expect(socket.destroyed).toBe(true)
   })
 })

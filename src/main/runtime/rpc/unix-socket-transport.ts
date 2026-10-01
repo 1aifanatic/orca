@@ -1,6 +1,7 @@
 // Why: this is the original Unix socket / named pipe transport extracted from
 // runtime-rpc.ts. It preserves the exact same behavior: newline-delimited JSON,
-// 30s idle timeout, 1MB max message, 32 max connections, chmod 0o600 on Unix.
+// 30s idle timeout (suspended while a dispatch is in flight), 1MB max message,
+// 32 max connections, chmod 0o600 on Unix.
 // It also owns the keepalive timer and per-connection abort signal so the
 // server-side handler can cancel long-poll dispatches when the client goes
 // away. See design doc §3.1.
@@ -17,9 +18,9 @@ export type UnixSocketTransportOptions = {
   endpoint: string
   kind: 'unix' | 'named-pipe'
   // Why: how often to write `{"_keepalive":true}\n` frames while a dispatch
-  // is pending. Each write resets both the server-side idle timer and, once
-  // the client honours them, the client-side idle timer. Tests override this
-  // to avoid waiting 10 s for a frame.
+  // is pending. Each write resets the client-side idle timer (the server's is
+  // suspended while a dispatch is in flight). Tests override this to avoid
+  // waiting 10 s for a frame.
   keepaliveIntervalMs?: number
 }
 
@@ -188,9 +189,14 @@ export class UnixSocketTransport implements RpcTransport {
         abortController.abort()
       }
       inflight.delete(abortDispatch)
+      if (inflight.size === 0 && !socket.destroyed) {
+        socket.setTimeout(RUNTIME_RPC_SOCKET_IDLE_TIMEOUT_MS)
+      }
     }
     const abortDispatch = (): void => cleanupDispatch(true)
     inflight.add(abortDispatch)
+    // Why: a connection awaiting our reply is not idle; the client's own deadline bounds the wait.
+    socket.setTimeout(0)
 
     const reply = (response: string): void => {
       if (replied) {
