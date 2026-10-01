@@ -19,7 +19,11 @@ export function useNativeChatDraft(
   isComposing: () => boolean
 ): {
   draft: string
-  setDraft: (next: string | ((previous: string) => string)) => void
+  /** `keepOffDisk`: the text copies state held elsewhere, so it is not saved until edited. */
+  setDraft: (
+    next: string | ((previous: string) => string),
+    options?: { keepOffDisk?: boolean }
+  ) => void
   /** Settles the draft after an IME composition: shows text appended meanwhile. */
   flushDraftAppends: () => void
 } {
@@ -74,7 +78,7 @@ export function useNativeChatDraft(
 
   // Accepts the same value/updater forms as a useState setter so call sites are drop-in.
   const setDraft = useCallback(
-    (next: string | ((previous: string) => string)) => {
+    (next: string | ((previous: string) => string), options?: { keepOffDisk?: boolean }) => {
       const resolved = typeof next === 'function' ? next(draftRef.current) : next
       // A composition's keystrokes stay in this view until it settles, so a box still holding
       // text another view cleared never writes it back. A clear itself is written at once.
@@ -85,7 +89,7 @@ export function useNativeChatDraft(
           pending?.draftKey === draftKey
             ? appendNativeChatDraftText(resolved, pending.text)
             : resolved,
-          resolved === ''
+          resolved === '' ? 'now' : options?.keepOffDisk ? 'never' : 'after-pause'
         )
       }
       showDraft(resolved)

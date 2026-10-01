@@ -81,7 +81,7 @@ export function useNativeChatLaunchDraftAdoption(args: {
   launchDraft: NativeChatLaunchDraft | null | undefined
   launchDraftResolved: boolean
   draft: string
-  setDraft: (next: string) => void
+  setDraft: (next: string, options?: { keepOffDisk?: boolean }) => void
   setCaret: (next: number) => void
   /** This pane is the tab-wide evidence's owner (`nativeChatLeafOwnsTabWideEvidence`).
    *  Splitting drops it for every pane, so it gates pickup, never cleanup. */
@@ -128,7 +128,9 @@ export function useNativeChatLaunchDraftAdoption(args: {
     // declines the seed permanently instead of resurrecting it on a later clear.
     useAppStore.getState().markNativeChatLaunchDraftAdopted(terminalTabId)
     if (draft === '') {
-      setDraft(launchDraft.text)
+      // Why off disk: after a relaunch the agent's input line still holds the seed, but the seed
+      // record is gone, so a restored copy would be sent on top of the text already there.
+      setDraft(launchDraft.text, { keepOffDisk: true })
       setCaret(launchDraft.text.length)
     }
   }, [

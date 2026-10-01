@@ -145,6 +145,21 @@ describe('composer draft persistence', () => {
     expect(result.current.draft).toBe('written meanwhile')
   })
 
+  // The agent's input line keeps the launch seed across a relaunch; a saved copy would send it twice.
+  it('keeps an untouched launch seed copy off disk until it is edited', async () => {
+    const { useNativeChatDraft } = await import('./use-native-chat-draft')
+    const { result } = renderHook(() => useNativeChatDraft(SCOPE, () => false))
+
+    act(() => result.current.setDraft('line one\nline two', { keepOffDisk: true }))
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(result.current.draft).toBe('line one\nline two')
+    expect(saved(SCOPE)).toBeNull()
+
+    act(() => result.current.setDraft('line one\nline two!'))
+    vi.advanceTimersByTime(300)
+    expect(saved(SCOPE)?.text).toBe('line one\nline two!')
+  })
+
   it('writes text put back at once and reports that it reached disk', async () => {
     const result = cache.appendNativeChatDraftNow(SCOPE, {
       text: 'withdrawn',

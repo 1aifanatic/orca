@@ -123,16 +123,19 @@ export function readNativeChatDraftCache(draftKey: string): string {
   return readEntry(draftKey).text
 }
 
-/** Typing waits for a pause; a clear (at send) is written at once, even if a put-back remains. */
+/**
+ * Typing waits for a pause; a clear (at send) is written at once, even if a put-back remains.
+ * `never` keeps a copy of state held elsewhere out of the saved draft.
+ */
 export function writeNativeChatDraftCache(
   draftKey: string,
   draft: string,
-  clear = draft === ''
+  persist: 'now' | 'after-pause' | 'never' = draft === '' ? 'now' : 'after-pause'
 ): void {
   setEntry(draftKey, { ...readEntry(draftKey), text: draft }, undefined)
-  if (clear) {
+  if (persist === 'now') {
     persistNow(draftKey)
-  } else {
+  } else if (persist === 'after-pause') {
     scheduleNativeChatDraftPersist(draftKey, persistedDraft(draftKey))
   }
 }
