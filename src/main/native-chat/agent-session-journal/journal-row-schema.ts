@@ -77,8 +77,6 @@ export type JournalTombstoneRow = JournalRowBase & {
   stopEvent?: JournalStopEvent
   /** Present: not a removal but a person's Resume of the queue, on an id no item ever takes. */
   queueResume?: true
-  /** Present: not a removal but the provider's refusal of a Stop, on an id no item ever takes. */
-  stopRefusal?: JournalStopRefusal
 }
 
 /** One Stop that took effect. Temporary carrier: a tombstone's extra key, because a released host
@@ -96,29 +94,16 @@ export type JournalStopEvent = {
   caller?: string
 }
 
-/** The provider refused a Stop's interrupt and its turn ran on, so that Stop never ends the turn
- *  (`journal-stop-turn-end.ts`). Names the Stop it answers by that event's `turnId` and `at`. Same
- *  Temporary carrier as `JournalStopEvent`. */
-export type JournalStopRefusal = {
-  turnId?: string
-  stopAt: number
-}
-
 /** A tombstone that carries a Stop event or a Resume mark instead of removing an item. */
 export type JournalStopOrResumeRow = JournalTombstoneRow &
   (
     | { stopEvent: NonNullable<JournalTombstoneRow['stopEvent']> }
     | { queueResume: NonNullable<JournalTombstoneRow['queueResume']> }
-    | { stopRefusal: NonNullable<JournalTombstoneRow['stopRefusal']> }
   )
 
-/** A Stop's event, its refusal or a Resume. Any value counts, so a newer build's mark never
- *  removes an item. */
+/** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
 export function isJournalStopOrResumeRow(row: JournalRow): row is JournalStopOrResumeRow {
-  return (
-    row.kind === 'tombstone' &&
-    (row.stopEvent !== undefined || row.queueResume !== undefined || row.stopRefusal !== undefined)
-  )
+  return row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it

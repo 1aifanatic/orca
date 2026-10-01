@@ -1,7 +1,7 @@
 // A Stop that took effect still decides its turn after Orca restarts before the turn's end was
 // written: the relaunch's settle reads the Stop's event, so the turn reads "Interrupted after N"
-// with the muted mark, not "Failed". A turn nobody stopped, and one whose Stop the provider refused
-// while the turn ran on, still read as the news they are.
+// with the muted mark, not "Failed". A turn nobody stopped, and one a Stop never named, still read
+// as the news they are.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
@@ -15,10 +15,10 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { formatNativeChatTurnStatusLabel } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
-import { HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
+import { HOST_TEST_SESSION, hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
+  QUEUED_RIG_CALLER,
   createQueuedMessageTestRig,
-  eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
 
@@ -34,6 +34,12 @@ const CODEX_TURN: AgentJournalItemIdentity = {
   threadId: 'thread-1',
   turnId: TURN,
   ordinal: 999
+}
+const NEXT_TURN = 'turn-2'
+const CODEX_NEXT_TURN: AgentJournalItemIdentity = {
+  ...CODEX_TURN,
+  turnId: NEXT_TURN,
+  ordinal: 1000
 }
 
 let rig: QueuedMessageTestRig
@@ -89,10 +95,12 @@ async function restartAndSettle(
   })
 }
 
-/** What the chat's turn bar and the session's mark read. */
-function settled() {
+/** What the chat's turn bar and the session's mark read, for `turnId` or else the first turn. */
+function settled(turnId?: string) {
   const { items } = journal().snapshot()
-  const turn = items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)
+  const turn = items
+    .map((item) => readAgentJournalTurn(item.body))
+    .find((entry) => entry && (turnId === undefined || entry.turnId === turnId))
   const [timing] = [...selectStructuredAgentSettledTurns(items).values()]
   const verdict = turn
     ? agentTurnVerdict({ state: turn.state, outcome: turn.outcome ?? null })
@@ -165,21 +173,55 @@ describe('a restart between a Stop and its turn end', () => {
     expect(mark).toBe('unconfirmed')
   })
 
-  it('reads Failed after N when the provider refused the Stop and the turn ran on until the crash', async () => {
+  // Codex refuses a Stop naming a turn that is no longer its active one ("expected active turn id
+  // X but found Y"). The Stop names X, so Y's end is never the person's, by its turn id alone.
+  it('reads Failed for the turn running when the provider refused a Stop naming the one before it', async () => {
     await runningTurn(CODEX_TURN)
-    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
-    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: false } })
-    await eventually(async () => expect(journal().stopMarks.latest()?.refused).toBe(true))
+    rig.cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: {
+        detail: {
+          text: `expected active turn id ${TURN} but found ${NEXT_TURN}`,
+          audience: 'person'
+        }
+      }
+    })
+    const fields = { turnId: TURN }
+    expect(
+      await rig.host.cancel(QUEUED_RIG_CALLER, {
+        envelope: rig.envelope(fields, 'agentSession.cancel', hostTestOperationId()),
+        ...fields
+      })
+    ).toMatchObject({ ok: true, value: { cancelled: false } })
+    expect(journal().stopMarks.latest()?.event).toMatchObject({ reason: 'user-stop', turnId: TURN })
+    // The journal catches up: X had finished, and Y runs on until the crash.
+    await journal().appendItem(
+      CODEX_TURN,
+      {
+        kind: 'turn',
+        turnId: TURN,
+        state: 'completed',
+        outcome: 'success',
+        completedAt: Date.now()
+      },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await journal().appendItem(
+      CODEX_NEXT_TURN,
+      { kind: 'turn', turnId: NEXT_TURN, state: 'running', startedAt: Date.now() - 10_000 },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
 
-    await restartAndSettle()
+    // Its exit is proven after the Stop, so only the turn the Stop named decides.
+    await restartAndSettle('exit-observed')
 
-    const { turn, label, mark } = settled()
+    const { turn, mark } = settled(NEXT_TURN)
+    expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
-    expect(label).toMatch(/^Failed after /)
     expect(mark).toBe('failed')
   })
 
-  // Claude's Stop ends its child whatever the interrupt answered, so only Codex writes a refusal.
+  // Claude's Stop ends its child whatever the interrupt answered.
   it('reads Interrupted after N when the provider refused a Stop that ends its child', async () => {
     await runningTurn(CLAUDE_TURN, { stopEndsSession: true })
     rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
@@ -187,7 +229,6 @@ describe('a restart between a Stop and its turn end', () => {
     // The Stop's next step on the session's lane ends the child.
     await rig.host['tasks'].serialize(HOST_TEST_SESSION, async () => {})
     expect(rig.closeSession).toHaveBeenCalled()
-    expect(journal().stopMarks.latest()).toMatchObject({ refused: false })
 
     await restartAndSettle()
 
@@ -217,14 +258,18 @@ describe('a restart between a Stop and its turn end', () => {
     expect(settled().turn).not.toHaveProperty('outcome')
   })
 
-  it('a Stop pressed again after a refusal is a new Stop, which its turn end reads', async () => {
+  // A refusal is no record: the first Stop stays the one in force, so pressing again repeats it.
+  it('writes nothing for a Stop pressed again after the provider refused one', async () => {
     await runningTurn(CODEX_TURN)
-    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
+    rig.cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: { detail: { text: 'no active turn to interrupt', audience: 'person' } }
+    })
     await rig.stop()
-    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    const first = journal().stopMarks.latest()
 
-    await restartAndSettle()
+    await rig.stop()
 
-    expect(settled().turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    expect(journal().stopMarks.latest()).toEqual(first)
   })
 })

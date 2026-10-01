@@ -77,8 +77,7 @@ export async function stopReachesUnrecordedWork(
     return false
   }
   const inForce = ctx.journal.queuedMessages.userStopInForce()
-  // A refused Stop ended nothing, so pressing again is a new Stop.
-  if (inForce === null || ctx.journal.stopMarks.latest()?.refused) {
+  if (inForce === null) {
     return true
   }
   // Sent after that Stop and not refused, even if its fate is unknown: this interrupt may send it

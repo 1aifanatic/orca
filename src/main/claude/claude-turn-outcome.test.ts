@@ -245,12 +245,11 @@ describe("a person's Stop inside a live turn", () => {
     return { ...state, sink: { ...state.sink, journalLatestStop: () => stop } }
   }
 
-  // A Claude Stop ends the child, so no refusal ever answers its event.
   function stopOf(
     turnId: string,
     reason: JournalStopEvent['reason'] = 'user-stop'
   ): JournalLatestStop {
-    return { sequence: 9, event: { reason, turnId, at: 1 }, refused: false }
+    return { sequence: 9, event: { reason, turnId, at: 1 } }
   }
 
   function settledTurn(items: ReturnType<typeof sinkState>['items'], turnId: string) {

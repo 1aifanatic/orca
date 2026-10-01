@@ -54,7 +54,7 @@ type OldReplay = {
   truncateFrom?: number
 }
 
-test("an older build keeps every row around a Stop's event, its refusal and a Resume, and folds the rows after them", async () => {
+test("an older build keeps every row around a Stop's event and a Resume, and folds the rows after them", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-stop-event-downgrade-'))
   const journals = createTrackedJournalOpener()
   try {
@@ -69,8 +69,6 @@ test("an older build keeps every row around a Stop's event, its refusal and a Re
     await append(0, 'before the Stop')
     const beforeMarks = journal.cursor()
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
-    const stopAt = journal.stopMarks.latest()?.event.at ?? 0
-    await journal.stopMarks.appendRefusal({ turnId: 'turn-1', stopAt }, 1)
     await journal.appendStopEvent({ reason: 'user-close', turnId: 'turn-1' }, 1)
     await journal.appendQueueResume(1)
     const afterMarks = journal.cursor()
@@ -139,7 +137,7 @@ test("an older build keeps every row around a Stop's event, its refusal and a Re
       })
       expect(projected.ok).toBe(true)
       expect(projected.batch?.items).toEqual([])
-      expect(projected.batch?.removedItemIds).toHaveLength(3)
+      expect(projected.batch?.removedItemIds).toHaveLength(2)
       const liveIds = new Set(journal.snapshot().items.map((entry) => entry.itemId))
       expect(projected.batch?.removedItemIds.some((id) => liveIds.has(id))).toBe(false)
     } finally {
@@ -185,8 +183,6 @@ test("an older build opens this build's journal writable and appends to it; the 
     const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     await journal.appendItem(item(0), { kind: 'status', text: 'before the Stop' }, scope)
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
-    const stopAt = journal.stopMarks.latest()?.event.at ?? 0
-    await journal.stopMarks.appendRefusal({ turnId: 'turn-1', stopAt }, 1)
     await journal.appendItem(item(1), { kind: 'status', text: 'after the Stop' }, scope)
     const wrote = { cursor: journal.cursor(), items: itemIds(journal) }
     expect(journal.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
@@ -222,7 +218,6 @@ test("an older build opens this build's journal writable and appends to it; the 
     expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
       'stopped'
     ])
-    expect(upgraded.stopMarks.latest()).toMatchObject({ event: { at: stopAt }, refused: true })
   } finally {
     await journals.closeAll()
     rmSync(directory, { recursive: true, force: true })

@@ -30,8 +30,7 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
   bodies: Map<string, AgentJournalItemBody>
   connection: FakeConnection
   turnId: string
-  /** What the host's Stop writes before the interrupt. Its child's end follows, so no refusal
-   *  ever answers it. */
+  /** What the host's Stop writes before the interrupt. */
   stopEvent: (turnId: string) => void
 }> {
   const bodies = new Map<string, AgentJournalItemBody>()
@@ -64,11 +63,7 @@ async function runningChat(claude: ReturnType<typeof fakeClaude>): Promise<{
     throw new Error('expected a running turn')
   }
   const stopEvent = (stoppedTurnId: string) => {
-    latestStop = {
-      sequence: 9,
-      event: { reason: 'user-stop', turnId: stoppedTurnId, at: 1 },
-      refused: false
-    }
+    latestStop = { sequence: 9, event: { reason: 'user-stop', turnId: stoppedTurnId, at: 1 } }
   }
   return { adapter, bodies, connection, turnId, stopEvent }
 }
