@@ -11,6 +11,7 @@ import {
   isPowerShellExecutableName
 } from '../powershell-osc133-bootstrap'
 import { getFishCodexShellLaunchPreflight } from '../../shared/codex-shell-function'
+import { getFishXdgDataDirsLaunchEnv } from '../fish-xdg-data-dirs-handoff'
 import { POSIX_SHELL_STARTUP_COMMAND_ENV } from '../pty/posix-shell-startup-command'
 import { getFishShellReadyInitCommand } from '../shell-templates'
 import {
@@ -65,7 +66,8 @@ export function getBashWrapperLaunchArgs(): string[] | null {
 export function getShellLaunchConfig(
   shellPath: string,
   features: readonly ShellStartupFeature[],
-  startupCommand?: string
+  startupCommand?: string,
+  inheritedXdgDataDirs?: string
 ): ShellReadyLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
   const wrapperFeatures =
@@ -147,6 +149,16 @@ export function getShellLaunchConfig(
       env:
         startupCommand !== undefined ? { [POSIX_SHELL_STARTUP_COMMAND_ENV]: startupCommand } : {},
       supportsReadyMarker: features.includes('ready')
+    }
+  }
+
+  // Why env only: a plain fish pane keeps fish's own argv; the vendor_conf.d
+  // snippet this points at adds Orca's codex function and then undoes itself.
+  if (shellName === 'fish' && wrapperTreeUsable()) {
+    return {
+      args: null,
+      env: getFishXdgDataDirsLaunchEnv(getShellReadyWrapperRoot(), inheritedXdgDataDirs),
+      supportsReadyMarker: false
     }
   }
 

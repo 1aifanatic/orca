@@ -3,6 +3,7 @@ import { existsSync, accessSync, statSync, chmodSync, constants as fsConstants }
 import type * as pty from 'node-pty'
 import { usesNodePtySpawnHelper } from '../../shared/node-pty-spawn-helper'
 import { TERMINAL_SPAWN_ISSUE_REQUEST } from '../../shared/terminal-spawn-error-copy'
+import { restoreFishXdgDataDirs } from '../fish-xdg-data-dirs-handoff'
 import {
   hostReportsChildExitStatus,
   wrapShellSpawnForMacosTccAttribution
@@ -275,8 +276,12 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
         const fallbackReady = getShellReadyConfig?.(fallback)
         env.SHELL = fallback
         onBeforeFallbackSpawn?.(env, fallback)
+        // Why restore before deleting: fish's launch value wraps the user's own XDG_DATA_DIRS.
+        restoreFishXdgDataDirs(env)
         for (const key of staleLaunchEnvKeys) {
-          delete env[key]
+          if (key !== 'XDG_DATA_DIRS') {
+            delete env[key]
+          }
         }
         Object.assign(env, fallbackReady?.env ?? {})
         staleLaunchEnvKeys = Object.keys(fallbackReady?.env ?? {})

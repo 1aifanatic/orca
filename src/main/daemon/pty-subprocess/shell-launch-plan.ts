@@ -207,7 +207,7 @@ export function createPtyShellLaunchPlan(
         waitsForShellReady,
         emitsStartupIdentity: waitsForShellReady
       }),
-      { hasStartupCommand: Boolean(opts.command) }
+      { hasStartupCommand: Boolean(opts.command), inheritedXdgDataDirs: env.XDG_DATA_DIRS }
     )
     Object.assign(env, shellLaunch.env)
     shellArgs =

@@ -104,6 +104,8 @@ export function finalizeLocalPtySpawnEnvironment(args: {
     // config below may name features for this shell.
     delete env.ORCA_SHELL_FEATURES
     delete env[POSIX_SHELL_STARTUP_COMMAND_ENV]
+    // Why captured now: the closure re-runs after the launch env has prefixed it.
+    const inheritedXdgDataDirs = env.XDG_DATA_DIRS
     plan.getFallbackShellReadyConfig = (shell) => {
       const wrapperStartupCommand =
         codexStartupCommand !== undefined && supportsPosixShellStartupCommand(shell)
@@ -125,7 +127,8 @@ export function finalizeLocalPtySpawnEnvironment(args: {
           // handshake can bind output to the right shell PID.
           emitsStartupIdentity: waitsForShellReady
         }),
-        wrapperStartupCommand
+        wrapperStartupCommand,
+        inheritedXdgDataDirs
       )
     }
     const shellLaunch = plan.getFallbackShellReadyConfig(plan.shellPath)

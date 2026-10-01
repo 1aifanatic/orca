@@ -7,6 +7,7 @@ import {
   isPowerShellExecutableName
 } from '../powershell-osc133-bootstrap'
 import { getFishCodexShellLaunchPreflight } from '../../shared/codex-shell-function'
+import { getFishXdgDataDirsLaunchEnv } from '../fish-xdg-data-dirs-handoff'
 import { getFishShellReadyInitCommand } from '../shell-templates'
 import {
   encodeShellStartupFeatures,
@@ -127,7 +128,7 @@ const UNWRAPPED: ShellLaunchConfig = {
 export function getShellLaunchConfig(
   shellPath: string,
   features: readonly ShellStartupFeature[],
-  options: { hasStartupCommand?: boolean } = {}
+  options: { hasStartupCommand?: boolean; inheritedXdgDataDirs?: string } = {}
 ): ShellLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
 
@@ -190,6 +191,15 @@ export function getShellLaunchConfig(
       ],
       env: {},
       supportsReadyMarker: features.includes('ready')
+    }
+  }
+
+  // Why env only: mirrors local-pty-shell-ready.ts; a plain fish pane keeps fish's own argv.
+  if (shellName === 'fish' && ensureShellReadyWrappers()) {
+    return {
+      args: null,
+      env: getFishXdgDataDirsLaunchEnv(getShellReadyWrapperRoot(), options.inheritedXdgDataDirs),
+      supportsReadyMarker: false
     }
   }
 

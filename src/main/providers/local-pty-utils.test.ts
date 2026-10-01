@@ -39,6 +39,7 @@ import {
   spawnShellWithFallback,
   validateWorkingDirectory
 } from './local-pty-utils'
+import { getFishXdgDataDirsLaunchEnv } from '../fish-xdg-data-dirs-handoff'
 
 const WSL_UNC_DIR = '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
 const NATIVE_DIR = 'C:\\Users\\jin\\repo'
@@ -273,6 +274,31 @@ describe('spawnShellWithFallback macOS TCC login wrapping', () => {
     expect(env.ZDOTDIR).toBeUndefined()
     expect(env.ORCA_ORIG_ZDOTDIR).toBeUndefined()
     expect(env.HOME).toBe('/home/jin')
+  })
+
+  it('hands back the user’s own XDG_DATA_DIRS when a fish launch falls back', () => {
+    const fishLaunchEnv = getFishXdgDataDirsLaunchEnv('/userdata/wrappers', '/opt/a:/opt/b')
+    const env: Record<string, string> = { HOME: '/home/jin', ...fishLaunchEnv }
+    const ptySpawn = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('primary boom')
+      })
+      .mockReturnValue({ pid: 5 })
+
+    spawnShellWithFallback({
+      shellPath: '/opt/homebrew/bin/fish',
+      shellArgs: ['-l'],
+      cols: 80,
+      rows: 24,
+      cwd: '/work',
+      env,
+      ptySpawn: ptySpawn as never,
+      launchEnvKeys: Object.keys(fishLaunchEnv),
+      getShellReadyConfig: () => ({ args: null, env: {} })
+    })
+
+    expect(env).toEqual({ HOME: '/home/jin', SHELL: '/bin/zsh', XDG_DATA_DIRS: '/opt/a:/opt/b' })
   })
 
   it('drops the first fallback’s launch env when a second fallback takes over', () => {
