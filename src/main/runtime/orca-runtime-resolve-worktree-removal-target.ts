@@ -13,7 +13,10 @@ import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../worktree-removal-repo
 import { advertisedUrlWatcher } from '../ports/advertised-url-watcher'
 import { deleteWorktreeHistoryDir } from '../terminal-history-deletion'
 import { closeClientHostedBrowserPagesForWorktree } from './worktree-browser-client-page-close'
-import type { ForceDeleteWorktreeBranchResult } from '../../shared/worktree/create-types'
+import type {
+  ForceDeleteWorktreeBranchResult,
+  RemoveWorktreeResult
+} from '../../shared/worktree/create-types'
 import type { RuntimeTerminalRename } from '../../shared/runtime-types'
 import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
 import type { TerminalCreateOptions } from './runtime-terminal-contracts'
@@ -27,7 +30,6 @@ import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-i
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID, parseExecutionHostId } from '../../shared/execution-host'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
-import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import {
   resumeInterruptedWorktreeRemovals,
   retryFailedWorktreeRemoval,
