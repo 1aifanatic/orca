@@ -1,7 +1,7 @@
 import { createGitOperationExecutor } from './command-runner/git-operation-executor'
 import { runWithLocalWorktreeCreateHold } from './local-worktree-create-activity'
 import { abandonUnfinishedSpares } from '../worktree-create-preparation-pool'
-import { noteLocalCreateSettled, noteLocalCreateStarted } from '../worktree-create-spare-gate'
+import { noteLocalCreateStarted } from '../worktree-create-spare-gate'
 
 export const worktreeCreateGit = createGitOperationExecutor('interactive')
 
@@ -13,10 +13,6 @@ export function runLocalWorktreeCreate<T>(operation: () => Promise<T>): Promise<
   return runWithLocalWorktreeCreateHold(async () => {
     noteLocalCreateStarted()
     abandonUnfinishedSpares()
-    try {
-      return await worktreeCreateGit.run(operation)
-    } finally {
-      noteLocalCreateSettled()
-    }
+    return worktreeCreateGit.run(operation)
   })
 }

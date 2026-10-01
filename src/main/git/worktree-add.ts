@@ -16,10 +16,7 @@ import { gitExecOptions, resolveWorktreeAddTimeoutMs } from './worktree-operatio
 import { bumpWorktreeScanGeneration } from './worktree-scan-cache'
 import { assertNoPendingWorktreeRemovalConflict } from '../worktree-background-removal'
 import { spareRepoKey } from '../worktree-create-preparation-pool'
-import {
-  recordFailedLocalCreateCheckoutDuration,
-  recordLocalCreateCheckoutDuration
-} from '../worktree-create-spare-gate'
+import { recordPlainAddDuration } from '../worktree-create-spare-gate'
 import type { PreparedCheckoutOutcome } from '../../shared/worktree/create-types'
 import {
   configurePushAutoSetupRemote,
@@ -160,7 +157,6 @@ async function performAddWorktree(
     }
   }
   const pendingLocalBaseRefRefresh = baseContext?.pendingLocalBaseRefRefresh
-  const checkoutStartedAt = Date.now()
   let preparedCheckout: PreparedCheckoutOutcome | undefined
   try {
     preparedCheckout = await addFromSpareOrGit(args, {
@@ -172,23 +168,9 @@ async function performAddWorktree(
       options
     })
   } catch (error) {
-    // A slow checkout that then failed still says the disk is busy; a fast failure (an existing
-    // branch, a bad base) says nothing about the disk and must not feed the baseline.
-    if (!noCheckout) {
-      recordFailedLocalCreateCheckoutDuration(
-        spareRepoKey(repoPath, options.wslDistro),
-        Date.now() - checkoutStartedAt
-      )
-    }
     // Why: settle the overlapped refresh inside the caller's ref-maintenance pause before reporting the failure.
     await pendingLocalBaseRefRefresh
     throw error
-  }
-  if (!noCheckout) {
-    recordLocalCreateCheckoutDuration(
-      spareRepoKey(repoPath, options.wslDistro),
-      Date.now() - checkoutStartedAt
-    )
   }
   if (options.checkoutExistingBranch) {
     return preparedCheckout ? { preparedCheckout } : {}
@@ -243,6 +225,7 @@ async function addFromSpareOrGit(
   if (outcome?.status === 'hit') {
     return outcome
   }
+  const startedAt = Date.now()
   try {
     await gitExecFileAsync(args, {
       ...gitExecOptions(repoPath, options),
@@ -253,6 +236,11 @@ async function addFromSpareOrGit(
     // Git may have written the target's `.git` marker even when it reports a late
     // failure, so drop any pre-create route before the follow-up commands route.
     invalidateWslLinkedWorktreeGitRouting(worktreePath)
+    // Only the `worktree add` child, success or failure. Git runs post-checkout inside it, so a
+    // slow hook still counts; nothing outside the child can be told apart from it.
+    if (!add.noCheckout) {
+      recordPlainAddDuration(spareRepoKey(repoPath, options.wslDistro), Date.now() - startedAt)
+    }
   }
   return outcome
 }

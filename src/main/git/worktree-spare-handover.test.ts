@@ -140,3 +140,33 @@ it('counts a slow checkout that then failed toward the cooldown', async () => {
     vi.useRealTimers()
   }
 })
+
+it('sets no cooldown for a plain add that failed fast', async () => {
+  gitExecFileAsyncMock.mockImplementation((args: string[], options: object) =>
+    isPlainAdd(args) ? Promise.reject(new Error('branch exists')) : fakeGit(script)(args, options)
+  )
+
+  await expect(create('feature')).rejects.toThrow('branch exists')
+
+  expect(spareStartRefusal()).toBeNull()
+})
+
+it('sets no cooldown for a spare hit, however long its handover took', async () => {
+  await readySpare()
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const scripted = fakeGit(script)
+    gitExecFileAsyncMock.mockImplementation((args: string[], options: object) => {
+      if (args[1] === 'move') {
+        vi.setSystemTime(Date.now() + 60_000)
+      }
+      return scripted(args, options)
+    })
+
+    expect((await create('feature')).preparedCheckout).toEqual({ status: 'hit' })
+
+    expect(spareStartRefusal()).toBeNull()
+  } finally {
+    vi.useRealTimers()
+  }
+})

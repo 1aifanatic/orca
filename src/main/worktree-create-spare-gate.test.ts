@@ -56,10 +56,9 @@ import {
 } from './worktree-create-preparation'
 import {
   _resetSpareGateForTests,
-  noteLocalCreateSettled,
-  recordFailedLocalCreateCheckoutDuration,
-  recordLocalCreateCheckoutDuration,
+  recordPlainAddDuration,
   recordSpareBuildDuration,
+  slowPlainAddThresholdMs,
   spareStartRefusal
 } from './worktree-create-spare-gate'
 import {
@@ -119,53 +118,48 @@ describe('rule 2: no spare while the machine is busy', () => {
     release()
   })
 
-  it('refuses for 3 minutes after a slow create ends, and not after a fast one', () => {
-    recordLocalCreateCheckoutDuration(KEY, 16_000)
-    noteLocalCreateSettled()
+  it('refuses for 3 minutes after a 16 s plain add when no spare was ever built', () => {
+    recordPlainAddDuration(KEY, 16_000)
     vi.advanceTimersByTime(179_000)
     expect(spareStartRefusal()).toBe('slow_create_cooldown')
     vi.advanceTimersByTime(2_000)
     expect(spareStartRefusal()).toBeNull()
 
-    recordLocalCreateCheckoutDuration(KEY, 14_000)
-    noteLocalCreateSettled()
+    recordPlainAddDuration(KEY, 14_000)
     expect(spareStartRefusal()).toBeNull()
   })
 
-  it("scales the slow bar with the repo's baseline, which a slow checkout never raises", () => {
-    recordSpareBuildDuration(KEY, 10_000)
-    recordLocalCreateCheckoutDuration(KEY, 18_000)
+  it("sets the slow bar at twice the repo's fastest recent spare build", () => {
+    recordSpareBuildDuration(KEY, 20_000)
+    recordPlainAddDuration(KEY, 30_000)
     expect(spareStartRefusal()).toBeNull()
 
-    recordLocalCreateCheckoutDuration(KEY, 64_000)
-    vi.advanceTimersByTime(181_000)
-    recordLocalCreateCheckoutDuration(KEY, 40_000)
+    recordPlainAddDuration(KEY, 41_000)
     expect(spareStartRefusal()).toBe('slow_create_cooldown')
   })
 
-  it('does not let a ladder of slightly-under-2x checkouts walk the slow bar up', () => {
-    const slow: number[] = []
-    for (const seconds of [14, 27, 53, 105, 209]) {
-      _resetSpareGateForTests()
-      for (const earlier of [14, 27, 53, 105, 209].filter((value) => value < seconds)) {
-        recordLocalCreateCheckoutDuration(KEY, earlier * 1_000)
-      }
-      vi.setSystemTime(Date.now() + 10 * 60_000)
-      recordLocalCreateCheckoutDuration(KEY, seconds * 1_000)
-      if (spareStartRefusal() === 'slow_create_cooldown') {
-        slow.push(seconds)
-      }
+  it('ignores a spare build an outside load slowed', () => {
+    for (const seconds of [3, 3, 3, 3, 60]) {
+      recordSpareBuildDuration(KEY, seconds * 1_000)
     }
-    expect(slow).toEqual([53, 105, 209])
+    expect(slowPlainAddThresholdMs(KEY)).toBe(15_000)
   })
 
-  it('keeps fast failed checkouts out of the baseline, so a normal one stays fast', () => {
-    recordLocalCreateCheckoutDuration(KEY, 10_000)
-    recordLocalCreateCheckoutDuration(KEY, 10_000)
-    for (let failure = 0; failure < 3; failure += 1) {
-      recordFailedLocalCreateCheckoutDuration(KEY, 30)
+  it('keeps a big repo with normal 20 s checkouts out of a permanent cooldown', () => {
+    for (let build = 0; build < 3; build += 1) {
+      recordSpareBuildDuration(KEY, 20_000)
     }
-    recordLocalCreateCheckoutDuration(KEY, 16_000)
+    recordPlainAddDuration(KEY, 20_000)
+    vi.advanceTimersByTime(60_000)
+
+    expect(spareStartRefusal()).toBeNull()
+  })
+
+  it('times the cooldown from the slow add, whatever a fast create does afterwards', () => {
+    recordPlainAddDuration(KEY, 16_000)
+    vi.advanceTimersByTime(100_000)
+    recordPlainAddDuration(KEY, 2_000)
+    vi.advanceTimersByTime(81_000)
 
     expect(spareStartRefusal()).toBeNull()
   })

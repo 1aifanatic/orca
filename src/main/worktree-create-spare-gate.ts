@@ -4,41 +4,29 @@
 // later and never after.
 import { isLocalWorktreeCreateInFlight } from './git/local-worktree-create-activity'
 
-/** A checkout this long is slow on any repo; a larger repo's own baseline can raise the bar. */
+/** A plain add this long is slow on any repo; a repo whose idle spare builds take longer raises it. */
 export const SLOW_CHECKOUT_FLOOR_MS = 15_000
 export const SLOW_CREATE_COOLDOWN_MS = 3 * 60_000
 /** About twice the p90 spare build (13.3 s), so base flips waste at most one build per two. */
 export const SPARE_ABANDON_WINDOW_MS = 30_000
 
 /**
- * The baseline is the median of a repo's last few checkouts (spare builds or plain adds) that were
- * not themselves slow. A median ignores one cold-cache or warm-cache outlier, and it moves only
- * when most recent checkouts agree, so a ladder of slightly-under-2x steps cannot walk it upward.
+ * A repo's baseline is the fastest of its last few completed spare builds. Spares are built only on
+ * an idle machine, so a build is the repo's own idle checkout time; creates never feed it, so a
+ * fast failure, a hit's handover or a slow create cannot move it. The minimum ignores a build that
+ * an outside load slowed.
  */
-const BASELINE_SAMPLES = 5
+const BASELINE_BUILDS = 5
 // In memory only.
-const baselineSamplesByRepo = new Map<string, number[]>()
+const spareBuildsByRepo = new Map<string, number[]>()
 let createsStarted = 0
 const lastBaseChangeAbandonByRepo = new Map<string, number>()
 let cooldownUntil = 0
-let slowCheckoutInFlight = false
 
-function baseline(repoKey: string): number {
-  const samples = [...(baselineSamplesByRepo.get(repoKey) ?? [])].sort((a, b) => a - b)
-  if (samples.length === 0) {
-    return 0
-  }
-  const middle = Math.floor(samples.length / 2)
-  return samples.length % 2 === 1 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2
-}
-
-function recordBaselineSample(repoKey: string, durationMs: number): void {
-  const samples = baselineSamplesByRepo.get(repoKey) ?? []
-  baselineSamplesByRepo.set(repoKey, [...samples, durationMs].slice(-BASELINE_SAMPLES))
-}
-
-function isSlowCheckout(repoKey: string, durationMs: number): boolean {
-  return durationMs >= Math.max(SLOW_CHECKOUT_FLOOR_MS, 2 * baseline(repoKey))
+/** The plain-add duration at which this repo's disk counts as busy. */
+export function slowPlainAddThresholdMs(repoKey: string): number {
+  const builds = spareBuildsByRepo.get(repoKey) ?? []
+  return Math.max(SLOW_CHECKOUT_FLOOR_MS, builds.length > 0 ? 2 * Math.min(...builds) : 0)
 }
 
 /** Counts every local create start, so a spare request can tell one happened since it arrived. */
@@ -50,44 +38,24 @@ export function localCreatesStarted(): number {
   return createsStarted
 }
 
-/** A create's own checkout (plain add or spare handover). */
-export function recordLocalCreateCheckoutDuration(
+/**
+ * A create's plain `git worktree add` (never a spare hit or a no-checkout add), whether it
+ * succeeded or failed. A slow one starts the cooldown from the moment it ended.
+ */
+export function recordPlainAddDuration(
   repoKey: string,
   durationMs: number,
   now = Date.now()
 ): void {
-  if (!isSlowCheckout(repoKey, durationMs)) {
-    recordBaselineSample(repoKey, durationMs)
-    return
-  }
-  slowCheckoutInFlight = true
-  cooldownUntil = Math.max(cooldownUntil, now + SLOW_CREATE_COOLDOWN_MS)
-}
-
-/** A create's checkout that failed: only a slow one says the disk is busy; none feeds the baseline. */
-export function recordFailedLocalCreateCheckoutDuration(
-  repoKey: string,
-  durationMs: number,
-  now = Date.now()
-): void {
-  if (isSlowCheckout(repoKey, durationMs)) {
-    recordLocalCreateCheckoutDuration(repoKey, durationMs, now)
-  }
-}
-
-/** A spare's checkout only feeds the baseline; a slow one sets no cooldown. */
-export function recordSpareBuildDuration(repoKey: string, durationMs: number): void {
-  if (!isSlowCheckout(repoKey, durationMs)) {
-    recordBaselineSample(repoKey, durationMs)
-  }
-}
-
-/** The cooldown runs from the end of the slow create, not from the end of its checkout. */
-export function noteLocalCreateSettled(now = Date.now()): void {
-  if (slowCheckoutInFlight) {
-    slowCheckoutInFlight = false
+  if (durationMs >= slowPlainAddThresholdMs(repoKey)) {
     cooldownUntil = Math.max(cooldownUntil, now + SLOW_CREATE_COOLDOWN_MS)
   }
+}
+
+/** A spare build that completed unaborted. */
+export function recordSpareBuildDuration(repoKey: string, durationMs: number): void {
+  const builds = spareBuildsByRepo.get(repoKey) ?? []
+  spareBuildsByRepo.set(repoKey, [...builds, durationMs].slice(-BASELINE_BUILDS))
 }
 
 export type SpareStartRefusal = 'create_in_flight' | 'slow_create_cooldown'
@@ -110,8 +78,7 @@ export function recordSpareAbandonedForBaseChange(repoKey: string, now = Date.no
 }
 
 export function _resetSpareGateForTests(): void {
-  baselineSamplesByRepo.clear()
+  spareBuildsByRepo.clear()
   lastBaseChangeAbandonByRepo.clear()
   cooldownUntil = 0
-  slowCheckoutInFlight = false
 }
