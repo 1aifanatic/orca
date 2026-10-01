@@ -103,8 +103,9 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      * drop it after.
      */
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
-      // Startup's settle first, before this chat's lock, which the settle takes too. No caller
-      // holds a chat's lock here.
+      // Reads (history, subscribe, snapshot, reveal) wait for startup's settle here, as commands do
+      // at `serializeStructuredAgentSessionCommand`: opening a crash-left chat would settle it ahead
+      // of startup's lease resolution. Before this chat's lock; no caller holds one here.
       const startup = deps().commandsReady?.()
       if (startup) {
         await startup

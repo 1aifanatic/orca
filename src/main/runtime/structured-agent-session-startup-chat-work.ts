@@ -4,6 +4,8 @@
 
 export class StructuredAgentSessionStartupChatWork {
   private listings = 0
+  /** The history restore a tab restore owes, until a caller that answered with its list starts it. */
+  private owedRestore: (() => void) | null = null
   private restoreStarting = false
 
   async trackListing(listing: () => Promise<void>): Promise<void> {
@@ -15,9 +17,18 @@ export class StructuredAgentSessionStartupChatWork {
     }
   }
 
-  /** Starts the owed history restore on the next macrotask, and counts as work until it has: the
-   *  host then reports the restore itself. */
-  startRestoreSoon(start: () => void): void {
+  oweRestore(restore: (() => void) | null): void {
+    this.owedRestore = restore
+  }
+
+  /** Starts the owed history restore, once, on the next macrotask, and counts as work until it has:
+   *  the host then reports the restore itself. */
+  startOwedRestoreSoon(): void {
+    const start = this.owedRestore
+    this.owedRestore = null
+    if (!start) {
+      return
+    }
     this.restoreStarting = true
     setImmediate(() => {
       this.restoreStarting = false
@@ -25,7 +36,5 @@ export class StructuredAgentSessionStartupChatWork {
     })
   }
 
-  isActive(historyRestoreOwed: boolean): boolean {
-    return this.listings > 0 || this.restoreStarting || historyRestoreOwed
-  }
+  isActive = (): boolean => this.listings > 0 || this.restoreStarting || this.owedRestore !== null
 }

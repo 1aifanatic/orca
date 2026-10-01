@@ -80,7 +80,7 @@ type ItemFacts = {
 }
 
 // Per item object: a write replaces the entry it changes and never edits one, so an object's facts
-// never change, and each append judges only the items it touched.
+// never change. Each append still visits every item, but computes facts only for new objects.
 const ITEM_FACTS = new WeakMap<AgentJournalRenderItem, ItemFacts>()
 
 function itemFacts(item: AgentJournalRenderItem): ItemFacts {

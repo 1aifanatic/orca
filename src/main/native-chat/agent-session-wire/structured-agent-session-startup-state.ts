@@ -59,9 +59,14 @@ export type StructuredAgentSessionStartupState = {
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
   /** The settle step has started and not finished. */
   isSettling: () => boolean
-  /** The one settle of a chat nothing holds open, for any caller inside the chat's serialize, from
-   *  `loaded` in place of a replay when the caller holds the chat's current fold. False, opening
-   *  nothing, for a chat `canSettle` rejects, one already open, or after quit. */
+  /**
+   * The one settle of a chat nothing holds open. Call it inside the chat's serialize; it never
+   * waits on the startup gate. `loaded`, when the caller holds the chat's current fold, is used in
+   * place of a replay. True when it opened and closed the chat, whether or not the chat had work
+   * (so a settled chat is opened again). False, opening nothing, when `canSettle` rejects the chat,
+   * the chat is already open, or after quit. Rejects when the open or the close throws, so callers
+   * must catch.
+   */
   settleClosedChat: (record: AgentSessionRecord, loaded?: JournalLoad) => Promise<boolean>
 }
 

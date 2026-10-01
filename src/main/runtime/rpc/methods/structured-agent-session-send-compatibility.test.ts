@@ -11,6 +11,7 @@ import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../../../native-chat/age
 import {
   call,
   clearStructuredHostStub,
+  envelope,
   hostCalls,
   installStructuredHostStub,
   SESSION,
@@ -79,6 +80,28 @@ describe('a send that arrives before the host is built', () => {
     expect(ensureStructuredAgentSessionHost).toHaveBeenCalledOnce()
     expect(response).not.toMatchObject({ ok: false })
     expect(hostCalls.send).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['agentSession.queuedMessageSend', 'queuedMessageSend', { messageId: 'message-1' }],
+    ['agentSession.queuedMessageDelete', 'queuedMessageDelete', { messageId: 'message-1' }],
+    ['agentSession.queuedMessagesResume', 'queuedMessagesResume', {}],
+    ['agentSession.threadGoal', 'changeThreadGoal', { change: { kind: 'clear' } }]
+  ])('builds the host for %s too, and is answered by it', async (method, hostMethod, fields) => {
+    clearStructuredHostStub()
+    const answered = vi.fn(async () => ({ ok: true, replayed: false }))
+    const ensureStructuredAgentSessionHost = vi.fn(async () => {
+      installStructuredHostStub()
+      hostCalls[hostMethod] = answered
+    })
+
+    const response = await call(method, { envelope: envelope(), ...fields }, STRUCTURED_CLIENT, {
+      ensureStructuredAgentSessionHost
+    })
+
+    expect(ensureStructuredAgentSessionHost).toHaveBeenCalledOnce()
+    expect(response).not.toMatchObject({ ok: false })
+    expect(answered).toHaveBeenCalledOnce()
   })
 })
 

@@ -153,9 +153,10 @@ describe('desktop startup activation', () => {
     launchHooks.failBeforeWindow = false
     state.mainWindow = null
     state.isServeMode = false
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only null-checks the runtime and holds chat commands before the mocked RPC server takes it.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only null-checks the runtime, holds chat commands and starts the chat startup step before the mocked RPC server takes it.
     state.runtime = {
-      holdStructuredAgentSessionCommandsForStartup: () => undefined
+      holdStructuredAgentSessionCommandsForStartup: () => undefined,
+      startStructuredAgentSessionStartupAfter: () => undefined
     } as unknown as NonNullable<typeof state.runtime>
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only calls whenReady().
     state.windowsShellPathHydration = {

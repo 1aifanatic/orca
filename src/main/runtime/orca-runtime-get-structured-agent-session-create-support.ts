@@ -28,8 +28,6 @@ import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spa
 import { StructuredAgentSessionStartupChatWork } from './structured-agent-session-startup-chat-work'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
-  // The history restore a tab restore owes, until a caller that answered with its list starts it.
-  protected owedStructuredAgentSessionHistoryRestore: (() => void) | null = null
   // Listed chats startup could not answer from stored state; null until it has run.
   protected structuredAgentSessionBackgroundRestoreIds: string[] | null = null
   protected structuredAgentSessionStartupChatWork = new StructuredAgentSessionStartupChatWork()
@@ -264,35 +262,60 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   /** Starts the history restore the tab restore owes, once. On the next macrotask, so a caller that
    *  starts it as it answers has sent that answer first. */
   startStructuredAgentSessionHistoryRestore(): void {
-    const owed = this.owedStructuredAgentSessionHistoryRestore
-    this.owedStructuredAgentSessionHistoryRestore = null
-    if (owed) {
-      this.structuredAgentSessionStartupChatWork.startRestoreSoon(owed)
-    }
+    this.structuredAgentSessionStartupChatWork.startOwedRestoreSoon()
   }
 
+  /** The tab restore's preparation: the startup step, then the terminal records refresh, which
+   *  lists the daemon's terminals against the records the host build brought in. */
   prepareStructuredAgentSessionStartupRestoration(): Promise<void> {
-    this.structuredAgentSessionStartupRestorePromise ??=
-      this.prepareStructuredAgentSessionStartupRestorationOnce().catch((error) => {
+    this.structuredAgentSessionStartupRestorePromise ??= this.startStructuredAgentSessionStartup()
+      .then(async () => {
+        if (this.hasPersistedStructuredAgentSessionStore()) {
+          await this.refreshMobileSessionPtyRecords()
+        }
+      })
+      .catch((error) => {
         this.structuredAgentSessionStartupRestorePromise = null
         throw error
       })
     return this.structuredAgentSessionStartupRestorePromise
   }
 
-  protected async prepareStructuredAgentSessionStartupRestorationOnce(): Promise<void> {
+  /**
+   * Desktop launch. The step needs neither the terminal daemon nor the hook server (structured
+   * chats never run in WSL, the lease check probes processes, and the seed publishes in process),
+   * so only the shell PATH is awaited, as before: the host build sets up the agents' launch
+   * environments from it. Off Windows it is already resolved.
+   */
+  startStructuredAgentSessionStartupAfter(shellPathReady: Promise<unknown>): void {
+    void shellPathReady
+      .then(() => this.startStructuredAgentSessionStartup())
+      .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
+  }
+
+  /** The host's startup step, once: the host build, then the lease check, seed and settle. */
+  startStructuredAgentSessionStartup(): Promise<void> {
+    this.structuredAgentSessionStartupStepPromise ??=
+      this.startStructuredAgentSessionStartupOnce().catch((error) => {
+        this.structuredAgentSessionStartupStepPromise = null
+        throw error
+      })
+    return this.structuredAgentSessionStartupStepPromise
+  }
+
+  protected async startStructuredAgentSessionStartupOnce(): Promise<void> {
+    const gate = this.structuredAgentSessionStartupGate
+    gate.stepStarted()
     // Chat commands held for startup go ahead however this ends: when the settle does, or now.
-    let settling = false
+    let opener: 'nothing to settle' | 'step failed' | null = 'nothing to settle'
     try {
       if (!this.hasPersistedStructuredAgentSessionStore()) {
         return
       }
-      // Durable agent records must exist before daemon inventory can be reconciled against them.
       // A refused host is no host: startup goes on, and only structured requests are refused.
       await ensureStructuredAgentSessionHostUnlessRefused(() =>
         this.ensureStructuredAgentSessionHost()
       )
-      await this.refreshMobileSessionPtyRecords()
       const host = getStructuredAgentSessionHost()
       if (host) {
         this.structuredAgentSessionBackgroundRestoreIds =
@@ -300,18 +323,18 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
             host,
             this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
             (settled) => {
-              settling = true
-              this.structuredAgentSessionStartupGate.openWhen(settled)
+              opener = null
+              gate.openWhen(settled)
             },
-            () =>
-              this.structuredAgentSessionStartupChatWork.isActive(
-                this.owedStructuredAgentSessionHistoryRestore !== null
-              )
+            this.structuredAgentSessionStartupChatWork.isActive
           )
       }
+    } catch (error) {
+      opener &&= 'step failed'
+      throw error
     } finally {
-      if (!settling) {
-        this.structuredAgentSessionStartupGate.open()
+      if (opener) {
+        gate.open(opener)
       }
     }
   }

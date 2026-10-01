@@ -1,15 +1,19 @@
 // One append's undo of the fold. An append folds its row inside its transaction, so the status
-// written with it describes it; if the transaction fails, exactly what the row touched is put back.
-// Entries are replaced on change, never edited, so restoring each touched key restores the fold,
-// and an entry a reader holds is never one the failed row changed.
+// written with it describes it; if the transaction fails, what the row touched is put back.
+// Entries are replaced on change, never edited, so an entry a reader holds is never one the failed
+// row changed. A replaced or added key goes back in place; a removed one cannot, since re-adding it
+// puts it last and key order is part of the fold (eviction is oldest-first, ties go to map order),
+// so a unit that removed an entry declines the undo and its caller re-reads the fold instead.
 
 import type { JournalReducerState } from './journal-reducer'
 
 type Undo = () => void
+/** Null for a change no undo can put back in place: the removal of an entry. */
+type Recorder = (undo: Undo | null) => void
 
 /** A fold container that, while a unit is open, tells it each change it is about to make. */
 export class JournalFoldMap<K, V> extends Map<K, V> {
-  onChange: ((undo: Undo) => void) | null = null
+  onChange: Recorder | null = null
 
   override set(key: K, value: V): this {
     this.record(key)
@@ -17,7 +21,9 @@ export class JournalFoldMap<K, V> extends Map<K, V> {
   }
 
   override delete(key: K): boolean {
-    this.record(key)
+    if (this.onChange && super.has(key)) {
+      this.onChange(null)
+    }
     return super.delete(key)
   }
 
@@ -36,7 +42,7 @@ export class JournalFoldMap<K, V> extends Map<K, V> {
 }
 
 export class JournalFoldSet<T> extends Set<T> {
-  onChange: ((undo: Undo) => void) | null = null
+  onChange: Recorder | null = null
 
   override add(value: T): this {
     if (this.onChange && !super.has(value)) {
@@ -47,7 +53,7 @@ export class JournalFoldSet<T> extends Set<T> {
 
   override delete(value: T): boolean {
     if (this.onChange && super.has(value)) {
-      this.onChange(() => super.add(value))
+      this.onChange(null)
     }
     return super.delete(value)
   }
@@ -56,8 +62,9 @@ export class JournalFoldSet<T> extends Set<T> {
 export type JournalFoldUndo = {
   /** COMMIT landed: the fold as it stands is adopted. */
   commit: () => void
-  /** The transaction failed: every change since the unit began is put back, newest first. */
-  rollback: () => void
+  /** The transaction failed: every change since the unit began is put back, newest first. False,
+   *  changing nothing, when the unit removed an entry; the caller then re-reads the fold. */
+  rollback: () => boolean
 }
 
 /** Null when the fold's containers cannot record their changes; the caller re-reads it instead. */
@@ -71,7 +78,7 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     state.aliases,
     state.appliedSettlementIds
   ]
-  const recording: { onChange: ((undo: Undo) => void) | null }[] = []
+  const recording: { onChange: Recorder | null }[] = []
   for (const container of containers) {
     if (!(container instanceof JournalFoldMap || container instanceof JournalFoldSet)) {
       return null
@@ -79,8 +86,13 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     recording.push(container)
   }
   const undos: Undo[] = []
-  const record = (undo: Undo) => {
-    undos.push(undo)
+  let restorable = true
+  const record: Recorder = (undo) => {
+    if (undo) {
+      undos.push(undo)
+    } else {
+      restorable = false
+    }
   }
   const scalars = {
     epoch: state.epoch,
@@ -103,11 +115,15 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     commit: detach,
     rollback: () => {
       detach()
+      if (!restorable) {
+        return false
+      }
       for (const undo of undos.toReversed()) {
         undo()
       }
       Object.assign(state, scalars)
       state.derivedTurnScope = derivedTurnScope
+      return true
     }
   }
 }

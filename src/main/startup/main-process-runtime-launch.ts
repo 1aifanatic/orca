@@ -315,6 +315,10 @@ export async function initializeMainProcessRuntimeLaunch(
   // Why published: the renderer's git-environment barrier must fence on the same
   // generation the terminal startup services wait for, not a later re-read.
   state.shellPathReady = shellPathReady
+  // The host seeds its chats' statuses and settles crashed ones itself, so a window, a remote
+  // client or neither sees the same state. It needs neither the terminal daemon nor the hook
+  // server, so it does not wait for the first window's services.
+  runtime.startStructuredAgentSessionStartupAfter(shellPathReady)
   // Why before any window: the poisoned install DACL kills the renderer at init, and
   // the probe that detects it cannot finish before createMainWindow. Bounded, and a
   // no-op (one absent-file read) unless a previous launch already recorded the verdict.
@@ -339,10 +343,8 @@ export async function initializeMainProcessRuntimeLaunch(
     await shellPathReady
     bindTerminalRuntimeStartupServices(Promise.resolve(startTerminalRuntimeStartupServices()))
   }
-  // The host seeds its chats' statuses and settles crashed ones itself, so a window, a remote
-  // client or neither sees the same state. Only behind the first-window services: the PTY
-  // inventory it takes before the lease check needs the daemon provider. The managed-WSL barrier
-  // gates terminal spawns, which this step makes none of.
+  // The tab restore's terminal records refresh lists the daemon's terminals. The first-window
+  // services resolve when the daemon and hook server are up, or at their 12 s timeout regardless.
   void state.firstWindowStartupServicesReady
     .then(() => runtime.prepareStructuredAgentSessionStartupRestoration())
     .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
