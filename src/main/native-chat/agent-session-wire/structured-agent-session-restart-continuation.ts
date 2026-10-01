@@ -31,6 +31,7 @@ import {
 import { AgentSessionPreDispatchError } from './structured-agent-session-operation-settlement'
 import { restartContinuationEnvelope } from './structured-agent-session-restart-continuation-envelope'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
+import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 /**
  * All four dispatch states are preserved, never collapsed into transport success.
@@ -50,6 +51,10 @@ export type StructuredAgentSessionContinuationOutcome = {
   reason?: string
   /** The refusal that kept the agent from starting; `reason` is then its code. */
   refusal?: AgentSessionRefusalReference
+  /** Its agent did not start for it: the message says why in the chat, as any message's failed
+   *  start does, so the restart list files nothing and the chat gets no note. `pending` while the
+   *  message waits for its next try. */
+  startFailed?: true
 }
 
 /** The slice of the host one continuation needs. Structural so this module never imports the host. */
@@ -191,10 +196,9 @@ export type StructuredAgentSessionContinuationDeps = {
   onNoteFailed: (sessionId: string, error: unknown) => void
 }
 
-/** A continuation handed to its agent, or already decided. `retrying`: its start failed and the
- *  message waits for its next try, saying why in the chat; it is `pending`, filed and noted nowhere. */
+/** A continuation handed to its agent, or already decided. */
 export type StartedStructuredAgentSessionContinuation =
-  | { done: StructuredAgentSessionContinuationOutcome; retrying?: true }
+  | { done: StructuredAgentSessionContinuationOutcome }
   | { verdict: () => Promise<StructuredAgentSessionContinuationOutcome> }
 
 /**
@@ -220,7 +224,7 @@ export async function startStructuredAgentSessionContinuation(
     throw error
   }
   if ('done' in started) {
-    if (!started.retrying) {
+    if (!started.done.startFailed) {
       await noteOutcome(deps, sessionId, started.done)
     }
     return started
@@ -316,12 +320,19 @@ async function sendContinuation(
   }
   const clientMessageId = envelope.clientOperationId
   const handedOver = await deps.awaitHandedOver(sessionId, clientMessageId).catch(() => undefined)
+  // Never handed to a started agent, and no Stop, close or restart took it back: its agent did not
+  // start for it. The message says why, as any message whose start failed does.
+  if (
+    handedOver?.dispatchState === 'rejected' &&
+    classifyDispatchRejection(handedOver).verdict === 'failure'
+  ) {
+    return { done: { ...refusedBy(sessionId, handedOver), startFailed: true } }
+  }
   if (handedOver?.dispatchState === 'rejected') {
     return { done: refusedBy(sessionId, handedOver) }
   }
-  // The message itself says why and tries again, as any message whose start failed does.
   if (handedOver?.dispatchState === 'pending' && handedOver.startFailure !== undefined) {
-    return { done: { sessionId, outcome: 'pending' }, retrying: true }
+    return { done: { sessionId, outcome: 'pending', startFailed: true } }
   }
   return {
     verdict: async () =>

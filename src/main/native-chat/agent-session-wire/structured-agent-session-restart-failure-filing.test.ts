@@ -1,11 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
+import { STRUCTURED_AGENT_SESSION_START_RETRY_DELAYS_MS } from '../../../shared/structured-agent-session-start-retry'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import {
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
 } from '../../../shared/agent-session-restart-continuation'
+import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 import { StructuredAgentSessionResumeAdmission } from './structured-agent-session-restart-resume-runner'
 import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structured-agent-session-restart-resume-wiring'
 import {
@@ -22,6 +24,12 @@ import {
 // Which outcomes of a restart action become a failure the user is shown, and what retires one.
 
 afterEach(() => vi.restoreAllMocks())
+
+/** A start refused before it ran, which Orca tries again. */
+const ACCOUNT_SWITCHING = new AgentSessionAcquisitionRefusal(
+  'a Claude account switch is in progress',
+  'accountSwitchInProgress'
+)
 
 // Nothing was owed once the user's own message came first: the offer is spent and nothing is filed.
 it('files nothing for a chat the user moved on in before its attempt, and spends the offer', async () => {
@@ -47,13 +55,13 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
   expect(await statusNotes(host)).toEqual([])
 })
 
-// The continuation is accepted and its agent then fails to start. Like any message whose start
-// failed, it says why and waits for its next try: the batch counts it done at once, the restart list
-// files nothing, and no note claims the agent did or did not carry on.
+// The continuation is accepted and its agent's start is refused before it ran. Like any message
+// refused so, it says why and waits for its next try: the batch counts it done at once, the restart
+// list files nothing, and no note claims the agent did or did not carry on.
 it('files nothing and notes nothing while the continuation waits for its next try', async () => {
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
-  acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
+  acquire.mockRejectedValueOnce(ACCOUNT_SWITCHING)
   // The next try is booked and never comes: the batch must not wait for it.
   host.deps.setStartRetryTimer = () => () => {}
 
@@ -61,7 +69,7 @@ it('files nothing and notes nothing while the continuation waits for its next tr
   const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
 
   expect(Date.now() - startedAt).toBeLessThan(5_000)
-  expect(result.continued).toMatchObject([{ sessionId: SESSION, outcome: 'pending' }])
+  expect(result.continued).toEqual([{ sessionId: SESSION, outcome: 'pending', startFailed: true }])
   expect(result.failed).toEqual([])
   expect(await host.restartResume.listFailures()).toEqual([])
   const notes = (await statusNotes(host)).map((note) => note.text)
@@ -70,10 +78,7 @@ it('files nothing and notes nothing while the continuation waits for its next tr
   expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
     {
       dispatchState: 'pending',
-      startFailure: {
-        attempts: 1,
-        reason: "Codex couldn't restart. Send your message to try again."
-      }
+      startFailure: { attempts: 1, reason: 'A Claude account switch is in progress.' }
     }
   ])
 })
@@ -83,7 +88,7 @@ it('files nothing and notes nothing while the continuation waits for its next tr
 it('reads Failed once its tries run out, with one failure notification', async () => {
   const { host, acquire, clock } = await interruptedRestart()
   await host.restartResume.list()
-  acquire.mockRejectedValue(new Error('provider could not reconnect'))
+  acquire.mockRejectedValue(ACCOUNT_SWITCHING)
   // Each booked try comes due at once.
   host.deps.setStartRetryTimer = (delayMs, run) => {
     const timer = setTimeout(() => {
@@ -101,10 +106,12 @@ it('reads Failed once its tries run out, with one failure notification', async (
     expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
       {
         dispatchState: 'rejected',
-        reason: "Codex couldn't restart. Send your message to try again."
+        reason: 'A Claude account switch is in progress. Try again after it finishes.'
       }
     ])
   )
+  // The first try and one for each booked retry.
+  expect(acquire).toHaveBeenCalledTimes(STRUCTURED_AGENT_SESSION_START_RETRY_DELAYS_MS.length + 1)
   const [continuation] = (await host.journalSnapshot(SESSION)).submissions
   await host.flushAllStreamedEvents()
   expect(

@@ -3,10 +3,9 @@
 
 import { expect, it, vi } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
-import {
-  interruptedRestart,
-  terminalStartRefusal
-} from './structured-agent-session-restart-interruption-test-harness'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
 import {
@@ -68,8 +67,14 @@ it('deletes the offer when the chat itself is closed', async () => {
 
 // A failure record is the same obligation in a later state; the chat's close ends it too.
 it('deletes a failed-resume record when the chat itself is closed', async () => {
-  const { host, root, acquire } = await interruptedRestart()
-  acquire.mockRejectedValueOnce(terminalStartRefusal())
+  const { host, root, dispatch } = await interruptedRestart()
+  // The agent it started refused the continuation.
+  dispatch.mockResolvedValueOnce({
+    state: 'rejected',
+    ...agentSessionFailureWords(agentSessionFailureFact('providerRejected'), {
+      surface: 'rejection'
+    })
+  })
   await host.restartResume.continueAfterRestart([SESSION], 'modal')
   const capsule = new AgentSessionRecoveryCapsule(root)
   expect(await capsule.listFailed(NOW)).toHaveLength(1)
