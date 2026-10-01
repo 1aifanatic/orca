@@ -78,6 +78,7 @@ import { resetSshShutdownDrain } from './ssh-shutdown-drain'
 import { registerSshTargetCrudHandlers } from './ssh-target-crud-handlers'
 import { targetLifecycleInFlight } from './ssh-target-lifecycle-queue'
 import { disposeOrcadManagedTunnels } from '../ssh/orcad-managed-tunnel'
+import { getAppEnvironment } from '../../shared/app-environment'
 
 const SSH_IPC_CHANNELS = [
   'ssh:listTargets',
@@ -210,7 +211,7 @@ export function registerSshHandlers(
     }
   })
   refreshActiveRelaySessions()
-  registerPowerMonitorReconnect()
+  registerPowerMonitorReconnect(() => getAppEnvironment().getPath('userData'))
   registerSshBrowseHandler(() => connectionManager)
   setSshConnectionManagerResolver(() => connectionManager)
 

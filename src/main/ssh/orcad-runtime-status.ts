@@ -53,5 +53,12 @@ function managedRecoveryStatus(
         version: transaction.targetVersion,
         startedAt: transaction.startedAt
       }
+    case 'decommission':
+      return {
+        operation: transaction.operation,
+        phase: transaction.phase,
+        version: transaction.activeVersion,
+        startedAt: transaction.startedAt
+      }
   }
 }

@@ -42,5 +42,11 @@ export type OrcadManagedRuntimeStatus = {
         version: string
         startedAt: string
       }
+    | {
+        operation: 'decommission'
+        phase: 'prepared' | 'stop-dispatched' | 'process-exited'
+        version: string
+        startedAt: string
+      }
     | null
 }

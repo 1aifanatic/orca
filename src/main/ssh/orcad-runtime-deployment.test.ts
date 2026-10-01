@@ -335,6 +335,19 @@ describe('getManagedOrcadRuntimeStatus', () => {
     expect(mocks.recover).toHaveBeenCalledTimes(1)
   })
 
+  it('reports an interrupted decommission without finishing it', async () => {
+    await deploy()
+    mocks.readTransaction.mockResolvedValueOnce({
+      operation: 'decommission',
+      phase: 'stop-dispatched',
+      activeVersion: VERSION,
+      startedAt: 'then'
+    })
+    await expect(getManagedOrcadRuntimeStatus(userDataPath, 'Managed')).resolves.toMatchObject({
+      recovery: { operation: 'decommission', phase: 'stop-dispatched', version: VERSION }
+    })
+  })
+
   it('refuses a server whose SSH registration was re-created', async () => {
     await deploy()
     target = { ...target, generation: 10 }

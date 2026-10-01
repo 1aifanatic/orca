@@ -8,7 +8,7 @@ const recoverManagedTunnels = vi.hoisted(() => vi.fn(async () => {}))
 
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
-  return { app: { getPath: () => '/user-data' }, powerMonitor: new EventEmitter() }
+  return { powerMonitor: new EventEmitter() }
 })
 vi.mock('./ssh-ipc-context', () => ({ connectionManager: manager }))
 vi.mock('../ssh/orcad-managed-tunnel', () => ({
@@ -62,7 +62,7 @@ describe('host sleep reconnect in plain SSH mode', () => {
   })
 
   it('recovers managed tunnels with the same probe policy, even with no relay sessions', async () => {
-    registerPowerMonitorReconnect()
+    registerPowerMonitorReconnect(() => '/user-data')
     powerMonitor.emit('resume')
     await vi.waitFor(() =>
       expect(recoverManagedTunnels).toHaveBeenCalledWith('/user-data', {
@@ -70,5 +70,14 @@ describe('host sleep reconnect in plain SSH mode', () => {
         timeoutMs: 5_000
       })
     )
+  })
+
+  it('leaves managed tunnels alone when the caller supplies no profile path', async () => {
+    const session = plainSession(async () => true)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resume path only calls the methods stubbed here.
+    activeSessions.set('target-1', session as never)
+    registerPowerMonitorReconnect()
+    await resumeAndSettle()
+    expect(recoverManagedTunnels).not.toHaveBeenCalled()
   })
 })
