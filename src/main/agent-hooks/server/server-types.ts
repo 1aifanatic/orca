@@ -90,6 +90,9 @@ export type AgentHookAuthorityAttestation = Readonly<{
   source: 'current_hook' | 'hydrated_commitment'
 }>
 
+/** Who a proven exit ended: a replay restating that session's old status must not bring it back. */
+export type EndedAgentSession = { agentType?: string; providerSessionId?: string | null }
+
 /** How an ended-process clear treats the pane it reaches. */
 export type EndedProcessReconcileOptions = {
   /** The pane's PTY outlived its agent (a confirmed shell foreground), so the session can still be

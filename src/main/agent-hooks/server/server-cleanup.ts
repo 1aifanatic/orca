@@ -143,9 +143,10 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const previous = this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
         | EnrichedAgentHookEventPayload
         | undefined
+      // Why remnants too: the anchor names a live row, and a pid check may have ended it already.
       if (
         options?.armedRowReceivedAt !== undefined &&
-        previous?.receivedAt !== options.armedRowReceivedAt
+        (previous?.receivedAt !== options.armedRowReceivedAt || previous.providerSessionOnly)
       ) {
         continue
       }
@@ -157,6 +158,9 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
           ? { ...resumeRow, agentPresence: options.endedPresence }
           : resumeRow
       this.clearPaneState(resolvedPaneKey, { emitStatusRowMutation: false })
+      if (previous && !previous.providerSessionOnly) {
+        this.recordEndedAgentSession(resolvedPaneKey, previous)
+      }
       if (retained) {
         admitLegacyAgentStatus(
           this.state,
