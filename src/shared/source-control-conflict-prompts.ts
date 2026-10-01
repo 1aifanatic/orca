@@ -165,6 +165,9 @@ export function buildResolvePullRequestConflictsPrompt({
       ? `- Fetch branch ${JSON.stringify(baseRef)} from that remote, usually with git fetch <remote> ${simpleBaseRef}.`
       : `- Fetch branch ${JSON.stringify(baseRef)} from that remote, quoting the ref exactly for the current shell.`
 
+  // Why: read ahead/behind before the --no-ff merge adds a commit, from a refreshed tracking ref; an upstream that is the base itself (e.g. a branch made from origin/main) says nothing about the head.
+  const upstreamRule = `- Before fetching the base (that fetch sets FETCH_HEAD), if the current branch has an upstream (git rev-parse --abbrev-ref @{upstream})${baseRef ? ` whose branch name is not ${JSON.stringify(baseRef)}` : ''}, fetch that branch from its remote and note from git status -sb whether it is ahead or behind. Do not stop or pull because of it.`
+
   return [
     `Resolve the merge conflicts reported for this ${reviewName} by bringing its base branch into this worktree and completing the merge.`,
     '',
@@ -180,12 +183,11 @@ export function buildResolvePullRequestConflictsPrompt({
     '- Start with git status. If it already shows a merge in progress or unmerged paths, continue from that live conflict state.',
     `- If git status is clean or only shows ordinary non-conflict changes, do not treat the handoff as stale. ${reviewKind} hosts can report conflicts before this worktree has a local MERGE_HEAD.`,
     '- Before starting the merge, make sure unrelated staged or unstaged changes are not at risk; stop and report if they would be overwritten.',
-    // Why: read ahead/behind before the --no-ff merge adds a commit; a stale tracking ref hides commits pushed elsewhere.
-    `- Before fetching the base (that fetch sets FETCH_HEAD), if the current branch has an upstream (git rev-parse --abbrev-ref @{upstream}), fetch that branch from its remote and run git status -sb. If it is behind, even if also ahead, stop without merging and tell the user to bring in the ${reviewName}'s latest commits first. Otherwise note whether it is ahead.`,
+    upstreamRule,
     remoteRule,
     fetchRule,
     '- Merge the fetched base tip into the current branch, usually with git merge --no-ff --no-edit FETCH_HEAD.',
-    `- If the merge completes with no conflicts or is already up to date: if the branch was ahead of its upstream before merging, say its unpushed commits appear to already resolve the conflicts and pushing will update the ${reviewName}; otherwise say merging the ${reviewName}'s actual base is clean, so the host's conflict report may be stale. Do not push in any case.`,
+    `- If the merge completes with no conflicts or is already up to date: if the branch was behind that upstream, say the ${reviewName} head has commits this worktree lacks, which must be pulled before pushing; else if it was ahead, say its unpushed commits appear to already resolve the conflicts and pushing will update the ${reviewName}; otherwise say merging the ${reviewName}'s actual base is clean, so the host's conflict report may be stale. Do not push in any case.`,
     '- Resolve the conflict by inspecting both sides and nearby code; do not choose ours/theirs wholesale unless clearly correct. Preserve existing manual resolution work unless it is clearly wrong.',
     '- Protect unrelated staged and unstaged changes. Do not run broad cleanup commands like git reset --hard, git checkout ., git restore ., git stash, or abort commands.',
     '- Edit the conflicted files only unless correctness requires another file. Keep changes minimal.',
@@ -195,6 +197,6 @@ export function buildResolvePullRequestConflictsPrompt({
     '- Run git diff --check before finishing. Run obvious focused tests or typechecks when reasonably scoped.',
     '- Do not push or create unrelated/manual commits. Only let the merge operation create its normal commit.',
     '',
-    'Reply with decisions by file, validation run, the final git status, and anything left unsafe.'
+    `Reply with decisions by file, validation run, the final git status, and anything left unsafe; if the branch was behind that upstream, add that the ${reviewName} head has commits to pull before pushing.`
   ].join('\n')
 }
