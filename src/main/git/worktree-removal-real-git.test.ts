@@ -1,7 +1,7 @@
 // Real-binary coverage for worktree removal: the mocked-runner suite cannot prove what Git deletes,
 // deregisters and refuses, or that deleting a checkout leaves Node's file pool free.
 import { execFile } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -305,6 +305,67 @@ describe.each([
     expect(await git(['rev-parse', 'refs/heads/main'], projectPath)).toBe(`${head}\n`)
   })
 })
+
+// Why: Git forbids checking out a branch a worktree has, so a user looks at it with a detached HEAD;
+// that is no branch, and the commits Git just refused to drop must not be deleted.
+it('keeps a branch with unpushed commits while the main checkout is detached at it', async () => {
+  const originPath = join(scratchDir, 'origin.git')
+  await git(['init', '-q', '--bare', originPath], scratchDir)
+  await git(['remote', 'add', 'origin', originPath], repoPath)
+  await git(['push', '-q', '--set-upstream', 'origin', 'feature'], worktreePath)
+  await writeFile(join(worktreePath, 'unpushed.txt'), 'unpushed\n')
+  await git(['add', 'unpushed.txt'], worktreePath)
+  await git(['commit', '-qm', 'unpushed'], worktreePath)
+  const head = (await git(['rev-parse', 'HEAD'], worktreePath)).trim()
+  await git(['checkout', '-q', '--detach', 'feature'], repoPath)
+
+  await expect(removeWorktree(repoPath, worktreePath, false)).resolves.toEqual({
+    preservedBranch: { branchName: 'feature', head }
+  })
+  expect(await git(['rev-parse', 'refs/heads/feature'], repoPath)).toBe(`${head}\n`)
+})
+
+function isCaseInsensitiveFilesystem(): boolean {
+  const probeDir = mkdtempSync(join(tmpdir(), 'orca-case-probe-'))
+  try {
+    writeFileSync(join(probeDir, 'probe'), '')
+    return existsSync(join(probeDir, 'PROBE'))
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true })
+  }
+}
+
+// Why: on macOS and Windows `refs/heads/feat` opens the ref file of `Feat`, so a HEAD spelled in
+// another case names the branch itself. On a case-sensitive filesystem that HEAD names nothing.
+it.runIf(isCaseInsensitiveFilesystem())(
+  'keeps the branch a bare repo HEAD names in another case',
+  async () => {
+    const originPath = join(scratchDir, 'origin.git')
+    await git(['init', '-q', '--bare', originPath], scratchDir)
+    await git(['push', '-q', originPath, 'HEAD:refs/heads/main'], repoPath)
+    const projectPath = join(scratchDir, 'project.git')
+    await git(['clone', '-q', '--bare', originPath, projectPath], scratchDir)
+    await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], projectPath)
+    await git(['branch', 'Feat', 'main'], projectPath)
+    await git(['push', '-q', 'origin', 'Feat'], projectPath)
+    await git(['fetch', '-q', 'origin'], projectPath)
+    await git(['branch', '-q', '-u', 'origin/Feat', 'Feat'], projectPath)
+    await git(['symbolic-ref', 'HEAD', 'refs/heads/feat'], projectPath)
+    const checkout = join(scratchDir, 'feat-checkout')
+    await git(['worktree', 'add', '-q', checkout, 'Feat'], projectPath)
+    await git(['config', 'user.email', 'removal@example.invalid'], checkout)
+    await git(['config', 'user.name', 'Worktree Removal'], checkout)
+    await writeFile(join(checkout, 'unpushed.txt'), 'unpushed\n')
+    await git(['add', 'unpushed.txt'], checkout)
+    await git(['commit', '-qm', 'unpushed'], checkout)
+    const head = (await git(['rev-parse', 'HEAD'], checkout)).trim()
+
+    await expect(removeWorktree(projectPath, checkout, false)).resolves.toEqual({
+      preservedBranch: { branchName: 'Feat', head }
+    })
+    expect(await git(['rev-parse', 'refs/heads/Feat'], projectPath)).toBe(`${head}\n`)
+  }
+)
 
 const POOL_FIXTURE_FILES = 3_000
 const POOL_SENTINEL_EVERY = 100

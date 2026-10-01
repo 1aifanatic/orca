@@ -13,25 +13,21 @@ async function readTrimmedStdout(runGit: GitBranchBaseRunner, argv: string[]): P
 /**
  * The full ref name a candidate resolves to, following symbolic refs, so one that is the branch
  * itself is recognised: a bare repo's HEAD names a branch without checking it out, so nothing else
- * refuses it, and a branch always holds its own head. A commit id or a missing ref gives ''
- * (a bare commit id keeps nothing reachable once the branch is gone).
+ * refuses it, and a branch always holds its own head. A commit id, a missing ref or a detached HEAD
+ * gives '': none is a branch that keeps the commits once this one is gone.
  */
 async function resolveBaseRef(runGit: GitBranchBaseRunner, candidate: string): Promise<string> {
   if (!candidate || candidate.startsWith('-')) {
     return ''
   }
   const fullName = await readTrimmedStdout(runGit, ['rev-parse', '--symbolic-full-name', candidate])
-  if (fullName !== 'HEAD') {
-    return fullName
-  }
-  // Detached HEAD: pin the commit it names now, so a later switch to the branch cannot make it self.
-  return readTrimmedStdout(runGit, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])
+  return fullName === 'HEAD' ? '' : fullName
 }
 
 /**
  * Refs whose history a removed workspace's branch was cut from: its saved creation base, the
- * remote's default branch, and the main checkout's HEAD, each resolved to what it names and never
- * the branch itself. Local reads only; nothing is fetched.
+ * remote's default branch, and the branch the main checkout's HEAD names, each resolved to what it
+ * names and never the branch itself. Local reads only; nothing is fetched.
  */
 export async function readBranchBaseRefs(
   runGit: GitBranchBaseRunner,
@@ -47,10 +43,14 @@ export async function readBranchBaseRefs(
   for (const candidate of [savedBase, 'refs/remotes/origin/HEAD', 'HEAD']) {
     candidates.push(await resolveBaseRef(runGit, candidate))
   }
-  const ownRef = `refs/heads/${branchName}`
+  // Why case-insensitive: on macOS and Windows `refs/heads/feat` opens the ref file of `Feat`.
+  const ownRef = `refs/heads/${branchName}`.toLowerCase()
   return candidates.filter(
     (ref, index) =>
-      ref && !ref.startsWith('-') && ref !== ownRef && candidates.indexOf(ref) === index
+      ref &&
+      !ref.startsWith('-') &&
+      ref.toLowerCase() !== ownRef &&
+      candidates.indexOf(ref) === index
   )
 }
 

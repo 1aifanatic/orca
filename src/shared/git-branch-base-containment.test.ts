@@ -51,13 +51,10 @@ describe('readBranchBaseRefs', () => {
     await expect(readBranchBaseRefs(commit, 'feature')).resolves.toEqual([])
   })
 
-  it('pins a detached HEAD to the commit it names', async () => {
-    const runGit = runner({
-      [`${SYMBOLIC} HEAD`]: 'HEAD\n',
-      'rev-parse --verify --quiet HEAD^{commit}': `${HEAD}\n`
-    })
+  it('does not count a detached HEAD as a base', async () => {
+    const runGit = runner({ [`${SYMBOLIC} HEAD`]: 'HEAD\n' })
 
-    await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([HEAD])
+    await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([])
   })
 
   it('never compares a branch against itself, directly or through a symbolic ref', async () => {
@@ -69,6 +66,13 @@ describe('readBranchBaseRefs', () => {
     })
 
     await expect(readBranchBaseRefs(runGit, 'feature')).resolves.toEqual([])
+  })
+
+  it('never counts a ref that names the branch in another case', async () => {
+    // On macOS and Windows a bare repo's HEAD of refs/heads/feat opens the ref file of Feat.
+    const runGit = runner({ [`${SYMBOLIC} HEAD`]: 'refs/heads/feat\n' })
+
+    await expect(readBranchBaseRefs(runGit, 'Feat')).resolves.toEqual([])
   })
 })
 
