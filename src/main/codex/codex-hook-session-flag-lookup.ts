@@ -84,32 +84,14 @@ export function readSessionFlagTrust(
   listings: readonly CodexHookListing[],
   hookCommand: string
 ): CodexHookSessionTrust | null {
-  const entries = CODEX_EVENTS.map((eventName) => {
-    const label = CODEX_EVENT_LABEL[eventName]
-    const matches = matchSessionFlagEvent(listings, hookCommand, label)
-    return matches.length === 1
-      ? ([label, { key: matches[0].key, trustedHash: matches[0].currentHash }] as const)
-      : null
-  })
-  return readTrustRecord(Object.fromEntries(entries.filter((entry) => entry !== null)))
-}
-
-/** A complete per-event trust record from untrusted input, or null. */
-function readTrustRecord(value: unknown): CodexHookSessionTrust | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
   const record: Record<string, { key: string; trustedHash: string }> = {}
   for (const eventName of CODEX_EVENTS) {
     const label = CODEX_EVENT_LABEL[eventName]
-    const entry: unknown = Reflect.get(value, label)
-    const key: unknown = entry && typeof entry === 'object' ? Reflect.get(entry, 'key') : null
-    const trustedHash: unknown =
-      entry && typeof entry === 'object' ? Reflect.get(entry, 'trustedHash') : null
-    if (typeof key !== 'string' || typeof trustedHash !== 'string') {
+    const matches = matchSessionFlagEvent(listings, hookCommand, label)
+    if (matches.length !== 1) {
       return null
     }
-    record[label] = { key, trustedHash }
+    record[label] = { key: matches[0].key, trustedHash: matches[0].currentHash }
   }
   return record
 }

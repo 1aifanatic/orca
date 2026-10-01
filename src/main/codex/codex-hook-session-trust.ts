@@ -112,7 +112,7 @@ function isTransient(error: unknown): boolean {
   return (
     error instanceof Error &&
     (error.name === 'CodexAppServerTimeoutError' ||
-      typeof Reflect.get(error, 'syscall') === 'string')
+      ('syscall' in error && typeof error.syscall === 'string'))
   )
 }
 
