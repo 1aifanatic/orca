@@ -229,6 +229,31 @@ describe('a Stop pressed before its send opened a turn binds only that turn', ()
   })
 })
 
+describe('a host stop with no turn running after a Stop that named none', () => {
+  it('writes nothing while every unanswered send is one the Stop stopped', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(journal().stopMarks.latest()?.event).not.toHaveProperty('turnId')
+
+    expect(await evictedAt()).toEqual(['user-stop'])
+  })
+
+  it("writes the host's event when a send after the Stop is unanswered too", async () => {
+    rig = await createQueuedMessageTestRig()
+    const stopped = await rig.workingSend()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(stopped, 'stopped')
+    const mail = rig.send('mail for the lead', undefined, { internal: true })
+    await mail.result
+    await eventually(async () =>
+      expect((await rig.submission(mail.id))?.handedOverAt).toBeDefined()
+    )
+
+    expect(await evictedAt()).toEqual(['user-stop', 'evict'])
+  })
+})
+
 describe('a rewind that restates a turnless Stop', () => {
   // The rewind writes the Stop still in force after the turns it keeps, at a new position; the
   // mail after the rewind is still its own.
