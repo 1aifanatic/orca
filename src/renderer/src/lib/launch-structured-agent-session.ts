@@ -144,7 +144,9 @@ function buildStructuredAgentSessionLaunchIntent(
       ...(resumeFrom ? { resumeFrom } : {}),
       randomUuid: createBrowserUuid
     }),
-    ...launchSeedOptions(state, agent)
+    // A paired server starts the chat with its own saved selection, which this machine cannot read;
+    // the picker waits for the model the server reports instead of showing this machine's.
+    ...(owner.target.kind === 'local' ? launchSeedOptions(state, agent) : {})
   }
 }
 

@@ -30,6 +30,7 @@ import type { StructuredAgentSessionMutate } from './use-structured-agent-sessio
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 
 const LOCAL_TARGET = { kind: 'local' } as const
+const PAIRED_TARGET = { kind: 'environment', environmentId: 'server-1' } as const
 
 class FakeRpcCallError extends Error {
   constructor(readonly code: string) {
@@ -76,6 +77,7 @@ type RenderProps = {
   worktree?: string
   agent?: 'claude' | 'codex'
   providerStarting?: boolean
+  paired?: boolean
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
@@ -92,7 +94,7 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
       useStructuredAgentSessionOptions({
         agent: props.agent ?? 'codex',
         sessionId: 'session-1',
-        target: LOCAL_TARGET,
+        target: props.paired ? PAIRED_TARGET : LOCAL_TARGET,
         transportEnabled: props.transportEnabled,
         isVisible: !props.hidden,
         providerVisible: props.transportEnabled && !props.hidden,
@@ -509,6 +511,45 @@ describe('useStructuredAgentSessionOptions', () => {
       rerender({ ...starting, providerStarting: false })
       // Re-read once started: only then has the host read what the provider will run.
       await waitFor(() => expect(optionReads()).toBe(2))
+      unmount()
+    })
+  })
+
+  // A paired server's new chat runs the server's saved selection, which this machine cannot read.
+  describe("a paired server's new chat", () => {
+    it('names no model and takes no pick until the server reports the one it started', async () => {
+      answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+      mocks.hold.mockResolvedValue({ kind: 'accepted', options: { model: 'gpt-hosted' } })
+      const { result, unmount } = renderOptions(
+        { ...PROVISIONAL, paired: true },
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() => expect(modelChoiceCount(result.current.optionSnapshot)).toBe(1))
+
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
+      expect(result.current.optionSnapshot.map(({ id, settable }) => [id, settable])).toEqual([
+        ['model', false]
+      ])
+      await act(async () => {
+        await result.current.setStructuredOption('model', 'gpt-hosted')
+      })
+      expect(mocks.hold).not.toHaveBeenCalled()
+      expect(mocks.enqueue).not.toHaveBeenCalled()
+      unmount()
+    })
+
+    it('takes picks again once the server reports its model', async () => {
+      answer({ options: () => Promise.resolve(LIVE_OPTIONS) })
+      const { calls, mutate } = mutateWith(async () => ({ options: { model: 'gpt-5.6-luna' } }))
+      const { result, unmount } = renderOptions({ ...ATTACHED, paired: true }, mutate)
+      await waitFor(() =>
+        expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
+      )
+
+      await act(async () => {
+        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
+      })
+      expect(setOptionCalls(calls)).toHaveLength(1)
       unmount()
     })
   })

@@ -179,6 +179,25 @@ describe('structured agent session launch', () => {
     })
   })
 
+  // The picker's stand-in must be what the chat runs: only this machine's own chats run its picks.
+  it("seeds only a local chat with this machine's saved selection", () => {
+    const settings = useAppStore.getState().settings
+    useAppStore.setState({
+      settings: { ...settings!, nativeChatSessionOptions: { codex: { model: 'gpt-5.5' } } }
+    })
+    try {
+      expect(
+        createStructuredAgentSessionLaunchIntent('workspace-1', 'codex', 'local').seedOptions
+      ).toEqual({ model: 'gpt-5.5' })
+      expect(
+        createStructuredAgentSessionLaunchIntent('workspace-1', 'codex', 'runtime:server-1')
+          .seedOptions
+      ).toBeUndefined()
+    } finally {
+      useAppStore.setState({ settings })
+    }
+  })
+
   it('names Claude as the create provider and in the session id', () => {
     const intent = createStructuredAgentSessionLaunchIntent('workspace-1', 'claude')
     expect(intent.sessionId).toMatch(/^claude_[A-Za-z0-9_]{36}$/)
