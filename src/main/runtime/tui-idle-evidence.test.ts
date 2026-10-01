@@ -34,6 +34,7 @@ function input(overrides: Partial<TuiIdleEvaluationInput> = {}): TuiIdleEvaluati
     readQuietReadyBodyEvidence: () => true,
     readScreenDecidesReadiness: () => false,
     readScreenInputVeto: () => null,
+    titleObservedAtEpochMs: null,
     agent: 'muse',
     firstPartyStatus: null,
     quiescenceMs: QUIESCENCE_MS,
@@ -273,6 +274,7 @@ describe('a DSH pane settles tui-idle on its own hook', () => {
     readQuietReadyBodyEvidence: () => false,
     readScreenDecidesReadiness: () => false,
     readScreenInputVeto: () => null,
+    titleObservedAtEpochMs: null,
     readTailBlockedReason: () => null,
     agent: 'dsh' as const,
     firstPartyStatus: { state: 'done' as const, updatedAt: Date.now() },
@@ -325,8 +327,16 @@ describe('evaluateTuiIdle screen input veto', () => {
     }
   })
 
-  it("accepts OMP's own idle title only once quiet on a screen read clear of the wizard", () => {
-    const idle = { record: record({ lastOscTitle: 'π > repo', lastAgentStatus: 'idle' }) }
+  it("accepts OMP's own idle title once it has stood on a screen read clear of the wizard", () => {
+    const idle = {
+      record: record({
+        lastOscTitle: 'π > repo',
+        lastAgentStatus: 'idle',
+        lastOutputAt: Date.now()
+      }),
+      titleObservedAtEpochMs: Date.now() - QUIESCENCE_MS
+    }
+    // Output still flowing (OMP's bracketed-paste keepalive) does not hold the title back.
     expect(evaluateTuiIdle(omp({ ...idle, readScreenInputVeto: () => false }))).toEqual({
       kind: 'ready-strong'
     })
@@ -334,13 +344,10 @@ describe('evaluateTuiIdle screen input veto', () => {
       { readScreenInputVeto: () => null },
       { readScreenInputVeto: () => true },
       {
-        record: record({
-          lastOscTitle: 'π > repo',
-          lastAgentStatus: 'idle',
-          lastOutputAt: Date.now()
-        }),
+        titleObservedAtEpochMs: Date.now() - QUIESCENCE_MS + 1_000,
         readScreenInputVeto: () => false
-      }
+      },
+      { titleObservedAtEpochMs: null, readScreenInputVeto: () => false }
     ]) {
       expect(isTuiIdleReadyVerdict(evaluateTuiIdle(omp({ ...idle, ...unproven })))).toBe(false)
     }

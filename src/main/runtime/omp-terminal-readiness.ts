@@ -1,15 +1,14 @@
 import { getPiStateTitleStatus } from '../../shared/pi-state-title-marker'
 import type { RuledScreen } from './screen-ruled-agent-readiness'
 
-const SETUP_STEP_HEADING_RE = /setup step \d+ of \d+/i
-
 /**
- * OMP 18.4 runs its first-run setup wizard as a fullscreen overlay on the alternate screen, and
- * keys typed there drive the wizard (a provider picker), not the composer. Why the alternate
- * screen and not only the heading: the splash and outro scenes have no heading.
+ * OMP 18.4 runs its first-run setup wizard (splash, steps, outro) as a fullscreen overlay on the
+ * alternate screen, and keys typed there drive the wizard, not the composer. Every other OMP
+ * alternate-screen user is an overlay that owns input too. Why not the "Setup step N of M"
+ * heading: it only ever appears there, and on the normal screen it is an answer's own text.
  */
-export function isOmpSetupOverlayScreen(screen: RuledScreen): boolean {
-  return screen.alternateScreen || screen.lines.some((line) => SETUP_STEP_HEADING_RE.test(line))
+export function isOmpOverlayScreen(screen: RuledScreen): boolean {
+  return screen.alternateScreen
 }
 
 /** OMP's own idle state title (`π > cwd`), which it already paints before the setup wizard. */

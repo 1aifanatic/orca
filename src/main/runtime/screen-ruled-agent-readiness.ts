@@ -1,7 +1,7 @@
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { isClineComposerReadyScreen } from './cline-terminal-readiness'
-import { isOmpSetupOverlayScreen } from './omp-terminal-readiness'
+import { isOmpOverlayScreen } from './omp-terminal-readiness'
 import { isPrimeAgentComposerReadyScreen } from './prime-agent-terminal-readiness'
 
 type ScreenReadyRule = (screenLines: readonly string[]) => boolean
@@ -44,7 +44,7 @@ export function readScreenRuledVerdict(
  * title before its setup wizard opens, so a title, hook or quiet lane alone would type into it.
  */
 const SCREEN_INPUT_VETOES: Partial<Record<TuiAgent, (screen: RuledScreen) => boolean>> = {
-  omp: isOmpSetupOverlayScreen
+  omp: isOmpOverlayScreen
 }
 
 /** Whether the agent's live screen refuses input; null with no veto rule or no trustworthy screen. */

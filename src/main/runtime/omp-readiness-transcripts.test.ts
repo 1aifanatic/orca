@@ -30,6 +30,7 @@ async function waitsReady(
     repaint?: string
     size?: { cols: number; rows: number } | null
     busyFirst?: boolean
+    keepalive?: boolean
   },
   timeoutMs = 5_000
 ): Promise<boolean> {
@@ -48,11 +49,19 @@ async function waitsReady(
     `${options.repaint ?? ''}\x1b]0;${options.title}\x07`,
     Date.now()
   )
+  // OMP 18.4.5 re-asserts bracketed paste every second once a terminal answers its DECRQM probe,
+  // as xterm and main's query authority do; the capture tool answered nothing.
+  const keepalive = options.keepalive
+    ? setInterval(() => runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b[?2004h', Date.now()), 1_000)
+    : null
   const settled = runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs }).then(
     (result) => result.satisfied === true,
     () => false
   )
   await vi.advanceTimersByTimeAsync(timeoutMs)
+  if (keepalive) {
+    clearInterval(keepalive)
+  }
   return settled
 }
 
@@ -149,6 +158,30 @@ describe('OMP 18.4.5 captured readiness', () => {
     const result = runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
     const assertion = expect(result).rejects.toThrow('timeout')
     await Promise.all([assertion, vi.advanceTimersByTimeAsync(5_000)])
+  })
+
+  it.each([
+    ['omp-18-composer', true],
+    ['omp-18-setup', false]
+  ] as const)('%s under the bracketed-paste keepalive has readiness %s', async (name, ready) => {
+    expect(
+      await waitsReady(
+        { name, title: 'π > capture-cwd', launchAgent: 'omp', keepalive: true },
+        10_000
+      )
+    ).toBe(ready)
+  })
+
+  it('accepts a post-turn answer that mentions a setup step on the normal screen', async () => {
+    expect(
+      await waitsReady({
+        name: 'omp-18-composer',
+        title: 'π - capture-cwd',
+        launchAgent: 'omp',
+        repaint: '\x1b[12;1H\x1b[2K Setup step 2 of 4: install the dependencies',
+        busyFirst: true
+      })
+    ).toBe(true)
   })
 
   it.each(['π - capture-cwd', 'π: capture-cwd'])(

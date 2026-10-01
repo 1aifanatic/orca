@@ -199,6 +199,7 @@ describe('Codex composer ready screen, frame by frame', () => {
       agent: 'codex',
       readScreenDecidesReadiness: () => false,
       readScreenInputVeto: () => null,
+      titleObservedAtEpochMs: null,
       firstPartyStatus: null,
       quiescenceMs: QUIESCENCE_MS
     })
@@ -297,6 +298,7 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
           agent: 'codex',
           readScreenDecidesReadiness: () => false,
           readScreenInputVeto: () => null,
+          titleObservedAtEpochMs: null,
           firstPartyStatus: null,
           quiescenceMs: QUIESCENCE_MS
         })
@@ -355,6 +357,7 @@ describe('a busy 0.150-0.157 pane whose header stays in the tail', () => {
         agent: 'codex',
         readScreenDecidesReadiness: () => false,
         readScreenInputVeto: () => null,
+        titleObservedAtEpochMs: null,
         firstPartyStatus: null,
         quiescenceMs: QUIESCENCE_MS
       })
@@ -385,6 +388,7 @@ describe('reading the live screen never removes quiet-lane readiness', () => {
               agent,
               readScreenDecidesReadiness: () => false,
               readScreenInputVeto: () => null,
+              titleObservedAtEpochMs: null,
               firstPartyStatus: null,
               quiescenceMs: QUIESCENCE_MS
             } satisfies Omit<TuiIdleEvaluationInput, 'record' | 'readQuietReadyBodyEvidence'>

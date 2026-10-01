@@ -38,8 +38,8 @@ import {
  *      title, or a known ready-prompt body.
  *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, and the screen-ruled
  *      agents (Antigravity, Cline, Prime Agent) can paint their idle composer mid-turn, so their
- *      ready-screen body is believed only once quiet. OMP's own idle title likewise, because it
- *      paints that title before its setup wizard opens.
+ *      ready-screen body is believed only once quiet. OMP's own idle title is believed once it
+ *      has stood that long, because it paints that title before its setup wizard opens.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
  *      inferred.
@@ -206,6 +206,8 @@ export type TuiIdleEvaluationInput = {
   readScreenDecidesReadiness: () => boolean
   /** Whether an overlay on the agent's screen refuses input; null with no rule or no screen. */
   readScreenInputVeto: () => boolean | null
+  /** When the PTY's own current title was observed; null when it has none or no clock. */
+  titleObservedAtEpochMs: number | null
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   quiescenceMs: number
@@ -246,14 +248,13 @@ export function hasQuietReadyScreen(
   if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent) && !getScreenReadyRule(agent)) {
     return false
   }
+  // Why: same rule as the tier-3 lane — without an output clock there is no
+  // corroboration available, so hold out instead of settling.
+  if (record.lastOutputAt === null || Date.now() - record.lastOutputAt < quiescenceMs) {
+    return false
+  }
   // Why last: a streaming pane never pays for the screen projection.
-  return hasQuietOutputClock(record, quiescenceMs) && readBodyEvidence()
-}
-
-// Why: same rule as the tier-3 lane — without an output clock there is no
-// corroboration available, so hold out instead of settling.
-function hasQuietOutputClock(record: TuiIdleEvidenceRecord, quiescenceMs: number): boolean {
-  return record.lastOutputAt !== null && Date.now() - record.lastOutputAt >= quiescenceMs
+  return readBodyEvidence()
 }
 
 /** The one place the tiers are combined; every settle site branches only on the verdict. */
@@ -300,10 +301,13 @@ function rankTuiIdleEvidence(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? WORKING
       : { kind: 'pending', quietForeground: 'closed' }
   }
-  // OMP paints `π >` before its setup wizard, so it counts only once quiet on a screen read clear
-  // of the wizard. Unreadable, it cannot rule setup out, and no lane, the weak one included, may.
+  // OMP paints `π >` one render tick before its setup wizard opens, so the title counts only once
+  // it has stood a quiescence window on a screen read clear of the wizard. Why title age, not
+  // output quiet: OMP re-asserts bracketed paste every second once a terminal answers its probe.
+  // Unreadable, the screen cannot rule setup out, and no lane, the weak one included, may.
   if (input.agent === 'omp' && isOmpIdleStateTitle(input.record.lastOscTitle)) {
-    return hasQuietOutputClock(input.record, input.quiescenceMs) &&
+    return input.titleObservedAtEpochMs !== null &&
+      Date.now() - input.titleObservedAtEpochMs >= input.quiescenceMs &&
       input.readScreenInputVeto() === false
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
@@ -353,6 +357,8 @@ export type TuiIdleEvidenceSource = {
   /** The painted grid on the PTY's own size, which only screen-ruled agents read. Absent, they
    *  have no trustworthy screen. */
   readRuledScreen?(ptyId: string | null | undefined): RuledScreen | null
+  /** When the PTY last observed a title of its own. Absent, no title has an age. */
+  getTitleObservedAtEpochMs?(ptyId: string | null | undefined): number | null
 }
 
 // Why per agent table: every other agent keeps the screen it read before screen rules existed.
@@ -405,6 +411,7 @@ export function leafTuiIdleEvidence(
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
     readScreenInputVeto: screenInputVetoReader(source, agent, leaf.ptyId),
+    titleObservedAtEpochMs: source.getTitleObservedAtEpochMs?.(leaf.ptyId) ?? null,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
     quiescenceMs: source.quiescenceMs
@@ -428,6 +435,7 @@ export function ptyTuiIdleEvidence(
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
     readScreenInputVeto: screenInputVetoReader(source, agent, pty.ptyId),
+    titleObservedAtEpochMs: pty.lastOscTitleEpochMs,
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
     quiescenceMs: source.quiescenceMs
