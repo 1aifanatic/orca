@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   hasControlByte,
   planStartupWithPromptCandidate,
-  TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+  TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES,
+  ZSH_MULTI_LINE_STARTUP_LINE_BUDGET_BYTES
 } from './startup-line-prompt-carry'
 import type { TuiAgent } from './tui-agent'
 import {
@@ -10,14 +11,26 @@ import {
   RUNTIME_CAPABILITIES
 } from './protocol-version'
 
-function offer(agent: TuiAgent, prompt: string, extra: { cmdOverride?: string } = {}) {
+function offer(
+  agent: TuiAgent,
+  prompt: string,
+  extra: { cmdOverride?: string; shellName?: string | undefined } = {}
+) {
   return planStartupWithPromptCandidate(
     {
       agent,
       cmdOverrides: extra.cmdOverride ? { [agent]: extra.cmdOverride } : {},
       platform: 'darwin'
     },
-    prompt
+    prompt,
+    extra.shellName
+  )
+}
+
+/** `count` prompt lines of `bytes` each, as a multi-line source-control prompt is. */
+function linesOf(count: number, bytes: number): string {
+  return Array.from({ length: count }, (_unused, index) => `${index}:`.padEnd(bytes, 'x')).join(
+    '\n'
   )
 }
 
@@ -116,6 +129,49 @@ describe('whether a launch prompt rides the typed startup line', () => {
 
   it('reports nothing carried for an empty prompt', () => {
     expect(offer('claude', '   ').promptCarried).toBe(false)
+  })
+})
+
+// Pinned live by startup-line-typed-length.live-shell.test.ts; the refusals below were measured on
+// macOS through the same write: a 1.1 KB single line lost to zsh's late write, every multi-line line
+// lost to bash 3.2, and to fish whenever its config outlasted the ready barrier.
+describe('a multi-line prompt typed into a shell the host names', () => {
+  it('rides a zsh line as main typed it when each line is short, so the agent starts with it', () => {
+    const prompt = linesOf(21, 100)
+    const { plan, promptCarried } = offer('claude', prompt, { shellName: 'zsh' })
+    expect(promptCarried).toBe(true)
+    expect(plan?.launchCommand).toContain(prompt)
+  })
+
+  it('keeps a zsh line off the launch command when any one line exceeds the per-line budget', () => {
+    const prompt = `${linesOf(3, 100)}\n${'y'.repeat(TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES + 1)}`
+    expect(offer('claude', prompt, { shellName: 'zsh' }).promptCarried).toBe(false)
+  })
+
+  it('keeps a zsh line off the launch command past the whole-line budget', () => {
+    const prompt = linesOf(Math.ceil(ZSH_MULTI_LINE_STARTUP_LINE_BUDGET_BYTES / 400) + 1, 400)
+    expect(offer('claude', prompt, { shellName: 'zsh' }).promptCarried).toBe(false)
+  })
+
+  it('keeps a long single line off a zsh launch command, which a late write truncates', () => {
+    const prompt = promptForClaudeLineOf(TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES + 1)
+    expect(offer('claude', prompt, { shellName: 'zsh' }).promptCarried).toBe(false)
+  })
+
+  it.each([['bash'], ['fish'], ['pwsh'], [undefined]])(
+    'never types a multi-line line into %s',
+    (shellName) => {
+      const { plan, promptCarried } = offer('claude', linesOf(3, 50), { shellName })
+      expect(promptCarried).toBe(false)
+      expect(plan?.launchCommand).not.toContain('0:')
+    }
+  )
+
+  it.each([
+    ['TAB', 'see\tthis\nnext line'],
+    ['CR', 'first\r\nsecond']
+  ])('never types a %s-bearing multi-line prompt into zsh', (_label, prompt) => {
+    expect(offer('claude', prompt, { shellName: 'zsh' }).promptCarried).toBe(false)
   })
 })
 

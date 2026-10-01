@@ -109,10 +109,10 @@ describe('buildWorktreeStartupForAgent host resolution', () => {
 })
 
 describe('buildWorktreeStartupForAgent prompt carry', () => {
-  const build = (onPromptCarry?: (carried: boolean) => void) =>
+  const build = (onPromptCarry?: (carried: boolean) => void, terminalDefaultShell = '/bin/bash') =>
     buildWorktreeStartupForAgent({
       repo: makeRepo({}),
-      settings,
+      settings: Object.assign({}, settings, { terminalDefaultShell }),
       agent: 'claude',
       prompt: 'summarize the diff\nthen list the risks',
       getLaunchPlatform: () => 'linux',
@@ -127,6 +127,14 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
     expect(result.startup.command).not.toContain('summarize')
     expect(result.followup).toBeUndefined()
     expect(onPromptCarry).toHaveBeenCalledWith(false)
+  })
+
+  it('carries a short-lined multi-line prompt on a local zsh line, as main typed it', () => {
+    const onPromptCarry = vi.fn()
+    const result = build(onPromptCarry, '/bin/zsh')
+
+    expect(result.startup.command).toContain('summarize the diff\nthen list the risks')
+    expect(onPromptCarry).toHaveBeenCalledWith(true)
   })
 
   it('keeps folding the prompt for a caller that delivers nothing afterwards', () => {
