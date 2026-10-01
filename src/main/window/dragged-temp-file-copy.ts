@@ -1,5 +1,5 @@
-import { constants, createWriteStream, type Stats } from 'node:fs'
-import { lstat, mkdtemp, open, realpath, rm, writeFile } from 'node:fs/promises'
+import { constants, createWriteStream, type Dir, type Stats } from 'node:fs'
+import { lstat, mkdtemp, open, opendir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { ImportSkipReason } from '../../shared/filesystem-import-result-types'
@@ -25,15 +25,15 @@ const DRAG_PROVIDER_DIR_PREFIX = 'NSIRD_'
 const COPY_ROOT_NAME = 'orca-drops'
 const COPY_DIR_PREFIX = 'orca-drop-'
 const COPY_DIR_PATTERN = /^orca-drop-[A-Za-z0-9]{6}$/
-// Why: drafts and startup prompts read the copy lazily, so keep it well past the
-// drop; the TTL bounds a large copy that stays in use, which macOS's idle purge skips.
-export const DRAG_TEMP_COPY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+// Why: drafts and startup prompts read the copy lazily, so keep it past the drop,
+// but not long: unlike the original, any same-user process can read the copy.
+export const DRAG_TEMP_COPY_TTL_MS = 24 * 60 * 60 * 1000
 const SWEEP_FIRST_DELAY_MS = 30 * 1000
-const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000
 
 export type DragTempCopyEnvironment = {
   platform: NodeJS.Platform
-  /** `os.tmpdir()`: where macOS drag providers put their files. */
+  /** macOS per-user temp dir: where drag providers put their files. */
   sourceTempRoot: string
   /** Orca-owned directory that holds one `orca-drop-*` directory per copy. */
   copyRoot: string
@@ -55,7 +55,7 @@ export function mayNeedDragTempCopy(path: string, platform: NodeJS.Platform): bo
 
 /**
  * Copy every drag-temp path in a drop into Orca-owned storage, sequentially,
- * under one shared byte budget. Other paths pass through unchanged.
+ * under the byte budget storage has left. Other paths pass through unchanged.
  */
 export async function materializeDragTempPaths(
   paths: readonly string[],
@@ -64,7 +64,11 @@ export async function materializeDragTempPaths(
 ): Promise<DragTempCopyItemResult[]> {
   const results: DragTempCopyItemResult[] = []
   const completed = new Map<string, DragTempCopyItemResult>()
-  let remainingBytes = REMOTE_IMPORT_MAX_TOTAL_BYTES
+  // Why: the budget spans every retained copy, so repeated drops cannot fill the disk.
+  let remainingBytes =
+    env.platform === 'darwin'
+      ? REMOTE_IMPORT_MAX_TOTAL_BYTES - (await measureRetainedCopyBytes(env.copyRoot))
+      : 0
   for (const sourcePath of paths) {
     signal?.throwIfAborted()
     // Why: reuse one copy so composer de-duplication still sees equal paths.
@@ -128,16 +132,14 @@ export async function materializeDragTempPath(
         throw new DropCopyError('File changed while it was being copied')
       }
       const size = opened.size
-      if (size > REMOTE_IMPORT_MAX_FILE_BYTES) {
-        throw new DropCopyError(
-          `File is ${formatByteCeiling(size)}, over the ` +
-            `${formatByteCeiling(REMOTE_IMPORT_MAX_FILE_BYTES)} per-file limit for dropped files`
-        )
-      }
-      if (size > remainingBytes) {
-        throw new DropCopyError(
-          `Dropped files are over the ${formatByteCeiling(REMOTE_IMPORT_MAX_TOTAL_BYTES)} total limit`
-        )
+      if (size > REMOTE_IMPORT_MAX_FILE_BYTES || size > remainingBytes) {
+        // Why: too big to copy is not a reason to refuse the drop; hand over the
+        // original as before the copy existed. Readers that are children of main still open it.
+        console.warn('[drop] passing a drag-temp file through uncopied: over the copy budget', {
+          bytes: formatByteCeiling(size),
+          remaining: formatByteCeiling(Math.max(remainingBytes, 0))
+        })
+        return passThrough
       }
       signal?.throwIfAborted()
 
@@ -159,6 +161,8 @@ export async function materializeDragTempPath(
       if (written.size !== size || !isSameSnapshot(afterRead, opened)) {
         throw new DropCopyError('File changed while it was being copied')
       }
+      // Why: a caller that gave up mid-copy never hands this path out; don't retain it.
+      signal?.throwIfAborted()
       console.debug('[drop] copied a drag-temp file into Orca storage', { bytes: size })
       return { result: imported(sourcePath, destPath), copiedBytes: size }
     } finally {
@@ -196,9 +200,38 @@ export async function sweepExpiredDragTempCopies(
   })
 }
 
+/** Bytes held by `orca-drop-*` copies still on disk; unreadable entries count as zero. */
+async function measureRetainedCopyBytes(copyRoot: string): Promise<number> {
+  let total = 0
+  let rootDir: Dir
+  try {
+    rootDir = await opendir(copyRoot)
+  } catch {
+    return 0
+  }
+  try {
+    for await (const entry of rootDir) {
+      if (!entry.isDirectory() || !COPY_DIR_PATTERN.test(entry.name)) {
+        continue
+      }
+      const copyDir = join(copyRoot, entry.name)
+      const names = await readdir(copyDir).catch(() => [])
+      for (const name of names) {
+        total += await lstat(join(copyDir, name)).then(
+          (stats) => (stats.isFile() ? stats.size : 0),
+          () => 0
+        )
+      }
+    }
+  } catch {
+    // A partial count still bounds growth; the next drop measures again.
+  }
+  return total
+}
+
 let sweepScheduled = false
 
-/** Sweep shortly after startup, then daily, so a long-running app still expires copies. */
+/** Sweep shortly after startup, then hourly, so a long-running app still expires copies. */
 export function scheduleDragTempCopySweep(
   getCopyRoot: () => string,
   platform: NodeJS.Platform = process.platform
@@ -256,8 +289,11 @@ async function createCopyDirectory(copyRoot: string): Promise<string> {
       throw error
     }
     // Why: a storage fault must not read as a missing or unreadable dropped file.
+    console.warn('[drop] could not create drop storage', { code: errorCode(error) })
     throw new DropCopyError(
-      `Could not create Orca drop storage (${errorCode(error) ?? 'unknown error'})`
+      isOutOfSpace(errorCode(error))
+        ? OUT_OF_SPACE_MESSAGE
+        : 'Could not create Orca storage for dropped files'
     )
   }
 }
@@ -289,17 +325,19 @@ function classifyFailure(sourcePath: string, error: unknown): DragTempCopyItemRe
   return { sourcePath, status: 'failed', reason: describeFailure(error, code) }
 }
 
-/** Failure copy without the file path, so the renderer can show it as-is. */
+const OUT_OF_SPACE_MESSAGE = 'Not enough disk space to copy the dropped file'
+
+function isOutOfSpace(code: string | undefined): boolean {
+  return code === 'ENOSPC' || code === 'EDQUOT'
+}
+
+/** User-facing failure copy: no file path and no errno token; the code goes to the log. */
 function describeFailure(error: unknown, code: string | undefined): string {
   if (error instanceof DropCopyError) {
     return error.message
   }
-  if (code) {
-    // Why: Node's errno messages end with `, <syscall> '<path>'`.
-    const message = error instanceof Error ? error.message.split(', ')[0] : ''
-    return message.startsWith(code) ? message : code
-  }
-  return 'Could not copy the dropped file'
+  console.warn('[drop] could not copy a drag-temp file', { code })
+  return isOutOfSpace(code) ? OUT_OF_SPACE_MESSAGE : 'Could not copy the dropped file'
 }
 
 function errorCode(error: unknown): string | undefined {

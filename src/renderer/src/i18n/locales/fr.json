@@ -1033,6 +1033,7 @@
         "nativeDropPathsTooLarge": "La liste de chemins du dépôt est trop grande.",
         "ownerChanged": "Impossible de vérifier quel hôte possède cet espace de travail. Réessayez après sa reconnexion.",
         "nativeDropUnresolvedPathsDescription": "Enregistrez-les d'abord sur le disque, puis déposez les fichiers enregistrés.",
+        "nativeDropTempCopyFailed": "Orca n'a pas pu copier {{value0}} fichier(s) déposé(s).",
         "nativeDropUnresolvedPaths": "Orca n'a pas pu lire le chemin des fichiers supprimés."
       },
       "useIpcEvents": {

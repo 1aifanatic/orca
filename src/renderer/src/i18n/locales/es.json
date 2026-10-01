@@ -761,6 +761,7 @@
         "nativeDropTooManyPaths": "Has soltado demasiados archivos.",
         "nativeDropPathsTooLargeDescription": "Suelta menos archivos o usa una lista de rutas más corta.",
         "nativeDropPathsTooLarge": "La lista de rutas soltadas es demasiado grande.",
+        "nativeDropTempCopyFailed": "Orca no pudo copiar {{value0}} archivo(s) soltado(s).",
         "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects."
       },
       "useIpcEvents": {

@@ -934,6 +934,7 @@
         "nativeDropPathsTooLarge": "ドロップされたパス一覧が大きすぎます。",
         "ownerChanged": "このワークスペースを所有するホストを確認できませんでした。再接続してから、もう一度お試しください。",
         "nativeDropUnresolvedPathsDescription": "まずそれらをディスクに保存してから、保存したファイルをドロップします。",
+        "nativeDropTempCopyFailed": "ドロップされた {{value0}} 個のファイルを Orca でコピーできませんでした。",
         "nativeDropUnresolvedPaths": "Orca はドロップされたファイルのパスを読み取ることができませんでした。"
       },
       "useIpcEvents": {

@@ -1,6 +1,5 @@
 import { app, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { tmpdir } from 'node:os'
 import {
   isNativeFileDropPayload,
   type NativeFileDropPayload,
@@ -14,12 +13,18 @@ import {
   scheduleDragTempCopySweep,
   type DragTempCopyEnvironment
 } from './dragged-temp-file-copy'
+import { getDarwinUserTempDir } from './darwin-user-temp-dir'
+
+// Why: drops are forwarded in order, so a hung copy must not hold every later drop forever.
+const DRAG_TEMP_COPY_TIMEOUT_MS = 2 * 60 * 1000
+export const DRAG_TEMP_COPY_TIMEOUT_REASON = 'Copying the dropped file took too long'
 
 type NativeFileDropQueueDeps = {
   forward: (payload: NativeFileDropPayload) => void
   platform: NodeJS.Platform
-  getCopyEnvironment: () => DragTempCopyEnvironment
+  getCopyEnvironment: () => Promise<DragTempCopyEnvironment>
   watchRenderer: () => { signal: AbortSignal; dispose: () => void }
+  copyTimeoutMs?: number
 }
 
 export function registerFileDropRelay(mainWindow: BrowserWindow): void {
@@ -35,9 +40,9 @@ export function registerFileDropRelay(mainWindow: BrowserWindow): void {
       }
     },
     platform: process.platform,
-    getCopyEnvironment: () => ({
+    getCopyEnvironment: async () => ({
       platform: process.platform,
-      sourceTempRoot: tmpdir(),
+      sourceTempRoot: await getDarwinUserTempDir(),
       copyRoot: getDragTempCopyRoot(app.getPath('temp'))
     }),
     watchRenderer: () => abortWhenRendererGone(mainWebContents)
@@ -121,22 +126,46 @@ async function copyAndForward(
   deps: NativeFileDropQueueDeps
 ): Promise<void> {
   const lifetime = deps.watchRenderer()
+  const timeout = new AbortController()
+  const timer = setTimeout(
+    () => timeout.abort(new Error(DRAG_TEMP_COPY_TIMEOUT_REASON)),
+    deps.copyTimeoutMs ?? DRAG_TEMP_COPY_TIMEOUT_MS
+  )
+  const signal = AbortSignal.any([lifetime.signal, timeout.signal])
+  let prepared: NativeFileDropPayload[]
   try {
-    for (const prepared of await prepareNativeFileDrop(
-      payload,
-      deps.getCopyEnvironment(),
-      lifetime.signal
-    )) {
-      deps.forward(prepared)
-    }
+    // Why: race the signal too, since a hung fs call never reaches the copy's abort checks.
+    prepared = await rejectOnAbort(
+      deps.getCopyEnvironment().then((env) => prepareNativeFileDrop(payload, env, signal)),
+      signal
+    )
   } catch {
     // Why: an aborted drop has no renderer to report to; anything else must not vanish silently.
     if (!lifetime.signal.aborted && payload.target !== 'rejected') {
-      deps.forward(copyFailure(payload.paths.length))
+      const reason = timeout.signal.aborted ? DRAG_TEMP_COPY_TIMEOUT_REASON : undefined
+      deps.forward(copyFailure(payload.paths.length, reason))
     }
+    return
   } finally {
+    clearTimeout(timer)
     lifetime.dispose()
   }
+  // Why: outside the try, so a failed forward is not reported a second time as a failed copy.
+  for (const item of prepared) {
+    deps.forward(item)
+  }
+}
+
+function rejectOnAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason)
+    if (signal.aborted) {
+      onAbort()
+    } else {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
 }
 
 function copyFailure(pathCount: number, commonReason?: string): NativeFileDropRejectedPayload {

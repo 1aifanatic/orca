@@ -934,6 +934,7 @@
         "nativeDropPathsTooLarge": "拖放的路径列表过大。",
         "ownerChanged": "无法确认哪个主机拥有此工作区。请在它重新连接后重试。",
         "nativeDropUnresolvedPathsDescription": "首先将它们保存到磁盘，然后删除保存的文件。",
+        "nativeDropTempCopyFailed": "Orca 无法复制 {{value0}} 个拖放的文件。",
         "nativeDropUnresolvedPaths": "Orca 无法读取已删除文件的路径。"
       },
       "useIpcEvents": {
