@@ -20,13 +20,23 @@ export function getFishVendorConfSnippetPath(wrapperRoot: string): string {
   return `${getFishXdgDataDir(wrapperRoot)}/fish/vendor_conf.d/orca-shell-integration.fish`
 }
 
-/** Spawn env that makes fish load the snippet; empty when the dir cannot be listed. */
+// Why: -N/--no-config (also abbreviated or in a flag cluster) skips vendor_conf.d,
+// so the snippet could never undo the env. Over-matching only costs the codex hook.
+function fishArgsSkipConfig(fishArgs: readonly string[]): boolean {
+  return fishArgs.some(
+    (arg) => /^-[^-]*N/.test(arg) || (arg.length > 5 && '--no-config'.startsWith(arg))
+  )
+}
+
+/** Spawn env that makes fish load the snippet; empty when the snippet could not undo it. */
 export function getFishXdgDataDirsLaunchEnv(
   wrapperRoot: string,
-  inheritedXdgDataDirs: string | undefined
+  inheritedXdgDataDirs: string | undefined,
+  fishArgs: readonly string[] = []
 ): Record<string, string> {
   const dataDir = getFishXdgDataDir(wrapperRoot)
-  if (dataDir.includes(':')) {
+  // Why skip empty: the restore cannot tell '' from unset, and fish reads both as the default.
+  if (dataDir.includes(':') || inheritedXdgDataDirs === '' || fishArgsSkipConfig(fishArgs)) {
     return {}
   }
   const prefix = inheritedXdgDataDirs ? dataDir : `${dataDir}:${XDG_DATA_DIRS_DEFAULT}`

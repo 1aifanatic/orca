@@ -67,7 +67,10 @@ export function getShellLaunchConfig(
   shellPath: string,
   features: readonly ShellStartupFeature[],
   startupCommand?: string,
-  inheritedXdgDataDirs?: string
+  fishLaunch: {
+    inheritedXdgDataDirs?: string
+    shellArgs?: readonly string[]
+  } = {}
 ): ShellReadyLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
   const wrapperFeatures =
@@ -157,7 +160,11 @@ export function getShellLaunchConfig(
   if (shellName === 'fish' && wrapperTreeUsable()) {
     return {
       args: null,
-      env: getFishXdgDataDirsLaunchEnv(getShellReadyWrapperRoot(), inheritedXdgDataDirs),
+      env: getFishXdgDataDirsLaunchEnv(
+        getShellReadyWrapperRoot(),
+        fishLaunch.inheritedXdgDataDirs,
+        fishLaunch.shellArgs
+      ),
       supportsReadyMarker: false
     }
   }

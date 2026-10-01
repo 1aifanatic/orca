@@ -128,7 +128,11 @@ const UNWRAPPED: ShellLaunchConfig = {
 export function getShellLaunchConfig(
   shellPath: string,
   features: readonly ShellStartupFeature[],
-  options: { hasStartupCommand?: boolean; inheritedXdgDataDirs?: string } = {}
+  options: {
+    hasStartupCommand?: boolean
+    inheritedXdgDataDirs?: string
+    shellArgs?: readonly string[]
+  } = {}
 ): ShellLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
 
@@ -198,7 +202,11 @@ export function getShellLaunchConfig(
   if (shellName === 'fish' && ensureShellReadyWrappers()) {
     return {
       args: null,
-      env: getFishXdgDataDirsLaunchEnv(getShellReadyWrapperRoot(), options.inheritedXdgDataDirs),
+      env: getFishXdgDataDirsLaunchEnv(
+        getShellReadyWrapperRoot(),
+        options.inheritedXdgDataDirs,
+        options.shellArgs
+      ),
       supportsReadyMarker: false
     }
   }

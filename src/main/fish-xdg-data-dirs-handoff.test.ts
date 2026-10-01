@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getFishCodexShellLaunchPreflight } from '../shared/codex-shell-function'
-import { resolveFishBinary } from '../shared/fish-binary-requirement'
+import { fishRequirementViolation, resolveFishBinary } from '../shared/fish-binary-requirement'
 import {
   buildFishVendorConfWrapperFile,
   FISH_XDG_DATA_DIRS_PREFIX_ENV,
@@ -17,15 +17,32 @@ const ROOT = '/orca/shell-wrappers/abc'
 const DATA_DIR = `${ROOT}/fish-xdg-data`
 
 describe('getFishXdgDataDirsLaunchEnv', () => {
-  it('adds the XDG default after Orca when the variable is unset or empty', () => {
+  it('adds the XDG default after Orca when the variable is unset', () => {
     const expected = `${DATA_DIR}:/usr/local/share:/usr/share`
-    for (const inherited of [undefined, '']) {
-      expect(getFishXdgDataDirsLaunchEnv(ROOT, inherited)).toEqual({
-        XDG_DATA_DIRS: expected,
-        [FISH_XDG_DATA_DIRS_PREFIX_ENV]: expected
-      })
-    }
+    expect(getFishXdgDataDirsLaunchEnv(ROOT, undefined)).toEqual({
+      XDG_DATA_DIRS: expected,
+      [FISH_XDG_DATA_DIRS_PREFIX_ENV]: expected
+    })
   })
+
+  // Why: the restore would hand back unset, not the inherited empty value.
+  it('skips an empty XDG_DATA_DIRS', () => {
+    expect(getFishXdgDataDirsLaunchEnv(ROOT, '')).toEqual({})
+  })
+
+  it.each([['-N'], ['--no-config'], ['--no-c'], ['-lN'], ['-Ni']])(
+    'skips fish args that disable config: %s',
+    (arg) => {
+      expect(getFishXdgDataDirsLaunchEnv(ROOT, undefined, ['-l', arg])).toEqual({})
+    }
+  )
+
+  it.for([['-l'], ['-i'], ['--login'], ['--no-execute'], ['--no-'], ['-c', 'echo N']])(
+    'still hands off for fish args %j',
+    (args) => {
+      expect(getFishXdgDataDirsLaunchEnv(ROOT, undefined, args)).not.toEqual({})
+    }
+  )
 
   it('prepends to an existing value and records only its own entry', () => {
     expect(getFishXdgDataDirsLaunchEnv(ROOT, '/opt/a:/opt/b')).toEqual({
@@ -127,6 +144,11 @@ const STATE_PROBE = [
   'env | grep "^XDG_DATA_DIRS=\\|ORCA_FISH"; or echo child-clean',
   'functions -q __orca_fish_xdg_handoff; and echo handoff-left'
 ].join('\n')
+
+// Why always run: the shell contracts job sets ORCA_REQUIRE_FISH so a missing fish fails, not skips.
+it('finds fish when the environment requires it', () => {
+  expect(fishRequirementViolation(fishLookup)).toBeNull()
+})
 
 describe.skipIf(!fish.available)('fish vendor snippet in a real fish', () => {
   let sandbox: string
