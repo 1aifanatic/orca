@@ -137,7 +137,6 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
   it.each([
     ['refused', 'names no turn', refused],
     ['left unconfirmed', 'names no turn', unconfirmed],
-    ['refused', 'names the turn', refused],
     ['left unconfirmed', 'names the turn', unconfirmed]
   ])(
     'reads Working again once the agent %s a Stop that %s, while its turn runs on',

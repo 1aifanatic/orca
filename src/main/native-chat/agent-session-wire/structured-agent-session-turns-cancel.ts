@@ -100,20 +100,6 @@ async function reviseStopNoteUnconfirmed(
   )
 }
 
-/** Whether turn `turnId`, which a refused Stop named while it ran, still runs once the provider's
- *  rows land: a refusal of a turn that ended is not one of a turn that runs on. */
-async function namedTurnRunsOnOnceFlushed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'flushStreamedEvents'>,
-  turnId: string
-): Promise<boolean> {
-  try {
-    await ctx.flushStreamedEvents()
-  } catch {
-    // Unflushed, the journal still shows the turn the refusal left running.
-  }
-  return ctx.journal.activeTurnId() === turnId
-}
-
 export async function performCancel(
   ctx: AgentSessionTurnContext,
   input: {
@@ -187,20 +173,14 @@ export async function performCancel(
           })
     taken = outcome.cancelled
     cancelled = outcome.cancelled
-    // Refused while the turn it named runs on: the provider declined it, whatever the Stop was.
-    const refusedLiveTurn =
-      !cancelled &&
-      input.turnId !== undefined &&
-      input.turnId === liveTurnId &&
-      (await namedTurnRunsOnOnceFlushed(ctx, input.turnId))
     if (!cancelled && input.withdrewQueued && !(await isMainAgentWorkingOnceFlushed(ctx))) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.
       cancelled = true
       note = null
-    } else if (!cancelled && input.turnId !== undefined && !refusedLiveTurn) {
+    } else if (!cancelled && input.turnId !== undefined) {
       note = { kind: 'status', text: 'The provider had already finished this turn.' }
-    } else if (!cancelled && input.prompt && !refusedLiveTurn) {
+    } else if (!cancelled && input.prompt) {
       note = null
     } else if (!cancelled) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
