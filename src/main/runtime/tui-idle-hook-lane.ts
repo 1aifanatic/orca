@@ -42,6 +42,9 @@ export type TuiIdleHookTurnRead = {
   hookRows: readonly AgentStatusIpcPayload[]
   /** Rows received before this came from an earlier process in the pane. */
   receivedNotBefore?: number
+  /** When Orca last wrote input to the pane: a `done` from before it cannot speak for the turn
+   *  that input may have started, whose first hook can still be in flight. */
+  doneNotBefore?: number
   /** The existing permission arbiter, given the turn as the pane's explicit status. */
   resolveBlockedText(
     status: HookTurnState,
@@ -60,7 +63,10 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
     return null
   }
   const state = hookLeadTurnState(row)
-  return state === null ? null : { state, blockedReason: read.resolveBlockedText(state, row) }
+  if (state === null || (state === 'done' && row.receivedAt < (read.doneNotBefore ?? -1))) {
+    return null
+  }
+  return { state, blockedReason: read.resolveBlockedText(state, row) }
 }
 
 /** The tui-idle verdicts the hook lane can reach (a subset of `TuiIdleVerdict`). */

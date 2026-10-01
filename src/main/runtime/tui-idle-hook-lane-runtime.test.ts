@@ -47,7 +47,7 @@ async function waitOutcome(options: {
   launchAgent?: TuiAgent
   paneTitle?: string
   data?: string
-  afterCreate?: (runtime: OrcaRuntimeService) => void
+  afterCreate?: (runtime: OrcaRuntimeService, handle: string) => unknown
 }): Promise<string> {
   let handle = ''
   const pane = await createTranscriptPane(
@@ -60,7 +60,7 @@ async function waitOutcome(options: {
     { getAgentStatusSnapshot: () => options.rows(handle) }
   )
   handle = pane.handle
-  options.afterCreate?.(pane.runtime)
+  await options.afterCreate?.(pane.runtime, pane.handle)
   try {
     const result = await pane.runtime.waitForTerminal(pane.handle, {
       condition: 'tui-idle',
@@ -118,6 +118,20 @@ describe('tui-idle hook lane through the runtime', () => {
             value: 0,
             generation: 'reset'
           })
+      })
+    ).toBe('timeout')
+  })
+
+  it("does not settle on the previous turn's done once a new prompt is written", async () => {
+    const before = Date.now() - 1000
+    const rows = (): AgentStatusIpcPayload[] => [
+      row({ receivedAt: before, stateStartedAt: before })
+    ]
+    expect(
+      await waitOutcome({
+        rows,
+        afterCreate: (runtime, handle) =>
+          runtime.sendTerminal(handle, { text: 'next task', enter: true }, { inputKind: 'driving' })
       })
     ).toBe('timeout')
   })

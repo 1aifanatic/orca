@@ -137,7 +137,7 @@ export class OrcaRuntimeWithDeliverPendingMessages extends OrcaRuntimeWithResolv
     let settlesInEnterCallback = false
     try {
       const payload = formatMessagePointer(unread.length, mailboxHandle)
-      const wrote = this.ptyController?.write(deliveryPtyId, payload, 'driving') ?? false
+      const wrote = this.writeDrivingPtyInput(deliveryPtyId, payload, 'driving')
       if (!wrote) {
         return
       }
@@ -171,7 +171,7 @@ export class OrcaRuntimeWithDeliverPendingMessages extends OrcaRuntimeWithResolv
           if (!currentLeaf || currentLeaf.ptyId !== deliveryPtyId || !currentLeaf.writable) {
             return
           }
-          this.ptyController?.write(deliveryPtyId, '\r', 'driving')
+          this.writeDrivingPtyInput(deliveryPtyId, '\r', 'driving')
         } catch {
           // Terminal may have closed during the delay; mail remains queued for check.
         } finally {

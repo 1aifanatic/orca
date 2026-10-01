@@ -138,6 +138,28 @@ describe('readTuiIdleHookTurn', () => {
     ).toEqual(DONE)
   })
 
+  it('reads no done from before the latest input, whose turn may not have reported yet', () => {
+    const receivedAt = Date.now() - 1000
+    expect(
+      readTuiIdleHookTurn({
+        ...base,
+        hookRows: [row({ receivedAt })],
+        doneNotBefore: receivedAt + 1
+      })
+    ).toBeNull()
+    expect(
+      readTuiIdleHookTurn({ ...base, hookRows: [row({ receivedAt })], doneNotBefore: receivedAt })
+    ).toEqual(DONE)
+    // A working row keeps the pane busy whatever its age against the input.
+    expect(
+      readTuiIdleHookTurn({
+        ...base,
+        hookRows: [row({ receivedAt, state: 'working' })],
+        doneNotBefore: receivedAt + 1
+      })
+    ).toEqual(WORKING)
+  })
+
   it('takes the newest joined row', () => {
     const now = Date.now()
     expect(
