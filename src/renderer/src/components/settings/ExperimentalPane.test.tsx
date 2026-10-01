@@ -277,8 +277,8 @@ describe('ExperimentalPane', () => {
       configurable: true,
       value: {
         app: {
-          hasStructuredAgentSessionHost: async () => true,
-          onStructuredAgentSessionHostInstalled: () => () => undefined
+          holdsStructuredAgentSessions: async () => true,
+          onStructuredAgentSessionsHeldChanged: () => () => undefined
         }
       }
     })

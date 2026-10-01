@@ -47,8 +47,8 @@ function stageLocalHost(installed: boolean): void {
     configurable: true,
     value: {
       app: {
-        hasStructuredAgentSessionHost: async () => installed,
-        onStructuredAgentSessionHostInstalled: () => () => undefined
+        holdsStructuredAgentSessions: async () => installed,
+        onStructuredAgentSessionsHeldChanged: () => () => undefined
       }
     }
   })

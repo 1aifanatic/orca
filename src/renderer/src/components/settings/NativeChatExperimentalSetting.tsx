@@ -1,5 +1,5 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
-import { useLocalStructuredAgentSessionHostInstalled } from '@/runtime/local-structured-chats'
+import { useLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { translate } from '@/i18n/i18n'
 import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -28,7 +28,7 @@ export function NativeChatExperimentalSetting({
     settings.openAgentTabsInChatByDefault === true ? 'native-chat' : 'terminal-chat'
   // Structured-only settings; terminal-backed chat never reads them. They govern the chats this
   // machine holds too, which keep running whatever the setting says.
-  const holdsStructuredChats = useLocalStructuredAgentSessionHostInstalled()
+  const holdsStructuredChats = useLocalStructuredAgentSessionsHeld()
   const structuredChatActive =
     (defaultView === 'native-chat' && structuredNativeChatEnabled) || holdsStructuredChats
 

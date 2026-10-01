@@ -72,6 +72,7 @@ export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
 
 export class AgentSessionRecordStore {
   private readonly deathEvidenceListeners = new Set<(sessionId: string) => void>()
+  private readonly firstRecordListeners = new Set<() => void>()
 
   private constructor(
     private readonly transactions: AgentSessionStoreTransactions,
@@ -103,6 +104,9 @@ export class AgentSessionRecordStore {
     this.state.records.get(sessionId) ?? null
 
   listRecords = (): AgentSessionRecord[] => [...this.state.records.values()]
+
+  /** Whether this host has recorded a chat, readable or not. Nothing removes a record row. */
+  holdsRecords = (): boolean => this.state.records.size > 0 || this.state.unreadableRecords.size > 0
 
   listVisibleSessionIds = (): string[] =>
     (this.state.sessionTabs?.sessionIds() ?? []).filter((sessionId) =>
@@ -323,6 +327,12 @@ export class AgentSessionRecordStore {
     return () => this.deathEvidenceListeners.delete(listener)
   }
 
+  /** Told, once committed, when the store records its first chat. Must not throw. */
+  onFirstRecord(listener: () => void): () => void {
+    this.firstRecordListeners.add(listener)
+    return () => this.firstRecordListeners.delete(listener)
+  }
+
   /** Serializes every mutation. `apply` changes only the draft it is given; readers see the change
    *  once its rows have committed. */
   private transact = async <T>(
@@ -330,7 +340,9 @@ export class AgentSessionRecordStore {
     options?: { inMemoryWhenReadOnly?: boolean }
   ): Promise<T> => {
     let proven: string[] = []
+    let heldBefore = true
     const result = await this.transactions.transact((draft) => {
+      heldBefore = this.holdsRecords()
       if (this.deathEvidenceListeners.size === 0) {
         return apply(draft)
       }
@@ -345,6 +357,9 @@ export class AgentSessionRecordStore {
     }, options)
     for (const sessionId of proven) {
       this.deathEvidenceListeners.forEach((listener) => listener(sessionId))
+    }
+    if (!heldBefore && this.holdsRecords()) {
+      this.firstRecordListeners.forEach((listener) => listener())
     }
     return result
   }

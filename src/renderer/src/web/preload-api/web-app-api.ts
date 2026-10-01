@@ -36,8 +36,8 @@ export function createWebAppApi(): Partial<PreloadApi> {
       awaitGitEnvironmentStartupBarrier: () => Promise.resolve(),
       prepareTerminalStartupRestoration: () => Promise.resolve(),
       // The browser client has no runtime of its own.
-      hasStructuredAgentSessionHost: () => Promise.resolve(false),
-      onStructuredAgentSessionHostInstalled: () => () => undefined,
+      holdsStructuredAgentSessions: () => Promise.resolve(false),
+      onStructuredAgentSessionsHeldChanged: () => () => undefined,
       recoverLegacyWorkerTerminalsForRendererStartup: () => Promise.resolve(),
       startupDiagnostic: () => Promise.resolve(),
       getKeyboardInputSourceId: () => Promise.resolve(null),
