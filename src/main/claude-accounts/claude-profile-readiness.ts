@@ -1,5 +1,6 @@
 import { lstatSync, statSync, type Stats } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { z } from 'zod'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import {
@@ -103,22 +104,28 @@ function loginStateFrom(oauthAccount: unknown): ClaudeLoginState {
   if (oauthAccount == null) {
     return { readiness: 'sign-in-required', identity: null }
   }
-  if (typeof oauthAccount !== 'object' || Array.isArray(oauthAccount)) {
+  const parsed = Array.isArray(oauthAccount) ? null : oauthAccountSchema.safeParse(oauthAccount)
+  if (!parsed?.success) {
     return { readiness: 'unavailable', identity: null }
   }
-  const text = (key: string): string | null => {
-    const value: unknown = Reflect.get(oauthAccount, key)
-    return typeof value === 'string' && value.trim() ? value.trim() : null
-  }
-  const email = text('emailAddress')
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null
+  const email = text(parsed.data.emailAddress)
   return {
     readiness: 'ready',
     identity: email
       ? {
           email,
-          organizationUuid: text('organizationUuid'),
-          organizationName: text('organizationName')
+          organizationUuid: text(parsed.data.organizationUuid),
+          organizationName: text(parsed.data.organizationName)
         }
       : null
   }
 }
+
+// Why unknown fields: a wrong-typed field means "no identity", not an unreadable profile.
+const oauthAccountSchema = z.object({
+  emailAddress: z.unknown().optional(),
+  organizationUuid: z.unknown().optional(),
+  organizationName: z.unknown().optional()
+})
