@@ -79,7 +79,11 @@ export function flushNativeChatDraftPersists(): void {
 }
 
 function installFlushListeners(): void {
-  if (flushListenersInstalled || typeof window === 'undefined') {
+  if (
+    flushListenersInstalled ||
+    typeof window === 'undefined' ||
+    typeof window.addEventListener !== 'function'
+  ) {
     return
   }
   flushListenersInstalled = true
@@ -118,7 +122,7 @@ export function scheduleNativeChatDraftPersist(
 export function observeOtherWindowNativeChatDrafts(
   onChange: (scopeKey: string, draft: PersistedNativeChatDraft | null) => void
 ): void {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
     return
   }
   window.addEventListener('storage', (event) => {
