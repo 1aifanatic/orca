@@ -55,12 +55,15 @@ export function useStructuredAgentSession(args: {
   launch?: StructuredAgentSessionLaunchView
   /** The composer Edit copies a card's text into, and that gets back unsent outbox text. */
   composerScopeKey?: string
+  /** The composer's worktree, whose owner says where an image given back by a Stop lives. */
+  composerWorktreeId?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
 }) {
   const {
     agent,
     composerScopeKey,
+    composerWorktreeId,
     isVisible,
     launch,
     providerStarting = false,
@@ -121,6 +124,7 @@ export function useStructuredAgentSession(args: {
     fence: transportState.fence,
     submissions: transportState.submissions,
     composerScopeKey,
+    composerWorktreeId,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
   })

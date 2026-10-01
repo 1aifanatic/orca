@@ -15,6 +15,9 @@ import {
 } from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 type SendParams = { envelope?: { clientOperationId: string } }
+import type * as AttachmentUploadModule from './native-chat-attachment-upload'
+import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
+
 type ReadState = { submissions: AgentJournalSubmission[]; items: AgentJournalRenderItem[] }
 
 const mocks = vi.hoisted(() => {
@@ -22,9 +25,17 @@ const mocks = vi.hoisted(() => {
   return {
     call: vi.fn<(target: unknown, method: string, params: SendParams) => Promise<unknown>>(),
     toastError: vi.fn(),
+    resolveOwner: vi.fn<(...args: unknown[]) => NativeChatAttachmentOwner>(() => ({
+      kind: 'local'
+    })),
     read
   }
 })
+
+vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
+  ...(await importOriginal<typeof AttachmentUploadModule>()),
+  resolveNativeChatAttachmentOwnerForWorktree: mocks.resolveOwner
+}))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -131,7 +142,7 @@ function renderOutbox(composerScopeKey: string | null = PANE) {
         target,
         fence: 1,
         submissions: props.submissions,
-        ...(composerScopeKey ? { composerScopeKey } : {})
+        ...(composerScopeKey ? { composerScopeKey, composerWorktreeId: 'wt-1' } : {})
       }),
     { initialProps: { submissions: NONE } }
   )
@@ -194,10 +205,76 @@ describe('a message the host withdrew at a Stop', () => {
       expect(readNativeChatDraftCache(PANE)).toBe('already typed\n\nhello')
       expect(readNativeChatDraftAttachments(PANE)).toEqual([
         { id: 'typed', path: '/tmp/typed.png' },
-        { id: expect.any(String), path: '/tmp/shot.png' }
+        { id: expect.any(String), path: '/tmp/shot.png', location: 'local' }
       ])
     }
   )
+
+  // The outbox keeps only the path; where the file lives comes from the chat's owner, as for a
+  // new image, so a deleted local one is still caught and an SSH one is still asked there.
+  it('gives a returned image the location its chat attaches images in', async () => {
+    answerSendsPending()
+    const pathsExist = vi.fn(async ({ filePaths }: { filePaths: string[] }) =>
+      filePaths.map(() => ({ exists: false }))
+    )
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { fs: { authorizeExternalPath: vi.fn(async () => {}), pathsExist } }
+    })
+    const { result, rerender } = renderOutbox()
+    const id = await sendToHost(result, 'hello', [
+      { path: '/tmp/shot.png', previewUri: '/tmp/shot.png' }
+    ])
+    rerender({ submissions: [withdrawn(id, {})] })
+    await waitFor(() => expect(readNativeChatDraftAttachments(PANE)).toHaveLength(1))
+
+    const view = renderHook(() =>
+      useNativeChatComposerAttachments({
+        attachmentScopeKey: PANE,
+        allowWithoutTarget: true,
+        caret: 0,
+        disabled: false,
+        isComposing: () => false,
+        resolveTarget: () => null,
+        textareaRef: { current: null },
+        setCaret: () => {},
+        setDraft: () => {},
+        setNotice: () => {}
+      })
+    )
+    await waitFor(() => expect(view.result.current.imageAttachments[0]?.missing).toBe(true))
+    expect(pathsExist).toHaveBeenCalledWith({ filePaths: ['/tmp/shot.png'] })
+  })
+
+  it('keeps an SSH chat connection on a returned image', async () => {
+    answerSendsPending()
+    mocks.resolveOwner.mockReturnValueOnce({
+      kind: 'ssh',
+      connectionId: 'ssh-1',
+      worktreePath: '/remote/wt',
+      expectedExecutionHostId: 'ssh:target-1',
+      expectedSshTargetId: 'target-1',
+      expectedSshConnectionGeneration: 1
+    })
+    const { result, rerender } = renderOutbox()
+    const id = await sendToHost(result, 'hello', [
+      { path: '/remote/tmp/shot.png', previewUri: '/remote/tmp/shot.png' }
+    ])
+
+    rerender({ submissions: [withdrawn(id, {})] })
+
+    await waitFor(() =>
+      expect(readNativeChatDraftAttachments(PANE)).toEqual([
+        {
+          id: expect.any(String),
+          path: '/remote/tmp/shot.png',
+          connectionId: 'ssh-1',
+          location: 'ssh'
+        }
+      ])
+    )
+    expect(mocks.resolveOwner).toHaveBeenCalledWith(expect.anything(), 'wt-1')
+  })
 
   it('comes back when the host wrote the withdrawal as a typed fact in a sentence', async () => {
     answerSendsPending()

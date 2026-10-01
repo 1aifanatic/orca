@@ -55,6 +55,7 @@ export function NativeChatStructuredSession(
   const controller = useStructuredAgentSession({
     ...props,
     composerScopeKey: nativeChatDraftKey({ sessionId: props.sessionId, paneKey }),
+    composerWorktreeId: fileLinkContext?.worktreeId,
     queueFollowUps,
     providerStarting: hostExecution.phase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
