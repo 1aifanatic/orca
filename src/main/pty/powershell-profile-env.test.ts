@@ -138,4 +138,37 @@ describe('readPowerShellProfileEnvValues', () => {
 
     expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([`${root}\\.codex`])
   })
+
+  it.each([
+    ["Set-Item -Path env:CODEX_HOME -Value 'C:\\set-item'", 'C:\\set-item'],
+    ['Set-Item Env:\\CODEX_HOME "$HOME\\set-item"', 'HOME\\set-item'],
+    ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet')", 'C:\\dotnet'],
+    [
+      "[System.Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet') # note",
+      'C:\\dotnet'
+    ],
+    ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet', 'User')", 'C:\\dotnet'],
+    ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\a,b', 'Process');", 'C:\\a,b']
+  ])('reads %s', (line, expected) => {
+    const root = createRoot()
+    vi.stubEnv('SystemRoot', join(root, 'Windows'))
+    vi.stubEnv('ProgramFiles', join(root, 'pf'))
+    writeProfile(join(root, 'Documents', 'PowerShell', 'profile.ps1'), `${line}\n`)
+
+    const [value] = readPowerShellProfileEnvValues('CODEX_HOME', root)
+    expect(value?.replace(root, 'HOME')).toBe(expected)
+  })
+
+  it('reads a .NET clear as clearing an earlier value', () => {
+    const root = createRoot()
+    writeProfile(
+      join(root, 'Documents', 'PowerShell', 'profile.ps1'),
+      [
+        "$env:CODEX_HOME = 'C:\\custom'",
+        "[Environment]::SetEnvironmentVariable('CODEX_HOME', $null)"
+      ].join('\n')
+    )
+
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([])
+  })
 })

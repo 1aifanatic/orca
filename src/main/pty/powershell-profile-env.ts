@@ -29,9 +29,9 @@ const cache = new Map<string, string[]>()
  * profiles would run user code and reads as suspicious to EDR
  * (docs/reference/windows-edr-posture.md).
  *
- * Same fidelity as the POSIX rc-file probe: only `$env:NAME = value` and
- * `${env:NAME} = value` lines; no `Set-Item`, .NET setters, conditionals or
- * dot-sourced files. `$HOME` and `$env:USERPROFILE` expand in double-quoted and
+ * Same fidelity as the POSIX rc-file probe: `$env:NAME = value`,
+ * `Set-Item env:NAME value` and `[Environment]::SetEnvironmentVariable('NAME',
+ * value[, target])` lines; no conditionals or dot-sourced files. `$HOME` and `$env:USERPROFILE` expand in double-quoted and
  * bare values; any other expression is returned verbatim, which callers
  * comparing against a known path read as "something else". Preview and
  * side-by-side PowerShell 7 installs keep their all-users profile elsewhere and
@@ -49,7 +49,13 @@ export function readPowerShellProfileEnvValues(name: string, userProfile: string
   if (cached) {
     return cached
   }
-  const assignment = new RegExp(`^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`, 'i')
+  // Why every form: a form this misses fails open onto ~/.codex, the #9788 bug.
+  const assignments = [
+    `^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`,
+    `^Set-Item\\s+(?:-Path\\s+)?['"]?env:\\\\?${name}['"]?\\s+(?:-Value\\s+)?(.+)$`,
+    // Why any target: 'User' and 'Machine' persist too, so counting them is the conservative read.
+    `^\\[(?:System\\.)?Environment\\]::SetEnvironmentVariable\\(\\s*['"]${name}['"]\\s*,\\s*('[^']*'|"[^"]*"|[^,()]+?)\\s*(?:,[^,()]+)?\\)\\s*;?$`
+  ].map((source) => new RegExp(source, 'i'))
   // Why the registry: it names the folder PowerShell loads from, which OneDrive
   // or folder redirection may have moved; the default is only a fallback.
   const documentsDir = readRegistryDocumentsDir() ?? join(userProfile, 'Documents')
@@ -61,7 +67,8 @@ export function readPowerShellProfileEnvValues(name: string, userProfile: string
     ]
     for (const path of profilePaths) {
       for (const line of readProfile(path)?.split(/\r?\n/) ?? []) {
-        const value = assignment.exec(line.trim())?.[1]
+        const statement = stripTrailingComment(line).trim()
+        const value = assignments.map((form) => form.exec(statement)?.[1]).find(Boolean)
         if (value !== undefined) {
           last = parsePowerShellValue(value, userProfile)
         }
@@ -101,7 +108,7 @@ function readProfile(path: string): string | null {
 }
 
 function parsePowerShellValue(raw: string, userProfile: string): string {
-  const value = stripTrailingComment(raw).trim()
+  const value = raw.trim()
   if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
     return value.slice(1, -1).replaceAll("''", "'")
   }
