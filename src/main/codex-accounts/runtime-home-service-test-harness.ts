@@ -1,8 +1,3 @@
-/* oxlint-disable anti-slop/no-module-mocking -- Vitest support module for the 17 runtime-home specs, not shipped code, and it falls outside the *.test / *.spec / tests glob set.
-   setupRuntimeHomeTest() overrides one custom-home predicate in ../codex/codex-real-home-path; the production
-   readers import it directly across several main-process modules, so an injected seam would have to
-   be threaded through all of them. Inlining the stub into each of the 17 specs would duplicate it 17
-   times and push the largest past the max-lines ratchet. */
 import { expect, vi } from 'vitest'
 import {
   existsSync,
@@ -17,17 +12,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
-import type * as CodexRealHomePath from '../codex/codex-real-home-path'
 
-export const testState = {
-  userDataDir: '',
-  fakeHomeDir: '',
-  previousUserDataPath: undefined as string | undefined,
-  realHomeRoutable: true
-}
+export const testState: {
+  userDataDir: string
+  fakeHomeDir: string
+  previousUserDataPath?: string
+  previousCodexHome?: string
+} = { userDataDir: '', fakeHomeDir: '' }
 
+// Why: a custom CODEX_HOME is the production route onto the mirror lane.
 export function setRealHomeRoutableForTest(enabled: boolean): void {
-  testState.realHomeRoutable = enabled
+  if (enabled) {
+    delete process.env.CODEX_HOME
+  } else {
+    process.env.CODEX_HOME = join(tmpdir(), 'orca-test-custom-codex-home')
+  }
 }
 
 export function getSystemCodexHomePath(): string {
@@ -163,16 +162,8 @@ export function createCodexAuthJson(
 export function setupRuntimeHomeTest(): void {
   vi.resetModules()
   vi.clearAllMocks()
-  testState.realHomeRoutable = true
-  vi.doMock('../codex/codex-real-home-path', async () => {
-    const actual = await vi.importActual<typeof CodexRealHomePath>('../codex/codex-real-home-path')
-    return {
-      ...actual,
-      // Why: a custom CODEX_HOME is the production route onto the mirror lane.
-      hasCustomCodexHomeOverrideForLaunch: (launchEnv?: NodeJS.ProcessEnv) =>
-        !testState.realHomeRoutable || actual.hasCustomCodexHomeOverrideForLaunch(launchEnv)
-    }
-  })
+  testState.previousCodexHome = process.env.CODEX_HOME
+  setRealHomeRoutableForTest(true)
   testState.userDataDir = mkdtempSync(join(tmpdir(), 'orca-runtime-home-'))
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-codex-home-'))
   testState.previousUserDataPath = process.env.ORCA_USER_DATA_PATH
@@ -195,5 +186,10 @@ export function teardownRuntimeHomeTest(): void {
     delete process.env.ORCA_USER_DATA_PATH
   } else {
     process.env.ORCA_USER_DATA_PATH = testState.previousUserDataPath
+  }
+  if (testState.previousCodexHome === undefined) {
+    delete process.env.CODEX_HOME
+  } else {
+    process.env.CODEX_HOME = testState.previousCodexHome
   }
 }
