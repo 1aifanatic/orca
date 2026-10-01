@@ -143,15 +143,14 @@ describe('OpenCode run process lifetime in the runtime', () => {
 
   // Main hands its 133 scanner to the daemon while the pane's tab is hidden.
   describe('a run that starts while its tab is hidden', () => {
-    it("posts Working from the daemon's command-started fact and Done from its command-finished", async () => {
+    it("posts Working on its own pane from the daemon's command-started fact", async () => {
       const { runtime, statuses } = createRuntime()
       runtime.setPtyTransientFactDelegation('pty-1', true)
 
       runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-started' })
       await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-finished', exitCode: 0 })
 
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
+      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
     })
 
     // Why: exactly one side scans each byte, so the relayed fact is the only start main acts on.
@@ -167,18 +166,6 @@ describe('OpenCode run process lifetime in the runtime', () => {
       await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
       expect(getForegroundProcess).toHaveBeenCalledTimes(1)
       expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`])
-    })
-
-    it("posts Done from main's own scanner once the tab is shown again", async () => {
-      const { runtime, statuses } = createRuntime()
-      runtime.setPtyTransientFactDelegation('pty-1', true)
-      runtime.emitDaemonPtyTransientFact('pty-1', { kind: 'command-started' })
-      await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-
-      runtime.setPtyTransientFactDelegation('pty-1', false)
-      runtime.onPtyData('pty-1', 'done\x1b]133;D;0\x07', 101)
-
-      expect(summary(statuses)).toEqual([`${PANE_KEY}:working:process`, `${PANE_KEY}:done:process`])
     })
   })
 })
