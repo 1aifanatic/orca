@@ -52,13 +52,26 @@ export function inheritAgentResumeIdentity(
     nested
       ? previous
       : undefined
-  const owner = borrowed ?? incoming
-  const decoded = decodeHookResumeSession(owner.providerSession, owner.source, owner.connectionId)
-  // Why: the row keeps the child's source, so a borrowed legacy session must name its owner now.
-  const providerSession =
-    borrowed && decoded && !decoded.resumeIdentity && isResumableTuiAgent(agent)
-      ? { ...decoded, resumeIdentity: { agent } }
-      : decoded
+  const own = decodeHookResumeSession(
+    incoming.providerSession,
+    incoming.source,
+    incoming.connectionId
+  )
+  const inherited = borrowed
+    ? decodeHookResumeSession(borrowed.providerSession, borrowed.source, borrowed.connectionId)
+    : undefined
+  let providerSession = own
+  if (borrowed && inherited) {
+    // Why: the row keeps the child's source, so a borrowed legacy session must name its owner now.
+    providerSession =
+      !inherited.resumeIdentity && isResumableTuiAgent(agent)
+        ? { ...inherited, resumeIdentity: { agent } }
+        : inherited
+  } else if (borrowed) {
+    // Why: an owner row with no session yet (withheld after a finished turn) keeps the event's own
+    // session only when that session is the displayed agent's.
+    providerSession = own?.resumeIdentity?.agent === agent ? own : undefined
+  }
   return {
     ...incoming,
     providerSession,

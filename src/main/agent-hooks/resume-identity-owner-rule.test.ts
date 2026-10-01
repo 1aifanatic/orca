@@ -168,4 +168,66 @@ describe('resume owner rule', () => {
     expect(rehydrated?.providerSession?.resumeIdentity).toEqual({ agent: 'claude' })
     expect(claudeResumeCommand(rehydrated?.providerSession)).toContain('claude-A')
   })
+
+  it('keeps the Claude session for a subagent event after a terminal update withheld it', () => {
+    const server = new AgentHookServer()
+    servers.push(server)
+    const claudeEvent = (
+      hookEventName: string,
+      state: 'working' | 'done',
+      toolAgentId?: string
+    ) => ({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      source: 'claude',
+      hookEventName,
+      ...(toolAgentId ? { toolAgentId } : {}),
+      providerSession: { key: 'session_id', id: 'claude-A' },
+      payload: { state, prompt: 'p', agentType: 'claude' }
+    })
+    server.ingestRemote(claudeEvent('Stop', 'done'), 'conn-a')
+    // A new turn after done starts clean: terminal ingest withholds the finished session.
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: 'conn-a',
+      payload: { state: 'working', prompt: 'q', agentType: 'claude' }
+    })
+    expect(server.getStatusSnapshotForPane(PANE)[0]?.providerSession).toBeUndefined()
+
+    server.ingestRemote(claudeEvent('PreToolUse', 'working', 'sub-1'), 'conn-a')
+    expect(server.getStatusSnapshotForPane(PANE)[0]?.providerSession).toMatchObject({
+      id: 'claude-A',
+      resumeIdentity: { agent: 'claude' }
+    })
+  })
+
+  it('stores no session when the owner has none and a nested Codex event arrives', () => {
+    const server = new AgentHookServer()
+    servers.push(server)
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: 'conn-a',
+      payload: { state: 'working', prompt: 'q', agentType: 'claude' }
+    })
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        source: 'codex',
+        hookEventName: 'UserPromptSubmit',
+        providerSession: { key: 'session_id', id: 'codex-child' },
+        payload: { state: 'working', prompt: 'nested', agentType: 'codex' }
+      },
+      'conn-a'
+    )
+    const row = server.getStatusSnapshotForPane(PANE)[0]
+    expect(row?.agentType).toBe('claude')
+    expect(row?.providerSession).toBeUndefined()
+  })
 })
