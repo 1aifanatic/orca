@@ -12,7 +12,7 @@ export const ARCHIVE_HOOK_TIMEOUT_MS = 120_000
 
 /**
  * How long a client waits for worktree.rm's reply. Git's checkout delete has no timeout (measured
- * up to ~60 s under load) and a bulk delete queues behind the host's two-at-a-time limit; a client
+ * up to ~60 s under load) and a bulk delete queues behind the host's concurrent-delete limit; a client
  * that gives up instead settles the card from the host's listing, so this is not a failure deadline.
  */
 export function worktreeRemovalReplyTimeoutMs(runsArchiveHook: boolean): number {

@@ -3,9 +3,11 @@
  *
  * Why its own limit instead of general git admission: a large delete holds its child for 20-35 s,
  * and general admission can be as small as two slots, so two deletes there would stall every
- * status read. Two concurrent deletes already saturate one disk; more only slow each other.
+ * status read. Three at once finished a three-worktree batch ~4 s sooner than two (each delete
+ * runs slower, but none waits for a slot) with no file-read or create latency cost; the cap still
+ * bounds disk contention and git children for larger batches.
  */
-export const WORKTREE_DELETE_CONCURRENCY = 2
+export const WORKTREE_DELETE_CONCURRENCY = 3
 
 let running = 0
 const waiting: (() => void)[] = []
