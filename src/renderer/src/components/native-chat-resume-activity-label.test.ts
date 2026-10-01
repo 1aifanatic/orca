@@ -23,6 +23,17 @@ describe('resumeActivityLabel', () => {
     ).toBe('Waiting for your approval: Bash')
   })
 
+  // `state` is the main agent's own, so a subagent's prompt rides beside a working lead.
+  it("names a subagent's prompt the way it names the main agent's own", () => {
+    expect(
+      resumeActivityLabel({
+        state: 'working',
+        prompts: [{ kind: 'approval', label: 'Bash' }],
+        tasks: [{ kind: 'agent', label: 'Review loop 4' }]
+      })?.summary
+    ).toBe('Waiting for your approval: Bash · Subagent running: Review loop 4')
+  })
+
   // A settled lead says nothing about itself; its children are the whole story.
   it('says nothing for a settled lead beyond its tasks', () => {
     expect(

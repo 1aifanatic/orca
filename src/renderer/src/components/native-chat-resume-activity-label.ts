@@ -25,9 +25,10 @@ export function resumeActivityLabel(
   }
   const parts: string[] = []
   const [prompt] = activity.prompts
-  // The headline is the main agent's own recorded state: blocked names the prompt it was waiting
-  // on, working was a reply in progress, done says nothing — its children speak below.
-  if (activity.state === 'blocked' && prompt) {
+  // A pending prompt headlines the chat whoever raised it; otherwise the headline is the main
+  // agent's own recorded state: working was a reply in progress, done says nothing — its children
+  // speak below.
+  if (prompt) {
     parts.push(
       prompt.kind === 'approval'
         ? translate(
@@ -49,7 +50,9 @@ export function resumeActivityLabel(
   const agents = activity.tasks.filter((task) => task.kind === 'agent')
   // Not for a mid-reply lead: the roster also lists the reply's own foreground command.
   const watches =
-    activity.state === 'working' ? [] : activity.tasks.filter((task) => task.kind !== 'agent')
+    !prompt && activity.state === 'working'
+      ? []
+      : activity.tasks.filter((task) => task.kind !== 'agent')
   const [onlyAgent] = agents
   const [onlyWatch] = watches
   if (agents.length === 1 && onlyAgent) {
