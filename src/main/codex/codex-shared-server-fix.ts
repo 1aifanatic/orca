@@ -50,7 +50,8 @@ async function runCodex(
     const result = await runProcess({
       program,
       args,
-      cwd: codexHome,
+      // Why: binaryHome holds the program, so it exists even when codexHome may not.
+      cwd: binaryHome,
       env: { ...process.env, CODEX_HOME: codexHome },
       timeoutMs,
       maxOutputBytes: MAX_OUTPUT_BYTES

@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
 import { codexCommandLineJoinsSharedServer } from '../../shared/codex-shared-server-command'
 import {
@@ -9,6 +10,7 @@ import { getProcessTableSnapshot } from '../../shared/process-table-snapshot-rea
 import { readWindowsProcessTable } from '../windows/windows-process-table'
 import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getCodexPaneAccount } from './codex-pane-account-registry'
+import { observeAgentStateFile } from './codex-path-observation'
 import { probeCodexSharedServer } from './codex-shared-server-probe'
 
 type CommandRow = ProcessIdentityRow & { command: string }
@@ -63,14 +65,23 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
 
 /**
  * Where a Codex setting changed for this pane persists. Orca rebuilds its
- * shared mirror home from the user's own home on every launch, so a setting
- * written only to the mirror would be lost.
+ * shared mirror home from ~/.codex/config.toml on every launch, so a setting
+ * written only to the mirror would be lost — except while that file is missing
+ * or blank, which the mirror skips.
  */
 export function resolveCodexPaneSettingsHome(ptyId: string): string | null {
   const codexHome = resolveCodexPaneHome(ptyId)
-  return codexHome && getCodexPaneAccount(ptyId)?.homeRoute === 'shared-home'
-    ? getSystemCodexHomePath()
-    : codexHome
+  if (!codexHome || getCodexPaneAccount(ptyId)?.homeRoute !== 'shared-home') {
+    return codexHome
+  }
+  const systemHome = getSystemCodexHomePath()
+  const systemConfig = observeAgentStateFile(join(systemHome, 'config.toml'))
+  // Why: seeding a missing or blank user config with this one setting would make
+  // the mirror replace every setting the user made in Orca's Codex with it.
+  if (systemConfig.kind === 'present') {
+    return systemConfig.value.trim() === '' ? codexHome : systemHome
+  }
+  return systemConfig.kind === 'absent' ? codexHome : null
 }
 
 /** Whether the Codex running in this local pane is a client of Codex's shared server. */

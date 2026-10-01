@@ -126,12 +126,18 @@ describe('disableCodexSharedServerAutoStart', () => {
     expect(await disableCodexSharedServerAutoStart(home, systemHome)).toBe(true)
 
     expect(
-      mocks.runProcess.mock.calls.map(([spec]) => [spec.program, spec.args, spec.env?.CODEX_HOME])
+      mocks.runProcess.mock.calls.map(([spec]) => [
+        spec.program,
+        spec.args,
+        spec.env?.CODEX_HOME,
+        spec.cwd
+      ])
     ).toEqual([
-      [binary, ['features', 'disable', 'daemon_auto_start'], systemHome],
-      [binary, ['features', 'list'], systemHome],
-      [binary, ['features', 'disable', 'daemon_auto_start'], home],
-      [binary, ['features', 'list'], home]
+      // Why the pane's cwd: the user's home may not exist, and a missing cwd fails the spawn.
+      [binary, ['features', 'disable', 'daemon_auto_start'], systemHome, home],
+      [binary, ['features', 'list'], systemHome, home],
+      [binary, ['features', 'disable', 'daemon_auto_start'], home, home],
+      [binary, ['features', 'list'], home, home]
     ])
   })
 
