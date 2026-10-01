@@ -109,8 +109,12 @@ describe('a saved structured draft on relaunch', () => {
     await saveDraft(history(10, []), 'ship it')
 
     const { cache, hook } = await relaunch()
+    const loading: StructuredAgentSessionState = {
+      ...EMPTY_STRUCTURED_AGENT_SESSION,
+      status: 'loading'
+    }
     const view = renderHook(({ state }) => hook.useNativeChatDraftSentHistory(CHAT, state, true), {
-      initialProps: { state: { ...EMPTY_STRUCTURED_AGENT_SESSION, status: 'loading' as const } }
+      initialProps: { state: loading }
     })
     expect(cache.readNativeChatDraftCache(CHAT)).toBe('')
     view.rerender({ state: history(12, [sent(11, 'ship it')]) })
