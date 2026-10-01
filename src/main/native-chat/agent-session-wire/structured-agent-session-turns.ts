@@ -176,7 +176,7 @@ export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverC
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,
   submission: AgentJournalSubmission
-): Promise<{ error: unknown } | 'waits' | null> {
+): Promise<{ error: unknown } | null> {
   const { clientMessageId } = submission
   const body = ctx.journal.itemBody(agentJournalSubmissionKey(clientMessageId))
   if (body?.kind !== 'message') {

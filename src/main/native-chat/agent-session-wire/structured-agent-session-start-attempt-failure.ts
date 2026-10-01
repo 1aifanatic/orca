@@ -65,8 +65,9 @@ function startFailureWordsContext(
 
 /**
  * A start the loop's own start step was refused before it ran, for `startedFor`: the message waits
- * for its next try, or, a refusal only the person can clear or out of tries, is rejected. The one
- * place a try is booked.
+ * for its next try, or, a refusal only the person can clear, out of tries, or a conversation
+ * command, is rejected. A command never waits: like a goal, a rewind or /clear, its failure is the
+ * person's to Retry at once. The one place a try is booked.
  */
 export function recordStructuredAgentSessionStartRefusal(
   ctx: StartFailureWriter,
@@ -104,13 +105,14 @@ async function recordStartFailure(
     }
     const context = startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
     const words = structuredAgentSessionStartFailure(cause, context)
-    const nextAttemptAt = refusedBeforeItRan
-      ? structuredAgentSessionStartRetryAt(
-          words.rejection,
-          (submission.startRetry?.attempts ?? 0) + 1,
-          ctx.now()
-        )
-      : null
+    const nextAttemptAt =
+      refusedBeforeItRan && context.command === undefined
+        ? structuredAgentSessionStartRetryAt(
+            words.rejection,
+            (submission.startRetry?.attempts ?? 0) + 1,
+            ctx.now()
+          )
+        : null
     await ctx.journal.resolveDispatch(
       nextAttemptAt === null
         ? { clientMessageId, state: 'rejected', ...words, fence: ctx.fence }

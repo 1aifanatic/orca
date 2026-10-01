@@ -130,20 +130,16 @@ export type StructuredAgentSessionCommandHandoverContext = {
 }
 
 /** Refuses the command, or opens its turn and sends it. Returns the cause when the child's start
- *  failed at the handover, leaving the command handed over for the delivery loop to record, and
- *  `waits` when it stays queued behind work that went ahead of it. */
+ *  failed at the handover, leaving the command handed over for the delivery loop to record. */
 export async function handOverStructuredAgentSessionCommand(
   ctx: StructuredAgentSessionCommandHandoverContext,
   submission: AgentJournalSubmission,
   body: AgentJournalMessageItem
-): Promise<{ error: unknown } | 'waits' | null> {
+): Promise<{ error: unknown } | null> {
   const { clientMessageId } = submission
   // Provider frames already received decide whether a turn is running.
   await ctx.flushStreamedEvents()
-  const blocked = commandBlocked(ctx, submission, body)
-  if (blocked === 'waits') {
-    return 'waits'
-  }
+  const blocked = commandBlocked(ctx, body)
   if (blocked) {
     await ctx.journal.resolveDispatch({
       clientMessageId,

@@ -1,32 +1,22 @@
-// Whether a conversation command may run at its handover: refused, run, or left queued behind
-// work that went ahead of it while it waited out a refused start.
+// Whether a conversation command may run at its handover: run, or refused with why.
 
 import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalSubmission
-} from '../../../shared/agent-session-journal-types'
-import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
-import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   STRUCTURED_AGENT_SESSION_COMPACT_COMMAND,
   type StructuredAgentSessionCommandHandoverContext
 } from './structured-agent-session-command-turn'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 
-/** Why the command may not run now, as the fact its message is rejected with; null when it may,
- *  and `waits` when only work accepted after it is in the way. */
+/** Why the command may not run now, as the fact its message is rejected with; null when it may. */
 export function commandBlocked(
   ctx: StructuredAgentSessionCommandHandoverContext,
-  submission: AgentJournalSubmission,
   body: AgentJournalMessageItem
-): SubmissionRejectionFact | 'waits' | null {
+): SubmissionRejectionFact | null {
   if (body.command?.name !== STRUCTURED_AGENT_SESSION_COMPACT_COMMAND || !ctx.adapter.compact) {
     return agentSessionFailureFact('commandRefused')
   }
@@ -35,76 +25,7 @@ export function commandBlocked(
     return agentSessionFailureFact('hostFault')
   }
   const refusal = conversationCommandBlocked(ctx, record, ctx.childWork(), 'handover')
-  if (!refusal) {
-    return null
-  }
-  return blockedOnlyByLaterWork(ctx, submission, refusal.details?.reason)
-    ? 'waits'
-    : agentSessionFailureFact('commandRefused', { refusal: agentSessionRefusalReference(refusal) })
-}
-
-/** A command waiting out a refused start lets later messages go first; what they are still doing
- *  when its try comes is theirs, not a reason to refuse it. It waits: their end is a commit, which
- *  wakes the loop again. */
-function blockedOnlyByLaterWork(
-  ctx: StructuredAgentSessionCommandHandoverContext,
-  submission: AgentJournalSubmission,
-  reason: string | undefined
-): boolean {
-  const since = submission.acceptedSequence
-  // Only a command that waited out a refused start was gone past.
-  if (since === undefined || submission.startRetry === undefined) {
-    return false
-  }
-  if (reason === 'turnActive') {
-    const items = ctx.journal.snapshot().items
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const turn = readAgentJournalTurn(items[index]?.body)
-      if (turn) {
-        const { userItemId } = turn
-        // The message that opened it: by its own key, or by the provider echo it adopted, as a
-        // Claude turn names it. A turn the provider opened on its own is not a later message's.
-        const sentBy = userItemId
-          ? ctx.journal
-              .submissions()
-              .find(
-                (entry) =>
-                  agentJournalSubmissionKey(entry.clientMessageId) === userItemId ||
-                  entry.providerItemId === userItemId
-              )
-          : undefined
-        return turn.state === 'running' && (sentBy?.acceptedSequence ?? 0) > since
-      }
-    }
-    return false
-  }
-  if (reason === 'messagesUnsettled') {
-    // The same unsettled sends `conversationCommandBlocked` reads at a handover.
-    const unsettled = ctx.journal
-      .submissions()
-      .filter(
-        (entry) =>
-          (entry.dispatchState === 'pending' && !isQueuedAgentJournalSubmission(entry)) ||
-          (entry.dispatchState === 'unknown' &&
-            entry.recovered !== true &&
-            entry.fence === ctx.fence)
-      )
-    return unsettled.every((entry) => (entry.acceptedSequence ?? 0) > since)
-  }
-  return false
-}
-
-/** A command that waited out a refused start, now behind a turn a later message runs: that turn's
- *  end is the commit that can let it go, so the commits before it need not wake the loop. */
-export function structuredAgentSessionCommandWaitsOnTurn(
-  journal: Pick<AgentSessionJournal, 'itemBody' | 'activeTurnId'>,
-  submission: AgentJournalSubmission
-): boolean {
-  const body = journal.itemBody(agentJournalSubmissionKey(submission.clientMessageId))
-  return (
-    submission.startRetry !== undefined &&
-    body?.kind === 'message' &&
-    body.command !== undefined &&
-    journal.activeTurnId() !== null
-  )
+  return refusal
+    ? agentSessionFailureFact('commandRefused', { refusal: agentSessionRefusalReference(refusal) })
+    : null
 }
