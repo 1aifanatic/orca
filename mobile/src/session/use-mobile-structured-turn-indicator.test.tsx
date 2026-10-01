@@ -52,7 +52,8 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
   let renderer: ReactTestRenderer | null = null
   let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
   let listener: ((value: unknown) => void) | null = null
-  const sendRequest = vi.fn(async (method: string) => ({
+  type RpcReply = { ok: boolean; result: unknown; _meta: { runtimeId: string } }
+  const sendRequest = vi.fn(async (method: string): Promise<RpcReply> => ({
     ok: true,
     result:
       method === 'agentSession.options'

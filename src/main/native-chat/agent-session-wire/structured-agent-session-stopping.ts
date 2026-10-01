@@ -13,7 +13,8 @@ function noteSaysStopTookNoEffect(item: AgentJournalRenderItem): boolean {
   if (body.kind !== 'status' || !('failure' in body)) {
     return false
   }
-  return body.failure.kind === 'stopRefused' || body.failure.kind === 'cancelUnconfirmed'
+  const kind = body.failure?.kind
+  return kind === 'stopRefused' || kind === 'cancelUnconfirmed'
 }
 
 /**
