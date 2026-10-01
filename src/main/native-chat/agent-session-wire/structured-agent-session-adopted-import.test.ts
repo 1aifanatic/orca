@@ -219,7 +219,7 @@ describe('adopting a provider conversation on create', () => {
   // quit) leaves its operation pending, so its replay imports again rather than answering empty.
   it.each([
     [
-      'its import write',
+      'import write',
       () =>
         vi
           .spyOn(AgentSessionJournal.prototype, 'replaceEpochItems')
@@ -227,7 +227,7 @@ describe('adopting a provider conversation on create', () => {
       'disk write failed'
     ],
     [
-      'its journal open',
+      'journal open',
       (sessionAdapter: StructuredAgentSessionAdapter) => {
         sessionAdapter.historyFilePath = vi
           .fn<NonNullable<StructuredAgentSessionAdapter['historyFilePath']>>()
