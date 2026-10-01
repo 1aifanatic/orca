@@ -286,6 +286,28 @@ describe('every Stop entry writes its event, with its reason, before it ends the
     expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
   })
 
+  // The idle sweep finishes a stop whose exit was unproven: the same stop, so its event stands alone.
+  it.each([['user-close' as const], ['evict' as const]])(
+    'writes one event for a close (%s) whose exit was unproven, and none for its retry',
+    async (cause) => {
+      rig = await createQueuedMessageTestRig({ idleSweep: MANUAL_IDLE_SWEEP })
+      await runningTurn()
+      rig.closeSession.mockResolvedValueOnce(false)
+      const session = () => rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!
+
+      await rig.host.close(HOST_TEST_SESSION, cause).catch(() => undefined)
+      expect(session().child).not.toBeNull()
+      expect(session().owesProviderChildWindDown).toMatchObject({ cause })
+      expect(stopEvents()).toEqual([{ reason: cause, turnId: 'turn-1', at: expect.any(Number) }])
+
+      await idleSweep().tick()
+
+      expect(session().owesProviderChildWindDown).toBeUndefined()
+      expect(stopEvents().map((event) => event.reason)).toEqual([cause])
+      expect(session().lastEndedChild?.cause).toBe(cause)
+    }
+  )
+
   it("writes nothing at quit, whose resume marker's trigger records why", async () => {
     rig = await createQueuedMessageTestRig()
     await runningTurn()
