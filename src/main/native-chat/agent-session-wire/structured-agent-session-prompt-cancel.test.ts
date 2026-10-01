@@ -284,23 +284,6 @@ describe("a card's own Cancel, as its provider answers it", () => {
     expect(answerPrompt).not.toHaveBeenCalled()
   })
 
-  it("sends the provider's option as if the user picked it, and reaches no Stop", async () => {
-    const { result, routes, answerPrompt, card } = await cancelCard({
-      kind: 'option',
-      optionId: 'deny'
-    })
-
-    expect(result).toEqual({ ok: true, value: { turnId: 'turn-1', cancelled: true } })
-    expect(answerPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ response: { kind: 'option', optionId: 'deny' } })
-    )
-    expect(card).toMatchObject({
-      resolution: { state: 'resolved', selectedOptionId: 'deny', resolvedBy: 'client-1' }
-    })
-    expect(routes.stop).not.toHaveBeenCalled()
-    expect(routes.interrupt).not.toHaveBeenCalled()
-  })
-
   it('records a dismissal as cancelled by the caller and has the provider decline the request', async () => {
     const { result, routes, answerPrompt, dismissPrompt, card } = await cancelCard({
       kind: 'dismiss'

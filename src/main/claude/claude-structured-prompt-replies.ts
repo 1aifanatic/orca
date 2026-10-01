@@ -23,17 +23,12 @@ export {
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
 export type ClaudeApprovalDecision = (typeof CLAUDE_APPROVAL_DECISIONS)[number]
 
-/** A card's own Cancel: a tool approval is denied as its Deny option denies it, a plan is dismissed
- *  so Claude waits for the user, and a question ends the way the chat's Stop does. Nothing on a
- *  card interrupts the turn and leaves the child running. */
+/** A card's own Cancel: an approval is dismissed (a tool's with the reply its Deny sends, a plan's
+ *  asking Claude to wait for the user), and a question ends the way the chat's Stop does. Nothing
+ *  on a card interrupts the turn and leaves the child running. */
 export const claudePromptCancelRoute: NonNullable<
   StructuredAgentSessionAdapterStop['routePromptCancel']
-> = ({ prompt }) =>
-  prompt.kind === 'question'
-    ? { kind: 'stop' }
-    : prompt.subject?.kind === 'plan'
-      ? { kind: 'dismiss' }
-      : { kind: 'option', optionId: 'deny' }
+> = ({ prompt }) => (prompt.kind === 'question' ? { kind: 'stop' } : { kind: 'dismiss' })
 
 /** Declines a request the user dismissed. A dismissed plan or question waits on the user: Claude is
  *  told to end its turn rather than revise or ask again. */

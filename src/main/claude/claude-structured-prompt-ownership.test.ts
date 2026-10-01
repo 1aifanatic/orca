@@ -173,6 +173,45 @@ describe('Claude live prompt ownership', () => {
     expect(recorded.bodies.get(card)).toMatchObject({ resolution: { state: 'pending' } })
   })
 
+  it('hands the card back when the host fails to record it, so a withdrawal still closes it', async () => {
+    const claude = fakeClaude({ replayUuid: 'turn-1' })
+    const recorded = lifecycleRecorder()
+    const adapter = adapterFor(claude)
+    await adapter.acquire({
+      identity: identityFor(),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      events: recorded.sink
+    })
+    await startTurn(adapter)
+    const request = new AbortController()
+    invokeCanUseTool(claude.connections[0]!, 'AskUserQuestion', 'permission-1', 'tool-1', {
+      input: { questions: [{ question: 'Which branch?', options: [{ label: 'main' }] }] },
+      signal: request.signal
+    })
+    const [card] = [...recorded.bodies].find(([, body]) => body.kind === 'question') ?? []
+    const dismiss = adapter.dismissPrompt
+    if (!card || !dismiss) {
+      throw new Error('expected the question card and a dismissal')
+    }
+
+    await expect(
+      dismiss({
+        sessionId: 'session-1',
+        itemId: card,
+        fence: 7,
+        answer: false,
+        // Claude withdraws the request, then the host's record fails.
+        commit: async () => {
+          request.abort()
+          throw new Error('journal write failed')
+        }
+      })
+    ).rejects.toThrow('journal write failed')
+
+    expect(recorded.bodies.get(card)).toMatchObject({ resolution: { state: 'cancelled' } })
+  })
+
   it('drops resolved prompt bodies instead of retaining them for the session lifetime', () => {
     const prompts = new ClaudeJournalPrompts({
       sink: lifecycleRecorder().sink,

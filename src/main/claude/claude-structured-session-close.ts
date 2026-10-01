@@ -118,6 +118,8 @@ async function finalizeClaudePublishedSession(
     rootExitVerdict = cleanupError
   }
   // Queues the session's ending for the host's child records; the adapter delivers it after close.
+  // A close Orca asked for stopped what still ran; only an exit of its own leaves that unknown.
+  session.childWork.stopLive()
   session.childWork.clear()
   session.backgroundTasks.clear()
   const leafUuid = await settledClaudeTurnEndLeaf(session)

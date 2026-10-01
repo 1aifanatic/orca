@@ -1,6 +1,6 @@
-// A prompt card's own Cancel, routed the way its provider says: one of the approval's options, sent
-// as if the user picked it; a dismissal; or the chat's Stop. A provider that says nothing interrupts
-// the turn holding the card. The host decides, so a client of any version gets the same Cancel.
+// A prompt card's own Cancel, routed the way its provider says: a dismissal, or the chat's Stop. A
+// provider that says nothing interrupts the turn holding the card. The host decides, so a client of
+// any version gets the same Cancel.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -12,7 +12,6 @@ import {
   validatePendingPrompt,
   type PendingPromptValidation
 } from './structured-agent-session-prompt-state'
-import { performPrompt } from './structured-agent-session-turns-prompt'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 type CancelOutcome = TurnOutcome<AgentSessionCancelResult>
@@ -40,14 +39,6 @@ export async function cancelStructuredAgentSessionPrompt(
   const cancelled: CancelOutcome = {
     ok: true,
     value: { ...(input.turnId ? { turnId: input.turnId } : {}), cancelled: true }
-  }
-  if (route.kind === 'option') {
-    const answered = await performPrompt(ctx, {
-      ...input.prompt,
-      kind: validated.prompt.kind,
-      optionId: route.optionId
-    })
-    return answered.ok ? cancelled : answered
   }
   if (route.kind === 'dismiss') {
     const dismissed = await dismissPrompt(ctx, validated, true)

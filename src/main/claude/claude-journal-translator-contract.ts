@@ -11,7 +11,7 @@ import type { ClaudeCommandStart } from './claude-command-turn'
 
 export type ClaudeJournalTranslator = {
   handle: (event: ClaudeStructuredSessionEvent) => void
-  journalPrompts: Pick<ClaudeJournalPrompts, 'resolve'>
+  journalPrompts: Pick<ClaudeJournalPrompts, 'resolve' | 'handOver' | 'cancel'>
   /** The open turn's provider id — the same id its journal row carries, and the one
    *  a client's Stop names. Sole owner: no reader keeps a copy to disagree with. */
   readonly currentTurnId: string | null

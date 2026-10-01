@@ -196,11 +196,23 @@ export async function dismissClaudeStructuredPrompt(input: {
   if (!session || !claim) {
     throw new AgentSessionPromptUnavailableError(request.itemId)
   }
+  const { promptKey } = claim.found.prompt
+  const journalPrompts = session.translator?.journalPrompts
   // Before the commit: Claude's own cancel of the request, landing while the host writes, must
-  // not write after it. The host commits on every path, so forgetting first loses nothing.
-  session.translator?.journalPrompts.resolve(claim.found.prompt.promptKey)
+  // not write after it.
+  const handBack = journalPrompts?.handOver(promptKey)
   try {
-    await request.commit()
+    try {
+      await request.commit()
+    } catch (error) {
+      // Nothing recorded the card: it is Claude's again, and a withdrawal Claude made meanwhile,
+      // which wrote nothing then, closes it now.
+      handBack?.()
+      if (!session.prompts.find(request.itemId)) {
+        journalPrompts?.cancel(promptKey)
+      }
+      throw error
+    }
     if (request.answer && session.prompts.ownsClaim(claim)) {
       await answerClaudePrompt(session, claim, claudePromptDismissal(claim.found.prompt))
     }

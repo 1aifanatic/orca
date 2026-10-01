@@ -237,7 +237,11 @@ describe('answerClaudePrompt', () => {
     session.translator = {
       handle: vi.fn(),
       openTurnInLiveProviderCycle: false,
-      journalPrompts: { resolve: resolvePrompt },
+      journalPrompts: {
+        resolve: resolvePrompt,
+        handOver: () => () => {},
+        cancel: () => ({ accepted: true })
+      },
       currentTurnId: null,
       recordTurnStop: () => true,
       commandTurnId: null,

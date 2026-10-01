@@ -124,6 +124,14 @@ export class ClaudeChildWorkDecoder {
     }
   }
 
+  /** Orca ended the session on purpose (a Stop, a rest, a quit): what still runs ends with it, as
+   *  stopped. A session that died on its own is left to `clear`, which says nothing of how. */
+  stopLive(): void {
+    for (const id of this.live.keys()) {
+      this.end(id, 'stopped', {})
+    }
+  }
+
   /** The provider session is gone: the host settles what it still holds live. */
   clear(): void {
     this.live.clear()

@@ -93,7 +93,11 @@ function sessionHoldingTurn(turnId: string | null): ReturnType<typeof sessionFor
   session.translator = {
     handle: vi.fn(),
     openTurnInLiveProviderCycle: false,
-    journalPrompts: { resolve: vi.fn() },
+    journalPrompts: {
+      resolve: vi.fn(),
+      handOver: () => () => {},
+      cancel: () => ({ accepted: true })
+    },
     currentTurnId: turnId,
     recordTurnStop: () => true,
     commandTurnId: null,

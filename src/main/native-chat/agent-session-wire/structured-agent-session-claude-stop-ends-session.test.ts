@@ -453,7 +453,13 @@ it('ends background work Claude runs when the Stop ends the child', async () => 
   // The work ran inside Claude's process, so it ends with it: its record settles, and the chat
   // reads done, Interrupted, with nothing left for Monitoring.
   expect(childRecords()).toEqual([
-    expect.objectContaining({ ...background, state: 'done', membership: 'settled' })
+    expect.objectContaining({
+      ...background,
+      state: 'done',
+      membership: 'settled',
+      // Stopped with the chat, as a task's own stop reads: Interrupted, not an unknown ending.
+      outcome: 'cancelled'
+    })
   ])
   expect(await agentStatus()).toEqual({
     state: 'done',
@@ -706,7 +712,7 @@ async function cardResolution(itemId: string): Promise<unknown> {
   return body?.kind === 'approval' || body?.kind === 'question' ? body.resolution : undefined
 }
 
-it("answers an approval card's Cancel as its Deny, and the turn and child go on", async () => {
+it('dismisses an approval card on its Cancel with the Deny reply, and the turn and child go on', async () => {
   const connection = claude.connections[0]!
   const turnId = await openTurn(connection)
   const { answered, card } = await ask(connection, 'Bash', { command: 'rm -rf build' })
@@ -720,9 +726,10 @@ it("answers an approval card's Cancel as its Deny, and the turn and child go on"
   const reply = await answered.promise
   expect(reply).toMatchObject({ behavior: 'deny', message: 'User denied this action.' })
   expect(reply).not.toHaveProperty('interrupt')
+  // Read as cancelled by the user, as every card's Cancel reads, not as a Deny pressed.
   expect(await cardResolution(card.itemId)).toMatchObject({
-    state: 'resolved',
-    selectedOptionId: 'deny'
+    state: 'cancelled',
+    resolvedBy: CALLER.callerKey
   })
   expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
   expect(connection.closed).toBe(false)

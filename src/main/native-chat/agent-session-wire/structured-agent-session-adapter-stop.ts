@@ -7,12 +7,8 @@ import type {
   AgentJournalQuestionItem
 } from '../../../shared/agent-session-journal-types'
 
-/** Where a card's Cancel goes: one of the approval's options, sent as if the user picked it; a
- *  dismissal (`dismissPrompt`); or the chat's Stop. */
-export type AgentSessionPromptCancelRoute =
-  | { kind: 'option'; optionId: string }
-  | { kind: 'dismiss' }
-  | { kind: 'stop' }
+/** Where a card's Cancel goes: a dismissal (`dismissPrompt`), or the chat's Stop. */
+export type AgentSessionPromptCancelRoute = { kind: 'dismiss' } | { kind: 'stop' }
 
 export type StructuredAgentSessionAdapterStop = {
   /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
