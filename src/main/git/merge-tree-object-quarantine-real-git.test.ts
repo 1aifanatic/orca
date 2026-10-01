@@ -270,11 +270,7 @@ describe('merge-tree quarantine keeps the object stores Git would otherwise see 
 
     await expectUnquarantinedVerdicts(repo)
 
-    expect(looseObjectsIn(repo)).toBe(0)
-    // Without the quarantine Git reaches the bottom of this chain too, and no deeper.
-    const squashed = fixtureHead('feature-squashed')
-    expect(fixture.git(repo, 'merge-tree', '--write-tree', 'main', squashed).trim()).toBe(
-      fixture.git(repo, 'rev-parse', 'main^{tree}').trim()
-    )
+    // A store with its own alternates runs unquarantined, so Git writes where it always has.
+    expect(looseObjectsIn(repo)).toBeGreaterThan(0)
   })
 })

@@ -159,6 +159,13 @@ describe('inheritedLocalObjectStore', () => {
   it('ignores Windows values WSLENV does not forward, since WSL Git never saw them', () => {
     expect(inheritedLocalObjectStore('Ubuntu', ALTERNATES, 'win32')).toEqual({})
     expect(
+      inheritedLocalObjectStore(
+        'Ubuntu',
+        { WSLENV: 'GIT_OBJECT_DIRECTORY/p:GIT_ALTERNATE_OBJECT_DIRECTORIES' },
+        'win32'
+      )
+    ).toEqual({})
+    expect(
       inheritedLocalObjectStore('Ubuntu', { GIT_OBJECT_DIRECTORY: 'C:\\objects' }, 'win32')
     ).toEqual({})
   })

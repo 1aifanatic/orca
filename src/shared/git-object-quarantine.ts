@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from './cross-platform-path'
 import { removeTree } from './windows-transient-lock-removal'
@@ -74,56 +74,29 @@ function isMissingFileError(error: unknown): boolean {
   )
 }
 
-/** The real store's `info/alternates` entries as Git resolves them, or undefined when they cannot be mirrored. */
-async function readRealStoreAlternates(
-  objects: GitObjectsDirectory
-): Promise<string[] | undefined> {
-  let text: string
-  try {
-    const bytes = await readFile(
-      pathApiForGitPath(objects.hostPath).join(objects.hostPath, 'info', 'alternates')
-    )
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
-  } catch (error) {
-    return isMissingFileError(error) ? [] : undefined
-  }
-  const windowsGit = isWindowsAbsolutePathLike(objects.gitPath)
-  const entries: string[] = []
-  for (const line of text.split('\n')) {
-    if (!line || line.startsWith('#')) {
-      continue
-    }
-    // Why: Git C-unquotes such a line; running unquarantined beats reimplementing that.
-    if (line.startsWith('"')) {
-      return undefined
-    }
-    const absolute = windowsGit
-      ? isWindowsAbsolutePathLike(line) || /^[\\/]/.test(line)
-      : line.startsWith('/')
-    // Why not normalized: Git appends a relative entry to the store's path and then resolves symlinks.
-    entries.push(absolute ? line : `${objects.gitPath}/${line}`)
-  }
-  return entries
-}
-
 /**
- * The alternates that let a quarantined Git see exactly what it sees unquarantined, or undefined.
- * Inherited value first, as Git's own temporary object dirs append. The real store's own alternates
- * go before the real store: Git links an alternate's alternates one level deeper, and listing them
- * directly keeps a chain at the nesting depth Git allows without the quarantine.
+ * The alternates for a quarantined run, or undefined to run unquarantined. Inherited value first,
+ * as Git's own temporary object dirs append. A real store with its own alternates is not
+ * quarantined: as an alternate instead of the primary, its chain would link one level deeper.
  */
 async function quarantineAlternates(objects: GitObjectsDirectory): Promise<string | undefined> {
-  const realAlternates = await readRealStoreAlternates(objects)
-  if (!realAlternates) {
+  const alternatesFile = pathApiForGitPath(objects.hostPath).join(
+    objects.hostPath,
+    'info',
+    'alternates'
+  )
+  const hasAlternatesFile = await stat(alternatesFile).then(
+    () => true,
+    (error: unknown) => !isMissingFileError(error)
+  )
+  if (hasAlternatesFile) {
     return undefined
   }
   const windowsGit = isWindowsAbsolutePathLike(objects.gitPath)
-  const entries = [...realAlternates, objects.gitPath].map((entry) =>
-    quoteAlternate(entry, windowsGit)
-  )
-  return [...(objects.inheritedAlternates ? [objects.inheritedAlternates] : []), ...entries].join(
-    windowsGit ? ';' : ':'
-  )
+  const realStore = quoteAlternate(objects.gitPath, windowsGit)
+  return objects.inheritedAlternates
+    ? `${objects.inheritedAlternates}${windowsGit ? ';' : ':'}${realStore}`
+    : realStore
 }
 
 async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
