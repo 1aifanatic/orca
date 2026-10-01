@@ -76,6 +76,7 @@ function FixStep({
   doneLabel,
   failedLabel,
   onAction,
+  locked = false,
   note,
   warning
 }: {
@@ -88,6 +89,7 @@ function FixStep({
   doneLabel: string
   failedLabel: string
   onAction: () => void
+  locked?: boolean
   note?: string
   warning?: string
 }): React.JSX.Element {
@@ -110,7 +112,7 @@ function FixStep({
               type="button"
               variant="outline"
               size="xs"
-              disabled={status === 'running'}
+              disabled={status === 'running' || locked}
               onClick={onAction}
             >
               {status === 'running' ? <Loader2 className="animate-spin" /> : null}
@@ -249,6 +251,8 @@ export function CodexSharedServerFixDialog({
               "Orca couldn't stop the server."
             )}
             onAction={() => setConfirmStopOpen(true)}
+            // Why: with sharing still on, the next Codex restarts the server it just closed sessions to stop.
+            locked={turnOff.status !== 'done'}
             warning={translate(
               'terminal.codexSharedServerBanner.step2Warning',
               'Closes any open Codex sessions that share the server'

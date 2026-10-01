@@ -171,6 +171,7 @@ describe('CodexSharedServerBanner', () => {
     await renderBanner()
     await advance(1_000)
     await act(async () => button('Fix').click())
+    await act(async () => button('Turn off').click())
     await act(async () => button('Stop server').click())
     expect(stopCodexSharedServer).not.toHaveBeenCalled()
     expect(document.body.textContent).toContain('Stop the shared server?')
@@ -190,6 +191,21 @@ describe('CodexSharedServerBanner', () => {
     await act(async () => button('Done').click())
     await advance(20_000)
     expect(paneElement.textContent).toBe('')
+  })
+
+  it.each([
+    ['before sharing is turned off', false],
+    ['when turning sharing off failed', true]
+  ])('keeps Stop server unavailable %s', async (_label, turnOffFails) => {
+    disableCodexSharedServerAutoStart.mockResolvedValueOnce(false)
+    setState({})
+    await renderBanner()
+    await advance(1_000)
+    await act(async () => button('Fix').click())
+    if (turnOffFails) {
+      await act(async () => button('Turn off').click())
+    }
+    expect(button('Stop server').disabled).toBe(true)
   })
 
   it('dismisses for this pane only, and stays dismissed after a remount', async () => {
