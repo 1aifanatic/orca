@@ -23,6 +23,7 @@ import {
   setStartRetryTimer
 } from './structured-agent-session-start-attempt-failure'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import { structuredAgentSessionCommandWaitsOnTurn } from './structured-agent-session-command-handover-block'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostDeps,
@@ -115,11 +116,11 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   const afterCommit = (sessionId: string, journal: AgentSessionJournal): void => {
     // A message waiting out a failed start has its own wake booked; only one that may go now needs
     // this one.
-    if (
-      wakesQueued.has(sessionId) ||
-      structuredAgentSessionCommandRunning(journal) ||
-      !nextDeliverableSubmission(journal, deps.now?.() ?? Date.now())
-    ) {
+    if (wakesQueued.has(sessionId) || structuredAgentSessionCommandRunning(journal)) {
+      return
+    }
+    const next = nextDeliverableSubmission(journal, deps.now?.() ?? Date.now())
+    if (!next || structuredAgentSessionCommandWaitsOnTurn(journal, next)) {
       return
     }
     wakesQueued.add(sessionId)

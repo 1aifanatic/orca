@@ -301,6 +301,10 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!unstarted) {
       return 'continue'
     }
+    // A command behind work that went ahead of it; that work's end wakes the loop again.
+    if (unstarted === 'waits') {
+      return this.stop(sessionId, decidedAt)
+    }
     // The child had not proven its start, so it took nothing it was handed, this message included:
     // it is ended, and each takes the start's failure.
     await this.deps.endFailedStart(sessionId)

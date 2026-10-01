@@ -680,6 +680,40 @@ describe('a start whose child took one message and cannot take the next', () => 
   })
 })
 
+describe('a /compact overtaken while it waits out a refused start', () => {
+  it('waits at its try for the message that went ahead, then runs', async () => {
+    const refuse = holdNextStart()
+    const calls = beforeSpawn.mock.calls.length
+    const command = await send(structuredAgentSessionCompactBody())
+    await eventually(() => expect(beforeSpawn.mock.calls.length).toBeGreaterThan(calls))
+    refuse()
+    await eventually(async () =>
+      expect((await submission(command))?.startFailure).toMatchObject({ attempts: 1 })
+    )
+    // The account switch ends; the person's next message goes ahead and is still in flight.
+    awaitStarted.mockImplementation(async () => undefined)
+    const later = await send(hostTestMessage('second'))
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([later])
+    )
+
+    await fireRetry()
+    await settleSteps()
+    expect(await submission(command)).toMatchObject({ dispatchState: 'pending' })
+    expect(compact).not.toHaveBeenCalled()
+
+    const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+    await journal.resolveDispatch({
+      clientMessageId: later,
+      state: 'accepted',
+      providerIdentity: null,
+      fence: (await submission(later))!.fence
+    })
+    await eventually(() => expect(compact).toHaveBeenCalledOnce())
+    expect((await submission(command))?.dispatchState).not.toBe('rejected')
+  })
+})
+
 describe('a /compact whose start fails at its handover', () => {
   it('ends its turn and says to run /compact again, from its own body', async () => {
     // An older plain message waits out its own refused start; the /compact goes on past it.

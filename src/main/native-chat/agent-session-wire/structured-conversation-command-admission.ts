@@ -65,7 +65,9 @@ export function conversationCommandInFlight(): AgentSessionWireRefusal {
  * cite work the strip lists, and ask for a stop only when the strip offers one.
  * `at-rest`: a command accepted with no child running. A running turn on record then belongs to a
  * dead generation, which the start before handover sweeps, so it refuses nothing yet.
- * `handover`: the command is the oldest queued message, and those queued behind it wait for it.
+ * `handover`: the command is the oldest queued message it may go, and those queued behind it wait
+ * for it. Messages accepted after it go first only while it waits out a refused start; its
+ * handover then waits for them rather than refusing.
  */
 export function conversationCommandBlocked(
   ctx: ConversationCommandAdmissionContext,
