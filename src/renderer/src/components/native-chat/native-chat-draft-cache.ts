@@ -9,6 +9,7 @@ import {
 } from './native-chat-composer-scope-cache'
 import {
   loadPersistedNativeChatDrafts,
+  observeOtherWindowNativeChatDrafts,
   persistNativeChatDraftNow,
   resetNativeChatDraftStorageForTests,
   scheduleNativeChatDraftPersist,
@@ -34,6 +35,8 @@ const EMPTY_ATTACHMENTS: readonly NativeChatDraftAttachment[] = []
 const draftCache = new Map<string, DraftEntry>()
 let hydrated = false
 
+let observingOtherWindows = false
+
 function drafts(): Map<string, DraftEntry> {
   if (!hydrated) {
     hydrated = true
@@ -41,6 +44,13 @@ function drafts(): Map<string, DraftEntry> {
       NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
     )) {
       draftCache.set(draftKey, { text: draft.text, attachments: draft.attachments })
+    }
+    if (!observingOtherWindows) {
+      observingOtherWindows = true
+      // A web client tab must not keep showing, and re-save, text another tab already sent.
+      observeOtherWindowNativeChatDrafts((draftKey, draft) =>
+        setEntry(draftKey, draft ?? { text: '', attachments: EMPTY_ATTACHMENTS }, undefined)
+      )
     }
   }
   return draftCache

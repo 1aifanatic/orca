@@ -288,3 +288,32 @@ describe('a draft dies with its chat', () => {
     expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.session))).toBe('unsent')
   })
 })
+
+describe('another window of the web client', () => {
+  function otherWindowSaves(scopeKey: string, value: string | null): void {
+    const key = `${PREFIX}${encodeURIComponent(scopeKey)}`
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue: value }))
+  }
+
+  it("shows another tab's draft, and its clear at send, instead of re-saving sent text", () => {
+    cache.writeNativeChatDraftCache(SCOPE, 'deploy to prod')
+    vi.advanceTimersByTime(300)
+    const shown = vi.fn()
+    cache.subscribeToNativeChatDraft(SCOPE, shown)
+
+    otherWindowSaves(SCOPE, null)
+    expect(cache.readNativeChatDraftCache(SCOPE)).toBe('')
+    expect(shown).toHaveBeenCalledTimes(1)
+
+    otherWindowSaves(SCOPE, JSON.stringify({ text: 'from the other tab', attachments: [] }))
+    expect(cache.readNativeChatDraftCache(SCOPE)).toBe('from the other tab')
+  })
+
+  it("keeps this tab's unsaved typing over another tab's write", () => {
+    cache.writeNativeChatDraftCache(SCOPE, 'typing here')
+
+    otherWindowSaves(SCOPE, JSON.stringify({ text: 'older', attachments: [] }))
+
+    expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typing here')
+  })
+})

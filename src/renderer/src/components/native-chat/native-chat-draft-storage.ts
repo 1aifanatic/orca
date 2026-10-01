@@ -111,6 +111,27 @@ export function scheduleNativeChatDraftPersist(
   )
 }
 
+/**
+ * Calls back when another window of this origin (a second browser tab of the web client) changes
+ * a saved draft. A key with a write still pending here is skipped: this window's draft is newer.
+ */
+export function observeOtherWindowNativeChatDrafts(
+  onChange: (scopeKey: string, draft: PersistedNativeChatDraft | null) => void
+): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.addEventListener('storage', (event) => {
+    if (!event.key?.startsWith(DRAFT_PREFIX)) {
+      return
+    }
+    const scopeKey = decodeURIComponent(event.key.slice(DRAFT_PREFIX.length))
+    if (!pendingDrafts.has(scopeKey)) {
+      onChange(scopeKey, parseStoredDraft(event.newValue))
+    }
+  })
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
